@@ -3045,18 +3045,17 @@ function SettingsPageClient() {
               className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
             />
           </div>
-          {currencyForm.nbuFetchEnabled && (
-            <Input
-              label="Відсоток нарахування (%)"
-              type="number"
-              min={0}
-              max={100}
-              step={0.01}
-              value={currencyForm.nbuMarkupPercent}
-              onChange={e => setCurrencyForm({ ...currencyForm, nbuMarkupPercent: e.target.value })}
-              placeholder="0.00"
-            />
-          )}
+          <Input
+            label="Відсоток нарахування (%)"
+            type="number"
+            min={0}
+            max={100}
+            step={0.01}
+            value={currencyForm.nbuMarkupPercent}
+            onChange={e => setCurrencyForm({ ...currencyForm, nbuMarkupPercent: e.target.value })}
+            placeholder="0.00"
+            disabled={!currencyForm.nbuFetchEnabled}
+          />
         </div>
       </Modal>
 
