@@ -93,6 +93,8 @@ interface WorkOrderDetail {
   vehicleSummary?: string;
   counterpartyId: string;
   counterpartyName?: string;
+  contractId?: string | null;
+  contractNumber?: string | null;
   description?: string | null;
   inMileage?: number | null;
   outMileage?: number | null;
@@ -1004,6 +1006,12 @@ export default function WorkOrderCardPage() {
             <div>
               <p className="text-xs text-muted-foreground">Філія</p>
               <p className="text-foreground">{wo.branchName}</p>
+            </div>
+          )}
+          {wo.contractNumber && (
+            <div>
+              <p className="text-xs text-muted-foreground">Договір</p>
+              <p className="text-foreground">{wo.contractNumber}</p>
             </div>
           )}
           {wo.priority && (

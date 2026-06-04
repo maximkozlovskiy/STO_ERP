@@ -25,6 +25,8 @@ export interface PurchaseOrder {
   supplierName?: string;
   warehouseId: string;
   warehouseName?: string;
+  contractId?: string | null;
+  contractNumber?: string | null;
   totalAmount: number;
   notes: string | null;
   linesCount: number;

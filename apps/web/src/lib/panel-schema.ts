@@ -175,6 +175,7 @@ export const PURCHASE_ORDER_PANEL_SCHEMA = [
   { key: 'status', label: 'Статус', always: true },
   { key: 'supplierName', label: 'Постачальник' },
   { key: 'warehouseName', label: 'Склад' },
+  { key: 'contractNumber', label: 'Договір' },
   { key: 'totalAmount', label: 'Сума', type: 'money' },
   { key: 'linesCount', label: 'Позицій', type: 'number' },
   { key: 'documentDate', label: 'Дата документа', type: 'date' },
