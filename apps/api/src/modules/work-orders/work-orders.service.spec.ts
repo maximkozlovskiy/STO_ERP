@@ -112,3 +112,102 @@ describe('WorkOrdersService.findAll — query shape', () => {
     expect(where.lines).toEqual({ some: { employeeId: empId, deletedAt: null } });
   });
 });
+
+// ─── update() query-shape regression spec (Bug #350 follow-up) ─────────────────
+//
+// PATCH /work-orders/:id response feeds frontend WorkOrderDetail. After the
+// follow-up fix that added `include.contract` so PATCH carries `contractNumber`,
+// guard against future regression where someone removes the include during
+// refactor — Bug #232 pattern (include audit). Without `contract` in the
+// include, every PATCH of description/mileage/priority would silently null-out
+// the contract row in the detail UI even when contractId stays the same.
+
+describe('WorkOrdersService.update — query shape (Bug #350 follow-up)', () => {
+  const WO_ID = '33333333-3333-4333-8333-333333333333';
+
+  function makeUpdatePrisma() {
+    const findFirst = vi.fn().mockResolvedValue({
+      id: WO_ID,
+      orgId: ORG,
+      status: 'DRAFT',
+      description: 'old',
+    });
+    const update = vi.fn().mockResolvedValue({
+      id: WO_ID,
+      orgId: ORG,
+      number: 'WO-1',
+      status: 'DRAFT',
+      priority: 'NORMAL',
+      repairCategory: null,
+      branchId: 'b',
+      branch: { name: 'Br' },
+      vehicleId: 'v',
+      vehicle: { make: 'X', model: 'Y', licensePlate: 'AB1234' },
+      counterpartyId: 'c',
+      counterparty: { firstName: 'Іван', lastName: 'Петров', companyName: null },
+      contractId: 'con-1',
+      contract: { id: 'con-1', number: 'ДГ-2026-000001' },
+      description: 'new',
+      inMileage: null,
+      outMileage: null,
+      plannedAt: null,
+      dueDate: null,
+      completedAt: null,
+      warrantyUntil: null,
+      clientApproval: false,
+      totalLabor: 0,
+      totalParts: 0,
+      totalAmount: 0,
+      paidAmount: 0,
+      documentDate: new Date('2026-06-04'),
+      syncVersion: 0n,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    });
+    const prisma = {
+      workOrder: { findFirst, update },
+    } as unknown as PrismaService;
+    return { prisma, findFirst, update };
+  }
+
+  it('include carries contract { id, number } so toDto can map contractNumber', async () => {
+    const { prisma, update } = makeUpdatePrisma();
+    const service = makeService(prisma);
+
+    // Bug #350 follow-up regression-guard: PATCH must include `contract` relation,
+    // otherwise WorkOrderDetail.contractNumber goes null after every save.
+    await service.update(ORG, WO_ID, { description: 'new' });
+
+    expect(update).toHaveBeenCalledTimes(1);
+    const arg = update.mock.calls[0][0];
+
+    // include MUST have all 4 relations
+    expect(arg.include).toHaveProperty('contract');
+    expect(arg.include).toHaveProperty('vehicle');
+    expect(arg.include).toHaveProperty('counterparty');
+    expect(arg.include).toHaveProperty('branch');
+
+    // contract select shape — only what toDto reads (id + number); guard against
+    // accidental `contract: true` which leaks contractType/dates and grows payload.
+    expect(arg.include.contract).toEqual({ select: { id: true, number: true } });
+  });
+
+  it('update scopes write to tenant via where.orgId (defense-in-depth)', async () => {
+    const { prisma, update } = makeUpdatePrisma();
+    const service = makeService(prisma);
+
+    await service.update(ORG, WO_ID, { description: 'new' });
+    const arg = update.mock.calls[0][0];
+    expect(arg.where).toEqual({ id: WO_ID, orgId: ORG });
+  });
+
+  it('returned dto carries contractNumber from the included contract.number', async () => {
+    const { prisma } = makeUpdatePrisma();
+    const service = makeService(prisma);
+
+    const result = await service.update(ORG, WO_ID, { description: 'new' });
+    expect(result.contractNumber).toBe('ДГ-2026-000001');
+    expect(result.contractId).toBe('con-1');
+  });
+});

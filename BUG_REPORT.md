@@ -10450,3 +10450,36 @@ Realistic upper bound: 50 символів (номер форму `ДГ-2026-000
 **Статус:** [x] виправлено.
 
 ### Bugs found this session: 7 (CRITICAL: 1 / HIGH: 4 / LOW: 2)
+
+---
+
+## Session 2026-06-04 — Tester cycle 6: CounterpartyContract post-review-2 (HEAD 43336c1)
+
+Two recent fixes verified end-to-end:
+
+1. **Race-condition fix in `removeContract`** (ec12fb0): count+delete+auto-promote all moved INTO `$transaction(async tx)` — concurrent deletes can no longer leave SUPPLIER with 0 PURCHASE contracts; soft-delete now gated on `deletedAt: null` so race-loser exits with `updateMany.count === 0` instead of double-promoting.
+   - Existing `counterparties.service.spec.ts` already covers (5 cases):
+     - auto-promote next primary at delete (lines 273-323)
+     - non-primary delete → no promote (325-347)
+     - race-lost (`updateMany.count === 0`) → exit without promote (349-375)
+     - SUPPLIER guard counts only PURCHASE (378-407)
+     - SUPPLIER blocks last PURCHASE (409-433)
+     - CLIENT skips guard (435-456)
+   - **No new bugs.**
+
+2. **WO `update()` now includes `contract` so PATCH response carries `contractNumber`** (ec12fb0).
+   - Bug #350 follow-up: previously `findOne()` was fixed, but `update()` shared the same flaw — after editing description/mileage/priority frontend `WorkOrderDetail.contractNumber` went null and the contract row disappeared on save.
+   - **Gap found:** no regression-guard test existed for `update().include.contract`. A future refactor that removes the include during a "clean-up" would pass tsc + all existing tests but silently break the contract row in the UI.
+   - **Action:** added 3 new tests to `work-orders.service.spec.ts` — `describe('WorkOrdersService.update — query shape (Bug #350 follow-up)')`:
+     - `include carries contract { id, number } so toDto can map contractNumber` — asserts presence + exact select shape.
+     - `update scopes write to tenant via where.orgId (defense-in-depth)` — asserts orgId in where.
+     - `returned dto carries contractNumber from the included contract.number` — end-to-end DTO mapping.
+   - **No new bugs** — fix is correct, only regression-guard added.
+
+### Verification
+
+- TypeScript: 0 errors (api, web, shared).
+- Unit + Contract: 617/617 passed (+3 new regression-guard tests).
+- Build: not run (no source changes, only test additions).
+
+### Bugs found this session: 0 (fix-cycle verification only). Regression-guard tests added: 3.
