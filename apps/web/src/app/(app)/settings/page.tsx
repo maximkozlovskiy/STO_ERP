@@ -1829,37 +1829,19 @@ function SettingsPageClient() {
                   )}
                 </div>
 
-                {/* НБУ галка + відсоток */}
-                <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                {/* НБУ — тільки перегляд */}
+                <div className="flex items-center gap-1.5 shrink-0">
                   <input
                     type="checkbox"
                     checked={c.nbuFetchEnabled}
-                    onChange={e =>
-                      patchCurrencyNbu(c.id, e.target.checked, c.nbuMarkupPercent ?? null)
-                    }
-                    className="h-4 w-4 rounded border-border accent-primary"
+                    readOnly
+                    className="h-4 w-4 rounded border-border accent-primary pointer-events-none"
                   />
                   <span className="text-xs text-muted-foreground whitespace-nowrap">НБУ</span>
-                </label>
-                <div className="flex items-center gap-1 shrink-0">
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.01}
-                    disabled={!c.nbuFetchEnabled}
-                    defaultValue={c.nbuMarkupPercent ?? ''}
-                    placeholder="0"
-                    onBlur={e => {
-                      const val = e.target.value === '' ? null : parseFloat(e.target.value);
-                      if (val !== c.nbuMarkupPercent) {
-                        void patchCurrencyNbu(c.id, c.nbuFetchEnabled, val);
-                      }
-                    }}
-                    className="w-16 px-2 py-1 text-xs border border-border rounded bg-input text-foreground disabled:opacity-40 focus:outline-none focus:ring-1 focus:ring-primary/30"
-                  />
-                  <span className="text-xs text-muted-foreground">%</span>
                 </div>
+                <span className="text-xs text-muted-foreground shrink-0 w-14 text-right">
+                  {c.nbuMarkupPercent != null ? `+${c.nbuMarkupPercent}%` : '—'}
+                </span>
 
                 {/* Кнопки */}
                 <div className="flex gap-2 shrink-0">
