@@ -331,11 +331,11 @@ function InfrastructurePageClient() {
     }
   };
 
-  const TABS: { key: Tab; label: string }[] = [
-    { key: 'branches', label: 'Філії' },
-    { key: 'zones', label: 'Зони' },
-    { key: 'lifts', label: 'Пости' },
-    { key: 'warehouses', label: 'Склади' },
+  const TABS: { key: Tab; label: string; addLabel: string }[] = [
+    { key: 'branches', label: 'Філії', addLabel: 'Філія' },
+    { key: 'zones', label: 'Зони', addLabel: 'Зона' },
+    { key: 'lifts', label: 'Пости', addLabel: 'Пост' },
+    { key: 'warehouses', label: 'Склади', addLabel: 'Склад' },
   ];
 
   const ADD_ACTIONS: Record<Tab, () => void> = {
@@ -385,9 +385,9 @@ function InfrastructurePageClient() {
         ))}
       </div>
 
-      {/* Toolbar: пошук + показати видалені + додати */}
+      {/* Toolbar: пошук зліва, кнопки справа */}
       <div className="shrink-0 flex items-center gap-2 mb-4">
-        <div className="relative flex-1 max-w-xs">
+        <div className="relative w-64">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           <input
             type="text"
@@ -397,20 +397,20 @@ function InfrastructurePageClient() {
             className="w-full pl-8 pr-3 py-1.5 text-sm bg-surface border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           />
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowDeleted(v => !v)}
-          leftIcon={
-            showDeleted ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />
-          }
-          className={cn(showDeleted && 'border-warning text-warning')}
-        >
-          {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
-        </Button>
-        <Button size="sm" onClick={ADD_ACTIONS[tab]} leftIcon={<Plus className="h-4 w-4" />}>
-          Додати
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowDeleted(v => !v)}
+            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            className={cn(showDeleted && 'border-warning text-warning')}
+          >
+            {showDeleted ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </Button>
+          <Button size="sm" onClick={ADD_ACTIONS[tab]} leftIcon={<Plus className="h-4 w-4" />}>
+            {TABS.find(t => t.key === tab)?.addLabel ?? 'Додати'}
+          </Button>
+        </div>
       </div>
 
       {/* Scrollable content area */}
