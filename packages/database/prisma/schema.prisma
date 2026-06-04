@@ -98,6 +98,12 @@ enum DocumentType {
   STOCK_OPENING
   RECONCILIATION_ACT
   COMPLETION_ACT
+  COUNTERPARTY_AGREEMENT
+}
+
+enum ContractType {
+  PURCHASE
+  SALE
 }
 
 enum ResetPeriod {
@@ -566,6 +572,7 @@ model Counterparty {
 
   org               Organisation       @relation(fields: [orgId], references: [id])
   customerGarages   CustomerGarage[]
+  contracts         CounterpartyContract[]
   settlementAccount SettlementAccount?
   loyaltyAccount    LoyaltyAccount?
   purchaseOrders    PurchaseOrder[]
@@ -581,6 +588,31 @@ model Counterparty {
   @@index([orgId, type, deletedAt])
   @@index([orgId, syncVersion])
   @@map("counterparties")
+}
+
+model CounterpartyContract {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId            String       @db.Uuid
+  counterpartyId   String       @db.Uuid
+  number           String
+  contractType     ContractType
+  startDate        DateTime     @db.Date
+  endDate          DateTime?    @db.Date
+  isPrimary        Boolean      @default(false)
+  creditLimit      Decimal?     @db.Decimal(15, 2)
+  paymentDeferDays Int?
+  syncVersion      BigInt       @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+
+  counterparty   Counterparty    @relation(fields: [counterpartyId], references: [id])
+  workOrders     WorkOrder[]
+  purchaseOrders PurchaseOrder[]
+
+  @@index([orgId, counterpartyId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("counterparty_contracts")
 }
 
 model CustomerGarage {
@@ -933,6 +965,7 @@ model WorkOrder {
   branchId       String          @db.Uuid
   vehicleId      String          @db.Uuid
   counterpartyId String          @db.Uuid
+  contractId     String?         @db.Uuid
   number          String
   status          WorkOrderStatus   @default(DRAFT)
   priority        WorkOrderPriority @default(NORMAL)
@@ -955,9 +988,10 @@ model WorkOrder {
   updatedAt      DateTime        @updatedAt
   deletedAt      DateTime?
 
-  branch          GarageBranch    @relation(fields: [branchId], references: [id])
-  vehicle         Vehicle         @relation(fields: [vehicleId], references: [id])
-  counterparty    Counterparty    @relation(fields: [counterpartyId], references: [id])
+  branch          GarageBranch         @relation(fields: [branchId], references: [id])
+  vehicle         Vehicle              @relation(fields: [vehicleId], references: [id])
+  counterparty    Counterparty         @relation(fields: [counterpartyId], references: [id])
+  contract        CounterpartyContract? @relation(fields: [contractId], references: [id])
   lines           WorkOrderLine[]
   parts           WorkOrderPart[]
   payments        Payment[]
@@ -1231,6 +1265,7 @@ model PurchaseOrder {
   orgId       String    @db.Uuid
   supplierId  String    @db.Uuid
   warehouseId String    @db.Uuid
+  contractId  String?   @db.Uuid
   number      String
   status      PurchaseOrderStatus @default(DRAFT)
   totalAmount  Decimal             @default(0) @db.Decimal(12, 2)
@@ -1241,8 +1276,9 @@ model PurchaseOrder {
   updatedAt    DateTime            @updatedAt
   deletedAt    DateTime?
 
-  supplier  Counterparty        @relation(fields: [supplierId], references: [id])
-  warehouse Warehouse           @relation(fields: [warehouseId], references: [id])
+  supplier  Counterparty          @relation(fields: [supplierId], references: [id])
+  warehouse Warehouse             @relation(fields: [warehouseId], references: [id])
+  contract  CounterpartyContract? @relation(fields: [contractId], references: [id])
   lines     PurchaseOrderLine[]
 
   @@index([orgId, status, deletedAt])

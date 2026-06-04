@@ -17,6 +17,10 @@ const serviceMock = {
   findGarages: vi.fn(),
   createGarage: vi.fn(),
   removeGarage: vi.fn(),
+  findContracts: vi.fn(),
+  createContract: vi.fn(),
+  updateContract: vi.fn(),
+  removeContract: vi.fn(),
 };
 
 let jwtAllow = true;
@@ -133,6 +137,109 @@ describe('Counterparties — HTTP Contract', () => {
       });
       jwtAllow = true;
       expect(res.statusCode).toBe(403);
+    });
+  });
+
+  describe('GET :id/contracts', () => {
+    it('повертає 200 зі списком договорів', async () => {
+      serviceMock.findContracts.mockResolvedValueOnce([]);
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(Array.isArray(res.json())).toBe(true);
+    });
+  });
+
+  describe('POST :id/contracts', () => {
+    it("повертає 400 без обов'язкового поля contractType", async () => {
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ startDate: '2026-01-01' }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("повертає 400 без обов'язкового поля startDate", async () => {
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ contractType: 'PURCHASE' }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 201 при валідному body', async () => {
+      jwtAllow = true;
+      serviceMock.createContract.mockResolvedValueOnce({
+        id: 'con-1',
+        orgId: 'org-1',
+        counterpartyId: 'cp-1',
+        number: 'ДГ-1',
+        contractType: 'PURCHASE',
+        startDate: '2026-01-01',
+        endDate: null,
+        isPrimary: true,
+        creditLimit: null,
+        paymentDeferDays: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ contractType: 'PURCHASE', startDate: '2026-01-01' }),
+      });
+      expect(res.statusCode).toBe(201);
+    });
+  });
+
+  describe('PATCH :id/contracts/:contractId', () => {
+    it('повертає 200 при валідному body', async () => {
+      jwtAllow = true;
+      serviceMock.updateContract.mockResolvedValueOnce({
+        id: 'con-1',
+        orgId: 'org-1',
+        counterpartyId: 'cp-1',
+        number: 'ДГ-1',
+        contractType: 'PURCHASE',
+        startDate: '2026-01-01',
+        endDate: null,
+        isPrimary: true,
+        creditLimit: null,
+        paymentDeferDays: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ isPrimary: true }),
+      });
+      expect(res.statusCode).toBe(200);
+    });
+  });
+
+  describe('DELETE :id/contracts/:contractId', () => {
+    it('повертає 204', async () => {
+      jwtAllow = true;
+      serviceMock.removeContract.mockResolvedValueOnce(undefined);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'DELETE',
+        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      });
+      expect(res.statusCode).toBe(204);
     });
   });
 

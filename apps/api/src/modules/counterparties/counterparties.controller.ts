@@ -18,12 +18,15 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import {
+  ContractResponseDto,
   CounterpartyQueryDto,
   CounterpartyResponseDto,
+  CreateContractDto,
   CreateCounterpartyDto,
   CreateGarageDto,
   GarageResponseDto,
   PaginatedCounterpartiesDto,
+  UpdateContractDto,
   UpdateCounterpartyDto,
 } from './counterparties.dto';
 import { CounterpartiesService } from './counterparties.service';
@@ -106,5 +109,51 @@ export class CounterpartiesController {
     @Param('garageId', ParseUUIDPipe) garageId: string,
   ) {
     return this.service.removeGarage(orgId, id, garageId);
+  }
+
+  // ─── Contracts ───────────────────────────────────────────
+
+  @Get(':id/contracts')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Договори контрагента' })
+  @ApiResponse({ status: 200, type: [ContractResponseDto] })
+  findContracts(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.findContracts(orgId, id);
+  }
+
+  @Post(':id/contracts')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Додати договір' })
+  @ApiResponse({ status: 201, type: ContractResponseDto })
+  createContract(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateContractDto,
+  ) {
+    return this.service.createContract(orgId, id, dto);
+  }
+
+  @Patch(':id/contracts/:contractId')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Оновити договір' })
+  @ApiResponse({ status: 200, type: ContractResponseDto })
+  updateContract(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('contractId', ParseUUIDPipe) contractId: string,
+    @Body() dto: UpdateContractDto,
+  ) {
+    return this.service.updateContract(orgId, id, contractId, dto);
+  }
+
+  @Delete(':id/contracts/:contractId')
+  @Roles('OWNER', 'ADMIN')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeContract(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('contractId', ParseUUIDPipe) contractId: string,
+  ) {
+    return this.service.removeContract(orgId, id, contractId);
   }
 }

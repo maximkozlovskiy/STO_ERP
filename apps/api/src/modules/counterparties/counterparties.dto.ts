@@ -1,11 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsDateString,
   IsEmail,
   IsEnum,
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   Min,
@@ -14,7 +16,7 @@ import {
   ArrayMaxSize,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { CounterpartyType, LegalForm } from '@prisma/client';
+import { ContractType, CounterpartyType, LegalForm } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 // ─── Counterparty ────────────────────────────────────────
@@ -176,4 +178,104 @@ export class GarageResponseDto {
   @ApiPropertyOptional() notes?: string | null;
   @ApiProperty() isDefault!: boolean;
   @ApiProperty() createdAt!: Date;
+}
+
+// ─── CounterpartyContract ─────────────────────────────────
+
+export class CreateContractDto {
+  @ApiPropertyOptional({ description: 'Номер договору (авто якщо не передано)' })
+  @IsOptional()
+  @IsString()
+  number?: string;
+
+  @ApiProperty({ enum: ContractType })
+  @IsEnum(ContractType)
+  contractType!: ContractType;
+
+  @ApiProperty({ description: 'Дата початку (YYYY-MM-DD)' })
+  @IsDateString()
+  startDate!: string;
+
+  @ApiPropertyOptional({ description: 'Дата завершення (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  endDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isPrimary?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  creditLimit?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  paymentDeferDays?: number;
+}
+
+export class UpdateContractDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  number?: string;
+
+  @ApiPropertyOptional({ enum: ContractType })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEnum(ContractType)
+  contractType?: ContractType;
+
+  @ApiPropertyOptional({ description: 'Дата початку (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  startDate?: string;
+
+  @ApiPropertyOptional({ description: 'Дата завершення (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  endDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isPrimary?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  creditLimit?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  paymentDeferDays?: number;
+}
+
+export class ContractResponseDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() orgId!: string;
+  @ApiProperty() counterpartyId!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: ContractType }) contractType!: ContractType;
+  @ApiProperty() startDate!: string;
+  @ApiPropertyOptional() endDate!: string | null;
+  @ApiProperty() isPrimary!: boolean;
+  @ApiPropertyOptional() creditLimit!: number | null;
+  @ApiPropertyOptional() paymentDeferDays!: number | null;
+  @ApiProperty() createdAt!: Date;
+  @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional() deletedAt!: Date | null;
 }

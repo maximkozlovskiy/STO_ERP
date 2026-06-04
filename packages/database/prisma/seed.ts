@@ -167,6 +167,7 @@ async function main() {
     { documentType: DocumentType.STOCK_TRANSFER, prefix: 'ПРМ' },
     { documentType: DocumentType.STOCK_OPENING, prefix: 'ВЗЛ' },
     { documentType: DocumentType.RECONCILIATION_ACT, prefix: 'АКТ' },
+    { documentType: DocumentType.COUNTERPARTY_AGREEMENT, prefix: 'ДГ' },
   ];
   for (const dc of docConfigs) {
     await prisma.documentNumberConfig.upsert({
@@ -185,7 +186,7 @@ async function main() {
       },
     });
   }
-  console.warn('  DocumentNumberConfigs: 8 записів');
+  console.warn('  DocumentNumberConfigs: 9 записів');
 
   // ─── NotificationTemplates ───────────────────────────────
   const templates = [

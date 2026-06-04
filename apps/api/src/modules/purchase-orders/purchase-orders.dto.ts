@@ -41,6 +41,14 @@ export class CreatePurchaseOrderDto {
   warehouseId!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 
+  @ApiPropertyOptional({
+    description: 'Договір постачальника (PURCHASE). Авто-вибір якщо не передано.',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  contractId?: string;
+
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD), за замовчуванням — сьогодні' })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -120,6 +128,8 @@ export class PurchaseOrderResponseDto {
   @ApiProperty() supplierId!: string;
   @ApiProperty() warehouseId!: string;
   @ApiPropertyOptional() warehouseName?: string;
+  @ApiPropertyOptional({ description: 'Договір постачальника' }) contractId?: string | null;
+  @ApiPropertyOptional() contractNumber?: string | null;
   @ApiProperty() totalAmount!: number;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;

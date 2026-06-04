@@ -1,20 +1,27 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { CounterpartyType, LegalForm, Prisma } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ContractType, CounterpartyType, LegalForm, Prisma } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DocumentNumberService } from '../document-number/document-number.service';
 import {
+  ContractResponseDto,
   CounterpartyQueryDto,
   CounterpartyResponseDto,
+  CreateContractDto,
   CreateCounterpartyDto,
   CreateGarageDto,
   GarageResponseDto,
   PaginatedCounterpartiesDto,
+  UpdateContractDto,
   UpdateCounterpartyDto,
 } from './counterparties.dto';
 
 @Injectable()
 export class CounterpartiesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly documentNumberService: DocumentNumberService,
+  ) {}
 
   async findAll(orgId: string, query: CounterpartyQueryDto): Promise<PaginatedCounterpartiesDto> {
     // types[] wins over type (single), supports ?types=SUPPLIER,BOTH
@@ -104,6 +111,19 @@ export class CounterpartiesService {
               counterpartyId: cp.id,
               name: 'Основний',
               isDefault: true,
+            },
+          });
+        }
+        // Auto-create primary PURCHASE contract for suppliers
+        if (dto.type === 'SUPPLIER' || dto.type === 'BOTH') {
+          await tx.counterpartyContract.create({
+            data: {
+              orgId,
+              counterpartyId: cp.id,
+              number: '1',
+              contractType: ContractType.PURCHASE,
+              startDate: new Date(),
+              isPrimary: true,
             },
           });
         }
@@ -200,6 +220,177 @@ export class CounterpartiesService {
       where: { id: garageId, orgId },
       data: { deletedAt: new Date() },
     });
+  }
+
+  // ─── Contracts ───────────────────────────────────────────
+
+  private validateContractType(cpType: CounterpartyType, contractType: ContractType): void {
+    if (cpType === CounterpartyType.SUPPLIER && contractType === ContractType.SALE)
+      throw new BadRequestException('Постачальник може мати лише договір Купівлі');
+    if (cpType === CounterpartyType.CLIENT && contractType === ContractType.PURCHASE)
+      throw new BadRequestException('Клієнт може мати лише договір Продажу');
+  }
+
+  async findContracts(orgId: string, counterpartyId: string): Promise<ContractResponseDto[]> {
+    const [cp, items] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.counterpartyContract.findMany({
+        where: { counterpartyId, orgId, deletedAt: null },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+      }),
+    ]);
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    return items.map(c => this.toContractDto(c));
+  }
+
+  async createContract(
+    orgId: string,
+    counterpartyId: string,
+    dto: CreateContractDto,
+  ): Promise<ContractResponseDto> {
+    const [cp, existingCount] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true, type: true },
+      }),
+      this.prisma.counterpartyContract.count({
+        where: { counterpartyId, orgId, deletedAt: null },
+      }),
+    ]);
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    this.validateContractType(cp.type, dto.contractType);
+
+    const number =
+      dto.number ?? (await this.documentNumberService.next(orgId, 'COUNTERPARTY_AGREEMENT'));
+    const makePrimary = existingCount === 0 || dto.isPrimary === true;
+
+    const contract = await this.prisma.$transaction(async tx => {
+      if (makePrimary) {
+        await tx.counterpartyContract.updateMany({
+          where: { counterpartyId, orgId, deletedAt: null },
+          data: { isPrimary: false },
+        });
+      }
+      return tx.counterpartyContract.create({
+        data: {
+          orgId,
+          counterpartyId,
+          number,
+          contractType: dto.contractType,
+          startDate: new Date(dto.startDate),
+          endDate: dto.endDate ? new Date(dto.endDate) : null,
+          isPrimary: makePrimary,
+          creditLimit: dto.creditLimit ?? null,
+          paymentDeferDays: dto.paymentDeferDays ?? null,
+        },
+      });
+    });
+    return this.toContractDto(contract);
+  }
+
+  async updateContract(
+    orgId: string,
+    counterpartyId: string,
+    contractId: string,
+    dto: UpdateContractDto,
+  ): Promise<ContractResponseDto> {
+    const [cp, contract] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true, type: true },
+      }),
+      this.prisma.counterpartyContract.findFirst({
+        where: { id: contractId, counterpartyId, orgId, deletedAt: null },
+      }),
+    ]);
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!contract) throw new NotFoundException('Договір не знайдено');
+
+    if (dto.contractType) {
+      this.validateContractType(cp.type, dto.contractType);
+    }
+
+    const updated = await this.prisma.$transaction(async tx => {
+      if (dto.isPrimary === true) {
+        await tx.counterpartyContract.updateMany({
+          where: { counterpartyId, orgId, deletedAt: null, id: { not: contractId } },
+          data: { isPrimary: false },
+        });
+      }
+      return tx.counterpartyContract.update({
+        where: { id: contractId, orgId },
+        data: {
+          ...(dto.number !== undefined && { number: dto.number }),
+          ...(dto.contractType !== undefined && { contractType: dto.contractType }),
+          ...(dto.startDate !== undefined && { startDate: new Date(dto.startDate) }),
+          ...(dto.endDate !== undefined && { endDate: dto.endDate ? new Date(dto.endDate) : null }),
+          ...(dto.isPrimary !== undefined && { isPrimary: dto.isPrimary }),
+          ...(dto.creditLimit !== undefined && { creditLimit: dto.creditLimit }),
+          ...(dto.paymentDeferDays !== undefined && { paymentDeferDays: dto.paymentDeferDays }),
+        },
+      });
+    });
+    return this.toContractDto(updated);
+  }
+
+  async removeContract(orgId: string, counterpartyId: string, contractId: string): Promise<void> {
+    const [cp, contract, count] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true, type: true },
+      }),
+      this.prisma.counterpartyContract.findFirst({
+        where: { id: contractId, counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.counterpartyContract.count({
+        where: { counterpartyId, orgId, deletedAt: null },
+      }),
+    ]);
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!contract) throw new NotFoundException('Договір не знайдено');
+    if (cp.type === CounterpartyType.SUPPLIER && count <= 1)
+      throw new BadRequestException('Постачальник повинен мати хоча б один договір');
+
+    await this.prisma.counterpartyContract.updateMany({
+      where: { id: contractId, counterpartyId, orgId },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  private toContractDto(c: {
+    id: string;
+    orgId: string;
+    counterpartyId: string;
+    number: string;
+    contractType: ContractType;
+    startDate: Date;
+    endDate: Date | null;
+    isPrimary: boolean;
+    creditLimit: Prisma.Decimal | null;
+    paymentDeferDays: number | null;
+    createdAt: Date;
+    updatedAt: Date;
+    deletedAt: Date | null;
+  }): ContractResponseDto {
+    return {
+      id: c.id,
+      orgId: c.orgId,
+      counterpartyId: c.counterpartyId,
+      number: c.number,
+      contractType: c.contractType,
+      startDate: c.startDate.toISOString().slice(0, 10),
+      endDate: c.endDate ? c.endDate.toISOString().slice(0, 10) : null,
+      isPrimary: c.isPrimary,
+      creditLimit: c.creditLimit ? Number(c.creditLimit) : null,
+      paymentDeferDays: c.paymentDeferDays,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+      deletedAt: c.deletedAt,
+    };
   }
 
   private toDto(

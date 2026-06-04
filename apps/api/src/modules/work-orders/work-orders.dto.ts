@@ -31,6 +31,12 @@ export class CreateWorkOrderDto {
   @IsUUID()
   counterpartyId!: string;
 
+  @ApiPropertyOptional({ description: 'Договір контрагента (SALE). Авто-вибір якщо не передано.' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  contractId?: string;
+
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
 
@@ -237,6 +243,8 @@ export class WorkOrderResponseDto {
   @ApiPropertyOptional() vehicleSummary?: string;
   @ApiProperty() counterpartyId!: string;
   @ApiPropertyOptional() counterpartyName?: string;
+  @ApiPropertyOptional({ description: 'Договір контрагента' }) contractId?: string | null;
+  @ApiPropertyOptional() contractNumber?: string | null;
   @ApiPropertyOptional() description?: string | null;
   @ApiPropertyOptional() inMileage?: number | null;
   @ApiPropertyOptional() outMileage?: number | null;

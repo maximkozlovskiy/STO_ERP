@@ -118,6 +118,7 @@ export class WorkOrdersService {
           vehicle: { select: { make: true, model: true, licensePlate: true } },
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           branch: { select: { name: true } },
+          contract: { select: { id: true, number: true } },
           calendarSlots: {
             where: { deletedAt: null },
             orderBy: { startAt: 'asc' },
@@ -226,6 +227,22 @@ export class WorkOrdersService {
     if (!vehicle) throw new NotFoundException('Автомобіль не знайдено');
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
+    // Auto-select primary SALE contract if not provided
+    let contractId = dto.contractId ?? null;
+    if (!contractId) {
+      const primaryContract = await this.prisma.counterpartyContract.findFirst({
+        where: {
+          counterpartyId: dto.counterpartyId,
+          orgId,
+          contractType: 'SALE',
+          deletedAt: null,
+        },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+        select: { id: true },
+      });
+      contractId = primaryContract?.id ?? null;
+    }
+
     const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
 
     const wo = await this.prisma.workOrder.create({
@@ -234,6 +251,7 @@ export class WorkOrdersService {
         branchId: dto.branchId,
         vehicleId: dto.vehicleId,
         counterpartyId: dto.counterpartyId,
+        contractId,
         number,
         description: dto.description,
         inMileage: dto.inMileage,
@@ -247,6 +265,7 @@ export class WorkOrdersService {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         branch: { select: { name: true } },
+        contract: { select: { id: true, number: true } },
       },
     });
 
@@ -551,6 +570,7 @@ export class WorkOrdersService {
               select: { firstName: true, lastName: true, companyName: true, phone: true },
             },
             branch: { select: { name: true } },
+            contract: { select: { id: true, number: true } },
           },
         });
       },
@@ -1158,6 +1178,7 @@ export class WorkOrdersService {
     branchId: string;
     vehicleId: string;
     counterpartyId: string;
+    contractId?: string | null;
     description: string | null;
     inMileage: number | null;
     outMileage: number | null;
@@ -1180,6 +1201,7 @@ export class WorkOrdersService {
       lastName: string | null;
       companyName: string | null;
     } | null;
+    contract?: { id: string; number: string } | null;
     calendarSlots?: { startAt: Date; endAt: Date; lift: { name: string } | null }[];
     _count?: { warranties?: number } | null;
   }): WorkOrderResponseDto {
@@ -1200,6 +1222,8 @@ export class WorkOrdersService {
         : undefined,
       counterpartyId: wo.counterpartyId,
       counterpartyName: cpName,
+      contractId: wo.contractId ?? null,
+      contractNumber: wo.contract?.number ?? null,
       description: wo.description ?? null,
       inMileage: wo.inMileage ?? null,
       outMileage: wo.outMileage ?? null,

@@ -154,6 +154,22 @@ export class PurchaseOrdersService {
     if (!supplier) throw new NotFoundException('Постачальника не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
 
+    // Auto-select primary PURCHASE contract if not provided
+    let contractId = dto.contractId ?? null;
+    if (!contractId) {
+      const primaryContract = await this.prisma.counterpartyContract.findFirst({
+        where: {
+          counterpartyId: dto.supplierId,
+          orgId,
+          contractType: 'PURCHASE',
+          deletedAt: null,
+        },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+        select: { id: true },
+      });
+      contractId = primaryContract?.id ?? null;
+    }
+
     const number = await this.docNumbers.next(orgId, 'PURCHASE_ORDER');
 
     const lines = dto.lines ?? [];
@@ -166,6 +182,7 @@ export class PurchaseOrdersService {
             orgId,
             supplierId: dto.supplierId,
             warehouseId: dto.warehouseId,
+            contractId,
             number,
             notes: dto.notes,
             totalAmount,
@@ -188,6 +205,7 @@ export class PurchaseOrdersService {
           include: {
             supplier: { select: { firstName: true, lastName: true, companyName: true } },
             warehouse: { select: { name: true } },
+            contract: { select: { id: true, number: true } },
             lines: {
               where: { deletedAt: null },
               take: 1000,
@@ -255,6 +273,7 @@ export class PurchaseOrdersService {
           include: {
             supplier: { select: { firstName: true, lastName: true, companyName: true } },
             warehouse: { select: { name: true } },
+            contract: { select: { id: true, number: true } },
             lines: {
               where: { deletedAt: null },
               take: 1000,
@@ -573,6 +592,7 @@ export class PurchaseOrdersService {
     status: PurchaseOrderStatus;
     supplierId: string;
     warehouseId: string;
+    contractId?: string | null;
     totalAmount: import('@prisma/client').Prisma.Decimal;
     notes: string | null;
     documentDate?: Date | null;
@@ -585,6 +605,7 @@ export class PurchaseOrdersService {
       companyName: string | null;
     } | null;
     warehouse: { name: string } | null;
+    contract?: { id: string; number: string } | null;
     lines?: Array<{
       id: string;
       goodId: string;
@@ -613,6 +634,8 @@ export class PurchaseOrdersService {
       supplierName,
       warehouseId: po.warehouseId,
       warehouseName: po.warehouse?.name,
+      contractId: po.contractId ?? null,
+      contractNumber: po.contract?.number ?? null,
       totalAmount: Number(po.totalAmount),
       notes: po.notes ?? null,
       documentDate: po.documentDate ? po.documentDate.toISOString().slice(0, 10) : null,

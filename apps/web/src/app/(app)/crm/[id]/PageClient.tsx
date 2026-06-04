@@ -114,7 +114,31 @@ interface Warranty {
   createdAt: string;
 }
 
-type CrmTab = 'info' | 'garages' | 'settlements' | 'work-orders' | 'warranties' | 'loyalty';
+interface Contract {
+  id: string;
+  number: string;
+  contractType: 'PURCHASE' | 'SALE';
+  startDate: string;
+  endDate: string | null;
+  isPrimary: boolean;
+  creditLimit: number | null;
+  paymentDeferDays: number | null;
+  createdAt: string;
+}
+
+const CONTRACT_TYPE_LABELS: Record<string, string> = {
+  PURCHASE: 'Купівля',
+  SALE: 'Продаж',
+};
+
+type CrmTab =
+  | 'info'
+  | 'garages'
+  | 'contracts'
+  | 'settlements'
+  | 'work-orders'
+  | 'warranties'
+  | 'loyalty';
 
 const TYPE_LABELS: Record<string, string> = {
   CLIENT: 'Клієнт',
@@ -208,6 +232,21 @@ export default function CounterpartyCardPage() {
   // Warranties
   const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [warrantiesLoading, setWarrantiesLoading] = useState(false);
+
+  // Contracts
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [contractsLoading, setContractsLoading] = useState(false);
+  const [contractsError, setContractsError] = useState('');
+  const [showAddContract, setShowAddContract] = useState(false);
+  const [contractForm, setContractForm] = useState({
+    contractType: '',
+    startDate: '',
+    endDate: '',
+    creditLimit: '',
+    paymentDeferDays: '',
+    isPrimary: false,
+  });
+  const [savingContract, setSavingContract] = useState(false);
 
   // Editing info
   const [editing, setEditing] = useState(false);
@@ -355,6 +394,25 @@ export default function CounterpartyCardPage() {
     };
   }, [id]);
 
+  const loadContracts = useCallback(() => {
+    let cancelled = false;
+    setContractsLoading(true);
+    setContractsError('');
+    apiFetch<Contract[]>(`/counterparties/${id}/contracts`)
+      .then(items => {
+        if (!cancelled) setContracts(items ?? []);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setContractsError(e instanceof Error ? e.message : 'Помилка завантаження');
+      })
+      .finally(() => {
+        if (!cancelled) setContractsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
   const loadLoyalty = useCallback(() => {
     let cancelled = false;
     setLoyaltyLoading(true);
@@ -388,11 +446,20 @@ export default function CounterpartyCardPage() {
     // викликати її на tab-switch/unmount, скасовуючи in-flight load і не даючи
     // йому перезаписати state поточного табу.
     if (tab === 'garages') return loadGarages();
+    if (tab === 'contracts') return loadContracts();
     if (tab === 'settlements') return loadSettlements();
     if (tab === 'work-orders') return loadWorkOrders();
     if (tab === 'warranties') return loadWarranties();
     if (tab === 'loyalty') return loadLoyalty();
-  }, [tab, loadGarages, loadSettlements, loadWorkOrders, loadWarranties, loadLoyalty]);
+  }, [
+    tab,
+    loadGarages,
+    loadContracts,
+    loadSettlements,
+    loadWorkOrders,
+    loadWarranties,
+    loadLoyalty,
+  ]);
 
   const addGarage = async () => {
     if (!garageName.trim()) return;
@@ -472,6 +539,7 @@ export default function CounterpartyCardPage() {
   const CRM_TABS: { key: CrmTab; label: string }[] = [
     { key: 'info', label: 'Загальна інформація' },
     { key: 'garages', label: 'Гаражі та авто' },
+    { key: 'contracts', label: 'Договори' },
     { key: 'settlements', label: 'Взаєморозрахунки' },
     { key: 'work-orders', label: 'Наряди' },
     { key: 'warranties', label: 'Гарантії' },
@@ -877,7 +945,248 @@ export default function CounterpartyCardPage() {
         </div>
       )}
 
-      {/* Tab 3: Settlements */}
+      {/* Tab 3: Contracts */}
+      {tab === 'contracts' && (
+        <div className="space-y-4">
+          {contractsError && (
+            <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
+              {contractsError}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => setShowAddContract(v => !v)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Додати договір
+            </Button>
+          </div>
+
+          {/* Add contract form */}
+          {showAddContract && (
+            <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">Новий договір</h3>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Show contractType select only for BOTH */}
+                {cp.type === 'BOTH' && (
+                  <div className="col-span-2">
+                    <label className="text-xs text-muted-foreground mb-1 block">Тип договору</label>
+                    <Select
+                      value={contractForm.contractType}
+                      onChange={e => setContractForm(f => ({ ...f, contractType: e.target.value }))}
+                    >
+                      <option value="">Оберіть тип</option>
+                      <option value="PURCHASE">Купівля</option>
+                      <option value="SALE">Продаж</option>
+                    </Select>
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Дата початку</label>
+                  <Input
+                    type="date"
+                    value={contractForm.startDate}
+                    onChange={e => setContractForm(f => ({ ...f, startDate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Дата завершення
+                  </label>
+                  <Input
+                    type="date"
+                    value={contractForm.endDate}
+                    onChange={e => setContractForm(f => ({ ...f, endDate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Кредитний ліміт (₴)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={contractForm.creditLimit}
+                    onChange={e => setContractForm(f => ({ ...f, creditLimit: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Відтермінування (днів)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={contractForm.paymentDeferDays}
+                    onChange={e =>
+                      setContractForm(f => ({ ...f, paymentDeferDays: e.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isPrimary"
+                  checked={contractForm.isPrimary}
+                  onChange={e => setContractForm(f => ({ ...f, isPrimary: e.target.checked }))}
+                  className="rounded"
+                />
+                <label htmlFor="isPrimary" className="text-sm text-foreground">
+                  Головний договір
+                </label>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" size="sm" onClick={() => setShowAddContract(false)}>
+                  Скасувати
+                </Button>
+                <Button
+                  size="sm"
+                  loading={savingContract}
+                  disabled={
+                    !contractForm.startDate || (cp.type === 'BOTH' && !contractForm.contractType)
+                  }
+                  onClick={async () => {
+                    setSavingContract(true);
+                    setContractsError('');
+                    try {
+                      const resolvedType =
+                        cp.type === 'CLIENT'
+                          ? 'SALE'
+                          : cp.type === 'SUPPLIER'
+                            ? 'PURCHASE'
+                            : contractForm.contractType;
+                      await apiFetch(`/counterparties/${id}/contracts`, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                          contractType: resolvedType,
+                          startDate: contractForm.startDate,
+                          endDate: contractForm.endDate || undefined,
+                          creditLimit: contractForm.creditLimit
+                            ? Number(contractForm.creditLimit)
+                            : undefined,
+                          paymentDeferDays: contractForm.paymentDeferDays
+                            ? Number(contractForm.paymentDeferDays)
+                            : undefined,
+                          isPrimary: contractForm.isPrimary || undefined,
+                        }),
+                      });
+                      setContractForm({
+                        contractType: '',
+                        startDate: '',
+                        endDate: '',
+                        creditLimit: '',
+                        paymentDeferDays: '',
+                        isPrimary: false,
+                      });
+                      setShowAddContract(false);
+                      loadContracts();
+                    } catch (e: unknown) {
+                      setContractsError(e instanceof Error ? e.message : 'Помилка збереження');
+                    } finally {
+                      setSavingContract(false);
+                    }
+                  }}
+                >
+                  Зберегти
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {contractsLoading ? (
+            <div className="flex justify-center py-8">
+              <Spinner size="md" />
+            </div>
+          ) : contracts.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">Немає договорів</p>
+          ) : (
+            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-secondary">
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+                      Номер
+                    </th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+                      Тип
+                    </th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+                      Початок
+                    </th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+                      Завершення
+                    </th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">
+                      Кред. ліміт
+                    </th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">
+                      Відт., дн.
+                    </th>
+                    <th className="px-4 py-2.5"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {contracts.map(c => (
+                    <tr key={c.id} className="hover:bg-secondary/40">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-foreground">{c.number}</span>
+                          {c.isPrimary && (
+                            <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-primary/10 text-primary">
+                              Головний
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {CONTRACT_TYPE_LABELS[c.contractType] ?? c.contractType}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{fmtDate(c.startDate)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {c.endDate ? fmtDate(c.endDate) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right text-muted-foreground">
+                        {c.creditLimit != null ? `${fmtMoney(c.creditLimit)} ₴` : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right text-muted-foreground">
+                        {c.paymentDeferDays ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {!c.isPrimary && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive h-7 px-2"
+                            onClick={async () => {
+                              if (!confirm(`Видалити договір ${c.number}?`)) return;
+                              try {
+                                await apiFetch(`/counterparties/${id}/contracts/${c.id}`, {
+                                  method: 'DELETE',
+                                });
+                                loadContracts();
+                              } catch (e: unknown) {
+                                setContractsError(
+                                  e instanceof Error ? e.message : 'Помилка видалення',
+                                );
+                              }
+                            }}
+                          >
+                            Видалити
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 4: Settlements */}
       {tab === 'settlements' && (
         <div className="space-y-4">
           <div className="bg-surface rounded-xl border border-border p-4 flex items-center gap-4">
