@@ -127,7 +127,7 @@ export default function CrmPage() {
   // Modal & form state
   const [modal, setModal] = useState(false);
   const [editingCp, setEditingCp] = useState<Counterparty | null>(null);
-  const [editTab, setEditTab] = useState<'main' | 'vehicles' | 'work-orders'>('main');
+  const [editTab, setEditTab] = useState<'main' | 'vehicles' | 'contracts' | 'work-orders'>('main');
   const [saving, setSaving] = useState(false);
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
   const [form, setForm] = useState({
@@ -187,6 +187,23 @@ export default function CrmPage() {
   const [woError, setWoError] = useState('');
   const [vehiclesError, setVehiclesError] = useState('');
   const modalWoReqRef = useRef(0);
+
+  // ── Contracts for edit modal ─────────────────────────────────────────────────
+  type ModalContract = {
+    id: string;
+    number: string;
+    contractType: 'PURCHASE' | 'SALE';
+    startDate: string;
+    endDate: string | null;
+    isPrimary: boolean;
+    creditLimit: number | null;
+    paymentDeferDays: number | null;
+  };
+  const CONTRACT_TYPE_LABELS: Record<string, string> = { PURCHASE: 'Купівля', SALE: 'Продаж' };
+  const [modalContracts, setModalContracts] = useState<ModalContract[]>([]);
+  const [modalContractsLoading, setModalContractsLoading] = useState(false);
+  const [contractsError, setContractsError] = useState('');
+  const modalContractsReqRef = useRef(0);
 
   // ── Column visibility ────────────────────────────────────────────────────────
   const CRM_COLUMNS = useMemo(
@@ -382,8 +399,10 @@ export default function CrmPage() {
     setShowAddVehicle(false);
     setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' });
     setModalWorkOrders([]);
+    setModalContracts([]);
     setVehiclesError('');
     setWoError('');
+    setContractsError('');
     setModal(true);
 
     // Race-guarded parallel fetch: vehicles and work orders for this CP.
@@ -422,6 +441,20 @@ export default function CrmPage() {
       })
       .finally(() => {
         if (modalWoReqRef.current === woReqId) setModalWorkOrdersLoading(false);
+      });
+
+    const cReqId = ++modalContractsReqRef.current;
+    setModalContractsLoading(true);
+    apiFetch<ModalContract[]>(`/counterparties/${cp.id}/contracts`)
+      .then(items => {
+        if (modalContractsReqRef.current === cReqId) setModalContracts(items ?? []);
+      })
+      .catch(err => {
+        if (modalContractsReqRef.current === cReqId)
+          setContractsError(err instanceof Error ? err.message : 'Помилка завантаження договорів');
+      })
+      .finally(() => {
+        if (modalContractsReqRef.current === cReqId) setModalContractsLoading(false);
       });
   };
 
@@ -939,6 +972,7 @@ export default function CrmPage() {
               [
                 { key: 'main', label: 'Основне' },
                 { key: 'vehicles', label: 'Авто', count: modalVehicles.length },
+                { key: 'contracts', label: 'Договори', count: modalContracts.length },
                 { key: 'work-orders', label: 'Історія', count: modalWorkOrders.length },
               ] as { key: typeof editTab; label: string; count?: number }[]
             ).map(tab => (
@@ -954,15 +988,8 @@ export default function CrmPage() {
                 )}
               >
                 {tab.label}
-                {tab.count !== undefined && (
-                  <span
-                    className={cn(
-                      'inline-flex items-center justify-center min-w-4.5 h-4.5 px-1 rounded-full text-[11px] font-semibold',
-                      editTab === tab.key
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-muted-foreground',
-                    )}
-                  >
+                {tab.count !== undefined && tab.count > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-4.5 h-4.5 px-1 rounded-full text-[11px] font-semibold bg-secondary text-muted-foreground">
                     {tab.count}
                   </span>
                 )}
@@ -1101,7 +1128,7 @@ export default function CrmPage() {
             data-animate
             data-state="open"
             data-variant="content"
-            className="space-y-3"
+            className="space-y-3 min-h-64"
           >
             {modalVehiclesLoading && (
               <div className="py-8 text-center text-sm text-muted-foreground">Завантаження...</div>
@@ -1254,6 +1281,72 @@ export default function CrmPage() {
           </div>
         )}
 
+        {/* ── Вкладка: Договори ── */}
+        {editingCp && editTab === 'contracts' && (
+          <div
+            key="tab-contracts"
+            data-animate
+            data-state="open"
+            data-variant="content"
+            className="space-y-3 min-h-64"
+          >
+            {contractsError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
+                {contractsError}
+              </div>
+            )}
+            {modalContractsLoading && (
+              <div className="py-8 text-center text-sm text-muted-foreground">Завантаження...</div>
+            )}
+            {!modalContractsLoading && !contractsError && modalContracts.length === 0 && (
+              <p className="text-[13px] text-muted-foreground text-center py-8">Договорів немає</p>
+            )}
+            {!modalContractsLoading && !contractsError && modalContracts.length > 0 && (
+              <div className="rounded-xl border border-border overflow-hidden">
+                <table className="w-full text-[13px]">
+                  <thead className="bg-secondary border-b border-border">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                        Номер
+                      </th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Тип</th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                        Початок
+                      </th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                        Завершення
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {modalContracts.map(c => (
+                      <tr key={c.id} className="bg-surface hover:bg-secondary/50 transition-colors">
+                        <td className="px-3 py-2 font-medium text-foreground">
+                          <span className="flex items-center gap-1.5">
+                            {c.number}
+                            {c.isPrimary && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary">
+                                Головний
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {CONTRACT_TYPE_LABELS[c.contractType] ?? c.contractType}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{fmtDate(c.startDate)}</td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {c.endDate ? fmtDate(c.endDate) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Вкладка: Історія нарядів ── */}
         {editingCp && editTab === 'work-orders' && (
           <div
@@ -1261,7 +1354,7 @@ export default function CrmPage() {
             data-animate
             data-state="open"
             data-variant="content"
-            className="space-y-3"
+            className="space-y-3 min-h-64"
           >
             {modalWorkOrdersLoading && (
               <div className="py-8 text-center text-sm text-muted-foreground">Завантаження...</div>
