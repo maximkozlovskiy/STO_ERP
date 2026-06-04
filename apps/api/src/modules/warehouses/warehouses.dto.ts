@@ -56,4 +56,5 @@ export class WarehouseResponseDto {
   @ApiProperty() isMain!: boolean;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional() deletedAt?: Date | null;
 }

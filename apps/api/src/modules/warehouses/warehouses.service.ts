@@ -16,18 +16,28 @@ export class WarehousesService {
     private readonly cache: CacheService,
   ) {}
 
-  async findAll(orgId: string, branchId?: string): Promise<WarehouseResponseDto[]> {
+  async findAll(
+    orgId: string,
+    branchId?: string,
+    showDeleted = false,
+  ): Promise<WarehouseResponseDto[]> {
     const key = cacheKey(orgId, branchId);
-    const cached = await this.cache.get<WarehouseResponseDto[]>(key);
-    if (cached) return cached;
+    if (!showDeleted) {
+      const cached = await this.cache.get<WarehouseResponseDto[]>(key);
+      if (cached) return cached;
+    }
 
     const items = await this.prisma.warehouse.findMany({
-      where: { orgId, deletedAt: null, ...(branchId ? { branchId } : {}) },
+      where: {
+        orgId,
+        ...(!showDeleted ? { deletedAt: null } : {}),
+        ...(branchId ? { branchId } : {}),
+      },
       orderBy: [{ isMain: 'desc' }, { name: 'asc' }],
-      take: 100,
+      take: 500,
     });
     const result = items.map(item => this.toDto(item));
-    await this.cache.set(key, result, TTL);
+    if (!showDeleted) await this.cache.set(key, result, TTL);
     return result;
   }
 
@@ -114,6 +124,7 @@ export class WarehousesService {
     isMain: boolean;
     createdAt: Date;
     updatedAt: Date;
+    deletedAt?: Date | null;
   }): WarehouseResponseDto {
     return {
       id: w.id,
@@ -124,6 +135,7 @@ export class WarehousesService {
       isMain: w.isMain,
       createdAt: w.createdAt,
       updatedAt: w.updatedAt,
+      deletedAt: w.deletedAt,
     };
   }
 }

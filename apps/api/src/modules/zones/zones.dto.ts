@@ -57,6 +57,7 @@ export class ZoneResponseDto {
   @ApiProperty({ enum: ZoneType }) type!: ZoneType;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional() deletedAt?: Date | null;
 }
 
 // ─── Lift DTOs ───────────────────────────────────────────
@@ -145,4 +146,5 @@ export class LiftResponseDto {
   @ApiPropertyOptional() nextMaintenanceDate?: Date | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional() deletedAt?: Date | null;
 }

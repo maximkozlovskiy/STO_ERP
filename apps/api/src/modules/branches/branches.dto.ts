@@ -43,4 +43,5 @@ export class BranchResponseDto {
   @ApiProperty() timezone!: string;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional() deletedAt?: Date | null;
 }

@@ -9,10 +9,11 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
   Header,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -31,9 +32,10 @@ export class BranchesController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список філій' })
+  @ApiQuery({ name: 'showDeleted', required: false, type: Boolean })
   @ApiResponse({ status: 200, type: [BranchResponseDto] })
-  findAll(@OrgContext() orgId: string) {
-    return this.service.findAll(orgId);
+  findAll(@OrgContext() orgId: string, @Query('showDeleted') showDeleted?: string) {
+    return this.service.findAll(orgId, showDeleted === 'true');
   }
 
   @Get(':id')

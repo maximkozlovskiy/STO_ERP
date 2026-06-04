@@ -40,12 +40,14 @@ export class ZonesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Список зон' })
   @ApiQuery({ name: 'branchId', required: false })
+  @ApiQuery({ name: 'showDeleted', required: false, type: Boolean })
   @ApiResponse({ status: 200, type: [ZoneResponseDto] })
   findAll(
     @OrgContext() orgId: string,
     @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
+    @Query('showDeleted') showDeleted?: string,
   ) {
-    return this.service.findAllZones(orgId, branchId);
+    return this.service.findAllZones(orgId, branchId, showDeleted === 'true');
   }
 
   @Get(':id')
@@ -100,12 +102,14 @@ export class LiftsController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Список підйомників' })
   @ApiQuery({ name: 'zoneId', required: false })
+  @ApiQuery({ name: 'showDeleted', required: false, type: Boolean })
   @ApiResponse({ status: 200, type: [LiftResponseDto] })
   findAll(
     @OrgContext() orgId: string,
     @Query('zoneId', new ParseUUIDPipe({ optional: true })) zoneId?: string,
+    @Query('showDeleted') showDeleted?: string,
   ) {
-    return this.service.findAllLifts(orgId, zoneId);
+    return this.service.findAllLifts(orgId, zoneId, showDeleted === 'true');
   }
 
   @Get(':id')

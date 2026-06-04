@@ -13,17 +13,19 @@ export class BranchesService {
     private readonly cache: CacheService,
   ) {}
 
-  async findAll(orgId: string): Promise<BranchResponseDto[]> {
-    const cached = await this.cache.get<BranchResponseDto[]>(cacheKey(orgId));
-    if (cached) return cached;
+  async findAll(orgId: string, showDeleted = false): Promise<BranchResponseDto[]> {
+    if (!showDeleted) {
+      const cached = await this.cache.get<BranchResponseDto[]>(cacheKey(orgId));
+      if (cached) return cached;
+    }
 
     const items = await this.prisma.garageBranch.findMany({
-      where: { orgId, deletedAt: null },
+      where: { orgId, ...(!showDeleted ? { deletedAt: null } : {}) },
       orderBy: { name: 'asc' },
-      take: 100,
+      take: 500,
     });
     const result = items.map(item => this.toDto(item));
-    await this.cache.set(cacheKey(orgId), result, TTL);
+    if (!showDeleted) await this.cache.set(cacheKey(orgId), result, TTL);
     return result;
   }
 
@@ -73,6 +75,7 @@ export class BranchesService {
     timezone: string;
     createdAt: Date;
     updatedAt: Date;
+    deletedAt?: Date | null;
   }): BranchResponseDto {
     return {
       id: item.id,
@@ -82,6 +85,7 @@ export class BranchesService {
       timezone: item.timezone,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
+      deletedAt: item.deletedAt,
     };
   }
 }

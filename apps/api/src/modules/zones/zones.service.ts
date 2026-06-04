@@ -26,18 +26,28 @@ export class ZonesService {
 
   // ─── Zones ───────────────────────────────────────────────
 
-  async findAllZones(orgId: string, branchId?: string): Promise<ZoneResponseDto[]> {
+  async findAllZones(
+    orgId: string,
+    branchId?: string,
+    showDeleted = false,
+  ): Promise<ZoneResponseDto[]> {
     const key = zonesKey(orgId, branchId);
-    const cached = await this.cache.get<ZoneResponseDto[]>(key);
-    if (cached) return cached;
+    if (!showDeleted) {
+      const cached = await this.cache.get<ZoneResponseDto[]>(key);
+      if (cached) return cached;
+    }
 
     const items = await this.prisma.zone.findMany({
-      where: { orgId, deletedAt: null, ...(branchId ? { branchId } : {}) },
+      where: {
+        orgId,
+        ...(!showDeleted ? { deletedAt: null } : {}),
+        ...(branchId ? { branchId } : {}),
+      },
       orderBy: { name: 'asc' },
-      take: 100,
+      take: 500,
     });
     const result = items.map(item => this.toZoneDto(item));
-    await this.cache.set(key, result, TTL);
+    if (!showDeleted) await this.cache.set(key, result, TTL);
     return result;
   }
 
@@ -72,18 +82,24 @@ export class ZonesService {
 
   // ─── Lifts ───────────────────────────────────────────────
 
-  async findAllLifts(orgId: string, zoneId?: string): Promise<LiftResponseDto[]> {
+  async findAllLifts(
+    orgId: string,
+    zoneId?: string,
+    showDeleted = false,
+  ): Promise<LiftResponseDto[]> {
     const key = liftsKey(orgId, zoneId);
-    const cached = await this.cache.get<LiftResponseDto[]>(key);
-    if (cached) return cached;
+    if (!showDeleted) {
+      const cached = await this.cache.get<LiftResponseDto[]>(key);
+      if (cached) return cached;
+    }
 
     const items = await this.prisma.lift.findMany({
-      where: { orgId, deletedAt: null, ...(zoneId ? { zoneId } : {}) },
+      where: { orgId, ...(!showDeleted ? { deletedAt: null } : {}), ...(zoneId ? { zoneId } : {}) },
       orderBy: { name: 'asc' },
-      take: 100,
+      take: 500,
     });
     const result = items.map(item => this.toLiftDto(item));
-    await this.cache.set(key, result, TTL);
+    if (!showDeleted) await this.cache.set(key, result, TTL);
     return result;
   }
 
@@ -139,6 +155,7 @@ export class ZonesService {
     type: string;
     createdAt: Date;
     updatedAt: Date;
+    deletedAt?: Date | null;
   }): ZoneResponseDto {
     return {
       id: z.id,
@@ -148,6 +165,7 @@ export class ZonesService {
       type: z.type as ZoneType,
       createdAt: z.createdAt,
       updatedAt: z.updatedAt,
+      deletedAt: z.deletedAt,
     };
   }
 
@@ -167,6 +185,7 @@ export class ZonesService {
     nextMaintenanceDate: Date | null;
     createdAt: Date;
     updatedAt: Date;
+    deletedAt?: Date | null;
   }): LiftResponseDto {
     return {
       id: l.id,
@@ -184,6 +203,7 @@ export class ZonesService {
       nextMaintenanceDate: l.nextMaintenanceDate,
       createdAt: l.createdAt,
       updatedAt: l.updatedAt,
+      deletedAt: l.deletedAt,
     };
   }
 }

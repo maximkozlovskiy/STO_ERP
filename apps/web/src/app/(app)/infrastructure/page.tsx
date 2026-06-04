@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { keepPreviousData } from '@tanstack/react-query';
 import { infraKeys } from '@/hooks/api/useInfrastructure';
 import { setCache } from '@/lib/ref-cache';
-import { Plus, Trash2, Pencil } from 'lucide-react';
+import { Plus, Trash2, Pencil, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -37,12 +37,14 @@ interface Branch {
   name: string;
   address: string;
   timezone: string;
+  deletedAt?: string | null;
 }
 interface Zone {
   id: string;
   branchId: string;
   name: string;
   type: string;
+  deletedAt?: string | null;
 }
 interface Lift {
   id: string;
@@ -57,6 +59,7 @@ interface Lift {
   maintenanceIntervalDays?: number | null;
   lastMaintenanceDate?: string | null;
   nextMaintenanceDate?: string | null;
+  deletedAt?: string | null;
 }
 interface Warehouse {
   id: string;
@@ -64,6 +67,7 @@ interface Warehouse {
   name: string;
   type: string;
   isMain: boolean;
+  deletedAt?: string | null;
 }
 
 type Tab = 'branches' | 'zones' | 'lifts' | 'warehouses';
@@ -112,56 +116,81 @@ function InfrastructurePageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = (searchParams.get('tab') ?? 'branches') as Tab;
-  const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
+  const setTab = (t: Tab) => {
+    setSearch('');
+    router.replace(`?tab=${t}`, { scroll: false });
+  };
 
   const { confirm, dialogProps } = useConfirm();
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: infraKeys.all });
   const opts = { staleTime: 5 * 60_000, placeholderData: keepPreviousData } as const;
 
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const sd = showDeleted ? '?showDeleted=true' : '';
+
   const { data: branches = [], isLoading: loadingBranches } = useQuery<Branch[]>({
-    queryKey: infraKeys.branches,
+    queryKey: [...infraKeys.branches, showDeleted],
     queryFn: ({ signal }) =>
-      apiFetch<Branch[]>('/branches', { signal }).then(d => {
-        setCache('cache:branches', d);
+      apiFetch<Branch[]>(`/branches${sd}`, { signal }).then(d => {
+        if (!showDeleted)
+          setCache(
+            'cache:branches',
+            d.filter(b => !b.deletedAt),
+          );
         return d;
       }),
     ...opts,
   });
   const { data: zones = [], isLoading: loadingZones } = useQuery<Zone[]>({
-    queryKey: infraKeys.zones,
+    queryKey: [...infraKeys.zones, showDeleted],
     queryFn: ({ signal }) =>
-      apiFetch<Zone[]>('/zones', { signal }).then(d => {
-        setCache('cache:zones', d);
+      apiFetch<Zone[]>(`/zones${sd}`, { signal }).then(d => {
+        if (!showDeleted)
+          setCache(
+            'cache:zones',
+            d.filter(z => !z.deletedAt),
+          );
         return d;
       }),
     ...opts,
   });
   const { data: lifts = [], isLoading: loadingLifts } = useQuery<Lift[]>({
-    queryKey: infraKeys.lifts,
+    queryKey: [...infraKeys.lifts, showDeleted],
     queryFn: ({ signal }) =>
-      apiFetch<Lift[]>('/lifts', { signal }).then(d => {
-        setCache('cache:lifts', d);
+      apiFetch<Lift[]>(`/lifts${sd}`, { signal }).then(d => {
+        if (!showDeleted)
+          setCache(
+            'cache:lifts',
+            d.filter(l => !l.deletedAt),
+          );
         return d;
       }),
     ...opts,
   });
   const { data: warehouses = [], isLoading: loadingWarehouses } = useQuery<Warehouse[]>({
-    queryKey: infraKeys.warehouses,
+    queryKey: [...infraKeys.warehouses, showDeleted],
     queryFn: ({ signal }) =>
-      apiFetch<Warehouse[]>('/warehouses', { signal }).then(d => {
-        setCache('cache:warehouses', d);
+      apiFetch<Warehouse[]>(`/warehouses${sd}`, { signal }).then(d => {
+        if (!showDeleted)
+          setCache(
+            'cache:warehouses',
+            d.filter(w => !w.deletedAt),
+          );
         return d;
       }),
     ...opts,
   });
+
   const loading = loadingBranches || loadingZones || loadingLifts || loadingWarehouses;
   const [error, setError] = useState('');
   const [modal, setModal] = useState<'branch' | 'zone' | 'lift' | 'warehouse' | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
   const [form, setForm] = useState<Record<string, string>>({});
+
   // Bug (review): nowMs з useEffect замість new Date() у render — запобігає SSR hydration mismatch.
   const [nowMs, setNowMs] = useState(0);
   useEffect(() => {
@@ -169,6 +198,29 @@ function InfrastructurePageClient() {
   }, []);
 
   const loadAll = invalidate;
+
+  const q = search.trim().toLowerCase();
+
+  // Active-only lists for FK selects in forms (завжди без видалених)
+  const activeBranches = branches.filter(b => !b.deletedAt);
+  const activeZones = zones.filter(z => !z.deletedAt);
+
+  // Filtered lists for display
+  const filteredBranches = branches.filter(
+    b => !q || b.name.toLowerCase().includes(q) || b.address.toLowerCase().includes(q),
+  );
+  const filteredZones = zones.filter(z => {
+    if (q && !z.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const filteredLifts = lifts.filter(l => {
+    if (q && !l.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const filteredWarehouses = warehouses.filter(w => {
+    if (q && !w.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
 
   const openModal = (type: typeof modal, defaults: Record<string, string> = {}) => {
     setEditingId(null);
@@ -289,10 +341,10 @@ function InfrastructurePageClient() {
   const ADD_ACTIONS: Record<Tab, () => void> = {
     branches: () => openModal('branch', { name: '', address: '' }),
     zones: () =>
-      openModal('zone', { branchId: branches[0]?.id ?? '', name: '', type: 'MECHANICAL' }),
+      openModal('zone', { branchId: activeBranches[0]?.id ?? '', name: '', type: 'MECHANICAL' }),
     lifts: () =>
       openModal('lift', {
-        zoneId: zones[0]?.id ?? '',
+        zoneId: activeZones[0]?.id ?? '',
         name: '',
         type: 'TWO_POST',
         maxWeightKg: '',
@@ -304,20 +356,19 @@ function InfrastructurePageClient() {
         lastMaintenanceDate: '',
       }),
     warehouses: () =>
-      openModal('warehouse', { branchId: branches[0]?.id ?? '', name: '', type: 'MAIN' }),
+      openModal('warehouse', { branchId: activeBranches[0]?.id ?? '', name: '', type: 'MAIN' }),
   };
+
+  const rowCls = (deletedAt?: string | null) => (deletedAt ? 'opacity-50' : '');
 
   return (
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <h1 className="page-title">Інфраструктура</h1>
-        <Button size="sm" onClick={ADD_ACTIONS[tab]} leftIcon={<Plus className="h-4 w-4" />}>
-          Додати
-        </Button>
       </div>
 
       {/* Tabs */}
-      <div className="shrink-0 flex gap-1 border-b border-border mb-6">
+      <div className="shrink-0 flex gap-1 border-b border-border mb-4">
         {TABS.map(t => (
           <button
             key={t.key}
@@ -334,7 +385,35 @@ function InfrastructurePageClient() {
         ))}
       </div>
 
-      {/* Scrollable content area (page-fill = overflow-hidden, тому тут власний скрол) */}
+      {/* Toolbar: пошук + показати видалені + додати */}
+      <div className="shrink-0 flex items-center gap-2 mb-4">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Пошук..."
+            className="w-full pl-8 pr-3 py-1.5 text-sm bg-surface border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowDeleted(v => !v)}
+          leftIcon={
+            showDeleted ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />
+          }
+          className={cn(showDeleted && 'border-warning text-warning')}
+        >
+          {showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+        </Button>
+        <Button size="sm" onClick={ADD_ACTIONS[tab]} leftIcon={<Plus className="h-4 w-4" />}>
+          Додати
+        </Button>
+      </div>
+
+      {/* Scrollable content area */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {loading && (
           <div className="flex justify-center py-8">
@@ -360,32 +439,41 @@ function InfrastructurePageClient() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {branches.map(b => (
-                  <TableRow key={b.id}>
-                    <TableCell className="font-medium text-foreground">{b.name}</TableCell>
+                {filteredBranches.map(b => (
+                  <TableRow key={b.id} className={rowCls(b.deletedAt)}>
+                    <TableCell className="font-medium text-foreground">
+                      {b.name}
+                      {b.deletedAt && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          видалено
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{b.address}</TableCell>
                     <TableCell className="text-muted-foreground">{b.timezone}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            openEditModal('branch', b.id, { name: b.name, address: b.address })
-                          }
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => remove('/branches', b.id)}
-                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                      {!b.deletedAt && (
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              openEditModal('branch', b.id, { name: b.name, address: b.address })
+                            }
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => remove('/branches', b.id)}
+                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -407,9 +495,16 @@ function InfrastructurePageClient() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {zones.map(z => (
-                  <TableRow key={z.id}>
-                    <TableCell className="font-medium text-foreground">{z.name}</TableCell>
+                {filteredZones.map(z => (
+                  <TableRow key={z.id} className={rowCls(z.deletedAt)}>
+                    <TableCell className="font-medium text-foreground">
+                      {z.name}
+                      {z.deletedAt && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          видалено
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {ZONE_TYPE_LABELS[z.type] ?? z.type}
                     </TableCell>
@@ -417,30 +512,32 @@ function InfrastructurePageClient() {
                       {branches.find(b => b.id === z.branchId)?.name ?? '—'}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            openEditModal('zone', z.id, {
-                              branchId: z.branchId,
-                              name: z.name,
-                              type: z.type,
-                            })
-                          }
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => remove('/zones', z.id)}
-                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                      {!z.deletedAt && (
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              openEditModal('zone', z.id, {
+                                branchId: z.branchId,
+                                name: z.name,
+                                type: z.type,
+                              })
+                            }
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => remove('/zones', z.id)}
+                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -464,7 +561,7 @@ function InfrastructurePageClient() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {lifts.map(l => (
+                {filteredLifts.map(l => (
                   <LiftRow
                     key={l.id}
                     lift={l}
@@ -511,9 +608,16 @@ function InfrastructurePageClient() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {warehouses.map(w => (
-                  <TableRow key={w.id}>
-                    <TableCell className="font-medium text-foreground">{w.name}</TableCell>
+                {filteredWarehouses.map(w => (
+                  <TableRow key={w.id} className={rowCls(w.deletedAt)}>
+                    <TableCell className="font-medium text-foreground">
+                      {w.name}
+                      {w.deletedAt && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          видалено
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {WAREHOUSE_TYPE_LABELS[w.type] ?? w.type}
                     </TableCell>
@@ -521,61 +625,65 @@ function InfrastructurePageClient() {
                       {branches.find(b => b.id === w.branchId)?.name ?? '—'}
                     </TableCell>
                     <TableCell>
-                      <button
-                        type="button"
-                        title={w.isMain ? 'Основний склад' : 'Зробити основним'}
-                        onClick={async () => {
-                          if (w.isMain) return;
-                          setSaving(true);
-                          setError('');
-                          try {
-                            await apiFetch(`/warehouses/${w.id}`, {
-                              method: 'PATCH',
-                              body: JSON.stringify({ isMain: true }),
-                            });
-                            loadAll();
-                          } catch (e: unknown) {
-                            setError(e instanceof Error ? e.message : 'Помилка');
-                          } finally {
-                            setSaving(false);
-                          }
-                        }}
-                        className={cn(
-                          'w-4 h-4 rounded border-2 flex items-center justify-center',
-                          w.isMain
-                            ? 'bg-primary border-primary'
-                            : 'border-border hover:border-primary/60',
-                        )}
-                      >
-                        {w.isMain && <span className="block w-2 h-2 rounded-sm bg-white" />}
-                      </button>
+                      {!w.deletedAt && (
+                        <button
+                          type="button"
+                          title={w.isMain ? 'Основний склад' : 'Зробити основним'}
+                          onClick={async () => {
+                            if (w.isMain) return;
+                            setSaving(true);
+                            setError('');
+                            try {
+                              await apiFetch(`/warehouses/${w.id}`, {
+                                method: 'PATCH',
+                                body: JSON.stringify({ isMain: true }),
+                              });
+                              loadAll();
+                            } catch (e: unknown) {
+                              setError(e instanceof Error ? e.message : 'Помилка');
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                          className={cn(
+                            'w-4 h-4 rounded border-2 flex items-center justify-center',
+                            w.isMain
+                              ? 'bg-primary border-primary'
+                              : 'border-border hover:border-primary/60',
+                          )}
+                        >
+                          {w.isMain && <span className="block w-2 h-2 rounded-sm bg-white" />}
+                        </button>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            openEditModal('warehouse', w.id, {
-                              branchId: w.branchId,
-                              name: w.name,
-                              type: w.type,
-                              isMain: w.isMain ? 'true' : '',
-                            })
-                          }
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => remove('/warehouses', w.id)}
-                          className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                      {!w.deletedAt && (
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              openEditModal('warehouse', w.id, {
+                                branchId: w.branchId,
+                                name: w.name,
+                                type: w.type,
+                                isMain: w.isMain ? 'true' : '',
+                              })
+                            }
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => remove('/warehouses', w.id)}
+                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -652,7 +760,7 @@ function InfrastructurePageClient() {
             value={form.branchId ?? ''}
             onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
           >
-            {branches.map(b => (
+            {activeBranches.map(b => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>
@@ -708,7 +816,7 @@ function InfrastructurePageClient() {
             value={form.zoneId ?? ''}
             onChange={e => setForm(f => ({ ...f, zoneId: e.target.value }))}
           >
-            {zones.map(z => (
+            {activeZones.map(z => (
               <option key={z.id} value={z.id}>
                 {z.name}
               </option>
@@ -817,7 +925,7 @@ function InfrastructurePageClient() {
             value={form.branchId ?? ''}
             onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
           >
-            {branches.map(b => (
+            {activeBranches.map(b => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>
@@ -876,7 +984,7 @@ function WarehouseMainCheckbox({
   warehouses: Warehouse[];
   editingId: string | null;
 }) {
-  const currentMain = warehouses.find(w => w.isMain);
+  const currentMain = warehouses.find(w => w.isMain && !w.deletedAt);
   const anotherMainExists = !!currentMain && editingId !== currentMain.id;
   return (
     <>
@@ -898,8 +1006,7 @@ function WarehouseMainCheckbox({
   );
 }
 
-// Thin proxy to lib/format singleton (module-level Intl.DateTimeFormat). Замінює
-// per-render `d.toLocaleDateString('uk-UA', {...})` × кожен LiftRow (lastMaintenance + nextMaintenance).
+// Thin proxy to lib/format singleton (module-level Intl.DateTimeFormat).
 const formatDate = fmtDate;
 
 function isWithin14Days(value: string | null | undefined, nowMs: number): boolean {
@@ -923,14 +1030,25 @@ function LiftRow({
   const [expanded, setExpanded] = useState(false);
   const hasDetail = lift.nextMaintenanceDate ?? lift.lastMaintenanceDate;
   const nextSoon = isWithin14Days(lift.nextMaintenanceDate, nowMs);
+  const isDeleted = !!lift.deletedAt;
 
   return (
     <>
       <TableRow
-        className={cn(hasDetail && 'cursor-pointer select-none')}
-        onClick={hasDetail ? () => setExpanded(v => !v) : undefined}
+        className={cn(
+          hasDetail && !isDeleted && 'cursor-pointer select-none',
+          isDeleted && 'opacity-50',
+        )}
+        onClick={hasDetail && !isDeleted ? () => setExpanded(v => !v) : undefined}
       >
-        <TableCell className="font-medium text-foreground">{lift.name}</TableCell>
+        <TableCell className="font-medium text-foreground">
+          {lift.name}
+          {isDeleted && (
+            <Badge variant="secondary" className="ml-2 text-xs">
+              видалено
+            </Badge>
+          )}
+        </TableCell>
         <TableCell className="text-muted-foreground">
           {LIFT_TYPE_LABELS[lift.type] ?? lift.type}
         </TableCell>
@@ -942,33 +1060,35 @@ function LiftRow({
         <TableCell className="text-muted-foreground">{lift.maxWeightKg ?? '—'}</TableCell>
         <TableCell className="text-muted-foreground">{zoneName}</TableCell>
         <TableCell className="text-right">
-          <div className="flex items-center justify-end gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={e => {
-                e.stopPropagation();
-                onEdit();
-              }}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={e => {
-                e.stopPropagation();
-                onRemove();
-              }}
-              className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+          {!isDeleted && (
+            <div className="flex items-center justify-end gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={e => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={e => {
+                  e.stopPropagation();
+                  onRemove();
+                }}
+                className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
         </TableCell>
       </TableRow>
-      {expanded && hasDetail && (
+      {expanded && hasDetail && !isDeleted && (
         <TableRow>
           <TableCell colSpan={6} className="bg-surface-subtle px-6 py-3">
             <div className="flex flex-wrap gap-x-8 gap-y-1 text-sm">

@@ -36,12 +36,14 @@ export class WarehousesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC')
   @ApiOperation({ summary: 'Список складів' })
   @ApiQuery({ name: 'branchId', required: false })
+  @ApiQuery({ name: 'showDeleted', required: false, type: Boolean })
   @ApiResponse({ status: 200, type: [WarehouseResponseDto] })
   findAll(
     @OrgContext() orgId: string,
     @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
+    @Query('showDeleted') showDeleted?: string,
   ) {
-    return this.service.findAll(orgId, branchId);
+    return this.service.findAll(orgId, branchId, showDeleted === 'true');
   }
 
   @Get(':id')
