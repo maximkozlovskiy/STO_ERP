@@ -412,22 +412,21 @@ function InfrastructurePageClient() {
         </div>
       </div>
 
-      {/* Scrollable content area */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {loading && (
-          <div className="flex justify-center py-8">
-            <Spinner size="lg" />
-          </div>
-        )}
-        {!loading && error && !modal && (
-          <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5">
-            {error}
-          </div>
-        )}
+      {loading && (
+        <div className="flex justify-center py-8 shrink-0">
+          <Spinner size="lg" />
+        </div>
+      )}
+      {!loading && error && !modal && (
+        <div className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-4 py-2.5 shrink-0">
+          {error}
+        </div>
+      )}
 
-        {/* BRANCHES */}
-        {!loading && tab === 'branches' && (
-          <div className="bg-surface rounded-xl border border-border overflow-auto">
+      {/* BRANCHES */}
+      {!loading && tab === 'branches' && (
+        <div className="flex flex-1 min-h-0">
+          <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -479,11 +478,13 @@ function InfrastructurePageClient() {
               </TableBody>
             </Table>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ZONES */}
-        {!loading && tab === 'zones' && (
-          <div className="bg-surface rounded-xl border border-border overflow-auto">
+      {/* ZONES */}
+      {!loading && tab === 'zones' && (
+        <div className="flex flex-1 min-h-0">
+          <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -543,11 +544,13 @@ function InfrastructurePageClient() {
               </TableBody>
             </Table>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* LIFTS */}
-        {!loading && tab === 'lifts' && (
-          <div className="bg-surface rounded-xl border border-border overflow-auto">
+      {/* LIFTS */}
+      {!loading && tab === 'lifts' && (
+        <div className="flex flex-1 min-h-0">
+          <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -591,11 +594,13 @@ function InfrastructurePageClient() {
               </TableBody>
             </Table>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* WAREHOUSES */}
-        {!loading && tab === 'warehouses' && (
-          <div className="bg-surface rounded-xl border border-border overflow-auto">
+      {/* WAREHOUSES */}
+      {!loading && tab === 'warehouses' && (
+        <div className="flex flex-1 min-h-0">
+          <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -689,8 +694,8 @@ function InfrastructurePageClient() {
               </TableBody>
             </Table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Branch modal */}
       <Modal
