@@ -787,6 +787,95 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
 
 ---
 
+## Стандарт layout довідника (ОБОВ'ЯЗКОВО дотримуватись)
+
+> **Еталон:** `apps/web/src/app/(app)/crm/page.tsx`  
+> Всі довідникові сторінки (список + фільтри + таблиця) МАЮТЬ виглядати однаково.  
+> Якщо правиш існуючу сторінку — звір з цим стандартом і виправ відступи.
+
+### Структура сторінки
+
+```tsx
+<div className="page-fill p-4 md:p-6">
+  {/* 1. Заголовок */}
+  <div className="page-header">
+    <h1 className="page-title">Назва розділу</h1>
+    {/* Кнопки у page-header — тільки якщо кнопка НЕ залежить від активної вкладки */}
+  </div>
+
+  {/* 2. Вкладки (якщо є) — ВПРИТУЛ до країв, відступ mb-5 */}
+  <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 mb-5 overflow-x-auto">
+    {TABS.map(t => (
+      <button
+        key={t.key}
+        onClick={() => setTab(t.key)}
+        className={cn(
+          'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
+          tab === t.key
+            ? 'border-primary text-primary'
+            : 'border-transparent text-muted-foreground hover:text-foreground',
+        )}
+      >
+        {t.label}
+      </button>
+    ))}
+  </div>
+
+  {/* 3. Рядок фільтрів — flex gap-3 flex-wrap shrink-0, відступ mb-4 */}
+  <div className="flex gap-3 flex-wrap shrink-0 mb-4">
+    {/* Пошук — Input з leftElement */}
+    <Input
+      value={search}
+      onChange={e => setSearch(e.target.value)}
+      placeholder="Пошук..."
+      leftElement={<Search />}
+      className="flex-1 min-w-48"
+    />
+
+    {/* Інші Select-фільтри */}
+    <Select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="w-44">
+      ...
+    </Select>
+
+    {/* Права група — ml-auto, gap-2 */}
+    <div className="flex items-center gap-2 ml-auto">
+      {/* Eye — icon-sm, border-primary при showDeleted=true */}
+      <Button
+        variant="outline"
+        size="icon-sm"
+        title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+        onClick={() => setShowDeleted(v => !v)}
+        className={showDeleted ? 'border-primary text-primary' : ''}
+      >
+        {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+      </Button>
+
+      {/* Кнопка створення — стандартний розмір (БЕЗ size="sm") */}
+      <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
+        Назва об'єкта {/* НЕ "Додати" — конкретна назва: "Філія", "Зона", "Контрагент" */}
+      </Button>
+    </div>
+  </div>
+
+  {/* 4. Scrollable область */}
+  <div className="flex-1 min-h-0 overflow-y-auto">{/* таблиця, спінер, empty state */}</div>
+</div>
+```
+
+### Ключові правила
+
+| Елемент              | ✅ Правильно                                               | ❌ Неправильно                                |
+| -------------------- | ---------------------------------------------------------- | --------------------------------------------- |
+| Вкладки              | `gap-0 -mx-6 px-6 mb-5 py-2.5 text-[13px]`                 | `gap-1 mb-4 py-2 text-sm`                     |
+| Пошук                | `<Input leftElement={<Search />}>`                         | кастомний `<input>` з абсолютною іконкою      |
+| Eye кнопка           | `size="icon-sm"`, `border-primary text-primary` при active | `size="sm"`, текст у кнопці, `border-warning` |
+| Кнопка "+ Об'єкт"    | без `size=`, конкретна назва ("Філія")                     | `size="sm"`, загальне "Додати"                |
+| Права група          | `ml-auto flex items-center gap-2`                          | окремий toolbar div                           |
+| Видалені рядки       | `opacity-50` + badge "видалено", кнопки дій приховані      | червоний фон, кнопки залишені                 |
+| Видалені у FK select | тільки `activeBranches.filter(b => !b.deletedAt)`          | всі записи включно з deleted                  |
+
+---
+
 ## loading.tsx — skeleton для кожної сторінки
 
 **Обов'язково** для кожної нової сторінки. Без нього при першому відвідуванні — blank screen.
@@ -920,6 +1009,7 @@ import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 
 ## Checklist для нової list-сторінки
 
+- [ ] **Layout довідника** — вкладки `gap-0 -mx-6 px-6 mb-5 py-2.5 text-[13px]`, фільтри `flex gap-3 flex-wrap mb-4`, Eye `size="icon-sm"` + `border-primary` при active, кнопка без `size=` з конкретною назвою (не "Додати")
 - [ ] `useRequireAuth(['OWNER', 'ADMIN', ...])` — перший рядок компоненту
 - [ ] `mountedRef` guard на всіх `setState` в async callback
 - [ ] `let cancelled = false` + `return () => { cancelled = true }` у `useEffect` з fetch
