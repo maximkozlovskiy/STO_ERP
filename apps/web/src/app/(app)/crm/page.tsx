@@ -56,6 +56,9 @@ import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
+const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const kyivToday = () => KYIV_YMD.format(new Date());
+
 interface CrmFilters extends Record<string, unknown> {
   search: string;
   typeFilter: string;
@@ -208,7 +211,7 @@ export default function CrmPage() {
   const [addingContract, setAddingContract] = useState(false);
   const [addContractForm, setAddContractForm] = useState({
     contractType: '',
-    startDate: '',
+    startDate: kyivToday(),
     endDate: '',
     creditLimit: '',
     paymentDeferDays: '',
@@ -1338,13 +1341,16 @@ export default function CrmPage() {
 
                 {showAddContract && (
                   <AnimatedBody className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* Вид договору — select для BOTH, readonly label для CLIENT/SUPPLIER */}
-                      {editingCp.type === 'BOTH' ? (
-                        <div className="col-span-2">
-                          <label className="text-xs text-muted-foreground mb-1 block">
-                            Вид договору <span className="text-destructive">*</span>
-                          </label>
+                    {/* Рядок 1: вид договору + checkbox Головний */}
+                    <div className="flex items-end gap-3">
+                      <div className="flex-1">
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Вид договору
+                          {editingCp.type === 'BOTH' && (
+                            <span className="text-destructive"> *</span>
+                          )}
+                        </label>
+                        {editingCp.type === 'BOTH' ? (
                           <Select
                             value={addContractForm.contractType}
                             onChange={e =>
@@ -1355,17 +1361,28 @@ export default function CrmPage() {
                             <option value="PURCHASE">Купівля</option>
                             <option value="SALE">Продаж</option>
                           </Select>
-                        </div>
-                      ) : (
-                        <div className="col-span-2">
-                          <label className="text-xs text-muted-foreground mb-1 block">
-                            Вид договору
-                          </label>
+                        ) : (
                           <div className="px-3 py-2 rounded-lg border border-border bg-secondary text-[13px] text-foreground">
                             {editingCp.type === 'CLIENT' ? 'Продаж' : 'Купівля'}
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer select-none pb-2">
+                        <input
+                          type="checkbox"
+                          checked={addContractForm.isPrimary}
+                          onChange={e =>
+                            setAddContractForm(f => ({ ...f, isPrimary: e.target.checked }))
+                          }
+                          className="h-4 w-4 rounded border-border accent-primary"
+                        />
+                        <span className="text-[13px] text-foreground whitespace-nowrap">
+                          Головний
+                        </span>
+                      </label>
+                    </div>
+                    {/* Рядок 2: дати */}
+                    <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
                           Дата початку <span className="text-destructive">*</span>
@@ -1390,6 +1407,9 @@ export default function CrmPage() {
                           }
                         />
                       </div>
+                    </div>
+                    {/* Рядок 3: фінансові поля */}
+                    <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
                           Кредитний ліміт (₴)
@@ -1397,6 +1417,7 @@ export default function CrmPage() {
                         <Input
                           type="number"
                           min="0"
+                          step="0.01"
                           placeholder="0"
                           value={addContractForm.creditLimit}
                           onChange={e =>
@@ -1411,25 +1432,18 @@ export default function CrmPage() {
                         <Input
                           type="number"
                           min="0"
+                          step="1"
                           placeholder="0"
                           value={addContractForm.paymentDeferDays}
                           onChange={e =>
-                            setAddContractForm(f => ({ ...f, paymentDeferDays: e.target.value }))
+                            setAddContractForm(f => ({
+                              ...f,
+                              paymentDeferDays: String(Math.floor(Number(e.target.value))),
+                            }))
                           }
                         />
                       </div>
                     </div>
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={addContractForm.isPrimary}
-                        onChange={e =>
-                          setAddContractForm(f => ({ ...f, isPrimary: e.target.checked }))
-                        }
-                        className="h-4 w-4 rounded border-border accent-primary"
-                      />
-                      <span className="text-[13px] text-foreground">Головний договір</span>
-                    </label>
                     <div className="flex gap-2 justify-end">
                       <Button
                         size="sm"

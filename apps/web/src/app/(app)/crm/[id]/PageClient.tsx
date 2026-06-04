@@ -14,6 +14,9 @@ import { cn, daysUntil } from '@/lib/utils';
 import { AnimatedBody } from '@/components/ui/modal';
 import { fmtMoney, fmtInt, fmtDate } from '@/lib/format';
 
+const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+const kyivToday = () => KYIV_YMD.format(new Date());
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Counterparty {
@@ -240,7 +243,7 @@ export default function CounterpartyCardPage() {
   const [showAddContract, setShowAddContract] = useState(false);
   const [contractForm, setContractForm] = useState({
     contractType: '',
-    startDate: '',
+    startDate: kyivToday(),
     endDate: '',
     creditLimit: '',
     paymentDeferDays: '',
@@ -965,13 +968,13 @@ export default function CounterpartyCardPage() {
           {showAddContract && (
             <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
               <h3 className="text-sm font-semibold text-foreground">Новий договір</h3>
-              <div className="grid grid-cols-2 gap-3">
-                {/* Вид договору */}
-                {cp.type === 'BOTH' ? (
-                  <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Вид договору <span className="text-destructive">*</span>
-                    </label>
+              {/* Рядок 1: вид договору + checkbox Головний */}
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Вид договору{cp.type === 'BOTH' && <span className="text-destructive"> *</span>}
+                  </label>
+                  {cp.type === 'BOTH' ? (
                     <Select
                       value={contractForm.contractType}
                       onChange={e => setContractForm(f => ({ ...f, contractType: e.target.value }))}
@@ -980,17 +983,28 @@ export default function CounterpartyCardPage() {
                       <option value="PURCHASE">Купівля</option>
                       <option value="SALE">Продаж</option>
                     </Select>
-                  </div>
-                ) : (
-                  <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">Вид договору</label>
+                  ) : (
                     <div className="px-3 py-2 rounded-lg border border-border bg-secondary text-[13px] text-foreground">
                       {cp.type === 'CLIENT' ? 'Продаж' : 'Купівля'}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer select-none pb-2">
+                  <input
+                    type="checkbox"
+                    checked={contractForm.isPrimary}
+                    onChange={e => setContractForm(f => ({ ...f, isPrimary: e.target.checked }))}
+                    className="h-4 w-4 rounded border-border accent-primary"
+                  />
+                  <span className="text-[13px] text-foreground whitespace-nowrap">Головний</span>
+                </label>
+              </div>
+              {/* Рядок 2: дати */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Дата початку</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Дата початку <span className="text-destructive">*</span>
+                  </label>
                   <Input
                     type="date"
                     value={contractForm.startDate}
@@ -1007,6 +1021,9 @@ export default function CounterpartyCardPage() {
                     onChange={e => setContractForm(f => ({ ...f, endDate: e.target.value }))}
                   />
                 </div>
+              </div>
+              {/* Рядок 3: фінансові поля */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">
                     Кредитний ліміт (₴)
@@ -1014,6 +1031,7 @@ export default function CounterpartyCardPage() {
                   <Input
                     type="number"
                     min="0"
+                    step="0.01"
                     placeholder="0"
                     value={contractForm.creditLimit}
                     onChange={e => setContractForm(f => ({ ...f, creditLimit: e.target.value }))}
@@ -1026,25 +1044,17 @@ export default function CounterpartyCardPage() {
                   <Input
                     type="number"
                     min="0"
+                    step="1"
                     placeholder="0"
                     value={contractForm.paymentDeferDays}
                     onChange={e =>
-                      setContractForm(f => ({ ...f, paymentDeferDays: e.target.value }))
+                      setContractForm(f => ({
+                        ...f,
+                        paymentDeferDays: String(Math.floor(Number(e.target.value))),
+                      }))
                     }
                   />
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isPrimary"
-                  checked={contractForm.isPrimary}
-                  onChange={e => setContractForm(f => ({ ...f, isPrimary: e.target.checked }))}
-                  className="rounded"
-                />
-                <label htmlFor="isPrimary" className="text-sm text-foreground">
-                  Головний договір
-                </label>
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="ghost" size="sm" onClick={() => setShowAddContract(false)}>
@@ -1083,7 +1093,7 @@ export default function CounterpartyCardPage() {
                       });
                       setContractForm({
                         contractType: '',
-                        startDate: '',
+                        startDate: kyivToday(),
                         endDate: '',
                         creditLimit: '',
                         paymentDeferDays: '',
