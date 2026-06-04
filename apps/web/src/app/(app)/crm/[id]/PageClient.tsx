@@ -966,18 +966,27 @@ export default function CounterpartyCardPage() {
             <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
               <h3 className="text-sm font-semibold text-foreground">Новий договір</h3>
               <div className="grid grid-cols-2 gap-3">
-                {/* Show contractType select only for BOTH */}
-                {cp.type === 'BOTH' && (
+                {/* Вид договору */}
+                {cp.type === 'BOTH' ? (
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">Тип договору</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Вид договору <span className="text-destructive">*</span>
+                    </label>
                     <Select
                       value={contractForm.contractType}
                       onChange={e => setContractForm(f => ({ ...f, contractType: e.target.value }))}
                     >
-                      <option value="">Оберіть тип</option>
+                      <option value="">Оберіть вид</option>
                       <option value="PURCHASE">Купівля</option>
                       <option value="SALE">Продаж</option>
                     </Select>
+                  </div>
+                ) : (
+                  <div className="col-span-2">
+                    <label className="text-xs text-muted-foreground mb-1 block">Вид договору</label>
+                    <div className="px-3 py-2 rounded-lg border border-border bg-secondary text-[13px] text-foreground">
+                      {cp.type === 'CLIENT' ? 'Продаж' : 'Купівля'}
+                    </div>
                   </div>
                 )}
                 <div>

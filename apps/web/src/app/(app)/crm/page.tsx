@@ -212,6 +212,7 @@ export default function CrmPage() {
     endDate: '',
     creditLimit: '',
     paymentDeferDays: '',
+    isPrimary: false,
   });
 
   // ── Column visibility ────────────────────────────────────────────────────────
@@ -416,6 +417,7 @@ export default function CrmPage() {
       endDate: '',
       creditLimit: '',
       paymentDeferDays: '',
+      isPrimary: false,
     });
     setVehiclesError('');
     setWoError('');
@@ -1337,10 +1339,11 @@ export default function CrmPage() {
                 {showAddContract && (
                   <AnimatedBody className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
                     <div className="grid grid-cols-2 gap-2">
-                      {editingCp.type === 'BOTH' && (
+                      {/* Вид договору — select для BOTH, readonly label для CLIENT/SUPPLIER */}
+                      {editingCp.type === 'BOTH' ? (
                         <div className="col-span-2">
                           <label className="text-xs text-muted-foreground mb-1 block">
-                            Тип договору <span className="text-destructive">*</span>
+                            Вид договору <span className="text-destructive">*</span>
                           </label>
                           <Select
                             value={addContractForm.contractType}
@@ -1348,10 +1351,19 @@ export default function CrmPage() {
                               setAddContractForm(f => ({ ...f, contractType: e.target.value }))
                             }
                           >
-                            <option value="">Оберіть тип</option>
+                            <option value="">Оберіть вид</option>
                             <option value="PURCHASE">Купівля</option>
                             <option value="SALE">Продаж</option>
                           </Select>
+                        </div>
+                      ) : (
+                        <div className="col-span-2">
+                          <label className="text-xs text-muted-foreground mb-1 block">
+                            Вид договору
+                          </label>
+                          <div className="px-3 py-2 rounded-lg border border-border bg-secondary text-[13px] text-foreground">
+                            {editingCp.type === 'CLIENT' ? 'Продаж' : 'Купівля'}
+                          </div>
                         </div>
                       )}
                       <div>
@@ -1407,6 +1419,17 @@ export default function CrmPage() {
                         />
                       </div>
                     </div>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={addContractForm.isPrimary}
+                        onChange={e =>
+                          setAddContractForm(f => ({ ...f, isPrimary: e.target.checked }))
+                        }
+                        className="h-4 w-4 rounded border-border accent-primary"
+                      />
+                      <span className="text-[13px] text-foreground">Головний договір</span>
+                    </label>
                     <div className="flex gap-2 justify-end">
                       <Button
                         size="sm"
@@ -1419,6 +1442,7 @@ export default function CrmPage() {
                             endDate: '',
                             creditLimit: '',
                             paymentDeferDays: '',
+                            isPrimary: false,
                           });
                         }}
                       >
@@ -1455,6 +1479,7 @@ export default function CrmPage() {
                                   paymentDeferDays: addContractForm.paymentDeferDays
                                     ? Number(addContractForm.paymentDeferDays)
                                     : undefined,
+                                  isPrimary: addContractForm.isPrimary || undefined,
                                 }),
                               },
                             );
@@ -1465,6 +1490,7 @@ export default function CrmPage() {
                               endDate: '',
                               creditLimit: '',
                               paymentDeferDays: '',
+                              isPrimary: false,
                             });
                             setShowAddContract(false);
                             toast.success('Договір додано');
