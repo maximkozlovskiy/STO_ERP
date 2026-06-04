@@ -20,7 +20,10 @@ function Table({ className, children, ...props }: HTMLAttributes<HTMLTableElemen
 
 function TableHeader({ className, children, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
-    <thead className={cn('bg-secondary border-b border-border', className)} {...props}>
+    <thead
+      className={cn('bg-secondary border-b border-border sticky top-0 z-10', className)}
+      {...props}
+    >
       {children}
     </thead>
   );
