@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+4f7a9be fix(tester): CounterpartyContract bugs #347-#353 (DocumentNumberService DI mock, contract include, auto-promote primary, @MaxLength)
 9923361 fix(review): CounterpartyContract — tenant guard, $tx timeout, per-type isPrimary, take limit
 d44ab24 fix(sync): align frontend types with CounterpartyContract API
 86f4569 feat(crm): Договір контрагента (CounterpartyContract)
@@ -1097,6 +1098,13 @@ apiFetch<Branch[]>('/branches').then(d => {
 
 `PERCENT/COMPETITOR_PLUS/COST_TIER` → `0 * (1 + p/100) = 0` → silent data corruption `Good.salePrice`.
 **ПРАВИЛО:** перед `calculateSalePrice()` перевірити `costPrice > 0`. Якщо 0 або null — пропустити з поміщенням у `notFound[]`, не обчислювати.
+
+### Gotcha #348-#351 — CounterpartyContract feature pitfalls (4f7a9be)
+
+- **#347 CRITICAL — Stale spec після constructor refactor:** додавання `DocumentNumberService` у `CounterpartiesService` без оновлення `counterparties.service.spec.ts` (NestJS DI fail у beforeEach — release-blocker baseline). **ПРАВИЛО:** будь-яка нова `private readonly X` у конструкторі сервісу → одразу додати `{ provide: X, useValue: mock }` у всі парні spec-и.
+- **#348 HIGH — Hardcoded auto-PURCHASE contract number:** `create()` для нового SUPPLIER авто-створював PURCHASE договір з `number: '1'` поки `createContract` використовує `documentNumberService.next()`. Порушення monotonic-нумерації документів. **ПРАВИЛО:** будь-який auto-create документа (контракт, акт, ордер) використовує DocumentNumberService.next() — НЕ hardcode.
+- **#349, #350 HIGH — Mass DTO field migration completeness — include audit:** додавання `contract?: { id, number }` у `toDto()` для PO/WO без оновлення Prisma `include` queries у `findAll/findOne` → `contractNumber` завжди null у read-path (тільки create-response містив правильне значення). **ПРАВИЛО:** Bug #232 pattern — для кожного нового nested field у `toDto()` пройти ВСІ `findFirst/findMany/findFirstOrThrow/create/update` що повертають через цей `toDto()` і додати парний `include`.
+- **#351 HIGH — removeContract без auto-promote:** видалення primary contract без promote наступного → SUPPLIER лишається без primary PURCHASE → `PurchaseOrder.create()` без contractId сам обере випадковий non-primary. **ПРАВИЛО:** для кожного soft-delete сутності з `isPrimary/isDefault` boolean → після delete у $transaction знайти next same-scope sibling за `createdAt:'asc'` → `update({ isPrimary: true })`. Той самий патерн уже для CustomerGarage/UoM/PaymentMethod.
 
 ---
 
