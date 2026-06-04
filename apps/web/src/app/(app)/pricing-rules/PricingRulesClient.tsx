@@ -24,6 +24,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { fmtMoney } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
   type Good,
@@ -257,7 +258,11 @@ export default function PricingRulesClient() {
             Автоматичне розрахування ціни продажу при оприбуткуванні товарів
           </p>
         </div>
-        <div className="flex items-center gap-2">
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-3 flex-wrap shrink-0">
+        <div className="flex items-center gap-2 ml-auto">
           <Button
             type="button"
             variant="outline"
@@ -276,7 +281,7 @@ export default function PricingRulesClient() {
               setModal(true);
             }}
           >
-            Додати правило
+            Правило
           </Button>
         </div>
       </div>
@@ -468,7 +473,7 @@ export default function PricingRulesClient() {
           <TableBody>
             {loading && (
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center">
+                <TableCell colSpan={7} className="py-12 text-center">
                   <div className="flex justify-center">
                     <Spinner size="md" />
                   </div>
@@ -488,7 +493,10 @@ export default function PricingRulesClient() {
             )}
             {!loading &&
               rules.map(rule => (
-                <TableRow key={rule.id} className={!rule.isActive ? 'opacity-50' : ''}>
+                <TableRow
+                  key={rule.id}
+                  className={cn('group transition-colors', !rule.isActive && 'opacity-60')}
+                >
                   <TableCell>
                     <p className="text-[13px] font-medium text-foreground">{rule.name}</p>
                     {rule.roundTo != null && (
@@ -527,38 +535,37 @@ export default function PricingRulesClient() {
                       {rule.isActive ? 'Активне' : 'Вимкнено'}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon-sm"
                         onClick={() => applyAll(rule)}
                         disabled={applyingId === rule.id || !rule.isActive}
                         loading={applyingId === rule.id}
                         title="Застосувати до всіх товарів"
-                        aria-label="Застосувати правило до всіх товарів"
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                       >
-                        <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+                        <Zap className="h-3.5 w-3.5" />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon-sm"
                         onClick={() => setEditRule(rule)}
                         title="Редагувати"
-                        aria-label="Редагувати правило"
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                       >
-                        <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                        <Pencil className="h-3.5 w-3.5" />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon-sm"
                         onClick={() => deleteRule(rule.id)}
                         disabled={deletingId === rule.id}
-                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                         title="Видалити"
-                        aria-label="Видалити правило"
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                       >
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </TableCell>

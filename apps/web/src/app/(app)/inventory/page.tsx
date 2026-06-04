@@ -241,7 +241,7 @@ export default function InventoryPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center">
+                  <TableCell colSpan={8} className="py-12 text-center">
                     <div className="flex justify-center">
                       <Spinner size="md" />
                     </div>
@@ -261,6 +261,7 @@ export default function InventoryPage() {
                     key={item.id}
                     onClick={() => setSelectedItem(item)}
                     className={cn(
+                      'group transition-colors cursor-pointer',
                       item.isLow && 'bg-warning-subtle/40',
                       selectedItem?.id === item.id && 'bg-primary/5',
                     )}
