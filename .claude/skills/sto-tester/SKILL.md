@@ -182,6 +182,10 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 
 - [ ] **Dead-feature integration audit (Bugs #267, #268):** для КОЖНОГО `@Injectable` сервісу з queue/processor companion (`@nestjs/bull`, `@Processor`, `@InjectQueue`) — перевірити чи real callsite викликає його з payments/invoices/work-orders/settlements flow. Grep: `grep -rl "InjectQueue\|@Processor" apps/api/src/modules --include="*.ts"` → для кожного service-метода: `grep -rln "\.<method>(" apps/api/src --include="*.ts" | grep -v "spec\|<own-module>"` → якщо count=0 → bug. Парний сигнал: UI tab/sidebar/settings для фічі АЛЕ нема telemetry/trigger. Severity HIGH якщо feature розрекламована користувачу (`loyalty.queueEarn` ніколи не викликається з payments → бали не нараховуються); MEDIUM якщо admin/internal (`batch.consumeBatch` ніколи з inventory WRITEOFF → cost-method не застосовується). Фікс: додати виклик у trigger service (з `.catch(warn)` для non-blocking) + import відповідного Module у trigger Module + DI injection
 
+- [ ] **Hardcoded document-number у auto-create обхід DocumentNumberService (Bug #348):** будь-який `tx.<Model>.create({ data: { number: '<literal>', ... } })` де `<Model>` має згадку у `DocumentNumberConfig` seed (`WORK_ORDER`, `INVOICE`, `PURCHASE_ORDER`, `STOCK_RECEIPT`, `COUNTERPARTY_AGREEMENT`...) — bug. Auto-create-flow (наприклад `service.create()` контрагента → авто-PURCHASE контракт) повинен використовувати ту саму систему нумерації що і ручний UI-flow (`createContract` через `documentNumberService.next()`), інакше monotonic-нумерація документів порушена. Grep: `grep -rnE "tx\.[a-z]+\.create\(\s*\{\s*data:\s*\{[^}]*\bnumber:\s*['\"]" apps/api/src/modules --include="*.service.ts"` — кожен literal-number у data-spread = bug. Виклик `documentNumberService.next()` робити ПЕРЕД `$transaction` (next() сам відкриває власний $tx з SELECT FOR UPDATE — nesting deadlock). Severity HIGH (feature розрекламована як «автоматично створюється документ», порядок номерів inconsistent).
+
+- [ ] **Soft-delete primary без auto-promote next sibling (Bug #351):** для КОЖНОЇ моделі з `isPrimary Boolean` / `isDefault Boolean` / `isMain Boolean` полем — `service.remove()` ОБОВ'ЯЗКОВО має auto-promote next sibling. Pattern: `(1) SELECT existing { id, isPrimary, <scopeFields> }`; `(2) $transaction: soft-delete X; if (existing.isPrimary) findFirst({<scope>, deletedAt:null, id:{not:id}}, orderBy:{createdAt:'asc'}) → update({isPrimary:true})`. Без promote: bizнес-інваріант «у scope завжди ≥1 primary якщо існують активні рядки» силентнo порушений. Downstream auto-selection logic (PO/WO create без contractId → findFirst orderBy isPrimary desc → випадковий non-primary) повертає неправильні значення. Grep: `grep -rnE "isPrimary\s+Boolean|isDefault\s+Boolean|isMain\s+Boolean" packages/database/prisma/schema.prisma | awk '{print $1}'` — для кожної моделі знайти `<module>.service.ts` `remove()`/`deleteX()` і перевірити наявність findFirst+update після soft-delete. Severity HIGH. Парне з Bug #226-#227 (frontend-side): backend може правильно promote, але frontend з optimistic-filter не знає → теж потребує refetch.
+
 #### Prisma schema ↔ migration parity (release-blocker)
 
 ```bash
@@ -930,6 +934,71 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-04 — Hardcoded document-number у auto-create обхід DocumentNumberService (Bug #348) — backend, bizlogic
+
+**Сигнал:** Feature додає **двосторонню** генерацію нумерованих документів: (а) основний UI-flow через `service.createX(dto)` що правильно викликає `documentNumberService.next(orgId, 'X_TYPE')`; (б) допоміжний auto-create-flow всередині сервісу (наприклад, у `service.create()` контрагента — автоматичний договір при `type=SUPPLIER`) що пише hardcoded literal (`number: '1'`, `number: 'AUTO'`, `number: 'DEFAULT'`). Регресія невидима у tsc/unit-tests (mock-based) і у happy-path manual — лише при додаванні наступного документа того ж типу користувач бачить порушений порядок: `'1'`, `'ДГ-2026-000001'`.
+
+**Причина виникнення:** Розробник копіює inline `tx.X.create({ data: { number: '1', ... } })` як placeholder з намірою «доробити пізніше» і забуває. tsc green бо `number: string` приймає будь-який. Тести з повним feature-flow (POST /counterparties → POST /contracts → GET /contracts) не запускаються в unit-suite. Виявляється тільки manual-чергою документів у production.
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Для кожної моделі що має `number String` поле + згадку у DocumentNumberConfig seed → service.create*
+#    що пише цей `number` у БД, але НЕ через documentNumberService.next() — це bug.
+grep -rn "DocumentType\\.[A-Z_]\\+" packages/database/prisma/seed.ts | awk '{print $NF}' | tr -d ',"' | while read dtype; do
+  grep -rn "number:\\s*['\"][^'\"]*['\"]" apps/api/src/modules --include="*.service.ts" \
+    | grep -v "spec\\|//\\|toDto\\|description" \
+    | grep -v "documentNumberService\\|docNumbers\\.next\\|generateNext" \
+    | head -10
+done
+
+# 2. Будь-який literal-number у data-spread у tx.<Model>.create
+grep -rnE "tx\\.[a-z]+\\.create\\(\\s*\\{\\s*data:\\s*\\{[^}]*\\bnumber:\\s*['\"]" apps/api/src/modules --include="*.service.ts"
+```
+
+**Підхід до фіксу:** Перед `$transaction` (DocumentNumberService.next відкриває власний `$transaction` з `SELECT FOR UPDATE` — nesting deadlock-небезпечне) — викликати `await this.documentNumberService.next(orgId, '<TYPE>')`, передати результат як параметр у tx-callback. Якщо `next()` потрібно за умовою — обчислити умову раніше і call-only-if. Auto-create-flow МАЄ використовувати ту ж саму систему нумерації що і ручний UI-flow — інакше порушується monotonic-нумерація.
+
+**Severity:** HIGH — feature декларується як «автоматично створюється договір», користувач бачить inconsistent номери документів.
+
+**Де шукати ще:** будь-який `service.create()` що auto-створює side-resource: counterparty→contract, work-order→completion-act, invoice→payment, vehicle→default-tax-rate, employee→default-branch-assignment. Перевіряти кожний `tx.X.create({ data: { number: 'literal' } })` всередині parent-сервісу.
+
+---
+
+### 2026-06-04 — Soft-delete primary без auto-promote next sibling (Bug #351) — backend, bizlogic
+
+**Сигнал:** Сутність має `isPrimary Boolean` / `isDefault Boolean` поле для відмітки «головного у scope». `service.remove(parentId, childId)` робить soft-delete (`deletedAt = new Date()`) **без** перевірки `existing.isPrimary` і **без** auto-promote next sibling. Інваріант «у scope завжди ≥1 primary якщо існують активні рядки» порушений. Наступний код що читає primary (`findFirst({ orderBy: [{isPrimary:'desc'},{createdAt:'asc'}] })`) повертає випадковий non-primary запис.
+
+Frontend-side частина проблеми вже описана у Bug #226-#227 (sub-resource default-flag mutation → parent-list staleness). Цей патерн — backend-side: сам сервіс не підтримує інваріант при delete.
+
+**Причина виникнення:** При написанні `remove()` розробник копіює стандартний soft-delete шаблон `prisma.X.updateMany({where:{...},data:{deletedAt:new Date()}})` без додавання промоушн-логіки. tsc green, unit test без real-DB зелений (mock не моделює invariant), happy-path manual теж не помічає бо primary-rows зазвичай останніми видаляються. Виявляється коли система пізніше залежить від primary (PurchaseOrder.create без contractId → findFirst → null).
+
+**Підхід до виявлення:**
+
+```bash
+# Для кожної моделі з isPrimary/isDefault полем → service.remove() / service.deleteX()
+grep -rnE "isPrimary\\s+Boolean|isDefault\\s+Boolean|isMain\\s+Boolean" packages/database/prisma/schema.prisma
+# для кожної моделі знайти service.remove() / removeX() / deleteX()
+# перевірити чи є логіка:
+#   if (existing.isPrimary) { findFirst({orderBy:createdAt asc, NOT:{id}}) → update({isPrimary:true}) }
+grep -rnE "isPrimary|isDefault" apps/api/src/modules/<module>/<module>.service.ts | grep -v "spec\\|toDto"
+```
+
+**Підхід до фіксу:** У `remove()` сервісу:
+
+1. Прочитати existing з `select: { id, isPrimary, <scopeFieldType> }`.
+2. У `$transaction`:
+   - `tx.X.updateMany({where:{...},data:{deletedAt:new Date()}})`.
+   - `if (existing.isPrimary)` → `const next = await tx.X.findFirst({where:{<scope>, deletedAt:null, id:{not:id}}, orderBy:{createdAt:'asc'}, select:{id:true}})`.
+   - `if (next)` → `tx.X.update({where:{id:next.id}, data:{isPrimary:true}})`.
+
+Regression-guard test (vi.fn $transaction з callback): asser что при `existing.isPrimary === true` І `findFirst` повертає `next` → `update({where:{id:'next'}, data:{isPrimary:true}})` викликаний.
+
+**Severity:** HIGH (бізнес-інваріант силentlу порушений; impact на downstream auto-selection logic — наприклад PurchaseOrder.create без contractId → випадковий вибір).
+
+**Де шукати ще:** CounterpartyContract.isPrimary, CustomerGarage.isDefault, GoodUoM.isDefault, Barcode.isPrimary, VehicleTaxRate.isActive, EmployeeBranch.isDefault, PaymentMethodConfig.isDefault, NotificationTemplate.isDefault. Будь-який scope-обмежений boolean «головний». Профілактика: для кожної моделі з `isPrimary/isDefault` створити contract-spec що демонструє promote-after-delete invariant.
+
+---
 
 ### 2026-06-03 — Stale contract-spec через arg-count drift після додавання нового positional query-param (Bug #340) — backend, contract tests
 
