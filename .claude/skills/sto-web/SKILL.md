@@ -803,8 +803,8 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
     {/* Кнопки у page-header — тільки якщо кнопка НЕ залежить від активної вкладки */}
   </div>
 
-  {/* 2. Вкладки (якщо є) — ВПРИТУЛ до країв, відступ mb-5 */}
-  <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 mb-5 overflow-x-auto">
+  {/* 2. Вкладки (якщо є) — ВПРИТУЛ до країв, БЕЗ mb (gap від page-fill) */}
+  <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
     {TABS.map(t => (
       <button
         key={t.key}
@@ -821,8 +821,8 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
     ))}
   </div>
 
-  {/* 3. Рядок фільтрів — flex gap-3 flex-wrap shrink-0, відступ mb-4 */}
-  <div className="flex gap-3 flex-wrap shrink-0 mb-4">
+  {/* 3. Рядок фільтрів — flex gap-3 flex-wrap shrink-0, БЕЗ mb (gap від page-fill) */}
+  <div className="flex gap-3 flex-wrap shrink-0">
     {/* Пошук — Input з leftElement */}
     <Input
       value={search}
@@ -866,7 +866,7 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
 
 | Елемент              | ✅ Правильно                                               | ❌ Неправильно                                |
 | -------------------- | ---------------------------------------------------------- | --------------------------------------------- |
-| Вкладки              | `gap-0 -mx-6 px-6 mb-5 py-2.5 text-[13px]`                 | `gap-1 mb-4 py-2 text-sm`                     |
+| Вкладки              | `gap-0 -mx-6 px-6 py-2.5 text-[13px]` (без mb!)            | `gap-1 mb-4 py-2 text-sm`                     |
 | Пошук                | `<Input leftElement={<Search />}>`                         | кастомний `<input>` з абсолютною іконкою      |
 | Eye кнопка           | `size="icon-sm"`, `border-primary text-primary` при active | `size="sm"`, текст у кнопці, `border-warning` |
 | Кнопка "+ Об'єкт"    | без `size=`, конкретна назва ("Філія")                     | `size="sm"`, загальне "Додати"                |

@@ -368,7 +368,7 @@ function InfrastructurePageClient() {
       </div>
 
       {/* Tabs */}
-      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 mb-5 overflow-x-auto">
+      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
         {TABS.map(t => (
           <button
             key={t.key}
@@ -386,7 +386,7 @@ function InfrastructurePageClient() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 flex-wrap shrink-0 mb-4">
+      <div className="flex gap-3 flex-wrap shrink-0">
         <Input
           value={search}
           onChange={e => setSearch(e.target.value)}
