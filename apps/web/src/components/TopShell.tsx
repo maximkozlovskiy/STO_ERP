@@ -126,7 +126,7 @@ const NAV_GROUPS: NavGroup[] = [
         icon: Zap,
         roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
       },
-      { href: '/employees', label: 'Персонал', icon: UserCog, roles: ['OWNER', 'ADMIN'] },
+      { href: '/employees', label: 'Співробітники', icon: UserCog, roles: ['OWNER', 'ADMIN'] },
       {
         href: '/infrastructure',
         label: 'Інфраструктура',
@@ -170,7 +170,7 @@ const NAV_GROUPS_FUNCTIONS: NavGroup[] = [
         icon: Zap,
         roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
       },
-      { href: '/employees', label: 'Персонал', icon: UserCog, roles: ['OWNER', 'ADMIN'] },
+      { href: '/employees', label: 'Співробітники', icon: UserCog, roles: ['OWNER', 'ADMIN'] },
       {
         href: '/infrastructure',
         label: 'Інфраструктура',

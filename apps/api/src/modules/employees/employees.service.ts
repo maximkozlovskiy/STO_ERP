@@ -18,9 +18,10 @@ import {
 export class EmployeesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(orgId: string, query: EmployeesQueryDto = {}): Promise<EmployeeResponseDto[]> {
-    // Without an explicit query DTO the controller previously silently dropped q/role/showDeleted —
-    // /employees UI filters were no-ops. Build the where clause honestly.
+  async findAll(
+    orgId: string,
+    query: EmployeesQueryDto = {},
+  ): Promise<{ items: EmployeeResponseDto[]; total: number }> {
     const showDeleted = query.showDeleted === 'true';
     const where: Prisma.EmployeeWhereInput = {
       orgId,
@@ -38,22 +39,27 @@ export class EmployeesService {
         ];
       }
     }
-    const items = await this.prisma.employee.findMany({
-      where,
-      include: {
-        employeeZones: { select: { zoneId: true } },
-        employeeLifts: { select: { liftId: true } },
-        employeeWorkCategories: { select: { workCategoryId: true } },
-        employeeBranches: { select: { branchId: true } },
-      },
-      orderBy:
-        query.sortBy === 'createdAt'
-          ? [{ createdAt: query.sortDir === 'asc' ? 'asc' : 'desc' }]
-          : [{ lastName: query.sortDir === 'desc' ? 'desc' : 'asc' }, { firstName: 'asc' }],
-      take: query.limit ?? 200,
-      skip: query.page && query.limit ? (query.page - 1) * query.limit : 0,
-    });
-    return items.map(item => this.toDto(item));
+    const limit = query.limit ?? 20;
+    const skip = query.page && query.limit ? (query.page - 1) * query.limit : 0;
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.employee.findMany({
+        where,
+        include: {
+          employeeZones: { select: { zoneId: true } },
+          employeeLifts: { select: { liftId: true } },
+          employeeWorkCategories: { select: { workCategoryId: true } },
+          employeeBranches: { select: { branchId: true } },
+        },
+        orderBy:
+          query.sortBy === 'createdAt'
+            ? [{ createdAt: query.sortDir === 'asc' ? 'asc' : 'desc' }]
+            : [{ lastName: query.sortDir === 'desc' ? 'desc' : 'asc' }, { firstName: 'asc' }],
+        take: limit,
+        skip,
+      }),
+      this.prisma.employee.count({ where }),
+    ]);
+    return { items: items.map(item => this.toDto(item)), total };
   }
 
   async findOne(orgId: string, id: string): Promise<EmployeeResponseDto> {

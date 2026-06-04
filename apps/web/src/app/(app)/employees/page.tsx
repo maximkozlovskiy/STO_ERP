@@ -60,6 +60,7 @@ import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { ModalTabs } from '@/components/ui/modal-tabs';
+import { Pagination } from '@/components/ui/pagination';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtDate } from '@/lib/format';
@@ -244,10 +245,9 @@ export default function EmployeesPage() {
   const debouncedSearch = useDebounce(search);
   const [roleFilter, setRoleFilter] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
+  const [page, setPage] = useState(1);
+  const LIMIT = 20;
 
-  // Bug #328 regression guard: `data: employees = []` destructure default creates
-  // a fresh array each render → useBulkSelect(employees) effect fires on every
-  // render. Use module-level frozen EMPTY_ITEMS for a stable reference.
   const { sort: empSort, toggle: toggleEmpSort } = useSortState('lastName', 'asc');
   const { data, isLoading: loading } = useEmployees({
     q: debouncedSearch || undefined,
@@ -255,8 +255,11 @@ export default function EmployeesPage() {
     showDeleted,
     sortBy: empSort.sortBy,
     sortDir: empSort.sortDir,
+    page,
+    limit: LIMIT,
   });
-  const employees = data ?? (EMPTY_ITEMS as unknown as Employee[]);
+  const employees = data?.items ?? (EMPTY_ITEMS as unknown as Employee[]);
+  const totalPages = Math.ceil((data?.total ?? 0) / LIMIT);
   const qc = useQueryClient();
 
   const [form, setForm] = useState({
@@ -298,6 +301,7 @@ export default function EmployeesPage() {
     setSearch(preset.filters.search ?? '');
     setRoleFilter(preset.filters.roleFilter ?? '');
     setShowDeleted(preset.filters.showDeleted ?? false);
+    setPage(1);
     setActiveSavedFilterId(preset.id);
   }, []);
 
@@ -784,6 +788,7 @@ export default function EmployeesPage() {
           value={search}
           onChange={e => {
             setSearch(e.target.value);
+            setPage(1);
             setActiveSavedFilterId(null);
           }}
           placeholder="Пошук за ім'ям..."
@@ -794,6 +799,7 @@ export default function EmployeesPage() {
           value={roleFilter}
           onChange={e => {
             setRoleFilter(e.target.value);
+            setPage(1);
             setActiveSavedFilterId(null);
           }}
           className="w-48"
@@ -811,6 +817,7 @@ export default function EmployeesPage() {
             title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
             onClick={() => {
               setShowDeleted(d => !d);
+              setPage(1);
               setActiveSavedFilterId(null);
             }}
             className={showDeleted ? 'border-primary text-primary' : ''}
@@ -1055,6 +1062,8 @@ export default function EmployeesPage() {
           onReset={panelConfig.reset}
         />
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
       {/* Create modal */}
       <Modal

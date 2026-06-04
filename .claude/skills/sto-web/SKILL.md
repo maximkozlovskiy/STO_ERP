@@ -903,18 +903,175 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
 
 ### Ключові правила
 
-| Елемент              | ✅ Правильно                                               | ❌ Неправильно                                   |
-| -------------------- | ---------------------------------------------------------- | ------------------------------------------------ |
-| page-header          | `<div class="page-header"><div><h1>...</h1></div></div>`   | h1 напряму без `<div>` обгортки; кнопки в header |
-| Кнопки в шапці       | усі кнопки в рядку фільтрів (не в page-header)             | кнопка "+ Додати" в page-header                  |
-| Вкладки              | `gap-0 -mx-6 px-6 py-2.5 text-[13px]` (без mb!)            | `gap-1 mb-4 py-2 text-sm`                        |
-| Пошук                | `<Input leftElement={<Search />}>`                         | кастомний `<input>` з абсолютною іконкою         |
-| Eye кнопка           | `size="icon-sm"`, `border-primary text-primary` при active | `size="sm"`, текст у кнопці, `border-warning`    |
-| Кнопка "+ Об'єкт"    | без `size=`, конкретна назва ("Філія", "Контрагент")       | `size="sm"`, загальне "Додати"                   |
-| Права група          | `ml-auto flex items-center gap-2` всередині flex filters   | окремий toolbar div над таблицею                 |
-| Відступ tabs→filters | `gap: 0.5rem` (page-fill) + `py-2.5` кнопок = ~16px вигляд | `mb-4`, `mb-5`, `pt-4` на tabs або filters div   |
-| Видалені рядки       | `opacity-50` + badge "видалено", кнопки дій приховані      | червоний фон, кнопки залишені                    |
-| Видалені у FK select | тільки активні: `.filter(b => !b.deletedAt)`               | всі записи включно з deleted                     |
+| Елемент              | ✅ Правильно                                                                                                        | ❌ Неправильно                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| page-header          | `<div class="page-header"><div><h1>...</h1></div></div>`                                                            | h1 напряму без `<div>` обгортки; кнопки в header |
+| Кнопки в шапці       | усі кнопки в рядку фільтрів (не в page-header)                                                                      | кнопка "+ Додати" в page-header                  |
+| Вкладки              | `gap-0 -mx-6 px-6 py-2.5 text-[13px]` (без mb!)                                                                     | `gap-1 mb-4 py-2 text-sm`                        |
+| Пошук                | `<Input leftElement={<Search />}>`                                                                                  | кастомний `<input>` з абсолютною іконкою         |
+| Eye кнопка           | `size="icon-sm"`, `border-primary text-primary` при active                                                          | `size="sm"`, текст у кнопці, `border-warning`    |
+| Кнопка "+ Об'єкт"    | без `size=`, конкретна назва ("Філія", "Контрагент")                                                                | `size="sm"`, загальне "Додати"                   |
+| Права група          | `ml-auto flex items-center gap-2` всередині flex filters                                                            | окремий toolbar div над таблицею                 |
+| Відступ tabs→filters | `gap: 0.5rem` (page-fill) + `py-2.5` кнопок = ~16px вигляд                                                          | `mb-4`, `mb-5`, `pt-4` на tabs або filters div   |
+| Видалені рядки       | `opacity-60` + badge "видалено", кнопки дій приховані                                                               | `opacity-50`, червоний фон, кнопки залишені      |
+| Видалені у FK select | тільки активні: `.filter(b => !b.deletedAt)`                                                                        | всі записи включно з deleted                     |
+| Таблиця-обгортка     | `flex flex-1 min-h-0` → всередині `flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl` | `overflow-hidden rounded-xl` без flex обгортки   |
+| Рядок таблиці        | `group transition-colors`, кнопки дій `opacity-0 group-hover:opacity-100 focus-visible:opacity-100`                 | кнопки дій завжди видимі                         |
+| Кнопки дій у рядку   | `size="icon-sm"`, Pencil + Trash2, `onClick={e => e.stopPropagation()}` на комірці                                  | `size="sm"`, текстові кнопки                     |
+| Назва у рядку        | `text-[13px] font-medium text-primary` (клікабельне) або `text-foreground` (не клікабельне)                         | `font-medium` без кольору                        |
+| Email/phone підрядок | `text-[12px] text-muted-foreground mt-0.5` під назвою                                                               | окрема колонка                                   |
+| Spinner у таблиці    | `py-12 text-center` + `<Spinner size="md" />` в `flex justify-center`                                               | `py-10`, `size="lg"`                             |
+| EmptyState           | `colSpan=... className="p-0"` + `<EmptyState icon={...} size="sm" />`                                               | без `p-0`, без `icon`                            |
+| Пагінація            | `<Pagination page={page} totalPages={totalPages} onChange={setPage} />` після `</div>` table-wrapper                | кнопки Prev/Next вручну                          |
+
+---
+
+## Стандарт таблиці (ОБОВ'ЯЗКОВО)
+
+> **Еталон:** `apps/web/src/app/(app)/crm/page.tsx` + `employees/page.tsx`
+
+```tsx
+{/* Table + DetailPanel (якщо є) */}
+<div className="flex flex-1 min-h-0">
+  <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {features.bulkActionsEnabled && (
+            <TableHead className="w-9 pr-0">
+              <input type="checkbox" checked={bulkSelect.allSelected} ref={selectAllRef}
+                onChange={bulkSelect.toggleAll} className="h-3.5 w-3.5 rounded border-border"
+                aria-label="Вибрати всіх" />
+            </TableHead>
+          )}
+          {visibleColumns.map(col => (
+            <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>
+          ))}
+          <TableHead /> {/* actions column */}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {/* Loading */}
+        {loading && (
+          <TableRow>
+            <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+              className="py-12 text-center">
+              <div className="flex justify-center"><Spinner size="md" /></div>
+            </TableCell>
+          </TableRow>
+        )}
+        {/* Empty */}
+        {!loading && items.length === 0 && (
+          <TableRow>
+            <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+              className="p-0">
+              <EmptyState icon={MyIcon} title="Нічого не знайдено"
+                description="Спробуйте змінити параметри пошуку" size="sm" />
+            </TableCell>
+          </TableRow>
+        )}
+        {/* Rows */}
+        {!loading && items.map(item => {
+          const isDeleted = !!item.deletedAt;
+          return (
+            <TableRow key={item.id} className={cn(
+              'group transition-colors',
+              isDeleted && 'opacity-60',
+              detailPanel.enabled && 'cursor-pointer',
+              selectedItem?.id === item.id && detailPanel.enabled && 'bg-secondary',
+              bulkSelect.isSelected(item.id) && 'bg-primary/5',
+            )}
+              onClick={() => detailPanel.enabled && setSelectedItem(prev =>
+                prev?.id === item.id ? null : item)}>
+              {features.bulkActionsEnabled && (
+                <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                  <input type="checkbox" checked={bulkSelect.isSelected(item.id)}
+                    onChange={() => bulkSelect.toggle(item.id)}
+                    className="h-3.5 w-3.5 rounded border-border" />
+                </TableCell>
+              )}
+              {visibleColumns.map(col => {
+                if (col.key === 'name') return (
+                  <TableCell key="name">
+                    <div className="flex items-center gap-2">
+                      {/* text-primary якщо рядок клікабельний (веде на деталі) */}
+                      <span className="text-[13px] font-medium text-primary">{item.name}</span>
+                      {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                    </div>
+                    {item.phone && (
+                      <p className="text-[12px] text-muted-foreground mt-0.5">{item.phone}</p>
+                    )}
+                  </TableCell>
+                );
+                if (col.key === 'status') return (
+                  <TableCell key="status">
+                    <Badge variant={STATUS_BADGE[item.status]}>{STATUS_LABELS[item.status]}</Badge>
+                  </TableCell>
+                );
+                if (col.key === 'extra') return (
+                  <TableCell key="extra" className="text-muted-foreground text-[13px]">
+                    {item.extra ?? '—'}
+                  </TableCell>
+                );
+                return null;
+              })}
+              {/* Actions — stopPropagation щоб не відкривати DetailPanel */}
+              <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-end gap-1">
+                  {!isDeleted && (
+                    <Button variant="ghost" size="icon-sm" title="Редагувати"
+                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                      onClick={() => openEdit(item)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {!isDeleted && (
+                    <Button variant="ghost" size="icon-sm" title="Видалити"
+                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => markDeleted(item.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  </div>
+
+  {/* DetailPanel — якщо є */}
+  <DetailPanel open={!!selectedItem && detailPanel.enabled} ... />
+</div>
+
+{/* Пагінація — ЗАВЖДИ <Pagination>, не кнопки Prev/Next */}
+<Pagination page={page} totalPages={totalPages} onChange={setPage} />
+```
+
+### Пагінація на бекенді — стандарт
+
+```typescript
+// Hook — повертає { items, total }
+return useQuery<{ items: T[]; total: number }>({...});
+
+// Сторінка
+const LIMIT = 20;
+const [page, setPage] = useState(1);
+const { data } = useMyResource({ page, limit: LIMIT, ... });
+const items = data?.items ?? [];
+const totalPages = Math.ceil((data?.total ?? 0) / LIMIT);
+
+// Скидати page при зміні фільтрів:
+onChange={e => { setFilter(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
+
+// Бекенд — findAll повертає { items, total } через $transaction:
+const [items, total] = await prisma.$transaction([
+  prisma.resource.findMany({ where, take: limit, skip: (page-1)*limit }),
+  prisma.resource.count({ where }),
+]);
+return { items: items.map(toDto), total };
+```
 
 ---
 

@@ -27,6 +27,13 @@ export interface EmployeesFilter {
   showDeleted?: boolean;
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedEmployees {
+  items: Employee[];
+  total: number;
 }
 
 export const employeesKeys = {
@@ -43,11 +50,12 @@ export function useEmployees(filters: EmployeesFilter = {}) {
   if (filters.showDeleted) params.set('showDeleted', 'true');
   if (filters.sortBy) params.set('sortBy', filters.sortBy);
   if (filters.sortDir) params.set('sortDir', filters.sortDir);
-  const qs = params.toString();
+  params.set('page', String(filters.page ?? 1));
+  params.set('limit', String(filters.limit ?? 20));
 
-  return useQuery<Employee[]>({
+  return useQuery<PaginatedEmployees>({
     queryKey: employeesKeys.list(filters),
-    queryFn: ({ signal }) => apiFetch(`/employees${qs ? `?${qs}` : ''}`, { signal }),
+    queryFn: ({ signal }) => apiFetch(`/employees?${params.toString()}`, { signal }),
     enabled: !!employee,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
