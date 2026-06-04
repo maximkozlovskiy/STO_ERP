@@ -266,7 +266,14 @@ function InfrastructurePageClient() {
       await apiFetch<void>(`${endpoint}/${id}`, { method: 'DELETE' });
       loadAll();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка видалення');
+      // "не знайдено" = вже видалено (stale cache або паралельний запит) — оновлюємо список
+      const msg = e instanceof Error ? e.message : '';
+      const isNotFound = /не знайдено|not found/i.test(msg);
+      if (isNotFound) {
+        loadAll();
+      } else {
+        setError(msg || 'Помилка видалення');
+      }
     } finally {
       setSaving(false);
     }
