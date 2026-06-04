@@ -248,10 +248,12 @@ export default function MyListPage() {
 
   // ── Render ───────────────────────────────────────────────
   return (
-    <div className="page-container">
-      <div className="page-header mb-6">
-        <h1 className="page-title">Назва розділу</h1>
-        <Button onClick={openCreate}><Plus className="h-4 w-4" />Додати</Button>
+    <div className="page-fill p-4 md:p-6">
+      {/* Заголовок — тільки h1, БЕЗ кнопок */}
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Назва розділу</h1>
+        </div>
       </div>
 
       {/* Saved Filters */}
@@ -259,33 +261,51 @@ export default function MyListPage() {
         <SavedFiltersBar<MyFilters>
           saved={savedFilters} activeId={activeSavedFilterId}
           onApply={applyFilter} onSave={handleSaveFilter} onRemove={removeFilter}
-          className="mb-3"
+          hideSaveButton
         />
       )}
 
-      {/* Filters row */}
-      <div className="flex flex-wrap gap-3 mb-5">
-        <div className="relative w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input value={search} onChange={e => { setSearch(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
-            placeholder="Пошук..." className="pl-9" />
-        </div>
+      {/* Filters row — всі кнопки тут, gap від page-fill, НЕ додавати mb-* */}
+      <div className="flex gap-3 flex-wrap shrink-0">
+        <Input
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); setActiveSavedFilterId(null); }}
+          placeholder="Пошук..."
+          leftElement={<Search />}
+          className="flex-1 min-w-48"
+        />
         <Select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); setActiveSavedFilterId(null); }} className="w-44">
           <option value="">Всі статуси</option>
           <option value="ACTIVE">Активні</option>
         </Select>
-        {/* ColumnsDropdown — завжди ml-auto, останній у рядку */}
-        {/* columns={orderedColumns} — НЕ COLUMNS: відображає user-defined порядок і кастомні label */}
-        <ColumnsDropdown
-          columns={orderedColumns}
-          visibleKeys={colVisible}
-          onToggle={toggleCol}
-          onReorder={reorder}
-          onRename={renameColumn}
-          onReset={resetConfig}
-          hasCustomization={JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c=>c.key)) || Object.keys(customLabels).length > 0}
-          className="ml-auto"
-        />
+        {/* Права група — ml-auto */}
+        <div className="flex items-center gap-2 ml-auto">
+          {/* Eye: size="icon-sm", border-primary при showDeleted=true */}
+          <Button
+            variant="outline"
+            size="icon-sm"
+            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            onClick={() => { setShowDeleted(d => !d); setPage(1); setActiveSavedFilterId(null); }}
+            className={showDeleted ? 'border-primary text-primary' : ''}
+          >
+            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </Button>
+          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+          {/* ColumnsDropdown — якщо є useTableColumns */}
+          <ColumnsDropdown
+            columns={orderedColumns}
+            visibleKeys={colVisible}
+            onToggle={toggleCol}
+            onReorder={reorder}
+            onRename={renameColumn}
+            onReset={resetConfig}
+            hasCustomization={JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c => c.key)) || Object.keys(customLabels).length > 0}
+          />
+          {/* Кнопка створення — без size=, конкретна назва (не "Додати") */}
+          <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
+            Назва об'єкта
+          </Button>
+        </div>
       </div>
 
       {/* Bulk Actions Bar */}
@@ -797,11 +817,19 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
 
 ```tsx
 <div className="page-fill p-4 md:p-6">
-  {/* 1. Заголовок */}
+  {/* 1. Заголовок — ТІЛЬКИ h1, обгорнутий у <div>, кнопок НЕ МАЄ */}
   <div className="page-header">
-    <h1 className="page-title">Назва розділу</h1>
-    {/* Кнопки у page-header — тільки якщо кнопка НЕ залежить від активної вкладки */}
+    <div>
+      <h1 className="page-title">Назва розділу</h1>
+    </div>
   </div>
+  {/*
+    ⚠️ ЧОМУ <div> навколо h1:
+    .page-fill > .page-header { margin-bottom: -0.25rem } — скорочує gap між header і filters.
+    Якщо h1 без обгортки — правило спрацьовує і відступ стискається.
+    Якщо h1 в <div> — правило НЕ спрацьовує (не прямий дочірній) — відступ = spacing-section (16px).
+    Еталон CRM використовує <div> обгортку — тому відступ виглядає правильно.
+  */}
 
   {/* 2. Вкладки (якщо є) — ВПРИТУЛ до країв, БЕЗ mb (gap від page-fill) */}
   <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
@@ -864,15 +892,18 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
 
 ### Ключові правила
 
-| Елемент              | ✅ Правильно                                               | ❌ Неправильно                                |
-| -------------------- | ---------------------------------------------------------- | --------------------------------------------- |
-| Вкладки              | `gap-0 -mx-6 px-6 py-2.5 text-[13px]` (без mb!)            | `gap-1 mb-4 py-2 text-sm`                     |
-| Пошук                | `<Input leftElement={<Search />}>`                         | кастомний `<input>` з абсолютною іконкою      |
-| Eye кнопка           | `size="icon-sm"`, `border-primary text-primary` при active | `size="sm"`, текст у кнопці, `border-warning` |
-| Кнопка "+ Об'єкт"    | без `size=`, конкретна назва ("Філія")                     | `size="sm"`, загальне "Додати"                |
-| Права група          | `ml-auto flex items-center gap-2`                          | окремий toolbar div                           |
-| Видалені рядки       | `opacity-50` + badge "видалено", кнопки дій приховані      | червоний фон, кнопки залишені                 |
-| Видалені у FK select | тільки `activeBranches.filter(b => !b.deletedAt)`          | всі записи включно з deleted                  |
+| Елемент              | ✅ Правильно                                               | ❌ Неправильно                                   |
+| -------------------- | ---------------------------------------------------------- | ------------------------------------------------ |
+| page-header          | `<div class="page-header"><div><h1>...</h1></div></div>`   | h1 напряму без `<div>` обгортки; кнопки в header |
+| Кнопки в шапці       | усі кнопки в рядку фільтрів (не в page-header)             | кнопка "+ Додати" в page-header                  |
+| Вкладки              | `gap-0 -mx-6 px-6 py-2.5 text-[13px]` (без mb!)            | `gap-1 mb-4 py-2 text-sm`                        |
+| Пошук                | `<Input leftElement={<Search />}>`                         | кастомний `<input>` з абсолютною іконкою         |
+| Eye кнопка           | `size="icon-sm"`, `border-primary text-primary` при active | `size="sm"`, текст у кнопці, `border-warning`    |
+| Кнопка "+ Об'єкт"    | без `size=`, конкретна назва ("Філія", "Контрагент")       | `size="sm"`, загальне "Додати"                   |
+| Права група          | `ml-auto flex items-center gap-2` всередині flex filters   | окремий toolbar div над таблицею                 |
+| mb на filters/tabs   | БЕЗ `mb-*` — відступ дає `gap: 0.5rem` від `.page-fill`    | `mb-4`, `mb-5` на filters або tabs div           |
+| Видалені рядки       | `opacity-50` + badge "видалено", кнопки дій приховані      | червоний фон, кнопки залишені                    |
+| Видалені у FK select | тільки активні: `.filter(b => !b.deletedAt)`               | всі записи включно з deleted                     |
 
 ---
 

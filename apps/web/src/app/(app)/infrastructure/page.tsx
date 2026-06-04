@@ -364,7 +364,9 @@ function InfrastructurePageClient() {
   return (
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
-        <h1 className="page-title">Інфраструктура</h1>
+        <div>
+          <h1 className="page-title">Інфраструктура</h1>
+        </div>
       </div>
 
       {/* Tabs */}
