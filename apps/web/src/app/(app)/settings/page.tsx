@@ -1020,6 +1020,26 @@ function SettingsPageClient() {
     }
   };
 
+  const patchCurrencyNbu = async (
+    id: string,
+    nbuFetchEnabled: boolean,
+    nbuMarkupPercent: number | null,
+  ) => {
+    try {
+      const updated = await apiFetch<Currency>(`/currencies/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ nbuFetchEnabled, nbuMarkupPercent }),
+      });
+      setCurrencies(prev => {
+        const next = prev.map(c => (c.id === updated.id ? updated : c));
+        setCache('cache:currencies', { items: next });
+        return next;
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка збереження');
+    }
+  };
+
   const importCurrenciesFromTemplates = async (templates: SystemTemplate[]) => {
     for (const t of templates) {
       const created = await apiFetch<Currency>('/currencies', {
@@ -1793,27 +1813,56 @@ function SettingsPageClient() {
             {currencies.map(c => (
               <div
                 key={c.id}
-                className="bg-surface border border-border rounded-lg px-4 py-3 flex items-center justify-between"
+                className="bg-surface border border-border rounded-lg px-4 py-3 flex items-center gap-3"
               >
-                <div>
+                {/* Назва + код */}
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium text-foreground">{c.name}</span>
                     <span className="text-sm text-muted-foreground">
                       {c.code}
                       {c.symbol ? ` (${c.symbol})` : ''}
                     </span>
-                    {c.nbuFetchEnabled && (
-                      <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-primary/10 text-primary">
-                        НБУ
-                        {c.nbuMarkupPercent ? ` +${c.nbuMarkupPercent}%` : ''}
-                      </span>
-                    )}
                   </div>
                   {c.fullName && (
                     <p className="text-xs text-muted-foreground mt-0.5">{c.fullName}</p>
                   )}
                 </div>
-                <div className="flex gap-2">
+
+                {/* НБУ галка + відсоток */}
+                <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={c.nbuFetchEnabled}
+                    onChange={e =>
+                      patchCurrencyNbu(c.id, e.target.checked, c.nbuMarkupPercent ?? null)
+                    }
+                    className="h-4 w-4 rounded border-border accent-primary"
+                  />
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">НБУ</span>
+                </label>
+                <div className="flex items-center gap-1 shrink-0">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.01}
+                    disabled={!c.nbuFetchEnabled}
+                    defaultValue={c.nbuMarkupPercent ?? ''}
+                    placeholder="0"
+                    onBlur={e => {
+                      const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                      if (val !== c.nbuMarkupPercent) {
+                        void patchCurrencyNbu(c.id, c.nbuFetchEnabled, val);
+                      }
+                    }}
+                    className="w-16 px-2 py-1 text-xs border border-border rounded bg-input text-foreground disabled:opacity-40 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  />
+                  <span className="text-xs text-muted-foreground">%</span>
+                </div>
+
+                {/* Кнопки */}
+                <div className="flex gap-2 shrink-0">
                   <button
                     aria-label="Редагувати валюту"
                     onClick={() => openCurrencyModal(c)}
