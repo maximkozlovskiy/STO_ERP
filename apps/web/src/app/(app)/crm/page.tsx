@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
+import { TableContainer } from '@/components/ui/table-container';
 import {
   COUNTERPARTY_PANEL_SCHEMA,
   buildPanelFields,
@@ -779,7 +780,7 @@ export default function CrmPage() {
 
       {/* Table + DetailPanel */}
       <div className="flex flex-1 min-h-0">
-        <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+        <TableContainer>
           <Table>
             <TableHeader>
               <TableRow>
@@ -958,7 +959,7 @@ export default function CrmPage() {
                 })}
             </TableBody>
           </Table>
-        </div>
+        </TableContainer>
 
         <DetailPanel
           open={!!selectedCp && detailPanel.enabled}

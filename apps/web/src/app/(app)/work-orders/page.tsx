@@ -41,6 +41,7 @@ import {
 import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
+import { TableContainer } from '@/components/ui/table-container';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import {
@@ -689,7 +690,7 @@ export default function WorkOrdersPage() {
 
       {/* Table + DetailPanel */}
       <div className="flex flex-1 min-h-0">
-        <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
+        <TableContainer>
           <Table>
             <TableHeader>
               <TableRow>
@@ -972,7 +973,7 @@ export default function WorkOrdersPage() {
                 ))}
             </TableBody>
           </Table>
-        </div>
+        </TableContainer>
 
         {(() => {
           const buildWOTabs = (wo: WorkOrder): DetailPanelTab[] => [
