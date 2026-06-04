@@ -427,7 +427,7 @@ function InfrastructurePageClient() {
 
         {/* BRANCHES */}
         {!loading && tab === 'branches' && (
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -483,7 +483,7 @@ function InfrastructurePageClient() {
 
         {/* ZONES */}
         {!loading && tab === 'zones' && (
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -547,7 +547,7 @@ function InfrastructurePageClient() {
 
         {/* LIFTS */}
         {!loading && tab === 'lifts' && (
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -595,7 +595,7 @@ function InfrastructurePageClient() {
 
         {/* WAREHOUSES */}
         {!loading && tab === 'warehouses' && (
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="bg-surface rounded-xl border border-border overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>
