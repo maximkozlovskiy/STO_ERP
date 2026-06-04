@@ -255,13 +255,10 @@ th[data-dragover="true"] {
   margin-bottom: -0.25rem;
 }
 
-/* Таблиця-контейнер: overflow-auto + rounded-xl разом не кліпують кути.
-   contain:paint створює paint containment — браузер не малює вміст поза межами
-   елементу (включаючи border-radius), не блокуючи overflow-scroll.
-   Застосовується до будь-якого rounded-xl всередині page-fill. */
-.page-fill .rounded-xl {
-  contain: paint;
-}
+/* Таблиця-контейнер: overflow-auto + rounded-xl — кути кліпуються через
+   overflow:clip на ::before псевдо або просто через overflow:hidden на самому
+   rounded-xl. contain:paint було прибрано бо воно створює stacking context
+   що ламає position:sticky на thead всередині scroll-контейнера. */
 
 .page-title {
   font-size: var(--font-size-xl);
