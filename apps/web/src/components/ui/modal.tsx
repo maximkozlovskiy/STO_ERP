@@ -16,6 +16,7 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   size?: ModalSize;
+  minHeight?: number | string;
   className?: string;
   hideClose?: boolean;
 }
@@ -119,6 +120,7 @@ export function Modal({
   children,
   footer,
   size = 'md',
+  minHeight,
   className,
   hideClose,
 }: ModalProps) {
@@ -174,6 +176,7 @@ export function Modal({
         )}
         style={{
           maxWidth: sizeWidths[size],
+          minHeight: minHeight ?? undefined,
           transition: `max-width 280ms ${TRANSITION}`,
         }}
       >
