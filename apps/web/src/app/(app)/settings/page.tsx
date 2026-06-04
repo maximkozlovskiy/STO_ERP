@@ -1477,7 +1477,17 @@ function SettingsPageClient() {
                     type="button"
                     role="radio"
                     aria-checked={selected}
-                    onClick={() => setOrgSettings({ ...orgSettings, costMethod: value })}
+                    onClick={async () => {
+                      if (selected) return;
+                      const ok = await confirm({
+                        title: 'Змінити метод списання партій?',
+                        message: `Зміна з ${COST_METHOD_OPTIONS.find(o => o.value === orgSettings.costMethod)?.label ?? orgSettings.costMethod} на ${label} вплине на всі майбутні списання запчастин у нарядах. Поточні залишки та вже закриті наряди не змінюються, але собівартість нових нарядів буде розраховуватись за новим методом. Переконайтеся, що ви розумієте наслідки для фінансової звітності.`,
+                        confirmLabel: `Так, змінити на ${label}`,
+                        variant: 'destructive',
+                      });
+                      if (!ok) return;
+                      setOrgSettings({ ...orgSettings, costMethod: value });
+                    }}
                     className={cn(
                       'flex-1 min-w-40 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors text-left',
                       selected
