@@ -1405,6 +1405,7 @@ model OrganisationSettings {
   costMethod            BatchCostMethod @default(FIFO)
   followUpActive        Boolean         @default(false)
   followUpDays          Int             @default(90)
+  nbuFetchHour          Int             @default(12)
   uiFeatures            Json            @default("{}")
   // B4: Loyalty program settings
   loyaltyEnabled        Boolean         @default(false)
@@ -1976,6 +1977,8 @@ model Currency {
   internationalName String?
   code              String
   symbol            String?
+  nbuFetchEnabled   Boolean  @default(false)
+  nbuMarkupPercent  Decimal? @db.Decimal(6, 2)
   syncVersion       BigInt    @default(0)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

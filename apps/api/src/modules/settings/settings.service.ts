@@ -3,6 +3,7 @@ import type Redis from 'ioredis';
 import { VatMode, BatchCostMethod, DocumentType, ResetPeriod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
+import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
 import {
   BranchSettingsResponseDto,
   OrganisationResponseDto,
@@ -21,6 +22,7 @@ export class SettingsService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly nbuFetchScheduler: NbuFetchScheduler,
   ) {}
 
   async getOrganisationSettings(orgId: string): Promise<OrganisationSettingsResponseDto> {
@@ -78,6 +80,11 @@ export class SettingsService {
     });
 
     await this.invalidateOrgCache(orgId);
+
+    // Reschedule NBU fetch cron if hour changed
+    if (dto.nbuFetchHour !== undefined) {
+      await this.nbuFetchScheduler.rescheduleForOrg(orgId, dto.nbuFetchHour);
+    }
 
     return this.mapOrgSettings(settings);
   }
@@ -200,6 +207,7 @@ export class SettingsService {
     costMethod: BatchCostMethod;
     followUpActive: boolean;
     followUpDays: number;
+    nbuFetchHour: number;
     uiFeatures: unknown;
     loyaltyEnabled: boolean;
     loyaltyEarnPer: { toNumber(): number } | number;
@@ -223,6 +231,7 @@ export class SettingsService {
       costMethod: s.costMethod,
       followUpActive: s.followUpActive,
       followUpDays: s.followUpDays,
+      nbuFetchHour: s.nbuFetchHour,
       uiFeatures: this.parseUiFeatures(s.uiFeatures),
       loyaltyEnabled: s.loyaltyEnabled,
       loyaltyEarnPer: toNum(s.loyaltyEarnPer),

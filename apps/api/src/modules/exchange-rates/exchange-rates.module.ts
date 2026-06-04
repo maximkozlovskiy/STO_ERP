@@ -1,10 +1,15 @@
+import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
 import { ExchangeRatesController } from './exchange-rates.controller';
 import { ExchangeRatesService } from './exchange-rates.service';
+import { NbuFetchProcessor } from './nbu-fetch.processor';
+import { NbuFetchScheduler } from './nbu-fetch.scheduler';
+import { NbuFetchService } from './nbu-fetch.service';
 
 @Module({
+  imports: [BullModule.registerQueue({ name: 'nbu-fetch' })],
   controllers: [ExchangeRatesController],
-  providers: [ExchangeRatesService],
-  exports: [ExchangeRatesService],
+  providers: [ExchangeRatesService, NbuFetchService, NbuFetchScheduler, NbuFetchProcessor],
+  exports: [ExchangeRatesService, NbuFetchScheduler],
 })
 export class ExchangeRatesModule {}

@@ -112,6 +112,8 @@ export class CurrenciesService {
     internationalName: string | null;
     code: string;
     symbol: string | null;
+    nbuFetchEnabled: boolean;
+    nbuMarkupPercent: import('@prisma/client').Prisma.Decimal | null;
     createdAt: Date;
     updatedAt: Date;
   }): CurrencyResponseDto {
@@ -123,6 +125,8 @@ export class CurrenciesService {
       internationalName: item.internationalName,
       code: item.code,
       symbol: item.symbol,
+      nbuFetchEnabled: item.nbuFetchEnabled,
+      nbuMarkupPercent: item.nbuMarkupPercent != null ? Number(item.nbuMarkupPercent) : null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

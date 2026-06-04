@@ -18,6 +18,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { ExchangeRatesService } from './exchange-rates.service';
+import { NbuFetchScheduler } from './nbu-fetch.scheduler';
 import { CreateExchangeRateDto, UpdateExchangeRateDto } from './exchange-rates.dto';
 
 @ApiTags('Курси валют')
@@ -25,7 +26,10 @@ import { CreateExchangeRateDto, UpdateExchangeRateDto } from './exchange-rates.d
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class ExchangeRatesController {
-  constructor(private readonly service: ExchangeRatesService) {}
+  constructor(
+    private readonly service: ExchangeRatesService,
+    private readonly nbuFetchScheduler: NbuFetchScheduler,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'STOREKEEPER', 'RECEPTIONIST')
@@ -73,5 +77,13 @@ export class ExchangeRatesController {
   @ApiOperation({ summary: 'Видалити курс (soft delete)' })
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
+  }
+
+  @Post('nbu-fetch')
+  @Roles('OWNER', 'ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Завантажити курси НБУ зараз (ставить у чергу)' })
+  triggerNbuFetch(@OrgContext() orgId: string) {
+    return this.nbuFetchScheduler.enqueueImmediate(orgId);
   }
 }

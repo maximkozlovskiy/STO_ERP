@@ -114,6 +114,17 @@ export class UpdateOrganisationSettingsDto {
   @Max(365)
   followUpDays?: number;
 
+  @ApiPropertyOptional({
+    description: 'Година автозавантаження курсів НБУ (0–23)',
+    minimum: 0,
+    maximum: 23,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  nbuFetchHour?: number;
+
   @ApiPropertyOptional({ description: 'UI feature flags (partial update supported)' })
   @IsOptional()
   @IsObject()
@@ -222,6 +233,7 @@ export class OrganisationSettingsResponseDto {
   @ApiProperty({ enum: BatchCostMethod }) costMethod!: BatchCostMethod;
   @ApiProperty() followUpActive!: boolean;
   @ApiProperty() followUpDays!: number;
+  @ApiProperty({ description: 'Година автозавантаження курсів НБУ (0–23)' }) nbuFetchHour!: number;
   @ApiProperty({ description: 'UI feature flags' }) uiFeatures!: UiFeatures;
   // B4: Loyalty
   @ApiProperty() loyaltyEnabled!: boolean;

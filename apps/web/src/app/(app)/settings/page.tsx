@@ -66,6 +66,7 @@ interface OrgSettings {
   costMethod: CostMethod;
   followUpActive?: boolean;
   followUpDays?: number;
+  nbuFetchHour?: number;
   uiFeatures?: UiFeatures;
   loyaltyEnabled?: boolean;
   loyaltyEarnPer?: number;
@@ -149,6 +150,8 @@ interface Currency {
   symbol?: string | null;
   fullName?: string | null;
   internationalName?: string | null;
+  nbuFetchEnabled: boolean;
+  nbuMarkupPercent?: number | null;
 }
 interface ExchangeRate {
   id: string;
@@ -293,6 +296,8 @@ function SettingsPageClient() {
     symbol: '',
     fullName: '',
     internationalName: '',
+    nbuFetchEnabled: false,
+    nbuMarkupPercent: '',
   });
   const [currencyErrors, setCurrencyErrors] = useState<{ name?: string; code?: string }>({});
   const [savingCurrency, setSavingCurrency] = useState(false);
@@ -318,6 +323,7 @@ function SettingsPageClient() {
   }>({});
   const [savingRate, setSavingRate] = useState(false);
   const [loadingRates, setLoadingRates] = useState(false);
+  const [fetchingNbu, setFetchingNbu] = useState(false);
 
   // Bank accounts state
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
@@ -929,8 +935,18 @@ function SettingsPageClient() {
             symbol: c.symbol ?? '',
             fullName: c.fullName ?? '',
             internationalName: c.internationalName ?? '',
+            nbuFetchEnabled: c.nbuFetchEnabled ?? false,
+            nbuMarkupPercent: c.nbuMarkupPercent != null ? String(c.nbuMarkupPercent) : '',
           }
-        : { name: '', code: '', symbol: '', fullName: '', internationalName: '' },
+        : {
+            name: '',
+            code: '',
+            symbol: '',
+            fullName: '',
+            internationalName: '',
+            nbuFetchEnabled: false,
+            nbuMarkupPercent: '',
+          },
     );
     setCurrencyModal(true);
   };
@@ -953,6 +969,11 @@ function SettingsPageClient() {
         symbol: currencyForm.symbol.trim() || undefined,
         fullName: currencyForm.fullName.trim() || undefined,
         internationalName: currencyForm.internationalName.trim() || undefined,
+        nbuFetchEnabled: currencyForm.nbuFetchEnabled,
+        nbuMarkupPercent:
+          currencyForm.nbuFetchEnabled && currencyForm.nbuMarkupPercent !== ''
+            ? parseFloat(currencyForm.nbuMarkupPercent)
+            : null,
       };
       if (editingCurrency) {
         const updated = await apiFetch<Currency>(`/currencies/${editingCurrency.id}`, {
@@ -1090,6 +1111,50 @@ function SettingsPageClient() {
       setExchangeRates(prev => prev.filter(r => r.id !== id));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
+    }
+  };
+
+  // ─── NBU fetch handlers ────────────────────────────────────────────────────
+
+  const saveNbuFetchHour = async () => {
+    if (!orgSettings) return;
+    setSaving(true);
+    setMsg('');
+    setError('');
+    try {
+      const updated = await apiFetch<OrgSettings>('/settings/organisation', {
+        method: 'PATCH',
+        body: JSON.stringify({ nbuFetchHour: orgSettings.nbuFetchHour ?? 12 }),
+      });
+      setOrgSettings(updated);
+      if (currentFeatures.toastEnabled) toast.success('Час завантаження збережено');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка збереження';
+      setError(msg);
+      if (currentFeatures.toastEnabled) toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const triggerNbuFetch = async () => {
+    setFetchingNbu(true);
+    setError('');
+    try {
+      await apiFetch('/exchange-rates/nbu-fetch', { method: 'POST' });
+      if (currentFeatures.toastEnabled) toast.success('Завантаження курсів НБУ поставлено в чергу');
+      // Reload rates after 3s to show newly fetched data
+      setTimeout(() => {
+        void apiFetch<{ items: ExchangeRate[] }>('/exchange-rates').then(r =>
+          setExchangeRates(r.items),
+        );
+      }, 3_000);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка запуску завантаження';
+      setError(msg);
+      if (currentFeatures.toastEnabled) toast.error(msg);
+    } finally {
+      setFetchingNbu(false);
     }
   };
 
@@ -1731,11 +1796,19 @@ function SettingsPageClient() {
                 className="bg-surface border border-border rounded-lg px-4 py-3 flex items-center justify-between"
               >
                 <div>
-                  <span className="font-medium text-foreground">{c.name}</span>
-                  <span className="ml-2 text-sm text-muted-foreground">
-                    {c.code}
-                    {c.symbol ? ` (${c.symbol})` : ''}
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-foreground">{c.name}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {c.code}
+                      {c.symbol ? ` (${c.symbol})` : ''}
+                    </span>
+                    {c.nbuFetchEnabled && (
+                      <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-primary/10 text-primary">
+                        НБУ
+                        {c.nbuMarkupPercent ? ` +${c.nbuMarkupPercent}%` : ''}
+                      </span>
+                    )}
+                  </div>
                   {c.fullName && (
                     <p className="text-xs text-muted-foreground mt-0.5">{c.fullName}</p>
                   )}
@@ -1765,6 +1838,50 @@ function SettingsPageClient() {
       {/* ─── Exchange Rates ──────────────────────────────────────────────────── */}
       {tab === 'exchange-rates' && (
         <div className="space-y-4">
+          {/* NBU auto-fetch controls */}
+          {orgSettings && (
+            <div className="bg-surface border border-border rounded-lg px-4 py-3 space-y-3">
+              <p className="text-sm font-medium text-foreground">Автозавантаження курсів НБУ</p>
+              <div className="flex items-end gap-3 flex-wrap">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Година завантаження (0–23)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    step={1}
+                    value={orgSettings.nbuFetchHour ?? 12}
+                    onChange={e =>
+                      setOrgSettings({
+                        ...orgSettings,
+                        nbuFetchHour: Math.max(0, Math.min(23, Math.floor(Number(e.target.value)))),
+                      })
+                    }
+                    className="w-20 px-3 py-2 text-sm border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Щодня о {orgSettings.nbuFetchHour ?? 12}:00 (за Києвом)
+                  </p>
+                </div>
+                <div className="flex gap-2 pb-6">
+                  <Button size="sm" onClick={saveNbuFetchHour} loading={saving}>
+                    Зберегти час
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    loading={fetchingNbu}
+                    onClick={triggerNbuFetch}
+                  >
+                    Завантажити зараз
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end">
             <Button onClick={() => openRateModal()}>
               <Plus className="w-4 h-4 mr-1" />
@@ -2911,6 +3028,35 @@ function SettingsPageClient() {
             value={currencyForm.fullName}
             onChange={e => setCurrencyForm({ ...currencyForm, fullName: e.target.value })}
           />
+          {/* NBU fetch settings */}
+          <div className="flex items-center justify-between pt-2 border-t border-border">
+            <div>
+              <p className="text-sm font-medium text-foreground">Завантажувати курс з НБУ</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Автоматично підтягувати офіційний курс щодня
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={currencyForm.nbuFetchEnabled}
+              onChange={e =>
+                setCurrencyForm({ ...currencyForm, nbuFetchEnabled: e.target.checked })
+              }
+              className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+            />
+          </div>
+          {currencyForm.nbuFetchEnabled && (
+            <Input
+              label="Відсоток нарахування (%)"
+              type="number"
+              min={0}
+              max={100}
+              step={0.01}
+              value={currencyForm.nbuMarkupPercent}
+              onChange={e => setCurrencyForm({ ...currencyForm, nbuMarkupPercent: e.target.value })}
+              placeholder="0.00"
+            />
+          )}
         </div>
       </Modal>
 

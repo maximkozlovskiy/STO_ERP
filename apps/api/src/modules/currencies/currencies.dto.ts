@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class CreateCurrencyDto {
   @ApiProperty({ example: 'Гривня' })
@@ -26,6 +26,22 @@ export class CreateCurrencyDto {
   @IsOptional()
   @IsString()
   symbol?: string;
+
+  @ApiPropertyOptional({ description: 'Завантажувати курс з НБУ автоматично' })
+  @IsOptional()
+  @IsBoolean()
+  nbuFetchEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Відсоток нарахування до курсу НБУ (0–100)',
+    minimum: 0,
+    maximum: 100,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  nbuMarkupPercent?: number | null;
 }
 
 export class UpdateCurrencyDto {
@@ -55,6 +71,22 @@ export class UpdateCurrencyDto {
   @IsOptional()
   @IsString()
   symbol?: string;
+
+  @ApiPropertyOptional({ description: 'Завантажувати курс з НБУ автоматично' })
+  @IsOptional()
+  @IsBoolean()
+  nbuFetchEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Відсоток нарахування до курсу НБУ (0–100)',
+    minimum: 0,
+    maximum: 100,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  nbuMarkupPercent?: number | null;
 }
 
 export class CurrencyResponseDto {
@@ -65,6 +97,8 @@ export class CurrencyResponseDto {
   @ApiPropertyOptional() internationalName?: string | null;
   @ApiProperty() code!: string;
   @ApiPropertyOptional() symbol?: string | null;
+  @ApiProperty() nbuFetchEnabled!: boolean;
+  @ApiPropertyOptional() nbuMarkupPercent?: number | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }
