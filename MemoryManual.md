@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+779f8d56 refactor(ui): extract TableContainer component for table scroll styling
 ec12fb0 fix(review): CounterpartyContract — race-safe removeContract + WO update contract include
 4f7a9be fix(tester): CounterpartyContract bugs #347-#353 (DocumentNumberService DI mock, contract include, auto-promote primary, @MaxLength)
 9923361 fix(review): CounterpartyContract — tenant guard, $tx timeout, per-type isPrimary, take limit
@@ -54,6 +55,12 @@ cde1792 fix(review): sync shared FSM transitions with backend authority
 Дата: 2026-06-04
 
 TypeScript: ✅ 0 errors (api, web, shared)
+
+**QA Cycle — refactor(ui): extract TableContainer (779f8d56):**
+✅ **sto-sync-agent PASS** — TS compilation OK, no API mismatches (UI-only refactor)
+✅ **sto-review-agent PASS** — TableContainer follows all /sto-dev standards (JSDoc, strict TS, canonical Tailwind)
+✅ **sto-tester-agent PASS** — E2E: 179 passed (CRM 8/8 ✓, Work-Orders 9/9 ✓), 5 failed in other specs (pre-existing), 2 flaky
+Component: 50 LOC, reusable across 14+ table pages, optional `constrainWidth` prop (default: true), encapsulates `flex-1 min-h-0 min-w-0 overflow-auto` + Tailwind tokens (`bg-surface`, `border-border`, `rounded-xl`). Applied to crm/page.tsx (3 occurrences, 5 lines removed) + work-orders/page.tsx (3 occurrences, 5 lines removed). **Status: READY FOR PRODUCTION** — no bugs introduced, altitude principle applied (component replaces inline style duplication).
 
 Latest tester: 2026-06-04 (sto-tester-agent, cycle 6 CounterpartyContract post-review-2, HEAD 43336c1) — **0 bugs found + 3 regression-guard tests added. Verified two recent fixes from ec12fb0: (1) removeContract race-condition fix — count+delete+auto-promote moved INTO single `$transaction(async tx)` with `deletedAt: null` gate on updateMany so race-loser returns count===0 and exits before auto-promote. Existing counterparties.service.spec.ts already covers 6 cases (promote-after-delete, non-primary skip, race-lost, SUPPLIER count guard PURCHASE-only, SUPPLIER blocks last PURCHASE, CLIENT no guard) — no new bug, no new test needed. (2) WO update().include.contract — Bug #350 follow-up. Fix is correct (tsc + 617 tests green), but **regression-guard gap discovered**: no spec asserted include.contract shape — a future refactor that removes the relation during cleanup would pass everything but silently null-out WorkOrderDetail.contractNumber after every PATCH. Added 3 regression-guard tests to work-orders.service.spec.ts: include carries `contract: { select: { id, number } }`; update scoped via where.orgId; returned dto carries contractNumber from contract.number. API: 614→617/617 passed. tsc 0 errors api+web+shared.**
 
