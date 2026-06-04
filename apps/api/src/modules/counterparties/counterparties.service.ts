@@ -392,34 +392,41 @@ export class CounterpartiesService {
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     if (!contract) throw new NotFoundException('Договір не знайдено');
 
-    // Bug #352: count only PURCHASE contracts for SUPPLIER guard (defensive
-    // against future contract types being added). For SUPPLIER, the invariant
-    // is "at least one PURCHASE contract must exist".
-    if (cp.type === CounterpartyType.SUPPLIER) {
-      const purchaseCount = await this.prisma.counterpartyContract.count({
-        where: {
-          counterpartyId,
-          orgId,
-          deletedAt: null,
-          contractType: ContractType.PURCHASE,
-        },
-      });
-      if (purchaseCount <= 1) {
-        throw new BadRequestException('Постачальник повинен мати хоча б один договір');
-      }
-    }
-
-    // Bug #351: if deleting a primary contract, auto-promote the next remaining
-    // contract of the same type to primary. Otherwise the counterparty would be
-    // left without a primary contract for that type — breaking the invariant
-    // used by WorkOrder/PurchaseOrder auto-selection.
+    // Bug #351 + #352: do guard + soft-delete + auto-promote atomically.
+    // Counting OUTSIDE the transaction creates a race: two concurrent deletes
+    // both see count=2 and both proceed → SUPPLIER ends up with 0 contracts.
+    // Inside Serializable-default tx the second writer either sees the first
+    // delete (count drops to 1 → guard fires) or rolls back on conflict.
+    // Also gate the soft-delete on `deletedAt: null` so a re-delete after
+    // concurrent winner is a no-op (updateMany.count === 0) instead of
+    // resurrecting `deletedAt` timestamp and re-running auto-promote.
     await this.prisma.$transaction(
       async tx => {
-        await tx.counterpartyContract.updateMany({
-          where: { id: contractId, counterpartyId, orgId },
+        if (cp.type === CounterpartyType.SUPPLIER) {
+          const purchaseCount = await tx.counterpartyContract.count({
+            where: {
+              counterpartyId,
+              orgId,
+              deletedAt: null,
+              contractType: ContractType.PURCHASE,
+            },
+          });
+          if (purchaseCount <= 1) {
+            throw new BadRequestException('Постачальник повинен мати хоча б один договір');
+          }
+        }
+
+        const deleted = await tx.counterpartyContract.updateMany({
+          where: { id: contractId, counterpartyId, orgId, deletedAt: null },
           data: { deletedAt: new Date() },
         });
+        // Concurrent delete winner — nothing to promote, exit cleanly.
+        if (deleted.count === 0) return;
 
+        // Bug #351: if deleting a primary contract, auto-promote the next remaining
+        // contract of the same type to primary. Otherwise the counterparty would be
+        // left without a primary contract for that type — breaking the invariant
+        // used by WorkOrder/PurchaseOrder auto-selection.
         if (contract.isPrimary) {
           const next = await tx.counterpartyContract.findFirst({
             where: {

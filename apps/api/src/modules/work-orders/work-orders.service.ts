@@ -359,10 +359,14 @@ export class WorkOrdersService {
               : new Date(dto.dueDate),
         documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
       },
+      // Bug #350 follow-up: include contract so PATCH response carries contractNumber.
+      // Without it, frontend WorkOrderDetail.contractNumber stays null after edits
+      // (description/mileage/priority…) → contract row in UI disappears on save.
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         branch: { select: { name: true } },
+        contract: { select: { id: true, number: true } },
       },
     });
 

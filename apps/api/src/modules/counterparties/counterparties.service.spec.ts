@@ -278,11 +278,12 @@ describe('CounterpartiesService — contract flows', () => {
         contractType: 'PURCHASE',
         isPrimary: true,
       });
-      prisma.counterpartyContract.count.mockResolvedValueOnce(2); // >1 → проходить guard
 
-      // Mock $transaction для callback-style з власним tx
+      // Mock $transaction для callback-style з власним tx — після Bug-#352-race-fix
+      // count() рахується ВСЕРЕДИНІ tx (атомарно), тому mock йде через txInner.
       const txInner = {
         counterpartyContract: {
+          count: vi.fn().mockResolvedValue(2), // >1 → проходить SUPPLIER guard
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
           findFirst: vi.fn().mockResolvedValue({ id: 'con-next' }),
           update: vi.fn().mockResolvedValue({}),
@@ -292,10 +293,10 @@ describe('CounterpartiesService — contract flows', () => {
 
       await service.removeContract('org-1', 'cp-1', 'con-old');
 
-      // soft-delete викликано
+      // soft-delete викликано (з deletedAt:null guard для idempotency під race)
       expect(txInner.counterpartyContract.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'con-old', counterpartyId: 'cp-1', orgId: 'org-1' },
+          where: { id: 'con-old', counterpartyId: 'cp-1', orgId: 'org-1', deletedAt: null },
           data: { deletedAt: expect.any(Date) },
         }),
       );
@@ -328,10 +329,10 @@ describe('CounterpartiesService — contract flows', () => {
         contractType: 'PURCHASE',
         isPrimary: false,
       });
-      prisma.counterpartyContract.count.mockResolvedValueOnce(2);
 
       const txInner = {
         counterpartyContract: {
+          count: vi.fn().mockResolvedValue(2),
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
           findFirst: vi.fn(),
           update: vi.fn(),
@@ -344,22 +345,58 @@ describe('CounterpartiesService — contract flows', () => {
       expect(txInner.counterpartyContract.findFirst).not.toHaveBeenCalled();
       expect(txInner.counterpartyContract.update).not.toHaveBeenCalled();
     });
+
+    it('soft-delete вже втрачено race-партнером → exit без auto-promote', async () => {
+      // Bug #352 race-safety: якщо updateMany.count === 0 (другий writer виграв),
+      // tx виходить чисто і НЕ запускає auto-promote (інакше ми б промотували
+      // на основі stale `contract.isPrimary` що вже не актуальне).
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1', type: 'BOTH' });
+      prisma.counterpartyContract.findFirst.mockResolvedValueOnce({
+        id: 'con-1',
+        contractType: 'SALE',
+        isPrimary: true,
+      });
+
+      const txInner = {
+        counterpartyContract: {
+          count: vi.fn().mockResolvedValue(2),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }), // race lost
+          findFirst: vi.fn(),
+          update: vi.fn(),
+        },
+      };
+      prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
+
+      await service.removeContract('org-1', 'cp-1', 'con-1');
+
+      expect(txInner.counterpartyContract.updateMany).toHaveBeenCalled();
+      expect(txInner.counterpartyContract.findFirst).not.toHaveBeenCalled();
+      expect(txInner.counterpartyContract.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('removeContract — Bug #352: count тільки PURCHASE для SUPPLIER', () => {
-    it('SUPPLIER → count рахує ТІЛЬКИ contractType:PURCHASE', async () => {
+    it('SUPPLIER → count рахує ТІЛЬКИ contractType:PURCHASE (у TX, атомарно)', async () => {
       prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1', type: 'SUPPLIER' });
       prisma.counterpartyContract.findFirst.mockResolvedValueOnce({
         id: 'con-1',
         contractType: 'PURCHASE',
         isPrimary: false,
       });
-      prisma.counterpartyContract.count.mockResolvedValueOnce(2);
-      prisma.$transaction.mockImplementationOnce(async () => undefined);
+
+      const txInner = {
+        counterpartyContract: {
+          count: vi.fn().mockResolvedValue(2),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          findFirst: vi.fn(),
+          update: vi.fn(),
+        },
+      };
+      prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
 
       await service.removeContract('org-1', 'cp-1', 'con-1');
 
-      expect(prisma.counterpartyContract.count).toHaveBeenCalledWith({
+      expect(txInner.counterpartyContract.count).toHaveBeenCalledWith({
         where: {
           counterpartyId: 'cp-1',
           orgId: 'org-1',
@@ -376,11 +413,23 @@ describe('CounterpartiesService — contract flows', () => {
         contractType: 'PURCHASE',
         isPrimary: true,
       });
-      prisma.counterpartyContract.count.mockResolvedValueOnce(1);
+
+      // Bug-#352 race-fix: count() переїхав у tx. Прокидаємо у callback.
+      const txInner = {
+        counterpartyContract: {
+          count: vi.fn().mockResolvedValue(1), // = 1 → guard fires
+          updateMany: vi.fn(),
+          findFirst: vi.fn(),
+          update: vi.fn(),
+        },
+      };
+      prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
 
       await expect(service.removeContract('org-1', 'cp-1', 'con-1')).rejects.toThrow(
         /Постачальник повинен мати хоча б один договір/,
       );
+      // guard fired → жодного soft-delete не відбулось
+      expect(txInner.counterpartyContract.updateMany).not.toHaveBeenCalled();
     });
 
     it('CLIENT → не виконує count guard (договір не обов’язковий)', async () => {
@@ -392,6 +441,7 @@ describe('CounterpartiesService — contract flows', () => {
       });
       const txInner = {
         counterpartyContract: {
+          count: vi.fn(),
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
           findFirst: vi.fn(),
           update: vi.fn(),
@@ -400,6 +450,8 @@ describe('CounterpartiesService — contract flows', () => {
       prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
 
       await service.removeContract('org-1', 'cp-1', 'con-1');
+      // CLIENT never triggers count guard, ні на prisma, ні на tx
+      expect(txInner.counterpartyContract.count).not.toHaveBeenCalled();
       expect(prisma.counterpartyContract.count).not.toHaveBeenCalled();
     });
   });
