@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -217,6 +218,14 @@ export class UpdateBranchSettingsDto {
   @IsOptional()
   @IsString()
   smsSenderName?: string;
+
+  @ApiPropertyOptional({ description: 'Робочі дні тижня (0=нд, 1=пн, ..., 6=сб)', type: [Number] })
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(6, { each: true })
+  workDays?: number[];
 }
 
 export class OrganisationSettingsResponseDto {
