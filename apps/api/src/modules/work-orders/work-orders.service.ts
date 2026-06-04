@@ -227,9 +227,23 @@ export class WorkOrdersService {
     if (!vehicle) throw new NotFoundException('Автомобіль не знайдено');
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
-    // Auto-select primary SALE contract if not provided
+    // Auto-select primary SALE contract if not provided. When the client supplies
+    // a contractId, validate it belongs to the same org + counterparty + SALE type
+    // to prevent cross-tenant FK attacks (Bug review §2.2).
     let contractId = dto.contractId ?? null;
-    if (!contractId) {
+    if (contractId) {
+      const provided = await this.prisma.counterpartyContract.findFirst({
+        where: {
+          id: contractId,
+          orgId,
+          counterpartyId: dto.counterpartyId,
+          contractType: 'SALE',
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!provided) throw new NotFoundException('Договір не знайдено');
+    } else {
       const primaryContract = await this.prisma.counterpartyContract.findFirst({
         where: {
           counterpartyId: dto.counterpartyId,

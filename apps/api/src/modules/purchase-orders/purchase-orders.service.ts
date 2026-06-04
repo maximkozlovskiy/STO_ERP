@@ -154,9 +154,23 @@ export class PurchaseOrdersService {
     if (!supplier) throw new NotFoundException('Постачальника не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
 
-    // Auto-select primary PURCHASE contract if not provided
+    // Auto-select primary PURCHASE contract if not provided. When the client
+    // supplies a contractId, validate it belongs to the same org + supplier +
+    // PURCHASE type to prevent cross-tenant FK attacks (Bug review §2.2).
     let contractId = dto.contractId ?? null;
-    if (!contractId) {
+    if (contractId) {
+      const provided = await this.prisma.counterpartyContract.findFirst({
+        where: {
+          id: contractId,
+          orgId,
+          counterpartyId: dto.supplierId,
+          contractType: 'PURCHASE',
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!provided) throw new NotFoundException('Договір не знайдено');
+    } else {
       const primaryContract = await this.prisma.counterpartyContract.findFirst({
         where: {
           counterpartyId: dto.supplierId,

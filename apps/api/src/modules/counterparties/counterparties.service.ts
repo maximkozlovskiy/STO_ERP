@@ -237,9 +237,12 @@ export class CounterpartiesService {
         where: { id: counterpartyId, orgId, deletedAt: null },
         select: { id: true },
       }),
+      // Bug review: findMany without take is OOM risk. 200 is generous —
+      // realistic contract count per counterparty is <10.
       this.prisma.counterpartyContract.findMany({
         where: { counterpartyId, orgId, deletedAt: null },
         orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+        take: 200,
       }),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
@@ -251,13 +254,17 @@ export class CounterpartiesService {
     counterpartyId: string,
     dto: CreateContractDto,
   ): Promise<ContractResponseDto> {
-    const [cp, existingCount] = await Promise.all([
+    // Bug review: isPrimary is scoped PER contractType — a BOTH-type counterparty
+    // can have one primary PURCHASE and one primary SALE simultaneously. Previously
+    // the swap unset primary across both types, breaking the auto-PURCHASE invariant
+    // when a primary SALE was created.
+    const [cp, sameTypeCount] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
         select: { id: true, type: true },
       }),
       this.prisma.counterpartyContract.count({
-        where: { counterpartyId, orgId, deletedAt: null },
+        where: { counterpartyId, orgId, deletedAt: null, contractType: dto.contractType },
       }),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
@@ -265,29 +272,37 @@ export class CounterpartiesService {
 
     const number =
       dto.number ?? (await this.documentNumberService.next(orgId, 'COUNTERPARTY_AGREEMENT'));
-    const makePrimary = existingCount === 0 || dto.isPrimary === true;
+    const makePrimary = sameTypeCount === 0 || dto.isPrimary === true;
 
-    const contract = await this.prisma.$transaction(async tx => {
-      if (makePrimary) {
-        await tx.counterpartyContract.updateMany({
-          where: { counterpartyId, orgId, deletedAt: null },
-          data: { isPrimary: false },
+    const contract = await this.prisma.$transaction(
+      async tx => {
+        if (makePrimary) {
+          await tx.counterpartyContract.updateMany({
+            where: {
+              counterpartyId,
+              orgId,
+              deletedAt: null,
+              contractType: dto.contractType,
+            },
+            data: { isPrimary: false },
+          });
+        }
+        return tx.counterpartyContract.create({
+          data: {
+            orgId,
+            counterpartyId,
+            number,
+            contractType: dto.contractType,
+            startDate: new Date(dto.startDate),
+            endDate: dto.endDate ? new Date(dto.endDate) : null,
+            isPrimary: makePrimary,
+            creditLimit: dto.creditLimit ?? null,
+            paymentDeferDays: dto.paymentDeferDays ?? null,
+          },
         });
-      }
-      return tx.counterpartyContract.create({
-        data: {
-          orgId,
-          counterpartyId,
-          number,
-          contractType: dto.contractType,
-          startDate: new Date(dto.startDate),
-          endDate: dto.endDate ? new Date(dto.endDate) : null,
-          isPrimary: makePrimary,
-          creditLimit: dto.creditLimit ?? null,
-          paymentDeferDays: dto.paymentDeferDays ?? null,
-        },
-      });
-    });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
     return this.toContractDto(contract);
   }
 
@@ -313,26 +328,41 @@ export class CounterpartiesService {
       this.validateContractType(cp.type, dto.contractType);
     }
 
-    const updated = await this.prisma.$transaction(async tx => {
-      if (dto.isPrimary === true) {
-        await tx.counterpartyContract.updateMany({
-          where: { counterpartyId, orgId, deletedAt: null, id: { not: contractId } },
-          data: { isPrimary: false },
+    // Bug review: scope isPrimary swap to SAME contractType only — otherwise
+    // setting a SALE contract as primary unsets primary on PURCHASE contracts.
+    const swapType = dto.contractType ?? contract.contractType;
+
+    const updated = await this.prisma.$transaction(
+      async tx => {
+        if (dto.isPrimary === true) {
+          await tx.counterpartyContract.updateMany({
+            where: {
+              counterpartyId,
+              orgId,
+              deletedAt: null,
+              contractType: swapType,
+              id: { not: contractId },
+            },
+            data: { isPrimary: false },
+          });
+        }
+        return tx.counterpartyContract.update({
+          where: { id: contractId, orgId },
+          data: {
+            ...(dto.number !== undefined && { number: dto.number }),
+            ...(dto.contractType !== undefined && { contractType: dto.contractType }),
+            ...(dto.startDate !== undefined && { startDate: new Date(dto.startDate) }),
+            ...(dto.endDate !== undefined && {
+              endDate: dto.endDate ? new Date(dto.endDate) : null,
+            }),
+            ...(dto.isPrimary !== undefined && { isPrimary: dto.isPrimary }),
+            ...(dto.creditLimit !== undefined && { creditLimit: dto.creditLimit }),
+            ...(dto.paymentDeferDays !== undefined && { paymentDeferDays: dto.paymentDeferDays }),
+          },
         });
-      }
-      return tx.counterpartyContract.update({
-        where: { id: contractId, orgId },
-        data: {
-          ...(dto.number !== undefined && { number: dto.number }),
-          ...(dto.contractType !== undefined && { contractType: dto.contractType }),
-          ...(dto.startDate !== undefined && { startDate: new Date(dto.startDate) }),
-          ...(dto.endDate !== undefined && { endDate: dto.endDate ? new Date(dto.endDate) : null }),
-          ...(dto.isPrimary !== undefined && { isPrimary: dto.isPrimary }),
-          ...(dto.creditLimit !== undefined && { creditLimit: dto.creditLimit }),
-          ...(dto.paymentDeferDays !== undefined && { paymentDeferDays: dto.paymentDeferDays }),
-        },
-      });
-    });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
     return this.toContractDto(updated);
   }
 
