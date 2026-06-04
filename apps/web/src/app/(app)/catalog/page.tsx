@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useRequireAuth } from '@/lib/auth';
 import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 
 const WorksTab = dynamic(() => import('./WorksTab'), { ssr: false });
 const GoodsTab = dynamic(() => import('./GoodsTab'), { ssr: false });
@@ -48,15 +49,24 @@ function CatalogPageClient() {
 
   return (
     <div className="page-fill p-4 md:p-6">
-      <h1 className="page-title shrink-0">Каталог</h1>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Каталог</h1>
+        </div>
+      </div>
 
-      <div className="flex gap-1 bg-secondary rounded-lg p-1 w-fit shrink-0">
+      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
         {TABS.map(t => (
           <button
             key={t.key}
             onMouseEnter={() => PRELOAD_MAP[t.key]?.()}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded-md text-[13px] font-medium transition-colors ${tab === t.key ? 'bg-surface text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
+              tab === t.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
           >
             {t.label}
           </button>
