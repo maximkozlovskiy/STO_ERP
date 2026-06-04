@@ -204,6 +204,15 @@ export default function CrmPage() {
   const [modalContractsLoading, setModalContractsLoading] = useState(false);
   const [contractsError, setContractsError] = useState('');
   const modalContractsReqRef = useRef(0);
+  const [showAddContract, setShowAddContract] = useState(false);
+  const [addingContract, setAddingContract] = useState(false);
+  const [addContractForm, setAddContractForm] = useState({
+    contractType: '',
+    startDate: '',
+    endDate: '',
+    creditLimit: '',
+    paymentDeferDays: '',
+  });
 
   // ── Column visibility ────────────────────────────────────────────────────────
   const CRM_COLUMNS = useMemo(
@@ -400,6 +409,14 @@ export default function CrmPage() {
     setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' });
     setModalWorkOrders([]);
     setModalContracts([]);
+    setShowAddContract(false);
+    setAddContractForm({
+      contractType: '',
+      startDate: '',
+      endDate: '',
+      creditLimit: '',
+      paymentDeferDays: '',
+    });
     setVehiclesError('');
     setWoError('');
     setContractsError('');
@@ -1299,51 +1316,228 @@ export default function CrmPage() {
             {modalContractsLoading && (
               <div className="py-8 text-center text-sm text-muted-foreground">Завантаження...</div>
             )}
-            {!modalContractsLoading && !contractsError && modalContracts.length === 0 && (
-              <p className="text-[13px] text-muted-foreground text-center py-8">Договорів немає</p>
-            )}
-            {!modalContractsLoading && !contractsError && modalContracts.length > 0 && (
-              <div className="rounded-xl border border-border overflow-hidden">
-                <table className="w-full text-[13px]">
-                  <thead className="bg-secondary border-b border-border">
-                    <tr>
-                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                        Номер
-                      </th>
-                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Тип</th>
-                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                        Початок
-                      </th>
-                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                        Завершення
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {modalContracts.map(c => (
-                      <tr key={c.id} className="bg-surface hover:bg-secondary/50 transition-colors">
-                        <td className="px-3 py-2 font-medium text-foreground">
-                          <span className="flex items-center gap-1.5">
-                            {c.number}
-                            {c.isPrimary && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary">
-                                Головний
+            {!modalContractsLoading && !contractsError && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] text-muted-foreground">
+                    {modalContracts.length} договор{modalContracts.length === 1 ? '' : 'ів'}
+                  </span>
+                  {!showAddContract && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      leftIcon={<Plus className="h-3.5 w-3.5" />}
+                      onClick={() => setShowAddContract(true)}
+                    >
+                      Додати договір
+                    </Button>
+                  )}
+                </div>
+
+                {showAddContract && (
+                  <AnimatedBody className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      {editingCp.type === 'BOTH' && (
+                        <div className="col-span-2">
+                          <label className="text-xs text-muted-foreground mb-1 block">
+                            Тип договору <span className="text-destructive">*</span>
+                          </label>
+                          <Select
+                            value={addContractForm.contractType}
+                            onChange={e =>
+                              setAddContractForm(f => ({ ...f, contractType: e.target.value }))
+                            }
+                          >
+                            <option value="">Оберіть тип</option>
+                            <option value="PURCHASE">Купівля</option>
+                            <option value="SALE">Продаж</option>
+                          </Select>
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Дата початку <span className="text-destructive">*</span>
+                        </label>
+                        <Input
+                          type="date"
+                          value={addContractForm.startDate}
+                          onChange={e =>
+                            setAddContractForm(f => ({ ...f, startDate: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Дата завершення
+                        </label>
+                        <Input
+                          type="date"
+                          value={addContractForm.endDate}
+                          onChange={e =>
+                            setAddContractForm(f => ({ ...f, endDate: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Кредитний ліміт (₴)
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={addContractForm.creditLimit}
+                          onChange={e =>
+                            setAddContractForm(f => ({ ...f, creditLimit: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Відтермінування (днів)
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={addContractForm.paymentDeferDays}
+                          onChange={e =>
+                            setAddContractForm(f => ({ ...f, paymentDeferDays: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setShowAddContract(false);
+                          setAddContractForm({
+                            contractType: '',
+                            startDate: '',
+                            endDate: '',
+                            creditLimit: '',
+                            paymentDeferDays: '',
+                          });
+                        }}
+                      >
+                        Скасувати
+                      </Button>
+                      <Button
+                        size="sm"
+                        loading={addingContract}
+                        disabled={
+                          !addContractForm.startDate ||
+                          (editingCp.type === 'BOTH' && !addContractForm.contractType)
+                        }
+                        onClick={async () => {
+                          setAddingContract(true);
+                          setContractsError('');
+                          try {
+                            const resolvedType =
+                              editingCp.type === 'CLIENT'
+                                ? 'SALE'
+                                : editingCp.type === 'SUPPLIER'
+                                  ? 'PURCHASE'
+                                  : addContractForm.contractType;
+                            const created = await apiFetch<ModalContract>(
+                              `/counterparties/${editingCp.id}/contracts`,
+                              {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                  contractType: resolvedType,
+                                  startDate: addContractForm.startDate,
+                                  endDate: addContractForm.endDate || undefined,
+                                  creditLimit: addContractForm.creditLimit
+                                    ? Number(addContractForm.creditLimit)
+                                    : undefined,
+                                  paymentDeferDays: addContractForm.paymentDeferDays
+                                    ? Number(addContractForm.paymentDeferDays)
+                                    : undefined,
+                                }),
+                              },
+                            );
+                            setModalContracts(prev => [...prev, created]);
+                            setAddContractForm({
+                              contractType: '',
+                              startDate: '',
+                              endDate: '',
+                              creditLimit: '',
+                              paymentDeferDays: '',
+                            });
+                            setShowAddContract(false);
+                            toast.success('Договір додано');
+                          } catch (e: unknown) {
+                            setContractsError(e instanceof Error ? e.message : 'Помилка');
+                          } finally {
+                            setAddingContract(false);
+                          }
+                        }}
+                      >
+                        Зберегти
+                      </Button>
+                    </div>
+                  </AnimatedBody>
+                )}
+
+                {modalContracts.length > 0 && (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    <table className="w-full text-[13px]">
+                      <thead className="bg-secondary border-b border-border">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                            Номер
+                          </th>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                            Тип
+                          </th>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                            Початок
+                          </th>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                            Завершення
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {modalContracts.map(c => (
+                          <tr
+                            key={c.id}
+                            className="bg-surface hover:bg-secondary/50 transition-colors"
+                          >
+                            <td className="px-3 py-2 font-medium text-foreground">
+                              <span className="flex items-center gap-1.5">
+                                {c.number}
+                                {c.isPrimary && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary">
+                                    Головний
+                                  </span>
+                                )}
                               </span>
-                            )}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {CONTRACT_TYPE_LABELS[c.contractType] ?? c.contractType}
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">{fmtDate(c.startDate)}</td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {c.endDate ? fmtDate(c.endDate) : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {CONTRACT_TYPE_LABELS[c.contractType] ?? c.contractType}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {fmtDate(c.startDate)}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {c.endDate ? fmtDate(c.endDate) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {modalContracts.length === 0 && !showAddContract && (
+                  <p className="text-[13px] text-muted-foreground text-center py-8">
+                    Договорів немає
+                  </p>
+                )}
+              </>
             )}
           </div>
         )}
