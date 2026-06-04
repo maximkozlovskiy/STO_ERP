@@ -976,7 +976,7 @@ export default function CrmPage() {
         onClose={handleCloseModal}
         title={editingCp ? 'Редагування контрагента' : 'Новий контрагент'}
         size={editingCp ? 'lg' : 'md'}
-        minHeight={editingCp ? 480 : undefined}
+        bodyMinHeight={editingCp ? 340 : undefined}
         footer={
           editTab === 'main' ? (
             <Button onClick={editingCp ? update : create} loading={saving}>

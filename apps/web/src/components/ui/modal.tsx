@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useCallback, useState, useRef, type ReactNode } from 'react';
+import {
+  useEffect,
+  useCallback,
+  useState,
+  useRef,
+  type ReactNode,
+  type CSSProperties,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -17,6 +24,7 @@ interface ModalProps {
   footer?: ReactNode;
   size?: ModalSize;
   minHeight?: number | string;
+  bodyMinHeight?: number | string;
   className?: string;
   hideClose?: boolean;
 }
@@ -47,10 +55,12 @@ export function AnimatedBody({
   children,
   className,
   fill = false,
+  bodyStyle,
 }: {
   children: ReactNode;
   className?: string;
   fill?: boolean;
+  bodyStyle?: CSSProperties;
 }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -93,7 +103,7 @@ export function AnimatedBody({
     // Fill-режим: outer — flex-1, бере залишок висоти, сам скролить.
     // Inner — лише padding (через className), без власного overflow.
     return (
-      <div ref={outerRef} className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={outerRef} className="flex-1 min-h-0 overflow-y-auto" style={bodyStyle}>
         <div ref={innerRef} className={className}>
           {children}
         </div>
@@ -121,6 +131,7 @@ export function Modal({
   footer,
   size = 'md',
   minHeight,
+  bodyMinHeight,
   className,
   hideClose,
 }: ModalProps) {
@@ -212,7 +223,11 @@ export function Modal({
         )}
 
         {/* Body — fill remaining space у flex-col панелі; outer сам скролить */}
-        <AnimatedBody fill className="px-6 py-5">
+        <AnimatedBody
+          fill
+          className="px-6 py-5"
+          bodyStyle={bodyMinHeight ? { minHeight: bodyMinHeight } : undefined}
+        >
           {children}
         </AnimatedBody>
 
