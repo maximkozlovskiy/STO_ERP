@@ -457,7 +457,7 @@ export default function PricingRulesClient() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto bg-surface border border-border rounded-xl">
+      <div className="flex-1 min-h-0 overflow-auto bg-surface border border-border rounded-xl">
         <Table>
           <TableHeader>
             <TableRow>

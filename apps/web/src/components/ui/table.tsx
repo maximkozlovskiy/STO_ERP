@@ -7,14 +7,12 @@ import type { SortState } from '@/hooks/useSortState';
 
 function Table({ className, children, ...props }: HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="overflow-x-auto">
-      <table
-        className={cn('w-full text-[13px] text-foreground border-collapse', className)}
-        {...props}
-      >
-        {children}
-      </table>
-    </div>
+    <table
+      className={cn('w-full text-[13px] text-foreground border-collapse', className)}
+      {...props}
+    >
+      {children}
+    </table>
   );
 }
 

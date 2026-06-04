@@ -426,7 +426,7 @@ function InfrastructurePageClient() {
       {/* BRANCHES */}
       {!loading && tab === 'branches' && (
         <div className="flex flex-1 min-h-0">
-          <div className="flex-1 min-h-0 min-w-0 overflow-y-auto bg-surface rounded-xl border border-border">
+          <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -484,7 +484,7 @@ function InfrastructurePageClient() {
       {/* ZONES */}
       {!loading && tab === 'zones' && (
         <div className="flex flex-1 min-h-0">
-          <div className="flex-1 min-h-0 min-w-0 overflow-y-auto bg-surface rounded-xl border border-border">
+          <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -550,7 +550,7 @@ function InfrastructurePageClient() {
       {/* LIFTS */}
       {!loading && tab === 'lifts' && (
         <div className="flex flex-1 min-h-0">
-          <div className="flex-1 min-h-0 min-w-0 overflow-y-auto bg-surface rounded-xl border border-border">
+          <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -600,7 +600,7 @@ function InfrastructurePageClient() {
       {/* WAREHOUSES */}
       {!loading && tab === 'warehouses' && (
         <div className="flex flex-1 min-h-0">
-          <div className="flex-1 min-h-0 min-w-0 overflow-y-auto bg-surface rounded-xl border border-border">
+          <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
