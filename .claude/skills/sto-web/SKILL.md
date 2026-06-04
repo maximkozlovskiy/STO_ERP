@@ -831,7 +831,13 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
     Еталон CRM використовує <div> обгортку — тому відступ виглядає правильно.
   */}
 
-  {/* 2. Вкладки (якщо є) — ВПРИТУЛ до країв, БЕЗ mb (gap від page-fill) */}
+  {/*
+    2. Вкладки (якщо є)
+    - Клас -mx-6 px-6: вкладки тягнуться від краю до краю (компенсує p-6 батька)
+    - НЕ додавати mb-* / pt-*: відступ між вкладками і фільтрами = gap:0.5rem від page-fill (8px)
+      + py-2.5 кнопок вкладок дає достатнє візуальне повітря (~16px сприйняте)
+    - Еталон: catalog/page.tsx + infrastructure/page.tsx
+  */}
   <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
     {TABS.map(t => (
       <button
@@ -849,7 +855,12 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
     ))}
   </div>
 
-  {/* 3. Рядок фільтрів — flex gap-3 flex-wrap shrink-0, БЕЗ mb (gap від page-fill) */}
+  {/*
+    3. Рядок фільтрів
+    - НЕ додавати mb-* / pt-*: відступ між фільтрами і таблицею = gap:0.5rem від page-fill
+    - Пошук завжди через <Input leftElement={<Search />}>, НЕ кастомний input
+    - Права група кнопок — ml-auto всередині цього ж flex-рядка
+  */}
   <div className="flex gap-3 flex-wrap shrink-0">
     {/* Пошук — Input з leftElement */}
     <Input
@@ -901,7 +912,7 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
 | Eye кнопка           | `size="icon-sm"`, `border-primary text-primary` при active | `size="sm"`, текст у кнопці, `border-warning`    |
 | Кнопка "+ Об'єкт"    | без `size=`, конкретна назва ("Філія", "Контрагент")       | `size="sm"`, загальне "Додати"                   |
 | Права група          | `ml-auto flex items-center gap-2` всередині flex filters   | окремий toolbar div над таблицею                 |
-| mb на filters/tabs   | БЕЗ `mb-*` — відступ дає `gap: 0.5rem` від `.page-fill`    | `mb-4`, `mb-5` на filters або tabs div           |
+| Відступ tabs→filters | `gap: 0.5rem` (page-fill) + `py-2.5` кнопок = ~16px вигляд | `mb-4`, `mb-5`, `pt-4` на tabs або filters div   |
 | Видалені рядки       | `opacity-50` + badge "видалено", кнопки дій приховані      | червоний фон, кнопки залишені                    |
 | Видалені у FK select | тільки активні: `.filter(b => !b.deletedAt)`               | всі записи включно з deleted                     |
 
