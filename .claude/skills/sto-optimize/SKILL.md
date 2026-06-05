@@ -568,6 +568,38 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-05 — Detail-в-list × DetailPanel — list endpoint тягне повну дочірню колекцію, хоча UI рендерить її ЛИШЕ для ОДНОГО вибраного rows
+
+**Сигнал:** list-endpoint містить `include: { lines/parts/children: { take: 1000, include: {...}}}` для O(20) rows. На фронті UI використовує цю колекцію у ДВОХ місцях: (1) у table-cell — тільки `.length`/`.count` (rendering of count, not items); (2) у DetailPanel/sidebar/modal — повний `.map(...)` РЕНДЕР, але DetailPanel показує тільки ОДИН вибраний row. Інші 19 rows завантажили лінії, які ніколи не побачать світло DOM.
+
+**Причина виникнення:** UI спочатку був лише list-view (без DetailPanel). Розробник додав include щоб показати count у cell — це коректне UX-рішення. Пізніше додався DetailPanel що рендерить sidebar з details поточно вибраного row. Замість додати окремий лazy-fetch при click на row, інтуїтивно перевикористали `selectedRow.lines` з list-response. Результат: list тягне (rows × children) даних коли реально потрібно лише `1 × children`. Не помітно бо list-response працює, DetailPanel працює, count працює.
+
+**Підхід до виявлення:** для кожного list-endpoint що має `include: { X: { include: ... }}` — у frontend знайти ВСІ використання `item.X` (`item.X.length`, `item.X.map`, `item.X.some`). Якщо є тільки `.length` у cell + `.map` у DetailPanel/sidebar/modal який показує по одному row — це detail-в-list × N паттерн. Перевір чи існує GET /resource/:id endpoint що повертає item з повним children include (зазвичай так).
+
+**Підхід до фіксу:** на backend — замінити `include: { X: { take: N, include: {...}}}` на `_count: { select: { X: { where: { deletedAt: null }}}}` + додати `linesCount?: number` у DTO; у `toDto` — fallback `doc._count?.X ?? doc.X?.length ?? 0`. На frontend — типізувати `X?: T[]` (optional); cell використовує `item.Xcount ?? item.X?.length ?? 0`; row click обгорнути в `selectRow(row)` що робить `apiFetch('/resource/:id')` й оновлює state з повним include (mirrors invoices/page.tsx selectInvoice pattern). DetailPanel рендерить «Завантаження…» доки `item.X === undefined`. Modal — той самий патерн через окрему `openDetailModal()` callback.
+
+**Реальний impact:** для list 20 docs × 1000 lines включення — ~20K row marshalling + JSON serialization на КОЖЕН list request. Економія: ~95% payload. Detail fetch — 1× звичайний GET /:id (вже існує) — RTT помітне тільки коли користувач реально відкриває DetailPanel, що по визначенню рідше за list refresh.
+
+**Де шукати ще:** будь-який list-endpoint з `include: { X: { take: …, include: ...}}` — спочатку грепнути по фронту `item.X.map`/`item.X.length`. Кандидати: stock-documents.findAll (виправлено 2026-06-05), invoices/PO/WO findAll (вже мають \_count або взагалі не включають), будь-який майбутній модуль з list+DetailPanel паттерном.
+
+---
+
+### 2026-06-05 — Cycle-N gap у міграції паттерну: один сервіс випав із попереднього аудиту, бо grep був неповний
+
+**Сигнал:** новий аудит знаходить ВЖЕ-описаний у "Накопичених підходах" паттерн у конкретному сервісі (X.service.ts), хоча минулий аудит явно фіксав цей паттерн у 7-8 інших сервісах. Перевіряєш — так, цей файл існував у часи попереднього аудиту (не новий код), просто його grep пропустив.
+
+**Причина виникнення:** попередній аудит ішов через grep по pattern X у services (`grep -rn "findOne(orgId" apps/api/src/modules`). Якщо у конкретному файлі pattern називається трохи інакше (наприклад `this.findOne(orgId, id)` де `findOne` — приватний метод цього класу, а не виклик іншого сервісу), grep його не зловив. Або агент аудиту йшов по списку «топ-N важливих сервісів» (work-orders, invoices, counterparties...) і пропустив менш популярний як goods/services. Або новий пов'язаний рефактор додав ту саму проблему після того як аудит вже минув.
+
+**Підхід до виявлення:** при кожному новому циклі — НЕ покладатися на «це вже виправлено в попередньому циклі». Перебігти grep знову для свого pattern (`findOne(orgId,` BEFORE `prisma.X.update`) по ВСІМ сервісах, не лише по тих що змінились у поточному diff. Це робота на 30 секунд, але ловить cycle-N gap. Окремо — для кожного нового сервісу що з'явився у git-diff, проводити повну перевірку по всіх accumulated patterns (не тільки тих що пов'язані з diff).
+
+**Підхід до фіксу:** застосувати той самий fix-pattern що було документовано минулого циклу. Зазначити у commit message «cycle-N gap — pattern from <prev cycle>». У MemoryManual.md — додати рядок «Verified non-issues» НЕ застосовувати тут (це БУЛО issue, просто пропущене).
+
+**Реальний impact:** залежить від частоти виклику пропущеного методу. Один-два додаткові RTT на оновлення — мала економія, але показовий приклад «закон Парето в оптимізаціях»: 80% pattern-fixs дають 80% покращення, але 20% залишок розкиданий по випадкових сервісах і вимагає systematic re-grep.
+
+**Де шукати ще:** перед кожним коммітом аудиту — re-grep по всіх patterns з останніх 3-5 циклів, не лише по diff. Особливо часто пропускаються: goods, services, payment-methods, vehicles (бо рідше попадають у фокус-зону рефакторів які тригерять аудит).
+
+---
+
 ### 2026-06-01 — View-state-gated fetch effects — багатовидові сторінки (day/month/stats, list/grid/calendar)
 
 **Сигнал:** Сторінка має тумблер виду (`useState<'day'|'month'|'stats'>` або подібне), окремі `useEffect` для кожного виду, АЛЕ один із них залежить тільки від data-key (`[date]`, `[id]`, `[filters]`) без `[viewMode]`. Кожен новий `useEffect` для нового виду додається з guard `if (viewMode === 'X') loadX()`, тоді як старий "default" effect залишається без guard — успадковане технічне рішення з часів коли був один вид.
