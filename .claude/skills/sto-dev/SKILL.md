@@ -1244,34 +1244,24 @@ import { PickerModal } from '@/components/ui/picker-modal';
 </Modal>
 ```
 
-**Тригер кнопка (стандартний вигляд):**
+**Тригер поле — завжди через EntityPickerField (див. §24):**
 
 ```tsx
-// ✅ Кнопка-тригер для picker-модалу
-const selected = items.find(i => i.id === form.entityId);
-<div className="flex items-center gap-2">
-  <button
-    type="button"
-    onClick={() => setPickerOpen(true)}
-    className="flex-1 text-left px-3 py-2 rounded-lg border border-border bg-surface hover:border-primary transition-colors text-sm"
-  >
-    {selected ? (
-      <span className="text-foreground">{selected.name}</span>
-    ) : (
-      <span className="text-muted-foreground">Оберіть...</span>
-    )}
-  </button>
-  {form.entityId && (
-    <button
-      aria-label="Очистити"
-      type="button"
-      onClick={() => setForm(f => ({ ...f, entityId: '' }))}
-      className="text-muted-foreground hover:text-destructive-text transition-colors"
-    >
-      <Trash2 className="w-4 h-4" />
-    </button>
-  )}
-</div>;
+// ✅ Стандарт: EntityPickerField замість ручної кнопки
+import { EntityPickerField } from '@/components/ui/entity-picker-field';
+
+<EntityPickerField
+  display={selected?.name ?? ''}
+  placeholder="Оберіть..."
+  onOpenDetail={form.entityId ? openEntityDetail : undefined}
+  onPick={() => setPickerOpen(true)}
+  onClear={() => setForm(f => ({ ...f, entityId: '' }))}
+/>
+
+// ❌ ЗАСТАРІЛИЙ патерн — НЕ використовувати
+<button onClick={() => setPickerOpen(true)} className="flex-1 text-left px-3 py-2 ...">
+  {selected ? selected.name : <span className="text-muted-foreground">Оберіть...</span>}
+</button>
 ```
 
 ### Заборонені inline-патерни
@@ -1297,14 +1287,19 @@ const [pickerQuery, setPickerQuery] = useState(''); // не потрібен —
 
 ```
 Компоненти
-  [ ] Picker зі списком → <PickerModal<T>> з src/components/ui/picker-modal.tsx
+  [ ] Picker зі списком → <SearchPickerModal<T>> або <PickerModal<T>>
+  [ ] Поле-посилання → <EntityPickerField> (НЕ кастомна кнопка з Search іконкою)
+  [ ] Лупа у EntityPickerField → відкриває *EditModal, НЕ router.push/window.open
+  [ ] Форма редагування об'єкта → окремий *EditModal компонент (не inline у page.tsx)
+  [ ] *EditModal зареєстрований у реєстрі §24.4
   [ ] Inline IIFE `{(() => {...})()}` у JSX → замінити компонентом
   [ ] Форма > 5 полів у page.tsx → виносити в окремий файл
   [ ] Підтвердження дії → <ConfirmDialog>
 
 Стан
   [ ] Немає дубльованих query/loading стейтів для однотипних picker-ів
-  [ ] pickerQuery НЕ є зовнішнім стейтом — PickerModal керує пошуком сам
+  [ ] pickerQuery НЕ є зовнішнім стейтом — SearchPickerModal/PickerModal керує пошуком сам
+  [ ] lazy fetch у openDetail() — не у useEffect на mount
 ```
 
 ---
@@ -2010,6 +2005,280 @@ import { TableContainer } from '@/components/ui/table-container';
 
 ```tsx
 <TableContainer style={{ '--table-thead-h': '52px' } as React.CSSProperties}>
+```
+
+---
+
+## §24 — EntityPickerField + \*EditModal: стандарт поля-посилання
+
+> **Правило:** будь-яке поле форми що посилається на інший об'єкт (контрагент, товар, наряд, співробітник тощо) **ЗАВЖДИ** реалізується через `EntityPickerField` + `*EditModal` + `SearchPickerModal`.  
+> Старий патерн «велика кнопка з іконкою Search всередині» — **заборонений**.
+
+---
+
+### §24.1 — EntityPickerField — єдиний UI-контрол для reference-поля
+
+```tsx
+// apps/web/src/components/ui/entity-picker-field.tsx
+interface EntityPickerFieldProps {
+  display: string; // текст обраного запису або ''
+  placeholder?: string; // 'Обрати...'
+  disabled?: boolean;
+  hidePick?: boolean; // true =ховати кнопку ... (read-only режим)
+  onOpenDetail?: () => void; // undefined → кнопка 🔍 disabled
+  onPick: () => void; // відкрити SearchPickerModal
+  onClear: () => void; // очистити вибір
+}
+```
+
+**Візуальна схема:**
+
+```
+[ Іван Коваль                   × 🔍 … ]
+  ↑ display або placeholder     ↑ ↑ ↑
+                                │ │ └─ onPick → SearchPickerModal
+                                │ └─── onOpenDetail → *EditModal (disabled якщо нема)
+                                └───── onClear (hidden якщо display = '')
+```
+
+**Кнопка `UserPlus` / `FilePlus` (створення нового)** — додається ЗОВНІ поля, праворуч:
+
+```tsx
+<div className="flex items-center gap-1">
+  <div className="flex-1 min-w-0">
+    <EntityPickerField ... />
+  </div>
+  <Button variant="outline" size="sm" onClick={openCreateWizard} className="h-9 w-9 p-0 shrink-0">
+    <UserPlus className="h-4 w-4" />
+  </Button>
+</div>
+```
+
+---
+
+### §24.2 — \*EditModal — стандарт компонента редагування об'єкта
+
+Кожна сутність що може відкриватись через лупу — повинна мати **окремий компонент** `*EditModal.tsx` у `apps/web/src/components/ui/`.
+
+**Обов'язкові props:**
+
+```ts
+interface XxxEditModalProps {
+  open: boolean;
+  entity: XxxForModal | null; // null = режим створення нового
+  onClose: () => void;
+  onSaved: (saved: XxxForModal) => void;
+}
+```
+
+**Обов'язкова внутрішня структура:**
+
+```tsx
+export function XxxEditModal({ open, entity, onClose, onSaved }: XxxEditModalProps) {
+  const dirty = useDirtyForm();
+  const { confirm, dialogProps: confirmProps } = useConfirm();
+  const isEdit = !!entity;
+
+  // 1. Синхронізація форми при відкритті — useEffect на [open, entity?.id]
+  useEffect(() => {
+    if (!open) return;
+    if (entity) {
+      setForm({
+        /* поля з entity */
+      });
+    } else {
+      setForm(EMPTY_FORM);
+    }
+    dirty.resetDirty();
+    setError('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, entity?.id]);
+
+  // 2. Завантаження дочірніх колекцій — useEffect на [open, entity?.id]
+  useEffect(() => {
+    if (!open || !entity) return;
+    const reqId = ++reqRef.current;
+    setChildrenLoading(true);
+    apiFetch<Child[]>(`/xxx/${entity.id}/children`)
+      .then(data => {
+        if (reqRef.current === reqId) setChildren(data);
+      })
+      .catch(err => {
+        if (reqRef.current === reqId) setChildError(err.message);
+      })
+      .finally(() => {
+        if (reqRef.current === reqId) setChildrenLoading(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, entity?.id]);
+
+  // 3. handleClose завжди через dirty guard
+  const handleClose = useCallback(async () => {
+    if (!(await dirty.confirmClose())) return;
+    onClose();
+  }, [dirty, onClose]);
+
+  return (
+    <>
+      <Modal
+        open={open}
+        onClose={handleClose}
+        title={isEdit ? 'Редагування X' : 'Новий X'}
+        size="lg"
+      >
+        {/* tab bar — тільки при редагуванні */}
+        {/* main form tab */}
+        {/* 1-N tabs (vehicles, barcodes, etc.) */}
+        {/* footer: save button */}
+      </Modal>
+      <DirtyConfirmDialog {...dirty.dialogProps} />
+      <ConfirmDialog {...confirmProps} />
+    </>
+  );
+}
+```
+
+---
+
+### §24.3 — Повний патерн: reference-поле у формі
+
+```tsx
+// ── State ─────────────────────────────────────────────────────────────────
+const [cpPickerOpen, setCpPickerOpen] = useState(false);
+const [cpDetailOpen, setCpDetailOpen] = useState(false);
+const [cpDetailData, setCpDetailData] = useState<CounterpartyForModal | null>(null);
+
+// ── openDetail — lazy fetch ───────────────────────────────────────────────
+const openCpDetail = useCallback(async () => {
+  if (!form.counterpartyId) return;
+  try {
+    const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${form.counterpartyId}`);
+    setCpDetailData(cp);
+    setCpDetailOpen(true);
+  } catch {
+    /* ignore */
+  }
+}, [form.counterpartyId]);
+
+// ── JSX ───────────────────────────────────────────────────────────────────
+<div>
+  <label className="block text-xs font-medium text-muted-foreground mb-1">
+    Контрагент <span className="text-destructive-text">*</span>
+  </label>
+  <div className="flex items-center gap-1">
+    <div className="flex-1 min-w-0">
+      <EntityPickerField
+        display={form.counterpartyDisplay}
+        placeholder="Обрати контрагента..."
+        disabled={isEditingPast}
+        hidePick={isEditingPast}
+        onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
+        onPick={() => setCpPickerOpen(true)}
+        onClear={() => setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' }))}
+      />
+    </div>
+    {/* необов'язково: кнопка створення нового */}
+    {!isEditingPast && (
+      <Button variant="outline" size="sm" onClick={openNewCpWizard} className="h-9 w-9 p-0">
+        <UserPlus className="h-4 w-4" />
+      </Button>
+    )}
+  </div>
+</div>;
+
+{
+  /* SearchPickerModal для вибору */
+}
+<SearchPickerModal<CpItem>
+  open={cpPickerOpen}
+  onClose={() => setCpPickerOpen(false)}
+  title="Оберіть контрагента"
+  selectedId={form.counterpartyId}
+  fetchItems={fetchCpItems}
+  onSelect={item => {
+    setForm(f => ({ ...f, counterpartyId: item.id, counterpartyDisplay: item.primary }));
+    setCpPickerOpen(false);
+  }}
+/>;
+
+{
+  /* EditModal для перегляду/редагування через лупу */
+}
+<CounterpartyEditModal
+  open={cpDetailOpen}
+  counterparty={cpDetailData}
+  onClose={() => setCpDetailOpen(false)}
+  onSaved={updated => {
+    const display =
+      updated.companyName ?? [updated.lastName, updated.firstName].filter(Boolean).join(' ') ?? '';
+    setForm(f => ({ ...f, counterpartyDisplay: display }));
+    setCpDetailOpen(false);
+  }}
+/>;
+```
+
+---
+
+### §24.4 — Реєстр \*EditModal компонентів
+
+| Компонент                  | Файл                              | Відкривається для                  |
+| -------------------------- | --------------------------------- | ---------------------------------- |
+| `CounterpartyEditModal`    | `ui/CounterpartyEditModal.tsx`    | контрагент (клієнт / постачальник) |
+| `GoodEditModal`            | `ui/GoodEditModal.tsx`            | товар / запчастина                 |
+| `EmployeeEditModal`        | `ui/EmployeeEditModal.tsx`        | співробітник                       |
+| `WorkOrderAddLineModal`    | `ui/WorkOrderAddLineModal.tsx`    | додавання роботи до наряду         |
+| `WorkOrderAddPartModal`    | `ui/WorkOrderAddPartModal.tsx`    | додавання запчастини до наряду     |
+| `PurchaseOrderCreateModal` | `ui/PurchaseOrderCreateModal.tsx` | замовлення постачальнику           |
+| `InvoiceCreateModal`       | `ui/InvoiceCreateModal.tsx`       | рахунок                            |
+| `StockDocumentCreateModal` | `ui/StockDocumentCreateModal.tsx` | документ складу                    |
+
+> При додаванні нової сутності — додай рядок у цю таблицю.
+
+---
+
+### §24.5 — Заборонені патерни
+
+```tsx
+// ❌ Пряме посилання через window.open або router.push з форми
+onClick={() => window.open(`/counterparties/${id}`, '_blank')}
+onClick={() => router.push(`/counterparties/${id}`)}
+// ✅ Замість цього — openDetail() → *EditModal
+
+// ❌ Велика кнопка з іконкою Search всередині (старий патерн)
+<button onClick={() => setPickerOpen(true)} className="flex-1 flex items-center justify-between ...">
+  <span>{display || 'Обрати...'}</span>
+  <Search className="h-3.5 w-3.5" />
+</button>
+// ✅ Замість цього — EntityPickerField
+
+// ❌ Inline форма редагування > 5 полів у page.tsx
+<Modal open={editModal} ...>
+  <Input label="Назва" ... />
+  <Input label="Телефон" ... />
+  ...300 рядків JSX...
+</Modal>
+// ✅ Виноси в окремий *EditModal компонент
+
+// ❌ detailHref prop (застарілий, видалений)
+<EntityPickerField detailHref="/counterparties/123" />
+// ✅ onOpenDetail callback
+<EntityPickerField onOpenDetail={form.counterpartyId ? openCpDetail : undefined} />
+```
+
+---
+
+### §24.6 — Checklist для нового reference-поля
+
+```
+[ ] Поле відображається через EntityPickerField, не через кастомну кнопку
+[ ] Кнопка … відкриває SearchPickerModal для пошуку і вибору
+[ ] Кнопка 🔍 disabled якщо нема вибраного (onOpenDetail = undefined)
+[ ] Кнопка 🔍 робить lazy fetch + відкриває *EditModal
+[ ] Кнопка × очищає вибір (hidden якщо display = '')
+[ ] Якщо є дія "створити новий" — кнопка UserPlus/FilePlus ЗОВНІ поля
+[ ] *EditModal для цього типу об'єкта існує в реєстрі §24.4
+[ ] onSaved оновлює display у батьківській формі
+[ ] TypeScript 0 errors
 ```
 
 ---

@@ -393,6 +393,7 @@ export default function MyListPage() {
 | `<DetailPanel>`       | `ui/detail-panel.tsx`        | Бокова панель деталей (split-view)       |
 | `<SearchCombobox>`    | `ui/search-combobox.tsx`     | Autocomplete з сервер-стороннім пошуком  |
 | `<SearchPickerModal>` | `ui/search-picker-modal.tsx` | Picker з пошуком і пагінацією            |
+| `<EntityPickerField>` | `ui/entity-picker-field.tsx` | **Стандарт поля-посилання** (× 🔍 …)     |
 | `<DatePickerInput>`   | `ui/date-picker-input.tsx`   | Поле вибору дати                         |
 | `<ColumnsDropdown>`   | `ui/columns-dropdown.tsx`    | Управління видимістю колонок             |
 | `<BulkActionsBar>`    | `ui/bulk-actions-bar.tsx`    | Панель групових дій                      |
@@ -1268,6 +1269,10 @@ import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 - [ ] `useBulkSelect` + `BulkActionsBar` + чекбокси в TableHead/TableRow
 - [ ] `useSavedFilters` + `SavedFiltersBar`
 - [ ] `useDirtyForm` на кожній формі (markDirty на onChange, confirmClose перед закриттям)
+- [ ] **Поле-посилання на об'єкт** → `<EntityPickerField>` (НЕ кнопка з `<Search>` всередині)
+- [ ] **Кнопка 🔍 у EntityPickerField** → lazy fetch + `*EditModal` (НЕ `router.push` чи `window.open`)
+- [ ] **Форма редагування > 5 полів** → окремий `*EditModal` компонент у `components/ui/`
+- [ ] Новий тип об'єкта → додати `*EditModal` у реєстр `sto-dev §24.4`
 - [ ] `useConfirm` + `<ConfirmDialog {...dialogProps} />` для видалень
 - [ ] `toast.success/error/warning` замість `alert()` або `window.confirm()`
 - [ ] `Promise.allSettled` для bulk-операцій (ніколи `Promise.all`)
