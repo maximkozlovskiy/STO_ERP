@@ -4,11 +4,11 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { UserPlus, FilePlus } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
+import { useCachedRefData } from '@/hooks/useCachedRefData';
 import {
   CounterpartyEditModal,
   type CounterpartyForModal,
 } from '@/components/ui/CounterpartyEditModal';
-import { getCached, setCache } from '@/lib/ref-cache';
 import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -337,8 +337,12 @@ export function CalendarSlotModal({
     description: '',
   });
   const [newWoVehicles, setNewWoVehicles] = useState<VehicleOption[]>([]);
-  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
-  const [branchesError, setBranchesError] = useState('');
+  const { data: branches, error: branchesError } = useCachedRefData<{ id: string; name: string }[]>(
+    'cache:branches',
+    '/branches',
+    [],
+    raw => (Array.isArray(raw) ? raw : (raw as { items: { id: string; name: string }[] }).items),
+  );
   const [savingWo, setSavingWo] = useState(false);
 
   useEffect(() => {
@@ -368,30 +372,6 @@ export function CalendarSlotModal({
     setNewWoVehicles(all);
     if (all.length === 1) setNewWo(v => ({ ...v, vehicleId: all[0]!.id }));
   }, [form.counterpartyId, form.counterpartyDisplay]);
-
-  useEffect(() => {
-    // Seed branches from sessionStorage so the modal's "new WO" form renders
-    // without dropdown flash; consumer-page ref-cache pattern (see SKILL).
-    const cached = getCached<{ id: string; name: string }[]>('cache:branches');
-    if (cached && cached.length > 0) {
-      setBranches(cached);
-      setBranchesError('');
-    }
-    apiFetch<{ id: string; name: string }[] | { items: { id: string; name: string }[] }>(
-      '/branches',
-    )
-      .then(d => {
-        if (!mountedRef.current) return;
-        const arr = Array.isArray(d) ? d : d.items;
-        setBranches(arr);
-        setCache('cache:branches', arr);
-        setBranchesError('');
-      })
-      .catch((e: unknown) => {
-        if (mountedRef.current && !cached)
-          setBranchesError(e instanceof Error ? e.message : 'Не вдалося завантажити список філій');
-      });
-  }, []);
 
   const loadWoVehicles = useCallback(async (counterpartyId: string) => {
     if (!counterpartyId) {
