@@ -211,6 +211,18 @@ body {
 .table-scroll-container::-webkit-scrollbar-track {
   margin-top: var(--table-thead-h);
 }
+/* Paint the scrollbar gutter at thead level with the header background color.
+   The scrollbar track occupies space to the right of the table — at thead level
+   this gutter shows the container background. Setting bg-secondary on the container
+   fills that gutter to match the sticky thead. The tbody class bg-surface (applied
+   directly on the element) has higher specificity (0-1-1) than this rule (0-1-0)
+   so tbody rows keep their white background. */
+.table-scroll-container {
+  background-color: var(--color-secondary);  /* fills scrollbar gutter at thead level */
+}
+.table-scroll-container tbody {
+  background-color: var(--color-surface);    /* rows stay white */
+}
 
 /* ─── Column drag-and-drop ─── */
 th[draggable="true"] { cursor: grab; user-select: none; }
