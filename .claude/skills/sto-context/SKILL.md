@@ -8,7 +8,6 @@ bypassPermissions: true
 
 # STO ERP — Project Context
 
-
 ## ⚡ ПЕРШИЙ КРОК: перевір поточний прогрес
 
 **До будь-якої відповіді** виконай наступне — **чотири файли паралельно**:
@@ -45,6 +44,7 @@ bypassPermissions: true
 > **ПРАВИЛО: після кожного завершеного запиту — автоматичне QA**
 > Коли будь-яке завдання (фіча, фікс, рефакторинг) завершено і закомічено,
 > **автоматично** (без запиту) запустити послідовно:
+>
 > 1. `/sto-review` в режимі auto — code review, виправити всі знайдені проблеми
 > 2. `/sto-tester` в режимі auto — тестування, записати BUG_REPORT.md, виправити всі баги
 > 3. Оновити `MemoryManual.md` якщо з'явились нові gotchas або зміни архітектури
@@ -53,15 +53,47 @@ bypassPermissions: true
 
 > **ПРАВИЛО: коміт після кожної фази**  
 > Коли остання задача фази відмічена `[x]` — одразу виконай git commit без додаткового запиту:
+>
 > ```bash
 > git status
 > git add apps/ packages/ docs/PHASES.md docker-compose*.yml CLAUDE.md
 > git commit -m "feat(phaseN): <назва фази>"
 > ```
+>
 > Не чекати підтвердження від користувача. Якщо є незакомічені зміни з попередніх фаз — включити їх теж.
 
 > Якщо `docs/PHASES.md` не знайдено — повідом про це і зупинись.  
 > Нотатки `>` — це головний контекст для розуміння що вже реалізовано. Читай їх уважно.
+
+> **ПРАВИЛО: план мод перед великою задачею (ОБОВ'ЯЗКОВО)**
+>
+> Велика задача = будь-яка з наступних ознак:
+>
+> - зачіпає **3+ файли**
+> - потребує **нової архітектури** або вибору між підходами
+> - реалізація займе **більше 1 кроку**
+> - задача **нова фіча**, а не фікс/правка тексту
+>
+> Алгоритм:
+>
+> 1. `EnterPlanMode` — дослідити код, скласти план
+> 2. `AskUserQuestion` — якщо є неоднозначності (підхід, scope, пріоритет)
+> 3. `ExitPlanMode` — тільки після узгодження з користувачем
+> 4. Реалізувати без зупинок
+>
+> **Виняток:** дрібні фікси (1–2 файли), виправлення тексту/стилів, оновлення документації.
+
+> **ПРАВИЛО: уточнюй перед виконанням, якщо задача неоднозначна**
+>
+> Якщо запит допускає кілька різних рішень і вибір не очевидний — **зупинись і запитай** через `AskUserQuestion` перед тим як писати код.
+>
+> Ознаки неоднозначності:
+>
+> - можна зробити по-різному (UI: модалка чи inline; API: один endpoint чи кілька)
+> - незрозумілий scope ("перероби X" — що саме? частково чи повністю?)
+> - є ризик що виконання не відповідатиме очікуванням
+>
+> **Не уточнювати** коли: задача конкретна ("змінити колір кнопки"), патерн вже є в коді, або очікування очевидні з контексту.
 
 ---
 
@@ -74,6 +106,7 @@ STO ERP — гібридна ERP-система для автосервісів 
 > Розгортання — через Windows installer (.exe) на локальний ПК/сервер СТО.
 
 Це означає:
+
 - Всі сервіси (API, БД, черги, файли) — локально в Docker Compose
 - Відсутність інтернету не порушує жодну бізнес-функцію
 - Зовнішні API (SMS, ПРРО, постачальники) — завжди через BullMQ чергу: якщо offline → retry при відновленні
@@ -138,20 +171,20 @@ sto-erp/
 
 ## Tech Stack
 
-| Layer | Technology | Offline |
-|-------|-----------|---------|
-| Backend | NestJS 10 + Fastify | ✅ |
-| Database | PostgreSQL 16 + Prisma 5 | ✅ |
-| Queue/Cache | Redis 7 + BullMQ | ✅ |
-| File Storage | MinIO | ✅ |
-| Web UI | Next.js 15 (static export) | ✅ |
-| UI Kit | shadcn/ui + Tailwind 4 | ✅ |
-| Mobile | Expo SDK 53 + WatermelonDB | ✅ |
-| Proxy | Caddy (self-signed local TLS) | ✅ |
-| **Installer** | **Inno Setup + PowerShell** | ✅ |
-| SMS | TurboSMS → BullMQ queue | ⚡ retry |
-| ПРРО | Checkbox → BullMQ queue | ⚡ retry |
-| Cloud Sync | Outbox → Sync Hub | 🔵 opt. |
+| Layer         | Technology                    | Offline  |
+| ------------- | ----------------------------- | -------- |
+| Backend       | NestJS 10 + Fastify           | ✅       |
+| Database      | PostgreSQL 16 + Prisma 5      | ✅       |
+| Queue/Cache   | Redis 7 + BullMQ              | ✅       |
+| File Storage  | MinIO                         | ✅       |
+| Web UI        | Next.js 15 (static export)    | ✅       |
+| UI Kit        | shadcn/ui + Tailwind 4        | ✅       |
+| Mobile        | Expo SDK 53 + WatermelonDB    | ✅       |
+| Proxy         | Caddy (self-signed local TLS) | ✅       |
+| **Installer** | **Inno Setup + PowerShell**   | ✅       |
+| SMS           | TurboSMS → BullMQ queue       | ⚡ retry |
+| ПРРО          | Checkbox → BullMQ queue       | ⚡ retry |
+| Cloud Sync    | Outbox → Sync Hub             | 🔵 opt.  |
 
 ---
 
@@ -159,10 +192,14 @@ sto-erp/
 
 ```typescript
 // ЗАВЖДИ через BullMQ — ніколи прямий виклик
-await this.smsQueue.add('send', { phone, message }, {
-  attempts: 10,
-  backoff: { type: 'exponential', delay: 60_000 },
-});
+await this.smsQueue.add(
+  'send',
+  { phone, message },
+  {
+    attempts: 10,
+    backoff: { type: 'exponential', delay: 60_000 },
+  },
+);
 
 // BullMQ з Redis працює ЛОКАЛЬНО — черга не залежить від інтернету
 // При відновленні з'єднання Redis retry запрацює автоматично
@@ -173,6 +210,7 @@ await this.smsQueue.add('send', { phone, message }, {
 ## Domain Model
 
 ### Infrastructure
+
 - **Organisation** — тенант (одна локальна інсталяція = одна org)
 - **GarageBranch** — філія СТО
 - **Zone** — зона (MECHANICAL|BODY|TIRE|WASH|ELECTRICAL)
@@ -181,28 +219,34 @@ await this.smsQueue.add('send', { phone, message }, {
 - **Employee** — M:M → Zone, Lift, WorkCategory
 
 ### CRM
+
 - **Counterparty** — клієнт або постачальник
 - **CustomerGarage** — гараж клієнта
 - **Vehicle** — авто (VIN, марка, модель, пробіг)
 - **VehicleNode** — вузол авто
 
 ### Catalog
+
 - **WorkCategory** → **Work** (норма-год) → **Service** (пакет)
 - **Good** — запчастина / витратний матеріал
 
 ### Work Orders
+
 - **WorkOrder** FSM: Draft→Estimate→Approved→InProgress→OnHold→Completed→Invoiced→Paid→Archived
 - **WorkOrderLine** — робота + виконавець + підйомник + M:M асистенти
 - **WorkOrderPart** — запчастина з резервуванням
 
 ### Inventory (append-only log)
+
 - **StockItem** — поточний залишок
 - **StockMovement** — кожен рух (RECEIPT|WRITEOFF|TRANSFER|RESERVATION)
 
 ### Finance (append-only log)
+
 - **Invoice**, **Payment**, **SettlementAccount**, **SettlementTransaction**, **ReconciliationAct**
 
 ### Scheduling
+
 - **CalendarSlot** — підйомник + механік + наряд + контрагент + час
   - `counterpartyId` — прямий зв'язок (без наряду)
   - `workOrderId` — через наряд (counterpartyId fallback з workOrder)
@@ -238,18 +282,18 @@ syncVersion BigInt    @default(0)
 
 Всі прапорці доступні через `useUiFeatures()`:
 
-| Flag | Хук/Компонент | Сторінки |
-|---|---|---|
-| `toastEnabled` | `toast` з `@/lib/toast` | всі |
-| `unsavedGuardEnabled` | `useDirtyForm` | всі форми |
-| `bulkActionsEnabled` | `useBulkSelect` + `BulkActionsBar` | всі списки |
-| `savedFiltersEnabled` | `useSavedFilters` + `SavedFiltersBar` | всі списки |
-| `inlineEditEnabled` | `useInlineEdit` + `InlineEditCell` | work-orders |
-| `stockIndicatorEnabled` | показ залишку | work-orders/[id] |
-| `commandPaletteEnabled` | Ctrl+K палітра | TopShell |
-| `keyboardShortcutsEnabled` | `useGlobalShortcuts` | TopShell |
-| `syncIndicatorEnabled` | `SyncIndicator` | TopShell header |
-| `notificationCenterEnabled` | `NotificationCenter` | TopShell header |
+| Flag                        | Хук/Компонент                         | Сторінки         |
+| --------------------------- | ------------------------------------- | ---------------- |
+| `toastEnabled`              | `toast` з `@/lib/toast`               | всі              |
+| `unsavedGuardEnabled`       | `useDirtyForm`                        | всі форми        |
+| `bulkActionsEnabled`        | `useBulkSelect` + `BulkActionsBar`    | всі списки       |
+| `savedFiltersEnabled`       | `useSavedFilters` + `SavedFiltersBar` | всі списки       |
+| `inlineEditEnabled`         | `useInlineEdit` + `InlineEditCell`    | work-orders      |
+| `stockIndicatorEnabled`     | показ залишку                         | work-orders/[id] |
+| `commandPaletteEnabled`     | Ctrl+K палітра                        | TopShell         |
+| `keyboardShortcutsEnabled`  | `useGlobalShortcuts`                  | TopShell         |
+| `syncIndicatorEnabled`      | `SyncIndicator`                       | TopShell header  |
+| `notificationCenterEnabled` | `NotificationCenter`                  | TopShell header  |
 
 **Управління колонками** (`useTableColumns` + `ColumnsDropdown`) є на всіх списках:
 `work-orders`, `employees`, `crm`, `invoices`, `purchase-orders`, `stock-documents`, `catalog-works/goods/services`
