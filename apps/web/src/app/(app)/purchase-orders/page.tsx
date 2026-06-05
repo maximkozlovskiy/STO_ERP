@@ -6,7 +6,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus, ShoppingCart, Search, Eye, EyeOff, Pencil, Trash2, Zap } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
-import { getCached, setCache } from '@/lib/ref-cache';
 import {
   usePurchaseOrders,
   purchaseOrdersKeys,
@@ -28,8 +27,6 @@ import { Pagination } from '@/components/ui/pagination';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
-import { SearchCombobox } from '@/components/ui/search-combobox';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -61,41 +58,14 @@ import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { PurchaseOrderCreateModal } from '@/components/ui/PurchaseOrderCreateModal';
 import { toast } from '@/lib/toast';
-import { cn, displayCounterpartyName } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 const kyivToday = () => KYIV_YMD.format(new Date());
-
-interface Supplier {
-  id: string;
-  firstName?: string;
-  lastName?: string;
-  companyName?: string;
-}
-interface Warehouse {
-  id: string;
-  name: string;
-  isMain: boolean;
-}
-interface Good {
-  id: string;
-  name: string;
-  sku: string | null;
-  unit: string;
-  purchasePrice: number | null;
-}
-
-interface GoodUoM {
-  id: string;
-  unitOfMeasureId: string;
-  unitName: string;
-  unitShortName: string;
-  coefficient: number;
-  isDefault: boolean;
-}
 
 interface PoFilters extends Record<string, unknown> {
   status: string;
@@ -228,27 +198,6 @@ export default function PurchaseOrdersPage() {
   const [showDetail, setShowDetail] = useState<PurchaseOrder | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
 
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [supplierDisplayName, setSupplierDisplayName] = useState('');
-  const [form, setForm] = useState({
-    supplierId: '',
-    warehouseId: '',
-    notes: '',
-    documentDate: kyivToday(),
-  });
-  const [lines, setLines] = useState<
-    {
-      goodId: string;
-      goodName: string;
-      quantity: string;
-      price: string;
-      unit: string; // Bug #233: базова одиниця Good — fallback коли UoMs порожні
-      unitId: string;
-      unitShortName: string;
-      coefficient: number;
-      goodUoMs: GoodUoM[];
-    }[]
-  >([]);
   const [saving, setSaving] = useState(false);
 
   const [receiveLines, setReceiveLines] = useState<{ lineId: string; receivedQty: string }[]>([]);
@@ -304,97 +253,6 @@ export default function PurchaseOrdersPage() {
     ],
     [bulkDeleteSelected],
   );
-
-  useEffect(() => {
-    if (!showCreate) return;
-    let cancelled = false;
-
-    const apply = (wList: Warehouse[]) => {
-      if (cancelled) return;
-      setWarehouses(wList);
-      const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
-      // Auto-select main warehouse only if the user hasn't already picked one
-      // (e.g. modal re-opened after a slow fetch — preserves manual choice).
-      if (mainW) setForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
-    };
-
-    // Reference data — paint instantly from sessionStorage, refresh in background.
-    const cached = getCached<Warehouse[]>('cache:warehouses');
-    if (cached) apply(cached);
-
-    apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses')
-      .then(w => {
-        const wList = Array.isArray(w) ? w : w.items;
-        setCache('cache:warehouses', wList);
-        apply(wList);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled && !cached)
-          setError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [showCreate]);
-
-  const handleCreate = async () => {
-    const validLines = lines.filter(l => l.goodId);
-    for (const l of validLines) {
-      const qty = parseFloat(l.quantity);
-      const price = parseFloat(l.price);
-      if (!Number.isFinite(qty) || qty <= 0) {
-        setError('Вкажіть коректну кількість для всіх позицій');
-        return;
-      }
-      if (!Number.isFinite(price) || price < 0) {
-        setError('Вкажіть коректну ціну для всіх позицій');
-        return;
-      }
-    }
-    setSaving(true);
-    try {
-      await apiFetch<PurchaseOrder>('/purchase-orders', {
-        method: 'POST',
-        body: JSON.stringify({
-          supplierId: form.supplierId,
-          warehouseId: form.warehouseId,
-          notes: form.notes || undefined,
-          documentDate: form.documentDate || undefined,
-          // Bug #231: конвертуємо display → base unit перед submit.
-          // l.quantity у обраній UoM; l.coefficient = base_units_per_uom.
-          // qty_base = qty_display * coeff; price_base = price_display / coeff.
-          // totalAmount інваріантний: qty_base × price_base = qty_display × price_display.
-          // Backward-compat: coeff=1 (default UoM або без UoMs) → нічого не змінюється.
-          lines: validLines.map(l => {
-            const coeff = l.coefficient || 1;
-            const displayQty = parseFloat(l.quantity);
-            const displayPrice = parseFloat(l.price);
-            return {
-              goodId: l.goodId,
-              quantity: displayQty * coeff,
-              price: displayPrice / coeff,
-            };
-          }),
-        }),
-      });
-      setShowCreate(false);
-      setForm({
-        supplierId: '',
-        warehouseId: '',
-        notes: '',
-        documentDate: kyivToday(),
-      });
-      setSupplierDisplayName('');
-      setLines([]);
-      dirty.resetDirty();
-      queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleTransition = async (po: PurchaseOrder, newStatus: string) => {
     if (
@@ -514,32 +372,6 @@ export default function PurchaseOrdersPage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const addLine = () => {
-    setLines(l => [
-      ...l,
-      {
-        goodId: '',
-        goodName: '',
-        quantity: '1',
-        price: '',
-        unit: '',
-        unitId: '',
-        unitShortName: '',
-        coefficient: 1,
-        goodUoMs: [],
-      },
-    ]);
-    dirty.markDirty();
-  };
-  const updateLine = (i: number, field: string, value: string) => {
-    setLines(l => l.map((x, idx) => (idx === i ? { ...x, [field]: value } : x)));
-    dirty.markDirty();
-  };
-  const removeLine = (i: number) => {
-    setLines(l => l.filter((_, idx) => idx !== i));
-    dirty.markDirty();
   };
 
   const statuses = ['', 'DRAFT', 'ORDERED', 'PARTIAL', 'RECEIVED', 'CANCELLED'];
@@ -969,277 +801,14 @@ export default function PurchaseOrdersPage() {
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
       {/* Create modal */}
-      <Modal
+      <PurchaseOrderCreateModal
         open={showCreate}
-        onClose={async () => {
-          if (!(await dirty.confirmClose())) return;
+        onClose={() => setShowCreate(false)}
+        onSaved={() => {
           setShowCreate(false);
-          setForm({
-            supplierId: '',
-            warehouseId: '',
-            notes: '',
-            documentDate: kyivToday(),
-          });
-          setSupplierDisplayName('');
-          setLines([]);
-          dirty.resetDirty();
+          queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
         }}
-        title="Нове замовлення постачальнику"
-        size="xl"
-        footer={
-          <Button
-            onClick={handleCreate}
-            loading={saving}
-            disabled={!form.supplierId || !form.warehouseId}
-            className="w-full"
-          >
-            Створити замовлення
-          </Button>
-        }
-      >
-        <div className="space-y-4">
-          <SearchCombobox<Supplier>
-            label="Постачальник"
-            required
-            placeholder="Назва компанії, телефон..."
-            value={form.supplierId}
-            displayValue={supplierDisplayName}
-            onSelect={s => {
-              // Bug #139: helper повертає '(без імені)' fallback замість порожнього рядка.
-              setSupplierDisplayName(displayCounterpartyName(s));
-              setForm(f => ({ ...f, supplierId: s.id }));
-              dirty.markDirty();
-            }}
-            onClear={() => {
-              setSupplierDisplayName('');
-              setForm(f => ({ ...f, supplierId: '' }));
-            }}
-            fetchItems={q =>
-              apiFetch<{ items: Supplier[] }>(
-                `/counterparties?type=SUPPLIER&q=${encodeURIComponent(q)}&limit=10`,
-              ).then(r =>
-                r.items.map(s => ({
-                  ...s,
-                  primary: displayCounterpartyName(s),
-                })),
-              )
-            }
-          />
-          <Select
-            label="Склад"
-            required
-            value={form.warehouseId}
-            onChange={e => {
-              setForm(f => ({ ...f, warehouseId: e.target.value }));
-              dirty.markDirty();
-            }}
-            placeholder="Оберіть склад"
-          >
-            {warehouses.map(w => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </Select>
-          <Input
-            label="Примітки"
-            value={form.notes}
-            onChange={e => {
-              setForm(f => ({ ...f, notes: e.target.value }));
-              dirty.markDirty();
-            }}
-            placeholder="Необов'язково"
-          />
-          <DatePickerInput
-            label="Дата документа"
-            value={form.documentDate}
-            onChange={v => {
-              setForm(f => ({ ...f, documentDate: v }));
-              dirty.markDirty();
-            }}
-          />
-
-          {/* Lines */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-foreground">Позиції</span>
-              <Button variant="ghost" size="sm" onClick={addLine}>
-                + Додати
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {lines.map((l, i) => (
-                <div key={i} className="flex gap-2 items-start">
-                  <div className="flex-1">
-                    <SearchCombobox<Good>
-                      placeholder="Товар..."
-                      value={l.goodId}
-                      displayValue={l.goodName}
-                      onSelect={async g => {
-                        const selectedGoodId = g.id;
-                        setLines(ls =>
-                          ls.map((x, idx) =>
-                            idx === i
-                              ? {
-                                  ...x,
-                                  goodId: g.id,
-                                  goodName: g.name,
-                                  unit: g.unit, // Bug #233: fallback одиниця коли UoMs порожні
-                                  price: g.purchasePrice ? String(g.purchasePrice) : x.price,
-                                  unitId: '',
-                                  unitShortName: '',
-                                  coefficient: 1,
-                                  goodUoMs: [],
-                                }
-                              : x,
-                          ),
-                        );
-                        // Завантажити UoM для цього товару
-                        try {
-                          const uoms = await apiFetch<GoodUoM[]>(`/goods/${g.id}/uoms`);
-                          // Bug #235: race-guard за goodId-only (без stale index).
-                          // Видалення/reorder рядків зсуває index → закаптурений `i` стає невірним.
-                          // Шукаємо по goodId і goodUoMs.length === 0 (запобігає повторному apply).
-                          setLines(ls =>
-                            ls.map(x => {
-                              if (x.goodId !== selectedGoodId || x.goodUoMs.length > 0) return x;
-                              const defaultUom = uoms.find(u => u.isDefault) ?? uoms[0];
-                              return {
-                                ...x,
-                                goodUoMs: uoms,
-                                ...(defaultUom
-                                  ? {
-                                      unitId: defaultUom.id,
-                                      unitShortName: defaultUom.unitShortName,
-                                      coefficient: defaultUom.coefficient || 1,
-                                    }
-                                  : {}),
-                              };
-                            }),
-                          );
-                        } catch (err) {
-                          if (features.toastEnabled) {
-                            toast.error('Не вдалося завантажити одиниці виміру');
-                          } else {
-                            setError(
-                              err instanceof Error
-                                ? err.message
-                                : 'Не вдалося завантажити одиниці виміру',
-                            );
-                          }
-                        }
-                      }}
-                      onClear={() =>
-                        setLines(ls =>
-                          ls.map((x, idx) =>
-                            idx === i
-                              ? {
-                                  ...x,
-                                  goodId: '',
-                                  goodName: '',
-                                  unit: '',
-                                  unitId: '',
-                                  unitShortName: '',
-                                  coefficient: 1,
-                                  goodUoMs: [],
-                                }
-                              : x,
-                          ),
-                        )
-                      }
-                      fetchItems={q =>
-                        apiFetch<{ items: Good[] }>(
-                          `/goods?q=${encodeURIComponent(q)}&limit=10`,
-                        ).then(r =>
-                          r.items.map(g => ({
-                            ...g,
-                            primary: g.name,
-                            secondary: g.sku ?? undefined,
-                          })),
-                        )
-                      }
-                    />
-                  </div>
-                  <Input
-                    type="number"
-                    value={l.quantity}
-                    onChange={e => updateLine(i, 'quantity', e.target.value)}
-                    placeholder="Кіл."
-                    min="0.001"
-                    step="0.001"
-                    className="w-20 text-xs"
-                  />
-                  {l.goodUoMs.length > 0 ? (
-                    <Select
-                      value={l.unitId}
-                      onChange={e => {
-                        const selectedUom = l.goodUoMs.find(u => u.id === e.target.value);
-                        if (selectedUom) {
-                          const oldCoeff = l.coefficient || 1;
-                          const newCoeff = selectedUom.coefficient || 1;
-                          // Bug #234: не клобер user intent коли qty порожнє/NaN/≤0.
-                          // Тільки оновлюємо UoM-метадані, qty лишаємо для користувача.
-                          const rawQty = parseFloat(l.quantity);
-                          const hasValidQty = Number.isFinite(rawQty) && rawQty > 0;
-                          const newQty = hasValidQty
-                            ? ((rawQty * oldCoeff) / newCoeff).toFixed(3)
-                            : null;
-                          setLines(ls =>
-                            ls.map((x, idx) =>
-                              idx === i
-                                ? {
-                                    ...x,
-                                    unitId: selectedUom.id,
-                                    unitShortName: selectedUom.unitShortName,
-                                    coefficient: newCoeff,
-                                    ...(newQty !== null ? { quantity: newQty } : {}),
-                                  }
-                                : x,
-                            ),
-                          );
-                          dirty.markDirty();
-                        }
-                      }}
-                      className="w-20 text-xs"
-                    >
-                      {l.goodUoMs.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {u.unitShortName}
-                        </option>
-                      ))}
-                    </Select>
-                  ) : l.unit ? (
-                    /* Bug #233: коли UoMs порожні — показати unit як text fallback */
-                    <span className="w-20 text-xs text-muted-foreground self-center px-2 truncate">
-                      {l.unit}
-                    </span>
-                  ) : null}
-                  <Input
-                    type="number"
-                    value={l.price}
-                    onChange={e => updateLine(i, 'price', e.target.value)}
-                    placeholder="Ціна"
-                    min="0"
-                    step="0.01"
-                    className="w-24 text-xs"
-                  />
-                  <button
-                    onClick={() => removeLine(i)}
-                    className="text-destructive/60 hover:text-destructive text-sm px-1"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              {lines.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Замовлення можна створити без позицій і додати їх пізніше
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </Modal>
+      />
 
       {/* Detail modal */}
       <Modal
