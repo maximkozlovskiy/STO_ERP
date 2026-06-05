@@ -568,6 +568,54 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-05 — Status-guarded soft-delete з sequential findFirst + update — invoices/PO/SD/WO remove() та подібні
+
+**Сигнал:** Метод `remove()` має business-rule guard через статус: `findFirst({ where: { id, orgId, deletedAt: null } })` повертає **full DTO** лише щоб прочитати ОДНЕ поле (`status`/`isSystem`/`type`), потім `if (X.status !== DRAFT) throw` та `update({ where: { id, orgId }, data: { deletedAt: new Date() }})`. Маска cycle-N gap бо `findOne + update` патерн вже мігровано на `updateMany` для **простих** remove (без business rule); але `remove` з status check лишається на старому паттерні бо `updateMany` не може повертати `status` для перевірки.
+
+**Причина виникнення:** Розробник природно пише `if (x.status !== DRAFT) throw` посеред методу — це читабельний guard. Не помічає що `findFirst` без `select:` тягне ВЕСЬ запис (15-30 колонок + Decimal/Date marshalling). Один-два byte status-поля коштують повний row read. Окремо `update where: { id, orgId }` без `deletedAt: null` має race window: дві паралельні DELETE-запити можуть успішно «видалити» вже-видалений запис (idempotency OK, але аудит-лог покаже два DELETE замість одного).
+
+**Підхід до виявлення:** для кожного `async remove(`/`async cancel(`/`async archive(` шукати **двоступеневий патерн**: (1) `findFirst({ where: { id, orgId, deletedAt: null } })` БЕЗ `select:`; (2) подальша перевірка `.status`/`.type`/`.isSystem`; (3) `update({ data: { deletedAt } })` без `deletedAt: null` у where. Якщо всі три знайдено — кандидат.
+
+**Підхід до фіксу:** **двоступінчатий race-safe patern**: (1) `findFirst({ where: { id, orgId, deletedAt: null }, select: { status: true } })` — narrow, для status guard; (2) `if (!doc) throw NotFound; if (doc.status !== DRAFT) throw BadRequest;` — той самий читабельний guard; (3) `updateMany({ where: { id, orgId, deletedAt: null }, data: { deletedAt } })` — race-safe soft delete. count check не обов'язковий (race-loser просто молча no-op).
+
+**Реальний impact:** -50-80% wire payload на guard read (15-30 колонок → 1); -1 race window (rare bug але важливий для audit log integrity). На WO/Invoice/PO/SD remove — найчастіші DELETE endpoints у системі, малі покращення підсумовуються. Особливо помітно при bulk-cleanup (адміни видаляють чернетки масово).
+
+**Де шукати ще:** будь-який `remove`/`cancel` метод що має business-rule guard через ОДНЕ поле статусу/типу. Особливо часто: invoice/PO/SD/WO/comment/audit. Також — `restore()` що читає `deletedAt`-related поле для перевірки.
+
+---
+
+### 2026-06-05 — FK guard без narrow projection у Promise.all FK validation — будь-який create/update що валідує >1 FK у Promise.all
+
+**Сигнал:** Сервіс має `Promise.all` з 2-5 паралельних `findFirst({ where: { id: dto.xId, orgId, deletedAt: null } })` для FK validation — БЕЗ `select: { id: true }`. Кожен запит тягне ВЕСЬ запис цільової таблиці (counterparty, employee, lift, currency, branch — кожен 10-30 колонок з Decimal/Date marshalling). Існуючий patern Promise.all (cycle 1-2 fix) перевів послідовне → паралельне, але select narrow пропустив бо «це вже у Promise.all — швидко». Не помітно бо response time достатньо швидкий: 1 RTT × N parallel = 1 RTT total, але payload — N × full row.
+
+**Причина виникнення:** після переводу sequential findFirst → Promise.all (попередні цикли) фокус був на RTT economy. Wire payload (marshalling) залишився поза увагою бо «всі запити йдуть паралельно — це OK». Reality check: backend витрачає CPU на serialization N × full rows; PostgreSQL читає N × full pages (vs single column read від index-only scan).
+
+**Підхід до виявлення:** grep `findFirst({ where: { id: dto\.` у `*.service.ts`, дивитись чи поряд є інші findFirst у тому ж Promise.all. Для кожного перевірити: чи результат використовується через `.X`-property access (потрібен повний рядок), чи лише через `!result` boolean (тільки існування потрібне). Якщо тільки boolean — кандидат на `select: { id: true }`. Окремий signal: коментар «tenant guard» / «FK validation» / «cross-tenant check» біля findFirst — типове використання лише як existence check.
+
+**Підхід до фіксу:** для кожного FK guard у Promise.all додати `select: { id: true }`. Якщо одне поле потрібне (наприклад, `existing.shortName` для post-filter у units.update) — `select: { id: true, shortName: true }`. Залишити full DTO **тільки** там, де ВСІ поля юзаються (наприклад, `existing` у calendar.updateSlot потрібен повним бо startAt/endAt/liftId/employeeId юзаються).
+
+**Реальний impact:** на cash-registers/bank-accounts/calendar update — N × full row → N × 1 column. CPU JSON serialization на Node side падає у разів. PostgreSQL TOAST-page reads уникаються для текстових полів. Чисто статистично: 5 FK guards × 2KB rows → 5 × 50 bytes = 10KB → 250 bytes (-97.5%). На load-test бенчмарку (100 RPS на endpoint) це помітно у CPU graph API.
+
+**Де шукати ще:** будь-який метод з multi-FK Promise.all: create/update методи з 2+ FK полями (currencyId+branchId, liftId+employeeId, goodId+workId+unitOfMeasureId, тощо). Часто пропускається у наступних: lifts (zoneId), zones (branchId), payment-methods (currencyId), services (workIds+goodIds), invoices addLine (goodId+workId+uomId).
+
+---
+
+### 2026-06-05 — Static tab/option arrays оголошені у тілі компонента — view switchers, period selectors, tab definitions
+
+**Сигнал:** Усередині функції-компонента оголошений масив об'єктів/кортежів зі статичним вмістом: `const TABS: { key, label }[] = [...]` або інline JSX `{[['day', 'День', Icon], ['month', 'Місяць', Icon]].map(...)}`. Масив не залежить від props/state, його значення — рядкові літерали + icon components (стабільні refs). Часто SCREAMING_CASE наводить на думку «це константа», але scope — локальний.
+
+**Причина виникнення:** Розробник створює array поряд із `.map()` що його використовує — це найбільш зчитуваний код. Якщо TypeScript потребує `as const` для type narrowing у tuple (tuple type → readonly tuple), розробник додає `as const` inline у JSX — і це формально працює, але масив пересоздається на кожен render. Особливо часто у tab switchers (3-7 entries), period selectors (3 entries), view modes (2-4 entries).
+
+**Підхід до виявлення:** у файлах сторінок з view-tab UI грепнути `const [A-Z][A-Z_]+:\s*` всередині тіла компонента (2-space indent) — або інline `(\[[^]]+\] as const).map(`. Перевірити що масив не залежить від state/props (наявність closure через activeBranches/activeZones — не кандидат). Окремий signal: масив об'єктів з литералами `{ key: 'X', label: 'Y' }`.
+
+**Підхід до фіксу:** Підняти на module-level як `const X = [...] as const` (для tuple-arrays — `ReadonlyArray<readonly [...]>` annotation). Icon components з lucide-react — pure refs, безпечно capture-ити в module scope. Локальні `<TabSwitcher items={X}>` тепер ділять stable reference. У map-кortежах — деструктуризація `({ key, label })` працить як раніше.
+
+**Реальний impact:** усуває N allocations per render (де N = entries × inner objects/tuples). Для frequently-rerendering компонентів (drag, resize, real-time updates, filters, search) — помітна різниця у GC pressure. Bonus: React DevTools profiler показує менше «re-rendered with different props» для child компонентів що отримують entries як prop.
+
+**Де шукати ще:** будь-яка сторінка з view switcher / tab navigation / period selector / sort options. Кандидати: calendar (day/month/stats — fixed), stats (period — fixed), counterparty detail (tabs — fixed), infrastructure (tabs — fixed), reports (revenue/labor/parts switcher), inventory (low/all toggle), settings (tabs), catalog (goods/works/services/units/brands tabs).
+
+---
+
 ### 2026-06-05 — Detail-в-list × DetailPanel — list endpoint тягне повну дочірню колекцію, хоча UI рендерить її ЛИШЕ для ОДНОГО вибраного rows
 
 **Сигнал:** list-endpoint містить `include: { lines/parts/children: { take: 1000, include: {...}}}` для O(20) rows. На фронті UI використовує цю колекцію у ДВОХ місцях: (1) у table-cell — тільки `.length`/`.count` (rendering of count, not items); (2) у DetailPanel/sidebar/modal — повний `.map(...)` РЕНДЕР, але DetailPanel показує тільки ОДИН вибраний row. Інші 19 rows завантажили лінії, які ніколи не побачать світло DOM.
