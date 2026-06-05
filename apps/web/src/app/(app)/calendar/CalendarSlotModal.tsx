@@ -417,6 +417,19 @@ export function CalendarSlotModal({
     }
   }, [open, setCpDisplay]);
 
+  // Підтягуємо телефон при відкритті форми з уже обраним контрагентом
+  // (редагування існуючого слота — picker не викликався, тому cpPhone = null)
+  useEffect(() => {
+    if (!open || !form.counterpartyId || cpPhone !== null) return;
+    apiFetch<{ phone?: string | null }>(`/counterparties/${form.counterpartyId}`)
+      .then(cp => {
+        if (mountedRef.current) setCpPhone(cp.phone ?? null);
+      })
+      .catch(() => {
+        /* ignore */
+      });
+  }, [open, form.counterpartyId, cpPhone]);
+
   const searchCounterparties = useCallback((q: string) => {
     if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current);
     if (!q.trim()) {
