@@ -41,19 +41,14 @@ import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
-import { useDetailPanel } from '@/hooks/useDetailPanel';
-import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
-import { useSavedFilters } from '@/hooks/useSavedFilters';
+import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
-import { useUiFeatures } from '@/hooks/useUiFeatures';
-import { useTableColumns } from '@/hooks/useTableColumns';
-import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
-import { fmtMoney, fmtDate } from '@/lib/format';
+import { fmtMoney } from '@/lib/format';
 
 interface CrmFilters extends Record<string, unknown> {
   search: string;
@@ -75,15 +70,52 @@ export default function CrmPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  // Local filter & pagination state
+  const { confirm, dialogProps } = useConfirm();
+
+  // ── Column visibility ────────────────────────────────────────────────────────
+  const CRM_COLUMNS = useMemo(
+    () => [
+      { key: 'name', label: 'Контрагент', defaultVisible: true },
+      { key: 'type', label: 'Тип', defaultVisible: true },
+      { key: 'phone', label: 'Телефон', defaultVisible: true },
+      { key: 'edrpou', label: 'ЄДРПОУ', defaultVisible: false },
+      { key: 'balance', label: 'Баланс, ₴', defaultVisible: true },
+    ],
+    [],
+  );
+
+  // useListPage: shared table/panel/filter infrastructure
+  const {
+    page,
+    setPage,
+    showDeleted,
+    setShowDeleted,
+    activeSavedFilterId,
+    setActiveSavedFilterId,
+    tableColumns: {
+      visibleKeys: colVisible,
+      visibleColumns,
+      orderedColumns,
+      order,
+      customLabels,
+      toggle: toggleCol,
+      reorder,
+      renameColumn,
+      resetConfig,
+    },
+    dragProps,
+    detailPanel,
+    panelConfig,
+    savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
+    features,
+    limit,
+  } = useListPage<CrmFilters>('crm', CRM_COLUMNS, { defaultLimit: 20 });
+
+  // Local filter state (specific to counterparties)
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [typeFilter, setTypeFilter] = useState('');
-  const [page, setPage] = useState(1);
-  const [showDeleted, setShowDeleted] = useState(false);
 
-  // React Query hooks
-  const limit = 20;
   const { sort: crmSort, toggle: toggleCrmSort } = useSortState('lastName', 'asc');
   const {
     data: queryData,
@@ -107,57 +139,22 @@ export default function CrmPage() {
   const [editingCp, setEditingCp] = useState<Counterparty | null>(null);
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
 
-  const features = useUiFeatures();
-  const { confirm, dialogProps } = useConfirm();
-  const detailPanel = useDetailPanel('crm');
-  const panelConfig = useDetailPanelConfig('crm');
-
   // ── Vehicles for selected counterparty (detail panel) ───────────────────────
   const [cpVehicles, setCpVehicles] = useState<
     { id: string; make: string; model: string; year: number | null; licensePlate: string }[]
   >([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
 
-  // ── Column visibility ────────────────────────────────────────────────────────
-  const CRM_COLUMNS = useMemo(
-    () => [
-      { key: 'name', label: 'Контрагент', defaultVisible: true },
-      { key: 'type', label: 'Тип', defaultVisible: true },
-      { key: 'phone', label: 'Телефон', defaultVisible: true },
-      { key: 'edrpou', label: 'ЄДРПОУ', defaultVisible: false },
-      { key: 'balance', label: 'Баланс, ₴', defaultVisible: true },
-    ],
-    [],
+  const applyFilter = useCallback(
+    (preset: { id: string; filters: CrmFilters }) => {
+      setSearch(preset.filters.search ?? '');
+      setTypeFilter(preset.filters.typeFilter ?? '');
+      setShowDeleted(preset.filters.showDeleted ?? false);
+      setPage(1);
+      setActiveSavedFilterId(preset.id);
+    },
+    [setShowDeleted, setPage, setActiveSavedFilterId],
   );
-
-  const {
-    visibleKeys: colVisible,
-    visibleColumns,
-    orderedColumns,
-    order,
-    customLabels,
-    toggle: toggleCol,
-    reorder,
-    renameColumn,
-    resetConfig,
-  } = useTableColumns('crm', CRM_COLUMNS);
-  const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
-
-  // ── Saved filters ────────────────────────────────────────────────────────────
-  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-  const {
-    saved: savedFilters,
-    save: saveFilter,
-    remove: removeFilter,
-  } = useSavedFilters<CrmFilters>('crm');
-
-  const applyFilter = useCallback((preset: { id: string; filters: CrmFilters }) => {
-    setSearch(preset.filters.search ?? '');
-    setTypeFilter(preset.filters.typeFilter ?? '');
-    setShowDeleted(preset.filters.showDeleted ?? false);
-    setPage(1);
-    setActiveSavedFilterId(preset.id);
-  }, []);
 
   const handleSaveFilter = useCallback(
     (name: string) => {
@@ -165,7 +162,7 @@ export default function CrmPage() {
       setActiveSavedFilterId(preset.id);
       toast.success(`Фільтр "${name}" збережено`);
     },
-    [saveFilter, search, typeFilter, showDeleted],
+    [saveFilter, search, typeFilter, showDeleted, setActiveSavedFilterId],
   );
 
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(counterparties);

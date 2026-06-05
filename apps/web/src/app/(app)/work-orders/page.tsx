@@ -42,8 +42,6 @@ import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { TableContainer } from '@/components/ui/table-container';
-import { useDetailPanel } from '@/hooks/useDetailPanel';
-import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import {
   WORK_ORDER_PANEL_SCHEMA,
   buildPanelFields,
@@ -53,15 +51,12 @@ import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters
 import { InlineEditCell, InlineViewCell } from '@/components/ui/inline-edit-cell';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
-import { useSavedFilters } from '@/hooks/useSavedFilters';
+import { useListPage } from '@/hooks/useListPage';
 import { useInlineEdit } from '@/hooks/useInlineEdit';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
-import { useUiFeatures } from '@/hooks/useUiFeatures';
-import { useTableColumns } from '@/hooks/useTableColumns';
-import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { toast } from '@/lib/toast';
 import { cn, displayCounterpartyName } from '@/lib/utils';
-import { fmtMoney, fmtDate, fmtShortDateTime, fmtDateTime, kyivToday } from '@/lib/format';
+import { fmtMoney, fmtDate, fmtShortDateTime, kyivToday } from '@/lib/format';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 
@@ -145,16 +140,55 @@ export default function WorkOrdersPage() {
     setNowMs(Date.now());
   }, []);
 
-  // Local filter & pagination state
+  const WO_COLUMNS = useMemo(
+    () => [
+      { key: 'number', label: 'Номер' },
+      { key: 'client', label: 'Клієнт / Авто' },
+      { key: 'status', label: 'Статус' },
+      { key: 'priority', label: 'Пріоритет' },
+      { key: 'amount', label: 'Сума, ₴' },
+      { key: 'documentDate', label: 'Дата документа' },
+      { key: 'plannedAt', label: 'Заплановано' },
+      { key: 'dueDate', label: 'Дедлайн' },
+    ],
+    [],
+  );
+
+  // useListPage: shared table/panel/filter infrastructure
+  const {
+    page,
+    setPage,
+    showDeleted,
+    setShowDeleted,
+    activeSavedFilterId,
+    setActiveSavedFilterId,
+    tableColumns: {
+      visibleKeys: colVisible,
+      visibleColumns,
+      orderedColumns,
+      order,
+      customLabels,
+      toggle: toggleCol,
+      reorder,
+      renameColumn,
+      resetConfig,
+    },
+    dragProps,
+    detailPanel,
+    panelConfig,
+    savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
+    features,
+    limit,
+  } = useListPage<WOFilters>('work-orders', WO_COLUMNS, { defaultLimit: 20 });
+
+  // Local filter state (specific to work-orders)
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [page, setPage] = useState(1);
   const [error, setError] = useState('');
   const [formError, setFormError] = useState('');
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
-  const [showDeleted, setShowDeleted] = useState(false);
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
   const { sort: woSort, toggle: toggleWoSort } = useSortState('createdAt', 'desc');
@@ -162,8 +196,6 @@ export default function WorkOrdersPage() {
   const [myOrders, setMyOrders] = useState(false);
   const myOrdersInitRef = useRef(false);
   const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
-  const detailPanel = useDetailPanel('work-orders');
-  const panelConfig = useDetailPanelConfig('work-orders-panel');
 
   // Auto-activate "my orders" chip once for MECHANIC role (run only once after employee loads).
   // Must be declared AFTER the `myOrdersInitRef` and `setMyOrders` it references, otherwise TDZ
@@ -176,7 +208,6 @@ export default function WorkOrdersPage() {
   }, [employee]);
 
   // React Query hooks
-  const limit = 20;
   const {
     data: queryData,
     isLoading: loading,
@@ -209,53 +240,20 @@ export default function WorkOrdersPage() {
   const [templates, setTemplates] = useState<WOTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<WOTemplate | null>(null);
 
-  const features = useUiFeatures();
-
-  const WO_COLUMNS = useMemo(
-    () => [
-      { key: 'number', label: 'Номер' },
-      { key: 'client', label: 'Клієнт / Авто' },
-      { key: 'status', label: 'Статус' },
-      { key: 'priority', label: 'Пріоритет' },
-      { key: 'amount', label: 'Сума, ₴' },
-      { key: 'documentDate', label: 'Дата документа' },
-      { key: 'plannedAt', label: 'Заплановано' },
-      { key: 'dueDate', label: 'Дедлайн' },
-    ],
-    [],
+  const applyFilter = useCallback(
+    (preset: { id: string; filters: WOFilters }) => {
+      setStatusFilter(preset.filters.statusFilter ?? '');
+      setCategoryFilter(preset.filters.categoryFilter ?? '');
+      setSearch(preset.filters.search ?? '');
+      setShowDeleted(preset.filters.showDeleted ?? false);
+      setMyOrders(preset.filters.myOrders ?? false);
+      setDateFrom(preset.filters.dateFrom ?? '');
+      setDateTo(preset.filters.dateTo ?? '');
+      setPage(1);
+      setActiveSavedFilterId(preset.id);
+    },
+    [setShowDeleted, setPage, setActiveSavedFilterId],
   );
-
-  const {
-    visibleKeys: colVisible,
-    visibleColumns,
-    orderedColumns,
-    order,
-    customLabels,
-    toggle: toggleCol,
-    reorder,
-    renameColumn,
-    resetConfig,
-  } = useTableColumns('work-orders', WO_COLUMNS);
-  const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
-
-  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-  const {
-    saved: savedFilters,
-    save: saveFilter,
-    remove: removeFilter,
-  } = useSavedFilters<WOFilters>('work-orders');
-
-  const applyFilter = useCallback((preset: { id: string; filters: WOFilters }) => {
-    setStatusFilter(preset.filters.statusFilter ?? '');
-    setCategoryFilter(preset.filters.categoryFilter ?? '');
-    setSearch(preset.filters.search ?? '');
-    setShowDeleted(preset.filters.showDeleted ?? false);
-    setMyOrders(preset.filters.myOrders ?? false);
-    setDateFrom(preset.filters.dateFrom ?? '');
-    setDateTo(preset.filters.dateTo ?? '');
-    setPage(1);
-    setActiveSavedFilterId(preset.id);
-  }, []);
 
   const handleSaveFilter = useCallback(
     (name: string) => {

@@ -24,8 +24,6 @@ import { StockDocumentCreateModal } from '@/components/ui/StockDocumentCreateMod
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
-import { useDetailPanel } from '@/hooks/useDetailPanel';
-import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import {
   STOCK_DOC_PANEL_SCHEMA,
   buildPanelFields,
@@ -45,11 +43,8 @@ import { useSortState } from '@/hooks/useSortState';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
-import { useSavedFilters } from '@/hooks/useSavedFilters';
+import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
-import { useUiFeatures } from '@/hooks/useUiFeatures';
-import { useTableColumns } from '@/hooks/useTableColumns';
-import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtDateTime, kyivToday } from '@/lib/format';
@@ -111,7 +106,6 @@ export default function StockDocumentsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
   const { confirm, dialogProps } = useConfirm();
-  const features = useUiFeatures();
 
   const COLUMNS = useMemo(
     () => [
@@ -125,26 +119,36 @@ export default function StockDocumentsPage() {
     [],
   );
 
+  // useListPage: shared table/panel/filter infrastructure
   const {
-    visibleKeys: colVisible,
-    visibleColumns,
-    orderedColumns,
-    order,
-    customLabels,
-    toggle: toggleCol,
-    reorder,
-    renameColumn,
-    resetConfig,
-  } = useTableColumns('stock-documents', COLUMNS);
-  const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
+    page,
+    setPage,
+    showDeleted,
+    setShowDeleted,
+    activeSavedFilterId,
+    setActiveSavedFilterId,
+    tableColumns: {
+      visibleKeys: colVisible,
+      visibleColumns,
+      orderedColumns,
+      order,
+      customLabels,
+      toggle: toggleCol,
+      reorder,
+      renameColumn,
+      resetConfig,
+    },
+    dragProps,
+    detailPanel,
+    panelConfig,
+    savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
+    features,
+    limit,
+  } = useListPage<StockDocFilters>('stock-documents', COLUMNS, { defaultLimit: 20 });
 
-  const detailPanel = useDetailPanel('stock-documents');
-  const panelConfig = useDetailPanelConfig('stock-docs-panel');
-
-  const [page, setPage] = useState(1);
+  // Local filter state (specific to stock-documents)
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [showDeleted, setShowDeleted] = useState(false);
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
   const { sort: sdSort, toggle: toggleSdSort } = useSortState('createdAt', 'desc');
@@ -152,7 +156,7 @@ export default function StockDocumentsPage() {
   const qc = useQueryClient();
   const { data: docsData, isLoading: loading } = useStockDocuments({
     page,
-    limit: 20,
+    limit,
     type: typeFilter || undefined,
     status: statusFilter || undefined,
     showDeleted,
@@ -173,23 +177,18 @@ export default function StockDocumentsPage() {
 
   const [saving, setSaving] = useState(false);
 
-  // — Saved filters ——————————————————————————————————————————————————————
-  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-  const {
-    saved: savedFilters,
-    save: saveFilter,
-    remove: removeFilter,
-  } = useSavedFilters<StockDocFilters>('stock-documents');
-
-  const applyFilter = useCallback((preset: { id: string; filters: StockDocFilters }) => {
-    setTypeFilter(preset.filters.typeFilter ?? '');
-    setStatusFilter(preset.filters.statusFilter ?? '');
-    setShowDeleted(preset.filters.showDeleted ?? false);
-    setDateFrom(preset.filters.dateFrom ?? '');
-    setDateTo(preset.filters.dateTo ?? '');
-    setPage(1);
-    setActiveSavedFilterId(preset.id);
-  }, []);
+  const applyFilter = useCallback(
+    (preset: { id: string; filters: StockDocFilters }) => {
+      setTypeFilter(preset.filters.typeFilter ?? '');
+      setStatusFilter(preset.filters.statusFilter ?? '');
+      setShowDeleted(preset.filters.showDeleted ?? false);
+      setDateFrom(preset.filters.dateFrom ?? '');
+      setDateTo(preset.filters.dateTo ?? '');
+      setPage(1);
+      setActiveSavedFilterId(preset.id);
+    },
+    [setShowDeleted, setPage, setActiveSavedFilterId],
+  );
 
   const handleSaveFilter = useCallback(
     (name: string) => {
@@ -251,7 +250,6 @@ export default function StockDocumentsPage() {
     [handleBulkDelete],
   );
 
-  const limit = 20;
   const totalPages = Math.ceil(total / limit) || 1;
   const load = invalidate;
 

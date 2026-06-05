@@ -47,13 +47,8 @@ import {
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
-import { useSavedFilters } from '@/hooks/useSavedFilters';
+import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
-import { useUiFeatures } from '@/hooks/useUiFeatures';
-import { useDetailPanel } from '@/hooks/useDetailPanel';
-import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
-import { useTableColumns } from '@/hooks/useTableColumns';
-import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { Pagination } from '@/components/ui/pagination';
 import { toast } from '@/lib/toast';
@@ -178,9 +173,6 @@ function flattenTree(cats: WorkCategory[]): { id: string; name: string }[] {
 export default function EmployeesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST']);
   const { confirm, dialogProps } = useConfirm();
-  const features = useUiFeatures();
-  const detailPanel = useDetailPanel('employees');
-  const panelConfig = useDetailPanelConfig('employees');
 
   const COLUMNS = useMemo(
     () => [
@@ -194,18 +186,32 @@ export default function EmployeesPage() {
     [],
   );
 
+  // useListPage: shared table/panel/filter infrastructure
   const {
-    visibleKeys: colVisible,
-    visibleColumns,
-    orderedColumns,
-    order,
-    customLabels,
-    toggle: toggleCol,
-    reorder,
-    renameColumn,
-    resetConfig,
-  } = useTableColumns('employees', COLUMNS);
-  const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
+    page,
+    setPage,
+    showDeleted,
+    setShowDeleted,
+    activeSavedFilterId,
+    setActiveSavedFilterId,
+    tableColumns: {
+      visibleKeys: colVisible,
+      visibleColumns,
+      orderedColumns,
+      order,
+      customLabels,
+      toggle: toggleCol,
+      reorder,
+      renameColumn,
+      resetConfig,
+    },
+    dragProps,
+    detailPanel,
+    panelConfig,
+    savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
+    features,
+    limit: LIMIT,
+  } = useListPage<EmployeeFilters>('employees', COLUMNS, { defaultLimit: 20 });
 
   const [zones, setZones] = useState<Zone[]>([]);
   const [lifts, setLifts] = useState<Lift[]>([]);
@@ -218,13 +224,10 @@ export default function EmployeesPage() {
   const [error, setError] = useState('');
   const [markingId, setMarkingId] = useState<string | null>(null);
 
-  // Filters
+  // Filters (specific to employees)
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [roleFilter, setRoleFilter] = useState('');
-  const [showDeleted, setShowDeleted] = useState(false);
-  const [page, setPage] = useState(1);
-  const LIMIT = 20;
 
   const { sort: empSort, toggle: toggleEmpSort } = useSortState('lastName', 'asc');
   const { data, isLoading: loading } = useEmployees({
@@ -240,21 +243,16 @@ export default function EmployeesPage() {
   const totalPages = Math.ceil((data?.total ?? 0) / LIMIT);
   const qc = useQueryClient();
 
-  // ─── Saved filters ────────────────────────────────────
-  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-  const {
-    saved: savedFilters,
-    save: saveFilter,
-    remove: removeFilter,
-  } = useSavedFilters<EmployeeFilters>('employees');
-
-  const applyFilter = useCallback((preset: { id: string; filters: EmployeeFilters }) => {
-    setSearch(preset.filters.search ?? '');
-    setRoleFilter(preset.filters.roleFilter ?? '');
-    setShowDeleted(preset.filters.showDeleted ?? false);
-    setPage(1);
-    setActiveSavedFilterId(preset.id);
-  }, []);
+  const applyFilter = useCallback(
+    (preset: { id: string; filters: EmployeeFilters }) => {
+      setSearch(preset.filters.search ?? '');
+      setRoleFilter(preset.filters.roleFilter ?? '');
+      setShowDeleted(preset.filters.showDeleted ?? false);
+      setPage(1);
+      setActiveSavedFilterId(preset.id);
+    },
+    [setShowDeleted, setPage, setActiveSavedFilterId],
+  );
 
   const handleSaveFilter = useCallback(
     (name: string) => {
@@ -262,7 +260,7 @@ export default function EmployeesPage() {
       setActiveSavedFilterId(preset.id);
       if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
     },
-    [saveFilter, search, roleFilter, showDeleted, features.toastEnabled],
+    [saveFilter, search, roleFilter, showDeleted, features.toastEnabled, setActiveSavedFilterId],
   );
 
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(employees);
