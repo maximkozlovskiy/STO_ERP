@@ -135,7 +135,7 @@ function ReportsPageClient() {
     { id: 'revenue', label: 'Виручка' },
     { id: 'work-orders', label: 'Наряди' },
     { id: 'stock', label: 'Залишки' },
-    { id: 'settlements', label: 'Розрахунки' },
+    { id: 'settlements', label: 'Взаєморозрахунки' },
     { id: 'load', label: 'Завантаженість' },
     { id: 'profitability', label: 'Рентабельність' },
   ];

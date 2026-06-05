@@ -30,7 +30,7 @@ import {
   ClipboardList,
 } from 'lucide-react';
 
-export type NavSection = 'top' | 'documents' | 'reports' | 'refs';
+export type NavSection = 'top' | 'documents' | 'reports' | 'refs' | 'settings';
 
 export interface NavItem {
   href: string;
@@ -50,6 +50,7 @@ export const NAV_SECTION_LABELS: Record<NavSection, string> = {
   documents: 'Документи',
   reports: 'Звіти',
   refs: 'Довідники',
+  settings: 'Налаштування',
 };
 
 /**
@@ -59,6 +60,7 @@ export const NAV_SECTION_LABELS: Record<NavSection, string> = {
 export const MASTER_NAV_ITEMS: NavItem[] = [
   // ─── Top ──────────────────────────────────────────────────────────
   { href: '/dashboard', label: 'Дашборд', icon: LayoutDashboard, section: 'top' },
+  { href: '/calendar', label: 'Календар', icon: CalendarDays, section: 'top' },
 
   // ─── Документи ────────────────────────────────────────────────────
   { href: '/work-orders', label: 'Наряди', icon: Wrench, section: 'documents' },
@@ -67,7 +69,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   { href: '/stock-documents', label: 'Документи складу', icon: FileText, section: 'documents' },
 
   // ─── Звіти ────────────────────────────────────────────────────────
-  { href: '/calendar', label: 'Календар', icon: CalendarDays, section: 'reports' },
+  // /settlements — вкладка всередині /reports (не окремий пункт меню)
   {
     href: '/bookings',
     label: 'Онлайн-запис',
@@ -75,7 +77,6 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     section: 'reports',
     roles: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
   },
-  { href: '/settlements', label: 'Розрахунки', icon: Wallet, section: 'reports' },
   {
     href: '/reports',
     label: 'Звіти',
@@ -122,18 +123,20 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     section: 'refs',
     roles: ['OWNER', 'ADMIN'],
   },
+
+  // ─── Налаштування ─────────────────────────────────────────────────
   {
     href: '/settings',
-    label: 'Налаштування',
+    label: 'Система',
     icon: Settings,
-    section: 'refs',
+    section: 'settings',
     roles: ['OWNER', 'ADMIN'],
   },
   {
     href: '/settings/sync',
     label: 'Cloud Sync',
     icon: CloudUpload,
-    section: 'refs',
+    section: 'settings',
     roles: ['OWNER', 'ADMIN'],
   },
 ];
@@ -143,7 +146,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
  * Автогенерується з MASTER_NAV_ITEMS — не редагувати вручну.
  */
 export const NAV_GROUPS: NavGroup[] = (() => {
-  const order: NavSection[] = ['top', 'documents', 'reports', 'refs'];
+  const order: NavSection[] = ['top', 'documents', 'reports', 'refs', 'settings'];
   return order
     .map(section => ({
       label: NAV_SECTION_LABELS[section] || undefined,
