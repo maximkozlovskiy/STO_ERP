@@ -81,9 +81,13 @@ export class BrandsService {
     // Perf: tenant guard + duplicate-name check паралелизуються — обидва тенант-ізольовані,
     // duplicate-check читає по dto.name (не по existing) → немає залежності.
     const [existing, duplicate] = await Promise.all([
-      this.prisma.brand.findFirst({ where: { id, orgId, deletedAt: null } }),
+      this.prisma.brand.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { id: true },
+      }),
       this.prisma.brand.findFirst({
         where: { orgId, name: dto.name, NOT: { id }, deletedAt: null },
+        select: { id: true },
       }),
     ]);
     if (!existing) throw new NotFoundException('Бренд не знайдено');

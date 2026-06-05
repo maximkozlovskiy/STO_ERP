@@ -100,8 +100,11 @@ export class UnitsService {
     // 5% коли shortName реально змінився — економимо 1 RTT. Post-filter перевіряє
     // existing.shortName !== dto.shortName ПОСТ-факто без додаткового запиту.
     const [existing, duplicate] = await Promise.all([
+      // Narrow projection — full DTO load марний (update сам повертає item);
+      // потрібен лише `shortName` для post-filter порівняння з dto.shortName.
       this.prisma.unitOfMeasure.findFirst({
         where: { id, orgId, deletedAt: null },
+        select: { id: true, shortName: true },
       }),
       dto.shortName
         ? this.prisma.unitOfMeasure.findFirst({
@@ -109,6 +112,7 @@ export class UnitsService {
             // @@unique([orgId, shortName]) не має partial WHERE deletedAt IS NULL у migration →
             // конфлікт з soft-deleted рядком викине P2002 → 500 замість осмисленого 409.
             where: { orgId, shortName: dto.shortName, NOT: { id } },
+            select: { id: true, deletedAt: true },
           })
         : Promise.resolve(null),
     ]);

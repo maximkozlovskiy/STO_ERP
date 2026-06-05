@@ -90,11 +90,15 @@ export class BankAccountsService {
         select: { id: true },
       }),
       dto.currencyId
-        ? this.prisma.currency.findFirst({ where: { id: dto.currencyId, orgId, deletedAt: null } })
+        ? this.prisma.currency.findFirst({
+            where: { id: dto.currencyId, orgId, deletedAt: null },
+            select: { id: true },
+          })
         : Promise.resolve(true as const),
       dto.branchId
         ? this.prisma.garageBranch.findFirst({
             where: { id: dto.branchId, orgId, deletedAt: null },
+            select: { id: true },
           })
         : Promise.resolve(true as const),
     ]);

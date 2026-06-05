@@ -385,13 +385,16 @@ export class StockDocumentsService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    // Narrow tenant guard — потрібен лише `status` для DRAFT check.
     const doc = await this.prisma.stockDocument.findFirst({
       where: { id, orgId, deletedAt: null },
+      select: { status: true },
     });
     if (!doc) throw new NotFoundException('Документ не знайдено');
     if (doc.status !== 'DRAFT') throw new BadRequestException('Видалити можна лише чернетку');
-    await this.prisma.stockDocument.update({
-      where: { id, orgId },
+    // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null).
+    await this.prisma.stockDocument.updateMany({
+      where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
   }

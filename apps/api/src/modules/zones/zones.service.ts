@@ -68,15 +68,26 @@ export class ZonesService {
   }
 
   async updateZone(orgId: string, id: string, dto: UpdateZoneDto): Promise<ZoneResponseDto> {
-    await this.findOneZone(orgId, id);
+    // Narrow tenant guard — findOneZone returns full DTO лише для існування,
+    // що марно тут (update сам повертає DTO). select:{id} зменшує wire payload.
+    const guard = await this.prisma.zone.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!guard) throw new NotFoundException('Зону не знайдено');
     const item = await this.prisma.zone.update({ where: { id, orgId }, data: dto });
     await this.cache.delPattern(`ref:zones:${orgId}*`);
     return this.toZoneDto(item);
   }
 
   async removeZone(orgId: string, id: string): Promise<void> {
-    await this.findOneZone(orgId, id);
-    await this.prisma.zone.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
+    // where (id+orgId+deletedAt:null). -1 RTT per delete; race-safe.
+    const result = await this.prisma.zone.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (result.count === 0) throw new NotFoundException('Зону не знайдено');
     await this.cache.delPattern(`ref:zones:${orgId}*`);
   }
 
@@ -120,7 +131,13 @@ export class ZonesService {
   }
 
   async updateLift(orgId: string, id: string, dto: UpdateLiftDto): Promise<LiftResponseDto> {
-    await this.findOneLift(orgId, id);
+    // Narrow tenant guard — findOneLift returns full DTO лише для існування,
+    // що марно тут (update сам повертає DTO). select:{id} зменшує wire payload.
+    const guard = await this.prisma.lift.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!guard) throw new NotFoundException('Підйомник не знайдено');
     const { purchaseDate, warrantyUntil, lastMaintenanceDate, ...rest } = dto;
     const item = await this.prisma.lift.update({
       where: { id, orgId },
@@ -142,8 +159,13 @@ export class ZonesService {
   }
 
   async removeLift(orgId: string, id: string): Promise<void> {
-    await this.findOneLift(orgId, id);
-    await this.prisma.lift.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
+    // where (id+orgId+deletedAt:null). -1 RTT per delete; race-safe.
+    const result = await this.prisma.lift.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (result.count === 0) throw new NotFoundException('Підйомник не знайдено');
     await this.cache.delPattern(`ref:lifts:${orgId}*`);
   }
 

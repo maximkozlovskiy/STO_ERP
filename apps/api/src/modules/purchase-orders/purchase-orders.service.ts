@@ -465,12 +465,17 @@ export class PurchaseOrdersService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const po = await this.prisma.purchaseOrder.findFirst({ where: { id, orgId, deletedAt: null } });
+    // Narrow tenant guard — потрібен лише `status` для DRAFT check.
+    const po = await this.prisma.purchaseOrder.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { status: true },
+    });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
     if (po.status !== PurchaseOrderStatus.DRAFT)
       throw new BadRequestException('Видалити можна лише чернетку');
-    await this.prisma.purchaseOrder.update({
-      where: { id, orgId },
+    // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null).
+    await this.prisma.purchaseOrder.updateMany({
+      where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
   }

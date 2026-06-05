@@ -381,12 +381,20 @@ export class WorkOrdersService {
   }
 
   async remove(orgId: string, id: string, userId?: string): Promise<void> {
-    const wo = await this.prisma.workOrder.findFirst({ where: { id, orgId, deletedAt: null } });
+    // Narrow tenant guard — потрібен лише `status` + `number` (для audit log).
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { status: true, number: true },
+    });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
     if (!DELETABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Можна видалити лише наряд у статусі Чернетка або Скасовано');
     }
-    await this.prisma.workOrder.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null).
+    await this.prisma.workOrder.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
     if (userId) {
       this.audit
         .record(orgId, 'WorkOrder', id, 'DELETE', userId, { status: wo.status, number: wo.number })

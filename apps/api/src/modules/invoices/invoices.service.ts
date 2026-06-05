@@ -454,12 +454,15 @@ export class InvoicesService {
   async removeLine(orgId: string, invoiceId: string, lineId: string): Promise<void> {
     // Parallelize tenant-guard invoice + existing line fetch — both queries are
     // independent and already tenant-scoped via orgId. Saves one RTT per call.
+    // `inv` потрібен повним для status check; `existing` — лише для NotFoundException.
     const [inv, existing] = await Promise.all([
       this.prisma.invoice.findFirst({
         where: { id: invoiceId, orgId, deletedAt: null },
+        select: { status: true },
       }),
       this.prisma.invoiceLine.findFirst({
         where: { id: lineId, invoiceId, orgId },
+        select: { id: true },
       }),
     ]);
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
@@ -494,11 +497,20 @@ export class InvoicesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    const inv = await this.prisma.invoice.findFirst({ where: { id, orgId, deletedAt: null } });
+    // Narrow tenant guard — потрібен лише `status` для business-check.
+    const inv = await this.prisma.invoice.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { status: true },
+    });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
     if (inv.status !== InvoiceStatus.DRAFT)
       throw new BadRequestException('Видалити можна лише чернетку');
-    await this.prisma.invoice.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    // Race-safe: updateMany з повним compound where (id+orgId+deletedAt:null)
+    // блокує double-delete race.
+    await this.prisma.invoice.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
   }
 
   private toDto(

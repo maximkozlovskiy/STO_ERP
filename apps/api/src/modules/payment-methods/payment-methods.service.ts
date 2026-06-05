@@ -63,8 +63,10 @@ export class PaymentMethodsService {
     id: string,
     dto: UpdatePaymentMethodDto,
   ): Promise<PaymentMethodResponseDto> {
+    // Narrow tenant guard — full DTO load марний бо update сам повертає item.
     const existing = await this.prisma.paymentMethodConfig.findFirst({
       where: { id, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!existing) throw new NotFoundException('Метод оплати не знайдено');
     const item = await this.prisma.paymentMethodConfig.update({ where: { id, orgId }, data: dto });

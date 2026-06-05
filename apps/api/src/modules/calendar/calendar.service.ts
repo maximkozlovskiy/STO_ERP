@@ -74,22 +74,31 @@ export class CalendarService {
 
     if (endAt <= startAt) throw new BadRequestException('Час завершення має бути після початку');
 
-    // Validate FK ownership to prevent cross-tenant injection — independent checks run in parallel
+    // Validate FK ownership to prevent cross-tenant injection — independent checks run in parallel.
+    // Narrow projection — потрібне лише існування (NotFoundException), не дані.
     const [lift, employee, workOrder, counterparty] = await Promise.all([
       dto.liftId
-        ? this.prisma.lift.findFirst({ where: { id: dto.liftId, orgId, deletedAt: null } })
+        ? this.prisma.lift.findFirst({
+            where: { id: dto.liftId, orgId, deletedAt: null },
+            select: { id: true },
+          })
         : Promise.resolve(null),
       dto.employeeId
-        ? this.prisma.employee.findFirst({ where: { id: dto.employeeId, orgId, deletedAt: null } })
+        ? this.prisma.employee.findFirst({
+            where: { id: dto.employeeId, orgId, deletedAt: null },
+            select: { id: true },
+          })
         : Promise.resolve(null),
       dto.workOrderId
         ? this.prisma.workOrder.findFirst({
             where: { id: dto.workOrderId, orgId, deletedAt: null },
+            select: { id: true },
           })
         : Promise.resolve(null),
       dto.counterpartyId
         ? this.prisma.counterparty.findFirst({
             where: { id: dto.counterpartyId, orgId, deletedAt: null },
+            select: { id: true },
           })
         : Promise.resolve(null),
     ]);
@@ -166,21 +175,31 @@ export class CalendarService {
     const checkWorkOrder = dto.workOrderId !== undefined && dto.workOrderId !== null;
     const checkCounterparty = dto.counterpartyId !== undefined && dto.counterpartyId !== null;
     const [existing, lift, employee, workOrder, counterparty] = await Promise.all([
+      // existing — потрібен повним: startAt/endAt/liftId/employeeId юзаються нижче.
       this.prisma.calendarSlot.findFirst({ where: { id, orgId, deletedAt: null } }),
+      // FK guards — narrow projection (тільки існування важливе для NotFoundException).
       checkLift
-        ? this.prisma.lift.findFirst({ where: { id: dto.liftId!, orgId, deletedAt: null } })
+        ? this.prisma.lift.findFirst({
+            where: { id: dto.liftId!, orgId, deletedAt: null },
+            select: { id: true },
+          })
         : Promise.resolve(null),
       checkEmployee
-        ? this.prisma.employee.findFirst({ where: { id: dto.employeeId!, orgId, deletedAt: null } })
+        ? this.prisma.employee.findFirst({
+            where: { id: dto.employeeId!, orgId, deletedAt: null },
+            select: { id: true },
+          })
         : Promise.resolve(null),
       checkWorkOrder
         ? this.prisma.workOrder.findFirst({
             where: { id: dto.workOrderId!, orgId, deletedAt: null },
+            select: { id: true },
           })
         : Promise.resolve(null),
       checkCounterparty
         ? this.prisma.counterparty.findFirst({
             where: { id: dto.counterpartyId!, orgId, deletedAt: null },
+            select: { id: true },
           })
         : Promise.resolve(null),
     ]);
@@ -255,14 +274,13 @@ export class CalendarService {
   }
 
   async removeSlot(orgId: string, id: string): Promise<void> {
-    const slot = await this.prisma.calendarSlot.findFirst({
+    // Race-safe 1-RTT soft delete via updateMany — compound where (id+orgId+deletedAt:null)
+    // блокує double-delete race. Той самий патерн що 8 інших remove() сервісів (cycle 1).
+    const result = await this.prisma.calendarSlot.updateMany({
       where: { id, orgId, deletedAt: null },
-    });
-    if (!slot) throw new NotFoundException('Слот не знайдено');
-    await this.prisma.calendarSlot.update({
-      where: { id, orgId },
       data: { deletedAt: new Date() },
     });
+    if (result.count === 0) throw new NotFoundException('Слот не знайдено');
   }
 
   private kyivOffsetMs(d: Date): number {
