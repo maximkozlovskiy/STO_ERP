@@ -150,9 +150,14 @@ export class WorkOrdersService {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         branch: { select: { name: true } },
         contract: { select: { id: true, number: true } },
+        // Bug review (sto-optimize 2026-06-05): defensive take cap — addLine/addPart
+        // endpoints не мають ArrayMaxSize, тож теоретично WO може мати unbounded lines/parts.
+        // 500 — реалістична верхня межа (PO/SD каплять на 500 у DTO), захист від OOM при
+        // зловмисному infinite loop через single-add endpoints.
         lines: {
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },
+          take: 500,
           include: {
             work: { select: { name: true } },
             employee: { select: { firstName: true, lastName: true } },
@@ -161,6 +166,7 @@ export class WorkOrdersService {
         parts: {
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },
+          take: 500,
           include: {
             good: {
               select: {

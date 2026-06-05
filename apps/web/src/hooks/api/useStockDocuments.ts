@@ -27,7 +27,11 @@ export interface StockDoc {
   notes: string | null;
   confirmedAt: string | null;
   documentDate?: string | null;
-  lines: StockDocLine[];
+  // List endpoint omits `lines` and supplies `linesCount` instead (perf: 20 docs ×
+  // 1000 line rows → 0). DetailPanel triggers GET /stock-documents/:id which returns
+  // full lines[]. Use `linesCount ?? lines?.length ?? 0` for the counter in table cells.
+  lines?: StockDocLine[];
+  linesCount?: number;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;

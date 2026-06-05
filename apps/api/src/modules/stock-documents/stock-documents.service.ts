@@ -70,6 +70,11 @@ export class StockDocumentsService {
     };
     const sortField = SD_SORT[sortBy ?? ''] ?? 'createdAt';
     const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
+    // Bug review (sto-optimize 2026-06-05): lines не використовуються у table-cells списку,
+    // лише `doc.lines.length` у комірці «Позицій». DetailPanel рендериться для ОДНОГО
+    // вибраного doc і завантажується lazily через GET /stock-documents/:id (findOne уже
+    // включає lines з full include). Винесли `lines` з findAll → economy: 1000 × 20 = 20K
+    // line rows на запит → 0; кількість віддаємо через `_count.lines`. linesCount → toDto.
     const [items, total] = await this.prisma.$transaction([
       this.prisma.stockDocument.findMany({
         where,
@@ -80,20 +85,7 @@ export class StockDocumentsService {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
           targetWarehouse: { select: { name: true } },
-          lines: {
-            where: { deletedAt: null },
-            take: 1000,
-            include: {
-              good: {
-                select: {
-                  name: true,
-                  sku: true,
-                  unit: true,
-                  unitOfMeasure: { select: { shortName: true, coefficient: true } },
-                },
-              },
-            },
-          },
+          _count: { select: { lines: { where: { deletedAt: null } } } },
         },
       }),
       this.prisma.stockDocument.count({ where }),
@@ -422,7 +414,8 @@ export class StockDocumentsService {
     branch: { name: string } | null;
     warehouse: { name: string } | null;
     targetWarehouse: { name: string } | null;
-    lines: Array<{
+    // findAll → `_count.lines` тільки; findOne → повний `lines[]`. Обидва опціональні.
+    lines?: Array<{
       id: string;
       goodId: string;
       quantity: number;
@@ -435,6 +428,7 @@ export class StockDocumentsService {
         unitOfMeasure: { shortName: string; coefficient: number } | null;
       } | null;
     }>;
+    _count?: { lines: number };
   }): StockDocumentResponseDto {
     return {
       id: doc.id,
@@ -465,6 +459,8 @@ export class StockDocumentsService {
         price: l.price != null ? Number(l.price) : null,
         unitOfMeasureId: l.unitOfMeasureId ?? null,
       })),
+      // findAll: lines opted-out, beredemo з `_count`; findOne: lines присутні → fallback.
+      linesCount: doc._count?.lines ?? doc.lines?.length ?? 0,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
       deletedAt: doc.deletedAt ?? null,

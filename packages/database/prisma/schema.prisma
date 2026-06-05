@@ -1010,6 +1010,10 @@ model WorkOrder {
   @@index([orgId, branchId, deletedAt])
   @@index([orgId, completedAt, deletedAt])
   @@index([orgId, documentDate, deletedAt])
+  // Covering для default sort: WHERE (orgId, deletedAt) + ORDER BY createdAt DESC + take 20.
+  // Same convention as Invoice/PurchaseOrder/StockDocument — eliminates the in-memory Sort node
+  // for the most common list query (no filters applied).
+  @@index([orgId, deletedAt, createdAt])
   @@map("work_orders")
 }
 

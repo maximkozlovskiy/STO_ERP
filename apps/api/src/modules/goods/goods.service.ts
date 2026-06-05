@@ -103,9 +103,15 @@ export class GoodsService {
   }
 
   async update(orgId: string, id: string, dto: UpdateGoodDto): Promise<GoodResponseDto> {
-    // Parallel: tenant guard (findOne) + sku-uniqueness + FK validation — три незалежні precheck-и.
-    const [, skuConflict] = await Promise.all([
-      this.findOne(orgId, id), // throws NotFoundException якщо відсутній
+    // Parallel: tenant guard (narrow id-only select) + sku-uniqueness + FK validation —
+    // три незалежні precheck-и. Narrow вибірку замість this.findOne() (повний DTO + include
+    // preferredSupplier + goodCategory) бо нам тільки потрібна existence-перевірка перед update,
+    // який сам повертає повний DTO. Економить relations marshaling.
+    const [existing, skuConflict] = await Promise.all([
+      this.prisma.good.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { id: true },
+      }),
       dto.sku
         ? this.prisma.good.findFirst({
             where: { orgId, sku: dto.sku, deletedAt: null, NOT: { id } },
@@ -114,6 +120,7 @@ export class GoodsService {
         : Promise.resolve(null),
       this.validateFkReferences(orgId, dto),
     ]);
+    if (!existing) throw new NotFoundException('Товар не знайдено');
     if (dto.sku && skuConflict)
       throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     const item = await this.prisma.good.update({

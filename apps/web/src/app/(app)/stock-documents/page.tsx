@@ -76,7 +76,10 @@ interface StockDoc {
   notes: string | null;
   confirmedAt: string | null;
   documentDate?: string | null;
-  lines: DocLine[];
+  // List endpoint omits `lines` and supplies `linesCount` (perf: -20K row marshalling).
+  // findOne (/stock-documents/:id) returns full lines[] for DetailPanel — fetched lazily.
+  lines?: DocLine[];
+  linesCount?: number;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -174,6 +177,44 @@ export default function StockDocumentsPage() {
   const [selectedDoc, setSelectedDoc] = useState<StockDoc | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<StockDoc | null>(null);
+
+  // Lazy-fetch full doc with lines when opening the DetailPanel.
+  // List endpoint omits `lines` (perf: -20K line rows per page). Pattern mirrors
+  // invoices/page.tsx selectInvoice — paint summary instantly, then upgrade
+  // via GET /stock-documents/:id which includes lines + good + UoM.
+  const selectDoc = useCallback(async (doc: StockDoc) => {
+    setSelectedDoc(doc);
+    try {
+      const detail = await apiFetch<StockDoc>(`/stock-documents/${doc.id}`);
+      setSelectedDoc(prev => (prev?.id === doc.id ? detail : prev));
+    } catch {
+      // keep basic doc data if detail fetch fails — UI shows empty lines list
+    }
+  }, []);
+
+  const toggleSelectDoc = useCallback(
+    (doc: StockDoc) => {
+      setSelectedDoc(prev => {
+        if (prev?.id === doc.id) return null;
+        // Async upgrade — kicked off after returning the basic doc.
+        void selectDoc(doc);
+        return doc;
+      });
+    },
+    [selectDoc],
+  );
+
+  // Open the standalone detail Modal (FSM buttons, full table). Same lazy-fetch
+  // pattern as selectDoc — list response no longer carries lines.
+  const openDetailModal = useCallback(async (doc: StockDoc) => {
+    setShowDetail(doc);
+    try {
+      const detail = await apiFetch<StockDoc>(`/stock-documents/${doc.id}`);
+      setShowDetail(prev => (prev?.id === doc.id ? detail : prev));
+    } catch {
+      // keep basic doc data if detail fetch fails — table renders empty body
+    }
+  }, []);
 
   const [saving, setSaving] = useState(false);
 
@@ -324,7 +365,12 @@ export default function StockDocumentsPage() {
       key: 'lines',
       label: 'Позиції',
       content:
-        !doc.lines || doc.lines.length === 0 ? (
+        // List endpoint omits `lines` (perf: 20 docs × 1000 line rows). Lines load
+        // lazily via selectDoc() → GET /stock-documents/:id when the user opens the panel.
+        // While the detail fetch is in flight, show a loading hint; otherwise render the list.
+        doc.lines === undefined ? (
+          <p className="text-[13px] text-muted-foreground">Завантаження позицій…</p>
+        ) : doc.lines.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">Немає позицій</p>
         ) : (
           <div className="space-y-2">
@@ -571,8 +617,7 @@ export default function StockDocumentsPage() {
                       doc.deletedAt && 'opacity-60',
                     )}
                     onClick={() => {
-                      if (detailPanel.enabled)
-                        setSelectedDoc(prev => (prev?.id === doc.id ? null : doc));
+                      if (detailPanel.enabled) toggleSelectDoc(doc);
                     }}
                   >
                     {features.bulkActionsEnabled && (
@@ -626,7 +671,7 @@ export default function StockDocumentsPage() {
                             key="lines"
                             className="text-right text-[13px] text-muted-foreground"
                           >
-                            {doc.lines.length}
+                            {doc.linesCount ?? doc.lines?.length ?? 0}
                           </TableCell>
                         );
                       if (col.key === 'date')
@@ -644,7 +689,7 @@ export default function StockDocumentsPage() {
                           size="icon-sm"
                           title="Відкрити деталі"
                           className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                          onClick={() => setShowDetail(doc)}
+                          onClick={() => void openDetailModal(doc)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
@@ -752,20 +797,28 @@ export default function StockDocumentsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {showDetail.lines.map((l, i) => (
-                    <tr key={i}>
-                      <td className="px-3 py-2 text-foreground">{l.goodName}</td>
-                      <td className="px-3 py-2 text-foreground-faint font-mono">
-                        {l.goodSku ?? '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right font-medium">
-                        {l.quantity} {l.unitShortName ?? l.unit}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {l.price != null ? l.price.toFixed(2) + ' ₴' : '—'}
+                  {showDetail.lines === undefined ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-2 text-center text-muted-foreground">
+                        Завантаження…
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    showDetail.lines.map((l, i) => (
+                      <tr key={i}>
+                        <td className="px-3 py-2 text-foreground">{l.goodName}</td>
+                        <td className="px-3 py-2 text-foreground-faint font-mono">
+                          {l.goodSku ?? '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium">
+                          {l.quantity} {l.unitShortName ?? l.unit}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {l.price != null ? l.price.toFixed(2) + ' ₴' : '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

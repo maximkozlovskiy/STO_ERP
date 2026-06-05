@@ -117,6 +117,10 @@ export class StockDocumentResponseDto {
   @ApiPropertyOptional() confirmedAt?: Date | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiProperty({ type: [StockDocumentLineResponseDto] }) lines!: StockDocumentLineResponseDto[];
+  @ApiPropertyOptional({
+    description: 'Кількість позицій (для списку — заповнено замість lines.length)',
+  })
+  linesCount?: number;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
   @ApiPropertyOptional({ description: 'Set when the document is soft-deleted' })
