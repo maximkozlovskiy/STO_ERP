@@ -68,6 +68,8 @@ export const EMPTY_FORM: SlotForm = {
  * for the calendar day-view (drag/drop, resize, draw, pending slot, fetch slots/lifts,
  * month/stats data, form animation). page.tsx remains a thin render layer.
  */
+export type CalendarState = ReturnType<typeof useCalendarState>;
+
 export function useCalendarState() {
   const router = useRouter();
   const searchParams = useSearchParams();
