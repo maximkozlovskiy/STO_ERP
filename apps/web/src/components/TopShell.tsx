@@ -76,9 +76,11 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
   // Bug #281: prefetch queryKey МАЄ збігатися з тим що page-споживач передає у useXxx({...}).
   // Якщо ключі різні — react-query тримає prefetched data у окремому cache slot який сторінка
   // ніколи не читає. Default filter shape копіюємо з конкретної сторінки first-mount state.
-  '/work-orders': qc =>
+  '/work-orders': qc => {
+    // Bug #356: shape МАЄ збігатися з work-orders/page.tsx first-mount useWorkOrders({...}).
+    // Поля dateFrom/dateTo/sortBy/sortDir додані пізніше — без них prefetch у dead cache slot.
+    const today = kyivToday();
     void qc.prefetchQuery({
-      // work-orders/page.tsx:195 — useWorkOrders({ page, limit, status, repairCategory, q, showDeleted, employeeId })
       queryKey: workOrdersKeys.list({
         page: 1,
         limit: 20,
@@ -87,54 +89,104 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
         q: '',
         showDeleted: false,
         employeeId: undefined,
+        dateFrom: today,
+        dateTo: today,
+        sortBy: 'createdAt',
+        sortDir: 'desc',
       }),
-      queryFn: ({ signal }) => apiFetch('/work-orders?page=1&limit=20', { signal }),
+      queryFn: ({ signal }) =>
+        apiFetch(
+          `/work-orders?page=1&limit=20&dateFrom=${today}&dateTo=${today}&sortBy=createdAt&sortDir=desc`,
+          { signal },
+        ),
       staleTime: 30_000,
-    }),
+    });
+  },
   '/counterparties': qc =>
     void qc.prefetchQuery({
-      // crm/page.tsx:126 — useCounterparties({ page, limit, types, q, showDeleted })
+      // Bug #356: shape match counterparties/page.tsx first-mount useCounterparties({...})
+      // — useSortState('lastName','asc') додає sortBy/sortDir.
       queryKey: counterpartiesKeys.list({
         page: 1,
         limit: 20,
         types: '',
         q: '',
         showDeleted: false,
+        sortBy: 'lastName',
+        sortDir: 'asc',
       }),
-      queryFn: ({ signal }) => apiFetch('/counterparties?page=1&limit=20', { signal }),
+      queryFn: ({ signal }) =>
+        apiFetch('/counterparties?page=1&limit=20&sortBy=lastName&sortDir=asc', { signal }),
       staleTime: 30_000,
     }),
-  '/invoices': qc =>
+  '/invoices': qc => {
+    // Bug #356: shape МАЄ збігатися з invoices/page.tsx first-mount useInvoices({...})
+    // — dateFrom/dateTo defaults до kyivToday(), useSortState('createdAt','desc').
+    const today = kyivToday();
     void qc.prefetchQuery({
-      // invoices/page.tsx:163 — useInvoices({ page, limit, status, q })
-      queryKey: invoicesKeys.list({ page: 1, limit: 20, status: '', q: '' }),
-      queryFn: ({ signal }) => apiFetch('/invoices?page=1&limit=20', { signal }),
+      queryKey: invoicesKeys.list({
+        page: 1,
+        limit: 20,
+        status: '',
+        q: '',
+        showDeleted: false,
+        dateFrom: today,
+        dateTo: today,
+        sortBy: 'createdAt',
+        sortDir: 'desc',
+      }),
+      queryFn: ({ signal }) =>
+        apiFetch(
+          `/invoices?page=1&limit=20&dateFrom=${today}&dateTo=${today}&sortBy=createdAt&sortDir=desc`,
+          { signal },
+        ),
       staleTime: 30_000,
-    }),
+    });
+  },
   '/inventory': qc =>
     void qc.prefetchQuery({
       queryKey: ['inventory', 'items', {}],
       queryFn: ({ signal }) => apiFetch('/stock-items?limit=50', { signal }),
       staleTime: 30_000,
     }),
-  '/purchase-orders': qc =>
+  '/purchase-orders': qc => {
+    // Bug #356: shape МАЄ збігатися з purchase-orders/page.tsx first-mount.
+    const today = kyivToday();
     void qc.prefetchQuery({
-      // purchase-orders/page.tsx:165 — usePurchaseOrders({ page, limit, status, q, showDeleted })
       queryKey: purchaseOrdersKeys.list({
         page: 1,
         limit: 20,
         status: '',
         q: '',
         showDeleted: false,
+        dateFrom: today,
+        dateTo: today,
+        sortBy: 'createdAt',
+        sortDir: 'desc',
       }),
-      queryFn: ({ signal }) => apiFetch('/purchase-orders?page=1&limit=20', { signal }),
+      queryFn: ({ signal }) =>
+        apiFetch(
+          `/purchase-orders?page=1&limit=20&dateFrom=${today}&dateTo=${today}&sortBy=createdAt&sortDir=desc`,
+          { signal },
+        ),
       staleTime: 30_000,
-    }),
+    });
+  },
   '/employees': qc =>
     void qc.prefetchQuery({
-      // employees/page.tsx — useEmployees({ q, role, showDeleted }) default all empty/undefined
-      queryKey: employeesKeys.list({ q: '', role: '', showDeleted: false }),
-      queryFn: ({ signal }) => apiFetch('/employees', { signal }),
+      // Bug #356: shape match employees/page.tsx first-mount useEmployees({...}).
+      // Page шле undefined для q/role (через `|| undefined`), не порожні рядки.
+      queryKey: employeesKeys.list({
+        q: undefined,
+        role: undefined,
+        showDeleted: false,
+        sortBy: 'lastName',
+        sortDir: 'asc',
+        page: 1,
+        limit: 20,
+      }),
+      queryFn: ({ signal }) =>
+        apiFetch('/employees?sortBy=lastName&sortDir=asc&page=1&limit=20', { signal }),
       staleTime: 30_000,
     }),
   '/settlements': qc =>
@@ -162,19 +214,29 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
         ),
       staleTime: 30_000,
     }),
-  '/stock-documents': qc =>
+  '/stock-documents': qc => {
+    // Bug #356: shape МАЄ збігатися з stock-documents/page.tsx first-mount useStockDocuments({...}).
+    const today = kyivToday();
     void qc.prefetchQuery({
-      // stock-documents/page.tsx:171 — useStockDocuments({ page, limit, type, status, showDeleted })
       queryKey: stockDocsKeys.list({
         page: 1,
         limit: 20,
         type: undefined,
         status: undefined,
         showDeleted: false,
+        dateFrom: today,
+        dateTo: today,
+        sortBy: 'createdAt',
+        sortDir: 'desc',
       }),
-      queryFn: ({ signal }) => apiFetch('/stock-documents?page=1&limit=20', { signal }),
+      queryFn: ({ signal }) =>
+        apiFetch(
+          `/stock-documents?page=1&limit=20&dateFrom=${today}&dateTo=${today}&sortBy=createdAt&sortDir=desc`,
+          { signal },
+        ),
       staleTime: 30_000,
-    }),
+    });
+  },
   '/infrastructure': qc => {
     void qc.prefetchQuery({
       queryKey: infraKeys.branches,

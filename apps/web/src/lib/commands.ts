@@ -137,19 +137,21 @@ const NAV_COMMANDS: CommandDef[] = [
   },
 ];
 
+// Bug #354: створення наряду/контрагента — через модалку (немає /new маршрутів).
+// Передаємо `?action=new` query; сторінки-списки слухають через useSearchParams і відкривають модалку.
 const ACTION_COMMANDS: CommandDef[] = [
   {
     id: 'action:new-work-order',
     label: 'Новий наряд',
     group: 'action',
-    href: '/work-orders/new',
+    href: '/work-orders?action=new',
     keywords: ['створити наряд', 'новий ремонт'],
   },
   {
     id: 'action:new-crm',
     label: 'Новий контрагент',
     group: 'action',
-    href: '/counterparties/new',
+    href: '/counterparties?action=new',
     keywords: ['новий клієнт', 'постачальник'],
   },
 ];

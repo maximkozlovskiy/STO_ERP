@@ -1,9 +1,9 @@
 ﻿'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -65,10 +65,20 @@ const TYPE_FILTER_OPTIONS = [
   ['BOTH', 'Обидва'],
 ] as const;
 
+// Bug #354: Suspense обгортка для useSearchParams (Next.js static-export вимога).
 export default function CrmPage() {
+  return (
+    <Suspense fallback={null}>
+      <CrmPageInner />
+    </Suspense>
+  );
+}
+
+function CrmPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT']);
   const queryClient = useQueryClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const { confirm, dialogProps } = useConfirm();
 
@@ -138,6 +148,16 @@ export default function CrmPage() {
   const [modal, setModal] = useState(false);
   const [editingCp, setEditingCp] = useState<Counterparty | null>(null);
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
+
+  // Bug #354: підтримка `?action=new` query — Command Palette + N shortcut
+  // навігують сюди замість неіснуючого /counterparties/new маршруту.
+  useEffect(() => {
+    if (searchParams?.get('action') === 'new') {
+      setEditingCp(null);
+      setModal(true);
+      router.replace('/counterparties', { scroll: false });
+    }
+  }, [searchParams, router]);
 
   // ── Vehicles for selected counterparty (detail panel) ───────────────────────
   const [cpVehicles, setCpVehicles] = useState<

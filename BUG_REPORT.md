@@ -10483,3 +10483,150 @@ Two recent fixes verified end-to-end:
 - Build: not run (no source changes, only test additions).
 
 ### Bugs found this session: 0 (fix-cycle verification only). Regression-guard tests added: 3.
+
+---
+
+## Session 2026-06-05 — Sprint 1-9 рефакторинг + QueryKey shape audit
+
+Перевірено 5 фокус-зон: calculatePagination, useListPage, kyivToday, assertFsmTransition, useBulkIndeterminate.
+Calculation/FSM/Bulk зони чисті. Знайдено 3 баги поза фокус-зонами: dead-route shortcuts + queryKey shape mismatch у TanStack Query prefetch ↔ page.
+
+---
+
+## Bug #354 — [HIGH] `/work-orders/new` та `/counterparties/new` маршрути не існують — keyboard shortcut `N` + Command Palette ведуть у нікуди
+
+**Файли:**
+
+- `apps/web/src/hooks/useGlobalShortcuts.ts:80-84` (N shortcut)
+- `apps/web/src/lib/commands.ts:145,152` (Command Palette actions)
+
+**Severity:** HIGH
+**Категорія:** frontend / routing
+
+**Опис:**
+Натискання `N` на `/work-orders` або `/counterparties` (або вибір "Новий наряд" / "Новий контрагент" у Command Palette) викликає `router.push('/work-orders/new')` або `router.push('/counterparties/new')`. Ці маршрути НЕ ІСНУЮТЬ — у `apps/web/src/app/(app)/work-orders/` та `apps/web/src/app/(app)/counterparties/` є лише `[id]/`, `loading.tsx`, `page.tsx` (для довідки: `vehicles/new/` існує як окремий route).
+
+Next.js dynamic route `[id]` ловить `new` як параметр `id`, `PageClient.tsx` робить `apiFetch('/work-orders/new')` → 404/500 → користувач застрягає на порожньому/помилковому detail-екрані. Реальний потік створення — модалка з `setModal(true)` на `/work-orders` (line 660) і `setModal(true)` на `/counterparties`.
+
+**Очікувана поведінка:** `N` shortcut та command "Новий наряд"/"Новий контрагент" викликають створення через модалку (як це робить кнопка `+ Наряд` на сторінці).
+
+**Фактична поведінка:** Перехід на неіснуючий маршрут → broken detail screen.
+
+**Як виявлено:** Перевірка маршрутів `find apps/web/src/app -type d -name "new"` показала лише `vehicles/new`. Grep `'/work-orders/new'|'/counterparties/new'` → 2 callsites без жодної відповідної route.
+
+**Фікс:** Замінити навігацію на event-bus / global state-trigger для відкриття модалки створення на відповідній сторінці. Найпростіший варіант — використати `?action=new` query param + слухати у page.tsx через `useSearchParams`.
+
+**Виправлено:**
+
+- `useGlobalShortcuts.ts`: `N` → `?action=new` query param (не `/X/new` route).
+- `commands.ts`: action commands href → `?action=new`.
+- `work-orders/page.tsx`: додано `useSearchParams` listener + Suspense обгортка.
+- `counterparties/page.tsx`: додано `useSearchParams` listener + Suspense обгортка.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #355 — [MEDIUM] `usePaginatedList` queryKey shape (2-element) розходиться з `xKeys.list()` factory (3-element) → TopShell prefetches летять у dead cache slot
+
+**Файли:**
+
+- `apps/web/src/hooks/api/usePaginatedList.ts:41` — `queryKey: [key, filters]` (2 елементи)
+- `apps/web/src/hooks/api/useInvoices.ts:49` — `invoicesKeys.list = [...all, 'list', filters]` (3)
+- `apps/web/src/hooks/api/useWorkOrders.ts:64` — те саме
+- `apps/web/src/hooks/api/usePurchaseOrders.ts:58` — те саме
+- `apps/web/src/hooks/api/useStockDocuments.ts:54` — те саме
+- `apps/web/src/hooks/api/useCounterparties.ts:49` — те саме
+- `apps/web/src/components/TopShell.tsx:97,110,123,143` — використовує `xKeys.list({...})` для prefetch
+
+**Severity:** MEDIUM (Bug #281 patten — regression)
+**Категорія:** frontend / performance / cache-correctness
+
+**Опис:**
+`usePaginatedList` будує queryKey як `[key, filters]` (2 елементи), де `key` = `options.queryKey ?? endpoint`. Наприклад `useInvoices({})` → queryKey = `['invoices', {}]`.
+
+Парний factory `invoicesKeys.list({})` = `['invoices', 'list', {}]` (3 елементи) — використовується у TopShell для `qc.prefetchQuery({ queryKey: invoicesKeys.list({...}), ... })`. TanStack Query використовує deep-hash порівняння ключів — різна кількість елементів → різний hash → різні cache slot.
+
+**Net result:**
+
+1. TopShell prefetch на `/invoices` → дані потрапляють у slot A (`['invoices', 'list', {page:1, limit:20, status:'', q:''}]`).
+2. Користувач клікає nav → InvoicesPage mount → `useInvoices(filters)` шукає у slot B (`['invoices', {page:1, limit:20, status:'', q:''}]`).
+3. Slot B порожній → fetch вдруге → +1 RTT, prefetch фактично марний.
+
+Те саме для: counterparties, work-orders, purchase-orders, stock-documents.
+
+**Виявлено:** Grep `usePaginatedList\b` + `xKeys\.list\(` + TopShell `prefetchQuery({...queryKey: xKeys.list(`. Парний test для `invoicesKeys.lists()` асертить `['invoices', 'list']` (Bug #355-regression на існуючому тесті — він пройде, але не покриває реальний integration).
+
+**Очікувана поведінка:** Prefetch і page-fetch потрапляють у той самий cache slot — instant-nav без додаткового fetch.
+
+**Фактична поведінка:** Кожна nav на migrated-list-page робить fetch навіть якщо TopShell вже prefetch-нув.
+
+**Фікс:** `usePaginatedList` має використовувати `[key, 'list', filters]` — додати `'list'` як другий елемент щоб matched factory. Альтернатива: видалити `'list'` з factory і оновити TopShell — але це порушує invalidate-pattern (`qc.invalidateQueries({ queryKey: xKeys.lists() })`).
+
+**Регресія-guard:** оновити `usePaginatedList.test.tsx` — асертити що `queryKey` містить `'list'` як другий елемент; оновити `useInvoices.test.tsx` `it('list(filters)...')` так щоб порівнювати з `[...invoicesKeys.lists(), filters]` (вже там), і додати окремий тест що `useInvoices({}).queryKey === invoicesKeys.list({})`.
+
+**Виправлено:**
+
+- `usePaginatedList.ts:41`: `queryKey: [key, 'list', filters]` — додано `'list'` як другий елемент.
+- `usePaginatedList.test.tsx`: 2 нові тести у `describe('queryKey shape (Bug #355 regression-guard)')` — асертять `[key, 'list', filters]` shape через `qc.getQueryCache().getAll()`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #356 — [MEDIUM] TopShell prefetch payload-shape ≠ page useEmployees() payload-shape → Bug #281 patten регресія
+
+**Файли:**
+
+- `apps/web/src/components/TopShell.tsx:136` — `employeesKeys.list({ q: '', role: '', showDeleted: false })`
+- `apps/web/src/app/(app)/employees/page.tsx:233-241` — `useEmployees({ q: debouncedSearch || undefined, role: roleFilter || undefined, showDeleted, sortBy: empSort.sortBy, sortDir: empSort.sortDir, page, limit: LIMIT })`
+
+**Severity:** MEDIUM
+**Категорія:** frontend / cache-correctness
+
+**Опис:**
+`useEmployees` ВИКОРИСТОВУЄ `employeesKeys.list(filters)` коректно (на відміну від Bug #355). АЛЕ TopShell prefetch і page hook передають РІЗНІ filter objects:
+
+- TopShell: `{ q: '', role: '', showDeleted: false }` (3 keys, empty strings)
+- Page: `{ q: undefined, role: undefined, showDeleted: false, sortBy: 'lastName', sortDir: 'asc', page: 1, limit: 20 }` (7 keys, undefined and defaults)
+
+Hash об'єктів різний → різні cache slots → prefetch dead.
+
+Симетрично для `/counterparties`, `/invoices`, `/purchase-orders` — TopShell не знає про `sortBy/sortDir/dateFrom/dateTo` поля які додає сторінка через `useSortState` хук.
+
+**Очікувана поведінка:** TopShell prefetch shape має ТОЧНО збігатись з shape що використовує сторінка на initial mount.
+
+**Фактична поведінка:** Кожна nav-click робить непотрібний fetch.
+
+**Фікс:** TopShell prefetch має передавати ПОВНИЙ initial filter object (включно з `sortBy: 'lastName', sortDir: 'asc', page: 1, limit: 20, q: undefined, role: undefined, showDeleted: false`). Альтернатива — створити helper-функцію `defaultEmployeesFilter()` у `useEmployees.ts` і викликати її з обох місць.
+
+**Регресія-guard:** новий integration тест у `apps/web/src/hooks/api/useEmployees.test.tsx` (поки не існує) — render `useEmployees({})` + перевірити що `queryKey === employeesKeys.list({...all defaults})`.
+
+**Виправлено:** оновлено `TopShell.tsx` PREFETCH_MAP — для `/work-orders`, `/counterparties`, `/invoices`, `/purchase-orders`, `/stock-documents`, `/employees` shape МАТЧИТЬ page first-mount filter (включно з `dateFrom: kyivToday(), dateTo: kyivToday(), sortBy: 'createdAt'/'lastName', sortDir: 'desc'/'asc'`). Net: prefetch на hover → instant-rendering після click без додаткового RTT.
+
+**Статус:** [x] виправлено
+
+---
+
+### Verification (Session 2026-06-05 — Sprint 1-9 + QueryKey audit)
+
+- TypeScript: api/web/shared = 0 errors (нічого не зачіпала).
+- API unit + contract: 646/646 passed (без регресій).
+- Web component + hook: 304/304 passed (+2 нові у `usePaginatedList.test.tsx` — Bug #355 regression-guard).
+- Build: не запускалось (TS+тести зелені, зміни мінімальні).
+
+### Bugs found this session: 3 (HIGH:1, MEDIUM:2). Fixed: 3.
+
+**Sprint 1-9 verification:**
+
+- calculatePagination (5 services): чисто. Усі 5 сервісів повертають `limit: take` (capped applied value), `page: query.page` (default 1). Class-validator `@Min(1) @Max(200)` блокує невалідні значення на DTO level. 12/12 pagination.spec.ts тестів зелені.
+- useListPage (6 pages): чисто. resetPage/setPage(1) викликаються при зміні фільтрів. `EMPTY_ITEMS as T[]` стабільний — Bug #328 regression-guard на місці у 9 пагінованих сторінках.
+- kyivToday (lib/format.ts): чисто. SSR-safe (тільки Intl API), сv-SE формат, Europe/Kyiv tz. Усі 14+ callsites правильно у `useState(() => kyivToday())` initializer або у `useMemo` — НЕ у render path.
+- assertFsmTransition (4 services): чисто. WORK_ORDER/INV/PO/DOC TRANSITIONS — без self-loops, без CANCELLED/ARCHIVED→DRAFT, з 7/7 property-based invariants у work-orders.fsm.invariants.spec.ts.
+- useBulkIndeterminate (10 callsites): чисто. selectAllRef + stale-Set guard + Bug #328 EMPTY_ITEMS на всіх використаннях. 6/6 тестів зелені.
+
+**Несподівані баги (поза фокус-зонами Sprint 1-9):**
+
+- Bug #354 — dead routes `/work-orders/new`, `/counterparties/new` (легасі від command-palette фічі ad6c2dd, пропущено у рев'ю).
+- Bug #355 — `usePaginatedList` queryKey shape mismatch з factory (introduced коли `EMPTY_ITEMS` + `usePaginatedList` додавалися як helpers).
+- Bug #356 — TopShell prefetch shape ≠ page shape (`sortBy/sortDir/dateFrom/dateTo` не у prefetch).

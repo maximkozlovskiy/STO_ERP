@@ -115,3 +115,49 @@ describe('usePaginatedList — buildParams via queryFn URL', () => {
     expect(call?.[1]).toMatchObject({ signal: expect.any(AbortSignal) });
   });
 });
+
+// Bug #355: queryKey shape має МАТЧИТИ XKeys.list(filters) factory =
+// [key, 'list', filters]. Без 'list' як другого елемента TopShell prefetch
+// потрапляє у dead cache slot → нав-клік робить FETCH вдруге попри prefetch.
+describe('usePaginatedList — queryKey shape (Bug #355 regression-guard)', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+  });
+
+  it('queryKey = [key, "list", filters] (3 елементи) — match XKeys.list() factory', async () => {
+    // Capture queryKey via QueryClient cache inspection
+    const filters = { page: 1, limit: 20, status: 'DRAFT' };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const customWrapper = ({ children }: PropsWithChildren) =>
+      React.createElement(QueryClientProvider, { client: qc }, children);
+
+    const { result } = renderHook(
+      () => usePaginatedList('/invoices', filters, { queryKey: 'invoices' }),
+      { wrapper: customWrapper },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // Read cache entries — there must be exactly one with shape [key, 'list', filters]
+    const cache = qc.getQueryCache().getAll();
+    expect(cache).toHaveLength(1);
+    const queryKey = cache[0]?.queryKey;
+    expect(queryKey).toEqual(['invoices', 'list', filters]);
+  });
+
+  it('default endpoint як key якщо options.queryKey не вказаний', async () => {
+    const filters = { page: 1 };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const customWrapper = ({ children }: PropsWithChildren) =>
+      React.createElement(QueryClientProvider, { client: qc }, children);
+
+    const { result } = renderHook(() => usePaginatedList('/some-endpoint', filters), {
+      wrapper: customWrapper,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const cache = qc.getQueryCache().getAll();
+    expect(cache).toHaveLength(1);
+    expect(cache[0]?.queryKey).toEqual(['/some-endpoint', 'list', filters]);
+  });
+});

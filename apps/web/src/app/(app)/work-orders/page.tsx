@@ -1,9 +1,9 @@
 ﻿'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, ClipboardList, Eye, EyeOff, Search, User, ExternalLink, Trash2 } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -128,7 +128,17 @@ function isOverdue(dueDateIso: string, nowMs: number): boolean {
   return due.getTime() < nowMs;
 }
 
+// Bug #354: Suspense обгортка для useSearchParams (Next.js static-export вимога).
+// Inner-функція тримає всю логіку, default-export лише wrapper.
 export default function WorkOrdersPage() {
+  return (
+    <Suspense fallback={null}>
+      <WorkOrdersPageInner />
+    </Suspense>
+  );
+}
+
+function WorkOrdersPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
   const queryClient = useQueryClient();
   const { employee } = useAuth();
@@ -233,6 +243,17 @@ export default function WorkOrdersPage() {
   // Modal & form state
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Bug #354: підтримка `?action=new` query — Command Palette + N shortcut
+  // навігують сюди замість неіснуючого /work-orders/new маршруту.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams?.get('action') === 'new') {
+      setModal(true);
+      // Очистити query щоб модалка не відкривалась повторно при back/forward
+      router.replace('/work-orders', { scroll: false });
+    }
+  }, [searchParams, router]);
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);

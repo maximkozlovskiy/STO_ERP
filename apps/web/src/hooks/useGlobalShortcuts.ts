@@ -73,14 +73,16 @@ export function useGlobalShortcuts(enabled: boolean) {
     { enabled, allowInInput: false },
   );
 
-  // N — new item based on current section
+  // N — new item based on current section.
+  // Bug #354: routes /work-orders/new та /counterparties/new НЕ існують (create-flow через модалку).
+  // Замість маршруту шлемо `?action=new` query — сторінка-список ловить через useSearchParams і відкриває модалку.
   useKeyboardShortcut(
     'n',
     useCallback(() => {
-      if (pathname?.startsWith('/work-orders') && !pathname.includes('/new')) {
-        router.push('/work-orders/new');
-      } else if (pathname?.startsWith('/counterparties') && !pathname.includes('/new')) {
-        router.push('/counterparties/new');
+      if (pathname === '/work-orders') {
+        router.push('/work-orders?action=new');
+      } else if (pathname === '/counterparties') {
+        router.push('/counterparties?action=new');
       }
     }, [router, pathname]),
     { enabled, allowInInput: false },
