@@ -1304,6 +1304,213 @@ const [pickerQuery, setPickerQuery] = useState(''); // не потрібен —
 
 ---
 
+## §25 — DRY: хуки і компоненти як єдине місце правди
+
+> **Правило:** Якщо один і той самий блок коду (useState+useEffect, JSX-секція) зустрічається у 2+ файлах — виносити в хук або компонент. Завжди.
+
+---
+
+### §25.1 — useBulkIndeterminate: замість 7-рядкового блоку
+
+**Проблема:** у кожній list-сторінці дублювалось:
+
+```ts
+const bulkSelect = useBulkSelect(items);
+const selectAllRef = useRef<HTMLInputElement | null>(null);
+useEffect(() => {
+  if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
+}, [bulkSelect.someSelected]);
+```
+
+**Рішення:** `hooks/useBulkIndeterminate.ts`
+
+```ts
+// ✅ Один рядок замість 7
+const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(items);
+```
+
+**Правило:** `useBulkIndeterminate` завжди після React Query виклику — так `items` вже має стабільну ref.
+
+---
+
+### §25.2 — useCachedRefData: замість 25-рядкового ref-cache патерну
+
+**Проблема:** паттерн `getCached → show stale → fetch → setCache → setState` повторювався у 5+ місцях.
+
+**Рішення:** `hooks/useCachedRefData.ts`
+
+```ts
+// ✅ Замість 25 рядків — 1 рядок
+const { data: branches } = useCachedRefData<Branch[]>('cache:branches', '/branches', []);
+
+// З трансформом (якщо API повертає { items: T[] })
+const { data: brands } = useCachedRefData(
+  'cache:brands',
+  '/brands?limit=200',
+  [],
+  raw => (raw as { items: Brand[] }).items,
+);
+```
+
+**Коли НЕ використовувати:** якщо після завантаження є side-effect (`setForm(f => ({ ...f, branchId: bs[0].id }))`). В такому випадку залишати оригінальний `useEffect` з `getCached`/`setCache`.
+
+---
+
+### §25.3 — useListPage: спільна інфраструктура list-сторінок
+
+**Проблема:** кожна list-сторінка повторювала 7+ хуків:
+
+```ts
+const features = useUiFeatures();
+const [page, setPage] = useState(1);
+const [showDeleted, setShowDeleted] = useState(false);
+const tableColumns = useTableColumns(pageKey, COLUMNS);
+const { dragProps } = useColumnDrag(...);
+const detailPanel = useDetailPanel(pageKey);
+const panelConfig = useDetailPanelConfig(`${pageKey}-panel`);
+const savedFilters = useSavedFilters<TFilters>(pageKey);
+const [activeSavedFilterId, setActiveSavedFilterId] = useState(null);
+```
+
+**Рішення:** `hooks/useListPage.ts` — один виклик замість 9:
+
+```ts
+// ✅ Generic TFilters для типізованого savedFilters
+const {
+  page, setPage, resetPage,
+  showDeleted, setShowDeleted,
+  activeSavedFilterId, setActiveSavedFilterId,
+  tableColumns: { visibleColumns, orderedColumns, toggle: toggleCol, ... },
+  dragProps,
+  detailPanel, panelConfig,
+  savedFilters: { saved, save, remove },
+  features,
+  limit,
+} = useListPage<InvoiceFilters>('invoices', INVOICE_COLUMNS, { defaultLimit: 20 });
+```
+
+**Порядок викликів (обов'язковий):**
+
+```ts
+// 1. useListPage — не залежить від items
+const lp = useListPage<TFilters>(pageKey, COLUMNS);
+
+// 2. Специфічні фільтри сторінки
+const [status, setStatus] = useState('');
+
+// 3. React Query — використовує page/limit/showDeleted з useListPage
+const { data } = useXxx({ page: lp.page, limit: lp.limit, ... });
+const items = data?.items ?? EMPTY_ITEMS;
+
+// 4. useBulkIndeterminate — ПІСЛЯ items (стабільна ref)
+const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(items);
+```
+
+---
+
+### §25.4 — Розбиття моноліту: коли файл > 400 рядків
+
+**Правило:** файл > 400 рядків → шукати природні межі для розбиття.
+
+**Рецепт для великих компонентів:**
+
+```
+page.tsx (1500+ рядків)
+  ↓ виносити
+hooks/useXxxState.ts     ← весь useState, useEffect, handlers
+XxxSection.tsx           ← окрема секція JSX (таблиця, галерея, etc.)
+XxxModal.tsx             ← модальна форма в components/ui/
+page.tsx (200-400 рядків) ← тільки orchestration + рендер view-режимів
+```
+
+**Конкретні патерни (реалізовано в STO ERP):**
+
+| Компонент                         | До          | Після                                                                |
+| --------------------------------- | ----------- | -------------------------------------------------------------------- |
+| `GoodEditModal.tsx`               | 1352 рядки  | 522 (контейнер) + `GoodBarcodeTab` + `GoodBatchesTab` + `GoodUoMTab` |
+| `work-orders/[id]/PageClient.tsx` | 1579 рядків | 1252 (orchestrator) + 4 `*Section.tsx`                               |
+| `calendar/page.tsx`               | 1518 рядків | 239 (thin render) + `useCalendarState.ts` + `CalendarDayGrid.tsx`    |
+
+**Правило для tab-компонентів:**
+
+```ts
+// Кожна ModalTabs вкладка → окремий компонент
+// Props: goodId + orgId + onCountChange (для badge у ModalTabs)
+<GoodBarcodeTab goodId={good.id} onCountChange={n => setBarcodeCount(n)} />
+<GoodBatchesTab goodId={good.id} />
+<GoodUoMTab goodId={good.id} onChanged={() => refetch()} />
+```
+
+**Підхід для секцій сторінки:**
+
+- Props-drilling (не Context) — дані завантажені в orchestrator, передаємо явно
+- `onChanged` callback → orchestrator робить refetch або оновлює стан
+- Кожна секція — самодостатня для рендеру, не для fetch
+
+---
+
+### §25.5 — Константи в одному місці: packages/shared
+
+**Дублювати заборонено.** Всі labels/badges для статусів і типів — в `packages/shared/src/constants/statuses.ts`.
+
+| Що                                          | Де НЕ визначати                                        | Де визначати  |
+| ------------------------------------------- | ------------------------------------------------------ | ------------- |
+| `WO_STATUS_LABELS`, `INVOICE_STATUS_LABELS` | `page.tsx`                                             | `@sto/shared` |
+| `COUNTERPARTY_TYPE_LABELS/BADGE`            | `counterparties/page.tsx`, `CounterpartyEditModal.tsx` | `@sto/shared` |
+| `CONTRACT_TYPE_LABELS`                      | `[id]/PageClient.tsx`                                  | `@sto/shared` |
+| `GOOD_TYPE_LABELS/BADGE`                    | `GoodsTab.tsx`                                         | `@sto/shared` |
+
+```ts
+// ✅ Завжди
+import { COUNTERPARTY_TYPE_LABELS, COUNTERPARTY_TYPE_BADGE } from '@sto/shared';
+const TYPE_LABELS = COUNTERPARTY_TYPE_LABELS; // alias для зворотної сумісності
+
+// ❌ НЕ визначати inline
+const TYPE_LABELS: Record<string, string> = { CLIENT: 'Клієнт', ... };
+```
+
+---
+
+### §25.6 — Backend: спільні utils замість дублікатів
+
+```ts
+// ✅ common/utils/math.ts
+import { safeCoeff } from '../../common/utils/math';
+// Замість копій функції в work-orders.service.ts та invoices.service.ts
+
+// ✅ common/utils/fsm.ts
+import { assertFsmTransition } from '../../common/utils/fsm';
+assertFsmTransition(WORK_ORDER_TRANSITIONS, wo.status, newStatus);
+// Замість 4-рядкового блоку в 4 сервісах
+```
+
+**Що іде в `common/utils/`:**
+
+- Математичні хелпери (`safeCoeff`)
+- FSM валідація (`assertFsmTransition`)
+- Дата/час (`kyivToday` — вже є)
+- Security guards (`validatePublicUrl` — вже є)
+
+**Що НЕ іде в `common/`:** бізнес-логіка (вона залишається в модулях).
+
+---
+
+### §25.7 — Checklist DRY-рефакторингу
+
+```
+Перед написанням нового коду:
+  [ ] Чи є цей паттерн вже в hooks/ ? Якщо так — використати
+  [ ] Чи є ця константа вже в @sto/shared ? Якщо так — імпортувати
+  [ ] Чи буде ця логіка потрібна ще раз? Якщо так — виносити зразу
+
+Після написання:
+  [ ] Файл > 400 рядків → знайти природні межі для розбиття
+  [ ] Однаковий блок 2+ разів → витягти в хук або компонент
+  [ ] Label/badge константа не в shared → перенести
+```
+
+---
+
 ## §14 — Modal + ModalTabs для 1-N зв'язків
 
 ### §14.1 — Структура Edit Modal з ModalTabs
