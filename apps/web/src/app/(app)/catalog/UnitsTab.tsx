@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, type KeyboardEvent } from 'react';
 import { Plus, Trash2, Ruler, Pencil, Check, X, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -76,7 +76,7 @@ function InlineEditRow({ unit, onSave, onCancel, saving }: InlineEditRowProps) {
     shortNameRef.current?.focus();
   }, []);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') onCancel();
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();

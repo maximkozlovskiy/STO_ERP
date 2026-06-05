@@ -5,6 +5,7 @@ import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { calculatePagination } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
+import { safeCoeff } from '../../common/utils/math';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -457,7 +458,9 @@ export class StockDocumentsService {
         goodSku: l.good?.sku ?? null,
         unit: l.good?.unit,
         unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
-        coefficient: l.good?.unitOfMeasure?.coefficient ?? 1,
+        // Bug #316: safeCoeff() ловить legacy/seed coefficient=0/NaN/негативні —
+        // фронт використовує coefficient як дільник для display↔base conversion.
+        coefficient: safeCoeff(l.good?.unitOfMeasure?.coefficient),
         quantity: l.quantity,
         price: l.price != null ? Number(l.price) : null,
         unitOfMeasureId: l.unitOfMeasureId ?? null,

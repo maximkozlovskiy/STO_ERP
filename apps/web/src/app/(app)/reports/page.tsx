@@ -18,7 +18,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, kyivToday } from '@/lib/format';
 import dynamic from 'next/dynamic';
 
 const RevenueCharts = dynamic(() => import('./ReportsCharts').then(m => m.RevenueCharts), {
@@ -97,15 +97,7 @@ function fmtNum(n: number) {
   return NUM_FMT_1.format(n);
 }
 
-// Module-level Kyiv-date singletons — used in useState initializers at mount to derive
-// default from/to range. Конструкція раз на модуль замість раз на mount.
-const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const KYIV_YMD_FMT = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Europe/Kyiv',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
+// Sv-SE формат сьогоднішньої дати в Kyiv (YYYY-MM-DD) — централізовано у lib/format.kyivToday().
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -126,11 +118,8 @@ function ReportsPageClient() {
   // Bug #294: `new Date()` тримати ВСЕРЕДИНІ useState initializer — він викликається
   // тільки на першому render; винесена в render path змінна перевиконується на кожний
   // ререндер + ризик SSR/CSR hydration mismatch.
-  const [from, setFrom] = useState(() => {
-    const kyivNow = KYIV_YMD_FMT.format(new Date());
-    return `${kyivNow.slice(0, 4)}-01-01`;
-  });
-  const [to, setTo] = useState(() => KYIV_DATE_FMT.format(new Date()));
+  const [from, setFrom] = useState(() => `${kyivToday().slice(0, 4)}-01-01`);
+  const [to, setTo] = useState(() => kyivToday());
 
   const reportQuery = useReport(tab, from, to);
   const { data: rawData, isLoading: loading, error: queryError } = reportQuery;

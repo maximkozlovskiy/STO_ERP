@@ -3,6 +3,7 @@ import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { assertFsmTransition } from '../../common/utils/fsm';
+import { safeCoeff } from '../../common/utils/math';
 import { calculatePagination } from '../../common/utils/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
@@ -657,7 +658,9 @@ export class PurchaseOrdersService {
         goodSku: l.good?.sku ?? null,
         unit: l.good?.unit,
         unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
-        coefficient: l.good?.unitOfMeasure?.coefficient ?? 1,
+        // Bug #316: safeCoeff() ловить legacy/seed coefficient=0/NaN/негативні —
+        // фронт використовує coefficient як дільник для display↔base conversion.
+        coefficient: safeCoeff(l.good?.unitOfMeasure?.coefficient),
         quantity: l.quantity,
         price: Number(l.price),
         amount: l.quantity * Number(l.price),

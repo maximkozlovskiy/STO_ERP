@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth, isPublicRoute } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api-client';
+import { kyivToday } from '@/lib/format';
 import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
 import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
 import { invoicesKeys } from '@/hooks/api/useInvoices';
@@ -65,7 +66,7 @@ const ALL_NAV_ITEMS: NavItem[] = (() => {
     });
 })();
 
-// Module-level Kyiv date formatter для calendar prefetch (один інстанс на модуль).
+// Module-level Kyiv date formatter — лише для weekStart (today → централізований kyivToday).
 const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
 // Prefetch API даних при hover на NavLink — дані готові до кліку (~200мс).
@@ -197,7 +198,7 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
     });
   },
   '/dashboard': qc => {
-    const today = KYIV_DATE_FMT.format(new Date());
+    const today = kyivToday();
     // weekStart = 7 днів тому (як у useDashboardRevenue — Date.now() - 6 days).
     const weekStart = KYIV_DATE_FMT.format(new Date(Date.now() - 6 * 86_400_000));
     void qc.prefetchQuery({
@@ -248,7 +249,7 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
   // Reports: дефолтні дати на сторінці — from = початок року (Kyiv), to = today (Kyiv).
   // Prefetch revenue tab (initial tab за замовчуванням) щоб графік відразу видно.
   '/reports': qc => {
-    const today = KYIV_DATE_FMT.format(new Date());
+    const today = kyivToday();
     const yearStart = `${today.slice(0, 4)}-01-01`;
     void qc.prefetchQuery({
       queryKey: reportsKeys.report('revenue', yearStart, today),
@@ -260,7 +261,7 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
   // Calendar: підйомники — стабільні reference data, prefetch при hover.
   // Слоти прив'язані до конкретної дати — prefetch today.
   '/calendar': qc => {
-    const today = KYIV_DATE_FMT.format(new Date());
+    const today = kyivToday();
     void qc.prefetchQuery({
       queryKey: infraKeys.lifts,
       queryFn: ({ signal }) => apiFetch('/lifts', { signal }),

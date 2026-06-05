@@ -35,7 +35,7 @@ import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/
 import { PageSpinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
-import { fmtInt, fmtDate } from '@/lib/format';
+import { fmtInt, fmtDate, kyivToday } from '@/lib/format';
 
 interface MaintenanceSchedule {
   id: string;
@@ -105,8 +105,8 @@ function fmt(n: number) {
 
 // Module-level Intl singletons — раніше створювались inline у useEffect (loadData kyivDate
 // callback + monthStart kyivStr + setTodayStr + greeting hour) = 4 формати на кожен mount.
-// Hoist robить кожен виклик дешевим .format() без locale-data init.
-const KYIV_YMD_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+// Hoist робить кожен виклик дешевим .format() без locale-data init.
+// Sv-SE формат сьогоднішньої дати в Kyiv — централізовано у lib/format.kyivToday().
 const KYIV_YEAR_MONTH_DAY_FMT = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/Kyiv',
   year: 'numeric',
@@ -167,7 +167,7 @@ export default function DashboardPage() {
   // KPI — обчислюється синхронно з TanStack Query даних (no useEffect needed)
   const kpi = useMemo<KPI | null>(() => {
     if (!ordersData || !lowStockData || !invoicesData) return null;
-    const today = KYIV_YMD_FMT.format(new Date());
+    const today = kyivToday();
     const allOrders: WorkOrderSummary[] =
       (ordersData as { items?: WorkOrderSummary[] }).items ?? [];
     const todayOrders = allOrders.filter(
