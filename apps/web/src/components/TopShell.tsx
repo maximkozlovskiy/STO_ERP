@@ -4,32 +4,8 @@ import { useState, useEffect, useCallback, type ReactNode, type MouseEvent } fro
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
-import {
-  LayoutDashboard,
-  Wrench,
-  CalendarDays,
-  Users,
-  Package,
-  ShoppingCart,
-  FileText,
-  Receipt,
-  Wallet,
-  BarChart2,
-  BookOpen,
-  UserCog,
-  Building2,
-  Settings,
-  CloudUpload,
-  Zap,
-  Percent,
-  LogOut,
-  ChevronLeft,
-  Menu,
-  Star,
-  Search,
-  ClipboardList,
-  type LucideIcon,
-} from 'lucide-react';
+import { Wrench, LogOut, ChevronLeft, Menu, Star, Search, type LucideIcon } from 'lucide-react';
+import { NAV_GROUPS, NAV_GROUPS_FUNCTIONS, type NavItem, type NavGroup } from '@/lib/nav';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth, isPublicRoute } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -71,130 +47,8 @@ const NotificationCenter = dynamic(
   { ssr: false },
 );
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  roles?: string[];
-}
-
-interface NavGroup {
-  label?: string;
-  items: NavItem[];
-}
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    items: [{ href: '/dashboard', label: 'Дашборд', icon: LayoutDashboard }],
-  },
-  {
-    label: 'Документи',
-    items: [
-      { href: '/work-orders', label: 'Наряди', icon: Wrench },
-      { href: '/invoices', label: 'Рахунки', icon: Receipt },
-      { href: '/purchase-orders', label: 'Замовлення', icon: ShoppingCart },
-      { href: '/stock-documents', label: 'Документи склад', icon: FileText },
-    ],
-  },
-  {
-    label: 'Звіти',
-    items: [
-      { href: '/calendar', label: 'Календар', icon: CalendarDays },
-      {
-        href: '/bookings',
-        label: 'Онлайн-запис',
-        icon: ClipboardList,
-        roles: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
-      },
-      { href: '/settlements', label: 'Розрахунки', icon: Wallet },
-      {
-        href: '/reports',
-        label: 'Звіти',
-        icon: BarChart2,
-        roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
-      },
-    ],
-  },
-  {
-    label: 'Довідники',
-    items: [
-      { href: '/crm', label: 'Контрагенти', icon: Users },
-      { href: '/inventory', label: 'Склад', icon: Package },
-      { href: '/catalog', label: 'Каталог', icon: BookOpen, roles: ['OWNER', 'ADMIN'] },
-      {
-        href: '/pricing-rules',
-        label: 'Ціноутворення',
-        icon: Zap,
-        roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
-      },
-      {
-        href: '/vat',
-        label: 'НДС',
-        icon: Percent,
-        roles: ['OWNER', 'ADMIN'],
-      },
-      { href: '/employees', label: 'Співробітники', icon: UserCog, roles: ['OWNER', 'ADMIN'] },
-      {
-        href: '/infrastructure',
-        label: 'Інфраструктура',
-        icon: Building2,
-        roles: ['OWNER', 'ADMIN'],
-      },
-      { href: '/settings', label: 'Налаштування', icon: Settings, roles: ['OWNER', 'ADMIN'] },
-      { href: '/settings/sync', label: 'Cloud Sync', icon: CloudUpload, roles: ['OWNER', 'ADMIN'] },
-    ],
-  },
-];
-
-const NAV_GROUPS_FUNCTIONS: NavGroup[] = [
-  {
-    items: [
-      { href: '/dashboard', label: 'Дашборд', icon: LayoutDashboard },
-      { href: '/work-orders', label: 'Наряди', icon: Wrench },
-      { href: '/calendar', label: 'Календар', icon: CalendarDays },
-      {
-        href: '/bookings',
-        label: 'Онлайн-запис',
-        icon: ClipboardList,
-        roles: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
-      },
-      { href: '/crm', label: 'Контрагенти', icon: Users },
-      { href: '/inventory', label: 'Склад', icon: Package },
-      { href: '/purchase-orders', label: 'Замовлення', icon: ShoppingCart },
-      { href: '/stock-documents', label: 'Документи складу', icon: FileText },
-      { href: '/invoices', label: 'Рахунки', icon: Receipt },
-      { href: '/settlements', label: 'Розрахунки', icon: Wallet },
-      {
-        href: '/reports',
-        label: 'Звіти',
-        icon: BarChart2,
-        roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
-      },
-      { href: '/catalog', label: 'Каталог', icon: BookOpen, roles: ['OWNER', 'ADMIN'] },
-      {
-        href: '/pricing-rules',
-        label: 'Ціноутворення',
-        icon: Zap,
-        roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
-      },
-      {
-        href: '/vat',
-        label: 'НДС',
-        icon: Percent,
-        roles: ['OWNER', 'ADMIN'],
-      },
-      { href: '/employees', label: 'Співробітники', icon: UserCog, roles: ['OWNER', 'ADMIN'] },
-      {
-        href: '/infrastructure',
-        label: 'Інфраструктура',
-        icon: Building2,
-        roles: ['OWNER', 'ADMIN'],
-      },
-      { href: '/settings', label: 'Налаштування', icon: Settings, roles: ['OWNER', 'ADMIN'] },
-      { href: '/settings/sync', label: 'Cloud Sync', icon: CloudUpload, roles: ['OWNER', 'ADMIN'] },
-    ],
-  },
-];
+// NavItem, NavGroup, NAV_GROUPS, NAV_GROUPS_FUNCTIONS — імпортовані з @/lib/nav.
+// Щоб додати/перенести пункт меню — редагуй ТІЛЬКИ apps/web/src/lib/nav.ts.
 
 const NAV_MODE_KEY = 'sto_nav_mode';
 type NavMode = 'sections' | 'functions';
