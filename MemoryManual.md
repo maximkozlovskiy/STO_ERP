@@ -9,6 +9,13 @@
 ## Останній commit
 
 ```
+6714a1c docs(skills): §24 EntityPickerField + *EditModal standard for reference fields
+de4f180 refactor(stock-documents): extract StockDocumentCreateModal
+66e3cad refactor(invoices): extract InvoiceCreateModal
+f0cbb27 refactor(purchase-orders): extract PurchaseOrderCreateModal
+d2cc6a74 refactor(employees): extract EmployeeEditModal
+2cbe99a4 refactor(work-orders): extract WorkOrderAddLineModal + WorkOrderAddPartModal
+f8f3945b refactor(catalog): extract GoodEditModal
 779f8d56 refactor(ui): extract TableContainer component for table scroll styling
 ec12fb0 fix(review): CounterpartyContract — race-safe removeContract + WO update contract include
 4f7a9be fix(tester): CounterpartyContract bugs #347-#353 (DocumentNumberService DI mock, contract include, auto-promote primary, @MaxLength)
@@ -2555,6 +2562,56 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → COMPLETED → INVOICED → P
 - Режим **"По функціях"**: плоска структура без секцій, порядок: Дашборд, Наряди, Календар, CRM, Склад, Замовлення, Документи складу, Рахунки, Розрахунки, Звіти, Каталог, Персонал, Підрозділи, Налаштування, Cloud Sync
 - Перемикач у `/settings` вкладка "Оформлення"
 - `TopShell.tsx` зчитує `sto_nav_mode` через useEffect (SSR-safe)
+
+---
+
+## UI: EntityPickerField + \*EditModal стандарт (2026-06-05)
+
+### Стандарт поля-посилання на об'єкт
+
+Будь-яке поле форми що посилається на інший об'єкт — через `EntityPickerField`:
+
+```tsx
+// Layout: [ display text    × 🔍 … ]  (кнопки всередині поля)
+<EntityPickerField
+  display={form.counterpartyDisplay}
+  placeholder="Обрати контрагента..."
+  onOpenDetail={form.counterpartyId ? openCpDetail : undefined} // undefined = disabled
+  onPick={() => setCpPickerOpen(true)}
+  onClear={() => setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' }))}
+/>
+// + SearchPickerModal для вибору зі списку
+// + *EditModal відкривається через лупу (lazy fetch перед відкриттям)
+```
+
+### Реєстр \*EditModal компонентів (`components/ui/`)
+
+| Компонент                  | Для об'єкта                                            |
+| -------------------------- | ------------------------------------------------------ |
+| `CounterpartyEditModal`    | контрагент (tabs: main/vehicles/contracts/work-orders) |
+| `GoodEditModal`            | товар (tabs: info/barcodes/batches)                    |
+| `EmployeeEditModal`        | співробітник (tabs: main/zones/lifts/categories)       |
+| `WorkOrderAddLineModal`    | додавання роботи до наряду                             |
+| `WorkOrderAddPartModal`    | додавання запчастини до наряду                         |
+| `PurchaseOrderCreateModal` | замовлення постачальнику                               |
+| `InvoiceCreateModal`       | рахунок                                                |
+| `StockDocumentCreateModal` | документ складу                                        |
+
+### Ключові правила
+
+- `onOpenDetail` = `undefined` → кнопка 🔍 disabled (не обраний об'єкт)
+- lazy fetch у `openDetail()` — НЕ у useEffect при mount
+- `onSaved` оновлює `display` у батьківській формі
+- Кнопка "Створити новий" (`UserPlus`/`FilePlus`) — ЗОВНІ поля, праворуч
+- Детальний стандарт: `sto-dev §24`
+
+### Файли що скоротились після рефакторингу
+
+| Файл                              | До          | Після        |
+| --------------------------------- | ----------- | ------------ |
+| `GoodsTab.tsx`                    | 2485 рядків | ~1042 (-58%) |
+| `employees/page.tsx`              | 1559 рядків | ~738 (-53%)  |
+| `work-orders/[id]/PageClient.tsx` | 1975 рядків | ~1566 (-21%) |
 
 ---
 
