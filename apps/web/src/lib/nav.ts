@@ -102,8 +102,8 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
   },
   {
-    href: '/vat',
-    label: 'НДС',
+    href: '/ndi',
+    label: 'НДІ',
     icon: Percent,
     section: 'refs',
     roles: ['OWNER', 'ADMIN'],

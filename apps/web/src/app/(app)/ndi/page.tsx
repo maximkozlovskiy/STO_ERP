@@ -31,7 +31,7 @@ function VatPageClient() {
 
   return (
     <div className="page-container max-w-3xl">
-      <h1 className="page-title mb-6">НДС та Фінансові довідники</h1>
+      <h1 className="page-title mb-6">Нормативно-довідкова інформація</h1>
 
       <div className="flex gap-1 border-b border-border mb-6 flex-wrap">
         {TABS.map(t => (
