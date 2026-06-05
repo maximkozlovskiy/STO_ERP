@@ -203,6 +203,15 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover { background: hsl(214 32% 68%); }
 
+/* Scrollbar track inside table containers starts below thead.
+   --table-thead-h matches thead py-2 (8+8px) + text-[11px] line (≈17px) = 33px.
+   margin-top offsets the track so it doesn't overlap the sticky header.
+   Works in Chrome/Edge; Firefox uses scrollbar-width:thin (no track overlap). */
+:root { --table-thead-h: 33px; }
+.table-scroll-container::-webkit-scrollbar-track {
+  margin-top: var(--table-thead-h);
+}
+
 /* ─── Column drag-and-drop ─── */
 th[draggable="true"] { cursor: grab; user-select: none; }
 th[draggable="true"]:active { cursor: grabbing; }

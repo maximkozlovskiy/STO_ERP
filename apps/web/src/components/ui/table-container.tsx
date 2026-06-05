@@ -1,20 +1,16 @@
 import { cn } from '@/lib/utils';
 import type { HTMLAttributes } from 'react';
 
+interface TableContainerProps extends HTMLAttributes<HTMLDivElement> {
+  constrainWidth?: boolean;
+}
+
 /**
- * Table container with proper scroll context for sticky headers.
- * Use this wrapper when rendering tables within flex layouts.
+ * Table container where the scrollbar track starts below thead.
  *
- * Features:
- * - Single scroll ancestor for position:sticky to work correctly
- * - Constrained width prevents text overflow (min-w-0)
- * - Proper flex sizing (flex-1 min-h-0)
- * - thead sticky positioning stays above scrollbar area
- *
- * CSS Implementation:
- * - Uses CSS Grid layout to keep thead fixed above scrollable tbody
- * - thead stays outside scroll container (display: block)
- * - tbody gets overflow-y-auto independently
+ * Uses `-webkit-scrollbar-track { margin-top: 33px }` (defined in globals.css
+ * under `.table-scroll-container`) to offset the track below the sticky thead.
+ * The 33px matches the thead row height (py-2 + text-[11px] line ≈ 33px).
  *
  * @example
  * <div className="flex flex-1 min-h-0">
@@ -24,18 +20,8 @@ import type { HTMLAttributes } from 'react';
  *       <TableBody>...</TableBody>
  *     </Table>
  *   </TableContainer>
- *   <DetailPanel />
  * </div>
  */
-interface TableContainerProps extends HTMLAttributes<HTMLDivElement> {
-  /**
-   * Apply min-w-0 constraint for proper flex shrinking.
-   * Set to false only if you need text to wrap normally.
-   * @default true
-   */
-  constrainWidth?: boolean;
-}
-
 export function TableContainer({
   className,
   children,
@@ -44,18 +30,12 @@ export function TableContainer({
   return (
     <div
       className={cn(
+        'table-scroll-container',
         'flex-1 min-h-0',
         constrainWidth && 'min-w-0',
         'overflow-auto bg-surface border border-border rounded-xl',
         className,
       )}
-      style={
-        {
-          // scrollbar-gutter: stable reserves space for scrollbar, preventing layout shift
-          // This ensures sticky thead is not covered by scrollbar
-          scrollbarGutter: 'stable',
-        } as React.CSSProperties
-      }
     >
       {children}
     </div>

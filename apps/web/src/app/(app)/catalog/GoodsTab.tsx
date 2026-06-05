@@ -1037,7 +1037,7 @@ export default function GoodsTab() {
       )}
 
       <div className="flex flex-1 min-h-0">
-        <div className="flex-1 min-h-0 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
+        <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto border border-border rounded-xl bg-surface">
           <Table>
             <TableHeader>
               <TableRow>

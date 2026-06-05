@@ -5,6 +5,15 @@ import { ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SortState } from '@/hooks/useSortState';
 
+/**
+ * Table wrapper.
+ *
+ * When used inside TableContainer the outer div is overflow-auto and
+ * thead is sticky top-0. The scrollbar track starts at the top of the
+ * scroll container which visually overlaps thead. To prevent this,
+ * TableContainer uses overflow-hidden + flex-col structure where the
+ * scroll div starts below the thead row — see table-container.tsx.
+ */
 function Table({ className, children, ...props }: HTMLAttributes<HTMLTableElement>) {
   return (
     <table
