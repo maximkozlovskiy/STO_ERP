@@ -22,6 +22,17 @@ import { CalendarSlotModal } from './CalendarSlotModal';
 import { CalendarDayGrid } from './CalendarDayGrid';
 import { useCalendarState, EMPTY_FORM } from './useCalendarState';
 
+// Module-level — stable tuple-array avoids re-creation on every CalendarPageClient
+// render (and re-allocation of inner tuples). The icon refs are pure component
+// constructors, safe to capture once.
+const VIEW_SWITCHER: ReadonlyArray<
+  readonly ['day' | 'month' | 'stats', string, typeof CalendarDays]
+> = [
+  ['day', 'День', CalendarDays],
+  ['month', 'Місяць', CalendarRange],
+  ['stats', 'Статистика', BarChart2],
+] as const;
+
 function CalendarPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
 
@@ -34,13 +45,7 @@ function CalendarPageClient() {
         <div className="flex items-center gap-2">
           {/* View switcher */}
           <div className="flex rounded-lg border border-border overflow-hidden text-sm">
-            {(
-              [
-                ['day', 'День', CalendarDays],
-                ['month', 'Місяць', CalendarRange],
-                ['stats', 'Статистика', BarChart2],
-              ] as const
-            ).map(([v, label, Icon]) => (
+            {VIEW_SWITCHER.map(([v, label, Icon]) => (
               <button
                 key={v}
                 type="button"

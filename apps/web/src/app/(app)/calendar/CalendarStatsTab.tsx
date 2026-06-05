@@ -34,6 +34,13 @@ interface CalendarStatsTabProps {
 
 const WINDOW_H = WINDOW_END - WINDOW_START; // 11 h
 
+// Static period switcher tuples — module-level, не пересоздається на кожен render.
+const PERIOD_OPTIONS: ReadonlyArray<readonly [StatsPeriod, string]> = [
+  ['day', 'День'],
+  ['month', 'Місяць'],
+  ['custom', 'Довільний'],
+] as const;
+
 export function CalendarStatsTab({
   lifts,
   statsSlots,
@@ -89,13 +96,7 @@ export function CalendarStatsTab({
         <div>
           <p className="text-xs text-muted-foreground mb-1.5">Період</p>
           <div className="flex rounded-lg border border-border overflow-hidden text-sm">
-            {(
-              [
-                ['day', 'День'],
-                ['month', 'Місяць'],
-                ['custom', 'Довільний'],
-              ] as const
-            ).map(([v, label]) => (
+            {PERIOD_OPTIONS.map(([v, label]) => (
               <button
                 key={v}
                 onClick={() => setStatsPeriod(v)}

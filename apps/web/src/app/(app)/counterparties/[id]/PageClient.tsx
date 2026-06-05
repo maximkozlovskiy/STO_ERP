@@ -140,6 +140,17 @@ type CrmTab =
   | 'warranties'
   | 'loyalty';
 
+// Static tab labels — module-level, не пересоздається на кожен render.
+const CRM_TABS: { key: CrmTab; label: string }[] = [
+  { key: 'info', label: 'Загальна інформація' },
+  { key: 'garages', label: 'Гаражі та авто' },
+  { key: 'contracts', label: 'Договори' },
+  { key: 'settlements', label: 'Взаєморозрахунки' },
+  { key: 'work-orders', label: 'Наряди' },
+  { key: 'warranties', label: 'Гарантії' },
+  { key: 'loyalty', label: 'Лояльність' },
+];
+
 const TYPE_LABELS: Record<string, string> = {
   CLIENT: 'Клієнт',
   SUPPLIER: 'Постачальник',
@@ -530,16 +541,6 @@ export default function CounterpartyCardPage() {
         )}
       </div>
     );
-
-  const CRM_TABS: { key: CrmTab; label: string }[] = [
-    { key: 'info', label: 'Загальна інформація' },
-    { key: 'garages', label: 'Гаражі та авто' },
-    { key: 'contracts', label: 'Договори' },
-    { key: 'settlements', label: 'Взаєморозрахунки' },
-    { key: 'work-orders', label: 'Наряди' },
-    { key: 'warranties', label: 'Гарантії' },
-    { key: 'loyalty', label: 'Лояльність' },
-  ];
 
   return (
     <div className="page-container max-w-4xl space-y-6">

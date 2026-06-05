@@ -72,6 +72,15 @@ interface Warehouse {
 
 type Tab = 'branches' | 'zones' | 'lifts' | 'warehouses';
 
+// Static tab definitions — module-level так, що масив не пересоздається
+// на кожен render (стабільна ref → менше work для React diff на NAV-рядках).
+const TABS: { key: Tab; label: string; addLabel: string }[] = [
+  { key: 'branches', label: 'Філії', addLabel: 'Філія' },
+  { key: 'zones', label: 'Зони', addLabel: 'Зона' },
+  { key: 'lifts', label: 'Пости', addLabel: 'Пост' },
+  { key: 'warehouses', label: 'Склади', addLabel: 'Склад' },
+];
+
 const ZONE_TYPE_LABELS: Record<string, string> = {
   MECHANICAL: 'Механічна',
   BODY: 'Кузовна',
@@ -330,13 +339,6 @@ function InfrastructurePageClient() {
       setSaving(false);
     }
   };
-
-  const TABS: { key: Tab; label: string; addLabel: string }[] = [
-    { key: 'branches', label: 'Філії', addLabel: 'Філія' },
-    { key: 'zones', label: 'Зони', addLabel: 'Зона' },
-    { key: 'lifts', label: 'Пости', addLabel: 'Пост' },
-    { key: 'warehouses', label: 'Склади', addLabel: 'Склад' },
-  ];
 
   const ADD_ACTIONS: Record<Tab, () => void> = {
     branches: () => openModal('branch', { name: '', address: '' }),
