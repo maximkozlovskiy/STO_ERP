@@ -21,6 +21,7 @@ import {
   Settings,
   CloudUpload,
   Zap,
+  Percent,
   LogOut,
   ChevronLeft,
   Menu,
@@ -126,6 +127,12 @@ const NAV_GROUPS: NavGroup[] = [
         icon: Zap,
         roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
       },
+      {
+        href: '/vat',
+        label: 'НДС',
+        icon: Percent,
+        roles: ['OWNER', 'ADMIN'],
+      },
       { href: '/employees', label: 'Співробітники', icon: UserCog, roles: ['OWNER', 'ADMIN'] },
       {
         href: '/infrastructure',
@@ -169,6 +176,12 @@ const NAV_GROUPS_FUNCTIONS: NavGroup[] = [
         label: 'Ціноутворення',
         icon: Zap,
         roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
+      },
+      {
+        href: '/vat',
+        label: 'НДС',
+        icon: Percent,
+        roles: ['OWNER', 'ADMIN'],
       },
       { href: '/employees', label: 'Співробітники', icon: UserCog, roles: ['OWNER', 'ADMIN'] },
       {
