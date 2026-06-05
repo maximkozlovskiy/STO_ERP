@@ -95,6 +95,7 @@ export function WorkOrderLinesSection({
           <h2 className="font-semibold text-foreground">Роботи</h2>
           {canEdit && (
             <button
+              type="button"
               onClick={() => {
                 onError?.('');
                 setLineModal(true);
@@ -138,6 +139,8 @@ export function WorkOrderLinesSection({
                 </div>
                 {canEdit && (
                   <button
+                    type="button"
+                    aria-label="Видалити роботу"
                     onClick={() => removeLine(l.id)}
                     disabled={deletingLineId === l.id}
                     className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50"

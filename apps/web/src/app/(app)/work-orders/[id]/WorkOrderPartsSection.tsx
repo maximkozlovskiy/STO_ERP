@@ -97,6 +97,7 @@ export function WorkOrderPartsSection({
                 onImportComplete={onChanged}
               />
               <button
+                type="button"
                 onClick={() => {
                   onError?.('');
                   setPartModal(true);
@@ -118,6 +119,7 @@ export function WorkOrderPartsSection({
                   <div className="flex items-center gap-1.5">
                     <p className="text-sm font-medium text-foreground">{p.goodName}</p>
                     <button
+                      type="button"
                       onClick={e => {
                         e.stopPropagation();
                         onShowBatches?.(p.goodId, p.warehouseId);
@@ -138,6 +140,8 @@ export function WorkOrderPartsSection({
                 </div>
                 {canEdit && (
                   <button
+                    type="button"
+                    aria-label="Видалити запчастину"
                     onClick={() => removePart(p.id)}
                     disabled={deletingPartId === p.id}
                     className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50"
