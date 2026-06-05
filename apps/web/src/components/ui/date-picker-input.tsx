@@ -6,6 +6,7 @@ import { uk } from 'date-fns/locale';
 import { format, parse, isValid } from 'date-fns';
 import { Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { kyivToday } from '@/lib/format';
 
 // Module-level class name table — DayPicker `classNames` має бути stable reference,
 // інакше внутрішня memoization інвалідовується на кожен ререндер батьківського компоненту.
@@ -179,6 +180,22 @@ export function DatePickerInput({
             disabled={disabledMatchers.length > 0 ? disabledMatchers : undefined}
             classNames={DAY_PICKER_CLASS_NAMES}
           />
+          <div className="border-t border-border mt-1 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                const today = kyivToday();
+                const d = parseApiDate(today);
+                if (d && isWithinBounds(d)) {
+                  onChange(today);
+                  setOpen(false);
+                }
+              }}
+              className="w-full text-center text-[13px] font-medium text-primary hover:bg-primary/8 rounded-lg py-1.5 transition-colors"
+            >
+              Сьогодні
+            </button>
+          </div>
         </div>
       )}
     </div>
