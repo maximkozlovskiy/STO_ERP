@@ -39,7 +39,7 @@ interface CommandPaletteProps {
 // «ТОВ Альфа» from the palette dropped the user on the /crm list and forced a second search.
 const DATA_ROUTE: Record<string, { list: string; detail?: (id: string) => string }> = {
   wo: { list: '/work-orders', detail: id => `/work-orders/${id}` },
-  counterparty: { list: '/crm', detail: id => `/crm/${id}` },
+  counterparty: { list: '/counterparties', detail: id => `/counterparties/${id}` },
   good: { list: '/catalog' /* no /catalog/[id] route yet */ },
 };
 

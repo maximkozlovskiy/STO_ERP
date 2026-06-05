@@ -128,14 +128,14 @@ const KYIV_HOUR_FMT = new Intl.DateTimeFormat('uk-UA', {
 
 const ALL_QUICK_ACTIONS = [
   { href: '/work-orders', label: 'Новий наряд', icon: Wrench },
-  { href: '/crm', label: 'Новий клієнт', icon: Users },
+  { href: '/counterparties', label: 'Новий клієнт', icon: Users },
   { href: '/purchase-orders', label: 'Замовлення', icon: ShoppingCart },
   { href: '/invoices', label: 'Рахунок', icon: Receipt },
   { href: '/calendar', label: 'Календар', icon: CalendarClock },
   { href: '/inventory', label: 'Склад', icon: BarChart2 },
 ];
 
-const DEFAULT_QUICK_ACTIONS = ['/work-orders', '/crm', '/purchase-orders', '/invoices'];
+const DEFAULT_QUICK_ACTIONS = ['/work-orders', '/counterparties', '/purchase-orders', '/invoices'];
 const QA_STORAGE_KEY = 'sto_quick_actions';
 
 export default function DashboardPage() {
@@ -365,7 +365,7 @@ export default function DashboardPage() {
                     Наближається ТО ({upcomingTO.length})
                   </CardTitle>
                   <Link
-                    href="/crm"
+                    href="/counterparties"
                     className="text-[12px] text-primary hover:underline font-medium"
                   >
                     Всі клієнти →

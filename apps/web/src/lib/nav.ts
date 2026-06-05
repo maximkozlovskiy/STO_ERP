@@ -85,7 +85,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   },
 
   // ─── Довідники ────────────────────────────────────────────────────
-  { href: '/crm', label: 'Контрагенти', icon: Users, section: 'refs' },
+  { href: '/counterparties', label: 'Контрагенти', icon: Users, section: 'refs' },
   { href: '/inventory', label: 'Склад', icon: Package, section: 'refs' },
   {
     href: '/catalog',

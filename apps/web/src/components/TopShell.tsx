@@ -90,7 +90,7 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       queryFn: ({ signal }) => apiFetch('/work-orders?page=1&limit=20', { signal }),
       staleTime: 30_000,
     }),
-  '/crm': qc =>
+  '/counterparties': qc =>
     void qc.prefetchQuery({
       // crm/page.tsx:126 — useCounterparties({ page, limit, types, q, showDeleted })
       queryKey: counterpartiesKeys.list({

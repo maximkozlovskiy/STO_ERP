@@ -54,7 +54,7 @@ export function useGlobalShortcuts(enabled: boolean) {
     useCallback(
       e => {
         e.preventDefault();
-        router.push('/crm');
+        router.push('/counterparties');
       },
       [router],
     ),
@@ -79,8 +79,8 @@ export function useGlobalShortcuts(enabled: boolean) {
     useCallback(() => {
       if (pathname?.startsWith('/work-orders') && !pathname.includes('/new')) {
         router.push('/work-orders/new');
-      } else if (pathname?.startsWith('/crm') && !pathname.includes('/new')) {
-        router.push('/crm/new');
+      } else if (pathname?.startsWith('/counterparties') && !pathname.includes('/new')) {
+        router.push('/counterparties/new');
       }
     }, [router, pathname]),
     { enabled, allowInInput: false },

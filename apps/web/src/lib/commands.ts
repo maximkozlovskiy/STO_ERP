@@ -49,7 +49,7 @@ const NAV_COMMANDS: CommandDef[] = [
     id: 'nav:crm',
     label: 'Контрагенти',
     group: 'navigation',
-    href: '/crm',
+    href: '/counterparties',
     keywords: ['клієнти', 'постачальники', 'crm'],
   },
   {
@@ -149,7 +149,7 @@ const ACTION_COMMANDS: CommandDef[] = [
     id: 'action:new-crm',
     label: 'Новий контрагент',
     group: 'action',
-    href: '/crm/new',
+    href: '/counterparties/new',
     keywords: ['новий клієнт', 'постачальник'],
   },
 ];
