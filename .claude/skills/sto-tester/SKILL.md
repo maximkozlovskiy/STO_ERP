@@ -547,6 +547,9 @@ done
 - [ ] **AbortController у `useEffect` для filter-toggle race (Bug #301):** будь-який `useEffect(() => { load() }, [filterState])` де `filterState` toggle-able і `load()` робить `apiFetch` — потребує `AbortController` у cleanup. Без нього: швидке перемикання filter → попередній fetch не cancelled → resolve order non-deterministic → last setUnits(...) wins, який може суперечити поточному UI mode (stale state shown for current filter). Grep: `grep -rn "useEffect" apps/web/src/app --include="*.tsx" -A 5 | grep -B1 "load\(\)\|apiFetch" | grep -v "AbortController\|signal"` — кожен match без AbortController при наявності залежності від toggle/filter state = bug. Severity: MEDIUM
 - [ ] **In-flight guard для async-кнопок без overlay-блокування (Bug #303):** будь-яка `<Button onClick={() => action(id)}>` де `action` робить async POST/PATCH/DELETE і немає `disabled` prop тримати `inFlightIds` Set state. Без нього: користувач клікає 5 разів швидко → 5 паралельних POST → перший успіх, 2nd-5th повертають 404/409 (ресурс уже змінено) → setError shows стається помилка хоча перший успіх. Особливо при операціях що змінюють стан рядка (delete/restore/approve/cancel) — наступні reqs після першого побачать новий стан і обуряться. Грубий tip-off: відсутність `setRestoringIds`/`processingIds`/`busyIds` state у компоненті який має destructive/state-changing button-actions. Severity: MEDIUM (UX flash false errors)
 - [ ] **Toggle-state UI desync: highlight/cursor не gated на enabled-flag (Bugs #310-#311):** додавання toggle-component (`DetailPanelToggle`, `useDetailPanel`, `FilterToggle`, `CompactModeToggle`) що керує boolean state, але ефекти toggle (highlight рядка `bg-secondary`/`bg-primary/5`, `cursor-pointer`, hover-effects) застосовуються на основі іншої state-змінної (`selectedX?.id === item.id`, `expandedRows.has(id)`) **БЕЗ** gate на toggle-state → після `toggle()` → `enabled=false`, але `selectedX` залишається non-null → класи рендеряться, action недоступна, UX desync. Grep: `grep -rnE "selected[A-Z][a-zA-Z]*\?.id\s*===\s*[a-z]+\.id\s*&&\s*'bg-" apps/web/src/app --include="*.tsx" | grep -v "detailPanel\.enabled\|panel\.enabled\|enabled &&"` — кожен match без enabled-gate. Парний grep для cursor: `grep -rnE "'group cursor-pointer'|className=\\\`group cursor-pointer" apps/web/src/app --include="\*.tsx"`. Фікс: додати `&& detailPanel.enabled`до КОЖНОГО affordance class (cursor + highlight + hover). Альтернатива:`useEffect(() => { if (!detailPanel.enabled) setSelectedX(null) }, [detailPanel.enabled])` у consumer-page. Симетрія: якщо одне gated → друге теж має бути gated; асиметрія = bug. Severity: MEDIUM для stale highlight; LOW для cursor-only
+- [ ] **Dead `/X/new` маршрут у keyboard shortcut / Command Palette (Bug #354):** будь-який `router.push('/<resource>/new')` у `apps/web/src/hooks/useGlobalShortcuts.ts` АБО `href: '/<resource>/new'` у `apps/web/src/lib/commands.ts` — перевірити що відповідна директорія `apps/web/src/app/<group>/<resource>/new/` ІСНУЄ. Якщо resource має create-flow через модалку (`<page.tsx>` → `setModal(true)`) і НЕ має окремої `/new` сторінки → `[id]` dynamic route ловить `'new'` як id → `apiFetch('/<resource>/new')` → 404/broken detail page. Grep для виявлення: `grep -rn "router\.push('/[^']*/new')\|href:\s*'/[^']*/new'" apps/web/src --include="*.ts" --include="*.tsx"` → для кожного match: `test -d apps/web/src/app/\(*\)/$(echo URL | cut -d/ -f2)/new && echo OK || echo DEAD`. Фікс-pattern: `?action=new` query param + `useSearchParams` listener у page.tsx + ОБОВ'ЯЗКОВО `<Suspense fallback={null}>` обгортка (Next.js static-export вимагає для `useSearchParams`). Severity HIGH (feature декларована, маршрут broken).
+- [ ] **`usePaginatedList` queryKey shape ↔ `xKeys.list()` factory shape mismatch (Bug #355 — Bug #281 шаблон, глибинна варіація):** будь-який shared helper-hook (`usePaginatedList`, `useResourceList`, custom `useXXX`) що приймає `{ queryKey: 'X' }` option і будує `queryKey: [key, filters]` — ОБОВ'ЯЗКОВО має МАТЧИТИ shape парного factory. Стандарт `xKeys.list(filters)` = `[...xKeys.all, 'list', filters]` (3-element) → hook має `queryKey: [key, 'list', filters]`. Без `'list'` як другого елемента TopShell prefetch (що використовує factory) потрапляє у dead cache slot для ВСІХ ресурсів які споживають helper. Grep: `grep -rn "queryKey:\s*\[.*filters\]" apps/web/src/hooks/api/ --include="*.ts"` — кожен match без `'list'` як другого елемента та з парним `Keys.list()` factory у тому ж файлі = bug. Regression-guard: тест через `qc.getQueryCache().getAll()` + асерт `queryKey.toEqual([key, 'list', filters])`. Severity MEDIUM (silent — кожна nav робить FETCH вдруге, performance тільки). Виявляється ТІЛЬКИ якщо порівняти shape helper-hook vs factory shape — code review зазвичай пропускає.
+- [ ] **TopShell prefetch payload-shape ↔ page first-mount filter object (Bug #356 — Bug #281 шаблон, sortBy/dateFrom defaults):** TopShell `prefetchQuery({ queryKey: xKeys.list({...}) })` має передавати ПОВНИЙ filter object що сторінка передає на first mount. Поля що часто пропускаються у prefetch: (а) `sortBy/sortDir` — додаються через `useSortState('createdAt', 'desc')` хук на сторінці; (б) `dateFrom/dateTo` — додаються через `useState(() => kyivToday())` initializer; (в) специфічні фільтри `employeeId`/`repairCategory`/`type` що сторінка передає як `undefined`. Кожен новий фільтр на сторінці потребує парного оновлення PREFETCH_MAP у `TopShell.tsx`. Grep: для кожного `prefetchQuery({ queryKey: xKeys.list({...}) })` у TopShell — знайти споживача сторінки + порівняти ВСІ keys filter object. Якщо count keys у TopShell < count keys у page-hook call → bug. Альтернатива (захищеніший паттерн): експортувати `defaultXFilters()` з hook-файлу і викликати ОБИДВІ сторони з неї. Regression-guard: integration тест через `qc.getQueryCache().getAll()` після TopShell mount + page mount → асерт `cache.length === 1` (один slot, не два). Severity MEDIUM (silent — prefetch не hit).
 - [ ] **Review-fix completeness audit для крос-файлових патернів (Bug #341):** будь-який review-fix commit `fix(review): replace X with Y` що чіпає **N файлів** (наприклад заміна `.catch(() => {})` на `console.warn`) — після кожного такого commit пройти **ВЕСЬ codebase** на той самий патерн і переконатись що review знайшов УСІ файли. Grep-команда має бути така ж яка вживалась у review, але БЕЗ filter по changed-files. Типові пропуски: (а) сторінки `[id]/PageClient.tsx` коли review працював зі сторінкою у root (`/X/page.tsx`); (б) tabbed-content (`*Tab.tsx`) поза основним route файлом; (в) sub-components всередині той самий сторінки; (г) shared hooks/utilities у `apps/web/src/hooks` чи `lib`. Парний сигнал у git log: `git log --oneline | grep "fix(review)" | head -3` — для останнього review-fix-commit взяти grep-паттерн з нього (наприклад `\.catch(() => {})`) і виконати `grep -rn "<pattern>" apps/web/src --include="*.tsx" --include="*.ts" | grep -v <вже-виправлені>` → нові match = upskipped review (BUG нової tester-сесії). Виключення з cleanup: легітимні випадки документуються у самому місці (toast-double-protection, optional PWA SW, fire-and-forget telemetry) — тестер відрізняє за наявністю парного user-feedback каналу (toast/setError/console.warn вище у фукнції). Severity: успадковує severity оригінального review-fix bug-у. Grep шаблон: `git show --stat <last-review-commit> -- '*.tsx' '*.ts' | awk '/^ /{print $1}'` — список файлів review-fix; для кожного знайденого згодом match → перевірити чи серед них. Якщо ні → bug.
 
 ---
@@ -934,6 +937,172 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-05 — Dead `/X/new` маршрут у keyboard shortcut / Command Palette (Bug #354) — frontend, routing
+
+**Сигнал:** Power-user UX feature (keyboard shortcut `N`, Command Palette "Новий X") робить `router.push('/X/new')` або `href: '/X/new'`, але папка `apps/web/src/app/<group>/X/new/` НЕ ІСНУЄ. Next.js `[id]` dynamic route ловить `'new'` як параметр id → `apiFetch('/X/new')` → 404 або broken detail page. tsc green бо `router.push` приймає будь-який рядок; runtime НЕ падає одразу — користувач бачить порожній/помилковий екран.
+
+**Причина виникнення:** Розробник копіює патерн з іншого ресурсу що ДІЙСНО має окрему `/X/new` сторінку (наприклад `vehicles/new/`), не перевіривши що для нового ресурсу create-flow — модалка (`setModal(true)` на page.tsx). Або: команда планувала створити `/X/new` маршрут пізніше, але feature перейшла на модальний flow, а посилання у shortcuts/commands залишились.
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти кожне посилання '/X/new' у keyboard shortcuts + commands + nav helpers
+grep -rn "router\.push('/[^']*/new')\|href:\s*'/[^']*/new'" apps/web/src --include="*.ts" --include="*.tsx"
+
+# Для кожного знайденого URL — перевірити чи відповідна директорія існує
+# (адаптуй під ваш monorepo шлях):
+for url in $(grep -rohE "/[a-z-]+/new" apps/web/src --include="*.ts" --include="*.tsx" | sort -u); do
+  base=$(echo $url | cut -d/ -f2)
+  test -d apps/web/src/app/\(app\)/$base/new && echo "OK: $url" || echo "DEAD: $url"
+done
+```
+
+**Підхід до фіксу:** Якщо ресурс має create-flow через модалку:
+
+1. Замінити URL на `?action=new` query param:
+   ```ts
+   router.push('/X?action=new');
+   // АБО у command:
+   href: '/X?action=new',
+   ```
+2. Додати listener у page.tsx:
+   ```ts
+   const searchParams = useSearchParams();
+   useEffect(() => {
+     if (searchParams?.get('action') === 'new') {
+       setModal(true);
+       router.replace('/X', { scroll: false }); // прибрати query
+     }
+   }, [searchParams, router]);
+   ```
+3. ОБОВ'ЯЗКОВО обгорнути page у `<Suspense fallback={null}>` (Next.js static-export вимога для `useSearchParams`):
+   ```tsx
+   export default function XPage() {
+     return (
+       <Suspense fallback={null}>
+         <XPageInner />
+       </Suspense>
+     );
+   }
+   function XPageInner() {
+     /* original logic */
+   }
+   ```
+
+Якщо ресурс ДІЙСНО має мати `/X/new` сторінку (як `vehicles/new`) — створити directory `apps/web/src/app/<group>/X/new/` з парою `page.tsx` + `PageClient.tsx`.
+
+**Severity:** HIGH — feature декларується (видима у Command Palette/Help-toast), але маршрут broken → 404 → frustration.
+
+**Де шукати ще:** `apps/web/src/hooks/useGlobalShortcuts.ts`, `apps/web/src/lib/commands.ts`, `MASTER_NAV_ITEMS` (`apps/web/src/lib/nav-items.ts`), будь-який inline `<Link href="/X/new">` у компонентах. Особливо після рефакторингу що міняє створення з окремої сторінки на модалку — посилання на `/new` зазвичай залишаються.
+
+---
+
+### 2026-06-05 — TanStack Query queryKey shape contract: helper-hook vs factory vs prefetch (Bugs #355-#356) — frontend, react-query, cache-correctness
+
+**Сигнал:** TopShell/nav-prefetch на hover «гріє» дані (`qc.prefetchQuery({ queryKey: xKeys.list({...}) })`), але після click на nav-link сторінка все одно робить FETCH вдруге. У DevTools Network: 2 запити на той самий endpoint (один з prefetch-source, один з page-mount). Prefetch-data існує у cache (qc.getQueryCache().getAll() показує запис), але сторінка читає з ІНШОГО slot.
+
+Два корені проблеми (часто разом):
+
+1. **Helper-hook queryKey shape ≠ factory shape** — `usePaginatedList(endpoint, filters, { queryKey: 'X' })` будує `[key, filters]` (2-element), але парний `xKeys.list(filters)` = `[...all, 'list', filters]` (3-element). Без `'list'` як другого елемента — різний hash → різні slots.
+2. **Prefetch filter object ≠ page first-mount filter object** — TopShell прокидує `{ page:1, limit:20, status:'', q:'' }`, але page-side hook на mount передає `{ page:1, limit:20, status:'', q:'', sortBy:'createdAt', sortDir:'desc', dateFrom: kyivToday(), dateTo: kyivToday(), showDeleted: false }` (через `useSortState` + `kyivToday()` initializers). Hash об'єктів різний → різні slots.
+
+**Причина виникнення:**
+
+1. Розробник, що пише helper (`usePaginatedList`), не знає про factory convention (`xKeys.all + 'list' + filters`) або вирішує не дотримуватись бо «коротше». Тести helper-а зазвичай мокають через `apiFetchMock` + assertять URL — не queryKey shape.
+2. Розробник, що додає новий filter поле на сторінку (наприклад `dateFrom` через `kyivToday()` default), забуває оновити парний prefetch у TopShell. Code review не ловить — це cross-file invariant.
+
+**Підхід до виявлення:**
+
+```bash
+# Audit 1 — helper queryKey shape vs factory:
+grep -rn "queryKey:\s*\[.*filters\]" apps/web/src/hooks/api/ --include="*.ts"
+# Для кожного знайденого helper — перевірити парний factory у тому ж файлі або імпортованому:
+# - `XKeys.list = [...XKeys.all, 'list', filters]` (3-element factory)
+# - helper `queryKey: [key, filters]` (2-element) → bug
+# - helper `queryKey: [key, 'list', filters]` (3-element) → OK
+
+# Audit 2 — TopShell prefetch payload-shape vs page first-mount:
+# Знайти кожен prefetchQuery у TopShell:
+grep -n "prefetchQuery\|queryKey:" apps/web/src/components/TopShell.tsx
+# Для кожного — знайти page-споживач (`use<Resource>` callsite) і порівняти filter object:
+# наприклад, для '/work-orders': прочитати apps/web/src/app/(app)/work-orders/page.tsx
+# знайти `useWorkOrders({...})` і порівняти всі keys + initial values.
+# `useSortState('createdAt', 'desc')` → page додає sortBy/sortDir defaults.
+# `useState(() => kyivToday())` → page додає dateFrom/dateTo defaults.
+```
+
+**Підхід до фіксу:**
+
+Для проблеми #1 (helper shape):
+
+```ts
+// Before:
+return useQuery({ queryKey: [key, filters], ... });
+// After:
+return useQuery({ queryKey: [key, 'list', filters], ... });
+```
+
+Для проблеми #2 (prefetch payload):
+
+```ts
+// TopShell PREFETCH_MAP:
+'/work-orders': qc => {
+  const today = kyivToday(); // важливо викликати у функції, не на module-level
+  void qc.prefetchQuery({
+    queryKey: workOrdersKeys.list({
+      page: 1, limit: 20, status: '', q: '',
+      showDeleted: false, repairCategory: undefined, employeeId: undefined,
+      dateFrom: today, dateTo: today,         // ← з kyivToday() initializer
+      sortBy: 'createdAt', sortDir: 'desc',   // ← з useSortState defaults
+    }),
+    queryFn: ({ signal }) => apiFetch(`/work-orders?page=1&limit=20&dateFrom=${today}&dateTo=${today}&sortBy=createdAt&sortDir=desc`, { signal }),
+    staleTime: 30_000,
+  });
+},
+```
+
+Захищеніший паттерн на майбутнє: експортувати `defaultXFilters()` з hook-файлу:
+
+```ts
+// useWorkOrders.ts
+export const defaultWorkOrdersFilters = (today: string) => ({
+  page: 1,
+  limit: 20,
+  status: '' /* ... всі defaults */,
+  dateFrom: today,
+  dateTo: today,
+  sortBy: 'createdAt' as const,
+  sortDir: 'desc' as const,
+});
+// Викликати з обох місць — TopShell + page → одна single source of truth.
+```
+
+**Регресія-guard:**
+
+```ts
+// usePaginatedList.test.tsx — assert queryKey shape:
+const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+// ... render hook with custom QueryClientProvider ...
+const cache = qc.getQueryCache().getAll();
+expect(cache[0]?.queryKey).toEqual([key, 'list', filters]);
+
+// TopShell integration test (бракує — додати у наступну сесію):
+// 1. Render TopShell + trigger /work-orders prefetch
+// 2. Render WorkOrdersPage у тому ж QueryClient
+// 3. Очікувати cache.length === 1 (один slot, не два)
+```
+
+**Severity:** MEDIUM — silent perf regression, ніяких помилок чи broken UX, тільки +1 RTT при кожній nav-click. Виявляється тільки якщо порівняти DevTools Network з UX-обіцянкою «instant nav».
+
+**Де шукати ще:**
+
+- Усі shared helpers у `apps/web/src/hooks/api/` що приймають `queryKey` як option (`usePaginatedList`, custom paginated hooks).
+- Кожен `prefetchQuery` у `TopShell.tsx` PREFETCH_MAP.
+- Кожен `useQuery({ queryKey: xKeys.X() })` де `xKeys.X` — factory function: якщо хтось десь робить prefetch з тим самим `xKeys.X()`, але різним аргументом → mismatch.
+- Кожен `setQueryData` / `getQueryData` з literal queryKey (не через factory) — те саме що prefetch.
+
+---
 
 ### 2026-06-04 — Hardcoded document-number у auto-create обхід DocumentNumberService (Bug #348) — backend, bizlogic
 
