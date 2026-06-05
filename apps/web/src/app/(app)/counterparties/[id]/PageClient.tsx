@@ -12,15 +12,12 @@ import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { cn, daysUntil } from '@/lib/utils';
 import { AnimatedBody } from '@/components/ui/modal';
-import { fmtMoney, fmtInt, fmtDate } from '@/lib/format';
+import { fmtMoney, fmtInt, fmtDate, kyivToday } from '@/lib/format';
 import {
   COUNTERPARTY_TYPE_LABELS,
   COUNTERPARTY_TYPE_BADGE,
   CONTRACT_TYPE_LABELS,
 } from '@sto/shared';
-
-const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const kyivToday = () => KYIV_YMD.format(new Date());
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

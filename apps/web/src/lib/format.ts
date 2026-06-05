@@ -105,3 +105,18 @@ export function fmtTime(d: string | Date | number | null | undefined): string {
   if (Number.isNaN(date.getTime())) return '—';
   return TIME_FMT.format(date);
 }
+
+/**
+ * Сьогоднішня дата у часовому поясі Kyiv як рядок `YYYY-MM-DD`.
+ * DST-aware: використовує sv-SE локаль (ISO формат) + Europe/Kyiv timezone.
+ *
+ * Безпечна для SSR — не використовує window/document, тільки Intl API.
+ * Централізована заміна 14 копій `const KYIV_YMD + const kyivToday` у page.tsx файлах.
+ *
+ * @example kyivToday() → '2026-06-05'
+ */
+const KYIV_YMD_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+
+export function kyivToday(): string {
+  return KYIV_YMD_FMT.format(new Date());
+}

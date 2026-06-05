@@ -12,10 +12,9 @@ import { Input } from '@/components/ui/input';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import type { Currency, ExchangeRate } from './types';
+import { kyivToday } from '@/lib/format';
 
 // Kyiv-local date formatter (YYYY-MM-DD) for exchange rate default date.
-const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const kyivToday = () => KYIV_YMD.format(new Date());
 
 interface NbuSettings {
   nbuFetchHour?: number;

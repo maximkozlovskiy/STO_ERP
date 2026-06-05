@@ -17,6 +17,7 @@ import type { CategoryNode } from '@/components/ui/category-tree';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { kyivToday } from '@/lib/format';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -85,9 +86,6 @@ export interface StockDocResponse {
   type: string;
   status: string;
 }
-
-const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const kyivToday = () => KYIV_YMD.format(new Date());
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 

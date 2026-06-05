@@ -57,12 +57,10 @@ import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
-import { fmtMoney, fmtDate } from '@/lib/format';
+import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 // new Date().toISOString() returns UTC, which diverges from Kyiv date between midnight and UTC+2/+3.
-const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const kyivToday = () => KYIV_YMD.format(new Date());
 
 interface InvoiceLine {
   id: string;

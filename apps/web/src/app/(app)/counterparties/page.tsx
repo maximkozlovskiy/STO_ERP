@@ -55,9 +55,6 @@ import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
-const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const kyivToday = () => KYIV_YMD.format(new Date());
-
 interface CrmFilters extends Record<string, unknown> {
   search: string;
   typeFilter: string;

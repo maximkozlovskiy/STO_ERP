@@ -52,11 +52,9 @@ import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
-import { fmtMoney, fmtDate, fmtDateTime } from '@/lib/format';
+import { fmtMoney, fmtDate, fmtDateTime, kyivToday } from '@/lib/format';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
-const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const kyivToday = () => KYIV_YMD.format(new Date());
 
 interface DocLine {
   id?: string;

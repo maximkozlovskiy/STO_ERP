@@ -1,12 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
+import { kyivToday } from '@/lib/format';
 
-// Module-level Kyiv date formatters (singleton — no per-call construction)
+// kyivWeekStart needs its own formatter; kyivToday is from lib/format
 const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-
-function kyivToday() {
-  return KYIV_YMD.format(new Date());
-}
 function kyivWeekStart() {
   return KYIV_YMD.format(new Date(Date.now() - 6 * 86_400_000));
 }

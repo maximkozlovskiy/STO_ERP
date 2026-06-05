@@ -23,6 +23,7 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import type { PurchaseOrder } from '@/hooks/api/usePurchaseOrders';
+import { kyivToday } from '@/lib/format';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -81,9 +82,6 @@ interface PoLine {
   coefficient: number;
   goodUoMs: GoodUoM[];
 }
-
-const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const kyivToday = () => KYIV_YMD.format(new Date());
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 

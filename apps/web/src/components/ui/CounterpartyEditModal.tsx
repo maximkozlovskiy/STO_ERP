@@ -5,7 +5,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
-import { fmtMoney, fmtDate } from '@/lib/format';
+import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,9 +72,6 @@ type ModalContract = {
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const kyivToday = () => KYIV_YMD.format(new Date());
 
 const TYPE_LABELS = COUNTERPARTY_TYPE_LABELS;
 

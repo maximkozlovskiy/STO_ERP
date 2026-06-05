@@ -56,11 +56,9 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { PurchaseOrderCreateModal } from '@/components/ui/PurchaseOrderCreateModal';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
-import { fmtMoney, fmtDate } from '@/lib/format';
+import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
-const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const kyivToday = () => KYIV_YMD.format(new Date());
 
 interface PoFilters extends Record<string, unknown> {
   status: string;

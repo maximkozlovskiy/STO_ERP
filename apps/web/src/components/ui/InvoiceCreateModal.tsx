@@ -17,6 +17,7 @@ import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import type { Invoice } from '@/hooks/api/useInvoices';
+import { kyivToday } from '@/lib/format';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -27,9 +28,6 @@ interface Counterparty {
   companyName: string | null;
   phone?: string | null;
 }
-
-const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-const kyivToday = () => KYIV_YMD.format(new Date());
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
