@@ -1451,6 +1451,54 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 
 ---
 
+### 2026-06-05 — Frontend N+1 через per-item GET у nested fetch loop — детальні сторінки що завантажують вкладену колекцію per-row
+
+**Сигнал:** detail-сторінка (`/X/[id]/PageClient.tsx`) має 2-stage fetch — stage 1 завантажує колекцію parents (garages, vehicles, items), stage 2 робить `Promise.all(parents.map(p => apiFetch('/child?parentId=' + p.id)))`. Wall-clock здається OK (вже паралельно), але це ВСЕ-ОДНО N HTTP round-trips: 20 vehicles × 1 GET maintenance-schedules = 20 окремих connections, 20 окремих JWT decode, 20 окремих Postgres planner invocations. На WAN/VPN з 30-50ms RTT — 600-1000ms сумарно navigateOpen → fully-loaded. У браузера ще і concurrent connections cap (6 для HTTP/1.1).
+
+**Причина виникнення:** API typically має filter `?parentId=X` для convenience single-row use-case. Frontend природно перевикористовує те саме — для кожного `p` робить власний request. Розробник не запитує себе «а чи може API прийняти `parentIds=p1,p2,p3`?» бо single-filter синтаксис вже працює. Особливо часто у scenario stage-2 fetch (де parents щойно завантажені, всі IDs відомі), а не у user-driven навігації (де parent один на момент кліку).
+
+**Підхід до виявлення:** для кожного `Promise.all(<list>.map(x => apiFetch(...)))` у frontend перевірити чи URL — це `?xId=` (single FK). Якщо так — перевірити чи backend endpoint підтримує `?xIds=` (CSV/array) або interface для bulk. Якщо ні — додати на backend + переписати фронт на ОДИН fetch. Особливо часто у CRM detail (counterparty → garages → vehicles → schedules), завданнях що завантажують related для списку items (warranties → counterparties → addresses).
+
+**Підхід до фіксу:** на backend — додати CSV-параметр `?xIds=` + parse → `vehicleId: { in: ids }` у where; cap 200 IDs + take 500 для захисту. Frontend — `apiFetch(``${url}?xIds=${ids.join(',')}``)` ОДИН раз. Тип response не змінюється (масив). Старий `?xId=` filter лишається для backward-compat (single-row use-case).
+
+**Реальний impact:** 20 vehicles example: 20 HTTP RTT (limited by 6 concurrent у HTTP/1.1) ≈ 4 waves × 100ms = 400ms → 1 RTT ≈ 100ms. На повільному WAN/VPN з 50ms RTT — 1000ms → 100ms. Backend load: 20 окремих query plans + JWT decode → 1.
+
+**Де шукати ще:** будь-яка detail-сторінка з 2+ stage fetch (parent → children → grandchildren). CRM, vehicles detail (maintenance), invoice detail (items + payments), work-order detail (lines + parts + media), purchase-order detail (lines + receipts). Перевіряти при кожному новому `Promise.all(list.map(apiFetch))` патерні — чи можна batch на backend.
+
+---
+
+### 2026-06-05 — Bootstrap scheduler з per-org secondary fetch — onModuleInit/cron-init що читає settings/config окремо для кожної org
+
+**Сигнал:** scheduler (`OnModuleInit`) робить `Promise.all(orgs.map(org => this.scheduleForOrg(org.id)))` де `scheduleForOrg` всередині починається з `await prisma.organisationSettings.findUnique({ where: { orgId }, select: { someConfig } })` — окремий read для кожної org. Перший рівень параллелизації (queue.add у Promise.all) вже застосовано, але secondary fetch (settings) — N окремих читань що блокують bootstrap. На відміну від «sequential cron-/scheduler queue.add у onModuleInit» (де queue.add послідовний), тут queue.add вже паралель, але читання config — N+1.
+
+**Причина виникнення:** `scheduleForOrg(orgId)` написано як standalone-helper (для use-case ручного перепланування з API endpoint). У bootstrap natural використовується той самий helper — DRY-абстракція маскує N+1. Розробник свідомо паралелює queue.add, але всередині кожного — secondary DB read лишається single-row.
+
+**Підхід до виявлення:** для кожного `OnModuleInit`/`onApplicationBootstrap` що працює з multi-org — прочитати тіло. Якщо є `Promise.all(orgs.map(...))` + всередині callback є `findUnique`/`findFirst` для config/settings/template — кандидат. Особливо часто: nbu-fetch, followup, reminder, sync schedulers.
+
+**Підхід до фіксу:** на onModuleInit — prefetch ВСІХ settings одним `findMany({ select: { orgId, X } })` → Map<orgId, X>. Helper розбити на: public `scheduleForOrg(orgId)` (single-use, тягне settings всередині як було) + private `enqueueRepeatableForOrg(orgId, x)` (приймає prepared config). Bootstrap викликає private з prefetched Map. Standalone API endpoints — public як було. Backward-compat збережено.
+
+**Реальний impact:** 1000 cloud orgs: 1000 RTT findUnique → 2 RTT (orgs + allSettings). Bootstrap latency 30-50s → 1-2s. Особливо болить у Docker/K8s з health-check timeout 5-10s — pod marked unhealthy ДО завершення scheduler init. На on-prem (1 org) — незмінно.
+
+**Де шукати ще:** будь-який scheduler у backend з multi-org logic. nbu-fetch (виправлено 2026-06-05), followup (вже виправлено через collect+dispatch), reminders, sync-status, dump-rotation. Перевіряти при додаванні нового @Cron-задачі з per-org configuration.
+
+---
+
+### 2026-06-05 — Per-render `getCached()`/sessionStorage read — composable hook без lazy state initializer
+
+**Сигнал:** composable hook (типу `useCachedRefData`) робить `const cached = getCached(cacheKey)` як **top-level statement** функції (не в useState lazy initializer) — `cached` потрібен лише для initial state, але виконується на КОЖЕН render. Це означає: `window.sessionStorage.getItem(key)` + `JSON.parse(rawData)` + (можливо ще `Array.isArray` check) — на кожен render компонента, який використовує hook. Особливо болить коли cached data великий (200 goods, 100 employees) — `JSON.parse` синхронний і блокує main thread per render.
+
+**Причина виникнення:** API hooks типово оголошуються лінійно: «отримай cached → setupState → useEffect для fetch». Виглядає природньо мати `cached` як local const на початку, далі `useState(cached ?? fallback)` як ідіома `lazy fallback`. Не помічається що React **тільки використовує** initial state value на mount — НЕ на subsequent renders. Але JS-engine все одно виконує top-level expression на кожен render. Lazy initializer (`useState(() => getCached(...))`) — це канонічне рішення в React docs для важких initial computations.
+
+**Підхід до виявлення:** для кожного custom hook у `hooks/` грепнути `useState(.*\?\?\|useState(.*||` де перший аргумент — це **виклик функції** (не літерал). Якщо так — перевірити чи функція дешева. Якщо тяжка (sessionStorage, localStorage, fetch API metadata, regex compile, JSON.parse) — обгорнути у `() => fn()` lazy initializer. Перевіряти при додаванні нового composable hook.
+
+**Підхід до фіксу:** `const [state, setState] = useState<T>(() => getCached<T>(cacheKey) ?? fallback)`. Парні `useState` що залежать від того самого read — переписати кожен як окремий lazy initializer (з вкладеним викликом для ясності) АБО зробити один `useState(() => ({data, loading}))` об'єкт. Перший варіант простіший, другий — менше викликів getCached.
+
+**Реальний impact:** для hook що використовується у списку 200 goods × 5 ререндерів за сесію — 1000 sessionStorage reads + JSON.parse → 1 lazy init. На повільних мобільних — main thread block per render позбавляє UI smooth scrolling. Кумулятивно з memory: GC pressure від N×JSON.parse зменшується.
+
+**Де шукати ще:** будь-який composable hook що читає persistent storage/cache/API metadata як seed для useState. localStorage-based hooks (useSavedFilters — вже OK через useEffect+setSaved), sessionStorage hooks (useCachedRefData — виправлено), IndexedDB cache hooks, hash-fragment URL parsers, cookie reads. Перевіряти **кожен** новий hook що `useState(getX())` — мати lazy initializer.
+
+---
+
 ## Що вже оптимізовано (не повторювати)
 
 **Backend:**
@@ -1634,3 +1682,10 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ webhooks.processor: `@Process({ name: 'deliver', concurrency: 5 })` — burst latency 200s → ~40s для 20 webhooks
 - ✅ sms.processor: `@Process({ name: 'send-sms', concurrency: 3 })` — серійні SMS calls → паралельні (3 одночасних TurboSMS HTTP calls)
 - ✅ followup.processor: `resolveConfig` + `sendWithConfig` — branchSettings + notificationTemplate тягнулись per-recipient (N×2 DB reads); тепер 2 reads для всього batch незалежно від розміру org
+- ✅ payments.findAll + settlements.getTransactions: safeLimit = Math.min(limit, 200) + safePage = Math.max(page, 1) DoS hardening (defensive backup, паралель до services/PO/WO pattern)
+- ✅ NbuFetchScheduler.onModuleInit: orgs + allSettings prefetched у Promise.all → hourByOrg Map → enqueueRepeatableForOrg(orgId, hour) (1000 cloud orgs: N+1 findUnique → 2 reads; bootstrap 30-50s → 1-2s)
+- ✅ maintenance-schedules.findAll: `?vehicleIds=v1,v2,v3` CSV-параметр + `vehicleId: { in }` clause — backend підтримує bulk lookup; CRM detail page (counterparty/[id]) тепер 1 RTT замість N×RTT per vehicle (20 vehicles: 4 waves × 100ms → 100ms)
+
+**Universal Frontend Hooks:**
+
+- ✅ useCachedRefData: getCached() винесено у `useState(() => ...)` lazy initializer (раніше виконувалось на КОЖЕН render — sessionStorage + JSON.parse для великих cached lists 200+ items)
