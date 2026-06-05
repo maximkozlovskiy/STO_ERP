@@ -51,7 +51,9 @@ test.describe('Дашборд', () => {
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
     // Sidebar містить посилання на основні розділи
     await expect(page.locator('a[href*="/work-orders"]').first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('a[href*="/crm"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('a[href*="/counterparties"]').first()).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
   test('навігація з дашборду на наряди', async ({ page }) => {

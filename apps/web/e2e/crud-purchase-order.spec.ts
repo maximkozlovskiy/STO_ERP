@@ -38,14 +38,19 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await expect(modal.locator('h2:has-text("Нове замовлення")')).toBeVisible();
 
-    // Вибрати постачальника
-    const supplierInput = modal
-      .locator('input[placeholder*="Назва компанії"], input[placeholder*="телефон"]')
+    // Вибрати постачальника через EntityPickerField → SearchPickerModal.
+    // У EntityPickerField є кнопка з aria-label="Обрати" (MoreHorizontal).
+    await modal.locator('button[aria-label="Обрати"]').first().click();
+    const supplierPicker = page
+      .locator('[role="dialog"]')
+      .filter({ hasText: 'Оберіть постачальника' })
       .first();
-    await supplierInput.fill('avd');
-    const firstOption = page.locator('[role="option"]').first();
-    if (await firstOption.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await firstOption.click();
+    await expect(supplierPicker).toBeVisible({ timeout: 5_000 });
+    // SearchPickerModal: кожен результат — <button class="w-full text-left ...">.
+    const firstSupplier = supplierPicker.locator('button.w-full.text-left').first();
+    if (await firstSupplier.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await firstSupplier.click();
+      await expect(supplierPicker).not.toBeVisible({ timeout: 5_000 });
     }
 
     // Вибрати склад — перший combobox після постачальника
@@ -66,13 +71,22 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       .first();
     if (await addLineBtn.isVisible({ timeout: 3_000 })) {
       await addLineBtn.click();
-      // Заповнити товар і кількість
-      const goodInput = modal.locator('input[placeholder*="Товар"]').first();
-      if (await goodInput.isVisible({ timeout: 3_000 })) {
-        await goodInput.fill('Масло');
-        const goodOption = page.locator('[role="option"]').first();
-        if (await goodOption.isVisible({ timeout: 3_000 }).catch(() => false))
-          await goodOption.click();
+      // Заповнити товар через EntityPickerField → SearchPickerModal "Оберіть товар"
+      const lineGoodPickerBtns = modal.locator('button[aria-label="Обрати"]');
+      const lineGoodPicker = lineGoodPickerBtns.nth((await lineGoodPickerBtns.count()) - 1);
+      if (await lineGoodPicker.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await lineGoodPicker.click();
+        const goodPicker = page
+          .locator('[role="dialog"]')
+          .filter({ hasText: 'Оберіть товар' })
+          .first();
+        if (await goodPicker.isVisible({ timeout: 3_000 }).catch(() => false)) {
+          const firstGood = goodPicker.locator('button.w-full.text-left').first();
+          if (await firstGood.isVisible({ timeout: 3_000 }).catch(() => false)) {
+            await firstGood.click();
+            await expect(goodPicker).not.toBeVisible({ timeout: 5_000 });
+          }
+        }
       }
       const qtyInput = modal.locator('input[placeholder*="Кіл"]').first();
       if (await qtyInput.isVisible({ timeout: 2_000 })) await qtyInput.fill('1');

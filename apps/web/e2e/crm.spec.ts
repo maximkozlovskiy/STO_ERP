@@ -6,8 +6,8 @@ test.use({ storageState: 'e2e/.auth/admin.json' });
 
 test.describe('CRM — список контрагентів', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/crm');
-    await expect(page).toHaveURL(/\/crm/, { timeout: 15_000 });
+    await page.goto('/counterparties');
+    await expect(page).toHaveURL(/\/counterparties/, { timeout: 15_000 });
     // Чекати кнопку додавання — стабільний індикатор готовності UI.
     // Після commit 3785721/c3cd333 add-button перейменовано: "Додати"/"+ Контрагент" → "Контрагент".
     await page
@@ -61,7 +61,7 @@ test.describe('CRM — список контрагентів', () => {
 
 test.describe('CRM — пошук', () => {
   test('пошук фільтрує результати', async ({ page }) => {
-    await page.goto('/crm');
+    await page.goto('/counterparties');
     await page.waitForLoadState('domcontentloaded');
 
     const searchInput = page
@@ -90,7 +90,7 @@ test.describe('CRM — пошук', () => {
 
 test.describe('CRM — картка контрагента', () => {
   test('картка відкривається та має таби', async ({ page }) => {
-    await page.goto('/crm');
+    await page.goto('/counterparties');
     await page.waitForLoadState('domcontentloaded');
 
     const firstRow = page.locator('table tbody tr').first();
@@ -99,7 +99,7 @@ test.describe('CRM — картка контрагента', () => {
     await firstRow.click();
     await page.waitForLoadState('domcontentloaded');
 
-    await expect(page).toHaveURL(/\/crm\/[a-z0-9-]+/, { timeout: 10_000 });
+    await expect(page).toHaveURL(/\/counterparties\/[a-z0-9-]+/, { timeout: 10_000 });
 
     // Таби: Загальна інформація, Гаражі та авто, Взаєморозрахунки, Наряди
     const tabs = page.locator('[role="tab"], button[data-state]');
@@ -107,7 +107,7 @@ test.describe('CRM — картка контрагента', () => {
   });
 
   test('картка показує баланс контрагента', async ({ page }) => {
-    await page.goto('/crm');
+    await page.goto('/counterparties');
     await page.waitForLoadState('domcontentloaded');
 
     const firstRow = page.locator('table tbody tr').first();

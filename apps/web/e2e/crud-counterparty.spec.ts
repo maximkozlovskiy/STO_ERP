@@ -10,7 +10,7 @@ test.describe('CRM — CRUD контрагента', () => {
   test('створити фізособу-клієнта → перевірити в таблиці → видалити', async ({ page }) => {
     const name = `E2E-${uid()}`;
 
-    await page.goto('/crm');
+    await page.goto('/counterparties');
     // Add-button renamed: "+ Контрагент"/"Додати" → "Контрагент" (commit 3785721/c3cd333).
     // Exclude page header text "Контрагенти".
     const addBtn = page
@@ -57,7 +57,7 @@ test.describe('CRM — CRUD контрагента', () => {
   test('створити юрособу-постачальника з ЄДРПОУ → перевірити тип badge', async ({ page }) => {
     const companyName = `E2E-Пост-${uid()}`;
 
-    await page.goto('/crm');
+    await page.goto('/counterparties');
     // Add-button renamed: "+ Контрагент"/"Додати" → "Контрагент" (commit 3785721/c3cd333).
     // Exclude page header text "Контрагенти".
     const addBtn = page
@@ -100,7 +100,7 @@ test.describe('CRM — CRUD контрагента', () => {
   test("клік на рядок → Detail Panel показує ім'я", async ({ page }) => {
     const name = `E2E-Panel-${uid()}`;
 
-    await page.goto('/crm');
+    await page.goto('/counterparties');
     // Add-button renamed: "Додати" → "Контрагент" (commit 3785721/c3cd333).
     const addBtn = page
       .locator('button:has-text("Контрагент"):not(:has-text("Контрагенти"))')
@@ -127,7 +127,7 @@ test.describe('CRM — CRUD контрагента', () => {
       await page.waitForTimeout(500);
     }
 
-    // Клік на рядок → Detail Panel (URL лишається /crm/)
+    // Клік на рядок → Detail Panel (URL лишається /counterparties/)
     const row = page.locator(`table tbody tr:has-text("${name}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();

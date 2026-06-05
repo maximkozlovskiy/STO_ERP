@@ -938,6 +938,103 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-05 — E2E тести розходяться з UI після рефакторингу: text-input → EntityPickerField, route rename, dynamic add-button — frontend, e2e
+
+**Сигнал:** Pack of E2E test failures (~10-25 шт) після завершення фічі/рефакторингу. Типові патерни падінь:
+
+1. `locator('input[placeholder*="телефон"], input[placeholder*="Ім\'я"]')` — element(s) not found, бо `<input>` замінений на `EntityPickerField` (button-based picker).
+2. `goto('/crm')` → залишається на `/crm/` без redirect на `/login`, бо роут перейменовано (`/crm` → `/counterparties`).
+3. `locator('button:has-text("Додати")')` — element(s) not found, бо add-button перейменовано на single-noun (`Додати` → `Зона`/`Правило`/`Документ`).
+4. `locator('h2:has-text("X")')` — element(s) not found, бо tabbed pages не мають `<h2>` з назвою таба (тільки `<button>` як таб).
+5. `locator('table td').nth(N)` — `unexpected value ""`, бо порядок колонок зсунувся (новий checkbox bulk-actions колонка перед першою колонкою; колонка `lines` тепер `linesCount`, тощо).
+6. `button:has-text("+ Додати")` — element(s) not found, бо в кнопці `+` — це icon component `<Plus>`, а `text()` повертає тільки label "Додати".
+
+**Причина виникнення:**
+
+- Фронтенд переходить з вільної форми (text input + autocomplete `[role="option"]`) на стандартизований UI — `EntityPickerField` (display + 3 buttons: clear/detail/picker) + `SearchPickerModal` (окремий dialog з list of result-buttons).
+- UI коротшає лейбли кнопок: "Новий рахунок" → "Рахунок", "Створити документ" → "Документ" (single-noun convention).
+- Списки додають bulk-actions колонку → всі `nth(N)` зсуваються на +1 (тільки якщо `bulkActionsEnabled` у org-settings — це ще й конфігурабельно).
+- Tabbed pages мають один `<h1>` (назва розділу) і кнопки-таби без `<h2>`. Тести помилково чекають `<h2>NameOfTab</h2>` як ready-signal.
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Grep усіх text-input placeholder локаторів що можуть таргетити старі inputs
+grep -rn "placeholder\*=\"телефон\"\|placeholder\*=\"Ім'я\"\|placeholder\*=\"Назва компанії\"" apps/web/e2e/
+
+# 2. Grep застарілих routes (після rename)
+grep -rn "goto('/[oldname]\|toHaveURL.*[oldname]\|href\*=\"/[oldname]\"" apps/web/e2e/
+
+# 3. Grep add-button з generic text
+grep -rn "button:has-text(\"Додати\")\|button:has-text(\"Новий\")" apps/web/e2e/
+
+# 4. Grep hard-coded column indices у table cells
+grep -rn "locator('td').nth([0-9])\|locator('table td').nth" apps/web/e2e/
+
+# 5. Запустити full suite — failures self-document the gaps
+cd apps/web && npx playwright test --reporter=list --workers=2
+```
+
+**Підхід до фіксу (test-side, бо UI навмисно змінено):**
+
+1. **EntityPickerField → SearchPickerModal:**
+
+   ```ts
+   // ❌ старе
+   await modal.locator('input[placeholder*="телефон"]').first().fill('a');
+   await page.locator('[role="option"]').first().click();
+
+   // ✅ нове
+   await modal.locator('button[aria-label="Обрати"]').first().click();
+   const picker = page
+     .locator('[role="dialog"]')
+     .filter({ hasText: 'Оберіть контрагента' })
+     .first();
+   await expect(picker).toBeVisible({ timeout: 5_000 });
+   // Результати — <button class="w-full text-left ..."> у SearchPickerModal
+   const firstResult = picker.locator('button.w-full.text-left').first();
+   await firstResult.click();
+   await expect(picker).not.toBeVisible({ timeout: 5_000 });
+   ```
+
+2. **Route rename:** глобальна заміна `'/crm'` → `'/counterparties'` у всіх spec файлах. Перевірити окремо: PROTECTED_PAGES масиви, регекси `toHaveURL(/\/crm/)`, hrefs `a[href*="/crm"]`.
+
+3. **Add-button single-noun:** замінити `button:has-text("Додати")` на `getByRole('button', { name: /^Зона$/ })` (точна назва). Для tabbed pages — побудувати map: `{ Зони: 'Зона', Пости: 'Пост', Склади: 'Склад' }`.
+
+4. **Tabbed page ready-signal:** замість `h2:has-text("TabName")` — `h1:has-text("PageName")` + чекати add-button з expected label.
+
+5. **Column index instability:** замість `locator('td').nth(N)` — фільтрувати by content:
+
+   ```ts
+   const firstDateCell = page
+     .locator('tbody tr')
+     .first()
+     .locator('td')
+     .filter({ hasText: /^\d{2}\.\d{2}\.\d{4}$/ })
+     .first();
+   ```
+
+   Стійко до зміни порядку колонок, наявності bulk-actions checkbox колонки, кастомізації user-side.
+
+6. **Icon-only button text:** замість `button:has-text("+ Додати")` — `getByRole('button', { name: /^Додати$/ })`. Icon рендериться через `leftIcon={<Plus />}`, не входить у accessible name.
+
+7. **Pagination + sort:** якщо тест створює запис і шукає рядок by `:has-text(unique-name)`, але список відсортований і paginated — спочатку зробити пошук:
+   ```ts
+   const searchInput = page.locator('input[placeholder*="Пошук"]').first();
+   if (await searchInput.isVisible({ timeout: 3_000 })) {
+     await searchInput.fill(uniqueName);
+     await page.waitForTimeout(500);
+   }
+   ```
+
+**Правило: тест падає = щось зламано** — спочатку зрозуміти що реально змінилось у UI (читати page.tsx, modal component, real DOM via error-context.md). Якщо UI навмисно змінений — оновити тест. Якщо UI має баг — виправити UI. НЕ додавати `if (await x.isVisible()) return` — це маскує проблему.
+
+**Severity:** HIGH — block release, but easy to fix mechanically once pattern is identified.
+
+**Де шукати ще:** усі spec файли що взаємодіють з модалкою створення (counterparty, supplier, good, employee, invoice, purchase-order, stock-document), tabbed pages (infrastructure, settings, catalog), сторінки з таблицями що мають bulk-actions. Після кожного rename / "single-noun" cleanup / picker-migration — full suite run обов'язковий.
+
+---
+
 ### 2026-06-05 — Dead `/X/new` маршрут у keyboard shortcut / Command Palette (Bug #354) — frontend, routing
 
 **Сигнал:** Power-user UX feature (keyboard shortcut `N`, Command Palette "Новий X") робить `router.push('/X/new')` або `href: '/X/new'`, але папка `apps/web/src/app/<group>/X/new/` НЕ ІСНУЄ. Next.js `[id]` dynamic route ловить `'new'` як параметр id → `apiFetch('/X/new')` → 404 або broken detail page. tsc green бо `router.push` приймає будь-який рядок; runtime НЕ падає одразу — користувач бачить порожній/помилковий екран.

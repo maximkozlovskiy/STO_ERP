@@ -14,7 +14,13 @@ import { test, expect } from '@playwright/test';
 test.describe('API error resilience — захищені сторінки', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  const PROTECTED_PAGES = ['/work-orders', '/inventory', '/crm', '/calendar', '/invoices'];
+  const PROTECTED_PAGES = [
+    '/work-orders',
+    '/inventory',
+    '/counterparties',
+    '/calendar',
+    '/invoices',
+  ];
 
   for (const path of PROTECTED_PAGES) {
     test(`${path} — не крашиться при 500 від API`, async ({ page }) => {

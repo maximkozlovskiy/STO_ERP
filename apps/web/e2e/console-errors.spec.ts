@@ -32,7 +32,7 @@ function isIgnored(msg: string): boolean {
 const AUTH_PAGES = [
   '/work-orders',
   '/calendar',
-  '/crm',
+  '/counterparties',
   '/inventory',
   '/catalog',
   '/employees',

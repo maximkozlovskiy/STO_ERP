@@ -57,7 +57,7 @@ test.describe('Auth — Guard захищених роутів', () => {
   const PROTECTED = [
     '/work-orders',
     '/calendar',
-    '/crm',
+    '/counterparties',
     '/inventory',
     '/catalog',
     '/employees',

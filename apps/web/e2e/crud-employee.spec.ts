@@ -33,6 +33,14 @@ test.describe('Персонал — CRUD співробітника', () => {
     await saveBtn.click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
+    // Список paginated + sort by lastName asc — нова "Тест" може бути не на 1-й сторінці.
+    // Використовуємо пошук щоб гарантовано знайти запис.
+    const searchInput = page.locator('input[placeholder*="Пошук"]').first();
+    if (await searchInput.isVisible({ timeout: 3_000 })) {
+      await searchInput.fill(firstName);
+      await page.waitForTimeout(500);
+    }
+
     await expect(page.locator(`table tbody tr:has-text("${firstName}")`).first()).toBeVisible({
       timeout: 15_000,
     });
@@ -69,6 +77,13 @@ test.describe('Персонал — CRUD співробітника', () => {
     await expect(saveBtn).toBeEnabled({ timeout: 5_000 });
     await saveBtn.click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
+
+    // Список paginated + sort by lastName asc — використовуємо пошук.
+    const searchInput = page.locator('input[placeholder*="Пошук"]').first();
+    if (await searchInput.isVisible({ timeout: 3_000 })) {
+      await searchInput.fill(firstName);
+      await page.waitForTimeout(500);
+    }
 
     const row = page.locator(`table tbody tr:has-text("${firstName}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });

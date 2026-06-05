@@ -199,8 +199,16 @@ test.describe('Складські документи — створення че
     await modal.getByRole('button', { name: 'Створити документ' }).click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
-    // Найновіший рядок (перший, sort desc) показує сьогоднішню дату
-    const firstDateCell = page.locator('tbody tr').first().locator('td').nth(6);
+    // Найновіший рядок (перший, sort desc) показує сьогоднішню дату.
+    // Шукаємо клітинку з тексту дати у першому рядку — формат гарантований DD.MM.YYYY.
+    // Це стійко до зміни порядку колонок, наявності checkbox-колонки bulk-actions, тощо.
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10_000 });
+    const firstDateCell = page
+      .locator('tbody tr')
+      .first()
+      .locator('td')
+      .filter({ hasText: /^\d{2}\.\d{2}\.\d{4}$/ })
+      .first();
     await expect(firstDateCell).toHaveText(todayDate, { timeout: 10_000 });
   });
 
@@ -599,9 +607,10 @@ test.describe('Складські документи — позиції (lines)'
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
-    // Перевіряємо що секція «Позиції» з кнопкою «+ Додати» є у формі
+    // Перевіряємо що секція «Позиції» з кнопкою «Додати» (з іконкою +) є у формі.
+    // Текст кнопки — "Додати" (icon рендериться окремо через leftIcon).
     await expect(modal.locator('text=Позиції').first()).toBeVisible({ timeout: 5_000 });
-    await expect(modal.locator('button:has-text("+ Додати")').first()).toBeVisible({
+    await expect(modal.getByRole('button', { name: /^Додати$/ }).first()).toBeVisible({
       timeout: 5_000,
     });
     await page.keyboard.press('Escape');

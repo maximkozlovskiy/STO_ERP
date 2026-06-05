@@ -6,17 +6,29 @@ test.describe.configure({ mode: 'serial' });
 
 const uid = () => Date.now().toString().slice(-6);
 
+// Add-button label is dynamic per tab: branches="Філія", zones="Зона", lifts="Пост", warehouses="Склад".
+const ADD_BTN_BY_TAB: Record<string, string> = {
+  Філії: 'Філія',
+  Зони: 'Зона',
+  Пости: 'Пост',
+  Склади: 'Склад',
+};
+
 async function goToTab(page: import('@playwright/test').Page, tabName: string) {
   await page.goto('/infrastructure');
+  // h1 "Інфраструктура" — page ready signal (немає <h2> з назвою таба).
+  await expect(page.locator('h1:has-text("Інфраструктура")')).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(`button:has-text("${tabName}")`).first()).toBeVisible({
     timeout: 20_000,
   });
   await page.locator(`button:has-text("${tabName}")`).first().click();
-  // Wait for the section header (h2 with the tab name) to appear — guarantees
-  // that the tab content is mounted before we click "Додати". Without this the
-  // "Додати" button may resolve in a stale section and open the wrong modal.
-  await expect(page.locator(`h2:has-text("${tabName}")`).first()).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator('button:has-text("Додати")').first()).toBeVisible({ timeout: 10_000 });
+  // Чекати add-button з відповідним лейблом для цього таба.
+  const addLabel = ADD_BTN_BY_TAB[tabName] ?? 'Додати';
+  await expect(page.getByRole('button', { name: new RegExp(`^${addLabel}$`) }).first()).toBeVisible(
+    {
+      timeout: 10_000,
+    },
+  );
 }
 
 // ─── Зони ─────────────────────────────────────────────────────────────────────
@@ -26,7 +38,11 @@ test.describe('Інфраструктура — CRUD зони', () => {
     const zoneName = `E2E-Зона-${uid()}`;
 
     await goToTab(page, 'Зони');
-    await page.locator('button:has-text("Додати")').first().click();
+    // Add-button has dynamic label per tab — for "Зони" це "Зона".
+    await page
+      .getByRole('button', { name: /^Зона$/ })
+      .first()
+      .click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await expect(modal.locator('h2:has-text("Нова зона")')).toBeVisible();
@@ -52,7 +68,10 @@ test.describe('Інфраструктура — CRUD зони', () => {
 
   test('зона — Зберегти disabled без назви', async ({ page }) => {
     await goToTab(page, 'Зони');
-    await page.locator('button:has-text("Додати")').first().click();
+    await page
+      .getByRole('button', { name: /^Зона$/ })
+      .first()
+      .click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await expect(modal.locator('button:has-text("Зберегти")')).toBeDisabled();
@@ -67,7 +86,10 @@ test.describe('Інфраструктура — CRUD поста', () => {
     const postName = `E2E-Пост-${uid()}`;
 
     await goToTab(page, 'Пости');
-    await page.locator('button:has-text("Додати")').first().click();
+    await page
+      .getByRole('button', { name: /^Пост$/ })
+      .first()
+      .click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
@@ -96,7 +118,10 @@ test.describe('Інфраструктура — CRUD складу', () => {
     const warehouseName = `E2E-Склад-${uid()}`;
 
     await goToTab(page, 'Склади');
-    await page.locator('button:has-text("Додати")').first().click();
+    await page
+      .getByRole('button', { name: /^Склад$/ })
+      .first()
+      .click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 

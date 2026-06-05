@@ -24,7 +24,8 @@ test.describe('Правила ціноутворення — CRUD', () => {
     await expect(page.locator('h1:has-text("Ціноутворення"), h1:has-text("Правила")')).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.locator('button:has-text("Додати")').first()).toBeVisible({
+    // Add-button renamed to single noun "Правило" (commit 3785721/c3cd333).
+    await expect(page.getByRole('button', { name: /^Правило$/ }).first()).toBeVisible({
       timeout: 15_000,
     });
   });
@@ -36,7 +37,11 @@ test.describe('Правила ціноутворення — CRUD', () => {
     await expect(page.locator('h1:has-text("Ціноутворення"), h1:has-text("Правила")')).toBeVisible({
       timeout: 20_000,
     });
-    await page.locator('button:has-text("Додати")').first().click();
+    // Add-button renamed to single noun "Правило".
+    await page
+      .getByRole('button', { name: /^Правило$/ })
+      .first()
+      .click();
 
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
@@ -77,7 +82,10 @@ test.describe('Правила ціноутворення — CRUD', () => {
     await expect(page.locator('h1:has-text("Ціноутворення"), h1:has-text("Правила")')).toBeVisible({
       timeout: 20_000,
     });
-    await page.locator('button:has-text("Додати")').first().click();
+    await page
+      .getByRole('button', { name: /^Правило$/ })
+      .first()
+      .click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await expect(

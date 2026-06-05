@@ -133,10 +133,10 @@ test.describe('Рахунки — створення через UI', () => {
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await expect(modal.locator('h2:has-text("Новий рахунок")')).toBeVisible();
-    // Поля форми
-    await expect(
-      modal.locator('input[placeholder*="телефон"], input[placeholder*="Ім\'я"]').first(),
-    ).toBeVisible();
+    // Поля форми:
+    // Контрагент — EntityPickerField (placeholder text у span "Обрати контрагента…", не input).
+    // Сума — input з placeholder "0.00".
+    await expect(modal.locator('text=Обрати контрагента').first()).toBeVisible();
     await expect(modal.getByPlaceholder('0.00')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(modal).not.toBeVisible({ timeout: 5_000 });
@@ -170,20 +170,21 @@ test.describe('Рахунки — створення через UI', () => {
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
-    // Пошук контрагента
-    const cpInput = modal
-      .locator(
-        'input[placeholder*="телефон"], input[placeholder*="Ім\'я"], input[placeholder*="держ. номер"]',
-      )
+    // Контрагент — EntityPickerField → SearchPickerModal (aria-label="Обрати" відкриває picker).
+    await modal.locator('button[aria-label="Обрати"]').first().click();
+    const picker = page
+      .locator('[role="dialog"]')
+      .filter({ hasText: 'Оберіть контрагента' })
       .first();
-    await cpInput.fill('');
-    await cpInput.type('a');
-    await page.waitForTimeout(600);
-    const opt = page.locator('[role="option"]').first();
-    if (!(await opt.isVisible({ timeout: 4_000 }).catch(() => false))) {
-      return test.skip(true, 'Combobox не знайшов контрагентів');
+    await expect(picker).toBeVisible({ timeout: 5_000 });
+    // SearchPickerModal: результати — <button class="w-full text-left ..."> у scrollable list.
+    // Фільтруємо by class signature замість text exclusion.
+    const firstResult = picker.locator('button.w-full.text-left').first();
+    if (!(await firstResult.isVisible({ timeout: 5_000 }).catch(() => false))) {
+      return test.skip(true, 'Picker не знайшов контрагентів');
     }
-    await opt.click();
+    await firstResult.click();
+    await expect(picker).not.toBeVisible({ timeout: 5_000 });
 
     await modal.getByPlaceholder('0.00').fill('500');
     const saveBtn = modal.locator('button:has-text("Створити рахунок")');

@@ -38,22 +38,19 @@ test.describe('Рахунки — CRUD', () => {
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await expect(modal.locator('h2:has-text("Новий рахунок")')).toBeVisible();
 
-    // Вибрати контрагента через пошук
-    const cpInput = modal
-      .locator('input[placeholder*="телефон"], input[placeholder*="держ. номер"]')
+    // Вибрати контрагента через EntityPickerField → SearchPickerModal.
+    // У формі є кнопка з aria-label="Обрати" (MoreHorizontal "…").
+    await modal.locator('button[aria-label="Обрати"]').first().click();
+    const picker = page
+      .locator('[role="dialog"]')
+      .filter({ hasText: 'Оберіть контрагента' })
       .first();
-    await cpInput.fill('Тест');
-    await page.waitForTimeout(600);
-    const firstOption = page.locator('[role="option"]').first();
-    if (await firstOption.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await firstOption.click();
-    } else {
-      // Спробувати з пустим рядком — підвантажити всіх
-      await cpInput.clear();
-      await cpInput.fill('avd');
-      await page.waitForTimeout(600);
-      const opt = page.locator('[role="option"]').first();
-      if (await opt.isVisible({ timeout: 3_000 }).catch(() => false)) await opt.click();
+    await expect(picker).toBeVisible({ timeout: 5_000 });
+    // SearchPickerModal: кожен результат — <button class="w-full text-left ..."> у scrollable list.
+    const firstResult = picker.locator('button.w-full.text-left').first();
+    if (await firstResult.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await firstResult.click();
+      await expect(picker).not.toBeVisible({ timeout: 5_000 });
     }
 
     // Сума
