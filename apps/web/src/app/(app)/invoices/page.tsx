@@ -23,8 +23,8 @@ import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { SearchCombobox } from '@/components/ui/search-combobox';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { InvoiceCreateModal } from '@/components/ui/InvoiceCreateModal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -55,14 +55,12 @@ import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
-import { useDirtyForm } from '@/hooks/useDirtyForm';
-import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
-import { cn, displayCounterpartyName } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
@@ -70,12 +68,6 @@ import { fmtMoney, fmtDate } from '@/lib/format';
 const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 const kyivToday = () => KYIV_YMD.format(new Date());
 
-interface Counterparty {
-  id: string;
-  firstName?: string;
-  lastName?: string;
-  companyName?: string;
-}
 interface InvoiceLine {
   id: string;
   invoiceId: string;
@@ -188,13 +180,6 @@ export default function InvoicesPage() {
   const [showPayment, setShowPayment] = useState<InvoiceWithOptionals | null>(null);
 
   const [payMethods, setPayMethods] = useState<{ code: string; name: string }[]>([]);
-  const [form, setForm] = useState({
-    counterpartyId: '',
-    amount: '',
-    dueDate: '',
-    documentDate: kyivToday(),
-  });
-  const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
   const [payForm, setPayForm] = useState({ method: 'cash', amount: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -272,9 +257,6 @@ export default function InvoicesPage() {
     [bulkCancel],
   );
 
-  // Unsaved guard for create modal
-  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
-
   useEffect(() => {
     if (!showPayment) return;
     let cancelled = false;
@@ -313,40 +295,6 @@ export default function InvoicesPage() {
       payMethods.some(m => m.code === f.method) ? f : { ...f, method: payMethods[0].code },
     );
   }, [payMethods, showPayment]);
-
-  const handleCreate = async () => {
-    const amt = parseFloat(form.amount);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      setError('Введіть коректну суму');
-      return;
-    }
-    setSaving(true);
-    try {
-      await apiFetch<Invoice>('/invoices', {
-        method: 'POST',
-        body: JSON.stringify({
-          counterpartyId: form.counterpartyId,
-          amount: amt,
-          dueDate: form.dueDate || undefined,
-          documentDate: form.documentDate || undefined,
-        }),
-      });
-      dirty.resetDirty();
-      setShowCreate(false);
-      setForm({
-        counterpartyId: '',
-        amount: '',
-        dueDate: '',
-        documentDate: kyivToday(),
-      });
-      setCounterpartyDisplayName('');
-      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleTransition = async (inv: InvoiceWithOptionals, newStatus: string) => {
     if (
@@ -895,92 +843,14 @@ export default function InvoicesPage() {
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
       {/* Create modal */}
-      <Modal
+      <InvoiceCreateModal
         open={showCreate}
-        onClose={async () => {
-          if (!(await dirty.confirmClose())) return;
-          dirty.resetDirty();
+        onClose={() => setShowCreate(false)}
+        onSaved={() => {
           setShowCreate(false);
-          setForm({
-            counterpartyId: '',
-            amount: '',
-            dueDate: '',
-            documentDate: kyivToday(),
-          });
-          setCounterpartyDisplayName('');
+          queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
         }}
-        title="Новий рахунок"
-        footer={
-          <Button
-            onClick={handleCreate}
-            loading={saving}
-            disabled={!form.counterpartyId || !form.amount}
-            className="w-full"
-          >
-            Створити рахунок
-          </Button>
-        }
-      >
-        <div className="space-y-4">
-          <SearchCombobox<Counterparty>
-            label="Контрагент"
-            required
-            placeholder="Ім'я, телефон, держ. номер авто..."
-            value={form.counterpartyId}
-            displayValue={counterpartyDisplayName}
-            onSelect={c => {
-              // Bug #139: helper повертає '(без імені)' fallback замість порожнього рядка.
-              setCounterpartyDisplayName(displayCounterpartyName(c));
-              setForm(f => ({ ...f, counterpartyId: c.id }));
-              dirty.markDirty();
-            }}
-            onClear={() => {
-              setCounterpartyDisplayName('');
-              setForm(f => ({ ...f, counterpartyId: '' }));
-              dirty.markDirty();
-            }}
-            fetchItems={q =>
-              apiFetch<{ items: Counterparty[] }>(
-                `/counterparties?q=${encodeURIComponent(q)}&limit=10`,
-              ).then(r =>
-                r.items.map(c => ({
-                  ...c,
-                  primary: displayCounterpartyName(c),
-                })),
-              )
-            }
-          />
-          <Input
-            label="Сума, ₴"
-            required
-            type="number"
-            min="0.01"
-            value={form.amount}
-            onChange={e => {
-              setForm(f => ({ ...f, amount: e.target.value }));
-              dirty.markDirty();
-            }}
-            step="0.01"
-            placeholder="0.00"
-          />
-          <DatePickerInput
-            label="Термін оплати"
-            value={form.dueDate}
-            onChange={v => {
-              setForm(f => ({ ...f, dueDate: v }));
-              dirty.markDirty();
-            }}
-          />
-          <DatePickerInput
-            label="Дата документа"
-            value={form.documentDate}
-            onChange={v => {
-              setForm(f => ({ ...f, documentDate: v }));
-              dirty.markDirty();
-            }}
-          />
-        </div>
-      </Modal>
+      />
 
       {/* Payment modal */}
       <Modal
@@ -1035,7 +905,6 @@ export default function InvoicesPage() {
           </div>
         )}
       </Modal>
-      <DirtyConfirmDialog {...dirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
   );
