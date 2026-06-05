@@ -713,6 +713,7 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 - [ ] **jsdom browser-API стаби в `apps/web/src/__tests__/setup.ts`:** якщо diff чіпає `components/ui/` АБО `app/**/page.tsx` і додає `new (ResizeObserver|IntersectionObserver|MutationObserver|PerformanceObserver)\(`, `window.matchMedia(`, `navigator.(clipboard|share|wakeLock|geolocation|mediaDevices)`, `crypto.subtle`, `Notification(` — перевірити що setup.ts стабає це API. tsc мовчить (типи у `lib.dom.d.ts`), prod працює (браузер має API), але jsdom падає → каскадне падіння всіх тестів які монтують компонент (включно з тестами далеких компонентів якщо shared-компонент усередині них). Фікс: noop-стаб під guard `typeof globalThis.X === 'undefined'`. Не стабати в самому компоненті, не вимикати тест
 - [ ] **CSS scoped marker (data-X) контракт — integration-тест на наявність маркера (Bug #334):** будь-який shared UI-компонент (`Modal`, `DetailPanel`, `Popover`, `Drawer`) що покладається на CSS-правило з selector-prefix-маркером (`[data-animate][data-state="open"]`, `[data-portal]`, `[data-overlay]`) — парний `*.test.tsx` має містити assertion на присутність маркера на правильному елементі + позицію (direct-child vs descendant). Без тесту: refactor що видаляє `data-animate` атрибут з root компонента → анімація мовчки перестає працювати (CSS правило не матчиться), tsc green, всі функціональні тести зелені (Modal все ще монтується/закривається), але exit-animation мертва. Шаблон: `expect(dialog).toHaveAttribute('data-animate'); expect(dialog).toHaveAttribute('data-state', 'open'); expect(dialog.querySelector(':scope > [data-backdrop]')).toBeTruthy();`. Grep для виявлення pattern у CSS: `grep -nE "\[data-[a-z]+\](\[data-[a-z]+\=)?" apps/web/src/app/globals.css` — кожен унікальний `data-*` selector має бути присутнім хоча б в одному `*.test.tsx`. Severity LOW (visual jank, не data-correctness).
 - [ ] **useEffect + rAF dance для CSS animation enter — 1-frame paint at previous state (Bug #335):** будь-який custom hook що використовує паттерн `setVisible(true); requestAnimationFrame(() => setState('open'))` у `useEffect` ДЛЯ enter-анімації CSS — потенційний flicker bug. React commits visible=true з застарілим state='closed', browser паінтиться 1 frame з закритими стилями (CSS animation FROM-keyframe для closed-state), потім rAF flips state → нова анімація стартує. У дефолтних exit-keyframes (`from { opacity:1; scale(1) }`) це означає що елемент **відмалюється з повним розміром** перед стартом enter-анімації — visual jank. Перевірити: grep `requestAnimationFrame.*setState\(` у `hooks/use*.ts` — кожен match потенційний bug. Безпечний паттерн: (а) `useLayoutEffect` + одразу `setState('open')` без rAF (CSS `animation` з `fill-mode: both` runs on mount, рAF dance не потрібен); або (б) initial state мати 'closed' + другий маркер `data-just-mounted="true"` що відключає exit-animation. Контракт-тест: між `rerender({ open: true })` і flush-rAF — `state === 'closed'` ОЧЕВИДНИЙ симптом → задокументувати у BUG_REPORT як LOW (1-frame jank). Severity LOW.
+- [ ] **Stable callback identity invariant в composable hooks (Tester Cycle 2 2026-06-05):** будь-який `useCallback(() => ..., [])` у composable hook (`useListPage`, `useDetailPanel`, `useBulkSelect`, `useSavedFilters`) — окрім behavior test (`act(() => cb()) → стан змінився`) ПОВИНЕН мати regression-guard test на identity stability: `const first = result.current.cb; rerender(); expect(result.current.cb).toBe(first); act(() => result.current.setter(N)); expect(result.current.cb).toBe(first)`. Без guard: майбутній eslint --fix що додає "missing dep" (`[setPage]` замість `[]`) пройде tsc + behavior tests зеленим, але каскадно перестворює consumers' `useCallback`/`useMemo` що використовують `cb` у deps → invalidate `<MemoizedChild onApply={consumerCb}>` re-renders. Perf regression замість CRITICAL crash — важко діагностувати, накопичується мовчки. Grep: `grep -rn "useCallback(.*, \[\])" apps/web/src/hooks --include="*.ts" | grep -v test` — для кожного match перевірити чи парний test має `.toBe(firstCb)` асерт після rerender. Severity MEDIUM (perf cascade).
 
 ---
 
@@ -3567,5 +3568,61 @@ if (existing.fiscalReceiptId) {
 - `followup.processor.ts` — чи пропускає counterparty що вже отримав нагадування цього циклу?
 - `webhooks.processor.ts` — delivery idempotency (менш критично — webhook retry є нормою, але бажано логувати дублікати)
 - Будь-який processor з `attempts > 5` і external API call — потенційний кандидат
+
+---
+
+### 2026-06-05 — Stable callback identity invariant у multi-page hook migration — frontend / hooks
+
+**Сигнал:** Migration cycle послідовно: (1) утиліта вилучається у composable hook (`useListPage` повертає `resetPage = useCallback(() => setPage(1), [])`); (2) consumer code замінює inline `setPage(1)` → `resetPage()` у тілах `useCallback`/`useMemo`; (3) dep arrays оновлюються `[setPage, ...]` → `[resetPage, ...]`. Весь ланцюг працює ТІЛЬКИ якщо `resetPage` має стабільну identity (deps `[]`). Якщо хтось пізніше «виправляє» eslint warning і додає `[setPage]` deps у визначення `resetPage` — `resetPage` буде нова reference на кожному render бо `setPage` deps насправді теж stable. (React useState setter completely stable.) Це не reproduce-itься через unit test що тестує `resetPage()` поведінку (page=5 → resetPage → page=1 — OK), бо identity stability — окремий invariant.
+
+**Причина виникнення:** Розробники довіряють react-hooks/exhaustive-deps eslint rule і додають "missing dep" автоматично. Lint попереджає про `setPage` "missing in deps" незалежно від того, що React documentation гарантує stability. Без regression-guard тесту майбутній auto-fix через eslint --fix міг би регресувати identity stability → каскадно ре-створювати applyFilter у 6 consumer pages → `<SavedFiltersBar onApply={applyFilter}>` (memoized child) re-render-ить на кожен parent re-render → інвалідує всю child-memoization оптимізацію.
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Для будь-якого composable hook що повертає stable callback — додати тест identity
+grep -rn "useCallback.*\[\]\)" apps/web/src/hooks --include="*.ts" | grep -v "spec\|test"
+
+# 2. Перевірити чи є парний test для identity (не лише behavior)
+grep -rn "toBe(first" apps/web/src/hooks --include="*.test.ts" -B 2 | grep -E "rerender|identity"
+# Якщо behavior test є, але identity test нема → gap
+
+# 3. Перевірити consumers: усі useCallback що містять виклик stable-callback мають включати його у deps
+grep -rln "resetPage()\|clearSelection()\|prefetch()" apps/web/src/app --include="*.tsx" | while read f; do
+  # для кожного — перевірити чи відповідне ім'я є у dep arrays
+  grep -E "\[.*resetPage|\[.*clearSelection|\[.*prefetch" "$f" | head -2
+done
+```
+
+**Підхід до фіксу:**
+
+1. Додати regression-guard тест у `<hook>.test.ts`:
+
+   ```ts
+   it('callbackX identity стабільна між render-ами (для useCallback deps)', () => {
+     const { result, rerender } = renderHook(() => useX(...));
+     const firstCb = result.current.callbackX;
+     rerender();
+     expect(result.current.callbackX).toBe(firstCb);
+     // Also stable after state mutation
+     act(() => result.current.someSetter(N));
+     expect(result.current.callbackX).toBe(firstCb);
+     // Also stable after own invocation
+     act(() => result.current.callbackX());
+     expect(result.current.callbackX).toBe(firstCb);
+   });
+   ```
+
+2. У JSDoc hook-у — явно задокументувати invariant: `* @remarks resetPage has stable identity (useCallback with empty deps). Safe to put in dep arrays.`
+3. ESLint comment на site definition: `// eslint-disable-next-line react-hooks/exhaustive-deps -- setPage from useState is stable by React contract` (оборона від `--fix`).
+
+**Severity:** MEDIUM (perf regression замість CRITICAL crash, але важко діагностувати — re-renders спочатку непомітні, потім накопичуються; саме той клас багів що /sto-optimize ловить через профайлінг через 3 місяці).
+
+**Де шукати ще:**
+
+- Будь-який composable hook що повертає `useCallback(..., [])` для надання stable handler споживачам (`useDetailPanel`, `useBulkSelect`, `useSavedFilters`, `useColumnDrag`, `useUiFeatures`).
+- Custom utility hooks що оборачують `setState` setters і повертають derived setters (`createSafeAsync`, `useStableSubmit`).
+- Memoized component props що передаються у memoized children (`React.memo`, virtual list rows, table cell renderers).
+- Будь-яка migration коли cycle = «вилучити утиліту → migrate consumers → оновити dep arrays»: identity stability — інваріант що тримає весь ланцюг. Без guard — будь-хто може випадково regress-ити «cleanup PR» що TS+behavior tests не покажуть.
 
 ---
