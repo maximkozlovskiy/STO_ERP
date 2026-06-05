@@ -6,6 +6,7 @@ import { useCounterparties } from '@/hooks/api/useCounterparties';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
+import { Download } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
@@ -249,17 +250,54 @@ export function SettlementsTabContent() {
                           : 'Немає заборгованостей'}
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setActForm({ periodFrom: '', periodTo: '' });
-                      setActResult(null);
-                      setShowActModal(true);
-                    }}
-                  >
-                    Акт звірки
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (!selected || transactions.length === 0) return;
+                        const cpName =
+                          selected.companyName ??
+                          [selected.lastName, selected.firstName].filter(Boolean).join(' ');
+                        const rows = [
+                          ['Дата', 'Тип', 'Сума', 'Документ', 'Нотатки'],
+                          ...transactions.map(tx => [
+                            fmtDate(tx.createdAt),
+                            TX_LABELS[tx.type] ?? tx.type,
+                            tx.amount,
+                            tx.documentType ?? '',
+                            tx.notes ?? '',
+                          ]),
+                        ];
+                        const csv = rows.map(r => r.join(';')).join('\n');
+                        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `transactions-${cpName}.csv`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        setTimeout(() => URL.revokeObjectURL(url), 100);
+                      }}
+                      disabled={transactions.length === 0}
+                      aria-label="Експорт CSV"
+                      title="Завантажити транзакції у CSV"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setActForm({ periodFrom: '', periodTo: '' });
+                        setActResult(null);
+                        setShowActModal(true);
+                      }}
+                    >
+                      Акт звірки
+                    </Button>
+                  </div>
                 </div>
               </div>
 

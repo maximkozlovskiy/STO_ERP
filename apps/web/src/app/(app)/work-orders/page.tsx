@@ -25,7 +25,8 @@ import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { SearchCombobox } from '@/components/ui/search-combobox';
+import { EntityPickerField } from '@/components/ui/entity-picker-field';
+import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -259,6 +260,7 @@ function WorkOrdersPageInner() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
+  const [cpPickerOpen, setCpPickerOpen] = useState(false);
   const [templates, setTemplates] = useState<WOTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<WOTemplate | null>(null);
 
@@ -1137,33 +1139,39 @@ function WorkOrdersPageInner() {
             </div>
           )}
 
-          <SearchCombobox<Counterparty>
-            label="Клієнт"
-            required
-            placeholder="Ім'я, телефон, держ. номер авто..."
-            value={form.counterpartyId}
-            displayValue={counterpartyDisplayName}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Клієнт <span className="text-destructive-text">*</span>
+            </label>
+            <EntityPickerField
+              display={counterpartyDisplayName}
+              placeholder="Обрати клієнта…"
+              onPick={() => setCpPickerOpen(true)}
+              onClear={() => {
+                setCounterpartyDisplayName('');
+                setForm(f => ({ ...f, counterpartyId: '', vehicleId: '' }));
+                setVehicles([]);
+              }}
+              hidePick={false}
+            />
+          </div>
+
+          <SearchPickerModal<SearchPickerItem & Counterparty>
+            open={cpPickerOpen}
+            onClose={() => setCpPickerOpen(false)}
+            title="Оберіть клієнта"
+            selectedId={form.counterpartyId}
+            searchPlaceholder="Ім'я, телефон, держ. номер авто..."
+            fetchItems={q =>
+              apiFetch<{ items: Counterparty[] }>(
+                `/counterparties?q=${encodeURIComponent(q)}&limit=20`,
+              ).then(r => r.items.map(c => ({ ...c, primary: displayCounterpartyName(c) })))
+            }
             onSelect={cp => {
-              // Bug #139: helper повертає '(без імені)' fallback замість порожнього рядка.
-              setCounterpartyDisplayName(displayCounterpartyName(cp));
+              setCounterpartyDisplayName(cp.primary);
               setForm(f => ({ ...f, counterpartyId: cp.id, vehicleId: '' }));
               loadVehicles(cp.id);
             }}
-            onClear={() => {
-              setCounterpartyDisplayName('');
-              setForm(f => ({ ...f, counterpartyId: '', vehicleId: '' }));
-              setVehicles([]);
-            }}
-            fetchItems={q =>
-              apiFetch<{ items: Counterparty[] }>(
-                `/counterparties?q=${encodeURIComponent(q)}&limit=10`,
-              ).then(r =>
-                r.items.map(c => ({
-                  ...c,
-                  primary: displayCounterpartyName(c),
-                })),
-              )
-            }
           />
 
           <Select
