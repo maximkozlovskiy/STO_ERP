@@ -958,10 +958,10 @@ import { TableContainer } from '@/components/ui/table-container';
 <TableContainer>
 ```
 
-**Чому:** `TableContainer` автоматично:
+**Чому:** `TableContainer` автоматично вирішує два баги через клас `table-scroll-container`:
 
-- Застосовує клас `table-scroll-container` → вертикальний скролбар починається нижче шапки (`--table-thead-h: 33px` margin-top на track)
-- Встановлює правильний flex-layout для sticky thead
+- Трек скролбара починається нижче шапки (`--table-thead-h: 33px` margin-top на `::-webkit-scrollbar-track`)
+- Область скролбара (5px справа від thead) зафарбована в `bg-secondary` — збігається з кольором шапки; `tbody` перекриває до `bg-surface`
 - Єдина точка зміни стилів для всіх таблиць
 
 **Кастомні класи** — через `className` prop:

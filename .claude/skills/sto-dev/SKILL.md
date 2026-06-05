@@ -1960,7 +1960,9 @@ import { TableContainer } from '@/components/ui/table-container';
 
 ### Чому
 
-`TableContainer` автоматично додає клас `table-scroll-container` який через CSS змінну `--table-thead-h: 33px` зміщує трек вертикального скролбара нижче sticky-шапки:
+`TableContainer` автоматично додає клас `table-scroll-container` який вирішує два візуальних баги шапки:
+
+**1. Трек скролбара починається нижче шапки** — `--table-thead-h: 33px` зміщує трек вниз:
 
 ```css
 /* globals.css */
@@ -1972,7 +1974,20 @@ import { TableContainer } from '@/components/ui/table-container';
 }
 ```
 
-Без цього скролбар тягнеться від самого верху контейнера (поверх шапки).
+**2. Область скролбара (5px справа) зафарбована кольором шапки** — контейнер отримує `bg-secondary`, а `tbody` перекриває до `bg-surface`:
+
+```css
+/* globals.css */
+.table-scroll-container {
+  background-color: var(--color-secondary); /* гатер скролбара = колір шапки */
+}
+.table-scroll-container tbody {
+  background-color: var(--color-surface); /* рядки — білі */
+}
+```
+
+❌ Без `TableContainer` — справа від шапки білий простір де видно фон контейнера.  
+✅ З `TableContainer` — фон за скролбаром збігається з кольором thead.
 
 ### Props
 
