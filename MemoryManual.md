@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+E2E Cycle 2: 205 passed / 1 flaky (crud-infrastructure dev-server race) / 0 failed
 <NEW> docs(skills): add 3 perf patterns to sto-optimize after Cycle 2 audit
 8ba9ac1 perf(optimize): cycle 2 — bulk maintenance + scheduler N+1 + pagination cap + cached-ref lazy init
 1a70d156 docs(skills): add stable callback identity invariant pattern to sto-tester
