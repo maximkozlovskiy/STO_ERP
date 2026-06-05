@@ -7,7 +7,6 @@ import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Plus, FileText, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
-import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -19,12 +18,9 @@ import {
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
-import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
-import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
-import { SearchCombobox } from '@/components/ui/search-combobox';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { StockDocumentCreateModal } from '@/components/ui/StockDocumentCreateModal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
@@ -51,7 +47,6 @@ import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-ba
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
-import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
@@ -63,30 +58,6 @@ import { fmtMoney, fmtDate, fmtDateTime } from '@/lib/format';
 const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 const kyivToday = () => KYIV_YMD.format(new Date());
 
-interface Branch {
-  id: string;
-  name: string;
-}
-interface Warehouse {
-  id: string;
-  name: string;
-  isMain: boolean;
-}
-interface Good {
-  id: string;
-  name: string;
-  sku: string | null;
-  unit: string;
-}
-
-interface GoodUoM {
-  id: string;
-  unitOfMeasureId: string;
-  unitName: string;
-  unitShortName: string;
-  coefficient: number;
-  isDefault: boolean;
-}
 interface DocLine {
   id?: string;
   goodId: string;
@@ -202,29 +173,6 @@ export default function StockDocumentsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<StockDoc | null>(null);
 
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [form, setForm] = useState({
-    type: 'WRITEOFF',
-    branchId: '',
-    warehouseId: '',
-    targetWarehouseId: '',
-    notes: '',
-    documentDate: kyivToday(),
-  });
-  const [lines, setLines] = useState<
-    {
-      goodId: string;
-      goodName: string;
-      quantity: string;
-      price: string;
-      unit: string; // Bug #233: базова одиниця Good — fallback коли UoMs порожні
-      unitId: string;
-      unitShortName: string;
-      coefficient: number;
-      goodUoMs: GoodUoM[];
-    }[]
-  >([]);
   const [saving, setSaving] = useState(false);
 
   // — Saved filters ——————————————————————————————————————————————————————
@@ -311,122 +259,9 @@ export default function StockDocumentsPage() {
     [handleBulkDelete],
   );
 
-  // — Unsaved guard ——————————————————————————————————————————————————————
-  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
-
   const limit = 20;
   const totalPages = Math.ceil(total / limit) || 1;
   const load = invalidate;
-
-  useEffect(() => {
-    if (!showCreate) return;
-    let cancelled = false;
-
-    // Apply branches + warehouses to state and auto-select sensible defaults.
-    const apply = (bList: Branch[], wList: Warehouse[]) => {
-      if (cancelled) return;
-      setBranches(bList);
-      setWarehouses(wList);
-      // Auto-select defaults only if user hasn't already picked one — avoids
-      // overriding manual choice if modal re-opens during a slow fetch, and
-      // also collapses two sequential setForm calls into one render-safe update.
-      setForm(f => {
-        const next = { ...f };
-        if (!next.branchId && bList.length === 1) next.branchId = bList[0].id;
-        const mainW = wList.find(x => x.isMain) ?? (wList.length === 1 ? wList[0] : null);
-        if (!next.warehouseId && mainW) next.warehouseId = mainW.id;
-        return next;
-      });
-    };
-
-    // Reference data — paint instantly from sessionStorage if cached.
-    const cachedB = getCached<Branch[]>('cache:branches');
-    const cachedW = getCached<Warehouse[]>('cache:warehouses');
-    if (cachedB && cachedW) apply(cachedB, cachedW);
-
-    // Always refresh in the background (parallel) to keep cache up to date.
-    Promise.all([
-      apiFetch<Branch[] | { items: Branch[] }>('/branches'),
-      apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses'),
-    ])
-      .then(([b, w]) => {
-        const bList = Array.isArray(b) ? b : b.items;
-        const wList = Array.isArray(w) ? w : w.items;
-        setCache('cache:branches', bList);
-        setCache('cache:warehouses', wList);
-        apply(bList, wList);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled && !cachedB)
-          setError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [showCreate]);
-
-  const handleCreate = async () => {
-    const validLines = lines.filter(l => l.goodId);
-    for (const l of validLines) {
-      const qty = parseFloat(l.quantity);
-      if (!Number.isFinite(qty) || qty <= 0) {
-        setError('Вкажіть коректну кількість для всіх позицій');
-        return;
-      }
-    }
-    setSaving(true);
-    try {
-      await apiFetch<StockDoc>('/stock-documents', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: form.type,
-          branchId: form.branchId,
-          warehouseId: form.warehouseId,
-          targetWarehouseId: form.targetWarehouseId || undefined,
-          notes: form.notes || undefined,
-          documentDate: form.documentDate || undefined,
-          // Bug #231: конвертуємо display → base unit перед submit.
-          // l.quantity у обраній UoM; l.coefficient = base_units_per_uom.
-          // qty_base = qty_display * coeff; price_base = price_display / coeff.
-          // Stock movement на CONFIRM використовує цей quantity напряму як base-unit.
-          // Backward-compat: coeff=1 (default UoM або без UoMs) → нічого не змінюється.
-          lines: validLines.map(l => {
-            const coeff = l.coefficient || 1;
-            const displayQty = parseFloat(l.quantity);
-            const displayPrice = l.price ? parseFloat(l.price) : null;
-            return {
-              goodId: l.goodId,
-              quantity: displayQty * coeff,
-              price: displayPrice !== null ? displayPrice / coeff : undefined,
-            };
-          }),
-        }),
-      });
-      dirty.resetDirty();
-      setShowCreate(false);
-      setForm({
-        type: 'WRITEOFF',
-        branchId: '',
-        warehouseId: '',
-        targetWarehouseId: '',
-        notes: '',
-        documentDate: kyivToday(),
-      });
-      setLines([]);
-      load();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCloseCreate = async () => {
-    if (!(await dirty.confirmClose())) return;
-    dirty.resetDirty();
-    setShowCreate(false);
-  };
 
   const handleTransition = async (doc: StockDoc, newStatus: string) => {
     const label = newStatus === 'CONFIRMED' ? 'підтвердити' : 'скасувати';
@@ -463,32 +298,6 @@ export default function StockDocumentsPage() {
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка видалення');
     }
-  };
-
-  const addLine = () => {
-    setLines(l => [
-      ...l,
-      {
-        goodId: '',
-        goodName: '',
-        quantity: '1',
-        price: '',
-        unit: '',
-        unitId: '',
-        unitShortName: '',
-        coefficient: 1,
-        goodUoMs: [],
-      },
-    ]);
-    dirty.markDirty();
-  };
-  const updateLine = (i: number, field: string, value: string) => {
-    setLines(l => l.map((x, idx) => (idx === i ? { ...x, [field]: value } : x)));
-    dirty.markDirty();
-  };
-  const removeLine = (i: number) => {
-    setLines(l => l.filter((_, idx) => idx !== i));
-    dirty.markDirty();
   };
 
   const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'];
@@ -889,288 +698,14 @@ export default function StockDocumentsPage() {
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
       {/* Create modal */}
-      <Modal
+      <StockDocumentCreateModal
         open={showCreate}
-        onClose={handleCloseCreate}
-        title="Новий складський документ"
-        size="lg"
-        footer={
-          <Button
-            onClick={handleCreate}
-            loading={saving}
-            disabled={!form.branchId || !form.warehouseId}
-            className="w-full"
-          >
-            Створити документ
-          </Button>
-        }
-      >
-        <div className="space-y-4">
-          <Select
-            label="Тип документа"
-            required
-            value={form.type}
-            onChange={e => {
-              setForm(f => ({ ...f, type: e.target.value }));
-              dirty.markDirty();
-            }}
-          >
-            <option value="WRITEOFF">Списання</option>
-            <option value="TRANSFER">Переміщення між складами</option>
-            <option value="OPENING_BALANCE">Початкові залишки</option>
-          </Select>
-          <Select
-            label="Філія"
-            required
-            value={form.branchId}
-            onChange={e => {
-              setForm(f => ({ ...f, branchId: e.target.value }));
-              dirty.markDirty();
-            }}
-            placeholder="Оберіть філію"
-          >
-            {branches.map(b => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            label={form.type === 'TRANSFER' ? 'Склад (джерело)' : 'Склад'}
-            required
-            value={form.warehouseId}
-            onChange={e => {
-              setForm(f => ({ ...f, warehouseId: e.target.value }));
-              dirty.markDirty();
-            }}
-            placeholder="Оберіть склад"
-          >
-            {warehouses.map(w => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </Select>
-          {form.type === 'TRANSFER' && (
-            <Select
-              label="Склад призначення"
-              required
-              value={form.targetWarehouseId}
-              onChange={e => {
-                setForm(f => ({ ...f, targetWarehouseId: e.target.value }));
-                dirty.markDirty();
-              }}
-              placeholder="Оберіть склад"
-            >
-              {warehouses
-                .filter(w => w.id !== form.warehouseId)
-                .map(w => (
-                  <option key={w.id} value={w.id}>
-                    {w.name}
-                  </option>
-                ))}
-            </Select>
-          )}
-          <Input
-            label="Примітки"
-            value={form.notes}
-            onChange={e => {
-              setForm(f => ({ ...f, notes: e.target.value }));
-              dirty.markDirty();
-            }}
-            placeholder="Необов'язково"
-          />
-          <DatePickerInput
-            label="Дата документа"
-            value={form.documentDate}
-            onChange={v => {
-              setForm(f => ({ ...f, documentDate: v }));
-              dirty.markDirty();
-            }}
-          />
-
-          {/* Lines */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-foreground">Позиції</span>
-              <Button variant="ghost" size="sm" onClick={addLine}>
-                + Додати
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {lines.map((l, i) => (
-                <div key={i} className="flex gap-2 items-start">
-                  <div className="flex-1">
-                    <SearchCombobox<Good>
-                      placeholder="Товар..."
-                      value={l.goodId}
-                      displayValue={l.goodName}
-                      onSelect={async g => {
-                        const selectedGoodId = g.id;
-                        setLines(ls =>
-                          ls.map((x, idx) =>
-                            idx === i
-                              ? {
-                                  ...x,
-                                  goodId: g.id,
-                                  goodName: g.name,
-                                  unit: g.unit, // Bug #233: fallback одиниця коли UoMs порожні
-                                  unitId: '',
-                                  unitShortName: '',
-                                  coefficient: 1,
-                                  goodUoMs: [],
-                                }
-                              : x,
-                          ),
-                        );
-                        dirty.markDirty();
-                        // Завантажити UoM для цього товару
-                        try {
-                          const uoms = await apiFetch<GoodUoM[]>(`/goods/${g.id}/uoms`);
-                          // Bug #235: race-guard за goodId-only (без stale index).
-                          // Видалення/reorder рядків зсуває index → закаптурений `i` стає невірним.
-                          setLines(ls =>
-                            ls.map(x => {
-                              if (x.goodId !== selectedGoodId || x.goodUoMs.length > 0) return x;
-                              const defaultUom = uoms.find(u => u.isDefault) ?? uoms[0];
-                              return {
-                                ...x,
-                                goodUoMs: uoms,
-                                ...(defaultUom
-                                  ? {
-                                      unitId: defaultUom.id,
-                                      unitShortName: defaultUom.unitShortName,
-                                      coefficient: defaultUom.coefficient || 1,
-                                    }
-                                  : {}),
-                              };
-                            }),
-                          );
-                        } catch (err) {
-                          if (features.toastEnabled) {
-                            toast.error('Не вдалося завантажити одиниці виміру');
-                          } else {
-                            setError(
-                              err instanceof Error
-                                ? err.message
-                                : 'Не вдалося завантажити одиниці виміру',
-                            );
-                          }
-                        }
-                      }}
-                      onClear={() => {
-                        setLines(ls =>
-                          ls.map((x, idx) =>
-                            idx === i
-                              ? {
-                                  ...x,
-                                  goodId: '',
-                                  goodName: '',
-                                  unit: '',
-                                  unitId: '',
-                                  unitShortName: '',
-                                  coefficient: 1,
-                                  goodUoMs: [],
-                                }
-                              : x,
-                          ),
-                        );
-                        dirty.markDirty();
-                      }}
-                      fetchItems={q =>
-                        apiFetch<{ items: Good[] }>(
-                          `/goods?q=${encodeURIComponent(q)}&limit=10`,
-                        ).then(r =>
-                          r.items.map(g => ({
-                            ...g,
-                            primary: g.name,
-                            secondary: g.sku ?? undefined,
-                          })),
-                        )
-                      }
-                    />
-                  </div>
-                  <Input
-                    type="number"
-                    value={l.quantity}
-                    onChange={e => {
-                      updateLine(i, 'quantity', e.target.value);
-                    }}
-                    placeholder="Кіл."
-                    min="0.001"
-                    step="0.001"
-                    className="w-20 text-xs"
-                  />
-                  {l.goodUoMs.length > 0 ? (
-                    <Select
-                      value={l.unitId}
-                      onChange={e => {
-                        const selectedUom = l.goodUoMs.find(u => u.id === e.target.value);
-                        if (selectedUom) {
-                          const oldCoeff = l.coefficient || 1;
-                          const newCoeff = selectedUom.coefficient || 1;
-                          // Bug #234: не клобер user intent коли qty порожнє/NaN/≤0.
-                          const rawQty = parseFloat(l.quantity);
-                          const hasValidQty = Number.isFinite(rawQty) && rawQty > 0;
-                          const newQty = hasValidQty
-                            ? ((rawQty * oldCoeff) / newCoeff).toFixed(3)
-                            : null;
-                          setLines(ls =>
-                            ls.map((x, idx) =>
-                              idx === i
-                                ? {
-                                    ...x,
-                                    unitId: selectedUom.id,
-                                    unitShortName: selectedUom.unitShortName,
-                                    coefficient: newCoeff,
-                                    ...(newQty !== null ? { quantity: newQty } : {}),
-                                  }
-                                : x,
-                            ),
-                          );
-                          dirty.markDirty();
-                        }
-                      }}
-                      className="w-20 text-xs"
-                    >
-                      {l.goodUoMs.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {u.unitShortName}
-                        </option>
-                      ))}
-                    </Select>
-                  ) : l.unit ? (
-                    /* Bug #233: коли UoMs порожні — показати unit як text fallback */
-                    <span className="w-20 text-xs text-muted-foreground self-center px-2 truncate">
-                      {l.unit}
-                    </span>
-                  ) : null}
-                  <Input
-                    type="number"
-                    value={l.price}
-                    onChange={e => {
-                      updateLine(i, 'price', e.target.value);
-                    }}
-                    placeholder="Ціна"
-                    min="0"
-                    step="0.01"
-                    className="w-24 text-xs"
-                  />
-                  <button
-                    onClick={() => {
-                      removeLine(i);
-                      dirty.markDirty();
-                    }}
-                    className="text-destructive/60 hover:text-destructive text-sm px-1"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Modal>
+        onClose={() => setShowCreate(false)}
+        onSaved={() => {
+          setShowCreate(false);
+          load();
+        }}
+      />
 
       {/* Detail modal */}
       <Modal
@@ -1257,7 +792,6 @@ export default function StockDocumentsPage() {
           </div>
         )}
       </Modal>
-      <DirtyConfirmDialog {...dirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
   );
