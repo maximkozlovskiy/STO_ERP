@@ -930,10 +930,58 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
 
 > **Еталон:** `apps/web/src/app/(app)/crm/page.tsx` + `employees/page.tsx`
 
+### Контейнер таблиці
+
+**ЗАВЖДИ** використовувати `TableContainer` замість inline div:
+
+```tsx
+import { TableContainer } from '@/components/ui/table-container';
+
+{
+  /* Table + DetailPanel (якщо є) */
+}
+<div className="flex flex-1 min-h-0">
+  <TableContainer>{/* Table йде сюди */}</TableContainer>
+  {/* DetailPanel якщо є */}
+</div>;
+```
+
+❌ Не робити inline div:
+
+```tsx
+<div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+```
+
+✅ Завжди `TableContainer`:
+
+```tsx
+<TableContainer>
+```
+
+**Чому:** `TableContainer` автоматично:
+
+- Застосовує клас `table-scroll-container` → вертикальний скролбар починається нижче шапки (`--table-thead-h: 33px` margin-top на track)
+- Встановлює правильний flex-layout для sticky thead
+- Єдина точка зміни стилів для всіх таблиць
+
+**Кастомні класи** — через `className` prop:
+
+```tsx
+<TableContainer className="gap-3">  {/* inventory має gap-3 на flex-батьку */}
+```
+
+**Без `min-w-0`** (рідко, тільки якщо немає DetailPanel поруч):
+
+```tsx
+<TableContainer constrainWidth={false}>
+```
+
+---
+
 ```tsx
 {/* Table + DetailPanel (якщо є) */}
 <div className="flex flex-1 min-h-0">
-  <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+  <TableContainer>
     <Table>
       <TableHeader>
         <TableRow>
@@ -1039,7 +1087,7 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
         })}
       </TableBody>
     </Table>
-  </div>
+  </TableContainer>
 
   {/* DetailPanel — якщо є */}
   <DetailPanel open={!!selectedItem && detailPanel.enabled} ... />

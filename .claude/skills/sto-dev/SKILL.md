@@ -1929,6 +1929,76 @@ const { error, handleError, clearError } = useApiError();
 
 ---
 
+## §23 TableContainer — контейнер таблиці зі sticky-шапкою
+
+### Правило
+
+**ЗАВЖДИ** загортати `<Table>` у `<TableContainer>` замість inline div.
+
+### ❌ Заборонено
+
+```tsx
+<div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+  <Table>...</Table>
+</div>
+```
+
+### ✅ Правильно
+
+```tsx
+import { TableContainer } from '@/components/ui/table-container';
+
+<div className="flex flex-1 min-h-0">
+  <TableContainer>
+    <Table>
+      <TableHeader>...</TableHeader>
+      <TableBody>...</TableBody>
+    </Table>
+  </TableContainer>
+</div>;
+```
+
+### Чому
+
+`TableContainer` автоматично додає клас `table-scroll-container` який через CSS змінну `--table-thead-h: 33px` зміщує трек вертикального скролбара нижче sticky-шапки:
+
+```css
+/* globals.css */
+:root {
+  --table-thead-h: 33px;
+}
+.table-scroll-container::-webkit-scrollbar-track {
+  margin-top: var(--table-thead-h);
+}
+```
+
+Без цього скролбар тягнеться від самого верху контейнера (поверх шапки).
+
+### Props
+
+| Prop             | Default | Опис                                        |
+| ---------------- | ------- | ------------------------------------------- |
+| `constrainWidth` | `true`  | Додає `min-w-0` для правильного flex-shrink |
+| `className`      | —       | Перевизначення стилів                       |
+
+```tsx
+{/* Без min-w-0 (рідко, тільки без DetailPanel поряд) */}
+<TableContainer constrainWidth={false}>
+
+{/* Кастомний стиль */}
+<TableContainer className="rounded-none border-0">
+```
+
+### Висота шапки змінилась?
+
+Якщо thead має нестандартну висоту (двохрядкова шапка, інший padding) — перевизначи CSS-змінну на конкретному контейнері:
+
+```tsx
+<TableContainer style={{ '--table-thead-h': '52px' } as React.CSSProperties}>
+```
+
+---
+
 ## Інтеграція у флоу
 
 ```
