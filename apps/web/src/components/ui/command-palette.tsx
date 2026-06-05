@@ -36,7 +36,7 @@ interface CommandPaletteProps {
 
 // For types where a detail page exists we append the entity id; otherwise we fall back to the
 // list view. Without this distinction the palette swallowed the click context — selecting
-// «ТОВ Альфа» from the palette dropped the user on the /crm list and forced a second search.
+// «ТОВ Альфа» from the palette dropped the user on the /counterparties list and forced a second search.
 const DATA_ROUTE: Record<string, { list: string; detail?: (id: string) => string }> = {
   wo: { list: '/work-orders', detail: id => `/work-orders/${id}` },
   counterparty: { list: '/counterparties', detail: id => `/counterparties/${id}` },

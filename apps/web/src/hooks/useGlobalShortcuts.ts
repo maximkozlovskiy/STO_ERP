@@ -11,7 +11,7 @@ import { toast } from '@/lib/toast';
  * Shortcuts:
  *   Alt+W      → /work-orders
  *   Alt+D      → /dashboard
- *   Alt+C      → /crm
+ *   Alt+C      → /counterparties
  *   Alt+I      → /inventory
  *   N          → new record in current section
  *   ?          → show shortcuts help toast

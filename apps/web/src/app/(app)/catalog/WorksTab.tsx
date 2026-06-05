@@ -196,7 +196,7 @@ export default function WorksTab() {
         label: 'Видалити вибрані',
         variant: 'destructive',
         // Bug #313: використовуємо useConfirm (стилізований діалог) замість window.confirm
-        // (нативний блокуючий діалог). Парність з work-orders/crm/employees.
+        // (нативний блокуючий діалог). Парність з work-orders/counterparties/employees.
         onClick: async ids => {
           if (
             !(await confirm({

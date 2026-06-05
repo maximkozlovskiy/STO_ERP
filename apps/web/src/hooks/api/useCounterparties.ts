@@ -2,10 +2,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
+export type CpType = 'CLIENT' | 'SUPPLIER' | 'BOTH';
+
 export interface Counterparty {
   id: string;
   orgId?: string;
-  type: string;
+  type: CpType;
   firstName: string | null;
   lastName: string | null;
   companyName: string | null;
