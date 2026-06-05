@@ -154,14 +154,15 @@ function ReportsPageClient() {
       )}
       <h1 className="page-title shrink-0">Звіти</h1>
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-border mb-6">
+      {/* Tabs — стандарт каталогу: border по всій ширині */}
+      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
         {tabs.map(t => (
           <button
             key={t.id}
+            type="button"
             onClick={() => setTab(t.id)}
             className={cn(
-              'px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors',
+              'flex items-center px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
               tab === t.id
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -172,47 +173,49 @@ function ReportsPageClient() {
         ))}
       </div>
 
-      {/* Filters — приховуємо для вкладки Розрахунки (власний UI всередині) */}
-      <div className="flex flex-wrap gap-3 mb-6 items-end">
-        {needsDates && !isSettlementsDetail && (
-          <>
-            <DatePickerInput
-              label="З"
-              value={from}
-              onChange={setFrom}
-              placeholder="ДД.ММ.РРРР"
-              className="w-40"
-            />
-            <DatePickerInput
-              label="По"
-              value={to}
-              onChange={setTo}
-              placeholder="ДД.ММ.РРРР"
-              className="w-40"
-            />
-          </>
-        )}
-        {!isSettlementsDetail && loading && (
-          <span className="text-xs text-muted-foreground animate-pulse">Завантаження…</span>
-        )}
-        {!isSettlementsDetail && data && (
-          <Button
-            variant="outline"
-            onClick={() => {
-              const csv = buildCsv(tab, data);
-              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `${tab}-report.csv`;
-              a.click();
-              setTimeout(() => URL.revokeObjectURL(url), 100);
-            }}
-          >
-            Експорт CSV
-          </Button>
-        )}
-      </div>
+      {/* Filters — один рядок, приховуємо для вкладки Розрахунки */}
+      {!isSettlementsDetail && (
+        <div className="flex flex-wrap gap-3 py-4 items-center shrink-0">
+          {needsDates && (
+            <>
+              <DatePickerInput
+                label="З"
+                value={from}
+                onChange={setFrom}
+                placeholder="ДД.ММ.РРРР"
+                className="w-40"
+              />
+              <DatePickerInput
+                label="По"
+                value={to}
+                onChange={setTo}
+                placeholder="ДД.ММ.РРРР"
+                className="w-40"
+              />
+            </>
+          )}
+          {loading && (
+            <span className="text-xs text-muted-foreground animate-pulse">Завантаження…</span>
+          )}
+          {data && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                const csv = buildCsv(tab, data);
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${tab}-report.csv`;
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+              }}
+            >
+              Експорт CSV
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Scrollable content area — page-fill = overflow-hidden, тому тут власний скрол */}
       <div className="flex-1 min-h-0 overflow-y-auto">

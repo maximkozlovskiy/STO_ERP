@@ -1,16 +1,14 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
-import { Search } from 'lucide-react';
-import { useCounterparties } from '@/hooks/api/useCounterparties';
-import { apiFetch, apiBlobFetch } from '@/lib/api-client';
-import { useDebounce } from '@/hooks/useDebounce';
-import { Button } from '@/components/ui/button';
+import { useState, useCallback } from 'react';
 import { Download } from 'lucide-react';
+import { apiFetch, apiBlobFetch } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
-import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
+import { EntityPickerField } from '@/components/ui/entity-picker-field';
+import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
@@ -38,6 +36,8 @@ interface RecAct {
   createdAt: string;
 }
 
+type CpItem = SearchPickerItem & Counterparty;
+
 const TX_LABELS: Record<string, string> = {
   CHARGE: 'Нарахування',
   PAYMENT: 'Оплата',
@@ -57,24 +57,25 @@ function fmt(n: number) {
   return `${fmtMoney(n)} ₴`;
 }
 
+function cpDisplayName(cp: Counterparty): string {
+  const name = cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ');
+  return name || '(без імені)';
+}
+
 /**
  * Reusable settlements content — used both in /settlements page and as
- * a "Взаєморозрахунки" tab inside /reports.
+ * a "Розрахунки" tab inside /reports.
  */
 export function SettlementsTabContent() {
   const [selected, setSelected] = useState<Counterparty | null>(null);
+  const [selectedDisplay, setSelectedDisplay] = useState('');
+  const [cpPickerOpen, setCpPickerOpen] = useState(false);
+
   const [balance, setBalance] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [txTotal, setTxTotal] = useState(0);
   const [acts, setActs] = useState<RecAct[]>([]);
-  const [q, setQ] = useState('');
-  const debouncedQ = useDebounce(q);
 
-  const { data: cpData, isLoading: cpLoading } = useCounterparties({
-    limit: 200,
-    q: debouncedQ || undefined,
-  });
-  const counterparties = useMemo(() => (cpData?.items ?? []) as Counterparty[], [cpData]);
   const [loading, setLoading] = useState(false);
   const [showActModal, setShowActModal] = useState(false);
   const [actForm, setActForm] = useState({ periodFrom: '', periodTo: '' });
@@ -157,13 +158,6 @@ export function SettlementsTabContent() {
     }
   };
 
-  const cpName = (cp: Counterparty) =>
-    cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ');
-
-  const filtered = counterparties.filter(
-    cp => !q || cpName(cp).toLowerCase().includes(q.toLowerCase()),
-  );
-
   return (
     <>
       {error && (
@@ -172,226 +166,226 @@ export function SettlementsTabContent() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-12 gap-6">
-        {/* Left: counterparty list */}
-        <div className="col-span-4">
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <div className="p-3 border-b">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  value={q}
-                  onChange={e => setQ(e.target.value)}
-                  placeholder="Пошук контрагента..."
-                  className="pl-9"
-                />
-              </div>
-            </div>
-            <div className="overflow-y-auto max-h-[calc(100vh-250px)]">
-              {cpLoading ? (
-                <div className="p-4 flex justify-center">
-                  <Spinner className="h-5 w-5" />
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground text-[13px]">Не знайдено</div>
-              ) : (
-                filtered.map(cp => (
-                  <button
-                    key={cp.id}
-                    type="button"
-                    onClick={() => loadCounterparty(cp)}
+      {/* Picker row */}
+      <div className="flex items-center gap-3 py-4 shrink-0">
+        <div className="w-80">
+          <EntityPickerField
+            display={selectedDisplay}
+            placeholder="Обрати контрагента…"
+            onPick={() => setCpPickerOpen(true)}
+            onClear={() => {
+              setSelected(null);
+              setSelectedDisplay('');
+              setBalance(null);
+              setTransactions([]);
+              setTxTotal(0);
+              setActs([]);
+            }}
+          />
+        </div>
+        {selected && (
+          <span className="text-[13px] text-muted-foreground">
+            {selected.companyName
+              ? [selected.lastName, selected.firstName].filter(Boolean).join(' ')
+              : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Details */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {!selected ? (
+          <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
+            Оберіть контрагента
+          </div>
+        ) : loading ? (
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {/* Balance card */}
+            <div className="bg-surface rounded-xl border border-border p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[13px] text-muted-foreground">Поточний баланс</div>
+                  <div
                     className={cn(
-                      'w-full text-left px-4 py-3 text-sm border-b border-border hover:bg-secondary transition-colors',
-                      selected?.id === cp.id && 'bg-primary-subtle border-l-2 border-l-primary',
+                      'text-2xl font-bold mt-1',
+                      (balance ?? 0) > 0
+                        ? 'text-destructive'
+                        : (balance ?? 0) < 0
+                          ? 'text-success'
+                          : 'text-foreground',
                     )}
                   >
-                    <div className="font-medium text-foreground">{cpName(cp)}</div>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Right: details */}
-        <div className="col-span-8">
-          {!selected ? (
-            <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-              Оберіть контрагента зі списку
-            </div>
-          ) : loading ? (
-            <div className="flex items-center justify-center h-64">
-              <Spinner size="lg" />
-            </div>
-          ) : (
-            <div className="space-y-5">
-              {/* Balance card */}
-              <div className="bg-surface rounded-xl border border-border p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-[13px] text-muted-foreground">Поточний баланс</div>
-                    <div
-                      className={cn(
-                        'text-2xl font-bold mt-1',
-                        (balance ?? 0) > 0
-                          ? 'text-destructive'
-                          : (balance ?? 0) < 0
-                            ? 'text-success'
-                            : 'text-foreground',
-                      )}
-                    >
-                      {balance != null ? fmt(balance) : '—'}
-                    </div>
-                    <div className="text-[12px] text-muted-foreground mt-1">
-                      {(balance ?? 0) > 0
-                        ? 'Заборгованість клієнта'
-                        : (balance ?? 0) < 0
-                          ? 'Переплата клієнта'
-                          : 'Немає заборгованостей'}
-                    </div>
+                    {balance != null ? fmt(balance) : '—'}
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (!selected || transactions.length === 0) return;
-                        const cpName =
-                          selected.companyName ??
-                          [selected.lastName, selected.firstName].filter(Boolean).join(' ');
-                        const rows = [
-                          ['Дата', 'Тип', 'Сума', 'Документ', 'Нотатки'],
-                          ...transactions.map(tx => [
-                            fmtDate(tx.createdAt),
-                            TX_LABELS[tx.type] ?? tx.type,
-                            tx.amount,
-                            tx.documentType ?? '',
-                            tx.notes ?? '',
-                          ]),
-                        ];
-                        const csv = rows.map(r => r.join(';')).join('\n');
-                        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `transactions-${cpName}.csv`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        setTimeout(() => URL.revokeObjectURL(url), 100);
-                      }}
-                      disabled={transactions.length === 0}
-                      aria-label="Експорт CSV"
-                      title="Завантажити транзакції у CSV"
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setActForm({ periodFrom: '', periodTo: '' });
-                        setActResult(null);
-                        setShowActModal(true);
-                      }}
-                    >
-                      Акт звірки
-                    </Button>
+                  <div className="text-[12px] text-muted-foreground mt-1">
+                    {(balance ?? 0) > 0
+                      ? 'Заборгованість клієнта'
+                      : (balance ?? 0) < 0
+                        ? 'Переплата клієнта'
+                        : 'Немає заборгованостей'}
                   </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (!selected || transactions.length === 0) return;
+                      const name = cpDisplayName(selected);
+                      const rows = [
+                        ['Дата', 'Тип', 'Сума', 'Документ', 'Нотатки'],
+                        ...transactions.map(tx => [
+                          fmtDate(tx.createdAt),
+                          TX_LABELS[tx.type] ?? tx.type,
+                          tx.amount,
+                          tx.documentType ?? '',
+                          tx.notes ?? '',
+                        ]),
+                      ];
+                      const csv = rows.map(r => r.join(';')).join('\n');
+                      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `transactions-${name}.csv`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      setTimeout(() => URL.revokeObjectURL(url), 100);
+                    }}
+                    disabled={transactions.length === 0}
+                    aria-label="Експорт CSV"
+                    title="Завантажити транзакції у CSV"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setActForm({ periodFrom: '', periodTo: '' });
+                      setActResult(null);
+                      setShowActModal(true);
+                    }}
+                  >
+                    Акт звірки
+                  </Button>
                 </div>
               </div>
+            </div>
 
-              {/* Transactions */}
+            {/* Transactions */}
+            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+              <div className="px-5 py-3 border-b border-border bg-secondary">
+                <h3 className="font-medium text-foreground text-sm">Транзакції ({txTotal})</h3>
+              </div>
+              <div className="divide-y divide-border max-h-80 overflow-y-auto">
+                {transactions.length === 0 ? (
+                  <div className="p-4 text-center text-muted-foreground text-[13px]">
+                    Транзакцій немає
+                  </div>
+                ) : (
+                  transactions.map(tx => (
+                    <div key={tx.id} className="px-5 py-3 flex items-center justify-between">
+                      <div>
+                        <div className="text-[13px] font-medium text-foreground">
+                          {TX_LABELS[tx.type] ?? tx.type}
+                        </div>
+                        <div className="text-[12px] text-muted-foreground">
+                          {tx.documentType && <span>{tx.documentType} · </span>}
+                          {fmtDate(tx.createdAt)}
+                        </div>
+                      </div>
+                      <div
+                        className={cn(
+                          'text-sm font-semibold',
+                          TX_COLORS[tx.type] ?? 'text-foreground-muted',
+                        )}
+                      >
+                        {tx.type === 'CHARGE' ? '+' : '−'}
+                        {fmt(tx.amount)}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Reconciliation acts */}
+            {acts.length > 0 && (
               <div className="bg-surface rounded-xl border border-border overflow-hidden">
                 <div className="px-5 py-3 border-b border-border bg-secondary">
-                  <h3 className="font-medium text-foreground text-sm">Транзакції ({txTotal})</h3>
+                  <h3 className="font-medium text-foreground text-sm">Акти звірки</h3>
                 </div>
-                <div className="divide-y divide-border max-h-80 overflow-y-auto">
-                  {transactions.length === 0 ? (
-                    <div className="p-4 text-center text-muted-foreground text-[13px]">
-                      Транзакцій немає
-                    </div>
-                  ) : (
-                    transactions.map(tx => (
-                      <div key={tx.id} className="px-5 py-3 flex items-center justify-between">
-                        <div>
-                          <div className="text-[13px] font-medium text-foreground">
-                            {TX_LABELS[tx.type] ?? tx.type}
-                          </div>
-                          <div className="text-[12px] text-muted-foreground">
-                            {tx.documentType && <span>{tx.documentType} · </span>}
-                            {fmtDate(tx.createdAt)}
-                          </div>
+                <div className="divide-y divide-border">
+                  {acts.map(act => (
+                    <div
+                      key={act.id}
+                      className="px-5 py-3 flex items-center justify-between text-sm gap-3"
+                    >
+                      <div className="flex-1">
+                        <div className="font-medium text-foreground">
+                          {fmtDate(act.periodFrom)} – {fmtDate(act.periodTo)}
+                        </div>
+                        <div className="text-[12px] text-muted-foreground">
+                          {fmtDate(act.createdAt)}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[12px] text-muted-foreground">
+                          Відкриття: {fmt(act.openingBalance)}
                         </div>
                         <div
                           className={cn(
-                            'text-sm font-semibold',
-                            TX_COLORS[tx.type] ?? 'text-foreground-muted',
+                            'font-semibold',
+                            act.closingBalance > 0
+                              ? 'text-destructive'
+                              : act.closingBalance < 0
+                                ? 'text-success'
+                                : 'text-foreground-muted',
                           )}
                         >
-                          {tx.type === 'CHARGE' ? '+' : '−'}
-                          {fmt(tx.amount)}
+                          Закриття: {fmt(act.closingBalance)}
                         </div>
                       </div>
-                    ))
-                  )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        loading={downloadingActId === act.id}
+                        onClick={() => downloadActPdf(act.id)}
+                      >
+                        PDF
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               </div>
-
-              {/* Reconciliation acts */}
-              {acts.length > 0 && (
-                <div className="bg-surface rounded-xl border border-border overflow-hidden">
-                  <div className="px-5 py-3 border-b border-border bg-secondary">
-                    <h3 className="font-medium text-foreground text-sm">Акти звірки</h3>
-                  </div>
-                  <div className="divide-y divide-border">
-                    {acts.map(act => (
-                      <div
-                        key={act.id}
-                        className="px-5 py-3 flex items-center justify-between text-sm gap-3"
-                      >
-                        <div className="flex-1">
-                          <div className="font-medium text-foreground">
-                            {fmtDate(act.periodFrom)} – {fmtDate(act.periodTo)}
-                          </div>
-                          <div className="text-[12px] text-muted-foreground">
-                            {fmtDate(act.createdAt)}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-[12px] text-muted-foreground">
-                            Відкриття: {fmt(act.openingBalance)}
-                          </div>
-                          <div
-                            className={cn(
-                              'font-semibold',
-                              act.closingBalance > 0
-                                ? 'text-destructive'
-                                : act.closingBalance < 0
-                                  ? 'text-success'
-                                  : 'text-foreground-muted',
-                            )}
-                          >
-                            Закриття: {fmt(act.closingBalance)}
-                          </div>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          loading={downloadingActId === act.id}
-                          onClick={() => downloadActPdf(act.id)}
-                        >
-                          PDF
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Counterparty picker modal */}
+      <SearchPickerModal<CpItem>
+        open={cpPickerOpen}
+        onClose={() => setCpPickerOpen(false)}
+        title="Оберіть контрагента"
+        selectedId={selected?.id}
+        searchPlaceholder="Ім'я, телефон, компанія..."
+        fetchItems={q =>
+          apiFetch<{ items: Counterparty[] }>(
+            `/counterparties?q=${encodeURIComponent(q)}&limit=20`,
+          ).then(r => r.items.map(c => ({ ...c, primary: cpDisplayName(c) })))
+        }
+        onSelect={cp => {
+          setSelectedDisplay(cp.primary);
+          loadCounterparty(cp);
+        }}
+      />
 
       {/* Reconciliation act modal */}
       <Modal open={showActModal} onClose={() => setShowActModal(false)} title="Акт звірки">
