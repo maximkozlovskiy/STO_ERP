@@ -6,6 +6,7 @@ import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
+import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UI_FEATURES_DEFAULTS } from './settings.dto';
@@ -98,6 +99,10 @@ describe('Settings — HTTP Contract', () => {
         SettingsService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: REDIS_CLIENT, useValue: redisMock },
+        {
+          provide: NbuFetchScheduler,
+          useValue: { triggerManualFetch: vi.fn(), fetchDaily: vi.fn() },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)

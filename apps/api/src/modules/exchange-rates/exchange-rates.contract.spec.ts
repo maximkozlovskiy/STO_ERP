@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { ExchangeRatesController } from './exchange-rates.controller';
 import { ExchangeRatesService } from './exchange-rates.service';
+import { NbuFetchScheduler } from './nbu-fetch.scheduler';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
@@ -13,6 +14,11 @@ const serviceMock = {
   create: vi.fn(),
   update: vi.fn(),
   remove: vi.fn(),
+};
+
+const nbuSchedulerMock = {
+  triggerManualFetch: vi.fn(),
+  fetchDaily: vi.fn(),
 };
 
 let jwtAllow = true;
@@ -34,7 +40,10 @@ describe('ExchangeRates — HTTP Contract', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [ExchangeRatesController],
-      providers: [{ provide: ExchangeRatesService, useValue: serviceMock }],
+      providers: [
+        { provide: ExchangeRatesService, useValue: serviceMock },
+        { provide: NbuFetchScheduler, useValue: nbuSchedulerMock },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue(mockJwtGuard)
