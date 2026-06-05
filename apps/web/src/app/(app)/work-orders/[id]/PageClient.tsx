@@ -10,9 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
-import { SearchCombobox, type ComboboxItem } from '@/components/ui/search-combobox';
 import { Spinner } from '@/components/ui/spinner';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
@@ -20,7 +18,6 @@ import { Layers, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtInt, fmtDate, fmtDateTime, fmtShortDateTime } from '@/lib/format';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
-import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { toast } from '@/lib/toast';
 import {
   WO_STATUS_LABELS,
@@ -31,6 +28,8 @@ import {
 } from '@sto/shared';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
+import { WorkOrderAddLineModal } from '@/components/ui/WorkOrderAddLineModal';
+import { WorkOrderAddPartModal } from '@/components/ui/WorkOrderAddPartModal';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -250,27 +249,9 @@ export default function WorkOrderCardPage() {
   const [error, setError] = useState('');
   const [refsError, setRefsError] = useState('');
 
-  const [lineForm, setLineForm] = useState({
-    workId: '',
-    employeeId: '',
-    normoHours: '',
-    actualHours: '',
-    price: '',
-    notes: '',
-  });
-  const [partForm, setPartForm] = useState({
-    goodId: '',
-    warehouseId: '',
-    quantity: '1',
-    price: '',
-    unitOfMeasureId: '',
-  });
-  const [goodDisplayName, setGoodDisplayName] = useState('');
-  const [partGoodUoMs, setPartGoodUoMs] = useState<
-    { id: string; unitShortName: string; coefficient: number; isDefault: boolean }[]
-  >([]);
-  const [stockAvailable, setStockAvailable] = useState<number | null>(null);
-  const [stockLoading, setStockLoading] = useState(false);
+  // initialWarehouseId зберігається між послідовними додаваннями запчастин — щоб
+  // MECHANIC не перевибирав один і той самий склад на кожному додаванні.
+  const [initialPartWarehouseId, setInitialPartWarehouseId] = useState('');
 
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentBody, setCommentBody] = useState('');
@@ -292,8 +273,6 @@ export default function WorkOrderCardPage() {
   const [savingTemplate, setSavingTemplate] = useState(false);
 
   const features = useUiFeatures();
-  const lineDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
-  const partDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -302,31 +281,6 @@ export default function WorkOrderCardPage() {
       mountedRef.current = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (!features.stockIndicatorEnabled || !partForm.goodId || !partForm.warehouseId) {
-      setStockAvailable(null);
-      return;
-    }
-    let cancelled = false;
-    setStockLoading(true);
-    apiFetch<{ items: { available: number }[] }>(
-      `/stock-items?goodId=${partForm.goodId}&warehouseId=${partForm.warehouseId}&limit=1`,
-    )
-      .then(r => {
-        if (cancelled) return;
-        setStockAvailable(r.items[0]?.available ?? 0);
-      })
-      .catch(() => {
-        if (!cancelled) setStockAvailable(null);
-      })
-      .finally(() => {
-        if (!cancelled) setStockLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [features.stockIndicatorEnabled, partForm.goodId, partForm.warehouseId]);
 
   const load = useCallback(() => {
     // Parallel fetch — work-order detail, completion-acts list and inspection report
@@ -506,7 +460,7 @@ export default function WorkOrderCardPage() {
       const mainW =
         cachedWarehouses.find(x => x.isMain) ??
         (cachedWarehouses.length === 1 ? cachedWarehouses[0] : null);
-      if (mainW) setPartForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
+      if (mainW) setInitialPartWarehouseId(curr => curr || mainW.id);
     }
 
     apiFetch<{ items: Work[] }>('/works?limit=200')
@@ -536,7 +490,7 @@ export default function WorkOrderCardPage() {
         const mainW = data.find(x => x.isMain) ?? (data.length === 1 ? data[0] : null);
         // Preserve a warehouse the user has already chosen manually — only
         // pre-fill when the field is still empty.
-        if (mainW) setPartForm(f => (f.warehouseId ? f : { ...f, warehouseId: mainW.id }));
+        if (mainW) setInitialPartWarehouseId(curr => curr || mainW.id);
       })
       .catch((e: unknown) => {
         if (mountedRef.current && !cachedWarehouses)
@@ -553,84 +507,6 @@ export default function WorkOrderCardPage() {
       });
   }, [id]);
 
-  const selectWork = (workId: string) => {
-    const w = works.find(x => x.id === workId);
-    setLineForm(f => ({
-      ...f,
-      workId,
-      normoHours: w ? String(w.normoHours) : f.normoHours,
-      price: w ? String(w.price) : f.price,
-    }));
-    lineDirty.markDirty();
-  };
-
-  const selectGood = (item: Good) => {
-    setGoodDisplayName(item.name);
-    setPartForm(f => ({
-      ...f,
-      goodId: item.id,
-      price: item.salePrice ? String(item.salePrice) : f.price,
-      unitOfMeasureId: '',
-    }));
-    setPartGoodUoMs([]);
-    partDirty.markDirty();
-    // Load available UoMs for this good
-    apiFetch<{ id: string; unitShortName: string; coefficient: number; isDefault: boolean }[]>(
-      `/goods/${item.id}/uoms`,
-    )
-      .then(setPartGoodUoMs)
-      .catch(() => setPartGoodUoMs([]));
-  };
-
-  const closeLineModal = async () => {
-    if (!(await lineDirty.confirmClose())) return;
-    setLineModal(false);
-    lineDirty.resetDirty();
-  };
-
-  const closePartModal = async () => {
-    if (!(await partDirty.confirmClose())) return;
-    setPartModal(false);
-    setGoodDisplayName('');
-    partDirty.resetDirty();
-  };
-
-  const addLine = async () => {
-    setSaving(true);
-    setError('');
-    try {
-      await apiFetch<WorkOrderLine>(`/work-orders/${id}/lines`, {
-        method: 'POST',
-        body: JSON.stringify({
-          workId: lineForm.workId,
-          employeeId: lineForm.employeeId,
-          normoHours: lineForm.normoHours ? Number(lineForm.normoHours) : undefined,
-          actualHours: lineForm.actualHours ? Number(lineForm.actualHours) : undefined,
-          price: lineForm.price ? Number(lineForm.price) : undefined,
-          notes: lineForm.notes || undefined,
-        }),
-      });
-      setLineModal(false);
-      setLineForm({
-        workId: '',
-        employeeId: '',
-        normoHours: '',
-        actualHours: '',
-        price: '',
-        notes: '',
-      });
-      lineDirty.resetDirty();
-      if (features.toastEnabled) toast.success('Роботу додано');
-      load();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка';
-      setError(msg);
-      if (features.toastEnabled) toast.error(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const removeLine = async (lineId: string) => {
     if (!(await confirm({ title: 'Видалити роботу?', variant: 'destructive' }))) return;
     setDeletingLineId(lineId);
@@ -645,46 +521,6 @@ export default function WorkOrderCardPage() {
       if (features.toastEnabled) toast.error(msg);
     } finally {
       setDeletingLineId(null);
-    }
-  };
-
-  const addPart = async () => {
-    setSaving(true);
-    setError('');
-    try {
-      await apiFetch<WorkOrderPart>(`/work-orders/${id}/parts`, {
-        method: 'POST',
-        body: JSON.stringify({
-          goodId: partForm.goodId,
-          warehouseId: partForm.warehouseId,
-          quantity: Number(partForm.quantity),
-          price: partForm.price ? Number(partForm.price) : undefined,
-          unitOfMeasureId: partForm.unitOfMeasureId || undefined,
-        }),
-      });
-      setPartModal(false);
-      // Preserve `warehouseId` so the auto-selected main warehouse stays put
-      // across consecutive part additions. The auto-select useEffect runs
-      // only on mount; without this, MECHANIC adding 3-5 parts would have
-      // to re-pick the same warehouse every time — defeating the feature.
-      setPartForm(f => ({
-        goodId: '',
-        warehouseId: f.warehouseId,
-        quantity: '1',
-        price: '',
-        unitOfMeasureId: '',
-      }));
-      setGoodDisplayName('');
-      setPartGoodUoMs([]);
-      partDirty.resetDirty();
-      if (features.toastEnabled) toast.success('Запчастину додано');
-      load();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка';
-      setError(msg);
-      if (features.toastEnabled) toast.error(msg);
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -1618,255 +1454,23 @@ export default function WorkOrderCardPage() {
         </div>
       )}
 
-      {/* Add Line Modal */}
-      <Modal open={lineModal} onClose={closeLineModal} title="Додати роботу">
-        <div className="space-y-3">
-          {error && <p className="text-[13px] text-destructive-text">{error}</p>}
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">
-              Робота <span className="text-destructive">*</span>
-            </label>
-            <Select value={lineForm.workId} onChange={e => selectWork(e.target.value)}>
-              <option value="">— Оберіть —</option>
-              {works.map(w => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">
-              Виконавець <span className="text-destructive">*</span>
-            </label>
-            <Select
-              value={lineForm.employeeId}
-              onChange={e => {
-                setLineForm(f => ({ ...f, employeeId: e.target.value }));
-                lineDirty.markDirty();
-              }}
-            >
-              <option value="">— Оберіть —</option>
-              {employees.map(e => (
-                <option key={e.id} value={e.id}>
-                  {e.lastName} {e.firstName}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">
-                Нормо-год (план)
-              </label>
-              <Input
-                type="number"
-                value={lineForm.normoHours}
-                onChange={e => {
-                  setLineForm(f => ({ ...f, normoHours: e.target.value }));
-                  lineDirty.markDirty();
-                }}
-                min="0"
-                step="0.1"
-              />
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">
-                Факт. год
-              </label>
-              <Input
-                type="number"
-                value={lineForm.actualHours}
-                onChange={e => {
-                  setLineForm(f => ({ ...f, actualHours: e.target.value }));
-                  lineDirty.markDirty();
-                }}
-                min="0"
-                step="0.1"
-                placeholder="необов'язково"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Ціна, ₴</label>
-            <Input
-              type="number"
-              value={lineForm.price}
-              onChange={e => {
-                setLineForm(f => ({ ...f, price: e.target.value }));
-                lineDirty.markDirty();
-              }}
-            />
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Нотатки</label>
-            <Input
-              value={lineForm.notes}
-              onChange={e => {
-                setLineForm(f => ({ ...f, notes: e.target.value }));
-                lineDirty.markDirty();
-              }}
-            />
-          </div>
-          <Button
-            onClick={addLine}
-            loading={saving}
-            disabled={!lineForm.workId || !lineForm.employeeId}
-            className="w-full"
-          >
-            Додати
-          </Button>
-        </div>
-      </Modal>
+      <WorkOrderAddLineModal
+        open={lineModal}
+        workOrderId={id}
+        works={works}
+        employees={employees}
+        onClose={() => setLineModal(false)}
+        onAdded={load}
+      />
 
-      {/* Batch Viewer Modal */}
-      {batchViewer && (
-        <BatchViewerModal
-          goodId={batchViewer.goodId}
-          warehouseId={batchViewer.warehouseId}
-          open={!!batchViewer}
-          onClose={() => setBatchViewer(null)}
-        />
-      )}
-
-      {/* Add Part Modal */}
-      <Modal open={partModal} onClose={closePartModal} title="Додати запчастину">
-        <div className="space-y-3">
-          {error && <p className="text-[13px] text-destructive-text">{error}</p>}
-          <SearchCombobox<Good>
-            label="Товар"
-            required
-            placeholder="Назва, артикул, штрих-код..."
-            value={partForm.goodId}
-            displayValue={goodDisplayName}
-            onSelect={selectGood}
-            onClear={() => {
-              setPartForm(f => ({ ...f, goodId: '', price: '' }));
-              setGoodDisplayName('');
-              partDirty.markDirty();
-            }}
-            fetchItems={q =>
-              apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=10`).then(r =>
-                r.items.map(g => ({ ...g, primary: g.name, secondary: g.sku })),
-              )
-            }
-          />
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">
-              Склад <span className="text-destructive">*</span>
-            </label>
-            <Select
-              value={partForm.warehouseId}
-              onChange={e => {
-                setPartForm(f => ({ ...f, warehouseId: e.target.value }));
-                partDirty.markDirty();
-              }}
-            >
-              <option value="">— Оберіть —</option>
-              {warehouses.map(w => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </Select>
-            {features.stockIndicatorEnabled && partForm.goodId && partForm.warehouseId && (
-              <p
-                className={cn(
-                  'mt-1.5 text-[12px]',
-                  stockLoading
-                    ? 'text-muted-foreground'
-                    : stockAvailable === null
-                      ? 'text-muted-foreground'
-                      : stockAvailable > 0
-                        ? 'text-success'
-                        : 'text-destructive',
-                )}
-              >
-                {stockLoading
-                  ? 'Перевірка залишку...'
-                  : stockAvailable === null
-                    ? ''
-                    : stockAvailable > 0
-                      ? `Доступно: ${stockAvailable} шт.`
-                      : 'Немає в наявності'}
-              </p>
-            )}
-          </div>
-          {partGoodUoMs.length > 0 && (
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">
-                Одиниця виміру
-              </label>
-              <Select
-                value={partForm.unitOfMeasureId}
-                onChange={e => {
-                  setPartForm(f => ({ ...f, unitOfMeasureId: e.target.value }));
-                  partDirty.markDirty();
-                }}
-              >
-                <option value="">— Базова —</option>
-                {partGoodUoMs.map(u => (
-                  <option key={u.id} value={u.id}>
-                    {u.unitShortName}
-                    {u.coefficient !== 1 ? ` (коеф. ${u.coefficient})` : ''}
-                    {u.isDefault ? ' ★' : ''}
-                  </option>
-                ))}
-              </Select>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Кількість вводиться в обраній одиниці. Для складу перераховується автоматично.
-              </p>
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">
-                Кількість <span className="text-destructive">*</span>
-              </label>
-              <Input
-                type="number"
-                value={partForm.quantity}
-                onChange={e => {
-                  setPartForm(f => ({ ...f, quantity: e.target.value }));
-                  partDirty.markDirty();
-                }}
-                min="0.001"
-                step="0.001"
-              />
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1.5">
-                Ціна, ₴
-              </label>
-              <Input
-                type="number"
-                value={partForm.price}
-                onChange={e => {
-                  setPartForm(f => ({ ...f, price: e.target.value }));
-                  partDirty.markDirty();
-                }}
-              />
-            </div>
-          </div>
-          <Button
-            onClick={addPart}
-            loading={saving}
-            disabled={
-              !partForm.goodId ||
-              !partForm.warehouseId ||
-              !partForm.quantity ||
-              (features.stockIndicatorEnabled &&
-                stockAvailable !== null &&
-                stockAvailable < Number(partForm.quantity))
-            }
-            className="w-full"
-          >
-            Додати
-          </Button>
-        </div>
-      </Modal>
-      <DirtyConfirmDialog {...lineDirty.dialogProps} />
-      <DirtyConfirmDialog {...partDirty.dialogProps} />
+      <WorkOrderAddPartModal
+        open={partModal}
+        workOrderId={id}
+        warehouses={warehouses}
+        initialWarehouseId={initialPartWarehouseId}
+        onClose={() => setPartModal(false)}
+        onAdded={load}
+      />
       <ConfirmDialog {...dialogProps} />
 
       {/* ── Редагування реквізитів ─────────────────────────────────────────── */}
