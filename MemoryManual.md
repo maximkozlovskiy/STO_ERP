@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+f93ed92 fix(sync): update stale /crm and /vat route references + remove stale .next/types
 6714a1c docs(skills): §24 EntityPickerField + *EditModal standard for reference fields
 de4f180 refactor(stock-documents): extract StockDocumentCreateModal
 66e3cad refactor(invoices): extract InvoiceCreateModal
@@ -59,9 +60,11 @@ b2707ae fix(tester): Bugs #328-#331 — useListPage stable items + useApiMutatio
 cde1792 fix(review): sync shared FSM transitions with backend authority
 ```
 
-Дата: 2026-06-04
+Дата: 2026-06-05
 
 TypeScript: ✅ 0 errors (api, web, shared)
+
+Latest sync: 2026-06-05 (sto-sync-agent, HEAD f93ed92) — **Direction 1: 0 missing. Direction 2: 0 URL mismatches. Direction 3: 1 type fix** (CpType string literal union `'CLIENT'|'SUPPLIER'|'BOTH'` instead of plain `string`). Stale `.next/types` for renamed routes `/crm` and `/vat` removed (auto-generated artifacts from refactor commits 43a111f8/56660d45). 3 comment-level stale references to `/crm` fixed (useGlobalShortcuts, command-palette, WorksTab). tsc 0 errors api+web.
 
 **QA Cycle — refactor(ui): extract TableContainer (779f8d56):**
 ✅ **sto-sync-agent PASS** — TS compilation OK, no API mismatches (UI-only refactor)
