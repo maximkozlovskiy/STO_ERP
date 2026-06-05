@@ -7,6 +7,7 @@ export type ReportTab =
   | 'work-orders'
   | 'stock'
   | 'settlements'
+  | 'settlements-detail'
   | 'load'
   | 'profitability';
 
@@ -23,8 +24,8 @@ export function useReport(tab: ReportTab, from: string, to: string) {
       const params = new URLSearchParams({ from, to });
       return apiFetch(`/reports/${tab}?${params}`, { signal });
     },
-    // enabled тільки якщо є дати і employee
-    enabled: !!employee && !!from && !!to,
+    // enabled тільки якщо є дати, employee, і це звітна вкладка (не UI-only settlements-detail)
+    enabled: !!employee && !!from && !!to && tab !== 'settlements-detail',
     staleTime: 5 * 60_000, // звіти рідко міняються під час перегляду
     gcTime: 10 * 60_000,
     // При зміні from/to/tab — лишаємо попередній звіт видимим поки новий

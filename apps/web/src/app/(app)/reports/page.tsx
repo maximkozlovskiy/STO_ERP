@@ -20,6 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 import { fmtMoney, kyivToday } from '@/lib/format';
 import dynamic from 'next/dynamic';
+import { SettlementsTabContent } from '../settlements/SettlementsTabContent';
 
 const RevenueCharts = dynamic(() => import('./ReportsCharts').then(m => m.RevenueCharts), {
   ssr: false,
@@ -136,11 +137,13 @@ function ReportsPageClient() {
     { id: 'work-orders', label: 'Наряди' },
     { id: 'stock', label: 'Залишки' },
     { id: 'settlements', label: 'Взаєморозрахунки' },
+    { id: 'settlements-detail', label: 'Розрахунки' },
     { id: 'load', label: 'Завантаженість' },
     { id: 'profitability', label: 'Рентабельність' },
   ];
 
   const needsDates = ['revenue', 'work-orders', 'load', 'stock', 'profitability'].includes(tab);
+  const isSettlementsDetail = tab === 'settlements-detail';
 
   return (
     <div className="page-fill p-4 md:p-6">
@@ -169,9 +172,9 @@ function ReportsPageClient() {
         ))}
       </div>
 
-      {/* Filters */}
+      {/* Filters — приховуємо для вкладки Розрахунки (власний UI всередині) */}
       <div className="flex flex-wrap gap-3 mb-6 items-end">
-        {needsDates && (
+        {needsDates && !isSettlementsDetail && (
           <>
             <DatePickerInput
               label="З"
@@ -189,10 +192,10 @@ function ReportsPageClient() {
             />
           </>
         )}
-        {loading && (
+        {!isSettlementsDetail && loading && (
           <span className="text-xs text-muted-foreground animate-pulse">Завантаження…</span>
         )}
-        {data && (
+        {!isSettlementsDetail && data && (
           <Button
             variant="outline"
             onClick={() => {
@@ -213,13 +216,16 @@ function ReportsPageClient() {
 
       {/* Scrollable content area — page-fill = overflow-hidden, тому тут власний скрол */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {!data && !loading && (
+        {/* Розрахунки — власний split-panel UI, не пов'язаний з useReport */}
+        {isSettlementsDetail && <SettlementsTabContent />}
+
+        {!isSettlementsDetail && !data && !loading && (
           <div className="flex items-center justify-center h-64 text-muted-foreground text-[13px]">
             Оберіть параметри і натисніть «Сформувати»
           </div>
         )}
 
-        {loading && (
+        {!isSettlementsDetail && loading && (
           <div className="flex items-center justify-center h-64">
             <Spinner size="lg" />
           </div>
