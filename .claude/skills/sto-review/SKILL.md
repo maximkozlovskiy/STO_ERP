@@ -604,6 +604,14 @@ grep -rn "86_400_000\|diffDays" apps/web/src/app/ --include="*.tsx" | grep -v "l
 
 # Власний picker не через picker-modal.tsx
 grep -rn "<Modal" apps/web/src/app/ --include="*.tsx" -l
+
+# Partial helper-migration: файл-консумент useListPage використовує і setPage(1) і resetPage() одночасно
+# (зазвичай applyFilter мігровано на resetPage, а inline JSX handlers досі викликають setPage(1))
+for f in $(grep -rl "useListPage<" apps/web/src/app --include="*.tsx"); do
+  has_set=$(grep -c "setPage(1)" "$f")
+  has_reset=$(grep -c "resetPage()" "$f")
+  [ "$has_set" -gt 0 ] && [ "$has_reset" -gt 0 ] && echo "MIXED: $f (setPage(1)=$has_set, resetPage()=$has_reset)"
+done
 ```
 
 - [ ] FK-поле зі списком (готовий масив) → `<PickerModal<T>>`, не власний Modal зі своїм query-станом
@@ -1245,6 +1253,17 @@ useEffect(() => {
 **Підхід до фіксу:** module-level formatter `const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }); const kyivToday = () => KYIV_YMD.format(new Date());`. `sv-SE` locale повертає YYYY-MM-DD. `useState(() => kyivToday())` — lazy initializer, не re-computed on every render. Цей патерн вже використовується у dashboard/page.tsx (KYIV_YMD_FMT) і reports/page.tsx (KYIV_DATE_FMT).
 **Критичність:** IMPORTANT — між midnight і 2-3 AM Ukraine time фільтр "сьогодні" показує документи вчорашнього дня; форма documentDate дефолтить на вчора; деградація без помилки.
 **Де шукати ще:** будь-яка page.tsx з date-filter toolbar (dateFrom/dateTo), форми з documentDate/dueDate default "today", dashboard stats що відфільтровані по today.
+
+---
+
+### 2026-06-05 — Partial `setPage(1)→resetPage()` migration: applyFilter мігровано, inline JSX handlers пропущено — §8.2 UI Стани / §8.6 Модульність UI
+
+**Сигнал:** Сторінка використовує `useListPage` хук що експортує і `setPage` і `resetPage = useCallback(() => setPage(1), [])`. Один callback (зазвичай `applyFilter`) використовує `resetPage()` — а інші 5 сайтів у JSX (`<Button onClick={() => { ...; setPage(1); ... }}>`, `<Input onChange={e => { ...; setPage(1); ... }}>`) досі викликають `setPage(1)` напряму. Виникає коли /simplify рев'юер шукає по тілу useCallback і не сканує inline event handlers глибоко вкладених у JSX.
+**Причина виникнення:** Refactor що додає `resetPage` helper до спільного хука; розробник/agent оновлює явні named callbacks (`applyFilter`, `handleClear`) але не помічає 4-6 inline arrow-handlers які роблять те саме (`onClick={() => { setStatus(s); setPage(1); setActiveSavedFilterId(null); }}`). /simplify commit message може хибно стверджувати "X already uses resetPage" коли насправді тільки applyFilter мігровано.
+**Підхід до виявлення:** Після будь-якого refactor що додає helper до хука (`resetPage`, `clearFilters`, `resetForm`) — `grep -rn "setPage(1)\|<helper-back-form>" apps/web/src/app/` → перевірити кожен файл-консумент окремо; зокрема — порівняти кількість inline handlers що скидають page між файлами-сусідами (`grep -c "setPage(1)" page.tsx` для всіх сторінок) — невідповідність = пропуск; також — якщо `applyFilter` уже використовує `resetPage()` але `grep "setPage(1)" file.tsx` дає 5+ результатів → недомігрований файл.
+**Підхід до фіксу:** Для кожного inline JSX handler — `setPage(1)` → `resetPage()`. `setPage` ОБОВ'ЯЗКОВО лишити у destructured scope (потрібен для `<Pagination onChange={setPage}>` що передає довільні номери сторінок, не 1). useCallback deps оновити: `[setPage, ...]` → `[resetPage, ...]` коли callback використовує `resetPage()` всередині — bug-patern з sto-sync cycle 6 (a681c25).
+**Критичність:** SUGGESTION — функційно ідентично (бо `resetPage()` = `setPage(1)`), але порушує DRY consistency (одна сторінка має 2 різні способи однакової дії); посилює когнітивне навантаження читача; ризик майбутньої regression якщо `resetPage` отримає side-effect (наприклад `setActiveSavedFilterId(null)` всередині хука).
+**Де шукати ще:** Будь-який нещодавний refactor що додає helper до спільного хука/UI компонента; особливо `useListPage`, `useDataTable`, `useFilterBar`, `useFormReset`-подібні; коли /simplify commit message стверджує "X already uses Y" — перевірити кожен файл-консумент окремо grep-ом, не довіряти заяві commit-а.
 
 ---
 
