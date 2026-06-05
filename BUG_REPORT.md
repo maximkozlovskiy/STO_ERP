@@ -10630,3 +10630,63 @@ Hash об'єктів різний → різні cache slots → prefetch dead.
 - Bug #354 — dead routes `/work-orders/new`, `/counterparties/new` (легасі від command-palette фічі ad6c2dd, пропущено у рев'ю).
 - Bug #355 — `usePaginatedList` queryKey shape mismatch з factory (introduced коли `EMPTY_ITEMS` + `usePaginatedList` додавалися як helpers).
 - Bug #356 — TopShell prefetch shape ≠ page shape (`sortBy/sortDir/dateFrom/dateTo` не у prefetch).
+
+---
+
+## Session 2026-06-05 — Tester cycle 2: /simplify resetPage migration + review Cycle 2 (HEAD b03655c8 → 1648e5ce)
+
+**Scope:** verify 3 commits 41ed7b9 (simplify: setPage(1)→resetPage), a681c25 (sync: stale useCallback deps), b03655c8 (review: inline filter handlers in invoices/po). Focus area: чи зміни ламають pagination behavior.
+
+**Pagination behavior matrix (verified):**
+
+| Action                                         | Expected                         | Actual                                            | Status |
+| ---------------------------------------------- | -------------------------------- | ------------------------------------------------- | ------ |
+| `<Pagination onChange>`                        | setPage(N) — навігація без reset | setPage(N)                                        | ✓      |
+| Filter change (status/search/date/showDeleted) | resetPage() → page=1             | resetPage() called consistently                   | ✓      |
+| Apply saved filter                             | resetPage() after filter restore | resetPage() in applyFilter                        | ✓      |
+| Sort change (toggleSort)                       | not reset (intentional UX)       | not reset                                         | ✓      |
+| Saved filter active marker after filter change | setActiveSavedFilterId(null)     | called in all sites consistent with filter schema | ✓      |
+
+**Cross-page consistency (6 useListPage-migrated pages):**
+
+- counterparties/employees/stock-documents/work-orders/purchase-orders: `applyFilter` deps `[setShowDeleted, resetPage, setActiveSavedFilterId]` — consistent.
+- invoices: deps `[resetPage, setActiveSavedFilterId]` — no setShowDeleted because `InvoiceFilters` interface не містить `showDeleted` (filter schema choice, не баг).
+- Усі inline filter handlers (status pills, search, date pickers, showDeleted) викликають `resetPage()` — 0 leftover `setPage(1)` у 6 migrated pages.
+- 3 catalog tabs (GoodsTab/WorksTab/ServicesTab) мають власну local `[page, setPage] = useState(1)` без useListPage — `setPage(1)` legitimate, не migration scope.
+
+**GoodBarcodeTab rename verification:**
+
+- `addingBarcode2`/`deletingBarcodeId2` → `addingBarcode`/`deletingBarcodeId` — 0 leftover references у всьому apps/.
+
+**Verified clean (no fixes needed):**
+
+- (a) `useListPage.ts` `resetPage = useCallback(() => setPage(1), [])` — `[]` deps правильно: `setPage` від useState стабільна reference, потреби у deps немає.
+- (b) `usePaginatedList.ts` `keepPreviousData` + `staleTime: 30s` — забезпечує плавну пагінацію без flash empty state. queryKey shape `[key, 'list', filters]` після Bug #355 fix — matches factory.
+- (c) `useSortState.toggle()` не викликає resetPage — це **intentional UX pattern по всьому codebase** (8 callsites: invoices/po/wo/sd/inventory/employees/counterparties/catalog), не regression.
+- (d) `useDebounce` (search debounce 300ms) — резервує race-вікно де `resetPage()` фаєрить разом з `setSearch(v)`, але `debouncedSearch` ще не оновився. React Query робить fetch з `page=1, q=oldSearch`, потім через 300ms — `page=1, q=newSearch`. Extra RTT відомий trade-off debounce + reset, не regression.
+- (e) `calculatePagination()` (`@sto/api/common/utils/pagination.ts`) — clamps page>=1, limit<=200. Backend не "fix" out-of-range page (повертає empty items); але `resetPage()` на filter changes уникає цього сценарію на frontend-side.
+- (f) TypeScript: 0 errors api+web+shared.
+- (g) Unit + contract: api 646/646 passed; web 304/304 passed (без регресій).
+- (h) 0 React.X namespace, 0 `any`, 0 `console.log`, 0 missing cleanup у новому diff.
+
+**Bugs found this session: 0. Regression-guard tests added: 1.**
+
+---
+
+### Test added: `resetPage identity стабільна між render-ами` (useListPage.test.ts)
+
+**Файл:** `apps/web/src/hooks/useListPage.test.ts`
+
+**Причина:**
+/simplify (41ed7b9) замінив `setPage(1)→resetPage()` у тілах applyFilter useCallback. /sync (a681c25) тоді оновив dep arrays `[setPage]→[resetPage]`. Весь ланцюг працює ТІЛЬКИ якщо `resetPage` має стабільну identity (useCallback з `[]` deps); інакше consumer applyFilter перестворювалась би на кожен render → каскадні re-render-и `<SavedFiltersBar onApply={applyFilter}>` інвалідували б React child memoization (intended by saved-filters refactor у commit 4f7a9be).
+
+**Test покриває:**
+
+- `resetPage` identity не змінюється між `rerender()`-ами.
+- `setPage` identity не змінюється (sanity check React useState contract).
+- `resetPage` identity не змінюється після state mutation (`setPage(3)`).
+- `resetPage` identity не змінюється після виклику самого `resetPage()`.
+
+**Результат:** 10/10 tests passed.
+
+**Статус:** [x] додано (regression-guard, не bug).

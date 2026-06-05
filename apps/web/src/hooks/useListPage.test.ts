@@ -68,6 +68,27 @@ describe('useListPage', () => {
     expect(result.current.page).toBe(1);
   });
 
+  // Bug #357 regression-guard: resetPage identity must remain stable across renders.
+  // /simplify (41ed7b9) replaced setPage(1)→resetPage() inside applyFilter useCallback
+  // bodies; /sync (a681c25) then updated dep arrays [setPage]→[resetPage]. The whole
+  // chain only works if resetPage has a stable identity (useCallback with [] deps);
+  // otherwise consumers' applyFilter would be re-created on every render → cascading
+  // re-renders of <SavedFiltersBar onApply={applyFilter}> would invalidate React
+  // child memoization (intended by the saved-filters refactor in commit 4f7a9be).
+  it('resetPage identity стабільна між render-ами (для useCallback deps)', () => {
+    const { result, rerender } = renderHook(() => useListPage('test', COLUMNS));
+    const firstResetPage = result.current.resetPage;
+    const firstSetPage = result.current.setPage;
+    rerender();
+    expect(result.current.resetPage).toBe(firstResetPage);
+    expect(result.current.setPage).toBe(firstSetPage);
+    // Also stable after state mutation (re-render triggered by setState)
+    act(() => result.current.setPage(3));
+    expect(result.current.resetPage).toBe(firstResetPage);
+    act(() => result.current.resetPage());
+    expect(result.current.resetPage).toBe(firstResetPage);
+  });
+
   it('setShowDeleted перемикає showDeleted', () => {
     const { result } = renderHook(() => useListPage('test', COLUMNS));
     act(() => result.current.setShowDeleted(true));
