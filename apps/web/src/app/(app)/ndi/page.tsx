@@ -44,7 +44,7 @@ function NdiPageClient() {
   const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
 
   return (
-    <div className="page-container max-w-3xl">
+    <div className="page-container">
       <h1 className="page-title mb-6">Нормативно-довідкова інформація</h1>
 
       <div className="flex gap-1 border-b border-border mb-6 flex-wrap">
