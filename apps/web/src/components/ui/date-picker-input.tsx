@@ -191,7 +191,7 @@ export function DatePickerInput({
                   setOpen(false);
                 }
               }}
-              className="w-full text-center text-[13px] font-medium text-primary hover:bg-primary/8 rounded-lg py-1.5 transition-colors"
+              className="w-full text-center text-[13px] font-medium text-primary hover:bg-primary/10 rounded-lg py-1.5 transition-colors"
             >
               Сьогодні
             </button>

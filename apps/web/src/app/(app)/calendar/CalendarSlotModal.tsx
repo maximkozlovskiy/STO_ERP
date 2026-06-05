@@ -5,7 +5,6 @@ import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { WO_STATUS_LABELS, WO_STATUS_BADGE } from '@sto/shared';
 import { fmtMoney, fmtDate } from '@/lib/format';
-import { cn } from '@/lib/utils';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { useCachedRefData } from '@/hooks/useCachedRefData';
 import {
@@ -13,6 +12,7 @@ import {
   type CounterpartyForModal,
 } from '@/components/ui/CounterpartyEditModal';
 import { toast } from '@/lib/toast';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -65,18 +65,26 @@ function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => voi
   const [error, setError] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError('');
     apiFetch<WOPreview>(`/work-orders/${id}`)
-      .then(setWo)
-      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
-      .finally(() => setLoading(false));
+      .then(data => {
+        if (!cancelled) setWo(data);
+      })
+      .catch(e => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
-  const statusLabel = wo
-    ? (WO_STATUS_LABELS[wo.status as keyof typeof WO_STATUS_LABELS] ?? wo.status)
-    : '';
-  const statusCls = wo ? (WO_STATUS_BADGE[wo.status as keyof typeof WO_STATUS_BADGE] ?? '') : '';
+  const statusLabel = wo ? (WO_STATUS_LABELS[wo.status] ?? wo.status) : '';
+  const statusVariant = wo ? (WO_STATUS_BADGE[wo.status] ?? 'secondary') : 'secondary';
 
   return (
     <Modal open onClose={onClose} title="Наряд" size="md">
@@ -90,9 +98,9 @@ function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => voi
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-lg font-semibold text-foreground">{wo.number}</span>
-            <span className={cn('px-2.5 py-0.5 rounded-full text-xs font-medium', statusCls)}>
+            <Badge variant={statusVariant} dot>
               {statusLabel}
-            </span>
+            </Badge>
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-[13px]">
@@ -421,13 +429,22 @@ export function CalendarSlotModal({
   // (редагування існуючого слота — picker не викликався, тому cpPhone = null)
   useEffect(() => {
     if (!open || !form.counterpartyId || cpPhone !== null) return;
-    apiFetch<{ phone?: string | null }>(`/counterparties/${form.counterpartyId}`)
+    let cancelled = false;
+    const fetchedForId = form.counterpartyId;
+    apiFetch<{ phone?: string | null }>(`/counterparties/${fetchedForId}`)
       .then(cp => {
-        if (mountedRef.current) setCpPhone(cp.phone ?? null);
+        // Guard: відкинути результат якщо counterparty переключили під час fetch
+        // або компонент розмонтовано
+        if (!cancelled && mountedRef.current && fetchedForId === form.counterpartyId) {
+          setCpPhone(cp.phone ?? null);
+        }
       })
       .catch(() => {
         /* ignore */
       });
+    return () => {
+      cancelled = true;
+    };
   }, [open, form.counterpartyId, cpPhone]);
 
   const searchCounterparties = useCallback((q: string) => {
