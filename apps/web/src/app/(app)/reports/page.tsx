@@ -178,20 +178,24 @@ function ReportsPageClient() {
         <div className="flex flex-wrap gap-3 py-4 items-center shrink-0">
           {needsDates && (
             <>
-              <DatePickerInput
-                label="З"
-                value={from}
-                onChange={setFrom}
-                placeholder="ДД.ММ.РРРР"
-                className="w-40"
-              />
-              <DatePickerInput
-                label="По"
-                value={to}
-                onChange={setTo}
-                placeholder="ДД.ММ.РРРР"
-                className="w-40"
-              />
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] text-muted-foreground shrink-0">З</span>
+                <DatePickerInput
+                  value={from}
+                  onChange={setFrom}
+                  placeholder="ДД.ММ.РРРР"
+                  className="w-36"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] text-muted-foreground shrink-0">По</span>
+                <DatePickerInput
+                  value={to}
+                  onChange={setTo}
+                  placeholder="ДД.ММ.РРРР"
+                  className="w-36"
+                />
+              </div>
             </>
           )}
           {loading && (
