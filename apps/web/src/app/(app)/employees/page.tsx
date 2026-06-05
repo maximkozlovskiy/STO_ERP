@@ -17,12 +17,10 @@ import {
   EMPLOYEE_ROLE_LABELS,
   EMPLOYEE_ROLE_BADGE,
 } from '@sto/shared';
-import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -54,16 +52,14 @@ import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
-import { useDirtyForm } from '@/hooks/useDirtyForm';
-import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
-import { ModalTabs } from '@/components/ui/modal-tabs';
 import { Pagination } from '@/components/ui/pagination';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtDate } from '@/lib/format';
+import { EmployeeEditModal, type EmployeeForModal } from '@/components/ui/EmployeeEditModal';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -216,28 +212,10 @@ export default function EmployeesPage() {
   const [workCategories, setWorkCategories] = useState<WorkCategory[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
 
-  const [modal, setModal] = useState<'create' | 'card' | 'edit' | null>(null);
-  const [editEmp, setEditEmp] = useState<Employee | null>(null);
-  const [editForm, setEditForm] = useState({
-    firstName: '',
-    lastName: '',
-    role: 'MECHANIC',
-    phone: '',
-    email: '',
-    status: 'ACTIVE',
-    dateOfHire: '',
-    dateOfFire: '',
-    rateType: 'percent_normo',
-    percent: '40',
-    fixedMonthly: '0',
-    bonusPercent: '10',
-  });
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError] = useState('');
-  const [selected, setSelected] = useState<Employee | null>(null);
+  // Unified modal state: 'create' = новий, Employee = редагування, null = закрито
+  const [modalEmp, setModalEmp] = useState<Employee | 'create' | null>(null);
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
   const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
   const [markingId, setMarkingId] = useState<string | null>(null);
 
   // Filters
@@ -261,33 +239,6 @@ export default function EmployeesPage() {
   const employees = data?.items ?? (EMPTY_ITEMS as unknown as Employee[]);
   const totalPages = Math.ceil((data?.total ?? 0) / LIMIT);
   const qc = useQueryClient();
-
-  const [form, setForm] = useState({
-    firstName: '',
-    lastName: '',
-    role: 'MECHANIC',
-    phone: '',
-    email: '',
-    status: 'ACTIVE',
-    dateOfHire: '',
-    rateType: 'percent_normo',
-    percent: '40',
-    fixedMonthly: '0',
-    bonusPercent: '10',
-  });
-
-  const [assignedZones, setAssignedZones] = useState<string[]>([]);
-  const [assignedLifts, setAssignedLifts] = useState<string[]>([]);
-  const [assignedCats, setAssignedCats] = useState<string[]>([]);
-  const [assignedBranches, setAssignedBranches] = useState<string[]>([]);
-  const [allBranches, setAllBranches] = useState(false);
-
-  // Edit modal assignment state
-  const [editZoneIds, setEditZoneIds] = useState<string[]>([]);
-  const [editLiftIds, setEditLiftIds] = useState<string[]>([]);
-  const [editWorkCatIds, setEditWorkCatIds] = useState<string[]>([]);
-  const [editBranchIds, setEditBranchIds] = useState<string[]>([]);
-  const [editAllBranches, setEditAllBranches] = useState(false);
 
   // ─── Saved filters ────────────────────────────────────
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -377,184 +328,7 @@ export default function EmployeesPage() {
     [confirm, bulkSelect],
   );
 
-  // ─── Unsaved guard — create modal ────────────────────
-  const createDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
-
-  // ─── Unsaved guard — edit modal ───────────────────────
-  const editDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
-
-  // Only the employee list depends on filters — reference data (zones, lifts,
   const load = () => qc.invalidateQueries({ queryKey: employeesKeys.all });
-
-  // Reference data — paint instantly from sessionStorage, then refresh in
-  // parallel. Runs once on mount, independent of list filters.
-  const loadReference = () => {
-    const cZones = getCached<Zone[]>('cache:zones');
-    const cLifts = getCached<Lift[]>('cache:lifts');
-    const cCats = getCached<WorkCategory[]>('cache:work-categories');
-    const cBranches = getCached<Branch[]>('cache:branches');
-    if (cZones) setZones(cZones);
-    if (cLifts) setLifts(cLifts);
-    if (cCats) setWorkCategories(cCats);
-    if (cBranches) setBranches(cBranches);
-    Promise.all([
-      apiFetch<Zone[]>('/zones').then(d => {
-        setZones(d);
-        setCache('cache:zones', d);
-      }),
-      apiFetch<Lift[]>('/lifts').then(d => {
-        setLifts(d);
-        setCache('cache:lifts', d);
-      }),
-      apiFetch<WorkCategory[]>('/work-categories').then(d => {
-        setWorkCategories(d);
-        setCache('cache:work-categories', d);
-      }),
-      // `/branches` returns a plain `BranchResponseDto[]` (BranchesController.findAll), NOT a
-      // paginated `{ items, total }` envelope. Treating it as `{ items }` resulted in `r.items`
-      // being undefined and the branches multi-select staying empty — blocking B10 entirely.
-      apiFetch<Branch[]>('/branches').then(d => {
-        setBranches(d);
-        setCache('cache:branches', d);
-      }),
-    ]).catch(() => {
-      /* reference data is non-blocking; list still renders */
-    });
-  };
-
-  useEffect(() => {
-    loadReference();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const openCard = (emp: Employee) => {
-    setSelected(emp);
-    setAssignedZones(emp.zoneIds);
-    setAssignedLifts(emp.liftIds);
-    setAssignedCats(emp.workCategoryIds);
-    setAssignedBranches(emp.branchIds ?? []);
-    setAllBranches(emp.allBranches ?? false);
-    setError('');
-    setModal('card');
-  };
-
-  const openCreate = () => {
-    setForm({
-      firstName: '',
-      lastName: '',
-      role: 'MECHANIC',
-      phone: '',
-      email: '',
-      status: 'ACTIVE',
-      dateOfHire: '',
-      rateType: 'percent_normo',
-      percent: '40',
-      fixedMonthly: '0',
-      bonusPercent: '10',
-    });
-    setError('');
-    createDirty.resetDirty();
-    setModal('create');
-  };
-
-  const closeModal = async () => {
-    if (modal === 'create') {
-      if (!(await createDirty.confirmClose())) return;
-    }
-    setModal(null);
-    setSelected(null);
-    setError('');
-  };
-
-  const buildRateScheme = () => {
-    if (form.rateType === 'percent_normo') {
-      return { type: 'percent_normo', params: { percent: Number(form.percent) } };
-    }
-    return {
-      type: 'fixed_plus_bonus',
-      params: { fixedMonthly: Number(form.fixedMonthly), bonusPercent: Number(form.bonusPercent) },
-    };
-  };
-
-  const create = async () => {
-    if (form.rateType === 'percent_normo') {
-      const pct = Number(form.percent);
-      if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
-        setError('Відсоток має бути від 1 до 100');
-        return;
-      }
-    } else {
-      const fixed = Number(form.fixedMonthly);
-      const bonus = Number(form.bonusPercent);
-      if (!Number.isFinite(fixed) || fixed < 0) {
-        setError("Фіксована ставка повинна бути невід'ємним числом");
-        return;
-      }
-      if (!Number.isFinite(bonus) || bonus < 0 || bonus > 100) {
-        setError('Бонус має бути від 0 до 100');
-        return;
-      }
-    }
-    setSaving(true);
-    setError('');
-    try {
-      await apiFetch<Employee>('/employees', {
-        method: 'POST',
-        body: JSON.stringify({
-          firstName: form.firstName,
-          lastName: form.lastName,
-          role: form.role,
-          phone: form.phone || undefined,
-          email: form.email || undefined,
-          status: form.status || 'ACTIVE',
-          dateOfHire: form.dateOfHire || undefined,
-          rateScheme: buildRateScheme(),
-        }),
-      });
-      createDirty.resetDirty();
-      setModal(null);
-      setSelected(null);
-      setError('');
-      load();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveAssignments = async () => {
-    if (!selected) return;
-    setSaving(true);
-    setError('');
-    try {
-      await Promise.all([
-        apiFetch<void>(`/employees/${selected.id}/zones`, {
-          method: 'POST',
-          body: JSON.stringify({ zoneIds: assignedZones }),
-        }),
-        apiFetch<void>(`/employees/${selected.id}/lifts`, {
-          method: 'POST',
-          body: JSON.stringify({ liftIds: assignedLifts }),
-        }),
-        apiFetch<void>(`/employees/${selected.id}/work-categories`, {
-          method: 'POST',
-          body: JSON.stringify({ workCategoryIds: assignedCats }),
-        }),
-        apiFetch<void>(`/employees/${selected.id}/branches`, {
-          method: 'POST',
-          body: JSON.stringify({ branchIds: allBranches ? [] : assignedBranches, allBranches }),
-        }),
-      ]);
-      setModal(null);
-      setSelected(null);
-      setError('');
-      load();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const markForDeletion = async (id: string) => {
     if (!(await confirm({ title: 'Помітити співробітника на видалення?', variant: 'destructive' })))
@@ -572,119 +346,11 @@ export default function EmployeesPage() {
     }
   };
 
-  const openEditEmp = (emp: Employee) => {
-    setEditEmp(emp);
-    const rs = emp.rateScheme;
-    setEditForm({
-      firstName: emp.firstName,
-      lastName: emp.lastName,
-      role: emp.role,
-      phone: emp.phone ?? '',
-      email: emp.email ?? '',
-      status: emp.status,
-      dateOfHire: emp.dateOfHire ? emp.dateOfHire.slice(0, 10) : '',
-      dateOfFire: emp.dateOfFire ? emp.dateOfFire.slice(0, 10) : '',
-      rateType: rs?.type ?? 'percent_normo',
-      percent: rs?.type === 'percent_normo' ? String(rs.params.percent ?? 40) : '40',
-      fixedMonthly: rs?.type === 'fixed_plus_bonus' ? String(rs.params.fixedMonthly ?? 0) : '0',
-      bonusPercent: rs?.type === 'fixed_plus_bonus' ? String(rs.params.bonusPercent ?? 10) : '10',
-    });
-    setEditZoneIds(emp.zoneIds ?? []);
-    setEditLiftIds(emp.liftIds ?? []);
-    setEditWorkCatIds(emp.workCategoryIds ?? []);
-    setEditBranchIds(emp.branchIds ?? []);
-    setEditAllBranches(emp.allBranches ?? false);
-    setEditError('');
-    editDirty.resetDirty();
-    setModal('edit');
-  };
-
-  const closeEditModal = async () => {
-    if (!(await editDirty.confirmClose())) return;
-    setModal(null);
-    setEditEmp(null);
-  };
-
-  const saveEditEmp = async () => {
-    if (!editEmp) return;
-    setEditSaving(true);
-    setEditError('');
-    let rateScheme;
-    if (editForm.rateType === 'percent_normo') {
-      const pct = Number(editForm.percent);
-      if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
-        setEditError('Відсоток має бути від 1 до 100');
-        setEditSaving(false);
-        return;
-      }
-      rateScheme = { type: 'percent_normo', params: { percent: pct } };
-    } else {
-      const fixed = Number(editForm.fixedMonthly);
-      const bonus = Number(editForm.bonusPercent);
-      if (!Number.isFinite(fixed) || fixed < 0) {
-        setEditError("Фіксована ставка повинна бути невід'ємним числом");
-        setEditSaving(false);
-        return;
-      }
-      if (!Number.isFinite(bonus) || bonus < 0 || bonus > 100) {
-        setEditError('Бонус має бути від 0 до 100');
-        setEditSaving(false);
-        return;
-      }
-      rateScheme = {
-        type: 'fixed_plus_bonus',
-        params: { fixedMonthly: fixed, bonusPercent: bonus },
-      };
-    }
-    try {
-      await apiFetch<Employee>(`/employees/${editEmp.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          firstName: editForm.firstName,
-          lastName: editForm.lastName,
-          role: editForm.role,
-          phone: editForm.phone || undefined,
-          email: editForm.email || undefined,
-          status: editForm.status,
-          dateOfHire: editForm.dateOfHire || undefined,
-          dateOfFire: editForm.dateOfFire || undefined,
-          rateScheme,
-        }),
-      });
-      // Save all assignments in parallel
-      await Promise.all([
-        apiFetch<void>(`/employees/${editEmp.id}/branches`, {
-          method: 'POST',
-          body: JSON.stringify({
-            branchIds: editAllBranches ? [] : editBranchIds,
-            allBranches: editAllBranches,
-          }),
-        }),
-        apiFetch<void>(`/employees/${editEmp.id}/zones`, {
-          method: 'POST',
-          body: JSON.stringify({ zoneIds: editZoneIds }),
-        }),
-        apiFetch<void>(`/employees/${editEmp.id}/lifts`, {
-          method: 'POST',
-          body: JSON.stringify({ liftIds: editLiftIds }),
-        }),
-        apiFetch<void>(`/employees/${editEmp.id}/work-categories`, {
-          method: 'POST',
-          body: JSON.stringify({ workCategoryIds: editWorkCatIds }),
-        }),
-      ]);
-      editDirty.resetDirty();
-      setModal(null);
-      setEditEmp(null);
-      load();
-    } catch (e: unknown) {
-      setEditError(e instanceof Error ? e.message : 'Помилка збереження');
-    } finally {
-      setEditSaving(false);
-    }
-  };
-
-  const flatCats = flattenTree(workCategories);
+  const handleEmployeeSaved = useCallback(() => {
+    setModalEmp(null);
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const employeesPanelConfigFields = schemaToPanelConfigFields(
     EMPLOYEE_PANEL_SCHEMA,
@@ -764,7 +430,7 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      {!modal && error && (
+      {modalEmp === null && error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
         </div>
@@ -838,7 +504,7 @@ export default function EmployeesPage() {
             }
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <Button onClick={openCreate} leftIcon={<Plus className="h-4 w-4" />}>
+          <Button onClick={() => setModalEmp('create')} leftIcon={<Plus className="h-4 w-4" />}>
             Співробітник
           </Button>
         </div>
@@ -1028,7 +694,7 @@ export default function EmployeesPage() {
                             size="icon-sm"
                             title="Редагувати"
                             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            onClick={() => openEditEmp(emp)}
+                            onClick={() => setModalEmp(emp)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -1065,494 +731,14 @@ export default function EmployeesPage() {
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
-      {/* Create modal */}
-      <Modal
-        open={modal === 'create'}
-        onClose={closeModal}
-        title="Новий співробітник"
-        size="lg"
-        footer={
-          <Button
-            onClick={create}
-            loading={saving}
-            disabled={!form.firstName || !form.lastName}
-            className="w-full"
-          >
-            Зберегти
-          </Button>
+      <EmployeeEditModal
+        open={modalEmp !== null}
+        employee={
+          modalEmp === 'create' || modalEmp === null ? null : (modalEmp as EmployeeForModal)
         }
-      >
-        {error && (
-          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
-            {error}
-          </div>
-        )}
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Ім'я"
-              required
-              value={form.firstName}
-              onChange={e => {
-                setForm(f => ({ ...f, firstName: e.target.value }));
-                createDirty.markDirty();
-              }}
-              placeholder="Іван"
-            />
-            <Input
-              label="Прізвище"
-              required
-              value={form.lastName}
-              onChange={e => {
-                setForm(f => ({ ...f, lastName: e.target.value }));
-                createDirty.markDirty();
-              }}
-              placeholder="Коваль"
-            />
-          </div>
-          <Select
-            label="Посада"
-            required
-            value={form.role}
-            onChange={e => {
-              setForm(f => ({ ...f, role: e.target.value }));
-              createDirty.markDirty();
-            }}
-          >
-            {Object.entries(ROLE_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </Select>
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Телефон"
-              value={form.phone}
-              onChange={e => {
-                setForm(f => ({ ...f, phone: e.target.value }));
-                createDirty.markDirty();
-              }}
-              placeholder="+38 (067) 123-45-67"
-            />
-            <Input
-              label="Email"
-              type="email"
-              value={form.email}
-              onChange={e => {
-                setForm(f => ({ ...f, email: e.target.value }));
-                createDirty.markDirty();
-              }}
-              placeholder="ivan@example.com"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Статус"
-              value={form.status}
-              onChange={e => {
-                setForm(f => ({ ...f, status: e.target.value }));
-                createDirty.markDirty();
-              }}
-            >
-              {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-            <DatePickerInput
-              label="Дата прийому"
-              value={form.dateOfHire}
-              onChange={v => {
-                setForm(f => ({ ...f, dateOfHire: v }));
-                createDirty.markDirty();
-              }}
-            />
-          </div>
-          <Select
-            label="Схема нарахування"
-            required
-            value={form.rateType}
-            onChange={e => {
-              setForm(f => ({ ...f, rateType: e.target.value }));
-              createDirty.markDirty();
-            }}
-          >
-            {Object.entries(RATE_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </Select>
-          {form.rateType === 'percent_normo' && (
-            <Input
-              label="Відсоток, %"
-              type="number"
-              min="0"
-              value={form.percent}
-              onChange={e => {
-                setForm(f => ({ ...f, percent: e.target.value }));
-                createDirty.markDirty();
-              }}
-            />
-          )}
-          {form.rateType === 'fixed_plus_bonus' && (
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Ставка, грн/міс"
-                type="number"
-                min="0"
-                value={form.fixedMonthly}
-                onChange={e => {
-                  setForm(f => ({ ...f, fixedMonthly: e.target.value }));
-                  createDirty.markDirty();
-                }}
-              />
-              <Input
-                label="Бонус, %"
-                type="number"
-                min="0"
-                value={form.bonusPercent}
-                onChange={e => {
-                  setForm(f => ({ ...f, bonusPercent: e.target.value }));
-                  createDirty.markDirty();
-                }}
-              />
-            </div>
-          )}
-        </div>
-      </Modal>
-
-      {/* Card modal — assignment */}
-      <Modal
-        open={modal === 'card' && !!selected}
-        onClose={closeModal}
-        title={selected ? `${selected.lastName} ${selected.firstName}` : ''}
-        size="lg"
-        footer={
-          <Button onClick={saveAssignments} loading={saving} className="w-full">
-            Зберегти прив'язки
-          </Button>
-        }
-      >
-        {error && (
-          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
-            {error}
-          </div>
-        )}
-        {selected && (
-          <div className="space-y-3">
-            <p className="text-[13px] text-muted-foreground mb-4">
-              {ROLE_LABELS[selected.role]}
-              {selected.rateScheme
-                ? ` · ${RATE_LABELS[selected.rateScheme.type] ?? selected.rateScheme.type}`
-                : ''}
-            </p>
-            <CheckboxList
-              label="Зони"
-              items={zones}
-              selected={assignedZones}
-              onChange={setAssignedZones}
-            />
-            <CheckboxList
-              label="Підйомники"
-              items={lifts}
-              selected={assignedLifts}
-              onChange={setAssignedLifts}
-            />
-            <CheckboxList
-              label="Категорії робіт"
-              items={flatCats}
-              selected={assignedCats}
-              onChange={setAssignedCats}
-            />
-            <div className="mb-3">
-              <label className="block text-[13px] font-medium text-foreground mb-2">
-                Доступ до філій
-              </label>
-              <label className="flex items-center gap-2 mb-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={allBranches}
-                  onChange={e => setAllBranches(e.target.checked)}
-                  className="rounded border-border"
-                />
-                <span className="text-[13px] text-foreground">Доступ до всіх філій</span>
-              </label>
-              {!allBranches && (
-                <CheckboxList
-                  label=""
-                  items={branches}
-                  selected={assignedBranches}
-                  onChange={setAssignedBranches}
-                />
-              )}
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Edit modal — employee data */}
-      <Modal
-        open={modal === 'edit' && !!editEmp}
-        onClose={closeEditModal}
-        title={editEmp ? `${editEmp.lastName} ${editEmp.firstName}` : ''}
-        size="lg"
-        footer={
-          <>
-            <Button
-              onClick={saveEditEmp}
-              loading={editSaving}
-              disabled={!editForm.firstName || !editForm.lastName}
-            >
-              Зберегти
-            </Button>
-            <Button variant="outline" onClick={closeEditModal}>
-              Скасувати
-            </Button>
-          </>
-        }
-      >
-        {editError && (
-          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
-            {editError}
-          </div>
-        )}
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Ім'я"
-              required
-              value={editForm.firstName}
-              onChange={e => {
-                setEditForm(f => ({ ...f, firstName: e.target.value }));
-                editDirty.markDirty();
-              }}
-              placeholder="Іван"
-            />
-            <Input
-              label="Прізвище"
-              required
-              value={editForm.lastName}
-              onChange={e => {
-                setEditForm(f => ({ ...f, lastName: e.target.value }));
-                editDirty.markDirty();
-              }}
-              placeholder="Коваль"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Посада"
-              required
-              value={editForm.role}
-              onChange={e => {
-                setEditForm(f => ({ ...f, role: e.target.value }));
-                editDirty.markDirty();
-              }}
-            >
-              {Object.entries(ROLE_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Статус"
-              value={editForm.status}
-              onChange={e => {
-                setEditForm(f => ({ ...f, status: e.target.value }));
-                editDirty.markDirty();
-              }}
-            >
-              {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Телефон"
-              value={editForm.phone}
-              onChange={e => {
-                setEditForm(f => ({ ...f, phone: e.target.value }));
-                editDirty.markDirty();
-              }}
-              placeholder="+38 (067) 123-45-67"
-            />
-            <Input
-              label="Email"
-              value={editForm.email}
-              onChange={e => {
-                setEditForm(f => ({ ...f, email: e.target.value }));
-                editDirty.markDirty();
-              }}
-              placeholder="ivan@example.com"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <DatePickerInput
-              label="Дата прийому"
-              value={editForm.dateOfHire}
-              onChange={v => {
-                setEditForm(f => ({ ...f, dateOfHire: v }));
-                editDirty.markDirty();
-              }}
-            />
-            <DatePickerInput
-              label="Дата звільнення"
-              value={editForm.dateOfFire}
-              onChange={v => {
-                setEditForm(f => ({ ...f, dateOfFire: v }));
-                editDirty.markDirty();
-              }}
-            />
-          </div>
-          <Select
-            label="Схема нарахування"
-            required
-            value={editForm.rateType}
-            onChange={e => {
-              setEditForm(f => ({ ...f, rateType: e.target.value }));
-              editDirty.markDirty();
-            }}
-          >
-            {Object.entries(RATE_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </Select>
-          {editForm.rateType === 'percent_normo' && (
-            <Input
-              label="Відсоток, %"
-              type="number"
-              min="0"
-              value={editForm.percent}
-              onChange={e => {
-                setEditForm(f => ({ ...f, percent: e.target.value }));
-                editDirty.markDirty();
-              }}
-            />
-          )}
-          {editForm.rateType === 'fixed_plus_bonus' && (
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Ставка, грн/міс"
-                type="number"
-                min="0"
-                value={editForm.fixedMonthly}
-                onChange={e => {
-                  setEditForm(f => ({ ...f, fixedMonthly: e.target.value }));
-                  editDirty.markDirty();
-                }}
-              />
-              <Input
-                label="Бонус, %"
-                type="number"
-                min="0"
-                value={editForm.bonusPercent}
-                onChange={e => {
-                  setEditForm(f => ({ ...f, bonusPercent: e.target.value }));
-                  editDirty.markDirty();
-                }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Related assignments — tabs at bottom */}
-        <ModalTabs
-          tabs={[
-            {
-              key: 'zones',
-              label: 'Зони та підйомники',
-              count: (editEmp?.zoneIds.length ?? 0) + (editEmp?.liftIds.length ?? 0),
-              content: (
-                <div className="grid grid-cols-2 gap-4">
-                  <CheckboxList
-                    label="Зони"
-                    items={zones}
-                    selected={editZoneIds}
-                    onChange={ids => {
-                      setEditZoneIds(ids);
-                      editDirty.markDirty();
-                    }}
-                  />
-                  <CheckboxList
-                    label="Підйомники"
-                    items={lifts}
-                    selected={editLiftIds}
-                    onChange={ids => {
-                      setEditLiftIds(ids);
-                      editDirty.markDirty();
-                    }}
-                  />
-                </div>
-              ),
-            },
-            {
-              key: 'categories',
-              label: 'Категорії робіт',
-              count: editEmp?.workCategoryIds.length ?? 0,
-              content: (
-                <CheckboxList
-                  label=""
-                  items={flatCats}
-                  selected={editWorkCatIds}
-                  onChange={ids => {
-                    setEditWorkCatIds(ids);
-                    editDirty.markDirty();
-                  }}
-                />
-              ),
-            },
-            ...(branches.length > 0
-              ? [
-                  {
-                    key: 'branches',
-                    label: 'Філії',
-                    content: (
-                      <div className="space-y-2">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={editAllBranches}
-                            onChange={e => {
-                              setEditAllBranches(e.target.checked);
-                              editDirty.markDirty();
-                            }}
-                            className="rounded border-border"
-                          />
-                          <span className="text-[13px] text-foreground">Доступ до всіх філій</span>
-                        </label>
-                        {!editAllBranches && (
-                          <CheckboxList
-                            label=""
-                            items={branches}
-                            selected={editBranchIds}
-                            onChange={ids => {
-                              setEditBranchIds(ids);
-                              editDirty.markDirty();
-                            }}
-                          />
-                        )}
-                        <p className="text-[12px] text-muted-foreground">
-                          OWNER та ADMIN мають доступ до всіх філій автоматично.
-                        </p>
-                      </div>
-                    ),
-                  },
-                ]
-              : []),
-          ]}
-        />
-      </Modal>
-      <DirtyConfirmDialog {...createDirty.dialogProps} />
-      <DirtyConfirmDialog {...editDirty.dialogProps} />
+        onClose={() => setModalEmp(null)}
+        onSaved={handleEmployeeSaved}
+      />
       <ConfirmDialog {...dialogProps} />
     </div>
   );
