@@ -46,8 +46,18 @@ export class MaintenanceSchedulesController {
   findAll(
     @OrgContext() orgId: string,
     @Query('vehicleId', new ParseUUIDPipe({ optional: true })) vehicleId?: string,
+    @Query('vehicleIds') vehicleIdsCsv?: string,
   ) {
-    return this.service.findAll(orgId, vehicleId);
+    // vehicleIds — comma-separated UUIDs for bulk lookup
+    // (frontend uses this to fetch schedules for all vehicles of a counterparty
+    // in 1 RTT instead of N×RTT per vehicle).
+    const vehicleIds = vehicleIdsCsv
+      ? vehicleIdsCsv
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+      : undefined;
+    return this.service.findAll(orgId, vehicleId, vehicleIds);
   }
 
   @Get(':id')

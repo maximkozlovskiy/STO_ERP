@@ -32,6 +32,12 @@ export class PaymentsService {
     limit = 20,
     counterpartyId?: string,
   ): Promise<PaginatedPaymentsDto> {
+    // DoS hardening: cap user-controlled pagination params.
+    // payments grows monotonically (1 row per money operation); without cap
+    // `?limit=999999` could OOM the API on long-running orgs.
+    const safeLimit = Math.min(Math.max(limit, 1), 200);
+    const safePage = Math.max(page, 1);
+
     const where: { orgId: string; counterpartyId?: string } = { orgId };
     if (counterpartyId) {
       // Verify the counterparty belongs to this org to prevent cross-tenant data leaks
@@ -43,12 +49,12 @@ export class PaymentsService {
       where.counterpartyId = counterpartyId;
     }
 
-    const skip = (page - 1) * limit;
+    const skip = (safePage - 1) * safeLimit;
     const [items, total] = await this.prisma.$transaction([
       this.prisma.payment.findMany({
         where,
         skip,
-        take: limit,
+        take: safeLimit,
         orderBy: { createdAt: 'desc' },
         include: {
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
@@ -57,7 +63,7 @@ export class PaymentsService {
       this.prisma.payment.count({ where }),
     ]);
 
-    return { items: items.map(item => this.toDto(item)), total, page, limit };
+    return { items: items.map(item => this.toDto(item)), total, page: safePage, limit: safeLimit };
   }
 
   async create(orgId: string, dto: CreatePaymentDto, userId?: string): Promise<PaymentResponseDto> {

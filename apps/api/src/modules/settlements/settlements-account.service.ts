@@ -45,18 +45,24 @@ export class SettlementsAccountService {
   }
 
   async getTransactions(orgId: string, counterpartyId: string, page = 1, limit = 50) {
+    // DoS hardening: cap user-controlled pagination params (defensive backup
+    // to controller-level validation). `?limit=999999` would OOM the API
+    // when settlement_transactions has tens of thousands of rows per org.
+    const safeLimit = Math.min(Math.max(limit, 1), 200);
+    const safePage = Math.max(page, 1);
+
     const account = await this.prisma.settlementAccount.findFirst({
       where: { orgId, counterpartyId },
     });
-    if (!account) return { items: [], total: 0, page, limit };
+    if (!account) return { items: [], total: 0, page: safePage, limit: safeLimit };
 
-    const skip = (page - 1) * limit;
+    const skip = (safePage - 1) * safeLimit;
     const [items, total] = await this.prisma.$transaction([
       this.prisma.settlementTransaction.findMany({
         where: { settlementAccountId: account.id, orgId },
         orderBy: { createdAt: 'desc' },
         skip,
-        take: limit,
+        take: safeLimit,
       }),
       this.prisma.settlementTransaction.count({
         where: { settlementAccountId: account.id, orgId },
@@ -74,8 +80,8 @@ export class SettlementsAccountService {
         createdAt: t.createdAt,
       })),
       total,
-      page,
-      limit,
+      page: safePage,
+      limit: safeLimit,
     };
   }
 

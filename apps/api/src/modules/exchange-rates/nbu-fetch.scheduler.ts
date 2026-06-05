@@ -13,13 +13,24 @@ export class NbuFetchScheduler implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const orgs = await this.prisma.organisation.findMany({
-      where: { deletedAt: null },
-      select: { id: true },
-      take: 1000,
-    });
+    // Single batch: orgs + their settings (N+1 → 2 queries).
+    // For 1000 cloud orgs this avoids 1000 sequential findUnique reads
+    // during bootstrap that gated the entire scheduler init.
+    const [orgs, allSettings] = await Promise.all([
+      this.prisma.organisation.findMany({
+        where: { deletedAt: null },
+        select: { id: true },
+        take: 1000,
+      }),
+      this.prisma.organisationSettings.findMany({
+        select: { orgId: true, nbuFetchHour: true },
+      }),
+    ]);
+    const hourByOrg = new Map(allSettings.map(s => [s.orgId, s.nbuFetchHour ?? 12]));
 
-    await Promise.all(orgs.map(org => this.scheduleForOrg(org.id)));
+    await Promise.all(
+      orgs.map(org => this.enqueueRepeatableForOrg(org.id, hourByOrg.get(org.id) ?? 12)),
+    );
     this.logger.log(`NBU fetch CRON зареєстровано для ${orgs.length} організацій`);
   }
 
@@ -28,7 +39,12 @@ export class NbuFetchScheduler implements OnModuleInit {
       where: { orgId },
       select: { nbuFetchHour: true },
     });
-    const hour = settings?.nbuFetchHour ?? 12;
+    await this.enqueueRepeatableForOrg(orgId, settings?.nbuFetchHour ?? 12);
+  }
+
+  // Extracted to allow bulk bootstrap to skip per-org settings fetch
+  // (settings prefetched in one findMany).
+  private async enqueueRepeatableForOrg(orgId: string, hour: number): Promise<void> {
     await this.queue.add(
       'fetch-rates',
       { orgId },

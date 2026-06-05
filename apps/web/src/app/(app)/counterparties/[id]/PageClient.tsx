@@ -307,18 +307,17 @@ export default function CounterpartyCardPage() {
         });
         setGarageVehicles(garageMap);
 
-        // Stage 2 — load maintenance schedules for all vehicles in parallel
+        // Stage 2 — bulk-load maintenance schedules for all vehicles in ONE request.
+        // Backend supports `?vehicleIds=v1,v2,v3` (vehicle IN clause) — replaces
+        // the prior N+1 (1 fetch per vehicle, up to 100s of round-trips for big garages).
         const allVehicles = vehiclesByGarage.flat();
         if (allVehicles.length > 0) {
-          const scheduleResults = await Promise.all(
-            allVehicles.map(v =>
-              apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${v.id}`).catch(
-                () => [] as MaintenanceSchedule[],
-              ),
-            ),
-          );
+          const vehicleIdsParam = allVehicles.map(v => v.id).join(',');
+          const schedules = await apiFetch<MaintenanceSchedule[]>(
+            `/maintenance-schedules?vehicleIds=${vehicleIdsParam}`,
+          ).catch(() => [] as MaintenanceSchedule[]);
           if (cancelled) return;
-          setMaintenanceSchedules(scheduleResults.flat());
+          setMaintenanceSchedules(schedules);
         }
       } catch (e: unknown) {
         if (!cancelled) setLoadError(e instanceof Error ? e.message : 'Помилка гаражів');

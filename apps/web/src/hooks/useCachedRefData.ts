@@ -35,9 +35,14 @@ export function useCachedRefData<T>(
   fallback: T,
   transform?: (raw: unknown) => T,
 ): UseCachedRefDataResult<T> {
-  const cached = getCached<T>(cacheKey);
-  const [data, setData] = useState<T>(cached ?? fallback);
-  const [loading, setLoading] = useState(!cached);
+  // Lazy initializers — getCached() reads sessionStorage + JSON.parse;
+  // without lazy init this runs on EVERY render (impacts large cached lists like 200 goods).
+  // Pair pattern: data initial from cache OR fallback; loading=false iff cache hit.
+  const [data, setData] = useState<T>(() => {
+    const cached = getCached<T>(cacheKey);
+    return cached ?? fallback;
+  });
+  const [loading, setLoading] = useState<boolean>(() => getCached<T>(cacheKey) === null);
   const [error, setError] = useState('');
 
   useEffect(() => {

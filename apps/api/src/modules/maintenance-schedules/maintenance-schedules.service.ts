@@ -10,17 +10,31 @@ import {
 export class MaintenanceSchedulesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(orgId: string, vehicleId?: string): Promise<MaintenanceScheduleResponseDto[]> {
+  async findAll(
+    orgId: string,
+    vehicleId?: string,
+    vehicleIds?: string[],
+  ): Promise<MaintenanceScheduleResponseDto[]> {
+    // vehicleIds (CSV → array) bulk filter — avoids frontend N+1 where
+    // CRM counterparty page would otherwise dispatch one GET per vehicle
+    // (e.g. 20 garages × 5 vehicles each = 100 HTTP round-trips).
+    const safeIds = vehicleIds?.filter(Boolean).slice(0, 200);
+    const vehicleFilter = vehicleId
+      ? { vehicleId }
+      : safeIds && safeIds.length > 0
+        ? { vehicleId: { in: safeIds } }
+        : {};
+
     const items = await this.prisma.maintenanceSchedule.findMany({
       where: {
         orgId,
         deletedAt: null,
         vehicle: { deletedAt: null },
-        ...(vehicleId ? { vehicleId } : {}),
+        ...vehicleFilter,
       },
       include: { vehicle: { select: { make: true, model: true, licensePlate: true } } },
       orderBy: { nextMaintenanceDate: 'asc' },
-      take: 200,
+      take: 500,
     });
     return items.map(item => this.toDto(item));
   }
