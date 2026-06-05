@@ -46,7 +46,7 @@ import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
-import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
@@ -202,13 +202,7 @@ export default function StockDocumentsPage() {
     [saveFilter, typeFilter, statusFilter, showDeleted, dateFrom, dateTo, features.toastEnabled],
   );
 
-  // — Bulk select ————————————————————————————————————————————————————————
-  const bulkSelect = useBulkSelect(docs);
-
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
-  }, [bulkSelect.someSelected]);
+  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(docs);
 
   // `load` is intentionally omitted from deps — it's recreated each render
   // but its input (filters from page state) is captured at click time via

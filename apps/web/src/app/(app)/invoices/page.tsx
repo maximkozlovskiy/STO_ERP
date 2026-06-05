@@ -54,7 +54,7 @@ import {
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
-import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
@@ -210,13 +210,7 @@ export default function InvoicesPage() {
     [saveFilter, search, status, dateFrom, dateTo, features.toastEnabled],
   );
 
-  // Bulk select
-  const bulkSelect = useBulkSelect(invoices);
-
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
-  }, [bulkSelect.someSelected]);
+  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(invoices);
 
   const bulkCancel = useCallback(
     async (ids: string[]) => {

@@ -3,6 +3,7 @@ import { DocumentType, Prisma, StockDocumentType, StockMovementType } from '@pri
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
+import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -295,12 +296,7 @@ export class StockDocumentsService {
     });
     if (!doc) throw new NotFoundException('Документ не знайдено');
 
-    const allowed = DOC_TRANSITIONS[doc.status as DocStatus] ?? [];
-    if (!allowed.includes(newStatus)) {
-      throw new BadRequestException(
-        `Перехід зі статусу "${doc.status}" в "${newStatus}" неможливий`,
-      );
-    }
+    assertFsmTransition(DOC_TRANSITIONS, doc.status as DocStatus, newStatus);
 
     if (newStatus === 'CONFIRMED') {
       if (!doc.lines.length) {

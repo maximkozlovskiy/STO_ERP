@@ -3,6 +3,8 @@ import { InvoiceStatus, Prisma } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
+import { safeCoeff } from '../../common/utils/math';
+import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
@@ -25,17 +27,6 @@ const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
   OVERDUE: [InvoiceStatus.PAID, InvoiceStatus.CANCELLED],
   CANCELLED: [],
 };
-
-/**
- * Bug #316: defense-in-depth для coefficient як дільника.
- * DTO `@Min(0.000001)` блокує coefficient=0 на write-path, але legacy/seed/CSV-import дані
- * можуть мати 0. `?? 1` НЕ ловить 0 (nullish coalescing спрацьовує лише на null/undefined).
- * `safeCoeff` повертає 1 для null/undefined/0/NaN/негативних значень.
- */
-function safeCoeff(value: number | null | undefined): number {
-  if (value == null || !Number.isFinite(value) || value <= 0) return 1;
-  return value;
-}
 
 @Injectable()
 export class InvoicesService {
@@ -234,12 +225,7 @@ export class InvoicesService {
     const inv = await this.prisma.invoice.findFirst({ where: { id, orgId, deletedAt: null } });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
 
-    const allowed = INV_TRANSITIONS[inv.status as InvStatus] ?? [];
-    if (!allowed.includes(newStatus)) {
-      throw new BadRequestException(
-        `Перехід зі статусу "${inv.status}" в "${newStatus}" неможливий`,
-      );
-    }
+    assertFsmTransition(INV_TRANSITIONS, inv.status as InvStatus, newStatus);
 
     await this.prisma.invoice.update({ where: { id, orgId }, data: { status: newStatus } });
     return this.findOne(orgId, id);

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
+import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -325,12 +326,7 @@ export class PurchaseOrdersService {
         const po = await tx.purchaseOrder.findFirst({ where: { id, orgId, deletedAt: null } });
         if (!po) throw new NotFoundException('Замовлення не знайдено');
 
-        const allowed = PO_TRANSITIONS[po.status as POStatus] ?? [];
-        if (!allowed.includes(newStatus)) {
-          throw new BadRequestException(
-            `Перехід зі статусу "${po.status}" в "${newStatus}" неможливий`,
-          );
-        }
+        assertFsmTransition(PO_TRANSITIONS, po.status as POStatus, newStatus);
 
         await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
       },

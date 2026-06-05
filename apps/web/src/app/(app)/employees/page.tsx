@@ -48,7 +48,7 @@ import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
-import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
@@ -265,13 +265,7 @@ export default function EmployeesPage() {
     [saveFilter, search, roleFilter, showDeleted, features.toastEnabled],
   );
 
-  // ─── Bulk select ──────────────────────────────────────
-  const bulkSelect = useBulkSelect(employees);
-
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
-  }, [bulkSelect.someSelected]);
+  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(employees);
 
   // `load` is intentionally omitted from deps — it's recreated each render
   // but its effective input (filters from page state) is captured at click time

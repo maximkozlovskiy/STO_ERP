@@ -27,7 +27,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
-import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -157,11 +157,7 @@ export default function ServicesTab() {
   // Bug #328: `?? []` creates a fresh array literal each render → useBulkSelect prunes
   // every cycle. Use module-level frozen EMPTY_ITEMS for stable reference.
   const servicesItems = services?.items ?? (EMPTY_ITEMS as unknown as Service[]);
-  const bulkSelect = useBulkSelect(servicesItems);
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
-  }, [bulkSelect.someSelected]);
+  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(servicesItems);
 
   const servicesLoadRef = useRef<(() => void) | null>(null);
 

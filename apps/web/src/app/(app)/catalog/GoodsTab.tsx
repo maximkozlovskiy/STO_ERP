@@ -51,7 +51,7 @@ import {
 import { useSortState } from '@/hooks/useSortState';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
-import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
@@ -59,6 +59,7 @@ import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 import { fmtMoney } from '@/lib/format';
 import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
+import { GOOD_TYPE_LABELS, GOOD_TYPE_BADGE } from '@sto/shared';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -120,19 +121,6 @@ type GoodDetailTab = 'info' | 'barcodes';
 interface GoodsFilters extends Record<string, unknown> {
   search: string;
 }
-
-const GOOD_TYPE_LABELS: Record<string, string> = {
-  SPARE_PART: 'Запчастина',
-  CONSUMABLE: 'Витратний матеріал',
-  MATERIAL: 'Матеріал',
-  TOOL: 'Інструмент',
-};
-const GOOD_TYPE_BADGE: Record<string, BadgeVariant> = {
-  SPARE_PART: 'default',
-  CONSUMABLE: 'secondary',
-  MATERIAL: 'warning',
-  TOOL: 'success',
-};
 
 import { Pagination } from '@/components/ui/pagination';
 
@@ -250,11 +238,7 @@ export default function GoodsTab() {
       return (a.name ?? '').localeCompare(b.name ?? '', 'uk') * dir;
     });
   }, [rawGoodsItems, goodsSort]);
-  const bulkSelect = useBulkSelect(goodsItems);
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
-  }, [bulkSelect.someSelected]);
+  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(goodsItems);
 
   const goodsLoadRef = useRef<(() => void) | null>(null);
 

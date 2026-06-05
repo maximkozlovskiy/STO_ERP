@@ -1,8 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { X, UserPlus, FilePlus, Search } from 'lucide-react';
+import { UserPlus, FilePlus } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { EntityPickerField } from '@/components/ui/entity-picker-field';
+import {
+  CounterpartyEditModal,
+  type CounterpartyForModal,
+} from '@/components/ui/CounterpartyEditModal';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/button';
@@ -149,6 +154,21 @@ export function CalendarSlotModal({
 }: CalendarSlotModalProps) {
   const { confirm, dialogProps } = useConfirm();
   const mountedRef = useRef(true);
+
+  // ── Detail modals ─────────────────────────────────────────────────────────
+  const [cpDetailOpen, setCpDetailOpen] = useState(false);
+  const [cpDetailData, setCpDetailData] = useState<CounterpartyForModal | null>(null);
+
+  const openCpDetail = useCallback(async () => {
+    if (!form.counterpartyId) return;
+    try {
+      const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${form.counterpartyId}`);
+      setCpDetailData(cp);
+      setCpDetailOpen(true);
+    } catch {
+      /* ignore */
+    }
+  }, [form.counterpartyId]);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -720,37 +740,21 @@ export function CalendarSlotModal({
                 Клієнт <span className="text-destructive-text">*</span>
               </label>
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={isEditingPast}
-                  onClick={() => !isEditingPast && setCpPickerOpen(true)}
-                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <span
-                    className={
-                      form.counterpartyDisplay
-                        ? 'text-foreground truncate'
-                        : 'text-muted-foreground'
-                    }
-                  >
-                    {form.counterpartyDisplay || 'Обрати клієнта…'}
-                  </span>
-                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                </button>
-                {form.counterpartyDisplay && !isEditingPast && (
-                  <button
-                    type="button"
-                    onClick={() => {
+                <div className="flex-1 min-w-0">
+                  <EntityPickerField
+                    display={form.counterpartyDisplay}
+                    placeholder="Обрати клієнта…"
+                    disabled={isEditingPast}
+                    hidePick={isEditingPast}
+                    onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
+                    onPick={() => setCpPickerOpen(true)}
+                    onClear={() => {
                       setCpDisplay('');
                       setCpPhone(null);
                       setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' }));
                     }}
-                    className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                    aria-label="Очистити"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+                  />
+                </div>
                 {!isEditingPast && (
                   <Button
                     variant="outline"
@@ -776,31 +780,17 @@ export function CalendarSlotModal({
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Наряд</label>
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={isEditingPast}
-                  onClick={() => !isEditingPast && setWoPickerOpen(true)}
-                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors min-w-0 h-9 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <span
-                    className={
-                      form.workOrderDisplay ? 'text-foreground truncate' : 'text-muted-foreground'
-                    }
-                  >
-                    {form.workOrderDisplay || 'Обрати наряд…'}
-                  </span>
-                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                </button>
-                {form.workOrderDisplay && !isEditingPast && (
-                  <button
-                    type="button"
-                    onClick={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
-                    className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                    aria-label="Очистити"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+                <div className="flex-1 min-w-0">
+                  <EntityPickerField
+                    display={form.workOrderDisplay}
+                    placeholder="Обрати наряд…"
+                    disabled={isEditingPast}
+                    hidePick={isEditingPast}
+                    onOpenDetail={undefined}
+                    onPick={() => setWoPickerOpen(true)}
+                    onClear={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
+                  />
+                </div>
                 {!isEditingPast && (
                   <Button
                     variant="outline"
@@ -955,24 +945,20 @@ export function CalendarSlotModal({
           {showNewWo && (
             <div className="bg-secondary rounded-lg p-3 space-y-2 border border-border">
               <p className="text-xs font-medium text-foreground">Новий наряд</p>
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => setNewWoCpPickerOpen(true)}
-                  className="flex-1 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-left hover:border-primary transition-colors"
-                >
-                  <span
-                    className={
-                      newWo.counterpartyDisplay
-                        ? 'text-foreground truncate'
-                        : 'text-muted-foreground'
-                    }
-                  >
-                    {newWo.counterpartyDisplay || 'Обрати клієнта…'}
-                  </span>
-                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                </button>
-              </div>
+              <EntityPickerField
+                display={newWo.counterpartyDisplay}
+                placeholder="Обрати клієнта…"
+                onOpenDetail={undefined}
+                onPick={() => setNewWoCpPickerOpen(true)}
+                onClear={() =>
+                  setNewWo(v => ({
+                    ...v,
+                    counterpartyId: '',
+                    counterpartyDisplay: '',
+                    vehicleId: '',
+                  }))
+                }
+              />
               <div className="grid grid-cols-2 gap-2">
                 <Select
                   value={newWo.vehicleId}
@@ -1179,6 +1165,27 @@ export function CalendarSlotModal({
         </div>
       </div>
       <ConfirmDialog {...dialogProps} />
+      <CounterpartyEditModal
+        open={cpDetailOpen}
+        counterparty={cpDetailData}
+        onClose={() => setCpDetailOpen(false)}
+        onSaved={updated => {
+          setCpDetailData(updated);
+          setCpDisplay(
+            updated.companyName ??
+              [updated.lastName, updated.firstName].filter(Boolean).join(' ') ??
+              '',
+          );
+          setForm(f => ({
+            ...f,
+            counterpartyDisplay:
+              updated.companyName ??
+              [updated.lastName, updated.firstName].filter(Boolean).join(' ') ??
+              '',
+          }));
+          setCpDetailOpen(false);
+        }}
+      />
     </>
   );
 }

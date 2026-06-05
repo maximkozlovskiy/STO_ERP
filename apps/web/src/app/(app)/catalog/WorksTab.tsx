@@ -40,7 +40,7 @@ import {
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
-import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -184,11 +184,7 @@ export default function WorksTab() {
       return (a.name ?? '').localeCompare(b.name ?? '', 'uk') * dir;
     });
   }, [rawWorksItems, worksSort]);
-  const bulkSelect = useBulkSelect(worksItems);
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
-  }, [bulkSelect.someSelected]);
+  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(worksItems);
 
   // loadRef allows bulkDelete (defined before load) to call the latest load()
   const worksLoadRef = useRef<(() => void) | null>(null);

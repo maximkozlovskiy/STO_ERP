@@ -51,7 +51,7 @@ import {
 import { useSortState } from '@/hooks/useSortState';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
-import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
@@ -180,13 +180,7 @@ export default function PurchaseOrdersPage() {
     [saveFilter, status, q, showDeleted, dateFrom, dateTo, features.toastEnabled],
   );
 
-  // Bulk select
-  const bulkSelect = useBulkSelect(orders);
-
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
-  }, [bulkSelect.someSelected]);
+  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(orders);
 
   // Unsaved guard for create/receive modals
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });

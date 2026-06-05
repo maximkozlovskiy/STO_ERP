@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { Prisma } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
+import { safeCoeff } from '../../common/utils/math';
+import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -35,17 +37,6 @@ import {
   UpdateWorkOrderPartDto,
   WorkOrderPartResponseDto,
 } from './work-orders.dto';
-
-/**
- * Bug #316: defense-in-depth для coefficient як дільника.
- * DTO `@Min(0.000001)` блокує coefficient=0 на write-path, але legacy/seed/CSV-import дані
- * можуть мати 0. `?? 1` НЕ ловить 0 (nullish coalescing спрацьовує лише на null/undefined).
- * `safeCoeff` повертає 1 для null/undefined/0/NaN/негативних значень — безпечно для `qty / coeff`.
- */
-function safeCoeff(value: number | null | undefined): number {
-  if (value == null || !Number.isFinite(value) || value <= 0) return 1;
-  return value;
-}
 
 @Injectable()
 export class WorkOrdersService {
@@ -554,12 +545,7 @@ export class WorkOrdersService {
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
 
-    const allowed = WORK_ORDER_TRANSITIONS[wo.status];
-    if (!allowed.includes(newStatus)) {
-      throw new BadRequestException(
-        `Перехід зі статусу "${wo.status}" в "${newStatus}" неможливий`,
-      );
-    }
+    assertFsmTransition(WORK_ORDER_TRANSITIONS, wo.status, newStatus);
 
     const updates: { status: WorkOrderStatus; completedAt?: Date } = { status: newStatus };
     if (newStatus === 'COMPLETED') updates.completedAt = new Date();

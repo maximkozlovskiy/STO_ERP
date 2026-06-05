@@ -13,6 +13,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { cn, daysUntil } from '@/lib/utils';
 import { AnimatedBody } from '@/components/ui/modal';
 import { fmtMoney, fmtInt, fmtDate } from '@/lib/format';
+import {
+  COUNTERPARTY_TYPE_LABELS,
+  COUNTERPARTY_TYPE_BADGE,
+  CONTRACT_TYPE_LABELS,
+} from '@sto/shared';
 
 const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 const kyivToday = () => KYIV_YMD.format(new Date());
@@ -129,11 +134,6 @@ interface Contract {
   createdAt: string;
 }
 
-const CONTRACT_TYPE_LABELS: Record<string, string> = {
-  PURCHASE: 'Купівля',
-  SALE: 'Продаж',
-};
-
 type CrmTab =
   | 'info'
   | 'garages'
@@ -156,11 +156,7 @@ const LEGAL_FORM_LABELS: Record<string, string> = {
   PP: 'ПП',
   OTHER: 'Інше',
 };
-const TYPE_BADGE: Record<string, BadgeVariant> = {
-  CLIENT: 'default',
-  SUPPLIER: 'secondary',
-  BOTH: 'warning',
-};
+const TYPE_BADGE = COUNTERPARTY_TYPE_BADGE;
 
 const WO_STATUS_LABELS: Record<string, string> = {
   NEW: 'Новий',

@@ -55,7 +55,7 @@ import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-ba
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useInlineEdit } from '@/hooks/useInlineEdit';
-import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useColumnDrag } from '@/hooks/useColumnDrag';
@@ -286,15 +286,7 @@ export default function WorkOrdersPage() {
     ],
   );
 
-  const bulkSelect = useBulkSelect(orders);
-
-  // Sync indeterminate state on the "select-all" checkbox.
-  // DOM property `indeterminate` is not exposed via the React `checked` prop,
-  // so we set it imperatively whenever `someSelected` changes.
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
-  }, [bulkSelect.someSelected]);
+  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(orders);
 
   const inlineEdit = useInlineEdit({
     enabled: features.inlineEditEnabled,

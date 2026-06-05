@@ -220,3 +220,38 @@ export const EMPLOYEE_ROLE_BADGE: Record<string, BadgeVariant> = {
   CLIENT: 'secondary',
   XLSX_MANAGER: 'secondary',
 };
+
+// ─── Counterparty ─────────────────────────────────────────────────────────────
+
+export const COUNTERPARTY_TYPE_LABELS: Record<string, string> = {
+  CLIENT: 'Клієнт',
+  SUPPLIER: 'Постачальник',
+  BOTH: 'Обидва',
+};
+
+export const COUNTERPARTY_TYPE_BADGE: Record<string, BadgeVariant> = {
+  CLIENT: 'default',
+  SUPPLIER: 'secondary',
+  BOTH: 'warning',
+};
+
+export const CONTRACT_TYPE_LABELS: Record<string, string> = {
+  PURCHASE: 'Купівля',
+  SALE: 'Продаж',
+};
+
+// ─── Good ─────────────────────────────────────────────────────────────────────
+
+export const GOOD_TYPE_LABELS: Record<string, string> = {
+  SPARE_PART: 'Запчастина',
+  CONSUMABLE: 'Витратний матеріал',
+  MATERIAL: 'Матеріал',
+  TOOL: 'Інструмент',
+};
+
+export const GOOD_TYPE_BADGE: Record<string, BadgeVariant> = {
+  SPARE_PART: 'default',
+  CONSUMABLE: 'secondary',
+  MATERIAL: 'warning',
+  TOOL: 'success',
+};
