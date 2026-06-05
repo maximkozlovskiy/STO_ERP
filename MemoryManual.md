@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+a99c76a fix(tester): Bugs #354-#356 — dead /new routes + usePaginatedList queryKey shape + TopShell prefetch payload match
+8ae78a8 docs(memory): update MemoryManual after sto-review-agent — Sprint 1-9 refactor (4 fixes)
 fedc874 fix(review): a11y — type=button + aria-label on extracted WO section buttons
 2b0f15e fix(review): remove unused vitest imports in new hook tests
 fe137e0 fix(review): Sprint refactor follow-ups — safeCoeff for PO/SD display DTOs + centralized kyivToday + React.X named import
@@ -69,7 +71,9 @@ cde1792 fix(review): sync shared FSM transitions with backend authority
 
 TypeScript: ✅ 0 errors (api, web, shared)
 
-Latest review: 2026-06-05 (sto-review-agent, scope: Sprint 1-9 refactor — useBulkIndeterminate/useCachedRefData/useListPage hooks, kyivToday centralization, assertFsmTransition/safeCoeff/calculatePagination utilities, 5 services migrated, new tests, all migrated pages) — **4 fix(review) commits, HEAD fedc874.** (1) 90d0cf2 — 3 stale contract specs (api 643→646/646 baseline restored): `warehouses.contract.spec.ts` `findAll` controller now forwards 3rd arg `showDeleted: false` (sync from commit 86f4569's PO controller pattern); `exchange-rates.contract.spec.ts` + `settings.contract.spec.ts` missing `NbuFetchScheduler` DI mock (Settings injects scheduler for organisation update side-effects, ExchangeRatesController for manual fetch endpoint). (2) fe137e0 — 3 follow-up fixes after Sprint refactor: (a) `purchase-orders.service.toDto` + `stock-documents.service.toDto` returned `coefficient ?? 1` to frontend — `??` НЕ ловить legacy/seed coefficient=0 (nullish coalescing only fires on null/undefined); replaced with `safeCoeff()` (defense-in-depth, same Bug #316 pattern that motivated creating safeCoeff). Frontend uses `coefficient` as divisor for display↔base conversion — division-by-zero у display рендерив би Infinity у UI. (b) Sprint 6 централізація kyivToday() пропустила 3 inline duplicates: `TopShell.tsx` (3 sites — calendar/dashboard/reports prefetch), `dashboard/page.tsx` (KYIV_YMD_FMT), `reports/page.tsx` (2 sites — from/to useState initializers). Залишений `KYIV_DATE_FMT` у TopShell тільки для `weekStart` (різний Date argument), `KYIV_YMD` у useDashboardData.ts тільки для `kyivWeekStart` (теж різний). (c) `catalog/UnitsTab.tsx` мав `React.KeyboardEvent` — мігровано на named import. (3) 2b0f15e — unused `beforeEach`/`vi` у двох test files з нових Sprint 8 тестів. (4) fedc874 — a11y: 5 кнопок у `WorkOrderLinesSection`/`WorkOrderPartsSection` (виокремлених з PageClient у Sprint 4 — e880a2f3) без `type="button"` — defensive convention §8.5; додано `type="button"` + `aria-label` для «×» delete-кнопок (screen reader раніше читав лише "x"). **Verified clean (no fixes needed):** (a) fsm.ts/math.ts/pagination.ts utilities — proper типи, defensive guards (Math.max/Math.min для clamp, ?? для defaults, Number.isFinite для math.safeCoeff). (b) Hook tests (useBulkIndeterminate/useCachedRefData/useListPage) покривають state initialization, ref-binding, AbortController cancel, transform option, stale-Set pruning, multiple pageKey isolation. (c) useCachedRefData має AbortController + `if (ac.signal.aborted) return` guards перед setState + intentional `[]` deps. (d) useListPage не включає bulkSelect (рекомендовано окремо через useBulkIndeterminate для stable items reference). (e) calculatePagination integration у 5 services — `take` повертається в response `limit` field (правильно — клієнт бачить дозволений ліміт, не запитаний). (f) safeCoeff викликається в `fetchPartCoefficients` work-orders.service — `coeffMap[part.id] ?? 1` у call sites є коректним fallback ТІЛЬКИ для відсутніх ключів (legacy 0 уже замінено на 1 у safeCoeff). (g) calendar/useCalendarState.ts: всі useEffect мають proper cleanup (clearTimeout/cancelAnimationFrame/AbortController/removeEventListener), pointer interactions reset на cancel, drawing/resizing pointer modes reset разом, ResizeObserver disconnect on unmount. (h) work-orders sections: WorkOrderMediaSection Escape handler у lightbox має cleanup. (i) 0 React.X namespace після UnitsTab fix; 0 any у production; 0 console.log; 0 inline HSL; 0 pixel arbitrary Tailwind; 0 UTF-8 BOM у нових файлах. Tests: api 646/646, web 302/302, shared 0 errors.
+Latest tester: 2026-06-05 (sto-tester-agent, scope: Sprint 1-9 рефакторинг + QueryKey shape audit, HEAD a99c76a) — **3 bugs found (1 HIGH, 2 MEDIUM) + 3 fixed + 2 regression-guard тести. Sprint 1-9 фокус-зони чисті:** (a) calculatePagination — усі 5 migrated services (goods/invoices/po/sd/wo) повертають `limit: take` (capped value); DTO `@Min(1) @Max(200)` блокує невалідні значення на pipe-level. (b) useListPage — `resetPage`/`setPage(1)` коректно викликаються на filter changes у 6 pages; `EMPTY_ITEMS as T[]` стабільна reference. (c) kyivToday — SSR-safe (`new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' })`); usage 14+ callsites усі у `useState(() => kyivToday())` або `useMemo` — НЕ у render path. (d) assertFsmTransition — 4 модулі (WO/INV/PO/DOC), 0 self-loops, property-based invariants 7/7. (e) useBulkIndeterminate — 10 callsites з `EMPTY_ITEMS as T[]`; stale-Set prune успадковано від useBulkSelect. **Знайдені баги ПОЗА Sprint 1-9:** (1) Bug #354 [HIGH] — `/work-orders/new`, `/counterparties/new` маршрути не існують; `useGlobalShortcuts.ts` (N shortcut) + `commands.ts` (Command Palette) навігували туди → 404/broken detail. Fix: `?action=new` query + `useSearchParams` listener + Suspense обгортка у обох сторінках. (2) Bug #355 [MEDIUM] — `usePaginatedList` queryKey shape `[key, filters]` (2-element) ≠ `xKeys.list(filters)` factory `[...all, 'list', filters]` (3-element); TopShell prefetches летіли у dead cache slot для 5 ресурсів (counterparties/invoices/work-orders/po/sd). Fix: `queryKey: [key, 'list', filters]` + 2 regression-guard тести через `qc.getQueryCache().getAll()`. (3) Bug #356 [MEDIUM] — TopShell prefetch payload shape ≠ page first-mount filter shape (TopShell не знав про `sortBy/sortDir/dateFrom/dateTo` defaults від useSortState+kyivToday). Fix: PREFETCH_MAP для 6 ресурсів передає ПОВНИЙ filter object. tsc 0 errors api+web+shared. Web 304/304, API 646/646.
+
+Previous review: 2026-06-05 (sto-review-agent, scope: Sprint 1-9 refactor — useBulkIndeterminate/useCachedRefData/useListPage hooks, kyivToday centralization, assertFsmTransition/safeCoeff/calculatePagination utilities, 5 services migrated, new tests, all migrated pages) — **4 fix(review) commits, HEAD fedc874.** (1) 90d0cf2 — 3 stale contract specs (api 643→646/646 baseline restored): `warehouses.contract.spec.ts` `findAll` controller now forwards 3rd arg `showDeleted: false` (sync from commit 86f4569's PO controller pattern); `exchange-rates.contract.spec.ts` + `settings.contract.spec.ts` missing `NbuFetchScheduler` DI mock (Settings injects scheduler for organisation update side-effects, ExchangeRatesController for manual fetch endpoint). (2) fe137e0 — 3 follow-up fixes after Sprint refactor: (a) `purchase-orders.service.toDto` + `stock-documents.service.toDto` returned `coefficient ?? 1` to frontend — `??` НЕ ловить legacy/seed coefficient=0 (nullish coalescing only fires on null/undefined); replaced with `safeCoeff()` (defense-in-depth, same Bug #316 pattern that motivated creating safeCoeff). Frontend uses `coefficient` as divisor for display↔base conversion — division-by-zero у display рендерив би Infinity у UI. (b) Sprint 6 централізація kyivToday() пропустила 3 inline duplicates: `TopShell.tsx` (3 sites — calendar/dashboard/reports prefetch), `dashboard/page.tsx` (KYIV_YMD_FMT), `reports/page.tsx` (2 sites — from/to useState initializers). Залишений `KYIV_DATE_FMT` у TopShell тільки для `weekStart` (різний Date argument), `KYIV_YMD` у useDashboardData.ts тільки для `kyivWeekStart` (теж різний). (c) `catalog/UnitsTab.tsx` мав `React.KeyboardEvent` — мігровано на named import. (3) 2b0f15e — unused `beforeEach`/`vi` у двох test files з нових Sprint 8 тестів. (4) fedc874 — a11y: 5 кнопок у `WorkOrderLinesSection`/`WorkOrderPartsSection` (виокремлених з PageClient у Sprint 4 — e880a2f3) без `type="button"` — defensive convention §8.5; додано `type="button"` + `aria-label` для «×» delete-кнопок (screen reader раніше читав лише "x"). **Verified clean (no fixes needed):** (a) fsm.ts/math.ts/pagination.ts utilities — proper типи, defensive guards (Math.max/Math.min для clamp, ?? для defaults, Number.isFinite для math.safeCoeff). (b) Hook tests (useBulkIndeterminate/useCachedRefData/useListPage) покривають state initialization, ref-binding, AbortController cancel, transform option, stale-Set pruning, multiple pageKey isolation. (c) useCachedRefData має AbortController + `if (ac.signal.aborted) return` guards перед setState + intentional `[]` deps. (d) useListPage не включає bulkSelect (рекомендовано окремо через useBulkIndeterminate для stable items reference). (e) calculatePagination integration у 5 services — `take` повертається в response `limit` field (правильно — клієнт бачить дозволений ліміт, не запитаний). (f) safeCoeff викликається в `fetchPartCoefficients` work-orders.service — `coeffMap[part.id] ?? 1` у call sites є коректним fallback ТІЛЬКИ для відсутніх ключів (legacy 0 уже замінено на 1 у safeCoeff). (g) calendar/useCalendarState.ts: всі useEffect мають proper cleanup (clearTimeout/cancelAnimationFrame/AbortController/removeEventListener), pointer interactions reset на cancel, drawing/resizing pointer modes reset разом, ResizeObserver disconnect on unmount. (h) work-orders sections: WorkOrderMediaSection Escape handler у lightbox має cleanup. (i) 0 React.X namespace після UnitsTab fix; 0 any у production; 0 console.log; 0 inline HSL; 0 pixel arbitrary Tailwind; 0 UTF-8 BOM у нових файлах. Tests: api 646/646, web 302/302, shared 0 errors.
 
 Latest sync: 2026-06-05 (sto-sync-agent, HEAD f93ed92) — **Direction 1: 0 missing. Direction 2: 0 URL mismatches. Direction 3: 1 type fix** (CpType string literal union `'CLIENT'|'SUPPLIER'|'BOTH'` instead of plain `string`). Stale `.next/types` for renamed routes `/crm` and `/vat` removed (auto-generated artifacts from refactor commits 43a111f8/56660d45). 3 comment-level stale references to `/crm` fixed (useGlobalShortcuts, command-palette, WorksTab). tsc 0 errors api+web.
 
@@ -1116,6 +1120,56 @@ apiFetch<Branch[]>('/branches').then(d => {
 ---
 
 ## Pricing: розцінка по PO і по списку XLSX/CSV (e754ad4 + c24ffa7)
+
+### Gotcha #354-#356 — TanStack Query queryKey shape contract (Sprint 1-9 tester)
+
+**Bug #354 — Dead routes у keyboard shortcuts / command palette:**
+
+- Command Palette (`lib/commands.ts`) і `useGlobalShortcuts.ts` (N hotkey) можуть посилатись на `/X/new` маршрути яких НЕ існує (тільки `/X/[id]` + `/X` list).
+- Якщо create-flow — модалка (`setModal(true)`), а не окрема сторінка → навігація на `/X/new` потрапляє у `[id]` route з `id="new"` → API 404.
+- Правильний паттерн: `?action=new` query param + listener у page.tsx:
+  ```ts
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams?.get('action') === 'new') {
+      setModal(true);
+      router.replace('/X', { scroll: false });
+    }
+  }, [searchParams, router]);
+  ```
+- ОБОВ'ЯЗКОВО обгорнути page у `<Suspense fallback={null}>` (Next.js static-export вимога для `useSearchParams`).
+- Перевірка: `find apps/web/src/app -type d -name "new"` + `grep "'/<resource>/new'"` — якщо callsite є а директорії немає → bug.
+
+**Bug #355 — `usePaginatedList` queryKey shape має МАТЧИТИ factory:**
+
+- `xKeys.list(filters)` factory = `[...xKeys.all, 'list', filters]` = 3-element `[resource, 'list', filters]`.
+- `usePaginatedList(endpoint, filters, { queryKey })` ОБОВ'ЯЗКОВО будує `queryKey: [key, 'list', filters]` (НЕ `[key, filters]`).
+- Інакше: TopShell prefetch `xKeys.list({...})` потрапляє у slot A, page-side `usePaginatedList` читає slot B → +1 RTT, prefetch мертвий.
+- Regression-guard паттерн: створювати власний QueryClient у тесті, рендерити hook, читати `qc.getQueryCache().getAll()`, асертити shape `[key, 'list', filters]`.
+
+**Bug #356 — TopShell prefetch payload-shape має МАТЧИТИ page first-mount filter object:**
+
+- TanStack Query робить deep-hash порівняння filter object → різні ключі-значення = різні cache slots.
+- TopShell не "знає" про `sortBy/sortDir` (useSortState) і `dateFrom/dateTo` (kyivToday() defaults) які додає сторінка.
+- Правильно: TopShell передає ПОВНИЙ initial filter object:
+  ```ts
+  const today = kyivToday();
+  queryKey: xKeys.list({
+    page: 1,
+    limit: 20,
+    status: '',
+    q: '',
+    showDeleted: false,
+    dateFrom: today,
+    dateTo: today,
+    sortBy: 'createdAt',
+    sortDir: 'desc',
+  });
+  ```
+- Кожне нове filter-поле на сторінці потребує парного оновлення PREFETCH_MAP у TopShell.
+- Альтернатива (захищеніша): експортувати `defaultXFilters()` з hook-файлу і викликати з обох місць.
+
+---
 
 ### Gotcha #197 — CRITICAL: `apiFetch` + FormData = завжди 406
 
