@@ -9,10 +9,11 @@
 ## Останній commit
 
 ```
+a681c25 fix(sync): stale useCallback dep setPage→resetPage in 3 applyFilter handlers
+41ed7b9 simplify: use resetPage() instead of setPage(1) + rename addingBarcode2 suffix
+f931d16 docs(memory): update MemoryManual after sto-tester E2E session — 23 failed → 207 passed
 77b79c1 fix(e2e): update tests after /crm→/counterparties rename and settings restructure
 55404dc docs(memory,skills): update after sto-optimize-agent (4 perf fixes) + 2 new patterns
-baec9ae perf(optimize): post-Sprint 1-9 audit — 4 fixes (BE + DB + FE)
-a99c76a fix(tester): Bugs #354-#356 — dead /new routes + usePaginatedList queryKey shape + TopShell prefetch payload match
 8ae78a8 docs(memory): update MemoryManual after sto-review-agent — Sprint 1-9 refactor (4 fixes)
 fedc874 fix(review): a11y — type=button + aria-label on extracted WO section buttons
 2b0f15e fix(review): remove unused vitest imports in new hook tests
@@ -73,6 +74,8 @@ cde1792 fix(review): sync shared FSM transitions with backend authority
 Дата: 2026-06-05
 
 TypeScript: ✅ 0 errors (api, web, shared)
+
+Latest sync: 2026-06-05 (sto-sync-agent Cycle 6, HEAD a681c25) — **Direction 1: 0 missing. Direction 2: 0 URL mismatches. Direction 3: 1 dep-array fix.** Simplify commit (41ed7b9) replaced `setPage(1)→resetPage()` in handler bodies for 4 pages, but only counterparties/page.tsx had its `useCallback` dep array updated (`[setShowDeleted, resetPage, setActiveSavedFilterId]`). Employees, stock-documents, and work-orders pages still had `setPage` in dep array while calling `resetPage()` inside — stale dependency causing React hooks lint warning and potential stale-closure on env where `setPage` identity changed. Fixed in 3 files. tsc 0 errors api+web.
 
 Latest E2E: 2026-06-05 (sto-tester-agent, scope: повний прогін E2E + виправлення усіх падінь, HEAD 77b79c1) — **23 failed → 207 passed / 9 skipped / 0 failed.** Корневі причини (всі test-side, UI навмисно змінено): (1) Rout rename `/crm` → `/counterparties` у 5 spec файлах (api-errors, auth-flow, console-errors, crm, crud-counterparty, dashboard). (2) Settings tabs restructure: ready-signal "Організація" → "Нумерація" + 7 нових вкладок (Нумерація / Робочі дні / Сповіщення / Оформлення / Інтерфейс / Нагадування / Інтеграції). (3) **EntityPickerField + SearchPickerModal migration** — invoice/PO модалки замінили `<input placeholder="телефон/Ім'я">` на button-based picker (aria-label="Обрати" → opens dialog "Оберіть контрагента/постачальника/товар"); результати у picker — `<button class="w-full text-left ...">`. Виправлено invoices.spec.ts, crud-invoice.spec.ts, crud-purchase-order.spec.ts. (4) **Single-noun add-button** — `crud-pricing-rules` "Додати" → "Правило". (5) **Dynamic add-button label per tab** — `crud-infrastructure` має різні add-button labels для кожного таба (Зони→Зона, Пости→Пост, Склади→Склад) + tabbed page не має `<h2>` з назвою таба (тільки `<h1>Інфраструктура</h1>`). (6) **Pagination + sort** — `crud-employee` `створити механіка/адміна` потребувало пошуку перед row assertion (sort by lastName asc → нова "Тест" не на 1-й сторінці). (7) **Column-index instability** — `stock-documents.spec.ts:172` documentDate cell використовував hard-coded `td.nth(N)` що ламалось через optional bulk-actions колонку (per-org конфігурабельно) + user column reorder; виправлено на content-regex filter `td:has-text(/^\d{2}\.\d{2}\.\d{4}$/)`. (8) **Icon-only button text** — `stock-documents.spec.ts:600` "+ Додати" локатор не спрацьовував бо `+` — це `<Plus>` icon, не text у name; виправлено на `getByRole('button', { name: /^Додати$/ })`. SKILL.md оновлено: новий entry «E2E тести розходяться з UI після рефакторингу: text-input → EntityPickerField, route rename, dynamic add-button». TypeScript 0 errors api+web+shared. Файли: 14 spec файлів + SKILL.md.
 
