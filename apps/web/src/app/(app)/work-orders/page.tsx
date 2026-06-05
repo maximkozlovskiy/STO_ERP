@@ -168,6 +168,7 @@ function WorkOrdersPageInner() {
   const {
     page,
     setPage,
+    resetPage,
     showDeleted,
     setShowDeleted,
     activeSavedFilterId,
@@ -270,7 +271,7 @@ function WorkOrdersPageInner() {
       setMyOrders(preset.filters.myOrders ?? false);
       setDateFrom(preset.filters.dateFrom ?? '');
       setDateTo(preset.filters.dateTo ?? '');
-      setPage(1);
+      resetPage();
       setActiveSavedFilterId(preset.id);
     },
     [setShowDeleted, setPage, setActiveSavedFilterId],
@@ -560,7 +561,7 @@ function WorkOrdersPageInner() {
               key={v}
               onClick={() => {
                 setStatusFilter(v);
-                setPage(1);
+                resetPage();
                 setActiveSavedFilterId(null);
               }}
               className={cn(
@@ -578,7 +579,7 @@ function WorkOrdersPageInner() {
           <button
             onClick={() => {
               setMyOrders(v => !v);
-              setPage(1);
+              resetPage();
               setActiveSavedFilterId(null);
             }}
             className={cn(
@@ -600,7 +601,7 @@ function WorkOrdersPageInner() {
           value={search}
           onChange={e => {
             setSearch(e.target.value);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="Пошук за номером або клієнтом..."
@@ -611,7 +612,7 @@ function WorkOrdersPageInner() {
           value={dateFrom}
           onChange={v => {
             setDateFrom(v);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="Від"
@@ -622,7 +623,7 @@ function WorkOrdersPageInner() {
           value={dateTo}
           onChange={v => {
             setDateTo(v);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="До"
@@ -634,7 +635,7 @@ function WorkOrdersPageInner() {
           value={categoryFilter}
           onChange={e => {
             setCategoryFilter(e.target.value);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           className="w-52"
@@ -654,7 +655,7 @@ function WorkOrdersPageInner() {
             title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
             onClick={() => {
               setShowDeleted(v => !v);
-              setPage(1);
+              resetPage();
               setActiveSavedFilterId(null);
             }}
             className={cn(showDeleted && 'border-primary text-primary')}

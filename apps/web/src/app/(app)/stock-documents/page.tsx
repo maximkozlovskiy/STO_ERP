@@ -126,6 +126,7 @@ export default function StockDocumentsPage() {
   const {
     page,
     setPage,
+    resetPage,
     showDeleted,
     setShowDeleted,
     activeSavedFilterId,
@@ -225,7 +226,7 @@ export default function StockDocumentsPage() {
       setShowDeleted(preset.filters.showDeleted ?? false);
       setDateFrom(preset.filters.dateFrom ?? '');
       setDateTo(preset.filters.dateTo ?? '');
-      setPage(1);
+      resetPage();
       setActiveSavedFilterId(preset.id);
     },
     [setShowDeleted, setPage, setActiveSavedFilterId],
@@ -431,7 +432,7 @@ export default function StockDocumentsPage() {
               key={t}
               onClick={() => {
                 setTypeFilter(t);
-                setPage(1);
+                resetPage();
                 setActiveSavedFilterId(null);
               }}
               className={cn(
@@ -457,7 +458,7 @@ export default function StockDocumentsPage() {
               key={s}
               onClick={() => {
                 setStatusFilter(s);
-                setPage(1);
+                resetPage();
                 setActiveSavedFilterId(null);
               }}
               className={cn(
@@ -475,7 +476,7 @@ export default function StockDocumentsPage() {
           value={dateFrom}
           onChange={v => {
             setDateFrom(v);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="Від"
@@ -486,7 +487,7 @@ export default function StockDocumentsPage() {
           value={dateTo}
           onChange={v => {
             setDateTo(v);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="До"
@@ -500,7 +501,7 @@ export default function StockDocumentsPage() {
             title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
             onClick={() => {
               setShowDeleted(v => !v);
-              setPage(1);
+              resetPage();
               setActiveSavedFilterId(null);
             }}
             className={cn(showDeleted && 'border-primary text-primary')}

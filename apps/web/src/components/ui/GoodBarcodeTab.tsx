@@ -30,8 +30,8 @@ export function GoodBarcodeTab({ goodId, onCountChange }: GoodBarcodeTabProps) {
   const [barcodeError, setBarcodeError] = useState('');
   const [showAddBarcode, setShowAddBarcode] = useState(false);
   const [addBarcodeForm, setAddBarcodeForm] = useState({ barcode: '', type: 'EAN13' });
-  const [addingBarcode2, setAddingBarcode2] = useState(false);
-  const [deletingBarcodeId2, setDeletingBarcodeId2] = useState<string | null>(null);
+  const [addingBarcode, setAddingBarcode] = useState(false);
+  const [deletingBarcodeId, setDeletingBarcodeId] = useState<string | null>(null);
   const modalBarcodeReqRef = useRef(0);
 
   // Notify parent when count changes
@@ -124,10 +124,10 @@ export function GoodBarcodeTab({ goodId, onCountChange }: GoodBarcodeTabProps) {
                 </Button>
                 <Button
                   size="sm"
-                  loading={addingBarcode2}
+                  loading={addingBarcode}
                   disabled={!addBarcodeForm.barcode}
                   onClick={async () => {
-                    setAddingBarcode2(true);
+                    setAddingBarcode(true);
                     try {
                       const created = await apiFetch<GoodBarcode>(`/goods/${goodId}/barcodes`, {
                         method: 'POST',
@@ -143,7 +143,7 @@ export function GoodBarcodeTab({ goodId, onCountChange }: GoodBarcodeTabProps) {
                     } catch (e: unknown) {
                       toast.error(e instanceof Error ? e.message : 'Помилка');
                     } finally {
-                      setAddingBarcode2(false);
+                      setAddingBarcode(false);
                     }
                   }}
                 >
@@ -180,9 +180,9 @@ export function GoodBarcodeTab({ goodId, onCountChange }: GoodBarcodeTabProps) {
                       <td className="px-3 py-2 text-center">
                         <button
                           type="button"
-                          disabled={deletingBarcodeId2 === bc.id}
+                          disabled={deletingBarcodeId === bc.id}
                           onClick={async () => {
-                            setDeletingBarcodeId2(bc.id);
+                            setDeletingBarcodeId(bc.id);
                             try {
                               await apiFetch(`/goods/${goodId}/barcodes/${bc.id}`, {
                                 method: 'DELETE',
@@ -192,7 +192,7 @@ export function GoodBarcodeTab({ goodId, onCountChange }: GoodBarcodeTabProps) {
                             } catch (e: unknown) {
                               toast.error(e instanceof Error ? e.message : 'Помилка');
                             } finally {
-                              setDeletingBarcodeId2(null);
+                              setDeletingBarcodeId(null);
                             }
                           }}
                           className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"

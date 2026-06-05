@@ -98,6 +98,7 @@ function CrmPageInner() {
   const {
     page,
     setPage,
+    resetPage,
     showDeleted,
     setShowDeleted,
     activeSavedFilterId,
@@ -170,10 +171,10 @@ function CrmPageInner() {
       setSearch(preset.filters.search ?? '');
       setTypeFilter(preset.filters.typeFilter ?? '');
       setShowDeleted(preset.filters.showDeleted ?? false);
-      setPage(1);
+      resetPage();
       setActiveSavedFilterId(preset.id);
     },
-    [setShowDeleted, setPage, setActiveSavedFilterId],
+    [setShowDeleted, resetPage, setActiveSavedFilterId],
   );
 
   const handleSaveFilter = useCallback(
@@ -383,7 +384,7 @@ function CrmPageInner() {
           value={search}
           onChange={e => {
             setSearch(e.target.value);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="Пошук за ім'ям, телефоном, ЄДРПОУ..."
@@ -394,7 +395,7 @@ function CrmPageInner() {
           value={typeFilter}
           onChange={e => {
             setTypeFilter(e.target.value);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           className="w-44"
@@ -412,7 +413,7 @@ function CrmPageInner() {
             title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
             onClick={() => {
               setShowDeleted(d => !d);
-              setPage(1);
+              resetPage();
               setActiveSavedFilterId(null);
             }}
             className={showDeleted ? 'border-primary text-primary' : ''}

@@ -190,6 +190,7 @@ export default function EmployeesPage() {
   const {
     page,
     setPage,
+    resetPage,
     showDeleted,
     setShowDeleted,
     activeSavedFilterId,
@@ -248,7 +249,7 @@ export default function EmployeesPage() {
       setSearch(preset.filters.search ?? '');
       setRoleFilter(preset.filters.roleFilter ?? '');
       setShowDeleted(preset.filters.showDeleted ?? false);
-      setPage(1);
+      resetPage();
       setActiveSavedFilterId(preset.id);
     },
     [setShowDeleted, setPage, setActiveSavedFilterId],
@@ -446,7 +447,7 @@ export default function EmployeesPage() {
           value={search}
           onChange={e => {
             setSearch(e.target.value);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="Пошук за ім'ям..."
@@ -457,7 +458,7 @@ export default function EmployeesPage() {
           value={roleFilter}
           onChange={e => {
             setRoleFilter(e.target.value);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           className="w-48"
@@ -475,7 +476,7 @@ export default function EmployeesPage() {
             title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
             onClick={() => {
               setShowDeleted(d => !d);
-              setPage(1);
+              resetPage();
               setActiveSavedFilterId(null);
             }}
             className={showDeleted ? 'border-primary text-primary' : ''}
