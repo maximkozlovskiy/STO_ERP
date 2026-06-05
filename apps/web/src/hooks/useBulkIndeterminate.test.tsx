@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { it, expect, describe, vi, beforeEach } from 'vitest';
+import { it, expect, describe } from 'vitest';
 import { useBulkIndeterminate } from './useBulkIndeterminate';
 
 interface Row {

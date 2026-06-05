@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { it, expect, describe, vi, beforeEach } from 'vitest';
+import { it, expect, describe, vi } from 'vitest';
 
 // Stub heavy hooks so useListPage can be tested without DOM/localStorage complexity
 vi.mock('./useTableColumns', () => ({
