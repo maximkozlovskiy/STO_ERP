@@ -3626,3 +3626,198 @@ done
 - Будь-яка migration коли cycle = «вилучити утиліту → migrate consumers → оновити dep arrays»: identity stability — інваріант що тримає весь ланцюг. Без guard — будь-хто може випадково regress-ити «cleanup PR» що TS+behavior tests не покажуть.
 
 ---
+
+### 2026-06-05 — `new Date(\`${date}T${time}:00\`)` без TZ суфіксу у frontend = local-time parsing замість Kyiv (Bug #354, #358) — frontend, time-zone, data-integrity
+
+**Сигнал:**
+
+- Static grep: `grep -rnE "new Date\\(.[\\\$\\\{]*[a-zA-Z_]+T[\\\$\\\{]*" apps/web/src` показує патерн `new Date('YYYY-MM-DDTHH:mm:00')` (без `Z`, без `+HH:MM`).
+- Часто слідом викликається `.toISOString()` (надсилається на backend `@IsISO8601()`) АБО використовується для tickFormatter/labelFormatter у Recharts.
+- Тести зелені бо `tsc` приймає синтаксис, unit-vitest запущений у TZ Node host (типово такий же як developer machine → не репродукує).
+- На production WSL2 Windows installer + browser у Києві — все працює. Bug проявляється тільки у:
+  1. multi-TZ deployment (SaaS demo, тестова VM у UTC),
+  2. кочівні працівники з ноутбуками,
+  3. CI runner Linux у UTC (E2E тести можуть або падати, або _випадково_ проходити залежно від дати).
+
+**Причина виникнення:**
+
+- ECMAScript: `new Date('YYYY-MM-DDTHH:mm:00')` (без `Z`/offset) парситься як **local time** через `Date.prototype.constructor` algorithm; ISO 8601 sec 3.4 → правило застосовується для time-only suffix.
+- Розробник пише `${date}T${time}` для backend bridge (бо backend очікує ISO), думає що `.toISOString()` фіксить — насправді він конвертує local-time → UTC, додаючи ще одне зміщення на TZ.
+- Stack Overflow «найпопулярніша» відповідь — без `Z` → саме цей патерн розмножується copy-paste.
+- STO ERP має існуючий `kyivToday()` helper (DST-aware Intl), але **парного writer-helper-а** (Kyiv local string → UTC ISO) не було → розробники самі катували.
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Frontend: будь-яке конструювання Date з рядка YYYY-MM-DDTHH:MM без Z
+grep -rnE "new Date\\(['\"\\`]+[\\\$\\\{0-9A-Za-z_-]+T[\\\$\\\{0-9A-Za-z:_-]+['\"\\`]+\\)" apps/web/src --include="*.ts" --include="*.tsx" | grep -v "Z'" | grep -v "+0" | grep -v "test"
+
+# 2. Спеціально: + 'T00:00' / + 'T00:00:00' (Recharts/dashboard patterns)
+grep -rnE "\\+ ['\"\\`]T[0-9]{2}:[0-9]{2}" apps/web/src
+
+# 3. Перевірити, що toISOString() не використовується одразу після parse local-Date:
+grep -rnE "new Date\\(['\"\\`][^Z]+['\"\\`]\\)\\.toISOString" apps/web/src
+
+# 4. У спрямованому grep по календарю/планнерах/звітах:
+grep -rnE "decimalHoursToISO|kyivLocalToUTC|kyivDateTimeToISO" apps/web/src
+```
+
+**Підхід до фіксу:**
+
+1. **Створити централізовані Kyiv-TZ helpers у `apps/web/src/lib/format.ts`** (one source of truth, як `fmtMoney`/`kyivToday`):
+
+   ```ts
+   const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
+     timeZone: 'Europe/Kyiv',
+     hour: '2-digit',
+     hour12: false,
+   });
+
+   export function kyivOffsetMs(d: Date): number {
+     const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
+     const utcHour = d.getUTCHours();
+     return ((kyivHour - utcHour + 24) % 24) * 3_600_000;
+   }
+
+   export function kyivDateTimeToISO(date: string, time: string): string {
+     const naive = new Date(`${date}T${time}:00Z`); // UTC-naive
+     if (Number.isNaN(naive.getTime())) return '';
+     return new Date(naive.getTime() - kyivOffsetMs(naive)).toISOString();
+   }
+   ```
+
+2. **Замінити всі call-sites:** прямі `new Date(\`${d}T${t}:00\`).toISOString()`→`kyivDateTimeToISO(d, t)`.
+
+3. **Для read-only display ticks/labels** (Recharts XAxis/Tooltip) — використовувати `new Date(d + 'T12:00:00')` (полудень UTC безпечно дає правильний день у Kyiv TZ незалежно від local TZ браузера; не може відкотитись на попередній день навіть у Asia/Tokyo).
+
+4. **Regression-guard test** у `apps/web/src/lib/format.test.ts`:
+
+   ```ts
+   it('літо (EEST +03): 09:00 Kyiv → 06:00 UTC', () => {
+     expect(kyivDateTimeToISO('2026-06-05', '09:00')).toBe('2026-06-05T06:00:00.000Z');
+   });
+   it('зима (EET +02): 09:00 Kyiv → 07:00 UTC', () => {
+     expect(kyivDateTimeToISO('2026-01-15', '09:00')).toBe('2026-01-15T07:00:00.000Z');
+   });
+   it('опівночі: 00:00 Kyiv → 22:00 UTC попереднього дня (літо)', () => {
+     expect(kyivDateTimeToISO('2026-06-05', '00:00')).toBe('2026-06-04T21:00:00.000Z');
+   });
+   ```
+
+**Severity:** HIGH для writer-paths (POST/PATCH з startAt/endAt → silent data corruption у БД), LOW для read-only displays (UI off-by-one, не data corruption).
+
+**Де шукати ще:**
+
+- Frontend модулі з time pickers: `calendar/`, `booking/`, `work-orders/` (plannedAt), `maintenance-schedules/`, `inspection/` (scheduledAt).
+- Reports/dashboard chart formatters: `dashboard/RevenueChart`, `reports/*Chart.tsx`, всі `tickFormatter`/`labelFormatter`.
+- Будь-який `new Date(strDateOnly)` де `strDateOnly = 'YYYY-MM-DD'` без часу → parsed як midnight UTC (тут OK), але `new Date(strDateOnly + 'T00:00')` → midnight local (НЕ OK).
+- Mobile Expo: ті ж патерни, бо JS Date API однаковий; мобілка ще імовірніше працює у різних TZ ніж desktop.
+
+**Анти-патерн (НЕ робити):**
+
+- ❌ Хардкодити `+03:00` як суфікс — порушує DST (взимку Kyiv +02). Див. `feedback_dst_kyiv.md` у `.claude/memory/`.
+- ❌ Використовувати `date-fns-tz/zonedTimeToUtc` як runtime fix — додає важку залежність; одного helper-а з Intl досить.
+
+---
+
+### 2026-06-05 — Boolean-flag invariant (isPrimary/isDefault/isMain) без unique index у DB + service не unsets попередніх при create/update (Bug #357) — backend, business-rule, data-integrity
+
+**Сигнал:**
+
+- Static grep: `grep -nE "isPrimary|isDefault|isMain" packages/database/prisma/schema.prisma` показує `Boolean @default(false)` у моделі.
+- Біля моделі НЕМАЄ `@@unique([orgId, isDefault])` partial index (Postgres дозволяє `WHERE isDefault = true` через raw migration, але Prisma syntax це не виражає).
+- У service: `create({...dto})` / `update({...dto})` приймає `dto.isDefault === true` БЕЗ попереднього `updateMany({isDefault:true}, {isDefault:false})` всередині `$transaction`.
+- Aналогічна модель з тим самим патерном АЛЕ виправлена (наприклад `WarehousesService.create` line 58-63 → `updateMany`) у тому ж codebase — лакмусова перевірка консистентності.
+
+**Причина виникнення:**
+
+- ER-моделювання: розробник думає «isDefault — це бізнес-marker, не constraint». DB не блокує, code не перевіряє → multiple defaults co-existing.
+- Frontend toggle UX часто `<Switch>` — користувач знімає isDefault з А → перевіряє checkbox на B → POST B `{isDefault:true}`. Backend приймає, але старий isDefault на А лишається бо frontend не зробив explicit unset (або зробив, але race window).
+- Часто партнерські сутності `WarehousesService` правильно реалізовано (через історію Bug #220) АЛЕ нова сутність `TaxRate` додана через інший спринт і pattern не перенесено → silent inconsistency у дзеркалі.
+- Bug #351 покрив SOFT-DELETE сторону (auto-promote next sibling). Цей баг покриває CREATE/UPDATE сторону (unset previous).
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Знайти всі моделі з boolean-флагом invariant
+grep -nE "isPrimary\\s+Boolean|isDefault\\s+Boolean|isMain\\s+Boolean" packages/database/prisma/schema.prisma
+
+# 2. Для кожної моделі — перевірити чи є partial unique у migrations
+for model in $(grep -B1 "isPrimary\\|isDefault\\|isMain" packages/database/prisma/schema.prisma | grep "^model " | awk '{print $2}'); do
+  tbl=$(echo "$model" | sed 's/\\([A-Z]\\)/_\\L\\1/g' | sed 's/^_//')
+  grep -rl "CREATE UNIQUE INDEX.*$tbl.*WHERE.*is_" packages/database/prisma/migrations/ || echo "MISSING partial unique: $model"
+done
+
+# 3. Для кожної service.create / service.update — перевірити чи робить unset previous
+for f in apps/api/src/modules/**/(create|update)*.service.ts; do
+  grep -L "updateMany.*isDefault.*false\\|updateMany.*isPrimary.*false\\|updateMany.*isMain.*false" "$f" \\
+    && grep -l "data.*isDefault\\|data.*isPrimary\\|data.*isMain" "$f" \\
+    && echo "MISSING unset: $f"
+done
+
+# 4. Symmetric check: чи є відповідний `remove() auto-promote` (Bug #351 pattern)
+# (вже у §1.1 Soft Delete checklist).
+```
+
+**Підхід до фіксу:**
+
+```ts
+// service.create() для моделі з boolean-флагом
+const item = dto.isDefault
+  ? await this.prisma.$transaction(async tx => {
+      await tx.<model>.updateMany({
+        where: { orgId, isDefault: true },         // unset попередніх
+        data: { isDefault: false },
+      });
+      return tx.<model>.create({ data: { ...dto, isDefault: true, orgId } });
+    })
+  : await this.prisma.<model>.create({ data: { ...dto, isDefault: false, orgId } });
+```
+
+```ts
+// service.update() для моделі з boolean-флагом
+if (dto.isDefault === true) {
+  await this.prisma.$transaction(async tx => {
+    await tx.<model>.updateMany({
+      where: { orgId, isDefault: true, NOT: { id } }, // unset інших
+      data: { isDefault: false },
+    });
+    await tx.<model>.updateMany({
+      where: { id, orgId },
+      data: { ...dto },
+    });
+  });
+} else {
+  await this.prisma.<model>.updateMany({ where: { id, orgId }, data: { ...dto } });
+}
+```
+
+Альтернатива (рекомендовано для нових моделей з самого початку): додати у Prisma migration partial unique index:
+
+```sql
+CREATE UNIQUE INDEX "<table>_org_default_unique"
+  ON "<table>" ("orgId")
+  WHERE "isDefault" = true AND "deletedAt" IS NULL;
+```
+
+Тоді DB кидає P2002 → service-level guard стає defense-in-depth, не primary safety.
+
+**Severity:** MEDIUM. Не crash, але silently broken default selection downstream — користувач створює invoice і не розуміє чому застосовується невірна ставка ПДВ. Складно відтворити при ручному тестуванні (потребує заборгованих станів БД).
+
+**Де шукати ще:**
+
+- `TaxRate.isDefault` — виправлено.
+- `Warehouse.isMain` — `create()` правильно (через P2002 + ConflictException), `remove()` виправлено (Bug #355).
+- `GoodBarcode.isPrimary` — виправлено (Bug #356).
+- `CustomerGarage.isDefault` — перевірити `customer-garages.service.ts` create/update.
+- `GoodUoM.isDefault` — `setDefaultUoM` правильно (line 426-427 у goods.service.ts), `deleteUoM` правильно (line 461-482).
+- `PaymentMethodConfig` — якщо є isDefault — перевірити.
+- `Currency.isBase` (якщо існує) — той же патерн.
+
+**Анти-патерн:**
+
+- ❌ Покладатись на ON CONFLICT у raw SQL — Prisma client не використовує `ON CONFLICT WHERE` syntax.
+- ❌ UI-only guard (приховати toggle) — backend має бути authority. Будь-який ADMIN з валідним JWT може зробити curl PATCH і встановити multiple defaults.
+- ❌ Робити unset попередніх **поза** `$transaction` з create/update — race window: між unset і create інший request може створити ще один default.
+
+---

@@ -120,3 +120,40 @@ const KYIV_YMD_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' 
 export function kyivToday(): string {
   return KYIV_YMD_FMT.format(new Date());
 }
+
+/**
+ * DST-aware offset for `Europe/Kyiv` at a given UTC instant (in ms).
+ * Returns +02h у зимовий період, +03h у літній. Не залежить від local TZ браузера.
+ *
+ * @example kyivOffsetMs(new Date('2026-01-15')) → 7_200_000 (зима EET +02)
+ * @example kyivOffsetMs(new Date('2026-07-15')) → 10_800_000 (літо EEST +03)
+ */
+const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Kyiv',
+  hour: '2-digit',
+  hour12: false,
+});
+
+export function kyivOffsetMs(d: Date): number {
+  const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
+  const utcHour = d.getUTCHours();
+  // Wrap-around: якщо Kyiv 01:00 а UTC 23:00 попереднього дня → kyivHour=1, utcHour=23, diff=-22 → норм +2.
+  return ((kyivHour - utcHour + 24) % 24) * 3_600_000;
+}
+
+/**
+ * Convert a Kyiv-local wall-clock date+time to a true UTC ISO string.
+ * DST-aware. Не залежить від local TZ браузера.
+ *
+ * @example kyivDateTimeToISO('2026-06-05', '09:00') → '2026-06-05T06:00:00.000Z' (літо)
+ * @example kyivDateTimeToISO('2026-01-15', '09:00') → '2026-01-15T07:00:00.000Z' (зима)
+ *
+ * Backend `@IsISO8601()` приймає обидва формати; UTC `Z` явно вказує що це true UTC.
+ */
+export function kyivDateTimeToISO(date: string, time: string): string {
+  // Парсимо як UTC-naive, потім зміщуємо назад на DST-aware offset для Києва.
+  const naive = new Date(`${date}T${time}:00Z`);
+  if (Number.isNaN(naive.getTime())) return '';
+  const offset = kyivOffsetMs(naive);
+  return new Date(naive.getTime() - offset).toISOString();
+}

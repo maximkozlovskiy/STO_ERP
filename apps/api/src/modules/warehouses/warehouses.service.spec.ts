@@ -191,4 +191,58 @@ describe('WarehousesService — isMain invariant', () => {
       );
     });
   });
+
+  describe('remove — auto-promote next sibling after deleting isMain (Bug #355)', () => {
+    it('soft-delete isMain → auto-promote найстарший active sibling як isMain', async () => {
+      // existing: target warehouse є isMain
+      prisma.warehouse.findFirst
+        .mockResolvedValueOnce({ id: 'w-main', isMain: true })
+        // next sibling lookup всередині $transaction
+        .mockResolvedValueOnce({ id: 'w-next' });
+      prisma.warehouse.updateMany
+        .mockResolvedValueOnce({ count: 1 }) // soft-delete
+        .mockResolvedValueOnce({ count: 1 }); // promote
+
+      await service.remove('org-1', 'w-main');
+
+      // 1й updateMany — soft-delete target
+      expect(prisma.warehouse.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { id: 'w-main', orgId: 'org-1', deletedAt: null },
+        data: { deletedAt: expect.any(Date) },
+      });
+      // 2й updateMany — promote next sibling
+      expect(prisma.warehouse.updateMany).toHaveBeenNthCalledWith(2, {
+        where: { id: 'w-next', orgId: 'org-1', deletedAt: null },
+        data: { isMain: true },
+      });
+    });
+
+    it('soft-delete non-main → НЕ викликає promote', async () => {
+      prisma.warehouse.findFirst.mockResolvedValueOnce({ id: 'w-secondary', isMain: false });
+      prisma.warehouse.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.remove('org-1', 'w-secondary');
+
+      // Лише 1 виклик updateMany — soft-delete; promote не виконується
+      expect(prisma.warehouse.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.warehouse.findFirst).toHaveBeenCalledTimes(1); // не шукаємо next sibling
+    });
+
+    it('soft-delete isMain коли НЕМАЄ інших активних → не падає, soft-delete виконується', async () => {
+      prisma.warehouse.findFirst
+        .mockResolvedValueOnce({ id: 'w-only', isMain: true })
+        .mockResolvedValueOnce(null); // нема next sibling
+      prisma.warehouse.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.remove('org-1', 'w-only');
+
+      expect(prisma.warehouse.updateMany).toHaveBeenCalledTimes(1); // лише soft-delete
+    });
+
+    it('кидає NotFoundException якщо warehouse не існує / уже видалено', async () => {
+      prisma.warehouse.findFirst.mockResolvedValueOnce(null);
+      await expect(service.remove('org-1', 'w-missing')).rejects.toThrow(NotFoundException);
+      expect(prisma.warehouse.updateMany).not.toHaveBeenCalled();
+    });
+  });
 });

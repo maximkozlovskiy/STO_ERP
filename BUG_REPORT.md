@@ -10690,3 +10690,139 @@ Hash об'єктів різний → різні cache slots → prefetch dead.
 **Результат:** 10/10 tests passed.
 
 **Статус:** [x] додано (regression-guard, не bug).
+
+---
+
+## Session 2026-06-05 (вечір) — Tester FULL audit: calendar TZ + isPrimary auto-promote + TaxRate uniqueness (HEAD b33249bc)
+
+**Scope:** /sto-tester FULL запуск. Аналіз recent commits (b33249bc → e5a3f869): calendar slot modal CRUD, WorkOrderPreviewModal, date-picker «Сьогодні», dashboard RevenueChart yFmt. Розширений static analysis §1.1 (бізнес-логіка), §1.2 (TS), §1.3 (frontend Kyiv TZ).
+
+**Baseline (Крок 0):**
+
+- TypeScript: api ✓ web ✓ shared ✓ (0 errors).
+- Unit api: 56 files / 646 tests passed.
+- Web component: 28 files / 305 tests passed.
+- Dev server: web :3001 ✓, api :3000 ✓.
+
+---
+
+### Bug #354 — [HIGH] CalendarSlotModal створює ISO дату через `new Date(\`${date}T${time}:00\`)` без TZ — local-time-parsing breaks calendar coverage at non-Kyiv browser/server
+
+**Файли:**
+
+- `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx:670-671` (`addSlot`)
+- `apps/web/src/app/(app)/calendar/calendar.utils.ts:96-97` (`decimalHoursToISO`)
+- `apps/web/src/app/(app)/calendar/useCalendarState.ts:788-790` (resize preview `toISO`)
+
+**Симптом:**
+`new Date('2026-06-05T09:00:00')` без `Z` суфіксу парситься JS як **локальний час браузера**. У браузері в Europe/Kyiv (UTC+3) це дає вірний UTC ISO; У браузері в UTC або CET — час зміщений на 1-3 години. Backend бере точний ISO без додаткової конверсії → у БД пишеться неправильний час → слот видно на іншу годину/дату для інших користувачів.
+
+**Контекст STO ERP:**
+
+- `feedback_dst_kyiv.md` явно правило: Ukraine DST-aware (+02 winter, +03 summer), ніколи не хардкодити offset.
+- API installer розгортається на Windows Server у Києві (типовий випадок) — але також WSL2 у будь-якій TZ, dev VM-и, SaaS demo.
+- HOURS=[8..19] — користувач картинно ставить 9:00; з UTC TZ браузера → 9:00 local = 9:00 UTC = 12:00 Kyiv → слот на 12:00 замість 9:00.
+
+**Корінь:**
+Local TZ ambiguity у `new Date(string)`: `T...` без `Z|±HH:MM` суфіксу = local time. Старі helper-и не використовують `kyivOffsetMs()` патерн з `feedback_dst_kyiv.md`.
+
+**Severity:** HIGH (silent data corruption у multi-TZ deployment scenarios; повна локальна Київ-only установка не уражається, але STO ERP installer документований як «on-prem Windows» — тестовий персонал/SaaS demo дуже ймовірно у різних TZ).
+
+**Виправлення:** Додано `kyivOffsetMs()` + `kyivDateTimeToISO()` helpers у `apps/web/src/lib/format.ts`. Три call-sites переведені на DST-aware конверсію:
+
+- `decimalHoursToISO()` тепер делегує `kyivDateTimeToISO()`.
+- `addSlot` body.startAt/endAt використовує `kyivDateTimeToISO(date, form.startAt)`.
+- `useCalendarState` resize preview використовує `decimalHoursToISO()` (тепер DST-aware транзитивно).
+
+* Regression-guard у `apps/web/src/lib/format.test.ts` — 7 tests: 09:00 Kyiv літо→06:00 UTC, зима→07:00 UTC, опівночі→попередній день UTC, kyivOffsetMs +3h літо/+2h зима.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #355 — [HIGH] WarehousesService.remove() не auto-promote next sibling після soft-delete isMain warehouse — invariant «у org є головний склад» силентно порушений
+
+**Файл:** `apps/api/src/modules/warehouses/warehouses.service.ts:107-116`
+
+**Симптом:**
+`DELETE /warehouses/<main-warehouse-id>` робить atomic soft-delete (`deletedAt = now`). Не виконується пошук next sibling і auto-promote `isMain=true`. Після операції org може опинитись без головного складу взагалі (всі активні `isMain=false`).
+
+Downstream impact: `findFirst({orgId, deletedAt:null}, orderBy: [isMain:desc, name:asc])` повертає випадковий перший по name склад замість intended main. WO/PO default-warehouse selection silently dives на не-main склад.
+
+**Корінь:**
+Patern Bug #351 (CounterpartyContract) — patternічне правило сформоване в SKILL.md §1.1 Soft-delete primary; покрив counterparties, але не applied до Warehouse.
+
+**Корінь у тестах:**
+`warehouses.service.spec.ts` тестує `remove()` без перевірки invariant «після видалення isMain — у `findAll` є хоча б один isMain». Регресія-guard відсутній.
+
+**Severity:** HIGH (порушення явного бізнес-інваріанту; не crash, але silent wrong-warehouse selection у subsequent flows).
+
+**Виправлення:**
+`remove()` тепер: (1) SELECT existing {id, isMain}; (2) `$transaction`: soft-delete; якщо existing.isMain → findFirst next sibling (orderBy createdAt asc) + updateMany isMain:true.
+
+- Regression-guard у `apps/api/src/modules/warehouses/warehouses.service.spec.ts`: describe 'remove — auto-promote next sibling after deleting isMain (Bug #355)' з 4 кейсами: (а) isMain → promote next; (б) non-main → no promote; (в) isMain без siblings → no crash; (г) not found → NotFoundException.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #356 — [MEDIUM] GoodsService.deleteBarcode() не auto-promote next sibling після видалення isPrimary=true — товар може залишитись без primary штрихкоду
+
+**Файл:** `apps/api/src/modules/goods/goods.service.ts:274-282`
+
+**Симптом:**
+`DELETE /goods/<goodId>/barcodes/<primary-barcode-id>` робить atomic `deleteMany` (hard delete — barcodes не soft-deleted). Не auto-promote next barcode як isPrimary. Якщо у good є 3 barcodes (1 primary + 2 secondary) і ми видаляємо primary — лишається 2 secondary, `findFirst({orderBy:{isPrimary:desc, createdAt:asc}})` повертає випадковий перший по createdAt.
+
+Downstream impact: pricing/label-print/POS scan-resolution використовують isPrimary як «головний» → втрата маркера. Не crash, але silent UX/printout issue.
+
+**Корінь:**
+Той же патерн Bug #351 — для Barcode моделі patternічне правило не застосоване.
+
+**Severity:** MEDIUM (Barcode primary важливий для print/POS; не data corruption, але lost convention).
+
+**Виправлення:**
+`deleteBarcode()`: SELECT existing {id, isPrimary}; у `$transaction` deleteMany compound + (якщо isPrimary) findFirst next sibling (orderBy createdAt asc) + updateMany isPrimary:true.
+
+- `createBarcode()` додатково: коли dto.isPrimary=true → `updateMany({isPrimary:false}) + create` у $transaction. Інакше multiple primaries в одному good (DB не блокує — нема unique index).
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #357 — [MEDIUM] SettingsService.createTaxRate/updateTaxRate приймає isDefault=true без unsetting попередніх defaults — multiple defaults possible
+
+**Файли:**
+
+- `apps/api/src/modules/settings/settings.service.ts:360-380` (createTaxRate)
+- `apps/api/src/modules/settings/settings.service.ts:382-407` (updateTaxRate)
+
+**Симптом:**
+`POST /settings/tax-rates` `{ name:'ПДВ 20%', rate:20, isDefault:true }` → створено. Якщо до цього вже існувала інша `isDefault=true` ставка — обидві лишаються isDefault. Schema `TaxRate` має лише `@@unique([orgId, rate])` (не `[orgId, isDefault]`), тому DB не блокує.
+
+Downstream impact: `getDefaultTaxRate()` (якщо існує) повертає випадковий результат → invoice generation з невизначеною ставкою ПДВ.
+
+**Корінь:**
+Створення/оновлення з isDefault не обгорнуте у `$transaction` з попереднім `updateMany({where: {orgId, isDefault: true, id: {not: ...}}, data: {isDefault: false}})`. Аналогічно WarehousesService.create робить це правильно (line 58-63).
+
+**Severity:** MEDIUM (multi-default — silently incorrect default selection downstream; не crash).
+
+**Виправлення:**
+`createTaxRate()`: коли dto.isDefault=true → у `$transaction` updateMany попередніх defaults у false → create new. Інакше звичайний create.
+`updateTaxRate()`: коли dto.isDefault=true → у `$transaction` updateMany старих defaults (NOT {id}) у false → updateMany current у true. Інакше звичайний updateMany.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #358 — [LOW] RevenueChart парсить date без TZ — `new Date(d + 'T00:00')` показує дату на день раніше в browsers AHEAD of Kyiv
+
+**Файл:** `apps/web/src/app/(app)/dashboard/RevenueChart.tsx:35,55`
+
+**Симптом:**
+`new Date('2026-06-05T00:00')` без `Z` → local time parse. Якщо browser у TZ AHEAD of Kyiv (наприклад Asia/Tokyo, +6 від Києва) → midnight local = previous day Kyiv → tickFormatter і labelFormatter покажуть «4 червня» замість «5 червня». Backend dashboard service повертає dates як `YYYY-MM-DD` (date-only ISO), очікує консистентне відображення.
+
+**Severity:** LOW (UI display only, не data corruption; rare browser TZ scenario).
+
+**Виправлення:** `new Date(d + 'T12:00:00')` у tickFormatter (line 35) і labelFormatter (line 55). Полудень UTC гарантує правильний день у Kyiv TZ незалежно від local TZ браузера (≥06:00 у будь-якому global TZ → завжди ще той же UTC день).
+
+**Статус:** [x] виправлено

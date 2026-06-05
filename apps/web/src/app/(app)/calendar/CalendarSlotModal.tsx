@@ -4,7 +4,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { WO_STATUS_LABELS, WO_STATUS_BADGE } from '@sto/shared';
-import { fmtMoney, fmtDate } from '@/lib/format';
+import { fmtMoney, fmtDate, kyivDateTimeToISO } from '@/lib/format';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { useCachedRefData } from '@/hooks/useCachedRefData';
 import {
@@ -667,15 +667,11 @@ export function CalendarSlotModal({
         }
       }
     }
-    const startDate = new Date(`${date}T${form.startAt}:00`);
-    const endDate = new Date(`${date}T${form.endAt}:00`);
-    if (
-      !date ||
-      !form.startAt ||
-      !form.endAt ||
-      isNaN(startDate.getTime()) ||
-      isNaN(endDate.getTime())
-    ) {
+    // Bug #354: kyivDateTimeToISO замість `new Date(...).toISOString()`
+    // local-парсингу без TZ. DST-aware (+02 зима, +03 літо).
+    const startIso = kyivDateTimeToISO(date, form.startAt);
+    const endIso = kyivDateTimeToISO(date, form.endAt);
+    if (!date || !form.startAt || !form.endAt || !startIso || !endIso) {
       setError('Вкажіть коректні дату та час');
       return;
     }
@@ -686,8 +682,8 @@ export function CalendarSlotModal({
       employeeId: form.employeeId || undefined,
       workOrderId: form.workOrderId || undefined,
       counterpartyId: form.counterpartyId || undefined,
-      startAt: startDate.toISOString(),
-      endAt: endDate.toISOString(),
+      startAt: startIso,
+      endAt: endIso,
       notes: form.notes || undefined,
     };
     try {

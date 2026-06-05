@@ -39,7 +39,6 @@ import {
   decimalHoursToHHMM,
   decimalHoursToISO,
   kyivHours,
-  pad,
   pxToHours,
   snapTo15,
   toDateString,
@@ -783,13 +782,13 @@ export function useCalendarState() {
     if (!resizePreview) return slots;
     return slots.map(s => {
       if (s.id !== resizePreview.id) return s;
-      const toISO = (h: number) => {
-        const totalMin = Math.round(h * 60);
-        return new Date(
-          `${date}T${pad(Math.floor(totalMin / 60))}:${pad(totalMin % 60)}:00`,
-        ).toISOString();
+      // Bug #354: decimalHoursToISO використовує kyivDateTimeToISO внутрішньо
+      // (DST-aware Kyiv → UTC), замість попереднього local-time-parsing.
+      return {
+        ...s,
+        startAt: decimalHoursToISO(date, resizePreview.startH),
+        endAt: decimalHoursToISO(date, resizePreview.endH),
       };
-      return { ...s, startAt: toISO(resizePreview.startH), endAt: toISO(resizePreview.endH) };
     });
   }, [slots, resizePreview, date]);
 

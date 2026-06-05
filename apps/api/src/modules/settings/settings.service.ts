@@ -361,15 +361,35 @@ export class SettingsService {
     orgId: string,
     dto: { name: string; rate: number; isDefault?: boolean; isActive?: boolean },
   ) {
-    const rate = await this.prisma.taxRate.create({
-      data: {
-        orgId,
-        name: dto.name,
-        rate: dto.rate,
-        isDefault: dto.isDefault ?? false,
-        isActive: dto.isActive ?? true,
-      },
-    });
+    // Bug #357: коли створюється новий isDefault=true → unset попередні defaults
+    // у тому ж orgId scope атомарно. Без цього multiple defaults можливі (немає
+    // unique index `[orgId, isDefault]` у schema), і `getDefaultTaxRate()` буде
+    // повертати випадковий результат.
+    const rate = dto.isDefault
+      ? await this.prisma.$transaction(async tx => {
+          await tx.taxRate.updateMany({
+            where: { orgId, isDefault: true },
+            data: { isDefault: false },
+          });
+          return tx.taxRate.create({
+            data: {
+              orgId,
+              name: dto.name,
+              rate: dto.rate,
+              isDefault: true,
+              isActive: dto.isActive ?? true,
+            },
+          });
+        })
+      : await this.prisma.taxRate.create({
+          data: {
+            orgId,
+            name: dto.name,
+            rate: dto.rate,
+            isDefault: false,
+            isActive: dto.isActive ?? true,
+          },
+        });
     return {
       id: rate.id,
       name: rate.name,
@@ -384,18 +404,39 @@ export class SettingsService {
     id: string,
     dto: { name?: string; rate?: number; isDefault?: boolean; isActive?: boolean },
   ) {
-    // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
-    // Eliminates race-window between findFirst guard and update by id.
-    const result = await this.prisma.taxRate.updateMany({
-      where: { id, orgId },
-      data: {
-        name: dto.name ?? undefined,
-        rate: dto.rate ?? undefined,
-        isDefault: dto.isDefault ?? undefined,
-        isActive: dto.isActive ?? undefined,
-      },
-    });
-    if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
+    // Bug #357: коли встановлюється isDefault=true → unset попередні defaults
+    // у тому ж orgId scope (виключаючи поточний id) атомарно.
+    if (dto.isDefault === true) {
+      await this.prisma.$transaction(async tx => {
+        await tx.taxRate.updateMany({
+          where: { orgId, isDefault: true, NOT: { id } },
+          data: { isDefault: false },
+        });
+        // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
+        const result = await tx.taxRate.updateMany({
+          where: { id, orgId },
+          data: {
+            name: dto.name ?? undefined,
+            rate: dto.rate ?? undefined,
+            isDefault: true,
+            isActive: dto.isActive ?? undefined,
+          },
+        });
+        if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
+      });
+    } else {
+      // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
+      const result = await this.prisma.taxRate.updateMany({
+        where: { id, orgId },
+        data: {
+          name: dto.name ?? undefined,
+          rate: dto.rate ?? undefined,
+          isDefault: dto.isDefault ?? undefined,
+          isActive: dto.isActive ?? undefined,
+        },
+      });
+      if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
+    }
     const updated = await this.prisma.taxRate.findFirstOrThrow({ where: { id, orgId } });
     return {
       id: updated.id,

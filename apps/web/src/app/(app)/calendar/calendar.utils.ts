@@ -1,5 +1,6 @@
 // ─── Shared Calendar Utilities ───────────────────────────────────────────────
 
+import { kyivDateTimeToISO } from '@/lib/format';
 import type { CounterpartyOption } from './calendar.types';
 
 export const KYIV_TZ = 'Europe/Kyiv';
@@ -94,7 +95,9 @@ export function decimalHoursToHHMM(h: number): string {
 }
 
 export function decimalHoursToISO(date: string, h: number): string {
-  return new Date(`${date}T${decimalHoursToHHMM(h)}:00`).toISOString();
+  // Bug #354: парсинг без TZ → local-time у браузерах поза Kyiv.
+  // Використовуємо DST-aware Kyiv → UTC конверсію.
+  return kyivDateTimeToISO(date, decimalHoursToHHMM(h));
 }
 
 export function snapTo15(h: number): number {

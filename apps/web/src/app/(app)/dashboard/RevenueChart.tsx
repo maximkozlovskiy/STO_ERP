@@ -32,7 +32,10 @@ export default function RevenueChart({ data }: { data: RevenuePoint[] }) {
           tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
           axisLine={false}
           tickLine={false}
-          tickFormatter={d => TICK_DATE_FMT.format(new Date(d + 'T00:00'))}
+          // Bug #358: T12:00:00 безпечно дає правильний день у Kyiv TZ незалежно
+          // від local TZ браузера (полудень UTC = 14:00/15:00 Kyiv — не може
+          // відкотитись на попередній день).
+          tickFormatter={d => TICK_DATE_FMT.format(new Date(d + 'T12:00:00'))}
         />
         <YAxis
           tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
@@ -52,7 +55,7 @@ export default function RevenueChart({ data }: { data: RevenuePoint[] }) {
             boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
           }}
           formatter={v => [fmt(Number(v ?? 0)), 'Виручка']}
-          labelFormatter={d => fmtDate(new Date(d + 'T00:00'))}
+          labelFormatter={d => fmtDate(new Date(d + 'T12:00:00'))}
         />
         <Bar dataKey="revenue" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
       </BarChart>

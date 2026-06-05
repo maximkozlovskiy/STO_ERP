@@ -105,13 +105,39 @@ export class WarehousesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
-    // where (id+orgId+deletedAt:null). -1 RTT per delete.
-    const result = await this.prisma.warehouse.updateMany({
+    // Bug #355: якщо видаляємо `isMain=true` склад → auto-promote найстарший
+    // активний sibling як новий `isMain`. Інакше invariant «у org є головний
+    // склад» силентно порушується → downstream warehouse-selection повертає
+    // випадковий склад (orderBy [isMain:desc, name:asc] стає [false, name]).
+    // Patern Bug #351 (CounterpartyContract).
+    const existing = await this.prisma.warehouse.findFirst({
       where: { id, orgId, deletedAt: null },
-      data: { deletedAt: new Date() },
+      select: { id: true, isMain: true },
     });
-    if (result.count === 0) throw new NotFoundException('Склад не знайдено');
+    if (!existing) throw new NotFoundException('Склад не знайдено');
+
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.warehouse.updateMany({
+          where: { id, orgId, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+        if (existing.isMain) {
+          const next = await tx.warehouse.findFirst({
+            where: { orgId, deletedAt: null, id: { not: id } },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
+          });
+          if (next) {
+            await tx.warehouse.updateMany({
+              where: { id: next.id, orgId, deletedAt: null },
+              data: { isMain: true },
+            });
+          }
+        }
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
     await this.cache.delPattern(`ref:warehouses:${orgId}*`);
   }
 

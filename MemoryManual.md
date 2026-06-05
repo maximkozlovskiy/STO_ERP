@@ -9,7 +9,11 @@
 ## Останній commit
 
 ```
-<NEW> fix(review): WorkOrderPreviewModal badge variant + missing cancelled flags + bg-primary/8→/10
+<NEW> fix(tester): Bugs #354-#358 — calendar Kyiv-TZ ISO + Warehouse/Barcode auto-promote + TaxRate isDefault + Recharts TZ-safe
+TypeScript: api ✓ web ✓ shared ✓ (0 errors)
+API tests: 56 files / 650 passed (+4 new для WarehouseService.remove auto-promote)
+Web tests: 29 files / 312 passed (+7 new для kyivDateTimeToISO/kyivOffsetMs)
+b33249bc fix(review): WorkOrderPreviewModal badge variant + missing cancelled flags + bg-primary/8→/10
 E2E Cycle 2: 205 passed / 1 flaky (crud-infrastructure dev-server race) / 0 failed
 8ba9ac1 perf(optimize): cycle 2 — bulk maintenance + scheduler N+1 + pagination cap + cached-ref lazy init
 1a70d156 docs(skills): add stable callback identity invariant pattern to sto-tester

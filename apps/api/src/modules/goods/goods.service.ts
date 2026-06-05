@@ -259,26 +259,64 @@ export class GoodsService {
       throw new ConflictException('Штрихкод уже використовується');
     }
 
-    const barcode = await this.prisma.goodBarcode.create({
-      data: {
-        orgId,
-        goodId,
-        barcode: dto.barcode.trim(),
-        type: dto.type ?? 'EAN13',
-        isPrimary: dto.isPrimary ?? false,
-      },
-    });
+    // Bug #356: коли створюється новий isPrimary=true → unset попередні primary
+    // у тому ж goodId scope атомарно. Без цього multiple primaries у good.
+    const barcode = dto.isPrimary
+      ? await this.prisma.$transaction(async tx => {
+          await tx.goodBarcode.updateMany({
+            where: { orgId, goodId, isPrimary: true },
+            data: { isPrimary: false },
+          });
+          return tx.goodBarcode.create({
+            data: {
+              orgId,
+              goodId,
+              barcode: dto.barcode.trim(),
+              type: dto.type ?? 'EAN13',
+              isPrimary: true,
+            },
+          });
+        })
+      : await this.prisma.goodBarcode.create({
+          data: {
+            orgId,
+            goodId,
+            barcode: dto.barcode.trim(),
+            type: dto.type ?? 'EAN13',
+            isPrimary: false,
+          },
+        });
     return this.toBarcodeDto(barcode);
   }
 
   async deleteBarcode(orgId: string, goodId: string, barcodeId: string): Promise<void> {
-    // Defense-in-depth: atomic deleteMany with full compound where (sto-review pattern 2026-05-30).
-    // Replaces findFirst + delete-by-id which had a race-window where a concurrent session
-    // could mutate ownership between the two queries.
-    const result = await this.prisma.goodBarcode.deleteMany({
+    // Bug #356: якщо видаляємо `isPrimary=true` barcode → auto-promote next active
+    // sibling як новий primary. Інакше товар може залишитись без primary barcode,
+    // що ламає POS scan-resolution і print-label «головний» convention.
+    // Patern Bug #351 (CounterpartyContract auto-promote).
+    const existing = await this.prisma.goodBarcode.findFirst({
       where: { id: barcodeId, orgId, goodId },
+      select: { id: true, isPrimary: true },
     });
-    if (result.count === 0) throw new NotFoundException('Штрихкод не знайдено');
+    if (!existing) throw new NotFoundException('Штрихкод не знайдено');
+
+    await this.prisma.$transaction(async tx => {
+      // Defense-in-depth: deleteMany with compound where (race-safe).
+      await tx.goodBarcode.deleteMany({ where: { id: barcodeId, orgId, goodId } });
+      if (existing.isPrimary) {
+        const next = await tx.goodBarcode.findFirst({
+          where: { orgId, goodId, id: { not: barcodeId } },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        });
+        if (next) {
+          await tx.goodBarcode.updateMany({
+            where: { id: next.id, orgId, goodId },
+            data: { isPrimary: true },
+          });
+        }
+      }
+    });
   }
 
   // ─── Good UoM ──────────────────────────────────────────────────────────────
