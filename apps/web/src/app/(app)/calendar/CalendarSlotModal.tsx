@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { UserPlus, FilePlus, Trash2 } from 'lucide-react';
+import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { WO_STATUS_LABELS, WO_STATUS_BADGE } from '@sto/shared';
+import { fmtMoney, fmtDate } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { useCachedRefData } from '@/hooks/useCachedRefData';
 import {
@@ -39,6 +42,122 @@ import {
   fmtTime,
   fmtKyivDate,
 } from './calendar.utils';
+
+// ─── WorkOrderPreviewModal ────────────────────────────────────────────────────
+
+interface WOPreview {
+  id: string;
+  number: string;
+  status: string;
+  counterpartyName?: string;
+  vehicleSummary?: string;
+  description?: string | null;
+  totalAmount: number;
+  totalLabor: number;
+  totalParts: number;
+  plannedAt?: string | null;
+  documentDate?: string | null;
+}
+
+function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => void }) {
+  const [wo, setWo] = useState<WOPreview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    setError('');
+    apiFetch<WOPreview>(`/work-orders/${id}`)
+      .then(setWo)
+      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження'))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  const statusLabel = wo
+    ? (WO_STATUS_LABELS[wo.status as keyof typeof WO_STATUS_LABELS] ?? wo.status)
+    : '';
+  const statusCls = wo ? (WO_STATUS_BADGE[wo.status as keyof typeof WO_STATUS_BADGE] ?? '') : '';
+
+  return (
+    <Modal open onClose={onClose} title="Наряд" size="md">
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <span className="text-muted-foreground text-sm">Завантаження…</span>
+        </div>
+      ) : error ? (
+        <p className="text-sm text-destructive-text">{error}</p>
+      ) : wo ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-lg font-semibold text-foreground">{wo.number}</span>
+            <span className={cn('px-2.5 py-0.5 rounded-full text-xs font-medium', statusCls)}>
+              {statusLabel}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-[13px]">
+            {wo.counterpartyName && (
+              <div>
+                <div className="text-muted-foreground mb-0.5">Клієнт</div>
+                <div className="text-foreground font-medium">{wo.counterpartyName}</div>
+              </div>
+            )}
+            {wo.vehicleSummary && (
+              <div>
+                <div className="text-muted-foreground mb-0.5">Автомобіль</div>
+                <div className="text-foreground font-medium">{wo.vehicleSummary}</div>
+              </div>
+            )}
+            {wo.documentDate && (
+              <div>
+                <div className="text-muted-foreground mb-0.5">Дата документа</div>
+                <div className="text-foreground">{fmtDate(wo.documentDate)}</div>
+              </div>
+            )}
+            {wo.plannedAt && (
+              <div>
+                <div className="text-muted-foreground mb-0.5">Заплановано</div>
+                <div className="text-foreground">{fmtDate(wo.plannedAt)}</div>
+              </div>
+            )}
+          </div>
+
+          {wo.description && (
+            <div className="text-[13px]">
+              <div className="text-muted-foreground mb-0.5">Опис</div>
+              <div className="text-foreground">{wo.description}</div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-2 bg-secondary rounded-lg p-3 text-[13px]">
+            <div>
+              <div className="text-muted-foreground mb-0.5">Роботи</div>
+              <div className="font-semibold text-foreground">{fmtMoney(wo.totalLabor)} ₴</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground mb-0.5">Запчастини</div>
+              <div className="font-semibold text-foreground">{fmtMoney(wo.totalParts)} ₴</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground mb-0.5">Разом</div>
+              <div className="font-semibold text-primary">{fmtMoney(wo.totalAmount)} ₴</div>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center pt-1">
+            <Button variant="outline" onClick={onClose}>
+              Закрити
+            </Button>
+            <Button variant="ghost" onClick={() => window.open(`/work-orders/${wo.id}`, '_blank')}>
+              <ExternalLink className="h-4 w-4 mr-1.5" />
+              Відкрити повністю
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </Modal>
+  );
+}
 
 // ─── TimeSelect — hour + minute selects, 15-min step, bounded range ──────────
 
@@ -156,6 +275,7 @@ export function CalendarSlotModal({
 }: CalendarSlotModalProps) {
   const { confirm, dialogProps } = useConfirm();
   const mountedRef = useRef(true);
+  const [woPreviewId, setWoPreviewId] = useState<string | null>(null);
 
   // ── Detail modals ─────────────────────────────────────────────────────────
   const [cpDetailOpen, setCpDetailOpen] = useState(false);
@@ -769,9 +889,7 @@ export function CalendarSlotModal({
                     disabled={isEditingPast}
                     hidePick={isEditingPast}
                     onOpenDetail={
-                      form.workOrderId
-                        ? () => window.open(`/work-orders/${form.workOrderId}`, '_blank')
-                        : undefined
+                      form.workOrderId ? () => setWoPreviewId(form.workOrderId) : undefined
                     }
                     onPick={() => setWoPickerOpen(true)}
                     onClear={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
@@ -1180,6 +1298,9 @@ export function CalendarSlotModal({
         </div>
       </div>
       <ConfirmDialog {...dialogProps} />
+      {woPreviewId && (
+        <WorkOrderPreviewModal id={woPreviewId} onClose={() => setWoPreviewId(null)} />
+      )}
       <CounterpartyEditModal
         open={cpDetailOpen}
         counterparty={cpDetailData}
