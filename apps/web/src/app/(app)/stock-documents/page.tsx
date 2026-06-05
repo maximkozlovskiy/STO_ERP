@@ -472,28 +472,32 @@ export default function StockDocumentsPage() {
             </button>
           ))}
         </div>
-        <DatePickerInput
-          value={dateFrom}
-          onChange={v => {
-            setDateFrom(v);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          placeholder="Від"
-          max={dateTo || undefined}
-          className="w-36"
-        />
-        <DatePickerInput
-          value={dateTo}
-          onChange={v => {
-            setDateTo(v);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          placeholder="До"
-          min={dateFrom || undefined}
-          className="w-36"
-        />
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] text-muted-foreground shrink-0">З</span>
+          <DatePickerInput
+            value={dateFrom}
+            onChange={v => {
+              setDateFrom(v);
+              resetPage();
+              setActiveSavedFilterId(null);
+            }}
+            max={dateTo || undefined}
+            className="w-36"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] text-muted-foreground shrink-0">По</span>
+          <DatePickerInput
+            value={dateTo}
+            onChange={v => {
+              setDateTo(v);
+              resetPage();
+              setActiveSavedFilterId(null);
+            }}
+            min={dateFrom || undefined}
+            className="w-36"
+          />
+        </div>
         <div className="flex items-center gap-2 ml-auto">
           <Button
             variant="outline"
