@@ -16,6 +16,12 @@ function fmt(v: number) {
   return fmtMoney(v) + ' грн';
 }
 
+function yFmt(v: number): string {
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'м';
+  if (v >= 1_000) return (v / 1_000).toFixed(1).replace(/\.0$/, '') + 'к';
+  return String(v);
+}
+
 export default function RevenueChart({ data }: { data: RevenuePoint[] }) {
   return (
     <ResponsiveContainer width="100%" height={200}>
@@ -32,7 +38,10 @@ export default function RevenueChart({ data }: { data: RevenuePoint[] }) {
           tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
           axisLine={false}
           tickLine={false}
-          tickFormatter={v => (v / 1000).toFixed(0) + 'к'}
+          tickFormatter={yFmt}
+          allowDecimals={false}
+          domain={[0, 'auto']}
+          width={48}
         />
         <Tooltip
           cursor={{ fill: 'var(--color-primary-subtle)' }}
