@@ -6,15 +6,29 @@ import { Suspense } from 'react';
 import { cn } from '@/lib/utils';
 import { useRequireAuth } from '@/lib/auth';
 
+const OrgTab = dynamic(() => import('./OrgTab'), { ssr: false });
+const OrgInfoTab = dynamic(() => import('./OrgInfoTab'), { ssr: false });
+const PaymentsTab = dynamic(() => import('./PaymentsTab'), { ssr: false });
 const TaxRatesTab = dynamic(() => import('./TaxRatesTab'), { ssr: false });
 const CurrenciesTab = dynamic(() => import('./CurrenciesTab'), { ssr: false });
 const ExchangeRatesTab = dynamic(() => import('./ExchangeRatesTab'), { ssr: false });
 const BankAccountsTab = dynamic(() => import('./BankAccountsTab'), { ssr: false });
 const CashRegistersTab = dynamic(() => import('./CashRegistersTab'), { ssr: false });
 
-type Tab = 'taxrates' | 'currencies' | 'exchange-rates' | 'bank-accounts' | 'cash-registers';
+type Tab =
+  | 'org'
+  | 'org-info'
+  | 'payments'
+  | 'taxrates'
+  | 'currencies'
+  | 'exchange-rates'
+  | 'bank-accounts'
+  | 'cash-registers';
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'org', label: 'Організація' },
+  { id: 'org-info', label: 'Реквізити організації' },
+  { id: 'payments', label: 'Оплата' },
   { id: 'taxrates', label: 'Ставки ПДВ' },
   { id: 'currencies', label: 'Валюти' },
   { id: 'exchange-rates', label: 'Курси валют' },
@@ -22,11 +36,11 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'cash-registers', label: 'Каса' },
 ];
 
-function VatPageClient() {
+function NdiPageClient() {
   useRequireAuth(['OWNER', 'ADMIN']);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tab = (searchParams.get('tab') ?? 'taxrates') as Tab;
+  const tab = (searchParams.get('tab') ?? 'org') as Tab;
   const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
 
   return (
@@ -50,6 +64,9 @@ function VatPageClient() {
         ))}
       </div>
 
+      {tab === 'org' && <OrgTab />}
+      {tab === 'org-info' && <OrgInfoTab />}
+      {tab === 'payments' && <PaymentsTab />}
       {tab === 'taxrates' && <TaxRatesTab />}
       {tab === 'currencies' && <CurrenciesTab />}
       {tab === 'exchange-rates' && <ExchangeRatesTab />}
@@ -59,10 +76,10 @@ function VatPageClient() {
   );
 }
 
-export default function VatPage() {
+export default function NdiPage() {
   return (
     <Suspense fallback={null}>
-      <VatPageClient />
+      <NdiPageClient />
     </Suspense>
   );
 }

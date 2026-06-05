@@ -6,9 +6,6 @@ import dynamic from 'next/dynamic';
 import { useRequireAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
-const OrgTab = dynamic(() => import('./OrgTab'), { ssr: false });
-const OrgInfoTab = dynamic(() => import('./OrgInfoTab'), { ssr: false });
-const PaymentsTab = dynamic(() => import('./PaymentsTab'), { ssr: false });
 const NotificationsTab = dynamic(() => import('./NotificationsTab'), { ssr: false });
 const ThemeTab = dynamic(() => import('./ThemeTab'), { ssr: false });
 const UiTab = dynamic(() => import('./UiTab'), { ssr: false });
@@ -17,22 +14,9 @@ const WorkdaysTab = dynamic(() => import('./WorkdaysTab'), { ssr: false });
 const FollowupTab = dynamic(() => import('./FollowupTab'), { ssr: false });
 const IntegrationsTab = dynamic(() => import('./IntegrationsTab'), { ssr: false });
 
-type Tab =
-  | 'org'
-  | 'org-info'
-  | 'payments'
-  | 'notifications'
-  | 'theme'
-  | 'ui'
-  | 'numbers'
-  | 'workdays'
-  | 'followup'
-  | 'integrations';
+type Tab = 'notifications' | 'theme' | 'ui' | 'numbers' | 'workdays' | 'followup' | 'integrations';
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'org', label: 'Організація' },
-  { key: 'org-info', label: 'Реквізити' },
-  { key: 'payments', label: 'Оплата' },
   { key: 'numbers', label: 'Нумерація' },
   { key: 'workdays', label: 'Робочі дні' },
   { key: 'notifications', label: 'Сповіщення' },
@@ -46,7 +30,7 @@ function SettingsPageClient() {
   useRequireAuth(['OWNER', 'ADMIN']);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tab = (searchParams.get('tab') ?? 'org') as Tab;
+  const tab = (searchParams.get('tab') ?? 'numbers') as Tab;
 
   const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
 
@@ -72,9 +56,6 @@ function SettingsPageClient() {
         ))}
       </div>
 
-      {tab === 'org' && <OrgTab />}
-      {tab === 'org-info' && <OrgInfoTab />}
-      {tab === 'payments' && <PaymentsTab />}
       {tab === 'notifications' && <NotificationsTab />}
       {tab === 'theme' && <ThemeTab />}
       {tab === 'ui' && <UiTab />}

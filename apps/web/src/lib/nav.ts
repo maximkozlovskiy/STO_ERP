@@ -26,7 +26,7 @@ import {
   Settings,
   CloudUpload,
   Zap,
-  Percent,
+  BookMarked,
   ClipboardList,
 } from 'lucide-react';
 
@@ -104,7 +104,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   {
     href: '/ndi',
     label: 'НДІ',
-    icon: Percent,
+    icon: BookMarked,
     section: 'refs',
     roles: ['OWNER', 'ADMIN'],
   },
