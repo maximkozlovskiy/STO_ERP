@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { UserPlus, FilePlus } from 'lucide-react';
+import { UserPlus, FilePlus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { useCachedRefData } from '@/hooks/useCachedRefData';
@@ -96,6 +96,7 @@ interface CalendarSlotModalProps {
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
+  onDeleted: () => void;
 
   date: string;
   lifts: Lift[];
@@ -131,6 +132,7 @@ export function CalendarSlotModal({
   open,
   onClose,
   onSaved,
+  onDeleted,
   date,
   lifts,
   form,
@@ -1126,7 +1128,7 @@ export function CalendarSlotModal({
             }}
           />
 
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             {!isEditingPast && (
               <Button
                 onClick={addSlot}
@@ -1141,6 +1143,35 @@ export function CalendarSlotModal({
             <Button variant="outline" onClick={onClose}>
               {isEditingPast ? 'Закрити' : 'Скасувати'}
             </Button>
+            {editingSlotId && !isEditingPast && (
+              <Button
+                variant="destructive"
+                className="ml-auto"
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: 'Видалити слот?',
+                    message: 'Цю дію не можна скасувати.',
+                    variant: 'destructive',
+                  });
+                  if (!ok) return;
+                  setSaving(true);
+                  try {
+                    await apiFetch(`/calendar/slots/${editingSlotId}`, { method: 'DELETE' });
+                    toast.success('Слот видалено');
+                    onDeleted();
+                  } catch (e: unknown) {
+                    const msg = e instanceof Error ? e.message : 'Помилка видалення';
+                    setError(msg);
+                    toast.error(msg);
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" />
+                Видалити
+              </Button>
+            )}
           </div>
         </div>
       </div>

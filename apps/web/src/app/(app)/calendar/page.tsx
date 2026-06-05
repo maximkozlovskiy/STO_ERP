@@ -165,6 +165,7 @@ function CalendarPageClient() {
           open={cs.showAdd && cs.calView !== 'stats'}
           onClose={cs.handleModalClose}
           onSaved={cs.handleModalSaved}
+          onDeleted={cs.handleModalSaved}
           date={cs.date}
           lifts={cs.lifts}
           form={cs.form}
