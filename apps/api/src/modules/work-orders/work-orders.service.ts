@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
+import { calculatePagination } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -89,7 +90,7 @@ export class WorkOrdersService {
       };
     }
 
-    const skip = (query.page - 1) * query.limit;
+    const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
     const WO_SORT: Record<string, string> = {
       documentDate: 'documentDate',
       createdAt: 'createdAt',
@@ -103,7 +104,7 @@ export class WorkOrdersService {
       this.prisma.workOrder.findMany({
         where,
         skip,
-        take: query.limit,
+        take,
         orderBy: { [sortField]: sortDir },
         include: {
           vehicle: { select: { make: true, model: true, licensePlate: true } },
@@ -136,7 +137,7 @@ export class WorkOrdersService {
       items: items.map(item => this.toDto(item)),
       total,
       page: query.page,
-      limit: query.limit,
+      limit: take,
     };
   }
 

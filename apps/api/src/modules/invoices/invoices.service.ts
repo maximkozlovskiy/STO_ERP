@@ -4,6 +4,7 @@ import { formatPersonName } from '@sto/shared';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
+import { calculatePagination } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -75,7 +76,7 @@ export class InvoicesService {
       };
     }
 
-    const skip = (page - 1) * limit;
+    const { skip, take } = calculatePagination({ page, limit });
     const INV_SORT: Record<string, string> = {
       documentDate: 'documentDate',
       createdAt: 'createdAt',
@@ -88,7 +89,7 @@ export class InvoicesService {
       this.prisma.invoice.findMany({
         where,
         skip,
-        take: limit,
+        take,
         orderBy: { [sortField]: sortOrder },
         include: {
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
@@ -98,7 +99,7 @@ export class InvoicesService {
       this.prisma.invoice.count({ where }),
     ]);
 
-    return { items: items.map(item => this.toDto(item)), total, page, limit };
+    return { items: items.map(item => this.toDto(item)), total, page, limit: take };
   }
 
   async findOne(orgId: string, id: string): Promise<InvoiceResponseDto> {

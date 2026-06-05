@@ -1,3 +1,4 @@
+import { calculatePagination } from '../../common/utils/pagination';
 import {
   Injectable,
   NotFoundException,
@@ -41,7 +42,7 @@ export class GoodsService {
     if (query.goodCategoryIds?.length) where.goodCategoryId = { in: query.goodCategoryIds };
     else if (query.goodCategoryId) where.goodCategoryId = query.goodCategoryId;
 
-    const skip = (query.page - 1) * query.limit;
+    const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
     const supplierSelect = {
       select: { firstName: true, lastName: true, companyName: true },
     } as const;
@@ -53,7 +54,7 @@ export class GoodsService {
         // Postgres дефолтно ставить NULL у кінець ASC → ховаємо явним `nulls: 'first'`.
         orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
         skip,
-        take: query.limit,
+        take,
         include: { preferredSupplier: supplierSelect, goodCategory: goodCategorySelect },
       }),
       this.prisma.good.count({ where }),
@@ -63,7 +64,7 @@ export class GoodsService {
       items: items.map(item => this.toDto(item)),
       total,
       page: query.page,
-      limit: query.limit,
+      limit: take,
     };
   }
 

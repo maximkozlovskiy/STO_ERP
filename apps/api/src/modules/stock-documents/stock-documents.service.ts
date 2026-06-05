@@ -3,6 +3,7 @@ import { DocumentType, Prisma, StockDocumentType, StockMovementType } from '@pri
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
+import { calculatePagination } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -61,7 +62,7 @@ export class StockDocumentsService {
       };
     }
 
-    const skip = (page - 1) * limit;
+    const { skip, take } = calculatePagination({ page, limit });
     const SD_SORT: Record<string, string> = {
       documentDate: 'documentDate',
       createdAt: 'createdAt',
@@ -72,7 +73,7 @@ export class StockDocumentsService {
       this.prisma.stockDocument.findMany({
         where,
         skip,
-        take: limit,
+        take,
         orderBy: { [sortField]: sortOrder },
         include: {
           branch: { select: { name: true } },
@@ -97,7 +98,7 @@ export class StockDocumentsService {
       this.prisma.stockDocument.count({ where }),
     ]);
 
-    return { items: items.map(d => this.toDto(d)), total, page, limit };
+    return { items: items.map(d => this.toDto(d)), total, page, limit: take };
   }
 
   async findOne(orgId: string, id: string): Promise<StockDocumentResponseDto> {

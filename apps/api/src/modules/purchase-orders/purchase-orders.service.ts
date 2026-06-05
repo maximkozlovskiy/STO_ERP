@@ -3,6 +3,7 @@ import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { assertFsmTransition } from '../../common/utils/fsm';
+import { calculatePagination } from '../../common/utils/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -53,12 +54,6 @@ export class PurchaseOrdersService {
     sortBy?: string,
     sortDir?: 'asc' | 'desc',
   ): Promise<PaginatedPurchaseOrdersDto> {
-    // Defense-in-depth: cap `limit` to prevent DoS via `?limit=999999`.
-    // Matches the cap used by services/work-orders/invoices controllers.
-    const safeLimit = Math.min(Math.max(limit, 1), 200);
-    const safePage = Math.max(page, 1);
-    limit = safeLimit;
-    page = safePage;
     const where: Prisma.PurchaseOrderWhereInput = {
       orgId,
       ...(showDeleted ? {} : { deletedAt: null }),
@@ -88,7 +83,7 @@ export class PurchaseOrdersService {
       };
     }
 
-    const skip = (page - 1) * limit;
+    const { skip, take } = calculatePagination({ page, limit });
     const PO_SORT: Record<string, string> = {
       documentDate: 'documentDate',
       createdAt: 'createdAt',
@@ -100,7 +95,7 @@ export class PurchaseOrdersService {
       this.prisma.purchaseOrder.findMany({
         where,
         skip,
-        take: limit,
+        take,
         orderBy: { [sortField]: sortOrder },
         // Lines omitted from list — loaded on demand via findOne when detail opens.
         // Avoids fetching up to 1000 line rows × 20 POs per list request.
@@ -119,7 +114,7 @@ export class PurchaseOrdersService {
       items: items.map(item => this.toDto(item as Parameters<typeof this.toDto>[0])),
       total,
       page,
-      limit,
+      limit: take,
     };
   }
 
