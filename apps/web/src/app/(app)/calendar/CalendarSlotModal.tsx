@@ -768,7 +768,11 @@ export function CalendarSlotModal({
                     placeholder="Обрати наряд…"
                     disabled={isEditingPast}
                     hidePick={isEditingPast}
-                    onOpenDetail={undefined}
+                    onOpenDetail={
+                      form.workOrderId
+                        ? () => window.open(`/work-orders/${form.workOrderId}`, '_blank')
+                        : undefined
+                    }
                     onPick={() => setWoPickerOpen(true)}
                     onClear={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
                   />
