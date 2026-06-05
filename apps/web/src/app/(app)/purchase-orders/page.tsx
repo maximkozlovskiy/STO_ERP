@@ -498,7 +498,7 @@ export default function PurchaseOrdersPage() {
             key={s}
             onClick={() => {
               setStatus(s);
-              setPage(1);
+              resetPage();
               setActiveSavedFilterId(null);
             }}
             className={cn(
@@ -519,7 +519,7 @@ export default function PurchaseOrdersPage() {
           value={q}
           onChange={e => {
             setQ(e.target.value);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="Пошук за номером, постачальником..."
@@ -530,7 +530,7 @@ export default function PurchaseOrdersPage() {
           value={dateFrom}
           onChange={v => {
             setDateFrom(v);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="Від"
@@ -541,7 +541,7 @@ export default function PurchaseOrdersPage() {
           value={dateTo}
           onChange={v => {
             setDateTo(v);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="До"
@@ -556,7 +556,7 @@ export default function PurchaseOrdersPage() {
             title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
             onClick={() => {
               setShowDeleted(v => !v);
-              setPage(1);
+              resetPage();
               setActiveSavedFilterId(null);
             }}
             className={cn(showDeleted && 'border-primary text-primary')}

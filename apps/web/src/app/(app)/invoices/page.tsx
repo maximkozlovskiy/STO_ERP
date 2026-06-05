@@ -554,7 +554,7 @@ export default function InvoicesPage() {
             key={s}
             onClick={() => {
               setStatus(s);
-              setPage(1);
+              resetPage();
               setActiveSavedFilterId(null);
             }}
             className={cn(
@@ -575,7 +575,7 @@ export default function InvoicesPage() {
           value={search}
           onChange={e => {
             setSearch(e.target.value);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="Пошук за номером або контрагентом..."
@@ -586,7 +586,7 @@ export default function InvoicesPage() {
           value={dateFrom}
           onChange={v => {
             setDateFrom(v);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="Від"
@@ -597,7 +597,7 @@ export default function InvoicesPage() {
           value={dateTo}
           onChange={v => {
             setDateTo(v);
-            setPage(1);
+            resetPage();
             setActiveSavedFilterId(null);
           }}
           placeholder="До"
@@ -611,7 +611,7 @@ export default function InvoicesPage() {
             title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
             onClick={() => {
               setShowDeleted(d => !d);
-              setPage(1);
+              resetPage();
             }}
             className={showDeleted ? 'border-primary text-primary' : ''}
           >
