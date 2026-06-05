@@ -38,10 +38,15 @@ type ProfitabilityData = {
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
-// Thin proxy to lib/format singleton — replaces per-tooltip Intl.NumberFormat
-// construction at every Recharts data point hover.
 function fmt(n: number) {
   return fmtMoney(n) + ' ₴';
+}
+
+// Масштабований форматер для YAxis: уникає дублів при малих значеннях
+function yFmt(v: number): string {
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'м';
+  if (v >= 1_000) return (v / 1_000).toFixed(1).replace(/\.0$/, '') + 'к';
+  return String(v);
 }
 
 export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
@@ -53,7 +58,13 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
           <BarChart data={rows}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v / 1000).toFixed(0) + 'к'} />
+            <YAxis
+              tick={{ fontSize: 11 }}
+              tickFormatter={yFmt}
+              allowDecimals={false}
+              domain={[0, 'auto']}
+              width={52}
+            />
             <Tooltip formatter={v => fmt(Number(v ?? 0))} />
             <Bar dataKey="revenue" fill="#3b82f6" name="Виручка" radius={[4, 4, 0, 0]} />
           </BarChart>
@@ -65,7 +76,13 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
           <LineChart data={rows}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
+            <YAxis
+              tick={{ fontSize: 11 }}
+              tickFormatter={yFmt}
+              allowDecimals={false}
+              domain={[0, 'auto']}
+              width={52}
+            />
             <Tooltip formatter={v => fmt(Number(v ?? 0))} />
             <Line
               type="monotone"
@@ -153,7 +170,7 @@ export function LoadChart({ rows }: { rows: LoadRow[] }) {
   return (
     <div className="bg-surface rounded-xl border border-border p-5">
       <h3 className="font-medium text-foreground mb-4">Завантаженість підйомників (%)</h3>
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={Math.max(200, rows.length * 48 + 40)}>
         <BarChart data={rows} layout="vertical">
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
           <XAxis
@@ -161,6 +178,8 @@ export function LoadChart({ rows }: { rows: LoadRow[] }) {
             domain={[0, 100]}
             tickFormatter={v => v + '%'}
             tick={{ fontSize: 11 }}
+            allowDecimals={false}
+            tickCount={6}
           />
           <YAxis type="category" dataKey="liftName" tick={{ fontSize: 11 }} width={120} />
           <Tooltip formatter={v => Number(v ?? 0).toFixed(1) + '%'} />
