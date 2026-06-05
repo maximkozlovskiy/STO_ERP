@@ -274,7 +274,7 @@ function WorkOrdersPageInner() {
       resetPage();
       setActiveSavedFilterId(preset.id);
     },
-    [setShowDeleted, setPage, setActiveSavedFilterId],
+    [setShowDeleted, resetPage, setActiveSavedFilterId],
   );
 
   const handleSaveFilter = useCallback(
