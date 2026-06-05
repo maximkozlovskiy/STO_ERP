@@ -50,13 +50,8 @@ import {
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
-import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
-import { useUiFeatures } from '@/hooks/useUiFeatures';
-import { useDetailPanel } from '@/hooks/useDetailPanel';
-import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
-import { useTableColumns } from '@/hooks/useTableColumns';
-import { useColumnDrag } from '@/hooks/useColumnDrag';
+import { useListPage } from '@/hooks/useListPage';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { PurchaseOrderCreateModal } from '@/components/ui/PurchaseOrderCreateModal';
 import { toast } from '@/lib/toast';
@@ -90,7 +85,6 @@ export default function PurchaseOrdersPage() {
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
-  const features = useUiFeatures();
 
   const COLUMNS = useMemo(
     () => [
@@ -105,34 +99,42 @@ export default function PurchaseOrdersPage() {
   );
 
   const {
-    visibleKeys: colVisible,
-    visibleColumns,
-    orderedColumns,
-    order,
-    customLabels,
-    toggle: toggleCol,
-    reorder,
-    renameColumn,
-    resetConfig,
-  } = useTableColumns('purchase-orders', COLUMNS);
-  const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
+    page,
+    setPage,
+    resetPage,
+    showDeleted,
+    setShowDeleted,
+    activeSavedFilterId,
+    setActiveSavedFilterId,
+    tableColumns: {
+      visibleKeys: colVisible,
+      visibleColumns,
+      orderedColumns,
+      order,
+      customLabels,
+      toggle: toggleCol,
+      reorder,
+      renameColumn,
+      resetConfig,
+    },
+    dragProps,
+    detailPanel,
+    panelConfig,
+    savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
+    features,
+    limit,
+  } = useListPage<PoFilters>('purchase-orders', COLUMNS, { defaultLimit: 20 });
 
-  const detailPanel = useDetailPanel('purchase-orders');
-  const panelConfig = useDetailPanelConfig('purchase-orders-panel');
-
-  // Local filter & pagination state
-  const [page, setPage] = useState(1);
+  // Local filter state (specific to purchase-orders)
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
   const debouncedQ = useDebounce(q);
-  const [showDeleted, setShowDeleted] = useState(false);
   const [error, setError] = useState('');
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
   const { sort: poSort, toggle: togglePoSort } = useSortState('createdAt', 'desc');
 
   // React Query hooks
-  const limit = 20;
   const {
     data: queryData,
     isLoading: loading,
@@ -153,23 +155,20 @@ export default function PurchaseOrdersPage() {
   const total = queryData?.total ?? 0;
   const totalPages = Math.ceil(total / limit) || 1;
 
-  // Saved filters
-  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-  const {
-    saved: savedFilters,
-    save: saveFilter,
-    remove: removeFilter,
-  } = useSavedFilters<PoFilters>('purchase-orders');
+  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(orders);
 
-  const applyFilter = useCallback((preset: { id: string; filters: PoFilters }) => {
-    setStatus(preset.filters.status ?? '');
-    setQ(preset.filters.q ?? '');
-    setShowDeleted(preset.filters.showDeleted ?? false);
-    setDateFrom(preset.filters.dateFrom ?? '');
-    setDateTo(preset.filters.dateTo ?? '');
-    setPage(1);
-    setActiveSavedFilterId(preset.id);
-  }, []);
+  const applyFilter = useCallback(
+    (preset: { id: string; filters: PoFilters }) => {
+      setStatus(preset.filters.status ?? '');
+      setQ(preset.filters.q ?? '');
+      setShowDeleted(preset.filters.showDeleted ?? false);
+      setDateFrom(preset.filters.dateFrom ?? '');
+      setDateTo(preset.filters.dateTo ?? '');
+      resetPage();
+      setActiveSavedFilterId(preset.id);
+    },
+    [resetPage, setActiveSavedFilterId],
+  ); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveFilter = useCallback(
     (name: string) => {
@@ -177,10 +176,17 @@ export default function PurchaseOrdersPage() {
       setActiveSavedFilterId(preset.id);
       if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
     },
-    [saveFilter, status, q, showDeleted, dateFrom, dateTo, features.toastEnabled],
+    [
+      saveFilter,
+      status,
+      q,
+      showDeleted,
+      dateFrom,
+      dateTo,
+      features.toastEnabled,
+      setActiveSavedFilterId,
+    ],
   );
-
-  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(orders);
 
   // Unsaved guard for create/receive modals
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });

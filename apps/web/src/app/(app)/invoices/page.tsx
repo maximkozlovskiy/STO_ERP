@@ -44,7 +44,6 @@ import {
   type DetailPanelTab,
 } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
-import { useDetailPanel } from '@/hooks/useDetailPanel';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import {
   INVOICE_PANEL_SCHEMA,
@@ -53,12 +52,9 @@ import {
 } from '@/lib/panel-schema';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
-import { useSavedFilters } from '@/hooks/useSavedFilters';
-import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
-import { useUiFeatures } from '@/hooks/useUiFeatures';
-import { useTableColumns } from '@/hooks/useTableColumns';
-import { useColumnDrag } from '@/hooks/useColumnDrag';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
+import { useListPage } from '@/hooks/useListPage';
+import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
@@ -111,8 +107,6 @@ export default function InvoicesPage() {
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
-  const features = useUiFeatures();
-  const panelConfig = useDetailPanelConfig('invoices-panel');
 
   const INVOICE_COLUMNS = useMemo(
     () => [
@@ -127,33 +121,44 @@ export default function InvoicesPage() {
     [],
   );
 
+  // useListPage: shared table/panel/filter infrastructure
   const {
-    visibleKeys: colVisible,
-    visibleColumns,
-    orderedColumns,
-    order,
-    customLabels,
-    toggle: toggleCol,
-    reorder,
-    renameColumn,
-    resetConfig,
-  } = useTableColumns('invoices', INVOICE_COLUMNS);
-  const { dragProps } = useColumnDrag(visibleColumns, reorder, orderedColumns);
-  const detailPanel = useDetailPanel('invoices');
+    page,
+    setPage,
+    resetPage,
+    showDeleted,
+    setShowDeleted,
+    activeSavedFilterId,
+    setActiveSavedFilterId,
+    tableColumns: {
+      visibleKeys: colVisible,
+      visibleColumns,
+      orderedColumns,
+      order,
+      customLabels,
+      toggle: toggleCol,
+      reorder,
+      renameColumn,
+      resetConfig,
+    },
+    dragProps,
+    detailPanel,
+    panelConfig,
+    savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
+    features,
+    limit,
+  } = useListPage<InvoiceFilters>('invoices', INVOICE_COLUMNS, { defaultLimit: 20 });
 
-  // Local filter & pagination state
-  const [page, setPage] = useState(1);
+  // Page-level filter state (specific to invoices)
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [error, setError] = useState('');
-  const [showDeleted, setShowDeleted] = useState(false);
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
   const { sort: invSort, toggle: toggleInvSort } = useSortState('createdAt', 'desc');
 
-  // React Query hooks
-  const limit = 20;
+  // React Query — main data
   const {
     data: queryData,
     isLoading: loading,
@@ -174,6 +179,9 @@ export default function InvoicesPage() {
   const total = queryData?.total ?? 0;
   const totalPages = Math.ceil(total / limit) || 1;
 
+  // Bulk select — after invoices is declared so items ref is stable
+  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(invoices);
+
   const [selectedInv, setSelectedInv] = useState<InvoiceWithOptionals | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
@@ -184,22 +192,17 @@ export default function InvoicesPage() {
   const [saving, setSaving] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
 
-  // Saved filters
-  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-  const {
-    saved: savedFilters,
-    save: saveFilter,
-    remove: removeFilter,
-  } = useSavedFilters<InvoiceFilters>('invoices');
-
-  const applyFilter = useCallback((preset: { id: string; filters: InvoiceFilters }) => {
-    setSearch(preset.filters.search ?? '');
-    setStatus(preset.filters.status ?? '');
-    setDateFrom(preset.filters.dateFrom ?? '');
-    setDateTo(preset.filters.dateTo ?? '');
-    setPage(1);
-    setActiveSavedFilterId(preset.id);
-  }, []);
+  const applyFilter = useCallback(
+    (preset: { id: string; filters: InvoiceFilters }) => {
+      setSearch(preset.filters.search ?? '');
+      setStatus(preset.filters.status ?? '');
+      setDateFrom(preset.filters.dateFrom ?? '');
+      setDateTo(preset.filters.dateTo ?? '');
+      resetPage();
+      setActiveSavedFilterId(preset.id);
+    },
+    [resetPage, setActiveSavedFilterId],
+  ); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveFilter = useCallback(
     (name: string) => {
@@ -207,10 +210,8 @@ export default function InvoicesPage() {
       setActiveSavedFilterId(preset.id);
       if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
     },
-    [saveFilter, search, status, dateFrom, dateTo, features.toastEnabled],
+    [saveFilter, search, status, dateFrom, dateTo, features.toastEnabled, setActiveSavedFilterId],
   );
-
-  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(invoices);
 
   const bulkCancel = useCallback(
     async (ids: string[]) => {
