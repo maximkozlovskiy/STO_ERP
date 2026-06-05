@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useRequireAuth, useAuth } from '@/lib/auth';
-import { apiFetch, apiBlobFetch, apiMultipartFetch } from '@/lib/api-client';
+import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,9 +12,7 @@ import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Spinner } from '@/components/ui/spinner';
-import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
-import { BatchViewerModal } from '@/components/ui/batch-viewer-modal';
-import { Layers, Pencil } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtInt, fmtDate, fmtDateTime, fmtShortDateTime } from '@/lib/format';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -28,8 +26,10 @@ import {
 } from '@sto/shared';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
-import { WorkOrderAddLineModal } from '@/components/ui/WorkOrderAddLineModal';
-import { WorkOrderAddPartModal } from '@/components/ui/WorkOrderAddPartModal';
+import { WorkOrderLinesSection } from './WorkOrderLinesSection';
+import { WorkOrderPartsSection } from './WorkOrderPartsSection';
+import { WorkOrderMediaSection } from './WorkOrderMediaSection';
+import { WorkOrderAuditSection } from './WorkOrderAuditSection';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -237,15 +237,8 @@ export default function WorkOrderCardPage() {
   const [cancellingAct, setCancellingAct] = useState(false);
   const [downloadingActPdf, setDownloadingActPdf] = useState(false);
 
-  const [lineModal, setLineModal] = useState(false);
-  const [partModal, setPartModal] = useState(false);
-  const [batchViewer, setBatchViewer] = useState<{ goodId: string; warehouseId: string } | null>(
-    null,
-  );
   const [transitioning, setTransitioning] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [deletingLineId, setDeletingLineId] = useState<string | null>(null);
-  const [deletingPartId, setDeletingPartId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [refsError, setRefsError] = useState('');
 
@@ -265,8 +258,6 @@ export default function WorkOrderCardPage() {
   const [inspMileage, setInspMileage] = useState('');
 
   const [media, setMedia] = useState<WorkOrderMedia[]>([]);
-  const [uploadingMedia, setUploadingMedia] = useState(false);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const [auditEvents, setAuditEvents] = useState<AuditEventItem[]>([]);
 
@@ -363,42 +354,6 @@ export default function WorkOrderCardPage() {
         console.warn('Помилка завантаження медіа наряду:', e);
       });
   }, [id]);
-
-  // Bug #89: Escape closes lightbox + a11y. Without this keyboard users can't
-  // dismiss the photo preview at all.
-  useEffect(() => {
-    if (!lightboxUrl) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLightboxUrl(null);
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [lightboxUrl]);
-
-  const handleMediaUpload = async (files: FileList) => {
-    setUploadingMedia(true);
-    setError('');
-    // Bug #85: використовуємо apiMultipartFetch для silent refresh при 401.
-    // Раніше native fetch з прямим Bearer ламався після того як access token закінчувався (~15 хв)
-    // і користувач отримував абстрактне "Не вдалося завантажити N файл(ів)" без auto-recovery.
-    //
-    // Parallel upload — each file is an independent multipart POST. With 5+ files
-    // sequential waits stack into seconds; Promise.allSettled keeps individual
-    // failure tracking intact while collapsing wall-clock time to max(file).
-    const results = await Promise.allSettled(
-      Array.from(files).map(file => {
-        const fd = new FormData();
-        fd.append('file', file);
-        return apiMultipartFetch(`/work-orders/${id}/media`, fd);
-      }),
-    );
-    const failures = results.filter(r => r.status === 'rejected').length;
-    if (failures > 0) {
-      setError(`Не вдалося завантажити ${failures} файл(ів)`);
-    }
-    await loadMedia();
-    setUploadingMedia(false);
-  };
 
   const saveAsTemplate = async () => {
     if (!wo) return;
@@ -506,40 +461,6 @@ export default function WorkOrderCardPage() {
         console.warn('Помилка завантаження точок огляду:', e);
       });
   }, [id]);
-
-  const removeLine = async (lineId: string) => {
-    if (!(await confirm({ title: 'Видалити роботу?', variant: 'destructive' }))) return;
-    setDeletingLineId(lineId);
-    setError('');
-    try {
-      await apiFetch<void>(`/work-orders/${id}/lines/${lineId}`, { method: 'DELETE' });
-      if (features.toastEnabled) toast.success('Роботу видалено');
-      load();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка видалення';
-      setError(msg);
-      if (features.toastEnabled) toast.error(msg);
-    } finally {
-      setDeletingLineId(null);
-    }
-  };
-
-  const removePart = async (partId: string) => {
-    if (!(await confirm({ title: 'Видалити запчастину?', variant: 'destructive' }))) return;
-    setDeletingPartId(partId);
-    setError('');
-    try {
-      await apiFetch<void>(`/work-orders/${id}/parts/${partId}`, { method: 'DELETE' });
-      if (features.toastEnabled) toast.success('Запчастину видалено');
-      load();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка видалення';
-      setError(msg);
-      if (features.toastEnabled) toast.error(msg);
-    } finally {
-      setDeletingPartId(null);
-    }
-  };
 
   const transition = async (newStatus: string) => {
     const label = STATUS_LABELS[newStatus];
@@ -1036,133 +957,27 @@ export default function WorkOrderCardPage() {
         </div>
       )}
 
-      {/* Lines */}
-      <div className="bg-surface rounded-xl border border-border p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-foreground">Роботи</h2>
-          {canEdit && (
-            <button
-              onClick={() => {
-                setError('');
-                setLineModal(true);
-              }}
-              className="text-sm text-primary hover:underline"
-            >
-              + Робота
-            </button>
-          )}
-        </div>
-        {(wo.lines?.length ?? 0) === 0 ? (
-          <p className="text-sm text-muted-foreground">Роботи не додані</p>
-        ) : (
-          <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
-            {wo.lines.map(l => (
-              <div key={l.id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">{l.workName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {l.employeeName} · <span>{l.normoHours} н/г норм.</span>
-                    {l.actualHours != null && (
-                      <span
-                        className={cn(
-                          'ml-1',
-                          l.actualHours > l.normoHours
-                            ? 'text-warning font-medium'
-                            : 'text-muted-foreground/70',
-                        )}
-                      >
-                        {l.actualHours} н/г факт.
-                      </span>
-                    )}
-                  </p>
-                  {l.notes && <p className="text-xs text-muted-foreground mt-0.5">{l.notes}</p>}
-                </div>
-                <div className="text-right mr-3">
-                  <p className="text-sm font-medium text-foreground">{fmtMoney(l.amount)} ₴</p>
-                  <p className="text-xs text-muted-foreground">
-                    {fmtMoney(l.price)} × {l.normoHours}
-                  </p>
-                </div>
-                {canEdit && (
-                  <button
-                    onClick={() => removeLine(l.id)}
-                    disabled={deletingLineId === l.id}
-                    className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <WorkOrderLinesSection
+        woId={id}
+        orgId={wo.orgId}
+        lines={wo.lines}
+        works={works}
+        employees={employees}
+        onChanged={load}
+        disabled={!canEdit}
+        onError={setError}
+      />
 
-      {/* Parts */}
-      <div className="bg-surface rounded-xl border border-border p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-foreground">Запчастини та матеріали</h2>
-          {canEdit && (
-            <div className="flex items-center gap-3">
-              <XlsxImportButton
-                templateType="wo-parts"
-                importUrl={`/xlsx/import/work-order-parts/${id}`}
-                onImportComplete={load}
-              />
-              <button
-                onClick={() => {
-                  setError('');
-                  setPartModal(true);
-                }}
-                className="text-sm text-primary hover:underline"
-              >
-                + Запчастина
-              </button>
-            </div>
-          )}
-        </div>
-        {(wo.parts?.length ?? 0) === 0 ? (
-          <p className="text-sm text-muted-foreground">Запчастини не додані</p>
-        ) : (
-          <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
-            {wo.parts.map(p => (
-              <div key={p.id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-medium text-foreground">{p.goodName}</p>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        setBatchViewer({ goodId: p.goodId, warehouseId: p.warehouseId });
-                      }}
-                      title="Переглянути партії"
-                      aria-label={`Переглянути партії товару ${p.goodName}`}
-                      className="p-0.5 rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors"
-                    >
-                      <Layers className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {p.quantity} {p.unitShortName ?? 'шт'} × {fmtMoney(p.price)} ₴
-                  </p>
-                </div>
-                <div className="text-right mr-3">
-                  <p className="text-sm font-medium text-foreground">{fmtMoney(p.amount)} ₴</p>
-                </div>
-                {canEdit && (
-                  <button
-                    onClick={() => removePart(p.id)}
-                    disabled={deletingPartId === p.id}
-                    className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <WorkOrderPartsSection
+        woId={id}
+        orgId={wo.orgId}
+        parts={wo.parts}
+        warehouses={warehouses}
+        initialWarehouseId={initialPartWarehouseId}
+        onChanged={load}
+        disabled={!canEdit}
+        onError={setError}
+      />
 
       {/* Inspection section */}
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
@@ -1325,152 +1140,10 @@ export default function WorkOrderCardPage() {
         )}
       </div>
 
-      {/* Фото */}
-      <div className="bg-surface rounded-xl border border-border overflow-hidden">
-        <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
-          <h3 className="font-medium text-foreground text-sm">Фото ({media.length})</h3>
-          <label className="cursor-pointer">
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              multiple
-              className="hidden"
-              onChange={e => {
-                if (e.target.files) void handleMediaUpload(e.target.files);
-              }}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              loading={uploadingMedia}
-              onClick={e => e.preventDefault()}
-            >
-              Додати фото
-            </Button>
-          </label>
-        </div>
-        <div
-          className="p-4"
-          onDragOver={e => e.preventDefault()}
-          onDrop={e => {
-            e.preventDefault();
-            void handleMediaUpload(e.dataTransfer.files);
-          }}
-        >
-          {media.length === 0 ? (
-            <div className="text-center text-muted-foreground text-sm py-6 border-2 border-dashed border-border rounded-lg">
-              Перетягніть фото сюди або натисніть &quot;Додати фото&quot;
-            </div>
-          ) : (
-            <div className="grid grid-cols-4 gap-3">
-              {media.map(m => (
-                <div
-                  key={m.id}
-                  className="relative group aspect-square rounded-lg overflow-hidden bg-secondary cursor-pointer"
-                  onClick={() => setLightboxUrl(m.signedUrl)}
-                >
-                  {m.mimeType.startsWith('image/') ? (
-                    <img
-                      src={m.signedUrl}
-                      alt={m.filename}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-xs text-muted-foreground p-1 text-center break-all">
-                      {m.filename}
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    aria-label="Видалити файл"
-                    onClick={async e => {
-                      e.stopPropagation();
-                      await apiFetch(`/work-orders/${id}/media/${m.id}`, { method: 'DELETE' });
-                      setMedia(prev => prev.filter(x => x.id !== m.id));
-                    }}
-                    className="absolute top-1 right-1 hidden group-hover:flex focus-visible:flex w-6 h-6 bg-destructive text-white rounded-full items-center justify-center text-xs"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <WorkOrderMediaSection woId={id} media={media} onChanged={loadMedia} onError={setError} />
 
-      {/* Lightbox — Bug #89: a11y (role/aria-modal/aria-label) + Escape handled in useEffect above */}
-      {lightboxUrl && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Перегляд фото"
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
-          onClick={() => setLightboxUrl(null)}
-        >
-          <img
-            src={lightboxUrl}
-            alt="Фото"
-            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
-            decoding="async"
-          />
-        </div>
-      )}
+      <WorkOrderAuditSection auditEvents={auditEvents} />
 
-      {/* Журнал змін */}
-      {auditEvents.length > 0 && (
-        <div className="bg-surface rounded-xl border border-border overflow-hidden">
-          <div className="px-5 py-3 border-b border-border bg-secondary">
-            <h3 className="font-medium text-foreground text-sm">Журнал змін</h3>
-          </div>
-          <div className="divide-y divide-border max-h-64 overflow-y-auto">
-            {auditEvents.map(ev => {
-              const who = `${ev.user.lastName} ${ev.user.firstName}`;
-              const when = fmtDateTime(ev.createdAt);
-              const diff = ev.diff as Record<string, { from: unknown; to: unknown }>;
-              const changes = Object.entries(diff)
-                .filter(([, v]) => v && typeof v === 'object' && 'from' in v)
-                .map(
-                  ([k, v]) =>
-                    `${k}: ${(v as { from: unknown; to: unknown }).from} → ${(v as { from: unknown; to: unknown }).to}`,
-                )
-                .join(', ');
-              return (
-                <div key={ev.id} className="px-5 py-2.5 text-[12px] text-muted-foreground">
-                  <span className="font-medium text-foreground">{who}</span>{' '}
-                  {ev.action === 'CREATE'
-                    ? 'створив'
-                    : ev.action === 'DELETE'
-                      ? 'видалив'
-                      : 'змінив'}{' '}
-                  {changes && <span className="text-foreground-muted">({changes})</span>}{' '}
-                  <span className="ml-1">{when}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <WorkOrderAddLineModal
-        open={lineModal}
-        workOrderId={id}
-        works={works}
-        employees={employees}
-        onClose={() => setLineModal(false)}
-        onAdded={load}
-      />
-
-      <WorkOrderAddPartModal
-        open={partModal}
-        workOrderId={id}
-        warehouses={warehouses}
-        initialWarehouseId={initialPartWarehouseId}
-        onClose={() => setPartModal(false)}
-        onAdded={load}
-      />
       <ConfirmDialog {...dialogProps} />
 
       {/* ── Редагування реквізитів ─────────────────────────────────────────── */}
