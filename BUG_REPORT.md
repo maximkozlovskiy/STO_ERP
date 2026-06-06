@@ -10964,3 +10964,135 @@ Fallback `<Input>` коли currencies list порожній (offline-first scen
 3. `PATCH /settings/organisation` з `{ currency: "XYZ" }` (no such row) → 400 BadRequestException
 
 **Статус:** [x] виправлено
+
+---
+
+## Session 2026-06-06 — AUTO tester: Calendar vehicle picker post-review hunt (HEAD 696d155d)
+
+Scope (3 commits, 34829659..696d155d):
+
+- 34829659 feat(calendar): vehicle picker in slot form
+- 93573236 fix(calendar): review fixes
+- 696d155d docs(memory): update MemoryManual
+
+Файли:
+
+- apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx
+- apps/web/src/app/(app)/calendar/calendar.types.ts
+- apps/web/src/app/(app)/calendar/useCalendarState.ts
+
+Знайдено 5 багів (CRITICAL: 1, HIGH: 3, MEDIUM: 1).
+
+---
+
+### Bug #364 — [HIGH] openNewWo runs full prefill + API call when CLOSING new-WO mini-form
+
+**Файл:** `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx:549-582`
+
+**Сигнал:** `setShowNewWo(v => !v)` toggles visibility, але без guard виконується вся prefill-логіка (`setNewWo({...})`, можливо `apiFetch /counterparties/.../garages` + `/vehicles`).
+
+**Repro:**
+
+1. Відкрити календар, обрати клієнта з кількома авто.
+2. Натиснути «+» (FilePlus) → mini-form з'явилась, vehicles завантажились.
+3. Натиснути «+» ще раз щоб ЗАКРИТИ → mini-form ховається.
+4. У DevTools Network — повторний GET /counterparties/:id/garages + N x /vehicles?customerGarageId=...
+
+**Наслідок:** Зайві HTTP-запити при закриванні, кеш-перезапис state, можливе перезаписання користувацького вибору vehicleId у newWo state.
+
+**Фікс:** Обчислити цільовий стан ПЕРЕД setShowNewWo. Якщо переходимо у "закрито" — НЕ виконувати prefill. Використати ref щоб прочитати поточний showNewWo, або взяти showNewWo з deps useCallback.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #365 — [HIGH] Зміна клієнта через Work-Order picker не очищує vehicleId ні cpVehicles — stale vehicle linked to wrong counterparty
+
+**Файл:** `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx:1311-1346`
+
+**Сигнал:** У `cpPickerOpen.onSelect` правильно очищується `vehicleId: ''` + `setCpVehicles([])`. У `woPickerOpen.onSelect` при заміні клієнта (через WO який належить іншому клієнту) — НЕ очищується.
+
+**Repro:**
+
+1. Створити слот, обрати клієнта A (2 авто).
+2. Обрати vehicleId=X (належить A).
+3. Відкрити WO picker, обрати наряд що належить клієнту B.
+4. Підтвердити "Замінити клієнта".
+5. Vehicle dropdown ще показує A's vehicles (поки fetch для B не завершиться).
+6. Зберегти слот → openNewWo passes form.vehicleId=X (vehicle from A) до newWo, далі при saveNewWorkOrder vehicleId=newWo.vehicleId → POST /work-orders з vehicleId з чужого клієнта → 400 з API (vehicle does not belong to counterparty) АБО silent FK mismatch.
+
+**Фікс:**
+
+- У woPickerOpen.onSelect branch "replace counterparty" — додати `vehicleId: ''` у setForm + setCpVehicles([]).
+- У woPickerOpen.onSelect branch "no current counterparty, set new" — також `vehicleId: ''` (defensive) + setCpVehicles([]).
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #366 — [HIGH] Stale cpVehicles displayed during counterparty transition fetch — UI shows OLD client's vehicles in select
+
+**Файл:** `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx:458-493`
+
+**Сигнал:** Effect що завантажує vehicles НЕ скидає cpVehicles при старті нового fetch. Тільки після успішного return setCpVehicles(all) перезаписує. Між моментом зміни counterpartyId і завершенням fetch — UI рендерить старі vehicles.
+
+**Наслідок (UX):** Користувач бачить vehicles попереднього клієнта у select протягом 200-500ms (за умови 2+ vehicles у обох клієнтів). Plus race condition: якщо form.vehicleId був auto-filled для старого клієнта і його ID не співпадає з жодним новим vehicle — select показує "— оберіть авто —" (empty value).
+
+**Фікс:** Очистити setCpVehicles([]) у початок ефекту, перед AbortController, синхронно.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #367 — [CRITICAL] form.vehicleId persists across counterparty change → auto-fill нового клієнта блокується + invalid vehicleId leak до newWo POST
+
+**Файл:** `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx:483`
+
+**Сигнал:** Auto-fill guard перевіряє `!formRef.current.vehicleId` — гарантує що auto-fill НЕ перезапише вибір користувача. Але якщо form.vehicleId успадковано з минулого клієнта (Bug #365), guard сприймає це як "user choice" і не оновлює.
+
+**Repro:**
+
+1. Клієнт A (2 авто) → обрати vehicleId=X.
+2. Через WO picker замінити на клієнта B (1 авто).
+3. cpVehicles для B = [Y]. Auto-fill check: `!form.vehicleId` → false (X still set). → НЕ auto-fill Y.
+4. Vehicle dropdown сховається (тільки якщо length > 1), form.vehicleId=X залишається (vehicle that doesnt belong to Bs vehicles list).
+5. Кнопка "+" Новий наряд → newWo.vehicleId=X (form.vehicleId || v.vehicleId) → POST /work-orders → 400.
+
+**Наслідок (CRITICAL):** Тиха неконсистентність form state. Невидиме порушення FK belonging. Validation на бекенді — last line of defence.
+
+**Фікс:** Defense-in-depth: перевіряти що поточний form.vehicleId є серед нових vehicles. Якщо ні — скинути.
+
+```typescript
+const currentVid = formRef.current.vehicleId;
+const stillValid = currentVid && all.some(v => v.id === currentVid);
+if (currentVid && !stillValid) {
+  setForm(f => ({ ...f, vehicleId: '' }));
+}
+if (all.length === 1 && !stillValid) {
+  setForm(f => ({ ...f, vehicleId: all[0]!.id }));
+}
+```
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #368 — [MEDIUM] Клієнт з 0 авто не показує підказку "Немає авто", немає кнопки "Додати авто" в контексті слота
+
+**Файл:** `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx:1001-1021`
+
+**Сигнал:** Select рендериться ТІЛЬКИ при `cpVehicles.length > 1`. При 0 vehicles — нічого не показується, користувач не знає чи це 0 чи завантаження. Якщо клієнт мав 1 vehicle — auto-fill, але теж нема індикатора.
+
+**Repro:**
+
+1. Створити нового клієнта без vehicles (через wizard, skip step 2).
+2. У формі слоту обрати цього клієнта.
+3. Нічого не з'являється під полем "Клієнт".
+4. Зберегти слот OK (vehicleId не вимагається бекендом).
+5. Натиснути "+" Новий наряд → vehicle dropdown порожній, save button disabled, без пояснення.
+
+**Наслідок (UX):** Користувач плутається. Не знає що клієнт без авто. Mini-form для нового наряду не можна заповнити.
+
+**Фікс:** Додати subtle hint під клієнтом коли `form.counterpartyId && cpVehicles.length === 0` — "У клієнта немає автомобілів". Знизити cognitive load.
+
+**Статус:** [x] виправлено

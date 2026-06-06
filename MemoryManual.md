@@ -9,9 +9,16 @@
 ## Останній commit
 
 ```
-<NEW> 9357323 fix(calendar): review fixes — abort vehicle fetch + reuse cpVehicles in new-WO mini-form
-<NEW> 34829659 feat(calendar): vehicle picker in slot form — auto-fill if 1 vehicle, select if multiple
+<NEW> fix(tester): Bugs #364-#368 — calendar vehicle picker post-review hunt
+   • #364 openNewWo runs API call when CLOSING mini-form → split open/toggle through showNewWoRef
+   • #365 WO-picker counterparty replace not clearing vehicleId/cpVehicles → leak to newWo POST
+   • #366 stale cpVehicles during counterparty transition fetch → reset at start of effect
+   • #367 form.vehicleId persists across counterparty change → blocks auto-fill; defense-in-depth check
+   • #368 0-vehicle client shows no hint → add italic muted hint
+9357323 fix(calendar): review fixes — abort vehicle fetch + reuse cpVehicles in new-WO mini-form
+34829659 feat(calendar): vehicle picker in slot form — auto-fill if 1 vehicle, select if multiple
 TypeScript: api ✓ web ✓ shared ✓ (0 errors)
+Web tests: 29 files / 312 passed
 f142ea5 docs(skills): add 3 new patterns to sto-tester (currency feature lessons)
 a5fec5d fix(tester): Bugs #359-#364 — currency feature post-review bug hunt
 6f106ac fix(review): currency feature critical bugs — DTO whitelist + /currencies shape

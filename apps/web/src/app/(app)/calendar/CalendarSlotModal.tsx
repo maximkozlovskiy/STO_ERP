@@ -460,6 +460,9 @@ export function CalendarSlotModal({
       setCpVehicles([]);
       return;
     }
+    // Bug #366: скидаємо cpVehicles ОДРАЗУ при старті нового fetch, щоб не показувати
+    // vehicles попереднього клієнта поки нові завантажуються.
+    setCpVehicles([]);
     const ac = new AbortController();
     const fetchedForId = form.counterpartyId;
     (async () => {
@@ -480,7 +483,16 @@ export function CalendarSlotModal({
         const all = nested.flat();
         if (ac.signal.aborted || !mountedRef.current) return;
         setCpVehicles(all);
-        if (all.length === 1 && !formRef.current.vehicleId) {
+        // Bug #367: defense-in-depth — якщо поточний form.vehicleId не належить
+        // жодному vehicle нового клієнта (успадкований з минулого через WO picker
+        // або edit slot) — скидаємо, інакше auto-fill для 1-vehicle клієнта блокується
+        // і newWo POST отримує invalid FK.
+        const currentVid = formRef.current.vehicleId;
+        const stillValid = currentVid && all.some(v => v.id === currentVid);
+        if (currentVid && !stillValid) {
+          setForm(f => ({ ...f, vehicleId: '' }));
+        }
+        if (all.length === 1 && !stillValid) {
           setForm(f => ({ ...f, vehicleId: all[0]!.id }));
         }
       } catch {
@@ -546,8 +558,17 @@ export function CalendarSlotModal({
     if (!open) setShowNewWo(false);
   }, [open]);
 
+  // Ref до showNewWo — щоб openNewWo міг прочитати поточний стан до toggle
+  // без додавання у useCallback deps (інакше функція пересоздається при кожному toggle).
+  const showNewWoRef = useRef(showNewWo);
+  showNewWoRef.current = showNewWo;
+
   const openNewWo = useCallback(async () => {
-    setShowNewWo(v => !v);
+    // Bug #364: визначаємо чи ми ВІДКРИВАЄМО чи ЗАКРИВАЄМО.
+    // Якщо закриваємо — лише toggle, без prefill/fetch.
+    const willOpen = !showNewWoRef.current;
+    setShowNewWo(willOpen);
+    if (!willOpen) return;
     if (!form.counterpartyId) return;
     // Pre-fill vehicleId from slot form if user already picked one.
     setNewWo(v => ({
@@ -1020,6 +1041,13 @@ export function CalendarSlotModal({
             </div>
           )}
 
+          {/* Bug #368: 0-vehicle client → підказка */}
+          {form.counterpartyId && cpVehicles.length === 0 && (
+            <p className="text-xs text-muted-foreground italic">
+              У клієнта немає автомобілів — їх можна додати у картці клієнта.
+            </p>
+          )}
+
           {/* New client wizard modal */}
           <Modal
             open={newCpOpen}
@@ -1320,12 +1348,18 @@ export function CalendarSlotModal({
                 if (replace) {
                   const cpDisp = item.counterpartyName ?? '';
                   setCpDisplay(cpDisp);
+                  setCpPhone(null);
+                  // Bug #365: при заміні клієнта через WO picker скидаємо vehicleId
+                  // і cpVehicles. Без цього form.vehicleId успадковується з минулого
+                  // клієнта → leak до newWo POST → 400 FK mismatch.
+                  setCpVehicles([]);
                   setForm(f => ({
                     ...f,
                     workOrderId: item.id,
                     workOrderDisplay: display,
                     counterpartyId: item.counterpartyId!,
                     counterpartyDisplay: cpDisp,
+                    vehicleId: '',
                   }));
                 } else {
                   setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
@@ -1336,12 +1370,16 @@ export function CalendarSlotModal({
               if (item.counterpartyId && !form.counterpartyId) {
                 const cpDisp = item.counterpartyName ?? '';
                 setCpDisplay(cpDisp);
+                setCpPhone(null);
+                // Bug #365: defensive — починаємо з чистого vehicleId/cpVehicles
+                setCpVehicles([]);
                 setForm(f => ({
                   ...f,
                   workOrderId: item.id,
                   workOrderDisplay: display,
                   counterpartyId: item.counterpartyId!,
                   counterpartyDisplay: cpDisp,
+                  vehicleId: '',
                 }));
                 return;
               }
