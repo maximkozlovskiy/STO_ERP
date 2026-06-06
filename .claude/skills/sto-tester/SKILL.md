@@ -946,6 +946,51 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-06 — Sibling-handler pattern miss: review-agent виправив один handler з race/404/guard, але дзеркальний sibling у тому ж файлі залишився баговий (Bug #370) — frontend, modal/page CRUD handlers
+
+**Сигнал:** sto-review-agent (або попередня сесія) виправив race-guard / 404-handling / closure-fix у ОДНОМУ handler (`addX`, `deleteY`, `markZ`), але у тому ж файлі є **дзеркальні sibling handlers** (`addContract` поруч з `addVehicle`, `bulkDelete` поруч з `deleteOne`, etc.) які НЕ були touched commit-ом і досі мають той самий патерн. Tester повинен post-review audit-ити **всі handler-функції того ж файлу**, не лише ті що фігурують у diff.
+
+```bash
+# Для кожного fixed handler у нещодавньому review-commit — знайти sibling handlers у тому ж файлі:
+git log -1 --name-only --format="" | while read f; do
+  case "$f" in *.tsx|*.ts)
+    # У файлі знайти ВСІ async handler-функції
+    grep -nE "const [a-z][a-zA-Z]+ = async \(|const handle[A-Z]" "$f" | head -20
+    # Та перевірити чи КОЖНА з них має той самий patch що applied
+    # (наприклад: currentCpIdRef.current === cpIdAtStart, або
+    #  setSelectedX(prev => prev?.id === id ? null : prev))
+  ;; esac
+done
+```
+
+**Причина виникнення:** Review-agent (або dev) шукає за конкретним рядковим симптомом («бажано додати guard у addVehicle»), фіксить його, але **не екстраполює** на сусідні async handlers того ж файлу. Кожен handler — окремий callsite з copy-paste-style контролем потоку, тому одне і те саме виправлення треба застосувати N разів. Інкрементальні фікси без full-file scan легко лишають дзеркальні баги відкритими.
+
+**Підхід до виявлення:**
+
+1. Прочитати весь файл де applied review-fix (НЕ тільки конкретні handler).
+2. Знайти ВСІ async handler-функції — `const X = async () => { ... }`, `const handleX = useCallback(async ...)`, `async function X(...)`.
+3. Для КОЖНОЇ перевірити чи присутній той самий patch:
+   - **Race-guard (Bug #370):** `const xAtStart = X.id; ... if (currentXRef.current !== xAtStart) return;` після КОЖНОГО await.
+   - **404 → soft-handling (Bug #371-suite):** catch-блок розпарсює error message і не показує toast для not-found якщо resource уже видалений.
+   - **Functional setter (Bug #371):** `setX(prev => prev?.id === id ? null : prev)` замість `if (selectedX?.id === id) setX(null)`.
+   - **Captured closure vs ref-readback:** event handlers що читають state ПІСЛЯ await повинні читати з ref або з functional setter, не з захопленої closure.
+4. Якщо хоча б одне — баг. Severity така ж як оригінальний patch (HIGH/MEDIUM/LOW).
+
+**Підхід до фіксу:** Apply той самий patch у sibling handler. Якщо handlers поділяють спільний guard pattern → винести у helper-фукнцію або custom hook (наприклад `useTenantGuardedHandler`). Записати у BUG_REPORT.md з посиланням на original Bug# як «sibling pattern miss».
+
+**Severity:** залежить від конкретного handler:
+
+- HIGH якщо handler пишеться у API/DB → silent data corruption (Bug #370 — contract сюди потрапляє у чужий список).
+- MEDIUM якщо лише UI state (toast.error не з того CP).
+- LOW якщо edge-case (closure-stale у seldom-changing state).
+
+**Де шукати ще:**
+
+- Будь-який Modal/Page CRUD з 2+ async handlers (`addX`/`deleteX`/`updateX`).
+- Calendar/work-orders/contracts/invoices forms — багато CRUD у одному файлі.
+- Bulk-actions handlers у list pages (delete/archive/restore/fire) — copy-paste race.
+- `useTransition`/`startTransition` обгортки навколо різних action-функцій того ж компонента.
+
 ### 2026-06-06 — Mask wrapper re-extracts digits from formatted prefix → country-code accumulates (Bug #369) — frontend, controlled-input wrapper
 
 **Сигнал:** Input-mask wrapper (PhoneInput, CardNumberInput, IBANInput, VinInput) reads `e.target.value` як цілий рядок, витягує `digits = raw.replace(/\D/g, '')`, стрипає фіксований prefix (country code / IBAN code), re-applies формат. Тест repro: `await user.type(input, '<international-prefix><local-number>')` посимвольно → fields-state не співпадає з очікуваним після paste тієї ж строки одноразово. Grep:
