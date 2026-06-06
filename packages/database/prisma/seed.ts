@@ -111,6 +111,21 @@ async function main() {
     },
   });
 
+  // ─── Default Currency (UAH) ──────────────────────────────
+  await prisma.currency.upsert({
+    where: { orgId_code: { orgId: ORG_ID, code: 'UAH' } },
+    update: {},
+    create: {
+      orgId: ORG_ID,
+      code: 'UAH',
+      name: 'Гривня',
+      fullName: 'Гривня',
+      internationalName: 'Ukrainian Hryvnia',
+      symbol: '₴',
+    },
+  });
+  console.warn('  Currency: UAH (Гривня)');
+
   // ─── BranchSettings ──────────────────────────────────────
   await prisma.branchSettings.upsert({
     where: { branchId: BRANCH_ID },
