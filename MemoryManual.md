@@ -9,13 +9,15 @@
 ## Останній commit
 
 ```
-<NEW> 6f106ac fix(review): currency feature critical bugs — DTO whitelist + /currencies shape
+<NEW> f142ea5 docs(skills): add 3 new patterns to sto-tester (currency feature lessons)
+<NEW> a5fec5d fix(tester): Bugs #359-#364 — currency feature post-review bug hunt
+6f106ac fix(review): currency feature critical bugs — DTO whitelist + /currencies shape
 7fb4603 feat(contracts): add currency field to contracts + org currency setting
 b594a3c docs(skills): add 3 new patterns to sto-optimize (cycle 3)
 f766e44 perf(optimize): cycle 3 — hoist static tab/option arrays to module level
 39dd486 perf(optimize): cycle 3 — 1-RTT remove + narrow tenant guards + race-safe soft-delete
 TypeScript: api ✓ web ✓ shared ✓ (0 errors)
-API tests: 56 files / 650 passed
+API tests: 56 files / 661 passed (+11 new для Bugs #359-#364)
 Web tests: 29 files / 312 passed
 0af1e71 fix(tester): Bugs #354-#358 — calendar Kyiv-TZ ISO + Warehouse/Barcode auto-promote + TaxRate isDefault + Recharts TZ-safe
 b33249bc fix(review): WorkOrderPreviewModal badge variant + missing cancelled flags + bg-primary/8→/10
