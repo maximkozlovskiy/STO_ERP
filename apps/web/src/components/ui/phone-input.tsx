@@ -6,14 +6,26 @@ import { Input, type InputProps } from './input';
 // Formats raw input into +38 (0XX) XXX-XX-XX Ukrainian phone mask.
 // Strips non-digits, normalises a leading 38/380 country code so we always
 // work with a local 10-digit Ukrainian number (starts with 0).
+//
+// IMPORTANT: the mask is re-applied on every keystroke against the CURRENT
+// DOM value which already contains the formatted prefix '+38 (' inserted by
+// the previous mask call. If we naively pull digits from the whole string,
+// the '38' from the prefix joins the user's typed digits → strip-2-then-slice
+// double-counts country code as subscriber. (Bug #369: typing '3805...' gave
+// '+38 (380) 501-23-45' instead of '+38 (050) 123-45-67'.)
+//
+// Fix: strip the locked '+38 (' prefix from `raw` BEFORE extracting digits, so
+// we only mask the user-supplied portion. One-shot pastes (no prefix in raw)
+// still hit the legacy 380/38 strip path.
 function applyMask(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  let d = digits.startsWith('380')
-    ? digits.slice(2)
-    : digits.startsWith('38')
-      ? digits.slice(2)
-      : digits;
-  d = d.slice(0, 10);
+  let rest = raw;
+  if (rest.startsWith('+38 (')) rest = rest.slice(5);
+
+  let digits = rest.replace(/\D/g, '');
+  if (digits.startsWith('380')) digits = digits.slice(2);
+  else if (digits.startsWith('38') && digits.length >= 11) digits = digits.slice(2);
+
+  const d = digits.slice(0, 10);
   if (!d.length) return '';
 
   let r = '+38 (';

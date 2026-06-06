@@ -11096,3 +11096,118 @@ if (all.length === 1 && !stillValid) {
 **Фікс:** Додати subtle hint під клієнтом коли `form.counterpartyId && cpVehicles.length === 0` — "У клієнта немає автомобілів". Знизити cognitive load.
 
 **Статус:** [x] виправлено
+
+---
+
+## Session 2026-06-06 — AUTO/FULL tester: PhoneInput mask + calendar/work-orders prefill (HEAD f52d8116)
+
+Scope (5 файлів, фокус на):
+
+- `apps/web/src/components/ui/phone-input.tsx` — нова PhoneInput з маскою `+38 (0XX) XXX-XX-XX`, мутує `e.target.value` напряму
+- `apps/web/src/app/(app)/calendar/CalendarDayGrid.tsx` — tooltip multiline (`join('\n')`)
+- `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx` — FilePlus відкриває `/work-orders?action=new&counterpartyId=...` у новій вкладці
+- `apps/web/src/app/(app)/work-orders/page.tsx` — useEffect на searchParams читає prefill і відкриває Create modal
+- `apps/web/src/app/(app)/calendar/calendar.types.ts` — `VehicleOption.licensePlate: string | null`
+
+Baseline (Крок 0):
+
+- TS (`@sto/api`, `@sto/web`, `@sto/shared`): зелений
+- Unit API: `661/661 passed`
+- Unit Web: `312/312 passed` (до нових тестів)
+- Servers up: API :3000 → 200, Web :3001 → 200
+
+Знайдено 1 баг (HIGH: 1), створено regression-guard suite на 11 тестів для PhoneInput. Інші точкові гіпотези перевірені і відкинуті після прямого читання коду:
+
+- `useEffect` prefill у `work-orders/page.tsx` — НЕ зациклюється (після `router.replace('/work-orders')` `searchParams.get('action') !== 'new'` → early return).
+- Невалідний `counterpartyId` у URL — `apiFetch /counterparties/:id` має `.catch(() => {})`, проте `loadVehicles(cpId)` все одно стрельне у `setError(...)` для page-level banner. Не критично — `[LOW]` UX issue (документую нижче як «спостереження», без окремого фіксу).
+- `CalendarSlotModal` — leftovers references `showNewWo`/`newWo` залишилися ЛИШЕ в коментарях, не в коді. Безпечно.
+- `CalendarDayGrid` tooltip `title={...join('\n')}`: працює у Chromium/Firefox/Edge (всі модерні). Safari/iOS native tooltip ігнорує `\n` → видно одним рядком, але це сам нативний tooltip ОС, не блокер.
+
+---
+
+### Bug #369 — [HIGH] PhoneInput маска при ітеративному вводі набирає `+38 (380) 501-23-45` замість `+38 (050) 123-45-67`
+
+**Файл:** `apps/web/src/components/ui/phone-input.tsx:9-27`
+
+**Симптом:** Користувач у CounterpartyEditModal/EmployeeEditModal/CalendarSlotModal wizard/booking/page набирає міжнародний формат `380501234567` посимвольно з клавіатури → state послідовно стає `+38 (3` → `+38 (38` → `+38 (380` → `+38 (380) 5` → ... → фінал `+38 (380) 501-23-45`. Очікувано: `+38 (050) 123-45-67` (як при одноразовому paste `+380501234567`).
+
+**Repro:**
+
+1. Відкрити будь-яку форму що містить PhoneInput (наприклад New-Client Wizard у календарі).
+2. Поставити курсор у поле «Телефон».
+3. Натиснути послідовно цифри: `3 8 0 5 0 1 2 3 4 5 6 7`.
+4. Очікується `+38 (050) 123-45-67`. Фактично: `+38 (380) 501-23-45`.
+
+**Сигнал у тесті:**
+
+```ts
+await user.type(input, '380501234567');
+expect(state).toBe('+38 (050) 123-45-67'); // FAIL: '+38 (380) 501-23-45'
+```
+
+(Перевірено новим `apps/web/src/components/ui/__tests__/phone-input.test.tsx` — 2 з 11 кейсів падали до фіксу.)
+
+**Причина:**
+
+`applyMask` отримує raw зі стану `+38 (X` + щойно натиснута цифра. `replace(/\D/g, '')` витягає всі цифри ВКЛЮЧНО з префіксом `38` маски. Початкові `digits.startsWith('380') ? digits.slice(2)` стрипає лише 2 символи (зберігаючи `0` як перший символ subscriber), що було коректно для **одноразової вставки** `380501234567` (стрип залишає `0501234567`). Але при **ітеративному вводі** на кожен keystroke попередній mask-output (`+38 (`) додає ще одну пару `38` у digits → акумуляція `383805...` → strip-2 еквівалентний strip-один-prefix, але в digits два префікси.
+
+`startsWith('380')` неправильно інтерпретується як «`38` country code + `0` subscriber start» — насправді другий `38` теж country code, що залишається у subscriber-позиції після slice(2).
+
+**Фікс:** Стрипати фіксований префікс маски `+38 (` з `raw` ПЕРЕД витягом цифр — так маска бачить ЛИШЕ user-supplied portion і не подвоює country code.
+
+```ts
+function applyMask(raw: string): string {
+  let rest = raw;
+  if (rest.startsWith('+38 (')) rest = rest.slice(5);
+
+  let digits = rest.replace(/\D/g, '');
+  if (digits.startsWith('380')) digits = digits.slice(2);
+  else if (digits.startsWith('38') && digits.length >= 11) digits = digits.slice(2);
+
+  const d = digits.slice(0, 10);
+  // ...
+}
+```
+
+Зверни увагу:
+
+- One-shot paste `+380501234567` все ще працює (немає префіксу `+38 (` у raw, фолбек на legacy strip `380` → `0501234567`).
+- Local `0501234567` paste/типи — нікого не чіпає.
+- Iterative `380501234567` — після фіксу через 3 keystroke state стає `+38 (0` (інтерпретація: country code + subscriber start), далі subscriber digits акумулюються коректно до `+38 (050) 123-45-67`.
+
+**Regression-guard:** `apps/web/src/components/ui/__tests__/phone-input.test.tsx` — 11 кейсів: empty, single-digit, full-10-digit, паст `380X`, паст `+380X`, обрізання >10, parent-onChange приймає замаскований `e.target.value`, controlled value sync (DOM === state), повторний набір після паузи, backspace зменшує маску, type/inputMode = `tel`.
+
+**Severity:** HIGH — користувачі що звикли диктувати телефон у міжнародному форматі `+380...` посимвольно отримують зіпсований номер у БД. Tenant data corruption тиха (валідація бекенду приймає `0501234567` бо це 10 цифр — пройде регекс, але це чужий номер).
+
+**Статус:** [x] виправлено
+
+---
+
+### Спостереження (без окремого фіксу)
+
+**Спостереження A — невалідний `counterpartyId` у URL `/work-orders?action=new&counterpartyId=X`:**
+
+Файл: `apps/web/src/app/(app)/work-orders/page.tsx:486-493`.
+
+Effect успішно swallow-ить помилку fetch counterparty name (`.catch(() => {})`), але `loadVehicles(cpId)` всередині той же блок викликає `setError(...)` (рядок 463) якщо garages-fetch вернувся 404 → червоний banner на сторінці.
+
+UX: невалідний counterpartyId від CalendarSlotModal (теоретично можливий якщо клієнт soft-deleted між календарем і click) → page відкривається з помилкою «Помилка завантаження автомобілів» у червоному banner. Дезорієнтує бо причина в URL-параметрі, а не у legitimate failure завантаження списку.
+
+Не блокер. Severity: **LOW** (UX, рідкісний race). Фікс можна винести у наступну сесію:
+
+```ts
+// Окремо обробити prefill-помилки тихо:
+loadVehiclesQuiet(cpId).catch(() => {});
+```
+
+де `loadVehiclesQuiet` — варіант без `setError`. Залишаю як **спостереження**.
+
+**Спостереження B — focus race у PhoneInput при швидкому вводі:**
+
+Якщо керування фокусом програмне (наприклад автоfocus на наступне поле після введення 10-ї цифри), реальний caret після direct-mutation `e.target.value` стрибає в кінець маски. UX рідкісний — не критичний. Виправити можна збереженням `selectionStart`/`selectionEnd` навколо мутації. Не блокер.
+
+**Спостереження C — `CalendarDayGrid` tooltip `\n` у `title`:**
+
+Safari/iOS native tooltip ігнорує `\n` (показує один рядок з літерним `\n` або пробілом). У Windows/Chromium/Firefox/Edge `\n` рендериться як перенос рядка. Якщо STO ERP таргетує Windows-десктопи (а судячи з installer/inno script — так), це не блокер. Для іOS-tablet PWA — варто або (а) розбити на `aria-label` + кастомний Tooltip компонент, або (б) приймати один-рядковий fallback. Залишаю.
+
+---
