@@ -9,6 +9,16 @@
 ## Останній commit
 
 ```
+434132c docs(skills): add input-mask wrapper iterative-typing pattern to sto-tester
+   • New §1.3 checklist: input-mask wrappers strip locked '+38 (' prefix BEFORE digit extraction
+   • New "Накопичені підходи" entry: detection grep + idempotency regression-guard template
+2a69ffa fix(tester): Bug #369 — PhoneInput mask doubles country code in iterative typing
+   • applyMask: strip '+38 (' locked prefix from raw BEFORE replace(/\D/g, '')
+   • Iterative typing '380501234567' now produces '+38 (050) 123-45-67' (was '+38 (380) 501-23-45')
+   • Regression-guard: apps/web/src/components/ui/__tests__/phone-input.test.tsx (11 кейсів)
+TypeScript: api ✓ web ✓ shared ✓ (0 errors)
+Web tests: 30 files / 323 passed (+11 PhoneInput)
+API tests: 56 files / 661 passed
 bfee922 fix(review): drop React.ChangeEvent namespace + preserve SyntheticEvent in PhoneInput
    • phone-input.tsx: import { type ChangeEvent } from 'react' замість React.ChangeEvent
    • handleChange: мутує e.target.value напряму замість { ...e, target: { ...e.target } } spread
