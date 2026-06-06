@@ -309,6 +309,7 @@ export function CalendarSlotModal({
   // ── Counterparty search state ─────────────────────────────────────────────
 
   const [cpPhone, setCpPhone] = useState<string | null>(null);
+  const [cpVehicles, setCpVehicles] = useState<VehicleOption[]>([]);
   const [cpOptions, setCpOptions] = useState<CounterpartyOption[]>([]);
   const [cpLoading, setCpLoading] = useState(false);
   const [showCpDropdown, setShowCpDropdown] = useState(false);
@@ -446,6 +447,40 @@ export function CalendarSlotModal({
       cancelled = true;
     };
   }, [open, form.counterpartyId, cpPhone]);
+
+  // Завантажуємо авто клієнта при зміні counterpartyId
+  // Якщо 1 авто — одразу ставимо vehicleId; якщо >1 — показуємо Select; якщо 0 — ховаємо
+  useEffect(() => {
+    if (!open || !form.counterpartyId) {
+      setCpVehicles([]);
+      return;
+    }
+    let cancelled = false;
+    const fetchedForId = form.counterpartyId;
+    (async () => {
+      try {
+        const garages = await apiFetch<{ id: string }[]>(`/counterparties/${fetchedForId}/garages`);
+        const nested = await Promise.all(
+          garages.map(g =>
+            apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(
+              () => [] as VehicleOption[],
+            ),
+          ),
+        );
+        const all = nested.flat();
+        if (cancelled || !mountedRef.current || fetchedForId !== form.counterpartyId) return;
+        setCpVehicles(all);
+        if (all.length === 1 && !form.vehicleId) {
+          setForm(f => ({ ...f, vehicleId: all[0]!.id }));
+        }
+      } catch {
+        if (!cancelled) setCpVehicles([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, form.counterpartyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const searchCounterparties = useCallback((q: string) => {
     if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current);
@@ -879,7 +914,13 @@ export function CalendarSlotModal({
                     onClear={() => {
                       setCpDisplay('');
                       setCpPhone(null);
-                      setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' }));
+                      setCpVehicles([]);
+                      setForm(f => ({
+                        ...f,
+                        counterpartyId: '',
+                        counterpartyDisplay: '',
+                        vehicleId: '',
+                      }));
                     }}
                   />
                 </div>
@@ -935,6 +976,28 @@ export function CalendarSlotModal({
               </div>
             </div>
           </div>
+
+          {/* Vehicle picker — show only when client has multiple vehicles */}
+          {cpVehicles.length > 1 && (
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Автомобіль
+              </label>
+              <select
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                value={form.vehicleId}
+                disabled={isEditingPast}
+                onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+              >
+                <option value="">— оберіть авто —</option>
+                {cpVehicles.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* New client wizard modal */}
           <Modal
@@ -1165,10 +1228,12 @@ export function CalendarSlotModal({
                 if (!ok) return;
                 setCpDisplay(item.primary);
                 setCpPhone(item.phone ?? null);
+                setCpVehicles([]);
                 setForm(f => ({
                   ...f,
                   counterpartyId: item.id,
                   counterpartyDisplay: item.primary,
+                  vehicleId: '',
                   workOrderId: '',
                   workOrderDisplay: '',
                 }));
@@ -1176,7 +1241,13 @@ export function CalendarSlotModal({
               }
               setCpDisplay(item.primary);
               setCpPhone(item.phone ?? null);
-              setForm(f => ({ ...f, counterpartyId: item.id, counterpartyDisplay: item.primary }));
+              setCpVehicles([]);
+              setForm(f => ({
+                ...f,
+                counterpartyId: item.id,
+                counterpartyDisplay: item.primary,
+                vehicleId: '',
+              }));
             }}
           />
           <SearchPickerModal<WoItem>

@@ -86,6 +86,7 @@ export interface SlotForm {
   employeeId: string;
   counterpartyId: string;
   counterpartyDisplay: string;
+  vehicleId: string;
   workOrderId: string;
   workOrderDisplay: string;
   startAt: string;
