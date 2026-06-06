@@ -333,7 +333,12 @@ export default function EmployeesPage() {
       if (selectedEmp?.id === id) setSelectedEmp(null);
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка видалення');
+      const msg = e instanceof Error ? e.message : 'Помилка видалення';
+      if (/не знайдено|not found/i.test(msg)) {
+        load();
+      } else {
+        setError(msg);
+      }
     } finally {
       setMarkingId(null);
     }
