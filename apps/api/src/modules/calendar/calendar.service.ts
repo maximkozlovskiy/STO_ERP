@@ -53,12 +53,17 @@ export class CalendarService {
       where,
       orderBy: { startAt: 'asc' },
       include: {
-        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+        counterparty: {
+          select: { firstName: true, lastName: true, companyName: true, phone: true },
+        },
         workOrder: {
           select: {
             number: true,
             counterpartyId: true,
-            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+            counterparty: {
+              select: { firstName: true, lastName: true, companyName: true, phone: true },
+            },
+            vehicle: { select: { make: true, model: true, licensePlate: true } },
           },
         },
       },
@@ -308,12 +313,15 @@ export class CalendarService {
         firstName: string | null;
         lastName: string | null;
         companyName: string | null;
+        phone: string | null;
       } | null;
+      vehicle: { make: string; model: string; licensePlate: string | null } | null;
     } | null;
     counterparty?: {
       firstName: string | null;
       lastName: string | null;
       companyName: string | null;
+      phone: string | null;
     } | null;
   }): CalendarSlotResponseDto {
     const woCp = slot.workOrder?.counterparty;
@@ -322,8 +330,12 @@ export class CalendarService {
     const counterpartyName = cp
       ? formatPersonName(cp.lastName, cp.firstName, cp.companyName) || undefined
       : undefined;
+    const cpPhone = cp?.phone ?? null;
 
     const counterpartyId = slot.counterpartyId ?? slot.workOrder?.counterpartyId ?? null;
+
+    const v = slot.workOrder?.vehicle;
+    const vehicleSummary = v ? [v.make, v.model, v.licensePlate].filter(Boolean).join(' ') : null;
 
     return {
       id: slot.id,
@@ -338,6 +350,8 @@ export class CalendarService {
       workOrderNumber: slot.workOrder?.number,
       counterpartyId,
       counterpartyName,
+      cpPhone,
+      vehicleSummary,
     };
   }
 }

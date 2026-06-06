@@ -58,10 +58,13 @@ const DraggableSlot = memo(function DraggableSlot({
     zIndex: isDragging ? 50 : 10,
   };
 
-  const label = [
-    `${fmtTime(slot.startAt)}–${fmtTime(slot.endAt)}`,
+  const timeLabel = `${fmtTime(slot.startAt)}–${fmtTime(slot.endAt)}`;
+  const titleTooltip = [
+    timeLabel,
     slot.workOrderNumber ? `· ${slot.workOrderNumber}` : null,
-    slot.counterpartyName ? `· ${slot.counterpartyName}` : null,
+    slot.counterpartyName ?? null,
+    slot.cpPhone ?? null,
+    slot.vehicleSummary ?? null,
   ]
     .filter(Boolean)
     .join(' ');
@@ -71,8 +74,8 @@ const DraggableSlot = memo(function DraggableSlot({
       ref={setNodeRef}
       style={style}
       data-calendar-slot
-      className={`absolute top-1 bottom-1 rounded text-white text-xs flex items-center overflow-hidden group select-none ring-2 ring-offset-1 ${isEditing ? 'bg-amber-500 ring-amber-400' : 'bg-primary ring-transparent'}`}
-      title={label}
+      className={`absolute top-1 bottom-1 rounded text-white text-xs overflow-hidden group select-none ring-2 ring-offset-1 flex flex-col ${isEditing ? 'bg-amber-500 ring-amber-400' : 'bg-primary ring-transparent'}`}
+      title={titleTooltip}
     >
       <div
         className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-white/20 rounded-l flex items-center justify-center"
@@ -86,12 +89,22 @@ const DraggableSlot = memo(function DraggableSlot({
       </div>
 
       <div
-        className="flex-1 flex items-center px-3 cursor-grab active:cursor-grabbing min-w-0"
+        className="flex-1 flex flex-col justify-center px-3 cursor-grab active:cursor-grabbing min-w-0 gap-0.5 py-1"
         {...listeners}
         {...attributes}
         onClick={() => onEdit(slot)}
       >
-        <span className="truncate">{label}</span>
+        <span className="font-medium truncate leading-tight">
+          {timeLabel}
+          {slot.workOrderNumber ? ` · ${slot.workOrderNumber}` : ''}
+        </span>
+        {slot.counterpartyName && (
+          <span className="truncate leading-tight opacity-90">{slot.counterpartyName}</span>
+        )}
+        {slot.cpPhone && <span className="truncate leading-tight opacity-75">{slot.cpPhone}</span>}
+        {slot.vehicleSummary && (
+          <span className="truncate leading-tight opacity-75">{slot.vehicleSummary}</span>
+        )}
       </div>
 
       <button
@@ -249,13 +262,13 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
   return (
     <div
       ref={setNodeRef}
-      className={`col-span-12 relative min-h-20 transition-colors ${isOver ? 'bg-primary/5' : ''}`}
+      className={`col-span-12 relative min-h-28 transition-colors ${isOver ? 'bg-primary/5' : ''}`}
       style={{ gridColumn: `2 / span ${TOTAL_HOURS}` }}
       data-lift-id={liftId}
     >
       <div className="flex h-full pointer-events-none">
         {HOURS.map(h => (
-          <div key={h} className="flex-1 border-r last:border-r-0 border-border min-h-20" />
+          <div key={h} className="flex-1 border-r last:border-r-0 border-border min-h-28" />
         ))}
       </div>
 

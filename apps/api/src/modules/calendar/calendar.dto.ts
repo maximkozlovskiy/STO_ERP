@@ -98,6 +98,8 @@ export class CalendarSlotResponseDto {
   @ApiPropertyOptional() workOrderNumber?: string;
   @ApiPropertyOptional() counterpartyId?: string | null;
   @ApiPropertyOptional() counterpartyName?: string;
+  @ApiPropertyOptional() cpPhone?: string | null;
+  @ApiPropertyOptional() vehicleSummary?: string | null;
   @ApiProperty({ enum: CalendarSlotStatus }) status!: CalendarSlotStatus;
   @ApiProperty({ enum: CalendarSlotType }) type!: CalendarSlotType;
 }
