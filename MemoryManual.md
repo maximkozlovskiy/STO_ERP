@@ -9,8 +9,11 @@
 ## Останній commit
 
 ```
-<NEW> f142ea5 docs(skills): add 3 new patterns to sto-tester (currency feature lessons)
-<NEW> a5fec5d fix(tester): Bugs #359-#364 — currency feature post-review bug hunt
+<NEW> 9357323 fix(calendar): review fixes — abort vehicle fetch + reuse cpVehicles in new-WO mini-form
+<NEW> 34829659 feat(calendar): vehicle picker in slot form — auto-fill if 1 vehicle, select if multiple
+TypeScript: api ✓ web ✓ shared ✓ (0 errors)
+f142ea5 docs(skills): add 3 new patterns to sto-tester (currency feature lessons)
+a5fec5d fix(tester): Bugs #359-#364 — currency feature post-review bug hunt
 6f106ac fix(review): currency feature critical bugs — DTO whitelist + /currencies shape
 7fb4603 feat(contracts): add currency field to contracts + org currency setting
 b594a3c docs(skills): add 3 new patterns to sto-optimize (cycle 3)
