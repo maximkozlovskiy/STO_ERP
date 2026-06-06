@@ -9,6 +9,13 @@
 ## Останній commit
 
 ```
+a5fa9b4 fix(counterparty): auto-create garage when adding first vehicle
+   • CounterpartyEditModal.addVehicle: guard !counterparty замість !modalGarageId
+   • Якщо modalGarageId === null → POST /counterparties/:id/garages { name: 'Гараж' }
+   • Локальний let garageId уникає stale state на наступному setState (race-safe)
+   • Self-healing на partial failure: orphan garage використовується на retry
+TypeScript: api ✓ web ✓ shared ✓ (0 errors)
+Code review: 0 проблем (минулий cycle review-agent)
 95f97e4 docs(skills): add bulk-filter-via-grandparent-relation pattern to sto-optimize
 7e78599 perf(optimize): CRM list DetailPanel + CounterpartyEditModal — bulk vehicles fetch
    • counterparties/page.tsx DetailPanel cpVehicles: garages.fetch+map → single /vehicles?counterpartyId=X
