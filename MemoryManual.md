@@ -9,6 +9,17 @@
 ## Останній commit
 
 ```
+1c91867 fix(tester): Bugs #370-#372 — CounterpartyEditModal addContract race + employees stale closure + useEffect deps
+   • #370 [HIGH] addContract тепер з tenant-guard (currentCpIdRef + cpIdAtStart) —
+     POST на CP-A не пушить контракт у список CP-B якщо користувач перемкнувся
+   • URL також прив'язаний до cpIdAtStart, setContractsError guarded від stale CP
+   • #371 [LOW] employees.markForDeletion: setSelectedEmp(prev => prev?.id === id ? null : prev)
+     замість захопленого selectedEmp — захист від stale closure якщо рядок переключений
+     між confirm і DELETE-result. Те саме у catch-блоці 404.
+   • #372 [LOW] CounterpartyEditModal: useEffect для currentCpIdRef отримав
+     deps [counterparty?.id] — ESLint-clean, без зайвих ре-запусків при form-keystrokes
+TypeScript: api ✓ web ✓ (0 errors)
+Unit: api 661/661 passed, web 323/323 passed
 2e6e8ed fix(review): tenant-guard counterparty handlers + close panel on 404-DELETE
    • CounterpartyEditModal: reset modalGarageId=null on CP switch (load effect) — без
      цього addVehicle для нового CP міг постити vehicle у гараж попереднього
