@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, type ChangeEvent } from 'react';
 import { Input, type InputProps } from './input';
 
 // Formats raw input into +38 (0XX) XXX-XX-XX Ukrainian phone mask.
+// Strips non-digits, normalises a leading 38/380 country code so we always
+// work with a local 10-digit Ukrainian number (starts with 0).
 function applyMask(raw: string): string {
   const digits = raw.replace(/\D/g, '');
-  // Normalise: strip leading 38 so we work with local 10-digit number (starts with 0)
   let d = digits.startsWith('380')
     ? digits.slice(2)
     : digits.startsWith('38')
@@ -26,20 +27,20 @@ function applyMask(raw: string): string {
 }
 
 // Drop-in replacement for <Input> for phone fields.
-// onChange fires with a synthetic-like event so callers need no changes.
+// Mutates the underlying input's value before bubbling the original
+// SyntheticEvent up — this preserves the event prototype (preventDefault,
+// stopPropagation, persist…) so callers that read e.target.value get the
+// masked string, and downstream React handlers behave normally.
 export function PhoneInput(props: Omit<InputProps, 'type'>) {
   const { onChange, ...rest } = props;
 
   const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: ChangeEvent<HTMLInputElement>) => {
       const masked = applyMask(e.target.value);
-      // Mutate the event value so callers that do e.target.value get the masked string
-      const syntheticEvent = {
-        ...e,
-        target: { ...e.target, value: masked },
-        currentTarget: { ...e.currentTarget, value: masked },
-      } as React.ChangeEvent<HTMLInputElement>;
-      onChange?.(syntheticEvent);
+      // Direct DOM mutation: safe because the input is uncontrolled-from-React
+      // until the parent re-renders with the new value prop.
+      e.target.value = masked;
+      onChange?.(e);
     },
     [onChange],
   );
