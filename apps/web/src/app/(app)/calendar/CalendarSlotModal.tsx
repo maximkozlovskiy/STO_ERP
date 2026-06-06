@@ -939,83 +939,84 @@ export function CalendarSlotModal({
             </div>
           </div>
 
-          {/* Клієнт */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Клієнт <span className="text-destructive-text">*</span>
-            </label>
-            <div className="flex items-center gap-1">
-              <div className="flex-1 min-w-0">
-                <EntityPickerField
-                  display={form.counterpartyDisplay}
-                  placeholder="Обрати клієнта…"
-                  disabled={isEditingPast}
-                  hidePick={isEditingPast}
-                  onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
-                  onPick={() => setCpPickerOpen(true)}
-                  onClear={() => {
-                    setCpDisplay('');
-                    setCpPhone(null);
-                    setCpVehicles([]);
-                    setForm(f => ({
-                      ...f,
-                      counterpartyId: '',
-                      counterpartyDisplay: '',
-                      vehicleId: '',
-                    }));
-                  }}
-                />
+          {/* Клієнт + Автомобіль в один ряд */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Клієнт */}
+            <div className={cpVehicles.length > 1 ? '' : 'col-span-2'}>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Клієнт <span className="text-destructive-text">*</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <div className="flex-1 min-w-0">
+                  <EntityPickerField
+                    display={form.counterpartyDisplay}
+                    placeholder="Обрати клієнта…"
+                    disabled={isEditingPast}
+                    hidePick={isEditingPast}
+                    onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
+                    onPick={() => setCpPickerOpen(true)}
+                    onClear={() => {
+                      setCpDisplay('');
+                      setCpPhone(null);
+                      setCpVehicles([]);
+                      setForm(f => ({
+                        ...f,
+                        counterpartyId: '',
+                        counterpartyDisplay: '',
+                        vehicleId: '',
+                      }));
+                    }}
+                  />
+                </div>
+                {!isEditingPast && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openNewCpWizard}
+                    title="Новий клієнт"
+                    className="h-9 w-9 p-0 shrink-0"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
-              {!isEditingPast && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={openNewCpWizard}
-                  title="Новий клієнт"
-                  className="h-9 w-9 p-0 shrink-0"
-                >
-                  <UserPlus className="h-4 w-4" />
-                </Button>
+              {cpPhone && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  📞{' '}
+                  <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
+                    {cpPhone}
+                  </a>
+                </p>
+              )}
+              {form.counterpartyId && cpVehicles.length === 0 && (
+                <p className="text-xs text-muted-foreground italic mt-1">
+                  Немає авто — додайте у картці клієнта
+                </p>
               )}
             </div>
-            {cpPhone && (
-              <p className="text-xs text-muted-foreground mt-1">
-                📞{' '}
-                <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
-                  {cpPhone}
-                </a>
-              </p>
+
+            {/* Автомобіль — тільки якщо >1 авто */}
+            {cpVehicles.length > 1 && (
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">
+                  Автомобіль
+                </label>
+                <select
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  value={form.vehicleId}
+                  disabled={isEditingPast}
+                  onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+                >
+                  <option value="">— оберіть авто —</option>
+                  {cpVehicles.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
           </div>
-
-          {/* Автомобіль — показуємо якщо є авто у клієнта */}
-          {cpVehicles.length > 1 && (
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Автомобіль
-              </label>
-              <select
-                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                value={form.vehicleId}
-                disabled={isEditingPast}
-                onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-              >
-                <option value="">— оберіть авто —</option>
-                {cpVehicles.map(v => (
-                  <option key={v.id} value={v.id}>
-                    {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Bug #368: 0-vehicle client → підказка */}
-          {form.counterpartyId && cpVehicles.length === 0 && (
-            <p className="text-xs text-muted-foreground italic">
-              У клієнта немає автомобілів — їх можна додати у картці клієнта.
-            </p>
-          )}
 
           {/* Наряд */}
           <div>
