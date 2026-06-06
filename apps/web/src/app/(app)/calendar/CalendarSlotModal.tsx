@@ -939,88 +939,56 @@ export function CalendarSlotModal({
             </div>
           </div>
 
-          {/* Client + Work-order row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Клієнт <span className="text-destructive-text">*</span>
-              </label>
-              <div className="flex items-center gap-1">
-                <div className="flex-1 min-w-0">
-                  <EntityPickerField
-                    display={form.counterpartyDisplay}
-                    placeholder="Обрати клієнта…"
-                    disabled={isEditingPast}
-                    hidePick={isEditingPast}
-                    onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
-                    onPick={() => setCpPickerOpen(true)}
-                    onClear={() => {
-                      setCpDisplay('');
-                      setCpPhone(null);
-                      setCpVehicles([]);
-                      setForm(f => ({
-                        ...f,
-                        counterpartyId: '',
-                        counterpartyDisplay: '',
-                        vehicleId: '',
-                      }));
-                    }}
-                  />
-                </div>
-                {!isEditingPast && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openNewCpWizard}
-                    title="Новий клієнт"
-                    className="h-9 w-9 p-0 shrink-0"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                  </Button>
-                )}
+          {/* Клієнт */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Клієнт <span className="text-destructive-text">*</span>
+            </label>
+            <div className="flex items-center gap-1">
+              <div className="flex-1 min-w-0">
+                <EntityPickerField
+                  display={form.counterpartyDisplay}
+                  placeholder="Обрати клієнта…"
+                  disabled={isEditingPast}
+                  hidePick={isEditingPast}
+                  onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
+                  onPick={() => setCpPickerOpen(true)}
+                  onClear={() => {
+                    setCpDisplay('');
+                    setCpPhone(null);
+                    setCpVehicles([]);
+                    setForm(f => ({
+                      ...f,
+                      counterpartyId: '',
+                      counterpartyDisplay: '',
+                      vehicleId: '',
+                    }));
+                  }}
+                />
               </div>
-              {cpPhone && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  📞{' '}
-                  <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
-                    {cpPhone}
-                  </a>
-                </p>
+              {!isEditingPast && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openNewCpWizard}
+                  title="Новий клієнт"
+                  className="h-9 w-9 p-0 shrink-0"
+                >
+                  <UserPlus className="h-4 w-4" />
+                </Button>
               )}
             </div>
-
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Наряд</label>
-              <div className="flex items-center gap-1">
-                <div className="flex-1 min-w-0">
-                  <EntityPickerField
-                    display={form.workOrderDisplay}
-                    placeholder="Обрати наряд…"
-                    disabled={isEditingPast}
-                    hidePick={isEditingPast}
-                    onOpenDetail={
-                      form.workOrderId ? () => setWoPreviewId(form.workOrderId) : undefined
-                    }
-                    onPick={() => setWoPickerOpen(true)}
-                    onClear={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
-                  />
-                </div>
-                {!isEditingPast && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openNewWo}
-                    title="Новий наряд"
-                    className="h-9 w-9 p-0 shrink-0"
-                  >
-                    <FilePlus className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
+            {cpPhone && (
+              <p className="text-xs text-muted-foreground mt-1">
+                📞{' '}
+                <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
+                  {cpPhone}
+                </a>
+              </p>
+            )}
           </div>
 
-          {/* Vehicle picker — show only when client has multiple vehicles */}
+          {/* Автомобіль — показуємо якщо є авто у клієнта */}
           {cpVehicles.length > 1 && (
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">
@@ -1048,6 +1016,37 @@ export function CalendarSlotModal({
               У клієнта немає автомобілів — їх можна додати у картці клієнта.
             </p>
           )}
+
+          {/* Наряд */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Наряд</label>
+            <div className="flex items-center gap-1">
+              <div className="flex-1 min-w-0">
+                <EntityPickerField
+                  display={form.workOrderDisplay}
+                  placeholder="Обрати наряд…"
+                  disabled={isEditingPast}
+                  hidePick={isEditingPast}
+                  onOpenDetail={
+                    form.workOrderId ? () => setWoPreviewId(form.workOrderId) : undefined
+                  }
+                  onPick={() => setWoPickerOpen(true)}
+                  onClear={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
+                />
+              </div>
+              {!isEditingPast && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openNewWo}
+                  title="Новий наряд"
+                  className="h-9 w-9 p-0 shrink-0"
+                >
+                  <FilePlus className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
 
           {/* New client wizard modal */}
           <Modal
