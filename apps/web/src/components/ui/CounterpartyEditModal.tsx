@@ -318,14 +318,13 @@ export function CounterpartyEditModal({
       const updated = await apiFetch<CounterpartyForModal>(`/counterparties/${counterparty.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          type: form.type,
           firstName: form.firstName || undefined,
           lastName: form.lastName || undefined,
           companyName: form.companyName || undefined,
           phone: form.phone || undefined,
           email: form.email || undefined,
           edrpou: form.edrpou || undefined,
-          vatPayer: form.vatPayer || undefined,
+          vatPayer: form.vatPayer,
           notes: form.notes || undefined,
           contactPerson: form.contactPerson || undefined,
         }),
@@ -341,13 +340,23 @@ export function CounterpartyEditModal({
   };
 
   const addVehicle = async () => {
-    if (!modalGarageId || !addVehicleForm.make || !addVehicleForm.model) return;
+    if (!counterparty || !addVehicleForm.make || !addVehicleForm.model) return;
     setAddingVehicle(true);
     try {
+      // Якщо гаража ще немає — створюємо автоматично (новий контрагент без гаражу).
+      let garageId = modalGarageId;
+      if (!garageId) {
+        const garage = await apiFetch<{ id: string }>(
+          `/counterparties/${counterparty.id}/garages`,
+          { method: 'POST', body: JSON.stringify({ name: 'Гараж' }) },
+        );
+        garageId = garage.id;
+        setModalGarageId(garage.id);
+      }
       const created = await apiFetch<Vehicle>('/vehicles', {
         method: 'POST',
         body: JSON.stringify({
-          customerGarageId: modalGarageId,
+          customerGarageId: garageId,
           make: addVehicleForm.make,
           model: addVehicleForm.model,
           year: addVehicleForm.year ? Number(addVehicleForm.year) : undefined,
