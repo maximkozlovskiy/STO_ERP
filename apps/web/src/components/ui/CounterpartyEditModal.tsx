@@ -68,6 +68,7 @@ type ModalContract = {
   endDate: string | null;
   isPrimary: boolean;
   creditLimit: number | null;
+  currencyCode: string;
   paymentDeferDays: number | null;
 };
 
@@ -182,11 +183,14 @@ export function CounterpartyEditModal({
   const [contractsError, setContractsError] = useState('');
   const [showAddContract, setShowAddContract] = useState(false);
   const [addingContract, setAddingContract] = useState(false);
+  const [orgCurrency, setOrgCurrency] = useState('UAH');
+  const [currencies, setCurrencies] = useState<{ code: string; name: string }[]>([]);
   const [addContractForm, setAddContractForm] = useState({
     contractType: '',
     startDate: kyivToday(),
     endDate: '',
     creditLimit: '',
+    currencyCode: '',
     paymentDeferDays: '',
     isPrimary: false,
   });
@@ -257,6 +261,17 @@ export function CounterpartyEditModal({
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, counterparty?.id]);
+
+  useEffect(() => {
+    if (!open) return;
+    void Promise.allSettled([
+      apiFetch<{ currency: string }>('/settings/organisation'),
+      apiFetch<{ items: { code: string; name: string }[]; total: number }>('/currencies'),
+    ]).then(([settingsRes, currRes]) => {
+      if (settingsRes.status === 'fulfilled') setOrgCurrency(settingsRes.value.currency);
+      if (currRes.status === 'fulfilled') setCurrencies(currRes.value.items ?? []);
+    });
+  }, [open]);
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
@@ -386,6 +401,7 @@ export function CounterpartyEditModal({
             creditLimit: addContractForm.creditLimit
               ? Number(addContractForm.creditLimit)
               : undefined,
+            currencyCode: addContractForm.currencyCode || orgCurrency,
             paymentDeferDays: addContractForm.paymentDeferDays
               ? Number(addContractForm.paymentDeferDays)
               : undefined,
@@ -399,6 +415,7 @@ export function CounterpartyEditModal({
         startDate: '',
         endDate: '',
         creditLimit: '',
+        currencyCode: '',
         paymentDeferDays: '',
         isPrimary: false,
       });
@@ -840,10 +857,42 @@ export function CounterpartyEditModal({
                         />
                       </div>
                     </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Валюта</label>
+                      {currencies.length > 0 ? (
+                        <Select
+                          value={addContractForm.currencyCode || orgCurrency}
+                          onChange={e =>
+                            setAddContractForm(f => ({ ...f, currencyCode: e.target.value }))
+                          }
+                          className="w-auto"
+                        >
+                          {currencies.map(c => (
+                            <option key={c.code} value={c.code}>
+                              {c.code} — {c.name}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={addContractForm.currencyCode || orgCurrency}
+                          onChange={e =>
+                            setAddContractForm(f => ({
+                              ...f,
+                              currencyCode: e.target.value.toUpperCase().slice(0, 10),
+                            }))
+                          }
+                          placeholder="UAH"
+                          maxLength={10}
+                          className="h-9 w-24 rounded-md border border-border bg-surface px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        />
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          Кредитний ліміт (₴)
+                          Кредитний ліміт
                         </label>
                         <Input
                           type="number"
@@ -886,6 +935,7 @@ export function CounterpartyEditModal({
                             startDate: '',
                             endDate: '',
                             creditLimit: '',
+                            currencyCode: '',
                             paymentDeferDays: '',
                             isPrimary: false,
                           });
