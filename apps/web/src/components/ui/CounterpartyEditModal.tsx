@@ -171,6 +171,12 @@ export function CounterpartyEditModal({
     vin: '',
   });
   const modalVehiclesReqRef = useRef(0);
+  // Live counterparty id — звіряється у handler-fetch async після await, щоб не
+  // setState у списки чужого CP при швидкому перемиканні (§8.2 tenant-guard).
+  const currentCpIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    currentCpIdRef.current = counterparty?.id ?? null;
+  });
 
   // ── Work Orders ──────────────────────────────────────────────────────────────
   const [modalWorkOrders, setModalWorkOrders] = useState<ModalWorkOrder[]>([]);
@@ -208,6 +214,8 @@ export function CounterpartyEditModal({
     setModalVehicles([]);
     setModalWorkOrders([]);
     setModalContracts([]);
+    setModalGarageId(null); // reset stale id before fetch — інакше addVehicle для нового CP
+    //                       міг би запостити vehicle у гараж попереднього контрагента.
     setVehiclesError('');
     setWoError('');
     setContractsError('');
@@ -341,17 +349,23 @@ export function CounterpartyEditModal({
 
   const addVehicle = async () => {
     if (!counterparty || !addVehicleForm.make || !addVehicleForm.model) return;
+    // Tenant-guard: handler-fetch ↔ зміна counterparty (§8.2). Якщо під час create
+    // користувач перемкнувся на іншого CP — викидаємо setState у чужу таблицю.
+    // Звіряємо проти currentCpIdRef (живий id з ref), а не з captured closure.
+    const cpIdAtStart = counterparty.id;
     setAddingVehicle(true);
     try {
       // Якщо гаража ще немає — створюємо автоматично (новий контрагент без гаражу).
+      // Назва "Основний" + isDefault:true дзеркалить backend (counterparties.service.ts
+      // auto-create на create() для CLIENT/BOTH) — консистентний UX.
       let garageId = modalGarageId;
       if (!garageId) {
-        const garage = await apiFetch<{ id: string }>(
-          `/counterparties/${counterparty.id}/garages`,
-          { method: 'POST', body: JSON.stringify({ name: 'Гараж' }) },
-        );
+        const garage = await apiFetch<{ id: string }>(`/counterparties/${cpIdAtStart}/garages`, {
+          method: 'POST',
+          body: JSON.stringify({ name: 'Основний', isDefault: true }),
+        });
         garageId = garage.id;
-        setModalGarageId(garage.id);
+        if (currentCpIdRef.current === cpIdAtStart) setModalGarageId(garage.id);
       }
       const created = await apiFetch<Vehicle>('/vehicles', {
         method: 'POST',
@@ -364,12 +378,14 @@ export function CounterpartyEditModal({
           vin: addVehicleForm.vin || undefined,
         }),
       });
+      if (currentCpIdRef.current !== cpIdAtStart) return; // CP змінився — викидаємо setState
       setModalVehicles(v => [...v, created]);
       setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' });
       setShowAddVehicle(false);
       toast.success('Авто додано');
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка');
+      if (currentCpIdRef.current === cpIdAtStart)
+        toast.error(e instanceof Error ? e.message : 'Помилка');
     } finally {
       setAddingVehicle(false);
     }
@@ -377,13 +393,22 @@ export function CounterpartyEditModal({
 
   const deleteVehicle = async (id: string) => {
     if (!(await confirm({ title: 'Видалити авто?', variant: 'destructive' }))) return;
+    const cpIdAtStart = counterparty?.id ?? null;
     setDeletingVehicleId(id);
     try {
       await apiFetch(`/vehicles/${id}`, { method: 'DELETE' });
+      if (currentCpIdRef.current !== cpIdAtStart) return;
       setModalVehicles(v => v.filter(x => x.id !== id));
       toast.success('Авто видалено');
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка');
+      // 404 = вже видалено (stale UI) — просто прибираємо з локального списку.
+      const msg = e instanceof Error ? e.message : 'Помилка';
+      if (currentCpIdRef.current !== cpIdAtStart) return;
+      if (/не знайдено|not found/i.test(msg)) {
+        setModalVehicles(v => v.filter(x => x.id !== id));
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setDeletingVehicleId(null);
     }

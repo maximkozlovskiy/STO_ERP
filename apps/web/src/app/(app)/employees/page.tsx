@@ -334,7 +334,10 @@ export default function EmployeesPage() {
       load();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка видалення';
+      // 404 = запис уже видалений (stale UI або паралельний запит) — оновлюємо список
+      // та закриваємо panel якщо він показував цей запис. Дзеркалить infrastructure/page.tsx.
       if (/не знайдено|not found/i.test(msg)) {
+        if (selectedEmp?.id === id) setSelectedEmp(null);
         load();
       } else {
         setError(msg);
