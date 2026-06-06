@@ -148,6 +148,8 @@ describe('CounterpartiesService — contract flows', () => {
     counterpartyContract: { create: any; count: any; findFirst: any; updateMany: any; update: any };
     settlementAccount: { create: any };
     customerGarage: { create: any };
+    organisationSettings: { findUnique: any };
+    currency: { findFirst: any };
     $transaction: any;
   };
   let docNumbers: { next: ReturnType<typeof vi.fn> };
@@ -205,6 +207,14 @@ describe('CounterpartiesService — contract flows', () => {
       },
       settlementAccount: { create: vi.fn() },
       customerGarage: { create: vi.fn() },
+      // Bug #360: create() читає org currency перед tx → org settings mock.
+      organisationSettings: {
+        findUnique: vi.fn().mockResolvedValue({ currency: 'UAH' }),
+      },
+      // Bug #361: createContract/updateContract валідують currencyCode у Currency.
+      currency: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'cur-1' }),
+      },
       // Default: callback signature ($transaction(async tx => ...))
       $transaction: vi.fn().mockImplementation(async (cb: any) => cb(tx)),
     };
@@ -267,6 +277,117 @@ describe('CounterpartiesService — contract flows', () => {
       for (const call of calls) {
         expect(call[0].data.number).not.toBe('1');
       }
+    });
+
+    // Bug #360: auto-PURCHASE contract must use org-level currency, not hardcoded 'UAH'.
+    it('Bug #360: SUPPLIER → auto-contract успадковує currencyCode з org settings', async () => {
+      // Mock org settings → USD як валюта обліку
+      prisma.organisationSettings.findUnique.mockResolvedValueOnce({ currency: 'USD' });
+
+      await service.create('org-1', {
+        type: 'SUPPLIER',
+        companyName: 'ТОВ Постачальник',
+      } as any);
+
+      const tx = (service as any).__tx;
+      expect(tx.counterpartyContract.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            currencyCode: 'USD',
+            contractType: 'PURCHASE',
+          }),
+        }),
+      );
+    });
+
+    it('Bug #360: SUPPLIER → fallback до "UAH" коли org settings row відсутній (fresh org)', async () => {
+      prisma.organisationSettings.findUnique.mockResolvedValueOnce(null);
+
+      await service.create('org-1', {
+        type: 'SUPPLIER',
+        companyName: 'ТОВ X',
+      } as any);
+
+      const tx = (service as any).__tx;
+      expect(tx.counterpartyContract.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ currencyCode: 'UAH' }),
+        }),
+      );
+    });
+
+    it('Bug #360: CLIENT → НЕ робить fetch org settings (no auto-contract)', async () => {
+      prisma.organisationSettings.findUnique.mockClear();
+      await service.create('org-1', { type: 'CLIENT', firstName: 'Іван' } as any);
+      // CLIENT не створює auto-contract → не потрібно тягнути org currency.
+      expect(prisma.organisationSettings.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  // Bug #361: createContract/updateContract повинні валідувати що currencyCode існує у Currency.
+  describe('createContract — Bug #361: валідація currencyCode', () => {
+    beforeEach(() => {
+      prisma.counterparty.findFirst.mockResolvedValue({ id: 'cp-1', type: 'SUPPLIER' });
+
+      // Mock $transaction щоб повертати валідний ContractResponseDto-shape (Date objects).
+      // Стандартний __tx mock не покриває counterpartyContract.create return — service
+      // викликає toContractDto на результаті, який потребує startDate.toISOString().
+      const txInner = {
+        counterpartyContract: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          create: vi.fn().mockResolvedValue({
+            id: 'con-1',
+            orgId: 'org-1',
+            counterpartyId: 'cp-1',
+            number: 'ДГ-1',
+            contractType: 'PURCHASE',
+            startDate: new Date('2026-01-01'),
+            endDate: null,
+            isPrimary: true,
+            creditLimit: null,
+            currencyCode: 'USD',
+            paymentDeferDays: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            deletedAt: null,
+          }),
+        },
+      };
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(txInner));
+    });
+
+    it('передає валідний currencyCode → currency.findFirst викликано з UPPERCASE кодом', async () => {
+      prisma.currency.findFirst.mockResolvedValueOnce({ id: 'cur-usd' });
+      await service.createContract('org-1', 'cp-1', {
+        contractType: 'PURCHASE',
+        startDate: '2026-01-01',
+        currencyCode: 'USD',
+      } as any);
+      expect(prisma.currency.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-1', code: 'USD', deletedAt: null }),
+        }),
+      );
+    });
+
+    it('кидає BadRequestException якщо currency code не існує у Currency таблиці', async () => {
+      prisma.currency.findFirst.mockResolvedValueOnce(null); // no such currency
+      await expect(
+        service.createContract('org-1', 'cp-1', {
+          contractType: 'PURCHASE',
+          startDate: '2026-01-01',
+          currencyCode: 'XYZ',
+        } as any),
+      ).rejects.toThrow(/Валюта з кодом "XYZ" не знайдена/);
+    });
+
+    it('omitted currencyCode → currency.findFirst НЕ викликано (back-compat)', async () => {
+      prisma.currency.findFirst.mockClear();
+      await service.createContract('org-1', 'cp-1', {
+        contractType: 'PURCHASE',
+        startDate: '2026-01-01',
+      } as any);
+      expect(prisma.currency.findFirst).not.toHaveBeenCalled();
     });
   });
 

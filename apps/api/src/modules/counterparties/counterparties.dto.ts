@@ -19,6 +19,7 @@ import {
 import { Type, Transform } from 'class-transformer';
 import { ContractType, CounterpartyType, LegalForm } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { toUpperCurrencyCode } from '../../common/transforms/to-upper-currency-code';
 
 // ─── Counterparty ────────────────────────────────────────
 
@@ -216,9 +217,12 @@ export class CreateContractDto {
   @Min(0)
   creditLimit?: number;
 
+  // Bug #359: toUpperCurrencyCode нормалізує `uah` → `UAH` (Currency.code UPPERCASE
+  // у DB-сіді, lookup case-sensitive). Replaces emptyToUndefined — той helper лише
+  // мапить '' → undefined, не upper-cases.
   @ApiPropertyOptional({ description: 'ISO код валюти (напр. UAH, USD, EUR)' })
   @IsOptional()
-  @Transform(emptyToUndefined)
+  @Transform(toUpperCurrencyCode)
   @IsString()
   @MaxLength(10)
   currencyCode?: string;
@@ -268,9 +272,12 @@ export class UpdateContractDto {
   @Min(0)
   creditLimit?: number;
 
+  // Bug #359: toUpperCurrencyCode нормалізує `uah` → `UAH` (Currency.code UPPERCASE
+  // у DB-сіді, lookup case-sensitive). Replaces emptyToUndefined — той helper лише
+  // мапить '' → undefined, не upper-cases.
   @ApiPropertyOptional({ description: 'ISO код валюти (напр. UAH, USD, EUR)' })
   @IsOptional()
-  @Transform(emptyToUndefined)
+  @Transform(toUpperCurrencyCode)
   @IsString()
   @MaxLength(10)
   currencyCode?: string;

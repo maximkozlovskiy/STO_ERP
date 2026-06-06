@@ -10826,3 +10826,141 @@ Downstream impact: `getDefaultTaxRate()` (якщо існує) повертає 
 **Виправлення:** `new Date(d + 'T12:00:00')` у tickFormatter (line 35) і labelFormatter (line 55). Полудень UTC гарантує правильний день у Kyiv TZ незалежно від local TZ браузера (≥06:00 у будь-якому global TZ → завжди ще той же UTC день).
 
 **Статус:** [x] виправлено
+
+---
+
+## Session 2026-06-06 — Currency feature post-review bug hunt (commits 7fb4603, 6f106ac, 181fe12)
+
+Контекст: повний /sto-tester прогін після того як sto-review-agent виправив 3 критичні баги (UpdateOrganisationSettingsDto без currency, /currencies shape, Promise.all→allSettled). Шукав залишкові інтеграційні дефекти у фічі «валюта обліку» та «currencyCode у контракті».
+
+### Bug #359 — [HIGH] Settings.updateOrganisationSettings — `dto.currency` lookup case-sensitive, а Currency.code зберігається UPPERCASE
+
+**Файл:** `apps/api/src/modules/settings/settings.service.ts:67-75` + `apps/api/src/modules/settings/settings.dto.ts:47-56`
+
+**Симптом:**
+DTO `UpdateOrganisationSettingsDto.currency` приймає будь-який рядок (`@IsString` без `@IsIn`/`@Matches`/`@MaxLength`). Service робить:
+
+```ts
+const exists = await this.prisma.currency.findFirst({
+  where: { orgId, code: dto.currency, deletedAt: null },
+});
+if (!exists) throw new BadRequestException(`Валюта з кодом "${dto.currency}" не знайдена`);
+```
+
+DB-сід (`seed.ts`) інсертить коди як UAH/USD/EUR (UPPERCASE). Postgres VARCHAR — case-sensitive за замовчуванням.
+
+Шляхи коли DTO отримує lowercase:
+
+1. OrgTab fallback Input (line 180-186) — placeholder UAH але немає `onChange` upper-case → користувач набирає `uah` → PATCH тіло `{currency:"uah"}` → 400 «Валюта з кодом uah не знайдена», хоча UAH існує.
+2. Контрагентський контракт fallback Input (PageClient.tsx line 1058-1066) — той самий патерн → POST `/contracts` з currencyCode=uah → буде записано в DB як uah (НЕМАЄ guard validation у `counterparties.service.ts` — це Bug #361 нижче).
+
+Також — DTO не має `@MaxLength(10)` — anti-DoS gap; передача `currency:"a".repeat(10000)` доходить до DB-запиту (Currency.code @db.VarChar(10) обріже все-одно — у Currency не знайдеться, повернеться 400, але час витрачено).
+
+**Severity:** HIGH (UX bug + security gap: user-visible 400 з валідним кодом)
+
+**Корінь:** DTO без normalization + без `@MaxLength`. Service-level lookup довіряє DTO.
+
+**Виправлення:**
+
+1. У DTO `currency?` — додати `@MaxLength(10)` + `@Transform(({value}) => typeof value === "string" ? value.trim().toUpperCase() : value)` перед `@IsString()`. Те ж саме для `CreateContractDto.currencyCode` і `UpdateContractDto.currencyCode`.
+2. Залишити service-level guard для CASE-MISMATCHED legacy data.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #360 — [HIGH] Auto-create PURCHASE contract при створенні SUPPLIER/BOTH-counterparty ігнорує OrganisationSettings.currency
+
+**Файл:** `apps/api/src/modules/counterparties/counterparties.service.ts:98-147` (метод `create`)
+
+**Симптом:**
+В OrgTab.tsx tooltip під «Валюта обліку»: «Використовується за замовчуванням у договорах і звітах». Користувач встановлює `currency=USD` у Settings → створює SUPPLIER «АВТОЗЧАСТИНИ ТОВ» через `POST /counterparties`. Auto-create PURCHASE contract зберігає `currencyCode=UAH` (DB default), не USD.
+
+Інший шлях UI створення (`POST /counterparties/:id/contracts`) працює правильно — frontend читає `/settings/organisation.currency` і додає у тіло. Але цього шляху НЕ існує для auto-PURCHASE — той створюється всередині `service.create` transaction.
+
+**Severity:** HIGH (порушує задекларовану інваріант: org-currency = default для договорів. Прихована неконсистентність — користувач бачить UAH у Договорах для НОВОГО постачальника, хоча org currency USD.)
+
+**Корінь:**
+Auto-create contract у `service.create` робить `tx.counterpartyContract.create({ data: { ..., contractType: PURCHASE } })` БЕЗ передачі currencyCode → Prisma default UAH застосовується. Service не fetch org-settings перед transaction.
+
+**Виправлення:**
+ПЕРЕД entering `$transaction` (поряд з `documentNumberService.next()`) — якщо `needsContract`, fetch org settings:
+
+```ts
+const orgCurrency = needsContract
+  ? ((
+      await this.prisma.organisationSettings.findUnique({
+        where: { orgId },
+        select: { currency: true },
+      })
+    )?.currency ?? 'UAH')
+  : 'UAH';
+```
+
+Передати `currencyCode: orgCurrency` у `tx.counterpartyContract.create({ data: {...} })`.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #361 — [HIGH] CounterpartiesService.createContract/updateContract не валідує що `currencyCode` існує у Currency таблиці org
+
+**Файл:** `apps/api/src/modules/counterparties/counterparties.service.ts:261-378`
+
+**Симптом:**
+DTO `CreateContractDto.currencyCode` має `@IsString @MaxLength(10)` — НЕ перевіряє існування коду у БД. Користувач (або кривий клієнт API) шле `currencyCode: "XYZ"` → service пише в DB напряму:
+
+```ts
+currencyCode: dto.currencyCode ?? "UAH",
+```
+
+DB-сторона: `currencyCode VARCHAR(10) NOT NULL` без FK на `Currency.code` (currency — soft-tenant ref by code string). Postgres приймає XYZ.
+
+Downstream impact: ContractsTable у counterparty page показує `1 000.00 XYZ` (line 1216) — UX broken. Більш серйозно: коли пізніше з являться FX-розрахунки (exchange-rates), system шукає Currency by code XYZ → not found → silent skip або crash.
+
+Settings.updateOrganisationSettings робить аналогічну валідацію (line 67-75). Тут — ні.
+
+**Severity:** HIGH (data corruption через API — API дозволяє invalid data в БД)
+
+**Корінь:** Currency code зберігається by-string (історичне рішення для durability — soft FK), але service не enforces validity. Treat string FK as opaque value pass-through.
+
+**Виправлення:**
+В `createContract` і `updateContract` — якщо `dto.currencyCode !== undefined` → перевірити через `prisma.currency.findFirst({ where: { orgId, code: dto.currencyCode, deletedAt: null }, select: { id: true } })`. Якщо not found → `BadRequestException("Валюта з кодом <code> не знайдена")`.
+
+Запустити паралельно з існуючим `cp` lookup у `Promise.all` (-1 RTT) для перформансу.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #362 — [MEDIUM] Frontend OrgTab fallback Input для currency не нормалізує case → 400 з API при типуванні нижнього регістру
+
+**Файл:** `apps/web/src/app/(app)/settings/OrgTab.tsx:180-186`
+
+**Симптом:**
+Fallback `<Input>` коли currencies list порожній (offline-first scenario або failed `/currencies`). Користувач набирає `uah` → save → API повертає 400 «Валюта з кодом uah не знайдена» — користувач не розуміє чому.
+
+**Severity:** MEDIUM (UX лише — Bug #359 виправлення на backend stop the 400, але UI-side normalization все одно потрібна для consistency).
+
+**Виправлення:** `onChange={e => setOrgSettings({ ...orgSettings, currency: e.target.value.toUpperCase().slice(0, 10) })}`. Той же фікс для fallback Input у PageClient.tsx (line 1058-1066).
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #363 — [LOW] Settings contract spec не покриває новий `currency` field — регресія прохідна на CI
+
+**Файл:** `apps/api/src/modules/settings/settings.contract.spec.ts`
+
+**Симптом:** Тест suite має 11 кейсів для costMethod/uiFeatures/followUp, але ЖОДНОГО для `currency`. Якщо хтось у refactor видалить `currency?` з DTO (regression #6f106ac) — CI зелений. Re-occurrence Bug #84 patten (DTO drift caught лише на проді).
+
+**Severity:** LOW (regression guard gap, не runtime bug)
+
+**Виправлення:**
+Додати 3 кейси у `settings.contract.spec.ts`:
+
+1. `PATCH /settings/organisation` з `{ currency: "USD" }` коли USD є у БД → 200 + body.currency === "USD"
+2. `PATCH /settings/organisation` з `{ currency: "" }` → 200 (emptyToUndefined) і не змінює currency
+3. `PATCH /settings/organisation` з `{ currency: "XYZ" }` (no such row) → 400 BadRequestException
+
+**Статус:** [x] виправлено

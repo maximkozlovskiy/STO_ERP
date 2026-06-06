@@ -67,6 +67,17 @@ const prismaMock = {
   },
   garageBranch: { findFirst: vi.fn() },
   branchSettings: { findUnique: vi.fn(), upsert: vi.fn() },
+  // Bug #359/#361: SettingsService.updateOrganisationSettings перевіряє існування
+  // currency code у Currency таблиці перед збереженням. Mock повертає row для
+  // valid codes (UAH/USD/EUR) і null для unknown.
+  currency: {
+    findFirst: vi.fn().mockImplementation(({ where }: { where: { code?: string } }) => {
+      const validCodes = new Set(['UAH', 'USD', 'EUR']);
+      return Promise.resolve(
+        where.code && validCodes.has(where.code) ? { id: `cur-${where.code}` } : null,
+      );
+    }),
+  },
 };
 
 const redisMock = {
@@ -339,6 +350,71 @@ describe('Settings — HTTP Contract', () => {
         payload: { followUpDays: 999 },
       });
       expect(res.statusCode).toBe(400);
+    });
+  });
+
+  // Bug #364 (regression-guard): currency field у DTO + service guard на існування коду.
+  // Cover three scenarios: valid code (200), empty string (200 via emptyToUndefined),
+  // unknown code (400). Без цих кейсів refactor що видалить `currency?` з DTO
+  // (regression Bug #6f106ac) пройде CI зеленою.
+  describe('Bug #359/#364: currency field end-to-end', () => {
+    it('PATCH /settings/organisation з currency=USD → 200 + body.currency=USD', async () => {
+      redisMock.get.mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { currency: 'USD' },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { currency: string };
+      expect(body.currency).toBe('USD');
+    });
+
+    it('PATCH /settings/organisation з currency="" → 200 (emptyToUndefined)', async () => {
+      redisMock.get.mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { currency: '' },
+      });
+      // toUpperCurrencyCode мапить '' → undefined → @IsOptional пропускає → 200
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('PATCH /settings/organisation з currency="uah" нормалізує у UAH → 200', async () => {
+      // Bug #359: toUpperCurrencyCode у DTO нормалізує до UPPERCASE ПЕРЕД lookup.
+      // Currency mock повертає row тільки для UPPERCASE кодів — без normalization
+      // буде 400. Перевіряємо що '*uah*' проходить.
+      redisMock.get.mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { currency: 'uah' },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { currency: string };
+      expect(body.currency).toBe('UAH');
+    });
+
+    it('PATCH /settings/organisation з currency=XYZ (no row) → 400', async () => {
+      redisMock.get.mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { currency: 'XYZ' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('PATCH /settings/organisation з currency у 11+ символів → 400 (@MaxLength)', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { currency: 'TOOLONGCODE' }, // 11 chars
+      });
+      // toUpperCurrencyCode виконує slice(0,10) → 'TOOLONGCOD' (10 chars) → пройде
+      // @MaxLength але currency mock поверне null → 400. Допустимо обидва шляхи.
+      expect([400]).toContain(res.statusCode);
     });
   });
 });

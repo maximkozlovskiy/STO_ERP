@@ -11,12 +11,14 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { VatMode, BatchCostMethod } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { toUpperCurrencyCode } from '../../common/transforms/to-upper-currency-code';
 
 export interface UiFeatures {
   toastEnabled: boolean;
@@ -49,10 +51,13 @@ export class UpdateOrganisationSettingsDto {
   // Bug review (currency feature): без поля у DTO `forbidNonWhitelisted: true`
   // глобально відхиляв PATCH з `currency` → save валюти у Settings → Org мовчки
   // фейлився 400-кою для користувача.
+  // Bug #359: toUpperCurrencyCode нормалізує `uah` → `UAH` + trim + @MaxLength(10)
+  // anti-DoS. Currency.code @db.VarChar(10) у схемі — поза 10 символів не пройде.
   @ApiPropertyOptional({ description: 'ISO код валюти обліку (UAH, USD, EUR)' })
   @IsOptional()
-  @Transform(emptyToUndefined)
+  @Transform(toUpperCurrencyCode)
   @IsString()
+  @MaxLength(10, { message: 'Код валюти не може перевищувати 10 символів' })
   currency?: string;
 
   // Bug #263: emptyToUndefined gap — settings selects з default `''` → 400.

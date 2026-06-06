@@ -1058,7 +1058,14 @@ export default function CounterpartyCardPage() {
                   <input
                     type="text"
                     value={contractForm.currencyCode || orgCurrency}
-                    onChange={e => setContractForm(f => ({ ...f, currencyCode: e.target.value }))}
+                    onChange={e =>
+                      setContractForm(f => ({
+                        ...f,
+                        // Bug #362: backend lookup case-sensitive — нормалізуємо до
+                        // UPPERCASE одразу при вводі, інакше `uah` → 400 з API.
+                        currencyCode: e.target.value.toUpperCase().slice(0, 10),
+                      }))
+                    }
                     placeholder="UAH"
                     maxLength={10}
                     className="h-9 w-24 rounded-md border border-border bg-surface px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"

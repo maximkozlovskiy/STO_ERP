@@ -101,9 +101,23 @@ export class CounterpartiesService {
     // SELECT FOR UPDATE — nesting transactions would deadlock or hide the lock.
     // Generate the number only when a contract will actually be created.
     const needsContract = dto.type === 'SUPPLIER' || dto.type === 'BOTH';
-    const contractNumber = needsContract
-      ? await this.documentNumberService.next(orgId, 'COUNTERPARTY_AGREEMENT')
-      : null;
+    // Bug #360: auto-create PURCHASE contract must use org-level currency (Settings →
+    // Org → «Валюта обліку»), not hardcoded 'UAH'. Without this fetch the auto-contract
+    // breaks the documented invariant (tooltip: «Використовується за замовчуванням у
+    // договорах і звітах»). Fallback to 'UAH' if settings row missing (fresh org).
+    // Both lookups are independent + tenant-safe → Promise.all (-1 RTT).
+    const [contractNumber, orgSettingsRow] = await Promise.all([
+      needsContract
+        ? this.documentNumberService.next(orgId, 'COUNTERPARTY_AGREEMENT')
+        : Promise.resolve(null),
+      needsContract
+        ? this.prisma.organisationSettings.findUnique({
+            where: { orgId },
+            select: { currency: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    const orgCurrency = orgSettingsRow?.currency ?? 'UAH';
 
     const item = await this.prisma.$transaction(
       async tx => {
@@ -123,7 +137,8 @@ export class CounterpartiesService {
             },
           });
         }
-        // Auto-create primary PURCHASE contract for suppliers
+        // Auto-create primary PURCHASE contract for suppliers — currencyCode
+        // успадковується від org settings (Bug #360).
         if (needsContract && contractNumber) {
           await tx.counterpartyContract.create({
             data: {
@@ -133,6 +148,7 @@ export class CounterpartiesService {
               contractType: ContractType.PURCHASE,
               startDate: new Date(),
               isPrimary: true,
+              currencyCode: orgCurrency,
             },
           });
         }
@@ -267,7 +283,11 @@ export class CounterpartiesService {
     // can have one primary PURCHASE and one primary SALE simultaneously. Previously
     // the swap unset primary across both types, breaking the auto-PURCHASE invariant
     // when a primary SALE was created.
-    const [cp, sameTypeCount] = await Promise.all([
+    // Bug #361: currencyCode сирий string без FK у DB — service ОБОВ'ЯЗКОВО валідує
+    // що код існує у Currency таблиці org (як Settings.updateOrganisationSettings).
+    // Без guard користувач може зберегти `currencyCode: 'XYZ'` → UX broken у таблиці
+    // (`'1 000.00 XYZ'`) + downstream FX-розрахунки впадуть.
+    const [cp, sameTypeCount, currencyExists] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
         select: { id: true, type: true },
@@ -275,8 +295,17 @@ export class CounterpartiesService {
       this.prisma.counterpartyContract.count({
         where: { counterpartyId, orgId, deletedAt: null, contractType: dto.contractType },
       }),
+      dto.currencyCode !== undefined
+        ? this.prisma.currency.findFirst({
+            where: { orgId, code: dto.currencyCode, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (dto.currencyCode !== undefined && !currencyExists) {
+      throw new BadRequestException(`Валюта з кодом "${dto.currencyCode}" не знайдена`);
+    }
     this.validateContractType(cp.type, dto.contractType);
 
     const number =
@@ -322,7 +351,10 @@ export class CounterpartiesService {
     contractId: string,
     dto: UpdateContractDto,
   ): Promise<ContractResponseDto> {
-    const [cp, contract] = await Promise.all([
+    // Bug #361: парний guard для PATCH — інакше можна підмінити currencyCode на
+    // невалідний через `PATCH .../contracts/<id>` навіть якщо `createContract`
+    // блокує `XYZ`. Запускаємо паралельно з cp + contract lookups.
+    const [cp, contract, currencyExists] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
         select: { id: true, type: true },
@@ -330,9 +362,18 @@ export class CounterpartiesService {
       this.prisma.counterpartyContract.findFirst({
         where: { id: contractId, counterpartyId, orgId, deletedAt: null },
       }),
+      dto.currencyCode !== undefined
+        ? this.prisma.currency.findFirst({
+            where: { orgId, code: dto.currencyCode, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     if (!contract) throw new NotFoundException('Договір не знайдено');
+    if (dto.currencyCode !== undefined && !currencyExists) {
+      throw new BadRequestException(`Валюта з кодом "${dto.currencyCode}" не знайдена`);
+    }
 
     if (dto.contractType) {
       this.validateContractType(cp.type, dto.contractType);
