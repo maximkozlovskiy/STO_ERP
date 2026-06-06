@@ -945,6 +945,75 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-06 — Cascade-clear stale linked FK при зміні parent picker (Bugs #365, #367) — frontend, form-state
+
+**Сигнал:** Form має chained pickers де child FK залежить від parent FK (`counterpartyId` → `vehicleId`; `branchId` → `warehouseId`; `goodCategoryId` → `goodId`). Існує кілька шляхів зміни parent (direct picker, indirect via related-resource picker — наприклад WO-picker замінює counterparty якщо belongs to інший client). Якщо хоча б ОДИН шлях не очищує child FK + cached child-options state, child FK успадковується від попереднього parent → leak до downstream POST → 400/silent FK mismatch на бекенді. Grep:
+
+```bash
+# 1. Знайти всі шляхи що змінюють parent FK у формі
+grep -n "counterpartyId:" apps/web/src/app/\(app\)/calendar/CalendarSlotModal.tsx | grep "setForm\|setNewWo"
+
+# 2. Для кожного — перевірити чи в тому ж setForm міняється child FK на ''
+# Якщо setForm містить counterpartyId але НЕ містить vehicleId: '' → bug
+```
+
+**Причина виникнення:** developer чітко продумує очищення FK у ОДНОМУ обвіреному шляху (direct picker — найочевидніший case у дизайні). Indirect paths (WO-picker що side-effect-replaces counterparty після confirm) — забуваються. Особливо коли confirm dialog має branch «replace» vs «don't replace» — їх легко skip під час review. Effect-based clearing (useEffect watching parent FK) теж не спрацьовує: коли child state cleared у setForm у тому ж microtask, effect rolls back до stable parent → fetch starts → setForm overwrite потім — race.
+
+**Підхід до виявлення:** Для кожної form з chained pickers — побудувати матрицю «шляхи зміни parent × поля що очищуються»:
+
+| Path                                  | parentId    | childId     | childCache | otherLinkedData |
+| ------------------------------------- | ----------- | ----------- | ---------- | --------------- |
+| direct parentPicker.onSelect          | new         | ''          | []         | reset           |
+| indirect childPicker що змінює parent | new         | ❓          | ❓         | ❓              |
+| onClear()                             | ''          | ''          | []         | reset           |
+| modal close                           | (unchanged) | (unchanged) | []         | reset           |
+
+Кожна ❓ — bug. Окремо: effect що fetch-ит child options має setChildOptions([]) на старті (не тільки після успіху), інакше UI рендерить stale options попереднього parent протягом fetch latency.
+
+**Підхід до фіксу:** (1) у КОЖНОМУ setForm де parentId змінюється — explicitly додати child FK clearing + caller для setChildOptions([]) + setRelatedData(null); (2) defense-in-depth у child auto-fill effect: після fetch перевірити чи поточний form.childId є серед нових options, якщо ні — скинути; (3) effect що fetch-ить — скидати state синхронно на старті, не покладатись на cleanup попереднього effect.
+
+**Severity:** HIGH (CRITICAL якщо leak потрапляє у downstream POST з implicit assumption у backend що child belongs to parent — silent corruption / 400 з maddening UX).
+
+**Де шукати ще:** будь-яка форма де FK залежить від іншого FK — Calendar slot (counterparty→vehicle), Work Order (counterparty→vehicle→warranty), Invoice/PO (counterparty→contract→currency), Stock Document (warehouse→stockItem), Settings (branch→cashRegister). Особливо коли picker dialog має «belongs to other counterparty/branch» branch with confirm — кожен такий confirm-flow це окремий path для cascade-clear.
+
+---
+
+### 2026-06-06 — Toggle callback executes full open-logic when CLOSING (Bug #364) — frontend, callback design
+
+**Сигнал:** useCallback handler called from button onClick має `setShow(v => !v)` (toggle pattern) followed by guard-clause + side-effect code (prefill state, API fetch). Side-effects execute БЕЗ check чи ми відкриваємо чи закриваємо. Grep:
+
+```bash
+# Знайти toggle handlers що мають дальше side-effects
+grep -rn "setShow.*=> !.*;\|setVisible.*=> !.*;" apps/web/src --include="*.tsx" -A 5 \
+  | grep -B 1 "apiFetch\|setState\|set[A-Z]" | head -40
+```
+
+**Причина виникнення:** функція спочатку написана як «open handler» з prefill+fetch. Пізніше додано toggle через `setShow(v => !v)` щоб клік знову закривав. Author припускає що при closing решта коду нешкідливо повторно встановить state — але реально це (а) робить зайвий fetch (network waste, perf regression на slow connection); (б) перезаписує state що користувач міг змінити у відкритому стані (наприклад, vehicleId selection); (в) може race-state із паралельним effect.
+
+**Підхід до виявлення:** для кожного useCallback що містить `setShow(v => !v)` АБО `setShow(prev => !prev)` — перевірити чи дальший код мав би виконуватись тільки при opening. Якщо так — refactor.
+
+**Підхід до фіксу:** обчислити цільовий стан перед toggle через ref (щоб не додавати у deps), early-return при closing:
+
+```typescript
+const showRef = useRef(show);
+showRef.current = show;
+
+const handler = useCallback(async () => {
+  const willOpen = !showRef.current;
+  setShow(willOpen);
+  if (!willOpen) return; // ← guard
+  // ... prefill + fetch code only runs on open
+}, [deps]);
+```
+
+Альтернатива: розділити на `openHandler` (без toggle, тільки open) та `toggleHandler` (тільки toggle, без side-effects), використовувати explicit close-button у UI замість toggle.
+
+**Severity:** MEDIUM-HIGH (залежно від cost of side-effects: extra fetch = MEDIUM; state overwrite = HIGH).
+
+**Де шукати ще:** mini-form toggles (showNewWo, showNewCp), expandable sections (showFilters, showAdvanced), sidebar toggles. Будь-який toggle де reuse одного handler для open і close.
+
+---
+
 ### 2026-06-06 — Soft string FK без validation (Bugs #359, #361) — backend, data-integrity
 
 **Сигнал:** DTO має string field що концептуально посилається на інший resource (`currencyCode → Currency.code`, `paymentMethodCode → PaymentMethodConfig.code`) АЛЕ Prisma schema зберігає як plain `String` без FK relation. Service пише `dto.X` напряму у persist. Грeп: `grep -rn "code:\s*dto\.\|Code:\s*dto\." apps/api/src/modules --include="*.service.ts" | grep -v "findFirst\|currency.findFirst"` → кожен write без парного existence-check = bug.
