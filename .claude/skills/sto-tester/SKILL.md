@@ -552,6 +552,7 @@ done
 - [ ] **Filter pill chicken-and-egg для soft-delete UI (Bug #295):** будь-який toggle/filter-pill що відкриває **єдиний шлях** до архівних/прихованих даних (`Архів`/`Видалені`/`Корзина`) — його видимість НЕ МОЖЕ залежати від `derivedCount > 0` де count обчислюється з даних, видимих ТІЛЬКИ після toggle. Сценарій: initial state `showHidden=false` → API повертає лише видимі → `hiddenCount=0` → кнопка `{hiddenCount > 0 || showHidden ? <Toggle/> : null}` НЕ рендериться → користувач не має способу побачити архів → soft-delete фіча недосяжна. Grep: `grep -rnE "(deleted|archived|hidden|removed)Count\s*>\s*0\s*\|\|" apps/web/src/app --include="*.tsx"` — кожен match де count обчислюється з відфільтрованого списку = bug. Фікс: toggle завжди видимий, count показувати ТІЛЬКИ коли `showHidden=true` (бо у `false` mode count завжди 0 за визначенням). Severity: CRITICAL (feature недосяжна без power-user URL hack)
 - [ ] **AbortController у `useEffect` для filter-toggle race (Bug #301):** будь-який `useEffect(() => { load() }, [filterState])` де `filterState` toggle-able і `load()` робить `apiFetch` — потребує `AbortController` у cleanup. Без нього: швидке перемикання filter → попередній fetch не cancelled → resolve order non-deterministic → last setUnits(...) wins, який може суперечити поточному UI mode (stale state shown for current filter). Grep: `grep -rn "useEffect" apps/web/src/app --include="*.tsx" -A 5 | grep -B1 "load\(\)\|apiFetch" | grep -v "AbortController\|signal"` — кожен match без AbortController при наявності залежності від toggle/filter state = bug. Severity: MEDIUM
 - [ ] **In-flight guard для async-кнопок без overlay-блокування (Bug #303):** будь-яка `<Button onClick={() => action(id)}>` де `action` робить async POST/PATCH/DELETE і немає `disabled` prop тримати `inFlightIds` Set state. Без нього: користувач клікає 5 разів швидко → 5 паралельних POST → перший успіх, 2nd-5th повертають 404/409 (ресурс уже змінено) → setError shows стається помилка хоча перший успіх. Особливо при операціях що змінюють стан рядка (delete/restore/approve/cancel) — наступні reqs після першого побачать новий стан і обуряться. Грубий tip-off: відсутність `setRestoringIds`/`processingIds`/`busyIds` state у компоненті який має destructive/state-changing button-actions. Severity: MEDIUM (UX flash false errors)
+- [ ] **Input-mask wrapper re-extracts digits from formatted prefix (Bug #369):** для КОЖНОГО mask-wrapper у `apps/web/src/components/ui/` (`PhoneInput`, майбутні `CardNumberInput`/`IBANInput`/`VinInput`/`EDRPOUInput`) що мутирує `e.target.value` напряму у onChange — функція форматування ОБОВ'ЯЗКОВО стрипає **фіксований локований prefix** маски (`+38 (` для phone, `UA` для IBAN, etc.) з raw string ПЕРЕД digit extraction. Інакше при ітеративному типінгу `e.target.value` повертає ВЕСЬ formatted string з власним prefix → `replace(/\D/g, '')` витягує prefix digits РАЗОМ з user input → country/prefix code акумулюється в subscriber portion. **One-shot paste happy-path** (`+380501234567` в порожнє поле) працює бо немає префіксу у raw. **Iterative typing fails** silently — користувач вводить `380501234567` посимвольно і отримує `+38 (380) 501-23-45` замість `+38 (050) 123-45-67`. Grep: `grep -rn "e\.target\.value\s*=\s*" apps/web/src/components/ui --include="*.tsx"` + `grep -rnE "function (apply|format)[A-Z]" apps/web/src/components/ui --include="*.tsx" -A 10`. Регресія-guard: `it('iterative typing matches one-shot paste')` + `it('idempotency applyMask(applyMask(x)) === applyMask(x)')`. Severity: HIGH (silent data corruption — невалідний номер у БД, backend приймає бо 10 цифр).
 - [ ] **Toggle-state UI desync: highlight/cursor не gated на enabled-flag (Bugs #310-#311):** додавання toggle-component (`DetailPanelToggle`, `useDetailPanel`, `FilterToggle`, `CompactModeToggle`) що керує boolean state, але ефекти toggle (highlight рядка `bg-secondary`/`bg-primary/5`, `cursor-pointer`, hover-effects) застосовуються на основі іншої state-змінної (`selectedX?.id === item.id`, `expandedRows.has(id)`) **БЕЗ** gate на toggle-state → після `toggle()` → `enabled=false`, але `selectedX` залишається non-null → класи рендеряться, action недоступна, UX desync. Grep: `grep -rnE "selected[A-Z][a-zA-Z]*\?.id\s*===\s*[a-z]+\.id\s*&&\s*'bg-" apps/web/src/app --include="*.tsx" | grep -v "detailPanel\.enabled\|panel\.enabled\|enabled &&"` — кожен match без enabled-gate. Парний grep для cursor: `grep -rnE "'group cursor-pointer'|className=\\\`group cursor-pointer" apps/web/src/app --include="\*.tsx"`. Фікс: додати `&& detailPanel.enabled`до КОЖНОГО affordance class (cursor + highlight + hover). Альтернатива:`useEffect(() => { if (!detailPanel.enabled) setSelectedX(null) }, [detailPanel.enabled])` у consumer-page. Симетрія: якщо одне gated → друге теж має бути gated; асиметрія = bug. Severity: MEDIUM для stale highlight; LOW для cursor-only
 - [ ] **Dead `/X/new` маршрут у keyboard shortcut / Command Palette (Bug #354):** будь-який `router.push('/<resource>/new')` у `apps/web/src/hooks/useGlobalShortcuts.ts` АБО `href: '/<resource>/new'` у `apps/web/src/lib/commands.ts` — перевірити що відповідна директорія `apps/web/src/app/<group>/<resource>/new/` ІСНУЄ. Якщо resource має create-flow через модалку (`<page.tsx>` → `setModal(true)`) і НЕ має окремої `/new` сторінки → `[id]` dynamic route ловить `'new'` як id → `apiFetch('/<resource>/new')` → 404/broken detail page. Grep для виявлення: `grep -rn "router\.push('/[^']*/new')\|href:\s*'/[^']*/new'" apps/web/src --include="*.ts" --include="*.tsx"` → для кожного match: `test -d apps/web/src/app/\(*\)/$(echo URL | cut -d/ -f2)/new && echo OK || echo DEAD`. Фікс-pattern: `?action=new` query param + `useSearchParams` listener у page.tsx + ОБОВ'ЯЗКОВО `<Suspense fallback={null}>` обгортка (Next.js static-export вимагає для `useSearchParams`). Severity HIGH (feature декларована, маршрут broken).
 - [ ] **`usePaginatedList` queryKey shape ↔ `xKeys.list()` factory shape mismatch (Bug #355 — Bug #281 шаблон, глибинна варіація):** будь-який shared helper-hook (`usePaginatedList`, `useResourceList`, custom `useXXX`) що приймає `{ queryKey: 'X' }` option і будує `queryKey: [key, filters]` — ОБОВ'ЯЗКОВО має МАТЧИТИ shape парного factory. Стандарт `xKeys.list(filters)` = `[...xKeys.all, 'list', filters]` (3-element) → hook має `queryKey: [key, 'list', filters]`. Без `'list'` як другого елемента TopShell prefetch (що використовує factory) потрапляє у dead cache slot для ВСІХ ресурсів які споживають helper. Grep: `grep -rn "queryKey:\s*\[.*filters\]" apps/web/src/hooks/api/ --include="*.ts"` — кожен match без `'list'` як другого елемента та з парним `Keys.list()` factory у тому ж файлі = bug. Regression-guard: тест через `qc.getQueryCache().getAll()` + асерт `queryKey.toEqual([key, 'list', filters])`. Severity MEDIUM (silent — кожна nav робить FETCH вдруге, performance тільки). Виявляється ТІЛЬКИ якщо порівняти shape helper-hook vs factory shape — code review зазвичай пропускає.
@@ -944,6 +945,67 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-06 — Mask wrapper re-extracts digits from formatted prefix → country-code accumulates (Bug #369) — frontend, controlled-input wrapper
+
+**Сигнал:** Input-mask wrapper (PhoneInput, CardNumberInput, IBANInput, VinInput) reads `e.target.value` як цілий рядок, витягує `digits = raw.replace(/\D/g, '')`, стрипає фіксований prefix (country code / IBAN code), re-applies формат. Тест repro: `await user.type(input, '<international-prefix><local-number>')` посимвольно → fields-state не співпадає з очікуваним після paste тієї ж строки одноразово. Grep:
+
+```bash
+# Знайти wrapper-компоненти що мутирують e.target.value у onChange handler
+grep -rn "e\.target\.value\s*=\s*" apps/web/src/components/ui --include="*.tsx" | head -10
+
+# Для кожного — перевірити чи `applyMask`/`format` функція стрипає фіксований
+# prefix з digits ДО розпарсити, або з RAW string ДО digit extraction.
+grep -rnE "function (apply|format)[A-Z]" apps/web/src/components/ui --include="*.tsx" -A 10
+```
+
+**Причина виникнення:** `applyMask` (або `formatPhone`/`formatIBAN`) написана з припущенням «вхід — raw user-typed string без префіксу». Працює для **happy-path одноразової вставки** (`+380501234567`). Але mask wrapper викликається на **КОЖНЕ натискання клавіші**, і React reconciles state ⇄ DOM — `value` prop reflects formatted state, DOM input містить formatted prefix (`+38 (`), і кожен наступний `e.target.value` повертає ВЕСЬ formatted string. `replace(/\D/g, '')` на `+38 (XXX` витягне і `38` з префіксу, і `XXX` з subscriber. Якщо стрип-логіка очікує лише ОДИН `38` prefix → залишковий `38` потрапляє у subscriber → silent number corruption.
+
+**Підхід до виявлення:** Для кожного mask-wrapper в `apps/web/src/components/ui/`:
+
+1. Чи функція форматування може бути викликана **ітеративно з вже-форматованим input**? (Майже завжди — yes, бо controlled inputs re-fire onChange кожен char.)
+2. Чи стрип-логіка враховує double-prefix scenarios? Перевірити: подати `applyMask(applyMask('+380501234567'))` → має повернути той самий результат як `applyMask('+380501234567')`.
+3. **Idempotency test**: `expect(applyMask(applyMask(x))).toBe(applyMask(x))` для масиву типових входів — паст, частковий ввід, з/без префіксу.
+4. **Iterative typing test**: `await user.type(input, '<full-international>')` посимвольно → final state має дорівнювати очікуваному.
+
+**Підхід до фіксу:** Стрипати **фіксований prefix маски** з raw string ПЕРЕД digit extraction:
+
+```ts
+function applyMask(raw: string): string {
+  let rest = raw;
+  // FIXED prefix that mask itself inserts:
+  if (rest.startsWith(LOCKED_PREFIX)) rest = rest.slice(LOCKED_PREFIX.length);
+  const digits = rest.replace(/\D/g, '');
+  // ... country code strip and format
+}
+```
+
+Це гарантує: mask бачить ЛИШЕ user-supplied portion, ніколи не double-counts власний prefix. Альтернатива (складніша) — track `selectionStart`/`selectionEnd` від попереднього render і diff-only mask. Простіший fix підходить для більшості UX.
+
+**Severity:** HIGH (silent data corruption — невалідний номер потрапляє у БД, бекенд приймає бо це 10 цифр, але користувач думає що ввів інший номер). Особливо боляче для phone numbers — використовуються для SMS/call/notification і помилки виявляються тільки коли callee не відповідає або SMS повертається невдоставленою.
+
+**Regression-guard pattern:**
+
+```ts
+it('ітеративний ввід `<international-prefix><local>` → масковано як local', async () => {
+  await user.type(input, '380501234567'); // posymvol'no
+  expect(state).toBe('+38 (050) 123-45-67');
+});
+it('idempotency: applyMask(applyMask(x)) === applyMask(x)', () => {
+  for (const x of ['+380501234567', '0501234567', '+38 (050) 123-45-67', '']) {
+    expect(applyMask(applyMask(x))).toBe(applyMask(x));
+  }
+});
+```
+
+**Де шукати ще:**
+
+- `PhoneInput` (UA `+38 (0XX)`)
+- Майбутні mask-обгортки: `CardNumberInput` (`4242-4242-...`), `IBANInput` (`UA21 3322 ...`), `VinInput` (`1HGBH41...`), `EDRPOUInput` (`12345678`), `INNInput` (10 чи 12 цифр), `PaymentReferenceInput`.
+- Будь-який `<input>` wrapper що мутирує `e.target.value` напряму у onChange.
+- Загальніше: будь-яка функція форматування user input що викликається не лише на paste, але і на keystroke-level зі stateful re-render.
+
+---
 
 ### 2026-06-06 — Cascade-clear stale linked FK при зміні parent picker (Bugs #365, #367) — frontend, form-state
 
