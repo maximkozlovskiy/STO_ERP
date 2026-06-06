@@ -151,12 +151,17 @@ export class CalendarService {
             type: dto.type ?? CalendarSlotType.WORK,
           },
           include: {
-            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+            counterparty: {
+              select: { firstName: true, lastName: true, companyName: true, phone: true },
+            },
             workOrder: {
               select: {
                 number: true,
                 counterpartyId: true,
-                counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+                counterparty: {
+                  select: { firstName: true, lastName: true, companyName: true, phone: true },
+                },
+                vehicle: { select: { make: true, model: true, licensePlate: true } },
               },
             },
           },
@@ -261,12 +266,17 @@ export class CalendarService {
             ...(dto.notes !== undefined && { notes: dto.notes }),
           },
           include: {
-            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+            counterparty: {
+              select: { firstName: true, lastName: true, companyName: true, phone: true },
+            },
             workOrder: {
               select: {
                 number: true,
                 counterpartyId: true,
-                counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+                counterparty: {
+                  select: { firstName: true, lastName: true, companyName: true, phone: true },
+                },
+                vehicle: { select: { make: true, model: true, licensePlate: true } },
               },
             },
           },
