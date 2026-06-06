@@ -25,7 +25,6 @@ import { PENDING_DRAG_ID, type CalendarState } from './useCalendarState';
 interface DraggableSlotProps {
   slot: CalendarSlot;
   isEditing: boolean;
-  onRemove: (id: string) => void;
   onEdit: (slot: CalendarSlot) => void;
   onResizeStart: (
     e: ReactPointerEvent<HTMLDivElement>,
@@ -37,7 +36,6 @@ interface DraggableSlotProps {
 const DraggableSlot = memo(function DraggableSlot({
   slot,
   isEditing,
-  onRemove,
   onEdit,
   onResizeStart,
 }: DraggableSlotProps) {
@@ -89,33 +87,29 @@ const DraggableSlot = memo(function DraggableSlot({
       </div>
 
       <div
-        className="flex-1 flex flex-col justify-center px-3 cursor-grab active:cursor-grabbing min-w-0 gap-0.5 py-1"
+        className="flex-1 flex flex-col px-3 cursor-grab active:cursor-grabbing min-w-0 py-1 relative"
         {...listeners}
         {...attributes}
         onClick={() => onEdit(slot)}
       >
-        <span className="font-medium truncate leading-tight">
-          {timeLabel}
-          {slot.workOrderNumber ? ` · ${slot.workOrderNumber}` : ''}
-        </span>
-        {slot.counterpartyName && (
-          <span className="truncate leading-tight opacity-90">{slot.counterpartyName}</span>
-        )}
-        {slot.cpPhone && <span className="truncate leading-tight opacity-75">{slot.cpPhone}</span>}
-        {slot.vehicleSummary && (
-          <span className="truncate leading-tight opacity-75">{slot.vehicleSummary}</span>
-        )}
+        {/* Time — top-left, small */}
+        <span className="text-[10px] leading-none opacity-75 mb-1">{timeLabel}</span>
+        {/* Main info — centered */}
+        <div className="flex-1 flex flex-col justify-center gap-0.5 min-w-0">
+          {slot.workOrderNumber && (
+            <span className="font-medium truncate leading-tight">{slot.workOrderNumber}</span>
+          )}
+          {slot.counterpartyName && (
+            <span className="truncate leading-tight">{slot.counterpartyName}</span>
+          )}
+          {slot.cpPhone && (
+            <span className="truncate leading-tight opacity-75">{slot.cpPhone}</span>
+          )}
+          {slot.vehicleSummary && (
+            <span className="truncate leading-tight opacity-75">{slot.vehicleSummary}</span>
+          )}
+        </div>
       </div>
-
-      <button
-        type="button"
-        onPointerDown={e => e.stopPropagation()}
-        onClick={() => onRemove(slot.id)}
-        className="mr-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-white/80 hover:text-white shrink-0"
-        aria-label="Видалити слот"
-      >
-        <Trash2 className="h-3 w-3" />
-      </button>
 
       <div
         className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-white/20 rounded-r flex items-center justify-center"
@@ -226,7 +220,6 @@ interface DroppableLiftRowProps {
   pending: PendingSlot | null;
   editingSlotId: string | null;
   blockedWidth: number;
-  onRemove: (id: string) => void;
   onEdit: (slot: CalendarSlot) => void;
   onResizeStart: (
     e: ReactPointerEvent<HTMLDivElement>,
@@ -245,7 +238,6 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
   pending,
   editingSlotId,
   blockedWidth,
-  onRemove,
   onEdit,
   onResizeStart,
   onPendingOpen,
@@ -314,7 +306,6 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
           key={s.id}
           slot={s}
           isEditing={s.id === editingSlotId}
-          onRemove={onRemove}
           onEdit={onEdit}
           onResizeStart={onResizeStart}
         />
@@ -446,7 +437,6 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                   pending={pendingSlot}
                   editingSlotId={editingSlotId}
                   blockedWidth={blockedWidth}
-                  onRemove={removeSlot}
                   onEdit={handleEditSlot}
                   onResizeStart={handleResizeStart}
                   onPendingOpen={openFormFromPending}
