@@ -174,9 +174,11 @@ export function CounterpartyEditModal({
   // Live counterparty id — звіряється у handler-fetch async після await, щоб не
   // setState у списки чужого CP при швидкому перемиканні (§8.2 tenant-guard).
   const currentCpIdRef = useRef<string | null>(null);
+  // Bug #372: explicit deps `[counterparty?.id]` — ref оновлюється ТІЛЬКИ при
+  // зміні CP-id, а не на кожен render (form-keystrokes). ESLint-clean.
   useEffect(() => {
     currentCpIdRef.current = counterparty?.id ?? null;
-  });
+  }, [counterparty?.id]);
 
   // ── Work Orders ──────────────────────────────────────────────────────────────
   const [modalWorkOrders, setModalWorkOrders] = useState<ModalWorkOrder[]>([]);
@@ -416,34 +418,37 @@ export function CounterpartyEditModal({
 
   const addContract = async () => {
     if (!counterparty) return;
+    // Tenant-guard (Bug #370): handler-fetch ↔ зміна counterparty. Якщо під час
+    // POST користувач закрив/перевідкрив modal для іншого CP — викидаємо setState
+    // у чужу таблицю contracts. Дзеркалить захист у addVehicle/deleteVehicle.
+    const cpIdAtStart = counterparty.id;
+    const cpTypeAtStart = counterparty.type;
     setAddingContract(true);
     setContractsError('');
     try {
       const resolvedType =
-        counterparty.type === 'CLIENT'
+        cpTypeAtStart === 'CLIENT'
           ? 'SALE'
-          : counterparty.type === 'SUPPLIER'
+          : cpTypeAtStart === 'SUPPLIER'
             ? 'PURCHASE'
             : addContractForm.contractType;
-      const created = await apiFetch<ModalContract>(
-        `/counterparties/${counterparty.id}/contracts`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            contractType: resolvedType,
-            startDate: addContractForm.startDate,
-            endDate: addContractForm.endDate || undefined,
-            creditLimit: addContractForm.creditLimit
-              ? Number(addContractForm.creditLimit)
-              : undefined,
-            currencyCode: addContractForm.currencyCode || orgCurrency,
-            paymentDeferDays: addContractForm.paymentDeferDays
-              ? Number(addContractForm.paymentDeferDays)
-              : undefined,
-            isPrimary: addContractForm.isPrimary || undefined,
-          }),
-        },
-      );
+      const created = await apiFetch<ModalContract>(`/counterparties/${cpIdAtStart}/contracts`, {
+        method: 'POST',
+        body: JSON.stringify({
+          contractType: resolvedType,
+          startDate: addContractForm.startDate,
+          endDate: addContractForm.endDate || undefined,
+          creditLimit: addContractForm.creditLimit
+            ? Number(addContractForm.creditLimit)
+            : undefined,
+          currencyCode: addContractForm.currencyCode || orgCurrency,
+          paymentDeferDays: addContractForm.paymentDeferDays
+            ? Number(addContractForm.paymentDeferDays)
+            : undefined,
+          isPrimary: addContractForm.isPrimary || undefined,
+        }),
+      });
+      if (currentCpIdRef.current !== cpIdAtStart) return; // CP змінився — drop
       setModalContracts(prev => [...prev, created]);
       setAddContractForm({
         contractType: '',
@@ -457,7 +462,8 @@ export function CounterpartyEditModal({
       setShowAddContract(false);
       toast.success('Договір додано');
     } catch (e: unknown) {
-      setContractsError(e instanceof Error ? e.message : 'Помилка');
+      if (currentCpIdRef.current === cpIdAtStart)
+        setContractsError(e instanceof Error ? e.message : 'Помилка');
     } finally {
       setAddingContract(false);
     }

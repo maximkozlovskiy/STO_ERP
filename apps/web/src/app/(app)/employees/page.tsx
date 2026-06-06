@@ -330,14 +330,17 @@ export default function EmployeesPage() {
     setError('');
     try {
       await apiFetch<void>(`/employees/${id}`, { method: 'DELETE' });
-      if (selectedEmp?.id === id) setSelectedEmp(null);
+      // Bug #371: functional setter — `selectedEmp?.id` через captured closure
+      // може бути stale якщо користувач перемкнув рядок між confirm і DELETE-result.
+      // `prev` тут — це поточний state з React-черги, не closure.
+      setSelectedEmp(prev => (prev?.id === id ? null : prev));
       load();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка видалення';
       // 404 = запис уже видалений (stale UI або паралельний запит) — оновлюємо список
       // та закриваємо panel якщо він показував цей запис. Дзеркалить infrastructure/page.tsx.
       if (/не знайдено|not found/i.test(msg)) {
-        if (selectedEmp?.id === id) setSelectedEmp(null);
+        setSelectedEmp(prev => (prev?.id === id ? null : prev));
         load();
       } else {
         setError(msg);

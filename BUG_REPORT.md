@@ -11211,3 +11211,170 @@ loadVehiclesQuiet(cpId).catch(() => {});
 Safari/iOS native tooltip ігнорує `\n` (показує один рядок з літерним `\n` або пробілом). У Windows/Chromium/Firefox/Edge `\n` рендериться як перенос рядка. Якщо STO ERP таргетує Windows-десктопи (а судячи з installer/inno script — так), це не блокер. Для іOS-tablet PWA — варто або (а) розбити на `aria-label` + кастомний Tooltip компонент, або (б) приймати один-рядковий fallback. Залишаю.
 
 ---
+
+## Session 2026-06-06 — Tester post-review: CounterpartyEditModal addVehicle + employees 404 (HEAD post-review)
+
+**Контекст:** sto-review-agent виправив #1 addVehicle auto-create garage + currentCpIdRef guard у CounterpartyEditModal, #2 employees.markForDeletion 404 → close detail panel. Tester проводить додатковий audit на пропущені родинні баги (same pattern в неперевірених handlers).
+
+**Baseline:**
+
+- TS (`@sto/api`, `@sto/web`): зелений
+- Перевірені файли: `apps/web/src/components/ui/CounterpartyEditModal.tsx`, `apps/web/src/app/(app)/employees/page.tsx`
+- Перевірені backend allies: `apps/api/src/modules/counterparties/counterparties.service.ts` (createGarage, removeGarage, $transaction auto-create flow), `packages/database/prisma/schema.prisma` (CustomerGarage model)
+
+Знайдено 3 баги, які пропустив review-agent: 1 HIGH (тінь патерну `addVehicle` race-guard у `addContract`), 1 LOW (captured closure у `markForDeletion`), 1 LOW (eslint deps array у useRef-sync useEffect).
+
+---
+
+### Bug #370 — [HIGH] CounterpartyEditModal.addContract не має tenant-guard при швидкому switch counterparty — contract від попереднього CP вставляється у список contracts нового CP
+
+**Файл:** `apps/web/src/components/ui/CounterpartyEditModal.tsx:417-464`
+
+**Симптом:** Користувач відкриває edit-modal для CP-A на вкладку «Договори», заповнює форму нового договору, тисне «Зберегти». Поки POST `/counterparties/A/contracts` ще in-flight, користувач закриває modal і відкриває edit-modal для CP-B (наприклад, через табличну навігацію або router-back). POST завершується успіхом → `setModalContracts(prev => [...prev, created])` виконується з контрактом CP-A, але `modalContracts` зараз — список CP-B → у UI на CP-B з'являється чужий договір (з номером і параметрами CP-A). Аналогічно `setContractsError(...)` у catch.
+
+**Repro:**
+
+1. Створити 2 контрагенти CP-A (CLIENT) і CP-B (SUPPLIER).
+2. Відкрити edit-modal CP-A → вкладка «Договори» → «Додати договір» → заповнити форму → клік «Зберегти».
+3. **Не чекаючи** на завершення POST (можна симулювати throttling Network у DevTools), закрити modal і відкрити CP-B → вкладка «Договори».
+4. Через 1–2 секунди у списку договорів CP-B з'являється договір CP-A (номер починається з префіксу CP-A, contractType — SALE замість PURCHASE).
+
+**Сигнал у тесті (regression-guard):**
+
+```ts
+it('addContract не пушить у setModalContracts якщо counterparty змінився під час in-flight POST', async () => {
+  const { rerender } = render(<CounterpartyEditModal open counterparty={cpA} ... />);
+  await user.click(addContractBtn);
+  // не чекаємо на await apiFetch
+  rerender(<CounterpartyEditModal open counterparty={cpB} ... />);
+  await flushPendingPromises();
+  expect(screen.queryByText(cpAContract.number)).not.toBeInTheDocument();
+});
+```
+
+**Причина:**
+
+Той самий патерн, що Bug #366/#367 (counterparty switch race у calendar/work-orders/CounterpartyEditModal.addVehicle): handler-fetch захоплює `counterparty.id` лише у URL, але після `await apiFetch(...)` обробка результату (`setModalContracts`) не звіряється з живим CP-id з ref. Review-agent виправив `addVehicle` і `deleteVehicle` (через `currentCpIdRef.current === cpIdAtStart`), але пропустив дзеркальний `addContract` у тому ж файлі.
+
+**Фікс:**
+
+Застосувати той самий патерн:
+
+```ts
+const addContract = async () => {
+  if (!counterparty) return;
+  const cpIdAtStart = counterparty.id;
+  setAddingContract(true);
+  setContractsError('');
+  try {
+    const resolvedType = ...;
+    const created = await apiFetch<ModalContract>(
+      `/counterparties/${cpIdAtStart}/contracts`,
+      { method: 'POST', body: JSON.stringify({ ... }) },
+    );
+    if (currentCpIdRef.current !== cpIdAtStart) return; // CP змінився — drop
+    setModalContracts(prev => [...prev, created]);
+    setAddContractForm({ ... });
+    setShowAddContract(false);
+    toast.success('Договір додано');
+  } catch (e: unknown) {
+    if (currentCpIdRef.current === cpIdAtStart)
+      setContractsError(e instanceof Error ? e.message : 'Помилка');
+  } finally {
+    setAddingContract(false);
+  }
+};
+```
+
+Зверни увагу:
+
+- URL також прив'язується до `cpIdAtStart` (а не `counterparty.id` що може бути новим), щоб не POST-нути contract CP-A на URL CP-B якщо closure захопила старий counterparty.
+- `setContractsError` теж guarded — інакше після switch на CP-B показували б помилку від CP-A POST.
+
+**Severity:** HIGH — silent data display bug, користувач бачить чужий договір (із суми/валюти/типу). Хоча DB пишеться правильно (POST URL прив'язаний до A), UI на B показує контракт A → дезорієнтація, користувач може клікати на нього і не зрозуміти куди він зник після refresh.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #371 — [LOW] employees.markForDeletion перевіряє `selectedEmp?.id === id` з captured closure — switch до іншого emp між confirm і DELETE-result закриє панель НЕ для того співробітника
+
+**Файл:** `apps/web/src/app/(app)/employees/page.tsx:326-348`
+
+**Симптом:** Користувач відкриває detail panel для empA, клікає «Видалити». Поки `useConfirm()` показує діалог, користувач натискає на іншу рядку таблиці → `setSelectedEmp(empB)`. Потім підтверджує «Так» → DELETE empA успіх → `if (selectedEmp?.id === id) setSelectedEmp(null)` — `selectedEmp` тут це **closure-захоплене** значення (може бути або empA або empB залежно від re-render timing handler).
+
+**Кейс 1 (handler не оновлений між click і confirm):**
+
+- closure `selectedEmp` = empA. `if (empA.id === empA.id)` → TRUE → `setSelectedEmp(null)` → панель закривається.
+- Але користувач зараз дивиться empB у панелі → панель **раптово закрилась** хоча empB не зачеплений.
+
+**Кейс 2 (handler пере-створений на rерендер):**
+
+- closure `selectedEmp` = empB. `if (empB.id === empA.id)` → FALSE → не закриваємо.
+- Це правильна поведінка.
+
+React функціональні компоненти створюють handler на кожен render, тому коли в стеку handler виконується після `await confirm(...)`, він має stale closure (той що був на момент click+initiation, не на момент re-render). Це залежить від реалізації `useConfirm` — якщо діалог зберігає референс на onConfirm, він зберігає closure з моменту коли `await confirm(...)` запущений.
+
+**Repro:**
+
+1. Відкрити /employees, увімкнути Detail Panel, клікнути на empA.
+2. Натиснути ☑ «Видалити» (Trash2 icon) на empA — з'являється confirm dialog.
+3. **Не закриваючи confirm**, клік на рядок empB у таблиці → панель тепер показує empB.
+4. Підтвердити «Так» у confirm dialog.
+5. Очікувано: панель empB лишається відкритою (зачеплений лише empA).
+6. Фактично (з поточним кодом): панель раптово закривається бо `selectedEmp?.id === id` resolved за stale closure.
+
+**Сигнал у тесті:**
+
+Hard-to-test без mock'у useConfirm — пропустимо regression-guard, але закладемо safer functional setter.
+
+**Причина:** Direct reference `selectedEmp?.id` у async handler — class antipattern Stale Closure.
+
+**Фікс:** Використати functional setter:
+
+```ts
+if (selectedEmp?.id === id) setSelectedEmp(null);
+// →
+setSelectedEmp(prev => (prev?.id === id ? null : prev));
+```
+
+Те саме у catch-блоці для 404-handling.
+
+**Severity:** LOW — рідкісний UX bug, лише при швидкому переключенні рядків з відкритим confirm. Не data corruption.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #372 — [LOW] CounterpartyEditModal useEffect для синхронізації currentCpIdRef.current без deps array — спрацьовує на кожен render компонента
+
+**Файл:** `apps/web/src/components/ui/CounterpartyEditModal.tsx:177-179`
+
+**Симптом:**
+
+```ts
+useEffect(() => {
+  currentCpIdRef.current = counterparty?.id ?? null;
+}); // <- no deps array
+```
+
+`useEffect` без deps array виконується після кожного render компонента (≥ 10–20 раз на сесію редагування форми, оскільки `form` state-update triggers re-render). Mutation `ref.current = value` дешева (constant), але:
+
+1. Скаржиться ESLint правило `react-hooks/exhaustive-deps` у strict mode.
+2. Концептуально семантика "оновлюй ref коли змінився counterparty.id" — точніше виражається deps array `[counterparty?.id]`. Без deps читач може помилково думати що ref оновлюється при initial mount тільки.
+
+**Фікс:**
+
+```ts
+useEffect(() => {
+  currentCpIdRef.current = counterparty?.id ?? null;
+}, [counterparty?.id]);
+```
+
+Поведінка ідентична (ref завжди валідний бо counterparty.id єдине джерело змін), але дешевше + ESLint-clean.
+
+**Severity:** LOW — мікрооптимізація + читабельність. Не функціональний баг.
+
+**Статус:** [x] виправлено
+
+---
