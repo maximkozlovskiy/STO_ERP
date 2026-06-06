@@ -56,6 +56,7 @@ interface Garage {
 }
 interface Vehicle {
   id: string;
+  customerGarageId: string;
   make: string;
   model: string;
   licensePlate: string | null;
@@ -325,28 +326,30 @@ export default function CounterpartyCardPage() {
     setGaragesLoading(true);
     void (async () => {
       try {
-        const garages = await apiFetch<Garage[]>(`/counterparties/${id}/garages`);
+        // sto-optimize: parallel garages + vehicles fetch (раніше garages waterfall →
+        // per-garage vehicles N+1). Backend `/vehicles?counterpartyId=X` join
+        // customerGarage → counterparty. Stage 2 (schedules) лишилось як було.
+        const [garages, allVehicles] = await Promise.all([
+          apiFetch<Garage[]>(`/counterparties/${id}/garages`),
+          apiFetch<Vehicle[]>(`/vehicles?counterpartyId=${id}`).catch(() => [] as Vehicle[]),
+        ]);
         if (cancelled) return;
         setGarages(garages);
         setExpandedGarages(new Set(garages.map(g => g.id)));
 
-        // Stage 1 — load all vehicles in parallel (one request per garage)
-        const vehiclesByGarage = await Promise.all(
-          garages.map(g =>
-            apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}`).catch(() => [] as Vehicle[]),
-          ),
-        );
-        if (cancelled) return;
+        // Group vehicles by garage id locally — replaces per-garage RTT.
         const garageMap: Record<string, Vehicle[]> = {};
-        garages.forEach((g, i) => {
-          garageMap[g.id] = vehiclesByGarage[i];
+        garages.forEach(g => {
+          garageMap[g.id] = [];
         });
+        for (const v of allVehicles) {
+          (garageMap[v.customerGarageId] ??= []).push(v);
+        }
         setGarageVehicles(garageMap);
 
         // Stage 2 — bulk-load maintenance schedules for all vehicles in ONE request.
         // Backend supports `?vehicleIds=v1,v2,v3` (vehicle IN clause) — replaces
         // the prior N+1 (1 fetch per vehicle, up to 100s of round-trips for big garages).
-        const allVehicles = vehiclesByGarage.flat();
         if (allVehicles.length > 0) {
           const vehicleIdsParam = allVehicles.map(v => v.id).join(',');
           const schedules = await apiFetch<MaintenanceSchedule[]>(
