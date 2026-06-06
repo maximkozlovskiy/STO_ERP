@@ -9,6 +9,18 @@
 ## Останній commit
 
 ```
+2e6e8ed fix(review): tenant-guard counterparty handlers + close panel on 404-DELETE
+   • CounterpartyEditModal: reset modalGarageId=null on CP switch (load effect) — без
+     цього addVehicle для нового CP міг постити vehicle у гараж попереднього
+   • addVehicle/deleteVehicle: currentCpIdRef (live ref у useEffect) — звіряємо після
+     await, skip setState якщо CP змінився (§8.2 handler-fetch tenant-guard)
+   • Auto-garage name "Гараж" → "Основний" + isDefault:true (mirrors backend
+     counterparties.service auto-create for CLIENT/BOTH)
+   • deleteVehicle: 404 = вже видалено → drop from local list (не toast.error)
+   • employees/page.tsx markForDeletion: 404 path також setSelectedEmp(null) якщо
+     panel показував видалений запис (раніше тільки success branch чистив)
+TypeScript: api ✓ web ✓ shared ✓ (0 errors)
+1cd99c4 fix(employees): refresh list on 404-DELETE (stale record already deleted)
 a5fa9b4 fix(counterparty): auto-create garage when adding first vehicle
    • CounterpartyEditModal.addVehicle: guard !counterparty замість !modalGarageId
    • Якщо modalGarageId === null → POST /counterparties/:id/garages { name: 'Гараж' }
