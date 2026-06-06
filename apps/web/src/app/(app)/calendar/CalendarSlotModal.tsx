@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
+import { CreateWorkOrderModal } from '@/components/ui/CreateWorkOrderModal';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -526,15 +527,8 @@ export function CalendarSlotModal({
     };
   }, []);
 
-  // ── New work-order — opens /work-orders page in new tab with prefilled data ──
-
-  const openNewWo = useCallback(() => {
-    const params = new URLSearchParams({ action: 'new' });
-    if (form.counterpartyId) params.set('counterpartyId', form.counterpartyId);
-    if (form.vehicleId) params.set('vehicleId', form.vehicleId);
-    if (form.notes) params.set('description', form.notes);
-    window.open(`/work-orders?${params.toString()}`, '_blank');
-  }, [form.counterpartyId, form.vehicleId, form.notes]);
+  // ── New work-order modal ──────────────────────────────────────────────────
+  const [createWoOpen, setCreateWoOpen] = useState(false);
 
   // ── Picker modals ─────────────────────────────────────────────────────────
 
@@ -821,84 +815,83 @@ export function CalendarSlotModal({
             </div>
           </div>
 
-          {/* Клієнт + Автомобіль в один ряд */}
-          <div className="grid grid-cols-2 gap-3">
-            {/* Клієнт */}
-            <div className={cpVehicles.length > 1 ? '' : 'col-span-2'}>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Клієнт <span className="text-destructive-text">*</span>
-              </label>
-              <div className="flex items-center gap-1">
-                <div className="flex-1 min-w-0">
-                  <EntityPickerField
-                    display={form.counterpartyDisplay}
-                    placeholder="Обрати клієнта…"
-                    disabled={isEditingPast}
-                    hidePick={isEditingPast}
-                    onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
-                    onPick={() => setCpPickerOpen(true)}
-                    onClear={() => {
-                      setCpDisplay('');
-                      setCpPhone(null);
-                      setCpVehicles([]);
-                      setForm(f => ({
-                        ...f,
-                        counterpartyId: '',
-                        counterpartyDisplay: '',
-                        vehicleId: '',
-                      }));
-                    }}
-                  />
-                </div>
-                {!isEditingPast && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openNewCpWizard}
-                    title="Новий клієнт"
-                    className="h-9 w-9 p-0 shrink-0"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                  </Button>
-                )}
+          {/* Клієнт */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Клієнт <span className="text-destructive-text">*</span>
+            </label>
+            <div className="flex items-center gap-1">
+              <div className="flex-1 min-w-0">
+                <EntityPickerField
+                  display={form.counterpartyDisplay}
+                  placeholder="Обрати клієнта…"
+                  disabled={isEditingPast}
+                  hidePick={isEditingPast}
+                  onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
+                  onPick={() => setCpPickerOpen(true)}
+                  onClear={() => {
+                    setCpDisplay('');
+                    setCpPhone(null);
+                    setCpVehicles([]);
+                    setForm(f => ({
+                      ...f,
+                      counterpartyId: '',
+                      counterpartyDisplay: '',
+                      vehicleId: '',
+                      workOrderId: '',
+                      workOrderDisplay: '',
+                    }));
+                  }}
+                />
               </div>
-              {cpPhone && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  📞{' '}
-                  <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
-                    {cpPhone}
-                  </a>
-                </p>
-              )}
-              {form.counterpartyId && cpVehicles.length === 0 && (
-                <p className="text-xs text-muted-foreground italic mt-1">
-                  Немає авто — додайте у картці клієнта
-                </p>
+              {!isEditingPast && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openNewCpWizard}
+                  title="Новий клієнт"
+                  className="h-9 w-9 p-0 shrink-0"
+                >
+                  <UserPlus className="h-4 w-4" />
+                </Button>
               )}
             </div>
-
-            {/* Автомобіль — тільки якщо >1 авто */}
-            {cpVehicles.length > 1 && (
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                  Автомобіль
-                </label>
-                <select
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  value={form.vehicleId}
-                  disabled={isEditingPast}
-                  onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-                >
-                  <option value="">— оберіть авто —</option>
-                  {cpVehicles.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {cpPhone && (
+              <p className="text-xs text-muted-foreground mt-1">
+                📞{' '}
+                <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
+                  {cpPhone}
+                </a>
+              </p>
+            )}
+            {form.counterpartyId && cpVehicles.length === 0 && (
+              <p className="text-xs text-muted-foreground italic mt-1">
+                Немає авто — додайте у картці клієнта
+              </p>
             )}
           </div>
+
+          {/* Автомобіль — тільки якщо >1 авто */}
+          {cpVehicles.length > 1 && (
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Автомобіль
+              </label>
+              <select
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                value={form.vehicleId}
+                disabled={isEditingPast}
+                onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+              >
+                <option value="">— оберіть авто —</option>
+                {cpVehicles.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Наряд */}
           <div>
@@ -921,7 +914,7 @@ export function CalendarSlotModal({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={openNewWo}
+                  onClick={() => setCreateWoOpen(true)}
                   title="Новий наряд"
                   className="h-9 w-9 p-0 shrink-0"
                 >
@@ -1274,6 +1267,20 @@ export function CalendarSlotModal({
               '',
           }));
           setCpDetailOpen(false);
+        }}
+      />
+      <CreateWorkOrderModal
+        open={createWoOpen}
+        onClose={() => setCreateWoOpen(false)}
+        prefill={{
+          counterpartyId: form.counterpartyId || undefined,
+          counterpartyDisplay: form.counterpartyDisplay || undefined,
+          vehicleId: form.vehicleId || undefined,
+          description: form.notes || undefined,
+        }}
+        onCreated={wo => {
+          const display = `${wo.number}${form.counterpartyDisplay ? ` · ${form.counterpartyDisplay}` : ''}`;
+          setForm(f => ({ ...f, workOrderId: wo.id, workOrderDisplay: display }));
         }}
       />
     </>
