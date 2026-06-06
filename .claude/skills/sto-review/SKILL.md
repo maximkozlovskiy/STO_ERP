@@ -268,6 +268,12 @@ grep -rnE "^\s*requestAnimationFrame\(" apps/web/src/app apps/web/src/components
 # imperative style.* мутації у callback (rAF/RO/setTimeout) — перевірити що мають component-level unmount cleanup
 grep -rnE "\.style\.(height|transition|marginBottom|opacity|transform)\s*=" apps/web/src/app --include="*.tsx"
 # Для кожного — звірити що є cleanup рекордера (formHideTimerRef, formCloseRafRef) у dedicated unmount-only useEffect (() => () => {...}, [])
+
+# Spread SyntheticEvent з заміною target — ламає прототип SyntheticEvent
+# (preventDefault/stopPropagation/persist стають undefined → silent runtime bug коли caller їх викликає)
+grep -rnE "\{\s*\.\.\.e\s*,\s*target:\s*\{\s*\.\.\.e\.target" apps/web/src/ --include="*.tsx" --include="*.ts"
+# Анти-патерн: `const fake = { ...e, target: { ...e.target, value: masked } } as React.ChangeEvent<...>`
+# Фікс: мутувати `e.target.value = masked` напряму і передати оригінальний `e` далі.
 ```
 
 - [ ] `addEventListener` → `return () => removeEventListener`
@@ -281,6 +287,7 @@ grep -rnE "\.style\.(height|transition|marginBottom|opacity|transform)\s*=" apps
 - [ ] `onPointerLeave` / cancel-handler → скидає **ВСІ** pointer-режими (drawing **і** resizing), не лише перший
 - [ ] `requestAnimationFrame` що мутує DOM/state → зберегти id у `useRef<number|null>(null)`; `cancelAnimationFrame` на старті наступного toggle-ефекту + у component-level unmount cleanup `useEffect(() => () => {...}, [])`. Інакше rapid toggle лишає stale rAF що перезаписує щойно-відкритий стан (height='0px' на open form).
 - [ ] Pair `setTimeout` + `requestAnimationFrame` для open/close-анімації → обидва id у refs; обидва cleanup-ються у dedicated unmount-effect (`useEffect(() => () => { clearTimeout(t); cancelAnimationFrame(r); }, [])`) — недостатньо чистити лише на наступному toggle, бо unmount між циклами зловить.
+- [ ] Wrapper-компонент над `<Input>` що трансформує value (mask, normalize) → НЕ робити `{ ...e, target: { ...e.target, value: X } }` spread (втрачає прототип SyntheticEvent — `preventDefault`/`stopPropagation`/`persist`/`isDefaultPrevented` стають undefined, silent runtime bug коли caller їх використовує). Замість цього мутувати `e.target.value = transformed` напряму і forward оригінальний `e`. Приклад: `PhoneInput` (явна mask для +38 (0XX) XXX-XX-XX) — див. `components/ui/phone-input.tsx` за патерном.
 
 #### §3.2 Backend
 

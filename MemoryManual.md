@@ -9,6 +9,19 @@
 ## Останній commit
 
 ```
+bfee922 fix(review): drop React.ChangeEvent namespace + preserve SyntheticEvent in PhoneInput
+   • phone-input.tsx: import { type ChangeEvent } from 'react' замість React.ChangeEvent
+   • handleChange: мутує e.target.value напряму замість { ...e, target: { ...e.target } } spread
+     (зберігає прототип SyntheticEvent — preventDefault/stopPropagation/persist досі працюють)
+TypeScript: api ✓ web ✓ (0 errors)
+225ff70 fix(sync): align VehicleOption.licensePlate type with backend DTO
+   • VehicleOption.licensePlate: string → string | null (backend returns string|null)
+   • PhoneInput new component in /components/ui/phone-input.tsx
+   • CalendarSlotModal, CounterpartyEditModal, EmployeeEditModal, counterparties/[id]/PageClient, booking/page — PhoneInput замість Input для телефонів
+   • CalendarSlotModal — openNewWo via window.open to /work-orders?action=new&...
+   • work-orders/page.tsx — useEffect reads action=new query params (cpId, vehicleId, branchId, desc)
+   • CalendarDayGrid — tooltip join('\n')
+TypeScript: api ✓ web ✓ (0 errors)
 <NEW> fix(tester): Bugs #364-#368 — calendar vehicle picker post-review hunt
    • #364 openNewWo runs API call when CLOSING mini-form → split open/toggle through showNewWoRef
    • #365 WO-picker counterparty replace not clearing vehicleId/cpVehicles → leak to newWo POST
@@ -1260,6 +1273,17 @@ apiFetch<Branch[]>('/branches').then(d => {
 ### Gotcha (sync fix cef188a)
 
 `@Get('templates/:type')` wild-card перехоплює будь-який шлях `templates/X`. Окремий `@Get('templates/pricing-list')` зареєстрований ПІСЛЯ wild-card → ніколи не спрацьовував. Фікс: додати `pricing-list` як case у існуючий switch замість окремого endpoint.
+
+---
+
+## UI: PhoneInput — маска +38 (0XX) XXX-XX-XX (225ff70)
+
+`apps/web/src/components/ui/phone-input.tsx` — drop-in для `<Input>` для полів телефону.
+
+- `Omit<InputProps, 'type'>` — повністю сумісний з Input; type="tel" inputMode="tel" всередині
+- `applyMask()` — нормалізує raw digits: strip leading 38, ліміт 10 цифр, format +38 (0XX) XXX-XX-XX
+- onChange — synthetic-like event з `e.target.value = masked` щоб caller `e.target.value` отримував маскований рядок
+- Застосований: CalendarSlotModal, CounterpartyEditModal, EmployeeEditModal, counterparties/[id]/PageClient, booking/page
 
 ---
 
