@@ -9,6 +9,7 @@ import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Select } from '@/components/ui/select';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -536,14 +537,13 @@ export function CounterpartyEditModal({
                 }}
                 placeholder="ТОВ «Авто»"
               />
-              <Input
+              <PhoneInput
                 label="Телефон"
                 value={form.phone}
                 onChange={e => {
                   setForm(f => ({ ...f, phone: e.target.value }));
                   dirty.markDirty();
                 }}
-                placeholder="+38 (067) 123-45-67"
               />
               <Input
                 label="Email"

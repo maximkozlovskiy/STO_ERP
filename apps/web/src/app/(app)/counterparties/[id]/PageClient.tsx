@@ -10,6 +10,7 @@ import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { cn, daysUntil } from '@/lib/utils';
@@ -707,11 +708,10 @@ export default function CounterpartyCardPage() {
           ) : (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <Input
+                <PhoneInput
                   label="Телефон"
                   value={editForm.phone}
                   onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
-                  placeholder="+38 (067) 000-00-00"
                 />
                 <Input
                   label="Email"

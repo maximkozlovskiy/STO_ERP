@@ -44,7 +44,7 @@ export interface VehicleOption {
   id: string;
   make: string;
   model: string;
-  licensePlate: string;
+  licensePlate: string | null;
 }
 
 /** Pending (not yet saved) slot drawn on the grid */

@@ -6,7 +6,6 @@ import { apiFetch } from '@/lib/api-client';
 import { WO_STATUS_LABELS, WO_STATUS_BADGE } from '@sto/shared';
 import { fmtMoney, fmtDate, kyivDateTimeToISO } from '@/lib/format';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
-import { useCachedRefData } from '@/hooks/useCachedRefData';
 import {
   CounterpartyEditModal,
   type CounterpartyForModal,
@@ -15,6 +14,7 @@ import { toast } from '@/lib/toast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -535,129 +535,20 @@ export function CalendarSlotModal({
     };
   }, []);
 
-  // ── New work-order mini-form ──────────────────────────────────────────────
+  // ── New work-order — opens /work-orders page in new tab with prefilled data ──
 
-  const [showNewWo, setShowNewWo] = useState(false);
-  const [newWo, setNewWo] = useState({
-    counterpartyId: '',
-    counterpartyDisplay: '',
-    vehicleId: '',
-    branchId: '',
-    description: '',
-  });
-  const [newWoVehicles, setNewWoVehicles] = useState<VehicleOption[]>([]);
-  const { data: branches, error: branchesError } = useCachedRefData<{ id: string; name: string }[]>(
-    'cache:branches',
-    '/branches',
-    [],
-    raw => (Array.isArray(raw) ? raw : (raw as { items: { id: string; name: string }[] }).items),
-  );
-  const [savingWo, setSavingWo] = useState(false);
-
-  useEffect(() => {
-    if (!open) setShowNewWo(false);
-  }, [open]);
-
-  // Ref до showNewWo — щоб openNewWo міг прочитати поточний стан до toggle
-  // без додавання у useCallback deps (інакше функція пересоздається при кожному toggle).
-  const showNewWoRef = useRef(showNewWo);
-  showNewWoRef.current = showNewWo;
-
-  const openNewWo = useCallback(async () => {
-    // Bug #364: визначаємо чи ми ВІДКРИВАЄМО чи ЗАКРИВАЄМО.
-    // Якщо закриваємо — лише toggle, без prefill/fetch.
-    const willOpen = !showNewWoRef.current;
-    setShowNewWo(willOpen);
-    if (!willOpen) return;
-    if (!form.counterpartyId) return;
-    // Pre-fill vehicleId from slot form if user already picked one.
-    setNewWo(v => ({
-      ...v,
-      counterpartyId: form.counterpartyId,
-      counterpartyDisplay: form.counterpartyDisplay,
-      vehicleId: form.vehicleId || v.vehicleId,
-    }));
-    // Reuse already-fetched vehicles from slot form picker — avoids duplicate request.
-    if (cpVehicles.length > 0) {
-      setNewWoVehicles(cpVehicles);
-      if (cpVehicles.length === 1 && !form.vehicleId) {
-        setNewWo(v => ({ ...v, vehicleId: cpVehicles[0]!.id }));
-      }
-      return;
-    }
-    const garages = await apiFetch<{ id: string }[]>(
-      `/counterparties/${form.counterpartyId}/garages`,
-    ).catch(() => [] as { id: string }[]);
-    const all = (
-      await Promise.all(
-        garages.map(g =>
-          apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(
-            () => [] as VehicleOption[],
-          ),
-        ),
-      )
-    ).flat();
-    if (!mountedRef.current) return;
-    setNewWoVehicles(all);
-    if (all.length === 1 && !form.vehicleId) setNewWo(v => ({ ...v, vehicleId: all[0]!.id }));
-  }, [form.counterpartyId, form.counterpartyDisplay, form.vehicleId, cpVehicles]);
-
-  const loadWoVehicles = useCallback(async (counterpartyId: string) => {
-    if (!counterpartyId) {
-      setNewWoVehicles([]);
-      return;
-    }
-    try {
-      const garages = await apiFetch<{ id: string }[]>(`/counterparties/${counterpartyId}/garages`);
-      const vehicles = await Promise.all(
-        garages.map(g =>
-          apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(
-            () => [] as VehicleOption[],
-          ),
-        ),
-      );
-      setNewWoVehicles(vehicles.flat());
-    } catch {
-      setNewWoVehicles([]);
-    }
-  }, []);
-
-  const saveNewWorkOrder = async () => {
-    if (!newWo.counterpartyId || !newWo.vehicleId || !newWo.branchId) return;
-    setSavingWo(true);
-    try {
-      const created = await apiFetch<WorkOrderOption>('/work-orders', {
-        method: 'POST',
-        body: JSON.stringify({
-          counterpartyId: newWo.counterpartyId,
-          vehicleId: newWo.vehicleId,
-          branchId: newWo.branchId,
-          description: newWo.description || undefined,
-        }),
-      });
-      const display = `${created.number}${newWo.counterpartyDisplay ? ` · ${newWo.counterpartyDisplay}` : ''}`;
-      setForm(f => ({ ...f, workOrderId: created.id, workOrderDisplay: display }));
-      toast.success('Наряд створено');
-      setShowNewWo(false);
-      setNewWo({
-        counterpartyId: '',
-        counterpartyDisplay: '',
-        vehicleId: '',
-        branchId: '',
-        description: '',
-      });
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка створення наряду');
-    } finally {
-      setSavingWo(false);
-    }
-  };
+  const openNewWo = useCallback(() => {
+    const params = new URLSearchParams({ action: 'new' });
+    if (form.counterpartyId) params.set('counterpartyId', form.counterpartyId);
+    if (form.vehicleId) params.set('vehicleId', form.vehicleId);
+    if (form.notes) params.set('description', form.notes);
+    window.open(`/work-orders?${params.toString()}`, '_blank');
+  }, [form.counterpartyId, form.vehicleId, form.notes]);
 
   // ── Picker modals ─────────────────────────────────────────────────────────
 
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
   const [woPickerOpen, setWoPickerOpen] = useState(false);
-  const [newWoCpPickerOpen, setNewWoCpPickerOpen] = useState(false);
 
   type CpItem = SearchPickerItem & { phone?: string | null };
   type WoItem = SearchPickerItem & {
@@ -1103,9 +994,8 @@ export function CalendarSlotModal({
                   onChange={e => setNewCp(v => ({ ...v, companyName: e.target.value }))}
                 />
                 <div className="grid grid-cols-2 gap-3">
-                  <Input
+                  <PhoneInput
                     label="Телефон"
-                    placeholder="+38 (067) 123-45-67"
                     value={newCp.phone}
                     onChange={e => setNewCp(v => ({ ...v, phone: e.target.value }))}
                   />
@@ -1183,71 +1073,6 @@ export function CalendarSlotModal({
               </div>
             )}
           </Modal>
-
-          {/* New work-order mini-form */}
-          {showNewWo && (
-            <div className="bg-secondary rounded-lg p-3 space-y-2 border border-border">
-              <p className="text-xs font-medium text-foreground">Новий наряд</p>
-              <EntityPickerField
-                display={newWo.counterpartyDisplay}
-                placeholder="Обрати клієнта…"
-                onOpenDetail={undefined}
-                onPick={() => setNewWoCpPickerOpen(true)}
-                onClear={() =>
-                  setNewWo(v => ({
-                    ...v,
-                    counterpartyId: '',
-                    counterpartyDisplay: '',
-                    vehicleId: '',
-                  }))
-                }
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <Select
-                  value={newWo.vehicleId}
-                  onChange={e => setNewWo(v => ({ ...v, vehicleId: e.target.value }))}
-                  disabled={!newWo.counterpartyId}
-                >
-                  <option value="">— Автомобіль —</option>
-                  {newWoVehicles.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {v.make} {v.model} ({v.licensePlate})
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  value={newWo.branchId}
-                  onChange={e => setNewWo(v => ({ ...v, branchId: e.target.value }))}
-                >
-                  <option value="">— Філія —</option>
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              {branchesError && <p className="text-xs text-destructive-text">{branchesError}</p>}
-              <Input
-                placeholder="Опис (необов'язково)"
-                value={newWo.description}
-                onChange={e => setNewWo(v => ({ ...v, description: e.target.value }))}
-              />
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={saveNewWorkOrder}
-                  loading={savingWo}
-                  disabled={!newWo.counterpartyId || !newWo.vehicleId || !newWo.branchId}
-                >
-                  Зберегти наряд
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setShowNewWo(false)}>
-                  Скасувати
-                </Button>
-              </div>
-            </div>
-          )}
 
           {/* Notes */}
           <div>
@@ -1388,25 +1213,6 @@ export function CalendarSlotModal({
               setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
             }}
           />
-          <SearchPickerModal<CpItem>
-            open={newWoCpPickerOpen}
-            onClose={() => setNewWoCpPickerOpen(false)}
-            title="Клієнт для наряду"
-            selectedId={newWo.counterpartyId}
-            fetchItems={fetchCpItems}
-            searchPlaceholder="Ім'я, телефон..."
-            emptyText="Клієнтів не знайдено"
-            onSelect={async item => {
-              setNewWo(v => ({
-                ...v,
-                counterpartyId: item.id,
-                counterpartyDisplay: item.primary,
-                vehicleId: '',
-              }));
-              await loadWoVehicles(item.id);
-            }}
-          />
-
           <div className="flex items-center gap-2">
             {!isEditingPast && (
               <Button

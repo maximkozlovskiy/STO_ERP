@@ -7,6 +7,7 @@ import { EMPLOYEE_STATUS_LABELS, EMPLOYEE_ROLE_LABELS } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { ModalTabs } from '@/components/ui/modal-tabs';
@@ -396,14 +397,13 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input
+            <PhoneInput
               label="Телефон"
               value={form.phone}
               onChange={e => {
                 setForm(f => ({ ...f, phone: e.target.value }));
                 dirty.markDirty();
               }}
-              placeholder="+38 (067) 123-45-67"
             />
             <Input
               label="Email"

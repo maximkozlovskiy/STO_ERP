@@ -246,16 +246,7 @@ function WorkOrdersPageInner() {
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Bug #354: підтримка `?action=new` query — Command Palette + N shortcut
-  // навігують сюди замість неіснуючого /work-orders/new маршруту.
   const searchParams = useSearchParams();
-  useEffect(() => {
-    if (searchParams?.get('action') === 'new') {
-      setModal(true);
-      // Очистити query щоб модалка не відкривалась повторно при back/forward
-      router.replace('/work-orders', { scroll: false });
-    }
-  }, [searchParams, router]);
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -472,6 +463,36 @@ function WorkOrdersPageInner() {
         setError(e instanceof Error ? e.message : 'Помилка завантаження автомобілів');
       });
   };
+
+  // Bug #354: підтримка `?action=new` query — Command Palette + N shortcut + calendar prefill.
+  // Підтримувані query params: counterpartyId, vehicleId, branchId, description.
+  // useEffect розміщено ПІСЛЯ loadVehicles щоб уникнути TDZ (const не hoisting).
+  useEffect(() => {
+    if (searchParams?.get('action') !== 'new') return;
+    setModal(true);
+    const cpId = searchParams.get('counterpartyId');
+    const vId = searchParams.get('vehicleId');
+    const brId = searchParams.get('branchId');
+    const desc = searchParams.get('description');
+    if (cpId || vId || brId || desc) {
+      setForm(f => ({
+        ...f,
+        ...(cpId && { counterpartyId: cpId }),
+        ...(vId && { vehicleId: vId }),
+        ...(brId && { branchId: brId }),
+        ...(desc && { description: desc }),
+      }));
+    }
+    if (cpId) {
+      apiFetch<{ firstName: string | null; lastName: string | null; companyName: string | null }>(
+        `/counterparties/${cpId}`,
+      )
+        .then(cp => setCounterpartyDisplayName(displayCounterpartyName(cp)))
+        .catch(() => {});
+      loadVehicles(cpId);
+    }
+    router.replace('/work-orders', { scroll: false });
+  }, [searchParams, router]);
 
   const create = async () => {
     const mileage = form.inMileage ? Number(form.inMileage) : undefined;

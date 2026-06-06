@@ -66,7 +66,7 @@ const DraggableSlot = memo(function DraggableSlot({
     slot.vehiclePlate ?? null,
   ]
     .filter(Boolean)
-    .join(' ');
+    .join('\n');
 
   return (
     <div

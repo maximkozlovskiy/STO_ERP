@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Spinner } from '@/components/ui/spinner';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 
@@ -244,13 +245,11 @@ export default function BookingPage() {
                   onChange={e => setForm(f => ({ ...f, clientName: e.target.value }))}
                   placeholder="Іван Іванченко"
                 />
-                <Input
+                <PhoneInput
                   label="Телефон"
                   required
                   value={form.clientPhone}
                   onChange={e => setForm(f => ({ ...f, clientPhone: e.target.value }))}
-                  placeholder="+380671234567"
-                  hint="Формат: +380XXXXXXXXX"
                 />
                 <Button
                   onClick={handleSubmit}
