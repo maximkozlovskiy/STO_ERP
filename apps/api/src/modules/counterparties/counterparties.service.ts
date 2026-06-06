@@ -306,6 +306,7 @@ export class CounterpartiesService {
             endDate: dto.endDate ? new Date(dto.endDate) : null,
             isPrimary: makePrimary,
             creditLimit: dto.creditLimit ?? null,
+            currencyCode: dto.currencyCode ?? 'UAH',
             paymentDeferDays: dto.paymentDeferDays ?? null,
           },
         });
@@ -366,6 +367,7 @@ export class CounterpartiesService {
             }),
             ...(dto.isPrimary !== undefined && { isPrimary: dto.isPrimary }),
             ...(dto.creditLimit !== undefined && { creditLimit: dto.creditLimit }),
+            ...(dto.currencyCode !== undefined && { currencyCode: dto.currencyCode }),
             ...(dto.paymentDeferDays !== undefined && { paymentDeferDays: dto.paymentDeferDays }),
           },
         });
@@ -461,6 +463,7 @@ export class CounterpartiesService {
     endDate: Date | null;
     isPrimary: boolean;
     creditLimit: Prisma.Decimal | null;
+    currencyCode: string;
     paymentDeferDays: number | null;
     createdAt: Date;
     updatedAt: Date;
@@ -476,6 +479,7 @@ export class CounterpartiesService {
       endDate: c.endDate ? c.endDate.toISOString().slice(0, 10) : null,
       isPrimary: c.isPrimary,
       creditLimit: c.creditLimit ? Number(c.creditLimit) : null,
+      currencyCode: c.currencyCode,
       paymentDeferDays: c.paymentDeferDays,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,

@@ -71,18 +71,30 @@ function Toggle({
   );
 }
 
+interface Currency {
+  id: string;
+  code: string;
+  name: string;
+  symbol: string | null;
+}
+
 export default function OrgTab() {
   const { confirm, dialogProps } = useConfirm();
   const currentFeatures = useUiFeatures();
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<OrgSettings>('/settings/organisation')
-      .then(s => {
+    void Promise.all([
+      apiFetch<OrgSettings>('/settings/organisation'),
+      apiFetch<Currency[]>('/currencies'),
+    ])
+      .then(([s, c]) => {
         setOrgSettings(s);
+        setCurrencies(c);
         applyTheme(s.brandTheme);
       })
       .catch((e: unknown) =>
@@ -99,6 +111,7 @@ export default function OrgTab() {
       const updated = await apiFetch<OrgSettings>('/settings/organisation', {
         method: 'PATCH',
         body: JSON.stringify({
+          currency: orgSettings.currency,
           vatMode: orgSettings.vatMode,
           invoiceDueDays: orgSettings.invoiceDueDays,
           autoArchiveDays: orgSettings.autoArchiveDays,
@@ -137,6 +150,33 @@ export default function OrgTab() {
         </div>
       )}
       <div className="bg-surface rounded-xl border border-border p-6 space-y-5">
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1">Валюта обліку</label>
+          {currencies.length > 0 ? (
+            <Select
+              value={orgSettings.currency}
+              onChange={e => setOrgSettings({ ...orgSettings, currency: e.target.value })}
+              className="w-auto"
+            >
+              {currencies.map(c => (
+                <option key={c.code} value={c.code}>
+                  {c.code} — {c.name}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <Input
+              value={orgSettings.currency}
+              onChange={e => setOrgSettings({ ...orgSettings, currency: e.target.value })}
+              className="w-32"
+              placeholder="UAH"
+            />
+          )}
+          <p className="text-xs text-muted-foreground mt-1">
+            Використовується за замовчуванням у договорах і звітах
+          </p>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">Режим ПДВ</label>
           <Select

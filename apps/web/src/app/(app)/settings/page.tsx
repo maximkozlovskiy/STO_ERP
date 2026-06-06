@@ -35,7 +35,7 @@ function SettingsPageClient() {
   const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
 
   return (
-    <div className="page-container">
+    <div className="page-fill p-6 overflow-y-auto">
       <h1 className="page-title mb-6">Налаштування</h1>
 
       {/* Tab bar */}

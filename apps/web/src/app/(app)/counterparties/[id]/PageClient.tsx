@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useConfirm } from '@/hooks/useConfirm';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Plus, Pencil, Check, X } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -127,6 +129,7 @@ interface Contract {
   endDate: string | null;
   isPrimary: boolean;
   creditLimit: number | null;
+  currencyCode: string;
   paymentDeferDays: number | null;
   createdAt: string;
 }
@@ -198,15 +201,30 @@ export default function CounterpartyCardPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { confirm, dialogProps } = useConfirm();
 
   const [cp, setCp] = useState<Counterparty | null>(null);
   const tab = (searchParams.get('tab') ?? 'info') as CrmTab;
   const setTab = (t: CrmTab) => router.replace(`?tab=${t}`, { scroll: false });
   const [loadError, setLoadError] = useState('');
   const [todayMs, setTodayMs] = useState(0);
+  const [orgCurrency, setOrgCurrency] = useState('UAH');
+  const [currencies, setCurrencies] = useState<{ code: string; name: string }[]>([]);
 
   useEffect(() => {
     setTodayMs(Date.now());
+  }, []);
+
+  useEffect(() => {
+    void Promise.all([
+      apiFetch<{ currency: string }>('/settings/organisation'),
+      apiFetch<{ code: string; name: string }[]>('/currencies'),
+    ])
+      .then(([settings, currList]) => {
+        setOrgCurrency(settings.currency);
+        setCurrencies(currList);
+      })
+      .catch(() => {});
   }, []);
 
   // Garages
@@ -250,6 +268,7 @@ export default function CounterpartyCardPage() {
     startDate: kyivToday(),
     endDate: '',
     creditLimit: '',
+    currencyCode: '',
     paymentDeferDays: '',
     isPrimary: false,
   });
@@ -1015,11 +1034,37 @@ export default function CounterpartyCardPage() {
                   />
                 </div>
               </div>
-              {/* Рядок 3: фінансові поля */}
+              {/* Рядок 3: валюта */}
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Валюта</label>
+                {currencies.length > 0 ? (
+                  <select
+                    value={contractForm.currencyCode || orgCurrency}
+                    onChange={e => setContractForm(f => ({ ...f, currencyCode: e.target.value }))}
+                    className="h-9 w-auto rounded-md border border-border bg-surface px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    {currencies.map(c => (
+                      <option key={c.code} value={c.code}>
+                        {c.code} — {c.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={contractForm.currencyCode || orgCurrency}
+                    onChange={e => setContractForm(f => ({ ...f, currencyCode: e.target.value }))}
+                    placeholder="UAH"
+                    maxLength={10}
+                    className="h-9 w-24 rounded-md border border-border bg-surface px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                )}
+              </div>
+              {/* Рядок 4: фінансові поля */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">
-                    Кредитний ліміт (₴)
+                    Кредитний ліміт
                   </label>
                   <Input
                     type="number"
@@ -1078,6 +1123,7 @@ export default function CounterpartyCardPage() {
                           creditLimit: contractForm.creditLimit
                             ? Number(contractForm.creditLimit)
                             : undefined,
+                          currencyCode: contractForm.currencyCode || orgCurrency,
                           paymentDeferDays: contractForm.paymentDeferDays
                             ? Number(contractForm.paymentDeferDays)
                             : undefined,
@@ -1089,6 +1135,7 @@ export default function CounterpartyCardPage() {
                         startDate: kyivToday(),
                         endDate: '',
                         creditLimit: '',
+                        currencyCode: '',
                         paymentDeferDays: '',
                         isPrimary: false,
                       });
@@ -1160,7 +1207,9 @@ export default function CounterpartyCardPage() {
                         {c.endDate ? fmtDate(c.endDate) : '—'}
                       </td>
                       <td className="px-4 py-3 text-right text-muted-foreground">
-                        {c.creditLimit != null ? `${fmtMoney(c.creditLimit)} ₴` : '—'}
+                        {c.creditLimit != null
+                          ? `${fmtMoney(c.creditLimit)} ${c.currencyCode}`
+                          : '—'}
                       </td>
                       <td className="px-4 py-3 text-right text-muted-foreground">
                         {c.paymentDeferDays ?? '—'}
@@ -1172,7 +1221,13 @@ export default function CounterpartyCardPage() {
                             size="sm"
                             className="text-destructive hover:text-destructive h-7 px-2"
                             onClick={async () => {
-                              if (!confirm(`Видалити договір ${c.number}?`)) return;
+                              if (
+                                !(await confirm({
+                                  title: `Видалити договір ${c.number}?`,
+                                  variant: 'destructive',
+                                }))
+                              )
+                                return;
                               try {
                                 await apiFetch(`/counterparties/${id}/contracts/${c.id}`, {
                                   method: 'DELETE',
@@ -1448,6 +1503,7 @@ export default function CounterpartyCardPage() {
           )}
         </div>
       )}
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

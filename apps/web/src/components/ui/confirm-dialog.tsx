@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { Modal } from './modal';
 import { Button } from './button';
 
@@ -24,18 +25,23 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  // Bug #ANIM-1: НЕ робимо `if (!open) return null` — Modal сам тримає DOM
-  // на час exit-анімації через useAnimatedPresence. Раннє null-повернення
-  // тут скидало state без анімації виходу.
+  // Зберігаємо останній відкритий стан щоб контент не зникав під час exit-анімації
+  const lastRef = useRef({ title, message, confirmLabel, cancelLabel, variant });
+  if (open) lastRef.current = { title, message, confirmLabel, cancelLabel, variant };
+  const c = lastRef.current;
+
   return (
-    <Modal open={open} onClose={onCancel ?? (() => {})} title={title} size="sm">
-      {message && <p className="text-sm text-muted-foreground mb-4">{message}</p>}
+    <Modal open={open} onClose={onCancel ?? (() => {})} title={c.title} size="sm">
+      {c.message && <p className="text-sm text-muted-foreground mb-4">{c.message}</p>}
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onCancel}>
-          {cancelLabel}
+          {c.cancelLabel}
         </Button>
-        <Button variant={variant === 'destructive' ? 'destructive' : 'default'} onClick={onConfirm}>
-          {confirmLabel}
+        <Button
+          variant={c.variant === 'destructive' ? 'destructive' : 'default'}
+          onClick={onConfirm}
+        >
+          {c.confirmLabel}
         </Button>
       </div>
     </Modal>

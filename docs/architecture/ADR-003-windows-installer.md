@@ -19,19 +19,24 @@
 ## Розглянуті варіанти
 
 ### Варіант A: NSIS (Nullsoft Scriptable Install System)
+
 **Плюси:** Дуже гнучкий, малий розмір installer runtime
 **Мінуси:** Застарілий синтаксис, складна відладка, слабка підтримка Unicode
 
 ### Варіант B: WiX Toolset (MSI)
+
 **Плюси:** Enterprise-рівень, повна підтримка Windows Installer
 **Мінуси:** Надмірна складність для нашого випадку, MSI погано підходить для "запустити docker compose"
 
 ### Варіант C: Electron-based Launcher
+
 **Плюси:** Красивий GUI, cross-platform, можна зробити tray-app для моніторингу
 **Мінуси:** +200MB тільки на Electron runtime, складніший білд-пайплайн
 
 ### Варіант D: Inno Setup + PowerShell ✅
+
 **Плюси:**
+
 - Зрілий інструмент (з 1997, активно підтримується)
 - Відмінна підтримка Unicode / кирилиці
 - Вбудований стиснення LZMA2
@@ -44,10 +49,11 @@
 ## Рішення: Inno Setup + PowerShell
 
 ### Структура installer
+
 ```
-STO-ERP-Setup-v1.0.0.exe  (~2.5 GB стиснений)
+STO-ERP-Setup-v1.0.0.exe  (~2 GB стиснений)
   ├── Inno Setup runtime (UI, прогрес, вибір опцій)
-  ├── docker-desktop-installer.exe  (~600 MB)
+  ├── wsl2-docker-install.sh  (встановлення Docker Engine у WSL2)
   ├── Docker images (*.tar.gz):
   │     sto-api.tar.gz      (~200 MB)
   │     sto-web.tar.gz      (~50 MB)
@@ -57,10 +63,16 @@ STO-ERP-Setup-v1.0.0.exe  (~2.5 GB стиснений)
   │     caddy.tar.gz        (~20 MB)
   ├── nssm.exe (Windows Service manager)
   ├── PowerShell scripts
+  │     Setup-PortProxy.ps1  (netsh portproxy WSL2→Windows)
+  │     Update-PortProxy.ps1 (оновлення IP після перезапуску)
   └── docker-compose.yml + Caddyfile
 ```
 
+> **Важливо:** Docker Desktop більше НЕ bundлюється в installer.
+> Натомість встановлюється Docker Engine нативно у WSL2 — безкоштовно, без ліцензійних обмежень. Детальніше в ADR-002.
+
 ### Кроки встановлення (що бачить користувач)
+
 ```
 [1/6] Перевірка системних вимог...   ~5 сек
 [2/6] Встановлення Docker...         ~3 хв (якщо потрібно)
@@ -70,14 +82,26 @@ STO-ERP-Setup-v1.0.0.exe  (~2.5 GB стиснений)
 [6/6] Готово!                        → відкрити браузер
 ```
 
-### Автозапуск як Windows Service
+### Автозапуск
+
+Docker Engine стартує автоматично через WSL2 `/etc/wsl.conf`:
+
+```ini
+[boot]
+command = /usr/local/bin/start-docker.sh
+```
+
+Контейнери підіймаються разом з WSL2 через `restart: unless-stopped` в `docker-compose.yml`.
+
+Port proxy оновлюється при кожному старті Windows через Task Scheduler:
+
 ```powershell
-# nssm встановлює "STO ERP" як службу Windows
-nssm install "STO ERP" docker
-nssm set "STO ERP" AppParameters "compose -f C:\ProgramData\STO-ERP\docker-compose.yml up"
-nssm set "STO ERP" AppDirectory "C:\ProgramData\STO-ERP"
-nssm set "STO ERP" Start SERVICE_AUTO_START
-nssm start "STO ERP"
+# Update-PortProxy.ps1 — запускається при вході в систему
+$wslIp = (wsl -- hostname -I).Split(' ')[0].Trim()
+foreach ($port in @(80, 443, 5432, 6379, 9000, 9001)) {
+  netsh interface portproxy delete v4tov4 listenport=$port listenaddress=127.0.0.1 2>$null
+  netsh interface portproxy add v4tov4 listenport=$port listenaddress=127.0.0.1 connectport=$port connectaddress=$wslIp
+}
 ```
 
 ## Наслідки
@@ -86,3 +110,5 @@ nssm start "STO ERP"
 - Images бандлюються в CI і не зберігаються в git (`.gitignore: installer/bundle/`)
 - Тихе встановлення: `STO-ERP-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES`
 - Оновлення через `Update.ps1` (не потрібно перевстановлювати)
+- Docker Desktop не потрібен — installer на ~600 MB менший
+- WSL2 повинен бути увімкнений (Windows 10 2004+ / Windows 11) — installer перевіряє і вмикає якщо потрібно

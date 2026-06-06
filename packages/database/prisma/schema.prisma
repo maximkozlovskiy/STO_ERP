@@ -600,6 +600,7 @@ model CounterpartyContract {
   endDate          DateTime?    @db.Date
   isPrimary        Boolean      @default(false)
   creditLimit      Decimal?     @db.Decimal(15, 2)
+  currencyCode     String       @default("UAH") @db.VarChar(10)
   paymentDeferDays Int?
   syncVersion      BigInt       @default(0)
   createdAt        DateTime     @default(now())

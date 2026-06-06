@@ -216,6 +216,12 @@ export class CreateContractDto {
   @Min(0)
   creditLimit?: number;
 
+  @ApiPropertyOptional({ description: 'ISO код валюти (напр. UAH, USD, EUR)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  currencyCode?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
@@ -261,6 +267,12 @@ export class UpdateContractDto {
   @Min(0)
   creditLimit?: number;
 
+  @ApiPropertyOptional({ description: 'ISO код валюти (напр. UAH, USD, EUR)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  currencyCode?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
@@ -279,6 +291,7 @@ export class ContractResponseDto {
   @ApiPropertyOptional() endDate!: string | null;
   @ApiProperty() isPrimary!: boolean;
   @ApiPropertyOptional() creditLimit!: number | null;
+  @ApiProperty() currencyCode!: string;
   @ApiPropertyOptional() paymentDeferDays!: number | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
