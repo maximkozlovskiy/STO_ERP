@@ -422,6 +422,7 @@ export function CalendarSlotModal({
       setCpOptions([]);
       setCpDisplay('');
       setCpPhone(null);
+      setCpVehicles([]);
       setNewCpOpen(false);
     }
   }, [open, setCpDisplay]);
@@ -448,39 +449,48 @@ export function CalendarSlotModal({
     };
   }, [open, form.counterpartyId, cpPhone]);
 
-  // Завантажуємо авто клієнта при зміні counterpartyId
-  // Якщо 1 авто — одразу ставимо vehicleId; якщо >1 — показуємо Select; якщо 0 — ховаємо
+  // Завантажуємо авто клієнта при зміні counterpartyId.
+  // Якщо 1 авто — одразу ставимо vehicleId; якщо >1 — показуємо Select; якщо 0 — ховаємо.
+  // form.vehicleId та setForm НЕ в deps щоб уникнути циклу: ефект сам пише в form.vehicleId.
+  // Замість stale closure — читаємо актуальне значення через formRef.
+  const formRef = useRef(form);
+  formRef.current = form;
   useEffect(() => {
     if (!open || !form.counterpartyId) {
       setCpVehicles([]);
       return;
     }
-    let cancelled = false;
+    const ac = new AbortController();
     const fetchedForId = form.counterpartyId;
     (async () => {
       try {
-        const garages = await apiFetch<{ id: string }[]>(`/counterparties/${fetchedForId}/garages`);
+        const garages = await apiFetch<{ id: string }[]>(
+          `/counterparties/${fetchedForId}/garages`,
+          {
+            signal: ac.signal,
+          },
+        );
         const nested = await Promise.all(
           garages.map(g =>
-            apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`).catch(
-              () => [] as VehicleOption[],
-            ),
+            apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`, {
+              signal: ac.signal,
+            }).catch(() => [] as VehicleOption[]),
           ),
         );
         const all = nested.flat();
-        if (cancelled || !mountedRef.current || fetchedForId !== form.counterpartyId) return;
+        if (ac.signal.aborted || !mountedRef.current) return;
         setCpVehicles(all);
-        if (all.length === 1 && !form.vehicleId) {
+        if (all.length === 1 && !formRef.current.vehicleId) {
           setForm(f => ({ ...f, vehicleId: all[0]!.id }));
         }
       } catch {
-        if (!cancelled) setCpVehicles([]);
+        if (!ac.signal.aborted && mountedRef.current) setCpVehicles([]);
       }
     })();
     return () => {
-      cancelled = true;
+      ac.abort();
     };
-  }, [open, form.counterpartyId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, form.counterpartyId, setForm]);
 
   const searchCounterparties = useCallback((q: string) => {
     if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current);
@@ -539,11 +549,21 @@ export function CalendarSlotModal({
   const openNewWo = useCallback(async () => {
     setShowNewWo(v => !v);
     if (!form.counterpartyId) return;
+    // Pre-fill vehicleId from slot form if user already picked one.
     setNewWo(v => ({
       ...v,
       counterpartyId: form.counterpartyId,
       counterpartyDisplay: form.counterpartyDisplay,
+      vehicleId: form.vehicleId || v.vehicleId,
     }));
+    // Reuse already-fetched vehicles from slot form picker — avoids duplicate request.
+    if (cpVehicles.length > 0) {
+      setNewWoVehicles(cpVehicles);
+      if (cpVehicles.length === 1 && !form.vehicleId) {
+        setNewWo(v => ({ ...v, vehicleId: cpVehicles[0]!.id }));
+      }
+      return;
+    }
     const garages = await apiFetch<{ id: string }[]>(
       `/counterparties/${form.counterpartyId}/garages`,
     ).catch(() => [] as { id: string }[]);
@@ -556,9 +576,10 @@ export function CalendarSlotModal({
         ),
       )
     ).flat();
+    if (!mountedRef.current) return;
     setNewWoVehicles(all);
-    if (all.length === 1) setNewWo(v => ({ ...v, vehicleId: all[0]!.id }));
-  }, [form.counterpartyId, form.counterpartyDisplay]);
+    if (all.length === 1 && !form.vehicleId) setNewWo(v => ({ ...v, vehicleId: all[0]!.id }));
+  }, [form.counterpartyId, form.counterpartyDisplay, form.vehicleId, cpVehicles]);
 
   const loadWoVehicles = useCallback(async (counterpartyId: string) => {
     if (!counterpartyId) {
