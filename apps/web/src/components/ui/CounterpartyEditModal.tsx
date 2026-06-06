@@ -215,17 +215,17 @@ export function CounterpartyEditModal({
     setShowAddContract(false);
 
     setModalVehiclesLoading(true);
-    apiFetch<{ id: string }[]>(`/counterparties/${counterparty.id}/garages`)
-      .then(garages => {
-        if (modalVehiclesReqRef.current !== vReqId) return [] as Vehicle[][];
+    // sto-optimize: parallel garages (для defaultGarageId) + bulk vehicles
+    // через ?counterpartyId=. Раніше waterfall: garages → N per-garage fetches.
+    Promise.all([
+      apiFetch<{ id: string }[]>(`/counterparties/${counterparty.id}/garages`),
+      apiFetch<Vehicle[]>(`/vehicles?counterpartyId=${counterparty.id}`),
+    ])
+      .then(([garages, vehicles]) => {
+        if (modalVehiclesReqRef.current !== vReqId) return;
         const defaultGarage = garages[0];
         if (defaultGarage) setModalGarageId(defaultGarage.id);
-        return Promise.all(
-          garages.map(g => apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}&limit=50`)),
-        );
-      })
-      .then(results => {
-        if (modalVehiclesReqRef.current === vReqId) setModalVehicles(results.flat());
+        setModalVehicles(vehicles);
       })
       .catch(err => {
         if (modalVehiclesReqRef.current === vReqId)

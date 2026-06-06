@@ -222,24 +222,19 @@ function CrmPageInner() {
     }
     let cancelled = false;
     setVehiclesLoading(true);
-    apiFetch<{ id: string }[]>(`/counterparties/${selectedCp.id}/garages`)
-      .then(garages =>
-        Promise.all(
-          garages.map(g =>
-            apiFetch<
-              {
-                id: string;
-                make: string;
-                model: string;
-                year: number | null;
-                licensePlate: string;
-              }[]
-            >(`/vehicles?customerGarageId=${g.id}&limit=50`),
-          ),
-        ),
-      )
-      .then(results => {
-        if (!cancelled) setCpVehicles(results.flat());
+    // sto-optimize: bulk /vehicles?counterpartyId=X (join through customerGarage)
+    // raніше: garages list → per-garage vehicles fetch (N+1).
+    apiFetch<
+      {
+        id: string;
+        make: string;
+        model: string;
+        year: number | null;
+        licensePlate: string;
+      }[]
+    >(`/vehicles?counterpartyId=${selectedCp.id}`)
+      .then(vehicles => {
+        if (!cancelled) setCpVehicles(vehicles);
       })
       .catch(() => {
         if (!cancelled) setCpVehicles([]);
