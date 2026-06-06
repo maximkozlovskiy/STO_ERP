@@ -14,6 +14,7 @@ export interface CalendarSlot {
   counterpartyName?: string;
   cpPhone?: string | null;
   vehicleSummary?: string | null;
+  vehiclePlate?: string | null;
 }
 
 export interface Lift {

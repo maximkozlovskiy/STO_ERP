@@ -63,6 +63,7 @@ const DraggableSlot = memo(function DraggableSlot({
     slot.counterpartyName ?? null,
     slot.cpPhone ?? null,
     slot.vehicleSummary ?? null,
+    slot.vehiclePlate ?? null,
   ]
     .filter(Boolean)
     .join(' ');
@@ -107,6 +108,9 @@ const DraggableSlot = memo(function DraggableSlot({
           )}
           {slot.vehicleSummary && (
             <span className="truncate leading-tight opacity-75">{slot.vehicleSummary}</span>
+          )}
+          {slot.vehiclePlate && (
+            <span className="truncate leading-tight opacity-75">{slot.vehiclePlate}</span>
           )}
         </div>
       </div>

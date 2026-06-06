@@ -368,7 +368,8 @@ export class CalendarService {
 
     // Direct slot vehicle takes priority over vehicle from workOrder
     const v = slot.vehicle ?? slot.workOrder?.vehicle;
-    const vehicleSummary = v ? [v.make, v.model, v.licensePlate].filter(Boolean).join(' ') : null;
+    const vehicleSummary = v ? [v.make, v.model].filter(Boolean).join(' ') : null;
+    const vehiclePlate = v?.licensePlate ?? null;
 
     return {
       id: slot.id,
@@ -386,6 +387,7 @@ export class CalendarService {
       counterpartyName,
       cpPhone,
       vehicleSummary,
+      vehiclePlate,
     };
   }
 }
