@@ -186,6 +186,12 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 
 - [ ] **Soft-delete primary без auto-promote next sibling (Bug #351):** для КОЖНОЇ моделі з `isPrimary Boolean` / `isDefault Boolean` / `isMain Boolean` полем — `service.remove()` ОБОВ'ЯЗКОВО має auto-promote next sibling. Pattern: `(1) SELECT existing { id, isPrimary, <scopeFields> }`; `(2) $transaction: soft-delete X; if (existing.isPrimary) findFirst({<scope>, deletedAt:null, id:{not:id}}, orderBy:{createdAt:'asc'}) → update({isPrimary:true})`. Без promote: bizнес-інваріант «у scope завжди ≥1 primary якщо існують активні рядки» силентнo порушений. Downstream auto-selection logic (PO/WO create без contractId → findFirst orderBy isPrimary desc → випадковий non-primary) повертає неправильні значення. Grep: `grep -rnE "isPrimary\s+Boolean|isDefault\s+Boolean|isMain\s+Boolean" packages/database/prisma/schema.prisma | awk '{print $1}'` — для кожної моделі знайти `<module>.service.ts` `remove()`/`deleteX()` і перевірити наявність findFirst+update після soft-delete. Severity HIGH. Парне з Bug #226-#227 (frontend-side): backend може правильно promote, але frontend з optimistic-filter не знає → теж потребує refetch.
 
+- [ ] **Soft string FK без validation (Bug #361):** будь-який DTO field що зберігається у Prisma як plain `String`/`String @db.VarChar(N)` АЛЕ концептуально посилається на іншу таблицю (`currencyCode → Currency.code`, `paymentMethodCode → PaymentMethodConfig.code`, `eventType → NotificationTemplate.eventType`, etc.) — service ОБОВ'ЯЗКОВО валідує існування через `findFirst({ orgId, <field>: dto.X, deletedAt: null })` перед persist. Без guard API дозволяє `currencyCode: 'XYZ'` → DB корумпована (no FK constraint enforces existence) → UI рендерить garbage (`1 000.00 XYZ`), downstream FX/notification lookups silent-skip або throw. Парний guard має існувати у БОТКИ `create` І `update` paths (PATCH-only attack vector іначе). Grep: `grep -rnE "String\s*$|String\s+@db\.VarChar" packages/database/prisma/schema.prisma | grep -iE "code|type|status"` → для кожного знайденого field перевірити service. Severity HIGH. Регресія-guard: contract spec кейс `POST .../<resource> { code: 'INVALID' } → 400`.
+
+- [ ] **Auto-create child resource ignores parent settings inheritance (Bug #360):** для КОЖНОГО `tx.<ChildModel>.create()` всередині parent `service.create()`/`$transaction` — перевірити чи child default-values відповідають parent-level settings, які user міг налаштувати. Приклад: `OrganisationSettings.currency='USD'` → `auto-create CounterpartyContract.currencyCode` має використати 'USD' (не hardcoded 'UAH'). Інші risk-spots: `BranchSettings.slotDurationMinutes` → auto-Slot create, `OrgSettings.invoiceDueDays` → auto-Invoice create. Grep: `grep -rnE "tx\.[a-z]+\.create\(\s*\{\s*data:\s*\{[^}]*\b(currencyCode|currency|paymentDeferDays|warrantyDays|slotDurationMinutes):" apps/api/src/modules --include="*.service.ts"` — кожен hardcoded value у data поза параметром = potential bug. Fix-pattern: fetch `prisma.organisationSettings.findUnique({ where: { orgId }, select: { <fields> }})` ПЕРЕД `$transaction` (паралельно з documentNumberService.next через Promise.all для -1 RTT), передати у tx.create.data. Severity HIGH (порушує задекларовану інваріант UX-tooltip типу «Використовується за замовчуванням у договорах і звітах», silent inconsistency).
+
+- [ ] **Case-sensitive lookup vs canonical-form seed data (Bug #359):** для КОЖНОГО `findFirst({ where: { code: dto.X } })` або `where: { eventType: dto.Y }` або `where: { documentType: dto.Z }` де target field зберігається у канонічній формі (UPPERCASE ISO code, snake_case event type) — DTO ОБОВ'ЯЗКОВО має `@Transform(toUpperCurrencyCode)` / `@Transform(toLowerCase)` / etc. до `@IsString`. Postgres VARCHAR/TEXT case-sensitive за замовчуванням → користувач набирає `uah` у fallback Input → backend lookup `code: 'uah'` не знаходить `'UAH'` → 400 з валідним кодом. Парний UI-fix: `<Input onChange={e => set(e.target.value.toUpperCase())} maxLength={N}>` у fallback inputs (коли dropdown reference data не завантажилось через offline-first). Grep: `grep -rnE "findFirst\(\s*\{\s*where:\s*\{[^}]*\b(code|type|status):\s*dto\." apps/api/src/modules --include="*.service.ts"` → перевірити що DTO field має нормалізацію transform. Severity HIGH (UX): валідний код → 400 → користувач думає «зламано».
+
 #### Prisma schema ↔ migration parity (release-blocker)
 
 ```bash
@@ -938,6 +944,54 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-06 — Soft string FK без validation (Bugs #359, #361) — backend, data-integrity
+
+**Сигнал:** DTO має string field що концептуально посилається на інший resource (`currencyCode → Currency.code`, `paymentMethodCode → PaymentMethodConfig.code`) АЛЕ Prisma schema зберігає як plain `String` без FK relation. Service пише `dto.X` напряму у persist. Грeп: `grep -rn "code:\s*dto\.\|Code:\s*dto\." apps/api/src/modules --include="*.service.ts" | grep -v "findFirst\|currency.findFirst"` → кожен write без парного existence-check = bug.
+
+**Причина виникнення:** developer обирає soft string FK замість UUID FK для (1) durability (код USD не міняється від reseed), (2) human-readability у raw SQL/exports, (3) easier sync (no UUID translation across orgs). Trade-off: DB integrity не enforces existence — service-layer відповідальність. Easy to forget на new endpoint що додає той же FK з іншого DTO.
+
+**Підхід до виявлення:** статичний grep по `String @db.VarChar(N)` у schema де field name містить семантику reference (`code|type|status|key|method`). Для кожного match — знайти всі сервіси що pишуть це поле і перевірити чи є парний existence-check `findFirst({ orgId, <field>: dto.X, deletedAt: null })`. Особливо у PATCH paths — `create` часто перевірений, `update` забутий.
+
+**Підхід до фіксу:** додати `findFirst` guard у Promise.all з іншими tenant/parent guards у тому ж methodi (-1 RTT vs sequential). `BadRequestException` з locale-message. Для PATCH окремий tenant gain — той самий attack vector як cross-tenant FK injection (Bug #161). Регресія-захист: contract spec `it('POST/PATCH .../<resource> з invalid code → 400')`.
+
+**Severity:** HIGH (silent data corruption; downstream resource lookups fail або UI shows garbage).
+
+**Де шукати ще:** `paymentMethodCode` (PaymentMethodConfig), `eventType` (NotificationTemplate), `documentType` (DocumentNumberConfig), `vatRateName` коли є, `bankCode`, `unitCode` (`UnitOfMeasure.code` — критично, бо кількісні обчислення залежать від canonical unit). Будь-який string field у row моделі (`InvoiceLine`/`PurchaseOrderLine`/`WorkOrderPart`) що іменується `*Code`/`*Type`.
+
+---
+
+### 2026-06-06 — Auto-create child resource ignores parent settings (Bug #360) — backend, business-logic, defaults inheritance
+
+**Сигнал:** `service.create(parent)` всередині `$transaction` робить `tx.<Child>.create({ data: { ..., hardcodedField: 'DEFAULT_VALUE' } })` де `hardcodedField` має парний user-configurable parameter у `OrganisationSettings`/`BranchSettings`. UI tooltip або docs обіцяє «використовується за замовчуванням» — а child з hardcoded value. Grep: `grep -rnE "tx\.[a-z]+\.create\(\s*\{\s*data:\s*\{[^}]*\b(currencyCode|currency|paymentDeferDays|warrantyDays|slotDurationMinutes|invoiceDueDays):\s*['\"]" apps/api/src/modules --include="*.service.ts"`.
+
+**Причина виникнення:** developer вирішує що default у Prisma schema (`currencyCode String @default("UAH")`) — це достатньо. Не помічає що `OrganisationSettings.currency` дозволяє per-org override. Default у schema applies ТІЛЬКИ якщо field omitted, але user expectation: child resource успадковує org settings. Особливо коли auto-create і manual create UI-flow різні: manual flow читає settings, auto не читає.
+
+**Підхід до виявлення:** для кожного `tx.Child.create()` у `service.create()` parent — перевірити чи якесь з полів data має парний user-configurable parameter. Якщо так — fetch parent settings перед `$transaction` (поряд з documentNumberService.next у Promise.all для -1 RTT) і передати inherited value.
+
+**Підхід до фіксу:** parallel-fetch org/branch settings перед `$transaction` body, передати у data. Fallback default (`?? 'UAH'`) для fresh-org case (org settings row може ще не існувати).
+
+**Severity:** HIGH (порушує UX-задекларовану інваріант, silent inconsistency).
+
+**Де шукати ще:** `auto-create Invoice when WO COMPLETED` (settings.invoiceDueDays), `auto-create CalendarSlot from booking template` (settings.slotDurationMinutes), `auto-create Warranty when WO line completed` (settings.defaultWarrantyDays), `auto-create PaymentTransaction після прийому товару` (settings.allowPartialPayment).
+
+---
+
+### 2026-06-06 — Case-sensitive lookup vs canonical-form seed data (Bug #359) — backend, DTO normalization
+
+**Сигнал:** Service робить `findFirst({ where: { code: dto.X } })` де target field зберігається у канонічній формі (UPPERCASE для ISO codes, lowercase для emails, etc.). DTO має лише `@IsString` без `@Transform` для normalize. Fallback UI Input (коли dropdown reference list не завантажилось) приймає raw user typing. Test: `POST .../endpoint { code: 'uah' }` → 400 хоча `UAH` існує. Grep: `grep -rnE "findFirst\(\s*\{\s*where:\s*\{[^}]*\b(code|type|status):\s*dto\." apps/api/src/modules --include="*.service.ts"`.
+
+**Причина виникнення:** Postgres VARCHAR case-sensitive за замовчуванням (без `LOWER(...)` indexing). Developer пише service-lookup as-is, забуваючи що DTO input може прийти у будь-якому case. Frontend «hide» проблему — dropdown використовує canonical values з API. Bug surface через fallback Input (offline-first scenario) або direct API calls (cURL, Postman).
+
+**Підхід до виявлення:** для кожного `findFirst({ where: { code|type|status: dto.X } })` — перевірити DTO field на наявність `@Transform(toUpperCurrencyCode)` / `@Transform(({value}) => value?.toLowerCase())` / etc. ПЕРЕД `@IsString`. Якщо немає — bug.
+
+**Підхід до фіксу:** створити reusable transform helper (`apps/api/src/common/transforms/to-upper-currency-code.ts`) + застосувати у всіх відповідних DTO (Settings, Contracts, BankAccount, CashRegister, etc.). Парний UI-fix: `onChange={e => set(e.target.value.toUpperCase().slice(0, MAX))}` + `maxLength` у fallback Inputs.
+
+**Severity:** HIGH (UX — валідний код → 400 → користувач думає «зламано», система виглядає buggy).
+
+**Де шукати ще:** будь-яке поле що використовує ISO/canonical-form codes — `Currency.code`, `Country.code` (якщо є), email lookups (lowercase), `PaymentMethodConfig.code`, `NotificationTemplate.eventType` (snake_case у DB). Все що `@db.VarChar(N)` де семантика — canonical reference.
+
+---
 
 ### 2026-06-05 — E2E тести розходяться з UI після рефакторингу: text-input → EntityPickerField, route rename, dynamic add-button — frontend, e2e
 
