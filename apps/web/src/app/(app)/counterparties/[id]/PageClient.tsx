@@ -216,15 +216,20 @@ export default function CounterpartyCardPage() {
   }, []);
 
   useEffect(() => {
-    void Promise.all([
+    // Bug review: /currencies повертає { items, total }, не bare array; +
+    // фейл /currencies не повинен ховати orgCurrency у Promise.all-loss.
+    let cancelled = false;
+    void Promise.allSettled([
       apiFetch<{ currency: string }>('/settings/organisation'),
-      apiFetch<{ code: string; name: string }[]>('/currencies'),
-    ])
-      .then(([settings, currList]) => {
-        setOrgCurrency(settings.currency);
-        setCurrencies(currList);
-      })
-      .catch(() => {});
+      apiFetch<{ items: { code: string; name: string }[]; total: number }>('/currencies'),
+    ]).then(([settingsRes, currRes]) => {
+      if (cancelled) return;
+      if (settingsRes.status === 'fulfilled') setOrgCurrency(settingsRes.value.currency);
+      if (currRes.status === 'fulfilled') setCurrencies(currRes.value.items ?? []);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Garages

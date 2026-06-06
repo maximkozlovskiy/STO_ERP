@@ -218,6 +218,7 @@ export class CreateContractDto {
 
   @ApiPropertyOptional({ description: 'ISO код валюти (напр. UAH, USD, EUR)' })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsString()
   @MaxLength(10)
   currencyCode?: string;
@@ -269,6 +270,7 @@ export class UpdateContractDto {
 
   @ApiPropertyOptional({ description: 'ISO код валюти (напр. UAH, USD, EUR)' })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsString()
   @MaxLength(10)
   currencyCode?: string;

@@ -63,6 +63,17 @@ export class SettingsService {
     orgId: string,
     dto: UpdateOrganisationSettingsDto,
   ): Promise<OrganisationSettingsResponseDto> {
+    // Validate currency code belongs to this org (tenant-safe + prevents typos).
+    if (dto.currency !== undefined) {
+      const exists = await this.prisma.currency.findFirst({
+        where: { orgId, code: dto.currency, deletedAt: null },
+        select: { id: true },
+      });
+      if (!exists) {
+        throw new BadRequestException(`Валюта з кодом "${dto.currency}" не знайдена`);
+      }
+    }
+
     // Merge uiFeatures partially — don't overwrite unset keys.
     // Whitelist allowed keys to prevent unbounded JSON growth via arbitrary payload.
     let updateData: Record<string, unknown> = { ...dto };

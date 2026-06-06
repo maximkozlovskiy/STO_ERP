@@ -45,6 +45,16 @@ export const UI_FEATURES_DEFAULTS: UiFeatures = {
 };
 
 export class UpdateOrganisationSettingsDto {
+  // ISO 4217 валюта обліку — посилається на Currency.code (3-10 символів).
+  // Bug review (currency feature): без поля у DTO `forbidNonWhitelisted: true`
+  // глобально відхиляв PATCH з `currency` → save валюти у Settings → Org мовчки
+  // фейлився 400-кою для користувача.
+  @ApiPropertyOptional({ description: 'ISO код валюти обліку (UAH, USD, EUR)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  currency?: string;
+
   // Bug #263: emptyToUndefined gap — settings selects з default `''` → 400.
   @ApiPropertyOptional({ enum: VatMode })
   @IsOptional()

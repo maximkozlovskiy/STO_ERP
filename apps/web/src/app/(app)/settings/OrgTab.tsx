@@ -88,18 +88,30 @@ export default function OrgTab() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    void Promise.all([
+    // Bug review: /currencies повертає { items, total }, не bare array →
+    // setCurrencies(c) присвоював об'єкт; currencies.length було undefined →
+    // <Select> ніколи не рендерився, тільки text-input fallback.
+    // Plus: allSettled — фейл /currencies не повинен валити завантаження settings.
+    let cancelled = false;
+    void Promise.allSettled([
       apiFetch<OrgSettings>('/settings/organisation'),
-      apiFetch<Currency[]>('/currencies'),
-    ])
-      .then(([s, c]) => {
-        setOrgSettings(s);
-        setCurrencies(c);
-        applyTheme(s.brandTheme);
-      })
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'),
-      );
+      apiFetch<{ items: Currency[]; total: number }>('/currencies'),
+    ]).then(([settingsRes, currRes]) => {
+      if (cancelled) return;
+      if (settingsRes.status === 'fulfilled') {
+        setOrgSettings(settingsRes.value);
+        applyTheme(settingsRes.value.brandTheme);
+      } else {
+        const e = settingsRes.reason;
+        setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань');
+      }
+      if (currRes.status === 'fulfilled') {
+        setCurrencies(currRes.value.items ?? []);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const saveOrgSettings = async () => {
