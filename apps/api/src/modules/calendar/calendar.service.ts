@@ -56,6 +56,7 @@ export class CalendarService {
         counterparty: {
           select: { firstName: true, lastName: true, companyName: true, phone: true },
         },
+        vehicle: { select: { make: true, model: true, licensePlate: true } },
         workOrder: {
           select: {
             number: true,
@@ -81,7 +82,7 @@ export class CalendarService {
 
     // Validate FK ownership to prevent cross-tenant injection — independent checks run in parallel.
     // Narrow projection — потрібне лише існування (NotFoundException), не дані.
-    const [lift, employee, workOrder, counterparty] = await Promise.all([
+    const [lift, employee, workOrder, counterparty, vehicle] = await Promise.all([
       dto.liftId
         ? this.prisma.lift.findFirst({
             where: { id: dto.liftId, orgId, deletedAt: null },
@@ -106,11 +107,18 @@ export class CalendarService {
             select: { id: true },
           })
         : Promise.resolve(null),
+      dto.vehicleId
+        ? this.prisma.vehicle.findFirst({
+            where: { id: dto.vehicleId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (dto.liftId && !lift) throw new NotFoundException('Підйомник не знайдено');
     if (dto.employeeId && !employee) throw new NotFoundException('Співробітника не знайдено');
     if (dto.workOrderId && !workOrder) throw new NotFoundException('Наряд не знайдено');
     if (dto.counterpartyId && !counterparty) throw new NotFoundException('Клієнта не знайдено');
+    if (dto.vehicleId && !vehicle) throw new NotFoundException('Автомобіль не знайдено');
 
     const slot = await this.prisma.$transaction(
       async tx => {
@@ -144,6 +152,7 @@ export class CalendarService {
             employeeId: dto.employeeId ?? null,
             workOrderId: dto.workOrderId ?? null,
             counterpartyId: dto.counterpartyId ?? null,
+            vehicleId: dto.vehicleId ?? null,
             startAt,
             endAt,
             notes: dto.notes ?? null,
@@ -154,6 +163,7 @@ export class CalendarService {
             counterparty: {
               select: { firstName: true, lastName: true, companyName: true, phone: true },
             },
+            vehicle: { select: { make: true, model: true, licensePlate: true } },
             workOrder: {
               select: {
                 number: true,
@@ -184,7 +194,8 @@ export class CalendarService {
     const checkEmployee = dto.employeeId !== undefined && dto.employeeId !== null;
     const checkWorkOrder = dto.workOrderId !== undefined && dto.workOrderId !== null;
     const checkCounterparty = dto.counterpartyId !== undefined && dto.counterpartyId !== null;
-    const [existing, lift, employee, workOrder, counterparty] = await Promise.all([
+    const checkVehicle = dto.vehicleId !== undefined && dto.vehicleId !== null;
+    const [existing, lift, employee, workOrder, counterparty, vehicle] = await Promise.all([
       // existing — потрібен повним: startAt/endAt/liftId/employeeId юзаються нижче.
       this.prisma.calendarSlot.findFirst({ where: { id, orgId, deletedAt: null } }),
       // FK guards — narrow projection (тільки існування важливе для NotFoundException).
@@ -212,12 +223,19 @@ export class CalendarService {
             select: { id: true },
           })
         : Promise.resolve(null),
+      checkVehicle
+        ? this.prisma.vehicle.findFirst({
+            where: { id: dto.vehicleId!, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (!existing) throw new NotFoundException('Слот не знайдено');
     if (checkLift && !lift) throw new NotFoundException('Підйомник не знайдено');
     if (checkEmployee && !employee) throw new NotFoundException('Співробітника не знайдено');
     if (checkWorkOrder && !workOrder) throw new NotFoundException('Наряд не знайдено');
     if (checkCounterparty && !counterparty) throw new NotFoundException('Клієнта не знайдено');
+    if (checkVehicle && !vehicle) throw new NotFoundException('Автомобіль не знайдено');
 
     const startAt = dto.startAt ? new Date(dto.startAt) : existing.startAt;
     const endAt = dto.endAt ? new Date(dto.endAt) : existing.endAt;
@@ -261,6 +279,7 @@ export class CalendarService {
             ...(dto.employeeId !== undefined && { employeeId: dto.employeeId }),
             ...(dto.workOrderId !== undefined && { workOrderId: dto.workOrderId }),
             ...(dto.counterpartyId !== undefined && { counterpartyId: dto.counterpartyId }),
+            ...(dto.vehicleId !== undefined && { vehicleId: dto.vehicleId }),
             startAt,
             endAt,
             ...(dto.notes !== undefined && { notes: dto.notes }),
@@ -269,6 +288,7 @@ export class CalendarService {
             counterparty: {
               select: { firstName: true, lastName: true, companyName: true, phone: true },
             },
+            vehicle: { select: { make: true, model: true, licensePlate: true } },
             workOrder: {
               select: {
                 number: true,
@@ -310,12 +330,14 @@ export class CalendarService {
     liftId: string | null;
     employeeId: string | null;
     workOrderId: string | null;
+    vehicleId?: string | null;
     counterpartyId?: string | null;
     startAt: Date;
     endAt: Date;
     notes: string | null;
     status: CalendarSlotStatus;
     type: CalendarSlotType;
+    vehicle?: { make: string; model: string; licensePlate: string | null } | null;
     workOrder: {
       number: string;
       counterpartyId: string;
@@ -344,7 +366,8 @@ export class CalendarService {
 
     const counterpartyId = slot.counterpartyId ?? slot.workOrder?.counterpartyId ?? null;
 
-    const v = slot.workOrder?.vehicle;
+    // Direct slot vehicle takes priority over vehicle from workOrder
+    const v = slot.vehicle ?? slot.workOrder?.vehicle;
     const vehicleSummary = v ? [v.make, v.model, v.licensePlate].filter(Boolean).join(' ') : null;
 
     return {
@@ -352,6 +375,7 @@ export class CalendarService {
       liftId: slot.liftId ?? null,
       employeeId: slot.employeeId ?? null,
       workOrderId: slot.workOrderId ?? null,
+      vehicleId: slot.vehicleId ?? null,
       startAt: slot.startAt,
       endAt: slot.endAt,
       notes: slot.notes ?? null,

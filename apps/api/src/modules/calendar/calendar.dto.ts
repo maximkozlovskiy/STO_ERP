@@ -29,6 +29,12 @@ export class CreateCalendarSlotDto {
   @IsUUID()
   counterpartyId?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  vehicleId?: string;
+
   @ApiProperty() @IsISO8601() startAt!: string;
   @ApiProperty() @IsISO8601() endAt!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
@@ -73,6 +79,12 @@ export class UpdateCalendarSlotDto {
   @IsUUID()
   counterpartyId?: string | null;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  vehicleId?: string | null;
+
   // Bug #261: emptyToUndefined gap у PATCH calendar slot — partial-update з порожнім рядком → 400.
   @ApiPropertyOptional()
   @IsOptional()
@@ -92,6 +104,7 @@ export class CalendarSlotResponseDto {
   @ApiPropertyOptional() liftId?: string | null;
   @ApiPropertyOptional() employeeId?: string | null;
   @ApiPropertyOptional() workOrderId?: string | null;
+  @ApiPropertyOptional() vehicleId?: string | null;
   @ApiProperty() startAt!: Date;
   @ApiProperty() endAt!: Date;
   @ApiPropertyOptional() notes?: string | null;

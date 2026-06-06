@@ -759,6 +759,7 @@ export function CalendarSlotModal({
       employeeId: form.employeeId || undefined,
       workOrderId: form.workOrderId || undefined,
       counterpartyId: form.counterpartyId || undefined,
+      vehicleId: form.vehicleId || undefined,
       startAt: startIso,
       endAt: endIso,
       notes: form.notes || undefined,

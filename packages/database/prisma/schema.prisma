@@ -666,6 +666,7 @@ model Vehicle {
   vehicleNodes          VehicleNode[]
   workOrders            WorkOrder[]
   maintenanceSchedules  MaintenanceSchedule[]
+  calendarSlots         CalendarSlot[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, vin])
@@ -1630,6 +1631,7 @@ model CalendarSlot {
   employeeId      String?   @db.Uuid
   workOrderId     String?   @db.Uuid
   counterpartyId  String?   @db.Uuid
+  vehicleId       String?   @db.Uuid
   startAt         DateTime
   endAt           DateTime
   status          CalendarSlotStatus @default(BOOKED)
@@ -1643,6 +1645,7 @@ model CalendarSlot {
   lift         Lift?         @relation(fields: [liftId], references: [id])
   workOrder    WorkOrder?    @relation(fields: [workOrderId], references: [id])
   counterparty Counterparty? @relation(fields: [counterpartyId], references: [id])
+  vehicle      Vehicle?      @relation(fields: [vehicleId], references: [id])
 
   @@index([orgId, deletedAt])
   @@index([orgId, startAt, deletedAt])

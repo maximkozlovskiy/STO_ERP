@@ -459,7 +459,7 @@ export function useCalendarState() {
       employeeId: slot.employeeId ?? '',
       counterpartyId: slot.counterpartyId ?? '',
       counterpartyDisplay: cpDisp,
-      vehicleId: '',
+      vehicleId: slot.vehicleId ?? '',
       workOrderId: slot.workOrderId ?? '',
       workOrderDisplay: woDisplay,
       startAt: decimalHoursToHHMM(kyivHours(slot.startAt)),
