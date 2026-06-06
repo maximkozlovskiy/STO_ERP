@@ -1515,6 +1515,22 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 
 ---
 
+### 2026-06-06 — Bulk-filter через GRANDPARENT-relation замість CSV IDs — коли intermediate-FK list (garages, branches) суто проміжний
+
+**Сигнал:** Frontend має триступеневу ієрархію: grandparent (counterparty) → parent (garage) → child (vehicle). API має filter `?parentId=X` (single FK). Frontend робить класичний waterfall: `GET /grandparent/:id/parents` → `Promise.all(parents.map(p => GET /child?parentId=p.id))`. Знайома форма "N+1 у nested fetch loop", але є нюанс: **frontend не потребує per-parent угрупування** — йому потрібні ВСІ children grandparent'а як один список (для dropdown, dropdown auto-select, table). Стандартний фікс «додати `?childIds=` CSV» тут НЕ застосовний, бо у нас ще немає children IDs (вони саме завантажуються). Альтернатива — додати `?grandparentId=` на childAPI що робить join через intermediate FK.
+
+**Причина виникнення:** API писали починаючи з найвужчого use-case — single parent → list children (наприклад дашборд гаража). Фронт пишеться у природньому порядку: завантажити проміжний список (garages), для кожного завантажити дітей (vehicles). Розробник бачить `?customerGarageId=` і не питає «а може існує `?counterpartyId=`?» бо це б додало складність API. Не помічається що **frontend ніколи не угруповує vehicles по garages** — лиш робить `.flat()` після Promise.all. Це сигнал що угрупування у відповіді не потрібне, можна повернути плоский список з grandparentId-фільтром.
+
+**Підхід до виявлення:** грепнути `Promise.all\(.*\.map\(.* => apiFetch\(.*\?.*Id=` у frontend. Для кожного: чи fetch результат йде у `.flat()` зразу (= угрупування не потрібне)? Чи intermediate list (`parents`) використовується далі для UI (рендериться сам)? Якщо `parents` НЕ рендериться і відразу за `.flat()` — кандидат на single-call через grandparent filter. ОСНОВНИЙ маркер: `apiFetch('/A/:id/parents').then(parents => Promise.all(parents.map(GET /child?parentId=p.id))).then(results => setX(results.flat()))`.
+
+**Підхід до фіксу:** на backend — додати у child controller новий `@Query('grandparentId')` (i.e. `?counterpartyId=`). У service: `where: { ..., parent: { grandparentId, orgId, deletedAt: null } }` — Prisma nested relation filter генерує JOIN на parent table з filter grandparentId. Frontend — single `apiFetch('/child?grandparentId=X')`. Якщо `parents` все ще потрібен (для UI/dropdown), завантажити паралельно через `Promise.all([parents, bulkChildren])`. Якщо ні (як у calendar wizard) — взагалі не fetch parents.
+
+**Реальний impact:** для клієнта з 20 гаражами × 1 vehicle each — 21 RTT (1 garages + 20 vehicles) → 1 RTT (1 bulk vehicles). У 6-connection HTTP/1.1 — це 4 waves → 1. Особливо помітно на CRM detail (counterparty page рендерить vehicles list + 4 інших independent fetches), в calendar wizard (counterparty pick → instant vehicles dropdown). На WAN/VPN 30-50ms RTT × 20 — ~1s → ~50ms.
+
+**Де шукати ще:** будь-який frontend `Promise.all(parents.map(p => apiFetch(/child?parentId=p.id))).then(.flat())`. Особливо часто: counterparty → garages → vehicles, counterparty → contracts → invoices, employee → branches → assignments, vehicle → nodes → parts. Кожен раз коли intermediate FK суто проміжний — додати grandparent filter на childAPI.
+
+---
+
 ### 2026-06-05 — Bootstrap scheduler з per-org secondary fetch — onModuleInit/cron-init що читає settings/config окремо для кожної org
 
 **Сигнал:** scheduler (`OnModuleInit`) робить `Promise.all(orgs.map(org => this.scheduleForOrg(org.id)))` де `scheduleForOrg` всередині починається з `await prisma.organisationSettings.findUnique({ where: { orgId }, select: { someConfig } })` — окремий read для кожної org. Перший рівень параллелизації (queue.add у Promise.all) вже застосовано, але secondary fetch (settings) — N окремих читань що блокують bootstrap. На відміну від «sequential cron-/scheduler queue.add у onModuleInit» (де queue.add послідовний), тут queue.add вже паралель, але читання config — N+1.
@@ -1733,6 +1749,7 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ payments.findAll + settlements.getTransactions: safeLimit = Math.min(limit, 200) + safePage = Math.max(page, 1) DoS hardening (defensive backup, паралель до services/PO/WO pattern)
 - ✅ NbuFetchScheduler.onModuleInit: orgs + allSettings prefetched у Promise.all → hourByOrg Map → enqueueRepeatableForOrg(orgId, hour) (1000 cloud orgs: N+1 findUnique → 2 reads; bootstrap 30-50s → 1-2s)
 - ✅ maintenance-schedules.findAll: `?vehicleIds=v1,v2,v3` CSV-параметр + `vehicleId: { in }` clause — backend підтримує bulk lookup; CRM detail page (counterparty/[id]) тепер 1 RTT замість N×RTT per vehicle (20 vehicles: 4 waves × 100ms → 100ms)
+- ✅ vehicles.findAll: `?counterpartyId=X` через nested where `customerGarage: { counterpartyId, orgId, deletedAt: null }` — еліминує waterfall garages → per-garage vehicles N+1 у 4 frontend call-sites: counterparties/[id]/PageClient (CRM detail loadGarages), counterparties/page.tsx (DetailPanel cpVehicles), CounterpartyEditModal (related-data parallel), CalendarSlotModal (cpVehicles wizard), work-orders/page.tsx (loadVehicles для new-WO modal)
 
 **Universal Frontend Hooks:**
 
