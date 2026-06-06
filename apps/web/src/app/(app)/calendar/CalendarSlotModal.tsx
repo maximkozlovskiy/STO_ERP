@@ -467,20 +467,11 @@ export function CalendarSlotModal({
     const fetchedForId = form.counterpartyId;
     (async () => {
       try {
-        const garages = await apiFetch<{ id: string }[]>(
-          `/counterparties/${fetchedForId}/garages`,
-          {
-            signal: ac.signal,
-          },
-        );
-        const nested = await Promise.all(
-          garages.map(g =>
-            apiFetch<VehicleOption[]>(`/vehicles?customerGarageId=${g.id}&limit=50`, {
-              signal: ac.signal,
-            }).catch(() => [] as VehicleOption[]),
-          ),
-        );
-        const all = nested.flat();
+        // sto-optimize: bulk `/vehicles?counterpartyId=X` (join through customerGarage)
+        // замінює waterfall garages → per-garage vehicles fetch (N+1 → 1 RTT).
+        const all = await apiFetch<VehicleOption[]>(`/vehicles?counterpartyId=${fetchedForId}`, {
+          signal: ac.signal,
+        });
         if (ac.signal.aborted || !mountedRef.current) return;
         setCpVehicles(all);
         // Bug #367: defense-in-depth — якщо поточний form.vehicleId не належить

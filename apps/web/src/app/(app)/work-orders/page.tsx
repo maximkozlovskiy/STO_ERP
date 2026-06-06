@@ -432,31 +432,26 @@ function WorkOrdersPageInner() {
   // can't overwrite vehicles/auto-selected vehicleId for the *current* counterparty.
   // Without this guard, switching counterparties faster than the network
   // would let the older fetch's `length === 1` branch hijack the form state.
+  //
+  // sto-optimize: backend `/vehicles?counterpartyId=X` joins customerGarage →
+  // counterparty в одному запиті. Раніше було N+1: garages list → per-garage
+  // vehicles fetch (20 garages × 100ms RTT = 2s; тепер ~100ms).
   const vehicleReqRef = useRef(0);
   const loadVehicles = (counterpartyId: string) => {
     if (!counterpartyId) return;
     const reqId = ++vehicleReqRef.current;
-    apiFetch<Array<{ id: string }>>(`/counterparties/${counterpartyId}/garages`)
-      .then(garages => {
-        const garagesArr = Array.isArray(garages) ? garages : [];
-        return Promise.all(
-          garagesArr.map(g =>
-            apiFetch<Vehicle[]>(`/vehicles?customerGarageId=${g.id}`).catch(() => [] as Vehicle[]),
-          ),
-        );
-      })
-      .then(results => {
+    apiFetch<Vehicle[]>(`/vehicles?counterpartyId=${counterpartyId}`)
+      .then(allVehicles => {
         if (reqId !== vehicleReqRef.current) return; // stale response — ignore
-        const allVehicles = results.flat();
-        setVehicles(allVehicles);
+        const list = Array.isArray(allVehicles) ? allVehicles : [];
+        setVehicles(list);
         // Preserve manual pick (consistent with branchId/warehouseId auto-select
         // patrons added in 83921d2). The counterparty <Select> already clears
         // vehicleId via `setForm(f => ({ ...f, counterpartyId, vehicleId: '' }))`
         // when the user switches counterparty, so this guard only protects
         // a freshly-chosen vehicleId for the *current* counterparty from being
         // overwritten by a late-arriving auto-select.
-        if (allVehicles.length === 1)
-          setForm(f => (f.vehicleId ? f : { ...f, vehicleId: allVehicles[0].id }));
+        if (list.length === 1) setForm(f => (f.vehicleId ? f : { ...f, vehicleId: list[0].id }));
       })
       .catch((e: unknown) => {
         if (reqId !== vehicleReqRef.current) return;

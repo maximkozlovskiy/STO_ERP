@@ -12,9 +12,20 @@ import {
 export class VehiclesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(orgId: string, customerGarageId?: string): Promise<VehicleResponseDto[]> {
+  async findAll(
+    orgId: string,
+    customerGarageId?: string,
+    counterpartyId?: string,
+  ): Promise<VehicleResponseDto[]> {
+    // sto-optimize: counterpartyId filter eliminates frontend N+1 (CRM/calendar
+    // were doing garages → per-garage vehicles fetch). Single join replaces N RTT.
     const items = await this.prisma.vehicle.findMany({
-      where: { orgId, deletedAt: null, ...(customerGarageId ? { customerGarageId } : {}) },
+      where: {
+        orgId,
+        deletedAt: null,
+        ...(customerGarageId ? { customerGarageId } : {}),
+        ...(counterpartyId ? { customerGarage: { counterpartyId, orgId, deletedAt: null } } : {}),
+      },
       orderBy: [{ make: 'asc' }, { model: 'asc' }],
       take: 200,
     });

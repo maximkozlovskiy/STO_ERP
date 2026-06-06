@@ -37,12 +37,14 @@ export class VehiclesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Список авто' })
   @ApiQuery({ name: 'customerGarageId', required: false })
+  @ApiQuery({ name: 'counterpartyId', required: false })
   @ApiResponse({ status: 200, type: [VehicleResponseDto] })
   findAll(
     @OrgContext() orgId: string,
     @Query('customerGarageId', new ParseUUIDPipe({ optional: true })) garageId?: string,
+    @Query('counterpartyId', new ParseUUIDPipe({ optional: true })) counterpartyId?: string,
   ) {
-    return this.service.findAll(orgId, garageId);
+    return this.service.findAll(orgId, garageId, counterpartyId);
   }
 
   @Get(':id')
