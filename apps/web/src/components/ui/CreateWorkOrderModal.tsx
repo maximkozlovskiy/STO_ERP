@@ -172,7 +172,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         method: 'POST',
         body: JSON.stringify({
           branchId: form.branchId,
-          vehicleId: form.vehicleId || undefined,
+          vehicleId: form.vehicleId,
           counterpartyId: form.counterpartyId,
           contractId: form.contractId || undefined,
           description: form.description || undefined,
@@ -205,7 +205,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
           <Button
             onClick={create}
             loading={saving}
-            disabled={!form.branchId || !form.counterpartyId}
+            disabled={!form.branchId || !form.counterpartyId || !form.vehicleId}
             className="w-full sm:w-auto"
           >
             Створити наряд
