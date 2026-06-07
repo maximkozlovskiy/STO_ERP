@@ -13,7 +13,7 @@ import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAnimatedPresence } from '@/hooks/useAnimatedPresence';
 
-type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
+type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'content';
 
 interface ModalProps {
   open: boolean;
@@ -36,6 +36,7 @@ const sizeWidths: Record<ModalSize, string> = {
   lg: '672px',
   xl: '896px',
   full: '95vw',
+  content: 'calc(100vw - 216px)',
 };
 
 const TRANSITION = 'cubic-bezier(0.4,0,0.2,1)';

@@ -207,7 +207,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         onClose={onClose}
         title="Новий наряд"
         description="Заповніть дані для створення наряду"
-        size="full"
+        size="content"
         footer={
           <Button
             onClick={create}
