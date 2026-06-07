@@ -207,7 +207,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         onClose={onClose}
         title="Новий наряд"
         description="Заповніть дані для створення наряду"
-        size="xl"
+        size="full"
         footer={
           <Button
             onClick={create}
@@ -226,85 +226,96 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         )}
 
         <div className="space-y-4">
-          {templates.length > 0 && (
+          {/* Рядок 1: Клієнт + Автомобіль */}
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <Select
-                label="Шаблон (необов'язково)"
-                value={selectedTemplate?.id ?? ''}
-                onChange={e => {
-                  const tpl = templates.find(t => t.id === e.target.value) ?? null;
-                  setSelectedTemplate(tpl);
-                  if (tpl)
-                    setForm(f => ({ ...f, description: `Створено за шаблоном «${tpl.name}»` }));
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Клієнт <span className="text-destructive-text">*</span>
+              </label>
+              <EntityPickerField
+                display={counterpartyDisplayName}
+                placeholder="Обрати клієнта…"
+                onPick={() => setCpPickerOpen(true)}
+                onClear={() => {
+                  setCounterpartyDisplayName('');
+                  setForm(f => ({ ...f, counterpartyId: '', vehicleId: '' }));
+                  setVehicles([]);
                 }}
-              >
-                <option value="">— Без шаблону —</option>
-                {templates.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </Select>
-              {selectedTemplate &&
-                (selectedTemplate.lines.length > 0 || selectedTemplate.parts.length > 0) && (
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    Шаблон містить:{' '}
-                    {selectedTemplate.lines.length > 0 && `${selectedTemplate.lines.length} роб.`}
-                    {selectedTemplate.lines.length > 0 && selectedTemplate.parts.length > 0 && ', '}
-                    {selectedTemplate.parts.length > 0 && `${selectedTemplate.parts.length} запч.`}
-                    {' — '} додайте вручну на сторінці наряду після створення
-                  </p>
-                )}
+                hidePick={false}
+              />
             </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Клієнт <span className="text-destructive-text">*</span>
-            </label>
-            <EntityPickerField
-              display={counterpartyDisplayName}
-              placeholder="Обрати клієнта…"
-              onPick={() => setCpPickerOpen(true)}
-              onClear={() => {
-                setCounterpartyDisplayName('');
-                setForm(f => ({ ...f, counterpartyId: '', vehicleId: '' }));
-                setVehicles([]);
-              }}
-              hidePick={false}
-            />
+            <Select
+              label="Автомобіль"
+              required
+              value={form.vehicleId}
+              onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+              disabled={!form.counterpartyId}
+            >
+              <option value="">— Оберіть —</option>
+              {vehicles.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.make} {v.model}
+                  {v.licensePlate ? ` (${v.licensePlate})` : ''}
+                </option>
+              ))}
+            </Select>
           </div>
 
-          <Select
-            label="Автомобіль"
-            required
-            value={form.vehicleId}
-            onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-            disabled={!form.counterpartyId}
-          >
-            <option value="">— Оберіть —</option>
-            {vehicles.map(v => (
-              <option key={v.id} value={v.id}>
-                {v.make} {v.model}
-                {v.licensePlate ? ` (${v.licensePlate})` : ''}
-              </option>
-            ))}
-          </Select>
+          {/* Рядок 2: Філія + Шаблон */}
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Філія"
+              required
+              value={form.branchId}
+              onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+            >
+              <option value="">— Оберіть —</option>
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </Select>
+            {templates.length > 0 ? (
+              <div>
+                <Select
+                  label="Шаблон (необов'язково)"
+                  value={selectedTemplate?.id ?? ''}
+                  onChange={e => {
+                    const tpl = templates.find(t => t.id === e.target.value) ?? null;
+                    setSelectedTemplate(tpl);
+                    if (tpl)
+                      setForm(f => ({
+                        ...f,
+                        description: `Створено за шаблоном «${tpl.name}»`,
+                      }));
+                  }}
+                >
+                  <option value="">— Без шаблону —</option>
+                  {templates.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </Select>
+                {selectedTemplate &&
+                  (selectedTemplate.lines.length > 0 || selectedTemplate.parts.length > 0) && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {selectedTemplate.lines.length > 0 && `${selectedTemplate.lines.length} роб.`}
+                      {selectedTemplate.lines.length > 0 &&
+                        selectedTemplate.parts.length > 0 &&
+                        ', '}
+                      {selectedTemplate.parts.length > 0 &&
+                        `${selectedTemplate.parts.length} запч.`}
+                    </p>
+                  )}
+              </div>
+            ) : (
+              <div />
+            )}
+          </div>
 
-          <Select
-            label="Філія"
-            required
-            value={form.branchId}
-            onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-          >
-            <option value="">— Оберіть —</option>
-            {branches.map(b => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </Select>
-
+          {/* Рядок 3: Опис — повна ширина */}
           <Input
             label="Опис"
             value={form.description}
@@ -312,7 +323,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             placeholder="Заміна масла, колодок..."
           />
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Рядок 4: Пріоритет + Категорія */}
+          <div className="grid grid-cols-2 gap-4">
             <Select
               label="Пріоритет"
               value={form.priority}
@@ -338,7 +350,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Рядок 5: Пробіг + Заплановано */}
+          <div className="grid grid-cols-2 gap-4">
             <Input
               label="Пробіг (вхід), км"
               type="number"
@@ -354,16 +367,19 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             />
           </div>
 
-          <DatePickerInput
-            label="Дедлайн"
-            value={form.dueDate}
-            onChange={v => setForm(f => ({ ...f, dueDate: v }))}
-          />
-          <DatePickerInput
-            label="Дата документа"
-            value={form.documentDate}
-            onChange={v => setForm(f => ({ ...f, documentDate: v }))}
-          />
+          {/* Рядок 6: Дедлайн + Дата документа */}
+          <div className="grid grid-cols-2 gap-4">
+            <DatePickerInput
+              label="Дедлайн"
+              value={form.dueDate}
+              onChange={v => setForm(f => ({ ...f, dueDate: v }))}
+            />
+            <DatePickerInput
+              label="Дата документа"
+              value={form.documentDate}
+              onChange={v => setForm(f => ({ ...f, documentDate: v }))}
+            />
+          </div>
         </div>
       </Modal>
 
