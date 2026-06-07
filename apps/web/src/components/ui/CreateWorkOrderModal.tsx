@@ -217,9 +217,9 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
           </div>
         )}
 
-        <div className="space-y-3">
+        <div className="space-y-0 divide-y divide-border">
           {/* Рядок 1: Номер | Дата документа | Статус */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-4 pb-4">
             <Input label="Номер" value="— присвоюється автоматично —" disabled readOnly />
             <Input
               label="Дата документа"
@@ -236,7 +236,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
           </div>
 
           {/* Планові та фактичні показники */}
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div className="rounded-none border-0 overflow-hidden pt-4 pb-4">
             {/* Заголовки секцій */}
             <div className="grid grid-cols-2 divide-x divide-border">
               <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
@@ -283,8 +283,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             </div>
           </div>
 
-          {/* Рядок 3: Філія | Пріоритет */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Секція: Організація */}
+          <div className="grid grid-cols-2 gap-4 pt-4 pb-4">
             <Select
               label="Філія"
               required
@@ -311,81 +311,84 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             </Select>
           </div>
 
-          {/* Рядок 4: Клієнт | Договір */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Клієнт <span className="text-destructive-text">*</span>
-              </label>
-              <EntityPickerField
-                display={counterpartyDisplayName}
-                placeholder="Обрати клієнта…"
-                onPick={() => setCpPickerOpen(true)}
-                onClear={() => {
-                  setCounterpartyDisplayName('');
-                  setForm(f => ({ ...f, counterpartyId: '', vehicleId: '', contractId: '' }));
-                  setVehicles([]);
-                  setContracts([]);
-                }}
-                hidePick={false}
-              />
+          {/* Секція: Клієнт */}
+          <div className="space-y-3 pt-4 pb-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">
+                  Клієнт <span className="text-destructive-text">*</span>
+                </label>
+                <EntityPickerField
+                  display={counterpartyDisplayName}
+                  placeholder="Обрати клієнта…"
+                  onPick={() => setCpPickerOpen(true)}
+                  onClear={() => {
+                    setCounterpartyDisplayName('');
+                    setForm(f => ({ ...f, counterpartyId: '', vehicleId: '', contractId: '' }));
+                    setVehicles([]);
+                    setContracts([]);
+                  }}
+                  hidePick={false}
+                />
+              </div>
+              <Select
+                label="Договір"
+                value={form.contractId}
+                onChange={e => setForm(f => ({ ...f, contractId: e.target.value }))}
+                disabled={!form.counterpartyId || contracts.length === 0}
+              >
+                <option value="">— Без договору —</option>
+                {contracts.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.number ? `${c.number} — ` : ''}
+                    {c.title}
+                  </option>
+                ))}
+              </Select>
             </div>
-            <Select
-              label="Договір"
-              value={form.contractId}
-              onChange={e => setForm(f => ({ ...f, contractId: e.target.value }))}
-              disabled={!form.counterpartyId || contracts.length === 0}
-            >
-              <option value="">— Без договору —</option>
-              {contracts.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.number ? `${c.number} — ` : ''}
-                  {c.title}
-                </option>
-              ))}
-            </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <Select
+                label="Автомобіль"
+                required
+                value={form.vehicleId}
+                onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+                disabled={!form.counterpartyId}
+              >
+                <option value="">— Оберіть —</option>
+                {vehicles.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.make} {v.model}
+                    {v.licensePlate ? ` (${v.licensePlate})` : ''}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                label="Категорія ремонту"
+                value={form.repairCategory}
+                onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
+              >
+                <option value="">— Не вказано —</option>
+                {Object.entries(WO_CATEGORY_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
 
-          {/* Рядок 5: Автомобіль | Категорія ремонту */}
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Автомобіль"
-              value={form.vehicleId}
-              onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-              disabled={!form.counterpartyId}
-            >
-              <option value="">— Оберіть —</option>
-              {vehicles.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.make} {v.model}
-                  {v.licensePlate ? ` (${v.licensePlate})` : ''}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Категорія ремонту"
-              value={form.repairCategory}
-              onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
-            >
-              <option value="">— Не вказано —</option>
-              {Object.entries(WO_CATEGORY_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </Select>
+          {/* Секція: Опис */}
+          <div className="pt-4 pb-4">
+            <Input
+              label="Опис"
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="Заміна масла, колодок..."
+            />
           </div>
 
-          {/* Опис */}
-          <Input
-            label="Опис"
-            value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            placeholder="Заміна масла, колодок..."
-          />
-
-          {/* Таблички — placeholder, заповнюються після створення наряду */}
-          <div className="rounded-lg border border-border bg-secondary/30 px-4 py-3 text-xs text-muted-foreground">
+          {/* Таблички — placeholder */}
+          <div className="pt-4 text-xs text-muted-foreground">
             Роботи та товари додаються на сторінці наряду після створення.
           </div>
         </div>
