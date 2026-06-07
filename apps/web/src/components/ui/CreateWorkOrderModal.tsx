@@ -10,7 +10,6 @@ import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 
@@ -222,10 +221,11 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
           {/* Рядок 1: Номер | Дата документа | Статус */}
           <div className="grid grid-cols-3 gap-4">
             <Input label="Номер" value="— присвоюється автоматично —" disabled readOnly />
-            <DatePickerInput
+            <Input
               label="Дата документа"
+              type="date"
               value={form.documentDate}
-              onChange={v => setForm(f => ({ ...f, documentDate: v }))}
+              onChange={e => setForm(f => ({ ...f, documentDate: e.target.value }))}
             />
             <Input
               label="Статус"
@@ -235,20 +235,52 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             />
           </div>
 
-          {/* Рядок 2: Планова дата початку | Планова дата завершення */}
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Планова дата та час початку"
-              type="datetime-local"
-              value={form.plannedStartAt}
-              onChange={e => setForm(f => ({ ...f, plannedStartAt: e.target.value }))}
-            />
-            <Input
-              label="Планова дата та час завершення"
-              type="datetime-local"
-              value={form.plannedEndAt}
-              onChange={e => setForm(f => ({ ...f, plannedEndAt: e.target.value }))}
-            />
+          {/* Планові та фактичні показники */}
+          <div className="rounded-lg border border-border overflow-hidden">
+            {/* Заголовки секцій */}
+            <div className="grid grid-cols-2 divide-x divide-border">
+              <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
+                Планові показники
+              </div>
+              <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
+                Фактичні показники
+              </div>
+            </div>
+            {/* Поля */}
+            <div className="grid grid-cols-2 divide-x divide-border">
+              <div className="grid grid-cols-2 gap-3 p-3">
+                <Input
+                  label="Дата та час початку"
+                  type="datetime-local"
+                  value={form.plannedStartAt}
+                  onChange={e => setForm(f => ({ ...f, plannedStartAt: e.target.value }))}
+                />
+                <Input
+                  label="Дата та час завершення"
+                  type="datetime-local"
+                  value={form.plannedEndAt}
+                  onChange={e => setForm(f => ({ ...f, plannedEndAt: e.target.value }))}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3 p-3">
+                <Input
+                  label="Дата та час початку"
+                  type="datetime-local"
+                  value=""
+                  disabled
+                  readOnly
+                  placeholder="—"
+                />
+                <Input
+                  label="Дата та час завершення"
+                  type="datetime-local"
+                  value=""
+                  disabled
+                  readOnly
+                  placeholder="—"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Рядок 3: Філія | Пріоритет */}
