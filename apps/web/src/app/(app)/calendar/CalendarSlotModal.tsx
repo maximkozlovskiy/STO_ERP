@@ -815,83 +815,84 @@ export function CalendarSlotModal({
             </div>
           </div>
 
-          {/* Клієнт */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Клієнт <span className="text-destructive-text">*</span>
-            </label>
-            <div className="flex items-center gap-1">
-              <div className="flex-1 min-w-0">
-                <EntityPickerField
-                  display={form.counterpartyDisplay}
-                  placeholder="Обрати клієнта…"
-                  disabled={isEditingPast}
-                  hidePick={isEditingPast}
-                  onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
-                  onPick={() => setCpPickerOpen(true)}
-                  onClear={() => {
-                    setCpDisplay('');
-                    setCpPhone(null);
-                    setCpVehicles([]);
-                    setForm(f => ({
-                      ...f,
-                      counterpartyId: '',
-                      counterpartyDisplay: '',
-                      vehicleId: '',
-                      workOrderId: '',
-                      workOrderDisplay: '',
-                    }));
-                  }}
-                />
+          {/* Клієнт + Автомобіль — в одному рядку */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Клієнт <span className="text-destructive-text">*</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <div className="flex-1 min-w-0">
+                  <EntityPickerField
+                    display={form.counterpartyDisplay}
+                    placeholder="Обрати клієнта…"
+                    disabled={isEditingPast}
+                    hidePick={isEditingPast}
+                    onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
+                    onPick={() => setCpPickerOpen(true)}
+                    onClear={() => {
+                      setCpDisplay('');
+                      setCpPhone(null);
+                      setCpVehicles([]);
+                      setForm(f => ({
+                        ...f,
+                        counterpartyId: '',
+                        counterpartyDisplay: '',
+                        vehicleId: '',
+                        workOrderId: '',
+                        workOrderDisplay: '',
+                      }));
+                    }}
+                  />
+                </div>
+                {!isEditingPast && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openNewCpWizard}
+                    title="Новий клієнт"
+                    className="h-9 w-9 p-0 shrink-0"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
-              {!isEditingPast && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={openNewCpWizard}
-                  title="Новий клієнт"
-                  className="h-9 w-9 p-0 shrink-0"
-                >
-                  <UserPlus className="h-4 w-4" />
-                </Button>
+              {cpPhone && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  📞{' '}
+                  <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
+                    {cpPhone}
+                  </a>
+                </p>
               )}
             </div>
-            {cpPhone && (
-              <p className="text-xs text-muted-foreground mt-1">
-                📞{' '}
-                <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
-                  {cpPhone}
-                </a>
-              </p>
-            )}
-          </div>
 
-          {/* Автомобіль — завжди поруч з клієнтом */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Автомобіль
-            </label>
-            <select
-              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-              value={form.vehicleId}
-              disabled={isEditingPast || cpVehicles.length === 0}
-              onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-            >
-              {cpVehicles.length === 0 ? (
-                <option value="">
-                  {form.counterpartyId ? 'Немає авто' : '— оберіть клієнта —'}
-                </option>
-              ) : (
-                <>
-                  <option value="">— оберіть авто —</option>
-                  {cpVehicles.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
-                    </option>
-                  ))}
-                </>
-              )}
-            </select>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Автомобіль <span className="text-destructive-text">*</span>
+              </label>
+              <select
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                value={form.vehicleId}
+                disabled={isEditingPast || cpVehicles.length === 0}
+                onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+              >
+                {cpVehicles.length === 0 ? (
+                  <option value="">
+                    {form.counterpartyId ? 'Немає авто' : '— оберіть клієнта —'}
+                  </option>
+                ) : (
+                  <>
+                    <option value="">— оберіть авто —</option>
+                    {cpVehicles.map(v => (
+                      <option key={v.id} value={v.id}>
+                        {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+            </div>
           </div>
 
           {/* Наряд */}
@@ -1204,7 +1205,10 @@ export function CalendarSlotModal({
                 onClick={addSlot}
                 loading={saving}
                 disabled={
-                  !form.startAt || !form.endAt || (!form.counterpartyId && !form.workOrderId)
+                  !form.startAt ||
+                  !form.endAt ||
+                  (!form.counterpartyId && !form.workOrderId) ||
+                  (!!form.counterpartyId && !form.vehicleId)
                 }
               >
                 {editingSlotId ? 'Оновити' : 'Зберегти'}
