@@ -5,7 +5,7 @@ import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { kyivToday } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
-import { WO_PRIORITY_LABELS, WO_CATEGORY_LABELS } from '@sto/shared';
+import { WO_STATUS_LABELS, WO_PRIORITY_LABELS, WO_CATEGORY_LABELS } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,11 +30,10 @@ interface Counterparty {
   lastName: string | null;
   companyName: string | null;
 }
-interface WOTemplate {
+interface Contract {
   id: string;
-  name: string;
-  lines: { workId: string; quantity: number }[];
-  parts: { goodId: string; quantity: number }[];
+  title: string;
+  number?: string | null;
 }
 
 export interface CreateWOPrefill {
@@ -43,6 +42,8 @@ export interface CreateWOPrefill {
   vehicleId?: string;
   branchId?: string;
   description?: string;
+  plannedStartAt?: string;
+  plannedEndAt?: string;
 }
 
 export interface CreatedWorkOrder {
@@ -54,9 +55,7 @@ export interface CreatedWorkOrder {
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Called after successful creation */
   onCreated?: (wo: CreatedWorkOrder) => void;
-  /** Pre-filled values from calendar slot */
   prefill?: CreateWOPrefill;
 }
 
@@ -65,83 +64,70 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     branchId: '',
     vehicleId: '',
     counterpartyId: '',
+    contractId: '',
     description: '',
-    inMileage: '',
-    plannedAt: '',
     priority: 'NORMAL',
     repairCategory: '',
-    dueDate: '',
     documentDate: kyivToday(),
+    plannedStartAt: '',
+    plannedEndAt: '',
   });
   const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [templates, setTemplates] = useState<WOTemplate[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<WOTemplate | null>(null);
+  const [contracts, setContracts] = useState<Contract[]>([]);
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const vehicleReqRef = useRef(0);
+  const contractReqRef = useRef(0);
   const branchesRef = useRef(branches);
   branchesRef.current = branches;
 
-  // Load branches + templates once on mount
+  // Load branches once on mount
   useEffect(() => {
-    let cancelled = false;
-    const cachedBranches = getCached<Branch[]>('cache:branches');
-    const cachedTemplates = getCached<WOTemplate[]>('cache:wo-templates');
-    if (cachedBranches && cachedTemplates) {
-      setBranches(cachedBranches);
-      setTemplates(cachedTemplates);
+    const cached = getCached<Branch[]>('cache:branches');
+    if (cached) {
+      setBranches(cached);
       return;
     }
-    Promise.all([
-      apiFetch<Branch[]>('/branches'),
-      apiFetch<{ items: WOTemplate[] }>('/work-order-templates?limit=100'),
-    ])
-      .then(([bs, tmpl]) => {
-        if (cancelled) return;
+    apiFetch<Branch[]>('/branches')
+      .then(bs => {
         setBranches(bs);
-        setTemplates(tmpl.items);
         setCache('cache:branches', bs);
-        setCache('cache:wo-templates', tmpl.items);
       })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // Apply prefill + auto-select single branch when modal opens
   useEffect(() => {
     if (!open) return;
     setError('');
-    setSelectedTemplate(null);
     setVehicles([]);
+    setContracts([]);
     setForm({
       branchId: prefill?.branchId ?? '',
       vehicleId: prefill?.vehicleId ?? '',
       counterpartyId: prefill?.counterpartyId ?? '',
+      contractId: '',
       description: prefill?.description ?? '',
-      inMileage: '',
-      plannedAt: '',
       priority: 'NORMAL',
       repairCategory: '',
-      dueDate: '',
       documentDate: kyivToday(),
+      plannedStartAt: prefill?.plannedStartAt ?? '',
+      plannedEndAt: prefill?.plannedEndAt ?? '',
     });
     setCounterpartyDisplayName(prefill?.counterpartyDisplay ?? '');
 
-    // Auto-select single branch (cache → already-loaded state → defer to branches effect)
     if (!prefill?.branchId) {
       const src = getCached<Branch[]>('cache:branches') ?? branchesRef.current;
       if (src.length === 1) setForm(f => ({ ...f, branchId: src[0].id }));
     }
 
-    // Load vehicles for prefilled counterparty
     if (prefill?.counterpartyId) {
       loadVehicles(prefill.counterpartyId, prefill.vehicleId);
+      loadContracts(prefill.counterpartyId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -153,10 +139,10 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     }
   }, [branches]);
 
-  const loadVehicles = (counterpartyId: string, keepVehicleId?: string) => {
-    if (!counterpartyId) return;
+  const loadVehicles = (cpId: string, keepVehicleId?: string) => {
+    if (!cpId) return;
     const reqId = ++vehicleReqRef.current;
-    apiFetch<Vehicle[]>(`/vehicles?counterpartyId=${counterpartyId}`)
+    apiFetch<Vehicle[]>(`/vehicles?counterpartyId=${cpId}`)
       .then(list => {
         if (reqId !== vehicleReqRef.current) return;
         const all = Array.isArray(list) ? list : [];
@@ -167,12 +153,18 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
       .catch(() => {});
   };
 
+  const loadContracts = (cpId: string) => {
+    if (!cpId) return;
+    const reqId = ++contractReqRef.current;
+    apiFetch<{ items: Contract[] }>(`/counterparties/${cpId}/contracts?limit=100`)
+      .then(r => {
+        if (reqId !== contractReqRef.current) return;
+        setContracts(Array.isArray(r.items) ? r.items : []);
+      })
+      .catch(() => {});
+  };
+
   const create = async () => {
-    const mileage = form.inMileage ? Number(form.inMileage) : undefined;
-    if (mileage !== undefined && (!Number.isFinite(mileage) || mileage < 0)) {
-      setError("Пробіг повинен бути невід'ємним числом");
-      return;
-    }
     setSaving(true);
     setError('');
     try {
@@ -180,15 +172,15 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         method: 'POST',
         body: JSON.stringify({
           branchId: form.branchId,
-          vehicleId: form.vehicleId,
+          vehicleId: form.vehicleId || undefined,
           counterpartyId: form.counterpartyId,
+          contractId: form.contractId || undefined,
           description: form.description || undefined,
-          inMileage: mileage,
-          plannedAt: form.plannedAt || undefined,
           priority: form.priority || 'NORMAL',
           repairCategory: form.repairCategory || undefined,
-          dueDate: form.dueDate || undefined,
           documentDate: form.documentDate || undefined,
+          plannedAt: form.plannedStartAt || undefined,
+          dueDate: form.plannedEndAt || undefined,
         }),
       });
       onCreated?.(wo);
@@ -200,19 +192,20 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     }
   };
 
+  const initialStatus = Object.keys(WO_STATUS_LABELS)[0] ?? 'DRAFT';
+
   return (
     <>
       <Modal
         open={open}
         onClose={onClose}
         title="Новий наряд"
-        description="Заповніть дані для створення наряду"
         size="content"
         footer={
           <Button
             onClick={create}
             loading={saving}
-            disabled={!form.branchId || !form.vehicleId || !form.counterpartyId}
+            disabled={!form.branchId || !form.counterpartyId}
             className="w-full sm:w-auto"
           >
             Створити наряд
@@ -225,43 +218,40 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
           </div>
         )}
 
-        <div className="space-y-4">
-          {/* Рядок 1: Клієнт + Автомобіль */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Клієнт <span className="text-destructive-text">*</span>
-              </label>
-              <EntityPickerField
-                display={counterpartyDisplayName}
-                placeholder="Обрати клієнта…"
-                onPick={() => setCpPickerOpen(true)}
-                onClear={() => {
-                  setCounterpartyDisplayName('');
-                  setForm(f => ({ ...f, counterpartyId: '', vehicleId: '' }));
-                  setVehicles([]);
-                }}
-                hidePick={false}
-              />
-            </div>
-            <Select
-              label="Автомобіль"
-              required
-              value={form.vehicleId}
-              onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-              disabled={!form.counterpartyId}
-            >
-              <option value="">— Оберіть —</option>
-              {vehicles.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.make} {v.model}
-                  {v.licensePlate ? ` (${v.licensePlate})` : ''}
-                </option>
-              ))}
-            </Select>
+        <div className="space-y-3">
+          {/* Рядок 1: Номер | Дата документа | Статус */}
+          <div className="grid grid-cols-3 gap-4">
+            <Input label="Номер" value="— присвоюється автоматично —" disabled readOnly />
+            <DatePickerInput
+              label="Дата документа"
+              value={form.documentDate}
+              onChange={v => setForm(f => ({ ...f, documentDate: v }))}
+            />
+            <Input
+              label="Статус"
+              value={WO_STATUS_LABELS[initialStatus] ?? 'Чернетка'}
+              disabled
+              readOnly
+            />
           </div>
 
-          {/* Рядок 2: Філія + Шаблон */}
+          {/* Рядок 2: Планова дата початку | Планова дата завершення */}
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Планова дата та час початку"
+              type="datetime-local"
+              value={form.plannedStartAt}
+              onChange={e => setForm(f => ({ ...f, plannedStartAt: e.target.value }))}
+            />
+            <Input
+              label="Планова дата та час завершення"
+              type="datetime-local"
+              value={form.plannedEndAt}
+              onChange={e => setForm(f => ({ ...f, plannedEndAt: e.target.value }))}
+            />
+          </div>
+
+          {/* Рядок 3: Філія | Пріоритет */}
           <div className="grid grid-cols-2 gap-4">
             <Select
               label="Філія"
@@ -276,55 +266,6 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 </option>
               ))}
             </Select>
-            {templates.length > 0 ? (
-              <div>
-                <Select
-                  label="Шаблон (необов'язково)"
-                  value={selectedTemplate?.id ?? ''}
-                  onChange={e => {
-                    const tpl = templates.find(t => t.id === e.target.value) ?? null;
-                    setSelectedTemplate(tpl);
-                    if (tpl)
-                      setForm(f => ({
-                        ...f,
-                        description: `Створено за шаблоном «${tpl.name}»`,
-                      }));
-                  }}
-                >
-                  <option value="">— Без шаблону —</option>
-                  {templates.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </Select>
-                {selectedTemplate &&
-                  (selectedTemplate.lines.length > 0 || selectedTemplate.parts.length > 0) && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {selectedTemplate.lines.length > 0 && `${selectedTemplate.lines.length} роб.`}
-                      {selectedTemplate.lines.length > 0 &&
-                        selectedTemplate.parts.length > 0 &&
-                        ', '}
-                      {selectedTemplate.parts.length > 0 &&
-                        `${selectedTemplate.parts.length} запч.`}
-                    </p>
-                  )}
-              </div>
-            ) : (
-              <div />
-            )}
-          </div>
-
-          {/* Рядок 3: Опис — повна ширина */}
-          <Input
-            label="Опис"
-            value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            placeholder="Заміна масла, колодок..."
-          />
-
-          {/* Рядок 4: Пріоритет + Категорія */}
-          <div className="grid grid-cols-2 gap-4">
             <Select
               label="Пріоритет"
               value={form.priority}
@@ -333,6 +274,59 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
               {Object.entries(WO_PRIORITY_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>
                   {v}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          {/* Рядок 4: Клієнт | Договір */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Клієнт <span className="text-destructive-text">*</span>
+              </label>
+              <EntityPickerField
+                display={counterpartyDisplayName}
+                placeholder="Обрати клієнта…"
+                onPick={() => setCpPickerOpen(true)}
+                onClear={() => {
+                  setCounterpartyDisplayName('');
+                  setForm(f => ({ ...f, counterpartyId: '', vehicleId: '', contractId: '' }));
+                  setVehicles([]);
+                  setContracts([]);
+                }}
+                hidePick={false}
+              />
+            </div>
+            <Select
+              label="Договір"
+              value={form.contractId}
+              onChange={e => setForm(f => ({ ...f, contractId: e.target.value }))}
+              disabled={!form.counterpartyId || contracts.length === 0}
+            >
+              <option value="">— Без договору —</option>
+              {contracts.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.number ? `${c.number} — ` : ''}
+                  {c.title}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          {/* Рядок 5: Автомобіль | Категорія ремонту */}
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Автомобіль"
+              value={form.vehicleId}
+              onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+              disabled={!form.counterpartyId}
+            >
+              <option value="">— Оберіть —</option>
+              {vehicles.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.make} {v.model}
+                  {v.licensePlate ? ` (${v.licensePlate})` : ''}
                 </option>
               ))}
             </Select>
@@ -350,35 +344,17 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             </Select>
           </div>
 
-          {/* Рядок 5: Пробіг + Заплановано */}
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Пробіг (вхід), км"
-              type="number"
-              value={form.inMileage}
-              onChange={e => setForm(f => ({ ...f, inMileage: e.target.value }))}
-              placeholder="50000"
-            />
-            <Input
-              label="Заплановано"
-              type="datetime-local"
-              value={form.plannedAt}
-              onChange={e => setForm(f => ({ ...f, plannedAt: e.target.value }))}
-            />
-          </div>
+          {/* Опис */}
+          <Input
+            label="Опис"
+            value={form.description}
+            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+            placeholder="Заміна масла, колодок..."
+          />
 
-          {/* Рядок 6: Дедлайн + Дата документа */}
-          <div className="grid grid-cols-2 gap-4">
-            <DatePickerInput
-              label="Дедлайн"
-              value={form.dueDate}
-              onChange={v => setForm(f => ({ ...f, dueDate: v }))}
-            />
-            <DatePickerInput
-              label="Дата документа"
-              value={form.documentDate}
-              onChange={v => setForm(f => ({ ...f, documentDate: v }))}
-            />
+          {/* Таблички — placeholder, заповнюються після створення наряду */}
+          <div className="rounded-lg border border-border bg-secondary/30 px-4 py-3 text-xs text-muted-foreground">
+            Роботи та товари додаються на сторінці наряду після створення.
           </div>
         </div>
       </Modal>
@@ -396,8 +372,9 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         }
         onSelect={cp => {
           setCounterpartyDisplayName(cp.primary);
-          setForm(f => ({ ...f, counterpartyId: cp.id, vehicleId: '' }));
+          setForm(f => ({ ...f, counterpartyId: cp.id, vehicleId: '', contractId: '' }));
           loadVehicles(cp.id);
+          loadContracts(cp.id);
         }}
       />
     </>
