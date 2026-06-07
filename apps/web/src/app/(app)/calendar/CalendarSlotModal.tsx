@@ -864,34 +864,35 @@ export function CalendarSlotModal({
                 </a>
               </p>
             )}
-            {form.counterpartyId && cpVehicles.length === 0 && (
-              <p className="text-xs text-muted-foreground italic mt-1">
-                Немає авто — додайте у картці клієнта
-              </p>
-            )}
           </div>
 
-          {/* Автомобіль — тільки якщо >1 авто */}
-          {cpVehicles.length > 1 && (
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Автомобіль
-              </label>
-              <select
-                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                value={form.vehicleId}
-                disabled={isEditingPast}
-                onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-              >
-                <option value="">— оберіть авто —</option>
-                {cpVehicles.map(v => (
-                  <option key={v.id} value={v.id}>
-                    {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          {/* Автомобіль — завжди поруч з клієнтом */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Автомобіль
+            </label>
+            <select
+              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              value={form.vehicleId}
+              disabled={isEditingPast || cpVehicles.length === 0}
+              onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+            >
+              {cpVehicles.length === 0 ? (
+                <option value="">
+                  {form.counterpartyId ? 'Немає авто' : '— оберіть клієнта —'}
+                </option>
+              ) : (
+                <>
+                  <option value="">— оберіть авто —</option>
+                  {cpVehicles.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
+                    </option>
+                  ))}
+                </>
+              )}
+            </select>
+          </div>
 
           {/* Наряд */}
           <div>
