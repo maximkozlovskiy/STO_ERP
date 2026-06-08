@@ -89,6 +89,9 @@ const EMPTY_FORM = {
   percent: '40',
   fixedMonthly: '0',
   bonusPercent: '10',
+  grantAccess: false,
+  loginEmail: '',
+  password: '',
 };
 
 function flattenTree(cats: WorkCategory[]): { id: string; name: string }[] {
@@ -202,13 +205,16 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
         role: employee.role,
         phone: employee.phone ?? '',
         email: employee.email ?? '',
-        status: employee.status,
+        status: employee.status as string,
         dateOfHire: employee.dateOfHire ? employee.dateOfHire.slice(0, 10) : '',
         dateOfFire: employee.dateOfFire ? employee.dateOfFire.slice(0, 10) : '',
         rateType: rs?.type ?? 'percent_normo',
         percent: rs?.type === 'percent_normo' ? String(rs.params.percent ?? 40) : '40',
         fixedMonthly: rs?.type === 'fixed_plus_bonus' ? String(rs.params.fixedMonthly ?? 0) : '0',
         bonusPercent: rs?.type === 'fixed_plus_bonus' ? String(rs.params.bonusPercent ?? 10) : '10',
+        grantAccess: false,
+        loginEmail: '',
+        password: '',
       });
       setZoneIds(employee.zoneIds ?? []);
       setLiftIds(employee.liftIds ?? []);
@@ -216,7 +222,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
       setBranchIds(employee.branchIds ?? []);
       setAllBranches(employee.allBranches ?? false);
     } else {
-      setForm(EMPTY_FORM);
+      setForm({ ...EMPTY_FORM });
       setZoneIds([]);
       setLiftIds([]);
       setWorkCatIds([]);
@@ -258,6 +264,23 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
 
   const save = async () => {
     setError('');
+    if (!isEdit && form.grantAccess) {
+      // Bug #380: trim перед перевіркою — інакше whitespace-only '   ' проходить
+      // як truthy і нерозбірливий backend `@IsEmail` помилка показується замість
+      // зрозумілого «Вкажіть email для входу».
+      if (!form.loginEmail.trim()) {
+        setError('Вкажіть email для входу');
+        return;
+      }
+      if (!form.password) {
+        setError('Вкажіть пароль');
+        return;
+      }
+      if (form.password.length < 6) {
+        setError('Пароль має бути не менше 6 символів');
+        return;
+      }
+    }
     const rateScheme = buildRateScheme();
     if (!rateScheme) return;
     setSaving(true);
@@ -272,6 +295,11 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
         dateOfHire: form.dateOfHire || undefined,
         dateOfFire: form.dateOfFire || undefined,
         rateScheme,
+        ...(!isEdit &&
+          form.grantAccess && {
+            loginEmail: form.loginEmail,
+            password: form.password,
+          }),
       };
       const saved = isEdit
         ? await apiFetch<EmployeeForModal>(`/employees/${employee!.id}`, {
@@ -487,6 +515,52 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             </div>
           )}
         </div>
+
+        {/* Доступ до системи — тільки при створенні */}
+        {!isEdit && (
+          <div className="mt-4 border border-border rounded-lg overflow-hidden">
+            <label className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-secondary transition-colors">
+              <input
+                type="checkbox"
+                checked={form.grantAccess}
+                onChange={e => {
+                  setForm(f => ({ ...f, grantAccess: e.target.checked }));
+                  dirty.markDirty();
+                }}
+                className="rounded border-border w-4 h-4"
+              />
+              <span className="text-[13px] font-medium text-foreground">
+                Надати доступ до системи
+              </span>
+            </label>
+            {form.grantAccess && (
+              <div className="grid grid-cols-2 gap-3 px-4 pb-4 border-t border-border pt-3">
+                <Input
+                  label="Email для входу (логін)"
+                  required
+                  type="email"
+                  value={form.loginEmail}
+                  onChange={e => {
+                    setForm(f => ({ ...f, loginEmail: e.target.value }));
+                    dirty.markDirty();
+                  }}
+                  placeholder="ivan@sto.local"
+                />
+                <Input
+                  label="Пароль"
+                  required
+                  type="password"
+                  value={form.password}
+                  onChange={e => {
+                    setForm(f => ({ ...f, password: e.target.value }));
+                    dirty.markDirty();
+                  }}
+                  placeholder="Мін. 6 символів"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Assignments tabs — only for edit */}
         {isEdit && (

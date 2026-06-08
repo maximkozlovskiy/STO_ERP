@@ -117,7 +117,12 @@ export class EmployeesService {
             rateScheme: dto.rateScheme as object,
             phone: dto.phone,
             email: dto.email,
+            // Bug #375: застосувати status/dateOfFire якщо передано у DTO.
+            // Раніше create() ігнорував їх → silent data loss (frontend бачив ACTIVE
+            // незалежно від form.status).
+            ...(dto.status && { status: dto.status }),
             ...(dto.dateOfHire && { dateOfHire: new Date(dto.dateOfHire) }),
+            ...(dto.dateOfFire && { dateOfFire: new Date(dto.dateOfFire) }),
           },
           include: {
             employeeZones: { select: { zoneId: true } },
@@ -131,11 +136,20 @@ export class EmployeesService {
           // Resurrection pattern (§5.2): soft-deleted AuthAccount with the same
           // (orgId,email) blocks create() due to @@unique([orgId,email]). Re-use
           // the row by updating it back to active and re-pointing to the new employee.
+          //
+          // Bug #374: race-guard всередині TX. Між pre-check (рядки 94-102) і цим
+          // findUnique інший запит міг створити активний AuthAccount з тим же email.
+          // Без явної перевірки fall through до create() → P2002 → generic 500.
+          // Замість цього кидаємо зрозумілий 409 ConflictException.
           const soft = await tx.authAccount.findUnique({
             where: { orgId_email: { orgId, email: dto.loginEmail } },
             select: { id: true, deletedAt: true },
           });
-          if (soft && soft.deletedAt !== null) {
+          if (soft) {
+            if (soft.deletedAt === null) {
+              throw new ConflictException('Цей email вже використовується для входу');
+            }
+            // soft-deleted row — resurrection
             await tx.authAccount.update({
               where: { id: soft.id },
               data: {
@@ -202,13 +216,28 @@ export class EmployeesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
-    // where (id+orgId+deletedAt:null) — eliminates race window, saves one round-trip.
-    const result = await this.prisma.employee.updateMany({
-      where: { id, orgId, deletedAt: null },
-      data: { deletedAt: new Date() },
-    });
-    if (result.count === 0) throw new NotFoundException('Співробітника не знайдено');
+    // Bug #373: каскад soft-delete на AuthAccount.
+    // Інакше `findUnique({ orgId_email })` у наступному `create()` знайде активний
+    // AuthAccount (від видаленого Employee) і кине 409 — re-create з тим же
+    // loginEmail неможливе. Resurrection-pattern у create() розрахований саме
+    // на soft-deleted AuthAccount → треба позначити обидва атомарно.
+    const now = new Date();
+    const result = await this.prisma.$transaction(
+      async tx => {
+        const empResult = await tx.employee.updateMany({
+          where: { id, orgId, deletedAt: null },
+          data: { deletedAt: now },
+        });
+        if (empResult.count === 0) return { empCount: 0 };
+        await tx.authAccount.updateMany({
+          where: { employeeId: id, orgId, deletedAt: null },
+          data: { deletedAt: now },
+        });
+        return { empCount: empResult.count };
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    if (result.empCount === 0) throw new NotFoundException('Співробітника не знайдено');
   }
 
   // ─── Assignments ─────────────────────────────────────────

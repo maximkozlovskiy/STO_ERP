@@ -7,7 +7,7 @@
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "studio": "prisma studio",
-    "seed": "ts-node prisma/seed.ts",
+    "seed": "ts-node prisma/seed-catalog.ts && ts-node prisma/seed.ts",
     "type-check": "tsc --noEmit"
   },
   "exports": {
@@ -29,6 +29,6 @@
     "@types/node": "^22.0.0"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node prisma/seed-catalog.ts && ts-node prisma/seed.ts"
   }
 }

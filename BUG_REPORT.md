@@ -11378,3 +11378,230 @@ useEffect(() => {
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-08 — FULL tester: Employees grantAccess + datetime-picker + seed refactor
+
+### Scope
+
+- `apps/api/src/modules/employees/employees.dto.ts` — `CreateEmployeeDto` тепер містить `loginEmail` (`@IsEmail`) і `password` (`@MinLength(6)`); додано `status`/`dateOfHire`/`dateOfFire` як optional
+- `apps/api/src/modules/employees/employees.service.ts` — `create()` отримав bcrypt-hash + AuthAccount + resurrection pattern; `update()` навчилися застосовувати `status`/`email`/`dateOfHire`/`dateOfFire`
+- `apps/web/src/components/ui/EmployeeEditModal.tsx` — секція `grantAccess` (тільки create mode), валідація перед save
+- `apps/web/src/components/ui/datetime-picker-input.tsx` — portal-based picker, `timeOnly` режим, `minHour`/`maxHour` props
+- `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx` — `DateTimePickerInput` замість native selects
+- `apps/web/src/app/(app)/settings/WorkdaysTab.tsx` — flex layout
+- `apps/web/src/app/(app)/work-orders/page.tsx` + `CreateWorkOrderModal.tsx` — створення наряду винесено у окремий компонент
+- `packages/database/prisma/seed.ts` — видалено BRANCH2_ID, 3 demo WorkCategory; Works тепер тягнуть `catEngine`/`catSus` з seed-catalog
+
+### Baseline (Крок 0)
+
+- TypeScript shared — 0 errors
+- TypeScript API — 0 errors
+- TypeScript web — 0 errors
+- Unit + contract (API) — 661/661 passed (56 файлів)
+- Web components — 323/323 passed (30 файлів)
+- Перевірка хибно-зеленого [x] (попередні сесії): пройдено — останні tester-коміти `1c918673`, `2e6e8edd`, `f030bc98` чіпають source файли. Baseline зелений.
+
+---
+
+## Bug #373 — HIGH — Employee soft-delete НЕ каскадить на AuthAccount → re-create з тим же loginEmail блокується 409
+
+**Файл:** `apps/api/src/modules/employees/employees.service.ts:204-212` (`remove()`)
+**Severity:** HIGH
+**Категорія:** backend / business logic / soft-delete consistency
+
+**Опис:** `remove(orgId, id)` виконує `updateMany({ deletedAt: new Date() })` тільки для `employee`. Зв'язаний `AuthAccount` (1-to-1 через `employeeId @unique`) залишається активним (`deletedAt: null`).
+
+**Сценарій що ламається:**
+
+1. Адмін створює співробітника Аліса з `loginEmail: alice@sto.local` → `Employee(deletedAt=null)` + `AuthAccount(deletedAt=null)`.
+2. Адмін soft-delete Алісу → `Employee.deletedAt = now()`, `AuthAccount` — без змін.
+3. Login Аліси блокується через `auth.service.ts:45` (`emp.deletedAt !== null`) — OK для security.
+4. Через 2 дні адмін хоче знов створити співробітника з тим же `alice@sto.local`:
+   - pre-check (рядки 94-102): `findUnique({ orgId_email })` знаходить активний AuthAccount → `ConflictException('Цей email вже використовується для входу')`.
+   - Адмін бачить помилку «вже використовується» хоча співробітник давно видалений.
+5. Resurrection-pattern у TX розрахований на soft-deleted AuthAccount, але цей шлях ніколи не доходить (бо pre-check вище кидає 409).
+
+**Очікувана поведінка:** При soft-delete співробітника пов'язаний AuthAccount теж стає soft-deleted. Re-create з тим же loginEmail знаходить soft AuthAccount → resurrection.
+
+**Фактична поведінка:** AuthAccount залишається активним → re-create неможливий → 409.
+
+**Фікс:** У `remove()` обернути все в `$transaction`: (а) updateMany Employee → deletedAt; (б) updateMany AuthAccount `where: { employeeId: id, deletedAt: null }` → `deletedAt: new Date()`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #374 — MEDIUM — Race condition: AuthAccount створено між pre-check і TX → P2002 500 замість 409
+
+**Файл:** `apps/api/src/modules/employees/employees.service.ts:130-156` (`create()` TX блок)
+**Severity:** MEDIUM
+**Категорія:** backend / concurrency / error handling
+
+**Опис:** У TX блоці після `findUnique` отриманий `soft` обробляється:
+
+- `if (soft && soft.deletedAt !== null)` → resurrection
+- `else` → `create()` — впаде з P2002 якщо `soft` є але active
+
+Сценарій:
+
+1. Запит A pre-check: AuthAccount не існує — проходить.
+2. Запит B (паралельно) pre-check: AuthAccount не існує — проходить.
+3. Запит B TX: створює AuthAccount → success.
+4. Запит A TX: `findUnique` повертає AuthAccount створений запитом B (`deletedAt=null`).
+5. Запит A: `if (soft && soft.deletedAt !== null)` → false → fall through до `else` → `create()` → P2002.
+6. Користувач A бачить generic 500 замість 409.
+
+**Фікс:** Розпарити умови:
+
+- `if (soft && soft.deletedAt === null)` → `throw new ConflictException(...)`
+- `if (soft && soft.deletedAt !== null)` → resurrection (update)
+- `else` → create
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #375 — MEDIUM — `employees.service.ts.create()` silent drops `dto.status` і `dto.dateOfFire`
+
+**Файл:** `apps/api/src/modules/employees/employees.service.ts:111-128`
+**Severity:** MEDIUM
+**Категорія:** backend / silent data loss / DTO-service mismatch
+
+**Опис:** `CreateEmployeeDto` приймає optional `status?: EmployeeStatus`, `dateOfHire?: string`, `dateOfFire?: string`. Сервіс `create()` застосовує ТІЛЬКИ `dateOfHire`. `status` і `dateOfFire` ігноруються.
+
+**Сценарій:** Користувач у `EmployeeEditModal.save()` надсилає `status: 'ON_LEAVE'`. DTO accepts. Backend silent-drop. Запис створений з `status=ACTIVE` (schema default). Користувач бачить інший статус ніж очікував.
+
+**Фікс:** Додати у `data: {}`:
+
+- `...(dto.status && { status: dto.status })`
+- `...(dto.dateOfFire && { dateOfFire: new Date(dto.dateOfFire) })`
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #376 — HIGH — `seed.ts` admin employee `rateScheme` має `fixed` замість `fixedMonthly` → invalid record у DB
+
+**Файл:** `packages/database/prisma/seed.ts:287`
+**Severity:** HIGH
+**Категорія:** seed / data integrity / DTO contract
+
+**Опис:** Seed admin employee:
+
+```
+rateScheme: { type: 'fixed_plus_bonus', params: { fixed: 0, bonusPercent: 0 } }
+```
+
+Але Zod схема `rateSchemeSchema` (`employees.dto.ts:34`) вимагає `fixedMonthly`. Seed обходить Zod (прямий `prisma.employee.upsert` → JSON-поле без runtime типу). Admin employee має invalid rateScheme у БД назавжди.
+
+**Наслідки:**
+
+- `EmployeeEditModal.tsx:213-214` має fallback `rs.params.fixedMonthly ?? 0` → form поле показує 0.
+- Будь-який PATCH адмін employee → backend `validateRateScheme()` перевіряє НОВИЙ rateScheme — старий не діагностується.
+- Якщо frontend читає `Employee.rateScheme.params.fixedMonthly` БЕЗ fallback — `undefined` → NaN.
+- Звіти нарахування для адміна можуть мати дивні значення.
+
+**Фікс:** `params: { fixedMonthly: 0, bonusPercent: 0 }`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #377 — HIGH — `seed.ts` мовчки пропускає Works якщо `seed-catalog.ts` не запущений
+
+**Файл:** `packages/database/prisma/seed.ts:404-442`
+**Severity:** HIGH
+**Категорія:** seed / fresh-install / E2E dependency
+
+**Опис:** seed.ts шукає WorkCategory з кодом ENG/SUS:
+
+```
+const catEngine = await prisma.workCategory.findFirst({ where: { orgId, code: 'ENG', deletedAt: null } });
+if (catEngine && catSus) { ... } else { console.warn('  Works: пропущено...'); }
+```
+
+Але `package.json` має `"prisma": { "seed": "ts-node prisma/seed.ts" }` — `prisma db seed` запускає лише `seed.ts`. На свіжому DB:
+
+1. `pnpm db:seed` → seed.ts → ENG/SUS не знайдено → silent skip Works.
+2. Developer пробує створити WO → нема Works у dropdown.
+3. Помилка виводиться як `console.warn` серед іншого seed output → легко не помітити.
+
+**Фікс:** Оновити `package.json` script — `"seed": "ts-node prisma/seed-catalog.ts && ts-node prisma/seed.ts"`. Catalog запускається ПЕРЕД seed.ts щоб ENG/SUS існували коли seed.ts ходить за ними.
+
+(Альтернатива: у seed.ts inline-імпорт `seed-catalog.ts` — складніше, потребує refactor export.)
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #378 — MEDIUM — `DateTimePickerInput` default `selectedHour='09'` не поважає `minHour` → дропдаун з невидимою опцією
+
+**Файл:** `apps/web/src/components/ui/datetime-picker-input.tsx:88`
+**Severity:** MEDIUM
+**Категорія:** frontend / UX / controlled-select-without-matching-option
+
+**Опис:** При відкритті picker з порожнім value:
+
+```
+const selectedHour = selectedTime ? selectedTime.slice(0, 2) : '09';
+```
+
+Якщо `minHour=10`:
+
+- `availableHours` = [10, 11, ..., 19] — '09' нема в опціях.
+- `<select value="09">` → React попереджає у dev console: "The specified value `09` does not match any options".
+- Браузер показує першу опцію ('10') як обрану, але state value = '09'.
+- Користувач думає '10' обрано → клікає «Готово» → applyTime('09', '00') → form.startAt = '09:00'.
+- Parent `addSlot()` validation: `slotHour < minHour` → 9 < 10 → setError → користувач не розуміє чому помилка коли він "не чіпав" час.
+
+**Фікс:**
+
+```
+const fallbackHour = availableHours[0] ?? '09';
+const selectedHour = selectedTime ? selectedTime.slice(0, 2) : fallbackHour;
+```
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #379 — LOW — Dead imports і dead interfaces у `work-orders/page.tsx` після refactor у CreateWorkOrderModal
+
+**Файл:** `apps/web/src/app/(app)/work-orders/page.tsx:21,27,28,64-79`
+**Severity:** LOW
+**Категорія:** frontend / dead code
+
+**Опис:** Після виносу форми у `CreateWorkOrderModal.tsx`, у `page.tsx` залишились:
+
+- `import { Modal } from '@/components/ui/modal'` — невикористаний
+- `import { EntityPickerField } from '@/components/ui/entity-picker-field'` — невикористаний
+- `import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal'` — невикористані
+- `interface Branch`, `interface Vehicle`, `interface Counterparty` (рядки 64-79) — невживані
+
+`grep` підтверджує: type-imports referenced only у декларації.
+
+**Фікс:** Видалити dead imports + dead interfaces.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #380 — LOW — `EmployeeEditModal.save()` не trim-ить `loginEmail` → whitespace-only проходить frontend-валідацію
+
+**Файл:** `apps/web/src/components/ui/EmployeeEditModal.tsx:267-271`
+**Severity:** LOW
+**Категорія:** frontend / validation / UX
+
+**Опис:** Перевірка:
+
+```
+if (!form.loginEmail) { setError('Вкажіть email для входу'); return; }
+```
+
+`form.loginEmail = '   '` (whitespace) → `'   '` truthy → no error → запит на backend → `@IsEmail` ловить → відповідь "Невірний формат email для логіну". Користувач плутається.
+
+**Фікс:** `if (!form.loginEmail.trim()) { setError('Вкажіть email для входу'); return; }`.
+
+**Статус:** [x] виправлено
+
+---

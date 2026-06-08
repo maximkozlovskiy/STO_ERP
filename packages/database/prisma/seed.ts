@@ -22,16 +22,12 @@ const BRANCH_ID = 'a1000000-0000-4000-8000-000000000002';
 const EMPLOYEE_ID = 'a1000000-0000-4000-8000-000000000010';
 
 // E2E seed constants
-const BRANCH2_ID = 'a1000000-0000-4000-8000-000000000003';
 const ZONE_MECH_ID = 'a1000000-0000-4000-8000-000000000011';
 const ZONE_TIRE_ID = 'a1000000-0000-4000-8000-000000000012';
 const LIFT1_ID = 'a1000000-0000-4000-8000-000000000020';
 const LIFT2_ID = 'a1000000-0000-4000-8000-000000000021';
 const WAREHOUSE_ID = 'a1000000-0000-4000-8000-000000000030';
 const WAREHOUSE2_ID = 'a1000000-0000-4000-8000-000000000031';
-const CAT_ENGINE_ID = 'a1000000-0000-4000-8000-000000000040';
-const CAT_SUSP_ID = 'a1000000-0000-4000-8000-000000000041';
-const CAT_TIRE_ID = 'a1000000-0000-4000-8000-000000000042';
 const SUPPLIER_ID = 'a1000000-0000-4000-8000-000000000050';
 const CLIENT_ID = 'a1000000-0000-4000-8000-000000000051';
 const GARAGE_ID = 'a1000000-0000-4000-8000-000000000052';
@@ -69,31 +65,6 @@ async function main() {
     },
   });
   console.warn(`  Branch: ${branch.name}`);
-
-  // ─── GarageBranch #2 (v4 UUID — for E2E WO tests) ───────
-  await prisma.garageBranch.upsert({
-    where: { id: BRANCH2_ID },
-    update: {},
-    create: {
-      id: BRANCH2_ID,
-      orgId: ORG_ID,
-      name: 'Філія (тестова)',
-      address: 'вул. Тестова, 2, Київ',
-    },
-  });
-  await prisma.branchSettings.upsert({
-    where: { branchId: BRANCH2_ID },
-    update: {},
-    create: {
-      branchId: BRANCH2_ID,
-      orgId: ORG_ID,
-      workStartTime: '08:00',
-      workEndTime: '18:00',
-      workDays: [1, 2, 3, 4, 5, 6],
-      slotDurationMinutes: 60,
-    },
-  });
-  console.warn('  Branch2: Філія (тестова)');
 
   // ─── OrganisationSettings ────────────────────────────────
   await prisma.organisationSettings.upsert({
@@ -300,23 +271,7 @@ async function main() {
   });
   console.warn('  Warehouse: 1');
 
-  // ─── WorkCategories ──────────────────────────────────────
-  await prisma.workCategory.upsert({
-    where: { id: CAT_ENGINE_ID },
-    update: {},
-    create: { id: CAT_ENGINE_ID, orgId: ORG_ID, name: 'Двигун та трансмісія', sortOrder: 1 },
-  });
-  await prisma.workCategory.upsert({
-    where: { id: CAT_SUSP_ID },
-    update: {},
-    create: { id: CAT_SUSP_ID, orgId: ORG_ID, name: 'Підвіска та кермо', sortOrder: 2 },
-  });
-  await prisma.workCategory.upsert({
-    where: { id: CAT_TIRE_ID },
-    update: {},
-    create: { id: CAT_TIRE_ID, orgId: ORG_ID, name: 'Шиномонтаж', sortOrder: 3 },
-  });
-  console.warn('  WorkCategories: 3');
+  // WorkCategories завантажуються через seed-catalog.ts (з JSON)
 
   // ─── Default Admin Employee + AuthAccount ────────────────
   await prisma.employee.upsert({
@@ -328,7 +283,8 @@ async function main() {
       firstName: 'Адмін',
       lastName: 'СТО',
       role: UserRole.OWNER,
-      rateScheme: { type: 'fixed_plus_bonus', params: { fixed: 0, bonusPercent: 0 } },
+      // Bug #376: schema-key `fixedMonthly` (не `fixed`) — синхронно з rateSchemeSchema у employees.dto.ts
+      rateScheme: { type: 'fixed_plus_bonus', params: { fixedMonthly: 0, bonusPercent: 0 } },
     },
   });
   const adminPasswordHash = await bcrypt.hash('admin123', 12);
@@ -446,31 +402,44 @@ async function main() {
   console.warn('  Client + Vehicle: Іван Клієнт / Toyota Camry');
 
   // ─── Works (for WO line E2E tests) ───────────────────────
-  await prisma.work.upsert({
-    where: { id: WORK1_ID },
-    update: {},
-    create: {
-      id: WORK1_ID,
-      orgId: ORG_ID,
-      categoryId: CAT_ENGINE_ID,
-      name: 'Заміна моторного мастила',
-      normoHours: 0.5,
-      price: '350.00',
-    },
+  // Знаходимо системні категорії з JSON-каталогу по коду
+  const catEngine = await prisma.workCategory.findFirst({
+    where: { orgId: ORG_ID, code: 'ENG', deletedAt: null },
+    select: { id: true },
   });
-  await prisma.work.upsert({
-    where: { id: WORK2_ID },
-    update: {},
-    create: {
-      id: WORK2_ID,
-      orgId: ORG_ID,
-      categoryId: CAT_SUSP_ID,
-      name: 'Заміна амортизатора',
-      normoHours: 1.5,
-      price: '800.00',
-    },
+  const catSus = await prisma.workCategory.findFirst({
+    where: { orgId: ORG_ID, code: 'SUS', deletedAt: null },
+    select: { id: true },
   });
-  console.warn('  Works: 2');
+  if (catEngine && catSus) {
+    await prisma.work.upsert({
+      where: { id: WORK1_ID },
+      update: {},
+      create: {
+        id: WORK1_ID,
+        orgId: ORG_ID,
+        categoryId: catEngine.id,
+        name: 'Заміна моторного мастила',
+        normoHours: 0.5,
+        price: '350.00',
+      },
+    });
+    await prisma.work.upsert({
+      where: { id: WORK2_ID },
+      update: {},
+      create: {
+        id: WORK2_ID,
+        orgId: ORG_ID,
+        categoryId: catSus.id,
+        name: 'Заміна амортизатора',
+        normoHours: 1.5,
+        price: '800.00',
+      },
+    });
+    console.warn('  Works: 2');
+  } else {
+    console.warn('  Works: пропущено (запусти seed-catalog.ts спочатку)');
+  }
 
   // ─── Goods (for WO parts + PO lines E2E tests) ───────────
   await prisma.good.upsert({

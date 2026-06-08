@@ -209,4 +209,85 @@ describe('Employees — HTTP Contract (assignment endpoints)', () => {
       expect(res.statusCode).toBe(403);
     });
   });
+
+  // ─── Bug #375 — status/dateOfFire forwarding на POST /employees ────────────
+  describe('POST /employees (Bug #375 regression-guard)', () => {
+    const baseBody = {
+      firstName: 'Іван',
+      lastName: 'Коваль',
+      role: 'MECHANIC',
+      rateScheme: { type: 'percent_normo', params: { percent: 40 } },
+    };
+
+    it('controller передає dto.status у serviceMock.create (раніше service.create silent-drop)', async () => {
+      serviceMock.create.mockResolvedValueOnce(okEmployee);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/employees`,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ...baseBody, status: 'ON_LEAVE' }),
+      });
+      expect([200, 201]).toContain(res.statusCode);
+      expect(serviceMock.create).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ status: 'ON_LEAVE' }),
+      );
+    });
+
+    it('controller передає dto.dateOfFire у serviceMock.create', async () => {
+      serviceMock.create.mockResolvedValueOnce(okEmployee);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/employees`,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ...baseBody, dateOfFire: '2026-05-01' }),
+      });
+      expect([200, 201]).toContain(res.statusCode);
+      expect(serviceMock.create).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ dateOfFire: '2026-05-01' }),
+      );
+    });
+
+    it('controller передає loginEmail/password якщо grantAccess', async () => {
+      serviceMock.create.mockResolvedValueOnce(okEmployee);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/employees`,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({
+          ...baseBody,
+          loginEmail: 'ivan@sto.local',
+          password: 'secret123',
+        }),
+      });
+      expect([200, 201]).toContain(res.statusCode);
+      expect(serviceMock.create).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ loginEmail: 'ivan@sto.local', password: 'secret123' }),
+      );
+    });
+
+    it('відхиляє loginEmail неправильного формату з 400', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/employees`,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ...baseBody, loginEmail: 'not-an-email', password: 'secret123' }),
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.create).not.toHaveBeenCalled();
+    });
+
+    it('відхиляє пароль коротше 6 символів з 400', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/employees`,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ...baseBody, loginEmail: 'ivan@sto.local', password: '12345' }),
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.create).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -7,7 +7,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, ClipboardList, Eye, EyeOff, Search, User, ExternalLink, Trash2 } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
-import { getCached, setCache } from '@/lib/ref-cache';
 import { useWorkOrders, workOrdersKeys, WorkOrder } from '@/hooks/api/useWorkOrders';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
@@ -19,15 +18,13 @@ import {
   WO_PRIORITY_BADGE,
   WO_CATEGORY_LABELS,
 } from '@sto/shared';
-import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { EntityPickerField } from '@/components/ui/entity-picker-field';
-import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { CreateWorkOrderModal } from '@/components/ui/CreateWorkOrderModal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -56,33 +53,10 @@ import { useListPage } from '@/hooks/useListPage';
 import { useInlineEdit } from '@/hooks/useInlineEdit';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
-import { cn, displayCounterpartyName } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtShortDateTime, kyivToday } from '@/lib/format';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
-
-interface Branch {
-  id: string;
-  name: string;
-}
-interface Vehicle {
-  id: string;
-  make: string;
-  model: string;
-  licensePlate: string | null;
-}
-interface Counterparty {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  companyName: string | null;
-}
-interface WOTemplate {
-  id: string;
-  name: string;
-  lines: { workId: string; quantity: number; note?: string }[];
-  parts: { goodId: string; quantity: number }[];
-}
 
 interface WOFilters extends Record<string, unknown> {
   statusFilter: string;
@@ -197,7 +171,6 @@ function WorkOrdersPageInner() {
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [error, setError] = useState('');
-  const [formError, setFormError] = useState('');
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
@@ -244,16 +217,11 @@ function WorkOrdersPageInner() {
 
   // Modal & form state
   const [modal, setModal] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [modalPrefill, setModalPrefill] = useState<
+    import('@/components/ui/CreateWorkOrderModal').CreateWOPrefill | undefined
+  >();
 
   const searchParams = useSearchParams();
-
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
-  const [cpPickerOpen, setCpPickerOpen] = useState(false);
-  const [templates, setTemplates] = useState<WOTemplate[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<WOTemplate | null>(null);
 
   const applyFilter = useCallback(
     (preset: { id: string; filters: WOFilters }) => {
@@ -317,52 +285,6 @@ function WorkOrdersPageInner() {
       }
     },
   });
-  const [form, setForm] = useState({
-    branchId: '',
-    vehicleId: '',
-    counterpartyId: '',
-    description: '',
-    inMileage: '',
-    plannedAt: '',
-    priority: 'NORMAL',
-    repairCategory: '',
-    dueDate: '',
-    documentDate: kyivToday(),
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    // Paint instantly from typed ref-cache helpers; fall through to fetch if missing
-    const cachedBranches = getCached<Branch[]>('cache:branches');
-    const cachedTemplates = getCached<WOTemplate[]>('cache:wo-templates');
-    if (cachedBranches && cachedTemplates) {
-      setBranches(cachedBranches);
-      if (cachedBranches.length === 1)
-        setForm(f => (f.branchId ? f : { ...f, branchId: cachedBranches[0].id }));
-      setTemplates(cachedTemplates);
-      return;
-    }
-    // Parallel fetch — branches and templates in one round trip
-    Promise.all([
-      apiFetch<Branch[]>('/branches'),
-      apiFetch<{ items: WOTemplate[] }>('/work-order-templates?limit=100'),
-    ])
-      .then(([bs, tmpl]) => {
-        if (cancelled) return;
-        setBranches(bs);
-        if (bs.length === 1) setForm(f => (f.branchId ? f : { ...f, branchId: bs[0].id }));
-        setTemplates(tmpl.items);
-        setCache('cache:branches', bs);
-        setCache('cache:wo-templates', tmpl.items);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled)
-          setFormError(e instanceof Error ? e.message : 'Не вдалося завантажити дані');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Bulk transition helper:
   //   - Uses Promise.allSettled so a single FSM-invalid transition doesn't
@@ -428,102 +350,22 @@ function WorkOrdersPageInner() {
     [bulkCancel, bulkArchive],
   );
 
-  // Track the most recent vehicle-fetch request so a stale response
-  // can't overwrite vehicles/auto-selected vehicleId for the *current* counterparty.
-  // Without this guard, switching counterparties faster than the network
-  // would let the older fetch's `length === 1` branch hijack the form state.
-  //
-  // sto-optimize: backend `/vehicles?counterpartyId=X` joins customerGarage →
-  // counterparty в одному запиті. Раніше було N+1: garages list → per-garage
-  // vehicles fetch (20 garages × 100ms RTT = 2s; тепер ~100ms).
-  const vehicleReqRef = useRef(0);
-  const loadVehicles = (counterpartyId: string) => {
-    if (!counterpartyId) return;
-    const reqId = ++vehicleReqRef.current;
-    apiFetch<Vehicle[]>(`/vehicles?counterpartyId=${counterpartyId}`)
-      .then(allVehicles => {
-        if (reqId !== vehicleReqRef.current) return; // stale response — ignore
-        const list = Array.isArray(allVehicles) ? allVehicles : [];
-        setVehicles(list);
-        // Preserve manual pick (consistent with branchId/warehouseId auto-select
-        // patrons added in 83921d2). The counterparty <Select> already clears
-        // vehicleId via `setForm(f => ({ ...f, counterpartyId, vehicleId: '' }))`
-        // when the user switches counterparty, so this guard only protects
-        // a freshly-chosen vehicleId for the *current* counterparty from being
-        // overwritten by a late-arriving auto-select.
-        if (list.length === 1) setForm(f => (f.vehicleId ? f : { ...f, vehicleId: list[0].id }));
-      })
-      .catch((e: unknown) => {
-        if (reqId !== vehicleReqRef.current) return;
-        setError(e instanceof Error ? e.message : 'Помилка завантаження автомобілів');
-      });
-  };
-
   // Bug #354: підтримка `?action=new` query — Command Palette + N shortcut + calendar prefill.
-  // Підтримувані query params: counterpartyId, vehicleId, branchId, description.
-  // useEffect розміщено ПІСЛЯ loadVehicles щоб уникнути TDZ (const не hoisting).
   useEffect(() => {
     if (searchParams?.get('action') !== 'new') return;
-    setModal(true);
     const cpId = searchParams.get('counterpartyId');
     const vId = searchParams.get('vehicleId');
     const brId = searchParams.get('branchId');
     const desc = searchParams.get('description');
-    if (cpId || vId || brId || desc) {
-      setForm(f => ({
-        ...f,
-        ...(cpId && { counterpartyId: cpId }),
-        ...(vId && { vehicleId: vId }),
-        ...(brId && { branchId: brId }),
-        ...(desc && { description: desc }),
-      }));
-    }
-    if (cpId) {
-      apiFetch<{ firstName: string | null; lastName: string | null; companyName: string | null }>(
-        `/counterparties/${cpId}`,
-      )
-        .then(cp => setCounterpartyDisplayName(displayCounterpartyName(cp)))
-        .catch(() => {});
-      loadVehicles(cpId);
-    }
+    setModalPrefill({
+      counterpartyId: cpId ?? undefined,
+      vehicleId: vId ?? undefined,
+      branchId: brId ?? undefined,
+      description: desc ?? undefined,
+    });
+    setModal(true);
     router.replace('/work-orders', { scroll: false });
   }, [searchParams, router]);
-
-  const create = async () => {
-    const mileage = form.inMileage ? Number(form.inMileage) : undefined;
-    if (mileage !== undefined && (!Number.isFinite(mileage) || mileage < 0)) {
-      setError("Пробіг повинен бути невід'ємним числом");
-      return;
-    }
-    setSaving(true);
-    setError('');
-    try {
-      const wo = await apiFetch<WorkOrder>('/work-orders', {
-        method: 'POST',
-        body: JSON.stringify({
-          branchId: form.branchId,
-          vehicleId: form.vehicleId,
-          counterpartyId: form.counterpartyId,
-          description: form.description || undefined,
-          inMileage: mileage,
-          plannedAt: form.plannedAt || undefined,
-          priority: form.priority || 'NORMAL',
-          repairCategory: form.repairCategory || undefined,
-          dueDate: form.dueDate || undefined,
-          documentDate: form.documentDate || undefined,
-        }),
-      });
-      // Bug #212: invalidate workOrders cache до router.push щоб коли юзер натисне back
-      // у межах 30s staleTime — список ре-fetch-нувся і показав щойно створений наряд.
-      queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
-      setModal(false);
-      router.push(`/work-orders/${wo.id}`);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const markDeleted = async (wo: WorkOrder) => {
     if (
@@ -1080,211 +922,15 @@ function WorkOrdersPageInner() {
       {/* Pagination */}
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
-      {/* Create modal */}
-      <Modal
+      <CreateWorkOrderModal
         open={modal}
-        onClose={() => {
-          setModal(false);
-          setSelectedTemplate(null);
-          setCounterpartyDisplayName('');
-          setVehicles([]);
-          setForm(f => ({
-            ...f,
-            counterpartyId: '',
-            vehicleId: '',
-            description: '',
-            inMileage: '',
-            plannedAt: '',
-            priority: 'NORMAL',
-            repairCategory: '',
-            dueDate: '',
-            documentDate: kyivToday(),
-          }));
+        onClose={() => setModal(false)}
+        prefill={modalPrefill}
+        onCreated={wo => {
+          queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+          router.push(`/work-orders/${wo.id}`);
         }}
-        title="Новий наряд"
-        description="Заповніть дані для створення наряду"
-        size="xl"
-        footer={
-          <Button
-            onClick={create}
-            loading={saving}
-            disabled={!form.branchId || !form.vehicleId || !form.counterpartyId}
-            className="w-full sm:w-auto"
-          >
-            Створити наряд
-          </Button>
-        }
-      >
-        {formError && (
-          <div className="mb-4 text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2">
-            {formError}
-          </div>
-        )}
-
-        <div className="space-y-4">
-          {templates.length > 0 && (
-            <div>
-              <Select
-                label="Шаблон (необов'язково)"
-                value={selectedTemplate?.id ?? ''}
-                onChange={e => {
-                  const tpl = templates.find(t => t.id === e.target.value) ?? null;
-                  setSelectedTemplate(tpl);
-                  if (tpl) {
-                    setForm(f => ({ ...f, description: `Створено за шаблоном «${tpl.name}»` }));
-                  }
-                }}
-              >
-                <option value="">— Без шаблону —</option>
-                {templates.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </Select>
-              {selectedTemplate &&
-                (selectedTemplate.lines.length > 0 || selectedTemplate.parts.length > 0) && (
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    {/* Bug #266: попередній текст брехав «буде додано після відкриття». */}
-                    {/* Бекенд не копіює lines/parts при створенні (потребує employeeId + */}
-                    {/* warehouseId які не зберігаються у шаблоні), тому користувач має */}
-                    {/* додати їх вручну на сторінці наряду. */}
-                    Шаблон містить:{' '}
-                    {selectedTemplate.lines.length > 0 && `${selectedTemplate.lines.length} роб.`}
-                    {selectedTemplate.lines.length > 0 && selectedTemplate.parts.length > 0 && ', '}
-                    {selectedTemplate.parts.length > 0 && `${selectedTemplate.parts.length} запч.`}
-                    {' — '} додайте вручну на сторінці наряду після створення
-                  </p>
-                )}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Клієнт <span className="text-destructive-text">*</span>
-            </label>
-            <EntityPickerField
-              display={counterpartyDisplayName}
-              placeholder="Обрати клієнта…"
-              onPick={() => setCpPickerOpen(true)}
-              onClear={() => {
-                setCounterpartyDisplayName('');
-                setForm(f => ({ ...f, counterpartyId: '', vehicleId: '' }));
-                setVehicles([]);
-              }}
-              hidePick={false}
-            />
-          </div>
-
-          <SearchPickerModal<SearchPickerItem & Counterparty>
-            open={cpPickerOpen}
-            onClose={() => setCpPickerOpen(false)}
-            title="Оберіть клієнта"
-            selectedId={form.counterpartyId}
-            searchPlaceholder="Ім'я, телефон, держ. номер авто..."
-            fetchItems={q =>
-              apiFetch<{ items: Counterparty[] }>(
-                `/counterparties?q=${encodeURIComponent(q)}&limit=20`,
-              ).then(r => r.items.map(c => ({ ...c, primary: displayCounterpartyName(c) })))
-            }
-            onSelect={cp => {
-              setCounterpartyDisplayName(cp.primary);
-              setForm(f => ({ ...f, counterpartyId: cp.id, vehicleId: '' }));
-              loadVehicles(cp.id);
-            }}
-          />
-
-          <Select
-            label="Автомобіль"
-            required
-            value={form.vehicleId}
-            onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-            disabled={!form.counterpartyId}
-          >
-            <option value="">— Оберіть —</option>
-            {vehicles.map(v => (
-              <option key={v.id} value={v.id}>
-                {v.make} {v.model}
-                {v.licensePlate ? ` (${v.licensePlate})` : ''}
-              </option>
-            ))}
-          </Select>
-
-          <Select
-            label="Філія"
-            required
-            value={form.branchId}
-            onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-          >
-            <option value="">— Оберіть —</option>
-            {branches.map(b => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </Select>
-
-          <Input
-            label="Опис"
-            value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            placeholder="Заміна масла, колодок..."
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Пріоритет"
-              value={form.priority}
-              onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
-            >
-              {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Категорія ремонту"
-              value={form.repairCategory}
-              onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
-            >
-              <option value="">— Не вказано —</option>
-              {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Пробіг (вхід), км"
-              type="number"
-              value={form.inMileage}
-              onChange={e => setForm(f => ({ ...f, inMileage: e.target.value }))}
-              placeholder="50000"
-            />
-            <Input
-              label="Заплановано"
-              type="datetime-local"
-              value={form.plannedAt}
-              onChange={e => setForm(f => ({ ...f, plannedAt: e.target.value }))}
-            />
-          </div>
-
-          <DatePickerInput
-            label="Дедлайн"
-            value={form.dueDate}
-            onChange={v => setForm(f => ({ ...f, dueDate: v }))}
-          />
-          <DatePickerInput
-            label="Дата документа"
-            value={form.documentDate}
-            onChange={v => setForm(f => ({ ...f, documentDate: v }))}
-          />
-        </div>
-      </Modal>
+      />
 
       <ConfirmDialog {...confirmDialogProps} />
     </div>
