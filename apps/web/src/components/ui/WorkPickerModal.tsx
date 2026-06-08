@@ -41,9 +41,16 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
   useEffect(() => {
     if (!open || categoriesLoadedRef.current) return;
     categoriesLoadedRef.current = true;
+    let cancelled = false;
     apiFetch<CategoryNode[]>('/work-categories')
-      .then(r => setCategories(Array.isArray(r) ? r : []))
+      .then(r => {
+        if (cancelled) return;
+        setCategories(Array.isArray(r) ? r : []);
+      })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   const fetchWorks = useCallback(
@@ -80,10 +87,18 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
 
   useEffect(() => {
     if (!open) {
+      // Bump reqRef so any in-flight /works response is discarded after close
+      // (Modal unmounts content via useAnimatedPresence → setState would warn).
+      reqRef.current++;
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       setQuery('');
       setSelectedCatId(null);
       setItems([]);
       setError('');
+      setLoading(false);
       return;
     }
     fetchWorks('', null);

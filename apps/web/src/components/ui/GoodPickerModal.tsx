@@ -42,9 +42,16 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
   useEffect(() => {
     if (!open || categoriesLoadedRef.current) return;
     categoriesLoadedRef.current = true;
+    let cancelled = false;
     apiFetch<CategoryNode[]>('/good-categories')
-      .then(r => setCategories(Array.isArray(r) ? r : []))
+      .then(r => {
+        if (cancelled) return;
+        setCategories(Array.isArray(r) ? r : []);
+      })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   const fetchGoods = useCallback(
@@ -88,10 +95,18 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
 
   useEffect(() => {
     if (!open) {
+      // Bump reqRef so any in-flight /goods response is discarded after close
+      // (Modal unmounts content via useAnimatedPresence → setState would warn).
+      reqRef.current++;
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       setQuery('');
       setSelectedCatId(null);
       setItems([]);
       setError('');
+      setLoading(false);
       return;
     }
     fetchGoods('', null);
