@@ -638,6 +638,7 @@ export function CalendarSlotModal({
                 value={form.liftId}
                 disabled={isEditingPast}
                 onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+                className="h-8 text-[13px] py-0.5 px-2 pr-7"
               >
                 <option value="">— будь-який —</option>
                 {lifts.map(l => (
@@ -655,6 +656,7 @@ export function CalendarSlotModal({
                 minHour={editingSlotId ? WINDOW_START : minHour}
                 maxHour={WINDOW_END - 1}
                 disabled={isEditingPast}
+                inputClassName="h-8 text-[13px]"
                 onChange={start => {
                   setForm(f => {
                     let next = { ...f, startAt: start };
@@ -692,6 +694,7 @@ export function CalendarSlotModal({
                 min="0.5"
                 value={form.normoHours}
                 disabled={isEditingPast}
+                className="h-8 text-[13px]"
                 onChange={e => {
                   const nh = e.target.value;
                   setForm(f => {
@@ -723,6 +726,7 @@ export function CalendarSlotModal({
                 minHour={WINDOW_START}
                 maxHour={WINDOW_END}
                 disabled={isEditingPast}
+                inputClassName="h-8 text-[13px]"
                 onChange={endAt => {
                   setForm(f => ({ ...f, endAt }));
                   if (pendingSlot) {
@@ -737,12 +741,13 @@ export function CalendarSlotModal({
           {/* Клієнт + Автомобіль — в одному рядку */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
+              <label className="block text-[13px] font-medium text-muted-foreground mb-1">
                 Клієнт <span className="text-destructive-text">*</span>
               </label>
               <div className="flex items-center gap-1">
                 <div className="flex-1 min-w-0">
                   <EntityPickerField<CpItem>
+                    className="h-8 text-[13px]"
                     display={form.counterpartyDisplay}
                     placeholder="Пошук клієнта…"
                     disabled={isEditingPast}
@@ -806,7 +811,7 @@ export function CalendarSlotModal({
                     size="sm"
                     onClick={openNewCpWizard}
                     title="Новий клієнт"
-                    className="h-9 w-9 p-0 shrink-0"
+                    className="h-8 w-8 p-0 shrink-0"
                   >
                     <UserPlus className="h-4 w-4" />
                   </Button>
@@ -823,11 +828,11 @@ export function CalendarSlotModal({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
+              <label className="block text-[13px] font-medium text-muted-foreground mb-1">
                 Автомобіль <span className="text-destructive-text">*</span>
               </label>
               <select
-                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                className="w-full h-8 rounded-md border border-input bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                 value={form.vehicleId}
                 disabled={isEditingPast || cpVehicles.length === 0}
                 onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
@@ -852,10 +857,13 @@ export function CalendarSlotModal({
 
           {/* Наряд */}
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">Наряд</label>
+            <label className="block text-[13px] font-medium text-muted-foreground mb-1">
+              Наряд
+            </label>
             <div className="flex items-center gap-1">
               <div className="flex-1 min-w-0">
                 <EntityPickerField<WoItem>
+                  className="h-8 text-[13px]"
                   display={form.workOrderDisplay}
                   placeholder="Пошук наряду…"
                   disabled={isEditingPast}
@@ -925,7 +933,7 @@ export function CalendarSlotModal({
                   size="sm"
                   onClick={() => setCreateWoOpen(true)}
                   title="Новий наряд"
-                  className="h-9 w-9 p-0 shrink-0"
+                  className="h-8 w-8 p-0 shrink-0"
                 >
                   <FilePlus className="h-4 w-4" />
                 </Button>
@@ -1069,11 +1077,14 @@ export function CalendarSlotModal({
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">Нотатки</label>
+            <label className="block text-[13px] font-medium text-muted-foreground mb-1">
+              Нотатки
+            </label>
             <Input
               value={form.notes}
               disabled={isEditingPast}
               onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              className="h-8 text-[13px]"
             />
           </div>
 

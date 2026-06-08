@@ -3,6 +3,7 @@
 import { useId, useRef, useState, useEffect, useCallback } from 'react';
 import { MoreHorizontal, Search, X } from 'lucide-react';
 import { Spinner } from './spinner';
+import { cn } from '@/lib/utils';
 
 interface SearchItem {
   id: string;
@@ -38,6 +39,7 @@ interface EntityPickerFieldProps<T extends SearchItem = SearchItem> {
    */
   onSearch?: (q: string) => Promise<T[]>;
   onSearchSelect?: (item: T) => void;
+  className?: string;
 }
 
 /**
@@ -62,6 +64,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   onClear,
   onSearch,
   onSearchSelect,
+  className,
 }: EntityPickerFieldProps<T>) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<T[]>([]);
@@ -173,7 +176,10 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   return (
     <div
       ref={containerRef}
-      className="relative flex items-center gap-1 rounded-lg border border-border bg-surface px-3 h-9 min-w-0"
+      className={cn(
+        'relative flex items-center gap-1 rounded-lg border border-border bg-surface px-3 h-9 min-w-0',
+        className,
+      )}
     >
       {/* Main content area */}
       {searchMode && !hasValue ? (

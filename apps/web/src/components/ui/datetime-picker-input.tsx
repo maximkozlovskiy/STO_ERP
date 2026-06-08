@@ -38,6 +38,7 @@ interface DateTimePickerInputProps {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  inputClassName?: string;
   timeOnly?: boolean; // лише вибір часу, без DayPicker
   minHour?: number; // мінімальна допустима година (включно)
   maxHour?: number; // максимальна допустима година (включно)
@@ -66,6 +67,7 @@ export function DateTimePickerInput({
   disabled,
   placeholder,
   className,
+  inputClassName,
   timeOnly = false,
   minHour,
   maxHour,
@@ -186,6 +188,7 @@ export function DateTimePickerInput({
             'border-border hover:border-border-hover',
             'focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100 transition-all duration-150',
             disabled && 'opacity-60 cursor-not-allowed bg-secondary',
+            inputClassName,
           )}
         />
         <button
