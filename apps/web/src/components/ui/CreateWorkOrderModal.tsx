@@ -193,7 +193,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         .catch(() => {});
     }
 
-    apiFetch<{ items: Employee[] }>('/employees?limit=200&status=ACTIVE')
+    apiFetch<{ items: Employee[] }>('/employees?limit=200')
       .then(r => setEmployees(Array.isArray(r.items) ? r.items : []))
       .catch(() => {});
   }, []);
@@ -722,7 +722,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 value={newLine.employeeId}
                 onChange={e => setNewLine(l => ({ ...l, employeeId: e.target.value }))}
               >
-                <option value="">Виконавець</option>
+                <option value="">— Механік —</option>
                 {employees.map(e => (
                   <option key={e.id} value={e.id}>
                     {e.lastName} {e.firstName}
