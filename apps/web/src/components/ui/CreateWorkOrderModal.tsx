@@ -15,7 +15,7 @@ import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { WorkPickerModal, type WorkPickerItem } from '@/components/ui/WorkPickerModal';
-import { SearchCombobox } from '@/components/ui/search-combobox';
+import { GoodPickerModal, type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 
 interface Branch {
   id: string;
@@ -50,12 +50,6 @@ interface Contract {
   id: string;
   title: string;
   number?: string | null;
-}
-interface GoodItem {
-  id: string;
-  name: string;
-  sku?: string | null;
-  salePrice: number;
 }
 
 // Local line/part rows (pre-save state)
@@ -304,6 +298,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
 
   const [workPickerOpen, setWorkPickerOpen] = useState(false);
   const [editWorkPickerOpen, setEditWorkPickerOpen] = useState(false);
+  const [goodPickerOpen, setGoodPickerOpen] = useState(false);
+  const [editGoodPickerOpen, setEditGoodPickerOpen] = useState(false);
 
   const fetchWorks = useCallback(
     (q: string) =>
@@ -319,7 +315,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
 
   const fetchGoods = useCallback(
     (q: string) =>
-      apiFetch<{ items: GoodItem[] }>(`/goods?q=${encodeURIComponent(q)}&limit=20`).then(r =>
+      apiFetch<{ items: GoodPickerItem[] }>(`/goods?q=${encodeURIComponent(q)}&limit=20`).then(r =>
         (r.items ?? []).map(g => ({
           ...g,
           primary: g.name,
@@ -1142,12 +1138,13 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                         {editingPartKey === part._key ? (
                           <>
                             <td className="px-2 py-1.5">
-                              <SearchCombobox<GoodItem>
+                              <EntityPickerField<GoodPickerItem>
+                                display={editingPart.goodName}
                                 placeholder="Пошук товару..."
-                                value={editingPart.goodId}
-                                displayValue={editingPart.goodName}
-                                fetchItems={fetchGoods}
-                                onSelect={g =>
+                                ariaLabel="Товар"
+                                onPick={() => setEditGoodPickerOpen(true)}
+                                onSearch={fetchGoods}
+                                onSearchSelect={g =>
                                   setEditingPart(p => ({
                                     ...p,
                                     goodId: g.id,
@@ -1299,12 +1296,13 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                   {showPartInput && (
                     <tr className="bg-primary/5 border-t-2 border-primary/20">
                       <td className="px-2 py-1.5">
-                        <SearchCombobox<GoodItem>
+                        <EntityPickerField<GoodPickerItem>
+                          display={newPart.goodName}
                           placeholder="Пошук товару..."
-                          value={newPart.goodId}
-                          displayValue={newPart.goodName}
-                          fetchItems={fetchGoods}
-                          onSelect={g =>
+                          ariaLabel="Товар"
+                          onPick={() => setGoodPickerOpen(true)}
+                          onSearch={fetchGoods}
+                          onSearchSelect={g =>
                             setNewPart(p => ({
                               ...p,
                               goodId: g.id,
@@ -1458,6 +1456,36 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             workName: w.name,
             normoHours: String(w.normoHours),
             price: String(w.price),
+          }))
+        }
+      />
+
+      {/* Good picker for new part row */}
+      <GoodPickerModal
+        open={goodPickerOpen}
+        onClose={() => setGoodPickerOpen(false)}
+        selectedId={newPart.goodId}
+        onSelect={g =>
+          setNewPart(p => ({
+            ...p,
+            goodId: g.id,
+            goodName: g.name,
+            price: String(g.salePrice),
+          }))
+        }
+      />
+
+      {/* Good picker for inline edit row */}
+      <GoodPickerModal
+        open={editGoodPickerOpen}
+        onClose={() => setEditGoodPickerOpen(false)}
+        selectedId={editingPart.goodId}
+        onSelect={g =>
+          setEditingPart(p => ({
+            ...p,
+            goodId: g.id,
+            goodName: g.name,
+            price: String(g.salePrice),
           }))
         }
       />
