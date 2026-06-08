@@ -771,16 +771,54 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             type="button"
             onClick={() => setHeaderCollapsed(c => !c)}
             className={[
-              'flex items-center justify-end gap-1 w-full py-1 px-1 text-[11px] text-muted-foreground',
-              'hover:text-foreground transition-colors select-none shrink-0',
+              'flex items-center gap-2 w-full py-1.5 px-2 text-[11px]',
+              'hover:bg-secondary/60 transition-colors select-none shrink-0',
               'border-t border-border',
             ].join(' ')}
           >
-            {headerCollapsed ? 'Розгорнути шапку' : 'Згорнути шапку'}
-            <ChevronUp
-              className="h-3 w-3 transition-transform duration-300"
-              style={{ transform: headerCollapsed ? 'rotate(180deg)' : 'rotate(0deg)' }}
-            />
+            {/* Summary chips — visible only when collapsed */}
+            <span className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
+              {headerCollapsed ? (
+                <>
+                  {counterpartyDisplayName && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-[220px]">
+                      {counterpartyDisplayName}
+                    </span>
+                  )}
+                  {form.vehicleId &&
+                    (() => {
+                      const v = vehicles.find(v => v.id === form.vehicleId);
+                      return v ? (
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-[180px]">
+                          {v.make} {v.model}
+                          {v.licensePlate ? ` · ${v.licensePlate}` : ''}
+                        </span>
+                      ) : null;
+                    })()}
+                  {form.branchId &&
+                    (() => {
+                      const b = branches.find(b => b.id === form.branchId);
+                      return b ? (
+                        <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-[140px]">
+                          {b.name}
+                        </span>
+                      ) : null;
+                    })()}
+                  {!counterpartyDisplayName && !form.vehicleId && (
+                    <span className="text-muted-foreground">Розгорнути шапку</span>
+                  )}
+                </>
+              ) : (
+                <span className="text-muted-foreground">Шапка документа</span>
+              )}
+            </span>
+            <span className="flex items-center gap-1 text-muted-foreground shrink-0">
+              {headerCollapsed ? 'Розгорнути' : 'Згорнути'}
+              <ChevronUp
+                className="h-3 w-3 transition-transform duration-300"
+                style={{ transform: headerCollapsed ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              />
+            </span>
           </button>
 
           {/* ── Tables area — takes remaining space ──────────────────── */}
