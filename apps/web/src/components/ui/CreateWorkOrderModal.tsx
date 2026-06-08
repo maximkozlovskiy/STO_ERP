@@ -583,18 +583,26 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
               <div className="divide-y divide-border pb-1">
                 {/* Рядок 1: Номер | Дата документа | Статус */}
                 <div className="grid grid-cols-3 gap-4 pb-4">
-                  <Input label="Номер" value="— присвоюється автоматично —" disabled readOnly />
+                  <Input
+                    label="Номер"
+                    value="— присвоюється автоматично —"
+                    disabled
+                    readOnly
+                    className="h-8 text-[13px]"
+                  />
                   <Input
                     label="Дата документа"
                     type="date"
                     value={form.documentDate}
                     onChange={e => setForm(f => ({ ...f, documentDate: e.target.value }))}
+                    className="h-8 text-[13px]"
                   />
                   <Input
                     label="Статус"
                     value={WO_STATUS_LABELS[initialStatus] ?? 'Чернетка'}
                     disabled
                     readOnly
+                    className="h-8 text-[13px]"
                   />
                 </div>
 
@@ -605,6 +613,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     required
                     value={form.branchId}
                     onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
                   >
                     <option value="">— Оберіть —</option>
                     {branches.map(b => (
@@ -617,6 +626,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     label="Підйомник"
                     value={form.liftId}
                     onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
                   >
                     <option value="">— Без підйомника —</option>
                     {lifts.map(l => (
@@ -629,6 +639,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     label="Пріоритет"
                     value={form.priority}
                     onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
+                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
                   >
                     {Object.entries(WO_PRIORITY_LABELS).map(([k, v]) => (
                       <option key={k} value={k}>
@@ -654,11 +665,13 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                         label="Дата та час початку"
                         value={form.plannedStartAt}
                         onChange={v => setForm(f => ({ ...f, plannedStartAt: v }))}
+                        inputClassName="h-8 text-[13px]"
                       />
                       <DateTimePickerInput
                         label="Дата та час завершення"
                         value={form.plannedEndAt}
                         onChange={v => setForm(f => ({ ...f, plannedEndAt: v }))}
+                        inputClassName="h-8 text-[13px]"
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-3 p-3">
@@ -667,12 +680,14 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                         value=""
                         onChange={() => {}}
                         disabled
+                        inputClassName="h-8 text-[13px]"
                       />
                       <DateTimePickerInput
                         label="Дата та час завершення"
                         value=""
                         onChange={() => {}}
                         disabled
+                        inputClassName="h-8 text-[13px]"
                       />
                     </div>
                   </div>
@@ -682,11 +697,12 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 <div className="space-y-3 pt-4 pb-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-muted-foreground mb-1">
+                      <label className="block text-[13px] font-medium text-muted-foreground mb-1">
                         Клієнт <span className="text-destructive-text">*</span>
                       </label>
                       <EntityPickerField<HeaderCpItem>
                         display={counterpartyDisplayName}
+                        className="h-8 text-[13px]"
                         placeholder="Пошук клієнта…"
                         ariaLabel="Клієнт"
                         onPick={() => setCpPickerOpen(true)}
@@ -725,6 +741,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       value={form.contractId}
                       onChange={e => setForm(f => ({ ...f, contractId: e.target.value }))}
                       disabled={!form.counterpartyId || contracts.length === 0}
+                      className="h-8 text-[13px] py-0.5 px-2 pr-7"
                     >
                       <option value="">— Без договору —</option>
                       {contracts.map(c => (
@@ -742,6 +759,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       value={form.vehicleId}
                       onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
                       disabled={!form.counterpartyId}
+                      className="h-8 text-[13px] py-0.5 px-2 pr-7"
                     >
                       <option value="">— Оберіть —</option>
                       {vehicles.map(v => (
@@ -755,6 +773,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       label="Категорія ремонту"
                       value={form.repairCategory}
                       onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
+                      className="h-8 text-[13px] py-0.5 px-2 pr-7"
                     >
                       <option value="">— Не вказано —</option>
                       {Object.entries(WO_CATEGORY_LABELS).map(([k, v]) => (
@@ -773,6 +792,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                     placeholder="Заміна масла, колодок..."
+                    className="h-8 text-[13px]"
                   />
                 </div>
               </div>
