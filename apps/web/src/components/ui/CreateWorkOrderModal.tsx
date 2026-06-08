@@ -20,6 +20,10 @@ interface Branch {
   id: string;
   name: string;
 }
+interface Lift {
+  id: string;
+  name: string;
+}
 interface Warehouse {
   id: string;
   name: string;
@@ -136,6 +140,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     vehicleId: '',
     counterpartyId: '',
     contractId: '',
+    liftId: '',
     description: '',
     priority: 'NORMAL',
     repairCategory: '',
@@ -145,6 +150,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
   });
   const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [lifts, setLifts] = useState<Lift[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -176,6 +182,19 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         .then(bs => {
           setBranches(bs);
           setCache('cache:branches', bs);
+        })
+        .catch(() => {});
+    }
+
+    const cachedLifts = getCached<Lift[]>('cache:lifts');
+    if (cachedLifts) {
+      setLifts(cachedLifts);
+    } else {
+      apiFetch<Lift[] | { items: Lift[] }>('/lifts')
+        .then(r => {
+          const list = Array.isArray(r) ? r : ((r as { items: Lift[] }).items ?? []);
+          setLifts(list);
+          setCache('cache:lifts', list);
         })
         .catch(() => {});
     }
@@ -215,6 +234,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
       vehicleId: prefill?.vehicleId ?? '',
       counterpartyId: prefill?.counterpartyId ?? '',
       contractId: '',
+      liftId: '',
       description: prefill?.description ?? '',
       priority: 'NORMAL',
       repairCategory: '',
@@ -394,6 +414,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             vehicleId: form.vehicleId,
             counterpartyId: form.counterpartyId,
             contractId: form.contractId || undefined,
+            liftId: form.liftId || undefined,
             description: form.description || undefined,
             priority: form.priority || 'NORMAL',
             repairCategory: form.repairCategory || undefined,
@@ -491,8 +512,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             />
           </div>
 
-          {/* Рядок 2: Філія | Пріоритет */}
-          <div className="grid grid-cols-2 gap-4 pt-4 pb-4">
+          {/* Рядок 2: Філія | Підйомник | Пріоритет */}
+          <div className="grid grid-cols-3 gap-4 pt-4 pb-4">
             <Select
               label="Філія"
               required
@@ -503,6 +524,18 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
               {branches.map(b => (
                 <option key={b.id} value={b.id}>
                   {b.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              label="Підйомник"
+              value={form.liftId}
+              onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+            >
+              <option value="">— Без підйомника —</option>
+              {lifts.map(l => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
                 </option>
               ))}
             </Select>

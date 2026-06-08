@@ -389,6 +389,7 @@ model Lift {
   employeeLifts  EmployeeLift[]
   calendarSlots  CalendarSlot[]
   workOrderLines WorkOrderLine[]
+  workOrders     WorkOrder[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -971,6 +972,7 @@ model WorkOrder {
   vehicleId      String            @db.Uuid
   counterpartyId String            @db.Uuid
   contractId     String?           @db.Uuid
+  liftId         String?           @db.Uuid
   number         String
   status         WorkOrderStatus   @default(DRAFT)
   priority       WorkOrderPriority @default(NORMAL)
@@ -997,6 +999,7 @@ model WorkOrder {
   vehicle          Vehicle               @relation(fields: [vehicleId], references: [id])
   counterparty     Counterparty          @relation(fields: [counterpartyId], references: [id])
   contract         CounterpartyContract? @relation(fields: [contractId], references: [id])
+  lift             Lift?                 @relation(fields: [liftId], references: [id])
   lines            WorkOrderLine[]
   parts            WorkOrderPart[]
   payments         Payment[]

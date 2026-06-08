@@ -111,6 +111,7 @@ export class WorkOrdersService {
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           branch: { select: { name: true } },
           contract: { select: { id: true, number: true } },
+          lift: { select: { name: true } },
           calendarSlots: {
             where: { deletedAt: null },
             orderBy: { startAt: 'asc' },
@@ -150,6 +151,7 @@ export class WorkOrdersService {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         branch: { select: { name: true } },
         contract: { select: { id: true, number: true } },
+        lift: { select: { name: true } },
         // Bug review (sto-optimize 2026-06-05): defensive take cap — addLine/addPart
         // endpoints не мають ArrayMaxSize, тож теоретично WO може мати unbounded lines/parts.
         // 500 — реалістична верхня межа (PO/SD каплять на 500 у DTO), захист від OOM при
@@ -266,6 +268,7 @@ export class WorkOrdersService {
         vehicleId: dto.vehicleId,
         counterpartyId: dto.counterpartyId,
         contractId,
+        liftId: dto.liftId ?? null,
         number,
         description: dto.description,
         inMileage: dto.inMileage,
@@ -280,6 +283,7 @@ export class WorkOrdersService {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         branch: { select: { name: true } },
         contract: { select: { id: true, number: true } },
+        lift: { select: { name: true } },
       },
     });
 
@@ -356,6 +360,7 @@ export class WorkOrdersService {
               ? null
               : new Date(dto.dueDate),
         documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
+        liftId: dto.liftId === undefined ? undefined : (dto.liftId ?? null),
       },
       // Bug #350 follow-up: include contract so PATCH response carries contractNumber.
       // Without it, frontend WorkOrderDetail.contractNumber stays null after edits
@@ -365,6 +370,7 @@ export class WorkOrdersService {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         branch: { select: { name: true } },
         contract: { select: { id: true, number: true } },
+        lift: { select: { name: true } },
       },
     });
 
@@ -1200,6 +1206,7 @@ export class WorkOrdersService {
     vehicleId: string;
     counterpartyId: string;
     contractId?: string | null;
+    liftId?: string | null;
     description: string | null;
     inMileage: number | null;
     outMileage: number | null;
@@ -1223,6 +1230,7 @@ export class WorkOrdersService {
       companyName: string | null;
     } | null;
     contract?: { id: string; number: string } | null;
+    lift?: { name: string } | null;
     calendarSlots?: { startAt: Date; endAt: Date; lift: { name: string } | null }[];
     _count?: { warranties?: number } | null;
   }): WorkOrderResponseDto {
@@ -1245,6 +1253,8 @@ export class WorkOrdersService {
       counterpartyName: cpName,
       contractId: wo.contractId ?? null,
       contractNumber: wo.contract?.number ?? null,
+      liftId: wo.liftId ?? null,
+      liftName: wo.lift?.name ?? null,
       description: wo.description ?? null,
       inMileage: wo.inMileage ?? null,
       outMileage: wo.outMileage ?? null,

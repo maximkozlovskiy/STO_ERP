@@ -72,6 +72,12 @@ export class CreateWorkOrderDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   documentDate?: string;
+
+  @ApiPropertyOptional({ description: 'Підйомник' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  liftId?: string;
 }
 
 export class UpdateWorkOrderDto {
@@ -113,6 +119,12 @@ export class UpdateWorkOrderDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   documentDate?: string;
+
+  @ApiPropertyOptional({ description: 'Підйомник', type: String, nullable: true })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  liftId?: string | null;
 }
 
 export class TransitionWorkOrderDto {
@@ -245,6 +257,8 @@ export class WorkOrderResponseDto {
   @ApiPropertyOptional() counterpartyName?: string;
   @ApiPropertyOptional({ description: 'Договір контрагента' }) contractId?: string | null;
   @ApiPropertyOptional() contractNumber?: string | null;
+  @ApiPropertyOptional({ description: 'Підйомник' }) liftId?: string | null;
+  @ApiPropertyOptional({ description: 'Назва підйомника' }) liftName?: string | null;
   @ApiPropertyOptional() description?: string | null;
   @ApiPropertyOptional() inMileage?: number | null;
   @ApiPropertyOptional() outMileage?: number | null;
