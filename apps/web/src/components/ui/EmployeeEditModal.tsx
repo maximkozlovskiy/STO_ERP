@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { EMPLOYEE_STATUS_LABELS, EMPLOYEE_ROLE_LABELS } from '@sto/shared';
@@ -98,7 +98,11 @@ function flattenTree(cats: WorkCategory[]): { id: string; name: string }[] {
   return cats.flatMap(c => [{ id: c.id, name: c.name }, ...flattenTree(c.children)]);
 }
 
-function CheckboxList({
+// sto-optimize: memo обгортка — при typing у firstName/lastName/email батьківський
+// компонент re-renderя кожен keystroke, але items/selected references зазвичай стабільні
+// (зміни тільки при toggle або після ref-data fetch). Без memo — N×CheckboxList × M items
+// re-renderя на кожен keystroke у формі (помітно при 50+ work-categories).
+const CheckboxList = memo(function CheckboxList({
   label,
   items,
   selected,
@@ -137,7 +141,7 @@ function CheckboxList({
       </div>
     </div>
   );
-}
+});
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -236,6 +240,38 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     if (!(await dirty.confirmClose())) return;
     onClose();
   }, [dirty, onClose]);
+
+  // sto-optimize: stable handlers + memoized flatCats — без них memo на CheckboxList
+  // марний бо нові onChange refs на кожен render форми (typing у будь-якому input
+  // тригерить весь компонент). flatCats теж recompute на кожен render без useMemo.
+  const handleZoneChange = useCallback(
+    (ids: string[]) => {
+      setZoneIds(ids);
+      dirty.markDirty();
+    },
+    [dirty.markDirty],
+  );
+  const handleLiftChange = useCallback(
+    (ids: string[]) => {
+      setLiftIds(ids);
+      dirty.markDirty();
+    },
+    [dirty.markDirty],
+  );
+  const handleWorkCatChange = useCallback(
+    (ids: string[]) => {
+      setWorkCatIds(ids);
+      dirty.markDirty();
+    },
+    [dirty.markDirty],
+  );
+  const handleBranchChange = useCallback(
+    (ids: string[]) => {
+      setBranchIds(ids);
+      dirty.markDirty();
+    },
+    [dirty.markDirty],
+  );
 
   const buildRateScheme = () => {
     if (form.rateType === 'percent_normo') {
@@ -343,7 +379,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     }
   };
 
-  const flatCats = flattenTree(workCategories);
+  const flatCats = useMemo(() => flattenTree(workCategories), [workCategories]);
 
   return (
     <>
@@ -576,19 +612,13 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                       label="Зони"
                       items={zones}
                       selected={zoneIds}
-                      onChange={ids => {
-                        setZoneIds(ids);
-                        dirty.markDirty();
-                      }}
+                      onChange={handleZoneChange}
                     />
                     <CheckboxList
                       label="Підйомники"
                       items={lifts}
                       selected={liftIds}
-                      onChange={ids => {
-                        setLiftIds(ids);
-                        dirty.markDirty();
-                      }}
+                      onChange={handleLiftChange}
                     />
                   </div>
                 ),
@@ -602,10 +632,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                     label=""
                     items={flatCats}
                     selected={workCatIds}
-                    onChange={ids => {
-                      setWorkCatIds(ids);
-                      dirty.markDirty();
-                    }}
+                    onChange={handleWorkCatChange}
                   />
                 ),
               },
@@ -635,10 +662,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                               label=""
                               items={branches}
                               selected={branchIds}
-                              onChange={ids => {
-                                setBranchIds(ids);
-                                dirty.markDirty();
-                              }}
+                              onChange={handleBranchChange}
                             />
                           )}
                           <p className="text-[12px] text-muted-foreground">

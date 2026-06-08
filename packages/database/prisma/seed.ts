@@ -402,15 +402,18 @@ async function main() {
   console.warn('  Client + Vehicle: Іван Клієнт / Toyota Camry');
 
   // ─── Works (for WO line E2E tests) ───────────────────────
-  // Знаходимо системні категорії з JSON-каталогу по коду
-  const catEngine = await prisma.workCategory.findFirst({
-    where: { orgId: ORG_ID, code: 'ENG', deletedAt: null },
-    select: { id: true },
-  });
-  const catSus = await prisma.workCategory.findFirst({
-    where: { orgId: ORG_ID, code: 'SUS', deletedAt: null },
-    select: { id: true },
-  });
+  // Знаходимо системні категорії з JSON-каталогу по коду.
+  // sto-optimize: послідовні findFirst об'єднано в Promise.all — 2 RTT → 1.
+  const [catEngine, catSus] = await Promise.all([
+    prisma.workCategory.findFirst({
+      where: { orgId: ORG_ID, code: 'ENG', deletedAt: null },
+      select: { id: true },
+    }),
+    prisma.workCategory.findFirst({
+      where: { orgId: ORG_ID, code: 'SUS', deletedAt: null },
+      select: { id: true },
+    }),
+  ]);
   if (catEngine && catSus) {
     await prisma.work.upsert({
       where: { id: WORK1_ID },

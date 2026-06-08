@@ -141,14 +141,19 @@ export function DateTimePickerInput({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Reposition on scroll/resize
+  // Reposition on scroll/resize.
+  // sto-optimize: passive listeners — обробник не викликає preventDefault, тому позначення
+  // passive дозволяє браузеру не блокувати скрол на awaiting handler. capture:true на scroll
+  // потрібен щоб ловити скрол у будь-якому батьківському контейнері (modal body, sidebar).
   useEffect(() => {
     if (!open) return;
     const handler = () => updatePos();
-    window.addEventListener('scroll', handler, true);
-    window.addEventListener('resize', handler);
+    const scrollOpts = { capture: true, passive: true } as const;
+    const resizeOpts = { passive: true } as const;
+    window.addEventListener('scroll', handler, scrollOpts);
+    window.addEventListener('resize', handler, resizeOpts);
     return () => {
-      window.removeEventListener('scroll', handler, true);
+      window.removeEventListener('scroll', handler, scrollOpts);
       window.removeEventListener('resize', handler);
     };
   }, [open, updatePos]);
