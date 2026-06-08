@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Trash2, Plus, Pencil, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Trash2, Plus, Pencil, Check, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { kyivToday } from '@/lib/format';
@@ -170,9 +170,6 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
   const [lines, setLines] = useState<LocalLine[]>([]);
   const [parts, setParts] = useState<LocalPart[]>([]);
 
-  // Header collapse state: auto-collapses when editing tables, can be toggled manually
-  const [headerCollapsed, setHeaderCollapsed] = useState(false);
-
   const vehicleReqRef = useRef(0);
   const contractReqRef = useRef(0);
   const branchesRef = useRef(branches);
@@ -248,7 +245,6 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     setShowPartInput(false);
     setEditingLineKey(null);
     setEditingPartKey(null);
-    setHeaderCollapsed(false);
     // A fresh modal session starts without a prior partial create.
     createdWoRef.current = null;
     setForm({
@@ -291,12 +287,6 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
       setNewPart(p => (p.warehouseId ? p : { ...p, warehouseId: warehouses[0].id }));
     }
   }, [warehouses]);
-
-  // Auto-collapse header when user starts editing tables; expand when all editing stops
-  const isEditingTables = showLineInput || showPartInput || !!editingLineKey || !!editingPartKey;
-  useEffect(() => {
-    if (isEditingTables) setHeaderCollapsed(true);
-  }, [isEditingTables]);
 
   const loadVehicles = (cpId: string, keepVehicleId?: string) => {
     if (!cpId) return;
@@ -559,226 +549,194 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
           </div>
         )}
 
-        <div className="space-y-0">
-          {/* ── Header collapse toggle ─────────────────────────────── */}
-          <button
-            type="button"
-            onClick={() => setHeaderCollapsed(c => !c)}
-            className="flex items-center gap-1.5 w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors mb-1 select-none group"
-          >
-            {headerCollapsed ? (
-              <ChevronDown className="h-3.5 w-3.5 text-primary transition-transform duration-300" />
-            ) : (
-              <ChevronUp className="h-3.5 w-3.5 text-primary transition-transform duration-300" />
-            )}
-            <span>{headerCollapsed ? 'Розгорнути шапку документа' : 'Шапка документа'}</span>
-          </button>
-
-          {/* ── Collapsible header fields ──────────────────────────── */}
-          <div
-            className="grid transition-[grid-template-rows] duration-300 ease-in-out"
-            style={{ gridTemplateRows: headerCollapsed ? '0fr' : '1fr' }}
-          >
-            <div className="overflow-hidden">
-              <div className="divide-y divide-border border-b border-border mb-3">
-                {/* Рядок 1: Номер | Дата документа | Статус */}
-                <div className="grid grid-cols-3 gap-4 pb-4">
-                  <Input label="Номер" value="— присвоюється автоматично —" disabled readOnly />
-                  <Input
-                    label="Дата документа"
-                    type="date"
-                    value={form.documentDate}
-                    onChange={e => setForm(f => ({ ...f, documentDate: e.target.value }))}
-                  />
-                  <Input
-                    label="Статус"
-                    value={WO_STATUS_LABELS[initialStatus] ?? 'Чернетка'}
-                    disabled
-                    readOnly
-                  />
-                </div>
-
-                {/* Рядок 2: Філія | Підйомник | Пріоритет */}
-                <div className="grid grid-cols-3 gap-4 pt-4 pb-4">
-                  <Select
-                    label="Філія"
-                    required
-                    value={form.branchId}
-                    onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-                  >
-                    <option value="">— Оберіть —</option>
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </Select>
-                  <Select
-                    label="Підйомник"
-                    value={form.liftId}
-                    onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
-                  >
-                    <option value="">— Без підйомника —</option>
-                    {lifts.map(l => (
-                      <option key={l.id} value={l.id}>
-                        {l.name}
-                      </option>
-                    ))}
-                  </Select>
-                  <Select
-                    label="Пріоритет"
-                    value={form.priority}
-                    onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
-                  >
-                    {Object.entries(WO_PRIORITY_LABELS).map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-
-                {/* Планові та фактичні показники */}
-                <div className="rounded-none border-0 overflow-hidden pt-4 pb-4">
-                  <div className="grid grid-cols-2 divide-x divide-border">
-                    <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
-                      Планові показники
-                    </div>
-                    <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
-                      Фактичні показники
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 divide-x divide-border">
-                    <div className="grid grid-cols-2 gap-3 p-3">
-                      <DateTimePickerInput
-                        label="Дата та час початку"
-                        value={form.plannedStartAt}
-                        onChange={v => setForm(f => ({ ...f, plannedStartAt: v }))}
-                      />
-                      <DateTimePickerInput
-                        label="Дата та час завершення"
-                        value={form.plannedEndAt}
-                        onChange={v => setForm(f => ({ ...f, plannedEndAt: v }))}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 p-3">
-                      <DateTimePickerInput
-                        label="Дата та час початку"
-                        value=""
-                        onChange={() => {}}
-                        disabled
-                      />
-                      <DateTimePickerInput
-                        label="Дата та час завершення"
-                        value=""
-                        onChange={() => {}}
-                        disabled
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Секція: Клієнт */}
-                <div className="space-y-3 pt-4 pb-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-muted-foreground mb-1">
-                        Клієнт <span className="text-destructive-text">*</span>
-                      </label>
-                      <EntityPickerField<HeaderCpItem>
-                        display={counterpartyDisplayName}
-                        placeholder="Пошук клієнта…"
-                        ariaLabel="Клієнт"
-                        onPick={() => setCpPickerOpen(true)}
-                        onSearch={fetchCpHeaderItems}
-                        onSearchSelect={item => {
-                          setCounterpartyDisplayName(item.primary);
-                          setForm(f => ({
-                            ...f,
-                            counterpartyId: item.id,
-                            vehicleId: '',
-                            contractId: '',
-                          }));
-                          setVehicles([]);
-                          setContracts([]);
-                          loadVehicles(item.id);
-                          loadContracts(item.id);
-                        }}
-                        onClear={() => {
-                          setCounterpartyDisplayName('');
-                          setForm(f => ({
-                            ...f,
-                            counterpartyId: '',
-                            vehicleId: '',
-                            contractId: '',
-                          }));
-                          setVehicles([]);
-                          setContracts([]);
-                        }}
-                        hidePick={false}
-                      />
-                    </div>
-                    <Select
-                      label="Договір"
-                      value={form.contractId}
-                      onChange={e => setForm(f => ({ ...f, contractId: e.target.value }))}
-                      disabled={!form.counterpartyId || contracts.length === 0}
-                    >
-                      <option value="">— Без договору —</option>
-                      {contracts.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.number ? `${c.number} — ` : ''}
-                          {c.title}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Select
-                      label="Автомобіль"
-                      required
-                      value={form.vehicleId}
-                      onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-                      disabled={!form.counterpartyId}
-                    >
-                      <option value="">— Оберіть —</option>
-                      {vehicles.map(v => (
-                        <option key={v.id} value={v.id}>
-                          {v.make} {v.model}
-                          {v.licensePlate ? ` (${v.licensePlate})` : ''}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select
-                      label="Категорія ремонту"
-                      value={form.repairCategory}
-                      onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
-                    >
-                      <option value="">— Не вказано —</option>
-                      {Object.entries(WO_CATEGORY_LABELS).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Секція: Опис */}
-                <div className="pt-4 pb-4">
-                  <Input
-                    label="Опис"
-                    value={form.description}
-                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    placeholder="Заміна масла, колодок..."
-                  />
-                </div>
-              </div>
-              {/* end divide-y */}
-            </div>
-            {/* end overflow-hidden */}
+        <div className="space-y-0 divide-y divide-border">
+          {/* Рядок 1: Номер | Дата документа | Статус */}
+          <div className="grid grid-cols-3 gap-4 pb-4">
+            <Input label="Номер" value="— присвоюється автоматично —" disabled readOnly />
+            <Input
+              label="Дата документа"
+              type="date"
+              value={form.documentDate}
+              onChange={e => setForm(f => ({ ...f, documentDate: e.target.value }))}
+            />
+            <Input
+              label="Статус"
+              value={WO_STATUS_LABELS[initialStatus] ?? 'Чернетка'}
+              disabled
+              readOnly
+            />
           </div>
-          {/* end grid collapse wrapper */}
+
+          {/* Рядок 2: Філія | Підйомник | Пріоритет */}
+          <div className="grid grid-cols-3 gap-4 pt-4 pb-4">
+            <Select
+              label="Філія"
+              required
+              value={form.branchId}
+              onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+            >
+              <option value="">— Оберіть —</option>
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              label="Підйомник"
+              value={form.liftId}
+              onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+            >
+              <option value="">— Без підйомника —</option>
+              {lifts.map(l => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              label="Пріоритет"
+              value={form.priority}
+              onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
+            >
+              {Object.entries(WO_PRIORITY_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          {/* Планові та фактичні показники */}
+          <div className="rounded-none border-0 overflow-hidden pt-4 pb-4">
+            <div className="grid grid-cols-2 divide-x divide-border">
+              <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
+                Планові показники
+              </div>
+              <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
+                Фактичні показники
+              </div>
+            </div>
+            <div className="grid grid-cols-2 divide-x divide-border">
+              <div className="grid grid-cols-2 gap-3 p-3">
+                <DateTimePickerInput
+                  label="Дата та час початку"
+                  value={form.plannedStartAt}
+                  onChange={v => setForm(f => ({ ...f, plannedStartAt: v }))}
+                />
+                <DateTimePickerInput
+                  label="Дата та час завершення"
+                  value={form.plannedEndAt}
+                  onChange={v => setForm(f => ({ ...f, plannedEndAt: v }))}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3 p-3">
+                <DateTimePickerInput
+                  label="Дата та час початку"
+                  value=""
+                  onChange={() => {}}
+                  disabled
+                />
+                <DateTimePickerInput
+                  label="Дата та час завершення"
+                  value=""
+                  onChange={() => {}}
+                  disabled
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Секція: Клієнт */}
+          <div className="space-y-3 pt-4 pb-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">
+                  Клієнт <span className="text-destructive-text">*</span>
+                </label>
+                <EntityPickerField<HeaderCpItem>
+                  display={counterpartyDisplayName}
+                  placeholder="Пошук клієнта…"
+                  ariaLabel="Клієнт"
+                  onPick={() => setCpPickerOpen(true)}
+                  onSearch={fetchCpHeaderItems}
+                  onSearchSelect={item => {
+                    setCounterpartyDisplayName(item.primary);
+                    setForm(f => ({
+                      ...f,
+                      counterpartyId: item.id,
+                      vehicleId: '',
+                      contractId: '',
+                    }));
+                    setVehicles([]);
+                    setContracts([]);
+                    loadVehicles(item.id);
+                    loadContracts(item.id);
+                  }}
+                  onClear={() => {
+                    setCounterpartyDisplayName('');
+                    setForm(f => ({ ...f, counterpartyId: '', vehicleId: '', contractId: '' }));
+                    setVehicles([]);
+                    setContracts([]);
+                  }}
+                  hidePick={false}
+                />
+              </div>
+              <Select
+                label="Договір"
+                value={form.contractId}
+                onChange={e => setForm(f => ({ ...f, contractId: e.target.value }))}
+                disabled={!form.counterpartyId || contracts.length === 0}
+              >
+                <option value="">— Без договору —</option>
+                {contracts.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.number ? `${c.number} — ` : ''}
+                    {c.title}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Select
+                label="Автомобіль"
+                required
+                value={form.vehicleId}
+                onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+                disabled={!form.counterpartyId}
+              >
+                <option value="">— Оберіть —</option>
+                {vehicles.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.make} {v.model}
+                    {v.licensePlate ? ` (${v.licensePlate})` : ''}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                label="Категорія ремонту"
+                value={form.repairCategory}
+                onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
+              >
+                <option value="">— Не вказано —</option>
+                {Object.entries(WO_CATEGORY_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          {/* Секція: Опис */}
+          <div className="pt-4 pb-4">
+            <Input
+              label="Опис"
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="Заміна масла, колодок..."
+            />
+          </div>
 
           {/* Секція: Роботи — таблиця з inline рядком вводу в tbody */}
           <div className="pt-4 pb-4">
