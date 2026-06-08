@@ -977,7 +977,7 @@ export class WorkOrdersService {
       this.prisma.warehouse.findFirst({ where: { id: dto.warehouseId, orgId, deletedAt: null } }),
       dto.unitOfMeasureId
         ? this.prisma.goodUoM.findFirst({
-            where: { id: dto.unitOfMeasureId, goodId: dto.goodId, orgId },
+            where: { unitOfMeasureId: dto.unitOfMeasureId, goodId: dto.goodId, orgId },
             select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
           })
         : Promise.resolve(null),
@@ -988,9 +988,9 @@ export class WorkOrdersService {
     }
     if (!good) throw new NotFoundException('Товар не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
-    if (dto.unitOfMeasureId && !goodUoM) {
-      throw new NotFoundException('Одиницю виміру не знайдено для цього товару');
-    }
+    // If no GoodUoM mapping exists for this good+unit combination — silently ignore
+    // (store without unit). The /units endpoint lists all org units; not every unit
+    // is necessarily configured for every good.
 
     const price = dto.price !== undefined ? dto.price : Number(good.salePrice);
     const amount = dto.quantity * price;
@@ -1006,7 +1006,7 @@ export class WorkOrdersService {
             quantity: dto.quantity,
             price,
             amount,
-            unitOfMeasureId: dto.unitOfMeasureId ?? null,
+            unitOfMeasureId: goodUoM?.id ?? null,
           },
           include: {
             good: {
@@ -1053,21 +1053,29 @@ export class WorkOrdersService {
     // Validate new unitOfMeasureId if provided
     let goodUoM: { id: string; coefficient: number; unitOfMeasure: { shortName: string } } | null =
       null;
-    const newUoMId = dto.unitOfMeasureId !== undefined ? dto.unitOfMeasureId : part.unitOfMeasureId;
-    if (newUoMId) {
+    // dto.unitOfMeasureId = UnitOfMeasure.id (from /units); resolve to GoodUoM record.
+    // part.unitOfMeasureId stores GoodUoM.id — keep it as-is when dto doesn't override.
+    const newUnitOfMeasureId = dto.unitOfMeasureId !== undefined ? dto.unitOfMeasureId : null;
+    const keepExistingUoM = dto.unitOfMeasureId === undefined;
+    if (newUnitOfMeasureId) {
       const goodIdForPart = dto.goodId ?? part.goodId;
       goodUoM = await this.prisma.goodUoM.findFirst({
-        where: { id: newUoMId, goodId: goodIdForPart, orgId },
+        where: { unitOfMeasureId: newUnitOfMeasureId, goodId: goodIdForPart, orgId },
         select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
       });
-      if (!goodUoM) throw new NotFoundException('Одиницю виміру не знайдено для цього товару');
+      // No GoodUoM mapping — silently ignore, store without unit
     }
 
     const updated = await this.prisma.$transaction(
       async tx => {
         const result = await tx.workOrderPart.update({
           where: { id: partId, orgId },
-          data: { quantity, price, amount, unitOfMeasureId: newUoMId ?? null },
+          data: {
+            quantity,
+            price,
+            amount,
+            unitOfMeasureId: keepExistingUoM ? part.unitOfMeasureId : (goodUoM?.id ?? null),
+          },
           include: {
             good: {
               select: {
