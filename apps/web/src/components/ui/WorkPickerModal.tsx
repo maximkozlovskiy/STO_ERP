@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { Modal } from './modal';
 import { Input } from './input';
-import { Select } from './select';
 import { Spinner } from './spinner';
 import { cn } from '@/lib/utils';
 
@@ -41,7 +40,6 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reqRef = useRef(0);
 
-  // Load categories once on first open
   const categoriesLoadedRef = useRef(false);
   useEffect(() => {
     if (!open || categoriesLoadedRef.current) return;
@@ -77,7 +75,6 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
     );
   }, []);
 
-  // Reload when modal opens or filters change
   useEffect(() => {
     if (!open) {
       setQuery('');
@@ -86,7 +83,7 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
       setError('');
       return;
     }
-    fetchWorks(query, categoryId);
+    fetchWorks('', '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -103,78 +100,102 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
   }, []);
 
   return (
-    <Modal open={open} onClose={onClose} title="Оберіть роботу" size="md">
-      <div className="space-y-3">
-        {/* Filters */}
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <Input
-              placeholder="Пошук роботи..."
-              value={query}
-              autoFocus
-              onChange={e => setQuery(e.target.value)}
-            />
-          </div>
-          <div className="w-48">
-            <Select value={categoryId} onChange={e => setCategoryId(e.target.value)}>
-              <option value="">Всі категорії</option>
-              {categories.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-        </div>
+    <Modal open={open} onClose={onClose} title="Оберіть роботу" size="lg">
+      <div className="flex flex-col gap-3">
+        {/* Search */}
+        <Input
+          placeholder="Пошук роботи..."
+          value={query}
+          autoFocus
+          onChange={e => setQuery(e.target.value)}
+        />
 
-        {/* Results */}
-        {error && (
-          <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2">
-            {error}
-          </p>
-        )}
-        {loading ? (
-          <div className="flex justify-center py-6">
-            <Spinner size="sm" />
+        {/* Body: results left + categories right */}
+        <div className="flex gap-3 min-h-0" style={{ height: '420px' }}>
+          {/* Results */}
+          <div className="flex-1 overflow-y-auto">
+            {error && (
+              <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2 mb-2">
+                {error}
+              </p>
+            )}
+            {loading ? (
+              <div className="flex justify-center py-10">
+                <Spinner size="sm" />
+              </div>
+            ) : items.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-10 text-center">Нічого не знайдено</p>
+            ) : (
+              <div className="space-y-1 pr-1">
+                {items.map(item => {
+                  const selected = item.id === selectedId;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        onSelect({
+                          ...item,
+                          primary: item.name,
+                          secondary: `${item.normoHours} год · ${item.price} ₴`,
+                        });
+                        onClose();
+                      }}
+                      className={cn(
+                        'w-full text-left px-3 py-2 rounded-lg border transition-colors',
+                        selected
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border bg-surface hover:border-primary hover:bg-primary/5',
+                      )}
+                    >
+                      <div className="text-sm font-medium text-foreground">{item.name}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
+                        <span>{item.normoHours} год</span>
+                        <span>{item.price} ₴/год</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        ) : items.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">Нічого не знайдено</p>
-        ) : (
-          <div className="space-y-1 max-h-96 overflow-y-auto pr-0.5">
-            {items.map(item => {
-              const selected = item.id === selectedId;
-              return (
+
+          {/* Category sidebar */}
+          <div className="w-44 shrink-0 border-l border-border overflow-y-auto pl-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted mb-2">
+              Категорія
+            </p>
+            <div className="space-y-0.5">
+              <button
+                type="button"
+                onClick={() => setCategoryId('')}
+                className={cn(
+                  'w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors',
+                  categoryId === ''
+                    ? 'bg-primary/10 text-primary font-medium'
+                    : 'text-foreground hover:bg-secondary',
+                )}
+              >
+                Всі категорії
+              </button>
+              {categories.map(c => (
                 <button
-                  key={item.id}
+                  key={c.id}
                   type="button"
-                  onClick={() => {
-                    onSelect({
-                      ...item,
-                      primary: item.name,
-                      secondary: `${item.normoHours} год · ${item.price} ₴`,
-                    });
-                    onClose();
-                  }}
+                  onClick={() => setCategoryId(c.id)}
                   className={cn(
-                    'w-full text-left px-3 py-2.5 rounded-lg border transition-colors',
-                    selected
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border bg-surface hover:border-primary hover:bg-primary/5',
+                    'w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors',
+                    categoryId === c.id
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-foreground hover:bg-secondary',
                   )}
                 >
-                  <div className="text-sm font-medium text-foreground">{item.name}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
-                    <span>{item.normoHours} год</span>
-                    <span>{item.price} ₴/год</span>
-                    {item.categoryName && (
-                      <span className="text-muted-foreground/70">{item.categoryName}</span>
-                    )}
-                  </div>
+                  {c.name}
                 </button>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </Modal>
   );
