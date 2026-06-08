@@ -817,6 +817,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                             </td>
                             <td className="px-2 py-1.5">
                               <Select
+                                label="Виконавець"
                                 value={editingLine.employeeId}
                                 onChange={e =>
                                   setEditingLine(l => ({ ...l, employeeId: e.target.value }))
@@ -971,6 +972,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       </td>
                       <td className="px-2 py-1.5">
                         <Select
+                          label="Виконавець"
                           value={newLine.employeeId}
                           onChange={e => setNewLine(l => ({ ...l, employeeId: e.target.value }))}
                         >
@@ -1158,12 +1160,13 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                             </td>
                             <td className="px-2 py-1.5">
                               <Select
+                                label="Склад"
                                 value={editingPart.warehouseId}
                                 onChange={e =>
                                   setEditingPart(p => ({ ...p, warehouseId: e.target.value }))
                                 }
                               >
-                                <option value="">Склад</option>
+                                <option value="">— Оберіть —</option>
                                 {warehouses.map(w => (
                                   <option key={w.id} value={w.id}>
                                     {w.name}
@@ -1315,10 +1318,11 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       </td>
                       <td className="px-2 py-1.5">
                         <Select
+                          label="Склад"
                           value={newPart.warehouseId}
                           onChange={e => setNewPart(p => ({ ...p, warehouseId: e.target.value }))}
                         >
-                          <option value="">Склад</option>
+                          <option value="">— Оберіть —</option>
                           {warehouses.map(w => (
                             <option key={w.id} value={w.id}>
                               {w.name}
