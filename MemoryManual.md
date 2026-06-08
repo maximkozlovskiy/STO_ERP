@@ -9,6 +9,12 @@
 ## Останній commit
 
 ```
+23aa9339 fix(sync): apply status/email/dateOfHire/dateOfFire in employee PATCH
+   • UpdateEmployeeDto accepted status/email/dateOfHire/dateOfFire but update()
+     silently ignored all four — frontend edits to status/email/dates never persisted
+   • Added 4 missing spreads to prisma.update data object
+TypeScript: api ✓ web ✓ (0 errors)
+
 1c91867 fix(tester): Bugs #370-#372 — CounterpartyEditModal addContract race + employees stale closure + useEffect deps
    • #370 [HIGH] addContract тепер з tenant-guard (currentCpIdRef + cpIdAtStart) —
      POST на CP-A не пушить контракт у список CP-B якщо користувач перемкнувся
@@ -1883,6 +1889,17 @@ Latest optimize: 2026-05-28 (AUTO, HEAD 5afbadd) — регресійний пр
 Latest review:   2026-05-28 (perf optimization series 016f041..945e264 — HEAD 19a4c22) — AUTO review всіх perf-коммітів. 0 Critical / 0 Important. 1 Suggestion фіксовано (19a4c22): employees create()/update() використовували `include: { employeeZones: true, ... }` (SELECT *) замість `select: { zoneId: true }` як у findAll/findOne — звужено для консистентності. Перевірено: (1) CacheService — try/catch на всіх Redis-викликах (get/set/del/delPattern), offline-first never breaks request; (2) інвалідація кешу на КОЖНОМУ мутаторі (create/update/remove) у всіх 7 ref-сервісах (branches/warehouses/zones+lifts/work-categories/brands/units/payment-methods); (3) delPattern `ref:X:${orgId}*` коректно чистить і unfiltered, і branch/zone-scoped ключі (warehouses+branchId, zones+branchId, lifts+zoneId); single-key сервіси (branches/brands/units/payment-methods/work-categories) використовують del(); (4) RedisModule @Global + у app.module → всі 7 сервісів інжектять CacheService (tsc 0 errors підтверджує DI); жоден інший модуль не пише в ці моделі повз cached-сервіси; (5) purchase-orders toDto: `lines: (po.lines ?? []).map(...)` + `linesCount: po._count?.lines ?? po.lines?.length ?? 0` — no crash коли lines=undefined у findAll (lines omitted, _count.lines використано); frontend loadDetail() перевіряє `po.linesCount === 0` перед on-demand findOne; (6) useDebounce — cleanup clearTimeout; усі 8 сторінок (work-orders/purchase-orders/invoices/inventory/employees/crm/catalog×3) використовують debouncedX у deps+URL, ніде raw X; (7) ReportsCharts типи (RevenueRow/SettlementRow/LoadRow/ProfitabilityData) точно збігаються з reports/page.tsx; dynamic import named exports коректний; (8) SW skipWaiting тепер ВСЕРЕДИНІ waitUntil ПІСЛЯ cache.addAll — новий SW не перехоплює control mid-precache; (9) ref-cache.ts SSR-safe (typeof window guard + try/catch); усі getCached/setCache у effects, 0 lazy useState(getCached(...)) initializers. Suggestion-only (не фіксовано): Redis client lazyConnect+enableOfflineQueue може повільно фейлити offline (немає connectTimeout/maxRetriesPerRequest) — змінювати connection semantics ризиковано; delPattern використовує redis.keys() O(N) — прийнятно для малих ref-наборів.
 Previous review: 2026-05-28 (verify pass, no fixes — HEAD aa5aefd) — повний AUTO review feature surface: 4 нові модулі (currencies/exchange-rates/bank-accounts/cash-registers), settings org-info endpoint (logoUrl/legalAddress/actualAddress/bankAccountId + explicit orgSelect виключає BigInt syncVersion), web settings 4 нові вкладки + Organisation tab з logo upload (apiMultipartFetch), TopShell public-route guard перед employee-check. 0 Critical / 0 Important — код чистий (пройшов попередній review ebbf746 + tester bb26737). TS 0 errors api+web. Перевірено: tenant isolation (orgId у всіх query), cross-tenant FK guard на create+update, soft-delete, toDto Decimal→Number + syncVersion виключено, sync-ready schema (всі моделі мають id/orgId/syncVersion/timestamps + @@index orgId,deletedAt/syncVersion), PULL_TABLES обґрунтовано виключені (admin reference data, не для mobile mechanic), Select placeholder уникає async-init race (§8.2.1), SearchCombobox paired displayName reset (§8.2). Suggestion-only (не фіксовано): saveUiFeatures unguarded toast (pre-existing phase19); BankAccount/CashRegister currencyId/branchId без dedicated @@index (малі settings-таблиці take:200); combobox q-param ігнориться бекендом (client-side display, OK для малих таблиць).
 ```
+
+### Gotcha — /sto-sync 2026-06-08 (commit 23aa9339)
+
+**Direction 3 — UpdateEmployeeDto accepted fields that update() service silently ignored:**
+`UpdateEmployeeDto` has `status?`, `email?`, `dateOfHire?`, `dateOfFire?` — but `employees.service.update()`
+only spread `firstName/lastName/role/rateScheme/phone`. Edits to status, email, hire/fire dates
+from the modal were sent in the PATCH payload and accepted by class-validator, but Prisma never
+received them — silent data loss.
+Fix: added spreads for all four missing fields. `dateOfHire`/`dateOfFire` coerced via `new Date()` or `null`.
+**Rule:** when adding new optional fields to an Update DTO — immediately check the service `update()` data
+spread and add the corresponding conditional line.
 
 ### Gotcha — /sto-sync 2026-05-29 (commit 561e08b)
 
