@@ -44,8 +44,8 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
   useEffect(() => {
     if (!open || categoriesLoadedRef.current) return;
     categoriesLoadedRef.current = true;
-    apiFetch<{ items: WorkCategory[] }>('/work-categories?limit=100')
-      .then(r => setCategories(Array.isArray(r.items) ? r.items : []))
+    apiFetch<WorkCategory[] | { items: WorkCategory[] }>('/work-categories')
+      .then(r => setCategories(Array.isArray(r) ? r : (r.items ?? [])))
       .catch(() => {});
   }, [open]);
 
