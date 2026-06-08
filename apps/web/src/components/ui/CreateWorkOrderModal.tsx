@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus, Pencil, Check, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { kyivToday } from '@/lib/format';
@@ -165,6 +165,12 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
   const [showLineInput, setShowLineInput] = useState(false);
   const [showPartInput, setShowPartInput] = useState(false);
 
+  // Inline edit state (null = no row being edited)
+  const [editingLineKey, setEditingLineKey] = useState<string | null>(null);
+  const [editingLine, setEditingLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
+  const [editingPartKey, setEditingPartKey] = useState<string | null>(null);
+  const [editingPart, setEditingPart] = useState<Omit<LocalPart, '_key'>>(EMPTY_PART);
+
   // Accumulated pre-save rows
   const [lines, setLines] = useState<LocalLine[]>([]);
   const [parts, setParts] = useState<LocalPart[]>([]);
@@ -231,6 +237,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     setNewPart(EMPTY_PART);
     setShowLineInput(false);
     setShowPartInput(false);
+    setEditingLineKey(null);
+    setEditingPartKey(null);
     // A fresh modal session starts without a prior partial create.
     createdWoRef.current = null;
     setForm({
@@ -731,25 +739,33 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             </div>
 
             <div className="rounded-lg border border-border overflow-visible">
-              <table className="w-full text-[12px]">
+              <table className="w-full table-fixed text-[12px]">
+                <colgroup>
+                  <col />
+                  <col className="w-44" />
+                  <col className="w-20" />
+                  <col className="w-24" />
+                  <col className="w-24" />
+                  <col className="w-9" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-border bg-secondary/40">
                     <th className="px-3 py-1.5 text-left text-[11px] font-medium text-muted-foreground">
                       Назва роботи
                     </th>
-                    <th className="px-2 py-1.5 text-left text-[11px] font-medium text-muted-foreground w-40">
+                    <th className="px-2 py-1.5 text-left text-[11px] font-medium text-muted-foreground">
                       Виконавець
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground w-18">
+                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
                       Год
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground w-24">
+                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
                       Ціна, ₴
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground w-24">
+                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
                       Сума, ₴
                     </th>
-                    <th className="w-9" />
+                    <th />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -771,33 +787,163 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     return (
                       <tr
                         key={line._key}
-                        className="bg-surface hover:bg-secondary/30 transition-colors"
+                        className={
+                          editingLineKey === line._key
+                            ? 'bg-primary/5'
+                            : 'bg-surface hover:bg-secondary/30 transition-colors'
+                        }
                       >
-                        <td className="px-3 py-1.5 text-foreground">{line.workName}</td>
-                        <td className="px-2 py-1.5 text-muted-foreground w-40">
-                          {emp ? `${emp.lastName} ${emp.firstName}` : '—'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground w-18">
-                          {line.normoHours || '—'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground w-24">
-                          {line.price || '—'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums font-medium text-foreground w-24">
-                          {sum != null ? sum.toFixed(2) : '—'}
-                        </td>
-                        <td className="px-1.5 py-1.5 text-right w-9">
-                          <button
-                            type="button"
-                            onClick={() => setLines(prev => prev.filter(l => l._key !== line._key))}
-                            disabled={saving}
-                            aria-label="Видалити роботу"
-                            title="Видалити роботу"
-                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </td>
+                        {editingLineKey === line._key ? (
+                          <>
+                            <td className="px-2 py-1.5">
+                              <SearchCombobox<WorkItem>
+                                placeholder="Пошук роботи..."
+                                value={editingLine.workId}
+                                displayValue={editingLine.workName}
+                                fetchItems={fetchWorks}
+                                onSelect={w =>
+                                  setEditingLine(l => ({
+                                    ...l,
+                                    workId: w.id,
+                                    workName: w.name,
+                                    normoHours: String(w.normoHours),
+                                    price: String(w.price),
+                                  }))
+                                }
+                                onClear={() =>
+                                  setEditingLine(l => ({ ...l, workId: '', workName: '' }))
+                                }
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <Select
+                                value={editingLine.employeeId}
+                                onChange={e =>
+                                  setEditingLine(l => ({ ...l, employeeId: e.target.value }))
+                                }
+                              >
+                                <option value="">— Механік —</option>
+                                {employees.map(e => (
+                                  <option key={e.id} value={e.id}>
+                                    {e.lastName} {e.firstName}
+                                  </option>
+                                ))}
+                              </Select>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <Input
+                                label="Год"
+                                type="number"
+                                value={editingLine.normoHours}
+                                onChange={e =>
+                                  setEditingLine(l => ({ ...l, normoHours: e.target.value }))
+                                }
+                                min="0"
+                                step="0.1"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <Input
+                                label="Ціна, ₴"
+                                type="number"
+                                value={editingLine.price}
+                                onChange={e =>
+                                  setEditingLine(l => ({ ...l, price: e.target.value }))
+                                }
+                                min="0"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
+                              {(() => {
+                                const h = toNumberOrUndefined(editingLine.normoHours);
+                                const p = toNumberOrUndefined(editingLine.price);
+                                return h != null && p != null ? (h * p).toFixed(2) : '—';
+                              })()}
+                            </td>
+                            <td className="px-1.5 py-1.5">
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!editingLine.workId || !editingLine.employeeId) return;
+                                    setLines(prev =>
+                                      prev.map(l =>
+                                        l._key === line._key ? { ...editingLine, _key: l._key } : l,
+                                      ),
+                                    );
+                                    setEditingLineKey(null);
+                                  }}
+                                  disabled={!editingLine.workId || !editingLine.employeeId}
+                                  title="Зберегти"
+                                  className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingLineKey(null)}
+                                  title="Скасувати"
+                                  className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-1.5 text-foreground truncate">
+                              {line.workName}
+                            </td>
+                            <td className="px-2 py-1.5 text-muted-foreground truncate">
+                              {emp ? `${emp.lastName} ${emp.firstName}` : '—'}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                              {line.normoHours || '—'}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                              {line.price || '—'}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums font-medium text-foreground">
+                              {sum != null ? sum.toFixed(2) : '—'}
+                            </td>
+                            <td className="px-1.5 py-1.5 text-right">
+                              <div className="flex flex-col gap-1 items-end">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingLineKey(line._key);
+                                    setEditingLine({
+                                      workId: line.workId,
+                                      workName: line.workName,
+                                      employeeId: line.employeeId,
+                                      normoHours: line.normoHours,
+                                      price: line.price,
+                                    });
+                                  }}
+                                  disabled={saving}
+                                  aria-label="Редагувати роботу"
+                                  title="Редагувати"
+                                  className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setLines(prev => prev.filter(l => l._key !== line._key))
+                                  }
+                                  disabled={saving}
+                                  aria-label="Видалити роботу"
+                                  title="Видалити"
+                                  className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        )}
                       </tr>
                     );
                   })}
@@ -823,7 +969,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                           onClear={() => setNewLine(EMPTY_LINE)}
                         />
                       </td>
-                      <td className="px-2 py-1.5 w-40">
+                      <td className="px-2 py-1.5">
                         <Select
                           value={newLine.employeeId}
                           onChange={e => setNewLine(l => ({ ...l, employeeId: e.target.value }))}
@@ -836,33 +982,33 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                           ))}
                         </Select>
                       </td>
-                      <td className="px-2 py-1.5 w-18">
+                      <td className="px-2 py-1.5">
                         <Input
+                          label="Год"
                           type="number"
-                          placeholder="Год"
                           value={newLine.normoHours}
                           onChange={e => setNewLine(l => ({ ...l, normoHours: e.target.value }))}
                           min="0"
                           step="0.1"
                         />
                       </td>
-                      <td className="px-2 py-1.5 w-24">
+                      <td className="px-2 py-1.5">
                         <Input
+                          label="Ціна, ₴"
                           type="number"
-                          placeholder="Ціна"
                           value={newLine.price}
                           onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
                           min="0"
                         />
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground w-24">
+                      <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
                         {(() => {
                           const h = toNumberOrUndefined(newLine.normoHours);
                           const p = toNumberOrUndefined(newLine.price);
                           return h != null && p != null ? (h * p).toFixed(2) : '—';
                         })()}
                       </td>
-                      <td className="px-1.5 py-1.5 w-9">
+                      <td className="px-1.5 py-1.5">
                         <div className="flex flex-col gap-1">
                           <button
                             type="button"
@@ -898,7 +1044,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       >
                         Разом робіт:
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold text-foreground w-24">
+                      <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold text-foreground">
                         {lines
                           .reduce((acc, l) => {
                             const h = toNumberOrUndefined(l.normoHours);
@@ -907,7 +1053,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                           }, 0)
                           .toFixed(2)}
                       </td>
-                      <td className="w-9" />
+                      <td />
                     </tr>
                   </tfoot>
                 )}
@@ -935,25 +1081,33 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             </div>
 
             <div className="rounded-lg border border-border overflow-visible">
-              <table className="w-full text-[12px]">
+              <table className="w-full table-fixed text-[12px]">
+                <colgroup>
+                  <col />
+                  <col className="w-36" />
+                  <col className="w-20" />
+                  <col className="w-24" />
+                  <col className="w-24" />
+                  <col className="w-9" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-border bg-secondary/40">
                     <th className="px-3 py-1.5 text-left text-[11px] font-medium text-muted-foreground">
                       Назва товару
                     </th>
-                    <th className="px-2 py-1.5 text-left text-[11px] font-medium text-muted-foreground w-36">
+                    <th className="px-2 py-1.5 text-left text-[11px] font-medium text-muted-foreground">
                       Склад
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground w-18">
+                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
                       К-сть
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground w-24">
+                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
                       Ціна, ₴
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground w-24">
+                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
                       Сума, ₴
                     </th>
-                    <th className="w-9" />
+                    <th />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -975,33 +1129,164 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     return (
                       <tr
                         key={part._key}
-                        className="bg-surface hover:bg-secondary/30 transition-colors"
+                        className={
+                          editingPartKey === part._key
+                            ? 'bg-primary/5'
+                            : 'bg-surface hover:bg-secondary/30 transition-colors'
+                        }
                       >
-                        <td className="px-3 py-1.5 text-foreground">{part.goodName}</td>
-                        <td className="px-2 py-1.5 text-muted-foreground w-36">
-                          {wh?.name ?? '—'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground w-18">
-                          {part.quantity}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground w-24">
-                          {part.price || '—'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums font-medium text-foreground w-24">
-                          {sum != null ? sum.toFixed(2) : '—'}
-                        </td>
-                        <td className="px-1.5 py-1.5 text-right w-9">
-                          <button
-                            type="button"
-                            onClick={() => setParts(prev => prev.filter(p => p._key !== part._key))}
-                            disabled={saving}
-                            aria-label="Видалити товар"
-                            title="Видалити товар"
-                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </td>
+                        {editingPartKey === part._key ? (
+                          <>
+                            <td className="px-2 py-1.5">
+                              <SearchCombobox<GoodItem>
+                                placeholder="Пошук товару..."
+                                value={editingPart.goodId}
+                                displayValue={editingPart.goodName}
+                                fetchItems={fetchGoods}
+                                onSelect={g =>
+                                  setEditingPart(p => ({
+                                    ...p,
+                                    goodId: g.id,
+                                    goodName: g.name,
+                                    price: String(g.salePrice),
+                                  }))
+                                }
+                                onClear={() =>
+                                  setEditingPart(p => ({ ...p, goodId: '', goodName: '' }))
+                                }
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <Select
+                                value={editingPart.warehouseId}
+                                onChange={e =>
+                                  setEditingPart(p => ({ ...p, warehouseId: e.target.value }))
+                                }
+                              >
+                                <option value="">Склад</option>
+                                {warehouses.map(w => (
+                                  <option key={w.id} value={w.id}>
+                                    {w.name}
+                                  </option>
+                                ))}
+                              </Select>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <Input
+                                label="К-сть"
+                                type="number"
+                                value={editingPart.quantity}
+                                onChange={e =>
+                                  setEditingPart(p => ({ ...p, quantity: e.target.value }))
+                                }
+                                min="0.001"
+                                step="any"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <Input
+                                label="Ціна, ₴"
+                                type="number"
+                                value={editingPart.price}
+                                onChange={e =>
+                                  setEditingPart(p => ({ ...p, price: e.target.value }))
+                                }
+                                min="0"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
+                              {(() => {
+                                const q = toNumberOrUndefined(editingPart.quantity);
+                                const pr = toNumberOrUndefined(editingPart.price);
+                                return q != null && pr != null ? (q * pr).toFixed(2) : '—';
+                              })()}
+                            </td>
+                            <td className="px-1.5 py-1.5">
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!editingPart.goodId || !editingPart.warehouseId) return;
+                                    setParts(prev =>
+                                      prev.map(pt =>
+                                        pt._key === part._key
+                                          ? { ...editingPart, _key: pt._key }
+                                          : pt,
+                                      ),
+                                    );
+                                    setEditingPartKey(null);
+                                  }}
+                                  disabled={!editingPart.goodId || !editingPart.warehouseId}
+                                  title="Зберегти"
+                                  className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingPartKey(null)}
+                                  title="Скасувати"
+                                  className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-1.5 text-foreground truncate">
+                              {part.goodName}
+                            </td>
+                            <td className="px-2 py-1.5 text-muted-foreground truncate">
+                              {wh?.name ?? '—'}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                              {part.quantity}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                              {part.price || '—'}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums font-medium text-foreground">
+                              {sum != null ? sum.toFixed(2) : '—'}
+                            </td>
+                            <td className="px-1.5 py-1.5 text-right">
+                              <div className="flex flex-col gap-1 items-end">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingPartKey(part._key);
+                                    setEditingPart({
+                                      goodId: part.goodId,
+                                      goodName: part.goodName,
+                                      warehouseId: part.warehouseId,
+                                      quantity: part.quantity,
+                                      price: part.price,
+                                    });
+                                  }}
+                                  disabled={saving}
+                                  aria-label="Редагувати товар"
+                                  title="Редагувати"
+                                  className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setParts(prev => prev.filter(pt => pt._key !== part._key))
+                                  }
+                                  disabled={saving}
+                                  aria-label="Видалити товар"
+                                  title="Видалити"
+                                  className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        )}
                       </tr>
                     );
                   })}
@@ -1028,7 +1313,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                           }
                         />
                       </td>
-                      <td className="px-2 py-1.5 w-36">
+                      <td className="px-2 py-1.5">
                         <Select
                           value={newPart.warehouseId}
                           onChange={e => setNewPart(p => ({ ...p, warehouseId: e.target.value }))}
@@ -1041,33 +1326,33 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                           ))}
                         </Select>
                       </td>
-                      <td className="px-2 py-1.5 w-18">
+                      <td className="px-2 py-1.5">
                         <Input
+                          label="К-сть"
                           type="number"
-                          placeholder="К-сть"
                           value={newPart.quantity}
                           onChange={e => setNewPart(p => ({ ...p, quantity: e.target.value }))}
                           min="0.001"
                           step="any"
                         />
                       </td>
-                      <td className="px-2 py-1.5 w-24">
+                      <td className="px-2 py-1.5">
                         <Input
+                          label="Ціна, ₴"
                           type="number"
-                          placeholder="Ціна"
                           value={newPart.price}
                           onChange={e => setNewPart(p => ({ ...p, price: e.target.value }))}
                           min="0"
                         />
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground w-24">
+                      <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
                         {(() => {
                           const qty = toNumberOrUndefined(newPart.quantity);
                           const p = toNumberOrUndefined(newPart.price);
                           return qty != null && p != null ? (qty * p).toFixed(2) : '—';
                         })()}
                       </td>
-                      <td className="px-1.5 py-1.5 w-9">
+                      <td className="px-1.5 py-1.5">
                         <div className="flex flex-col gap-1">
                           <button
                             type="button"
@@ -1103,7 +1388,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       >
                         Разом товарів:
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold text-foreground w-24">
+                      <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold text-foreground">
                         {parts
                           .reduce((acc, pt) => {
                             const qty = toNumberOrUndefined(pt.quantity);
@@ -1112,7 +1397,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                           }, 0)
                           .toFixed(2)}
                       </td>
-                      <td className="w-9" />
+                      <td />
                     </tr>
                   </tfoot>
                 )}
