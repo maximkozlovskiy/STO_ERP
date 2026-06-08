@@ -75,7 +75,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
           if (q) params.set('q', q);
           if (catId) {
             const ids = collectDescendantIds(categories, catId);
-            ids.forEach(id => params.append('goodCategoryIds[]', id));
+            ids.forEach(id => params.append('goodCategoryIds', id));
           }
           apiFetch<{
             items: (Omit<GoodPickerItem, 'unitShortName'> & { unit?: string | null })[];

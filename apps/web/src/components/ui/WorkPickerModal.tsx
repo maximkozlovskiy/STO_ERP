@@ -74,7 +74,7 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
           if (q) params.set('q', q);
           if (catId) {
             const ids = collectDescendantIds(categories, catId);
-            ids.forEach(id => params.append('categoryIds[]', id));
+            ids.forEach(id => params.append('categoryIds', id));
           }
           apiFetch<{ items: WorkPickerItem[] }>(`/works?${params}`)
             .then(r => {
