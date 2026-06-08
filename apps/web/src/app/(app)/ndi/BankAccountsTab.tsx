@@ -252,6 +252,7 @@ export default function BankAccountsTab() {
               if (baErrors.name) setBaErrors(p => ({ ...p, name: undefined }));
             }}
             errorMessage={baErrors.name}
+            className="h-8 text-[13px]"
           />
           <Input
             label="IBAN"
@@ -263,6 +264,7 @@ export default function BankAccountsTab() {
             }}
             placeholder="UA213223130000026007233566001"
             errorMessage={baErrors.ibanUA}
+            className="h-8 text-[13px]"
           />
           <Select
             label="Валюта"
@@ -274,6 +276,7 @@ export default function BankAccountsTab() {
             }}
             errorMessage={baErrors.currencyId}
             placeholder="Оберіть валюту..."
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {currencies.map(c => (
               <option key={c.id} value={c.id}>
@@ -286,6 +289,7 @@ export default function BankAccountsTab() {
             value={baForm.branchId}
             onChange={e => setBaForm({ ...baForm, branchId: e.target.value })}
             placeholder="Не прив'язано до філії"
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {branches.map(b => (
               <option key={b.id} value={b.id}>
@@ -297,21 +301,25 @@ export default function BankAccountsTab() {
             label="Назва банку"
             value={baForm.bankName}
             onChange={e => setBaForm({ ...baForm, bankName: e.target.value })}
+            className="h-8 text-[13px]"
           />
           <Input
             label="МФО"
             value={baForm.mfo}
             onChange={e => setBaForm({ ...baForm, mfo: e.target.value })}
+            className="h-8 text-[13px]"
           />
           <Input
             label="ЄДРПОУ банку"
             value={baForm.edrpou}
             onChange={e => setBaForm({ ...baForm, edrpou: e.target.value })}
+            className="h-8 text-[13px]"
           />
           <Input
             label="Адреса банку"
             value={baForm.bankAddress}
             onChange={e => setBaForm({ ...baForm, bankAddress: e.target.value })}
+            className="h-8 text-[13px]"
           />
         </div>
       </Modal>

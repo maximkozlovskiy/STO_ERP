@@ -28,14 +28,14 @@ function NumberField({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-foreground mb-1">{label}</label>
+      <label className="block text-[13px] font-medium text-foreground mb-1">{label}</label>
       <Input
         type="number"
         value={value}
         min={min}
         max={max}
         onChange={e => onChange(Number(e.target.value))}
-        className="w-32"
+        className="w-32 h-8 text-[13px]"
       />
     </div>
   );
@@ -163,12 +163,14 @@ export default function OrgTab() {
       )}
       <div className="bg-surface rounded-xl border border-border p-6 space-y-5">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Валюта обліку</label>
+          <label className="block text-[13px] font-medium text-foreground mb-1">
+            Валюта обліку
+          </label>
           {currencies.length > 0 ? (
             <Select
               value={orgSettings.currency}
               onChange={e => setOrgSettings({ ...orgSettings, currency: e.target.value })}
-              className="w-auto"
+              className="w-auto h-8 text-[13px] py-0.5 px-2 pr-7"
             >
               {currencies.map(c => (
                 <option key={c.code} value={c.code}>
@@ -187,7 +189,7 @@ export default function OrgTab() {
                   currency: e.target.value.toUpperCase().slice(0, 10),
                 })
               }
-              className="w-32"
+              className="w-32 h-8 text-[13px]"
               placeholder="UAH"
               maxLength={10}
             />
@@ -198,11 +200,11 @@ export default function OrgTab() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Режим ПДВ</label>
+          <label className="block text-[13px] font-medium text-foreground mb-1">Режим ПДВ</label>
           <Select
             value={orgSettings.vatMode}
             onChange={e => setOrgSettings({ ...orgSettings, vatMode: e.target.value })}
-            className="w-auto"
+            className="w-auto h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {Object.entries(VAT_LABELS).map(([k, v]) => (
               <option key={k} value={k}>
@@ -248,7 +250,7 @@ export default function OrgTab() {
         </div>
 
         <div role="radiogroup" aria-label="Метод списання партій">
-          <label className="block text-sm font-medium text-foreground mb-1">
+          <label className="block text-[13px] font-medium text-foreground mb-1">
             Метод списання партій
           </label>
           <p className="text-xs text-muted-foreground mb-2">

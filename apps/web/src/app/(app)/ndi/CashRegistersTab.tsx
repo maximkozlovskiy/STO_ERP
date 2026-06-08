@@ -201,6 +201,7 @@ export default function CashRegistersTab() {
               if (crErrors.name) setCrErrors(p => ({ ...p, name: undefined }));
             }}
             errorMessage={crErrors.name}
+            className="h-8 text-[13px]"
           />
           <Select
             label="Валюта"
@@ -212,6 +213,7 @@ export default function CashRegistersTab() {
             }}
             errorMessage={crErrors.currencyId}
             placeholder="Оберіть валюту..."
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {currencies.map(c => (
               <option key={c.id} value={c.id}>
@@ -229,6 +231,7 @@ export default function CashRegistersTab() {
             }}
             errorMessage={crErrors.branchId}
             placeholder="Оберіть філію..."
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {branches.map(b => (
               <option key={b.id} value={b.id}>

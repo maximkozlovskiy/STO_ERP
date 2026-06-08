@@ -500,7 +500,7 @@ export default function GoodsTab() {
           }}
           placeholder="Пошук за назвою, артикулом, штрихкодом..."
           leftElement={<Search />}
-          className="flex-1 min-w-48"
+          className="flex-1 min-w-48 h-8 text-[13px]"
         />
         <XlsxImportButton
           templateType="goods"
@@ -904,10 +904,12 @@ export default function GoodsTab() {
                       placeholder="Штрихкод"
                       value={newBarcode}
                       onChange={e => setNewBarcode(e.target.value)}
+                      className="h-8 text-[13px]"
                     />
                     <Select
                       value={newBarcodeType}
                       onChange={e => setNewBarcodeType(e.target.value)}
+                      className="h-8 text-[13px] py-0.5 px-2 pr-7"
                     >
                       {['EAN13', 'UPC', 'QR', 'CODE128'].map(t => (
                         <option key={t} value={t}>

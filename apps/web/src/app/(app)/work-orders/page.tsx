@@ -466,7 +466,7 @@ function WorkOrdersPageInner() {
           }}
           placeholder="Пошук за номером або клієнтом..."
           leftElement={<Search />}
-          className="w-72"
+          className="w-72 h-8 text-[13px]"
         />
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-muted-foreground shrink-0">З</span>
@@ -502,7 +502,7 @@ function WorkOrdersPageInner() {
             resetPage();
             setActiveSavedFilterId(null);
           }}
-          className="w-52"
+          className="w-52 h-8 text-[13px] py-0.5 px-2 pr-7"
         >
           <option value="">Всі категорії</option>
           {Object.entries(CATEGORY_LABELS).map(([value, label]) => (

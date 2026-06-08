@@ -315,6 +315,7 @@ export default function BrandsTab() {
           onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
           placeholder="наприклад: Bosch, NGK, Brembo"
           autoFocus
+          className="h-8 text-[13px]"
         />
       </Modal>
       <ConfirmDialog {...dialogProps} />

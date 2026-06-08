@@ -190,6 +190,7 @@ export default function TaxRatesTab() {
             value={newTaxRate.name}
             onChange={e => setNewTaxRate(f => ({ ...f, name: e.target.value }))}
             placeholder="ПДВ 20%"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Ставка, %"
@@ -198,6 +199,7 @@ export default function TaxRatesTab() {
             max="100"
             value={newTaxRate.rate}
             onChange={e => setNewTaxRate(f => ({ ...f, rate: e.target.value }))}
+            className="h-8 text-[13px]"
           />
         </div>
         <Button

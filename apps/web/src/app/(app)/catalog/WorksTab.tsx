@@ -455,7 +455,7 @@ export default function WorksTab() {
           }}
           placeholder="Пошук робіт..."
           leftElement={<Search />}
-          className="flex-1 min-w-48"
+          className="flex-1 min-w-48 h-8 text-[13px]"
         />
         <XlsxImportButton
           templateType="works"
@@ -805,6 +805,7 @@ export default function WorksTab() {
               setForm(f => ({ ...f, categoryId: e.target.value }));
               worksFormDirty.markDirty();
             }}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {flat.map(c => (
               <option key={c.id} value={c.id}>
@@ -822,6 +823,7 @@ export default function WorksTab() {
               worksFormDirty.markDirty();
             }}
             placeholder="Заміна масла"
+            className="h-8 text-[13px]"
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
@@ -835,6 +837,7 @@ export default function WorksTab() {
                 worksFormDirty.markDirty();
               }}
               placeholder="1.5"
+              className="h-8 text-[13px]"
             />
             <Input
               label="Ціна/год, ₴"
@@ -847,6 +850,7 @@ export default function WorksTab() {
                 worksFormDirty.markDirty();
               }}
               placeholder="500"
+              className="h-8 text-[13px]"
             />
           </div>
           <Input
@@ -856,6 +860,7 @@ export default function WorksTab() {
               setForm(f => ({ ...f, description: e.target.value }));
               worksFormDirty.markDirty();
             }}
+            className="h-8 text-[13px]"
           />
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -867,7 +872,7 @@ export default function WorksTab() {
               }}
               className="h-4 w-4 accent-primary"
             />
-            <span className="text-sm text-foreground">
+            <span className="text-[13px] text-foreground">
               Гарантійна робота (виконується безкоштовно)
             </span>
           </label>
@@ -918,6 +923,7 @@ export default function WorksTab() {
               setEditForm(f => ({ ...f, categoryId: e.target.value }));
               editWorkDirty.markDirty();
             }}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {flat.map(c => (
               <option key={c.id} value={c.id}>
@@ -935,6 +941,7 @@ export default function WorksTab() {
               editWorkDirty.markDirty();
             }}
             placeholder="Заміна масла"
+            className="h-8 text-[13px]"
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
@@ -948,6 +955,7 @@ export default function WorksTab() {
                 editWorkDirty.markDirty();
               }}
               placeholder="1.5"
+              className="h-8 text-[13px]"
             />
             <Input
               label="Ціна/год, ₴"
@@ -960,6 +968,7 @@ export default function WorksTab() {
                 editWorkDirty.markDirty();
               }}
               placeholder="500"
+              className="h-8 text-[13px]"
             />
           </div>
           <Input
@@ -969,6 +978,7 @@ export default function WorksTab() {
               setEditForm(f => ({ ...f, description: e.target.value }));
               editWorkDirty.markDirty();
             }}
+            className="h-8 text-[13px]"
           />
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -980,7 +990,7 @@ export default function WorksTab() {
               }}
               className="h-4 w-4 accent-primary"
             />
-            <span className="text-sm text-foreground">
+            <span className="text-[13px] text-foreground">
               Гарантійна робота (виконується безкоштовно)
             </span>
           </label>

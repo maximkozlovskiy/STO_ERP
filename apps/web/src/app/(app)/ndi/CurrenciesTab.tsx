@@ -265,6 +265,7 @@ export default function CurrenciesTab() {
               setCurrencyForm({ ...currencyForm, name: e.target.value });
               if (currencyErrors.name) setCurrencyErrors(p => ({ ...p, name: undefined }));
             }}
+            className="h-8 text-[13px]"
           />
           <Input
             label="Код (ISO 4217)"
@@ -276,17 +277,20 @@ export default function CurrenciesTab() {
               if (currencyErrors.code) setCurrencyErrors(p => ({ ...p, code: undefined }));
             }}
             placeholder="UAH"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Символ"
             value={currencyForm.symbol}
             onChange={e => setCurrencyForm({ ...currencyForm, symbol: e.target.value })}
             placeholder="₴"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Повна назва"
             value={currencyForm.fullName}
             onChange={e => setCurrencyForm({ ...currencyForm, fullName: e.target.value })}
+            className="h-8 text-[13px]"
           />
           <div className="flex items-center justify-between pt-2 border-t border-border">
             <div>
@@ -314,6 +318,7 @@ export default function CurrenciesTab() {
             onChange={e => setCurrencyForm({ ...currencyForm, nbuMarkupPercent: e.target.value })}
             placeholder="0.00"
             disabled={!currencyForm.nbuFetchEnabled}
+            className="h-8 text-[13px]"
           />
         </div>
       </Modal>

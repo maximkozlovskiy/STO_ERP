@@ -178,9 +178,13 @@ export default function InventoryPage() {
           onChange={e => setQ(e.target.value)}
           placeholder="Пошук по назві..."
           leftElement={<Search />}
-          className="w-64"
+          className="w-64 h-8 text-[13px]"
         />
-        <Select value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
+        <Select
+          value={warehouseId}
+          onChange={e => setWarehouseId(e.target.value)}
+          className="h-8 text-[13px] py-0.5 px-2 pr-7"
+        >
           <option value="">Всі склади</option>
           {warehouses.map(w => (
             <option key={w.id} value={w.id}>
@@ -188,7 +192,7 @@ export default function InventoryPage() {
             </option>
           ))}
         </Select>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+        <label className="flex items-center gap-2 text-[13px] text-muted-foreground cursor-pointer">
           <input
             type="checkbox"
             checked={showLow}

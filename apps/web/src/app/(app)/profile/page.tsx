@@ -134,6 +134,7 @@ export default function ProfilePage() {
           value={pwForm.current}
           onChange={e => setPwForm(f => ({ ...f, current: e.target.value }))}
           autoComplete="current-password"
+          className="h-8 text-[13px]"
         />
         <Input
           label="Новий пароль"
@@ -142,6 +143,7 @@ export default function ProfilePage() {
           onChange={e => setPwForm(f => ({ ...f, next: e.target.value }))}
           hint="Не менше 8 символів"
           autoComplete="new-password"
+          className="h-8 text-[13px]"
         />
         <Input
           label="Підтвердження нового пароля"
@@ -149,6 +151,7 @@ export default function ProfilePage() {
           value={pwForm.confirm}
           onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))}
           autoComplete="new-password"
+          className="h-8 text-[13px]"
         />
         <Button
           onClick={changePassword}

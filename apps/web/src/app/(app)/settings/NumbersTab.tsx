@@ -74,7 +74,7 @@ export default function NumbersTab() {
                     setError(err instanceof Error ? err.message : 'Помилка збереження префікса'),
                   );
                 }}
-                className="h-7 text-sm"
+                className="h-8 text-[13px]"
                 placeholder="Без префіксу"
               />
             </div>
@@ -97,7 +97,7 @@ export default function NumbersTab() {
                     setError(err instanceof Error ? err.message : 'Помилка збереження роздільника'),
                   );
                 }}
-                className="h-7 text-sm w-16"
+                className="h-8 text-[13px] w-16"
               />
             </div>
           </div>

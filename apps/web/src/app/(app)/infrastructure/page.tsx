@@ -396,7 +396,7 @@ function InfrastructurePageClient() {
           onChange={e => setSearch(e.target.value)}
           placeholder="Пошук..."
           leftElement={<Search />}
-          className="flex-1 min-w-48"
+          className="flex-1 min-w-48 h-8 text-[13px]"
         />
         <div className="flex items-center gap-2 ml-auto">
           <Button
@@ -727,6 +727,7 @@ function InfrastructurePageClient() {
             value={form.name ?? ''}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="Головна філія"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Адреса"
@@ -734,6 +735,7 @@ function InfrastructurePageClient() {
             value={form.address ?? ''}
             onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
             placeholder="вул. Гагаріна 12, Київ"
+            className="h-8 text-[13px]"
           />
         </div>
       </Modal>
@@ -765,6 +767,7 @@ function InfrastructurePageClient() {
             required
             value={form.branchId ?? ''}
             onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {activeBranches.map(b => (
               <option key={b.id} value={b.id}>
@@ -778,12 +781,14 @@ function InfrastructurePageClient() {
             value={form.name ?? ''}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="Механічна зона А"
+            className="h-8 text-[13px]"
           />
           <Select
             label="Тип"
             required
             value={form.type ?? 'MECHANICAL'}
             onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {Object.entries(ZONE_TYPE_LABELS).map(([k, v]) => (
               <option key={k} value={k}>
@@ -821,6 +826,7 @@ function InfrastructurePageClient() {
             required
             value={form.zoneId ?? ''}
             onChange={e => setForm(f => ({ ...f, zoneId: e.target.value }))}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {activeZones.map(z => (
               <option key={z.id} value={z.id}>
@@ -834,12 +840,14 @@ function InfrastructurePageClient() {
             value={form.name ?? ''}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="Пост №1"
+            className="h-8 text-[13px]"
           />
           <Select
             label="Тип"
             required
             value={form.type ?? 'TWO_POST'}
             onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {Object.entries(LIFT_TYPE_LABELS).map(([k, v]) => (
               <option key={k} value={k}>
@@ -852,6 +860,7 @@ function InfrastructurePageClient() {
             required
             value={form.status ?? 'ACTIVE'}
             onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {Object.entries(LIFT_STATUS_LABELS).map(([k, v]) => (
               <option key={k} value={k}>
@@ -866,12 +875,14 @@ function InfrastructurePageClient() {
             value={form.maxWeightKg ?? ''}
             onChange={e => setForm(f => ({ ...f, maxWeightKg: e.target.value }))}
             placeholder="3500"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Серійний номер"
             value={form.serialNumber ?? ''}
             onChange={e => setForm(f => ({ ...f, serialNumber: e.target.value }))}
             placeholder="SN-12345"
+            className="h-8 text-[13px]"
           />
           <div className="grid grid-cols-2 gap-3">
             <DatePickerInput
@@ -893,6 +904,7 @@ function InfrastructurePageClient() {
               value={form.maintenanceIntervalDays ?? ''}
               onChange={e => setForm(f => ({ ...f, maintenanceIntervalDays: e.target.value }))}
               placeholder="180"
+              className="h-8 text-[13px]"
             />
             <DatePickerInput
               label="Дата останнього ТО"
@@ -930,6 +942,7 @@ function InfrastructurePageClient() {
             required
             value={form.branchId ?? ''}
             onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {activeBranches.map(b => (
               <option key={b.id} value={b.id}>
@@ -943,12 +956,14 @@ function InfrastructurePageClient() {
             value={form.name ?? ''}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="Основний склад"
+            className="h-8 text-[13px]"
           />
           <Select
             label="Тип"
             required
             value={form.type ?? 'MAIN'}
             onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {Object.entries(WAREHOUSE_TYPE_LABELS).map(([k, v]) => (
               <option key={k} value={k}>

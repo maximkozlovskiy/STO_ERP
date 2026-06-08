@@ -450,12 +450,13 @@ export default function VehicleCardPage() {
           <AnimatedBody className="mb-4 p-3 bg-secondary rounded-lg space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
+                <label className="block text-[13px] font-medium text-muted-foreground mb-1">
                   Категорія
                 </label>
                 <Select
                   value={nodeForm.category}
                   onChange={e => setNodeForm(f => ({ ...f, category: e.target.value }))}
+                  className="h-8 text-[13px] py-0.5 px-2 pr-7"
                 >
                   {Object.entries(NODE_CATEGORY_LABELS).map(([k, v]) => (
                     <option key={k} value={k}>
@@ -466,13 +467,14 @@ export default function VehicleCardPage() {
                 </Select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
+                <label className="block text-[13px] font-medium text-muted-foreground mb-1">
                   Назва <span className="text-destructive">*</span>
                 </label>
                 <Input
                   value={nodeForm.name}
                   onChange={e => setNodeForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="Двигун 2.0 TSI"
+                  className="h-8 text-[13px]"
                 />
               </div>
             </div>
@@ -481,11 +483,13 @@ export default function VehicleCardPage() {
               onChange={e => setNodeForm(f => ({ ...f, mileageAtInstall: e.target.value }))}
               placeholder="Пробіг при встановленні, км"
               type="number"
+              className="h-8 text-[13px]"
             />
             <Input
               value={nodeForm.notes}
               onChange={e => setNodeForm(f => ({ ...f, notes: e.target.value }))}
               placeholder="Нотатки"
+              className="h-8 text-[13px]"
             />
             <div className="flex gap-2">
               <Button size="sm" onClick={addNode} loading={saving} disabled={!nodeForm.name}>
@@ -552,12 +556,14 @@ export default function VehicleCardPage() {
                 value={scheduleForm.maintenanceType}
                 onChange={e => setScheduleForm(f => ({ ...f, maintenanceType: e.target.value }))}
                 placeholder="ТО, Заміна масла..."
+                className="h-8 text-[13px]"
               />
               <Input
                 label="Нотатки"
                 value={scheduleForm.notes}
                 onChange={e => setScheduleForm(f => ({ ...f, notes: e.target.value }))}
                 placeholder="Опціонально"
+                className="h-8 text-[13px]"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -568,6 +574,7 @@ export default function VehicleCardPage() {
                 value={scheduleForm.intervalDays}
                 onChange={e => setScheduleForm(f => ({ ...f, intervalDays: e.target.value }))}
                 placeholder="365"
+                className="h-8 text-[13px]"
               />
               <Input
                 label="Інтервал (км)"
@@ -576,6 +583,7 @@ export default function VehicleCardPage() {
                 value={scheduleForm.intervalMileage}
                 onChange={e => setScheduleForm(f => ({ ...f, intervalMileage: e.target.value }))}
                 placeholder="10000"
+                className="h-8 text-[13px]"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -593,6 +601,7 @@ export default function VehicleCardPage() {
                   setScheduleForm(f => ({ ...f, lastMaintenanceMileage: e.target.value }))
                 }
                 placeholder="85000"
+                className="h-8 text-[13px]"
               />
             </div>
             <div className="flex gap-2">
@@ -706,6 +715,7 @@ export default function VehicleCardPage() {
               value={editForm.make}
               onChange={e => setEditForm(f => ({ ...f, make: e.target.value }))}
               placeholder="Toyota"
+              className="h-8 text-[13px]"
             />
             <Input
               label="Модель"
@@ -713,6 +723,7 @@ export default function VehicleCardPage() {
               value={editForm.model}
               onChange={e => setEditForm(f => ({ ...f, model: e.target.value }))}
               placeholder="Camry"
+              className="h-8 text-[13px]"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -721,13 +732,14 @@ export default function VehicleCardPage() {
               value={editForm.licensePlate}
               onChange={e => setEditForm(f => ({ ...f, licensePlate: e.target.value }))}
               placeholder="AA 1234 BB"
+              className="h-8 text-[13px]"
             />
             <Input
               label="VIN"
               value={editForm.vin}
               onChange={e => setEditForm(f => ({ ...f, vin: e.target.value }))}
               placeholder="1HGCM82633A004352"
-              className="font-mono"
+              className="font-mono h-8 text-[13px]"
             />
           </div>
           <div className="grid grid-cols-3 gap-3">
@@ -739,6 +751,7 @@ export default function VehicleCardPage() {
               placeholder="2024"
               min="1900"
               max="2100"
+              className="h-8 text-[13px]"
             />
             <Input
               label="Об'єм, л"
@@ -747,6 +760,7 @@ export default function VehicleCardPage() {
               onChange={e => setEditForm(f => ({ ...f, engineVolume: e.target.value }))}
               placeholder="2.0"
               step="0.1"
+              className="h-8 text-[13px]"
             />
             <Input
               label="Пробіг, км"
@@ -755,6 +769,7 @@ export default function VehicleCardPage() {
               onChange={e => setEditForm(f => ({ ...f, currentMileage: e.target.value }))}
               placeholder="85000"
               min="0"
+              className="h-8 text-[13px]"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -763,6 +778,7 @@ export default function VehicleCardPage() {
               value={editForm.fuelType}
               onChange={e => setEditForm(f => ({ ...f, fuelType: e.target.value }))}
               placeholder="Не вказано"
+              className="h-8 text-[13px] py-0.5 px-2 pr-7"
             >
               {FUEL_TYPES.map(ft => (
                 <option key={ft} value={ft}>
@@ -775,6 +791,7 @@ export default function VehicleCardPage() {
               value={editForm.color}
               onChange={e => setEditForm(f => ({ ...f, color: e.target.value }))}
               placeholder="Сірий металік"
+              className="h-8 text-[13px]"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -782,6 +799,7 @@ export default function VehicleCardPage() {
               label="Коробка передач"
               value={editForm.transmissionType}
               onChange={e => setEditForm(f => ({ ...f, transmissionType: e.target.value }))}
+              className="h-8 text-[13px] py-0.5 px-2 pr-7"
             >
               {TRANSMISSION_TYPES.map(t => (
                 <option key={t.value} value={t.value}>
@@ -793,6 +811,7 @@ export default function VehicleCardPage() {
               label="Привід"
               value={editForm.driveType}
               onChange={e => setEditForm(f => ({ ...f, driveType: e.target.value }))}
+              className="h-8 text-[13px] py-0.5 px-2 pr-7"
             >
               {DRIVE_TYPES.map(t => (
                 <option key={t.value} value={t.value}>
@@ -806,6 +825,7 @@ export default function VehicleCardPage() {
               label="Тип кузова"
               value={editForm.bodyType}
               onChange={e => setEditForm(f => ({ ...f, bodyType: e.target.value }))}
+              className="h-8 text-[13px] py-0.5 px-2 pr-7"
             >
               {BODY_TYPES.map(t => (
                 <option key={t.value} value={t.value}>
@@ -818,7 +838,7 @@ export default function VehicleCardPage() {
               value={editForm.engineCode}
               onChange={e => setEditForm(f => ({ ...f, engineCode: e.target.value }))}
               placeholder="2AZ-FE"
-              className="font-mono"
+              className="font-mono h-8 text-[13px]"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -838,6 +858,7 @@ export default function VehicleCardPage() {
             value={editForm.notes}
             onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
             placeholder="Додаткова інформація..."
+            className="h-8 text-[13px]"
           />
         </div>
       </Modal>

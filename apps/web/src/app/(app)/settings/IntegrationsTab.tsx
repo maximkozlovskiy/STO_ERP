@@ -117,6 +117,7 @@ export default function IntegrationsTab() {
           value={webhookForm.url}
           onChange={e => setWebhookForm(f => ({ ...f, url: e.target.value }))}
           placeholder="https://example.com/webhook"
+          className="h-8 text-[13px]"
         />
         <Input
           label="Секрет (HMAC, необов'язково)"
@@ -124,9 +125,10 @@ export default function IntegrationsTab() {
           value={webhookForm.secret}
           onChange={e => setWebhookForm(f => ({ ...f, secret: e.target.value }))}
           placeholder="Секретний ключ для підпису"
+          className="h-8 text-[13px]"
         />
         <div>
-          <label className="block text-sm font-medium text-foreground mb-2">Події</label>
+          <label className="block text-[13px] font-medium text-foreground mb-2">Події</label>
           <div className="space-y-1.5">
             {WEBHOOK_EVENT_OPTIONS.map(opt => (
               <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
@@ -141,7 +143,7 @@ export default function IntegrationsTab() {
                   }}
                   className="rounded border-border"
                 />
-                <span className="text-sm text-foreground">{opt.label}</span>
+                <span className="text-[13px] text-foreground">{opt.label}</span>
               </label>
             ))}
           </div>

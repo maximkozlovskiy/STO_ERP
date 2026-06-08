@@ -222,6 +222,7 @@ export default function PaymentsTab() {
               value={editPaymentForm.name}
               onChange={e => setEditPaymentForm(f => ({ ...f, name: e.target.value }))}
               required
+              className="h-8 text-[13px]"
             />
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -232,7 +233,7 @@ export default function PaymentsTab() {
                 }
                 className="rounded border-border"
               />
-              <span className="text-sm text-foreground">Фіскальний (потребує ПРРО)</span>
+              <span className="text-[13px] text-foreground">Фіскальний (потребує ПРРО)</span>
             </label>
           </div>
         </Modal>
@@ -262,6 +263,7 @@ export default function PaymentsTab() {
             placeholder="CASH, CARD, BANK"
             required
             hint="Унікальний ідентифікатор (латиниця, великі літери)"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Назва"
@@ -269,6 +271,7 @@ export default function PaymentsTab() {
             onChange={e => setNewPaymentForm(f => ({ ...f, name: e.target.value }))}
             placeholder="Готівка"
             required
+            className="h-8 text-[13px]"
           />
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -277,7 +280,7 @@ export default function PaymentsTab() {
               onChange={e => setNewPaymentForm(f => ({ ...f, requiresFiscal: e.target.checked }))}
               className="rounded border-border"
             />
-            <span className="text-sm text-foreground">Фіскальний (потребує ПРРО)</span>
+            <span className="text-[13px] text-foreground">Фіскальний (потребує ПРРО)</span>
           </label>
         </div>
       </Modal>

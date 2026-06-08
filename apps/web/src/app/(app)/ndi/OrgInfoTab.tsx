@@ -136,7 +136,7 @@ export default function OrgInfoTab() {
 
       {/* Logo */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-3">Логотип</label>
+        <label className="block text-[13px] font-medium text-foreground mb-3">Логотип</label>
         <div className="flex items-start gap-5">
           {/* Preview box */}
           <div
@@ -260,21 +260,25 @@ export default function OrgInfoTab() {
         label="Назва організації"
         value={orgInfoForm.name}
         onChange={e => setOrgInfoForm({ ...orgInfoForm, name: e.target.value })}
+        className="h-8 text-[13px]"
       />
       <Input
         label="ЄДРПОУ"
         value={orgInfoForm.edrpou}
         onChange={e => setOrgInfoForm({ ...orgInfoForm, edrpou: e.target.value })}
+        className="h-8 text-[13px]"
       />
       <Input
         label="Юридична адреса"
         value={orgInfoForm.legalAddress}
         onChange={e => setOrgInfoForm({ ...orgInfoForm, legalAddress: e.target.value })}
+        className="h-8 text-[13px]"
       />
       <Input
         label="Фактична адреса"
         value={orgInfoForm.actualAddress}
         onChange={e => setOrgInfoForm({ ...orgInfoForm, actualAddress: e.target.value })}
+        className="h-8 text-[13px]"
       />
 
       <Button onClick={() => void saveOrgInfo()} loading={savingOrgInfo} className="w-full">

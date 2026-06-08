@@ -176,6 +176,7 @@ export default function NewVehiclePageClient() {
             value={form.make}
             onChange={e => set('make', e.target.value)}
             placeholder="Toyota"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Модель"
@@ -183,6 +184,7 @@ export default function NewVehiclePageClient() {
             value={form.model}
             onChange={e => set('model', e.target.value)}
             placeholder="Camry"
+            className="h-8 text-[13px]"
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -191,13 +193,14 @@ export default function NewVehiclePageClient() {
             value={form.licensePlate}
             onChange={e => set('licensePlate', e.target.value)}
             placeholder="AA 1234 BB"
+            className="h-8 text-[13px]"
           />
           <Input
             label="VIN"
             value={form.vin}
             onChange={e => set('vin', e.target.value)}
             placeholder="1HGCM82633A004352"
-            className="font-mono"
+            className="font-mono h-8 text-[13px]"
           />
         </div>
         <div className="grid grid-cols-3 gap-3">
@@ -209,6 +212,7 @@ export default function NewVehiclePageClient() {
             placeholder={String(new Date().getFullYear())}
             min="1900"
             max="2100"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Об'єм двигуна, л"
@@ -217,6 +221,7 @@ export default function NewVehiclePageClient() {
             onChange={e => set('engineVolume', e.target.value)}
             placeholder="2.0"
             step="0.1"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Пробіг, км"
@@ -225,6 +230,7 @@ export default function NewVehiclePageClient() {
             onChange={e => set('currentMileage', e.target.value)}
             placeholder="85000"
             min="0"
+            className="h-8 text-[13px]"
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -233,6 +239,7 @@ export default function NewVehiclePageClient() {
             value={form.fuelType}
             onChange={e => set('fuelType', e.target.value)}
             placeholder="Не вказано"
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {FUEL_TYPES.map(f => (
               <option key={f} value={f}>
@@ -245,6 +252,7 @@ export default function NewVehiclePageClient() {
             value={form.color}
             onChange={e => set('color', e.target.value)}
             placeholder="Сірий металік"
+            className="h-8 text-[13px]"
           />
         </div>
       </div>
@@ -257,6 +265,7 @@ export default function NewVehiclePageClient() {
             label="Коробка передач"
             value={form.transmissionType}
             onChange={e => set('transmissionType', e.target.value)}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {TRANSMISSION_TYPES.map(t => (
               <option key={t.value} value={t.value}>
@@ -268,6 +277,7 @@ export default function NewVehiclePageClient() {
             label="Привід"
             value={form.driveType}
             onChange={e => set('driveType', e.target.value)}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {DRIVE_TYPES.map(t => (
               <option key={t.value} value={t.value}>
@@ -281,6 +291,7 @@ export default function NewVehiclePageClient() {
             label="Тип кузова"
             value={form.bodyType}
             onChange={e => set('bodyType', e.target.value)}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {BODY_TYPES.map(t => (
               <option key={t.value} value={t.value}>
@@ -293,7 +304,7 @@ export default function NewVehiclePageClient() {
             value={form.engineCode}
             onChange={e => set('engineCode', e.target.value)}
             placeholder="2AZ-FE"
-            className="font-mono"
+            className="font-mono h-8 text-[13px]"
           />
         </div>
       </div>
@@ -322,6 +333,7 @@ export default function NewVehiclePageClient() {
           value={form.notes}
           onChange={e => set('notes', e.target.value)}
           placeholder="Додаткова інформація про авто..."
+          className="h-8 text-[13px]"
         />
       </div>
 

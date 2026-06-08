@@ -463,7 +463,7 @@ export default function EmployeesPage() {
           }}
           placeholder="Пошук за ім'ям..."
           leftElement={<Search />}
-          className="flex-1 min-w-48"
+          className="flex-1 min-w-48 h-8 text-[13px]"
         />
         <Select
           value={roleFilter}
@@ -472,7 +472,7 @@ export default function EmployeesPage() {
             resetPage();
             setActiveSavedFilterId(null);
           }}
-          className="w-48"
+          className="w-48 h-8 text-[13px] py-0.5 px-2 pr-7"
         >
           {ROLE_FILTER_OPTIONS.map(([v, l]) => (
             <option key={v} value={v}>

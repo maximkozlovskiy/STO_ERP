@@ -351,7 +351,7 @@ export default function ServicesTab() {
           }}
           placeholder="Пошук послуг..."
           leftElement={<Search />}
-          className="flex-1"
+          className="flex-1 h-8 text-[13px]"
         />
         <div className="flex items-center gap-2 ml-auto">
           <Button
@@ -667,6 +667,7 @@ export default function ServicesTab() {
               servicesFormDirty.markDirty();
             }}
             placeholder="ТО-1 (20 000 км)"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Опис"
@@ -675,6 +676,7 @@ export default function ServicesTab() {
               setForm(f => ({ ...f, description: e.target.value }));
               servicesFormDirty.markDirty();
             }}
+            className="h-8 text-[13px]"
           />
           <Input
             label="Фіксована ціна, ₴ (не заповнювати = авто)"
@@ -686,6 +688,7 @@ export default function ServicesTab() {
               servicesFormDirty.markDirty();
             }}
             placeholder="2500"
+            className="h-8 text-[13px]"
           />
           <p className="text-[12px] text-muted-foreground">
             Роботи та товари можна додати після створення

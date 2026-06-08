@@ -580,7 +580,7 @@ export default function InvoicesPage() {
           }}
           placeholder="Пошук за номером або контрагентом..."
           leftElement={<Search />}
-          className="w-72"
+          className="w-72 h-8 text-[13px]"
         />
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-muted-foreground shrink-0">З</span>
@@ -870,6 +870,7 @@ export default function InvoicesPage() {
               required
               value={payForm.method}
               onChange={e => setPayForm(f => ({ ...f, method: e.target.value }))}
+              className="h-8 text-[13px] py-0.5 px-2 pr-7"
             >
               {payMethods.length > 0 ? (
                 payMethods.map(m => (
@@ -893,11 +894,13 @@ export default function InvoicesPage() {
               placeholder={String(showPayment.amount)}
               min="0.01"
               step="0.01"
+              className="h-8 text-[13px]"
             />
             <Input
               label="Примітки"
               value={payForm.notes}
               onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))}
+              className="h-8 text-[13px]"
             />
           </div>
         )}

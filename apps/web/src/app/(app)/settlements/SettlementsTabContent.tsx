@@ -197,6 +197,7 @@ export function SettlementsTabContent() {
               setTxTotal(0);
               setActs([]);
             }}
+            className="h-8 text-[13px]"
           />
         </div>
         {selected && (

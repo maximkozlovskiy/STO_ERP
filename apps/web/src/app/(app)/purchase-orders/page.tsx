@@ -524,7 +524,7 @@ export default function PurchaseOrdersPage() {
           }}
           placeholder="Пошук за номером, постачальником..."
           leftElement={<Search />}
-          className="w-64"
+          className="w-64 h-8 text-[13px]"
         />
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-muted-foreground shrink-0">З</span>
@@ -951,7 +951,7 @@ export default function PurchaseOrdersPage() {
                     min="0"
                     max={line.quantity - (line.receivedQty ?? 0)}
                     step="0.001"
-                    className="w-28 text-right"
+                    className="w-28 text-right h-8 text-[13px]"
                   />
                   <span className="text-xs text-muted-foreground">
                     {line.unitShortName ?? line.unit}

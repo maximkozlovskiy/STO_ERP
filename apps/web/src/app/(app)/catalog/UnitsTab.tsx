@@ -557,6 +557,7 @@ export default function UnitsTab() {
             value={form.shortName}
             onChange={e => setForm(f => ({ ...f, shortName: e.target.value }))}
             placeholder="шт"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Повна назва"
@@ -564,6 +565,7 @@ export default function UnitsTab() {
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="штука"
+            className="h-8 text-[13px]"
           />
           <Input
             label="Коефіцієнт"
@@ -573,6 +575,7 @@ export default function UnitsTab() {
             onChange={e => setForm(f => ({ ...f, coefficient: e.target.value }))}
             placeholder="1"
             hint="Коефіцієнт перерахунку до базової одиниці"
+            className="h-8 text-[13px]"
           />
           <div className="grid grid-cols-3 gap-2">
             <Input
@@ -582,6 +585,7 @@ export default function UnitsTab() {
               value={form.width}
               onChange={e => setForm(f => ({ ...f, width: e.target.value }))}
               placeholder="0.0"
+              className="h-8 text-[13px]"
             />
             <Input
               label="Висота, м"
@@ -590,6 +594,7 @@ export default function UnitsTab() {
               value={form.height}
               onChange={e => setForm(f => ({ ...f, height: e.target.value }))}
               placeholder="0.0"
+              className="h-8 text-[13px]"
             />
             <Input
               label="Глибина, м"
@@ -598,6 +603,7 @@ export default function UnitsTab() {
               value={form.depth}
               onChange={e => setForm(f => ({ ...f, depth: e.target.value }))}
               placeholder="0.0"
+              className="h-8 text-[13px]"
             />
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -608,6 +614,7 @@ export default function UnitsTab() {
               value={form.volume}
               onChange={e => setForm(f => ({ ...f, volume: e.target.value }))}
               placeholder="0.0"
+              className="h-8 text-[13px]"
             />
             <Input
               label="Вага, кг"
@@ -616,6 +623,7 @@ export default function UnitsTab() {
               value={form.weight}
               onChange={e => setForm(f => ({ ...f, weight: e.target.value }))}
               placeholder="0.0"
+              className="h-8 text-[13px]"
             />
           </div>
         </div>

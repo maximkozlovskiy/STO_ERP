@@ -101,6 +101,7 @@ export default function LoginPage() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="admin@sto.local"
+              className="h-8 text-[13px]"
             />
 
             <Input
@@ -112,6 +113,7 @@ export default function LoginPage() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
+              className="h-8 text-[13px]"
             />
 
             {error && (

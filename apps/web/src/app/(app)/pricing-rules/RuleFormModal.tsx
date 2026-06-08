@@ -151,6 +151,7 @@ export default function RuleFormModal({
           value={form.name}
           onChange={e => set({ name: e.target.value })}
           placeholder="Запчастини +35%"
+          className="h-8 text-[13px]"
         />
 
         <Select
@@ -166,6 +167,7 @@ export default function RuleFormModal({
                   : form.tiers,
             })
           }
+          className="h-8 text-[13px] py-0.5 px-2 pr-7"
         >
           {Object.entries(TYPE_LABELS).map(([v, l]) => (
             <option key={v} value={v}>
@@ -180,6 +182,7 @@ export default function RuleFormModal({
             label="Бренд (для правила по бренду)"
             value={form.brandId}
             onChange={e => set({ brandId: e.target.value })}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             <option value="">— Будь-який бренд —</option>
             {brands.map(b => (
@@ -200,6 +203,7 @@ export default function RuleFormModal({
             value={form.percentValue}
             onChange={e => set({ percentValue: e.target.value })}
             placeholder="35"
+            className="h-8 text-[13px]"
           />
         )}
         {form.type === 'FIXED_AMOUNT' && (
@@ -211,6 +215,7 @@ export default function RuleFormModal({
             value={form.fixedAmount}
             onChange={e => set({ fixedAmount: e.target.value })}
             placeholder="50"
+            className="h-8 text-[13px]"
           />
         )}
         {form.type === 'FIXED_PRICE' && (
@@ -222,6 +227,7 @@ export default function RuleFormModal({
             value={form.fixedPrice}
             onChange={e => set({ fixedPrice: e.target.value })}
             placeholder="320"
+            className="h-8 text-[13px]"
           />
         )}
 
@@ -255,6 +261,7 @@ export default function RuleFormModal({
                   value={idx === 0 ? '0' : String(tier.costMin)}
                   disabled={idx === 0}
                   onChange={e => updateTier(idx, 'costMin', Number(e.target.value))}
+                  className="h-8 text-[13px]"
                 />
                 <Input
                   label={idx === 0 ? 'До (₴)' : ''}
@@ -269,6 +276,7 @@ export default function RuleFormModal({
                       e.target.value === '' ? null : Number(e.target.value),
                     )
                   }
+                  className="h-8 text-[13px]"
                 />
                 <Input
                   label={idx === 0 ? 'Націнка (%)' : ''}
@@ -277,6 +285,7 @@ export default function RuleFormModal({
                   max="999"
                   value={String(tier.percentValue)}
                   onChange={e => updateTier(idx, 'percentValue', Number(e.target.value))}
+                  className="h-8 text-[13px]"
                 />
                 <button
                   type="button"
@@ -299,6 +308,7 @@ export default function RuleFormModal({
           onChange={e => set({ roundTo: e.target.value })}
           hint="Напр. 0.5 → до 50 коп, 1 → до гривні"
           placeholder="0.5"
+          className="h-8 text-[13px]"
         />
 
         <div className="border-t border-border pt-3 space-y-3">
@@ -313,6 +323,7 @@ export default function RuleFormModal({
             label="Конкретний товар (необов'язково)"
             value={form.goodId}
             onChange={e => set({ goodId: e.target.value })}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             <option value="">— Не вказано —</option>
             {goods.map(g => (
@@ -327,6 +338,7 @@ export default function RuleFormModal({
             label="Тип товару (необов'язково)"
             value={form.goodType}
             onChange={e => set({ goodType: e.target.value })}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {GOOD_TYPE_OPTIONS.map(o => (
               <option key={o.value} value={o.value}>
@@ -341,6 +353,7 @@ export default function RuleFormModal({
             onChange={e => set({ goodCategory: e.target.value })}
             placeholder="Гальмівна система"
             hint="Текстова категорія з картки товару"
+            className="h-8 text-[13px]"
           />
         </div>
 
@@ -352,6 +365,7 @@ export default function RuleFormModal({
             value={form.priority}
             onChange={e => set({ priority: e.target.value })}
             hint="Менше число = вищий пріоритет"
+            className="h-8 text-[13px]"
           />
         </div>
 

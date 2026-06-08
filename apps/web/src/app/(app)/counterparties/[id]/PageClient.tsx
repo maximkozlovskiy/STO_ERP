@@ -722,12 +722,14 @@ export default function CounterpartyCardPage() {
                   value={editForm.email}
                   onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
                   placeholder="email@example.com"
+                  className="h-8 text-[13px]"
                 />
               </div>
               <Select
                 label="Форма власності"
                 value={editForm.legalForm}
                 onChange={e => setEditForm(f => ({ ...f, legalForm: e.target.value }))}
+                className="h-8 text-[13px] py-0.5 px-2 pr-7"
               >
                 <option value="">— Не вказано —</option>
                 {Object.entries(LEGAL_FORM_LABELS).map(([k, v]) => (
@@ -741,18 +743,21 @@ export default function CounterpartyCardPage() {
                 value={editForm.taxNumber}
                 onChange={e => setEditForm(f => ({ ...f, taxNumber: e.target.value }))}
                 placeholder="3456789012"
+                className="h-8 text-[13px]"
               />
               <Input
                 label="Юридична адреса"
                 value={editForm.legalAddress}
                 onChange={e => setEditForm(f => ({ ...f, legalAddress: e.target.value }))}
                 placeholder="вул. Хрещатик 1, Київ"
+                className="h-8 text-[13px]"
               />
               <Input
                 label="Фактична адреса"
                 value={editForm.actualAddress}
                 onChange={e => setEditForm(f => ({ ...f, actualAddress: e.target.value }))}
                 placeholder="вул. Хрещатик 1, Київ"
+                className="h-8 text-[13px]"
               />
               <div className="grid grid-cols-2 gap-3">
                 <Input
@@ -760,12 +765,14 @@ export default function CounterpartyCardPage() {
                   value={editForm.bankAccount}
                   onChange={e => setEditForm(f => ({ ...f, bankAccount: e.target.value }))}
                   placeholder="UA12 3456 7890 1234 5678 9012 3456 7"
+                  className="h-8 text-[13px]"
                 />
                 <Input
                   label="Банк"
                   value={editForm.bankName}
                   onChange={e => setEditForm(f => ({ ...f, bankName: e.target.value }))}
                   placeholder="АТ КБ «ПриватБанк»"
+                  className="h-8 text-[13px]"
                 />
               </div>
               <Input
@@ -773,11 +780,13 @@ export default function CounterpartyCardPage() {
                 value={editForm.contactPerson}
                 onChange={e => setEditForm(f => ({ ...f, contactPerson: e.target.value }))}
                 placeholder="Іван Коваль"
+                className="h-8 text-[13px]"
               />
               <Input
                 label="Нотатки"
                 value={editForm.notes}
                 onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                className="h-8 text-[13px]"
               />
             </div>
           )}
@@ -803,12 +812,14 @@ export default function CounterpartyCardPage() {
                 value={garageName}
                 onChange={e => setGarageName(e.target.value)}
                 placeholder="Основний гараж"
+                className="h-8 text-[13px]"
               />
               <Input
                 label="Адреса (необов'язково)"
                 value={garageAddress}
                 onChange={e => setGarageAddress(e.target.value)}
                 placeholder="вул. Шевченка 1"
+                className="h-8 text-[13px]"
               />
               <div className="flex gap-2">
                 <Button
@@ -991,13 +1002,14 @@ export default function CounterpartyCardPage() {
               {/* Рядок 1: вид договору + checkbox Головний */}
               <div className="flex items-end gap-3">
                 <div className="flex-1">
-                  <label className="text-xs text-muted-foreground mb-1 block">
+                  <label className="text-[13px] text-muted-foreground mb-1 block">
                     Вид договору{cp.type === 'BOTH' && <span className="text-destructive"> *</span>}
                   </label>
                   {cp.type === 'BOTH' ? (
                     <Select
                       value={contractForm.contractType}
                       onChange={e => setContractForm(f => ({ ...f, contractType: e.target.value }))}
+                      className="h-8 text-[13px] py-0.5 px-2 pr-7"
                     >
                       <option value="">Оберіть вид</option>
                       <option value="PURCHASE">Купівля</option>
@@ -1022,34 +1034,36 @@ export default function CounterpartyCardPage() {
               {/* Рядок 2: дати */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">
+                  <label className="text-[13px] text-muted-foreground mb-1 block">
                     Дата початку <span className="text-destructive">*</span>
                   </label>
                   <Input
                     type="date"
                     value={contractForm.startDate}
                     onChange={e => setContractForm(f => ({ ...f, startDate: e.target.value }))}
+                    className="h-8 text-[13px]"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">
+                  <label className="text-[13px] text-muted-foreground mb-1 block">
                     Дата завершення
                   </label>
                   <Input
                     type="date"
                     value={contractForm.endDate}
                     onChange={e => setContractForm(f => ({ ...f, endDate: e.target.value }))}
+                    className="h-8 text-[13px]"
                   />
                 </div>
               </div>
               {/* Рядок 3: валюта */}
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Валюта</label>
+                <label className="text-[13px] text-muted-foreground mb-1 block">Валюта</label>
                 {currencies.length > 0 ? (
                   <select
                     value={contractForm.currencyCode || orgCurrency}
                     onChange={e => setContractForm(f => ({ ...f, currencyCode: e.target.value }))}
-                    className="h-9 w-auto rounded-md border border-border bg-surface px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="h-8 w-auto rounded-md border border-border bg-surface px-2 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                   >
                     {currencies.map(c => (
                       <option key={c.code} value={c.code}>
@@ -1071,14 +1085,14 @@ export default function CounterpartyCardPage() {
                     }
                     placeholder="UAH"
                     maxLength={10}
-                    className="h-9 w-24 rounded-md border border-border bg-surface px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="h-8 w-24 rounded-md border border-border bg-surface px-2 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                 )}
               </div>
               {/* Рядок 4: фінансові поля */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">
+                  <label className="text-[13px] text-muted-foreground mb-1 block">
                     Кредитний ліміт
                   </label>
                   <Input
@@ -1088,10 +1102,11 @@ export default function CounterpartyCardPage() {
                     placeholder="0"
                     value={contractForm.creditLimit}
                     onChange={e => setContractForm(f => ({ ...f, creditLimit: e.target.value }))}
+                    className="h-8 text-[13px]"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">
+                  <label className="text-[13px] text-muted-foreground mb-1 block">
                     Відтермінування (днів)
                   </label>
                   <Input
@@ -1106,6 +1121,7 @@ export default function CounterpartyCardPage() {
                         paymentDeferDays: String(Math.floor(Number(e.target.value))),
                       }))
                     }
+                    className="h-8 text-[13px]"
                   />
                 </div>
               </div>
@@ -1457,7 +1473,7 @@ export default function CounterpartyCardPage() {
                     placeholder="Кількість балів"
                     type="number"
                     min="0"
-                    className="w-36"
+                    className="w-36 h-8 text-[13px]"
                   />
                   <Button
                     size="sm"

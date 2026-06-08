@@ -101,6 +101,7 @@ export default function WorkdaysTab() {
           label="Філія"
           value={selectedBranch}
           onChange={e => setSelectedBranch(e.target.value)}
+          className="h-8 text-[13px] py-0.5 px-2 pr-7"
         >
           {branches.map(b => (
             <option key={b.id} value={b.id}>
@@ -131,7 +132,7 @@ export default function WorkdaysTab() {
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-wrap gap-4">
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">
                 Початок роботи
@@ -142,7 +143,7 @@ export default function WorkdaysTab() {
                 onChange={e =>
                   setBranchSettings(s => (s ? { ...s, workStartTime: e.target.value } : s))
                 }
-                className="w-32"
+                className="w-32 h-8 text-[13px]"
               />
             </div>
             <div>
@@ -155,27 +156,27 @@ export default function WorkdaysTab() {
                 onChange={e =>
                   setBranchSettings(s => (s ? { ...s, workEndTime: e.target.value } : s))
                 }
-                className="w-32"
+                className="w-32 h-8 text-[13px]"
               />
             </div>
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1">
-              Тривалість слоту (хв)
-            </label>
-            <Input
-              type="number"
-              min="15"
-              max="240"
-              step="15"
-              value={branchSettings.slotDurationMinutes}
-              onChange={e =>
-                setBranchSettings(s =>
-                  s ? { ...s, slotDurationMinutes: Number(e.target.value) } : s,
-                )
-              }
-              className="w-32"
-            />
+            <div>
+              <label className="block text-[13px] font-medium text-foreground mb-1">
+                Тривалість слоту (хв)
+              </label>
+              <Input
+                type="number"
+                min="15"
+                max="240"
+                step="15"
+                value={branchSettings.slotDurationMinutes}
+                onChange={e =>
+                  setBranchSettings(s =>
+                    s ? { ...s, slotDurationMinutes: Number(e.target.value) } : s,
+                  )
+                }
+                className="w-32 h-8 text-[13px]"
+              />
+            </div>
           </div>
           <Button onClick={() => void saveBranchSettings()} loading={savingBranch}>
             Зберегти

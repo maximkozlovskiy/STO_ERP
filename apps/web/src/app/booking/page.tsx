@@ -244,6 +244,7 @@ export default function BookingPage() {
                   value={form.clientName}
                   onChange={e => setForm(f => ({ ...f, clientName: e.target.value }))}
                   placeholder="Іван Іванченко"
+                  className="h-8 text-[13px]"
                 />
                 <PhoneInput
                   label="Телефон"

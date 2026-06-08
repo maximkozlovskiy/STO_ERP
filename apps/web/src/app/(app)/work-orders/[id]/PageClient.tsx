@@ -1031,6 +1031,7 @@ export default function WorkOrderCardPage() {
               value={inspMileage}
               onChange={e => setInspMileage(e.target.value)}
               placeholder="Поточний пробіг"
+              className="h-8 text-[13px]"
             />
             <div className="space-y-2">
               {inspectionPoints.map((point, i) => (
@@ -1045,6 +1046,7 @@ export default function WorkOrderCardPage() {
                         setInspectionPoints(pts);
                       }}
                       placeholder={point.unit || 'значення'}
+                      className="h-8 text-[13px]"
                     />
                   </div>
                   <div className="col-span-5">
@@ -1058,7 +1060,7 @@ export default function WorkOrderCardPage() {
                         };
                         setInspectionPoints(pts);
                       }}
-                      className="w-full h-9 rounded-lg border border-border bg-input px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="w-full h-8 rounded-lg border border-border bg-input px-2 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="OK">✓ OK</option>
                       <option value="WARN">⚠ Увага</option>
@@ -1181,6 +1183,7 @@ export default function WorkOrderCardPage() {
             <Select
               value={editForm.priority}
               onChange={e => setEditForm(f => ({ ...f, priority: e.target.value }))}
+              className="h-8 text-[13px] py-0.5 px-2 pr-7"
             >
               <option value="LOW">Низький</option>
               <option value="NORMAL">Звичайний</option>
@@ -1195,6 +1198,7 @@ export default function WorkOrderCardPage() {
             <Select
               value={editForm.repairCategory}
               onChange={e => setEditForm(f => ({ ...f, repairCategory: e.target.value }))}
+              className="h-8 text-[13px] py-0.5 px-2 pr-7"
             >
               <option value="">— не вказано —</option>
               <option value="MAINTENANCE">ТО</option>
@@ -1224,6 +1228,7 @@ export default function WorkOrderCardPage() {
               value={editForm.inMileage}
               onChange={e => setEditForm(f => ({ ...f, inMileage: e.target.value }))}
               placeholder="0"
+              className="h-8 text-[13px]"
             />
           </div>
           <div>

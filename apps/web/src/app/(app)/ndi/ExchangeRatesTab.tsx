@@ -192,7 +192,7 @@ export default function ExchangeRatesTab() {
         <p className="text-sm font-medium text-foreground">Автозавантаження курсів НБУ</p>
         <div className="flex items-end gap-3 flex-wrap">
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">
+            <label className="text-[13px] text-muted-foreground mb-1 block">
               Година завантаження (0–23)
             </label>
             <input
@@ -204,7 +204,7 @@ export default function ExchangeRatesTab() {
               onChange={e =>
                 setNbuFetchHour(Math.max(0, Math.min(23, Math.floor(Number(e.target.value)))))
               }
-              className="w-20 px-3 py-2 text-sm border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-20 h-8 px-2 text-[13px] border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
             <p className="text-xs text-muted-foreground mt-1">
               Щодня о {nbuFetchHour}:00 (за Києвом)
@@ -287,7 +287,7 @@ export default function ExchangeRatesTab() {
         <div className="space-y-4">
           {!editingRate && (
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Валюта *</label>
+              <label className="block text-[13px] font-medium text-foreground mb-1">Валюта *</label>
               <SearchCombobox<Currency>
                 value={rateForm.currencyId}
                 displayValue={rateForm.currencyDisplay}
@@ -327,6 +327,7 @@ export default function ExchangeRatesTab() {
               setRateForm({ ...rateForm, date: e.target.value });
               if (rateErrors.date) setRateErrors(p => ({ ...p, date: undefined }));
             }}
+            className="h-8 text-[13px]"
           />
           <Input
             label="Курс (UAH)"
@@ -339,6 +340,7 @@ export default function ExchangeRatesTab() {
               setRateForm({ ...rateForm, rate: e.target.value });
               if (rateErrors.rate) setRateErrors(p => ({ ...p, rate: undefined }));
             }}
+            className="h-8 text-[13px]"
           />
           <Input
             label="Кількість одиниць"
@@ -351,6 +353,7 @@ export default function ExchangeRatesTab() {
               if (rateErrors.coefficient) setRateErrors(p => ({ ...p, coefficient: undefined }));
             }}
             hint="Скільки одиниць валюти відповідають вказаному курсу"
+            className="h-8 text-[13px]"
           />
         </div>
       </Modal>
