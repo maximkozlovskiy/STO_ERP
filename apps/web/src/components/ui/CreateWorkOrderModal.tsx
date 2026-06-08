@@ -371,7 +371,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         companyName: string | null;
         phone?: string | null;
       }[];
-    }>(`/counterparties?q=${encodeURIComponent(q)}&limit=20`);
+    }>(`/counterparties?q=${encodeURIComponent(q)}&types=CLIENT&types=BOTH&limit=20`);
     return r.items.map(c => ({
       id: c.id,
       primary: displayCounterpartyName(c),
@@ -1677,7 +1677,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         searchPlaceholder="Ім'я, телефон, держ. номер авто..."
         fetchItems={q =>
           apiFetch<{ items: Counterparty[] }>(
-            `/counterparties?q=${encodeURIComponent(q)}&limit=20`,
+            `/counterparties?q=${encodeURIComponent(q)}&types=CLIENT&types=BOTH&limit=20`,
           ).then(r => r.items.map(c => ({ ...c, primary: displayCounterpartyName(c) })))
         }
         onSelect={cp => {
