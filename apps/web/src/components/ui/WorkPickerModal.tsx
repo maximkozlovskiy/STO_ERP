@@ -6,11 +6,8 @@ import { Modal } from './modal';
 import { Input } from './input';
 import { Spinner } from './spinner';
 import { cn } from '@/lib/utils';
-
-interface WorkCategory {
-  id: string;
-  name: string;
-}
+import { CategoryTree, collectDescendantIds } from './category-tree';
+import type { CategoryNode } from './category-tree';
 
 export interface WorkPickerItem {
   id: string;
@@ -32,8 +29,8 @@ interface Props {
 
 export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) {
   const [query, setQuery] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [categories, setCategories] = useState<WorkCategory[]>([]);
+  const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
+  const [categories, setCategories] = useState<CategoryNode[]>([]);
   const [items, setItems] = useState<WorkPickerItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -44,54 +41,60 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
   useEffect(() => {
     if (!open || categoriesLoadedRef.current) return;
     categoriesLoadedRef.current = true;
-    apiFetch<WorkCategory[] | { items: WorkCategory[] }>('/work-categories')
-      .then(r => setCategories(Array.isArray(r) ? r : (r.items ?? [])))
+    apiFetch<CategoryNode[]>('/work-categories')
+      .then(r => setCategories(Array.isArray(r) ? r : []))
       .catch(() => {});
   }, [open]);
 
-  const fetchWorks = useCallback((q: string, catId: string) => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    const reqId = ++reqRef.current;
-    setLoading(true);
-    setError('');
-    timeoutRef.current = setTimeout(
-      () => {
-        const params = new URLSearchParams({ limit: '50' });
-        if (q) params.set('q', q);
-        if (catId) params.set('categoryId', catId);
-        apiFetch<{ items: WorkPickerItem[] }>(`/works?${params}`)
-          .then(r => {
-            if (reqId !== reqRef.current) return;
-            setItems(Array.isArray(r.items) ? r.items : []);
-            setLoading(false);
-          })
-          .catch((e: unknown) => {
-            if (reqId !== reqRef.current) return;
-            setError(e instanceof Error ? e.message : 'Помилка завантаження');
-            setLoading(false);
-          });
-      },
-      q ? 300 : 0,
-    );
-  }, []);
+  const fetchWorks = useCallback(
+    (q: string, catId: string | null) => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      const reqId = ++reqRef.current;
+      setLoading(true);
+      setError('');
+      timeoutRef.current = setTimeout(
+        () => {
+          const params = new URLSearchParams({ limit: '50' });
+          if (q) params.set('q', q);
+          if (catId) {
+            const ids = collectDescendantIds(categories, catId);
+            ids.forEach(id => params.append('categoryIds[]', id));
+          }
+          apiFetch<{ items: WorkPickerItem[] }>(`/works?${params}`)
+            .then(r => {
+              if (reqId !== reqRef.current) return;
+              setItems(Array.isArray(r.items) ? r.items : []);
+              setLoading(false);
+            })
+            .catch((e: unknown) => {
+              if (reqId !== reqRef.current) return;
+              setError(e instanceof Error ? e.message : 'Помилка завантаження');
+              setLoading(false);
+            });
+        },
+        q ? 300 : 0,
+      );
+    },
+    [categories],
+  );
 
   useEffect(() => {
     if (!open) {
       setQuery('');
-      setCategoryId('');
+      setSelectedCatId(null);
       setItems([]);
       setError('');
       return;
     }
-    fetchWorks('', '');
+    fetchWorks('', null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    fetchWorks(query, categoryId);
+    fetchWorks(query, selectedCatId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, categoryId]);
+  }, [query, selectedCatId]);
 
   useEffect(() => {
     return () => {
@@ -110,10 +113,10 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
           onChange={e => setQuery(e.target.value)}
         />
 
-        {/* Body: results left + categories right */}
-        <div className="flex gap-3 min-h-0" style={{ height: '420px' }}>
+        {/* Body: results left + category tree right */}
+        <div className="flex gap-0 min-h-0" style={{ height: '420px' }}>
           {/* Results */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto pr-3">
             {error && (
               <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2 mb-2">
                 {error}
@@ -126,7 +129,7 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
             ) : items.length === 0 ? (
               <p className="text-sm text-muted-foreground py-10 text-center">Нічого не знайдено</p>
             ) : (
-              <div className="space-y-1 pr-1">
+              <div className="space-y-1">
                 {items.map(item => {
                   const selected = item.id === selectedId;
                   return (
@@ -160,41 +163,16 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
             )}
           </div>
 
-          {/* Category sidebar */}
-          <div className="w-44 shrink-0 border-l border-border overflow-y-auto pl-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted mb-2">
-              Категорія
-            </p>
-            <div className="space-y-0.5">
-              <button
-                type="button"
-                onClick={() => setCategoryId('')}
-                className={cn(
-                  'w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors',
-                  categoryId === ''
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-foreground hover:bg-secondary',
-                )}
-              >
-                Всі категорії
-              </button>
-              {categories.map(c => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCategoryId(c.id)}
-                  className={cn(
-                    'w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors',
-                    categoryId === c.id
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-foreground hover:bg-secondary',
-                  )}
-                >
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Category tree sidebar */}
+          <CategoryTree
+            tree={categories}
+            selectedId={selectedCatId}
+            onSelect={setSelectedCatId}
+            label="Категорії робіт"
+            storageKey="sto:cat-tree:work-picker"
+            hideInactive
+            className="ml-0 border-l rounded-none rounded-r-xl"
+          />
         </div>
       </div>
     </Modal>
