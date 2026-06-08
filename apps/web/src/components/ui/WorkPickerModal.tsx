@@ -40,14 +40,23 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
   const categoriesLoadedRef = useRef(false);
   useEffect(() => {
     if (!open || categoriesLoadedRef.current) return;
-    categoriesLoadedRef.current = true;
+    categoriesLoadedRef.current = true; // prevent concurrent fetches
     let cancelled = false;
-    apiFetch<CategoryNode[]>('/work-categories')
+    apiFetch<CategoryNode[] | { items: CategoryNode[] }>('/work-categories')
       .then(r => {
         if (cancelled) return;
-        setCategories(Array.isArray(r) ? r : []);
+        // Tolerate both array-of-categories and { items, total } envelope
+        const arr = Array.isArray(r)
+          ? r
+          : Array.isArray((r as { items?: CategoryNode[] }).items)
+            ? (r as { items: CategoryNode[] }).items
+            : [];
+        setCategories(arr);
       })
-      .catch(() => {});
+      .catch(() => {
+        // Bug #387: allow retry on next open after failure
+        if (!cancelled) categoriesLoadedRef.current = false;
+      });
     return () => {
       cancelled = true;
     };

@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+[pending tester] fix(tester): Bugs #387-#389 — Work/GoodPickerModal retry + test coverage
 8e88f31a fix(review): prevent setState-on-unmounted in Work/GoodPickerModal
 ee938240 feat(picker): replace flat category sidebar with hierarchical CategoryTree
 4b930538 fix(tester): Bugs #385-#386 — EntityPickerField focus + CreateWorkOrderModal test
@@ -21,6 +22,11 @@ cd3a67c5 fix(review): work-order liftId — validate tenant FK + add index + syn
 eb929140 feat(work-orders): add inline works and goods tables to CreateWorkOrderModal
 Дата: 2026-06-08
 TypeScript: api ✅ 0 errors, web ✅ 0 errors
+Latest tester: 2026-06-08 (FOCUSED, HEAD 8e88f31a) — Work/GoodPickerModal QA: 3 bugs.
+  • Bug #387 [MEDIUM] categoriesLoadedRef.current = true виставлений ПЕРЕД fetch; на .catch() silent-swallow → стале guard блокує retry на наступних відкриттях; user змушений Ctrl+R. Fix: skінути ref на catch, якщо !cancelled → next-open retry.
+  • Bug #388 [LOW] new code втратив `{ items }`-fallback з попередньої версії; backend сьогодні array, але repo-конвенція list-endpoint → { items, total } робить силент-breakage реальним. Fix: відновити двосторонній parsing з типом `CategoryNode[] | { items: CategoryNode[] }`.
+  • Bug #389 [LOW] немає component spec → регресія схема-зміни picker silent-passes CI. Fix: WorkPickerModal.test.tsx + GoodPickerModal.test.tsx (15 кейсів: tree renders, hideInactive cascade, collectDescendantIds → categoryIds[]/goodCategoryIds[] URL params, state reset on close, Bug #387 retry-after-failure, Bug #388 envelope parsing, initial fetch без category filter).
+  Web tests: 34 files / 358 (was 32/343). TS api ✅ web ✅.
 Latest review: 2026-06-08 (FOCUSED, HEAD ee938240) — Work/GoodPickerModal CategoryTree refactor: 0 CRITICAL, 2 IMPORTANT memory-leak fixes (8e88f31a) — (a) categories useEffect без cancelled-flag → setCategories на unmounted (Modal unmounts via useAnimatedPresence); (b) !open reset branch не bump reqRef і не очищує pending debounce timeoutRef → in-flight /works|/goods response викликає setItems на unmounted. Fix: cancelled flag для categories; reqRef++, clearTimeout, setLoading(false) у reset branch. 0 SUGGESTION (style={{height:'420px'}} — pre-existing, не регресія).
 Latest review (prev): 2026-06-08 (FOCUSED, HEAD cd3a67c5) — WO liftId: 2 CRITICAL (cross-tenant FK у create/update — додано Promise.all guard + findFirst guard; missing @@index([orgId, liftId]) — додано в schema + migration), 2 IMPORTANT (clone() не зберігав liftId; PageClient.WorkOrderDetail без liftId/liftName), 1 SUGGESTION (LiftStatus filter у UI — не критично).
 Latest tester: 2026-06-08 (FOCUSED, HEAD 4b930538) — EntityPickerField onSearch + Variant B add-row sweep: 2 bugs found + fixed. Bug #385 [MEDIUM, release-blocker]: CreateWorkOrderModal.test.tsx (Bug #382 regression-guard) was baseline-red — asserted section "+ Додати" buttons disabled, but Variant B (7b58af2c) made them always-enabled toggles. Rewritten to assert new pattern (section buttons enabled, row-level "Зберегти рядок" Plus disabled until work+employee selected). Bug #386 [LOW]: `EntityPickerField.handleClear()` called `inputRef.current?.focus()` while input was NOT mounted (display still truthy → span rendered) → optional chaining swallowed null → no focus → user had to click input to start new search. Wrapped in `requestAnimationFrame` so focus runs after React commits the input-mount. Added 17-case regression-guard `entity-picker-field.test.tsx` (search debounce, race-protection via reqIdRef token, keyboard nav Arrow/Enter/Escape, select clears query, clear/pick buttons, hidePick, disabled, ariaLabel, no-input-without-onSearch mode). Web tests: 32 files / 343 (was 31/326 + 1 stale test fixed + 17 new).

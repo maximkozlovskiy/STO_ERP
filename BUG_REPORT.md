@@ -11807,3 +11807,148 @@ if (searchEnabled) {
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-08 — Work/GoodPickerModal CategoryTree refactor QA (HEAD 8e88f31a)
+
+**Scope:** регресія-аудит після двох комітів:
+
+- `ee938240` — feat: replace flat sidebar with CategoryTree in WorkPickerModal + GoodPickerModal
+- `8e88f31a` — fix: memory leak (cancelled flag + reqRef reset on close)
+
+**Files:** `apps/web/src/components/ui/WorkPickerModal.tsx`, `apps/web/src/components/ui/GoodPickerModal.tsx`, `apps/web/src/components/ui/category-tree.tsx` (consumer-only).
+
+**Baseline:** TypeScript 0 errors. Vitest 32/32 files, 343/343 tests passed.
+
+---
+
+## Bug #387 — MEDIUM — `categoriesLoadedRef.current = true` встановлюється ПЕРЕД fetch → silent error never retried
+
+**Файл:** `apps/web/src/components/ui/WorkPickerModal.tsx:41-54`, `apps/web/src/components/ui/GoodPickerModal.tsx:42-55`
+**Severity:** MEDIUM (silent UX degradation, requires full page reload)
+**Категорія:** frontend / стани / error recovery
+
+**Опис:** При першому відкритті picker-модалки запит `/work-categories` (або `/good-categories`) ініціюється з guard:
+
+```tsx
+const categoriesLoadedRef = useRef(false);
+useEffect(() => {
+  if (!open || categoriesLoadedRef.current) return;
+  categoriesLoadedRef.current = true; // ← виставлено ПЕРЕД fetch
+  let cancelled = false;
+  apiFetch<CategoryNode[]>('/work-categories')
+    .then(r => {
+      if (cancelled) return;
+      setCategories(Array.isArray(r) ? r : []);
+    })
+    .catch(() => {}); // ← силент-swallow помилки
+  return () => {
+    cancelled = true;
+  };
+}, [open]);
+```
+
+Сценарій падіння:
+
+1. Користувач відкриває picker → `categoriesLoadedRef.current = true` (guard виставлений)
+2. Запит `/work-categories` падає (network drop, 500, JWT expired, timeout)
+3. `.catch(() => {})` мовчки ковтає помилку → `categories` залишається `[]`
+4. Користувач закриває модалку → `categories` НЕ скидається на close (intentional persistence)
+5. Користувач знову відкриває → `categoriesLoadedRef.current === true` → useEffect виходить раніше
+6. **Дерево категорій назавжди порожнє** до перезавантаження сторінки (Ctrl+R)
+
+Користувач бачить «Категорій не знайдено» у sidebar і не має способу запустити повторну спробу, не виходячи з потоку CreateWorkOrder.
+
+**Очікувана поведінка:** На другому відкритті модалки після помилки — повторна спроба завантаження. Якщо успіх — дерево рендериться.
+
+**Фактична поведінка:** Sidebar порожній назавжди; повна перезагрузка сторінки — єдиний spell.
+
+**Фікс:** Зберегти guard для concurrent-prevention, але скинути ref на error → next-open retry:
+
+```tsx
+categoriesLoadedRef.current = true;
+let cancelled = false;
+apiFetch<CategoryNode[]>('/work-categories')
+  .then(r => {
+    if (cancelled) return;
+    setCategories(Array.isArray(r) ? r : []);
+  })
+  .catch(() => {
+    if (!cancelled) categoriesLoadedRef.current = false; // ← allow retry on next open
+  });
+```
+
+Регресія-guard: component spec `WorkPickerModal.test.tsx` / `GoodPickerModal.test.tsx` кейс `re-opens after categories fetch error → triggers second fetch`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #388 — LOW — `setCategories(Array.isArray(r) ? r : [])` втратив `{ items }` fallback з попередньої версії
+
+**Файл:** `apps/web/src/components/ui/WorkPickerModal.tsx:46-49`, `apps/web/src/components/ui/GoodPickerModal.tsx:47-50`
+**Severity:** LOW (захист від майбутнього contract drift)
+**Категорія:** frontend / API contract resilience
+
+**Опис:** Попередня версія коду толерувала **обидві** форми відповіді:
+
+```tsx
+apiFetch<WorkCategory[] | { items: WorkCategory[] }>('/work-categories').then(r =>
+  setCategories(Array.isArray(r) ? r : (r.items ?? [])),
+);
+```
+
+Нова версія повертає тільки одну гілку:
+
+```tsx
+apiFetch<CategoryNode[]>('/work-categories').then(r => setCategories(Array.isArray(r) ? r : [])); // ← else branch = silent []
+```
+
+Сьогодні backend (`good-categories.controller.ts`, `work-categories.controller.ts`) повертає **голий масив** дерева (`GoodCategoryResponseDto[]`), тому регресія мовчазна.
+
+АЛЕ: у repo діє конвенція «list endpoints → `{ items, total }`» (CLAUDE.md / sto-dev). Якщо колись контролер мігрує на цей формат (для consistency з рештою list-роутів), picker silent-показує «Категорій не знайдено» — `else`-гілка приведе до `[]`.
+
+**Очікувана поведінка:** Захисна обробка обох форм відповіді (як було раніше).
+
+**Фактична поведінка:** Жорстка прив'язка до однієї форми; майбутній контракт-drift = silent breakage.
+
+**Фікс:** Повернути двосторонній parsing:
+
+```tsx
+.then(r => {
+  if (cancelled) return;
+  setCategories(
+    Array.isArray(r) ? r : Array.isArray((r as { items?: CategoryNode[] }).items) ? (r as { items: CategoryNode[] }).items : []
+  );
+})
+```
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #389 — LOW — `WorkPickerModal` / `GoodPickerModal` без regression-guard component spec
+
+**Файл:** `apps/web/src/components/ui/__tests__/` (відсутні тести)
+**Severity:** LOW (test debt)
+**Категорія:** test coverage
+
+**Опис:** Pickers повністю переписані у `ee938240` + `8e88f31a` (flat sidebar → CategoryTree, race-guard на close), АЛЕ жодного component spec не додано. Регресія такого calibrer'у при наступному рефакторингу пройде CI зеленою:
+
+- `selectedCatId` після close має скидатись на `null`
+- `query` після close має скидатись на `''`
+- `collectDescendantIds` має використовуватись для filtering hierarchy
+- `categoriesLoadedRef` має дозволяти retry після failure (Bug #387 regression-guard)
+- API request має використовувати `categoryIds[]` (works) / `goodCategoryIds[]` (goods), не legacy `categoryId`
+
+**Фікс:** Додано `WorkPickerModal.test.tsx` + `GoodPickerModal.test.tsx` що покривають:
+
+1. Дерево категорій рендериться після відкриття
+2. Вибір root-категорії додає `categoryIds[]=parent&categoryIds[]=child` (collectDescendantIds)
+3. Inactive категорії (`isActive=false`) приховані (`hideInactive` prop)
+4. Close → re-open скидає `query` та `selectedCatId`
+5. Categories fetch error → next open retries (Bug #387 regression)
+6. `Array.isArray` parsing працює і для `[]`, і для `{ items: [] }` (Bug #388 regression)
+
+**Статус:** [x] виправлено
+
+---
