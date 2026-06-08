@@ -557,6 +557,7 @@ done
 - [ ] **Dead `/X/new` маршрут у keyboard shortcut / Command Palette (Bug #354):** будь-який `router.push('/<resource>/new')` у `apps/web/src/hooks/useGlobalShortcuts.ts` АБО `href: '/<resource>/new'` у `apps/web/src/lib/commands.ts` — перевірити що відповідна директорія `apps/web/src/app/<group>/<resource>/new/` ІСНУЄ. Якщо resource має create-flow через модалку (`<page.tsx>` → `setModal(true)`) і НЕ має окремої `/new` сторінки → `[id]` dynamic route ловить `'new'` як id → `apiFetch('/<resource>/new')` → 404/broken detail page. Grep для виявлення: `grep -rn "router\.push('/[^']*/new')\|href:\s*'/[^']*/new'" apps/web/src --include="*.ts" --include="*.tsx"` → для кожного match: `test -d apps/web/src/app/\(*\)/$(echo URL | cut -d/ -f2)/new && echo OK || echo DEAD`. Фікс-pattern: `?action=new` query param + `useSearchParams` listener у page.tsx + ОБОВ'ЯЗКОВО `<Suspense fallback={null}>` обгортка (Next.js static-export вимагає для `useSearchParams`). Severity HIGH (feature декларована, маршрут broken).
 - [ ] **`usePaginatedList` queryKey shape ↔ `xKeys.list()` factory shape mismatch (Bug #355 — Bug #281 шаблон, глибинна варіація):** будь-який shared helper-hook (`usePaginatedList`, `useResourceList`, custom `useXXX`) що приймає `{ queryKey: 'X' }` option і будує `queryKey: [key, filters]` — ОБОВ'ЯЗКОВО має МАТЧИТИ shape парного factory. Стандарт `xKeys.list(filters)` = `[...xKeys.all, 'list', filters]` (3-element) → hook має `queryKey: [key, 'list', filters]`. Без `'list'` як другого елемента TopShell prefetch (що використовує factory) потрапляє у dead cache slot для ВСІХ ресурсів які споживають helper. Grep: `grep -rn "queryKey:\s*\[.*filters\]" apps/web/src/hooks/api/ --include="*.ts"` — кожен match без `'list'` як другого елемента та з парним `Keys.list()` factory у тому ж файлі = bug. Regression-guard: тест через `qc.getQueryCache().getAll()` + асерт `queryKey.toEqual([key, 'list', filters])`. Severity MEDIUM (silent — кожна nav робить FETCH вдруге, performance тільки). Виявляється ТІЛЬКИ якщо порівняти shape helper-hook vs factory shape — code review зазвичай пропускає.
 - [ ] **TopShell prefetch payload-shape ↔ page first-mount filter object (Bug #356 — Bug #281 шаблон, sortBy/dateFrom defaults):** TopShell `prefetchQuery({ queryKey: xKeys.list({...}) })` має передавати ПОВНИЙ filter object що сторінка передає на first mount. Поля що часто пропускаються у prefetch: (а) `sortBy/sortDir` — додаються через `useSortState('createdAt', 'desc')` хук на сторінці; (б) `dateFrom/dateTo` — додаються через `useState(() => kyivToday())` initializer; (в) специфічні фільтри `employeeId`/`repairCategory`/`type` що сторінка передає як `undefined`. Кожен новий фільтр на сторінці потребує парного оновлення PREFETCH_MAP у `TopShell.tsx`. Grep: для кожного `prefetchQuery({ queryKey: xKeys.list({...}) })` у TopShell — знайти споживача сторінки + порівняти ВСІ keys filter object. Якщо count keys у TopShell < count keys у page-hook call → bug. Альтернатива (захищеніший паттерн): експортувати `defaultXFilters()` з hook-файлу і викликати ОБИДВІ сторони з неї. Regression-guard: integration тест через `qc.getQueryCache().getAll()` після TopShell mount + page mount → асерт `cache.length === 1` (один slot, не два). Severity MEDIUM (silent — prefetch не hit).
+- [ ] **Imperative `.focus()`/`.scrollIntoView()`/`.select()` на conditionally-rendered ref у click-handler (Bug #386):** будь-який `xxxRef.current?.focus()` (або `.select()`, `.scrollIntoView()`, `.click()`) викликаний у click/event handler ТОГО Ж компонента — перевірити чи ref належить **умовно-рендереному** елементу (`{cond && <input ref={xxxRef}/>}` або `cond ? <input ref={xxxRef}/> : <span/>`). Якщо так і handler змінює state-умову яка контролює mount/unmount цього ref-елемента (наприклад `setForm(f => ({...f, x: ''}))` → display='' → input mounted) — `?.focus()` ВИКОНУЄТЬСЯ ДО React commit → ref still null → optional-chaining ховає → focus loss. Фікс: обгорнути у `requestAnimationFrame(() => xxxRef.current?.focus())` АБО використати declarative `useEffect([cond])` що ставить focus коли cond flip-нулась. Grep: `grep -rnE "[a-zA-Z]Ref\.current\?\.(focus|select|scrollIntoView|click)" apps/web/src/components/ui --include="*.tsx" -B 3` → для кожного match перевірити чи ref-елемент рендериться умовно. Severity LOW (UX-дрібниця) до HIGH (для `.scrollIntoView` у list-modal — модал виглядає ламаним). Регресія-guard: component-test `await user.click(clearBtn); expect(input).toHaveFocus();`.
 - [ ] **Review-fix completeness audit для крос-файлових патернів (Bug #341):** будь-який review-fix commit `fix(review): replace X with Y` що чіпає **N файлів** (наприклад заміна `.catch(() => {})` на `console.warn`) — після кожного такого commit пройти **ВЕСЬ codebase** на той самий патерн і переконатись що review знайшов УСІ файли. Grep-команда має бути така ж яка вживалась у review, але БЕЗ filter по changed-files. Типові пропуски: (а) сторінки `[id]/PageClient.tsx` коли review працював зі сторінкою у root (`/X/page.tsx`); (б) tabbed-content (`*Tab.tsx`) поза основним route файлом; (в) sub-components всередині той самий сторінки; (г) shared hooks/utilities у `apps/web/src/hooks` чи `lib`. Парний сигнал у git log: `git log --oneline | grep "fix(review)" | head -3` — для останнього review-fix-commit взяти grep-паттерн з нього (наприклад `\.catch(() => {})`) і виконати `grep -rn "<pattern>" apps/web/src --include="*.tsx" --include="*.ts" | grep -v <вже-виправлені>` → нові match = upskipped review (BUG нової tester-сесії). Виключення з cleanup: легітимні випадки документуються у самому місці (toast-double-protection, optional PWA SW, fire-and-forget telemetry) — тестер відрізняє за наявністю парного user-feedback каналу (toast/setError/console.warn вище у фукнції). Severity: успадковує severity оригінального review-fix bug-у. Grep шаблон: `git show --stat <last-review-commit> -- '*.tsx' '*.ts' | awk '/^ /{print $1}'` — список файлів review-fix; для кожного знайденого згодом match → перевірити чи серед них. Якщо ні → bug.
 
 ---
@@ -945,6 +946,79 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-08 — Imperative `.focus()` call на ref що буде змонтований ТІЛЬКИ після наступного render → optional-chaining no-op, focus loss (Bug #386) — frontend / conditional-rendered ref
+
+**Сигнал:** Будь-який `xxxRef.current?.focus()` (або `.scrollIntoView()`, `.select()`, `.click()`) у click/event handler того ж компонента, де elem-ref належить **умовно-рендереному** елементу (`{cond && <input ref={xxxRef}/>}` або `cond ? <input ref={xxxRef}/> : <span/>`). Click handler змінює state ТАК щоб `cond` flip-нувся (`!cond → cond`), але REF до того елемента — null НА МОМЕНТ ВИКЛИКУ. Optional-chaining `?.focus()` тихо ховає null-ref → focus не запитано → після re-render елемент змонтований, але без focus → користувач має натиснути ще раз.
+
+**Реальний приклад:** `EntityPickerField.handleClear()`:
+
+```tsx
+const handleClear = () => {
+  setQuery('');
+  setItems([]);
+  setOpen(false);
+  onClear(); // → parent setForm makes display='' → next render mounts the input
+  inputRef.current?.focus(); // <-- still NULL at this moment (input was not in DOM)
+};
+```
+
+```bash
+# Поточний grep що ловить паттерн:
+grep -rn "Ref.current?\.\(focus\|select\|scrollIntoView\|click\)\b" apps/web/src --include="*.tsx" -B 5 | \
+  grep -B 1 -A 5 "Ref.current?\." | grep -E "set[A-Z]|onClear\|onClose"
+# Для кожного match — перевірити чи ref-елемент рендериться **умовно**:
+grep -rn "ref={[a-zA-Z]*Ref}\b" apps/web/src/components/ui --include="*.tsx" -B 3 | \
+  grep -E "{.*&&.*<|cond\s*\?\s*<"
+```
+
+**Причина виникнення:** Розробник пише imperative-action як «callback одразу після setState» — мисленнєва модель «після setState всі state-зміни застосовані». Реальність: React batch state updates, commit ПІСЛЯ функції handler-а. Між викликом handler-а і commit-ом DOM ще СТАРИЙ → conditional-rendered елемент не існує. `?.focus()` робить null-safe, але невидимо ховає logical bug.
+
+**Підхід до виявлення:**
+
+1. Для кожного компонента в `apps/web/src/components/ui/` що має умовний рендер input/textarea/button:
+   - Знайти всі `xxxRef.current?.<action>()` виклики.
+   - Перевірити чи handler у тому ж scope змінює state-умову яка контролює mount/unmount ref-елемента.
+   - Якщо так і дія викликана ДО re-render → bug.
+2. Component-test шаблон: `await user.click(clearBtn); expect(input).toHaveFocus();` — fail-test якщо raw focus call.
+
+**Підхід до фіксу:**
+
+```tsx
+// Варіант 1 (мінімальний): requestAnimationFrame defers focus до next paint
+// (React commits між current frame і RAF → елемент змонтований)
+const handleClear = () => {
+  setQuery('');
+  setOpen(false);
+  onClear();
+  if (searchEnabled) {
+    // gate щоб не фокусувати при no-search mode
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+};
+
+// Варіант 2 (декларативний): useEffect що реагує на новий display='' → focus
+useEffect(() => {
+  if (justClearedRef.current && searchEnabled) {
+    inputRef.current?.focus();
+    justClearedRef.current = false;
+  }
+}, [display, searchEnabled]);
+```
+
+Перевага RAF: zero-state-overhead, не потребує useEffect. Перевага useEffect: типова React-патерн, тестується через rerender.
+
+**Severity:** LOW (UX-дрібниця, user робить додатковий клік). HIGH якщо дія була `scrollIntoView` у списку-modal — модал виглядає ламаним коли scroll не виконано.
+
+**Де шукати ще:**
+
+- Будь-який «X-ricon» button що замінює елемент (toggle inline-edit ↔ display-text).
+- `useEffect` що чекає `open=true` → focus на input того ж компонента — той самий паттерн якщо input умовно рендериться.
+- `onCloseDetail`/`onCancelEdit` що повертає до search/list view — focus на search field.
+- Tab-switcher який унмаунтить input у попередньому tab і потребує focus на новому.
+- DateTimePickerInput coffee (Bug #378-related) — picker dialog мав ref на годинному `<select>` що рендериться умовно за `step==='hour'`.
+
+---
 
 ### 2026-06-08 — Soft-delete `remove()` НЕ каскадить на 1:1 related @unique tables → re-create блокується pre-check ConflictException (Bug #373) — backend / soft-delete consistency
 

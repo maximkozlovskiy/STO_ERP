@@ -9,18 +9,19 @@
 ## Останній commit
 
 ```
+4b930538 fix(tester): Bugs #385-#386 — EntityPickerField focus + CreateWorkOrderModal test
+c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
+7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 cd3a67c5 fix(review): work-order liftId — validate tenant FK + add index + sync frontend interface
 5d422345 feat(work-orders): add liftId field to WorkOrder — DB, API, UI
-(docs) docs/PHASES.md + MemoryManual.md — фаза 24 + CreateWorkOrderModal секція
 0f22a1f5 fix(tester): Bugs #381-#384 — CreateWorkOrderModal safety + validation
 4c2e32a9 fix(review): harden CreateWorkOrderModal — partial-failure safety + a11y + locale-aware parsing
 eb929140 feat(work-orders): add inline works and goods tables to CreateWorkOrderModal
-2aa7556  docs(skills): add 3 new approaches to sto-optimize
-14058c2c perf(optimize): drop redundant AuthAccount index + parallelize seed + memo CheckboxList + passive listeners
 Дата: 2026-06-08
 TypeScript: api ✅ 0 errors, web ✅ 0 errors
 Latest review: 2026-06-08 (FOCUSED, HEAD cd3a67c5) — WO liftId: 2 CRITICAL (cross-tenant FK у create/update — додано Promise.all guard + findFirst guard; missing @@index([orgId, liftId]) — додано в schema + migration), 2 IMPORTANT (clone() не зберігав liftId; PageClient.WorkOrderDetail без liftId/liftName), 1 SUGGESTION (LiftStatus filter у UI — не критично).
-Latest tester: 2026-06-08 (FOCUSED, HEAD 0f22a1f5) — 4 bugs: #381 close-while-saving guard, #382 dup-row guard, #383 qty/price pre-validation, #384 half-typed row warning. Web tests: 31 files / 326 (was 30/323 + 3 new regression guards).
+Latest tester: 2026-06-08 (FOCUSED, HEAD 4b930538) — EntityPickerField onSearch + Variant B add-row sweep: 2 bugs found + fixed. Bug #385 [MEDIUM, release-blocker]: CreateWorkOrderModal.test.tsx (Bug #382 regression-guard) was baseline-red — asserted section "+ Додати" buttons disabled, but Variant B (7b58af2c) made them always-enabled toggles. Rewritten to assert new pattern (section buttons enabled, row-level "Зберегти рядок" Plus disabled until work+employee selected). Bug #386 [LOW]: `EntityPickerField.handleClear()` called `inputRef.current?.focus()` while input was NOT mounted (display still truthy → span rendered) → optional chaining swallowed null → no focus → user had to click input to start new search. Wrapped in `requestAnimationFrame` so focus runs after React commits the input-mount. Added 17-case regression-guard `entity-picker-field.test.tsx` (search debounce, race-protection via reqIdRef token, keyboard nav Arrow/Enter/Escape, select clears query, clear/pick buttons, hidePick, disabled, ariaLabel, no-input-without-onSearch mode). Web tests: 32 files / 343 (was 31/326 + 1 stale test fixed + 17 new).
+Latest tester (prev): 2026-06-08 (FOCUSED, HEAD 0f22a1f5) — 4 bugs: #381 close-while-saving guard, #382 dup-row guard, #383 qty/price pre-validation, #384 half-typed row warning. Web tests: 31 files / 326 (was 30/323 + 3 new regression guards).
 
 ### sto-tester cycle (2026-06-08) — CreateWorkOrderModal (Bugs #381-#384)
 
