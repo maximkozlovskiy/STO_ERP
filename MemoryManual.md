@@ -9,6 +9,48 @@
 ## Останній commit
 
 ```
+2aa7556  docs(skills): add 3 new approaches to sto-optimize
+14058c2c perf(optimize): drop redundant AuthAccount index + parallelize seed + memo CheckboxList + passive listeners
+Дата: 2026-06-08
+TypeScript: api ✅ 0 errors, web ✅ 0 errors
+
+### sto-optimize cycle (2026-06-08) — outcome
+
+Знайдено 4 проблеми, виправлено 4:
+
+1. AuthAccount: redundant @@index([orgId, email]) поверх @@unique([orgId, email])
+   - Унікальна constraint вже створює btree-індекс що покриває equality lookup + uniqueness.
+   - Видалено @@index зі schema, виконано DROP INDEX auth_accounts_orgId_email_idx у DB.
+   - Impact: -1 index write на кожен AuthAccount INSERT/UPDATE.
+
+2. seed.ts: 2 послідовних findFirst → Promise.all
+   - catEngine + catSus (WorkCategory by code) тепер паралельно. -1 RTT.
+
+3. EmployeeEditModal: re-renders при typing
+   - CheckboxList обгорнуто у memo().
+   - 4 inline onChange → useCallback з [dirty.markDirty] deps.
+   - flatCats = flattenTree(workCategories) → useMemo([workCategories]).
+   - Impact: при typing у name/email — CheckboxList діти не re-renderяться.
+
+4. datetime-picker-input.tsx: scroll/resize listeners не passive
+   - addEventListener('scroll', h, true) → addEventListener('scroll', h, { capture: true, passive: true }).
+   - Impact: scroll smoothness на mobile/slow devices не блокується portal-dropdown handler'ом.
+
+Verified non-issues:
+- employees.service.findAll: include з select-narrowing вже оптимальний (zoneId/liftId/...).
+- employees.service.remove: $transaction з updateMany + count check — race-safe pattern.
+- CalendarSlotModal effects: cpPhone/vehicles мають AbortController + cancelled guards.
+- EmployeeEditModal Promise.all 4 ref-fetches: документований pattern "warm cache + refresh".
+
+Накопичені підходи (нові у sto-optimize SKILL.md):
+- Redundant @@index([X]) поверх @@unique([X]) — Prisma + pg_indexes audit.
+- passive:true для scroll/resize у portal-dropdown компонентах.
+- memo() без stable handler refs у list-item рендерерах.
+
+---
+
+### Попередній commit (контекст)
+
 fb394b3c fix(tester): Bugs #373-#380 — employees soft-delete cascade + datetime picker + seed
    • #373 [HIGH] employees.remove(): каскад soft-delete на AuthAccount у
      $transaction. Без цього re-create з тим же loginEmail після видалення
