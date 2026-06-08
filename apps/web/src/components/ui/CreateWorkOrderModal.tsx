@@ -752,19 +752,19 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 </colgroup>
                 <thead>
                   <tr className="border-b border-border bg-secondary/40">
-                    <th className="px-3 py-1.5 text-left text-[11px] font-medium text-muted-foreground">
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Назва роботи
                     </th>
-                    <th className="px-2 py-1.5 text-left text-[11px] font-medium text-muted-foreground">
+                    <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Виконавець
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
+                    <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Год
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
+                    <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Ціна, ₴
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
+                    <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Сума, ₴
                     </th>
                     <th />
@@ -835,7 +835,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                             </td>
                             <td className="px-2 py-1.5">
                               <Input
-                                label="Год"
+                                placeholder="0"
                                 type="number"
                                 value={editingLine.normoHours}
                                 onChange={e =>
@@ -847,7 +847,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                             </td>
                             <td className="px-2 py-1.5">
                               <Input
-                                label="Ціна, ₴"
+                                placeholder="0"
                                 type="number"
                                 value={editingLine.price}
                                 onChange={e =>
@@ -988,7 +988,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       </td>
                       <td className="px-2 py-1.5">
                         <Input
-                          label="Год"
+                          placeholder="0"
                           type="number"
                           value={newLine.normoHours}
                           onChange={e => setNewLine(l => ({ ...l, normoHours: e.target.value }))}
@@ -998,7 +998,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       </td>
                       <td className="px-2 py-1.5">
                         <Input
-                          label="Ціна, ₴"
+                          placeholder="0"
                           type="number"
                           value={newLine.price}
                           onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
@@ -1096,19 +1096,19 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 </colgroup>
                 <thead>
                   <tr className="border-b border-border bg-secondary/40">
-                    <th className="px-3 py-1.5 text-left text-[11px] font-medium text-muted-foreground">
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Назва товару
                     </th>
-                    <th className="px-2 py-1.5 text-left text-[11px] font-medium text-muted-foreground">
+                    <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Склад
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
+                    <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       К-сть
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
+                    <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Ціна, ₴
                     </th>
-                    <th className="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">
+                    <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Сума, ₴
                     </th>
                     <th />
@@ -1177,7 +1177,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                             </td>
                             <td className="px-2 py-1.5">
                               <Input
-                                label="К-сть"
+                                placeholder="0"
                                 type="number"
                                 value={editingPart.quantity}
                                 onChange={e =>
@@ -1189,7 +1189,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                             </td>
                             <td className="px-2 py-1.5">
                               <Input
-                                label="Ціна, ₴"
+                                placeholder="0"
                                 type="number"
                                 value={editingPart.price}
                                 onChange={e =>
@@ -1332,7 +1332,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       </td>
                       <td className="px-2 py-1.5">
                         <Input
-                          label="К-сть"
+                          placeholder="0"
                           type="number"
                           value={newPart.quantity}
                           onChange={e => setNewPart(p => ({ ...p, quantity: e.target.value }))}
@@ -1342,7 +1342,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       </td>
                       <td className="px-2 py-1.5">
                         <Input
-                          label="Ціна, ₴"
+                          placeholder="0"
                           type="number"
                           value={newPart.price}
                           onChange={e => setNewPart(p => ({ ...p, price: e.target.value }))}
