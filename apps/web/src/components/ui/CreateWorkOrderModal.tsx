@@ -14,6 +14,7 @@ import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
+import { WorkPickerModal, type WorkPickerItem } from '@/components/ui/WorkPickerModal';
 import { SearchCombobox } from '@/components/ui/search-combobox';
 
 interface Branch {
@@ -49,12 +50,6 @@ interface Contract {
   id: string;
   title: string;
   number?: string | null;
-}
-interface WorkItem {
-  id: string;
-  name: string;
-  normoHours: number;
-  price: number;
 }
 interface GoodItem {
   id: string;
@@ -307,10 +302,17 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
       .catch(() => {});
   };
 
+  const [workPickerOpen, setWorkPickerOpen] = useState(false);
+  const [editWorkPickerOpen, setEditWorkPickerOpen] = useState(false);
+
   const fetchWorks = useCallback(
     (q: string) =>
-      apiFetch<{ items: WorkItem[] }>(`/works?q=${encodeURIComponent(q)}&limit=20`).then(r =>
-        (r.items ?? []).map(w => ({ ...w, primary: w.name, secondary: `${w.price} ₴` })),
+      apiFetch<{ items: WorkPickerItem[] }>(`/works?q=${encodeURIComponent(q)}&limit=20`).then(r =>
+        (r.items ?? []).map(w => ({
+          ...w,
+          primary: w.name,
+          secondary: `${w.normoHours} год · ${w.price} ₴`,
+        })),
       ),
     [],
   );
@@ -796,12 +798,13 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                         {editingLineKey === line._key ? (
                           <>
                             <td className="px-2 py-1.5">
-                              <SearchCombobox<WorkItem>
+                              <EntityPickerField<WorkPickerItem>
+                                display={editingLine.workName}
                                 placeholder="Пошук роботи..."
-                                value={editingLine.workId}
-                                displayValue={editingLine.workName}
-                                fetchItems={fetchWorks}
-                                onSelect={w =>
+                                ariaLabel="Робота"
+                                onPick={() => setEditWorkPickerOpen(true)}
+                                onSearch={fetchWorks}
+                                onSearchSelect={w =>
                                   setEditingLine(l => ({
                                     ...l,
                                     workId: w.id,
@@ -952,12 +955,13 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                   {showLineInput && (
                     <tr className="bg-primary/5 border-t-2 border-primary/20">
                       <td className="px-2 py-1.5">
-                        <SearchCombobox<WorkItem>
+                        <EntityPickerField<WorkPickerItem>
+                          display={newLine.workName}
                           placeholder="Пошук роботи..."
-                          value={newLine.workId}
-                          displayValue={newLine.workName}
-                          fetchItems={fetchWorks}
-                          onSelect={w =>
+                          ariaLabel="Робота"
+                          onPick={() => setWorkPickerOpen(true)}
+                          onSearch={fetchWorks}
+                          onSearchSelect={w =>
                             setNewLine(l => ({
                               ...l,
                               workId: w.id,
@@ -1424,6 +1428,38 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
           loadVehicles(cp.id);
           loadContracts(cp.id);
         }}
+      />
+
+      {/* Work picker for new line row */}
+      <WorkPickerModal
+        open={workPickerOpen}
+        onClose={() => setWorkPickerOpen(false)}
+        selectedId={newLine.workId}
+        onSelect={w =>
+          setNewLine(l => ({
+            ...l,
+            workId: w.id,
+            workName: w.name,
+            normoHours: String(w.normoHours),
+            price: String(w.price),
+          }))
+        }
+      />
+
+      {/* Work picker for inline edit row */}
+      <WorkPickerModal
+        open={editWorkPickerOpen}
+        onClose={() => setEditWorkPickerOpen(false)}
+        selectedId={editingLine.workId}
+        onSelect={w =>
+          setEditingLine(l => ({
+            ...l,
+            workId: w.id,
+            workName: w.name,
+            normoHours: String(w.normoHours),
+            price: String(w.price),
+          }))
+        }
       />
     </>
   );
