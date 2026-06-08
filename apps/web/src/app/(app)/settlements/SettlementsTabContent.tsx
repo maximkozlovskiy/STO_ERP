@@ -86,6 +86,16 @@ export function SettlementsTabContent() {
   const [saving, setSaving] = useState(false);
   const [downloadingActId, setDownloadingActId] = useState<string | null>(null);
 
+  // Stable onSearch reference so EntityPickerField doesn't re-attach its
+  // outside-click listener on every render of this component.
+  const searchCounterparties = useCallback(
+    async (q: string): Promise<CpItem[]> =>
+      apiFetch<{ items: Counterparty[] }>(
+        `/counterparties?q=${encodeURIComponent(q)}&limit=20`,
+      ).then(r => r.items.map(c => ({ ...c, primary: cpDisplayName(c) }))),
+    [],
+  );
+
   const loadCounterparty = useCallback(async (cp: Counterparty) => {
     setSelected(cp);
     setBalance(null);
@@ -172,12 +182,9 @@ export function SettlementsTabContent() {
           <EntityPickerField<CpItem>
             display={selectedDisplay}
             placeholder="Пошук контрагента…"
+            ariaLabel="Контрагент"
             onPick={() => setCpPickerOpen(true)}
-            onSearch={q =>
-              apiFetch<{ items: Counterparty[] }>(
-                `/counterparties?q=${encodeURIComponent(q)}&limit=20`,
-              ).then(r => r.items.map(c => ({ ...c, primary: cpDisplayName(c) })))
-            }
+            onSearch={searchCounterparties}
             onSearchSelect={item => {
               setSelectedDisplay(item.primary);
               loadCounterparty(item);

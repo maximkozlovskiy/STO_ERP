@@ -182,6 +182,16 @@ export function GoodEditModal({
     }
   }, [form.preferredSupplierId]);
 
+  // Stable onSearch reference — prevents EntityPickerField from re-attaching
+  // its outside-click listener on every parent render.
+  const searchSuppliers = useCallback(
+    async (q: string) =>
+      apiFetch<{ items: Supplier[] }>(
+        `/counterparties?type=SUPPLIER&q=${encodeURIComponent(q)}&limit=30`,
+      ).then(r => r.items.map(s => ({ id: s.id, primary: supplierLabel(s) }))),
+    [],
+  );
+
   // ── Close handler ──────────────────────────────────────────────────────────
   const handleClose = useCallback(async () => {
     if (!(await dirty.confirmClose())) return;
@@ -419,13 +429,10 @@ export function GoodEditModal({
             <EntityPickerField
               display={supplierDisplay}
               placeholder="Пошук постачальника…"
+              ariaLabel="Основний постачальник"
               onOpenDetail={form.preferredSupplierId ? openSupplierDetail : undefined}
               onPick={() => {}}
-              onSearch={q =>
-                apiFetch<{ items: Supplier[] }>(
-                  `/counterparties?type=SUPPLIER&q=${encodeURIComponent(q)}&limit=30`,
-                ).then(r => r.items.map(s => ({ id: s.id, primary: supplierLabel(s) })))
-              }
+              onSearch={searchSuppliers}
               onSearchSelect={item => {
                 setSupplierDisplay(item.primary);
                 setForm(f => ({ ...f, preferredSupplierId: item.id }));

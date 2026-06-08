@@ -260,14 +260,12 @@ export function CalendarSlotModal({
     };
   }, []);
 
-  // ── Counterparty search state ─────────────────────────────────────────────
+  // ── Counterparty side-state (phone + vehicles) ────────────────────────────
+  // The actual counterparty search is owned by <EntityPickerField onSearch>;
+  // we only persist derived UI state here (phone for display, vehicles list).
 
   const [cpPhone, setCpPhone] = useState<string | null>(null);
   const [cpVehicles, setCpVehicles] = useState<VehicleOption[]>([]);
-  const [cpOptions, setCpOptions] = useState<CounterpartyOption[]>([]);
-  const [cpLoading, setCpLoading] = useState(false);
-  const [showCpDropdown, setShowCpDropdown] = useState(false);
-  const cpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // New counterparty wizard modal
   const [newCpOpen, setNewCpOpen] = useState(false);
@@ -373,7 +371,6 @@ export function CalendarSlotModal({
 
   useEffect(() => {
     if (!open) {
-      setCpOptions([]);
       setCpDisplay('');
       setCpPhone(null);
       setCpVehicles([]);
@@ -448,37 +445,6 @@ export function CalendarSlotModal({
       ac.abort();
     };
   }, [open, form.counterpartyId, setForm]);
-
-  const searchCounterparties = useCallback((q: string) => {
-    if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current);
-    if (!q.trim()) {
-      setCpOptions([]);
-      setShowCpDropdown(false);
-      return;
-    }
-    cpTimeoutRef.current = setTimeout(async () => {
-      setCpLoading(true);
-      try {
-        const data = await apiFetch<{ items: CounterpartyOption[] }>(
-          `/counterparties?q=${encodeURIComponent(q)}&limit=10&types=CLIENT&types=BOTH`,
-        );
-        if (mountedRef.current) {
-          setCpOptions(data.items);
-          setShowCpDropdown(true);
-        }
-      } catch {
-        /* ignore */
-      } finally {
-        if (mountedRef.current) setCpLoading(false);
-      }
-    }, 300);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (cpTimeoutRef.current) clearTimeout(cpTimeoutRef.current);
-    };
-  }, []);
 
   // ── New work-order modal ──────────────────────────────────────────────────
   const [createWoOpen, setCreateWoOpen] = useState(false);

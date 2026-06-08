@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useId, useRef, useState, useEffect, useCallback } from 'react';
 import { MoreHorizontal, Search, X } from 'lucide-react';
 import { Spinner } from './spinner';
 
@@ -17,6 +17,8 @@ interface EntityPickerFieldProps<T extends SearchItem = SearchItem> {
   disabled?: boolean;
   /** Hide the "..." pick button (e.g. in read-only mode) */
   hidePick?: boolean;
+  /** Optional aria-label for the search input (improves a11y when no <label> wrap). */
+  ariaLabel?: string;
   /**
    * Called when the 🔍 button is clicked.
    * Undefined = button is disabled (no entity selected yet).
@@ -29,6 +31,10 @@ interface EntityPickerFieldProps<T extends SearchItem = SearchItem> {
    * input that fires onSearch(q) on each keystroke (debounced 300ms).
    * Results are shown in a dropdown; selecting calls onSearchSelect(item).
    * The "..." and 🔍 buttons remain in place.
+   *
+   * Callers should wrap onSearch in useCallback to avoid re-attaching the
+   * outside-click listener on every parent render. Stale results from
+   * out-of-order responses are filtered internally via a request-token guard.
    */
   onSearch?: (q: string) => Promise<T[]>;
   onSearchSelect?: (item: T) => void;
@@ -50,6 +56,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   placeholder = 'Обрати…',
   disabled = false,
   hidePick = false,
+  ariaLabel,
   onOpenDetail,
   onPick,
   onClear,
@@ -66,18 +73,27 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
+  // Request-token guard: protects against out-of-order responses overwriting
+  // newer results with older ones (slow "a" resolves after fast "ab").
+  const reqIdRef = useRef(0);
+  const listboxId = useId();
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      // Invalidate any in-flight search so its setState is a no-op.
+      reqIdRef.current++;
     };
   }, []);
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click. Listener is attached once and gated by
+  // searchEnabled state inside the handler — avoids re-attaching when the
+  // caller passes a fresh onSearch function reference on every render.
+  const searchEnabled = !!onSearch;
   useEffect(() => {
-    if (!onSearch) return;
+    if (!searchEnabled) return;
     const handler = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -85,7 +101,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [onSearch]);
+  }, [searchEnabled]);
 
   // Reset query when selection changes externally (e.g. cleared via onClear)
   useEffect(() => {
@@ -97,23 +113,28 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
       if (!onSearch) return;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (!q.trim()) {
+        // Cancel any in-flight request — empty query means user wants no list.
+        reqIdRef.current++;
         setItems([]);
         setOpen(false);
+        setLoading(false);
         return;
       }
       debounceRef.current = setTimeout(async () => {
+        const reqId = ++reqIdRef.current;
         setLoading(true);
         try {
           const results = await onSearch(q.trim());
-          if (mountedRef.current) {
-            setItems(results);
-            setOpen(true);
-            setActiveIndex(-1);
-          }
+          // Drop stale results: out-of-order, unmount, or query changed/cleared.
+          if (!mountedRef.current || reqId !== reqIdRef.current) return;
+          setItems(results);
+          setOpen(true);
+          setActiveIndex(-1);
         } catch {
-          if (mountedRef.current) setItems([]);
+          if (!mountedRef.current || reqId !== reqIdRef.current) return;
+          setItems([]);
         } finally {
-          if (mountedRef.current) setLoading(false);
+          if (mountedRef.current && reqId === reqIdRef.current) setLoading(false);
         }
       }, 300);
     },
@@ -180,6 +201,14 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
+          role="combobox"
+          aria-label={ariaLabel}
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls={open ? listboxId : undefined}
+          aria-activedescendant={
+            open && activeIndex >= 0 ? `${listboxId}-opt-${activeIndex}` : undefined
+          }
           className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
         />
       ) : (
@@ -228,7 +257,8 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
         <button
           type="button"
           onClick={onPick}
-          className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
+          disabled={disabled}
+          className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Обрати"
           title="Обрати зі списку"
         >
@@ -238,10 +268,17 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
 
       {/* Dropdown */}
       {open && items.length > 0 && (
-        <ul className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+        <ul
+          id={listboxId}
+          role="listbox"
+          className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto"
+        >
           {items.map((item, idx) => (
             <li
               key={item.id}
+              id={`${listboxId}-opt-${idx}`}
+              role="option"
+              aria-selected={idx === activeIndex}
               onMouseDown={e => {
                 e.preventDefault();
                 handleSelect(item);
@@ -260,7 +297,11 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
       )}
 
       {open && !loading && items.length === 0 && query.trim() && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg px-3 py-2">
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg px-3 py-2"
+        >
           <span className="text-[13px] text-muted-foreground">Нічого не знайдено</span>
         </div>
       )}

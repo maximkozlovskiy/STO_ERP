@@ -319,6 +319,27 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     [],
   );
 
+  // Counterparty search for the header picker.
+  // Wrapped in useCallback so EntityPickerField's outside-click listener
+  // is not re-attached on every parent render.
+  type HeaderCpItem = SearchPickerItem & { phone?: string | null };
+  const fetchCpHeaderItems = useCallback(async (q: string): Promise<HeaderCpItem[]> => {
+    const r = await apiFetch<{
+      items: {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        companyName: string | null;
+        phone?: string | null;
+      }[];
+    }>(`/counterparties?q=${encodeURIComponent(q)}&limit=20`);
+    return r.items.map(c => ({
+      id: c.id,
+      primary: displayCounterpartyName(c),
+      secondary: c.phone ?? undefined,
+    }));
+  }, []);
+
   const addLine = () => {
     if (!newLine.workId || !newLine.employeeId) return;
     // Bug #382: блокуємо повний дублікат (work + виконавець) — типовий user-error.
@@ -606,27 +627,12 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 <label className="block text-xs font-medium text-muted-foreground mb-1">
                   Клієнт <span className="text-destructive-text">*</span>
                 </label>
-                <EntityPickerField
+                <EntityPickerField<HeaderCpItem>
                   display={counterpartyDisplayName}
                   placeholder="Пошук клієнта…"
+                  ariaLabel="Клієнт"
                   onPick={() => setCpPickerOpen(true)}
-                  onSearch={q =>
-                    apiFetch<{
-                      items: {
-                        id: string;
-                        firstName: string | null;
-                        lastName: string | null;
-                        companyName: string | null;
-                        phone?: string | null;
-                      }[];
-                    }>(`/counterparties?q=${encodeURIComponent(q)}&limit=20`).then(r =>
-                      r.items.map(c => ({
-                        id: c.id,
-                        primary: displayCounterpartyName(c),
-                        secondary: c.phone ?? undefined,
-                      })),
-                    )
-                  }
+                  onSearch={fetchCpHeaderItems}
                   onSearchSelect={item => {
                     setCounterpartyDisplayName(item.primary);
                     setForm(f => ({
