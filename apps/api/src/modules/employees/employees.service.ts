@@ -89,12 +89,22 @@ export class EmployeesService {
       throw new BadRequestException("Пароль обов'язковий якщо вказано email для входу");
     }
 
+    // Pre-check: active AuthAccount with this email already exists → block.
+    // Soft-deleted AuthAccount (deletedAt != null) is handled via resurrection inside TX.
     if (dto.loginEmail) {
       const existing = await this.prisma.authAccount.findUnique({
         where: { orgId_email: { orgId, email: dto.loginEmail } },
+        select: { id: true, deletedAt: true, employeeId: true },
       });
-      if (existing) throw new ConflictException('Цей email вже використовується для входу');
+      if (existing && existing.deletedAt === null) {
+        throw new ConflictException('Цей email вже використовується для входу');
+      }
     }
+
+    // Hash bcrypt BEFORE $transaction — bcrypt is ~150ms CPU work; running it inside
+    // tx holds Prisma connection idle (matches setup.service.ts pattern).
+    const passwordHash =
+      dto.loginEmail && dto.password ? await bcrypt.hash(dto.password, 12) : null;
 
     const item = await this.prisma.$transaction(
       async tx => {
@@ -117,16 +127,33 @@ export class EmployeesService {
           },
         });
 
-        if (dto.loginEmail && dto.password) {
-          const passwordHash = await bcrypt.hash(dto.password, 12);
-          await tx.authAccount.create({
-            data: {
-              orgId,
-              employeeId: employee.id,
-              email: dto.loginEmail,
-              passwordHash,
-            },
+        if (dto.loginEmail && passwordHash) {
+          // Resurrection pattern (§5.2): soft-deleted AuthAccount with the same
+          // (orgId,email) blocks create() due to @@unique([orgId,email]). Re-use
+          // the row by updating it back to active and re-pointing to the new employee.
+          const soft = await tx.authAccount.findUnique({
+            where: { orgId_email: { orgId, email: dto.loginEmail } },
+            select: { id: true, deletedAt: true },
           });
+          if (soft && soft.deletedAt !== null) {
+            await tx.authAccount.update({
+              where: { id: soft.id },
+              data: {
+                employeeId: employee.id,
+                passwordHash,
+                deletedAt: null,
+              },
+            });
+          } else {
+            await tx.authAccount.create({
+              data: {
+                orgId,
+                employeeId: employee.id,
+                email: dto.loginEmail,
+                passwordHash,
+              },
+            });
+          }
         }
 
         return employee;
