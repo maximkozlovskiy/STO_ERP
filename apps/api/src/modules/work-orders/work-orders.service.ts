@@ -218,16 +218,25 @@ export class WorkOrdersService {
     dto: CreateWorkOrderDto,
     userId?: string,
   ): Promise<WorkOrderResponseDto> {
-    const [branch, vehicle, counterparty] = await Promise.all([
+    // Bug review §2.2: validate liftId belongs to org (cross-tenant FK attack
+    // vector). Parallelize with the other FK guards — independent queries.
+    const [branch, vehicle, counterparty, lift] = await Promise.all([
       this.prisma.garageBranch.findFirst({ where: { id: dto.branchId, orgId, deletedAt: null } }),
       this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId, orgId, deletedAt: null } }),
       this.prisma.counterparty.findFirst({
         where: { id: dto.counterpartyId, orgId, deletedAt: null },
       }),
+      dto.liftId
+        ? this.prisma.lift.findFirst({
+            where: { id: dto.liftId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (!branch) throw new NotFoundException('Філію не знайдено');
     if (!vehicle) throw new NotFoundException('Автомобіль не знайдено');
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
+    if (dto.liftId && !lift) throw new NotFoundException('Підйомник не знайдено');
 
     // Auto-select primary SALE contract if not provided. When the client supplies
     // a contractId, validate it belongs to the same org + counterparty + SALE type
@@ -311,6 +320,16 @@ export class WorkOrdersService {
     if (!wo) throw new NotFoundException('Наряд не знайдено');
     if (CLOSED_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Не можна редагувати закритий наряд');
+    }
+
+    // Bug review §2.2: validate liftId belongs to org (cross-tenant FK attack
+    // vector). Only check when client supplies a non-null value — null clears.
+    if (dto.liftId) {
+      const lift = await this.prisma.lift.findFirst({
+        where: { id: dto.liftId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!lift) throw new NotFoundException('Підйомник не знайдено');
     }
 
     // Bug #86: capture old field-values BEFORE update so AuditEvent.diff is meaningful.
@@ -423,6 +442,7 @@ export class WorkOrdersService {
         vehicleId: true,
         counterpartyId: true,
         branchId: true,
+        liftId: true,
         description: true,
         inMileage: true,
         priority: true,
@@ -493,6 +513,7 @@ export class WorkOrdersService {
         vehicleId: original.vehicleId,
         counterpartyId: original.counterpartyId,
         branchId: original.branchId,
+        liftId: original.liftId ?? null,
         description: original.description,
         inMileage: original.inMileage,
         priority: original.priority,

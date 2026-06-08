@@ -94,6 +94,8 @@ interface WorkOrderDetail {
   counterpartyName?: string;
   contractId?: string | null;
   contractNumber?: string | null;
+  liftId?: string | null;
+  liftName?: string | null;
   description?: string | null;
   inMileage?: number | null;
   outMileage?: number | null;
