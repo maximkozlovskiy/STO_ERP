@@ -568,6 +568,54 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-08 — Redundant @@index([X]) поверх @@unique([X]) — Prisma schema моделі з композитним unique-ключем
+
+**Сигнал:** Модель Prisma має одночасно `@@unique([orgId, email])` і `@@index([orgId, email])` (або інший композитний ключ) — однакові колонки в однаковому порядку. У `pg_indexes` видно ДВА B-tree індекси на одних і тих самих колонках: один `*_key` (unique), один `*_idx` (звичайний). PostgreSQL використає унікальний індекс для будь-якого equality lookup'у по тих самих колонках (це включно і composite key `(orgId, email)`, і Prisma's syntactic `orgId_email` compound).
+
+**Причина виникнення:** розробник пише `@@unique` для уникнення дублікатів і одразу додає `@@index` "щоб запити були швидкі" — не розуміючи що unique constraint **вже** створює B-tree index під капотом. Це часто з'являється коли модель спочатку мала тільки `@@index`, а пізніше додали `@@unique` без видалення `@@index` (інкрементальний рефакторинг). Для пошуку через Prisma `findUnique({ where: { orgId_email: {...} } })` працює тільки composite-key lookup — а він іде по унікальному індексу.
+
+**Підхід до виявлення:** для кожної моделі у `schema.prisma` grep'нути блоки де є і `@@unique([...])` і `@@index([...])`. Порівняти списки колонок: якщо ідентичні (включно з порядком) → один з них зайвий. Для більшої впевненості: `SELECT indexname, indexdef FROM pg_indexes WHERE tablename='X'` у Postgres — два B-tree з однаковим `(col1, col2)` підтверджують дублікат.
+
+**Підхід до фіксу:** видалити `@@index` (НЕ `@@unique` — unique несе додаткову constraint-семантику). У DB виконати `DROP INDEX IF EXISTS "X_col1_col2_idx"` напряму (швидка операція, не вимагає міграції файлу — Prisma не порівнює реальні індекси з schema при `db push`). Якщо команда веде формальні Prisma migrations — створити migration з `DROP INDEX`. Залишити коментар над `@@unique` що пояснює чому окремий `@@index` не потрібен.
+
+**Реальний impact:** -1 index write на кожен INSERT/UPDATE моделі. Для часто-mutating таблиць (auth_accounts при employee create/update/login, тощо) це помітно у write throughput. Дискове місце економиться (1 повний B-tree). Запити не сповільнюються — PostgreSQL планувальник був вільний вибирати будь-який з двох індексів, тепер вибирає той що залишився.
+
+**Де шукати ще:** будь-яка модель Prisma з композитним unique-ключем. Особливо часто: auth_accounts, branch_settings, settlement_accounts (per-counterparty), будь-які `(orgId, externalId)` маппінги. Загальний sweep: `grep -A 30 "^model " packages/database/prisma/schema.prisma | grep -B 1 "@@index"` — шукати моделі з `@@unique` і `@@index` поруч на однакових колонках.
+
+---
+
+### 2026-06-08 — Scroll/resize listeners без `passive:true` у portal-dropdown компонентах — datetime/date pickers, tooltip позиціонери, sticky popovers
+
+**Сигнал:** компонент з portal-rendered dropdown (date picker, autocomplete, tooltip) має `useEffect` що додає `window.addEventListener('scroll', handler, true)` для repositioning через `getBoundingClientRect`. Третій параметр — `true` (capture) або `false`, але **не** об'єкт `{ passive: true }`. Браузер за замовчуванням вважає scroll handler можливим preventDefault-кандидатом → блокує пасивний scroll до повернення handler'а. При складному `handler` (setState → re-render → diff) це додає latency у scroll FPS.
+
+**Причина виникнення:** capture-режим `true` як третій аргумент — старий API. Розробник пам'ятає що "passive listeners щось пов'язане з scrolling" але не знає що для capture-режиму треба об'єктний синтаксис: `{ capture: true, passive: true }`. Або не знає взагалі — приклади у MDN/туторіалах часто показують `true` без passive. Тестово FPS залишається 60 на powerful desktop — на mobile/old laptop помітно.
+
+**Підхід до виявлення:** grep `addEventListener\(['"]scroll['"]\s*,\s*\w+\s*,\s*(true|false)\b` у `*.tsx` — третій parameter literal boolean означає НЕ object-style. Те саме для `resize`, `wheel`, `touchmove`. Якщо в коді є `getBoundingClientRect` / `scroll`-related state update — handler не викликає preventDefault, отже безпечно passive.
+
+**Підхід до фіксу:** замінити третій аргумент на `{ capture: true, passive: true }` (зберегти capture якщо був). У `removeEventListener` використати ту саму options object (capture повинен матчитись, інакше listener не зніметься). Якщо capture не потрібен — `{ passive: true }`. Перевірити чи handler НЕ викликає `e.preventDefault()` — якщо викликає, passive додасть console warning.
+
+**Реальний impact:** усуває scroll-blocking handler у dropdown-rich UI (forms, modals з date-pickers). На mobile/slow devices — помітне покращення scroll smoothness. На desktop — здебільшого захист від регресу: майбутній складніший handler не вкаже на тормоз.
+
+**Де шукати ще:** будь-який portal-dropdown компонент: date-picker, datetime-picker, autocomplete, search-picker, tooltip, popover, context-menu. Загальний sweep: `grep -rn "addEventListener.*scroll" apps/web/src/components/ --include='*.tsx'`. Те саме для resize у responsive components що repositionують через getBoundingClientRect.
+
+---
+
+### 2026-06-08 — memo() без stable handler refs — list-item рендерери у формах з частим typing
+
+**Сигнал:** компонент-список елементів (checkbox-list, item-grid, row-list) обгорнутий у `React.memo()`, але батьківський компонент передає `onChange={ids => { setX(ids); doY(); }}` — inline arrow на кожен render. memo() порівнює props — нова function ref → memo пропускає → re-render. Виглядає як "оптимізовано бо memo", але насправді memo марний — кожен keystroke у будь-якому input батька все одно тригерить N×re-render list-item.
+
+**Причина виникнення:** memo додається першим (хто пам'ятає про оптимізацію), потім pattern "inline arrow at the call-site" сприймається як норма (читабельний код). Розробник не помічає що memo вимагає stable refs у ВСІХ props. ESLint/TS не попереджають. Якщо handler читає captured state (form values) — useCallback потребує тих value у deps → знову нестабільний.
+
+**Підхід до виявлення:** для кожного `memo()`-обгорнутого компонента у формі (особливо там де у тілі форми є текстові input'и з частим typing) — пройти call-sites і перевірити чи props є стабільними. Маркери: inline arrow у onChange/onClick/onSubmit, об'єктні литерали, масиви `.map()` у props. Якщо хоча б один пропс нестабільний — memo не працює.
+
+**Підхід до фіксу:** перетворити inline handlers на `useCallback`. Якщо handler читає state через сетер (`setX(ids)`) → setX є стабільний → deps можуть бути порожніми. Якщо handler читає state value → useRef + ref.current читання у handler, deps лишаються пустими (escape hatch). Для derived data (наприклад `flatCats = flattenTree(workCategories)`) — useMemo з deps `[workCategories]`. Перевірити що hook-and-callback що передається у props (наприклад `dirty.markDirty`) є стабільним — депенди на конкретне callback (`dirty.markDirty`), а не на whole object (`dirty`).
+
+**Реальний impact:** при typing у будь-якому text input батьківської форми, memo'ed children більше не re-rendering. Для лиів з 50+ items × 10 keystrokes = 500 saved re-renders. Найпомітніше у модалях редагування з тяжкими (>30 elements) checkbox-списками: zones, lifts, work-categories, branches, brands, units.
+
+**Де шукати ще:** EmployeeEditModal (виправлено 2026-06-08), CounterpartyEditModal, RuleFormModal (pricing), будь-який Modal/Form з вкладеними list-renderами + textual fields. Patterns: ModalTabs з content props, ассайнмент-форми, multi-step wizards. Sweep: `grep -l "memo(" apps/web/src/components/ui/ --include='*.tsx' | xargs grep -l "onChange={ids =>\|onChange={e =>" `.
+
+---
+
 ### 2026-06-05 — Status-guarded soft-delete з sequential findFirst + update — invoices/PO/SD/WO remove() та подібні
 
 **Сигнал:** Метод `remove()` має business-rule guard через статус: `findFirst({ where: { id, orgId, deletedAt: null } })` повертає **full DTO** лише щоб прочитати ОДНЕ поле (`status`/`isSystem`/`type`), потім `if (X.status !== DRAFT) throw` та `update({ where: { id, orgId }, data: { deletedAt: new Date() }})`. Маска cycle-N gap бо `findOne + update` патерн вже мігровано на `updateMany` для **простих** remove (без business rule); але `remove` з status check лишається на старому паттерні бо `updateMany` не може повертати `status` для перевірки.
