@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+cd3a67c5 fix(review): work-order liftId — validate tenant FK + add index + sync frontend interface
+5d422345 feat(work-orders): add liftId field to WorkOrder — DB, API, UI
 (docs) docs/PHASES.md + MemoryManual.md — фаза 24 + CreateWorkOrderModal секція
 0f22a1f5 fix(tester): Bugs #381-#384 — CreateWorkOrderModal safety + validation
 4c2e32a9 fix(review): harden CreateWorkOrderModal — partial-failure safety + a11y + locale-aware parsing
@@ -17,6 +19,7 @@ eb929140 feat(work-orders): add inline works and goods tables to CreateWorkOrder
 14058c2c perf(optimize): drop redundant AuthAccount index + parallelize seed + memo CheckboxList + passive listeners
 Дата: 2026-06-08
 TypeScript: api ✅ 0 errors, web ✅ 0 errors
+Latest review: 2026-06-08 (FOCUSED, HEAD cd3a67c5) — WO liftId: 2 CRITICAL (cross-tenant FK у create/update — додано Promise.all guard + findFirst guard; missing @@index([orgId, liftId]) — додано в schema + migration), 2 IMPORTANT (clone() не зберігав liftId; PageClient.WorkOrderDetail без liftId/liftName), 1 SUGGESTION (LiftStatus filter у UI — не критично).
 Latest tester: 2026-06-08 (FOCUSED, HEAD 0f22a1f5) — 4 bugs: #381 close-while-saving guard, #382 dup-row guard, #383 qty/price pre-validation, #384 half-typed row warning. Web tests: 31 files / 326 (was 30/323 + 3 new regression guards).
 
 ### sto-tester cycle (2026-06-08) — CreateWorkOrderModal (Bugs #381-#384)
