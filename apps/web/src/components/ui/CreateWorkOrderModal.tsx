@@ -100,6 +100,7 @@ export interface CreateWOPrefill {
   counterpartyDisplay?: string;
   vehicleId?: string;
   branchId?: string;
+  liftId?: string;
   description?: string;
   plannedStartAt?: string;
   plannedEndAt?: string;
@@ -267,7 +268,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
       vehicleId: prefill?.vehicleId ?? '',
       counterpartyId: prefill?.counterpartyId ?? '',
       contractId: '',
-      liftId: '',
+      liftId: prefill?.liftId ?? '',
       description: prefill?.description ?? '',
       priority: 'NORMAL',
       repairCategory: '',
@@ -796,12 +797,12 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
               {headerCollapsed ? (
                 <>
                   {counterpartyDisplayName && (
-                    <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-[200px]">
+                    <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-50">
                       {counterpartyDisplayName}
                     </span>
                   )}
                   {cpPhone && (
-                    <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-[140px]">
+                    <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-35">
                       {cpPhone}
                     </span>
                   )}
@@ -809,7 +810,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     (() => {
                       const v = vehicles.find(v => v.id === form.vehicleId);
                       return v ? (
-                        <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-[180px]">
+                        <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-45">
                           {v.make} {v.model}
                           {v.licensePlate ? ` · ${v.licensePlate}` : ''}
                         </span>
@@ -819,7 +820,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     (() => {
                       const l = lifts.find(l => l.id === form.liftId);
                       return l ? (
-                        <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-[120px]">
+                        <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-30">
                           {l.name}
                         </span>
                       ) : null;
@@ -828,7 +829,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     (() => {
                       const b = branches.find(b => b.id === form.branchId);
                       return b ? (
-                        <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-[140px]">
+                        <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-35">
                           {b.name}
                         </span>
                       ) : null;

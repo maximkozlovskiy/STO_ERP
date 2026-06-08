@@ -1288,6 +1288,7 @@ export function CalendarSlotModal({
           counterpartyId: form.counterpartyId || undefined,
           counterpartyDisplay: form.counterpartyDisplay || undefined,
           vehicleId: form.vehicleId || undefined,
+          liftId: form.liftId || undefined,
           description: form.notes || undefined,
           plannedStartAt: form.startAt ? `${date}T${form.startAt}` : undefined,
           plannedEndAt: form.endAt ? `${date}T${form.endAt}` : undefined,
