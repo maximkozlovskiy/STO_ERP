@@ -880,18 +880,18 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                         Виконавець
                       </th>
-                      <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                         Год
                       </th>
-                      <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                         Ціна, ₴
                       </th>
                       {vatMode !== 'NONE' && (
-                        <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                        <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                           ПДВ, ₴
                         </th>
                       )}
-                      <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                         Сума, ₴
                       </th>
                       <th />
@@ -1278,21 +1278,21 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                         Склад
                       </th>
-                      <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                         К-сть
                       </th>
-                      <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                         ОВ
                       </th>
-                      <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                         Ціна, ₴
                       </th>
                       {vatMode !== 'NONE' && (
-                        <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                        <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                           ПДВ, ₴
                         </th>
                       )}
-                      <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                         Сума, ₴
                       </th>
                       <th />
