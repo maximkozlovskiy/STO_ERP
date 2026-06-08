@@ -115,8 +115,20 @@ interface Props {
   prefill?: CreateWOPrefill;
 }
 
-let _lineKey = 0;
-const nextKey = () => `k${++_lineKey}`;
+// Crypto-randomUUID gives globally-unique row keys without relying on a
+// module-level counter (which would survive HMR/StrictMode and risk reuse).
+const nextKey = () =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `k${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+
+// UA users often type `1,5` for fractional values — accept comma as decimal
+// separator before passing to `Number()`. Returns `undefined` for empty/NaN.
+const toNumberOrUndefined = (raw: string): number | undefined => {
+  if (!raw) return undefined;
+  const n = Number(raw.replace(',', '.'));
+  return Number.isFinite(n) ? n : undefined;
+};
 
 export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Props) {
   const [form, setForm] = useState({
@@ -196,6 +208,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     setParts([]);
     setNewLine(EMPTY_LINE);
     setNewPart(EMPTY_PART);
+    // A fresh modal session starts without a prior partial create.
+    createdWoRef.current = null;
     setForm({
       branchId: prefill?.branchId ?? '',
       vehicleId: prefill?.vehicleId ?? '',
@@ -282,63 +296,98 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
   );
 
   const addLine = () => {
-    if (!newLine.workId) return;
+    if (!newLine.workId || !newLine.employeeId) return;
     setLines(prev => [...prev, { ...newLine, _key: nextKey() }]);
     setNewLine(EMPTY_LINE);
   };
 
   const addPart = () => {
-    if (!newPart.goodId) return;
+    if (!newPart.goodId || !newPart.warehouseId) return;
     setParts(prev => [...prev, { ...newPart, _key: nextKey() }]);
     setNewPart({ ...EMPTY_PART, warehouseId: newPart.warehouseId });
   };
 
+  // Track the WO created in a previous (failed) submit so retry posts only the
+  // lines/parts that have not been persisted yet — otherwise the same lines
+  // would be duplicated on every retry click.
+  const createdWoRef = useRef<CreatedWorkOrder | null>(null);
+
   const create = async () => {
     setSaving(true);
     setError('');
-    try {
-      const wo = await apiFetch<CreatedWorkOrder>('/work-orders', {
-        method: 'POST',
-        body: JSON.stringify({
-          branchId: form.branchId,
-          vehicleId: form.vehicleId,
-          counterpartyId: form.counterpartyId,
-          contractId: form.contractId || undefined,
-          description: form.description || undefined,
-          priority: form.priority || 'NORMAL',
-          repairCategory: form.repairCategory || undefined,
-          documentDate: form.documentDate || undefined,
-          plannedAt: form.plannedStartAt || undefined,
-          dueDate: form.plannedEndAt || undefined,
-        }),
-      });
 
-      // Post lines sequentially (order matters for display)
-      for (const line of lines) {
+    // Auto-flush in-progress rows that the user filled but never clicked "+".
+    // Without this, switching focus to the footer button silently drops the
+    // half-typed row (data loss).
+    const pendingLine: LocalLine | null =
+      newLine.workId && newLine.employeeId ? { ...newLine, _key: nextKey() } : null;
+    const pendingPart: LocalPart | null =
+      newPart.goodId && newPart.warehouseId ? { ...newPart, _key: nextKey() } : null;
+
+    const linesToPost: LocalLine[] = pendingLine ? [...lines, pendingLine] : lines;
+    const partsToPost: LocalPart[] = pendingPart ? [...parts, pendingPart] : parts;
+
+    if (pendingLine) {
+      setLines(linesToPost);
+      setNewLine(EMPTY_LINE);
+    }
+    if (pendingPart) {
+      setParts(partsToPost);
+      setNewPart({ ...EMPTY_PART, warehouseId: newPart.warehouseId });
+    }
+
+    try {
+      // Reuse a previously-created WO on retry to avoid duplicate WO documents.
+      let wo = createdWoRef.current;
+      if (!wo) {
+        wo = await apiFetch<CreatedWorkOrder>('/work-orders', {
+          method: 'POST',
+          body: JSON.stringify({
+            branchId: form.branchId,
+            vehicleId: form.vehicleId,
+            counterpartyId: form.counterpartyId,
+            contractId: form.contractId || undefined,
+            description: form.description || undefined,
+            priority: form.priority || 'NORMAL',
+            repairCategory: form.repairCategory || undefined,
+            documentDate: form.documentDate || undefined,
+            plannedAt: form.plannedStartAt || undefined,
+            dueDate: form.plannedEndAt || undefined,
+          }),
+        });
+        createdWoRef.current = wo;
+      }
+
+      // Post lines sequentially (order matters for display).
+      // After each successful POST we drop the row from local state so a retry
+      // after a mid-batch failure does NOT duplicate already-saved lines.
+      for (const line of linesToPost) {
         await apiFetch(`/work-orders/${wo.id}/lines`, {
           method: 'POST',
           body: JSON.stringify({
             workId: line.workId,
             employeeId: line.employeeId,
-            normoHours: line.normoHours ? Number(line.normoHours) : undefined,
-            price: line.price ? Number(line.price) : undefined,
+            normoHours: toNumberOrUndefined(line.normoHours),
+            price: toNumberOrUndefined(line.price),
           }),
         });
+        setLines(prev => prev.filter(l => l._key !== line._key));
       }
 
-      // Post parts
-      for (const part of parts) {
+      for (const part of partsToPost) {
         await apiFetch(`/work-orders/${wo.id}/parts`, {
           method: 'POST',
           body: JSON.stringify({
             goodId: part.goodId,
             warehouseId: part.warehouseId,
-            quantity: part.quantity ? Number(part.quantity) : 1,
-            price: part.price ? Number(part.price) : undefined,
+            quantity: toNumberOrUndefined(part.quantity) ?? 1,
+            price: toNumberOrUndefined(part.price),
           }),
         });
+        setParts(prev => prev.filter(p => p._key !== part._key));
       }
 
+      createdWoRef.current = null;
       onCreated?.(wo);
       onClose();
     } catch (e: unknown) {
@@ -582,7 +631,10 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                               onClick={() =>
                                 setLines(prev => prev.filter(l => l._key !== line._key))
                               }
-                              className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              disabled={saving}
+                              aria-label="Видалити роботу"
+                              title="Видалити роботу"
+                              className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                               <Trash2 className="h-3 w-3" />
                             </button>
@@ -647,9 +699,10 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 variant="outline"
                 size="sm"
                 onClick={addLine}
-                disabled={!newLine.workId || !newLine.employeeId}
+                disabled={!newLine.workId || !newLine.employeeId || saving}
                 className="h-9 w-9 p-0 shrink-0"
                 title="Додати роботу"
+                aria-label="Додати роботу"
               >
                 <Plus className="h-4 w-4" />
               </Button>
@@ -700,7 +753,10 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                               onClick={() =>
                                 setParts(prev => prev.filter(p => p._key !== part._key))
                               }
-                              className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              disabled={saving}
+                              aria-label="Видалити товар"
+                              title="Видалити товар"
+                              className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                               <Trash2 className="h-3 w-3" />
                             </button>
@@ -750,7 +806,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 value={newPart.quantity}
                 onChange={e => setNewPart(p => ({ ...p, quantity: e.target.value }))}
                 min="0.001"
-                step="1"
+                step="any"
               />
               <Input
                 type="number"
@@ -764,9 +820,10 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 variant="outline"
                 size="sm"
                 onClick={addPart}
-                disabled={!newPart.goodId || !newPart.warehouseId}
+                disabled={!newPart.goodId || !newPart.warehouseId || saving}
                 className="h-9 w-9 p-0 shrink-0"
                 title="Додати товар"
+                aria-label="Додати товар"
               >
                 <Plus className="h-4 w-4" />
               </Button>
