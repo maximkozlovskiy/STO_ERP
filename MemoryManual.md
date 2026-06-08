@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+(docs) docs/PHASES.md + MemoryManual.md — фаза 24 + CreateWorkOrderModal секція
 0f22a1f5 fix(tester): Bugs #381-#384 — CreateWorkOrderModal safety + validation
 4c2e32a9 fix(review): harden CreateWorkOrderModal — partial-failure safety + a11y + locale-aware parsing
 eb929140 feat(work-orders): add inline works and goods tables to CreateWorkOrderModal
@@ -1487,6 +1488,40 @@ apiFetch<Branch[]>('/branches').then(d => {
 ### Gotcha (sync fix cef188a)
 
 `@Get('templates/:type')` wild-card перехоплює будь-який шлях `templates/X`. Окремий `@Get('templates/pricing-list')` зареєстрований ПІСЛЯ wild-card → ніколи не спрацьовував. Фікс: додати `pricing-list` як case у існуючий switch замість окремого endpoint.
+
+---
+
+## UI: CreateWorkOrderModal — inline таблиці Робіт і Товарів (eb929140)
+
+`apps/web/src/components/ui/CreateWorkOrderModal.tsx` — форма створення наряду з pre-save рядками.
+
+**Лейаут:** R1=Номер|Дата|Статус → R2=Філія|Пріоритет → R3=Планові/Фактичні дати → Клієнт → Опис → Роботи → Товари.
+
+**Роботи (LocalLine):**
+
+- `SearchCombobox<WorkItem>` → `GET /works?q=&limit=20` → auto-fill normoHours і price з каталогу
+- Select виконавця → `GET /employees?limit=200&status=ACTIVE` при mount
+- `+` disabled поки немає `workId` і `employeeId` (обидва обов'язкові для POST /work-orders/:id/lines)
+- `addLine()` — pre-validate: duplicate guard (workId+employeeId), min(normoHours > 0), min(price ≥ 0)
+
+**Товари (LocalPart):**
+
+- `SearchCombobox<GoodItem>` → `GET /goods?q=&limit=20` → auto-fill price з `salePrice`
+- Select складу → `cache:warehouses`, auto-select якщо 1 склад
+- `+` disabled поки немає `goodId` і `warehouseId` (обидва обов'язкові для POST /work-orders/:id/parts)
+- `addPart()` — pre-validate: duplicate guard (goodId+warehouseId), min(quantity > 0)
+
+**Збереження (create()):**
+
+1. Перевіряє чи є незавершений `newLine`/`newPart` → показує inline-попередження (Bug #384)
+2. POST `/work-orders` → отримує `wo.id`; зберігає у `createdWoRef` для retry-safety
+3. Послідовний POST `/work-orders/:id/lines` для кожного рядка; успішний → прибирає з `lines[]`
+4. Послідовний POST `/work-orders/:id/parts` для кожного; успішний → прибирає з `parts[]`
+5. `onClose={saving ? () => {} : onClose}` — блокує закриття під час збереження (Bug #381)
+
+**UA-locale:** `toNumberOrUndefined()` нормалізує кому→крапку перед `Number()`.
+
+**Regression tests:** `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.test.tsx` (3 тести: #381 close-guard, #382 dup-guard, #383 min-validation).
 
 ---
 

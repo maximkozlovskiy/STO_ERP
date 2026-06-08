@@ -1209,6 +1209,27 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 
 ---
 
+## Фаза 24 — Покращення форми створення наряду
+
+> Реалізовано: 2026-06-08. Commits: eb929140 → 4c2e32a9 → 0f22a1f5.
+
+- [x] `[sto-web]` **24.1** — Реорганізація лейауту `CreateWorkOrderModal`: перенести "Філія" і "Пріоритет" з нижньої секції у рядок 2 (між Номер/Дата/Статус і Планові показники).
+
+  > `apps/web/src/components/ui/CreateWorkOrderModal.tsx`. Поля тепер: R1=Номер|Дата|Статус, R2=Філія|Пріоритет, R3=Планові/Фактичні дати.
+
+- [x] `[sto-web]` **24.2** — Таблиця Робіт у `CreateWorkOrderModal`: `SearchCombobox` для пошуку з каталогу (`GET /works?q=`), Select виконавця, поля нормо-годин і ціни, кнопка `+` акумулює рядки у локальному стані. При "Створити" — послідовний POST `/work-orders/:id/lines` для кожного рядка.
+
+  > Fetch `GET /employees?limit=200&status=ACTIVE` при mount. `LocalLine` interface. Кнопка `+` disabled поки не обрані `workId` і `employeeId`.
+
+- [x] `[sto-web]` **24.3** — Таблиця Товарів/Запчастин у `CreateWorkOrderModal`: `SearchCombobox` для пошуку (`GET /goods?q=`), Select складу, кількість, ціна, кнопка `+`. При "Створити" — послідовний POST `/work-orders/:id/parts`.
+
+  > Fetch warehouses з `cache:warehouses` при mount. Auto-select якщо один склад. `LocalPart` interface. Кнопка `+` disabled поки не обрані `goodId` і `warehouseId`.
+
+- [x] `[sto-web]` **24.4** — Hardening (review + tester): retry-safe sequential POST (`createdWoRef`), UA-locale number parsing (кома→крапка), auto-flush pending рядка при submit, close-during-save guard (Bug #381), duplicate row guard (Bug #382), client-side min-value validation (Bug #383), half-typed row warning (Bug #384).
+  > Regression tests: `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.test.tsx` (3 тести).
+
+---
+
 ## Поточний стан
 
 | Фаза | Назва                                 | Статус                    |
@@ -1236,6 +1257,7 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 | 21   | Бекенд: Покращення досвіду            | ✅ завершено (12/12)      |
 | 22   | Frontend UX: Покращення досвіду       | ✅ завершено (12/12)      |
 | 23   | Договір контрагента                   | ✅ завершено (5/5)        |
+| 24   | Покращення форми створення наряду     | ✅ завершено (4/4)        |
 | NBU  | Автозавантаження курсів НБУ           | ✅ завершено (4 коміти)   |
 
 > Оновлюється автоматично після кожного завершеного завдання.  
