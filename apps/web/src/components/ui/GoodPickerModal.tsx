@@ -20,6 +20,8 @@ export interface GoodPickerItem {
   sku?: string | null;
   salePrice: number;
   category?: string | null;
+  unitId?: string | null;
+  unitShortName?: string | null;
 }
 
 interface Props {
@@ -58,10 +60,17 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
         const params = new URLSearchParams({ limit: '50' });
         if (q) params.set('q', q);
         if (catId) params.set('categoryId', catId);
-        apiFetch<{ items: GoodPickerItem[] }>(`/goods?${params}`)
+        apiFetch<{
+          items: (Omit<GoodPickerItem, 'unitShortName'> & { unit?: string | null })[];
+        }>(`/goods?${params}`)
           .then(r => {
             if (reqId !== reqRef.current) return;
-            setItems(Array.isArray(r.items) ? r.items : []);
+            setItems(
+              (Array.isArray(r.items) ? r.items : []).map(g => ({
+                ...g,
+                unitShortName: g.unit ?? null,
+              })),
+            );
             setLoading(false);
           })
           .catch((e: unknown) => {

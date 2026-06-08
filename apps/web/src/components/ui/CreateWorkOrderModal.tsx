@@ -68,6 +68,8 @@ interface LocalPart {
   warehouseId: string;
   quantity: string;
   price: string;
+  unitOfMeasureId: string;
+  unitShortName: string;
 }
 
 const EMPTY_LINE: Omit<LocalLine, '_key'> = {
@@ -83,6 +85,8 @@ const EMPTY_PART: Omit<LocalPart, '_key'> = {
   warehouseId: '',
   quantity: '1',
   price: '',
+  unitOfMeasureId: '',
+  unitShortName: '',
 };
 
 export interface CreateWOPrefill {
@@ -147,6 +151,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
+  const [vatRate, setVatRate] = useState(0);
 
   // Inline add-row state
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
@@ -211,6 +217,17 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
 
     apiFetch<{ items: Employee[] }>('/employees?limit=200')
       .then(r => setEmployees(Array.isArray(r.items) ? r.items : []))
+      .catch(() => {});
+
+    Promise.all([
+      apiFetch<{ vatMode: string; defaultVatRateId?: string | null }>('/settings/organisation'),
+      apiFetch<{ id: string; rate: number; isDefault: boolean }[]>('/settings/tax-rates'),
+    ])
+      .then(([org, rates]) => {
+        setVatMode((org.vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE') ?? 'NONE');
+        const def = (Array.isArray(rates) ? rates : []).find(r => r.isDefault);
+        if (def) setVatRate(Number(def.rate));
+      })
       .catch(() => {});
   }, []);
 
@@ -315,9 +332,12 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
 
   const fetchGoods = useCallback(
     (q: string) =>
-      apiFetch<{ items: GoodPickerItem[] }>(`/goods?q=${encodeURIComponent(q)}&limit=20`).then(r =>
+      apiFetch<{
+        items: (Omit<GoodPickerItem, 'unitShortName'> & { unit?: string | null })[];
+      }>(`/goods?q=${encodeURIComponent(q)}&limit=20`).then(r =>
         (r.items ?? []).map(g => ({
           ...g,
+          unitShortName: g.unit ?? null,
           primary: g.name,
           secondary: g.sku ? `${g.sku} · ${g.salePrice} ₴` : `${g.salePrice} ₴`,
         })),
@@ -483,6 +503,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             warehouseId: part.warehouseId,
             quantity: toNumberOrUndefined(part.quantity) ?? 1,
             price: toNumberOrUndefined(part.price),
+            unitOfMeasureId: part.unitOfMeasureId || undefined,
           }),
         });
         setParts(prev => prev.filter(p => p._key !== part._key));
@@ -743,6 +764,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                   <col className="w-44" />
                   <col className="w-20" />
                   <col className="w-24" />
+                  {vatMode !== 'NONE' && <col className="w-20" />}
                   <col className="w-24" />
                   <col className="w-9" />
                 </colgroup>
@@ -760,6 +782,11 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Ціна, ₴
                     </th>
+                    {vatMode !== 'NONE' && (
+                      <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                        ПДВ, ₴
+                      </th>
+                    )}
                     <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Сума, ₴
                     </th>
@@ -852,6 +879,17 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                 min="0"
                               />
                             </td>
+                            {vatMode !== 'NONE' && (
+                              <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
+                                {(() => {
+                                  const h = toNumberOrUndefined(editingLine.normoHours);
+                                  const p = toNumberOrUndefined(editingLine.price);
+                                  return h != null && p != null && vatRate > 0
+                                    ? ((h * p * vatRate) / 100).toFixed(2)
+                                    : '—';
+                                })()}
+                              </td>
+                            )}
                             <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
                               {(() => {
                                 const h = toNumberOrUndefined(editingLine.normoHours);
@@ -903,6 +941,13 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                             <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
                               {line.price || '—'}
                             </td>
+                            {vatMode !== 'NONE' && (
+                              <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                                {h != null && p != null && vatRate > 0
+                                  ? ((h * p * vatRate) / 100).toFixed(2)
+                                  : '—'}
+                              </td>
+                            )}
                             <td className="px-2 py-1.5 text-right tabular-nums font-medium text-foreground">
                               {sum != null ? sum.toFixed(2) : '—'}
                             </td>
@@ -1001,6 +1046,17 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                           min="0"
                         />
                       </td>
+                      {vatMode !== 'NONE' && (
+                        <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
+                          {(() => {
+                            const h = toNumberOrUndefined(newLine.normoHours);
+                            const p = toNumberOrUndefined(newLine.price);
+                            return h != null && p != null && vatRate > 0
+                              ? ((h * p * vatRate) / 100).toFixed(2)
+                              : '—';
+                          })()}
+                        </td>
+                      )}
                       <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
                         {(() => {
                           const h = toNumberOrUndefined(newLine.normoHours);
@@ -1044,6 +1100,22 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       >
                         Разом робіт:
                       </td>
+                      {vatMode !== 'NONE' && (
+                        <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold text-foreground">
+                          {lines
+                            .reduce((acc, l) => {
+                              const h = toNumberOrUndefined(l.normoHours);
+                              const p = toNumberOrUndefined(l.price);
+                              return (
+                                acc +
+                                (h != null && p != null && vatRate > 0
+                                  ? (h * p * vatRate) / 100
+                                  : 0)
+                              );
+                            }, 0)
+                            .toFixed(2)}
+                        </td>
+                      )}
                       <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold text-foreground">
                         {lines
                           .reduce((acc, l) => {
@@ -1085,8 +1157,10 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 <colgroup>
                   <col />
                   <col className="w-36" />
-                  <col className="w-20" />
+                  <col className="w-16" />
+                  <col className="w-12" />
                   <col className="w-24" />
+                  {vatMode !== 'NONE' && <col className="w-20" />}
                   <col className="w-24" />
                   <col className="w-9" />
                 </colgroup>
@@ -1102,8 +1176,16 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       К-сть
                     </th>
                     <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      ОВ
+                    </th>
+                    <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Ціна, ₴
                     </th>
+                    {vatMode !== 'NONE' && (
+                      <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                        ПДВ, ₴
+                      </th>
+                    )}
                     <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Сума, ₴
                     </th>
@@ -1114,7 +1196,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                   {parts.length === 0 && !showPartInput && (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={vatMode !== 'NONE' ? 8 : 7}
                         className="px-3 py-4 text-center text-[12px] text-muted-foreground"
                       >
                         Натисніть «Додати» щоб додати товар
@@ -1150,10 +1232,18 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                     goodId: g.id,
                                     goodName: g.name,
                                     price: String(g.salePrice),
+                                    unitOfMeasureId: g.unitId ?? '',
+                                    unitShortName: g.unitShortName ?? '',
                                   }))
                                 }
                                 onClear={() =>
-                                  setEditingPart(p => ({ ...p, goodId: '', goodName: '' }))
+                                  setEditingPart(p => ({
+                                    ...p,
+                                    goodId: '',
+                                    goodName: '',
+                                    unitOfMeasureId: '',
+                                    unitShortName: '',
+                                  }))
                                 }
                               />
                             </td>
@@ -1184,6 +1274,9 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                 step="any"
                               />
                             </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
+                              {editingPart.unitShortName || 'шт'}
+                            </td>
                             <td className="px-2 py-1.5">
                               <Input
                                 placeholder="0"
@@ -1195,6 +1288,17 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                 min="0"
                               />
                             </td>
+                            {vatMode !== 'NONE' && (
+                              <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
+                                {(() => {
+                                  const q = toNumberOrUndefined(editingPart.quantity);
+                                  const pr = toNumberOrUndefined(editingPart.price);
+                                  return q != null && pr != null && vatRate > 0
+                                    ? ((q * pr * vatRate) / 100).toFixed(2)
+                                    : '—';
+                                })()}
+                              </td>
+                            )}
                             <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
                               {(() => {
                                 const q = toNumberOrUndefined(editingPart.quantity);
@@ -1245,9 +1349,19 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                             <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
                               {part.quantity}
                             </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
+                              {part.unitShortName || 'шт'}
+                            </td>
                             <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
                               {part.price || '—'}
                             </td>
+                            {vatMode !== 'NONE' && (
+                              <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                                {qty != null && p != null && vatRate > 0
+                                  ? ((qty * p * vatRate) / 100).toFixed(2)
+                                  : '—'}
+                              </td>
+                            )}
                             <td className="px-2 py-1.5 text-right tabular-nums font-medium text-foreground">
                               {sum != null ? sum.toFixed(2) : '—'}
                             </td>
@@ -1263,6 +1377,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                       warehouseId: part.warehouseId,
                                       quantity: part.quantity,
                                       price: part.price,
+                                      unitOfMeasureId: part.unitOfMeasureId,
+                                      unitShortName: part.unitShortName,
                                     });
                                   }}
                                   disabled={saving}
@@ -1308,6 +1424,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                               goodId: g.id,
                               goodName: g.name,
                               price: String(g.salePrice),
+                              unitOfMeasureId: g.unitId ?? '',
+                              unitShortName: g.unitShortName ?? '',
                             }))
                           }
                           onClear={() =>
@@ -1338,6 +1456,9 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                           step="any"
                         />
                       </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
+                        {newPart.unitShortName || 'шт'}
+                      </td>
                       <td className="px-2 py-1.5">
                         <Input
                           placeholder="0"
@@ -1347,6 +1468,17 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                           min="0"
                         />
                       </td>
+                      {vatMode !== 'NONE' && (
+                        <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
+                          {(() => {
+                            const qty = toNumberOrUndefined(newPart.quantity);
+                            const p = toNumberOrUndefined(newPart.price);
+                            return qty != null && p != null && vatRate > 0
+                              ? ((qty * p * vatRate) / 100).toFixed(2)
+                              : '—';
+                          })()}
+                        </td>
+                      )}
                       <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
                         {(() => {
                           const qty = toNumberOrUndefined(newPart.quantity);
@@ -1385,11 +1517,30 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                   <tfoot>
                     <tr className="bg-secondary/50 border-t border-border">
                       <td
-                        colSpan={4}
+                        colSpan={vatMode !== 'NONE' ? 4 : 5}
                         className="px-3 py-1.5 text-right text-xs font-medium text-muted-foreground"
                       >
                         Разом товарів:
                       </td>
+                      {vatMode !== 'NONE' && (
+                        <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold text-foreground" />
+                      )}
+                      {vatMode !== 'NONE' && (
+                        <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold text-foreground">
+                          {parts
+                            .reduce((acc, pt) => {
+                              const qty = toNumberOrUndefined(pt.quantity);
+                              const p = toNumberOrUndefined(pt.price);
+                              return (
+                                acc +
+                                (qty != null && p != null && vatRate > 0
+                                  ? (qty * p * vatRate) / 100
+                                  : 0)
+                              );
+                            }, 0)
+                            .toFixed(2)}
+                        </td>
+                      )}
                       <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold text-foreground">
                         {parts
                           .reduce((acc, pt) => {
@@ -1471,6 +1622,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             goodId: g.id,
             goodName: g.name,
             price: String(g.salePrice),
+            unitOfMeasureId: g.unitId ?? '',
+            unitShortName: g.unitShortName ?? '',
           }))
         }
       />
@@ -1486,6 +1639,8 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             goodId: g.id,
             goodName: g.name,
             price: String(g.salePrice),
+            unitOfMeasureId: g.unitId ?? '',
+            unitShortName: g.unitShortName ?? '',
           }))
         }
       />
