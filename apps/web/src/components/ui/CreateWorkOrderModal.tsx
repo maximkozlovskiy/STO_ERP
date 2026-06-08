@@ -45,6 +45,7 @@ interface Counterparty {
   firstName: string | null;
   lastName: string | null;
   companyName: string | null;
+  phone?: string | null;
 }
 interface Contract {
   id: string;
@@ -142,6 +143,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     plannedEndAt: '',
   });
   const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
+  const [cpPhone, setCpPhone] = useState('');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -264,6 +266,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
       plannedEndAt: prefill?.plannedEndAt ?? '',
     });
     setCounterpartyDisplayName(prefill?.counterpartyDisplay ?? '');
+    setCpPhone('');
 
     if (!prefill?.branchId) {
       const src = getCached<Branch[]>('cache:branches') ?? branchesRef.current;
@@ -679,6 +682,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                         onSearch={fetchCpHeaderItems}
                         onSearchSelect={item => {
                           setCounterpartyDisplayName(item.primary);
+                          setCpPhone(item.phone ?? '');
                           setForm(f => ({
                             ...f,
                             counterpartyId: item.id,
@@ -692,6 +696,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                         }}
                         onClear={() => {
                           setCounterpartyDisplayName('');
+                          setCpPhone('');
                           setForm(f => ({
                             ...f,
                             counterpartyId: '',
@@ -781,17 +786,31 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
               {headerCollapsed ? (
                 <>
                   {counterpartyDisplayName && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-[220px]">
+                    <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-[200px]">
                       {counterpartyDisplayName}
+                    </span>
+                  )}
+                  {cpPhone && (
+                    <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-[140px]">
+                      {cpPhone}
                     </span>
                   )}
                   {form.vehicleId &&
                     (() => {
                       const v = vehicles.find(v => v.id === form.vehicleId);
                       return v ? (
-                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-[180px]">
+                        <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-[180px]">
                           {v.make} {v.model}
                           {v.licensePlate ? ` · ${v.licensePlate}` : ''}
+                        </span>
+                      ) : null;
+                    })()}
+                  {form.liftId &&
+                    (() => {
+                      const l = lifts.find(l => l.id === form.liftId);
+                      return l ? (
+                        <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-[120px]">
+                          {l.name}
                         </span>
                       ) : null;
                     })()}
@@ -1663,6 +1682,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         }
         onSelect={cp => {
           setCounterpartyDisplayName(cp.primary);
+          setCpPhone(cp.phone ?? '');
           setForm(f => ({ ...f, counterpartyId: cp.id, vehicleId: '', contractId: '' }));
           loadVehicles(cp.id);
           loadContracts(cp.id);
