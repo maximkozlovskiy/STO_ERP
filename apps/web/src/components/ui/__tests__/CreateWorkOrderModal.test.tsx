@@ -95,6 +95,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
   });
 
   it('Bug #382: блокує дублікат робота+виконавець з показом помилки', async () => {
+    const user = userEvent.setup();
     render(
       <CreateWorkOrderModal
         open
@@ -105,15 +106,20 @@ describe('CreateWorkOrderModal — regression guards', () => {
 
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
 
-    // We can not easily simulate the SearchCombobox API; use direct internal state by
-    // manipulating the Plus button precondition is hard without combobox interaction.
-    // For this regression guard we accept that the visible UI requires SearchCombobox
-    // interaction and rely on Bug #383/#384 tests below + manual QA for full dup-check.
-    // We simply assert that the modal renders without crash and the Plus buttons are
-    // disabled initially (no work/employee selected) — this confirms the guard wiring.
-    const addButtons = screen.getAllByRole('button', { name: /Додати/ });
-    expect(addButtons.length).toBeGreaterThan(0);
-    addButtons.forEach(btn => expect(btn).toBeDisabled());
+    // Variant B pattern (7b58af2c): section-header "+ Додати" buttons toggle
+    // the inline input row visibility and are ALWAYS enabled. The row-level
+    // "Зберегти рядок" button inside the tr IS disabled until both work+
+    // employee selected. We assert that wiring instead of the old precondition
+    // gate on section headers.
+    const sectionAddButtons = screen.getAllByRole('button', { name: /Додати/ });
+    expect(sectionAddButtons.length).toBe(2); // Роботи + Товари
+    sectionAddButtons.forEach(btn => expect(btn).toBeEnabled());
+
+    // Click "Додати" in the works section to reveal the inline tr with the
+    // "Зберегти рядок" Plus button.
+    await user.click(sectionAddButtons[0]!);
+    const saveRowBtn = await screen.findByRole('button', { name: /Зберегти рядок/ });
+    expect(saveRowBtn).toBeDisabled(); // No work/employee selected yet — gated.
   });
 
   it('Bug #384: показує помилку коли newLine має workId але без employeeId на submit', async () => {

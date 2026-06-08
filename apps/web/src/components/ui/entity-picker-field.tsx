@@ -154,7 +154,13 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
     setItems([]);
     setOpen(false);
     onClear();
-    inputRef.current?.focus();
+    // Focus the search input AFTER React commits the state change that re-renders
+    // it. At click time the input is not in the DOM (display was truthy → showing
+    // span), so inputRef.current is null. requestAnimationFrame defers focus to
+    // the next frame after commit, by which time the input is mounted.
+    if (searchEnabled) {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
   };
 
   // When onSearch is provided and no item is selected — show input; otherwise

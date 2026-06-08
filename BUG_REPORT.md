@@ -11741,3 +11741,69 @@ if (hasHalfLine || hasHalfPart) {
 **Статус:** [x] виправлено
 
 ---
+
+---
+
+## Session 2026-06-08 — EntityPickerField onSearch + CreateWorkOrderModal Variant B
+
+Сесія: `/sto-tester` після `c7a5fde9 fix(review): race condition + a11y` та `7b58af2c feat(ui): add inline fulltext search`.
+
+Знайдено 2 баги. Виправлено всі.
+
+---
+
+## Bug #385 — MEDIUM — Стале регресія-тест Bug #382 червоний у baseline (Variant B зробив section-header "+ Додати" завжди enabled)
+
+**Файл:** `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.test.tsx:97-117`
+**Severity:** MEDIUM (release-blocker — baseline-red ховає майбутні регресії)
+**Категорія:** test-coverage / stale-assertion
+
+**Опис:** Попередня сесія створила регресія-guard `it('Bug #382: блокує дублікат робота+виконавець')` що асертить `screen.getAllByRole('button', { name: /Додати/ }).forEach(btn => expect(btn).toBeDisabled())`. Це працювало коли «Додати» був єдиним gated button. Commit `7b58af2c feat(ui): inline fulltext search + Variant B add-row` змінив pattern:
+
+- Section-header «+ Додати» button → завжди enabled (toggle `setShowLineInput(true)`)
+- Row-level «+» button всередині inline `<tr>` → disabled до work+employee selected (з `title="Зберегти рядок"`)
+
+`getByRole('button', { name: /Додати/ })` тепер матчить лише section buttons → assert toBeDisabled() падає бо обидва завжди enabled. Це **baseline-red test** (Bug #0 — release-blocker per SKILL §0).
+
+**Очікувана поведінка:** Тест-сьют зелений; регресія-guard перевіряє реальний gated button row-level «Зберегти рядок».
+
+**Фактична поведінка:** 1 failed з 326; CI/release blocked; майбутні баги ховаються за шумом.
+
+**Фікс:** Оновлено тест — клік section «Додати» → відкрити inline tr → асерт `screen.findByRole('button', { name: /Зберегти рядок/ })` disabled. Section buttons тепер асертяться як `toBeEnabled()` (нова semantics).
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #386 — LOW — `EntityPickerField.handleClear()` фокусує input який ще не змонтований (focus call lost)
+
+**Файл:** `apps/web/src/components/ui/entity-picker-field.tsx:152-158`
+**Severity:** LOW (UX дрібниця)
+**Категорія:** frontend / UX
+
+**Опис:** При натисканні `×` (clear) у searchMode + truthy display:
+
+1. `display` truthy → JSX рендерить `<span>` замість `<input>` → `inputRef.current === null`
+2. Користувач клікає `×` → `handleClear` запускає `setQuery('')`, `setItems([])`, `setOpen(false)`, `onClear()`
+3. **`inputRef.current?.focus()` no-op** (optional chaining ховає null)
+4. React commits state → display='' → JSX тепер рендерить `<input>` → але focus не запитувано
+
+Результат: після clear фокус залишається на `×` кнопці (яка зникла з DOM) → focus падає на `<body>` → користувач має КЛІКНУТИ input щоб почати новий пошук. Очікування користувача (на основі типового «clear → focus input» UX патерну) не виконується.
+
+**Очікувана поведінка:** Після clear → input у фокусі, можна одразу починати новий пошук.
+
+**Фактична поведінка:** Фокус втрачається, користувач має додатково клікнути input.
+
+**Фікс:** Обгорнути focus у `requestAnimationFrame` — defer до наступного фрейму, коли React уже commit-нув новий DOM і input змонтований:
+
+```tsx
+if (searchEnabled) {
+  requestAnimationFrame(() => inputRef.current?.focus());
+}
+```
+
+Парний test-coverage: `entity-picker-field.test.tsx` (новий файл) покриває search behavior + buttons + a11y attributes (17 кейсів).
+
+**Статус:** [x] виправлено
+
+---
