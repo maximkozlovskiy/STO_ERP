@@ -9,7 +9,57 @@
 ## Останній commit
 
 ```
+4c2e32a9 fix(review): harden CreateWorkOrderModal — partial-failure safety + a11y + locale-aware parsing
+eb929140 feat(work-orders): add inline works and goods tables to CreateWorkOrderModal
 2aa7556  docs(skills): add 3 new approaches to sto-optimize
+14058c2c perf(optimize): drop redundant AuthAccount index + parallelize seed + memo CheckboxList + passive listeners
+Дата: 2026-06-08
+TypeScript: api ✅ 0 errors, web ✅ 0 errors
+
+### sto-review cycle (2026-06-08) — CreateWorkOrderModal inline tables
+
+Перевірено новий inline-works + inline-parts UI у CreateWorkOrderModal.tsx (commit eb929140).
+Знайдено 7 проблем, виправлено 7 (4c2e32a9):
+
+1. [HIGH] Sequential POST /lines + /parts без retry-safe state: середній POST падає →
+   WO + частина lines вже в БД, але `lines[]` локально зберігає ВСІ рядки → ретрай
+   дублює збережені lines і створює другий WO. Fix: `createdWoRef` кешує WO id між
+   спробами; кожен успішний POST негайно `setLines(prev => prev.filter(...))`.
+
+2. [HIGH] Locale parsing bug: `Number("1,5")` = NaN (UA користувачі типують кому).
+   Backend отримував NaN → 400 "normoHours must be a number". Fix: `toNumberOrUndefined()`
+   normalize comma → dot перед `Number()`.
+
+3. [MEDIUM] Pending newLine/newPart loss: користувач заповнив SearchCombobox+employee,
+   натиснув "Створити" не клікнувши "+" → введений рядок мовчки втрачається. Fix: на
+   старті `create()` auto-flush пендінг рядка у linesToPost/partsToPost.
+
+4. [MEDIUM] a11y: Trash2 buttons без aria-label/title/focus-visible → клавіатурна
+   навігація не показує що це за кнопка. Fix: aria-label + title + focus-visible:ring.
+
+5. [MEDIUM] Race during save: Add (+) / Trash кнопки не disabled під час saving →
+   stale edit мутує lines/parts midway through batch POST. Fix: disabled={... || saving}.
+
+6. [LOW] `step="1"` на quantity input + `min="0.001"` server → browser native validation
+   reject 0.5 / 2.5. Fix: `step="any"`.
+
+7. [LOW] Module-level `let _lineKey = 0` counter → HMR preserves, multi-modal sessions
+   share. Fix: `crypto.randomUUID()` (fallback Math.random+Date).
+
+Накопичені підходи для sto-review:
+- Sequential POST batch має retry-safety: createdRef + drop-from-list-on-success.
+- UA locale: number inputs → comma → dot normalization у JS (HTML type=number сам
+  парсить EN locale, але value це рядок який ми форвардимо у Number()).
+- Auto-flush pending in-progress UI rows при submit — інакше data loss.
+- `step="any"` коли server допускає fractional, але точність незрозуміла.
+
+---
+
+### Попередній commit
+
+```
+
+2aa7556 docs(skills): add 3 new approaches to sto-optimize
 14058c2c perf(optimize): drop redundant AuthAccount index + parallelize seed + memo CheckboxList + passive listeners
 Дата: 2026-06-08
 TypeScript: api ✅ 0 errors, web ✅ 0 errors
@@ -37,12 +87,14 @@ TypeScript: api ✅ 0 errors, web ✅ 0 errors
    - Impact: scroll smoothness на mobile/slow devices не блокується portal-dropdown handler'ом.
 
 Verified non-issues:
+
 - employees.service.findAll: include з select-narrowing вже оптимальний (zoneId/liftId/...).
 - employees.service.remove: $transaction з updateMany + count check — race-safe pattern.
 - CalendarSlotModal effects: cpPhone/vehicles мають AbortController + cancelled guards.
 - EmployeeEditModal Promise.all 4 ref-fetches: документований pattern "warm cache + refresh".
 
 Накопичені підходи (нові у sto-optimize SKILL.md):
+
 - Redundant @@index([X]) поверх @@unique([X]) — Prisma + pg_indexes audit.
 - passive:true для scroll/resize у portal-dropdown компонентах.
 - memo() без stable handler refs у list-item рендерерах.
@@ -52,121 +104,121 @@ Verified non-issues:
 ### Попередній commit (контекст)
 
 fb394b3c fix(tester): Bugs #373-#380 — employees soft-delete cascade + datetime picker + seed
-   • #373 [HIGH] employees.remove(): каскад soft-delete на AuthAccount у
-     $transaction. Без цього re-create з тим же loginEmail після видалення
-     блокувався 409 (active AuthAccount від видаленого Employee); resurrection
-     pattern у create() ніколи не виконувався.
-   • #374 [MEDIUM] employees.create() TX race-guard: якщо AuthAccount створено
-     паралельно між pre-check і TX (deletedAt=null), кидаємо ConflictException
-     замість fall through до tx.create() → P2002 → 500.
-   • #375 [MEDIUM] employees.create() застосовує dto.status і dto.dateOfFire.
-     Раніше silent drop → silent data loss для ON_LEAVE/FIRED.
-   • #376 [HIGH] seed.ts admin rateScheme key 'fixed' → 'fixedMonthly' (синхронно
-     з rateSchemeSchema Zod у employees.dto.ts).
-   • #377 [HIGH] packages/database/package.json prisma seed: запускає
-     seed-catalog.ts ПЕРЕД seed.ts. Інакше WORK1/WORK2 silent-skip бо ENG/SUS
-     WorkCategory не існують на свіжому DB.
-   • #378 [MEDIUM] datetime-picker-input default selectedHour тепер бере
-     availableHours[0] коли minHour виключає '09'. Інакше <select value="09">
-     без відповідної <option> → React warning + state-mismatch UX.
-   • #379 [LOW] work-orders/page.tsx видалено dead imports і dead interfaces
-     після refactor у CreateWorkOrderModal.
-   • #380 [LOW] EmployeeEditModal.save() — .trim() для loginEmail валідації.
-   • +5 нових contract тестів у employees.contract.spec.ts (Bug #375 + IsEmail/MinLength)
+• #373 [HIGH] employees.remove(): каскад soft-delete на AuthAccount у
+$transaction. Без цього re-create з тим же loginEmail після видалення
+блокувався 409 (active AuthAccount від видаленого Employee); resurrection
+pattern у create() ніколи не виконувався.
+• #374 [MEDIUM] employees.create() TX race-guard: якщо AuthAccount створено
+паралельно між pre-check і TX (deletedAt=null), кидаємо ConflictException
+замість fall through до tx.create() → P2002 → 500.
+• #375 [MEDIUM] employees.create() застосовує dto.status і dto.dateOfFire.
+Раніше silent drop → silent data loss для ON_LEAVE/FIRED.
+• #376 [HIGH] seed.ts admin rateScheme key 'fixed' → 'fixedMonthly' (синхронно
+з rateSchemeSchema Zod у employees.dto.ts).
+• #377 [HIGH] packages/database/package.json prisma seed: запускає
+seed-catalog.ts ПЕРЕД seed.ts. Інакше WORK1/WORK2 silent-skip бо ENG/SUS
+WorkCategory не існують на свіжому DB.
+• #378 [MEDIUM] datetime-picker-input default selectedHour тепер бере
+availableHours[0] коли minHour виключає '09'. Інакше <select value="09">
+без відповідної <option> → React warning + state-mismatch UX.
+• #379 [LOW] work-orders/page.tsx видалено dead imports і dead interfaces
+після refactor у CreateWorkOrderModal.
+• #380 [LOW] EmployeeEditModal.save() — .trim() для loginEmail валідації.
+• +5 нових contract тестів у employees.contract.spec.ts (Bug #375 + IsEmail/MinLength)
 TypeScript: api ✓ web ✓ database ✓ (0 errors)
 Unit + contract: api 666/666 passed (+5 нових), web 323/323 passed
 
 f030bc98 fix(review): employees.create — bcrypt hoisted out of TX + AuthAccount resurrection
-   • bcrypt.hash тепер виконується ПЕРЕД prisma.$transaction (~150ms CPU не
-     блокує Prisma connection idle всередині tx). Узгоджено з setup.service.ts
-   • Soft-delete + @@unique([orgId,email]) resurrection pattern:
-     pre-check лише active rows (deletedAt === null); всередині tx якщо знайдено
-     soft-deleted AuthAccount — update(employeeId,passwordHash,deletedAt:null)
-     замість create(). Інакше re-hire людини з тим самим логіном падав на
-     unique violation
-   • passwordHash тільки у service create-логіці; EmployeeResponseDto його не
-     експонує (verified §2.4)
-   • loginEmail/password у CreateEmployeeDto з IsEmail/MinLength(6); grantAccess
-     false при відкритті edit-form (§ verified)
+• bcrypt.hash тепер виконується ПЕРЕД prisma.$transaction (~150ms CPU не
+блокує Prisma connection idle всередині tx). Узгоджено з setup.service.ts
+• Soft-delete + @@unique([orgId,email]) resurrection pattern:
+pre-check лише active rows (deletedAt === null); всередині tx якщо знайдено
+soft-deleted AuthAccount — update(employeeId,passwordHash,deletedAt:null)
+замість create(). Інакше re-hire людини з тим самим логіном падав на
+unique violation
+• passwordHash тільки у service create-логіці; EmployeeResponseDto його не
+експонує (verified §2.4)
+• loginEmail/password у CreateEmployeeDto з IsEmail/MinLength(6); grantAccess
+false при відкритті edit-form (§ verified)
 TypeScript: api ✓ web ✓ shared ✓ (0 errors)
 
 23aa9339 fix(sync): apply status/email/dateOfHire/dateOfFire in employee PATCH
-   • UpdateEmployeeDto accepted status/email/dateOfHire/dateOfFire but update()
-     silently ignored all four — frontend edits to status/email/dates never persisted
-   • Added 4 missing spreads to prisma.update data object
+• UpdateEmployeeDto accepted status/email/dateOfHire/dateOfFire but update()
+silently ignored all four — frontend edits to status/email/dates never persisted
+• Added 4 missing spreads to prisma.update data object
 TypeScript: api ✓ web ✓ (0 errors)
 
 1c91867 fix(tester): Bugs #370-#372 — CounterpartyEditModal addContract race + employees stale closure + useEffect deps
-   • #370 [HIGH] addContract тепер з tenant-guard (currentCpIdRef + cpIdAtStart) —
-     POST на CP-A не пушить контракт у список CP-B якщо користувач перемкнувся
-   • URL також прив'язаний до cpIdAtStart, setContractsError guarded від stale CP
-   • #371 [LOW] employees.markForDeletion: setSelectedEmp(prev => prev?.id === id ? null : prev)
-     замість захопленого selectedEmp — захист від stale closure якщо рядок переключений
-     між confirm і DELETE-result. Те саме у catch-блоці 404.
-   • #372 [LOW] CounterpartyEditModal: useEffect для currentCpIdRef отримав
-     deps [counterparty?.id] — ESLint-clean, без зайвих ре-запусків при form-keystrokes
+• #370 [HIGH] addContract тепер з tenant-guard (currentCpIdRef + cpIdAtStart) —
+POST на CP-A не пушить контракт у список CP-B якщо користувач перемкнувся
+• URL також прив'язаний до cpIdAtStart, setContractsError guarded від stale CP
+• #371 [LOW] employees.markForDeletion: setSelectedEmp(prev => prev?.id === id ? null : prev)
+замість захопленого selectedEmp — захист від stale closure якщо рядок переключений
+між confirm і DELETE-result. Те саме у catch-блоці 404.
+• #372 [LOW] CounterpartyEditModal: useEffect для currentCpIdRef отримав
+deps [counterparty?.id] — ESLint-clean, без зайвих ре-запусків при form-keystrokes
 TypeScript: api ✓ web ✓ (0 errors)
 Unit: api 661/661 passed, web 323/323 passed
 2e6e8ed fix(review): tenant-guard counterparty handlers + close panel on 404-DELETE
-   • CounterpartyEditModal: reset modalGarageId=null on CP switch (load effect) — без
-     цього addVehicle для нового CP міг постити vehicle у гараж попереднього
-   • addVehicle/deleteVehicle: currentCpIdRef (live ref у useEffect) — звіряємо після
-     await, skip setState якщо CP змінився (§8.2 handler-fetch tenant-guard)
-   • Auto-garage name "Гараж" → "Основний" + isDefault:true (mirrors backend
-     counterparties.service auto-create for CLIENT/BOTH)
-   • deleteVehicle: 404 = вже видалено → drop from local list (не toast.error)
-   • employees/page.tsx markForDeletion: 404 path також setSelectedEmp(null) якщо
-     panel показував видалений запис (раніше тільки success branch чистив)
+• CounterpartyEditModal: reset modalGarageId=null on CP switch (load effect) — без
+цього addVehicle для нового CP міг постити vehicle у гараж попереднього
+• addVehicle/deleteVehicle: currentCpIdRef (live ref у useEffect) — звіряємо після
+await, skip setState якщо CP змінився (§8.2 handler-fetch tenant-guard)
+• Auto-garage name "Гараж" → "Основний" + isDefault:true (mirrors backend
+counterparties.service auto-create for CLIENT/BOTH)
+• deleteVehicle: 404 = вже видалено → drop from local list (не toast.error)
+• employees/page.tsx markForDeletion: 404 path також setSelectedEmp(null) якщо
+panel показував видалений запис (раніше тільки success branch чистив)
 TypeScript: api ✓ web ✓ shared ✓ (0 errors)
 1cd99c4 fix(employees): refresh list on 404-DELETE (stale record already deleted)
 a5fa9b4 fix(counterparty): auto-create garage when adding first vehicle
-   • CounterpartyEditModal.addVehicle: guard !counterparty замість !modalGarageId
-   • Якщо modalGarageId === null → POST /counterparties/:id/garages { name: 'Гараж' }
-   • Локальний let garageId уникає stale state на наступному setState (race-safe)
-   • Self-healing на partial failure: orphan garage використовується на retry
+• CounterpartyEditModal.addVehicle: guard !counterparty замість !modalGarageId
+• Якщо modalGarageId === null → POST /counterparties/:id/garages { name: 'Гараж' }
+• Локальний let garageId уникає stale state на наступному setState (race-safe)
+• Self-healing на partial failure: orphan garage використовується на retry
 TypeScript: api ✓ web ✓ shared ✓ (0 errors)
 Code review: 0 проблем (минулий cycle review-agent)
 95f97e4 docs(skills): add bulk-filter-via-grandparent-relation pattern to sto-optimize
 7e78599 perf(optimize): CRM list DetailPanel + CounterpartyEditModal — bulk vehicles fetch
-   • counterparties/page.tsx DetailPanel cpVehicles: garages.fetch+map → single /vehicles?counterpartyId=X
-   • CounterpartyEditModal: Promise.all([garages, vehicles]) parallel — defaultGarage logic preserved
+• counterparties/page.tsx DetailPanel cpVehicles: garages.fetch+map → single /vehicles?counterpartyId=X
+• CounterpartyEditModal: Promise.all([garages, vehicles]) parallel — defaultGarage logic preserved
 7c631b5 perf(optimize): CRM detail — bulk /vehicles?counterpartyId + parallel garages fetch
-   • counterparties/[id]/PageClient loadGarages: Promise.all([garages, /vehicles?counterpartyId=]) + JS group by garage
-   • Vehicle interface += customerGarageId (matches backend toDto)
+• counterparties/[id]/PageClient loadGarages: Promise.all([garages, /vehicles?counterpartyId=]) + JS group by garage
+• Vehicle interface += customerGarageId (matches backend toDto)
 4550128 perf(optimize): bulk /vehicles?counterpartyId=X — eliminate N+1 (garages → per-garage vehicles)
-   • Backend: vehicles.controller new @Query('counterpartyId') + service findAll counterpartyId join via customerGarage relation
-   • Frontend: work-orders/page.tsx loadVehicles + calendar/CalendarSlotModal cpVehicles effect — 1 + N → 1 RTT
-   • Impact: client with 20 garages — 2s → ~100ms dropdown auto-fill
+• Backend: vehicles.controller new @Query('counterpartyId') + service findAll counterpartyId join via customerGarage relation
+• Frontend: work-orders/page.tsx loadVehicles + calendar/CalendarSlotModal cpVehicles effect — 1 + N → 1 RTT
+• Impact: client with 20 garages — 2s → ~100ms dropdown auto-fill
 TypeScript: api ✓ web ✓ shared ✓ (0 errors)
 434132c docs(skills): add input-mask wrapper iterative-typing pattern to sto-tester
-   • New §1.3 checklist: input-mask wrappers strip locked '+38 (' prefix BEFORE digit extraction
-   • New "Накопичені підходи" entry: detection grep + idempotency regression-guard template
+• New §1.3 checklist: input-mask wrappers strip locked '+38 (' prefix BEFORE digit extraction
+• New "Накопичені підходи" entry: detection grep + idempotency regression-guard template
 2a69ffa fix(tester): Bug #369 — PhoneInput mask doubles country code in iterative typing
-   • applyMask: strip '+38 (' locked prefix from raw BEFORE replace(/\D/g, '')
-   • Iterative typing '380501234567' now produces '+38 (050) 123-45-67' (was '+38 (380) 501-23-45')
-   • Regression-guard: apps/web/src/components/ui/__tests__/phone-input.test.tsx (11 кейсів)
+• applyMask: strip '+38 (' locked prefix from raw BEFORE replace(/\D/g, '')
+• Iterative typing '380501234567' now produces '+38 (050) 123-45-67' (was '+38 (380) 501-23-45')
+• Regression-guard: apps/web/src/components/ui/**tests**/phone-input.test.tsx (11 кейсів)
 TypeScript: api ✓ web ✓ shared ✓ (0 errors)
 Web tests: 30 files / 323 passed (+11 PhoneInput)
 API tests: 56 files / 661 passed
 bfee922 fix(review): drop React.ChangeEvent namespace + preserve SyntheticEvent in PhoneInput
-   • phone-input.tsx: import { type ChangeEvent } from 'react' замість React.ChangeEvent
-   • handleChange: мутує e.target.value напряму замість { ...e, target: { ...e.target } } spread
-     (зберігає прототип SyntheticEvent — preventDefault/stopPropagation/persist досі працюють)
+• phone-input.tsx: import { type ChangeEvent } from 'react' замість React.ChangeEvent
+• handleChange: мутує e.target.value напряму замість { ...e, target: { ...e.target } } spread
+(зберігає прототип SyntheticEvent — preventDefault/stopPropagation/persist досі працюють)
 TypeScript: api ✓ web ✓ (0 errors)
 225ff70 fix(sync): align VehicleOption.licensePlate type with backend DTO
-   • VehicleOption.licensePlate: string → string | null (backend returns string|null)
-   • PhoneInput new component in /components/ui/phone-input.tsx
-   • CalendarSlotModal, CounterpartyEditModal, EmployeeEditModal, counterparties/[id]/PageClient, booking/page — PhoneInput замість Input для телефонів
-   • CalendarSlotModal — openNewWo via window.open to /work-orders?action=new&...
-   • work-orders/page.tsx — useEffect reads action=new query params (cpId, vehicleId, branchId, desc)
-   • CalendarDayGrid — tooltip join('\n')
+• VehicleOption.licensePlate: string → string | null (backend returns string|null)
+• PhoneInput new component in /components/ui/phone-input.tsx
+• CalendarSlotModal, CounterpartyEditModal, EmployeeEditModal, counterparties/[id]/PageClient, booking/page — PhoneInput замість Input для телефонів
+• CalendarSlotModal — openNewWo via window.open to /work-orders?action=new&...
+• work-orders/page.tsx — useEffect reads action=new query params (cpId, vehicleId, branchId, desc)
+• CalendarDayGrid — tooltip join('\n')
 TypeScript: api ✓ web ✓ (0 errors)
 <NEW> fix(tester): Bugs #364-#368 — calendar vehicle picker post-review hunt
-   • #364 openNewWo runs API call when CLOSING mini-form → split open/toggle through showNewWoRef
-   • #365 WO-picker counterparty replace not clearing vehicleId/cpVehicles → leak to newWo POST
-   • #366 stale cpVehicles during counterparty transition fetch → reset at start of effect
-   • #367 form.vehicleId persists across counterparty change → blocks auto-fill; defense-in-depth check
-   • #368 0-vehicle client shows no hint → add italic muted hint
+• #364 openNewWo runs API call when CLOSING mini-form → split open/toggle through showNewWoRef
+• #365 WO-picker counterparty replace not clearing vehicleId/cpVehicles → leak to newWo POST
+• #366 stale cpVehicles during counterparty transition fetch → reset at start of effect
+• #367 form.vehicleId persists across counterparty change → blocks auto-fill; defense-in-depth check
+• #368 0-vehicle client shows no hint → add italic muted hint
 9357323 fix(calendar): review fixes — abort vehicle fetch + reuse cpVehicles in new-WO mini-form
 34829659 feat(calendar): vehicle picker in slot form — auto-fill if 1 vehicle, select if multiple
 TypeScript: api ✓ web ✓ shared ✓ (0 errors)
@@ -202,7 +254,7 @@ fe137e0 fix(review): Sprint refactor follow-ups — safeCoeff for PO/SD display 
 90d0cf2 fix(review): stale contract specs — warehouses 3-arg findAll + missing NbuFetchScheduler DI mock
 170ef1f docs(memory): update MemoryManual after sto-sync-agent cycle 5
 f93ed92 fix(sync): update stale /crm and /vat route references + remove stale .next/types
-6714a1c docs(skills): §24 EntityPickerField + *EditModal standard for reference fields
+6714a1c docs(skills): §24 EntityPickerField + \*EditModal standard for reference fields
 de4f180 refactor(stock-documents): extract StockDocumentCreateModal
 66e3cad refactor(invoices): extract InvoiceCreateModal
 f0cbb27 refactor(purchase-orders): extract PurchaseOrderCreateModal
@@ -250,6 +302,7 @@ c9bb833 fix(review): regression cycle 2 — EMPTY_ITEMS in catalog tabs + system
 c600772 perf(optimize): stable EMPTY_ITEMS fallback + purchase-orders limit cap
 b2707ae fix(tester): Bugs #328-#331 — useListPage stable items + useApiMutation latest-ref + regression tests
 cde1792 fix(review): sync shared FSM transitions with backend authority
+
 ```
 
 Дата: 2026-06-06
@@ -1294,7 +1347,7 @@ f040cde perf(db): 5 composite indexes
 9a9efeb perf(purchase-orders): lazy-load lines — remove from list, fetch on detail open
 923aea5 perf(api): Redis cache for reference data (5 min TTL)
 
-````
+```
 
 Дата: 2026-05-30
 
@@ -1320,7 +1373,7 @@ apiFetch<Branch[]>('/branches').then(d => {
   setBranches(d);
   setCache('cache:branches', d);
 });
-````
+```
 
 Без seed dropdown показує `[]` під час cold-fetch. Безпечно якщо сторінка НЕ редагує цей довідник (settings не CRUD-ить branches — це окрема сторінка infrastructure).
 
