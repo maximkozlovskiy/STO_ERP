@@ -52,6 +52,11 @@ interface Contract {
   title: string;
   number?: string | null;
 }
+interface Unit {
+  id: string;
+  name: string;
+  shortName: string;
+}
 
 // Local line/part rows (pre-save state)
 interface LocalLine {
@@ -150,6 +155,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -221,6 +227,10 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
 
     apiFetch<{ items: Employee[] }>('/employees?limit=200')
       .then(r => setEmployees(Array.isArray(r.items) ? r.items : []))
+      .catch(() => {});
+
+    apiFetch<{ items: Unit[] } | Unit[]>('/units?limit=200')
+      .then(r => setUnits(Array.isArray(r) ? r : (r.items ?? [])))
       .catch(() => {});
 
     Promise.all([
@@ -1380,8 +1390,26 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                   step="any"
                                 />
                               </td>
-                              <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
-                                {editingPart.unitShortName || 'шт'}
+                              <td className="px-1 py-1.5">
+                                <select
+                                  value={editingPart.unitOfMeasureId}
+                                  onChange={e => {
+                                    const u = units.find(u => u.id === e.target.value);
+                                    setEditingPart(p => ({
+                                      ...p,
+                                      unitOfMeasureId: e.target.value,
+                                      unitShortName: u?.shortName ?? '',
+                                    }));
+                                  }}
+                                  className="w-full rounded border border-border bg-surface text-[11px] px-1 py-1 outline-none focus:border-primary"
+                                >
+                                  <option value="">шт</option>
+                                  {units.map(u => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.shortName}
+                                    </option>
+                                  ))}
+                                </select>
                               </td>
                               <td className="px-2 py-1.5">
                                 <Input
@@ -1562,8 +1590,26 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                             step="any"
                           />
                         </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
-                          {newPart.unitShortName || 'шт'}
+                        <td className="px-1 py-1.5">
+                          <select
+                            value={newPart.unitOfMeasureId}
+                            onChange={e => {
+                              const u = units.find(u => u.id === e.target.value);
+                              setNewPart(p => ({
+                                ...p,
+                                unitOfMeasureId: e.target.value,
+                                unitShortName: u?.shortName ?? '',
+                              }));
+                            }}
+                            className="w-full rounded border border-border bg-surface text-[11px] px-1 py-1 outline-none focus:border-primary"
+                          >
+                            <option value="">шт</option>
+                            {units.map(u => (
+                              <option key={u.id} value={u.id}>
+                                {u.shortName}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-2 py-1.5">
                           <Input
