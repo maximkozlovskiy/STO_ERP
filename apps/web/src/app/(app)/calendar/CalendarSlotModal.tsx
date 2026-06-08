@@ -18,6 +18,7 @@ import { PhoneInput } from '@/components/ui/phone-input';
 import { CreateWorkOrderModal } from '@/components/ui/CreateWorkOrderModal';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
+import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -35,6 +36,8 @@ import {
   PICK_MINUTES,
   UUID_RE,
   KYIV_TZ,
+  WINDOW_START,
+  WINDOW_END,
   decimalHoursToHHMM,
   parseHHMM,
   buildHHMM,
@@ -165,56 +168,6 @@ function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => voi
         </div>
       ) : null}
     </Modal>
-  );
-}
-
-// ─── TimeSelect — hour + minute selects, 15-min step, bounded range ──────────
-
-interface TimeSelectProps {
-  value: string;
-  onChange: (v: string) => void;
-  minHour?: number;
-  minMinute?: number;
-  disabled?: boolean;
-}
-
-function TimeSelect({
-  value,
-  onChange,
-  minHour = 0,
-  minMinute = 0,
-  disabled = false,
-}: TimeSelectProps) {
-  const { h, m } = value ? parseHHMM(value) : { h: HOURS[0]!, m: 0 };
-  const cls =
-    'w-1/2 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed';
-  return (
-    <div className="flex gap-1">
-      <select
-        className={cls}
-        value={h}
-        disabled={disabled}
-        onChange={e => onChange(buildHHMM(Number(e.target.value), m))}
-      >
-        {HOURS.map(hh => (
-          <option key={hh} value={hh} disabled={hh < minHour}>
-            {pad(hh)}
-          </option>
-        ))}
-      </select>
-      <select
-        className={cls}
-        value={m}
-        disabled={disabled}
-        onChange={e => onChange(buildHHMM(h, Number(e.target.value)))}
-      >
-        {PICK_MINUTES.map(mm => (
-          <option key={mm} value={mm} disabled={h === minHour && mm < minMinute}>
-            {pad(mm)}
-          </option>
-        ))}
-      </select>
-    </div>
   );
 }
 
@@ -507,7 +460,7 @@ export function CalendarSlotModal({
       setCpLoading(true);
       try {
         const data = await apiFetch<{ items: CounterpartyOption[] }>(
-          `/counterparties?q=${encodeURIComponent(q)}&limit=10`,
+          `/counterparties?q=${encodeURIComponent(q)}&limit=10&types=CLIENT&types=BOTH`,
         );
         if (mountedRef.current) {
           setCpOptions(data.items);
@@ -545,7 +498,7 @@ export function CalendarSlotModal({
   };
 
   const fetchCpItems = useCallback(async (q: string): Promise<CpItem[]> => {
-    let url = '/counterparties?limit=50';
+    let url = '/counterparties?limit=50&types=CLIENT&types=BOTH';
     if (q.trim()) url += `&q=${encodeURIComponent(q.trim())}`;
     const data = await apiFetch<{ items: CounterpartyOption[] }>(url);
     return data.items
@@ -729,13 +682,12 @@ export function CalendarSlotModal({
               </Select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Початок
-              </label>
-              <TimeSelect
+              <DateTimePickerInput
+                label="Початок"
+                timeOnly
                 value={form.startAt}
-                minHour={editingSlotId ? HOURS[0] : minHour}
-                minMinute={0}
+                minHour={editingSlotId ? WINDOW_START : minHour}
+                maxHour={WINDOW_END - 1}
                 disabled={isEditingPast}
                 onChange={start => {
                   setForm(f => {
@@ -798,11 +750,12 @@ export function CalendarSlotModal({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Кінець</label>
-              <TimeSelect
+              <DateTimePickerInput
+                label="Кінець"
+                timeOnly
                 value={form.endAt}
-                minHour={editingSlotId ? HOURS[0] : minHour}
-                minMinute={0}
+                minHour={WINDOW_START}
+                maxHour={WINDOW_END}
                 disabled={isEditingPast}
                 onChange={endAt => {
                   setForm(f => ({ ...f, endAt }));
@@ -823,13 +776,49 @@ export function CalendarSlotModal({
               </label>
               <div className="flex items-center gap-1">
                 <div className="flex-1 min-w-0">
-                  <EntityPickerField
+                  <EntityPickerField<CpItem>
                     display={form.counterpartyDisplay}
-                    placeholder="Обрати клієнта…"
+                    placeholder="Пошук клієнта…"
                     disabled={isEditingPast}
                     hidePick={isEditingPast}
                     onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
                     onPick={() => setCpPickerOpen(true)}
+                    onSearch={!isEditingPast ? fetchCpItems : undefined}
+                    onSearchSelect={async item => {
+                      if (
+                        form.workOrderId &&
+                        form.counterpartyId &&
+                        item.id !== form.counterpartyId
+                      ) {
+                        const ok = await confirm({
+                          title: "Зміна клієнта очистить прив'язаний наряд?",
+                          message: `Прив'язаний наряд «${form.workOrderDisplay}» буде відкріплено.`,
+                          variant: 'destructive',
+                        });
+                        if (!ok) return;
+                        setCpDisplay(item.primary);
+                        setCpPhone(item.phone ?? null);
+                        setCpVehicles([]);
+                        setForm(f => ({
+                          ...f,
+                          counterpartyId: item.id,
+                          counterpartyDisplay: item.primary,
+                          vehicleId: '',
+                          workOrderId: '',
+                          workOrderDisplay: '',
+                        }));
+                        return;
+                      }
+                      setCpDisplay(item.primary);
+                      setCpPhone(item.phone ?? null);
+                      setCpVehicles([]);
+                      setForm(f => ({
+                        ...f,
+                        counterpartyId: item.id,
+                        counterpartyDisplay: item.primary,
+                        vehicleId: '',
+                      }));
+                    }}
                     onClear={() => {
                       setCpDisplay('');
                       setCpPhone(null);
@@ -900,15 +889,67 @@ export function CalendarSlotModal({
             <label className="block text-xs font-medium text-muted-foreground mb-1">Наряд</label>
             <div className="flex items-center gap-1">
               <div className="flex-1 min-w-0">
-                <EntityPickerField
+                <EntityPickerField<WoItem>
                   display={form.workOrderDisplay}
-                  placeholder="Обрати наряд…"
+                  placeholder="Пошук наряду…"
                   disabled={isEditingPast}
                   hidePick={isEditingPast}
                   onOpenDetail={
                     form.workOrderId ? () => setWoPreviewId(form.workOrderId) : undefined
                   }
                   onPick={() => setWoPickerOpen(true)}
+                  onSearch={!isEditingPast ? fetchWoItems : undefined}
+                  onSearchSelect={async item => {
+                    const display = item.counterpartyName
+                      ? `${item.primary} · ${item.counterpartyName}`
+                      : item.primary;
+
+                    if (
+                      item.counterpartyId &&
+                      form.counterpartyId &&
+                      item.counterpartyId !== form.counterpartyId
+                    ) {
+                      const replace = await confirm({
+                        title: 'Замінити поточного клієнта?',
+                        message: `Наряд належить іншому клієнту (${item.counterpartyName ?? item.counterpartyId}).`,
+                      });
+                      if (replace) {
+                        const cpDisp = item.counterpartyName ?? '';
+                        setCpDisplay(cpDisp);
+                        setCpPhone(null);
+                        setCpVehicles([]);
+                        setForm(f => ({
+                          ...f,
+                          workOrderId: item.id,
+                          workOrderDisplay: display,
+                          counterpartyId: item.counterpartyId!,
+                          counterpartyDisplay: cpDisp,
+                          vehicleId: '',
+                        }));
+                      } else {
+                        setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                      }
+                      return;
+                    }
+
+                    if (item.counterpartyId && !form.counterpartyId) {
+                      const cpDisp = item.counterpartyName ?? '';
+                      setCpDisplay(cpDisp);
+                      setCpPhone(null);
+                      setCpVehicles([]);
+                      setForm(f => ({
+                        ...f,
+                        workOrderId: item.id,
+                        workOrderDisplay: display,
+                        counterpartyId: item.counterpartyId!,
+                        counterpartyDisplay: cpDisp,
+                        vehicleId: '',
+                      }));
+                      return;
+                    }
+
+                    setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                  }}
                   onClear={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
                 />
               </div>
@@ -1282,6 +1323,8 @@ export function CalendarSlotModal({
           counterpartyDisplay: form.counterpartyDisplay || undefined,
           vehicleId: form.vehicleId || undefined,
           description: form.notes || undefined,
+          plannedStartAt: form.startAt ? `${date}T${form.startAt}` : undefined,
+          plannedEndAt: form.endAt ? `${date}T${form.endAt}` : undefined,
         }}
         onCreated={wo => {
           const display = `${wo.number}${form.counterpartyDisplay ? ` · ${form.counterpartyDisplay}` : ''}`;

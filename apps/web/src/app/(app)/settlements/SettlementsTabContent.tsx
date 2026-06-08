@@ -169,10 +169,19 @@ export function SettlementsTabContent() {
       {/* Picker row */}
       <div className="flex items-center gap-3 py-4 shrink-0">
         <div className="w-80">
-          <EntityPickerField
+          <EntityPickerField<CpItem>
             display={selectedDisplay}
-            placeholder="Обрати контрагента…"
+            placeholder="Пошук контрагента…"
             onPick={() => setCpPickerOpen(true)}
+            onSearch={q =>
+              apiFetch<{ items: Counterparty[] }>(
+                `/counterparties?q=${encodeURIComponent(q)}&limit=20`,
+              ).then(r => r.items.map(c => ({ ...c, primary: cpDisplayName(c) })))
+            }
+            onSearchSelect={item => {
+              setSelectedDisplay(item.primary);
+              loadCounterparty(item);
+            }}
             onClear={() => {
               setSelected(null);
               setSelectedDisplay('');

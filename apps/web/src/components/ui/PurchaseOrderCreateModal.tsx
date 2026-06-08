@@ -436,11 +436,17 @@ export function PurchaseOrderCreateModal({
             <label className="block text-xs font-medium text-muted-foreground mb-1">
               Постачальник <span className="text-destructive-text">*</span>
             </label>
-            <EntityPickerField
+            <EntityPickerField<SupplierItem>
               display={supplierDisplay}
-              placeholder="Обрати постачальника…"
+              placeholder="Пошук постачальника…"
               onOpenDetail={form.supplierId ? openSupplierDetail : undefined}
               onPick={() => setSupplierPickerOpen(true)}
+              onSearch={fetchSupplierItems}
+              onSearchSelect={item => {
+                setSupplierDisplay(item.primary);
+                setForm(f => ({ ...f, supplierId: item.id }));
+                dirty.markDirty();
+              }}
               onClear={() => {
                 setSupplierDisplay('');
                 setForm(f => ({ ...f, supplierId: '' }));
@@ -502,11 +508,13 @@ export function PurchaseOrderCreateModal({
               {lines.map((l, i) => (
                 <div key={i} className="flex gap-2 items-start">
                   <div className="flex-1 min-w-0">
-                    <EntityPickerField
+                    <EntityPickerField<GoodItem>
                       display={l.goodName}
-                      placeholder="Обрати товар…"
+                      placeholder="Пошук товару…"
                       onOpenDetail={l.goodId ? () => void openGoodDetail(i) : undefined}
                       onPick={() => setGoodPickerLine(i)}
+                      onSearch={fetchGoodItems}
+                      onSearchSelect={item => void applyGoodSelection(i, item)}
                       onClear={() => {
                         setLines(ls =>
                           ls.map((x, idx) =>

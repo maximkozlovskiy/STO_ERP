@@ -418,10 +418,18 @@ export function GoodEditModal({
             </label>
             <EntityPickerField
               display={supplierDisplay}
-              placeholder="Обрати постачальника…"
+              placeholder="Пошук постачальника…"
               onOpenDetail={form.preferredSupplierId ? openSupplierDetail : undefined}
-              onPick={() => {
-                // No picker modal yet — use Select fallback below
+              onPick={() => {}}
+              onSearch={q =>
+                apiFetch<{ items: Supplier[] }>(
+                  `/counterparties?type=SUPPLIER&q=${encodeURIComponent(q)}&limit=30`,
+                ).then(r => r.items.map(s => ({ id: s.id, primary: supplierLabel(s) })))
+              }
+              onSearchSelect={item => {
+                setSupplierDisplay(item.primary);
+                setForm(f => ({ ...f, preferredSupplierId: item.id }));
+                dirty.markDirty();
               }}
               onClear={() => {
                 setSupplierDisplay('');
@@ -430,24 +438,6 @@ export function GoodEditModal({
               }}
               hidePick
             />
-            <Select
-              value={form.preferredSupplierId}
-              onChange={e => {
-                const id = e.target.value;
-                const s = suppliers.find(x => x.id === id) ?? null;
-                setSupplierDisplay(supplierLabel(s));
-                setForm(f => ({ ...f, preferredSupplierId: id }));
-                dirty.markDirty();
-              }}
-              className="mt-1"
-            >
-              <option value="">— Не вказано —</option>
-              {suppliers.map(s => (
-                <option key={s.id} value={s.id}>
-                  {supplierLabel(s)}
-                </option>
-              ))}
-            </Select>
           </div>
 
           {!isEdit && (

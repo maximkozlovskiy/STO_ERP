@@ -513,11 +513,13 @@ export function StockDocumentCreateModal({
               {lines.map((l, i) => (
                 <div key={i} className="flex gap-2 items-start">
                   <div className="flex-1 min-w-0">
-                    <EntityPickerField
+                    <EntityPickerField<GoodItem>
                       display={l.goodName}
-                      placeholder="Обрати товар…"
+                      placeholder="Пошук товару…"
                       onOpenDetail={l.goodId ? () => void openGoodDetail(i) : undefined}
                       onPick={() => setGoodPickerLine(i)}
+                      onSearch={fetchGoodItems}
+                      onSearchSelect={item => void applyGoodSelection(i, item)}
                       onClear={() => {
                         setLines(ls =>
                           ls.map((x, idx) =>

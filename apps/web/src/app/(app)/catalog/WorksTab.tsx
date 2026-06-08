@@ -837,7 +837,7 @@ export default function WorksTab() {
               placeholder="1.5"
             />
             <Input
-              label="Ціна, ₴"
+              label="Ціна/год, ₴"
               required
               type="number"
               min="0"
@@ -950,7 +950,7 @@ export default function WorksTab() {
               placeholder="1.5"
             />
             <Input
-              label="Ціна, ₴"
+              label="Ціна/год, ₴"
               required
               type="number"
               min="0"

@@ -173,11 +173,17 @@ export function InvoiceCreateModal({ open, onClose, onSaved }: InvoiceCreateModa
             <label className="block text-xs font-medium text-muted-foreground mb-1">
               Контрагент <span className="text-destructive-text">*</span>
             </label>
-            <EntityPickerField
+            <EntityPickerField<CpItem>
               display={counterpartyDisplay}
-              placeholder="Обрати контрагента…"
+              placeholder="Пошук контрагента…"
               onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
               onPick={() => setCpPickerOpen(true)}
+              onSearch={fetchCpItems}
+              onSearchSelect={item => {
+                setCounterpartyDisplay(item.primary);
+                setForm(f => ({ ...f, counterpartyId: item.id }));
+                dirty.markDirty();
+              }}
               onClear={() => {
                 setCounterpartyDisplay('');
                 setForm(f => ({ ...f, counterpartyId: '' }));
