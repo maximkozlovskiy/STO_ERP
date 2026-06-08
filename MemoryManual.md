@@ -9,12 +9,32 @@
 ## Останній commit
 
 ```
+0f22a1f5 fix(tester): Bugs #381-#384 — CreateWorkOrderModal safety + validation
 4c2e32a9 fix(review): harden CreateWorkOrderModal — partial-failure safety + a11y + locale-aware parsing
 eb929140 feat(work-orders): add inline works and goods tables to CreateWorkOrderModal
 2aa7556  docs(skills): add 3 new approaches to sto-optimize
 14058c2c perf(optimize): drop redundant AuthAccount index + parallelize seed + memo CheckboxList + passive listeners
 Дата: 2026-06-08
 TypeScript: api ✅ 0 errors, web ✅ 0 errors
+Latest tester: 2026-06-08 (FOCUSED, HEAD 0f22a1f5) — 4 bugs: #381 close-while-saving guard, #382 dup-row guard, #383 qty/price pre-validation, #384 half-typed row warning. Web tests: 31 files / 326 (was 30/323 + 3 new regression guards).
+
+### sto-tester cycle (2026-06-08) — CreateWorkOrderModal (Bugs #381-#384)
+
+Перевірено двома commit-ами (eb929140 + 4c2e32a9) у `apps/web/src/components/ui/CreateWorkOrderModal.tsx`:
+
+- [Bug #381] HIGH — Modal close (overlay/Escape/X) під час `saving=true` спричиняв orphaned WO:
+  фоновий POST `/work-orders` → `/lines` → `/parts` продовжувався, бо `apiFetch` не скасовується
+  при закритті UI. Fix: `onClose={saving ? () => {} : onClose}`.
+- [Bug #382] MEDIUM — Дублікат рядків роботи (same `workId+employeeId`) та товару (same
+  `goodId+warehouseId`) тихо додавався. Fix: pre-check у `addLine()`/`addPart()` з inline-помилкою.
+- [Bug #383] MEDIUM — Негативні/нульові `quantity` (backend `@Min(0.001)`) та `normoHours`
+  (`@Min(0.01)`) проходили у local rows → backend reject лише після WO POST → orphaned WO.
+  Fix: pre-validate у `addLine()`/`addPart()`.
+- [Bug #384] MEDIUM — Half-typed `newLine`/`newPart` без `employeeId`/`warehouseId` тихо
+  втрачалися при submit (auto-flush logic вимагала ОБИДВА поля). Fix: pre-submit guard з
+  україномовним повідомленням перед `setSaving(true)`.
+
+Створено `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.test.tsx` (3 regression tests).
 
 ### sto-review cycle (2026-06-08) — CreateWorkOrderModal inline tables
 
