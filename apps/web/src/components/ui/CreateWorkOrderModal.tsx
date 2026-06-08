@@ -671,245 +671,329 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
           {/* Секція: Роботи */}
           <div className="pt-4 pb-4">
             <p className="text-xs font-medium text-muted-foreground mb-2">Роботи</p>
-
-            {/* Таблиця доданих робіт */}
-            {lines.length > 0 && (
-              <div className="rounded-lg border border-border overflow-hidden mb-3">
-                <table className="w-full text-[12px]">
-                  <thead>
-                    <tr className="bg-secondary/50 border-b border-border">
-                      <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">
-                        Робота
-                      </th>
-                      <th className="text-left px-3 py-1.5 font-medium text-muted-foreground w-28">
-                        Виконавець
-                      </th>
-                      <th className="text-right px-3 py-1.5 font-medium text-muted-foreground w-20">
-                        Год
-                      </th>
-                      <th className="text-right px-3 py-1.5 font-medium text-muted-foreground w-24">
-                        Ціна, ₴
-                      </th>
-                      <th className="w-8" />
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="bg-secondary/50 border-b border-border">
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                      Назва роботи
+                    </th>
+                    <th className="text-left px-2 py-2 font-medium text-muted-foreground w-36">
+                      Виконавець
+                    </th>
+                    <th className="text-right px-2 py-2 font-medium text-muted-foreground w-18">
+                      Год
+                    </th>
+                    <th className="text-right px-2 py-2 font-medium text-muted-foreground w-24">
+                      Ціна, ₴
+                    </th>
+                    <th className="text-right px-2 py-2 font-medium text-muted-foreground w-24">
+                      Сума, ₴
+                    </th>
+                    <th className="w-8" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {lines.map(line => {
+                    const emp = employees.find(e => e.id === line.employeeId);
+                    const h = toNumberOrUndefined(line.normoHours);
+                    const p = toNumberOrUndefined(line.price);
+                    const sum = h != null && p != null ? h * p : null;
+                    return (
+                      <tr
+                        key={line._key}
+                        className="bg-surface hover:bg-secondary/30 transition-colors"
+                      >
+                        <td className="px-3 py-1.5 text-foreground">{line.workName}</td>
+                        <td className="px-2 py-1.5 text-muted-foreground">
+                          {emp ? `${emp.lastName} ${emp.firstName}` : '—'}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                          {line.normoHours || '—'}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                          {line.price || '—'}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums font-medium text-foreground">
+                          {sum != null ? sum.toFixed(2) : '—'}
+                        </td>
+                        <td className="px-1.5 py-1.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setLines(prev => prev.filter(l => l._key !== line._key))}
+                            disabled={saving}
+                            aria-label="Видалити роботу"
+                            title="Видалити роботу"
+                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {/* Рядок введення нової роботи */}
+                  <tr className="bg-surface border-t border-dashed border-border">
+                    <td className="px-2 py-1.5">
+                      <SearchCombobox<WorkItem>
+                        placeholder="Пошук роботи..."
+                        value={newLine.workId}
+                        displayValue={newLine.workName}
+                        fetchItems={fetchWorks}
+                        onSelect={w =>
+                          setNewLine(l => ({
+                            ...l,
+                            workId: w.id,
+                            workName: w.name,
+                            normoHours: String(w.normoHours),
+                            price: String(w.price),
+                          }))
+                        }
+                        onClear={() => setNewLine(EMPTY_LINE)}
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Select
+                        value={newLine.employeeId}
+                        onChange={e => setNewLine(l => ({ ...l, employeeId: e.target.value }))}
+                      >
+                        <option value="">— Механік —</option>
+                        {employees.map(e => (
+                          <option key={e.id} value={e.id}>
+                            {e.lastName} {e.firstName}
+                          </option>
+                        ))}
+                      </Select>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Input
+                        type="number"
+                        placeholder="Год"
+                        value={newLine.normoHours}
+                        onChange={e => setNewLine(l => ({ ...l, normoHours: e.target.value }))}
+                        min="0"
+                        step="0.1"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Input
+                        type="number"
+                        placeholder="Ціна"
+                        value={newLine.price}
+                        onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
+                        min="0"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                      {(() => {
+                        const h = toNumberOrUndefined(newLine.normoHours);
+                        const p = toNumberOrUndefined(newLine.price);
+                        return h != null && p != null ? (h * p).toFixed(2) : '—';
+                      })()}
+                    </td>
+                    <td className="px-1.5 py-1.5 text-right">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addLine}
+                        disabled={!newLine.workId || !newLine.employeeId || saving}
+                        className="h-8 w-8 p-0 shrink-0"
+                        title="Додати роботу"
+                        aria-label="Додати роботу"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                </tbody>
+                {lines.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-secondary/50 border-t border-border">
+                      <td
+                        colSpan={4}
+                        className="px-3 py-1.5 text-right text-xs font-medium text-muted-foreground"
+                      >
+                        Разом робіт:
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold text-foreground">
+                        {lines
+                          .reduce((acc, l) => {
+                            const h = toNumberOrUndefined(l.normoHours);
+                            const p = toNumberOrUndefined(l.price);
+                            return acc + (h != null && p != null ? h * p : 0);
+                          }, 0)
+                          .toFixed(2)}
+                      </td>
+                      <td />
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {lines.map(line => {
-                      const emp = employees.find(e => e.id === line.employeeId);
-                      return (
-                        <tr key={line._key} className="bg-surface">
-                          <td className="px-3 py-1.5 text-foreground">{line.workName}</td>
-                          <td className="px-3 py-1.5 text-muted-foreground">
-                            {emp ? `${emp.lastName} ${emp.firstName}` : '—'}
-                          </td>
-                          <td className="px-3 py-1.5 text-right text-muted-foreground">
-                            {line.normoHours || '—'}
-                          </td>
-                          <td className="px-3 py-1.5 text-right text-muted-foreground">
-                            {line.price || '—'}
-                          </td>
-                          <td className="px-1.5 py-1.5 text-right">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setLines(prev => prev.filter(l => l._key !== line._key))
-                              }
-                              disabled={saving}
-                              aria-label="Видалити роботу"
-                              title="Видалити роботу"
-                              className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Рядок додавання роботи */}
-            <div
-              className="grid gap-2"
-              style={{ gridTemplateColumns: '1fr 160px 80px 100px auto' }}
-            >
-              <SearchCombobox<WorkItem>
-                placeholder="Пошук роботи..."
-                value={newLine.workId}
-                displayValue={newLine.workName}
-                fetchItems={fetchWorks}
-                onSelect={w =>
-                  setNewLine(l => ({
-                    ...l,
-                    workId: w.id,
-                    workName: w.name,
-                    normoHours: String(w.normoHours),
-                    price: String(w.price),
-                  }))
-                }
-                onClear={() => setNewLine(EMPTY_LINE)}
-              />
-              <Select
-                value={newLine.employeeId}
-                onChange={e => setNewLine(l => ({ ...l, employeeId: e.target.value }))}
-              >
-                <option value="">— Механік —</option>
-                {employees.map(e => (
-                  <option key={e.id} value={e.id}>
-                    {e.lastName} {e.firstName}
-                  </option>
-                ))}
-              </Select>
-              <Input
-                type="number"
-                placeholder="Год"
-                value={newLine.normoHours}
-                onChange={e => setNewLine(l => ({ ...l, normoHours: e.target.value }))}
-                min="0"
-                step="0.1"
-              />
-              <Input
-                type="number"
-                placeholder="Ціна"
-                value={newLine.price}
-                onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
-                min="0"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addLine}
-                disabled={!newLine.workId || !newLine.employeeId || saving}
-                className="h-9 w-9 p-0 shrink-0"
-                title="Додати роботу"
-                aria-label="Додати роботу"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
+                  </tfoot>
+                )}
+              </table>
             </div>
           </div>
 
           {/* Секція: Товари */}
           <div className="pt-4 pb-2">
             <p className="text-xs font-medium text-muted-foreground mb-2">Товари / Запчастини</p>
-
-            {/* Таблиця доданих товарів */}
-            {parts.length > 0 && (
-              <div className="rounded-lg border border-border overflow-hidden mb-3">
-                <table className="w-full text-[12px]">
-                  <thead>
-                    <tr className="bg-secondary/50 border-b border-border">
-                      <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">
-                        Товар
-                      </th>
-                      <th className="text-left px-3 py-1.5 font-medium text-muted-foreground w-32">
-                        Склад
-                      </th>
-                      <th className="text-right px-3 py-1.5 font-medium text-muted-foreground w-20">
-                        К-сть
-                      </th>
-                      <th className="text-right px-3 py-1.5 font-medium text-muted-foreground w-24">
-                        Ціна, ₴
-                      </th>
-                      <th className="w-8" />
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="bg-secondary/50 border-b border-border">
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                      Назва товару
+                    </th>
+                    <th className="text-left px-2 py-2 font-medium text-muted-foreground w-32">
+                      Склад
+                    </th>
+                    <th className="text-right px-2 py-2 font-medium text-muted-foreground w-18">
+                      К-сть
+                    </th>
+                    <th className="text-right px-2 py-2 font-medium text-muted-foreground w-24">
+                      Ціна, ₴
+                    </th>
+                    <th className="text-right px-2 py-2 font-medium text-muted-foreground w-24">
+                      Сума, ₴
+                    </th>
+                    <th className="w-8" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {parts.map(part => {
+                    const wh = warehouses.find(w => w.id === part.warehouseId);
+                    const qty = toNumberOrUndefined(part.quantity);
+                    const p = toNumberOrUndefined(part.price);
+                    const sum = qty != null && p != null ? qty * p : null;
+                    return (
+                      <tr
+                        key={part._key}
+                        className="bg-surface hover:bg-secondary/30 transition-colors"
+                      >
+                        <td className="px-3 py-1.5 text-foreground">{part.goodName}</td>
+                        <td className="px-2 py-1.5 text-muted-foreground">{wh?.name ?? '—'}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                          {part.quantity}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                          {part.price || '—'}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums font-medium text-foreground">
+                          {sum != null ? sum.toFixed(2) : '—'}
+                        </td>
+                        <td className="px-1.5 py-1.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setParts(prev => prev.filter(p => p._key !== part._key))}
+                            disabled={saving}
+                            aria-label="Видалити товар"
+                            title="Видалити товар"
+                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {/* Рядок введення нового товару */}
+                  <tr className="bg-surface border-t border-dashed border-border">
+                    <td className="px-2 py-1.5">
+                      <SearchCombobox<GoodItem>
+                        placeholder="Пошук товару..."
+                        value={newPart.goodId}
+                        displayValue={newPart.goodName}
+                        fetchItems={fetchGoods}
+                        onSelect={g =>
+                          setNewPart(p => ({
+                            ...p,
+                            goodId: g.id,
+                            goodName: g.name,
+                            price: String(g.salePrice),
+                          }))
+                        }
+                        onClear={() =>
+                          setNewPart(p => ({ ...EMPTY_PART, warehouseId: p.warehouseId }))
+                        }
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Select
+                        value={newPart.warehouseId}
+                        onChange={e => setNewPart(p => ({ ...p, warehouseId: e.target.value }))}
+                      >
+                        <option value="">Склад</option>
+                        {warehouses.map(w => (
+                          <option key={w.id} value={w.id}>
+                            {w.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Input
+                        type="number"
+                        placeholder="К-сть"
+                        value={newPart.quantity}
+                        onChange={e => setNewPart(p => ({ ...p, quantity: e.target.value }))}
+                        min="0.001"
+                        step="any"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Input
+                        type="number"
+                        placeholder="Ціна"
+                        value={newPart.price}
+                        onChange={e => setNewPart(p => ({ ...p, price: e.target.value }))}
+                        min="0"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                      {(() => {
+                        const qty = toNumberOrUndefined(newPart.quantity);
+                        const p = toNumberOrUndefined(newPart.price);
+                        return qty != null && p != null ? (qty * p).toFixed(2) : '—';
+                      })()}
+                    </td>
+                    <td className="px-1.5 py-1.5 text-right">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addPart}
+                        disabled={!newPart.goodId || !newPart.warehouseId || saving}
+                        className="h-8 w-8 p-0 shrink-0"
+                        title="Додати товар"
+                        aria-label="Додати товар"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                </tbody>
+                {parts.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-secondary/50 border-t border-border">
+                      <td
+                        colSpan={4}
+                        className="px-3 py-1.5 text-right text-xs font-medium text-muted-foreground"
+                      >
+                        Разом товарів:
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold text-foreground">
+                        {parts
+                          .reduce((acc, pt) => {
+                            const qty = toNumberOrUndefined(pt.quantity);
+                            const p = toNumberOrUndefined(pt.price);
+                            return acc + (qty != null && p != null ? qty * p : 0);
+                          }, 0)
+                          .toFixed(2)}
+                      </td>
+                      <td />
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {parts.map(part => {
-                      const wh = warehouses.find(w => w.id === part.warehouseId);
-                      return (
-                        <tr key={part._key} className="bg-surface">
-                          <td className="px-3 py-1.5 text-foreground">{part.goodName}</td>
-                          <td className="px-3 py-1.5 text-muted-foreground">{wh?.name ?? '—'}</td>
-                          <td className="px-3 py-1.5 text-right text-muted-foreground">
-                            {part.quantity}
-                          </td>
-                          <td className="px-3 py-1.5 text-right text-muted-foreground">
-                            {part.price || '—'}
-                          </td>
-                          <td className="px-1.5 py-1.5 text-right">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setParts(prev => prev.filter(p => p._key !== part._key))
-                              }
-                              disabled={saving}
-                              aria-label="Видалити товар"
-                              title="Видалити товар"
-                              className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Рядок додавання товару */}
-            <div
-              className="grid gap-2"
-              style={{ gridTemplateColumns: '1fr 140px 70px 100px auto' }}
-            >
-              <SearchCombobox<GoodItem>
-                placeholder="Пошук товару..."
-                value={newPart.goodId}
-                displayValue={newPart.goodName}
-                fetchItems={fetchGoods}
-                onSelect={g =>
-                  setNewPart(p => ({
-                    ...p,
-                    goodId: g.id,
-                    goodName: g.name,
-                    price: String(g.salePrice),
-                  }))
-                }
-                onClear={() => setNewPart(p => ({ ...EMPTY_PART, warehouseId: p.warehouseId }))}
-              />
-              <Select
-                value={newPart.warehouseId}
-                onChange={e => setNewPart(p => ({ ...p, warehouseId: e.target.value }))}
-              >
-                <option value="">Склад</option>
-                {warehouses.map(w => (
-                  <option key={w.id} value={w.id}>
-                    {w.name}
-                  </option>
-                ))}
-              </Select>
-              <Input
-                type="number"
-                placeholder="К-сть"
-                value={newPart.quantity}
-                onChange={e => setNewPart(p => ({ ...p, quantity: e.target.value }))}
-                min="0.001"
-                step="any"
-              />
-              <Input
-                type="number"
-                placeholder="Ціна"
-                value={newPart.price}
-                onChange={e => setNewPart(p => ({ ...p, price: e.target.value }))}
-                min="0"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addPart}
-                disabled={!newPart.goodId || !newPart.warehouseId || saving}
-                className="h-9 w-9 p-0 shrink-0"
-                title="Додати товар"
-                aria-label="Додати товар"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
+                  </tfoot>
+                )}
+              </table>
             </div>
           </div>
         </div>
