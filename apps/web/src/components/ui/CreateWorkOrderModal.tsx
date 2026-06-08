@@ -771,16 +771,16 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             type="button"
             onClick={() => setHeaderCollapsed(c => !c)}
             className={[
-              'flex items-center gap-1 w-full py-1 px-1 text-[11px] text-muted-foreground',
+              'flex items-center justify-end gap-1 w-full py-1 px-1 text-[11px] text-muted-foreground',
               'hover:text-foreground transition-colors select-none shrink-0',
               'border-t border-border',
             ].join(' ')}
           >
+            {headerCollapsed ? 'Розгорнути шапку' : 'Згорнути шапку'}
             <ChevronUp
               className="h-3 w-3 transition-transform duration-300"
               style={{ transform: headerCollapsed ? 'rotate(180deg)' : 'rotate(0deg)' }}
             />
-            {headerCollapsed ? 'Розгорнути шапку' : 'Згорнути шапку'}
           </button>
 
           {/* ── Tables area — takes remaining space ──────────────────── */}
