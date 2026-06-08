@@ -297,12 +297,46 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
 
   const addLine = () => {
     if (!newLine.workId || !newLine.employeeId) return;
+    // Bug #382: блокуємо повний дублікат (work + виконавець) — типовий user-error.
+    if (lines.some(l => l.workId === newLine.workId && l.employeeId === newLine.employeeId)) {
+      setError('Цю роботу для цього виконавця вже додано');
+      return;
+    }
+    // Bug #383: захист від негативних/нульових normoHours (DTO @Min(0.01) інакше rejects after WO created).
+    const normo = toNumberOrUndefined(newLine.normoHours);
+    if (newLine.normoHours && (normo === undefined || normo <= 0)) {
+      setError('Нормо-години мають бути більше нуля');
+      return;
+    }
+    const linePrice = toNumberOrUndefined(newLine.price);
+    if (newLine.price && (linePrice === undefined || linePrice < 0)) {
+      setError('Ціна не може бути відʼємною');
+      return;
+    }
+    setError('');
     setLines(prev => [...prev, { ...newLine, _key: nextKey() }]);
     setNewLine(EMPTY_LINE);
   };
 
   const addPart = () => {
     if (!newPart.goodId || !newPart.warehouseId) return;
+    // Bug #382: блокуємо повний дублікат (товар + склад).
+    if (parts.some(p => p.goodId === newPart.goodId && p.warehouseId === newPart.warehouseId)) {
+      setError('Цей товар із цього складу вже додано');
+      return;
+    }
+    // Bug #383: backend DTO @Min(0.001) для quantity → reject цілого create() після WO POST.
+    const qty = toNumberOrUndefined(newPart.quantity);
+    if (qty === undefined || qty <= 0) {
+      setError('Кількість має бути більше нуля');
+      return;
+    }
+    const partPrice = toNumberOrUndefined(newPart.price);
+    if (newPart.price && (partPrice === undefined || partPrice < 0)) {
+      setError('Ціна не може бути відʼємною');
+      return;
+    }
+    setError('');
     setParts(prev => [...prev, { ...newPart, _key: nextKey() }]);
     setNewPart({ ...EMPTY_PART, warehouseId: newPart.warehouseId });
   };
@@ -313,6 +347,19 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
   const createdWoRef = useRef<CreatedWorkOrder | null>(null);
 
   const create = async () => {
+    // Bug #384: warn user if half-typed row would be silently dropped (data loss).
+    // Pre-check BEFORE setSaving so the button stays enabled and the warning is visible.
+    const hasHalfLine = !!newLine.workId && !newLine.employeeId;
+    const hasHalfPart = !!newPart.goodId && !newPart.warehouseId;
+    if (hasHalfLine || hasHalfPart) {
+      setError(
+        hasHalfLine
+          ? 'У рядку «Роботи» не обрано виконавця. Натисніть «+» щоб додати або очистіть рядок.'
+          : 'У рядку «Товари» не обрано склад. Натисніть «+» щоб додати або очистіть рядок.',
+      );
+      return;
+    }
+
     setSaving(true);
     setError('');
 
@@ -403,7 +450,10 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     <>
       <Modal
         open={open}
-        onClose={onClose}
+        // Bug #381: блокуємо закриття під час послідовного POST /work-orders → /lines → /parts.
+        // Інакше overlay/Escape/X закривають UI, а фонові fetch продовжуються — створюється WO
+        // з частково записаними позиціями без видимого зворотного звʼязку.
+        onClose={saving ? () => {} : onClose}
         title="Новий наряд"
         size="content"
         footer={

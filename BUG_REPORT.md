@@ -11605,3 +11605,139 @@ if (!form.loginEmail) { setError('Вкажіть email для входу'); retu
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-08 — CreateWorkOrderModal inline tables (HEAD 4c2e32a9)
+
+Scope (2 commits, eb929140 + 4c2e32a9):
+
+- `feat(work-orders): add inline works and goods tables to CreateWorkOrderModal`
+- `fix(review): harden CreateWorkOrderModal — partial-failure safety + a11y + locale-aware parsing`
+
+Tested file: `apps/web/src/components/ui/CreateWorkOrderModal.tsx`
+
+---
+
+## Bug #381 — HIGH — Modal closeable while `saving=true` → orphaned WO with no client warning
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:402-419`
+**Severity:** HIGH
+**Категорія:** frontend / data-integrity / UX
+
+**Опис:** `Modal` приймає `onClose={onClose}` без guard на `saving`. Користувач може закрити модалку (overlay click, Escape, X) під час послідовних POST `/work-orders` → `/lines` → `/parts`. Якщо WO POST уже пройшов (`createdWoRef.current = wo`), а далі модалка закривається — спливаючі лінії/запчастини **тихо постяться у фон**: `apiFetch` продовжує цикл навіть після `onClose()` (закриття модалки НЕ скасовує fetch). Користувач думає що операція скасована, але БД має наряд з частково записаними позиціями. Якщо POST провалюється після close — `setError()` не видно (модалка прихована), користувач не отримує feedback.
+
+**Очікувана поведінка:** під час `saving=true` Modal не закривається (overlay/Escape/X блокуються). Користувач може чекати або побачити помилку.
+
+**Фактична поведінка:** Modal закривається миттєво. Лінії продовжують POST у фон без видимої помилки.
+
+**Фікс:** обгорнути `onClose` у guard:
+
+```tsx
+<Modal open={open} onClose={saving ? () => {} : onClose} ...>
+```
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #382 — MEDIUM — Duplicate work/good items не блокуються при додаванні
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:298-308`
+**Severity:** MEDIUM
+**Категорія:** frontend / validation / UX
+
+**Опис:** `addLine()` лише перевіряє `!newLine.workId || !newLine.employeeId`. Користувач може:
+
+1. Знайти "Заміна масла", обрати, клік `+` → рядок додано
+2. Знайти "Заміна масла" ще раз, обрати, клік `+` → 2 ідентичні рядки
+
+Те саме для товарів через `addPart()`. Backend (`/work-orders/:id/lines`, `/parts`) також не блокує дубль (це валідно для legacy use case — той самий work з різними виконавцями). АЛЕ дубль того самого work + employee + ціни майже завжди user-error. У UI відсутня будь-яка візуальна підказка.
+
+**Очікувана поведінка:** при спробі додати дубль (same `workId+employeeId` для line; same `goodId+warehouseId` для part) — inline-помилка під рядком "Цю позицію вже додано" + Plus disabled.
+
+**Фактична поведінка:** дублікат тихо додається у таблицю.
+
+**Фікс:** перевірка у `addLine()`/`addPart()`:
+
+```tsx
+const isDuplicate = lines.some(
+  l => l.workId === newLine.workId && l.employeeId === newLine.employeeId,
+);
+if (isDuplicate) {
+  setError('Цю роботу для цього виконавця вже додано');
+  return;
+}
+```
+
+Очищати `error` при зміні `newLine`/`newPart`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #383 — MEDIUM — Negative/zero quantity або price проходять в local rows → backend rejects entire create
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:304-308,803-817`
+**Severity:** MEDIUM
+**Категорія:** frontend / validation / UX
+
+**Опис:** `addPart()` перевіряє лише `goodId && warehouseId`. Користувач може ввести `quantity = -5` або `quantity = 0` (HTML `min="0.001"` лише cosmetic — не блокує програмний event). Локальний рядок додається. Під час `create()`:
+
+1. `POST /work-orders` успіх → `createdWoRef.current = wo`
+2. `POST /work-orders/:id/parts` з `quantity: -5` → backend `@Min(0.001)` → 400
+3. Користувач бачить помилку → але WO вже створено у БД
+
+Аналогічно для `normoHours = 0` (DTO `@Min(0.01)`) — backend reject. Те саме для `price < 0` (хоча default з товару = додатній).
+
+**Очікувана поведінка:** Plus disabled коли `quantity <= 0` або `quantity === ''`; inline-помилка під полем.
+
+**Фактична поведінка:** недійсні значення проходять до бекенду → создан orphaned WO.
+
+**Фікс:** валідація у `addLine()`/`addPart()`:
+
+```tsx
+const qty = toNumberOrUndefined(newPart.quantity);
+if (qty === undefined || qty <= 0) {
+  setError('Кількість має бути більше нуля');
+  return;
+}
+```
+
+Plus disabled додатково на `!newPart.quantity || Number(newPart.quantity.replace(',', '.')) <= 0`.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #384 — MEDIUM — Half-typed `newLine`/`newPart` без `employeeId`/`warehouseId` тихо втрачаються при submit
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:319-337`
+**Severity:** MEDIUM
+**Категорія:** frontend / UX / data-loss
+
+**Опис:** Коментар у `create()` каже:
+
+> Auto-flush in-progress rows that the user filled but never clicked "+". Without this, switching focus to the footer button silently drops the half-typed row (data loss).
+
+Однак auto-flush спрацьовує ТІЛЬКИ якщо `newLine.workId && newLine.employeeId` (або `newPart.goodId && newPart.warehouseId`). Якщо користувач набрав work і ціну, але забув обрати виконавця → клік "Створити наряд" → лінія **тихо відкидається** без warning. Те саме для товару без складу.
+
+**Очікувана поведінка:** якщо `newLine.workId` (work обрано) але `!newLine.employeeId` → попередження "У рядку 'Роботи' не обрано виконавця. Створити без цієї позиції чи додати спочатку?" АБО блокування submit з focus на полі "Виконавець".
+
+**Фактична поведінка:** half-typed row тихо губиться. Користувач думає що додав, але у створеному наряді його немає.
+
+**Фікс:** перед `create()` body:
+
+```tsx
+const hasHalfLine = !!newLine.workId && !newLine.employeeId;
+const hasHalfPart = !!newPart.goodId && !newPart.warehouseId;
+if (hasHalfLine || hasHalfPart) {
+  setError(
+    'У рядку додавання не заповнено обовʼязкові поля. Натисніть "+" щоб додати або очистіть рядок.',
+  );
+  setSaving(false);
+  return;
+}
+```
+
+**Статус:** [x] виправлено
+
+---
