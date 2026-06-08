@@ -629,9 +629,9 @@ export function CalendarSlotModal({
             </div>
           )}
 
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-4 gap-3 items-end">
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
+              <label className="block text-[13px] font-medium text-muted-foreground mb-1">
                 Підйомник
               </label>
               <Select
@@ -683,7 +683,7 @@ export function CalendarSlotModal({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
+              <label className="block text-[13px] font-medium text-muted-foreground mb-1">
                 Норм-год <span className="font-normal text-muted-foreground/70">(авто кінець)</span>
               </label>
               <Input
