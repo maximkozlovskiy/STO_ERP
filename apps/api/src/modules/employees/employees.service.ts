@@ -1,6 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   AssignBranchesDto,
@@ -78,22 +84,56 @@ export class EmployeesService {
 
   async create(orgId: string, dto: CreateEmployeeDto): Promise<EmployeeResponseDto> {
     this.validateRateScheme(dto.rateScheme);
-    const item = await this.prisma.employee.create({
-      data: {
-        orgId,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        role: dto.role,
-        rateScheme: dto.rateScheme as object,
-        phone: dto.phone,
+
+    if (dto.loginEmail && !dto.password) {
+      throw new BadRequestException("Пароль обов'язковий якщо вказано email для входу");
+    }
+
+    if (dto.loginEmail) {
+      const existing = await this.prisma.authAccount.findUnique({
+        where: { orgId_email: { orgId, email: dto.loginEmail } },
+      });
+      if (existing) throw new ConflictException('Цей email вже використовується для входу');
+    }
+
+    const item = await this.prisma.$transaction(
+      async tx => {
+        const employee = await tx.employee.create({
+          data: {
+            orgId,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            role: dto.role,
+            rateScheme: dto.rateScheme as object,
+            phone: dto.phone,
+            email: dto.email,
+            ...(dto.dateOfHire && { dateOfHire: new Date(dto.dateOfHire) }),
+          },
+          include: {
+            employeeZones: { select: { zoneId: true } },
+            employeeLifts: { select: { liftId: true } },
+            employeeWorkCategories: { select: { workCategoryId: true } },
+            employeeBranches: { select: { branchId: true } },
+          },
+        });
+
+        if (dto.loginEmail && dto.password) {
+          const passwordHash = await bcrypt.hash(dto.password, 12);
+          await tx.authAccount.create({
+            data: {
+              orgId,
+              employeeId: employee.id,
+              email: dto.loginEmail,
+              passwordHash,
+            },
+          });
+        }
+
+        return employee;
       },
-      include: {
-        employeeZones: { select: { zoneId: true } },
-        employeeLifts: { select: { liftId: true } },
-        employeeWorkCategories: { select: { workCategoryId: true } },
-        employeeBranches: { select: { branchId: true } },
-      },
-    });
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+
     return this.toDto(item);
   }
 
@@ -113,8 +153,16 @@ export class EmployeesService {
         ...(dto.firstName !== undefined && { firstName: dto.firstName }),
         ...(dto.lastName !== undefined && { lastName: dto.lastName }),
         ...(dto.role !== undefined && { role: dto.role }),
+        ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.rateScheme !== undefined && { rateScheme: dto.rateScheme as object }),
         ...(dto.phone !== undefined && { phone: dto.phone }),
+        ...(dto.email !== undefined && { email: dto.email }),
+        ...(dto.dateOfHire !== undefined && {
+          dateOfHire: dto.dateOfHire ? new Date(dto.dateOfHire) : null,
+        }),
+        ...(dto.dateOfFire !== undefined && {
+          dateOfFire: dto.dateOfFire ? new Date(dto.dateOfFire) : null,
+        }),
       },
       include: {
         employeeZones: { select: { zoneId: true } },
