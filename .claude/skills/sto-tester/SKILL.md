@@ -946,6 +946,169 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-08 — Soft-delete `remove()` НЕ каскадить на 1:1 related @unique tables → re-create блокується pre-check ConflictException (Bug #373) — backend / soft-delete consistency
+
+**Сигнал:** Будь-яка модель X з 1:1 relation до Y через `Y.xId @unique` (наприклад `Employee` ↔ `AuthAccount.employeeId @unique`, `Counterparty` ↔ `SettlementAccount.counterpartyId @unique`). Тип-вказівка resurrection-pattern існує у X.create() (читає soft-deleted Y через інший унікальний ключ типу `@@unique([orgId,email])` для AuthAccount, або `@@unique([orgId,name])` для Counterparty), АЛЕ `X.remove()` тільки soft-delete X. Зв'язаний Y залишається `deletedAt=null`. Pre-check у наступному `X.create()` знаходить активний Y → кидає 409 → resurrection-шлях ніколи не доходить.
+
+```bash
+# Знайти @unique поля що посилаються на ID іншої моделі (1:1 з-back):
+grep -nE "^\s+[a-z]+Id\s+String\s+@unique" packages/database/prisma/schema.prisma
+
+# Для кожного X (parent), Y (1:1 child з x.Id @unique):
+# - X.remove() має містити $transaction що позначає Y як deleted
+# - X.create() має знати про resurrection Y (вже існує у багатьох сервісах)
+grep -rn "async remove(" apps/api/src/modules/<X>/<X>.service.ts
+# Має бути:
+#   $transaction(async tx => {
+#     updateMany(X, deletedAt:new Date())
+#     updateMany(Y, where: { xId: id, orgId, deletedAt:null }, deletedAt:new Date())
+#   })
+```
+
+**Причина виникнення:** Розробник пише `remove()` лінійно, soft-deleting parent. Не екстраполює що child зі своїм `@unique` блокує майбутній re-create. Resurrection-patch у `create()` (часто added пізніше) логічно припускає що child уже soft-deleted, але насправді коли `remove()` не каскадить — child лишається active → resurrection-шлях dead code.
+
+**Підхід до виявлення:**
+
+1. Для кожного `model X` зі soft-delete (має `deletedAt DateTime?`) — знайти ВСЯ моделі Y що мають `xId String @unique` (back-reference).
+2. Для кожної пари (X, Y) перевірити `service.remove(x.id)`:
+   - Чи робить `$transaction` що soft-deletes ОБИДВА?
+   - Якщо лише X — потенційний bug.
+3. Перевірити `service.create()` — якщо містить resurrection-pattern для Y → це сигнал що pair логічно існує і remove має каскадити.
+4. Можна також додати E2E-style test: create → remove → re-create з тими ж унікальними полями → має бути 200, не 409.
+
+**Підхід до фіксу:**
+
+```ts
+async remove(orgId: string, id: string): Promise<void> {
+  const now = new Date();
+  const result = await this.prisma.$transaction(
+    async tx => {
+      const empResult = await tx.X.updateMany({
+        where: { id, orgId, deletedAt: null },
+        data: { deletedAt: now },
+      });
+      if (empResult.count === 0) return { empCount: 0 };
+      await tx.Y.updateMany({
+        where: { xId: id, orgId, deletedAt: null },
+        data: { deletedAt: now },
+      });
+      return { empCount: empResult.count };
+    },
+    { timeout: TRANSACTION_TIMEOUT_MS },
+  );
+  if (result.empCount === 0) throw new NotFoundException('...');
+}
+```
+
+Якщо є 1:N related (`Vehicle` belongs to `Counterparty`) — тут лише soft-delete sibling row ризикує DI-стану; зазвичай не каскадуємо (vehicles переходять до nowhere). Каскадити **тільки 1:1 @unique** і лише ті, де знов-створення parent з тим самим унікальним полем child очікувано.
+
+**Severity:** HIGH — feature є (resurrection), але мертва без cascade. UX перевіряється: користувач бачить "вже використовується" хоча resource видалений → дезорієнтація + неможливість завершити робочий процес (re-hire, re-add контрагента).
+
+**Де шукати ще:**
+
+- `Employee` ↔ `AuthAccount` (Bug #373 — реалізовано).
+- `Counterparty` ↔ `SettlementAccount` (counterpartyId @unique) — re-create контрагента з тим самим імʼям блокується?
+- `Counterparty` ↔ `CustomerGarage` (isDefault — не unique-by-email, але унікальність by `counterpartyId+isDefault=true` партіальна).
+- `Vehicle` ↔ `WatermelonRecord` (mobile sync) — не релевантно для web.
+- Будь-який `model X { ... yId String @unique }` де `Y.xId` представляє 1:1.
+
+---
+
+### 2026-06-08 — `seed.ts` залежить від записів які створює інший seed-скрипт, але `prisma db seed` запускає тільки один (Bug #377) — db seed orchestration
+
+**Сигнал:** `seed.ts` (або інший seed-entry) робить `findFirst({ code: 'X' })` АБО `findFirst({ key: 'Y' })` на сутність створену **іншим seed-скриптом** (`seed-catalog.ts`, `seed-templates.ts`, etc.). Якщо не знайдено — fall through до `console.warn('пропущено')` або silent skip. `package.json` `prisma.seed` запускає тільки один із них (`prisma db seed` → `seed.ts`). На свіжому DB (fresh install / CI) → залежність порушена → silent skip → E2E тести/dev workflow ламається без явної помилки.
+
+```bash
+# Знайти всі prisma/seed*.ts:
+ls packages/database/prisma/seed*.ts
+
+# Знайти cross-file lookups:
+# (а) seed.ts шукає категорії що створює seed-catalog
+grep -nE "findFirst.*code:\s*['\"]" packages/database/prisma/seed.ts
+# (б) seed-catalog шукає org що створює seed.ts (одна модель, інший)
+grep -nE "findFirst.*orgId" packages/database/prisma/seed-catalog.ts
+
+# Поточний запуск:
+grep -A 2 "\"prisma\":" packages/database/package.json
+# Має запускати ВСІ необхідні seed-скрипти у правильному порядку.
+```
+
+**Причина виникнення:** Рефакторинг розділив один великий seed на кілька (типово: основа + каталоги + шаблони). package.json `"prisma": { "seed": "..." }` не оновлений → лишається old single-file командою. Розробник тестує локально де `seed-catalog.ts` уже виконаний раніше → не помічає залежність.
+
+**Підхід до виявлення:**
+
+1. ls packages/database/prisma/seed\*.ts → коли є >1 entry, перевірити `package.json.prisma.seed`.
+2. Якщо команда запускає лише один → перевірити cross-references між seeds (grep `findFirst` у одному за моделями створених іншим).
+3. Якщо знайдено залежність — bug.
+
+**Підхід до фіксу:**
+
+`package.json`:
+
+```json
+"prisma": {
+  "seed": "ts-node prisma/seed-catalog.ts && ts-node prisma/seed.ts"
+}
+```
+
+Порядок визначається залежностями. Catalog (без org залежностей бо org-id hardcoded) → seed.ts (потребує work categories created by catalog для Works).
+
+Альтернатива (складніше): зробити `seed.ts` self-sufficient — inline-impl того що seed-catalog робить.
+
+**Severity:** HIGH — fresh-install/CI breaks. Developer onboarding розривається. Виявляється лише на свіжій БД, локально працює бо catalog уже у БД.
+
+**Де шукати ще:**
+
+- Подібний паттерн у `mobile/scripts/seed-watermelon.ts` (якщо існує).
+- Будь-який custom seed-orchestrator скрипт у `scripts/`, `tools/`.
+- CI workflow YAML — який seed-команду виконує?
+
+---
+
+### 2026-06-08 — Controlled `<select value>` default не поважає dynamic option filter → state-mismatch UX без runtime error (Bug #378) — frontend / controlled-select
+
+**Сигнал:** Picker/date-time/dropdown компонент має `availableOptions` що обчислюється з `props.minX/maxX/filter`. Default `selectedValue` hardcoded (наприклад `'09'`, `'UAH'`, `0`) без посилання на `availableOptions`. Якщо default не входить у `availableOptions` → `<select value="09">` рендериться без відповідної `<option>`. Браузер показує першу опцію візуально, але state value = '09'. React dev console: warning, prod: silent. Користувач:
+
+- Не змінює час → onChange ніколи не fires → form value = '09' → backend валідація (`hour >= minHour`) → 400 → користувач не розуміє чому помилка коли він "не чіпав" поле.
+
+```bash
+# Знайти controlled-select з можливою динамічною filter-логікою:
+grep -rnE "const \w+\s*=\s*(useMemo|use)?\([^)]*\)?\s*=>\s*[A-Z_]+\.filter\(" apps/web/src/components/ui --include="*.tsx"
+# Перевірити чи default value hardcoded:
+grep -rnE "selected\w+\s*=.*\?.*:\s*['\"][0-9]+['\"]" apps/web/src/components/ui --include="*.tsx"
+```
+
+**Причина виникнення:** Compoent написаний без minHour/maxHour, default '09' працював коли HOURS = [0..23]. Пізніше додано minHour/maxHour для звуження window. Default не оновлено → mismatch.
+
+**Підхід до виявлення:**
+
+1. Знайти controlled-select де value computed з expression: `value ? slice : 'literal-default'`.
+2. Перевірити чи 'literal-default' гарантовано у options (`availableHours`/`availableCurrencies`/...).
+3. Якщо options можуть бути filtered prop-ом (`minHour`, `excludeCodes`, etc.) → bug.
+
+**Підхід до фіксу:**
+
+```ts
+const fallbackHour = availableHours[0] ?? '09';
+const selectedHour = selectedTime ? selectedTime.slice(0, 2) : fallbackHour;
+```
+
+Перший доступний → завжди валідний. `?? '09'` — last-resort коли availableHours порожній (теоретично — баг, але defense).
+
+**Регресія-guard:** test-кейс `it('коли picker відкривається з порожнім value і minHour=12 — selectedHour дорівнює першій валідній годині')`.
+
+**Severity:** MEDIUM — UX confusion. Не data corruption. Користувач плутається але не пошкоджує дані (валідація на backend ловить → 400).
+
+**Де шукати ще:**
+
+- `currency-picker` (default 'UAH' якщо org currency != UAH → mismatch).
+- `language-picker` (default 'uk' якщо org обмежує lang list).
+- `payment-method-picker` (default 'cash' якщо isActive=false для cash).
+- `unit-of-measure-picker` (default 'шт' якщо org використовує metric).
+- Будь-який picker з prop `enabledIds`/`allowedCodes`/`excludeCodes`.
+
+---
+
 ### 2026-06-06 — Sibling-handler pattern miss: review-agent виправив один handler з race/404/guard, але дзеркальний sibling у тому ж файлі залишився баговий (Bug #370) — frontend, modal/page CRUD handlers
 
 **Сигнал:** sto-review-agent (або попередня сесія) виправив race-guard / 404-handling / closure-fix у ОДНОМУ handler (`addX`, `deleteY`, `markZ`), але у тому ж файлі є **дзеркальні sibling handlers** (`addContract` поруч з `addVehicle`, `bulkDelete` поруч з `deleteOne`, etc.) які НЕ були touched commit-ом і досі мають той самий патерн. Tester повинен post-review audit-ити **всі handler-функції того ж файлу**, не лише ті що фігурують у diff.
