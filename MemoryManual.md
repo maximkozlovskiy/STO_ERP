@@ -9,6 +9,31 @@
 ## Останній commit
 
 ```
+fb394b3c fix(tester): Bugs #373-#380 — employees soft-delete cascade + datetime picker + seed
+   • #373 [HIGH] employees.remove(): каскад soft-delete на AuthAccount у
+     $transaction. Без цього re-create з тим же loginEmail після видалення
+     блокувався 409 (active AuthAccount від видаленого Employee); resurrection
+     pattern у create() ніколи не виконувався.
+   • #374 [MEDIUM] employees.create() TX race-guard: якщо AuthAccount створено
+     паралельно між pre-check і TX (deletedAt=null), кидаємо ConflictException
+     замість fall through до tx.create() → P2002 → 500.
+   • #375 [MEDIUM] employees.create() застосовує dto.status і dto.dateOfFire.
+     Раніше silent drop → silent data loss для ON_LEAVE/FIRED.
+   • #376 [HIGH] seed.ts admin rateScheme key 'fixed' → 'fixedMonthly' (синхронно
+     з rateSchemeSchema Zod у employees.dto.ts).
+   • #377 [HIGH] packages/database/package.json prisma seed: запускає
+     seed-catalog.ts ПЕРЕД seed.ts. Інакше WORK1/WORK2 silent-skip бо ENG/SUS
+     WorkCategory не існують на свіжому DB.
+   • #378 [MEDIUM] datetime-picker-input default selectedHour тепер бере
+     availableHours[0] коли minHour виключає '09'. Інакше <select value="09">
+     без відповідної <option> → React warning + state-mismatch UX.
+   • #379 [LOW] work-orders/page.tsx видалено dead imports і dead interfaces
+     після refactor у CreateWorkOrderModal.
+   • #380 [LOW] EmployeeEditModal.save() — .trim() для loginEmail валідації.
+   • +5 нових contract тестів у employees.contract.spec.ts (Bug #375 + IsEmail/MinLength)
+TypeScript: api ✓ web ✓ database ✓ (0 errors)
+Unit + contract: api 666/666 passed (+5 нових), web 323/323 passed
+
 f030bc98 fix(review): employees.create — bcrypt hoisted out of TX + AuthAccount resurrection
    • bcrypt.hash тепер виконується ПЕРЕД prisma.$transaction (~150ms CPU не
      блокує Prisma connection idle всередині tx). Узгоджено з setup.service.ts
