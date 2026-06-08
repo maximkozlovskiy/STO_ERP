@@ -1392,7 +1392,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                 />
                               </td>
                               <td className="px-1 py-1.5">
-                                <select
+                                <Select
                                   value={editingPart.unitOfMeasureId}
                                   onChange={e => {
                                     const u = units.find(u => u.id === e.target.value);
@@ -1402,7 +1402,6 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                       unitShortName: u?.shortName ?? '',
                                     }));
                                   }}
-                                  className="w-full rounded border border-border bg-surface text-[12px] px-1 py-1 outline-none focus:border-primary"
                                 >
                                   <option value="">шт</option>
                                   {units.map(u => (
@@ -1410,7 +1409,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                       {u.shortName}
                                     </option>
                                   ))}
-                                </select>
+                                </Select>
                               </td>
                               <td className="px-2 py-1.5">
                                 <Input
@@ -1592,7 +1591,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                           />
                         </td>
                         <td className="px-1 py-1.5">
-                          <select
+                          <Select
                             value={newPart.unitOfMeasureId}
                             onChange={e => {
                               const u = units.find(u => u.id === e.target.value);
@@ -1602,7 +1601,6 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                 unitShortName: u?.shortName ?? '',
                               }));
                             }}
-                            className="w-full rounded border border-border bg-surface text-[12px] px-1 py-1 outline-none focus:border-primary"
                           >
                             <option value="">шт</option>
                             {units.map(u => (
@@ -1610,7 +1608,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                 {u.shortName}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         </td>
                         <td className="px-2 py-1.5">
                           <Input
