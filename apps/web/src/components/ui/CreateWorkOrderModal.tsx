@@ -562,7 +562,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
           </div>
         )}
 
-        <div className="flex flex-col min-h-0">
+        <div className="flex flex-col min-h-[70dvh]">
           {/* ── Collapsible header ────────────────────────────────────── */}
           <div
             className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"
