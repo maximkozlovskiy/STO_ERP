@@ -4214,3 +4214,150 @@ CREATE UNIQUE INDEX "<table>_org_default_unique"
 - ❌ Робити unset попередніх **поза** `$transaction` з create/update — race window: між unset і create інший request може створити ще один default.
 
 ---
+
+### 2026-06-08 — Modal close під час async submit → orphaned record + tihо-падіння feedback (Bug #381) — frontend / data-integrity
+
+**Сигнал:** Модалка з multi-step async submit (`POST /parent` → послідовні `POST /parent/:id/children`) має `onClose={onClose}` без guard на `saving`. Користувач закриває модалку (overlay/Escape/X) під час running submit → `apiFetch` НЕ скасовується → запити завершуються у фоні без видимої помилки. Якщо `POST /parent` уже пройшов — у БД залишається parent record з частково записаними children. Tester повинен перевіряти ВСІ модалки з `setSaving(true)`/`disabled={saving}` patten — кожна має `onClose={saving ? () => {} : onClose}` (або еквівалент: блокування `onOpenChange` у Radix Dialog).
+
+```bash
+# Знайти модалки з saving state АЛЕ без onClose guard:
+grep -rln "setSaving(true)\|setSubmitting(true)" apps/web/src/components/ui apps/web/src/app --include="*.tsx" | while read f; do
+  if grep -q "<Modal" "$f" && ! grep -E "onClose=\{saving \?|onClose=\{submitting \?|onClose=\{!saving" "$f"; then
+    echo "POTENTIAL: $f має setSaving АЛЕ Modal onClose не блокує закриття під час save"
+  fi
+done
+```
+
+**Причина виникнення:** Розробник пише модалку з `disabled={saving}` на submit-кнопці, що блокує **повторний** клік. Але забуває що Modal має **інші** способи закриття — overlay click, Escape, X. Для single-POST submit це не проблема (атомарне). Для batch sequential POST — користувач **думає** що закрив (UI зник), але запити продовжуються; помилка `setError(...)` рендериться у прихованому компоненті.
+
+**Підхід до виявлення:**
+
+1. grep за `setSaving(true)` / `setSubmitting(true)` у `.tsx` файлах
+2. Для кожного знайденого — перевірити чи Modal/Dialog `onClose` має guard
+3. Особливо критично коли submit робить N послідовних запитів (`for ... await apiFetch`)
+4. Альтернативний симптом: `createdXRef = useRef<...>(null)` як "retry-safety" — означає що автор знав про partial-failure, але можливо не закрив всі шляхи
+
+**Підхід до фіксу:** `onClose={saving ? () => {} : onClose}` — мінімальний diff. Для Radix Dialog використати `onPointerDownOutside={e => saving && e.preventDefault()}` + `onEscapeKeyDown`. Для повної безпеки — додати `AbortController` у `useEffect cleanup` що скасовує fetch при unmount, але це більший рефакторинг.
+
+**Регресія-guard:** component test: відкрити modal → trigger submit → перед resolve POST спробувати Escape → асерт `onClose НЕ викликаний` → resolve.
+
+**Severity:** HIGH — orphaned record у БД, ніякого feedback користувачу, неможливо діагностувати без логів. Особливо критично для work-orders/invoices/payments (фінансова інтеграція).
+
+**Де шукати ще:**
+
+- `CreateWorkOrderModal` (Bug #381 — реалізовано)
+- `CreateInvoiceModal` / `CreatePaymentModal` — будь-яка модалка з batch POST
+- `StockTransferModal` (якщо batch lines)
+- `BulkActionsConfirmModal` (якщо foreach POST)
+- Будь-який `useState` saving/submitting/loading state у tsx з Modal
+
+---
+
+### 2026-06-08 — Дублікат рядка у multi-row form без перевірки → silently accepted + backend дозволяє (Bug #382) — frontend / UX / validation
+
+**Сигнал:** Multi-row form (lines/items/sub-resources) додає рядок через `setItems(prev => [...prev, newItem])` БЕЗ перевірки чи такий рядок (за combination of key fields) вже існує. Backend часто **дозволяє** дублікати (валідно для legacy use case: один work з різними виконавцями). Але дублікат тих самих key fields майже завжди user-error. Tester повинен перевіряти `add*()` handlers у inline-table компонентах на наявність dup-guard.
+
+```bash
+# Знайти add* handlers у inline-table компонентах:
+grep -rnE "const add[A-Z][a-zA-Z]* = \(\) => \{" apps/web/src --include="*.tsx" -A 10 | \
+  grep -B1 "setItems\|setLines\|setParts\|setRows\|setEntries" | head -30
+```
+
+**Причина виникнення:** Розробник орієнтується на backend (який дозволяє дублікат). Не задумується про UX — користувач випадково додає той самий work двічі, не помічає, потім бачить дві ідентичні позиції у звіті. Особливо легко в SearchCombobox (debounced, користувач не впевнений чи додалось).
+
+**Підхід до виявлення:** для кожного `add*()` у multi-row inline form — перевірити чи є `if (items.some(i => i.key === new.key)) return/setError(...)`. Чи display зрозумілий — інакше додати inline-error.
+
+**Підхід до фіксу:**
+
+```ts
+const isDuplicate = items.some(
+  i => i.workId === newItem.workId && i.employeeId === newItem.employeeId,
+);
+if (isDuplicate) {
+  setError('Цю позицію вже додано');
+  return;
+}
+```
+
+Очищати error при зміні `newItem` (щоб після виправлення зник).
+
+**Регресія-guard:** test → add same key twice → асерт другий call не змінив state + show error message.
+
+**Severity:** MEDIUM — UX confusion + data inconsistency, але recoverable (користувач видалить дубль).
+
+**Де шукати ще:**
+
+- `CreateWorkOrderModal` (Bug #382 — реалізовано)
+- `CreateInvoiceModal` lines
+- `StockReceiptModal` / `StockTransferModal` lines
+- `EmployeeEditModal` certifications/skills sub-tables
+- `CounterpartyEditModal` contacts/addresses sub-tables
+
+---
+
+### 2026-06-08 — Pre-validate numeric fields у local rows ДО batch POST (Bug #383) — frontend / validation / orphaned-record prevention
+
+**Сигнал:** Multi-row inline form приймає numeric input (`quantity`, `normoHours`, `price`) у local state як string. Submit перетворює через `toNumberOrUndefined(...)` і шле POST. Backend DTO має `@Min(0.001)`/`@Min(0.01)`/`@IsPositive()`. Frontend НЕ перевіряє діапазон під час `add*()` → користувач може ввести `-5`, `0`, `''`. Локально рядок додається. POST батч створює parent → починає POST children → перший негативний quantity → backend 400 → весь батч fails АЛЕ parent уже у БД → orphaned. HTML attribute `min="0.001"` — лише cosmetic, не блокує програмний submit.
+
+**Причина виникнення:** Розробник довіряє `<Input type="number" min="0.001">` → думає що браузер заблокує. Але `type=number` атрибути ігноруються при програмному setState (`onChange={e => set(e.target.value)}` зберігає raw string). Backend `@Min` ловить лише у фінальному POST, після того як parent уже створено.
+
+**Підхід до виявлення:** для кожного `add*()` у multi-row inline form — pre-validate ВСІ numeric поля що мають backend `@Min`/`@IsPositive`. Конвертувати через локалізований parser (UA → `1,5`), перевірити `Number.isFinite()` + range.
+
+**Підхід до фіксу:**
+
+```ts
+const qty = toNumberOrUndefined(newItem.quantity);
+if (qty === undefined || qty <= 0) {
+  setError('Кількість має бути більше нуля');
+  return;
+}
+```
+
+Парний guard: disabled на Plus коли raw quantity не parsable або <= 0.
+
+**Регресія-guard:** test → set quantity='-5' → add → асерт state не змінився + error повідомлення.
+
+**Severity:** MEDIUM — orphaned parent у БД, user-recoverable (вони видалять WO), але порушує business invariant "WO має мінімум 1 line".
+
+**Де шукати ще:**
+
+- `CreateWorkOrderModal` parts.quantity (Bug #383 — реалізовано)
+- `CreateInvoiceModal` line.quantity / line.unitPrice
+- `StockReceiptModal` line.quantity
+- `StockTransferModal` line.quantity
+- `PaymentModal` amount
+- Будь-який form з `type="number"` і backend `@Min`/`@IsPositive`
+
+---
+
+### 2026-06-08 — Half-typed row у multi-row form silently dropped при submit (Bug #384) — frontend / UX / data-loss
+
+**Сигнал:** Multi-row inline form має `<Plus>` button що додає `newItem` до `items[]` АБО auto-flush у submit-handler (`if (newItem.fieldA && newItem.fieldB) push(...)`). Якщо користувач заповнив частину `newItem` але **не всі обов'язкові** поля → клік "Submit" → auto-flush check fails → рядок **тихо втрачається**. Submit обробляє лише `items[]` без `newItem`. Користувач думає що додав, але у створеному resource його немає.
+
+**Причина виникнення:** Розробник додає auto-flush як defense ("користувач забув клікнути Plus") — але умова занадто строга (вимагає ВСІ key fields). Часткова партіальність (наприклад workId set але employeeId не set) триває як "incomplete row" і пропускається. Користувач не отримує feedback що його дані втрачаються.
+
+**Підхід до виявлення:** для кожного auto-flush check у submit (`if (newItem.A && newItem.B)`) — перевірити що inverse case (один з полів set, інший не) кидає user-warning (НЕ silent drop).
+
+**Підхід до фіксу:**
+
+```ts
+const hasHalfRow = !!newItem.A && !newItem.B;
+if (hasHalfRow) {
+  setError('Заповніть всі обовʼязкові поля у рядку або очистіть рядок');
+  return; // BEFORE setSaving(true) — submit button stays enabled
+}
+```
+
+Альтернатива: при `newItem.A` set без `newItem.B` — показувати inline `<span className="text-destructive">Не обрано B</span>` під input.
+
+**Регресія-guard:** test → set workId без employeeId → click Submit → асерт error message + POST не викликано.
+
+**Severity:** MEDIUM — silent data loss + користувач плутається ("я ж додав?").
+
+**Де шукати ще:**
+
+- `CreateWorkOrderModal` lines (Bug #384 — реалізовано)
+- Будь-який multi-row form з auto-flush у submit
+- Form з `pendingX`-pattern (look for `const pendingX = ... ? {...} : null`)
+
+---
