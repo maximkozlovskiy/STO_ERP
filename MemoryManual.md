@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+e97cc120 fix(review): hoist dynamic imports above const + hydration-safe year placeholder
 230f99f6 perf(optimize): parallel NBU fetch, narrow tenant guards, lazy WO modal
 10ac2351 fix(tester): Bugs #390-#395 — stale picker test asserts + anti-DoS MaxLength/ArrayMaxSize
 6dd6a250 docs(memory): update MemoryManual after full review sweep (HEAD 92fc773a)
@@ -21,10 +22,28 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 cd3a67c5 fix(review): work-order liftId — validate tenant FK + add index + sync frontend interface
 5d422345 feat(work-orders): add liftId field to WorkOrder — DB, API, UI
-0f22a1f5 fix(tester): Bugs #381-#384 — CreateWorkOrderModal safety + validation
 Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Unit+Contract: ✅ 666/666 API passed; ✅ 358/358 Web component passed
+Latest review: 2026-06-09 (FULL DIFF HEAD~15..HEAD, HEAD e97cc120) — 3 SUGGESTION fixed:
+  • [SUGGESTION] nbu-fetch.scheduler.ts: `const MAX_ORGS_PER_SCHEDULER_RUN = 1000` був
+    вставлений МІЖ import statements (рядок 3 між '@nestjs/common' і '@nestjs/bull').
+    Не runtime bug (const hoisted у TDZ, доступ лише у method below), але порушує
+    import-ordering convention + ESLint import/first. Переміщено const під усі imports.
+  • [SUGGESTION] CalendarSlotModal.tsx + work-orders/page.tsx: `const CreateWorkOrderModal = dynamic(...)`
+    був вставлений МІЖ import statements (after `phone-input` / `date-picker-input`,
+    before `select`/`spinner`). Той самий import-ordering порушення з sto-optimize cycle.
+    Переміщено dynamic() const під усі imports.
+  • [SUGGESTION] vehicles/new/PageClient.tsx: `placeholder={String(new Date().getFullYear())}`
+    у render path 'use client' page. Next.js static export bake-ить build-time JSX → при
+    запуску після року року placeholder показав би старий рік (наприклад "2025" placeholder
+    у січні 2026). Винесено у useState+useEffect → placeholder з'являється після hydration,
+    завжди коректний поточний рік.
+  Cross-cutting greps все чисто: 0 React.X у TSX, 0 :any (поза spec/comments), 0 console.log
+  у production, 0 findMany без take серед змінених services, 0 [var(--)]/rgba(var())
+  Tailwind anti-patterns, 0 fetch( поза auth/booking exception list, 0 Cache-Control: public,
+  0 process.env у services, 0 stockItem.update поза InventoryService, 0 settlementAccount.update
+  поза SettlementsService, 0 @Param без ParseUUIDPipe, 0 hard-delete prisma.X.delete().
 Latest optimize: 2026-06-09 (HEAD 230f99f6) — cycle 4:
   • Backend: nbu-fetch.service — sequential for-await exchangeRatesService.create
     переписано на Promise.allSettled (5-15 currencies × 50ms RTT → max single insert);
