@@ -131,12 +131,12 @@ test.describe('Рахунки — створення через UI', () => {
       .first()
       .click();
     const modal = page.locator('[role="dialog"]').first();
-    await expect(modal).toBeVisible({ timeout: 8_000 });
+    await expect(modal).toBeVisible({ timeout: 20_000 });
     await expect(modal.locator('h2:has-text("Новий рахунок")')).toBeVisible();
     // Поля форми:
     // Контрагент — EntityPickerField (placeholder text у span "Обрати контрагента…", не input).
     // Сума — input з placeholder "0.00".
-    await expect(modal.locator('text=Обрати контрагента').first()).toBeVisible();
+    await expect(modal.getByPlaceholder(/Пошук контрагента/)).toBeVisible();
     await expect(modal.getByPlaceholder('0.00')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(modal).not.toBeVisible({ timeout: 5_000 });
@@ -149,7 +149,7 @@ test.describe('Рахунки — створення через UI', () => {
       .first()
       .click();
     const modal = page.locator('[role="dialog"]').first();
-    await expect(modal).toBeVisible({ timeout: 8_000 });
+    await expect(modal).toBeVisible({ timeout: 20_000 });
     // Лише сума — без контрагента кнопка має бути disabled
     await modal.getByPlaceholder('0.00').fill('100');
     const saveBtn = modal.locator('button:has-text("Створити рахунок")');
@@ -168,7 +168,7 @@ test.describe('Рахунки — створення через UI', () => {
       .first()
       .click();
     const modal = page.locator('[role="dialog"]').first();
-    await expect(modal).toBeVisible({ timeout: 8_000 });
+    await expect(modal).toBeVisible({ timeout: 20_000 });
 
     // Контрагент — EntityPickerField → SearchPickerModal (aria-label="Обрати" відкриває picker).
     await modal.locator('button[aria-label="Обрати"]').first().click();

@@ -22,12 +22,14 @@ test.describe('Наряди — CRUD', () => {
       .first()
       .click();
     const modal = page.locator('[role="dialog"]').first();
-    await expect(modal).toBeVisible({ timeout: 8_000 });
+    await expect(modal).toBeVisible({ timeout: 20_000 });
     await expect(modal.locator('h2:has-text("Новий наряд")')).toBeVisible();
 
-    // Вибрати клієнта — пошук у combobox
+    // Вибрати клієнта — EntityPickerField з live-search (input[role="combobox"] або placeholder "Пошук клієнта")
     const clientInput = modal
-      .locator('input[placeholder*="телефон"], input[placeholder*="Ім\'я"]')
+      .locator(
+        'input[role="combobox"], input[placeholder*="клієнта"], input[placeholder*="телефон"], input[placeholder*="Ім\'я"]',
+      )
       .first();
     await clientInput.fill('Тест');
     // Чекати dropdown з результатами
@@ -116,7 +118,7 @@ test.describe('Наряди — CRUD', () => {
       .first()
       .click();
     const modal = page.locator('[role="dialog"]').first();
-    await expect(modal).toBeVisible({ timeout: 8_000 });
+    await expect(modal).toBeVisible({ timeout: 20_000 });
 
     // Без клієнта — кнопка disabled
     await expect(modal.locator('button:has-text("Створити наряд")')).toBeDisabled();

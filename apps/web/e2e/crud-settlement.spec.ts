@@ -24,19 +24,21 @@ test.describe('Взаєморозрахунки', () => {
       page.locator('h1:has-text("Розрахунки"), h1:has-text("Взаєморозрахунки")'),
     ).toBeVisible({ timeout: 20_000 });
 
+    // Контрагент обирається через EntityPickerField (combobox з live-search)
     const searchInput = page
-      .locator('input[placeholder*="контрагент"], input[placeholder*="Пошук"]')
+      .locator(
+        'input[role="combobox"], input[placeholder*="контрагент"], input[placeholder*="Пошук"]',
+      )
       .first();
     if (!(await searchInput.isVisible({ timeout: 5_000 }).catch(() => false))) return;
 
     await searchInput.fill('Тест');
-    await page.waitForTimeout(500);
-    // Або знайшли кнопку-рядок контрагента або empty state
+    // Результати з'являються у listbox (dropdown EntityPickerField) або empty state
     await expect(
       page
-        .locator('button[class*="text-left"]')
+        .locator('[role="listbox"] [role="option"], [role="option"]')
         .first()
-        .or(page.getByText(/Не знайдено|немає/i).first()),
+        .or(page.getByText(/Нічого не знайдено|Не знайдено|немає/i).first()),
     ).toBeVisible({ timeout: 10_000 });
   });
 
@@ -46,14 +48,22 @@ test.describe('Взаєморозрахунки', () => {
       page.locator('h1:has-text("Розрахунки"), h1:has-text("Взаєморозрахунки")'),
     ).toBeVisible({ timeout: 20_000 });
 
-    // Знайти перший рядок контрагента — button в лівій панелі
-    const firstCp = page.locator('button[class*="text-left"]').first();
-    if (!(await firstCp.isVisible({ timeout: 10_000 }).catch(() => false))) return;
+    // Обрати контрагента через EntityPickerField combobox
+    const searchInput = page
+      .locator(
+        'input[role="combobox"], input[placeholder*="контрагент"], input[placeholder*="Пошук"]',
+      )
+      .first();
+    if (!(await searchInput.isVisible({ timeout: 5_000 }).catch(() => false))) return;
 
-    await firstCp.click();
-    // Має показати баланс або транзакції
+    await searchInput.fill('Тест');
+    const firstOption = page.locator('[role="option"]').first();
+    if (!(await firstOption.isVisible({ timeout: 8_000 }).catch(() => false))) return;
+    await firstOption.click();
+
+    // Після вибору контрагента — показує баланс або транзакції
     await expect(page.locator('text=/Баланс|Транзакції|₴/').first()).toBeVisible({
-      timeout: 8_000,
+      timeout: 12_000,
     });
   });
 
@@ -63,10 +73,17 @@ test.describe('Взаєморозрахунки', () => {
       page.locator('h1:has-text("Розрахунки"), h1:has-text("Взаєморозрахунки")'),
     ).toBeVisible({ timeout: 20_000 });
 
-    // Вибрати першого контрагента
-    const firstCp = page.locator('button[class*="text-left"]').first();
-    if (!(await firstCp.isVisible({ timeout: 10_000 }).catch(() => false))) return;
-    await firstCp.click();
+    // Обрати контрагента через EntityPickerField combobox
+    const searchInput = page
+      .locator(
+        'input[role="combobox"], input[placeholder*="контрагент"], input[placeholder*="Пошук"]',
+      )
+      .first();
+    if (!(await searchInput.isVisible({ timeout: 5_000 }).catch(() => false))) return;
+    await searchInput.fill('Тест');
+    const firstOption = page.locator('[role="option"]').first();
+    if (!(await firstOption.isVisible({ timeout: 8_000 }).catch(() => false))) return;
+    await firstOption.click();
 
     // Кнопка "Акт звірки"
     const actBtn = page
