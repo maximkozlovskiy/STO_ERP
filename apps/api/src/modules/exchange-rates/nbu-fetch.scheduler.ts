@@ -24,6 +24,7 @@ export class NbuFetchScheduler implements OnModuleInit {
       }),
       this.prisma.organisationSettings.findMany({
         select: { orgId: true, nbuFetchHour: true },
+        take: 1000,
       }),
     ]);
     const hourByOrg = new Map(allSettings.map(s => [s.orgId, s.nbuFetchHour ?? 12]));

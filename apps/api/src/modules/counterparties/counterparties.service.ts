@@ -221,6 +221,24 @@ export class CounterpartiesService {
       select: { id: true },
     });
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    // Інваріант: лише один гараж може бути default per counterparty.
+    // Якщо клієнт передав isDefault=true → атомарно знімаємо позначку з
+    // попереднього default-гаражу і створюємо новий.
+    if (dto.isDefault === true) {
+      const item = await this.prisma.$transaction(
+        async tx => {
+          await tx.customerGarage.updateMany({
+            where: { orgId, counterpartyId, isDefault: true, deletedAt: null },
+            data: { isDefault: false },
+          });
+          return tx.customerGarage.create({
+            data: { orgId, counterpartyId, ...dto },
+          });
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      );
+      return this.toGarageDto(item);
+    }
     const item = await this.prisma.customerGarage.create({
       data: { orgId, counterpartyId, ...dto },
     });

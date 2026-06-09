@@ -24,6 +24,7 @@ export class NbuFetchService {
     const currencies = await this.prisma.currency.findMany({
       where: { orgId, deletedAt: null, nbuFetchEnabled: true },
       select: { id: true, code: true, nbuMarkupPercent: true },
+      take: 200,
     });
     if (currencies.length === 0) return { fetched: 0, errors: 0 };
 

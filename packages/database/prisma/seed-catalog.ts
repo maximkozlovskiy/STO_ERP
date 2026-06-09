@@ -61,6 +61,10 @@ async function main() {
   const servicesData = loadJson<{ nodes: ServiceNode[] }>('sto_services_catalog_full.json');
   const partsData = loadJson<{ nodes: PartsCategoryNode[] }>('auto_parts_categories.json');
 
+  // Інваріант сидингу: НЕ чіпаємо isActive для існуючих системних категорій (менеджер
+  // вмикає вручну — повторний seed не повинен скидати його ручний вибір).
+  // Для нових категорій (created у блоці нижче) встановлюємо isActive: false за замовчуванням.
+
   // ─── Step 1: WorkCategory (тільки type=category) ─────────
 
   const categoryNodes = servicesData.nodes.filter(n => n.type === 'category');
@@ -93,18 +97,17 @@ async function main() {
     let dbId = existingWorkCatByCode.get(node.code);
 
     if (dbId) {
-      // Оновити існуючу
+      // Оновити існуючу — isActive не чіпаємо (менеджер вмикає вручну)
       await prisma.workCategory.update({
         where: { id: dbId },
         data: {
           name: node.name,
           sortOrder: node.sort_order,
-          isActive: node.is_active,
           parentId: parentDbId,
         },
       });
     } else {
-      // Створити нову
+      // Створити нову — за замовчуванням вимкнено
       const created = await prisma.workCategory.create({
         data: {
           orgId: ORG_ID,
@@ -113,7 +116,7 @@ async function main() {
           parentId: parentDbId,
           sortOrder: node.sort_order,
           isSystem: true,
-          isActive: node.is_active,
+          isActive: false,
         },
       });
       dbId = created.id;
@@ -197,16 +200,17 @@ async function main() {
     let dbId = existingGoodCatByCode.get(node.code);
 
     if (dbId) {
+      // isActive не чіпаємо — менеджер вмикає вручну
       await prisma.goodCategory.update({
         where: { id: dbId },
         data: {
           name: node.name,
           sortOrder: node.sort_order,
-          isActive: node.is_active,
           parentId: parentDbId,
         },
       });
     } else {
+      // Нові категорії — за замовчуванням вимкнено
       const created = await prisma.goodCategory.create({
         data: {
           orgId: ORG_ID,
@@ -215,7 +219,7 @@ async function main() {
           parentId: parentDbId,
           sortOrder: node.sort_order,
           isSystem: true,
-          isActive: node.is_active,
+          isActive: false,
         },
       });
       dbId = created.id;
