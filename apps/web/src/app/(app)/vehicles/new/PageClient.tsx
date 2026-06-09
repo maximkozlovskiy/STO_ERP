@@ -74,6 +74,13 @@ export default function NewVehiclePageClient() {
   const [error, setError] = useState('');
   const [garageLoading, setGarageLoading] = useState(true);
   const [garageName, setGarageName] = useState('');
+  // Bug (review): `new Date().getFullYear()` у render path → hydration mismatch
+  // при build-time SSR + рантайм у наступному році. Тримати у useState через
+  // useEffect — placeholder з'явиться після hydration, без SSR/CSR розбіжності.
+  const [currentYear, setCurrentYear] = useState('');
+  useEffect(() => {
+    setCurrentYear(String(new Date().getFullYear()));
+  }, []);
 
   useEffect(() => {
     if (!garageId) return;
@@ -209,7 +216,7 @@ export default function NewVehiclePageClient() {
             type="number"
             value={form.year}
             onChange={e => set('year', e.target.value)}
-            placeholder={String(new Date().getFullYear())}
+            placeholder={currentYear}
             min="1900"
             max="2100"
             className="h-8 text-[13px]"

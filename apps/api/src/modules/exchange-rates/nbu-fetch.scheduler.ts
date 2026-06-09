@@ -1,9 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-
-const MAX_ORGS_PER_SCHEDULER_RUN = 1000;
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
+
+const MAX_ORGS_PER_SCHEDULER_RUN = 1000;
 
 @Injectable()
 export class NbuFetchScheduler implements OnModuleInit {

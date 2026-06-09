@@ -16,12 +16,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
-// sto-optimize: CreateWorkOrderModal — 1823 LOC; calendar відкривається без створення WO
-// у більшості сесій → lazy-load при першому кліку «Створити наряд» з модалки слота.
-const CreateWorkOrderModal = dynamic(
-  () => import('@/components/ui/CreateWorkOrderModal').then(m => m.CreateWorkOrderModal),
-  { ssr: false },
-);
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
@@ -37,6 +31,13 @@ import type {
   PendingSlot,
   SlotForm,
 } from './calendar.types';
+
+// sto-optimize: CreateWorkOrderModal — 1823 LOC; calendar відкривається без створення WO
+// у більшості сесій → lazy-load при першому кліку «Створити наряд» з модалки слота.
+const CreateWorkOrderModal = dynamic(
+  () => import('@/components/ui/CreateWorkOrderModal').then(m => m.CreateWorkOrderModal),
+  { ssr: false },
+);
 import {
   HOURS,
   PICK_MINUTES,
