@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
+import type { ElementType } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -130,10 +131,11 @@ type LinkedCountsEntry = {
   warranties: number;
 };
 type LinkedCountsField = keyof LinkedCountsEntry;
+type LinkedCountsMap = Record<string, LinkedCountsEntry>;
 
 const DOC_COUNTERS: Array<{
   field: LinkedCountsField;
-  Icon: React.ElementType;
+  Icon: ElementType;
   label: string;
 }> = [
   { field: 'invoices', Icon: Receipt, label: 'Рахунки' },
@@ -280,11 +282,6 @@ function WorkOrdersPageInner() {
   // Stable sorted ID list — prevents useQuery from refiring when React Query returns a
   // new array reference for identical data (e.g. background refetch with no changes).
   const ordersIds = useMemo(() => orders.map(o => o.id).sort(), [orders]);
-
-  type LinkedCountsMap = Record<
-    string,
-    { invoices: number; payments: number; calendarSlots: number; warranties: number }
-  >;
 
   // useQuery gives dedup, stale-while-revalidate, and automatic invalidation when
   // workOrdersKeys.all is invalidated (key is nested under it). Replaces the manual
@@ -970,7 +967,7 @@ function WorkOrdersPageInner() {
                           </TableCell>
                         );
                       if (col.key === 'linkedDocs') {
-                        const counts = linkedCounts[wo.id] as LinkedCountsEntry | undefined;
+                        const counts = linkedCounts[wo.id];
                         return (
                           <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-1.5 items-center text-xs text-muted-foreground">

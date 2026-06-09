@@ -13,6 +13,7 @@ vi.mock('@/lib/api-client', () => ({
 vi.mock('@/lib/format', () => ({
   fmtDate: (iso: string | null | undefined) => (iso ? '05.06.2026' : '—'),
   fmtDateTime: (iso: string | null | undefined) => (iso ? '05.06.2026 10:30' : '—'),
+  fmtMoney: (n: number) => `${Number(n).toFixed(2).replace('.', ',')}`,
 }));
 
 const WO_ID = '11111111-1111-4111-8111-111111111111';
