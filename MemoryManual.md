@@ -9,7 +9,9 @@
 ## Останній commit
 
 ```
-[NEW] c4e484db fix(review): harden linked-documents endpoints and panel
+[NEW] 512e626a fix(tester): Bugs #409-#413 — linked-docs refresh + invoice race + tests
+810de9a9 docs(memory): update MemoryManual after review of feat(work-orders) ca6f5830
+c4e484db fix(review): harden linked-documents endpoints and panel
 ca6f5830 feat(work-orders): linked documents panel + Виставити рахунок button
 153be445 fix(tester): Bugs #403-#408 — invoice-from-WO refresh guards + UX
 ad9328fb docs(memory): update MemoryManual after review of feat(invoices) commit 1916b3c6
@@ -38,8 +40,33 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Unit+Contract: ✅ 671/671 API passed; ✅ 358/358 Web component passed
-Latest tester: 2026-06-09 (FULL feature scope feat(invoices) Виставити рахунок, HEAD 153be445) — Bugs #403-#408:
+Unit+Contract: ✅ 690/690 API passed (+19 нових); ✅ 358/358 Web component passed
+Latest tester: 2026-06-09 (FULL feature scope feat(work-orders) linked-docs + Виставити рахунок post-review, HEAD 512e626a) — Bugs #409-#413:
+  • [MEDIUM #409] LinkedDocumentsPanel не оновлювалась після створення/refresh
+    рахунку коли користувач залишався на tab "Документи". Fix: prop refreshKey?:number
+    у Panel + useState/інкремент у CreateWorkOrderModal після handleInvoice/Refresh.
+    Парне: setPreview(null) у useEffect для скидання stale-item references.
+  • [MEDIUM #410] Conflict dialog "Відкрити існуючий" і "Скасувати" кнопки активні
+    під час invoiceLoading → race з handleInvoiceRefresh: дві toast, дві вкладки.
+    Fix: disabled={invoiceLoading} на обидві.
+  • [MEDIUM #411] Нові endpoints /work-orders/:id/linked-documents і linked-counts
+    без contract spec. Fix: 5 нових тестів у work-orders.contract.spec.ts (shape,
+    400 non-UUID id, 400 empty array, 400 non-UUID в array, 400 >500).
+  • [HIGH #412] createFromWorkOrder race: 2 паралельних POST обидва пройшли
+    pre-check `if (existing) throw` → 2 invoice з тим самим workOrderId. Немає
+    @@unique partial-index на Invoice. Fix: pre-fetch docNumbers.next() (свій
+    SELECT FOR UPDATE) → обернути read+create у $transaction({isolationLevel:
+    'Serializable', timeout: 10_000}) + re-check existing всередині → map P2034
+    на BadRequestException('Інший користувач щойно виставив рахунок...').
+  • [MEDIUM #413] Bug #403/#406/#407 review fixes без service-spec regression
+    guards (contract spec мокає сервіс). Fix: новий invoices.service.spec.ts
+    з 13 кейсами (status guard SENT/PAID/OVERDUE → 400, vatRate=20, atomic
+    $transaction, createFromWorkOrder DRAFT/duplicate guards, findByWorkOrder
+    null + excludes CANCELLED).
+TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Unit+Contract: ✅ 690/690 API passed; ✅ 358/358 Web component passed
+
+Latest tester (попередня сесія): 2026-06-09 (HEAD 153be445) — Bugs #403-#408:
   • [CRITICAL #403] refreshFromWorkOrder перезаписував рядки SENT/PAID/OVERDUE
     рахунків — фільтр {status: {not: CANCELLED}} пропускав всі активні. PAID-рахунок
     + payment + WO зміни → перезапис ламав баланс. Fix: prep-guard

@@ -192,6 +192,8 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 
 - [ ] **Case-sensitive lookup vs canonical-form seed data (Bug #359):** для КОЖНОГО `findFirst({ where: { code: dto.X } })` або `where: { eventType: dto.Y }` або `where: { documentType: dto.Z }` де target field зберігається у канонічній формі (UPPERCASE ISO code, snake_case event type) — DTO ОБОВ'ЯЗКОВО має `@Transform(toUpperCurrencyCode)` / `@Transform(toLowerCase)` / etc. до `@IsString`. Postgres VARCHAR/TEXT case-sensitive за замовчуванням → користувач набирає `uah` у fallback Input → backend lookup `code: 'uah'` не знаходить `'UAH'` → 400 з валідним кодом. Парний UI-fix: `<Input onChange={e => set(e.target.value.toUpperCase())} maxLength={N}>` у fallback inputs (коли dropdown reference data не завантажилось через offline-first). Grep: `grep -rnE "findFirst\(\s*\{\s*where:\s*\{[^}]*\b(code|type|status):\s*dto\." apps/api/src/modules --include="*.service.ts"` → перевірити що DTO field має нормалізацію transform. Severity HIGH (UX): валідний код → 400 → користувач думає «зламано».
 
+- [ ] **Concurrent-create race for "1 active per parent" resources без unique index (Bug #412):** будь-який service-метод що створює дочірній resource з логіко-унікальним FK (`Invoice.workOrderId`, `FiscalReceipt.paymentId`, `InspectionReport.workOrderId`) використовуючи pattern `find existing → if (existing) throw → create` БЕЗ обгортки у `$transaction({ isolationLevel: 'Serializable' })` АБО без `@@unique` partial-index на FK = race-window для дублікатів. Два паралельних POST (double-click через UI lag, два tab-и, два admin) обидва бачать `existing === null` між findFirst і create → 2 invoice створено з тим самим `workOrderId`. Grep: `grep -rnE "async (create|createFrom|issueFor|generateFor)[A-Z]" apps/api/src/modules --include="*.service.ts"` → для кожного знайти `findFirst({ <fkField>: id })` prep-check ПЕРЕД `create()` → перевірити schema.prisma на парний `@@unique([<fkField>])` АБО Serializable $tx. Fix-pattern: pre-fetch `docNumbers.next()` (свій внутрішній $tx), потім обернути read+create у Serializable з re-check existing всередині; map P2034 → friendly BadRequestException. `DocumentNumberService.next()` серіалізує лише ПО docType, НЕ по parent FK — не достатньо для invariant "1 active per parent". Severity HIGH (фінансовий ризик). Регресія-guard: service spec з 2-3 кейсами (existing у pre-check → 400, status guard → 400, non-existent WO → 404).
+
 - [ ] **Alternate-mutation endpoint обходить canonical guards (Bug #403):** будь-який backend service-метод що **мутує той самий resource** що і `update()`/`addLine()`/`removeLine()` АЛЕ зі своєю окремою сигнатурою (`refreshFromWorkOrder`/`syncFromX`/`importFromY`/`recalculateZ`/`refreshFromExternalSource`...) — ПОВИНЕН повторити ВСІ business-guards канонічного `update()`. Типові guards що пропускаються: (а) `if (X.status !== 'DRAFT') throw BadRequestException` (FSM-readonly для submitted/paid/sent статусів); (б) `if (existing.isLocked) throw ...` (manually locked records); (в) `if (existing.isSystem) throw ...` (seed-керовані); (г) prep-check unique-constraint конфлікту. Сценарій: оригінальний `update()` має FSM-guard `!DRAFT → throw`; альтернативний endpoint забуває цей guard → перезаписує дані SENT/PAID/locked record-у без error → silently corrupts data. Grep: `grep -rnE "async (refresh|sync|import|recalculate|regenerate|rebuild)[A-Z]" apps/api/src/modules --include="*.service.ts"` — для кожного знайденого метода: знайти canonical `update()`/`updateLine()`/`updateX()` у тому ж файлі, скопіювати ВСІ `if (...) throw` guards (особливо `inv.status !== 'DRAFT'`, `existing.status !== ...`), перевірити що alternate-метод їх має. Парний підхід: будь-який mutation що приймає workOrderId/parentId і робить `deleteMany + createMany` на child resource (full overwrite) — обов'язково prep-check status батьківського resource через `if (parent.status !== <ALLOWED>) throw`. Severity CRITICAL (фінансовий ризик для invoice/payment/settlement resources). Регресія-guard: contract spec для alternate endpoint що мокає existing.status=non-DRAFT → 400.
 
 #### Prisma schema ↔ migration parity (release-blocker)
@@ -735,6 +737,8 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 - [ ] **CSS scoped marker (data-X) контракт — integration-тест на наявність маркера (Bug #334):** будь-який shared UI-компонент (`Modal`, `DetailPanel`, `Popover`, `Drawer`) що покладається на CSS-правило з selector-prefix-маркером (`[data-animate][data-state="open"]`, `[data-portal]`, `[data-overlay]`) — парний `*.test.tsx` має містити assertion на присутність маркера на правильному елементі + позицію (direct-child vs descendant). Без тесту: refactor що видаляє `data-animate` атрибут з root компонента → анімація мовчки перестає працювати (CSS правило не матчиться), tsc green, всі функціональні тести зелені (Modal все ще монтується/закривається), але exit-animation мертва. Шаблон: `expect(dialog).toHaveAttribute('data-animate'); expect(dialog).toHaveAttribute('data-state', 'open'); expect(dialog.querySelector(':scope > [data-backdrop]')).toBeTruthy();`. Grep для виявлення pattern у CSS: `grep -nE "\[data-[a-z]+\](\[data-[a-z]+\=)?" apps/web/src/app/globals.css` — кожен унікальний `data-*` selector має бути присутнім хоча б в одному `*.test.tsx`. Severity LOW (visual jank, не data-correctness).
 - [ ] **useEffect + rAF dance для CSS animation enter — 1-frame paint at previous state (Bug #335):** будь-який custom hook що використовує паттерн `setVisible(true); requestAnimationFrame(() => setState('open'))` у `useEffect` ДЛЯ enter-анімації CSS — потенційний flicker bug. React commits visible=true з застарілим state='closed', browser паінтиться 1 frame з закритими стилями (CSS animation FROM-keyframe для closed-state), потім rAF flips state → нова анімація стартує. У дефолтних exit-keyframes (`from { opacity:1; scale(1) }`) це означає що елемент **відмалюється з повним розміром** перед стартом enter-анімації — visual jank. Перевірити: grep `requestAnimationFrame.*setState\(` у `hooks/use*.ts` — кожен match потенційний bug. Безпечний паттерн: (а) `useLayoutEffect` + одразу `setState('open')` без rAF (CSS `animation` з `fill-mode: both` runs on mount, рAF dance не потрібен); або (б) initial state мати 'closed' + другий маркер `data-just-mounted="true"` що відключає exit-animation. Контракт-тест: між `rerender({ open: true })` і flush-rAF — `state === 'closed'` ОЧЕВИДНИЙ симптом → задокументувати у BUG_REPORT як LOW (1-frame jank). Severity LOW.
 - [ ] **Stable callback identity invariant в composable hooks (Tester Cycle 2 2026-06-05):** будь-який `useCallback(() => ..., [])` у composable hook (`useListPage`, `useDetailPanel`, `useBulkSelect`, `useSavedFilters`) — окрім behavior test (`act(() => cb()) → стан змінився`) ПОВИНЕН мати regression-guard test на identity stability: `const first = result.current.cb; rerender(); expect(result.current.cb).toBe(first); act(() => result.current.setter(N)); expect(result.current.cb).toBe(first)`. Без guard: майбутній eslint --fix що додає "missing dep" (`[setPage]` замість `[]`) пройде tsc + behavior tests зеленим, але каскадно перестворює consumers' `useCallback`/`useMemo` що використовують `cb` у deps → invalidate `<MemoizedChild onApply={consumerCb}>` re-renders. Perf regression замість CRITICAL crash — важко діагностувати, накопичується мовчки. Grep: `grep -rn "useCallback(.*, \[\])" apps/web/src/hooks --include="*.ts" | grep -v test` — для кожного match перевірити чи парний test має `.toBe(firstCb)` асерт після rerender. Severity MEDIUM (perf cascade).
+- [ ] **Sibling-panel stale state після parent-action створив child resource (Bug #409):** будь-який shared UI компонент (`LinkedDocumentsPanel`, `RelatedX`, `HistoryX`, `DocumentsTab`, `PaymentsList`) що приймає parent ID і робить `useEffect(() => fetch(`/X/:id/related`), [parentId])` — потенційно stale якщо ВЕРШИНА компонент-tree має action button (Виставити рахунок / Створити запит / Згенерувати слот) що POST-ить на endpoint що змінює related-resources. Сценарій: tab "Документи" вже відкритий → користувач тисне footer-button "Виставити рахунок" → toast.success → tab "Документи" показує СТАРИЙ список (новий invoice не з'являється до manual tab-switch). Grep: `grep -rnE "useEffect\(.*\[[a-zA-Z]+Id\]" apps/web/src/components/ui --include="*.tsx" -B 5 -A 10 | grep -B 12 "apiFetch"` — для кожного знайденого "viewer" компонента шукати його usage у parent з handle\\w+ що робить POST/PATCH/DELETE на endpoint що змінює дані viewer-у. Fix-pattern: prop `refreshKey?: number` → useEffect deps `[parentId, refreshKey]`; parent useState + інкремент після успішної action. Альтернатива: React Query з invalidate cross-component. Severity MEDIUM (UX, eventual refresh через manual remount). HIGH для critical financial panels. Регресія-guard: vitest component test — render → fetch1 → rerender з bumped refreshKey → fetch2 fired (2 apiFetch calls). Парне: ОБОВ'ЯЗКОВО `setPreview(null)` (або інший derived item-reference state) у тому ж useEffect — інакше popup/preview тримає stale-item.
+
 - [ ] **Stale regression-guard test після backend-compat URL/payload fix (Bug #390):** будь-який `fix(<area>): <change> X serialization format` / `fix(<area>): remove [] suffix` / `fix(<area>): switch to camelCase keys` commit що ЗМІНЮЄ форму запиту (URL params / body keys / header values) ОБОВ'ЯЗКОВО оновлює парний `*.test.tsx` що асертить старий формат. Симптом: web baseline test suite червоний на `expect(url).toContain('<old-form>')` АБО `expect(payload).toEqual({ <old-key>: ... })`. Особливо підступно з URL-encoded формами: тест шукає `categoryIds%5B%5D=` (URL-encoded `[]`), фікс шле `categoryIds=` (репитед keys) → `.toContain` фейлиться, але повідомлення помилки виглядає як «component-bug» а не «test-stale». tsc green бо це runtime string assertion. API contract spec теж може не ловити (mock-based, не реальний parser). Grep для виявлення PRE-commit: `git diff HEAD~3 HEAD -- 'apps/web/src/**/*.tsx' | grep -E "^\+.*params\.(append|set)\b" | grep -v test` → кожен match — pair-check `__tests__/<Component>.test.tsx` на `.toContain(<param-name>` і `.toContain(<encoded-bracket>`. Альтернативний detection: червоний `vitest run` у baseline + `.toContain('%5B%5D')` у failing test. Severity: CRITICAL коли весь web suite червоний (release-blocker baseline → майбутні tester-сесії ховають реальні регресії за шумом). Fix-pattern: оновити assertion на новий формат + ДОДАТИ negation guard `expect(url).not.toContain('<old-form>')` як regression-guard щоб майбутня «спроба повернути старий формат» не пройшла CI зеленою. Парне з §1.5 «query-shape fix потребує service-spec» (Bug #163) — той самий принцип «після fix-у синхронізувати парний spec», але для frontend URL-serialization.
 
 ---
@@ -960,6 +964,158 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-09 — Concurrent-create race for "1 active resource per parent" without unique index (Bug #412) — backend / concurrency / financial integrity
+
+**Сигнал:** Service-метод що створює дочірній resource з логіко-унікальним полем (`workOrderId` у `Invoice`, `inspectionReportId` у нар. дослідженні, `paymentId` у фіскальному чеку) — `find existing` потім `if (existing) throw` потім `create()` БЕЗ обгортки у `$transaction({ isolationLevel: 'Serializable' })` АБО без `@@unique` partial-index на батьківському FK. Особливо ризиковано коли парна FE-кнопка "Виставити X" доступна одночасно з кількох tabs/вікон/користувачів (commit `feat(work-orders): linked documents panel + Виставити рахунок button` — кнопка `canInvoice = ['COMPLETED','INVOICED']` без сервер-блокування паралельних POST).
+
+**Реальний приклад (Bug #412):** `InvoicesService.createFromWorkOrder()` робив:
+
+```ts
+const [wo, existing] = await Promise.all([
+  prisma.workOrder.findFirst({...}),
+  prisma.invoice.findFirst({ workOrderId, status: { not: 'CANCELLED' } }),
+]);
+if (existing) throw new BadRequestException('Для цього наряду вже існує активний рахунок');
+return this.create(orgId, { workOrderId: wo.id, ... });
+```
+
+Два паралельних POST: обидва бачать `existing === null` (race window між findFirst і create) → обидва викликають `create()` → 2 invoice з різними номерами і однаковим workOrderId. Немає `@@unique([workOrderId])` partial-index на `Invoice` (на відміну від `InspectionReport`). Бухоблік ламається тихо.
+
+**Причина виникнення:** Розробник застосовує `find + if + create` patterns бо вони працюють у single-user manual testing. Race window <100ms — рідко тригериться у dev, AЛЕ на проді з network jitter + double-click + два tab-и того ж самого користувача — реалістичний сценарій. Особливо коли feature flow — "натисни кнопку → миттєвий ефект": користувач інтерпретує lag як missed click → click again. UI disabled-state може запізнюватись через React-render lag (особливо коли invalidate query робить refetch). `DocumentNumberService.next()` серіалізує НУМЕРАЦІЮ через `SELECT FOR UPDATE` на counter-row, але це НЕ блокує паралельні createFromWorkOrder для того ж WO — counter серіалізується по docType, не по workOrderId.
+
+**Підхід до виявлення:**
+
+1. Знайти всі service-методи що створюють resource з логіко-унікальним FK без `@@unique` constraint:
+
+   ```bash
+   # Для кожного create-методу що приймає одне з [woId, paymentId, inspectionId, contractId, ...]:
+   grep -rnE "async (create|createFrom|createFor|generateFor|issueFor)[A-Z]" apps/api/src/modules --include="*.service.ts"
+   # Перевірити що у тому ж файлі є prep-check `findFirst({ <fkField>: id, status: {not: CANCELLED} })`:
+   # → якщо так і resource НЕ має `@@unique([<fkField>])` partial-index у schema.prisma → bug
+   ```
+
+2. Для кожного знайденого методу — перевірити schema.prisma на `@@unique` constraint:
+
+   ```bash
+   grep -A 30 "^model Invoice\b" packages/database/prisma/schema.prisma | grep "@@unique"
+   ```
+
+3. Парний сигнал у FE: будь-яка кнопка з ім'ям "Виставити X" / "Створити X" / "Згенерувати X" що POST-ить на endpoint name `createFromY` АБО `issueForY`. Disabled-state через React не достатній (race window до render).
+
+4. Аудит `DocumentNumberService.next()` callers: counter серіалізується ТІЛЬКИ по docType, НЕ по parent FK. Будь-який сервіс що використовує `next()` всередині create-методу для "1 doc per parent" inваріанту — потенційно вразливий.
+
+**Підхід до фіксу:**
+
+**Варіант A (рекомендований, без міграції БД):** Обернути read+create у `$transaction({ isolationLevel: 'Serializable', timeout: 10_000 })` + re-check `existing` всередині. На `Prisma.PrismaClientKnownRequestError` code `P2034` (serialization failure) → `BadRequestException('Інший користувач щойно ... Оновіть сторінку.')`. **Важливо:** `DocumentNumberService.next()` має власний внутрішній `$transaction` з `SELECT FOR UPDATE counter` — викликати ПЕРЕД зовнішнім $tx (інакше nested-tx deadlock через `Prisma + PostgreSQL` обмеження). Trade-off: burn one INVOICE number on outer-tx abort — acceptable, нумерація толерує gaps.
+
+```ts
+const number = await this.docNumbers.next(orgId, 'INVOICE'); // OUTSIDE outer tx
+try {
+  const inv = await this.prisma.$transaction(async tx => {
+    const existing = await tx.invoice.findFirst({...});  // re-check INSIDE tx
+    if (existing) throw new BadRequestException(...);
+    return tx.invoice.create({ data: { number, ... } });
+  }, { isolationLevel: 'Serializable', timeout: 10_000 });
+  return this.toDto(inv);
+} catch (err) {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034')
+    throw new BadRequestException('Інший користувач щойно виставив рахунок...');
+  throw err;
+}
+```
+
+**Варіант B (CRITICAL міграція):** Додати `@@unique([workOrderId])` як partial-index у schema.prisma + migration SQL `CREATE UNIQUE INDEX ... WHERE deleted_at IS NULL AND status != 'CANCELLED'`. Це гарантія DB-level. Потім FE catch P2002 → friendly UX.
+
+**Регресія-guard:**
+
+- Service spec для `createFromWorkOrder`: моки на `prisma.workOrder.findFirst` + `prisma.invoice.findFirst` мають включати `existing` non-null → BadRequestException; non-COMPLETED status → BadRequestException.
+- Integration test (для високо-критичного коду): два паралельних `service.createFromWorkOrder()` промісах → 1 success, 1 throw.
+
+**Severity:** HIGH (фінансовий ризик дублювання рахунків / фіскальних чеків). LOW для idempotent resources типу `MaintenanceSchedule.generate()` (повтор створення планів — recoverable).
+
+**Де шукати ще:**
+
+- `InvoicesService.createFromWorkOrder` — fixed Bug #412 (Variant A)
+- `FiscalReceiptService.createFromPayment` — тип паттерну (1 чек per payment) — перевіряти при появі
+- `MaintenanceScheduleService.generateFromTemplate` — recoverable, LOW
+- `InspectionReportService.createFromWorkOrder` — у schema є `@@unique([workOrderId])` → захищено DB-level, проте сервіс має ловити P2002 для friendly UX
+- Будь-які майбутні `*FromX`/`*ForY` create-методи з одиничним FK
+
+---
+
+### 2026-06-09 — Sibling-panel stale state після parent action created/refreshed child resource (Bug #409) — frontend / state staleness across components
+
+**Сигнал:** Component A renders list of related documents/items (read-only panel) for parent ID. Component B (sibling or wrapper) triggers a mutation that creates/refreshes related document of same kind. Component A `useEffect` deps include ONLY `parentId` (not `refreshKey`). Result: action button updates server state, A keeps stale data until manual remount.
+
+Типовий setup: modal/page має tab `Документи` що рендерить `<LinkedDocumentsPanel parentId={X} />`. Footer/header має action кнопку (`Виставити рахунок`, `Створити запит`, `Згенерувати слот`) що POST-ить на `/X/related` endpoint. Toast success — користувач очікує бачити новий документ у tab. Якщо tab був вже відкритий, нічого не відображається.
+
+**Реальний приклад (Bug #409):** `LinkedDocumentsPanel.tsx` мав:
+
+```tsx
+useEffect(() => { fetch(`/work-orders/${workOrderId}/linked-documents`)... }, [workOrderId]);
+```
+
+CreateWorkOrderModal footer мав кнопку "Виставити рахунок" з handleInvoice/handleInvoiceRefresh. Після успіху toast.success показував action button "Відкрити" — але якщо користувач залишався на tab "Документи", панель не оновлювалась бо deps не змінились. Stale list → confusion → manual tab-switch для refresh.
+
+Парний сигнал на іншому рівні (Bug #226-#227 була BE-FE staleness для sub-resource default-flag mutations; цей патерн — UI-UI staleness через action button).
+
+**Причина виникнення:** Розробник пишучи `LinkedDocumentsPanel` бачить її як "пасивний viewer" і робить fetch tied strictly to ідентифікатора (`workOrderId`). Дія створення/оновлення документа — у parent component, який не має способу повідомити panel про refresh. React Query invalidation НЕ використовується (panel сам робить `apiFetch` без React Query) → cross-component cache не існує.
+
+**Підхід до виявлення:**
+
+1. Знайти усі "list/viewer" components з `useEffect` що читає parent ID і робить fetch:
+
+   ```bash
+   grep -rnE "useEffect.*\[.*[Ii]d\]\s*\)" apps/web/src/components/ui --include="*.tsx" -B 5 -A 10 | grep -B 12 "apiFetch"
+   ```
+
+2. Для кожної знайденої "viewer" компоненти — знайти сторінки що ВИКОРИСТОВУЮТЬ її + перевіряти чи у тих сторінках є mutation buttons що могли б створити/змінити дані що viewer показує:
+
+   ```bash
+   # для кожного <LinkedX panel компонента: знайти його usage
+   grep -rn "<LinkedDocumentsPanel\b\|<DocumentList\b\|<PaymentsList\b\|<HistoryPanel\b" apps/web/src --include="*.tsx"
+   # → у файлі-споживачі шукати handle\\w+ що робить POST/PATCH/DELETE на endpoint який змінює дані panel-у
+   grep -nE "handleX|handle\\w+(?<!Click|Change|Open|Close)" <file>
+   ```
+
+3. Парний сигнал: відсутність refreshKey/refreshTrigger prop у panel-компоненті. Якщо її використовують ⩾2 сторінки — без refresh-mechanism stale state неминуче.
+
+**Підхід до фіксу:**
+
+Додати `refreshKey?: number` prop у panel-компонент; включити у useEffect deps. У consumer page/modal — `useState<number>(0)` `<panelKey>RefreshKey`, інкрементувати після успіху усіх mutations що змінюють дані panel-у:
+
+```tsx
+// Panel
+export function LinkedDocumentsPanel({ workOrderId, refreshKey }: { workOrderId: string; refreshKey?: number }) {
+  useEffect(() => { ... }, [workOrderId, refreshKey]);
+  // ОБОВ'ЯЗКОВО: setPreview(null) у тому ж useEffect — preview state тримає stale-item-reference
+}
+
+// Consumer
+const [linkedKey, setLinkedKey] = useState(0);
+const handleAction = async () => {
+  await apiFetch('/work-orders/X/related', { method: 'POST', ... });
+  setLinkedKey(k => k + 1);  // <-- триггер refetch
+  toast.success('...');
+};
+<LinkedDocumentsPanel workOrderId={X} refreshKey={linkedKey} />
+```
+
+**Альтернатива (рекомендована для нових компонентів):** використати React Query з cross-component invalidation: `queryClient.invalidateQueries({ queryKey: linkedDocsKeys.byWorkOrder(X) })`. Це масштабованіше для випадків коли > 2 consumers або mutation відбувається у далекому компоненті.
+
+**Регресія-guard:** vitest component test — render → fetch1 → rerender з bumped refreshKey → fetch2 fired (2 apiFetch calls).
+
+**Severity:** MEDIUM (UX-bug, не data corruption — eventual refresh через manual tab-switch). LOW для read-only metadata panels. HIGH для panels що показують critical financial info (sales totals, invoice list) і впливають на наступну дію користувача.
+
+**Де шукати ще:**
+
+- `LinkedDocumentsPanel` — fixed Bug #409
+- Будь-які майбутні `RelatedX`, `HistoryX`, `LinkedX`, `DocumentsTab` компоненти що приймають ID і fetch-ять list of relations
+- DetailPanel content blocks що показують sub-resources (parts list, payments list, attachments list)
+- Mobile screens з similar pattern (Expo equivalents)
+
+---
 
 ### 2026-06-09 — Alternate-mutation endpoint обходить canonical guards (Bug #403) — backend / FSM enforcement
 
