@@ -6,7 +6,13 @@ import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { kyivToday } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
-import { WO_STATUS_LABELS, WO_PRIORITY_LABELS, WO_CATEGORY_LABELS } from '@sto/shared';
+import {
+  WO_STATUS_LABELS,
+  WO_STATUS_TRANSITIONS,
+  WO_PRIORITY_LABELS,
+  WO_CATEGORY_LABELS,
+} from '@sto/shared';
+import { cn } from '@/lib/utils';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,6 +67,7 @@ interface Unit {
 // Local line/part rows (pre-save state)
 interface LocalLine {
   _key: string;
+  id?: string; // present for rows already persisted in DB (edit mode)
   workId: string;
   workName: string;
   employeeId: string;
@@ -69,6 +76,7 @@ interface LocalLine {
 }
 interface LocalPart {
   _key: string;
+  id?: string; // present for rows already persisted in DB (edit mode)
   goodId: string;
   goodName: string;
   warehouseId: string;
@@ -77,6 +85,79 @@ interface LocalPart {
   unitOfMeasureId: string;
   unitShortName: string;
 }
+
+// WorkOrderDetail for edit mode load
+interface WorkOrderDetail {
+  id: string;
+  number: string;
+  status: string;
+  branchId: string;
+  vehicleId: string;
+  counterpartyId: string;
+  counterpartyName?: string;
+  contractId?: string | null;
+  liftId?: string | null;
+  description?: string | null;
+  inMileage?: number | null;
+  priority?: string;
+  repairCategory?: string | null;
+  documentDate?: string | null;
+  plannedAt?: string | null;
+  dueDate?: string | null;
+  lines: {
+    id: string;
+    workId: string;
+    workName?: string;
+    employeeId: string;
+    employeeName?: string;
+    normoHours: number;
+    price: number;
+  }[];
+  parts: {
+    id: string;
+    goodId: string;
+    goodName?: string;
+    warehouseId: string;
+    quantity: number;
+    price: number;
+    unitShortName?: string;
+    coefficient?: number;
+  }[];
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  DRAFT: 'bg-secondary text-muted-foreground',
+  ESTIMATE: 'bg-warning-subtle text-warning',
+  APPROVED: 'bg-primary-subtle text-primary',
+  IN_PROGRESS: 'bg-info-subtle text-info-text',
+  ON_HOLD: 'bg-warning-subtle text-warning',
+  COMPLETED: 'bg-success-subtle text-success',
+  INVOICED: 'bg-primary-subtle text-primary',
+  PAID: 'bg-success-subtle text-success',
+  ARCHIVED: 'bg-secondary text-muted-foreground',
+  CANCELLED: 'bg-destructive-subtle text-destructive',
+};
+
+const TRANSITION_LABELS: Record<string, string> = {
+  ESTIMATE: 'Кошторис',
+  APPROVED: 'Затвердити',
+  IN_PROGRESS: 'В роботу',
+  ON_HOLD: 'Призупинити',
+  COMPLETED: 'Виконано',
+  INVOICED: 'Виставити рахунок',
+  PAID: 'Оплачено',
+  ARCHIVED: 'В архів',
+  CANCELLED: 'Скасувати',
+  DRAFT: 'Повернути в чернетку',
+};
+
+const TRANSITION_VARIANTS: Record<string, 'default' | 'destructive' | 'outline'> = {
+  CANCELLED: 'destructive',
+  COMPLETED: 'default',
+  PAID: 'default',
+  APPROVED: 'default',
+  IN_PROGRESS: 'default',
+};
 
 const EMPTY_LINE: Omit<LocalLine, '_key'> = {
   workId: '',
@@ -117,6 +198,8 @@ interface Props {
   onClose: () => void;
   onCreated?: (wo: CreatedWorkOrder) => void;
   prefill?: CreateWOPrefill;
+  workOrderId?: string; // edit mode when provided
+  onUpdated?: () => void; // called after PATCH or FSM transition
 }
 
 // Crypto-randomUUID gives globally-unique row keys without relying on a
@@ -134,7 +217,15 @@ const toNumberOrUndefined = (raw: string): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
-export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Props) {
+export function CreateWorkOrderModal({
+  open,
+  onClose,
+  onCreated,
+  prefill,
+  workOrderId,
+  onUpdated,
+}: Props) {
+  const isEditMode = !!workOrderId;
   const [form, setForm] = useState({
     branchId: '',
     vehicleId: '',
@@ -159,9 +250,15 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
   const [units, setUnits] = useState<Unit[]>([]);
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
   const [error, setError] = useState('');
   const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
   const [vatRate, setVatRate] = useState(0);
+  const [currentStatus, setCurrentStatus] = useState('DRAFT');
+  const [editModeLoading, setEditModeLoading] = useState(false);
+  const [woNumber, setWoNumber] = useState('');
+  const deletedLineIds = useRef<string[]>([]);
+  const deletedPartIds = useRef<string[]>([]);
 
   // Inline add-row state
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
@@ -305,12 +402,72 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
       if (src.length === 1) setForm(f => ({ ...f, branchId: src[0].id }));
     }
 
-    if (prefill?.counterpartyId) {
+    if (!isEditMode && prefill?.counterpartyId) {
       loadVehicles(prefill.counterpartyId, prefill.vehicleId);
       loadContracts(prefill.counterpartyId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Edit mode — load existing WO data when modal opens
+  useEffect(() => {
+    if (!open || !isEditMode || !workOrderId) return;
+    deletedLineIds.current = [];
+    deletedPartIds.current = [];
+    setEditModeLoading(true);
+    setError('');
+    apiFetch<WorkOrderDetail>(`/work-orders/${workOrderId}`)
+      .then(wo => {
+        setWoNumber(wo.number);
+        setCurrentStatus(wo.status);
+        setForm({
+          branchId: wo.branchId ?? '',
+          vehicleId: wo.vehicleId ?? '',
+          counterpartyId: wo.counterpartyId ?? '',
+          contractId: wo.contractId ?? '',
+          liftId: wo.liftId ?? '',
+          description: wo.description ?? '',
+          priority: wo.priority ?? 'NORMAL',
+          repairCategory: wo.repairCategory ?? '',
+          documentDate: wo.documentDate ? wo.documentDate.slice(0, 10) : kyivToday(),
+          plannedStartAt: wo.plannedAt ?? '',
+          plannedEndAt: wo.dueDate ?? '',
+        });
+        setCounterpartyDisplayName(wo.counterpartyName ?? '');
+        setCpPhone('');
+        setLines(
+          wo.lines.map(l => ({
+            _key: nextKey(),
+            id: l.id,
+            workId: l.workId,
+            workName: l.workName ?? '',
+            employeeId: l.employeeId,
+            normoHours: String(l.normoHours),
+            price: String(l.price),
+          })),
+        );
+        setParts(
+          wo.parts.map(p => ({
+            _key: nextKey(),
+            id: p.id,
+            goodId: p.goodId,
+            goodName: p.goodName ?? '',
+            warehouseId: p.warehouseId,
+            quantity: String(p.quantity),
+            price: String(p.price),
+            unitOfMeasureId: '',
+            unitShortName: p.unitShortName ?? '',
+          })),
+        );
+        if (wo.counterpartyId) {
+          loadVehicles(wo.counterpartyId, wo.vehicleId);
+          loadContracts(wo.counterpartyId);
+        }
+      })
+      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження наряду'))
+      .finally(() => setEditModeLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, workOrderId]);
 
   // After branches load, auto-select if single
   useEffect(() => {
@@ -564,6 +721,87 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     }
   };
 
+  const save = async () => {
+    if (!workOrderId) return;
+    setSaving(true);
+    setError('');
+    try {
+      await apiFetch(`/work-orders/${workOrderId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          documentDate: form.documentDate || undefined,
+          priority: form.priority || undefined,
+          repairCategory: form.repairCategory || undefined,
+          description: form.description || undefined,
+          liftId: form.liftId || undefined,
+          plannedAt: form.plannedStartAt || undefined,
+          dueDate: form.plannedEndAt || undefined,
+        }),
+      });
+      // Delete removed lines/parts
+      for (const lineId of deletedLineIds.current) {
+        await apiFetch(`/work-orders/${workOrderId}/lines/${lineId}`, { method: 'DELETE' });
+      }
+      deletedLineIds.current = [];
+      for (const partId of deletedPartIds.current) {
+        await apiFetch(`/work-orders/${workOrderId}/parts/${partId}`, { method: 'DELETE' });
+      }
+      deletedPartIds.current = [];
+      // Add new lines (no id = not yet persisted)
+      for (const line of lines.filter(l => !l.id)) {
+        await apiFetch(`/work-orders/${workOrderId}/lines`, {
+          method: 'POST',
+          body: JSON.stringify({
+            workId: line.workId,
+            employeeId: line.employeeId,
+            normoHours: toNumberOrUndefined(line.normoHours),
+            price: toNumberOrUndefined(line.price),
+          }),
+        });
+      }
+      // Add new parts (no id = not yet persisted)
+      for (const part of parts.filter(p => !p.id)) {
+        await apiFetch(`/work-orders/${workOrderId}/parts`, {
+          method: 'POST',
+          body: JSON.stringify({
+            goodId: part.goodId,
+            warehouseId: part.warehouseId,
+            quantity: toNumberOrUndefined(part.quantity) ?? 1,
+            price: toNumberOrUndefined(part.price),
+            unitOfMeasureId: part.unitOfMeasureId || undefined,
+          }),
+        });
+      }
+      onUpdated?.();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка збереження');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const doTransition = async (newStatus: string) => {
+    if (!workOrderId) return;
+    setTransitioning(true);
+    setError('');
+    try {
+      await apiFetch(`/work-orders/${workOrderId}/transition`, {
+        method: 'POST',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      setCurrentStatus(newStatus);
+      onUpdated?.();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
+    } finally {
+      setTransitioning(false);
+    }
+  };
+
+  const allowedTransitions = isEditMode ? (WO_STATUS_TRANSITIONS[currentStatus] ?? []) : [];
+  const canEdit = isEditMode ? ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(currentStatus) : true;
+
   const initialStatus = Object.keys(WO_STATUS_LABELS)[0] ?? 'DRAFT';
 
   // Column header widths (shared between table header and input row grid)
@@ -571,26 +809,59 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
     <>
       <Modal
         open={open}
-        // Bug #381: блокуємо закриття під час послідовного POST /work-orders → /lines → /parts.
-        // Інакше overlay/Escape/X закривають UI, а фонові fetch продовжуються — створюється WO
-        // з частково записаними позиціями без видимого зворотного звʼязку.
-        onClose={saving ? () => {} : onClose}
-        title="Новий наряд"
+        onClose={saving || transitioning ? () => {} : onClose}
+        title={isEditMode ? woNumber || 'Наряд' : 'Новий наряд'}
         size="content"
         footer={
-          <Button
-            onClick={create}
-            loading={saving}
-            disabled={!form.branchId || !form.counterpartyId || !form.vehicleId}
-            className="w-full sm:w-auto"
-          >
-            Створити наряд
-          </Button>
+          isEditMode ? (
+            <div className="flex gap-2 flex-wrap items-center">
+              {allowedTransitions.map(s => (
+                <Button
+                  key={s}
+                  variant={TRANSITION_VARIANTS[s] ?? 'outline'}
+                  onClick={() => doTransition(s)}
+                  loading={transitioning}
+                  disabled={transitioning || saving}
+                  size="sm"
+                >
+                  {TRANSITION_LABELS[s] ?? s}
+                </Button>
+              ))}
+              {canEdit && (
+                <Button onClick={save} loading={saving} disabled={saving || transitioning}>
+                  Зберегти зміни
+                </Button>
+              )}
+              <Button variant="outline" onClick={onClose} disabled={saving || transitioning}>
+                Закрити
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={create}
+              loading={saving}
+              disabled={!form.branchId || !form.counterpartyId || !form.vehicleId}
+              className="w-full sm:w-auto"
+            >
+              Створити наряд
+            </Button>
+          )
         }
       >
+        {editModeLoading && (
+          <div className="flex justify-center py-8 text-sm text-muted-foreground">
+            Завантаження…
+          </div>
+        )}
         {error && (
           <div className="mb-4 text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2">
             {error}
+          </div>
+        )}
+        {!editModeLoading && isEditMode && !canEdit && (
+          <div className="mb-4 text-[13px] text-warning bg-warning-subtle border border-warning/20 rounded-lg px-3 py-2">
+            Наряд у статусі «{WO_STATUS_LABELS[currentStatus] ?? currentStatus}» — редагування
+            недоступне
           </div>
         )}
 
@@ -616,15 +887,32 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     type="date"
                     value={form.documentDate}
                     onChange={e => setForm(f => ({ ...f, documentDate: e.target.value }))}
+                    disabled={!canEdit}
                     className="h-8 text-[13px]"
                   />
-                  <Input
-                    label="Статус"
-                    value={WO_STATUS_LABELS[initialStatus] ?? 'Чернетка'}
-                    disabled
-                    readOnly
-                    className="h-8 text-[13px]"
-                  />
+                  {isEditMode ? (
+                    <div>
+                      <label className="block text-[13px] font-medium text-foreground mb-1">
+                        Статус
+                      </label>
+                      <span
+                        className={cn(
+                          'inline-block text-sm font-medium px-2.5 py-1 rounded-full',
+                          STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
+                        )}
+                      >
+                        {WO_STATUS_LABELS[currentStatus] ?? currentStatus}
+                      </span>
+                    </div>
+                  ) : (
+                    <Input
+                      label="Статус"
+                      value={WO_STATUS_LABELS[initialStatus] ?? 'Чернетка'}
+                      disabled
+                      readOnly
+                      className="h-8 text-[13px]"
+                    />
+                  )}
                 </div>
 
                 {/* Рядок 2: Філія | Підйомник | Пріоритет */}
@@ -634,6 +922,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     required
                     value={form.branchId}
                     onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+                    disabled={!canEdit || isEditMode}
                     className="h-8 text-[13px] py-0.5 px-2 pr-7"
                   >
                     <option value="">— Оберіть —</option>
@@ -647,6 +936,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     label="Підйомник"
                     value={form.liftId}
                     onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+                    disabled={!canEdit}
                     className="h-8 text-[13px] py-0.5 px-2 pr-7"
                   >
                     <option value="">— Без підйомника —</option>
@@ -660,6 +950,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     label="Пріоритет"
                     value={form.priority}
                     onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
+                    disabled={!canEdit}
                     className="h-8 text-[13px] py-0.5 px-2 pr-7"
                   >
                     {Object.entries(WO_PRIORITY_LABELS).map(([k, v]) => (
@@ -686,12 +977,14 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                         label="Дата та час початку"
                         value={form.plannedStartAt}
                         onChange={v => setForm(f => ({ ...f, plannedStartAt: v }))}
+                        disabled={!canEdit}
                         inputClassName="h-8 text-[13px]"
                       />
                       <DateTimePickerInput
                         label="Дата та час завершення"
                         value={form.plannedEndAt}
                         onChange={v => setForm(f => ({ ...f, plannedEndAt: v }))}
+                        disabled={!canEdit}
                         inputClassName="h-8 text-[13px]"
                       />
                     </div>
@@ -761,7 +1054,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       label="Договір"
                       value={form.contractId}
                       onChange={e => setForm(f => ({ ...f, contractId: e.target.value }))}
-                      disabled={!form.counterpartyId || contracts.length === 0}
+                      disabled={!canEdit || !form.counterpartyId || contracts.length === 0}
                       className="h-8 text-[13px] py-0.5 px-2 pr-7"
                     >
                       <option value="">— Без договору —</option>
@@ -779,7 +1072,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       required
                       value={form.vehicleId}
                       onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-                      disabled={!form.counterpartyId}
+                      disabled={!canEdit || !form.counterpartyId}
                       className="h-8 text-[13px] py-0.5 px-2 pr-7"
                     >
                       <option value="">— Оберіть —</option>
@@ -794,6 +1087,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                       label="Категорія ремонту"
                       value={form.repairCategory}
                       onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
+                      disabled={!canEdit}
                       className="h-8 text-[13px] py-0.5 px-2 pr-7"
                     >
                       <option value="">— Не вказано —</option>
@@ -812,6 +1106,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                     label="Опис"
                     value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                    disabled={!canEdit}
                     placeholder="Заміна масла, колодок..."
                     className="h-8 text-[13px]"
                   />
@@ -897,7 +1192,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             <div className="pt-4 pb-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium text-muted-foreground">Роботи</p>
-                {!showLineInput && (
+                {canEdit && !showLineInput && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1122,7 +1417,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                         price: line.price,
                                       });
                                     }}
-                                    disabled={saving}
+                                    disabled={saving || !canEdit}
                                     aria-label="Редагувати роботу"
                                     title="Редагувати"
                                     className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
@@ -1131,10 +1426,11 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      setLines(prev => prev.filter(l => l._key !== line._key))
-                                    }
-                                    disabled={saving}
+                                    onClick={() => {
+                                      if (line.id) deletedLineIds.current.push(line.id);
+                                      setLines(prev => prev.filter(l => l._key !== line._key));
+                                    }}
+                                    disabled={saving || !canEdit}
                                     aria-label="Видалити роботу"
                                     title="Видалити"
                                     className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
@@ -1294,7 +1590,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             <div className="pt-4 pb-2">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium text-muted-foreground">Товари / Запчастини</p>
-                {!showPartInput && (
+                {canEdit && !showPartInput && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1555,7 +1851,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                         unitShortName: part.unitShortName,
                                       });
                                     }}
-                                    disabled={saving}
+                                    disabled={saving || !canEdit}
                                     aria-label="Редагувати товар"
                                     title="Редагувати"
                                     className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
@@ -1564,10 +1860,11 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      setParts(prev => prev.filter(pt => pt._key !== part._key))
-                                    }
-                                    disabled={saving}
+                                    onClick={() => {
+                                      if (part.id) deletedPartIds.current.push(part.id);
+                                      setParts(prev => prev.filter(pt => pt._key !== part._key));
+                                    }}
+                                    disabled={saving || !canEdit}
                                     aria-label="Видалити товар"
                                     title="Видалити"
                                     className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"

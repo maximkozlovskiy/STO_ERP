@@ -276,6 +276,7 @@ export function CalendarSlotModal({
 
   const [cpPhone, setCpPhone] = useState<string | null>(null);
   const [cpVehicles, setCpVehicles] = useState<VehicleOption[]>([]);
+  const [vehiclesRefetchKey, setVehiclesRefetchKey] = useState(0);
 
   // New counterparty wizard modal
   const [newCpOpen, setNewCpOpen] = useState(false);
@@ -454,7 +455,7 @@ export function CalendarSlotModal({
     return () => {
       ac.abort();
     };
-  }, [open, form.counterpartyId, setForm]);
+  }, [open, form.counterpartyId, setForm, vehiclesRefetchKey]);
 
   // ── New work-order modal ──────────────────────────────────────────────────
   const [createWoOpen, setCreateWoOpen] = useState(false);
@@ -1287,18 +1288,13 @@ export function CalendarSlotModal({
         onClose={() => setCpDetailOpen(false)}
         onSaved={updated => {
           setCpDetailData(updated);
-          setCpDisplay(
+          const displayName =
             updated.companyName ??
-              [updated.lastName, updated.firstName].filter(Boolean).join(' ') ??
-              '',
-          );
-          setForm(f => ({
-            ...f,
-            counterpartyDisplay:
-              updated.companyName ??
-              [updated.lastName, updated.firstName].filter(Boolean).join(' ') ??
-              '',
-          }));
+            [updated.lastName, updated.firstName].filter(Boolean).join(' ') ??
+            '';
+          setCpDisplay(displayName);
+          setForm(f => ({ ...f, counterpartyDisplay: displayName }));
+          setVehiclesRefetchKey(k => k + 1);
           setCpDetailOpen(false);
         }}
       />
