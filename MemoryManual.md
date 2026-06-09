@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+230f99f6 perf(optimize): parallel NBU fetch, narrow tenant guards, lazy WO modal
 10ac2351 fix(tester): Bugs #390-#395 — stale picker test asserts + anti-DoS MaxLength/ArrayMaxSize
 6dd6a250 docs(memory): update MemoryManual after full review sweep (HEAD 92fc773a)
 92fc773a fix(review): garage isDefault uniqueness, findMany take caps, idempotent seed
@@ -24,6 +25,21 @@ cd3a67c5 fix(review): work-order liftId — validate tenant FK + add index + syn
 Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Unit+Contract: ✅ 666/666 API passed; ✅ 358/358 Web component passed
+Latest optimize: 2026-06-09 (HEAD 230f99f6) — cycle 4:
+  • Backend: nbu-fetch.service — sequential for-await exchangeRatesService.create
+    переписано на Promise.allSettled (5-15 currencies × 50ms RTT → max single insert);
+    daily NBU sync для multi-currency orgs швидше у разів.
+  • Backend: counterparties.update / branches.update / vehicles.update / warehouses.update —
+    full-row findFirst guard → select:{id:true} narrow (-50-80% wire payload per guard).
+  • Backend: vehicles.create / warehouses.create / zones.createZone/createLift / works.create —
+    FK guards narrow (existence-only, не повний рядок related entity).
+  • Backend: completion-acts.cancel — full-row status guard → select:{status:true} narrow.
+  • Backend: completion-acts.generatePdf — дублюючі queries (findOne повертав
+    counterparty/vehicle БЕЗ phone/address, потім додатковий workOrder findFirst тягнув ті ж
+    fields + phone/address) злито у ОДИН act read з extended counterparty.select.
+  • Frontend: CreateWorkOrderModal (1823 LOC) — static import у work-orders/page.tsx і
+    calendar/CalendarSlotModal → next/dynamic. Modal chunk lazy-loaded на перший
+    клік «Створити» — list/calendar opened без створення WO у 80% сесій.
 Latest tester: 2026-06-09 (FULL, HEAD 10ac2351) — full sweep, 6 bugs (1 CRITICAL release-blocker fixed, 2 MEDIUM anti-DoS, 3 LOW).
   • Bug #390 [CRITICAL release-blocker] WorkPickerModal/GoodPickerModal tests asserted старий `categoryIds%5B%5D=` синтаксис, але commit 37bc3ef9 правильно прибрав `[]` (Fastify+fast-querystring trap: bracketed form становить ОКРЕМИЙ key, plain repeated keys аґрегуються у array). Web baseline був red → 2 tests failing → блок майбутніх tester-сесій. Fix: оновлено assertions у обох test files на новий формат.
   • Bug #391 [MEDIUM anti-DoS] CreateEmployeeDto.password (+ ownerPassword у setup.dto.ts) без @MaxLength — bcrypt CPU work на величезному input. Fix: @MaxLength(128) для password, @MaxLength(100) для імен, @MaxLength(30) для phone, @MaxLength(254) для email/loginEmail. Аналогічні fields у UpdateEmployeeDto + setup.dto.ts.

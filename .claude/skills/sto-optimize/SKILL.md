@@ -568,6 +568,38 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-09 — Sequential per-item idempotent service.create() у scheduler/job — multi-tenant bootstrap fetchers
+
+**Сигнал:** scheduler/job метод (приклад: nbu-fetch, daily-rate-sync, bulk-import) ітерує колекцію (currencies/orgs/templates) через `for (const x of list) { await this.someService.create(orgId, ...) }`. Кожна service.create: (1) є **ідемпотентна** — каже ConflictException якщо row вже існує і викликач ловить це у try/catch без re-throw; (2) **незалежна** від інших iterations (унікальна constraint на (orgId, X.id, date) дозволяє паралель без race); (3) має внутрішні findFirst для FK validation. Не помічається бо на on-prem (1 org × 1-3 currencies) sequential 3 × 50ms = 150ms терпимо. На multi-tenant cloud з 20 orgs × 10 currencies = 200 × 50ms = 10 секунд daily lag.
+
+**Причина виникнення:** ідіоматичний шлях обробки колекції — `for-of + await`. Try/catch у тілі сприймається як «безпечне місце для обробки помилок per row». Розробник свідомо ВВАЖАЄ що паралельність ризикована («два паралельні UPSERT на ту саму row можуть конкуренти») — і не помічає що кожна row має різний унікальний ключ (currencyId+date різні для кожної ітерації). Сприйняття failure-mode: «послідовно — простіше відлагоджувати» — але `Promise.allSettled` дає той самий per-item success/failure tracking без втрати UX.
+
+**Підхід до виявлення:** grep `for \(const \w+ of \w+\)` у backend `*.service.ts` + `*.scheduler.ts` + `*.processor.ts`. Для кожного циклу прочитати тіло: (1) тіло — це `await this.X.someCreate/upsert/sync(...)`? (2) ConflictException catch без re-throw присутній? (3) Кожна ітерація використовує унікальний ID з колекції (currency.id, org.id, etc.) — НЕ shared id? Якщо так — кандидат на `Promise.allSettled(list.map(...))`. Не плутати з: (a) bulk-import що пише У ТРАНЗАКЦІЇ (там serial inevitable — тоді → createMany); (b) sequence-dependent flows де ітерація N залежить від результату ітерації N-1.
+
+**Підхід до фіксу:** `const results = await Promise.allSettled(list.map(async x => { ...body... return { ok, code, reason } }));` потім `for (const r of results) { if (r.status === 'fulfilled' && r.value.ok) fetched++; else errors++ }`. Зберегти SAME per-item logging (`this.logger.warn` всередині async map) — semantic identical. **Важливо:** перевірити що внутрішній service.create НЕ має sequential mutation shared state (counter, settings update) — лише FK validation + INSERT/UPSERT. Якщо є — або винести shared compute поза цикл, або серіалізувати лише ту частину.
+
+**Реальний impact:** на nbu-fetch.service для multi-currency org (5-15 enabled currencies) — щоденний batch: 5-15 sequential × 50ms RTT = 250-750ms → max single insert (~50ms). На cloud з 20 orgs × 10 currencies × daily = 6000 RTT/day → 600 RTT/day (5×, 6× прискорення).
+
+**Де шукати ще:** будь-який scheduler/job/bulk-process метод що ітерує колекцію через service.create/upsert: nbu-fetch, exchange-rate sync, fixture/seed loaders при initial setup, daily-summary aggregators, batch notification jobs з per-target create.
+
+---
+
+### 2026-06-09 — `findOne(dto) + secondary findFirst` partial-overlap pattern — PDF/export endpoints
+
+**Сигнал:** export-endpoint (generatePdf/generateXlsx/exportReport) має шаблон: (1) `const dto = await this.findOne(orgId, id)` — публічний getter повертає DTO з частковим включенням relations (наприклад, workOrder.counterparty з firstName/lastName/companyName); (2) одразу після — `const wo = await this.prisma.workOrder.findFirst({ where: { id: dto.workOrderId, orgId }, select: { counterparty: { select: { firstName, lastName, companyName, **phone, address** } } } })` — другий запит читає ті самі рядки лише щоб додати кілька полів (phone, address). Виглядає як "doublecheck the data" або "extend with extra fields", але насправді PostgreSQL читає тий самий heap-page двічі. 2 RTT де достатньо 1.
+
+**Причина виникнення:** findOne — стандартний getter, інкапсулює tenant guard + DTO serialization. Розробники свідомо НЕ розширюють findOne щоб не тягнути зайві поля у часті list/UI endpoints. Для PDF/export потрібні ДОДАТКОВІ поля (phone, address для party block) — інтуїтивно додають окремий findFirst замість того щоб inline'ити повний read у generatePdf. Не помічається бо findFirst-after-findOne здається "явним розширенням".
+
+**Підхід до виявлення:** для кожного `generatePdf`/`exportX` методу прочитати перші 5 рядків: чи перший await — це `this.findOne(orgId, id)`? Чи одразу після — `this.prisma.X.findFirst({ where: { id: dto.someId, orgId }, ... })` де `X` — це relation що findOne ВЖЕ INCLUDE? Якщо так — secondary fetch є partial-overlap дублем. Окремий signal: secondary fetch має `select` поля що частково перекриваються з findOne include (CP firstName+lastName overlap, плюс phone/address як extension).
+
+**Підхід до фіксу:** inline'ити повний read всередину generatePdf — БЕЗ findOne — з extended `select`/`include` що покриває ВСІ поля потрібні для PDF (включно з phone/address). Promise.all з другим незалежним read (organisation metadata) не змінюється. Видалити окремий findOne виклик. Це не зламає findOne для інших споживачів — він залишається з вузьким DTO для list/UI. Бонус: PDF flow тепер 1 RTT (act read), 1 paralleled (org meta). Перевірити buildLines/builder helper типи — якщо findOne повертав вужчий тип ніж новий inline read, builder приймає superset без зміни.
+
+**Реальний impact:** для completion-act PDF: 2 RTT → 1 RTT + parallel org. На середній PDF size 1-5 lines × ~50ms RTT — економія 30-50ms perceived latency. Найпомітніше на повільному WAN/VPN. Окремо: secondary findFirst раніше тягнув wo.counterparty + wo.vehicle БЕЗ деяких полів які потім додавалися "повз" findOne (PDF builder читав з обох джерел) — uniqued read.
+
+**Де шукати ще:** будь-який `generatePdf`/`exportX`/`buildReport` що починається з `findOne` + secondary `findFirst(relation)`. Особливо часто: completion-act PDF, invoice PDF, reconciliation PDF, work-order PDF, settlement act exports. Перевіряти кожен новий export-endpoint при додаванні.
+
+---
+
 ### 2026-06-08 — Redundant @@index([X]) поверх @@unique([X]) — Prisma schema моделі з композитним unique-ключем
 
 **Сигнал:** Модель Prisma має одночасно `@@unique([orgId, email])` і `@@index([orgId, email])` (або інший композитний ключ) — однакові колонки в однаковому порядку. У `pg_indexes` видно ДВА B-tree індекси на одних і тих самих колонках: один `*_key` (unique), один `*_idx` (звичайний). PostgreSQL використає унікальний індекс для будь-якого equality lookup'у по тих самих колонках (це включно і composite key `(orgId, email)`, і Prisma's syntactic `orgId_email` compound).
@@ -1709,6 +1741,11 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ loyalty.earn: settings + counterparty tenant guard у Promise.all замість sequential (getOrCreateAccount внутрішньо викликав assertCounterparty після settings) (-1 RTT у hot daily payment flow)
 - ✅ batch.getAvgCost: findMany(take:500, select:{qty, cost}) + 2× JS reduce → $queryRaw weighted SUM CTE (SUM(qty\*cost)/SUM(qty)) — 1 row response замість 500, no V8 allocation, Postgres aggregate швидше за JS reduce. Detinism (Bug #270) збережено через ORDER BY createdAt DESC + LIMIT 500 у CTE
 - ✅ employees/services.update + vehicles.createNode/counterparties.createGarage: findOne (full DTO + relations) → narrow findFirst({select:{id:true}}) tenant guard — той самий 1 RTT, але -50-80% wire payload (no relations marshaling)
+- ✅ counterparties/branches/vehicles/warehouses.update: full-row findFirst guard → narrow select:{id:true} (cycle 4 sweep — попередні циклі пропустили ці 4 hot CRUD endpoints)
+- ✅ vehicles.create / warehouses.create / zones.createZone/createLift / works.create: FK guards narrow select:{id:true} замість full related entity row
+- ✅ completion-acts.cancel: status guard select:{status:true} замість full row read (cycle 4)
+- ✅ completion-acts.generatePdf: findOne + secondary workOrder findFirst (partial overlap, both reading workOrder.counterparty) злито у ОДИН act read з extended counterparty.select (firstName/lastName/companyName + phone + actualAddress) — 2 RTT → 1 RTT + parallel org meta
+- ✅ nbu-fetch.service.fetchAndUpsertForOrg: sequential for-await exchangeRatesService.create → Promise.allSettled (5-15 currencies × 50ms RTT serially → max single insert). Idempotent (ConflictException catch) + independent FK (unique currencyId per iteration) → safe parallel
 
 **Frontend:**
 
@@ -1765,6 +1802,7 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ QueryProvider: ReactQueryDevtools static import → next/dynamic за `process.env.NODE_ENV==='development'` — dev-only chunk виключений з production bundle (~1.2 MB DevTools зникли)
 - ✅ TopShell: CommandPalette / SyncIndicator / NotificationCenter → dynamic(ssr:false) — conditional auth-gated widgets більше не у layout.js chunk (звіт 2124 kB → shared 102 kB)
 - ✅ pricing-rules: RuleFormModal (357 LOC + tier management) винесено у ./RuleFormModal.tsx + dynamic; shared types у ./types.ts — chunk сторінки 1093 kB → 132 kB First Load JS
+- ✅ work-orders/page.tsx + calendar/CalendarSlotModal: CreateWorkOrderModal (1823 LOC: full WO wizard з EntityPickerField + parts/lines tables) static import → next/dynamic. List/calendar opened без створення WO у 80% сесій → modal chunk lazy-loaded на перший клік «Створити»
 
 **DB:**
 
