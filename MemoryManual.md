@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+92fc773a fix(review): garage isDefault uniqueness, findMany take caps, idempotent seed
+b03baf14 fix(ui): standardize form field size to h-8/text-[13px] across all forms
 [pending tester] fix(tester): Bugs #387-#389 — Work/GoodPickerModal retry + test coverage
 8e88f31a fix(review): prevent setState-on-unmounted in Work/GoodPickerModal
 ee938240 feat(picker): replace flat category sidebar with hierarchical CategoryTree
@@ -20,8 +22,20 @@ cd3a67c5 fix(review): work-order liftId — validate tenant FK + add index + syn
 0f22a1f5 fix(tester): Bugs #381-#384 — CreateWorkOrderModal safety + validation
 4c2e32a9 fix(review): harden CreateWorkOrderModal — partial-failure safety + a11y + locale-aware parsing
 eb929140 feat(work-orders): add inline works and goods tables to CreateWorkOrderModal
-Дата: 2026-06-08
+Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors
+Latest review: 2026-06-09 (FULL DIFF, HEAD 92fc773a) — full sweep на робочій діжці перед commit:
+  • [IMPORTANT] CreateGarageDto додав isDefault, але `createGarage()` робив `data: { ...dto }`
+    без зняття попереднього default → silent invariant violation (multiple default garages
+    per counterparty). Fix: tx з updateMany({isDefault:false}) → create() коли isDefault=true.
+  • [SUGGESTION] `OrganisationSettings.findMany` (nbu-fetch.scheduler) і `Currency.findMany`
+    (nbu-fetch.service) без явного take → додано take:1000/200 для defense-in-depth OOM.
+  • [IMPORTANT] seed-catalog.ts: blanket `updateMany({isActive:false})` на старті seed-у
+    затирав ручні toggles менеджера на КОЖНОМУ повторному seed. Fix: видалено blanket reset,
+    isActive ставиться лише для нових (created) категорій.
+  Cross-cutting greps все чисто: 0 prisma.X.delete(), 0 console.log, 0 any (поза spec/comments),
+  0 process.env у service, 0 @Param('id') без ParseUUIDPipe, 0 stockItem.update поза InventoryService,
+  0 settlementAccount.update поза SettlementsService, 0 React.X у TSX, 0 rgba(var(--)), 0 [var(--)].
 Latest tester: 2026-06-08 (FOCUSED, HEAD 8e88f31a) — Work/GoodPickerModal QA: 3 bugs.
   • Bug #387 [MEDIUM] categoriesLoadedRef.current = true виставлений ПЕРЕД fetch; на .catch() silent-swallow → стале guard блокує retry на наступних відкриттях; user змушений Ctrl+R. Fix: skінути ref на catch, якщо !cancelled → next-open retry.
   • Bug #388 [LOW] new code втратив `{ items }`-fallback з попередньої версії; backend сьогодні array, але repo-конвенція list-endpoint → { items, total } робить силент-breakage реальним. Fix: відновити двосторонній parsing з типом `CategoryNode[] | { items: CategoryNode[] }`.
