@@ -17,6 +17,8 @@ const serviceMock = {
   findOne: vi.fn(),
   create: vi.fn(),
   createFromWorkOrder: vi.fn(),
+  refreshFromWorkOrder: vi.fn(),
+  findByWorkOrder: vi.fn(),
   update: vi.fn(),
   remove: vi.fn(),
   transition: vi.fn(),
@@ -283,6 +285,72 @@ describe('Invoices — HTTP Contract', () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
         url: '/invoices/not-a-uuid',
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
+  // Bug #403/#405/#406: contract spec для нових ендпоінтів фічі "Виставити рахунок".
+  describe('GET /invoices/from-work-order/:workOrderId/find', () => {
+    it('повертає 200 з null коли рахунку немає (Bug #405 — не 404)', async () => {
+      serviceMock.findByWorkOrder.mockResolvedValueOnce(null);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/invoices/from-work-order/${VALID_UUID}/find`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toBeNull();
+    });
+
+    it('повертає 200 з { id, number } коли рахунок існує', async () => {
+      serviceMock.findByWorkOrder.mockResolvedValueOnce({
+        id: VALID_UUID,
+        number: 'INV-2026-0001',
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/invoices/from-work-order/${VALID_UUID}/find`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ id: expect.any(String), number: expect.any(String) });
+    });
+
+    it('повертає 400 для не-UUID workOrderId', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/invoices/from-work-order/not-uuid/find',
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
+  describe('POST /invoices/from-work-order/:workOrderId/refresh', () => {
+    it('повертає 200 + service.refreshFromWorkOrder викликаний', async () => {
+      serviceMock.refreshFromWorkOrder.mockResolvedValueOnce({
+        id: VALID_UUID,
+        orgId: 'org-1',
+        number: 'INV-2026-0001',
+        status: 'DRAFT',
+        counterpartyId: VALID_UUID,
+        amount: 200,
+        totalWithoutVat: 166.67,
+        totalVat: 33.33,
+        totalWithVat: 200,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/invoices/from-work-order/${VALID_UUID}/refresh`,
+      });
+      expect(res.statusCode).toBe(201);
+      expect(serviceMock.refreshFromWorkOrder).toHaveBeenCalledWith('org-1', VALID_UUID);
+    });
+
+    it('повертає 400 для не-UUID workOrderId', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/invoices/from-work-order/not-uuid/refresh',
       });
       expect(res.statusCode).toBe(400);
     });

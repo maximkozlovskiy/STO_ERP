@@ -530,7 +530,18 @@ export class InvoicesService {
     if (!['COMPLETED', 'INVOICED'].includes(wo.status))
       throw new BadRequestException('Рахунок можна виставити лише для завершеного наряду');
     if (!existing) throw new NotFoundException('Активний рахунок не знайдено');
+    // Bug #403: refreshFromWorkOrder перезаписував рядки SENT/PAID/OVERDUE без перевірки →
+    // ламає бухоблік. update() має guard на DRAFT — тут симетрично.
+    if (existing.status !== InvoiceStatus.DRAFT)
+      throw new BadRequestException(
+        'Оновити можна лише чернетку рахунку. Скасуйте поточний і виставте новий.',
+      );
 
+    // Bug #406: vatRate=0 викривлював облік ПДВ. Симетрично з addLine (dto.vatRate ?? 20).
+    const DEFAULT_VAT = 20;
+
+    // Bug #407: recalcTotals був ПОЗА $transaction → race window де lines нові, totals старі.
+    // Тепер inline-обчислення всередині того ж транзакції.
     await this.prisma.$transaction(
       async tx => {
         await tx.invoiceLine.deleteMany({
@@ -538,42 +549,60 @@ export class InvoicesService {
         });
 
         const lineData = [
-          ...wo.lines.map((l, i) => ({
-            orgId,
-            invoiceId: existing.id,
-            workId: l.workId,
-            description: l.work?.name ?? 'Робота',
-            quantity: l.normoHours,
-            unitPrice: Number(l.price),
-            vatRate: 0,
-            priceWithoutVat: l.normoHours * Number(l.price),
-            vatAmount: 0,
-            priceWithVat: l.normoHours * Number(l.price),
-            sortOrder: i,
-          })),
-          ...wo.parts.map((p, i) => ({
-            orgId,
-            invoiceId: existing.id,
-            goodId: p.goodId,
-            description: p.good?.name ?? 'Запчастина',
-            quantity: Number(p.quantity),
-            unitPrice: Number(p.price),
-            vatRate: 0,
-            priceWithoutVat: Number(p.quantity) * Number(p.price),
-            vatAmount: 0,
-            priceWithVat: Number(p.quantity) * Number(p.price),
-            sortOrder: wo.lines.length + i,
-          })),
+          ...wo.lines.map((l, i) => {
+            const priceWithoutVat = l.normoHours * Number(l.price);
+            const vatAmount = priceWithoutVat * (DEFAULT_VAT / 100);
+            const priceWithVat = priceWithoutVat + vatAmount;
+            return {
+              orgId,
+              invoiceId: existing.id,
+              workId: l.workId,
+              description: l.work?.name ?? 'Робота',
+              quantity: l.normoHours,
+              unitPrice: Number(l.price),
+              vatRate: DEFAULT_VAT,
+              priceWithoutVat,
+              vatAmount,
+              priceWithVat,
+              sortOrder: i,
+            };
+          }),
+          ...wo.parts.map((p, i) => {
+            const priceWithoutVat = Number(p.quantity) * Number(p.price);
+            const vatAmount = priceWithoutVat * (DEFAULT_VAT / 100);
+            const priceWithVat = priceWithoutVat + vatAmount;
+            return {
+              orgId,
+              invoiceId: existing.id,
+              goodId: p.goodId,
+              description: p.good?.name ?? 'Запчастина',
+              quantity: Number(p.quantity),
+              unitPrice: Number(p.price),
+              vatRate: DEFAULT_VAT,
+              priceWithoutVat,
+              vatAmount,
+              priceWithVat,
+              sortOrder: wo.lines.length + i,
+            };
+          }),
         ];
 
         if (lineData.length > 0) {
           await tx.invoiceLine.createMany({ data: lineData });
         }
+
+        // Inline recalc у тій самій транзакції (Bug #407)
+        const totalWithoutVat = lineData.reduce((s, l) => s + l.priceWithoutVat, 0);
+        const totalVat = lineData.reduce((s, l) => s + l.vatAmount, 0);
+        const totalWithVat = lineData.reduce((s, l) => s + l.priceWithVat, 0);
+        await tx.invoice.update({
+          where: { id: existing.id, orgId },
+          data: { totalWithoutVat, totalVat, totalWithVat, amount: totalWithVat },
+        });
       },
       { timeout: 10_000 },
     );
 
-    await this.recalcTotals(orgId, existing.id);
     return this.findOne(orgId, existing.id);
   }
 

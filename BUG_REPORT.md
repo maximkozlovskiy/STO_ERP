@@ -12318,3 +12318,185 @@ const canShare = isEditMode && ['DRAFT', 'ESTIMATE'].includes(currentStatus);
 **Статус:** [x] виправлено (regenerate run, API up). Документуємо у memory.
 
 ---
+
+## Session 2026-06-09 — /sto-tester audit of feat(invoices) commit 1916b3c6 — "Виставити рахунок"
+
+Контекст: Перевірка нової фічі — кнопки "Виставити рахунок" у CreateWorkOrderModal зі статус-логікою COMPLETED/INVOICED, FSM transition, conflict dialog, GET /find, POST /refresh.
+
+Сесія: 6 нових багів (#403-#408): 1 CRITICAL, 3 HIGH, 2 MEDIUM. Усі виправлені.
+
+---
+
+### Bug #403 — [CRITICAL] refreshFromWorkOrder перезаписує рядки рахунку у статусах SENT/PAID/OVERDUE — порушує бухоблік
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:510-578`
+**Severity:** CRITICAL (фінансовий ризик: дані оплаченого/надісланого рахунку перезаписуються без перевірки)
+**Категорія:** Backend / Бізнес-логіка / FSM enforcement
+
+**Опис:**
+
+`refreshFromWorkOrder` шукає existing invoice через `status: { not: InvoiceStatus.CANCELLED }`. Фільтр виключає лише CANCELLED. У БД лишаються 4 інші статуси: DRAFT, SENT, PAID, OVERDUE. Сервіс одразу робить `tx.invoiceLine.deleteMany(...)` потім createMany з нових даних.
+
+Тобто рядки PAID/SENT/OVERDUE рахунку безшумно знищуються і перезаписуються поточними даними наряду. Сценарій:
+
+1. Клієнт отримав рахунок (SENT), оплатив (PAID).
+2. Майстер змінив парти у наряді → totalAmount наряду виріс.
+3. Адмін натискає "Виставити рахунок" → conflict dialog → "Оновити".
+4. Рядки PAID-рахунку зникають, нові з більшим amount; recalcTotals оновлює amount PAID-рахунку → невідповідність з Payment.amount.
+
+`update()` має FSM-guard для не-DRAFT. refreshFromWorkOrder його обходить.
+
+**Очікувана поведінка:** `refreshFromWorkOrder` має кидати BadRequestException коли `existing.status !== 'DRAFT'`.
+
+**Фактична поведінка:** Перезапис рядків будь-якого активного статусу.
+
+**Фікс:** Додати prep-guard після `if (!existing) throw NotFound`:
+
+```ts
+if (existing.status !== InvoiceStatus.DRAFT)
+  throw new BadRequestException(
+    'Оновити можна лише чернетку рахунку. Скасуйте поточний і виставте новий.',
+  );
+```
+
+**Регресія-guard:** Розширити invoices.contract.spec.ts → POST /refresh коли existing=SENT → 400.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #404 — [HIGH] handleInvoice залишає WorkOrder у статусі INVOICED якщо invoice створення провалюється
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:916-949`
+**Severity:** HIGH (інконсистентність FSM ↔ Invoice)
+**Категорія:** Frontend / FSM / Atomicity
+
+**Опис:**
+
+handleInvoice робить ДВА послідовних API виклики:
+
+1. POST /work-orders/:id/transition { status: INVOICED }
+2. POST /invoices/from-work-order/:id
+
+Якщо крок 2 провалюється, WorkOrder вже у статусі INVOICED, але рахунку немає. FSM-інваріант "INVOICED = виставлений рахунок існує" порушений безшумно.
+
+**Очікувана поведінка:** або atomic backend endpoint, або frontend rollback transition при failure.
+
+**Фактична поведінка:** Сирітський INVOICED статус наряду без рахунку.
+
+**Фікс (опція б, мінімальний):** При помилці на кроці 2 (не "вже існує") спробувати rollback transition INVOICED → COMPLETED. Захопити початковий статус перед transition.
+
+**Регресія-guard:** vitest — mock transition→200, invoice→500, перевірити наступний transition→COMPLETED.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #405 — [HIGH] handleInvoiceOpen робить fallback на список лише при catch, але /find повертає null без помилки → діалог тихо закривається
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:975-988`
+**Severity:** HIGH (UX dead-end)
+**Категорія:** Frontend / UX / Error handling
+
+**Опис:**
+
+GET /find повертає null коли рахунку немає (за дизайном, не 404). Код:
+
+```ts
+const inv = await apiFetch<{ id: string } | null>(...);
+if (inv?.id) { window.open(...); }
+// ← коли inv=null, гілка пропускається БЕЗ fallback
+```
+
+Race scenario: інший admin скасував рахунок між першим POST і кліком "Відкрити". /find повертає null. Conflict dialog закрився, нічого не сталось, користувач не розуміє.
+
+**Очікувана поведінка:** Якщо /find повернув null — показати toast.warning "Рахунок не знайдено. Можливо, його було скасовано."
+
+**Фактична поведінка:** Тихе закриття dialog без feedback.
+
+**Фікс:** Додати else гілку з toast.warning + setInvoiceConflict(false) лише після успішного отримання.
+
+**Регресія-guard:** vitest — mock /find → null, перевірити toast.warning.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #406 — [HIGH] refreshFromWorkOrder створює invoice lines з vatRate=0 — ламає облік ПДВ
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:540-566`
+**Severity:** HIGH (фінансовий)
+**Категорія:** Backend / Бізнес-логіка / VAT
+
+**Опис:**
+
+При перезаписі — кожен новий рядок створюється з `vatRate: 0`, `vatAmount: 0`. `addLine` використовує `dto.vatRate ?? 20` — дефолт 20% для всіх рядків. Рядки через refreshFromWorkOrder — з 0% — викривлюють totalVat, PDF, експорт.
+
+**Очікувана поведінка:** Дефолт vatRate=20 (узгоджено з addLine).
+
+**Фактична поведінка:** Завжди 0%.
+
+**Фікс:** Використати DEFAULT_VAT=20, обчислити vatAmount/priceWithVat коректно для works + parts.
+
+**Регресія-guard:** vitest service test для refreshFromWorkOrder → lines.vatRate=20.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #407 — [MEDIUM] refreshFromWorkOrder викликає recalcTotals ПОЗА $transaction — race window
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:534-577`
+**Severity:** MEDIUM (atomicity)
+**Категорія:** Backend / Transactions
+
+**Опис:**
+
+```ts
+await this.prisma.$transaction(async tx => {
+  delete +createMany;
+});
+await this.recalcTotals(orgId, existing.id); // ← поза транзакцією
+```
+
+Якщо процес умре між commitом і recalcTotals → рядки оновлені, totals лишилися старі. Користувач бачить нові роботи, стару суму.
+
+**Очікувана поведінка:** recalc у середині того ж $transaction.
+
+**Фактична поведінка:** Race window де lines нові, totals старі.
+
+**Фікс:** Inline-обчислити totals всередині $transaction і викликати tx.invoice.update.
+
+**Регресія-guard:** SKILL.md §1.1 pattern для $transaction atomicity.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #408 — [MEDIUM] Conflict dialog не закривається по ESC / overlay click — порушує модальний UX
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:2459-2486`
+**Severity:** MEDIUM (a11y + UX)
+**Категорія:** Frontend / A11y / Modal UX
+
+**Опис:**
+
+Conflict dialog має role=dialog aria-modal=true, але:
+
+- ESC не закриває (нема keydown listener)
+- Click по overlay не закриває (onClick відсутній)
+- autoFocus на першу кнопку відсутній
+
+Хоча Modal компонент має ці affordances вбудовано, цей inline dialog — окремий div що повторює макет.
+
+**Очікувана поведінка:** ESC закриває, overlay click закриває, фокус на першій кнопці.
+
+**Фактична поведінка:** Тільки 3 кнопки дозволяють вийти.
+
+**Фікс:** Додати onClick на overlay (з stopPropagation на dialog), onKeyDown ESC, autoFocus на головну кнопку. Перевірка `!invoiceLoading` щоб уникнути закриття під час refresh.
+
+**Регресія-guard:** vitest — userEvent.keyboard('{Escape}') закриває.
+
+**Статус:** [x] виправлено
+
+---

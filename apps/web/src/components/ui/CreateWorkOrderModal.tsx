@@ -915,6 +915,9 @@ export function CreateWorkOrderModal({
 
   const handleInvoice = async () => {
     if (!workOrderId) return;
+    // Bug #404: захоплюємо початковий статус ДО transition, щоб мати куди rollback при failure.
+    const statusBeforeTransition = currentStatus;
+    let transitionedHere = false;
     setInvoiceLoading(true);
     try {
       if (currentStatus === 'COMPLETED') {
@@ -923,6 +926,7 @@ export function CreateWorkOrderModal({
           body: JSON.stringify({ status: 'INVOICED' }),
         });
         setCurrentStatus('INVOICED');
+        transitionedHere = true;
         onUpdated?.();
       }
       const invoice = await apiFetch<{ id: string; number: string }>(
@@ -940,6 +944,20 @@ export function CreateWorkOrderModal({
       if (msg.includes('вже існує')) {
         setInvoiceConflict(true);
       } else {
+        // Bug #404: якщо ми щойно перевели COMPLETED→INVOICED і invoice create провалився —
+        // rollback transition назад у COMPLETED, щоб FSM-інваріант не порушувався.
+        if (transitionedHere && statusBeforeTransition === 'COMPLETED') {
+          try {
+            await apiFetch(`/work-orders/${workOrderId}/transition`, {
+              method: 'POST',
+              body: JSON.stringify({ status: 'COMPLETED' }),
+            });
+            setCurrentStatus('COMPLETED');
+            onUpdated?.();
+          } catch {
+            // warn-only: manual recovery потрібен. Original error все одно показуємо нижче.
+          }
+        }
         if (features.toastEnabled) toast.error(msg || 'Помилка виставлення рахунку');
         else setError(msg || 'Помилка');
       }
@@ -981,6 +999,14 @@ export function CreateWorkOrderModal({
       );
       if (inv?.id) {
         window.open(`/invoices/${inv.id}`, '_blank');
+      } else {
+        // Bug #405: /find повертає null коли рахунку немає (за дизайном — не 404).
+        // Race: інший admin скасував рахунок між POST і кліком. Користувач має знати.
+        if (features.toastEnabled) {
+          toast.warning('Рахунок не знайдено. Можливо, його було скасовано.');
+        } else {
+          setError('Рахунок не знайдено. Можливо, його було скасовано.');
+        }
       }
     } catch {
       window.open(`/invoices?workOrderId=${workOrderId}`, '_blank');
@@ -2457,12 +2483,22 @@ export function CreateWorkOrderModal({
       />
 
       {invoiceConflict && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+        // Bug #408: ESC + overlay click + autoFocus для модального UX.
+        // Inline dialog без shared Modal — додаємо мінімальні a11y/UX affordances.
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+          onClick={() => !invoiceLoading && setInvoiceConflict(false)}
+          onKeyDown={e => {
+            if (e.key === 'Escape' && !invoiceLoading) setInvoiceConflict(false);
+          }}
+          role="presentation"
+        >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="invoice-conflict-title"
             className="bg-surface rounded-xl shadow-xl p-6 max-w-sm w-full mx-4"
+            onClick={e => e.stopPropagation()}
           >
             <h3 id="invoice-conflict-title" className="font-semibold text-base mb-2">
               Рахунок вже існує
@@ -2471,7 +2507,12 @@ export function CreateWorkOrderModal({
               Для цього наряду вже є активний рахунок. Що зробити?
             </p>
             <div className="flex flex-col gap-2">
-              <Button onClick={handleInvoiceRefresh} loading={invoiceLoading} className="w-full">
+              <Button
+                autoFocus
+                onClick={handleInvoiceRefresh}
+                loading={invoiceLoading}
+                className="w-full"
+              >
                 Оновити (перезаписати рядки)
               </Button>
               <Button variant="outline" onClick={handleInvoiceOpen} className="w-full">
