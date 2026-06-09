@@ -1,4 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+
+const MAX_ORGS_PER_SCHEDULER_RUN = 1000;
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -20,11 +22,11 @@ export class NbuFetchScheduler implements OnModuleInit {
       this.prisma.organisation.findMany({
         where: { deletedAt: null },
         select: { id: true },
-        take: 1000,
+        take: MAX_ORGS_PER_SCHEDULER_RUN,
       }),
       this.prisma.organisationSettings.findMany({
         select: { orgId: true, nbuFetchHour: true },
-        take: 1000,
+        take: MAX_ORGS_PER_SCHEDULER_RUN,
       }),
     ]);
     const hourByOrg = new Map(allSettings.map(s => [s.orgId, s.nbuFetchHour ?? 12]));

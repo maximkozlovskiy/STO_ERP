@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { CompletionActStatus } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
@@ -290,8 +290,7 @@ export class CompletionActsService {
     if (!act) throw new NotFoundException('Акт не знайдено');
 
     const cp = act.workOrder?.counterparty;
-    const cpName =
-      (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || 'Клієнт';
+    const cpName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || 'Клієнт';
     const vehicleLabel = act.workOrder?.vehicle
       ? `${act.workOrder.vehicle.make} ${act.workOrder.vehicle.model}${act.workOrder.vehicle.licensePlate ? ` (${act.workOrder.vehicle.licensePlate})` : ''}`
       : '';
@@ -389,7 +388,7 @@ export class CompletionActsService {
   ): CompletionActResponseDto {
     const cp = act.workOrder?.counterparty;
     const counterpartyName =
-      (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || undefined;
+      formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || undefined;
     const v = act.workOrder?.vehicle;
     const vehicleLabel = v
       ? `${v.make} ${v.model}${v.licensePlate ? ` (${v.licensePlate})` : ''}`

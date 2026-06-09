@@ -50,12 +50,12 @@ export class NbuFetchService {
     // independent (own currencyId), idempotent (ConflictException handled), tenant-safe
     // (orgId у where). For 5-15 enabled currencies × ~50ms RTT (PG insert + retry on
     // conflict) — серійно 250-750ms; паралельно — max single insert (~50ms).
-    const results = await Promise.allSettled(
-      currencies.map(async currency => {
+    const results = await Promise.all(
+      currencies.map(async (currency): Promise<boolean> => {
         const entry = nbuMap.get(currency.code);
         if (!entry) {
           this.logger.warn(`NBU: курс для коду ${currency.code} не знайдено`);
-          return { ok: false as const, code: currency.code, reason: 'no-entry' as const };
+          return false;
         }
         const markup = currency.nbuMarkupPercent != null ? Number(currency.nbuMarkupPercent) : 0;
         const finalRate = entry.rate * (1 + markup / 100);
@@ -66,24 +66,24 @@ export class NbuFetchService {
             rate: finalRate,
             coefficient: 1,
           });
-          return { ok: true as const, code: currency.code };
+          return true;
         } catch (e) {
           if (e instanceof ConflictException) {
             this.logger.debug(`NBU: курс ${currency.code} на ${kyivDate} вже існує — пропускаємо`);
-            return { ok: true as const, code: currency.code, alreadyExists: true as const };
+            return true;
           }
           this.logger.warn(
             `NBU: помилка збереження курсу ${currency.code}: ${e instanceof Error ? e.message : e}`,
           );
-          return { ok: false as const, code: currency.code, reason: 'save-failed' as const };
+          return false;
         }
       }),
     );
 
     let fetched = 0;
     let errors = 0;
-    for (const r of results) {
-      if (r.status === 'fulfilled' && r.value.ok) fetched++;
+    for (const ok of results) {
+      if (ok) fetched++;
       else errors++;
     }
 
