@@ -9,7 +9,9 @@
 ## Останній commit
 
 ```
-[NEW] 153be445 fix(tester): Bugs #403-#408 — invoice-from-WO refresh guards + UX
+[NEW] c4e484db fix(review): harden linked-documents endpoints and panel
+ca6f5830 feat(work-orders): linked documents panel + Виставити рахунок button
+153be445 fix(tester): Bugs #403-#408 — invoice-from-WO refresh guards + UX
 ad9328fb docs(memory): update MemoryManual after review of feat(invoices) commit 1916b3c6
 662e7ecf fix(review): add $transaction timeout, aria-modal to conflict dialog, focus-visible to toast action
 1916b3c6 feat(invoices): add Виставити рахунок button to work order modal
@@ -84,7 +86,16 @@ Previous tester: 2026-06-09 (FULL HEAD~20..HEAD, HEAD ee368574) — Bugs #396-#4
   • [MEDIUM #399] addPart/updatePart silent-stored null коли GoodUoM не знайдено —
     маскує contract bugs. Fail-loudly NotFoundException з підказкою налаштувати UoM.
   • [LOW #400] GoodUoM interface не оголошував unitOfMeasureId — об'єднано з #396.
-Latest review: 2026-06-09 (FOCUSED commit 1916b3c6, HEAD 662e7ecf) — feat(invoices) Виставити рахунок: 1 IMPORTANT + 2 SUGGESTION fixed:
+Latest review: 2026-06-09 (FOCUSED commit ca6f5830, HEAD c4e484db) — feat(work-orders) linked-documents panel: 1 CRITICAL + 4 IMPORTANT + 1 SUGGESTION fixed:
+  • [CRITICAL §2.3] work-orders.controller.ts linked-counts: @Body() без DTO/ValidationPipe — приймав довільний JSON, без size cap, без UUID-валідації. Створено LinkedCountsDto з @IsArray + @ArrayMinSize(1) + @ArrayMaxSize(500) + @IsUUID('all',{each:true}). Без фіксу — DoS-вектор (1M IDs у where:{in:[...]}) + non-UUID до Prisma.
+  • [IMPORTANT §3.2/§7.1] work-orders.service.ts getLinkedDocuments: 4 findMany без take — потенційне OOM на патологічних обсягах. Додано take: 500 для invoices/payments/calendarSlots/warranties.
+  • [IMPORTANT §13] getLinkedDocuments повертав Prisma Decimal напряму у JSON (серіалізується як string) — фронт типує `string | number`, але нормалізація на бекенді = консистентніший контракт. invoices/payments: amount: Number(...).
+  • [IMPORTANT §1] LinkedDocumentsPanel.tsx: React.RefObject / React.CSSProperties / React.ReactNode / React.MouseEvent / React.ElementType — namespace usages → named imports з 'react'.
+  • [IMPORTANT §3.1] LinkedDocumentsPanel useEffect без cancelled-flag → workOrderId switch race. Додано cancelled-guard у then/catch/finally.
+  • [IMPORTANT §8.2] work-orders/page.tsx useEffect (linked-counts batch fetch) без cancelled-flag → orders switch race. Додано cancelled-guard.
+  • [IMPORTANT §14] work-orders/page.tsx linked-documents popup: onKeyDown на overlay <div> без tabIndex/focus → Escape ніколи не закривав. Додано document-level keydown listener у dedicated useEffect + role="dialog"/aria-modal на content div.
+  • [SUGGESTION §3.1] LinkedDocumentsPanel PreviewPopup positioning: useEffect → useLayoutEffect, щоб уникнути flash на (0,0) перед reposition.
+Older review: 2026-06-09 (FOCUSED commit 1916b3c6, HEAD 662e7ecf) — feat(invoices) Виставити рахунок: 1 IMPORTANT + 2 SUGGESTION fixed:
   • [IMPORTANT] invoices.service.ts refreshFromWorkOrder: $transaction(async cb) без { timeout: 10_000 } — при великій кількості рядків може hit 5s default timeout під load. Fixed.
   • [SUGGESTION] toast.tsx action button: відсутній focus-visible:opacity-100 — кнопка "Відкрити" невидима при Tab-навігації. Fixed.
   • [SUGGESTION] invoiceConflict inline dialog: відсутні role=dialog aria-modal aria-labelledby — screen reader не анонсує діалог. Fixed.
