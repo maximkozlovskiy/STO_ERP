@@ -538,6 +538,9 @@ function WorkOrdersPageInner() {
             return (
               <div className="relative">
                 <select
+                  // Bug #419: aria-label потрібен бо текст "Інші" рендериться у
+                  // <option value="" disabled hidden> — screen-reader його не оголошує.
+                  aria-label="Інші статуси нарядів"
                   value={isExtraActive ? statusFilter : ''}
                   onChange={e => {
                     if (e.target.value) {

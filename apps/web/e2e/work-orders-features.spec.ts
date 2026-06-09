@@ -4,8 +4,10 @@ test.use({ storageState: 'e2e/.auth/admin.json' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Recently added features in /work-orders:
-// 1. "Інші" dropdown — statuses ON_HOLD / CANCELLED / ARCHIVED selectable
-//    from a single dropdown next to the status tabs (work-orders/page.tsx:530).
+// 1. "Інші" dropdown — statuses derived from WO_STATUS_LABELS (statuses.ts) minus
+//    primary STATUS_TABS keys. Current set: ON_HOLD / ARCHIVED / CANCELLED in the
+//    insertion order of WO_STATUS_LABELS. Rendered in page.tsx (look for
+//    STATUS_TABS_EXTRA + <select> with the "Інші" placeholder option).
 // 2. "Виставити рахунок" button — appears in WO edit modal when status is
 //    COMPLETED or INVOICED (CreateWorkOrderModal.tsx:938 canInvoice).
 // 3. LinkedDocumentsPanel — rendered as the "Документи" tab of the WO edit
@@ -38,10 +40,13 @@ test.describe('Наряди — статус-фільтр "Інші" dropdown', 
     const dropdown = page.locator('select').filter({ hasText: 'Інші' }).first();
     await expect(dropdown).toBeVisible({ timeout: 10_000 });
 
-    // STATUS_TABS_EXTRA = [ON_HOLD, CANCELLED, ARCHIVED] (page.tsx:125-128)
+    // STATUS_TABS_EXTRA is derived from WO_STATUS_LABELS minus primary STATUS_TABS keys.
+    // Current insertion order in @sto/shared/constants/statuses.ts → ON_HOLD, ARCHIVED,
+    // CANCELLED. We query by value (not by position) so adding/reordering enum members
+    // does not break these assertions, only the comment above needs to follow.
     await expect(dropdown.locator('option[value="ON_HOLD"]')).toHaveText('Призупинено');
-    await expect(dropdown.locator('option[value="CANCELLED"]')).toHaveText('Скасовано');
     await expect(dropdown.locator('option[value="ARCHIVED"]')).toHaveText('Архів');
+    await expect(dropdown.locator('option[value="CANCELLED"]')).toHaveText('Скасовано');
   });
 
   test('вибір "Скасовано" — фільтрує таблицю (URL/state змінюється)', async ({ page }) => {

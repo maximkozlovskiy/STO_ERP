@@ -12789,3 +12789,77 @@ LinkedDocumentsPanel (490 LOC) — новий complex component з:
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-09 — sto-tester targeted audit (HEAD 60594c12 — simplify+review cycle)
+
+**Scope:** перевірка нещодавніх commits 44b4dfe4 (simplify cleanup) і 5dac586b (review fixes):
+
+- STATUS_TABS_EXTRA derived from WO_STATUS_LABELS (work-orders/page.tsx:150)
+- useQuery linked-counts: staleTime 30s, stable sorted key, invalidation via workOrdersKeys.all prefix
+- refreshFromWorkOrder $tx: WO lines+parts fetch перенесено INSIDE $transaction (invoices.service.ts:609)
+- getLinkedDocuments: видалено findFirst guard, 4 queries фільтрують по orgId+workOrderId напряму (work-orders.service.ts:1691)
+- DocSection: render only when count > 0 (LinkedDocumentsPanel.tsx:272)
+- DOC_COUNTERS: 4 icon counters рендеряться по field name match з backend (work-orders/page.tsx:136-145)
+
+**Baseline:**
+
+- TS: ✅ 0 errors (api / web / shared)
+- Unit tests: ✅ 693/693 API, 366/366 web
+- Contract tests: ✅ всі pass
+- Інтермітентний flake (1 з 693) при паралельному запуску `pnpm test --run` — не відтворюється у isolation. Не блокер.
+
+**Висновок:** жодних функціональних багів у scope commits. Знайдено 2 LOW doc-drift баги у e2e спеці що вказують на неправильний порядок STATUS_TABS_EXTRA і застарілі line-references.
+
+---
+
+### Bug #418 — [LOW] e2e спека містить застарілий порядок STATUS_TABS_EXTRA у коментарях
+
+**Файл:** `apps/web/e2e/work-orders-features.spec.ts:7, 41`
+**Категорія:** documentation drift / test-coverage / SKILL §1.5
+**Severity:** LOW
+
+**Опис:**
+
+Два коментарі у e2e спеці фіксують `STATUS_TABS_EXTRA = [ON_HOLD, CANCELLED, ARCHIVED]` (рядок 7 і 41). Реальний порядок — `[ON_HOLD, ARCHIVED, CANCELLED]` (insertion-order у `WO_STATUS_LABELS` об'єкті: DRAFT, ESTIMATE, APPROVED, IN_PROGRESS, ON_HOLD, COMPLETED, INVOICED, PAID, ARCHIVED, CANCELLED → primary filter залишає ON_HOLD, ARCHIVED, CANCELLED у такому порядку).
+
+Додатково рядок 41 посилається на `page.tsx:125-128` — застаріле місце. Зараз `STATUS_TABS_EXTRA` визначений на рядку 150 і derived з `Object.keys(WO_STATUS_LABELS).filter(k => !PRIMARY_STATUS_KEYS.has(k))`, тому будь-яка зміна порядку enum у `@sto/shared/constants/statuses.ts` автоматично перевпорядкує dropdown — коментар з фіксованим порядком швидко drift-ить знов.
+
+**Очікувана поведінка:** коментар відображає фактичний derived-порядок ON_HOLD/ARCHIVED/CANCELLED АБО просто вказує що порядок визначається WO_STATUS_LABELS insertion-order (без конкретного списку).
+
+**Фактична поведінка:** коментар каже `[ON_HOLD, CANCELLED, ARCHIVED]` — користувач який читає тест думає що порядок саме такий, але реальність інша.
+
+**Як виявлено:** STATUS_TABS_EXTRA derives керує і UI порядком, і selectability у `<select>`. Тести query options by value (не by index), тому маскують drift — single source of truth (`WO_STATUS_LABELS` в statuses.ts) має бути єдиним посиланням у коментарі.
+
+**Фікс:** оновити коментар на актуальний derived-порядок + посилання на shared constants.
+
+**Регресія-guard:** comment-level only — переписати у формат "derived from WO_STATUS_LABELS insertion order" щоб не залежати від конкретного порядку.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #419 — [LOW] Extra-status `<select>` без aria-label — гірша a11y для screen-reader-ів
+
+**Файл:** `apps/web/src/app/(app)/work-orders/page.tsx:540-564`
+**Категорія:** frontend / a11y / SKILL §1.6
+**Severity:** LOW
+
+**Опис:**
+
+Native `<select>` для "Інші" статусів НЕ має `aria-label`. Текст "Інші" є лише у `<option value="" disabled hidden>`, який screen-reader не оголошує (hidden + disabled поєднання). Користувач з NVDA/JAWS чує лише "list combobox" без жодної підказки про призначення поля.
+
+Парний primary tabs (`button`-и для DRAFT/ESTIMATE/...) мають видимий текст label-ом — ARIA автоматично виводить accessible-name з content. `<select>` не виводить з placeholder-option (стандарт WAI-ARIA: `<option>` не projected у accessible name).
+
+**Очікувана поведінка:** `<select aria-label="Інші статуси нарядів">` для self-документувального accessible-name.
+
+**Фактична поведінка:** `<select>` рендериться без `aria-label`, без `<label htmlFor>`, без `aria-labelledby` — screen-reader-ів не отримує контекст.
+
+**Як виявлено:** §1.6 a11y checklist — будь-який native `<select>`/`<input>` без видимого `<label>` поруч ОБОВ'ЯЗКОВО потребує `aria-label` (або `aria-labelledby`). Tab navigation через клавіатуру → screen-reader announce → "Select, blank" замість "Інші статуси нарядів".
+
+**Фікс:** додати `aria-label="Інші статуси нарядів"` до `<select>`.
+
+**Регресія-guard:** окремий e2e/unit-кейс перевіряє наявність aria-label на dropdown.
+
+**Статус:** [x] виправлено
+
+---
