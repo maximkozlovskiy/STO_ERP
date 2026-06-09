@@ -269,6 +269,17 @@ grep -rnE "^\s*requestAnimationFrame\(" apps/web/src/app apps/web/src/components
 grep -rnE "\.style\.(height|transition|marginBottom|opacity|transform)\s*=" apps/web/src/app --include="*.tsx"
 # Для кожного — звірити що є cleanup рекордера (formHideTimerRef, formCloseRafRef) у dedicated unmount-only useEffect (() => () => {...}, [])
 
+# Anchored popup useLayoutEffect deps `[anchorRef]` — ref мутується але ефект не перезапускається
+# (BUG: попап лишається у позиції першого відкритого рядка при швидких послідовних кліках)
+grep -rnE "useLayoutEffect\(.*\}, \[anchorRef\]\)" apps/web/src/components/ui --include="*.tsx"
+# Для кожного match — звірити що у deps є payload (preview/item) що змінюється при re-anchor
+
+# Nested overlay Esc handler у bubble-фазі — закриватиме і батьківський Modal
+# (BUG: Esc на conflict-dialog закриває весь WO modal зі змінами)
+grep -rnE "document\.addEventListener\(['\"]keydown" apps/web/src/components/ui --include="*.tsx" --include="*.ts"
+# Для кожного match — якщо overlay може рендеритися всередині <Modal>: перевірити capture-фазу
+# (3-й аргумент `true`) + `stopImmediatePropagation()` всередині handler. Без них — BUG.
+
 # Spread SyntheticEvent з заміною target — ламає прототип SyntheticEvent
 # (preventDefault/stopPropagation/persist стають undefined → silent runtime bug коли caller їх викликає)
 grep -rnE "\{\s*\.\.\.e\s*,\s*target:\s*\{\s*\.\.\.e\.target" apps/web/src/ --include="*.tsx" --include="*.ts"
@@ -1260,6 +1271,40 @@ useEffect(() => {
 **Підхід до фіксу:** module-level formatter `const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }); const kyivToday = () => KYIV_YMD.format(new Date());`. `sv-SE` locale повертає YYYY-MM-DD. `useState(() => kyivToday())` — lazy initializer, не re-computed on every render. Цей патерн вже використовується у dashboard/page.tsx (KYIV_YMD_FMT) і reports/page.tsx (KYIV_DATE_FMT).
 **Критичність:** IMPORTANT — між midnight і 2-3 AM Ukraine time фільтр "сьогодні" показує документи вчорашнього дня; форма documentDate дефолтить на вчора; деградація без помилки.
 **Де шукати ще:** будь-яка page.tsx з date-filter toolbar (dateFrom/dateTo), форми з documentDate/dueDate default "today", dashboard stats що відфільтровані по today.
+
+---
+
+### 2026-06-09 — Anchored popup useLayoutEffect deps `[anchorRef]` only → stale position on re-open — §3.1 Memory / §8 Web Frontend
+
+**Сигнал:** компонент попапу/тултіпу читає координати anchor через `anchorRef.current.getBoundingClientRect()` у `useLayoutEffect(() => {...}, [anchorRef])`. Батько ставить `anchorRef.current = e.currentTarget` у обробнику кліку + `setPreview(item)`. Коли користувач відкриває попап на рядку A, потім БЕЗ закриття клікає рядок B — `anchorRef.current` мутується (новий target), але посилання на ref-об'єкт стабільне → useLayoutEffect не перезапускається → попап залишається у позиції рядка A.
+**Причина виникнення:** розробник пише ефект з deps `[anchorRef]` припускаючи що "ref-об'єкт = anchor" — забуває що ref-об'єкт мутабельний контейнер, його identity ніколи не змінюється; React не реагує на `.current` мутації. TS зелений (`RefObject<T>` — це об'єкт, не значення); тест на одне відкриття проходить; баг проявляється лише на швидких послідовних кліках без закриття.
+**Підхід до виявлення:** `grep -rnE "useLayoutEffect\(.*\}, \[anchorRef\]\)" apps/web/src/components/ui --include="*.tsx"` або interactive: для кожного попап-компонента що приймає `anchorRef: RefObject` — звірити чи у deps useLayoutEffect/useEffect є СТАН що змінюється при re-anchor (зазвичай — поточний item у preview/tooltip data); якщо deps лише `[anchorRef]` → BUG.
+**Підхід до фіксу:** додати у deps значення яке змінюється при re-anchor — найчастіше це сам payload попапу (`preview`, `item`, `data`). `useLayoutEffect(() => {...}, [anchorRef, preview])`. Альтернатива (якщо payload може повторюватись для того ж рядка) — окремий monotonic counter `anchorVersion: number` що інкрементується при кожному `openPreview()` і додається у deps.
+**Критичність:** IMPORTANT — UI bug без TS/runtime помилки: попап вирівнюється до неправильного рядка, користувач бачить дані рядка B але координати рядка A → візуальна неконсистентність + потенційне закривання попапу при overlay-кліку поза очікуваною областю.
+**Де шукати ще:** будь-який anchored popup/tooltip/dropdown/menu з власним repositioning (не Radix/HeadlessUI що мають це вбудовано); LinkedDocumentsPanel.PreviewPopup; кастомні DatePicker позиціонери; @-mention dropdowns; ContextMenu.
+
+---
+
+### 2026-06-09 — Nested overlay Esc handler → закриває весь вкладений ланцюг (parent Modal теж) — §3.1 / §8 Web Frontend (a11y)
+
+**Сигнал:** вкладений overlay (conflict-dialog/preview-popup/dropdown) додає `document.addEventListener('keydown', h)` у bubble-фазі для перехоплення Esc. Батьківський `<Modal>` теж слухає Esc на `document` (bubble) → при натисканні Esc обидва handler-и fire у порядку додавання → закриваються одразу і вкладений overlay, і вся батьківська модалка. Користувач намагається закрити лише conflict-dialog → випадково закриває весь WO modal зі своїми не-збереженими змінами.
+**Причина виникнення:** розробник копіює "стандартний" Esc-listener pattern (`document.addEventListener('keydown', handler)` + return cleanup) не задумуючись що (1) document — глобальний bus; (2) bubble-фаза не дає пріоритет вкладеному overlay; (3) `stopPropagation` всередині handler не зупиняє інші document-listeners бо вони вже зареєстровані на тому ж target. Single-modal тести проходять — баг проявляється лише при nested overlay scenario.
+**Підхід до виявлення:** `grep -rnE "document\.addEventListener\(['\"]keydown" apps/web/src/components/ui --include="*.tsx" --include="*.ts"` → для кожного match перевірити (1) чи компонент може рендеритися ВСЕРЕДИНІ іншого `<Modal>`/overlay що теж слухає Esc; (2) чи listener реєструється у capture-фазі (`addEventListener(..., true)`) + `stopImmediatePropagation()`. Якщо bubble + немає stopImmediate → BUG потенційний.
+**Підхід до фіксу:** перевести handler у capture phase + `stopImmediatePropagation()`:
+
+```ts
+const handler = (e: KeyboardEvent) => {
+  if (e.key !== 'Escape') return;
+  e.stopImmediatePropagation(); // прибиває решту document-listeners
+  onClose();
+};
+document.addEventListener('keydown', handler, true); // capture = true
+return () => document.removeEventListener('keydown', handler, true);
+```
+
+Capture-фаза гарантує що найвкладеніший overlay (зареєстрований останнім → перший у capture-черзі своєї phase) фaйрить першим; `stopImmediatePropagation` відсікає batch keydown-listeners на тому ж target (включно з parent Modal).
+**Критичність:** IMPORTANT — катастрофічний UX: користувач втрачає несhraneні зміни WO modal при спробі закрити vложений confirmation; не data corruption, але порушує очікування "Esc closes ONLY the topmost overlay".
+**Де шукати ще:** ConfirmDialog/AlertDialog всередині батьківського Modal; PreviewPopup/Tooltip/Menu всередині Modal/Drawer; будь-який nested overlay у формах із unsaved-changes guard; lightbox у full-screen modal; chained confirmation patterns ("точно закрити? → точно скасувати зміни?").
 
 ---
 
