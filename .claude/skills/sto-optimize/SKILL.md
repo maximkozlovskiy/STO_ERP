@@ -568,6 +568,38 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-09 — Reverse-FK index miss на `(orgId, parentFK, deletedAt[, sortKey])` — list/groupBy endpoints що фільтрують дочірні документи по batьківському FK
+
+**Сигнал:** новий feature додає cross-aggregate query на дочірній таблиці (Invoice/CalendarSlot/Warranty/Payment) фільтруючи по FK на batьківську сутність (workOrderId, counterpartyId, etc.) + tenant guard orgId. Запит: `findMany({ where: { parentFK, orgId, deletedAt: null, [maybeStatus] }, orderBy: { createdAt|startAt: 'desc' }, take: N })` або `groupBy({ by: ['parentFK'], where: { parentFK: { in: [...] }, orgId, deletedAt: null } })`. Існуючі індекси охоплюють `(orgId, status, deletedAt)`, `(orgId, deletedAt, createdAt)`, `(orgId, anotherFK)` — все що завгодно крім самого parentFK. Postgres змушений seq-scan + filter по parentFK per row, бо жодна composite колонка не починається з `(orgId, parentFK, ...)`. На малих обсягах непомітно, на тисячах документів за orgId — O(N) per query × M запитів (batch groupBy по 20 WO у списку).
+
+**Причина виникнення:** при створенні моделі індекси орієнтовані на типові list/filter endpoints (status, deletedAt, createdAt). FK на parent сутність (WorkOrder, Counterparty) має `@relation` declaration але Prisma НЕ створює automatic index за FK column в Postgres (на відміну від MySQL чи SQLite з InnoDB default). Розробник не помічає бо одиничні reverse-lookups через relation (`wo.invoices`) працюють, але прямий `findMany({ where: { workOrderId } })` робить seq-scan. Проблема залишається прихованою доки не з'являється endpoint що batch-grupує (groupBy) або відкриває list/panel що читає ВСІ дочірні документи за parent ID. У STO ERP — це Linked Documents panel, related-list у detail page, transaction list per account.
+
+**Підхід до виявлення:** після додавання нового endpoint що приймає `parentId` і робить query на дочірній таблиці — прочитати `@@index` блоки відповідної моделі у `schema.prisma`. Для кожного composite index перевірити перші 2-3 колонки: якщо жоден не починається з `(orgId, parentFK, ...)` або `(parentFK, ...)` — індекс відсутній. Не плутати з реляцією — `@relation(fields: [parentFK], references: [id])` НЕ створює index сам по собі. Кросс-перевірка: усі FK колонки що з'являються у `findMany({ where: { parentFK, orgId, ... }})` мають бути ПЕРШИМИ або ДРУГИМИ у якомусь composite index. Pattern для grep: `where:.*workOrderId.*orgId|where:.*counterpartyId.*orgId|where:.*invoiceId.*orgId` у будь-яких нових service.ts + cross-check `@@index([orgId, X` у schema для X=цей FK.
+
+**Підхід до фіксу:** додати covering `@@index([orgId, parentFK, deletedAt, sortKey])` де `sortKey` — це orderBy колонка endpoint'у (createdAt/startAt/documentDate). Sort key потрібен якщо endpoint має `orderBy` — інакше Postgres все одно робить Sort node. `deletedAt` у covering позиції 3 — для часткового видалення відфільтровуються deletedAt:null рядки. Якщо є додатковий filter (status≠CANCELLED) — можна винести в окремий partial index, але зазвичай overhead 1 ще-однієї umozhdnoyi колонки у covering минімальний. `prisma db push --skip-generate` створює індекс CONCURRENTLY (для dev), у prod — окрема migration. **Важливо:** після додавання індексу перевірити дублікати — якщо існує `@@index([orgId, X, deletedAt])` і ми додаємо `@@index([orgId, X, deletedAt, createdAt])` — старий стає redundant (newer is prefix-compatible), видалити старий.
+
+**Реальний impact:** Linked Documents panel: 4 parallel queries + batch groupBy. Без індексів кожен query — O(rows_per_orgId). Зі covering index — O(log N) seek + O(matched). На 10k invoices у orgId — раніше 10ms × 4 = 40ms; тепер < 1ms × 4 = 4ms. Окремо: groupBy перевикористовує index для index-only scan (всі потрібні колонки в index → heap access уникнений). Особливо помітно у dashboard/badges endpoints що рахують лічильники per parent у batch.
+
+**Де шукати ще:** будь-який новий endpoint що приймає batьківський entity ID (workOrderId, counterpartyId, invoiceId, purchaseOrderId, stockDocumentId, vehicleId, contractId, projectId — relevant FK) і робить query на дочірній таблиці. Особливо: linked-documents панелі, related-info панелі у detail-сторінках, badges/count endpoints, transaction listings per account, history endpoints. При додаванні нового FK + filter pair — обов'язково перевіряти covering index. Cross-check на існуючий код: всі дочірні моделі що мають FK на parent — перевірити чи є covering index `(orgId, parentFK, [deletedAt], [sortKey])` для кожного FK що використовується у фільтрах.
+
+---
+
+### 2026-06-09 — Manual padStart/concat date formatter як локальна функція — фронт-сторінки де `fmtDate` уже імпортовано
+
+**Сигнал:** на сторінці існує локальна функція `function formatDate(iso: string): string { const d = new Date(iso); const day = String(d.getDate()).padStart(2, '0'); const month = String(d.getMonth() + 1).padStart(2, '0'); const year = d.getFullYear(); return \`${day}.${month}.${year}\`; }`— manual concat DD.MM.YYYY. У тому ж файлі вже **імпортовано**`fmtDate`з`@/lib/format`(module-level Intl singleton). Викликається у`.map()`table cells через`formatDate(wo.dueDate)`. Кожен виклик — `new Date()`+ 3 string allocations + template literal. Не Intl, але CPU+GC waste на гарячому шляху, особливо коли`fmtDate` вже доступний у тому ж scope.
+
+**Причина виникнення:** historical artifact — `formatDate` написано до того як `lib/format.ts` був створений. Коли `fmtDate` додали і поступово замінили inline `.toLocaleDateString()` у table cells, локальний `formatDate` хелпер забули прибрати — він викликається у різних cell-рендерах (dueDate з overdue badge, plannedAt, тощо) і "виглядає як стандартний хелпер сторінки". Розробник не питає себе "чи цей хелпер тотожний імпортованому?" бо обидва дають DD.MM.YYYY. Не плутати з простим Inline `toLocaleDateString` — там Intl alloc на кожен виклик; тут CPU/GC alloc на string operations та `new Date`, але **обидва паттерни мають однакове рішення** — проксі через `fmtDate`.
+
+**Підхід до виявлення:** grep `function formatDate\|const formatDate = \|function fmtDt\|function fmtDate ` у `apps/web/src/app/**/*.tsx`. Для кожного збігу — перевірити чи у тому ж файлі імпортується `fmtDate` з `@/lib/format`. Якщо так — локальний хелпер дублікат. Якщо вихідний формат той самий (DD.MM.YYYY) → thin proxy. Якщо різний (DD.MM.YYYY HH:mm з custom separator) — додати новий singleton у `lib/format.ts` і replace.
+
+**Підхід до фіксу:** замінити тіло локальної функції на `return fmtDate(iso);` — це проксі-патерн (як `fmt() = fmtMoney(Number(n))` для LinkedDocumentsPanel). Сигнатура збережена, всі call-sites не торкаються. Альтернативно — видалити локальну функцію і замінити всі call-sites на `fmtDate(...)`. Proxy простіший, особливо коли local функція може мати у майбутньому додатковий suffix чи conditional logic.
+
+**Реальний impact:** на work-orders page з 20 рядків × 2 date cells × 5 ререндерів (inline edit, search debounce, filter) — 200 викликів formatDate (= 200 new Date allocs + 600 String.padStart calls + 200 template literals) → 200 викликів `.format(d)` на module-level singleton. Найпомітніше у hot-list таблицях з date columns.
+
+**Де шукати ще:** **кожна сторінка-список з local formatDate/dateFmt/fmtDt/formatDt** — перевіряти при code review. При sweep grep `function formatDate\b\|const formatDate ` у `apps/web/src/app/`, потім `import.*fmtDate\b` у тих самих файлах. Збіги — proxy candidates.
+
+---
+
 ### 2026-06-09 — Auto-pick/auto-select optional FK резолюція ПІСЛЯ парallel FK guards — sequential гілка `if (dto.X) validate; else autoSelect` на create-методах
 
 **Сигнал:** create-метод сервісу починається з `Promise.all([fk1, fk2, fk3, fk4])` для tenant-validation FK (branch/vehicle/counterparty/lift), потім має послідовний блок `if (dto.contractId) { provided = await prisma.contract.findFirst(... composite where) } else { primary = await prisma.contract.findFirst(... by counterpartyId, orderBy primary first) }` для резолюції додаткового опціонального FK. Виглядає логічно — "спочатку перевір основні FK, потім обери або валідуй контракт". Насправді auto-pick читає за `counterpartyId` (вже знане з DTO, не залежить від результату counterparty FK guard), а provided validation читає за `id + counterpartyId + orgId + type` (composite tenant guard — самозахищене). Жоден з двох сценаріїв не залежить від попереднього Promise.all — RTT можна зробити паралельним.
@@ -1767,6 +1799,7 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ work-orders.addLine/addPart: narrow projections wo {status}, work {normoHours, price}, employee {id}, good {salePrice}, warehouse {id} — hot WO edit path (-50-80% wire payload per row read)
 - ✅ work-orders.updateLine/removeLine/updatePart/removePart: wo narrow {status} + child rows narrowed (defaults або {id} для soft-delete)
 - ✅ CreateWorkOrderModal /units fetch seeded з cache:units ref-cache (warm via catalog/UnitsTab+GoodsTab) — instant UoM dropdown first-paint
+- ✅ invoices.createFromWorkOrder: workOrder tenant guard `findFirst({where, })` без select → narrow `select: {id, status, counterpartyId, totalAmount}` (4 поля замість 20+ row); -wire payload + V8 alloc у hot WO→Invoice flow
 
 **Frontend:**
 
@@ -1824,6 +1857,8 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ TopShell: CommandPalette / SyncIndicator / NotificationCenter → dynamic(ssr:false) — conditional auth-gated widgets більше не у layout.js chunk (звіт 2124 kB → shared 102 kB)
 - ✅ pricing-rules: RuleFormModal (357 LOC + tier management) винесено у ./RuleFormModal.tsx + dynamic; shared types у ./types.ts — chunk сторінки 1093 kB → 132 kB First Load JS
 - ✅ work-orders/page.tsx + calendar/CalendarSlotModal: CreateWorkOrderModal (1823 LOC: full WO wizard з EntityPickerField + parts/lines tables) static import → next/dynamic. List/calendar opened без створення WO у 80% сесій → modal chunk lazy-loaded на перший клік «Створити»
+- ✅ LinkedDocumentsPanel: local fmt(n) inline `n.toLocaleString('uk-UA', {...})` → thin proxy до `fmtMoney` (module-level Intl.NumberFormat singleton); до 500 invoices+500 payments × ререндери без per-call Intl alloc
+- ✅ work-orders/page.tsx: local formatDate manual `String().padStart()` → proxy `fmtDate` (module-level Intl.DateTimeFormat singleton); 20 рядків × 2 date cells × ререндери без new Date+template alloc
 
 **DB:**
 
@@ -1845,6 +1880,9 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ purchase_orders: `(orgId, deletedAt, createdAt)` covering — findAll без status filter (hot path) sort eliminated
 - ✅ stock_documents: `(orgId, deletedAt, createdAt)` covering — findAll без type/status filter (default browse) sort eliminated
 - ✅ invoices: `(orgId, deletedAt, createdAt)` covering — findAll без status filter (default list) sort eliminated
+- ✅ invoices: `(orgId, workOrderId, deletedAt, createdAt)` covering — getLinkedDocuments + getLinkedCounts (linked-docs panel); раніше через (orgId, status, deletedAt) partial scan
+- ✅ calendar_slots: `(orgId, workOrderId, deletedAt, startAt)` covering — getLinkedDocuments per-WO + startAt DESC sort
+- ✅ warranties: `(orgId, workOrderId, deletedAt, createdAt)` covering — getLinkedDocuments per-WO + createdAt DESC sort (paralel до існуючого `(orgId, counterpartyId, deletedAt, createdAt)`)
 
 **Universal Patterns (B1-B7 + C) post-audit (c600772):**
 
