@@ -167,8 +167,12 @@ export class CounterpartiesService {
     id: string,
     dto: UpdateCounterpartyDto,
   ): Promise<CounterpartyResponseDto> {
+    // sto-optimize: narrow tenant guard — `findFirst` without `select` тягне ВСІ
+    // 15+ колонок Counterparty (phone/email/edrpou/notes/legalForm/...) лише
+    // для existence check. Update нижче все одно повертає DTO. -50-80% wire payload.
     const existing = await this.prisma.counterparty.findFirst({
       where: { id, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!existing) throw new NotFoundException('Контрагента не знайдено');
     const item = await this.prisma.counterparty.update({

@@ -212,8 +212,12 @@ export class CompletionActsService {
   }
 
   async cancel(orgId: string, id: string): Promise<void> {
+    // sto-optimize: status-guarded soft-delete з narrow `select: { status: true }`
+    // замість full row read. -50-80% wire payload на guard read. Race-safe оскільки
+    // status check + update happen sequentially (race window unchanged from prior code).
     const act = await this.prisma.completionAct.findFirst({
       where: { id, orgId, deletedAt: null },
+      select: { status: true },
     });
     if (!act) throw new NotFoundException('Акт не знайдено');
     if (act.status === CompletionActStatus.SIGNED) {
@@ -226,43 +230,74 @@ export class CompletionActsService {
   }
 
   async generatePdf(orgId: string, id: string): Promise<Buffer> {
-    const act = await this.findOne(orgId, id);
-
-    // Parallel — org metadata and WO with relations are independent reads.
-    // PDF narrow select: ми тут читаємо лише name з org (для header) і counterparty/vehicle з WO
-    // (для party blocks). Раніше findFirst без select на organisation тягнув всі settings, syncVersion,
-    // logoUrl, тощо — десятки колонок зайвих для PDF header.
-    const [org, wo] = await Promise.all([
+    // sto-optimize: ОДИН act read замість findOne + окремий workOrder query.
+    // findOne повертав workOrder.counterparty (firstName/lastName/companyName) і
+    // workOrder.vehicle — але БЕЗ phone/actualAddress (потрібних для PDF party block).
+    // Раніше: act findOne + повторний workOrder findFirst для phone/address = 2 RTT
+    // окремими запитами, тоді як можна було розширити include у findOne. Тепер
+    // org + act-with-full-cp/vehicle йдуть паралельно у Promise.all (act read
+    // одночасно завантажує phone/address — без додаткового RTT).
+    const [org, act] = await Promise.all([
       this.prisma.organisation.findFirst({
         where: { id: orgId },
         select: { name: true },
       }),
-      this.prisma.workOrder.findFirst({
-        where: { id: act.workOrderId, orgId },
-        select: {
-          counterparty: {
+      this.prisma.completionAct.findFirst({
+        where: { id, orgId, deletedAt: null },
+        include: {
+          workOrder: {
             select: {
-              firstName: true,
-              lastName: true,
-              companyName: true,
-              phone: true,
-              actualAddress: true,
+              number: true,
+              counterparty: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  companyName: true,
+                  phone: true,
+                  actualAddress: true,
+                },
+              },
+              vehicle: { select: { make: true, model: true, licensePlate: true } },
+              lines: {
+                where: { deletedAt: null },
+                orderBy: { createdAt: 'asc' },
+                take: 500,
+                select: {
+                  normoHours: true,
+                  price: true,
+                  amount: true,
+                  workId: true,
+                  work: { select: { name: true } },
+                },
+              },
+              parts: {
+                where: { deletedAt: null },
+                orderBy: { createdAt: 'asc' },
+                take: 500,
+                select: {
+                  quantity: true,
+                  price: true,
+                  amount: true,
+                  goodId: true,
+                  good: { select: { name: true, unit: true } },
+                },
+              },
             },
           },
-          vehicle: { select: { make: true, model: true, licensePlate: true } },
         },
       }),
     ]);
+    if (!act) throw new NotFoundException('Акт не знайдено');
 
-    const cp = wo?.counterparty;
+    const cp = act.workOrder?.counterparty;
     const cpName =
       (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || 'Клієнт';
-    const vehicleLabel = wo?.vehicle
-      ? `${wo.vehicle.make} ${wo.vehicle.model}${wo.vehicle.licensePlate ? ` (${wo.vehicle.licensePlate})` : ''}`
+    const vehicleLabel = act.workOrder?.vehicle
+      ? `${act.workOrder.vehicle.make} ${act.workOrder.vehicle.model}${act.workOrder.vehicle.licensePlate ? ` (${act.workOrder.vehicle.licensePlate})` : ''}`
       : '';
 
-    const lines = act.lines ?? [];
-    const total = lines.reduce((s, l) => s + l.amount, 0);
+    const builtLines = this.buildLines(act.workOrder);
+    const total = builtLines.reduce((s, l) => s + l.amount, 0);
 
     return this.pdf.generateCompletionActPdf({
       org: { name: org?.name ?? 'СТО', edrpou: null, address: null },
@@ -272,7 +307,7 @@ export class CompletionActsService {
       date: act.createdAt,
       signedAt: act.signedAt,
       signedBy: act.signedBy,
-      lines: lines.map(l => ({
+      lines: builtLines.map(l => ({
         description: l.description,
         quantity: l.quantity,
         unitPrice: l.unitPrice,

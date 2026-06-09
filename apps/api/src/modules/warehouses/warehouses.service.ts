@@ -48,8 +48,10 @@ export class WarehousesService {
   }
 
   async create(orgId: string, dto: CreateWarehouseDto): Promise<WarehouseResponseDto> {
+    // sto-optimize: narrow FK guard — full GarageBranch row read лише для existence.
     const branch = await this.prisma.garageBranch.findFirst({
       where: { id: dto.branchId, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!branch) throw new NotFoundException('Філію не знайдено');
     try {
@@ -78,7 +80,13 @@ export class WarehousesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateWarehouseDto): Promise<WarehouseResponseDto> {
-    await this.findOne(orgId, id);
+    // sto-optimize: narrow tenant guard — findOne returns full DTO лише для existence,
+    // що марно тут (tx нижче повертає updated DTO). select:{id} зменшує wire payload.
+    const guard = await this.prisma.warehouse.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!guard) throw new NotFoundException('Склад не знайдено');
     try {
       const item = await this.prisma.$transaction(
         async tx => {

@@ -57,8 +57,10 @@ export class WorksService {
   }
 
   async create(orgId: string, dto: CreateWorkDto): Promise<WorkResponseDto> {
+    // sto-optimize: narrow FK guard — existence-only read для WorkCategory.
     const category = await this.prisma.workCategory.findFirst({
       where: { id: dto.categoryId, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!category) throw new NotFoundException('Категорію не знайдено');
 

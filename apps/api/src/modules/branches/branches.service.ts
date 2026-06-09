@@ -46,8 +46,11 @@ export class BranchesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateBranchDto): Promise<BranchResponseDto> {
+    // sto-optimize: narrow tenant guard — full row read для existence-check марний,
+    // оскільки update нижче все одно повертає повний DTO. select:{id} зменшує wire payload.
     const existing = await this.prisma.garageBranch.findFirst({
       where: { id, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!existing) throw new NotFoundException('Філію не знайдено');
     const item = await this.prisma.garageBranch.update({ where: { id, orgId }, data: dto });

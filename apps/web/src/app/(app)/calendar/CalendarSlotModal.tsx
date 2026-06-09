@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { WO_STATUS_LABELS, WO_STATUS_BADGE } from '@sto/shared';
@@ -15,7 +16,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
-import { CreateWorkOrderModal } from '@/components/ui/CreateWorkOrderModal';
+// sto-optimize: CreateWorkOrderModal — 1823 LOC; calendar відкривається без створення WO
+// у більшості сесій → lazy-load при першому кліку «Створити наряд» з модалки слота.
+const CreateWorkOrderModal = dynamic(
+  () => import('@/components/ui/CreateWorkOrderModal').then(m => m.CreateWorkOrderModal),
+  { ssr: false },
+);
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';

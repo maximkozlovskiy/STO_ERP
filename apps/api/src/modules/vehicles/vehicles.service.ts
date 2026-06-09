@@ -39,8 +39,10 @@ export class VehiclesService {
   }
 
   async create(orgId: string, dto: CreateVehicleDto): Promise<VehicleResponseDto> {
+    // sto-optimize: narrow FK guard — full CustomerGarage row read лише для existence.
     const garage = await this.prisma.customerGarage.findFirst({
       where: { id: dto.customerGarageId, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!garage) throw new NotFoundException('Гараж не знайдено');
     const item = await this.prisma.vehicle.create({ data: { ...dto, orgId } });
@@ -48,7 +50,12 @@ export class VehiclesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateVehicleDto): Promise<VehicleResponseDto> {
-    const existing = await this.prisma.vehicle.findFirst({ where: { id, orgId, deletedAt: null } });
+    // sto-optimize: narrow tenant guard — full Vehicle row (15+ columns) read лише для
+    // 404 guard. Update нижче повертає актуальні дані. select:{id} зменшує wire payload.
+    const existing = await this.prisma.vehicle.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
     if (!existing) throw new NotFoundException('Автомобіль не знайдено');
     const item = await this.prisma.vehicle.update({ where: { id, orgId }, data: dto });
     return this.toDto(item);

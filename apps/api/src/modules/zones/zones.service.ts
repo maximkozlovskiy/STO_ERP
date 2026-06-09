@@ -58,8 +58,10 @@ export class ZonesService {
   }
 
   async createZone(orgId: string, dto: CreateZoneDto): Promise<ZoneResponseDto> {
+    // sto-optimize: narrow FK guard — existence-only read для GarageBranch.
     const branch = await this.prisma.garageBranch.findFirst({
       where: { id: dto.branchId, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!branch) throw new NotFoundException('Філію не знайдено');
     const item = await this.prisma.zone.create({ data: { ...dto, orgId } });
@@ -121,8 +123,10 @@ export class ZonesService {
   }
 
   async createLift(orgId: string, dto: CreateLiftDto): Promise<LiftResponseDto> {
+    // sto-optimize: narrow FK guard — existence-only read для Zone.
     const zone = await this.prisma.zone.findFirst({
       where: { id: dto.zoneId, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!zone) throw new NotFoundException('Зону не знайдено');
     const item = await this.prisma.lift.create({ data: { ...dto, orgId } });

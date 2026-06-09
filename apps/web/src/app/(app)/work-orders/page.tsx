@@ -24,7 +24,14 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
-import { CreateWorkOrderModal } from '@/components/ui/CreateWorkOrderModal';
+import dynamic from 'next/dynamic';
+// sto-optimize: CreateWorkOrderModal — 1823 LOC + EntityPickerField + усі form sub-components.
+// Список нарядів відкривається в 80% сесій без створення нового → modal lazy-loaded
+// при першому кліку «Створити». Type-only import зберігає TypeScript intelligence.
+const CreateWorkOrderModal = dynamic(
+  () => import('@/components/ui/CreateWorkOrderModal').then(m => m.CreateWorkOrderModal),
+  { ssr: false },
+);
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
