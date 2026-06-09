@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+7c514e32 simplify: 3-cycle cleanup — shared prisma-errors util, GOOD_UOM_SELECT, parallel tx reads
 90238a2c fix(work-orders): store UnitOfMeasure.id not GoodUoM.id in WorkOrderPart — Bug #420
 1c391da6 refactor(invoices): extract throwIfSerializationConflict helper; drop e2e sleep
 254ce530 fix(tester): Bugs #418-#419 — STATUS_TABS_EXTRA comment drift + select aria-label
@@ -2166,19 +2167,19 @@ colSpan={visibleColumns.length + ...}
 
 ---
 
-## Gotcha — P2034 Serializable conflict: використовуй throwIfSerializationConflict (1c391da6)
+## Gotcha — P2034 Serializable conflict: використовуй throwIfSerializationConflict (7c514e32)
 
-При додаванні нового методу з `$transaction({ isolationLevel: 'Serializable' })` в `invoices.service.ts`
+При додаванні нового методу з `$transaction({ isolationLevel: 'Serializable' })` в БУДЬ-ЯКОМУ сервісі
 НЕ копіюй `if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034')`.
-Замість цього використовуй file-level helper:
+Замість цього використовуй shared helper:
 
 ```ts
+import { throwIfSerializationConflict } from '../../common/utils/prisma-errors';
+// ...
 } catch (err) {
   throwIfSerializationConflict(err, 'Користувацьке повідомлення...');
 }
 ```
-
-Helper визначено на ~рядку 24 `invoices.service.ts` і перекидає помилку якщо не P2034.
 
 ---
 
