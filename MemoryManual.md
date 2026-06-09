@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+5dac586b fix(review): named React import + unify LinkedCountsMap + restore fmtMoney mock
+44b4dfe4 simplify: dedup, altitude, efficiency cleanup (cycle 1)
 a898770f docs(skills): add reverse-FK index + local formatDate proxy patterns to sto-optimize
 4dd7ddf6 perf(optimize): linked-documents FK indexes + invoice createFromWO narrow guard + Intl singletons
 f7d95de4 fix(tester): Bugs #414-#417 — LinkedDocumentsPanel error state + CANCELLED filter + spec gaps
@@ -79,7 +81,28 @@ Latest tester: 2026-06-09 (FULL post linked-docs/invoice button QA, HEAD pending
     review) пройшов би CI зеленим без regression-guard. Fix: створено
     LinkedDocumentsPanel.test.tsx з 8 кейсами.
 
-Latest review: 2026-06-09 (HEAD e3a5ffc8, scope: status-tabs collapse + linked-docs panel + invoice button) — 3 issues fixed:
+Latest review: 2026-06-09 (Auto, HEAD 5dac586b, scope: HEAD 44b4dfe4 simplify cleanup — page.tsx + LinkedDocumentsPanel + invoices/work-orders services) — 2 issues fixed + 1 broken test repaired:
+  • [IMPORTANT §1] page.tsx: `React.ElementType` → named `ElementType` import. Skill §1 rule:
+    NEVER `React.X` namespace access — only named imports from 'react'.
+  • [SUGGESTION] page.tsx: hoist inline `LinkedCountsMap` to module scope; reuse
+    module-level `LinkedCountsEntry` instead of re-declaring anonymous structural type;
+    drop now-redundant `as LinkedCountsEntry | undefined` cast.
+  • [TEST FIX] LinkedDocumentsPanel.test.tsx: `vi.mock('@/lib/format')` був без
+    `fmtMoney` export (4dd7ddf6 додав `fmt(p.amount) → fmtMoney(...)` у panel) → 2
+    рендер-тести крашили з "No export defined on the mock". Fix: додати fmtMoney stub.
+  Verified: api ✅ 0 errors, web ✅ 0 errors (--incremental false); 14/14 invoices
+  service.spec, 16/16 work-orders contract.spec, 8/8 LinkedDocumentsPanel.test.
+  Sweep findings (no fix needed):
+  • §2.2 tenant isolation OK: all 4 queries у getLinkedDocuments scope by orgId+workOrderId;
+    видалений findFirst guard — same semantics, фронт обробляє empty arrays = "no docs".
+  • §5/§7.1 TOCTOU close: refreshFromWorkOrder inner tx.workOrder.findFirst для lines+parts
+    закриває race window з concurrent addLine/removePart. Status race залишається з outer
+    pre-check (pre-existing, out of scope).
+  • §13: BigInt syncVersion не торкався цей diff; findOne(orgId, id) properly scoped.
+  • TanStack queryKey hashing default = JSON.stringify → `ordersIds` sorted = stable hash;
+    рефакторинг useEffect→useQuery з staleTime: 30s коректно дедуплікує.
+
+Latest review (попередній): 2026-06-09 (HEAD e3a5ffc8, scope: status-tabs collapse + linked-docs panel + invoice button) — 3 issues fixed:
   • [IMPORTANT] LinkedDocumentsPanel.PreviewPopup useLayoutEffect deps були
     тільки `[anchorRef]` (стабільний ref) → попап не перепозиціонувався при
     кліку на інший рядок без попереднього закриття. Fix: додати `preview`
