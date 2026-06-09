@@ -30,6 +30,7 @@ import {
   UpdateWorkOrderLineDto,
   CreateWorkOrderPartDto,
   UpdateWorkOrderPartDto,
+  SendEstimateSmsDto,
 } from './work-orders.dto';
 
 @ApiTags('Work Orders')
@@ -146,9 +147,11 @@ export class WorkOrdersController {
   sendEstimateSms(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: { baseUrl: string },
+    // baseUrl навмисно НЕ приймається з тіла — формується на сервері (open-redirect ризик).
+    // DTO залишено порожнім + ValidationPipe whitelist=true → зайві поля 400.
+    @Body() _dto: SendEstimateSmsDto,
   ) {
-    return this.service.sendEstimateSms(orgId, id, dto.baseUrl);
+    return this.service.sendEstimateSms(orgId, id);
   }
 
   // ─── Lines ───────────────────────────────────────────────

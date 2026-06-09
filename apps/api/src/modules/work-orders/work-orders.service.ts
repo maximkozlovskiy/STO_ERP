@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 
@@ -31,6 +32,7 @@ import {
   WorkOrderQueryDto,
   WorkOrderResponseDto,
   WorkOrderDetailDto,
+  EstimatePublicDto,
   PaginatedWorkOrdersDto,
   CreateWorkOrderLineDto,
   UpdateWorkOrderLineDto,
@@ -55,7 +57,19 @@ export class WorkOrdersService {
     private readonly audit: AuditService,
     private readonly warranties: WarrantiesService,
     private readonly settingsService: SettingsService,
+    private readonly config: ConfigService,
   ) {}
+
+  /**
+   * Статуси, у яких дозволено публічно ділитися кошторисом.
+   * Після APPROVED-роботи переходять у IN_PROGRESS — публічне посилання губить сенс,
+   * а COMPLETED/INVOICED/PAID/ARCHIVED містять чутливі дані оплати/виставленого рахунку.
+   */
+  private static readonly SHAREABLE_STATUSES: ReadonlyArray<WorkOrderStatus> = [
+    'DRAFT',
+    'ESTIMATE',
+    'APPROVED',
+  ];
 
   // ─── CRUD ────────────────────────────────────────────────
 
@@ -1477,47 +1491,89 @@ export class WorkOrdersService {
 
   // ─── ESTIMATE SHARE ─────────────────────────────────────────
 
+  /**
+   * Генерує (або повертає існуючий) shareToken для публічного перегляду кошторису.
+   * Обмежено статусами DRAFT/ESTIMATE/APPROVED — після початку робіт ділитися немає сенсу,
+   * а CLOSED-статуси (COMPLETED/INVOICED/PAID/ARCHIVED/CANCELLED) містять чутливі дані.
+   *
+   * Race-safe: використовує умовний update `where: { shareToken: null }` —
+   * якщо інший запит щойно записав токен, цей update не зачепить рядок,
+   * і ми перечитаємо актуальний токен.
+   */
   async getOrCreateShareToken(orgId: string, id: string): Promise<{ token: string }> {
     const wo = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true, shareToken: true },
+      select: { id: true, status: true, shareToken: true },
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!WorkOrdersService.SHAREABLE_STATUSES.includes(wo.status)) {
+      throw new BadRequestException(
+        'Поділитися кошторисом можна лише у статусі чернетка / кошторис / затверджено',
+      );
+    }
     if (wo.shareToken) return { token: wo.shareToken };
+
     const token = randomBytes(16).toString('hex');
-    await this.prisma.workOrder.update({ where: { id }, data: { shareToken: token } });
+    // updateMany з умовою shareToken: null уникає race condition:
+    // якщо інший запит уже записав токен — count=0, ми перечитаємо актуальний.
+    const { count } = await this.prisma.workOrder.updateMany({
+      where: { id, orgId, shareToken: null, deletedAt: null },
+      data: { shareToken: token },
+    });
+    if (count === 0) {
+      const fresh = await this.prisma.workOrder.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { shareToken: true },
+      });
+      if (fresh?.shareToken) return { token: fresh.shareToken };
+      // Малоймовірний випадок — токен зник між викликами; кидаємо як conflict.
+      throw new BadRequestException('Не вдалося згенерувати токен — спробуйте ще раз');
+    }
     return { token };
   }
 
-  async findByShareToken(token: string): Promise<WorkOrderDetailDto> {
+  /**
+   * Публічний перегляд кошторису. Повертає МІНІМАЛЬНИЙ DTO:
+   * без orgId, FK-ів, paidAmount, slot-полів, dueDate, syncVersion тощо.
+   * Доступний лише для shareable-статусів (DRAFT/ESTIMATE/APPROVED) —
+   * після переходу у CLOSED-статус посилання перестає працювати (404).
+   */
+  async findByShareToken(token: string): Promise<EstimatePublicDto> {
     const wo = await this.prisma.workOrder.findFirst({
-      where: { shareToken: token, deletedAt: null },
+      where: {
+        shareToken: token,
+        deletedAt: null,
+        status: { in: [...WorkOrdersService.SHAREABLE_STATUSES] },
+      },
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         branch: { select: { name: true } },
-        contract: { select: { id: true, number: true } },
-        lift: { select: { name: true } },
         lines: {
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },
           take: 500,
-          include: {
+          select: {
+            id: true,
+            normoHours: true,
+            price: true,
+            amount: true,
+            notes: true,
             work: { select: { name: true } },
-            employee: { select: { firstName: true, lastName: true } },
           },
         },
         parts: {
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },
           take: 500,
-          include: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
+            amount: true,
+            unitOfMeasureId: true,
             good: {
-              select: {
-                name: true,
-                unit: true,
-                unitOfMeasure: { select: { shortName: true, coefficient: true } },
-              },
+              select: { name: true, unit: true, unitOfMeasure: { select: { shortName: true } } },
             },
           },
         },
@@ -1525,42 +1581,72 @@ export class WorkOrdersService {
     });
     if (!wo) throw new NotFoundException('Посилання не дійсне або термін дії минув');
 
-    const uomIds = wo.parts
-      .map(p => (p as { unitOfMeasureId?: string | null }).unitOfMeasureId)
-      .filter((id): id is string => !!id);
-    const goodUoMMap: Record<
-      string,
-      { id: string; coefficient: number; unitOfMeasure: { shortName: string } }
-    > = {};
+    // Підвантажуємо per-good UoM назви одним запитом для парт, що мають окрему UoM.
+    const uomIds = wo.parts.map(p => p.unitOfMeasureId).filter((x): x is string => !!x);
+    const uomMap: Record<string, string> = {};
     if (uomIds.length > 0) {
       const goodUoMs = await this.prisma.goodUoM.findMany({
         where: { id: { in: uomIds } },
-        select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
+        select: { id: true, unitOfMeasure: { select: { shortName: true } } },
       });
-      for (const u of goodUoMs) goodUoMMap[u.id] = u;
+      for (const u of goodUoMs) uomMap[u.id] = u.unitOfMeasure.shortName;
     }
 
+    const cp = wo.counterparty;
+    const counterpartyName =
+      formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || undefined;
+    const vehicleSummary = wo.vehicle
+      ? `${wo.vehicle.make} ${wo.vehicle.model}${wo.vehicle.licensePlate ? ` (${wo.vehicle.licensePlate})` : ''}`
+      : undefined;
+
     return {
-      ...this.toDto(wo),
-      lines: wo.lines.map(l => this.toLineDto(l)),
-      parts: wo.parts.map(p => {
-        const uomId = (p as { unitOfMeasureId?: string | null }).unitOfMeasureId;
-        return this.toPartDto({
-          ...p,
-          unitOfMeasureId: uomId,
-          goodUoM: uomId ? (goodUoMMap[uomId] ?? null) : null,
-        });
-      }),
+      number: wo.number,
+      status: wo.status,
+      branchName: wo.branch?.name,
+      counterpartyName,
+      vehicleSummary,
+      documentDate: wo.documentDate ? wo.documentDate.toISOString().slice(0, 10) : null,
+      description: wo.description ?? null,
+      inMileage: wo.inMileage ?? null,
+      totalLabor: Number(wo.totalLabor),
+      totalParts: Number(wo.totalParts),
+      totalAmount: Number(wo.totalAmount),
+      lines: wo.lines.map(l => ({
+        id: l.id,
+        workName: l.work?.name,
+        normoHours: l.normoHours,
+        price: Number(l.price),
+        amount: Number(l.amount),
+        notes: l.notes ?? null,
+      })),
+      parts: wo.parts.map(p => ({
+        id: p.id,
+        goodName: p.good?.name,
+        quantity: p.quantity,
+        unitShortName:
+          (p.unitOfMeasureId && uomMap[p.unitOfMeasureId]) ??
+          p.good?.unitOfMeasure?.shortName ??
+          p.good?.unit,
+        price: Number(p.price),
+        amount: Number(p.amount),
+      })),
     };
   }
 
-  async sendEstimateSms(orgId: string, id: string, baseUrl: string): Promise<void> {
+  /**
+   * Відправити SMS клієнту з посиланням на кошторис.
+   * baseUrl формується на сервері з ConfigService('WEB_PUBLIC_URL') — НЕ приймається з клієнта
+   * (open-redirect/phishing ризик: шкідливий каллер міг би передати `https://phishing.com`).
+   */
+  async sendEstimateSms(orgId: string, id: string): Promise<void> {
     const { token } = await this.getOrCreateShareToken(orgId, id);
     const wo = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },
       select: {
         branchId: true,
         number: true,
+        totalAmount: true,
+        vehicle: { select: { licensePlate: true, make: true, model: true } },
         counterparty: {
           select: { phone: true, firstName: true, lastName: true, companyName: true },
         },
@@ -1569,18 +1655,34 @@ export class WorkOrdersService {
     if (!wo?.counterparty?.phone) {
       throw new BadRequestException('Телефон клієнта не вказано');
     }
-    const link = `${baseUrl}/estimate/${token}`;
-    const counterpartyName = formatPersonName(
+
+    const publicUrl = this.config.get<string>('WEB_PUBLIC_URL');
+    if (!publicUrl) {
+      throw new BadRequestException(
+        'Публічний URL не налаштовано (WEB_PUBLIC_URL) — зверніться до адміністратора',
+      );
+    }
+    // Підрізаємо trailing slash для уніфікації — щоб не отримати `https://x.com//estimate/...`
+    const link = `${publicUrl.replace(/\/+$/, '')}/estimate/${token}`;
+
+    const clientName = formatPersonName(
       wo.counterparty.lastName,
       wo.counterparty.firstName,
       wo.counterparty.companyName,
     );
+    const vehiclePlate =
+      wo.vehicle?.licensePlate ?? `${wo.vehicle?.make ?? ''} ${wo.vehicle?.model ?? ''}`.trim();
+
+    // Шаблон WO_ESTIMATE_READY очікує {{clientName}}, {{vehiclePlate}}, {{totalAmount}};
+    // {{link}} і {{woNumber}} додано для нової версії шаблону (див. seed.ts).
     await this.notifications.send(orgId, 'WO_ESTIMATE_READY', {
       branchId: wo.branchId,
       phone: wo.counterparty.phone,
-      number: wo.number,
+      clientName,
+      vehiclePlate,
+      totalAmount: Number(wo.totalAmount).toFixed(2),
+      woNumber: wo.number,
       link,
-      counterpartyName,
     });
   }
 }

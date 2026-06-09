@@ -184,7 +184,7 @@ async function main() {
     {
       eventType: NotificationEventType.WO_ESTIMATE_READY,
       channel: NotificationChannel.SMS,
-      body: '{{clientName}}, кошторис на ремонт {{vehiclePlate}} готовий. Сума: {{totalAmount}} ₴. Для підтвердження зателефонуйте нам.',
+      body: '{{clientName}}, кошторис на ремонт {{vehiclePlate}} готовий. Сума: {{totalAmount}} грн. Деталі: {{link}}',
     },
     {
       eventType: NotificationEventType.PAYMENT_RECEIVED,

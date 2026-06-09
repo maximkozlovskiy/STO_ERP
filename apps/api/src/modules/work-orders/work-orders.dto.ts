@@ -376,3 +376,52 @@ export class WorkOrderDetailDto extends WorkOrderResponseDto {
   @ApiProperty({ type: [WorkOrderLineResponseDto] }) lines!: WorkOrderLineResponseDto[];
   @ApiProperty({ type: [WorkOrderPartResponseDto] }) parts!: WorkOrderPartResponseDto[];
 }
+
+// ─── Public Estimate (shared via shareToken — no auth) ────
+// IMPORTANT: цей DTO навмисно НЕ містить orgId, всі FK (vehicleId, counterpartyId,
+// contractId, branchId, liftId, employeeId), paidAmount, clientApproval, slot*,
+// outMileage, dueDate, syncVersion, deletedAt тощо.
+// Все що клієнт бачить публічно — обмежено мінімумом для друку кошторису.
+
+export class EstimatePublicLineDto {
+  @ApiProperty() id!: string;
+  @ApiPropertyOptional() workName?: string;
+  @ApiProperty() normoHours!: number;
+  @ApiProperty() price!: number;
+  @ApiProperty() amount!: number;
+  @ApiPropertyOptional() notes?: string | null;
+}
+
+export class EstimatePublicPartDto {
+  @ApiProperty() id!: string;
+  @ApiPropertyOptional() goodName?: string;
+  @ApiProperty() quantity!: number;
+  @ApiPropertyOptional() unitShortName?: string;
+  @ApiProperty() price!: number;
+  @ApiProperty() amount!: number;
+}
+
+export class EstimatePublicDto {
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: WorkOrderStatus }) status!: WorkOrderStatus;
+  @ApiPropertyOptional() branchName?: string;
+  @ApiPropertyOptional() counterpartyName?: string;
+  @ApiPropertyOptional() vehicleSummary?: string;
+  @ApiPropertyOptional() documentDate?: string | null;
+  @ApiPropertyOptional() description?: string | null;
+  @ApiPropertyOptional() inMileage?: number | null;
+  @ApiProperty() totalLabor!: number;
+  @ApiProperty() totalParts!: number;
+  @ApiProperty() totalAmount!: number;
+  @ApiProperty({ type: [EstimatePublicLineDto] }) lines!: EstimatePublicLineDto[];
+  @ApiProperty({ type: [EstimatePublicPartDto] }) parts!: EstimatePublicPartDto[];
+}
+
+// ─── Send estimate SMS (authenticated) ───────────────────
+// baseUrl навмисно НЕ приймається з клієнта (open-redirect/phishing ризик):
+// сервер сам визначає публічний URL через ConfigService('WEB_PUBLIC_URL').
+
+export class SendEstimateSmsDto {
+  // Порожнє тіло — навмисно. Залишено для майбутніх параметрів (lang, channel),
+  // class-validator забезпечить що жодні зайві поля не приймаються (whitelist у ValidationPipe).
+}

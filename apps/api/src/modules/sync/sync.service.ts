@@ -84,6 +84,9 @@ const TABLE_TO_MODEL: Record<string, string> = {
 // Fields stripped from pull payloads to protect sensitive data sent to mobile clients
 const PULL_FIELD_BLACKLIST: Record<string, Set<string>> = {
   counterparties: new Set(['phone', 'edrpou', 'email']),
+  // shareToken — секрет (дає публічний read-доступ до кошторису). Mobile devices
+  // не повинні мати до нього доступу через sync (їм нема для чого).
+  work_orders: new Set(['shareToken']),
 };
 
 // Per-table field whitelists for push — prevents clients from overwriting protected fields

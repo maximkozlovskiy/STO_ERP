@@ -3,8 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Printer } from 'lucide-react';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+import { publicFetch } from '@/lib/api-client';
 
 interface EstimateLine {
   id: string;
@@ -54,20 +53,23 @@ export default function EstimatePage() {
 
   useEffect(() => {
     if (!token) return;
-    fetch(`${API_URL}/api/work-orders/public/${token}`, {
-      headers: { 'Content-Type': 'application/json' },
-    })
-      .then(async res => {
-        if (!res.ok) {
-          if (res.status === 404) throw new Error('not_found');
-          const body = (await res.json().catch(() => ({}))) as { message?: string };
-          throw new Error(body.message ?? `HTTP ${res.status}`);
-        }
-        return res.json() as Promise<EstimateData>;
+    let cancelled = false;
+    publicFetch<EstimateData>(`/public/work-orders/${encodeURIComponent(token)}`)
+      .then(d => {
+        if (!cancelled) setData(d);
       })
-      .then(setData)
-      .catch(e => setError(e instanceof Error ? e.message : 'Помилка'))
-      .finally(() => setLoading(false));
+      .catch(e => {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : 'Помилка';
+        // publicFetch кидає `HTTP 404` або текст з body — нормалізуємо до `not_found`.
+        setError(/HTTP 404|не дійсне|термін дії минув/i.test(msg) ? 'not_found' : msg);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   if (loading) {

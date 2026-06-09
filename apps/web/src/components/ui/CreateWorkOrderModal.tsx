@@ -886,9 +886,11 @@ export function CreateWorkOrderModal({
     if (!workOrderId) return;
     setSmsLoading(true);
     try {
+      // baseUrl формується на сервері з ConfigService('WEB_PUBLIC_URL') —
+      // НЕ передаємо з клієнта (open-redirect/phishing ризик).
       await apiFetch(`/work-orders/${workOrderId}/send-estimate-sms`, {
         method: 'POST',
-        body: JSON.stringify({ baseUrl: window.location.origin }),
+        body: JSON.stringify({}),
       });
       if (features.toastEnabled) toast.success('SMS відправлено клієнту');
     } catch (e: unknown) {
