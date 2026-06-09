@@ -283,17 +283,29 @@ function SectionRow({
 
 // ─── Main Component ────────────────────────────────────────
 
-export function LinkedDocumentsPanel({ workOrderId }: { workOrderId: string }) {
+export function LinkedDocumentsPanel({
+  workOrderId,
+  refreshKey,
+}: {
+  workOrderId: string;
+  // Bug #409: parent інкрементує key після створення/refresh пов'язаного документу
+  // → useEffect deps тригерять fetch без unmount/remount, стале UI не показується.
+  refreshKey?: number;
+}) {
   const [data, setData] = useState<LinkedDocuments | null>(null);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<PreviewType | null>(null);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
 
+  // Bug #409 (паре): preview зберігає посилання на конкретний item (LinkedInvoice/...).
+  // Після refetch цей item може бути замінений у новому масиві — preview показує STALE.
+  // Скидаємо preview перед новим fetch.
   useEffect(() => {
     // Race-guard: користувач швидко перемикає workOrderId → стара відповідь не має
     // перезаписувати стан від нового запиту (§3.1).
     let cancelled = false;
     setLoading(true);
+    setPreview(null);
     apiFetch<LinkedDocuments>(`/work-orders/${workOrderId}/linked-documents`)
       .then(d => {
         if (!cancelled) setData(d);
@@ -307,7 +319,7 @@ export function LinkedDocumentsPanel({ workOrderId }: { workOrderId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [workOrderId]);
+  }, [workOrderId, refreshKey]);
 
   const openPreview = (e: ReactMouseEvent<HTMLButtonElement>, p: PreviewType) => {
     anchorRef.current = e.currentTarget;

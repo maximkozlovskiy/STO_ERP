@@ -132,33 +132,81 @@ export class InvoicesService {
   async createFromWorkOrder(
     orgId: string,
     workOrderId: string,
-    userId?: string,
+    _userId?: string,
   ): Promise<InvoiceResponseDto> {
-    // Tenant-guard + duplicate-check run independently — both already filter by
-    // orgId so cross-tenant data cannot leak. Saves 1 RTT vs sequential.
-    const [wo, existing] = await Promise.all([
+    // Bug #412: prep-check WO existence + duplicate (pre-tx) for fast 4xx feedback.
+    // Race still possible — actual create wrapped in Serializable tx with re-check below.
+    const [wo, existingPre] = await Promise.all([
       this.prisma.workOrder.findFirst({
         where: { id: workOrderId, orgId, deletedAt: null },
       }),
       this.prisma.invoice.findFirst({
         where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
+        select: { id: true },
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
     if (!['COMPLETED', 'INVOICED'].includes(wo.status)) {
       throw new BadRequestException('Рахунок можна виставити лише для завершеного наряду');
     }
-    if (existing) throw new BadRequestException('Для цього наряду вже існує активний рахунок');
+    if (existingPre) throw new BadRequestException('Для цього наряду вже існує активний рахунок');
 
-    return this.create(
-      orgId,
-      {
-        counterpartyId: wo.counterpartyId,
-        workOrderId: wo.id,
-        amount: Number(wo.totalAmount),
-      },
-      userId,
-    );
+    // docNumbers.next() opens its own $tx (SELECT FOR UPDATE counter) — must run BEFORE
+    // the outer Serializable tx to avoid nested-tx deadlock. Trade-off: if outer tx aborts
+    // we burn one INVOICE number. Acceptable — invoice numbering tolerates gaps (CANCELLED
+    // status reservation already creates similar gaps).
+    const number = await this.docNumbers.next(orgId, 'INVOICE');
+
+    // Bug #412: Serializable isolation + re-check `existing` within the tx prevents
+    // two concurrent createFromWorkOrder calls from BOTH passing the pre-check and
+    // creating duplicate invoices. On Serializable conflict, Prisma throws P2034 →
+    // map to BadRequestException with user-friendly Ukrainian message.
+    try {
+      const inv = await this.prisma.$transaction(
+        async tx => {
+          const existing = await tx.invoice.findFirst({
+            where: {
+              workOrderId,
+              orgId,
+              deletedAt: null,
+              status: { not: InvoiceStatus.CANCELLED },
+            },
+            select: { id: true },
+          });
+          if (existing)
+            throw new BadRequestException('Для цього наряду вже існує активний рахунок');
+
+          return tx.invoice.create({
+            data: {
+              orgId,
+              counterpartyId: wo.counterpartyId,
+              workOrderId: wo.id,
+              number,
+              amount: Number(wo.totalAmount),
+              dueDate: null,
+              documentDate: kyivToday(),
+              notes: null,
+              status: InvoiceStatus.DRAFT,
+            },
+            include: {
+              counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+              workOrder: { select: { number: true } },
+            },
+          });
+        },
+        { isolationLevel: 'Serializable', timeout: 10_000 },
+      );
+
+      return this.toDto(inv);
+    } catch (err) {
+      // P2034: Transaction failed due to a write conflict or a deadlock (Serializable race).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+        throw new BadRequestException(
+          'Інший користувач щойно виставив рахунок для цього наряду. Оновіть сторінку.',
+        );
+      }
+      throw err;
+    }
   }
 
   async create(orgId: string, dto: CreateInvoiceDto, userId?: string): Promise<InvoiceResponseDto> {

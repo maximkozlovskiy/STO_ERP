@@ -39,6 +39,13 @@ const serviceMock = {
   addPart: vi.fn(),
   updatePart: vi.fn(),
   removePart: vi.fn(),
+  // Bug #411: contract surface для нових linked-* endpoints
+  getLinkedDocuments: vi.fn(),
+  getLinkedCounts: vi.fn(),
+  clone: vi.fn(),
+  generatePdf: vi.fn(),
+  getOrCreateShareToken: vi.fn(),
+  sendEstimateSms: vi.fn(),
 };
 
 // Стан guards — змінюється у тестах для перевірки 401
@@ -295,6 +302,103 @@ describe('WorkOrders — HTTP Contract', () => {
         lines: expect.any(Array),
         parts: expect.any(Array),
       });
+    });
+  });
+
+  // Bug #411: contract specs для нових linked-documents / linked-counts endpoints (ca6f5830)
+  describe('GET /work-orders/:id/linked-documents', () => {
+    const LINKED_WO_ID = '11111111-1111-4111-8111-000000000001';
+
+    it('повертає 200 + shape { invoices, payments, calendarSlots, warranties }', async () => {
+      serviceMock.getLinkedDocuments.mockResolvedValueOnce({
+        invoices: [
+          { id: LINKED_WO_ID, number: 'INV-1', status: 'DRAFT', amount: 100, documentDate: null },
+        ],
+        payments: [],
+        calendarSlots: [],
+        warranties: [],
+      });
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/work-orders/${LINKED_WO_ID}/linked-documents`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        invoices: expect.any(Array),
+        payments: expect.any(Array),
+        calendarSlots: expect.any(Array),
+        warranties: expect.any(Array),
+      });
+      expect(serviceMock.getLinkedDocuments).toHaveBeenCalledWith('org-1', LINKED_WO_ID);
+    });
+
+    it('повертає 400 для не-UUID id', async () => {
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/work-orders/not-a-uuid/linked-documents',
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
+  describe('POST /work-orders/linked-counts', () => {
+    const LINKED_WO_ID = '11111111-1111-4111-8111-000000000002';
+
+    it('повертає 200 + Record<woId, counts>', async () => {
+      serviceMock.getLinkedCounts.mockResolvedValueOnce({
+        [LINKED_WO_ID]: { invoices: 1, payments: 0, calendarSlots: 2, warranties: 0 },
+      });
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/work-orders/linked-counts',
+        payload: { workOrderIds: [LINKED_WO_ID] },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body[LINKED_WO_ID]).toMatchObject({
+        invoices: expect.any(Number),
+        payments: expect.any(Number),
+        calendarSlots: expect.any(Number),
+        warranties: expect.any(Number),
+      });
+      expect(serviceMock.getLinkedCounts).toHaveBeenCalledWith('org-1', [LINKED_WO_ID]);
+    });
+
+    it('повертає 400 для empty array (ArrayMinSize)', async () => {
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/work-orders/linked-counts',
+        payload: { workOrderIds: [] },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 для не-UUID у array', async () => {
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/work-orders/linked-counts',
+        payload: { workOrderIds: ['not-uuid'] },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 для array >500 (ArrayMaxSize — anti-DoS)', async () => {
+      jwtAllow = true;
+      const ids = Array.from({ length: 501 }, (_, i) => {
+        const hex = i.toString(16).padStart(12, '0');
+        return `11111111-1111-4111-8111-${hex}`;
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/work-orders/linked-counts',
+        payload: { workOrderIds: ids },
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 });

@@ -12500,3 +12500,146 @@ Conflict dialog має role=dialog aria-modal=true, але:
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-09 — sto-tester full bug hunt post review fixes (ca6f5830 + c4e484db)
+
+Запит: автоматичний bug hunt для нової фічі "Виставити рахунок" + LinkedDocumentsPanel
+
+- WO list popup після review fix-у. Baseline: tsc green, 671/671 API unit tests pass,
+  358/358 web tests pass.
+
+---
+
+### Bug #409 — [MEDIUM] LinkedDocumentsPanel не оновлюється після створення/refresh рахунку на тому ж модалі
+
+**Файл:** `apps/web/src/components/ui/LinkedDocumentsPanel.tsx:292-310` + `apps/web/src/components/ui/CreateWorkOrderModal.tsx:918-993`
+**Severity:** MEDIUM (UX — фіча розрекламована як інтегрована)
+**Категорія:** Frontend / Stale state
+
+**Опис:**
+
+`LinkedDocumentsPanel` робить useEffect-fetch лише на зміну `workOrderId`. У модалі WO користувач може на tab "Документи" побачити список → перейти на "Основне" → натиснути "Виставити рахунок" → toast success → повернутися на "Документи" вкладку. Тут панель ре-монтується (бо `{activeTab === 'documents' && <LinkedDocumentsPanel />}`) → новий рахунок видно. **АЛЕ** якщо користувач лишився на "Документи" tab (кнопка "Виставити рахунок" доступна з footer і з обох tabs), панель не перезавантажиться без manual refresh. Так само для `handleInvoiceRefresh` — після `Оновити (перезаписати рядки)` рядки рахунку перезаписалися АЛЕ панель показує стару дату (старий totals).
+
+WO list popup має ту саму проблему — створення нового рахунку через будь-який сторонній flow не оновить popup, якщо він відкритий.
+
+**Очікувана поведінка:** Експозиція через `ref` методу `refresh()` АБО event-bus / React Query invalidation що тригерить `setData(null) + setLoading(true) + refetch`. Альтернатива: refresh-callback prop або refresh-keys prop.
+
+**Фактична поведінка:** Стале дані до закриття/відкриття модалу/popup.
+
+**Фікс:** Прийняти `refreshKey?: number` prop у `LinkedDocumentsPanel`; включити у useEffect deps. У CreateWorkOrderModal — `useState<number>(0)` `linkedDocsRefreshKey`, інкрементувати після успіху `handleInvoice`/`handleInvoiceRefresh`.
+
+**Регресія-guard:** vitest component test — render → fetch1 → bump refreshKey prop → fetch2 fired.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #410 — [MEDIUM] Conflict dialog: "Відкрити існуючий" і "Скасувати" кнопки активні під час `invoiceLoading=true` — race + UX flash
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:2581-2587`
+**Severity:** MEDIUM (UX)
+**Категорія:** Frontend / Modal UX / Race protection
+
+**Опис:**
+
+Conflict dialog має 3 кнопки. "Оновити" має `loading={invoiceLoading}` → disabled. Але "Відкрити існуючий" і "Скасувати" не мають guard. Якщо користувач клікає "Оновити" → `invoiceLoading=true` → потім встигає клікнути "Скасувати" → `setInvoiceConflict(false)` закриває dialog → але `handleInvoiceRefresh` ще в flight → завершується → toast.success видасть результат рахунку якого користувач вже не бачить у dialog. Конфузно.
+
+Гірше: клік на "Відкрити існуючий" під час refresh → `setInvoiceConflict(false)` + `apiFetch /find` → відкриває рахунок у новій вкладці. Тим часом `handleInvoiceRefresh` ще йде → toast про "Рахунок X оновлено" з'являється з action button → user click "Відкрити" → відкриває другу вкладку.
+
+ESC і overlay click мають правильний guard `!invoiceLoading` (lines 2553-2556). Кнопки — ні.
+
+**Очікувана поведінка:** Усі дії dialog заблоковані під час `invoiceLoading=true`.
+
+**Фактична поведінка:** Тільки "Оновити" заблокована.
+
+**Фікс:** Додати `disabled={invoiceLoading}` на "Відкрити існуючий" і "Скасувати".
+
+**Регресія-guard:** vitest — render conflict dialog з invoiceLoading=true → клік на Cancel/Open → onClick НЕ викликаний.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #411 — [MEDIUM] Відсутні contract specs для `GET /work-orders/:id/linked-documents` і `POST /work-orders/linked-counts`
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.contract.spec.ts` (відсутні кейси)
+**Severity:** MEDIUM (regression risk)
+**Категорія:** Backend / Test coverage / SKILL §1.5
+
+**Опис:**
+
+Нові endpoints у `ca6f5830` + `c4e484db`:
+
+- `GET /work-orders/:id/linked-documents` — повертає `{ invoices, payments, calendarSlots, warranties }`
+- `POST /work-orders/linked-counts` — повертає `Record<woId, counts>`
+
+Жодного contract spec для них. Майбутній refactor що видалить `orgId` з where АБО видалить `@ArrayMaxSize(500)` АБО видалить `take: 500` пройде CI зеленим. SKILL §1.5: "Нові @Controller → парний \*.contract.spec.ts".
+
+**Очікувана поведінка:** Тести покривають:
+
+1. `linked-documents` — 200 з правильним shape; 400 для non-UUID
+2. `linked-counts` — 200 + shape; 400 для empty array; 400 для array без UUID; 400 для array >500
+
+**Фікс:** Розширити `work-orders.contract.spec.ts` з відповідними `describe` блоками.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #412 — [HIGH] Duplicate invoice race: два паралельних POST /invoices/from-work-order/:id створюють дубль
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:132-162`
+**Severity:** HIGH (фінансова цілісність — дубль рахунку у бухоблік)
+**Категорія:** Backend / Concurrency / Tenant isolation
+
+**Опис:**
+
+`createFromWorkOrder` робить `Promise.all([findFirst wo, findFirst existing-invoice])`. Якщо два паралельних запити (один користувач double-click до того як `invoiceLoading=true` встигне зреагувати на DOM; або два admin що одночасно тиснуть кнопку) обидва пройдуть `if (existing) throw` бо існуючого ще не було → обидва викликають `create()` → два рахунки з різними номерами.
+
+Немає `@@unique([workOrderId, deletedAt])` partial index на `Invoice` (на відміну від `InspectionReport.@@unique([workOrderId])`). Немає advisory lock. Немає SERIALIZABLE isolation.
+
+`canInvoice` показує кнопку для статусів `COMPLETED`/`INVOICED`. Кнопка має `disabled={invoiceLoading}` — захист від single-user double-click через DOM. Але:
+
+1. Network slow → render delayed → DOM disabled-state не встигає → double-click надсилає 2 fetch
+2. Два browser tabs одного користувача
+3. Два різних користувачі одночасно
+
+**Очікувана поведінка:** Serializable isolation + re-check existing всередині транзакції; або advisory lock; або unique partial index у міграцію (CRITICAL зі змінами БД).
+
+**Фактична поведінка:** Дублікати можуть створитись.
+
+**Фікс (мінімальний без БД-зміни):** Pre-fetch number → обернути read+create у `$transaction({ isolationLevel: 'Serializable', timeout: 10_000 })` + повторно re-check existing всередині. На P2034 (serialization failure) кидаємо `BadRequestException('Рахунок вже виставлено іншим користувачем')`.
+
+**Регресія-guard:** integration test через 2 паралельних `createFromWorkOrder` промісах → 1 success, 1 throw.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #413 — [MEDIUM] Відсутній invoices.service.spec.ts — Bugs #403, #406, #407 без regression guards
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.spec.ts` (відсутній)
+**Severity:** MEDIUM (regression risk)
+**Категорія:** Backend / Test coverage / SKILL §1.5
+
+**Опис:**
+
+Останні фікси у `invoices.service.ts` додали:
+
+- **Bug #403:** `if (existing.status !== InvoiceStatus.DRAFT) throw BadRequestException` у `refreshFromWorkOrder` (CRITICAL FSM guard)
+- **Bug #406:** `DEFAULT_VAT = 20` замість hardcoded 0 у `refreshFromWorkOrder` lineData (HIGH ПДВ облік)
+- **Bug #407:** `recalcTotals` всередині $transaction (MEDIUM atomicity)
+
+Жодного `*.service.spec.ts` для invoices. `*.contract.spec.ts` мокає сервіс — НЕ перевіряє business logic. Будь-який refactor що видалить guard #403 пройде CI зеленим.
+
+**Очікувана поведінка:** `invoices.service.spec.ts` з мінімальними кейсами для refreshFromWorkOrder (status≠DRAFT, vatRate=20, atomic $transaction).
+
+**Фактична поведінка:** 0 service-level тестів → fixes #403, #406, #407 ламаються без помітки.
+
+**Фікс:** Створити `invoices.service.spec.ts` з шаблоном з інших service-specs.
+
+**Регресія-guard:** сам тест-файл.
+
+**Статус:** [x] виправлено
+
+---

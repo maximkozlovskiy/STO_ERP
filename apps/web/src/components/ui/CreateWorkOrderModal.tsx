@@ -296,6 +296,9 @@ export function CreateWorkOrderModal({
   const [smsLoading, setSmsLoading] = useState(false);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceConflict, setInvoiceConflict] = useState(false);
+  // Bug #409: інкрементуємо після успішного invoice create/refresh →
+  // LinkedDocumentsPanel ререфетчить без потреби unmount/remount tab.
+  const [linkedDocsRefreshKey, setLinkedDocsRefreshKey] = useState(0);
   const [activeTab, setActiveTab] = useState<'main' | 'documents'>('main');
   const features = useUiFeatures();
   const deletedLineIds = useRef<string[]>([]);
@@ -935,6 +938,9 @@ export function CreateWorkOrderModal({
         `/invoices/from-work-order/${workOrderId}`,
         { method: 'POST' },
       );
+      // Bug #409: тригернути перезавантаження LinkedDocumentsPanel, інакше "Документи"
+      // tab не показує щойно створений рахунок без manual tab-switch.
+      setLinkedDocsRefreshKey(k => k + 1);
       if (features.toastEnabled) {
         toast.success(`Рахунок ${invoice.number} створено`, 6000, {
           label: 'Відкрити',
@@ -977,6 +983,9 @@ export function CreateWorkOrderModal({
         `/invoices/from-work-order/${workOrderId}/refresh`,
         { method: 'POST' },
       );
+      // Bug #409: refresh змінив totals/lines рахунку → перезавантажити LinkedDocumentsPanel
+      // щоб totals у preview popup були свіжими.
+      setLinkedDocsRefreshKey(k => k + 1);
       if (features.toastEnabled) {
         toast.success(`Рахунок ${invoice.number} оновлено`, 6000, {
           label: 'Відкрити',
@@ -1159,7 +1168,7 @@ export function CreateWorkOrderModal({
 
         {/* Вкладка "Документи" */}
         {activeTab === 'documents' && workOrderId && (
-          <LinkedDocumentsPanel workOrderId={workOrderId} />
+          <LinkedDocumentsPanel workOrderId={workOrderId} refreshKey={linkedDocsRefreshKey} />
         )}
 
         {/* Вкладка "Основне" */}
@@ -2574,14 +2583,28 @@ export function CreateWorkOrderModal({
                 autoFocus
                 onClick={handleInvoiceRefresh}
                 loading={invoiceLoading}
+                disabled={invoiceLoading}
                 className="w-full"
               >
                 Оновити (перезаписати рядки)
               </Button>
-              <Button variant="outline" onClick={handleInvoiceOpen} className="w-full">
+              {/* Bug #410: захист від race — поки triggers in-flight, інші дії dialog
+                  заборонені (інакше "Відкрити існуючий" відкриває рахунок паралельно з
+                  refresh → дві вкладки + застаріле UI). */}
+              <Button
+                variant="outline"
+                onClick={handleInvoiceOpen}
+                disabled={invoiceLoading}
+                className="w-full"
+              >
                 Відкрити існуючий
               </Button>
-              <Button variant="ghost" onClick={() => setInvoiceConflict(false)} className="w-full">
+              <Button
+                variant="ghost"
+                onClick={() => setInvoiceConflict(false)}
+                disabled={invoiceLoading}
+                className="w-full"
+              >
                 Скасувати
               </Button>
             </div>
