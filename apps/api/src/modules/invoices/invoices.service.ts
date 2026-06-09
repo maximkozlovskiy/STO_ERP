@@ -21,6 +21,12 @@ import {
 
 type InvStatus = InvoiceStatus;
 
+function throwIfSerializationConflict(err: unknown, message: string): never {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034')
+    throw new BadRequestException(message);
+  throw err as Error;
+}
+
 const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
   DRAFT: [InvoiceStatus.SENT, InvoiceStatus.CANCELLED],
   SENT: [InvoiceStatus.PAID, InvoiceStatus.CANCELLED],
@@ -199,13 +205,10 @@ export class InvoicesService {
 
       return this.toDto(inv);
     } catch (err) {
-      // P2034: Transaction failed due to a write conflict or a deadlock (Serializable race).
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
-        throw new BadRequestException(
-          'Інший користувач щойно виставив рахунок для цього наряду. Оновіть сторінку.',
-        );
-      }
-      throw err;
+      throwIfSerializationConflict(
+        err,
+        'Інший користувач щойно виставив рахунок для цього наряду. Оновіть сторінку.',
+      );
     }
   }
 
@@ -679,14 +682,10 @@ export class InvoicesService {
         { isolationLevel: 'Serializable', timeout: 10_000 },
       );
     } catch (err) {
-      // P2034: Postgres SSI detected write-conflict between concurrent refresh+addLine
-      // або двома refresh одночасно. Користувач бачить дружнє повідомлення замість 500.
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
-        throw new BadRequestException(
-          'Інший користувач щойно оновив цей рахунок. Оновіть сторінку та повторіть.',
-        );
-      }
-      throw err;
+      throwIfSerializationConflict(
+        err,
+        'Інший користувач щойно оновив цей рахунок. Оновіть сторінку та повторіть.',
+      );
     }
 
     return this.findOne(orgId, existing.id);

@@ -17,9 +17,9 @@ test('status badge tooltip appears on hover in work-orders list', async ({ page 
   await realStatusBadge.scrollIntoViewIfNeeded();
 
   // Move mouse away first so hover re-triggers onMouseEnter reliably even if
-  // a previous test left the cursor over a sibling element.
+  // a previous test left the cursor over a sibling element. Playwright serializes
+  // actions so no sleep is needed — hover() waits for actionability automatically.
   await page.mouse.move(0, 0);
-  await page.waitForTimeout(100);
 
   // Hover over the badge — Tooltip wraps the badge with onMouseEnter handler.
   // The badge itself is span.rounded-full; its parent is span.inline-flex (Tooltip wrapper).
