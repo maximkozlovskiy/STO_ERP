@@ -138,7 +138,11 @@ export class InvoicesService {
     // Race still possible — actual create wrapped in Serializable tx with re-check below.
     const [wo, existingPre] = await Promise.all([
       this.prisma.workOrder.findFirst({
+        // sto-optimize: narrow select — використовуються лише id/status/counterpartyId/totalAmount.
+        // Full-row guard тягнув би 20+ колонок (vehicle/branch/lift FKs, syncVersion, timestamps)
+        // — wire payload зайвий, V8 alloc на гарячому шляху invoice create.
         where: { id: workOrderId, orgId, deletedAt: null },
+        select: { id: true, status: true, counterpartyId: true, totalAmount: true },
       }),
       this.prisma.invoice.findFirst({
         where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },

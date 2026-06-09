@@ -10,7 +10,7 @@ import type {
 } from 'react';
 import { Receipt, CreditCard, Calendar, Shield, X, ExternalLink, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
-import { fmtDate, fmtDateTime } from '@/lib/format';
+import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { INVOICE_STATUS_LABELS } from '@sto/shared';
 
@@ -65,8 +65,10 @@ type PreviewType =
 
 // ─── Helpers ──────────────────────────────────────────────
 
+// sto-optimize: thin proxy для DTO значень (Prisma Decimal може приходити як string).
+// fmtMoney використовує module-level Intl.NumberFormat singleton — без per-call alloc.
 function fmt(n: string | number) {
-  return Number(n).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return fmtMoney(Number(n));
 }
 
 const SLOT_STATUS_LABELS: Record<string, string> = {

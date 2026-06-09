@@ -128,12 +128,10 @@ const STATUS_TABS_EXTRA: Array<[string, string]> = [
   ['ARCHIVED', 'Архів'],
 ];
 
+// sto-optimize: thin proxy → fmtDate використовує module-level Intl.DateTimeFormat singleton.
+// Раніше manual padStart per cell на кожен render інвокався у dueDate stale-check (.map × renders).
 function formatDate(iso: string): string {
-  const d = new Date(iso);
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const year = d.getFullYear();
-  return `${day}.${month}.${year}`;
+  return fmtDate(iso);
 }
 
 function isOverdue(dueDateIso: string, nowMs: number): boolean {

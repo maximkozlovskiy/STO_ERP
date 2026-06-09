@@ -1546,6 +1546,11 @@ model Invoice {
   @@index([orgId, syncVersion])
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
+  // Covering index for getLinkedDocuments + getLinkedCounts (work-orders page badges,
+  // modal Documents tab). WHERE: workOrderId/orgId/deletedAt + status≠CANCELLED, ORDER BY
+  // createdAt DESC. Без цього індекса Postgres ішов через (orgId, status, deletedAt)
+  // partial scan + per-row workOrderId filter — O(N) на кожен WO у groupBy.
+  @@index([orgId, workOrderId, deletedAt, createdAt])
   @@map("invoices")
 }
 
@@ -1663,6 +1668,10 @@ model CalendarSlot {
   @@index([orgId, liftId, startAt, endAt])
   @@index([orgId, employeeId, startAt])
   @@index([orgId, syncVersion])
+  // Covering index for getLinkedDocuments + getLinkedCounts (linked-docs panel).
+  // WHERE: workOrderId/orgId/deletedAt + ORDER BY startAt DESC. Без нього Postgres
+  // ішов через (orgId, deletedAt) і фільтрував workOrderId по-рядково.
+  @@index([orgId, workOrderId, deletedAt, startAt])
   @@map("calendar_slots")
 }
 
@@ -1805,6 +1814,9 @@ model Warranty {
   // createdAt → Sort node поверх Index Scan. Додаємо createdAt у covering для DESC-sort.
   @@index([orgId, counterpartyId, deletedAt, createdAt])
   @@index([orgId, expiresAt, deletedAt])
+  // Covering index for getLinkedDocuments + getLinkedCounts (linked-docs panel).
+  // WHERE: workOrderId/orgId/deletedAt + ORDER BY createdAt DESC.
+  @@index([orgId, workOrderId, deletedAt, createdAt])
   @@map("warranties")
 }
 
