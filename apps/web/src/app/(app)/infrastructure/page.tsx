@@ -127,6 +127,7 @@ function InfrastructurePageClient() {
   const tab = (searchParams.get('tab') ?? 'branches') as Tab;
   const setTab = (t: Tab) => {
     setSearch('');
+    setShowDeleted(false);
     router.replace(`?tab=${t}`, { scroll: false });
   };
 
@@ -325,6 +326,7 @@ function InfrastructurePageClient() {
     setError('');
     try {
       await apiFetch<void>(`${endpoint}/${id}`, { method: 'DELETE' });
+      setShowDeleted(false);
       loadAll();
     } catch (e: unknown) {
       // "не знайдено" = вже видалено (stale cache або паралельний запит) — оновлюємо список
