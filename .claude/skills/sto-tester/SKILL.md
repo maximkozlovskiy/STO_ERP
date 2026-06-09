@@ -491,6 +491,13 @@ grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx" -B3
 # → для кожного: чи setX(...) у .then() рендериться у <Select required> АБО у disabled={!state}?
 #   якщо так — порожня помилка блокує workflow без feedback (MEDIUM, не LOW)
 
+# Bug #401: FE canShare/canEdit/canDelete асиметричний з backend X_STATUSES константою
+# (FE масив ⊂ BE → silent UX обмеження; FE ⊃ BE → false promise → 400).
+grep -rnE "const can(Share|Edit|Delete|Reserve|Transition)\s*=" apps/web/src --include="*.tsx" --include="*.ts" | head -10
+# Для кожного match — знайти відповідну backend константу:
+grep -rnE "(SHAREABLE|EDITABLE|DELETABLE|RESERVATION_ACTIVE)_STATUSES\s*[:=]" apps/api/src/modules --include="*.ts"
+# Звірити масиви: BE — single source of truth, FE має бути дзеркальним підмножиною (або тотожним).
+
 # Мертвий стан/handler після рефактору inline→shared-component (Bug #160)
 # для кожного useState/useCallback з префіксом фічі (woSearch/woOptions...) перевірити чи setter
 # викликається ПОЗА reset-ефектом і чи value читається у JSX. tsc без noUnusedLocals НЕ ловить.
@@ -535,6 +542,7 @@ done
 - [ ] `setTimeout` / `setInterval` у `useEffect` → `clearTimeout` / `clearInterval` у cleanup
 - [ ] Timeline/gantt drag/resize: кожен px→decimal-hours converter clamp-ить результат у `[WINDOW_START, WINDOW_END]` ПЕРЕД побудовою `new Date(...).toISOString()` (інакше `endH>maxHour`/`startH<0` → `"24:30"`/`"-1:00"` → Invalid Date → RangeError у `toISOString()` → handler мовчки падає). Resize-гілка ОКРЕМО від draw-гілки — draw зазвичай clamp-ить через `pxToDecimalHours`, resize рахує delta і clamp-ить тільки проти протилежного краю
 - [ ] Swallowed-fetch що годує **обов'язковий** контрол → MEDIUM (не LOW): якщо `.catch(() => {})`/`.catch(noop)` ховає помилку завантаження списку, який рендериться у `<Select required>` або гейтить `disabled={!state}` submit-кнопку — порожній список = назавжди заблокований workflow без feedback. Фікс: `errorState` + inline `<p>` під контролом
+- [ ] **FE canX status-whitelist симетричний з backend X_STATUSES (Bug #401):** для КОЖНОГО `const canShare/canEdit/canDelete/canReserve = [...].includes(currentStatus)` у `apps/web/src/components/ui/*.tsx` знайти відповідну backend константу `(SHAREABLE|EDITABLE|DELETABLE|RESERVATION_ACTIVE)_STATUSES`. Backend = єдине джерело правди (security validation). Якщо FE масив ⊂ BE → MEDIUM (silent UX-обмеження); FE масив ⊃ BE → HIGH (UI обіцяє кнопку, click → 400). Регресія-гард: contract spec кейс на кожен статус з BE масиву → 200; статус поза масивом → 400
 - [ ] Мертвий стан після inline→shared-component рефактору: коли inline-патерн (dropdown/picker/search) замінюють на shared-компонент (`SearchPickerModal` тощо), старі `useState`/`useCallback`/`useRef` лишаються «сиротами». Ознака: setter викликається ТІЛЬКИ в reset-ефекті (`if (!open) setX('')`), а value НІКОЛИ не читається у JSX; handler (`searchX`) визначено але не викликано. `tsc` без `noUnusedLocals` мовчить. Видалити повністю (включно з cleanup-ефектом orphaned `timeoutRef`)
 - [ ] **Next.js App Router convention-файли — точна сигнатура (Bug #206):** `app/**/error.tsx` має приймати `{ error: Error & { digest?: string }; reset: () => void }` — bare `Error` валідний у tsc але блокує майбутній моніторинг (Sentry/Datadog) що читає `error.digest`. Перевіряти сигнатуру кожного нового error.tsx проти Next.js docs (`https://nextjs.org/docs/app/api-reference/file-conventions/error`). Аналогічно для `layout.tsx` (`{ children, params }`), `page.tsx` (`{ params, searchParams }`), `loading.tsx` (no props). Grep: `grep -rn "error.*:\s*Error[^&]" apps/web/src/app --include="error.tsx"` — кожен match без `digest` = Bug
 - [ ] **Decorative SVG/icon без `aria-hidden="true"` (Bug #207):** SVG-іконки що дублюють semantic-сигнал поряд (warning-icon біля заголовка "Помилка", info-icon біля banner-тексту) → `aria-hidden="true"` обов'язково, інакше screen-reader озвучує "image" перед текстом. Іконки-кнопки без тексту → `aria-label` (вже у §1.7). Іконки з текстом-аналогом поряд → `aria-hidden="true"`
@@ -947,6 +955,48 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-09 — Frontend status-whitelist asymmetry з backend SHAREABLE/EDITABLE/VISIBLE statuses (Bug #401) — frontend / UX-обмеження
+
+**Сигнал:** Backend сервіс експортує `private static readonly X_STATUSES: ReadonlyArray<StatusEnum> = [...]` (`SHAREABLE_STATUSES`, `EDITABLE_STATUSES`, `DELETABLE_STATUSES`, `RESERVATION_ACTIVE_STATUSES`). Frontend має дзеркальне inline-визначення `const canX = ['A', 'B'].includes(currentStatus)` без явного посилання на backend константу. Список FE — підмножина BE (рідше — навпаки). UX-обмеження тихе: користувач не бачить кнопку у легітимному статусі, думає що це обмеження системи. TS green, unit tests green, навіть E2E у одному статусі green — інконсистентність випадає тільки якщо тестер вручну перевіряє КОЖЕН шей-статус.
+
+**Реальний приклад (Bug #401):** Commit `c1a49db4 fix(review): secure estimate share` додав backend `SHAREABLE_STATUSES = ['DRAFT', 'ESTIMATE', 'APPROVED']` як захист від витоку даних у CLOSED-статусах. Коментар явно пояснює: «Після APPROVED-роботи переходять у IN_PROGRESS». FE `CreateWorkOrderModal.tsx:846` мав `canShare = ['DRAFT', 'ESTIMATE'].includes(currentStatus)` — без `APPROVED`. Після клієнтського затвердження приймальник НЕ бачив кнопок Друк/Поділитись/SMS, хоча backend дозволяв би усі дії. Silent UX — користувач думає що фіча обмежена бізнес-логікою.
+
+**Причина виникнення:** Розробник FE працював над фічею параллельно з security-review (sto-review-agent), який додав 'APPROVED' пізніше. FE inline-копія списку не була синхронізована. Без shared package між FE/BE для статусних whitelists — копіювання is the only mechanism. Розробник не зробив grep по backend SHAREABLE_STATUSES коли писав canShare. Парний патерн: `EDITABLE_STATUSES` BE vs `canEdit` FE, `DELETABLE_STATUSES` BE vs `canDelete` FE, `RESERVATION_ACTIVE_STATUSES` BE vs UI-блок видалення parts.
+
+**Підхід до виявлення:**
+
+1. Знайти усі backend constants виду `(SHAREABLE|EDITABLE|DELETABLE|RESERVATION_ACTIVE|VISIBLE)_STATUSES` у `apps/api/src/modules/*/`:
+
+   ```bash
+   grep -rnE "(SHAREABLE|EDITABLE|DELETABLE|RESERVATION_ACTIVE|CLOSED|TRANSITION_ALLOWED)_STATUSES\s*[:=]" apps/api/src/modules --include="*.ts"
+   ```
+
+2. Для кожної знайденої BE константи — витягти значення массиву (`['DRAFT', 'ESTIMATE', 'APPROVED']`).
+
+3. У FE кодовій базі (`apps/web/src/`) знайти inline-визначення з тим самим семантичним змістом:
+
+   ```bash
+   grep -rnE "const can(Share|Edit|Delete|Reserve)\s*=" apps/web/src --include="*.tsx" --include="*.ts"
+   ```
+
+   Для кожного match — порівняти масив зі статусами проти відповідної BE константи.
+
+4. Якщо FE масив ⊂ BE масиву → MEDIUM (UX-обмеження): фіча доступна на сервері, але прихована на UI.
+5. Якщо FE масив ⊃ BE масиву → HIGH (false promise): UI показує кнопку, click призводить до 400/403.
+6. Якщо асиметрія → backend є джерелом істини (безпекова валідація), FE синхронізується.
+
+**Підхід до фіксу:**
+
+- Копіювати BE масив у FE (з коментарем «// синхронізовано з backend X_STATUSES»).
+- Альтернатива (краща): експортувати константу у `packages/shared` як shared type/array, імпортувати у обидва шари — eliminates drift.
+- Регресія-гард: contract spec у backend з кожним статусом масиву → 200 OK; spec для статусу поза масивом → 400. Це фіксує контракт; FE drift детектується наступним FE-тестером.
+
+**Severity:** MEDIUM (UX silent), HIGH якщо FE дозволяє більше ніж BE (false promise → server error).
+
+**Де шукати ще:** Усі модальні форми редагування ресурсу зі FSM (`Invoice`, `PurchaseOrder`, `StockDocument`, `Booking`, `Counterparty.kind`) — кожна має `canX` patterns що мають бути симетричні з backend `X_STATUSES`.
+
+---
 
 ### 2026-06-09 — ID-namespace contract mismatch FE↔BE приховано "silently ignore" backend pattern (Bug #396, #399) — full-stack / data loss / silent
 
