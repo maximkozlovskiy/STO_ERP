@@ -53,6 +53,17 @@ function Toast({ item }: { item: ToastItem }) {
     >
       <Icon className={cn('h-4 w-4 shrink-0 mt-0.5', ICON_STYLES[item.type])} />
       <span className="flex-1 leading-snug">{item.message}</span>
+      {item.action && (
+        <button
+          onClick={() => {
+            item.action!.onClick();
+            handleClose();
+          }}
+          className="shrink-0 whitespace-nowrap text-[12px] font-medium underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
+        >
+          {item.action.label}
+        </button>
+      )}
       <button
         onClick={handleClose}
         className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"

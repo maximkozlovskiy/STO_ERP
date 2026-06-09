@@ -13,6 +13,7 @@ import {
   Printer,
   Share2,
   MessageSquare,
+  Receipt,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -292,6 +293,8 @@ export function CreateWorkOrderModal({
   const [woNumber, setWoNumber] = useState('');
   const [shareLoading, setShareLoading] = useState(false);
   const [smsLoading, setSmsLoading] = useState(false);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [invoiceConflict, setInvoiceConflict] = useState(false);
   const features = useUiFeatures();
   const deletedLineIds = useRef<string[]>([]);
   const deletedPartIds = useRef<string[]>([]);
@@ -908,6 +911,82 @@ export function CreateWorkOrderModal({
     }
   };
 
+  const canInvoice = isEditMode && ['COMPLETED', 'INVOICED'].includes(currentStatus);
+
+  const handleInvoice = async () => {
+    if (!workOrderId) return;
+    setInvoiceLoading(true);
+    try {
+      if (currentStatus === 'COMPLETED') {
+        await apiFetch(`/work-orders/${workOrderId}/transition`, {
+          method: 'POST',
+          body: JSON.stringify({ status: 'INVOICED' }),
+        });
+        setCurrentStatus('INVOICED');
+        onUpdated?.();
+      }
+      const invoice = await apiFetch<{ id: string; number: string }>(
+        `/invoices/from-work-order/${workOrderId}`,
+        { method: 'POST' },
+      );
+      if (features.toastEnabled) {
+        toast.success(`Рахунок ${invoice.number} створено`, 6000, {
+          label: 'Відкрити',
+          onClick: () => window.open(`/invoices/${invoice.id}`, '_blank'),
+        });
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg.includes('вже існує')) {
+        setInvoiceConflict(true);
+      } else {
+        if (features.toastEnabled) toast.error(msg || 'Помилка виставлення рахунку');
+        else setError(msg || 'Помилка');
+      }
+    } finally {
+      setInvoiceLoading(false);
+    }
+  };
+
+  const handleInvoiceRefresh = async () => {
+    if (!workOrderId) return;
+    setInvoiceConflict(false);
+    setInvoiceLoading(true);
+    try {
+      const invoice = await apiFetch<{ id: string; number: string }>(
+        `/invoices/from-work-order/${workOrderId}/refresh`,
+        { method: 'POST' },
+      );
+      if (features.toastEnabled) {
+        toast.success(`Рахунок ${invoice.number} оновлено`, 6000, {
+          label: 'Відкрити',
+          onClick: () => window.open(`/invoices/${invoice.id}`, '_blank'),
+        });
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка оновлення рахунку';
+      if (features.toastEnabled) toast.error(msg);
+      else setError(msg);
+    } finally {
+      setInvoiceLoading(false);
+    }
+  };
+
+  const handleInvoiceOpen = async () => {
+    if (!workOrderId) return;
+    setInvoiceConflict(false);
+    try {
+      const inv = await apiFetch<{ id: string } | null>(
+        `/invoices/from-work-order/${workOrderId}/find`,
+      );
+      if (inv?.id) {
+        window.open(`/invoices/${inv.id}`, '_blank');
+      }
+    } catch {
+      window.open(`/invoices?workOrderId=${workOrderId}`, '_blank');
+    }
+  };
+
   const initialStatus = Object.keys(WO_STATUS_LABELS)[0] ?? 'DRAFT';
 
   // Column header widths (shared between table header and input row grid)
@@ -972,11 +1051,28 @@ export function CreateWorkOrderModal({
                     </Button>
                   </>
                 )}
+                {canInvoice && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleInvoice}
+                    loading={invoiceLoading}
+                    disabled={
+                      invoiceLoading || saving || transitioning || shareLoading || smsLoading
+                    }
+                    title="Виставити рахунок"
+                  >
+                    <Receipt size={15} className="mr-1" />
+                    Виставити рахунок
+                  </Button>
+                )}
                 {canEdit && (
                   <Button
                     onClick={save}
                     loading={saving}
-                    disabled={saving || transitioning || shareLoading || smsLoading}
+                    disabled={
+                      saving || transitioning || shareLoading || smsLoading || invoiceLoading
+                    }
                   >
                     Зберегти зміни
                   </Button>
@@ -2359,6 +2455,28 @@ export function CreateWorkOrderModal({
           }))
         }
       />
+
+      {invoiceConflict && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-surface rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <h3 className="font-semibold text-base mb-2">Рахунок вже існує</h3>
+            <p className="text-sm text-muted-foreground mb-5">
+              Для цього наряду вже є активний рахунок. Що зробити?
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button onClick={handleInvoiceRefresh} loading={invoiceLoading} className="w-full">
+                Оновити (перезаписати рядки)
+              </Button>
+              <Button variant="outline" onClick={handleInvoiceOpen} className="w-full">
+                Відкрити існуючий
+              </Button>
+              <Button variant="ghost" onClick={() => setInvoiceConflict(false)} className="w-full">
+                Скасувати
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

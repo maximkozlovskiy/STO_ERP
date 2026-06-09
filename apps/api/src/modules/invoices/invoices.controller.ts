@@ -76,6 +76,27 @@ export class InvoicesController {
     return this.service.create(orgId, dto, user?.id);
   }
 
+  // Fastify route ordering: specific sub-routes BEFORE the base :workOrderId route.
+  @Post('from-work-order/:workOrderId/refresh')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Перезаписати існуючий рахунок рядками з наряду' })
+  refreshFromWorkOrder(
+    @OrgContext() orgId: string,
+    @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
+  ) {
+    return this.service.refreshFromWorkOrder(orgId, workOrderId);
+  }
+
+  @Get('from-work-order/:workOrderId/find')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Знайти рахунок за нарядом (id + number)' })
+  findByWorkOrder(
+    @OrgContext() orgId: string,
+    @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
+  ) {
+    return this.service.findByWorkOrder(orgId, workOrderId);
+  }
+
   @Post('from-work-order/:workOrderId')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Виставити рахунок з наряду' })

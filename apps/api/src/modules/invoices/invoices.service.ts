@@ -496,6 +496,84 @@ export class InvoicesService {
     });
   }
 
+  async findByWorkOrder(
+    orgId: string,
+    workOrderId: string,
+  ): Promise<{ id: string; number: string } | null> {
+    const inv = await this.prisma.invoice.findFirst({
+      where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
+      select: { id: true, number: true },
+    });
+    return inv ?? null;
+  }
+
+  async refreshFromWorkOrder(orgId: string, workOrderId: string): Promise<InvoiceResponseDto> {
+    const [wo, existing] = await Promise.all([
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        include: {
+          lines: {
+            where: { deletedAt: null },
+            include: { work: { select: { name: true } } },
+          },
+          parts: {
+            where: { deletedAt: null },
+            include: { good: { select: { name: true } } },
+          },
+        },
+      }),
+      this.prisma.invoice.findFirst({
+        where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
+      }),
+    ]);
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!['COMPLETED', 'INVOICED'].includes(wo.status))
+      throw new BadRequestException('Рахунок можна виставити лише для завершеного наряду');
+    if (!existing) throw new NotFoundException('Активний рахунок не знайдено');
+
+    await this.prisma.$transaction(async tx => {
+      await tx.invoiceLine.deleteMany({
+        where: { invoiceId: existing.id, orgId },
+      });
+
+      const lineData = [
+        ...wo.lines.map((l, i) => ({
+          orgId,
+          invoiceId: existing.id,
+          workId: l.workId,
+          description: l.work?.name ?? 'Робота',
+          quantity: l.normoHours,
+          unitPrice: Number(l.price),
+          vatRate: 0,
+          priceWithoutVat: l.normoHours * Number(l.price),
+          vatAmount: 0,
+          priceWithVat: l.normoHours * Number(l.price),
+          sortOrder: i,
+        })),
+        ...wo.parts.map((p, i) => ({
+          orgId,
+          invoiceId: existing.id,
+          goodId: p.goodId,
+          description: p.good?.name ?? 'Запчастина',
+          quantity: Number(p.quantity),
+          unitPrice: Number(p.price),
+          vatRate: 0,
+          priceWithoutVat: Number(p.quantity) * Number(p.price),
+          vatAmount: 0,
+          priceWithVat: Number(p.quantity) * Number(p.price),
+          sortOrder: wo.lines.length + i,
+        })),
+      ];
+
+      if (lineData.length > 0) {
+        await tx.invoiceLine.createMany({ data: lineData });
+      }
+    });
+
+    await this.recalcTotals(orgId, existing.id);
+    return this.findOne(orgId, existing.id);
+  }
+
   async remove(orgId: string, id: string): Promise<void> {
     // Narrow tenant guard — потрібен лише `status` для business-check.
     const inv = await this.prisma.invoice.findFirst({
