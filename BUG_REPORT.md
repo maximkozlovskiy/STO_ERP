@@ -11952,3 +11952,143 @@ apiFetch<CategoryNode[]>('/work-categories').then(r => setCategories(Array.isArr
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-09 — Full tester sweep (баги #390-#395)
+
+Дата: 2026-06-09
+Сесія: Повне тестування — `pnpm test`, `tsc --noEmit`, web component tests, статичний аналіз diff scope (employees/loginEmail + counterparties/garage isDefault + CreateWorkOrderModal styling + WorkPickerModal/GoodPickerModal stale tests).
+
+Baseline:
+
+- `pnpm --filter @sto/api exec tsc --noEmit` → 0 errors
+- `apps/web tsc --noEmit` → 0 errors
+- `pnpm --filter @sto/shared exec tsc --noEmit` → 0 errors
+- `pnpm --filter @sto/api test --run` → 666/666 passed
+- `pnpm --filter @sto/web exec vitest run` → 2 failed / 356 passed (release-blocker baseline → Bug #390)
+
+---
+
+## Bug #390 — CRITICAL — Web component test suite baseline failing: WorkPickerModal/GoodPickerModal tests assert deprecated `categoryIds[]` URL syntax after Fastify-compat fix (commit 37bc3ef9)
+
+**Файл:** `apps/web/src/components/ui/__tests__/WorkPickerModal.test.tsx:119-122,162` + `apps/web/src/components/ui/__tests__/GoodPickerModal.test.tsx:101-104,133`
+**Severity:** CRITICAL (release-blocker baseline)
+**Категорія:** test-coverage / regression-guard drift
+
+**Опис:** Тести написані ПЕРЕД фіксом `37bc3ef9 fix(picker): remove [] suffix from categoryIds/goodCategoryIds query params`. Тести асертять старий формат `categoryIds%5B%5D=cat-X` (URL-encoded `[]` brackets). Компонент після fix-у будує URL з repeated keys без брекетів: `categoryIds=cat-X&categoryIds=cat-Y`. `fast-querystring` (default Fastify query parser) аґрегує repeated keys у `["cat-X","cat-Y"]`, а форма з `[]` стає **окремим ключем** `categoryIds[]` — DTO field `categoryIds` лишається undefined.
+
+**Перевірка через node:**
+
+```text
+qs.parse('categoryIds=a&categoryIds=b')      → { categoryIds: [ 'a', 'b' ] }
+qs.parse('categoryIds%5B%5D=a&categoryIds%5B%5D=b') → { 'categoryIds[]': [ 'a', 'b' ] }
+```
+
+**Очікувана поведінка:** Тести валідують поточний (правильний) спосіб серіалізації — repeated keys без `[]`. Це і regression-guard для майбутньої спроби «повернути bracketed form».
+
+**Фактична поведінка:** 2 failing tests у baseline. Червоний baseline блокує всі майбутні tester-сесії (ховає регресії за шумом), `tsc` green, але `pnpm --filter @sto/web exec vitest run` exit 1.
+
+**Фікс:** Оновити assertion-и у тестах:
+
+- Замінити `'categoryIds%5B%5D=cat-to'` → `'categoryIds=cat-to'`
+- Додати regression-guard `expect(url).not.toContain('categoryIds%5B%5D')`
+- В test #4 замінити `.not.toContain('categoryIds%5B%5D')` → `.not.toContain('categoryIds=')`
+- Те саме для `goodCategoryIds`
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #391 — MEDIUM — `password` поле у `CreateEmployeeDto` (+ `setup.dto.ts:ownerPassword`) без `@MaxLength` (anti-DoS gap, bcrypt CPU exhaustion)
+
+**Файл:** `apps/api/src/modules/employees/employees.dto.ts:98-103` + `apps/api/src/modules/setup/setup.dto.ts:21-25`
+**Severity:** MEDIUM (anti-DoS)
+**Категорія:** security
+
+**Опис:** Поля `password?: string` у `CreateEmployeeDto` та `ownerPassword!: string` у `SetupInitDto` мають `@IsString() @MinLength(6)`, але БЕЗ `@MaxLength`. SKILL.md §1.4: «Вільний `@IsString()` без `@MaxLength` (anti-DoS)». Користувач (або атакувальник з валідним JWT для `/employees`, або взагалі anonymous для `/setup` яке public) може відправити 100MB рядок як password → ValidationPipe приймає → `await bcrypt.hash(dto.password, 12)` робить 150ms+ CPU work пер ОДНА hash, при великому input може стати помітним blocker єдиного Node thread → DoS API.
+
+**Аналогічна проблема:**
+
+- `loginEmail?: string` має `@IsEmail()` (built-in cap ~254 chars per RFC) — менший ризик.
+- `firstName`, `lastName`, `phone`, `email` у `CreateEmployeeDto`/`UpdateEmployeeDto` — `@IsString()` без `@MaxLength`.
+
+**Очікувана поведінка:** `@MaxLength(128)` (або 72 — bcrypt hard limit) для password; `@MaxLength(100)` для імен; `@MaxLength(30)` для phone; `@MaxLength(254)` для email.
+
+**Фактична поведінка:** Будь-який рядок приймається. bcrypt працює тільки з першими 72 байтами, але class-validator пропускає рядок будь-якої довжини, який потім зберігається/обробляється.
+
+**Фікс:** Додати `@MaxLength(N)` декоратор до КОЖНОГО `@IsString()` поля без явного cap. Особливо критично для password (CPU work).
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #392 — MEDIUM — Масиви FK у `AssignBranchesDto`/`AssignZonesDto`/`AssignLiftsDto`/`AssignWorkCategoriesDto` без `@ArrayMaxSize` (anti-DoS gap)
+
+**Файл:** `apps/api/src/modules/employees/employees.dto.ts:202-229`
+**Severity:** MEDIUM (anti-DoS)
+**Категорія:** security
+
+**Опис:** Чотири DTO мають `@IsUUID(undefined, { each: true }) ids!: string[]` без `@ArrayMaxSize`. SKILL.md §1.4: «`@IsArray()` → `@ArrayMaxSize(N)` (N = реалістичний бізнес-ліміт)». Атакувальник може надіслати масив 100k UUID → ValidationPipe виконає UUID regex N×100k → noticeable CPU + потім N×SELECT у service-методі (assignBranches → `prisma.employeeBranch.deleteMany` + `createMany` з 100k записів).
+
+**Очікувана поведінка:** `@ArrayMaxSize(N)` де N — реалістичний бізнес-ліміт (наприклад 50 філій, 30 зон, 30 підйомників, 50 категорій).
+
+**Фактична поведінка:** Жодного capу. Production: один POST з 100k IDs може заблокувати API на секунди.
+
+**Фікс:** Додати `@ArrayMaxSize(50)` (branches, workCategories) і `@ArrayMaxSize(30)` (zones, lifts) до відповідних масивів. Імпорт `ArrayMaxSize` з class-validator.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #393 — LOW — `react-datepicker` + `@types/react-datepicker` додано до `apps/web/package.json` але НЕ використовується у коді (dead dependency)
+
+**Файл:** `apps/web/package.json:24,30` + `pnpm-lock.yaml`
+**Severity:** LOW (bundle bloat)
+**Категорія:** dependency hygiene
+
+**Опис:** Залежність додана, але `grep -rn "from 'react-datepicker'" apps/web/src` → 0 matches. Проект уже має `react-day-picker` (для дат) і `DateTimePickerInput` компонент. Dead dependency бойлерплейтить bundle (~50KB unzipped), entry у lock file, потенційно тягне CSS залежності що додають runtime cost навіть якщо не використовуються (через side-effect imports у tree-shake-not-pure packages).
+
+**Очікувана поведінка:** Залежність використовується ХОЧА-Б В ОДНОМУ файлі.
+
+**Фактична поведінка:** Жодного імпорту. Лишилась після експерименту/недоведеного рефактору.
+
+**Фікс:** Видалити `react-datepicker` і `@types/react-datepicker` з `apps/web/package.json`. `pnpm install` оновить lock file.
+
+**Статус:** [x] виправлено
+
+---
+
+## Bug #394 — LOW — `UpdateEmployeeDto` не містить `loginEmail`/`password` — резет паролю/email через API неможливий через типовий PATCH-flow
+
+**Файл:** `apps/api/src/modules/employees/employees.dto.ts:106-155`
+**Severity:** LOW (feature gap)
+**Категорія:** API design
+
+**Опис:** `CreateEmployeeDto` додано `loginEmail?: string` + `password?: string` для grant-access під час створення. Але `UpdateEmployeeDto` НЕ має цих полів — щоб скинути пароль або змінити email-логін після створення співробітника, треба окремий ендпоінт (нема в коді) або змінювати схему. Це не critical bug (фронт не показує таку дію), АЛЕ розрекламоване «email + password» у Create flow без парного "edit" — UX disconnect: користувач інтуїтивно очікує що `/employees/:id PATCH` теж приймає ці поля.
+
+**Очікувана поведінка:** UpdateEmployeeDto також підтримує `loginEmail`, `password` як опціональні (з тими ж guards як у Create), і service.update обробляє reset-flow (update existing AuthAccount).
+
+**Фактична поведінка:** Поля у Create only. Frontend EmployeeEditModal обмежує grant-access до `!isEdit` (рядок 303), тобто edit-flow не показує password. Все консистентно, але feature gap.
+
+**Фікс (документаційний):** Залишається на майбутній sprint. NOT FIXED цією сесією (поза scope diff-ів). Фіксуємо у BUG_REPORT як known-gap, severity LOW.
+
+**Статус:** [ ] відкритий (документований known-gap)
+
+---
+
+## Bug #395 — LOW — `CreateGarageDto` рядкові поля без `@MaxLength`
+
+**Файл:** `apps/api/src/modules/counterparties/counterparties.dto.ts:169-174`
+**Severity:** LOW (anti-DoS)
+**Категорія:** security
+
+**Опис:** `name`, `address`, `notes` мають `@IsString()` без `@MaxLength`. SKILL.md §1.4 anti-DoS pattern. Атакувальник з validним JWT може створити garage з 100MB `address`/`notes` рядком — записати у БД, надути таблицю.
+
+**Очікувана поведінка:** `@MaxLength(200)` для name, `@MaxLength(500)` для address, `@MaxLength(2000)` для notes.
+
+**Фактична поведінка:** Будь-яка довжина приймається.
+
+**Фікс:** Додати `@MaxLength(N)` до кожного string field у CreateGarageDto.
+
+**Статус:** [x] виправлено
+
+---

@@ -1,8 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
   IsBoolean,
   IsBooleanString,
   IsDateString,
+  IsEmail,
   IsEnum,
   IsIn,
   IsInt,
@@ -14,6 +16,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { EmployeeStatus, UserRole } from '@prisma/client';
@@ -41,11 +44,13 @@ export class CreateEmployeeDto {
   @ApiProperty({ example: 'Іван' })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   firstName!: string;
 
   @ApiProperty({ example: 'Коваль' })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   lastName!: string;
 
   @ApiProperty({ enum: UserRole })
@@ -62,11 +67,13 @@ export class CreateEmployeeDto {
   @ApiPropertyOptional({ example: '+38 (067) 123-45-67' })
   @IsOptional()
   @IsString()
+  @MaxLength(30)
   phone?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(254)
   email?: string;
 
   @ApiPropertyOptional({ enum: EmployeeStatus })
@@ -86,17 +93,36 @@ export class CreateEmployeeDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   dateOfFire?: string;
+
+  @ApiPropertyOptional({
+    description: 'Email для входу в систему (логін). Якщо вказано — створює AuthAccount',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEmail({}, { message: 'Невірний формат email для логіну' })
+  @MaxLength(254)
+  loginEmail?: string;
+
+  @ApiPropertyOptional({ description: "Пароль для входу. Обов'язковий якщо вказано loginEmail" })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MinLength(6, { message: 'Пароль має бути не менше 6 символів' })
+  @MaxLength(128, { message: 'Пароль занадто довгий (максимум 128 символів)' })
+  password?: string;
 }
 
 export class UpdateEmployeeDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   firstName?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   lastName?: string;
 
   @ApiPropertyOptional({ enum: UserRole })
@@ -113,11 +139,13 @@ export class UpdateEmployeeDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(30)
   phone?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(254)
   email?: string;
 
   @ApiPropertyOptional({ enum: EmployeeStatus })
@@ -187,6 +215,7 @@ export class EmployeesQueryDto {
 export class AssignBranchesDto {
   @ApiProperty({ type: [String], description: 'Масив UUID філій' })
   @IsUUID(undefined, { each: true })
+  @ArrayMaxSize(50, { message: 'Максимум 50 філій на співробітника' })
   branchIds!: string[];
 
   @ApiPropertyOptional({ description: 'Доступ до всіх філій (OWNER/ADMIN)' })
@@ -198,18 +227,21 @@ export class AssignBranchesDto {
 export class AssignZonesDto {
   @ApiProperty({ type: [String], description: 'Масив UUID зон' })
   @IsUUID(undefined, { each: true })
+  @ArrayMaxSize(30, { message: 'Максимум 30 зон на співробітника' })
   zoneIds!: string[];
 }
 
 export class AssignLiftsDto {
   @ApiProperty({ type: [String], description: 'Масив UUID підйомників' })
   @IsUUID(undefined, { each: true })
+  @ArrayMaxSize(30, { message: 'Максимум 30 підйомників на співробітника' })
   liftIds!: string[];
 }
 
 export class AssignWorkCategoriesDto {
   @ApiProperty({ type: [String], description: 'Масив UUID категорій робіт' })
   @IsUUID(undefined, { each: true })
+  @ArrayMaxSize(50, { message: 'Максимум 50 категорій робіт на співробітника' })
   workCategoryIds!: string[];
 }
 

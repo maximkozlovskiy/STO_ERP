@@ -109,17 +109,21 @@ describe('WorkPickerModal — regression guards (Bugs #387, #388, #389)', () => 
       expect(worksCall).toBeDefined();
     });
 
-    // The URL must include categoryIds[]=cat-to AND categoryIds[]=cat-engine
+    // The URL must include repeated categoryIds= params (no [] suffix — fast-querystring aggregates
+    // repeated keys correctly, while categoryIds[]= would become a different key in Fastify).
     // (cat-trans is inactive but collectDescendantIds doesn't filter inactive — it walks raw tree.
     //  hideInactive prop only hides them in the tree UI.)
     const worksCall = apiFetchMock.mock.calls
       .slice(callsBefore)
       .find(c => typeof c[0] === 'string' && c[0].startsWith('/works'));
     const url = worksCall![0] as string;
-    expect(url).toContain('categoryIds%5B%5D=cat-to');
-    expect(url).toContain('categoryIds%5B%5D=cat-engine');
+    expect(url).toContain('categoryIds=cat-to');
+    expect(url).toContain('categoryIds=cat-engine');
+    // Must NOT use bracketed form (regression guard for 37bc3ef9 — fast-querystring would
+    // treat "categoryIds[]" as the literal key name, not as array syntax).
+    expect(url).not.toContain('categoryIds%5B%5D');
     // Must NOT use legacy "categoryId=" (singular)
-    expect(url).not.toMatch(/[?&]categoryId=/);
+    expect(url).not.toMatch(/[?&]categoryId=[^&]/);
   });
 
   it('закрити і знову відкрити → query і selectedCatId скинуто (тест 4: state reset on close)', async () => {
@@ -149,13 +153,13 @@ describe('WorkPickerModal — regression guards (Bugs #387, #388, #389)', () => 
     });
 
     // After re-open, fetchWorks fires with NO category filter (selectedCatId reset to null).
-    // The latest /works call must NOT have categoryIds[].
+    // The latest /works call must NOT have categoryIds= param.
     await waitFor(() => {
       const worksCalls = apiFetchMock.mock.calls.filter(
         c => typeof c[0] === 'string' && (c[0] as string).startsWith('/works'),
       );
       const latest = worksCalls[worksCalls.length - 1]![0] as string;
-      expect(latest).not.toContain('categoryIds%5B%5D');
+      expect(latest).not.toContain('categoryIds=');
     });
   });
 

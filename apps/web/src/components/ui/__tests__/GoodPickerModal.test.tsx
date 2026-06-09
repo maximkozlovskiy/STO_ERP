@@ -98,8 +98,12 @@ describe('GoodPickerModal — regression guards (Bugs #387, #388, #389)', () => 
       .slice(callsBefore)
       .find(c => typeof c[0] === 'string' && c[0].startsWith('/goods'));
     const url = goodsCall![0] as string;
-    expect(url).toContain('goodCategoryIds%5B%5D=cat-oil');
-    expect(url).toContain('goodCategoryIds%5B%5D=cat-motor-oil');
+    // Use repeated keys (goodCategoryIds=a&goodCategoryIds=b) — fast-querystring aggregates
+    // them into an array. The bracketed form goodCategoryIds[]= would become a different key.
+    expect(url).toContain('goodCategoryIds=cat-oil');
+    expect(url).toContain('goodCategoryIds=cat-motor-oil');
+    // Regression guard for 37bc3ef9 — must NOT use bracketed PHP-style syntax.
+    expect(url).not.toContain('goodCategoryIds%5B%5D');
     // Must NOT use legacy categoryId=
     expect(url).not.toMatch(/[?&]categoryId=/);
   });

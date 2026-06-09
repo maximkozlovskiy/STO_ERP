@@ -722,6 +722,7 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 - [ ] **CSS scoped marker (data-X) контракт — integration-тест на наявність маркера (Bug #334):** будь-який shared UI-компонент (`Modal`, `DetailPanel`, `Popover`, `Drawer`) що покладається на CSS-правило з selector-prefix-маркером (`[data-animate][data-state="open"]`, `[data-portal]`, `[data-overlay]`) — парний `*.test.tsx` має містити assertion на присутність маркера на правильному елементі + позицію (direct-child vs descendant). Без тесту: refactor що видаляє `data-animate` атрибут з root компонента → анімація мовчки перестає працювати (CSS правило не матчиться), tsc green, всі функціональні тести зелені (Modal все ще монтується/закривається), але exit-animation мертва. Шаблон: `expect(dialog).toHaveAttribute('data-animate'); expect(dialog).toHaveAttribute('data-state', 'open'); expect(dialog.querySelector(':scope > [data-backdrop]')).toBeTruthy();`. Grep для виявлення pattern у CSS: `grep -nE "\[data-[a-z]+\](\[data-[a-z]+\=)?" apps/web/src/app/globals.css` — кожен унікальний `data-*` selector має бути присутнім хоча б в одному `*.test.tsx`. Severity LOW (visual jank, не data-correctness).
 - [ ] **useEffect + rAF dance для CSS animation enter — 1-frame paint at previous state (Bug #335):** будь-який custom hook що використовує паттерн `setVisible(true); requestAnimationFrame(() => setState('open'))` у `useEffect` ДЛЯ enter-анімації CSS — потенційний flicker bug. React commits visible=true з застарілим state='closed', browser паінтиться 1 frame з закритими стилями (CSS animation FROM-keyframe для closed-state), потім rAF flips state → нова анімація стартує. У дефолтних exit-keyframes (`from { opacity:1; scale(1) }`) це означає що елемент **відмалюється з повним розміром** перед стартом enter-анімації — visual jank. Перевірити: grep `requestAnimationFrame.*setState\(` у `hooks/use*.ts` — кожен match потенційний bug. Безпечний паттерн: (а) `useLayoutEffect` + одразу `setState('open')` без rAF (CSS `animation` з `fill-mode: both` runs on mount, рAF dance не потрібен); або (б) initial state мати 'closed' + другий маркер `data-just-mounted="true"` що відключає exit-animation. Контракт-тест: між `rerender({ open: true })` і flush-rAF — `state === 'closed'` ОЧЕВИДНИЙ симптом → задокументувати у BUG_REPORT як LOW (1-frame jank). Severity LOW.
 - [ ] **Stable callback identity invariant в composable hooks (Tester Cycle 2 2026-06-05):** будь-який `useCallback(() => ..., [])` у composable hook (`useListPage`, `useDetailPanel`, `useBulkSelect`, `useSavedFilters`) — окрім behavior test (`act(() => cb()) → стан змінився`) ПОВИНЕН мати regression-guard test на identity stability: `const first = result.current.cb; rerender(); expect(result.current.cb).toBe(first); act(() => result.current.setter(N)); expect(result.current.cb).toBe(first)`. Без guard: майбутній eslint --fix що додає "missing dep" (`[setPage]` замість `[]`) пройде tsc + behavior tests зеленим, але каскадно перестворює consumers' `useCallback`/`useMemo` що використовують `cb` у deps → invalidate `<MemoizedChild onApply={consumerCb}>` re-renders. Perf regression замість CRITICAL crash — важко діагностувати, накопичується мовчки. Grep: `grep -rn "useCallback(.*, \[\])" apps/web/src/hooks --include="*.ts" | grep -v test` — для кожного match перевірити чи парний test має `.toBe(firstCb)` асерт після rerender. Severity MEDIUM (perf cascade).
+- [ ] **Stale regression-guard test після backend-compat URL/payload fix (Bug #390):** будь-який `fix(<area>): <change> X serialization format` / `fix(<area>): remove [] suffix` / `fix(<area>): switch to camelCase keys` commit що ЗМІНЮЄ форму запиту (URL params / body keys / header values) ОБОВ'ЯЗКОВО оновлює парний `*.test.tsx` що асертить старий формат. Симптом: web baseline test suite червоний на `expect(url).toContain('<old-form>')` АБО `expect(payload).toEqual({ <old-key>: ... })`. Особливо підступно з URL-encoded формами: тест шукає `categoryIds%5B%5D=` (URL-encoded `[]`), фікс шле `categoryIds=` (репитед keys) → `.toContain` фейлиться, але повідомлення помилки виглядає як «component-bug» а не «test-stale». tsc green бо це runtime string assertion. API contract spec теж може не ловити (mock-based, не реальний parser). Grep для виявлення PRE-commit: `git diff HEAD~3 HEAD -- 'apps/web/src/**/*.tsx' | grep -E "^\+.*params\.(append|set)\b" | grep -v test` → кожен match — pair-check `__tests__/<Component>.test.tsx` на `.toContain(<param-name>` і `.toContain(<encoded-bracket>`. Альтернативний detection: червоний `vitest run` у baseline + `.toContain('%5B%5D')` у failing test. Severity: CRITICAL коли весь web suite червоний (release-blocker baseline → майбутні tester-сесії ховають реальні регресії за шумом). Fix-pattern: оновити assertion на новий формат + ДОДАТИ negation guard `expect(url).not.toContain('<old-form>')` як regression-guard щоб майбутня «спроба повернути старий формат» не пройшла CI зеленою. Парне з §1.5 «query-shape fix потребує service-spec» (Bug #163) — той самий принцип «після fix-у синхронізувати парний spec», але для frontend URL-serialization.
 
 ---
 
@@ -946,6 +947,72 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-09 — Stale URL-serialization regression-guard test після backend-compat fix (Bug #390) — frontend / test drift / release-blocker
+
+**Сигнал:** Web component test suite червоний у baseline на `expect(url).toContain('<encoded-form>')` де `<encoded-form>` — URL-encoded маркер старого формату (`%5B%5D` для `[]`, `%2C` для `,`, etc.). Парний commit-history: за 5-10 commits до tester-сесії є `fix(<area>): remove [] suffix` / `fix(<area>): switch serialization to repeated keys` / `fix(<area>): use ISO timestamp instead of unix-ms` що мінятиме форму запиту. tsc green (це runtime string assert). API contract spec green (mock-based, не реальний Fastify parser). Виявляється ТІЛЬКИ через `vitest run` exit 1.
+
+**Реальний приклад (Bug #390):** Commit `37bc3ef9 fix(picker): remove [] suffix from categoryIds query params` справив backend-compat fix: `params.append('categoryIds[]', id)` → `params.append('categoryIds', id)`. Це правильно бо `fast-querystring` (Fastify default) аґрегує repeated keys у array, а bracketed `categoryIds[]=` становить ОКРЕМИЙ key `'categoryIds[]'` (DTO field `categoryIds` undefined → filter no-op). Парний test `WorkPickerModal.test.tsx` написаний ПЕРЕД фіксом → assertions асертять `expect(url).toContain('categoryIds%5B%5D=cat-to')` → test failed. Powered-on baseline test failure ХОВАЄ майбутні регресії за шумом → release-blocker.
+
+```bash
+# Виявлення PRE-tester:
+git log -10 --oneline | grep -iE "fix.*serialization|fix.*params|fix.*format|remove.*suffix|fix.*encoding"
+# для кожного потенційного fix-commit:
+git show <commit> -- 'apps/web/src/**/*.tsx' | grep -E "^[-+].*params\.(append|set)\b"
+# знайти парний __tests__/<Component>.test.tsx і grep на старий формат
+grep -rn "%5B%5D\|%2C" apps/web/src/**/__tests__/*.test.tsx
+```
+
+**Причина виникнення:** Розробник пише regression-guard test для нової фічі або для попереднього Bug (#387-#389 у нашому випадку), фіксує stateForma на момент написання тесту. Потім інший commit (review-fix або backend-compat fix) міняє стратегію кодування URL → assertion відстає на крок. Парний test НЕ виконується runtime-валідатором тестів (тест ніколи не запускає реальний Fastify parser); виявляється ЛИШЕ через `vitest run`. Test author не повторно перевіряє свої assertions після наступного review-fix commit-у.
+
+**Підхід до виявлення:**
+
+1. ОБОВ'ЯЗКОВО — Крок 0 запускати `pnpm --filter @sto/web exec vitest run` (не лише API tests). Червоний web baseline = release-blocker, виявити ДО static-analysis greps.
+2. Для кожного failed test:
+   - Прочитати failed assertion (`expect(url).toContain('X')`).
+   - `git log -10 --oneline` + grep на `serialization|params|encoding|suffix|format` у subject-line.
+   - Якщо знайдено матчинг fix-commit ТА `git show <fix> -- <component>` змінює форму запиту → це stale-test, не component-bug.
+3. Підтвердження: змінити test assertion на новий формат, re-run → green → bug confirmed як test drift.
+
+**Підхід до фіксу:**
+
+```tsx
+// СТАРИЙ test:
+expect(url).toContain('categoryIds%5B%5D=cat-to');
+expect(url).toContain('categoryIds%5B%5D=cat-engine');
+
+// НОВИЙ test (з regression-guard для майбутньої спроби «повернути []»):
+expect(url).toContain('categoryIds=cat-to');
+expect(url).toContain('categoryIds=cat-engine');
+// Regression-guard: explicit negation на старий формат
+expect(url).not.toContain('categoryIds%5B%5D');
+```
+
+Принцип: **завжди додавати `.not.toContain(<old-form>)` після fix-у**. Це робить test двостороннім: позитивна гілка асертить новий правильний формат, негативна — блокує майбутнього розробника від спроби «повернути як було» без виявлення архітектурної причини.
+
+Альтернатива (захищеніший паттерн для майбутнього): тест парсить URL через справжній parser замість string-toContain:
+
+```tsx
+const u = new URL(url, 'http://localhost');
+const ids = u.searchParams.getAll('categoryIds');
+expect(ids).toEqual(['cat-to', 'cat-engine']);
+```
+
+Цей варіант стійкий до зміни encoding format (URL/URLSearchParams normalize automatically), але не ловить subtle проблеми (наприклад дублювання key, додаткові whitespace) які toContain ловить.
+
+**Severity:** CRITICAL коли весь web suite червоний у baseline (release-blocker — наступні tester-сесії бачать червоний baseline і ховають справжні регресії за шумом). MEDIUM коли лише 1-2 isolated test files з narrow scope. LOW коли test видоднявся за помилковим subscription (тест колись був на не-актуальну UX-гілку).
+
+**Де шукати ще:**
+
+- Будь-який `params.append`/`searchParams.set` рефакторинг (URL serialization).
+- JSON body key rename (`{ userIds: [...] }` → `{ user_ids: [...] }`).
+- Date format switch (`unix-ms` → `ISO-8601`, `dd.mm.yyyy` → `yyyy-mm-dd`).
+- Header value format (`Bearer <token>` → `<token>` ).
+- Mocked apiFetch contract: `apiFetch.mock.calls[0][0]` — URL string асертиться text-by-text → потенційно crosses-stale на серіалізації.
+- `apiFetch.mock.calls[0][1].body` — JSON.stringify-ed payload → key rename невидимо.
+- Парне з: `fix(review): <component> X serialization` commit-у завжди передує (review знаходить bug; tester фіксить тест).
+
+---
 
 ### 2026-06-08 — Imperative `.focus()` call на ref що буде змонтований ТІЛЬКИ після наступного render → optional-chaining no-op, focus loss (Bug #386) — frontend / conditional-rendered ref
 

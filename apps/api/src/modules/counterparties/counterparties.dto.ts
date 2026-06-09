@@ -167,9 +167,10 @@ export class PaginatedCounterpartiesDto {
 // ─── CustomerGarage ──────────────────────────────────────
 
 export class CreateGarageDto {
-  @ApiProperty() @IsString() @IsNotEmpty() name!: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() address?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(200) name!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) address?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) notes?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isDefault?: boolean;
 }
 
 export class GarageResponseDto {

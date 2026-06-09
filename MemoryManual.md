@@ -9,9 +9,10 @@
 ## Останній commit
 
 ```
+[pending tester] fix(tester): Bugs #390-#395 — stale picker test asserts + anti-DoS MaxLength/ArrayMaxSize + dead react-datepicker
+6dd6a250 docs(memory): update MemoryManual after full review sweep (HEAD 92fc773a)
 92fc773a fix(review): garage isDefault uniqueness, findMany take caps, idempotent seed
 b03baf14 fix(ui): standardize form field size to h-8/text-[13px] across all forms
-[pending tester] fix(tester): Bugs #387-#389 — Work/GoodPickerModal retry + test coverage
 8e88f31a fix(review): prevent setState-on-unmounted in Work/GoodPickerModal
 ee938240 feat(picker): replace flat category sidebar with hierarchical CategoryTree
 4b930538 fix(tester): Bugs #385-#386 — EntityPickerField focus + CreateWorkOrderModal test
@@ -20,10 +21,16 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 cd3a67c5 fix(review): work-order liftId — validate tenant FK + add index + sync frontend interface
 5d422345 feat(work-orders): add liftId field to WorkOrder — DB, API, UI
 0f22a1f5 fix(tester): Bugs #381-#384 — CreateWorkOrderModal safety + validation
-4c2e32a9 fix(review): harden CreateWorkOrderModal — partial-failure safety + a11y + locale-aware parsing
-eb929140 feat(work-orders): add inline works and goods tables to CreateWorkOrderModal
 Дата: 2026-06-09
-TypeScript: api ✅ 0 errors, web ✅ 0 errors
+TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Unit+Contract: ✅ 666/666 API passed; ✅ 358/358 Web component passed
+Latest tester: 2026-06-09 (FULL, HEAD pending) — full sweep, 6 bugs (1 CRITICAL release-blocker fixed, 2 MEDIUM anti-DoS, 3 LOW).
+  • Bug #390 [CRITICAL release-blocker] WorkPickerModal/GoodPickerModal tests asserted старий `categoryIds%5B%5D=` синтаксис, але commit 37bc3ef9 правильно прибрав `[]` (Fastify+fast-querystring trap: bracketed form становить ОКРЕМИЙ key, plain repeated keys аґрегуються у array). Web baseline був red → 2 tests failing → блок майбутніх tester-сесій. Fix: оновлено assertions у обох test files на новий формат.
+  • Bug #391 [MEDIUM anti-DoS] CreateEmployeeDto.password (+ ownerPassword у setup.dto.ts) без @MaxLength — bcrypt CPU work на величезному input. Fix: @MaxLength(128) для password, @MaxLength(100) для імен, @MaxLength(30) для phone, @MaxLength(254) для email/loginEmail. Аналогічні fields у UpdateEmployeeDto + setup.dto.ts.
+  • Bug #392 [MEDIUM anti-DoS] AssignBranchesDto/AssignZonesDto/AssignLiftsDto/AssignWorkCategoriesDto масиви без @ArrayMaxSize. Fix: @ArrayMaxSize(50) для branches/workCategories, @ArrayMaxSize(30) для zones/lifts.
+  • Bug #393 [LOW] react-datepicker + @types/react-datepicker додано до apps/web/package.json але НЕ використовуються у коді. Fix: видалено з package.json, pnpm install зняв 8 пакетів з node_modules.
+  • Bug #394 [LOW, відкритий known-gap] UpdateEmployeeDto не містить loginEmail/password — reset-flow через PATCH неможливий. Документовано, fix відкладено до окремого sprint (не у scope diffs).
+  • Bug #395 [LOW anti-DoS] CreateGarageDto string fields без @MaxLength. Fix: @MaxLength(200/500/2000) для name/address/notes.
 Latest review: 2026-06-09 (FULL DIFF, HEAD 92fc773a) — full sweep на робочій діжці перед commit:
   • [IMPORTANT] CreateGarageDto додав isDefault, але `createGarage()` робив `data: { ...dto }`
     без зняття попереднього default → silent invariant violation (multiple default garages
