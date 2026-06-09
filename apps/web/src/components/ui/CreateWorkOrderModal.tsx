@@ -2458,8 +2458,15 @@ export function CreateWorkOrderModal({
 
       {invoiceConflict && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
-          <div className="bg-surface rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
-            <h3 className="font-semibold text-base mb-2">Рахунок вже існує</h3>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invoice-conflict-title"
+            className="bg-surface rounded-xl shadow-xl p-6 max-w-sm w-full mx-4"
+          >
+            <h3 id="invoice-conflict-title" className="font-semibold text-base mb-2">
+              Рахунок вже існує
+            </h3>
             <p className="text-sm text-muted-foreground mb-5">
               Для цього наряду вже є активний рахунок. Що зробити?
             </p>

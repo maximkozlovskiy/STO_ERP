@@ -59,7 +59,7 @@ function Toast({ item }: { item: ToastItem }) {
             item.action!.onClick();
             handleClose();
           }}
-          className="shrink-0 whitespace-nowrap text-[12px] font-medium underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
+          className="shrink-0 whitespace-nowrap text-[12px] font-medium underline underline-offset-2 opacity-80 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
         >
           {item.action.label}
         </button>
