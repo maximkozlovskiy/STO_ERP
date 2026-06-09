@@ -9,7 +9,9 @@
 ## Останній commit
 
 ```
-[NEW] (тестер) fix(tester): Bugs #414-#417 — LinkedDocumentsPanel error state + CANCELLED filter + spec gaps
+a898770f docs(skills): add reverse-FK index + local formatDate proxy patterns to sto-optimize
+4dd7ddf6 perf(optimize): linked-documents FK indexes + invoice createFromWO narrow guard + Intl singletons
+f7d95de4 fix(tester): Bugs #414-#417 — LinkedDocumentsPanel error state + CANCELLED filter + spec gaps
 349b03d5 docs(skills): add anchored-popup-stale-deps + nested-overlay-Esc patterns
 bae57dd5 docs(memory): update MemoryManual after review fixes (HEAD e3a5ffc8)
 e3a5ffc8 fix(review): linked-docs popup repositioning + nested Esc + BOM/z-canonical
@@ -46,6 +48,12 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest optimize: 2026-06-09 (perf scope: linked-documents + invoice WO→Invoice flow, HEAD a898770f):
+  • 3 DB covering indexes для reverse-FK на workOrderId — invoices/calendar_slots/warranties; раніше seq-scan через (orgId, deletedAt), тепер index seek
+  • invoices.createFromWorkOrder workOrder findFirst → narrow select (4 поля замість 20+)
+  • LinkedDocumentsPanel fmt(n) → fmtMoney proxy (module-level Intl singleton)
+  • work-orders/page.tsx formatDate → fmtDate proxy (manual padStart → singleton)
+  • Skill self-improvement: reverse-FK index miss pattern + local formatDate proxy pattern
 Unit+Contract: ✅ 691/691 API passed (+1 новий: Bug #416); ✅ 366/366 Web component passed (+8 нових: LinkedDocumentsPanel.test.tsx)
 Latest tester: 2026-06-09 (FULL post linked-docs/invoice button QA, HEAD pending) — Bugs #414-#417:
   • [MEDIUM #414] LinkedDocumentsPanel `.catch(() => setData({invoices:[],...}))`
