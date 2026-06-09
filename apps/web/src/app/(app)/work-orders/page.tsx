@@ -4,7 +4,21 @@ import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'rea
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, ClipboardList, Eye, EyeOff, Search, User, Pencil, Trash2 } from 'lucide-react';
+import {
+  Plus,
+  ClipboardList,
+  Eye,
+  EyeOff,
+  Search,
+  User,
+  Pencil,
+  Trash2,
+  Receipt,
+  CreditCard,
+  Calendar,
+  Shield,
+} from 'lucide-react';
+import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { useWorkOrders, workOrdersKeys, WorkOrder } from '@/hooks/api/useWorkOrders';
@@ -158,6 +172,7 @@ function WorkOrdersPageInner() {
       { key: 'documentDate', label: 'Дата документа' },
       { key: 'plannedAt', label: 'Заплановано' },
       { key: 'dueDate', label: 'Дедлайн' },
+      { key: 'linkedDocs', label: 'Документи' },
     ],
     [],
   );
@@ -244,6 +259,27 @@ function WorkOrdersPageInner() {
     import('@/components/ui/CreateWorkOrderModal').CreateWOPrefill | undefined
   >();
   const [editWoId, setEditWoId] = useState<string | null>(null);
+  const [linkedCounts, setLinkedCounts] = useState<
+    Record<
+      string,
+      { invoices: number; payments: number; calendarSlots: number; warranties: number }
+    >
+  >({});
+  const [linkedDocPopupId, setLinkedDocPopupId] = useState<string | null>(null);
+
+  // Fetch linked document counts for all visible work orders (non-blocking)
+  useEffect(() => {
+    if (!orders.length) return;
+    const ids = orders.map(w => w.id);
+    apiFetch<
+      Record<
+        string,
+        { invoices: number; payments: number; calendarSlots: number; warranties: number }
+      >
+    >('/work-orders/linked-counts', { method: 'POST', body: JSON.stringify({ workOrderIds: ids }) })
+      .then(setLinkedCounts)
+      .catch(() => {});
+  }, [orders]);
 
   const searchParams = useSearchParams();
 
@@ -861,6 +897,55 @@ function WorkOrdersPageInner() {
                             )}
                           </TableCell>
                         );
+                      if (col.key === 'linkedDocs') {
+                        const counts = linkedCounts[wo.id];
+                        return (
+                          <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
+                            <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
+                              {counts?.invoices > 0 && (
+                                <button
+                                  onClick={() => setLinkedDocPopupId(wo.id)}
+                                  className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                  title={`Рахунки: ${counts.invoices}`}
+                                >
+                                  <Receipt size={13} />
+                                  <span>{counts.invoices}</span>
+                                </button>
+                              )}
+                              {counts?.payments > 0 && (
+                                <button
+                                  onClick={() => setLinkedDocPopupId(wo.id)}
+                                  className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                  title={`Оплати: ${counts.payments}`}
+                                >
+                                  <CreditCard size={13} />
+                                  <span>{counts.payments}</span>
+                                </button>
+                              )}
+                              {counts?.calendarSlots > 0 && (
+                                <button
+                                  onClick={() => setLinkedDocPopupId(wo.id)}
+                                  className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                  title={`Записи календаря: ${counts.calendarSlots}`}
+                                >
+                                  <Calendar size={13} />
+                                  <span>{counts.calendarSlots}</span>
+                                </button>
+                              )}
+                              {counts?.warranties > 0 && (
+                                <button
+                                  onClick={() => setLinkedDocPopupId(wo.id)}
+                                  className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                  title={`Гарантії: ${counts.warranties}`}
+                                >
+                                  <Shield size={13} />
+                                  <span>{counts.warranties}</span>
+                                </button>
+                              )}
+                            </div>
+                          </TableCell>
+                        );
+                      }
                       return null;
                     })}
                     <TableCell className="text-right" onClick={e => e.stopPropagation()}>
@@ -980,6 +1065,48 @@ function WorkOrdersPageInner() {
       />
 
       <ConfirmDialog {...confirmDialogProps} />
+
+      {/* Linked documents popup */}
+      {linkedDocPopupId && (
+        <div
+          className="fixed inset-0 z-50 bg-black/30"
+          onClick={() => setLinkedDocPopupId(null)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') setLinkedDocPopupId(null);
+          }}
+          role="presentation"
+        >
+          <div
+            className="absolute right-4 top-1/2 -translate-y-1/2 w-90 max-h-[80vh] overflow-y-auto bg-background rounded-xl shadow-2xl border border-border p-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-sm">Пов&apos;язані документи</h2>
+              <button
+                onClick={() => setLinkedDocPopupId(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Закрити"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M1 1L13 13M13 1L1 13"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <LinkedDocumentsPanel workOrderId={linkedDocPopupId} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

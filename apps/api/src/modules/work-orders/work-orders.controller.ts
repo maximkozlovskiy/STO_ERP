@@ -47,6 +47,24 @@ export class WorkOrdersController {
     return this.service.findAll(orgId, query);
   }
 
+  // ─── Linked Documents ─────────────────────────────────
+  // Специфічні маршрути ПЕРЕД @Get(':id') — Fastify route ordering
+
+  @Get(':id/linked-documents')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
+  @ApiOperation({ summary: "Пов'язані документи наряду (рахунки, оплати, слоти, гарантії)" })
+  getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getLinkedDocuments(orgId, id);
+  }
+
+  @Post('linked-counts')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Кількість пов'язаних документів для списку нарядів (batch)" })
+  getLinkedCounts(@OrgContext() orgId: string, @Body() dto: { workOrderIds: string[] }) {
+    return this.service.getLinkedCounts(orgId, dto.workOrderIds);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Деталі наряду' })

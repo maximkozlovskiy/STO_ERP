@@ -1685,4 +1685,101 @@ export class WorkOrdersService {
       link,
     });
   }
+
+  // ─── Linked Documents ──────────────────────────────────
+
+  async getLinkedDocuments(orgId: string, workOrderId: string) {
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id: workOrderId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+
+    const [invoices, payments, calendarSlots, warranties] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where: { workOrderId, orgId, deletedAt: null },
+        select: { id: true, number: true, status: true, amount: true, documentDate: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.payment.findMany({
+        where: { workOrderId, orgId },
+        select: { id: true, amount: true, method: true, createdAt: true, notes: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.calendarSlot.findMany({
+        where: { workOrderId, orgId, deletedAt: null },
+        select: {
+          id: true,
+          startAt: true,
+          endAt: true,
+          status: true,
+          employeeId: true,
+          notes: true,
+          lift: { select: { name: true } },
+        },
+        orderBy: { startAt: 'desc' },
+      }),
+      this.prisma.warranty.findMany({
+        where: { workOrderId, orgId, deletedAt: null },
+        select: {
+          id: true,
+          expiresAt: true,
+          description: true,
+          claimedAt: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    return { invoices, payments, calendarSlots, warranties };
+  }
+
+  async getLinkedCounts(orgId: string, workOrderIds: string[]) {
+    if (!workOrderIds.length) return {};
+
+    const [invoices, payments, calendarSlots, warranties] = await Promise.all([
+      this.prisma.invoice.groupBy({
+        by: ['workOrderId'],
+        where: { workOrderId: { in: workOrderIds }, orgId, deletedAt: null },
+        _count: { id: true },
+      }),
+      this.prisma.payment.groupBy({
+        by: ['workOrderId'],
+        where: { workOrderId: { in: workOrderIds }, orgId },
+        _count: { id: true },
+      }),
+      this.prisma.calendarSlot.groupBy({
+        by: ['workOrderId'],
+        where: { workOrderId: { in: workOrderIds }, orgId, deletedAt: null },
+        _count: { id: true },
+      }),
+      this.prisma.warranty.groupBy({
+        by: ['workOrderId'],
+        where: { workOrderId: { in: workOrderIds }, orgId, deletedAt: null },
+        _count: { id: true },
+      }),
+    ]);
+
+    const result: Record<
+      string,
+      { invoices: number; payments: number; calendarSlots: number; warranties: number }
+    > = {};
+    for (const id of workOrderIds) {
+      result[id] = { invoices: 0, payments: 0, calendarSlots: 0, warranties: 0 };
+    }
+    invoices.forEach(r => {
+      if (r.workOrderId) result[r.workOrderId].invoices = r._count.id;
+    });
+    payments.forEach(r => {
+      if (r.workOrderId) result[r.workOrderId].payments = r._count.id;
+    });
+    calendarSlots.forEach(r => {
+      if (r.workOrderId) result[r.workOrderId].calendarSlots = r._count.id;
+    });
+    warranties.forEach(r => {
+      if (r.workOrderId) result[r.workOrderId].warranties = r._count.id;
+    });
+    return result;
+  }
 }
