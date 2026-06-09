@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+90238a2c fix(work-orders): store UnitOfMeasure.id not GoodUoM.id in WorkOrderPart — Bug #420
 1c391da6 refactor(invoices): extract throwIfSerializationConflict helper; drop e2e sleep
 254ce530 fix(tester): Bugs #418-#419 — STATUS_TABS_EXTRA comment drift + select aria-label
 bf90f9b2 docs(memory): update MemoryManual after refresh isolation fix (HEAD a9a5c3ec)
@@ -2153,6 +2154,15 @@ colSpan={colVisible.size + ...}
 {visibleColumns.map(col => { if (col.key==='name') return <TableCell key="name">...</TableCell>; return null; })}
 colSpan={visibleColumns.length + ...}
 ```
+
+---
+
+## Gotcha — GoodUoM.id ≠ UnitOfMeasure.id: завжди зберігай goodUoM.unitOfMeasureId (Bug #420)
+
+`WorkOrderPart.unitOfMeasureId` → FK на `UnitOfMeasure`, **не** на `GoodUoM`.
+`goodUoM.id` = UUID рядка з таблиці `GoodUoM` (junction record).
+`goodUoM.unitOfMeasureId` = правильний FK на `UnitOfMeasure`.
+Якщо будь-де зберігаєш `unitOfMeasureId` в DB-record — завжди `goodUoM.unitOfMeasureId`, не `goodUoM.id`.
 
 ---
 

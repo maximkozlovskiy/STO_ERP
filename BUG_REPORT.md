@@ -12863,3 +12863,23 @@ Native `<select>` для "Інші" статусів НЕ має `aria-label`. �
 **Статус:** [x] виправлено
 
 ---
+
+### Bug #420 — [CRITICAL] addPart/updatePart зберігають GoodUoM.id замість UnitOfMeasure.id → P2003 FK violation
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:1078, 1157`
+**Категорія:** backend / data integrity
+**Severity:** CRITICAL
+
+**Опис:**
+
+`WorkOrderPart.unitOfMeasureId` має FK-constraint на `UnitOfMeasure` таблицю.
+`addPart` і `updatePart` зберігали `goodUoM.id` (= UUID рядка в таблиці `GoodUoM`) замість `goodUoM.unitOfMeasureId` (= FK на `UnitOfMeasure`).
+Кожен виклик `POST /work-orders/:id/parts` з `unitOfMeasureId` завершувався Prisma P2003 → HTTP 400 "Порушення зовнішнього ключа: пов'язаний запис не знайдено".
+
+**Симптоми:** при натисненні "Створити наряд" — помилка у top banner модалки, список запчастин очищується.
+
+**Фікс:** додати `unitOfMeasureId: true` у GoodUoM select; замінити `goodUoM?.id` → `goodUoM?.unitOfMeasureId` в обох методах.
+
+**Статус:** [x] виправлено (commit 90238a2c)
+
+---
