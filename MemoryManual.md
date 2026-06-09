@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+a9a5c3ec docs(skills): add isolation-comment-vs-actual mismatch pattern to sto-optimize
+e42d5ce3 perf(optimize): Serializable + inner re-check у refreshFromWorkOrder — закриває TOCTOU
+60594c12 docs(memory): update MemoryManual after review of HEAD 44b4dfe4 (commit 5dac586b)
 5dac586b fix(review): named React import + unify LinkedCountsMap + restore fmtMoney mock
 44b4dfe4 simplify: dedup, altitude, efficiency cleanup (cycle 1)
 a898770f docs(skills): add reverse-FK index + local formatDate proxy patterns to sto-optimize
@@ -50,13 +53,33 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Latest optimize: 2026-06-09 (perf scope: linked-documents + invoice WO→Invoice flow, HEAD a898770f):
+Latest optimize: 2026-06-09 (perf scope: refreshFromWorkOrder TOCTOU close, HEAD a9a5c3ec):
+  • invoices.refreshFromWorkOrder: $transaction коментар обіцяв «RepeatableRead»
+    але насправді default ReadCommitted (no isolationLevel) → bump до Serializable
+    + inner re-check tx.invoice.findFirst({status:DRAFT}) + catch P2034 →
+    BadRequestException з UA-повідомленням. Симетрично з createFromWorkOrder
+    (Bug #412 pattern). Закриває 3 race-вікна: concurrent refresh+refresh
+    (silent lost update), concurrent refresh+status-mutation (write на SENT-інвойс),
+    concurrent refresh+addLine(invoice) (lost manual edit).
+  • +2 regression tests у invoices.service.spec.ts (re-check status SENT → throw
+    без mutations; re-check soft-deleted → NotFound без mutations) — без тестів
+    видалення inner re-check блоку пройшло б CI зеленим.
+  • Skill self-improvement: «коментар обіцяє RepeatableRead/Serializable але
+    $transaction({timeout}) без isolationLevel» — Prisma→Postgres default
+    ReadCommitted; вищі рівні тільки через явний option.
+  • Sweep findings (no fix needed):
+    - useQuery linked-counts: staleTime 30_000 + enabled gate + sorted ordersIds
+      memo — оптимально (5dac586b);
+    - DocSection count===0 повертає null: children eval це map empty array — no-op;
+    - DOC_COUNTERS, STATUS_TABS_EXTRA: module-level, оцінюються 1× при імпорті.
+
+Latest optimize (попередній): 2026-06-09 (perf scope: linked-documents + invoice WO→Invoice flow, HEAD a898770f):
   • 3 DB covering indexes для reverse-FK на workOrderId — invoices/calendar_slots/warranties; раніше seq-scan через (orgId, deletedAt), тепер index seek
   • invoices.createFromWorkOrder workOrder findFirst → narrow select (4 поля замість 20+)
   • LinkedDocumentsPanel fmt(n) → fmtMoney proxy (module-level Intl singleton)
   • work-orders/page.tsx formatDate → fmtDate proxy (manual padStart → singleton)
   • Skill self-improvement: reverse-FK index miss pattern + local formatDate proxy pattern
-Unit+Contract: ✅ 691/691 API passed (+1 новий: Bug #416); ✅ 366/366 Web component passed (+8 нових: LinkedDocumentsPanel.test.tsx)
+Unit+Contract: ✅ 693/693 API passed (+2 нові: refreshFromWorkOrder Serializable inner re-check); ✅ 366/366 Web component passed
 Latest tester: 2026-06-09 (FULL post linked-docs/invoice button QA, HEAD pending) — Bugs #414-#417:
   • [MEDIUM #414] LinkedDocumentsPanel `.catch(() => setData({invoices:[],...}))`
     маскував backend помилку 500/network drop як empty-state "Пов'язаних
