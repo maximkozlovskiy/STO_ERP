@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+1c391da6 refactor(invoices): extract throwIfSerializationConflict helper; drop e2e sleep
 254ce530 fix(tester): Bugs #418-#419 — STATUS_TABS_EXTRA comment drift + select aria-label
 bf90f9b2 docs(memory): update MemoryManual after refresh isolation fix (HEAD a9a5c3ec)
 a9a5c3ec docs(skills): add isolation-comment-vs-actual mismatch pattern to sto-optimize
@@ -2152,6 +2153,22 @@ colSpan={colVisible.size + ...}
 {visibleColumns.map(col => { if (col.key==='name') return <TableCell key="name">...</TableCell>; return null; })}
 colSpan={visibleColumns.length + ...}
 ```
+
+---
+
+## Gotcha — P2034 Serializable conflict: використовуй throwIfSerializationConflict (1c391da6)
+
+При додаванні нового методу з `$transaction({ isolationLevel: 'Serializable' })` в `invoices.service.ts`
+НЕ копіюй `if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034')`.
+Замість цього використовуй file-level helper:
+
+```ts
+} catch (err) {
+  throwIfSerializationConflict(err, 'Користувацьке повідомлення...');
+}
+```
+
+Helper визначено на ~рядку 24 `invoices.service.ts` і перекидає помилку якщо не P2034.
 
 ---
 
