@@ -9,7 +9,10 @@
 ## Останній commit
 
 ```
-[NEW] 512e626a fix(tester): Bugs #409-#413 — linked-docs refresh + invoice race + tests
+[NEW] e3a5ffc8 fix(review): linked-docs popup repositioning + nested Esc + BOM/z-canonical
+d1a94c8c feat(work-orders): collapse rare statuses into Інші dropdown in status tabs
+90611534 docs(skills,memory): add concurrent-create race + sibling-panel stale patterns
+512e626a fix(tester): Bugs #409-#413 — linked-docs refresh + invoice race + tests
 810de9a9 docs(memory): update MemoryManual after review of feat(work-orders) ca6f5830
 c4e484db fix(review): harden linked-documents endpoints and panel
 ca6f5830 feat(work-orders): linked documents panel + Виставити рахунок button
@@ -41,6 +44,18 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Unit+Contract: ✅ 690/690 API passed (+19 нових); ✅ 358/358 Web component passed
+Latest review: 2026-06-09 (HEAD e3a5ffc8, scope: status-tabs collapse + linked-docs panel + invoice button) — 3 issues fixed:
+  • [IMPORTANT] LinkedDocumentsPanel.PreviewPopup useLayoutEffect deps були
+    тільки `[anchorRef]` (стабільний ref) → попап не перепозиціонувався при
+    кліку на інший рядок без попереднього закриття. Fix: додати `preview`
+    у deps.
+  • [IMPORTANT] CreateWorkOrderModal invoice-conflict dialog + LinkedDocumentsPanel
+    PreviewPopup: Esc handlers на document (bubble) збігалися з parent Modal Esc
+    handler → закривали одразу і вкладений overlay, і весь WO modal. Fix: capture
+    phase + stopImmediatePropagation, drop dead onKeyDown на role=presentation.
+  • [IMPORTANT] apps/web/src/app/(app)/work-orders/page.tsx мав UTF-8 BOM
+    (ef bb bf) на початку файлу — Windows/PowerShell редактор. Fix: strip.
+  • [SUGGESTION] Tailwind canonical: z-[60] → z-60, z-[69] → z-69.
 Latest tester: 2026-06-09 (FULL feature scope feat(work-orders) linked-docs + Виставити рахунок post-review, HEAD 512e626a) — Bugs #409-#413:
   • [MEDIUM #409] LinkedDocumentsPanel не оновлювалась після створення/refresh
     рахунку коли користувач залишався на tab "Документи". Fix: prop refreshKey?:number
