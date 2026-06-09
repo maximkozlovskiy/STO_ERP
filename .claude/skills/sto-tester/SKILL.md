@@ -948,6 +948,188 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-09 — ID-namespace contract mismatch FE↔BE приховано "silently ignore" backend pattern (Bug #396, #399) — full-stack / data loss / silent
+
+**Сигнал:** Backend service після рефакторингу замінив lookup за PK (`where: { id: dto.X, ... }`) на lookup за FK (`where: { unitOfMeasureId: dto.X, ... }` / `where: { code: dto.X, ... }`) і ДОДАВ silent fallback `if (!found) { /* skip, store null */ }` (raw comment у diff згадує "silently ignore" / "store without unit" / "treat as default"). Frontend сторінок 2+, одна з яких використовує **PK-id** (старий контракт), інша — **FK-id** (новий контракт). TS green бо обидва — string UUID. Unit tests green бо моки повертають правильні дані. Симптом виявляється ЛИШЕ через статичний контрактний аудит: для кожного callsite `unitOfMeasureId: form.X` у POST body — звірити з API doc / service signature що `X` це саме FK id (UnitOfMeasure.id), не PK id (GoodUoM.id).
+
+**Реальний приклад (Bug #396 / #399):** Commit `1facbb67 fix(work-orders): accept UnitOfMeasure.id in parts DTO, resolve to GoodUoM internally` змінив backend `addPart` lookup:
+
+```ts
+// СТАРИЙ:
+this.prisma.goodUoM.findFirst({
+  where: { id: dto.unitOfMeasureId, goodId, orgId }, // PK lookup
+});
+if (dto.unitOfMeasureId && !goodUoM) throw new NotFoundException(...);
+
+// НОВИЙ (бажана семантика — FE надсилає UnitOfMeasure.id):
+this.prisma.goodUoM.findFirst({
+  where: { unitOfMeasureId: dto.unitOfMeasureId, goodId, orgId }, // FK lookup
+});
+// silently ignore (store without unit)
+unitOfMeasureId: goodUoM?.id ?? null,
+```
+
+`CreateWorkOrderModal.tsx` міграція виконана (посилає `g.unitId` = UnitOfMeasure.id). АЛЕ `WorkOrderAddPartModal.tsx` (production-критичний modal для додавання запчастин до існуючого наряду) залишився посилати `u.id` де `u` приходить з `apiFetch<GoodUoM[]>('/goods/${id}/uoms')` → `u.id = GoodUoM.id`. Backend FK lookup за GoodUoM.id як значенням FK поля → ніколи не знаходить → silent null → користувач вибрав «літр», система зберегла «без одиниці». Кількість/ціна розраховуються по базовій одиниці. FSM IN_PROGRESS резервує неправильну кількість.
+
+**Причина виникнення:** «Silently ignore unknown FK» здається доброю UX-стратегією для випадку, коли довідник реально має `/units` endpoint з усіма org units і не для кожного товару всі units сконфігуровані — без silent-ignore користувач б отримав 404 при першій спробі вибору не сконфігурованої одиниці. Розробник додав цей шар безпеки після рефакторингу, не врахувавши що це маскує FE contract bugs у InнЕ modals. Парний паттерн: «приймемо, що undefined значення = use default» — насправді тиха втрата даних.
+
+**Підхід до виявлення:**
+
+1. У diff backend service знайти patterns: `// silently ignore`, `// store without X`, `// treat as default`, `?.id ?? null` після optional lookup.
+2. Для кожного знайденого fallback-у — визначити DTO field що drives lookup (`dto.unitOfMeasureId`, `dto.currencyCode`, etc.).
+3. `grep -rn "<field>:" apps/web/src --include="*.tsx" | grep -E "method:|fetch|body:"` — знайти ВСІ FE callsites що формують POST body з цим полем.
+4. Для кожного callsite — визначити **звідки** береться значення (`u.id` від UoM endpoint? `g.unitId` від good details?). Якщо два різні джерела дають різні семантики id (PK vs FK) → один з них broken.
+5. Підтвердження: Postman/curl запит з GoodUoM.id як value `unitOfMeasureId` field → spec'нути response → перевірити DB record → null vs expected GoodUoM.id.
+
+```bash
+# Виявлення PRE-tester:
+git log --oneline HEAD~20..HEAD | grep -iE "accept.*id.*in|resolve.*internally|switch.*lookup|FK instead of PK"
+# для кожного commit:
+git show <commit> -- 'apps/api/**/*.service.ts' | grep -E "^[-+].*findFirst|^[-+].*silently|^[-+].*\?\?\s*null"
+# знайти усі FE callsites:
+grep -rn "unitOfMeasureId:" apps/web/src --include="*.tsx"
+# для кожного — звідки приходить значення (read source above)
+```
+
+**Підхід до фіксу (двосторонній — обидві сторони контракту):**
+
+1. **Backend fail-loudly:** замість `silent ignore` повернути `NotFoundException` з конкретним повідомленням («Одиницю виміру не сконфігуровано для цього товару. Налаштуйте у каталозі.»). Без fail-loudly FE може регресувати безпечно.
+2. **Frontend type-safety:** додати поле у TS interface що віддзеркалює API (`interface GoodUoM { id: string; unitOfMeasureId: string; ... }`). Без декларації TS не сигналізує неправильний вибір.
+3. **Frontend value:** `<option value={u.unitOfMeasureId}>` замість `value={u.id}` — використовувати ПРАВИЛЬНЕ поле для нового контракту.
+4. **Contract spec для перевірки** (бажано): `it('addPart with unknown GoodUoM.id throws 404')` — guard для майбутніх "відкатів" до silent-ignore.
+
+**Severity:** CRITICAL коли silent-store-null призводить до спотворення бізнес-розрахунків (FSM транзиції, резервування інвентаря, кальки сум). HIGH коли просто UX broken (вибір не зберігається). MEDIUM коли лише cosmetic (поле відображення).
+
+**Де шукати ще:**
+
+- Будь-який backend service refactor що міняє semantic id у lookup-where (PK → FK, code → id, type → categoryId, etc.).
+- `currencyCode` (плutі-source: org settings / contract / fallback Input) — Bug #361 паттерн.
+- `paymentMethodCode` (string FK у PaymentMethodConfig.code).
+- `eventType` (string FK у NotificationTemplate.eventType).
+- `categoryId` у inventory adjustments.
+- Будь-який endpoint що повертає **обидва** `id` (PK) і `<other>Id` (FK на батьківську довідкову таблицю) — FE розробник не знаючи semantic різниці може випадково вибрати perspective `id` як value у control.
+- Парний з: §1.1 Soft FK without validation (Bug #361) — там guard валідації існує (throw 400), тут guard скасований через silent-ignore.
+
+---
+
+### 2026-06-09 — Partial-fix review commit залишає const-між-imports у файлі з ДВОМА import блоками (Bug #397) — frontend / module structure / ESLint regression
+
+**Сигнал:** Файл з `dynamic()` const у середині модуля + commit subject `fix(review): hoist dynamic imports above const`. Перевірити чи **усі** import statements тепер ВИЩЕ const. Якщо у файлі було декілька груп імпортів (типи з `'./X.types'` окремо від констант з `'./X.utils'`), частковий review-fix міг переставити const між цими групами замість усіх group-ів вище.
+
+**Реальний приклад (Bug #397):** `CalendarSlotModal.tsx` мав структуру:
+
+```
+import { React, ... } from 'react';
+import { ... } from '@/components/ui/...';
+import type { ... } from './calendar.types';  // ← lines 25-33
+// sto-optimize comment
+const CreateWorkOrderModal = dynamic(...);    // ← lines 37-40 — const ВСЕ ЩЕ між imports
+import { HOURS, PICK_MINUTES, ... } from './calendar.utils';  // ← lines 41-55, ще один import
+```
+
+Review commit `e97cc120 fix(review): hoist dynamic imports above const` перемістив const з ПЕРШОЇ позиції (між phone-input і select) у ПОЗИЦІЮ після type-imports — але `./calendar.utils` import залишився НИЖЧЕ. ESLint `import/first` досі fails (хоч у вузькому контексті).
+
+**Причина виникнення:** Review-agent (попередня сесія) дивиться на «const між imports» через diff і вирішує одне переміщення. Не сканує весь файл щоб переконатися що ВСІ imports згруповані. Якщо у файлі один блок import + const + ще один блок import — viewer бачить лише позицію const, не всі імпорти. Парний AI-issue: «вже виправлено» через review → tester не перевіряє.
+
+**Підхід до виявлення:**
+
+```bash
+# Для кожного файлу з const між imports (грубий regex):
+grep -rln "^const.*= dynamic\|^const.*= lazy" apps/web/src --include="*.tsx" | while read f; do
+  # Перевірити чи є ще import statement ПІСЛЯ const:
+  awk '/^const.*= (dynamic|lazy)\(/{seen=1} seen && /^import /{print FILENAME":"NR; seen=0}' "$f"
+done
+```
+
+Якщо вихід має рядки → const між imports. Альтернатива: запустити `eslint --fix` (виправить автоматично згідно `import/first`).
+
+**Підхід до фіксу:** Перенести ВСІ `import` statements у топ файлу. const залишається ОДРАЗУ після останнього import. Перевірити ESLint після фіксу: `pnpm --filter @sto/web exec eslint <file>`.
+
+**Severity:** HIGH коли весь web build падає / ESLint у strict mode. MEDIUM коли лише warning. LOW коли code style only (CI не fails).
+
+**Де шукати ще:**
+
+- Будь-який `next/dynamic` или React.lazy використання у Next.js pages/components.
+- Файли з multiple import blocks розділені type-imports vs value-imports vs side-effect imports.
+- Кожен review-commit з subject `hoist X above Y` потрібно перевіряти на повноту — не лише по diff, але `grep -A 50` на весь файл.
+
+---
+
+### 2026-06-09 — Soft-delete primary/default без auto-promote next sibling (Bug #398) — backend / business invariant / silent
+
+**Сигнал:** Service з `async remove*(orgId, parentId, childId)` що робить ТІЛЬКИ `update({ deletedAt: new Date() })` без читання `existing.isPrimary` / `existing.isDefault` / `existing.isMain`. У schema відповідна модель має `isDefault Boolean` / `isPrimary Boolean` / `isMain Boolean` з активною бізнес-логікою (auto-create на parent creation, updateMany unset на створенні нового, FE conditional badge "За замовчуванням").
+
+**Реальний приклад (Bug #398):** `CounterpartiesService.removeGarage` після рефакторингу інваріантів:
+
+```ts
+// addGarage: ✅ updateMany(isDefault:false) при створенні нового default
+// removeGarage: ❌ просто soft-delete без auto-promote
+async removeGarage(orgId, counterpartyId, garageId) {
+  const garage = await prisma.customerGarage.findFirst({
+    where: { id: garageId, ... },
+    select: { id: true },  // ← isDefault НЕ читається
+  });
+  await prisma.customerGarage.update({
+    where: { id: garageId, orgId },
+    data: { deletedAt: new Date() },
+  });
+  // ↑ Якщо garage.isDefault = true, наступних default немає → інваріант порушено
+}
+```
+
+Парний паттерн правильно реалізовано у `WarehousesService.remove` (Bug #355), `GoodsService.deleteBarcode` (Bug #356), `TaxRate.delete` (Bug #357), `PaymentMethodConfig.delete` (Bug #351 generic). Але кожна нова модель з `isDefault`-флагом потребує **свого** парного auto-promote.
+
+**Причина виникнення:** Розробник додає `isDefault` поле + auto-create + updateMany для unset (бо це видно одразу у create flow). Remove rarely tested через тестове середовище де default garage не видаляється. Або: feature додалася без supervisor-аудиту що цей invariant потребує підтримки у ВСІХ mutation paths.
+
+**Підхід до виявлення:**
+
+```bash
+# Всі моделі з isDefault/isPrimary/isMain у schema:
+grep -nE "isDefault\s+Boolean|isPrimary\s+Boolean|isMain\s+Boolean" packages/database/prisma/schema.prisma
+
+# Для кожної моделі — знайти service.remove() / service.deleteX() / softDelete:
+grep -rnE "async (remove|delete[A-Z][a-z]+|softDelete)" apps/api/src/modules --include="*.service.ts" | while read line; do
+  file=$(echo "$line" | cut -d: -f1)
+  # Перевірити чи method читає isDefault/isPrimary
+  if ! grep -q "isDefault: true\|isPrimary: true\|isMain: true" "$file"; then
+    echo "MISSING auto-promote: $line"
+  fi
+done
+```
+
+**Підхід до фіксу:** $transaction з timeout: (1) розширити select на `isDefault: true`; (2) soft-delete; (3) якщо `existing.isDefault` → findFirst orderBy createdAt asc next sibling → update(isDefault:true). Без $transaction — race-condition: інший concurrent remove може видалити обраний sibling до promote.
+
+```ts
+await this.prisma.$transaction(
+  async tx => {
+    await tx.customerGarage.update({ where: { id, orgId }, data: { deletedAt: new Date() } });
+    if (existing.isDefault) {
+      const next = await tx.customerGarage.findFirst({
+        where: { orgId, counterpartyId, deletedAt: null, id: { not: id } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      if (next)
+        await tx.customerGarage.update({
+          where: { id: next.id, orgId },
+          data: { isDefault: true },
+        });
+    }
+  },
+  { timeout: TRANSACTION_TIMEOUT_MS },
+);
+```
+
+**Severity:** HIGH (silent invariant violation; UX broken — no default badge після remove).
+
+**Де шукати ще:**
+
+- ЛЮБА нова модель з singleton-default flag.
+- Сценарій: feature додано фронтом «View as default» але backend remove never updated.
+- Backend: `restore()` методи тих самих моделей — теж потенційно ламають invariant (resurrected primary з другим primary вже існує). Парний з Bug #298, #305 (restore prep-checks).
+
+---
+
 ### 2026-06-09 — Stale URL-serialization regression-guard test після backend-compat fix (Bug #390) — frontend / test drift / release-blocker
 
 **Сигнал:** Web component test suite червоний у baseline на `expect(url).toContain('<encoded-form>')` де `<encoded-form>` — URL-encoded маркер старого формату (`%5B%5D` для `[]`, `%2C` для `,`, etc.). Парний commit-history: за 5-10 commits до tester-сесії є `fix(<area>): remove [] suffix` / `fix(<area>): switch serialization to repeated keys` / `fix(<area>): use ISO timestamp instead of unix-ms` що мінятиме форму запиту. tsc green (це runtime string assert). API contract spec green (mock-based, не реальний Fastify parser). Виявляється ТІЛЬКИ через `vitest run` exit 1.

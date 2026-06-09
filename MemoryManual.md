@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+ee368574 fix(tester): Bugs #396-#400 — UoM round-trip, removeGarage promote, hoist imports
+57c518b7 docs(skills): add auto-pick optional FK tier-merger pattern to sto-optimize
 cd17ba05 perf(optimize): WO create/update tier merger + narrow guards, units ref-cache
 e97cc120 fix(review): hoist dynamic imports above const + hydration-safe year placeholder
 230f99f6 perf(optimize): parallel NBU fetch, narrow tenant guards, lazy WO modal
@@ -26,6 +28,17 @@ cd3a67c5 fix(review): work-order liftId — validate tenant FK + add index + syn
 Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Unit+Contract: ✅ 666/666 API passed; ✅ 358/358 Web component passed
+Latest tester: 2026-06-09 (FULL HEAD~20..HEAD, HEAD ee368574) — Bugs #396-#400:
+  • [CRITICAL #396] WorkOrderAddPartModal посилав GoodUoM.id у поле, де backend
+    (post-1facbb67) очікує UnitOfMeasure.id. Backend silent-store null без помилки.
+    Fix: interface GoodUoM додає unitOfMeasureId; option value={u.unitOfMeasureId}.
+  • [HIGH #397] CalendarSlotModal const dynamic() МІЖ блоками import — попередній
+    review e97cc120 виправив лише частково. Перенесено imports вище const.
+  • [HIGH #398] CounterpartiesService.removeGarage не auto-promote next sibling
+    після soft-delete isDefault=true. $transaction promote найстарший active sibling.
+  • [MEDIUM #399] addPart/updatePart silent-stored null коли GoodUoM не знайдено —
+    маскує contract bugs. Fail-loudly NotFoundException з підказкою налаштувати UoM.
+  • [LOW #400] GoodUoM interface не оголошував unitOfMeasureId — об'єднано з #396.
 Latest review: 2026-06-09 (FULL DIFF HEAD~15..HEAD, HEAD e97cc120) — 3 SUGGESTION fixed:
   • [SUGGESTION] nbu-fetch.scheduler.ts: `const MAX_ORGS_PER_SCHEDULER_RUN = 1000` був
     вставлений МІЖ import statements (рядок 3 між '@nestjs/common' і '@nestjs/bull').
