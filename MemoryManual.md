@@ -9,7 +9,10 @@
 ## Останній commit
 
 ```
-[NEW] e3a5ffc8 fix(review): linked-docs popup repositioning + nested Esc + BOM/z-canonical
+[NEW] (тестер) fix(tester): Bugs #414-#417 — LinkedDocumentsPanel error state + CANCELLED filter + spec gaps
+349b03d5 docs(skills): add anchored-popup-stale-deps + nested-overlay-Esc patterns
+bae57dd5 docs(memory): update MemoryManual after review fixes (HEAD e3a5ffc8)
+e3a5ffc8 fix(review): linked-docs popup repositioning + nested Esc + BOM/z-canonical
 d1a94c8c feat(work-orders): collapse rare statuses into Інші dropdown in status tabs
 90611534 docs(skills,memory): add concurrent-create race + sibling-panel stale patterns
 512e626a fix(tester): Bugs #409-#413 — linked-docs refresh + invoice race + tests
@@ -43,7 +46,31 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Unit+Contract: ✅ 690/690 API passed (+19 нових); ✅ 358/358 Web component passed
+Unit+Contract: ✅ 691/691 API passed (+1 новий: Bug #416); ✅ 366/366 Web component passed (+8 нових: LinkedDocumentsPanel.test.tsx)
+Latest tester: 2026-06-09 (FULL post linked-docs/invoice button QA, HEAD pending) — Bugs #414-#417:
+  • [MEDIUM #414] LinkedDocumentsPanel `.catch(() => setData({invoices:[],...}))`
+    маскував backend помилку 500/network drop як empty-state "Пов'язаних
+    документів немає". Користувач не міг розрізнити справжній empty від failure.
+    Fix: окремий error-state + Retry-button (bumps retryKey у useEffect deps).
+    Регресія: 8 нових тестів у LinkedDocumentsPanel.test.tsx (loading/error/empty/
+    refreshKey/workOrderId-change/preview-reset).
+  • [LOW #415] getLinkedDocuments + getLinkedCounts включали CANCELLED інвойси,
+    хоча findByWorkOrder і createFromWorkOrder pre-check виключають. Badge на
+    сторінці нарядів показував "2 invoices" коли активний 1 (другий CANCELLED).
+    Користувач відкривав панель → бачив мертвий запис → confusing UX.
+    Fix: додати `status: { not: InvoiceStatus.CANCELLED }` у where-блоки
+    `getLinkedDocuments.invoices` і `getLinkedCounts.invoices`.
+  • [MEDIUM #416] invoices.service.spec.ts покривав pre-check Bug #412 race,
+    але НЕ покривав inner re-check всередині Serializable $transaction. Видалення
+    re-check блоку у refactor пройшло б CI зеленим (pre-check тест використовував
+    mockResolvedValue, не mockResolvedValueOnce). Fix: новий test з sequence
+    mockResolvedValueOnce(null).mockResolvedValueOnce({id}) + ключовий assert
+    `expect(prisma.invoice.create).not.toHaveBeenCalled()`.
+  • [LOW #417] LinkedDocumentsPanel (490 LOC) без жодних component-тестів.
+    Будь-який refactor (особливо `useLayoutEffect` deps fix від попереднього
+    review) пройшов би CI зеленим без regression-guard. Fix: створено
+    LinkedDocumentsPanel.test.tsx з 8 кейсами.
+
 Latest review: 2026-06-09 (HEAD e3a5ffc8, scope: status-tabs collapse + linked-docs panel + invoice button) — 3 issues fixed:
   • [IMPORTANT] LinkedDocumentsPanel.PreviewPopup useLayoutEffect deps були
     тільки `[anchorRef]` (стабільний ref) → попап не перепозиціонувався при
@@ -56,7 +83,7 @@ Latest review: 2026-06-09 (HEAD e3a5ffc8, scope: status-tabs collapse + linked-d
   • [IMPORTANT] apps/web/src/app/(app)/work-orders/page.tsx мав UTF-8 BOM
     (ef bb bf) на початку файлу — Windows/PowerShell редактор. Fix: strip.
   • [SUGGESTION] Tailwind canonical: z-[60] → z-60, z-[69] → z-69.
-Latest tester: 2026-06-09 (FULL feature scope feat(work-orders) linked-docs + Виставити рахунок post-review, HEAD 512e626a) — Bugs #409-#413:
+Latest tester (попередня сесія): 2026-06-09 (FULL feature scope feat(work-orders) linked-docs + Виставити рахунок post-review, HEAD 512e626a) — Bugs #409-#413:
   • [MEDIUM #409] LinkedDocumentsPanel не оновлювалась після створення/refresh
     рахунку коли користувач залишався на tab "Документи". Fix: prop refreshKey?:number
     у Panel + useState/інкремент у CreateWorkOrderModal після handleInvoice/Refresh.

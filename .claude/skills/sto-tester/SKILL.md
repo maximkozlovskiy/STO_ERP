@@ -192,7 +192,9 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 
 - [ ] **Case-sensitive lookup vs canonical-form seed data (Bug #359):** для КОЖНОГО `findFirst({ where: { code: dto.X } })` або `where: { eventType: dto.Y }` або `where: { documentType: dto.Z }` де target field зберігається у канонічній формі (UPPERCASE ISO code, snake_case event type) — DTO ОБОВ'ЯЗКОВО має `@Transform(toUpperCurrencyCode)` / `@Transform(toLowerCase)` / etc. до `@IsString`. Postgres VARCHAR/TEXT case-sensitive за замовчуванням → користувач набирає `uah` у fallback Input → backend lookup `code: 'uah'` не знаходить `'UAH'` → 400 з валідним кодом. Парний UI-fix: `<Input onChange={e => set(e.target.value.toUpperCase())} maxLength={N}>` у fallback inputs (коли dropdown reference data не завантажилось через offline-first). Grep: `grep -rnE "findFirst\(\s*\{\s*where:\s*\{[^}]*\b(code|type|status):\s*dto\." apps/api/src/modules --include="*.service.ts"` → перевірити що DTO field має нормалізацію transform. Severity HIGH (UX): валідний код → 400 → користувач думає «зламано».
 
+- [ ] **Cross-endpoint status-filter inconsistency для одного resource (Bug #415):** для КОЖНОГО resource з status-enum (`Invoice.status`, `WorkOrder.status`, `Payment.status`) — звірити status filtering між усіма ендпоінтами що оперують одним resource. Типова асиметрія: `findByX(parentId)` має `status: { not: 'CANCELLED' }`, але `getLinkedY(parentId)` / `getCountsZ(parentIds)` — БЕЗ status фільтра. Result: badge count показує "2 invoices" коли активний 1 (другий CANCELLED), користувач відкриває панель → бачить мертвий запис → confused UX. Pre-check `createFromX` тоді блокує "вже існує", але badge показав 2 — користувач сприймає як bug. Grep: для кожного `prisma.<model>.find*/count/groupBy` query — перевірити чи `where.status` уніфікований через усі service-методи того ж модуля. Якщо `findByWorkOrder` exclude CANCELLED АЛЕ `getLinked*/`/getCounts` include — bug. Imp: import enum (`InvoiceStatus`) з `@prisma/client`замість string literal`'CANCELLED'` — TS catches typo + renaming. Severity LOW (UX inconsistency); MEDIUM коли inconsistency caused decision-making error. Регресія-guard: contract spec кейс «WO має 1 CANCELLED + 1 DRAFT → counts.X===1». Парне з Bug #401 (FE↔BE status whitelist symmetry — той самий принцип, інший рівень).
 - [ ] **Concurrent-create race for "1 active per parent" resources без unique index (Bug #412):** будь-який service-метод що створює дочірній resource з логіко-унікальним FK (`Invoice.workOrderId`, `FiscalReceipt.paymentId`, `InspectionReport.workOrderId`) використовуючи pattern `find existing → if (existing) throw → create` БЕЗ обгортки у `$transaction({ isolationLevel: 'Serializable' })` АБО без `@@unique` partial-index на FK = race-window для дублікатів. Два паралельних POST (double-click через UI lag, два tab-и, два admin) обидва бачать `existing === null` між findFirst і create → 2 invoice створено з тим самим `workOrderId`. Grep: `grep -rnE "async (create|createFrom|issueFor|generateFor)[A-Z]" apps/api/src/modules --include="*.service.ts"` → для кожного знайти `findFirst({ <fkField>: id })` prep-check ПЕРЕД `create()` → перевірити schema.prisma на парний `@@unique([<fkField>])` АБО Serializable $tx. Fix-pattern: pre-fetch `docNumbers.next()` (свій внутрішній $tx), потім обернути read+create у Serializable з re-check existing всередині; map P2034 → friendly BadRequestException. `DocumentNumberService.next()` серіалізує лише ПО docType, НЕ по parent FK — не достатньо для invariant "1 active per parent". Severity HIGH (фінансовий ризик). Регресія-guard: service spec з 2-3 кейсами (existing у pre-check → 400, status guard → 400, non-existent WO → 404).
+- [ ] **Inner $tx re-check тест для Serializable race fix (Bug #416, paired with #412):** для КОЖНОГО service-метода з Bug #412 фіксом (`$transaction({ isolationLevel: 'Serializable' })` з inner `tx.X.findFirst` re-check) — парний `*.spec.ts` має ОКРЕМИЙ test з `mockResolvedValueOnce(null).mockResolvedValueOnce({id})` sequence + `expect(prisma.X.create).not.toHaveBeenCalled()`. Без цього тесту видалення `const existing = await tx.X.findFirst(...); if (existing) throw ...` блоку у refactor (типовий "цей блок дублює pre-check вище") пройде CI зеленим — CRITICAL race window повертається. Grep: для кожного `$transaction.*Serializable` у service.ts → у парному `.spec.ts` шукати `mockResolvedValueOnce` для того ж `findFirst` ДВА рази підряд. Якщо тільки один `mockResolvedValue` (constant) → gap. Severity MEDIUM (regression risk для CRITICAL fix). Ключовий assert: `expect(prisma.<resource>.create).not.toHaveBeenCalled()` — інакше тест-зелений-проходить навіть при видаленні re-check (бо pre-check теж кидає з тим же moc-setup).
 
 - [ ] **Alternate-mutation endpoint обходить canonical guards (Bug #403):** будь-який backend service-метод що **мутує той самий resource** що і `update()`/`addLine()`/`removeLine()` АЛЕ зі своєю окремою сигнатурою (`refreshFromWorkOrder`/`syncFromX`/`importFromY`/`recalculateZ`/`refreshFromExternalSource`...) — ПОВИНЕН повторити ВСІ business-guards канонічного `update()`. Типові guards що пропускаються: (а) `if (X.status !== 'DRAFT') throw BadRequestException` (FSM-readonly для submitted/paid/sent статусів); (б) `if (existing.isLocked) throw ...` (manually locked records); (в) `if (existing.isSystem) throw ...` (seed-керовані); (г) prep-check unique-constraint конфлікту. Сценарій: оригінальний `update()` має FSM-guard `!DRAFT → throw`; альтернативний endpoint забуває цей guard → перезаписує дані SENT/PAID/locked record-у без error → silently corrupts data. Grep: `grep -rnE "async (refresh|sync|import|recalculate|regenerate|rebuild)[A-Z]" apps/api/src/modules --include="*.service.ts"` — для кожного знайденого метода: знайти canonical `update()`/`updateLine()`/`updateX()` у тому ж файлі, скопіювати ВСІ `if (...) throw` guards (особливо `inv.status !== 'DRAFT'`, `existing.status !== ...`), перевірити що alternate-метод їх має. Парний підхід: будь-який mutation що приймає workOrderId/parentId і робить `deleteMany + createMany` на child resource (full overwrite) — обов'язково prep-check status батьківського resource через `if (parent.status !== <ALLOWED>) throw`. Severity CRITICAL (фінансовий ризик для invoice/payment/settlement resources). Регресія-guard: contract spec для alternate endpoint що мокає existing.status=non-DRAFT → 400.
 
@@ -546,6 +548,7 @@ done
 - [ ] `setTimeout` / `setInterval` у `useEffect` → `clearTimeout` / `clearInterval` у cleanup
 - [ ] Timeline/gantt drag/resize: кожен px→decimal-hours converter clamp-ить результат у `[WINDOW_START, WINDOW_END]` ПЕРЕД побудовою `new Date(...).toISOString()` (інакше `endH>maxHour`/`startH<0` → `"24:30"`/`"-1:00"` → Invalid Date → RangeError у `toISOString()` → handler мовчки падає). Resize-гілка ОКРЕМО від draw-гілки — draw зазвичай clamp-ить через `pxToDecimalHours`, resize рахує delta і clamp-ить тільки проти протилежного краю
 - [ ] Swallowed-fetch що годує **обов'язковий** контрол → MEDIUM (не LOW): якщо `.catch(() => {})`/`.catch(noop)` ховає помилку завантаження списку, який рендериться у `<Select required>` або гейтить `disabled={!state}` submit-кнопку — порожній список = назавжди заблокований workflow без feedback. Фікс: `errorState` + inline `<p>` під контролом
+- [ ] **Swallowed-fetch у read-only panel мапиться у empty-state (Bug #414):** будь-який `<*Panel/>` viewer (`LinkedDocumentsPanel`, `HistoryPanel`, `AuditLogPanel`, `RelatedDocsList`) що має `.catch((e) => setData(emptyShape))` (замість `setError`) → backend помилка 500/network drop рендериться так само як справжній empty state (`"немає документів"`). Користувач думає що даних просто немає — приймає рішення на основі цієї хибної інформації (наприклад «створимо рахунок, бо немає активного»; backend насправді впав і відповідний invoice існує). Severity MEDIUM (UX false reassurance). Grep: `grep -rn "\.catch.*=>" apps/web/src/components/ui apps/web/src/app --include="*.tsx" -A 2 | grep -B 1 "setData\|setItems\|setX\|setList"` → для кожного match перевірити чи render має `if (error) return <ErrorBanner/>`. Фікс: окремий `error` state + Retry-кнопка (bumps local `retryKey` у useEffect deps).
 - [ ] **FE canX status-whitelist симетричний з backend X_STATUSES (Bug #401):** для КОЖНОГО `const canShare/canEdit/canDelete/canReserve = [...].includes(currentStatus)` у `apps/web/src/components/ui/*.tsx` знайти відповідну backend константу `(SHAREABLE|EDITABLE|DELETABLE|RESERVATION_ACTIVE)_STATUSES`. Backend = єдине джерело правди (security validation). Якщо FE масив ⊂ BE → MEDIUM (silent UX-обмеження); FE масив ⊃ BE → HIGH (UI обіцяє кнопку, click → 400). Регресія-гард: contract spec кейс на кожен статус з BE масиву → 200; статус поза масивом → 400
 - [ ] Мертвий стан після inline→shared-component рефактору: коли inline-патерн (dropdown/picker/search) замінюють на shared-компонент (`SearchPickerModal` тощо), старі `useState`/`useCallback`/`useRef` лишаються «сиротами». Ознака: setter викликається ТІЛЬКИ в reset-ефекті (`if (!open) setX('')`), а value НІКОЛИ не читається у JSX; handler (`searchX`) визначено але не викликано. `tsc` без `noUnusedLocals` мовчить. Видалити повністю (включно з cleanup-ефектом orphaned `timeoutRef`)
 - [ ] **Next.js App Router convention-файли — точна сигнатура (Bug #206):** `app/**/error.tsx` має приймати `{ error: Error & { digest?: string }; reset: () => void }` — bare `Error` валідний у tsc але блокує майбутній моніторинг (Sentry/Datadog) що читає `error.digest`. Перевіряти сигнатуру кожного нового error.tsx проти Next.js docs (`https://nextjs.org/docs/app/api-reference/file-conventions/error`). Аналогічно для `layout.tsx` (`{ children, params }`), `page.tsx` (`{ params, searchParams }`), `loading.tsx` (no props). Grep: `grep -rn "error.*:\s*Error[^&]" apps/web/src/app --include="error.tsx"` — кожен match без `digest` = Bug
@@ -964,6 +967,256 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-09 — Swallowed-fetch error rendered AS empty-state у read-only panel (Bug #414) — frontend / error handling / UX false-reassurance
+
+**Сигнал:** `.catch((e) => setData(emptyShape))` у async fetcher всередині read-only viewer/panel компонента. Помилка backend (500, network drop, tenant-misauth) MAPS у те ж саме UI що справжній empty state ("Пов'язаних документів немає", "Записів не знайдено", "Ця опція порожня"). Користувач отримує **false reassurance** — переконаний що даних просто немає, тоді як насправді backend впав. Особливо небезпечно у Documents/History/Audit panels де відсутність документу — релевантний бізнес-сигнал (фіча "виставити рахунок" гейтиться по наявності існуючого: empty → користувач створює дубль, оскільки `findByWorkOrder` теж повертає null при тій самій помилці на іншому ендпоінті).
+
+**Реальний приклад (Bug #414):** `LinkedDocumentsPanel.tsx` мав:
+
+```tsx
+apiFetch<LinkedDocuments>(`/work-orders/${workOrderId}/linked-documents`)
+  .then(d => {
+    if (!cancelled) setData(d);
+  })
+  .catch(() => {
+    // Мовчки замінюємо помилку на порожній shape — render показує "Пов'язаних документів немає"
+    if (!cancelled) setData({ invoices: [], payments: [], calendarSlots: [], warranties: [] });
+  });
+```
+
+Render-logic: `if (total === 0) return <div>Пов'язаних документів немає</div>`. 500-error → той самий вивід. Bug #159 SKILL вже згадував `.catch(() => {})` як LOW, але **escalated to MEDIUM** коли (а) панель показує empty-state з конкретним текстом, який збігається з true empty; (б) користувач приймає рішення на основі панелі (створювати новий док, чи ні).
+
+**Причина виникнення:** Розробник думає "якщо backend впав — нічого не показуй" і обирає shortest path. Не розглядає UX-розрізнення між "немає даних" та "помилка завантаження". Часто шаблон копіюється з legacy-компонента де empty-state був достатній.
+
+**Підхід до виявлення:**
+
+1. Знайти усі read-only panels з async fetch і `.catch` що НЕ викликає `setError`:
+
+   ```bash
+   # Усі fetcher-pattern .catch що замість setError робить setData/setItems/setX
+   grep -rn "\.catch.*=>" apps/web/src/components/ui apps/web/src/app --include="*.tsx" -A 2 | \
+     grep -B 1 "setData\|setItems\|setX\|setList" | head -20
+   ```
+
+2. Для кожного знайденого компонента — перевірити чи render показує **окремий error state**:
+
+   ```bash
+   grep -nE "if \(error\)" <file>.tsx | head
+   ```
+
+   Якщо немає — bug.
+
+3. Парний сигнал: відсутність `useState<string|null>(null)` для error поряд з `useState(null)` для data.
+
+**Підхід до фіксу:**
+
+1. Додати окремий error state: `const [error, setError] = useState<string | null>(null)`.
+2. У `.catch(e)` — `setError(e instanceof Error ? e.message : 'Не вдалось завантажити X')` + `setData(null)`.
+3. У render перед empty-check — `if (error) return <ErrorBanner ... />`.
+4. ErrorBanner має retry-кнопку що bumps local `retryKey` state (включений у useEffect deps).
+5. Виключати error state у refresh useEffect: `setError(null)` перед новим fetch.
+
+```tsx
+const [error, setError] = useState<string | null>(null);
+const [retryKey, setRetryKey] = useState(0);
+
+useEffect(() => {
+  let cancelled = false;
+  setError(null);
+  apiFetch<T>(url)
+    .then(d => {
+      if (!cancelled) {
+        setData(d);
+        setError(null);
+      }
+    })
+    .catch((e: unknown) => {
+      if (!cancelled) {
+        setData(null);
+        setError(e instanceof Error ? e.message : 'Не вдалось завантажити X');
+      }
+    })
+    .finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+  return () => {
+    cancelled = true;
+  };
+}, [parentId, refreshKey, retryKey]);
+
+if (error)
+  return (
+    <div role="alert">
+      <span>Не вдалось завантажити X</span>
+      <p>{error}</p>
+      <button onClick={() => setRetryKey(k => k + 1)}>Спробувати ще раз</button>
+    </div>
+  );
+```
+
+**Регресія-guard:** Component-spec кейс `it('показує error banner при apiFetch reject (НЕ маскує empty state)')` + `it('Retry-кнопка викликає apiFetch повторно після помилки')`. Mock apiFetch з `mockRejectedValueOnce(new Error('Internal Server Error'))` → асерти `getByRole('alert')` + `queryByText(/empty-state-message/)` is null.
+
+**Severity:** MEDIUM коли панель впливає на UX-рішення (показ/приховання дій); LOW коли purely informational (audit/history view без actions).
+
+**Де шукати ще:**
+
+- `LinkedDocumentsPanel.tsx` (work-orders) — fixed Bug #414
+- Будь-який `*Panel.tsx` у `apps/web/src/components/ui` з `apiFetch` + `.catch`
+- `HistoryTab.tsx`, `AuditLogPanel.tsx`, `RelatedDocsList.tsx` — кандидати
+- Будь-яке dashboard widget що отримує дані через `useQuery` (React Query) — `error` state там вбудоване, але якщо компонент мапить `queryError` на нічого/empty → той же bug
+
+---
+
+### 2026-06-09 — Cross-endpoint status-filter inconsistency для одного resource (Bug #415) — backend / API contract / UX inconsistency
+
+**Сигнал:** Multiple service-методи запитують одну й ту ж модель (`Invoice`, `WorkOrder`, `Payment`) АЛЕ з **різними status фільтрами**:
+
+- `service.findByX(parentId)` → `status: { not: 'CANCELLED' }` (повертає "активний" єдиний)
+- `service.getLinked(parentId)` → БЕЗ status фільтра (повертає ВСЕ для history view)
+- `service.getCounts(parentIds)` → БЕЗ status фільтра (counts включають CANCELLED)
+- `service.createFromX(parentId)` pre-check → `status: { not: 'CANCELLED' }` (бізнес-правило: можна створити новий якщо немає активного)
+
+Розрізнення legit для history view (показуємо CANCELLED як минулу подію) АЛЕ counts/badge-стиль показу зазвичай очікують відображати "active link count". Result: `LinkedDocs` badge показує "2 invoices", користувач відкриває панель → бачить 1 DRAFT + 1 CANCELLED. Клік "Виставити рахунок" → backend pre-check `status: { not: CANCELLED }` бачить тільки DRAFT → throw 'вже існує'. Користувач думає: "де друга?" → confusing UX.
+
+**Реальний приклад (Bug #415):**
+
+```ts
+// findByWorkOrder
+where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } } // ← CANCELLED excluded
+
+// getLinkedDocuments
+where: { workOrderId, orgId, deletedAt: null } // ← CANCELLED included
+
+// getLinkedCounts
+where: { workOrderId: { in: workOrderIds }, orgId, deletedAt: null } // ← CANCELLED included
+```
+
+Badge "2" для WO з 1 DRAFT + 1 CANCELLED → користувач сприймає як "є 2 активних рахунки", тоді як активний 1. Не data corruption — UX inconsistency.
+
+**Причина виникнення:** Розробник, додаючи новий ендпоінт (`getLinkedDocuments`), фокусується на "показати всі пов'язані документи" і відображає всі статуси. Існуючий `findByWorkOrder` мав інший контракт ("знайти ОДИН активний для виставлення") з status фільтром, але це не очевидно для нового coder без контексту. Domain розрив: "active linked doc" vs "any linked doc" — не задокументовано.
+
+**Підхід до виявлення:**
+
+1. Для кожного status-enum'у моделі (`InvoiceStatus`, `WorkOrderStatus`, `PaymentStatus`) — знайти усі `prisma.<model>.find*/groupBy/count` queries у service layers:
+
+   ```bash
+   grep -rnE "prisma\.(invoice|workOrder|payment)\.(findFirst|findMany|count|groupBy)" \
+     apps/api/src/modules --include="*.service.ts"
+   ```
+
+2. Звірити фільтр `status` між методами що оперують одним resource. Виявити асиметрію:
+
+   ```bash
+   # Запитати усі where-блоки для одного resource:
+   grep -B 0 -A 3 "prisma\.invoice\.(findFirst\|findMany\|count\|groupBy)" \
+     apps/api/src/modules --include="*.service.ts" -r | \
+     grep -E "where:|status:" | head -30
+   ```
+
+3. Парний сигнал у FE: `LinkedCounts` / badge components що показують count → перевірити чи backend query collapses CANCELLED.
+
+**Підхід до фіксу:**
+
+1. Визначити **політику statusів** для кожного ендпоінту:
+   - "Find single active resource" → exclude CANCELLED
+   - "Counts for badge" → exclude CANCELLED (consistency з action button readability)
+   - "List all for history view" → include CANCELLED (з UI-індикатором)
+   - "Create new pre-check" → exclude CANCELLED (бізнес-правило: можна створити якщо немає активного)
+
+2. **Узгодити counts + linked endpoints + findBy** на спільний контракт. Якщо потрібен окремий history view — окремий ендпоінт `getHistoryDocuments`.
+
+3. Імпортувати enum (`InvoiceStatus` з `@prisma/client`) у service і використовувати `InvoiceStatus.CANCELLED` замість string literal `'CANCELLED'` — TS catches typo + renaming.
+
+**Регресія-guard:** Service-spec для кожного ендпоінту з фіксацією поведінки на CANCELLED:
+
+```ts
+it('getLinkedCounts excludes CANCELLED invoices', async () => {
+  // Mock 2 invoices: 1 DRAFT + 1 CANCELLED
+  // Assert: result[woId].invoices === 1
+});
+```
+
+**Severity:** LOW (UX inconsistency, no data loss). MEDIUM коли inconsistency caused decision-making error (наприклад badge inflated → admin invalid suspicion).
+
+**Де шукати ще:**
+
+- Invoice + Payment + Notification: будь-який resource з CANCELLED/FAILED статусом і ≥2 endpoint-ами
+- WorkOrder DRAFT vs ESTIMATE vs APPROVED — `getMy()` vs `getStats()` vs `getCalendar()` різна фільтрація?
+- Будь-яка `count*` / `groupBy` query — особливо часто має без-status-фільтра bug
+
+---
+
+### 2026-06-09 — Inner $tx re-check тест для Serializable race fix НЕ покритий специфічним spec'ом (Bug #416) — backend / test coverage / silent-regression-risk
+
+**Сигнал:** Service-spec для `createFromX` методу що містить fix для CRITICAL race (Bug #412 паттерн з Serializable + inner re-check) — покриває pre-check кейс (`mockResolvedValue({id})` → ПЕРЕД tx throw), але НЕ покриває inner re-check кейс (`mockResolvedValueOnce(null)` → ПЕРЕД tx, потім `mockResolvedValueOnce({id})` → ВСЕРЕДИНІ tx). Якщо коротко: у spec немає **2-call sequence** для `findFirst.mockResolvedValueOnce`.
+
+Регресія-сценарій: розробник видаляє/реструктуризовує `const existing = await tx.invoice.findFirst(...); if (existing) throw ...` блок всередині $tx (типовий refactor: "цей блок дублює pre-check вище, удалити"). Усі поточні тести проходять бо вони мокають `findFirst` ОДНИМ значенням (mockResolvedValue, не mockResolvedValueOnce) — другий виклик повертає те ж саме (null для pre-check тесту → re-check теж бачить null → create викликається). Tests green, CRITICAL bug повертається у проді silently.
+
+**Реальний приклад (Bug #416):**
+
+```ts
+// Поточний тест (НЕДОСТАТНІЙ):
+it('кидає BadRequestException якщо pre-check виявляє існуючий invoice', async () => {
+  prisma.invoice.findFirst.mockResolvedValue({ id: INV_ID }); // ← обидва виклики повертають {id}
+  await expect(service.createFromWorkOrder(...)).rejects.toThrow(BadRequestException);
+});
+
+// Видалити re-check блок у service.ts і запустити тест → пройде (pre-check спрацював).
+// Race-захист зник, тест мовчить.
+```
+
+**Причина виникнення:** Розробник fixed Bug #412 додає Serializable + inner re-check + maps P2034. Пише test для pre-check (видимий шлях). Inner re-check — невидимий для black-box-фокусованого test author. Особливо коли $tx-callback з Prisma mock виглядає як inline-функція яку легко покрити одним `mockResolvedValue`.
+
+**Підхід до виявлення:**
+
+1. Для кожного `*.service.ts` що містить inner `findFirst/findMany` ВСЕРЕДИНІ `$transaction(async tx => ...)` callback — перевірити чи парний `*.service.spec.ts` використовує `mockResolvedValueOnce` (sequence) АБО `mockResolvedValue` (constant):
+
+   ```bash
+   # Знайти service-методи з $transaction що містять inner findFirst:
+   grep -rn "this\.prisma\.\$transaction" apps/api/src/modules --include="*.service.ts" -A 5 | \
+     grep -B 1 "tx\.\w*\.findFirst\|tx\.\w*\.findMany"
+
+   # Для кожного — у spec перевірити чи mockResolvedValueOnce використовується ДВА рази:
+   grep -nE "findFirst\.mockResolvedValueOnce" <spec>.spec.ts | wc -l
+   # Якщо <2 — gap.
+   ```
+
+2. Парний сигнал: коментар `/// Bug #N: race fix` у service.ts → відповідний service.spec.ts має тест `/// Bug #N regression-guard` що використовує **2 calls** з різними значеннями.
+
+3. Запустити мутаційне тестування на $tx callback: видалити inner re-check → запустити spec → якщо все ще зелене, тест неповний.
+
+**Підхід до фіксу:**
+
+Додати окремий `it()` для inner re-check:
+
+```ts
+it('Bug #412: re-check всередині $transaction виявляє race-створений invoice → throw', async () => {
+  prisma.workOrder.findFirst.mockResolvedValue({ id: WO_ID, status: 'COMPLETED', ... });
+  // 1st findFirst (pre-check, поза $tx) → null
+  // 2nd findFirst (re-check, всередині $tx) → конкурент щойно створив
+  prisma.invoice.findFirst
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce({ id: INV_ID });
+
+  await expect(service.createFromWorkOrder(...)).rejects.toThrow(BadRequestException);
+  expect(prisma.invoice.create).not.toHaveBeenCalled(); // ← КРИТИЧНО: invoice НЕ створений
+});
+```
+
+`expect(prisma.invoice.create).not.toHaveBeenCalled()` — ключовий, бо без цього assert тест-зелений у випадку коли re-check видалили (тест перевіряє лише throw, який pre-check теж кидав би з тим самим moc setup).
+
+**Регресія-guard:** сам тест.
+
+**Severity:** MEDIUM (regression risk for CRITICAL fix). Не runtime bug, але silent removal of CRITICAL race protection.
+
+**Де шукати ще:**
+
+- Усі `createFromX/createForY/generateFromZ` методи з Serializable tx — кожен потребує парний `mockResolvedValueOnce` sequence test
+- `inspectionReport.create`, `fiscalReceipt.create` (якщо переходять на Serializable) — впроваджувати разом
+- Будь-який майбутній `$transaction(..., { isolationLevel: 'Serializable' })` — додавати inner re-check spec одразу з fix-commit
+
+---
 
 ### 2026-06-09 — Concurrent-create race for "1 active resource per parent" without unique index (Bug #412) — backend / concurrency / financial integrity
 

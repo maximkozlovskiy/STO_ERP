@@ -12,7 +12,7 @@ import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MaintenanceSchedulesService } from '../maintenance-schedules/maintenance-schedules.service';
-import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
+import { InvoiceStatus, RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
 import { formatPersonName, formatVehicleLabel, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
@@ -1700,7 +1700,10 @@ export class WorkOrdersService {
     const TAKE = 500;
     const [invoices, payments, calendarSlots, warranties] = await Promise.all([
       this.prisma.invoice.findMany({
-        where: { workOrderId, orgId, deletedAt: null },
+        // Bug #415: CANCELLED інвойси виключені для узгодженості з `findByWorkOrder` і
+        // `createFromWorkOrder` pre-check. Інакше badge "Документи" показує count
+        // що включає cancelled → користувач думає рахунок існує, тоді як активного немає.
+        where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
         select: { id: true, number: true, status: true, amount: true, documentDate: true },
         orderBy: { createdAt: 'desc' },
         take: TAKE,
@@ -1757,7 +1760,13 @@ export class WorkOrdersService {
     const [invoices, payments, calendarSlots, warranties] = await Promise.all([
       this.prisma.invoice.groupBy({
         by: ['workOrderId'],
-        where: { workOrderId: { in: workOrderIds }, orgId, deletedAt: null },
+        // Bug #415: симетрично з getLinkedDocuments — CANCELLED виключений з counts.
+        where: {
+          workOrderId: { in: workOrderIds },
+          orgId,
+          deletedAt: null,
+          status: { not: InvoiceStatus.CANCELLED },
+        },
         _count: { id: true },
       }),
       this.prisma.payment.groupBy({

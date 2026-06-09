@@ -8,7 +8,7 @@ import type {
   ReactNode,
   RefObject,
 } from 'react';
-import { Receipt, CreditCard, Calendar, Shield, X, ExternalLink } from 'lucide-react';
+import { Receipt, CreditCard, Calendar, Shield, X, ExternalLink, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { fmtDate, fmtDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -303,6 +303,11 @@ export function LinkedDocumentsPanel({
 }) {
   const [data, setData] = useState<LinkedDocuments | null>(null);
   const [loading, setLoading] = useState(true);
+  // Bug #414: окремий error-state, інакше backend помилку 500/timeout не відрізнити
+  // від справжнього empty-state ("Пов'язаних документів немає") — користувач отримує
+  // false reassurance.
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [preview, setPreview] = useState<PreviewType | null>(null);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
 
@@ -314,13 +319,22 @@ export function LinkedDocumentsPanel({
     // перезаписувати стан від нового запиту (§3.1).
     let cancelled = false;
     setLoading(true);
+    setError(null);
     setPreview(null);
     apiFetch<LinkedDocuments>(`/work-orders/${workOrderId}/linked-documents`)
       .then(d => {
-        if (!cancelled) setData(d);
+        if (!cancelled) {
+          setData(d);
+          setError(null);
+        }
       })
-      .catch(() => {
-        if (!cancelled) setData({ invoices: [], payments: [], calendarSlots: [], warranties: [] });
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          // Bug #414: не «приховувати» error під empty-state. Залишаємо data null —
+          // render-логіка покаже банер з повідомленням і Retry-кнопкою.
+          setData(null);
+          setError(e instanceof Error ? e.message : 'Не вдалось завантажити пов’язані документи');
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -328,7 +342,7 @@ export function LinkedDocumentsPanel({
     return () => {
       cancelled = true;
     };
-  }, [workOrderId, refreshKey]);
+  }, [workOrderId, refreshKey, retryKey]);
 
   const openPreview = (e: ReactMouseEvent<HTMLButtonElement>, p: PreviewType) => {
     anchorRef.current = e.currentTarget;
@@ -339,6 +353,29 @@ export function LinkedDocumentsPanel({
     return (
       <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
         Завантаження…
+      </div>
+    );
+  }
+
+  // Bug #414: error має пріоритет над null/empty data — інакше панель «приховала» помилку.
+  if (error) {
+    return (
+      <div
+        role="alert"
+        className="flex flex-col items-center justify-center py-8 px-4 gap-3 text-sm text-muted-foreground"
+      >
+        <div className="flex items-center gap-2 text-destructive">
+          <AlertCircle size={16} aria-hidden="true" />
+          <span className="font-medium">Не вдалось завантажити пов’язані документи</span>
+        </div>
+        <p className="text-xs text-center max-w-xs">{error}</p>
+        <button
+          type="button"
+          onClick={() => setRetryKey(k => k + 1)}
+          className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+        >
+          Спробувати ще раз
+        </button>
       </div>
     );
   }

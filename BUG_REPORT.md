@@ -12643,3 +12643,149 @@ ESC і overlay click мають правильний guard `!invoiceLoading` (li
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-09 — sto-tester full sweep post linked-docs/invoice button (HEAD 349b03d5)
+
+**Scope:** ca6f5830..349b03d5 — invoice button + LinkedDocumentsPanel + status tabs dropdown + review fixes.
+**Baseline:** API tsc green; Web tsc green; API 690 tests green; Web 358 tests green.
+**Approach:** static analysis §1.1–§1.7; focus on:
+
+- Backend: `invoices.service.ts` (createFromWorkOrder, refreshFromWorkOrder, findByWorkOrder)
+- Backend: `work-orders.service.ts` (getLinkedDocuments, getLinkedCounts)
+- Frontend: `LinkedDocumentsPanel.tsx` (preview popup, fetch lifecycle, error state)
+- Frontend: `CreateWorkOrderModal.tsx` (handleInvoice flow, conflict dialog ESC + roles)
+
+---
+
+### Bug #414 — [MEDIUM] LinkedDocumentsPanel — fetch errors silently rendered as "empty state"
+
+**Файл:** `apps/web/src/components/ui/LinkedDocumentsPanel.tsx:322-324`
+**Категорія:** Frontend / Error handling / SKILL §1.3
+**Severity:** MEDIUM (silent backend errors)
+
+**Опис:**
+
+`useEffect` fetcher:
+
+```ts
+.catch(() => {
+  if (!cancelled) setData({ invoices: [], payments: [], calendarSlots: [], warranties: [] });
+})
+```
+
+При `apiFetch` помилці (500, network drop, тенант-misauth) панель показує **тей самий "Пов'язаних документів немає"**, що і при справжньому порожньому стані. Користувач отримує **false reassurance** — переконаний що рахунків/оплат немає, хоча насправді backend впав. Це класична anti-pattern зі скіла §1.3 ("swallowed-fetch ховає помилки").
+
+Не блокує workflow (немає required Select), але вводить в оману в Documents tab CreateWorkOrderModal — користувач може помилково клікнути "Виставити рахунок" думаючи що активного немає, тоді як він є.
+
+**Очікувана поведінка:** окремий `error` state з UI banner ("Не вдалось завантажити пов'язані документи" + Retry).
+
+**Фактична поведінка:** error мовчки замінюється на empty-shape → панель показує "немає".
+
+**Фікс:** додати `const [error, setError] = useState<string | null>(null)`; у `.catch` робити `setError(e.message)`; у render — `if (error) return <ErrorBanner ... />`; при retry — bump local `retryKey`.
+
+**Регресія-guard:** vitest test `it('показує помилку при apiFetch reject')`.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #415 — [LOW] getLinkedCounts/getLinkedDocuments включають CANCELLED інвойси — UX inconsistency з findByWorkOrder
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:1703,1760`
+**Категорія:** Backend / Consistency / SKILL §1.3 (FE↔BE status semantics)
+**Severity:** LOW (UX inconsistency, no data loss)
+
+**Опис:**
+
+- `findByWorkOrder` (invoices.service.ts:552): `status: { not: CANCELLED }` — повертає тільки активний.
+- `getLinkedDocuments` (work-orders.service.ts:1703): `deletedAt: null` — БЕЗ status фільтра → CANCELLED показується у панелі як lined doc.
+- `getLinkedCounts` (work-orders.service.ts:1760): теж без status фільтра → badge на сторінці нарядів показує "2 invoices" коли 1 активний + 1 cancelled.
+- `createFromWorkOrder` pre-check (invoices.service.ts:144): `status: { not: CANCELLED }` — погоджується з findByWorkOrder.
+
+Result: користувач бачить "2" у колонці "Документи", відкриває popup панель → бачить два інвойси (один CANCELLED, один DRAFT/SENT). Клік "Відкрити" в полнел показує CANCELLED — не критично, але збиває з пантелику.
+
+**Очікувана поведінка:** counts і panel показують ТІЛЬКИ активні (status≠CANCELLED), щоб збігатися з findByWorkOrder + UI semantics "linked documents = active".
+
+**Фактична поведінка:** включає CANCELLED → badge inflate + panel показує мертві записи.
+
+**Фікс:** додати `status: { not: 'CANCELLED' }` у Prisma queries в `getLinkedDocuments.invoices` і `getLinkedCounts.invoices`. Для UX history view (опціонально) — додати окремий ендпоінт пізніше.
+
+**Регресія-guard:** новий contract spec кейс: WO має 1 CANCELLED + 1 DRAFT → counts.invoices=1, getLinkedDocuments.invoices.length=1.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #416 — [MEDIUM] invoices.service.spec.ts — Bug #412 inner re-check не покритий тестом
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.spec.ts:241-271`
+**Категорія:** Backend / Test coverage / SKILL §1.5
+**Severity:** MEDIUM (regression risk for CRITICAL race fix)
+
+**Опис:**
+
+Test 'кидає BadRequestException якщо pre-check виявляє існуючий invoice' (line 254) покриває ТІЛЬКИ pre-check ПЕРЕД `$transaction`. Inner re-check ВСЕРЕДИНІ Serializable $transaction (line 167-177 у invoices.service.ts) — НЕ покритий жодним тестом.
+
+Сценарій атаки на регресію:
+
+1. Розробник видаляє блок `const existing = await tx.invoice.findFirst(...); if (existing) throw ...` всередині $tx
+2. Усі поточні тести проходять (pre-check тест використовує mockResolvedValue для всіх викликів — re-check теж знаходить існуючий)
+3. CRITICAL race window повертається
+4. Bug #412 reappears у проді як silent dup-invoice
+
+Сильніший regression-guard: окремий тест де:
+
+- `prisma.invoice.findFirst` повертає `null` на першому виклику (pre-check passes)
+- На другому виклику (re-check у tx) повертає `{ id }` (race: другий конкурент щойно створив)
+- Assert: `BadRequestException` кидається
+- Assert: `prisma.invoice.create` НЕ викликаний
+
+**Очікувана поведінка:** окремий `it('кидає BadRequestException якщо re-check всередині $tx виявляє існуючий')` тест.
+
+**Фактична поведінка:** re-check блок silent-видаляється у refactor → CI green → CRITICAL фікс зник.
+
+**Фікс:** додати тест де `findFirst` mock-ить різну відповідь на 1st vs 2nd виклик (mockResolvedValueOnce(null) → mockResolvedValueOnce({id})).
+
+**Регресія-guard:** сам тест.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #417 — [LOW] LinkedDocumentsPanel — нема component-тестів для нового 490-рядкового компонента
+
+**Файл:** `apps/web/src/components/ui/__tests__/LinkedDocumentsPanel.test.tsx` (відсутній)
+**Категорія:** Frontend / Test coverage / SKILL §1.5
+**Severity:** LOW (regression-guard gap)
+
+**Опис:**
+
+LinkedDocumentsPanel (490 LOC) — новий complex component з:
+
+- Async fetch + cancellation
+- Preview popup з useLayoutEffect позиціонуванням
+- Capture-фаза ESC handler
+- Cross-anchor reposition (Bug у попередній review)
+- refreshKey тригер re-fetch (Bug #409)
+- Empty / loading / error states
+
+Жодних component-тестів. Будь-який refactor (особливо `useLayoutEffect([anchorRef, preview])` deps які review-fix виправив) пройде CI зеленим без regression-guard.
+
+**Очікувана поведінка:** `LinkedDocumentsPanel.test.tsx` з кейсами:
+
+- рендериться "Завантаження…" поки fetch in-flight
+- empty state — "Пов'язаних документів немає"
+- error state — окремий UI (після Bug #414 фіксу)
+- refreshKey зміна → новий fetch
+- workOrderId зміна → preview скидається до null
+- preview popup ESC handler закриває без bubble до parent modal
+
+**Фактична поведінка:** 0 тестів → попередні Bug #409/Bug review-fix без guard.
+
+**Фікс:** створити `__tests__/LinkedDocumentsPanel.test.tsx` з 5-7 кейсами.
+
+**Регресія-guard:** сам тест.
+
+**Статус:** [x] виправлено
+
+---

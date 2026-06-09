@@ -268,6 +268,29 @@ describe('InvoicesService — business logic guards', () => {
       prisma.invoice.findFirst.mockResolvedValue(null);
       await expect(service.createFromWorkOrder(ORG, WO_ID)).rejects.toThrow(NotFoundException);
     });
+
+    // Bug #416: regression-guard для INNER re-check всередині Serializable $transaction
+    // (Bug #412 fix). Без цього тесту видалення `const existing = await tx.invoice.findFirst(...)`
+    // блоку у refactor пройде CI зеленим — CRITICAL race window повертається silently.
+    //
+    // Сценарій: pre-check (1-й findFirst) бачить null → переходимо у $tx → re-check (2-й
+    // findFirst) бачить ВЖЕ СТВОРЕНИЙ другим конкурентом → re-check кидає BadRequestException.
+    it('Bug #412: re-check всередині $transaction виявляє race-створений invoice → throw', async () => {
+      prisma.workOrder.findFirst.mockResolvedValue({
+        id: WO_ID,
+        orgId: ORG,
+        status: 'COMPLETED',
+        counterpartyId: 'c-1',
+        totalAmount: 100,
+      });
+      // 1st findFirst (pre-check, поза $tx) → null
+      // 2nd findFirst (re-check, всередині $tx) → конкурент щойно створив invoice
+      prisma.invoice.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: INV_ID });
+
+      await expect(service.createFromWorkOrder(ORG, WO_ID)).rejects.toThrow(BadRequestException);
+      // Жоден invoice не повинен бути створений якщо re-check спрацював
+      expect(prisma.invoice.create).not.toHaveBeenCalled();
+    });
   });
 
   // ─── Bug #405: findByWorkOrder returns null (not 404) ───────────────────
