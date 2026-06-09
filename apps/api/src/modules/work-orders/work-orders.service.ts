@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
@@ -1472,5 +1473,114 @@ export class WorkOrdersService {
       amount: Number(part.amount),
       createdAt: part.createdAt,
     };
+  }
+
+  // ─── ESTIMATE SHARE ─────────────────────────────────────────
+
+  async getOrCreateShareToken(orgId: string, id: string): Promise<{ token: string }> {
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true, shareToken: true },
+    });
+    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (wo.shareToken) return { token: wo.shareToken };
+    const token = randomBytes(16).toString('hex');
+    await this.prisma.workOrder.update({ where: { id }, data: { shareToken: token } });
+    return { token };
+  }
+
+  async findByShareToken(token: string): Promise<WorkOrderDetailDto> {
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { shareToken: token, deletedAt: null },
+      include: {
+        vehicle: { select: { make: true, model: true, licensePlate: true } },
+        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+        branch: { select: { name: true } },
+        contract: { select: { id: true, number: true } },
+        lift: { select: { name: true } },
+        lines: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          take: 500,
+          include: {
+            work: { select: { name: true } },
+            employee: { select: { firstName: true, lastName: true } },
+          },
+        },
+        parts: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          take: 500,
+          include: {
+            good: {
+              select: {
+                name: true,
+                unit: true,
+                unitOfMeasure: { select: { shortName: true, coefficient: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!wo) throw new NotFoundException('Посилання не дійсне або термін дії минув');
+
+    const uomIds = wo.parts
+      .map(p => (p as { unitOfMeasureId?: string | null }).unitOfMeasureId)
+      .filter((id): id is string => !!id);
+    const goodUoMMap: Record<
+      string,
+      { id: string; coefficient: number; unitOfMeasure: { shortName: string } }
+    > = {};
+    if (uomIds.length > 0) {
+      const goodUoMs = await this.prisma.goodUoM.findMany({
+        where: { id: { in: uomIds } },
+        select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
+      });
+      for (const u of goodUoMs) goodUoMMap[u.id] = u;
+    }
+
+    return {
+      ...this.toDto(wo),
+      lines: wo.lines.map(l => this.toLineDto(l)),
+      parts: wo.parts.map(p => {
+        const uomId = (p as { unitOfMeasureId?: string | null }).unitOfMeasureId;
+        return this.toPartDto({
+          ...p,
+          unitOfMeasureId: uomId,
+          goodUoM: uomId ? (goodUoMMap[uomId] ?? null) : null,
+        });
+      }),
+    };
+  }
+
+  async sendEstimateSms(orgId: string, id: string, baseUrl: string): Promise<void> {
+    const { token } = await this.getOrCreateShareToken(orgId, id);
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: {
+        branchId: true,
+        number: true,
+        counterparty: {
+          select: { phone: true, firstName: true, lastName: true, companyName: true },
+        },
+      },
+    });
+    if (!wo?.counterparty?.phone) {
+      throw new BadRequestException('Телефон клієнта не вказано');
+    }
+    const link = `${baseUrl}/estimate/${token}`;
+    const counterpartyName = formatPersonName(
+      wo.counterparty.lastName,
+      wo.counterparty.firstName,
+      wo.counterparty.companyName,
+    );
+    await this.notifications.send(orgId, 'WO_ESTIMATE_READY', {
+      branchId: wo.branchId,
+      phone: wo.counterparty.phone,
+      number: wo.number,
+      link,
+      counterpartyName,
+    });
   }
 }

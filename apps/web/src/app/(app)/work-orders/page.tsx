@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'rea
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, ClipboardList, Eye, EyeOff, Search, User, ExternalLink, Trash2 } from 'lucide-react';
+import { Plus, ClipboardList, Eye, EyeOff, Search, User, Pencil, Trash2 } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { useWorkOrders, workOrdersKeys, WorkOrder } from '@/hooks/api/useWorkOrders';
@@ -40,6 +40,7 @@ import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { TableContainer } from '@/components/ui/table-container';
+import { Tooltip } from '@/components/ui/tooltip';
 import {
   WORK_ORDER_PANEL_SCHEMA,
   buildPanelFields,
@@ -79,20 +80,33 @@ interface WOFilters extends Record<string, unknown> {
 // Status/badge/priority/category constants imported from @sto/shared
 const STATUS_LABELS = WO_STATUS_LABELS;
 const STATUS_BADGE = WO_STATUS_BADGE;
+
+const STATUS_DESCRIPTIONS: Record<string, string> = {
+  DRAFT: 'Чернетка — наряд створено, ще не передано клієнту для погодження',
+  ESTIMATE: 'Кошторис — підготовлено перелік робіт і запчастин, очікує затвердження',
+  APPROVED: 'Затверджено — клієнт погодив, готово до початку робіт',
+  IN_PROGRESS: 'В роботі — механік виконує ремонт',
+  ON_HOLD: 'Призупинено — роботи тимчасово зупинені (очікування запчастин тощо)',
+  COMPLETED: 'Виконано — всі роботи завершено, можна виставляти рахунок',
+  INVOICED: 'Виставлено рахунок — рахунок передано клієнту, очікується оплата',
+  PAID: 'Оплачено — клієнт оплатив, можна архівувати',
+  ARCHIVED: 'Архів — закрито і перенесено в архів',
+  CANCELLED: 'Скасовано — наряд скасовано',
+};
 const PRIORITY_LABELS = WO_PRIORITY_LABELS;
 const PRIORITY_BADGE = WO_PRIORITY_BADGE;
 const CATEGORY_LABELS = WO_CATEGORY_LABELS;
 
 const STATUS_TABS: Array<[string, string]> = [
   ['', 'Всі'],
-  ['IN_PROGRESS', 'В роботі'],
-  ['APPROVED', 'Затверджено'],
-  ['ESTIMATE', 'Кошторис'],
   ['DRAFT', 'Чернетка'],
+  ['ESTIMATE', 'Кошторис'],
+  ['APPROVED', 'Затверджено'],
+  ['IN_PROGRESS', 'В роботі'],
+  ['ON_HOLD', 'Призупинено'],
   ['COMPLETED', 'Виконано'],
   ['INVOICED', 'Виставлено'],
   ['PAID', 'Оплачено'],
-  ['ON_HOLD', 'Призупинено'],
   ['CANCELLED', 'Скасовано'],
   ['ARCHIVED', 'Архів'],
 ];
@@ -138,6 +152,7 @@ function WorkOrdersPageInner() {
       { key: 'number', label: 'Номер' },
       { key: 'client', label: 'Клієнт / Авто' },
       { key: 'status', label: 'Статус' },
+      { key: 'lift', label: 'Підйомник' },
       { key: 'priority', label: 'Пріоритет' },
       { key: 'amount', label: 'Сума, ₴' },
       { key: 'documentDate', label: 'Дата документа' },
@@ -228,6 +243,7 @@ function WorkOrdersPageInner() {
   const [modalPrefill, setModalPrefill] = useState<
     import('@/components/ui/CreateWorkOrderModal').CreateWOPrefill | undefined
   >();
+  const [editWoId, setEditWoId] = useState<string | null>(null);
 
   const searchParams = useSearchParams();
 
@@ -424,24 +440,34 @@ function WorkOrdersPageInner() {
       {/* Status filter pills + Мої наряди */}
       <div className="flex gap-1.5 flex-wrap items-center justify-between shrink-0">
         <div className="flex gap-1.5 flex-wrap">
-          {STATUS_TABS.map(([v, l]) => (
-            <button
-              key={v}
-              onClick={() => {
-                setStatusFilter(v);
-                resetPage();
-                setActiveSavedFilterId(null);
-              }}
-              className={cn(
-                'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-                statusFilter === v
-                  ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                  : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
-              )}
-            >
-              {l}
-            </button>
-          ))}
+          {STATUS_TABS.map(([v, l]) => {
+            const btn = (
+              <button
+                key={v}
+                onClick={() => {
+                  setStatusFilter(v);
+                  resetPage();
+                  setActiveSavedFilterId(null);
+                }}
+                className={cn(
+                  'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
+                  statusFilter === v
+                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                    : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
+                )}
+              >
+                {l}
+              </button>
+            );
+            const desc = STATUS_DESCRIPTIONS[v];
+            return desc ? (
+              <Tooltip key={v} content={desc}>
+                {btn}
+              </Tooltip>
+            ) : (
+              btn
+            );
+          })}
         </div>
         {employee && (
           <button
@@ -707,9 +733,19 @@ function WorkOrdersPageInner() {
                       if (col.key === 'status')
                         return (
                           <TableCell key="status">
-                            <Badge variant={STATUS_BADGE[wo.status] ?? 'secondary'} dot>
+                            <Badge
+                              variant={STATUS_BADGE[wo.status] ?? 'secondary'}
+                              dot
+                              tooltip={STATUS_DESCRIPTIONS[wo.status]}
+                            >
                               {STATUS_LABELS[wo.status] ?? wo.status}
                             </Badge>
+                          </TableCell>
+                        );
+                      if (col.key === 'lift')
+                        return (
+                          <TableCell key="lift" className="text-[13px] text-muted-foreground">
+                            {wo.liftName ?? '—'}
                           </TableCell>
                         );
                       if (col.key === 'priority')
@@ -834,9 +870,9 @@ function WorkOrdersPageInner() {
                           size="icon-sm"
                           title="Відкрити наряд"
                           className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                          onClick={() => router.push(`/work-orders/${wo.id}`)}
+                          onClick={() => setEditWoId(wo.id)}
                         >
-                          <ExternalLink className="h-3.5 w-3.5" />
+                          <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         {!wo.deletedAt && (
                           <Button
@@ -901,11 +937,7 @@ function WorkOrdersPageInner() {
                       hidden={f.hidden}
                     />
                   ))}
-                  <Button
-                    className="w-full"
-                    size="sm"
-                    onClick={() => router.push(`/work-orders/${wo.id}`)}
-                  >
+                  <Button className="w-full" size="sm" onClick={() => setEditWoId(wo.id)}>
                     Відкрити наряд
                   </Button>
                 </div>
@@ -936,8 +968,15 @@ function WorkOrdersPageInner() {
         prefill={modalPrefill}
         onCreated={wo => {
           queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
-          router.push(`/work-orders/${wo.id}`);
+          setEditWoId(wo.id);
         }}
+      />
+
+      <CreateWorkOrderModal
+        open={!!editWoId}
+        onClose={() => setEditWoId(null)}
+        workOrderId={editWoId ?? undefined}
+        onUpdated={() => queryClient.invalidateQueries({ queryKey: workOrdersKeys.all })}
       />
 
       <ConfirmDialog {...confirmDialogProps} />

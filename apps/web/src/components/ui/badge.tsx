@@ -1,5 +1,8 @@
-import type { ReactNode } from 'react';
+'use client';
+
+import type { ReactNode, HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
+import { Tooltip } from '@/components/ui/tooltip';
 
 export type BadgeVariant =
   | 'default'
@@ -11,11 +14,12 @@ export type BadgeVariant =
   | 'info'
   | 'purple';
 
-interface BadgeProps {
+interface BadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'children'> {
   variant?: BadgeVariant;
   className?: string;
   children: ReactNode;
   dot?: boolean;
+  tooltip?: string;
 }
 
 const variants: Record<BadgeVariant, string> = {
@@ -40,9 +44,10 @@ const dotColors: Record<BadgeVariant, string> = {
   purple: 'bg-purple',
 };
 
-function Badge({ variant = 'default', className, children, dot }: BadgeProps) {
-  return (
+function Badge({ variant = 'default', className, children, dot, tooltip, ...rest }: BadgeProps) {
+  const badge = (
     <span
+      {...rest}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full',
         'px-2.5 py-0.5 text-[11px] font-medium border',
@@ -55,6 +60,10 @@ function Badge({ variant = 'default', className, children, dot }: BadgeProps) {
       {children}
     </span>
   );
+
+  if (!tooltip) return badge;
+
+  return <Tooltip content={tooltip}>{badge}</Tooltip>;
 }
 
 export { Badge };

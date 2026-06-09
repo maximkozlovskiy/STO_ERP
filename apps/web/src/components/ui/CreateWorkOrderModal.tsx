@@ -1,8 +1,22 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Trash2, Plus, Pencil, Check, X, ChevronUp } from 'lucide-react';
+import {
+  Trash2,
+  Plus,
+  Pencil,
+  Check,
+  X,
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  Printer,
+  Share2,
+  MessageSquare,
+} from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { kyivToday } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
@@ -22,6 +36,20 @@ import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { WorkPickerModal, type WorkPickerItem } from '@/components/ui/WorkPickerModal';
 import { GoodPickerModal, type GoodPickerItem } from '@/components/ui/GoodPickerModal';
+import { Tooltip } from '@/components/ui/tooltip';
+
+const WO_STATUS_DESCRIPTIONS: Record<string, string> = {
+  DRAFT: 'Чернетка — наряд створено, ще не передано клієнту для погодження',
+  ESTIMATE: 'Кошторис — підготовлено перелік робіт і запчастин, очікує затвердження',
+  APPROVED: 'Затверджено — клієнт погодив, готово до початку робіт',
+  IN_PROGRESS: 'В роботі — механік виконує ремонт',
+  ON_HOLD: 'Призупинено — роботи тимчасово зупинені (очікування запчастин тощо)',
+  COMPLETED: 'Виконано — всі роботи завершено, можна виставляти рахунок',
+  INVOICED: 'Виставлено рахунок — рахунок передано клієнту, очікується оплата',
+  PAID: 'Оплачено — клієнт оплатив, можна архівувати',
+  ARCHIVED: 'Архів — закрито і перенесено в архів',
+  CANCELLED: 'Скасовано — наряд скасовано',
+};
 
 interface Branch {
   id: string;
@@ -34,11 +62,15 @@ interface Lift {
 interface Warehouse {
   id: string;
   name: string;
+  type?: string;
+  deletedAt?: string | null;
 }
 interface Employee {
   id: string;
   firstName: string;
   lastName: string;
+  role?: string;
+  deletedAt?: string | null;
 }
 interface Vehicle {
   id: string;
@@ -255,10 +287,26 @@ export function CreateWorkOrderModal({
   const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
   const [vatRate, setVatRate] = useState(0);
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [editModeLoading, setEditModeLoading] = useState(false);
   const [woNumber, setWoNumber] = useState('');
+  const [shareLoading, setShareLoading] = useState(false);
+  const [smsLoading, setSmsLoading] = useState(false);
+  const features = useUiFeatures();
   const deletedLineIds = useRef<string[]>([]);
   const deletedPartIds = useRef<string[]>([]);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!statusMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
+        setStatusMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [statusMenuOpen]);
 
   // Inline add-row state
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
@@ -298,43 +346,36 @@ export function CreateWorkOrderModal({
     }
 
     const cachedLifts = getCached<Lift[]>('cache:lifts');
-    if (cachedLifts) {
-      setLifts(cachedLifts);
-    } else {
-      apiFetch<Lift[] | { items: Lift[] }>('/lifts')
-        .then(r => {
-          const list = Array.isArray(r) ? r : ((r as { items: Lift[] }).items ?? []);
-          setLifts(list);
-          setCache('cache:lifts', list);
-        })
-        .catch(() => {});
-    }
+    if (cachedLifts) setLifts(cachedLifts);
+    // Always re-fetch to avoid stale deleted lifts appearing in the select
+    apiFetch<Lift[] | { items: Lift[] }>('/lifts')
+      .then(r => {
+        const list = Array.isArray(r) ? r : ((r as { items: Lift[] }).items ?? []);
+        setLifts(list);
+        setCache('cache:lifts', list);
+      })
+      .catch(() => {});
 
     const cachedWarehouses = getCached<Warehouse[]>('cache:warehouses');
-    if (cachedWarehouses) {
-      setWarehouses(cachedWarehouses);
-    } else {
-      apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses')
-        .then(r => {
-          const list = Array.isArray(r) ? r : ((r as { items: Warehouse[] }).items ?? []);
-          setWarehouses(list);
-          setCache('cache:warehouses', list);
-        })
-        .catch(() => {});
-    }
+    if (cachedWarehouses) setWarehouses(cachedWarehouses);
+    apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses')
+      .then(r => {
+        const all = Array.isArray(r) ? r : ((r as { items: Warehouse[] }).items ?? []);
+        const list = all.filter(w => !w.deletedAt && w.type !== 'TIRE_HOTEL');
+        setWarehouses(list);
+        setCache('cache:warehouses', list);
+      })
+      .catch(() => {});
 
     const cachedEmployees = getCached<Employee[]>('cache:employees');
-    if (cachedEmployees) {
-      setEmployees(cachedEmployees);
-    } else {
-      apiFetch<{ items: Employee[] }>('/employees?limit=200')
-        .then(r => {
-          const list = Array.isArray(r.items) ? r.items : [];
-          setEmployees(list);
-          setCache('cache:employees', list);
-        })
-        .catch(() => {});
-    }
+    if (cachedEmployees) setEmployees(cachedEmployees);
+    apiFetch<{ items: Employee[] }>('/employees?limit=200&role=MECHANIC')
+      .then(r => {
+        const list = (Array.isArray(r.items) ? r.items : []).filter(e => !e.deletedAt);
+        setEmployees(list);
+        setCache('cache:employees', list);
+      })
+      .catch(() => {});
 
     // sto-optimize: units є reference data з warm sessionStorage cache (TTL ≥30хв).
     // Cache populated catalog/UnitsTab + catalog/GoodsTab (source pages). Seeding
@@ -368,6 +409,7 @@ export function CreateWorkOrderModal({
   useEffect(() => {
     if (!open) return;
     setError('');
+    setStatusMenuOpen(false);
     setVehicles([]);
     setContracts([]);
     setLines([]);
@@ -801,6 +843,62 @@ export function CreateWorkOrderModal({
 
   const allowedTransitions = isEditMode ? (WO_STATUS_TRANSITIONS[currentStatus] ?? []) : [];
   const canEdit = isEditMode ? ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(currentStatus) : true;
+  const canShare = isEditMode && ['DRAFT', 'ESTIMATE'].includes(currentStatus);
+
+  const handlePrint = async () => {
+    if (!workOrderId) return;
+    setShareLoading(true);
+    try {
+      const { token } = await apiFetch<{ token: string }>(
+        `/work-orders/${workOrderId}/share-token`,
+        { method: 'POST' },
+      );
+      window.open(`/estimate/${token}`, '_blank');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка';
+      if (features.toastEnabled) toast.error(msg);
+      else setError(msg);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!workOrderId) return;
+    setShareLoading(true);
+    try {
+      const { token } = await apiFetch<{ token: string }>(
+        `/work-orders/${workOrderId}/share-token`,
+        { method: 'POST' },
+      );
+      await navigator.clipboard.writeText(`${window.location.origin}/estimate/${token}`);
+      if (features.toastEnabled) toast.success('Посилання скопійовано');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка';
+      if (features.toastEnabled) toast.error(msg);
+      else setError(msg);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleSendSms = async () => {
+    if (!workOrderId) return;
+    setSmsLoading(true);
+    try {
+      await apiFetch(`/work-orders/${workOrderId}/send-estimate-sms`, {
+        method: 'POST',
+        body: JSON.stringify({ baseUrl: window.location.origin }),
+      });
+      if (features.toastEnabled) toast.success('SMS відправлено клієнту');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка відправки SMS';
+      if (features.toastEnabled) toast.error(msg);
+      else setError(msg);
+    } finally {
+      setSmsLoading(false);
+    }
+  };
 
   const initialStatus = Object.keys(WO_STATUS_LABELS)[0] ?? 'DRAFT';
 
@@ -814,27 +912,71 @@ export function CreateWorkOrderModal({
         size="content"
         footer={
           isEditMode ? (
-            <div className="flex gap-2 flex-wrap items-center">
-              {allowedTransitions.map(s => (
-                <Button
-                  key={s}
-                  variant={TRANSITION_VARIANTS[s] ?? 'outline'}
-                  onClick={() => doTransition(s)}
-                  loading={transitioning}
-                  disabled={transitioning || saving}
-                  size="sm"
-                >
-                  {TRANSITION_LABELS[s] ?? s}
+            <div className="flex items-center justify-between w-full gap-2">
+              <div>
+                {allowedTransitions.includes('CANCELLED') && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => doTransition('CANCELLED')}
+                    loading={transitioning}
+                    disabled={transitioning || saving}
+                    size="sm"
+                  >
+                    Скасувати
+                  </Button>
+                )}
+              </div>
+              <div className="flex gap-2 items-center flex-wrap">
+                {canShare && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrint}
+                      loading={shareLoading}
+                      disabled={shareLoading || smsLoading || saving || transitioning}
+                      title="Відкрити для друку"
+                    >
+                      <Printer size={15} className="mr-1" />
+                      Друк
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleShare}
+                      loading={shareLoading}
+                      disabled={shareLoading || smsLoading || saving || transitioning}
+                      title="Скопіювати посилання"
+                    >
+                      <Share2 size={15} className="mr-1" />
+                      Поділитись
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSendSms}
+                      loading={smsLoading}
+                      disabled={shareLoading || smsLoading || saving || transitioning}
+                      title="Відправити SMS клієнту"
+                    >
+                      <MessageSquare size={15} className="mr-1" />
+                      SMS
+                    </Button>
+                  </>
+                )}
+                {canEdit && (
+                  <Button
+                    onClick={save}
+                    loading={saving}
+                    disabled={saving || transitioning || shareLoading || smsLoading}
+                  >
+                    Зберегти зміни
+                  </Button>
+                )}
+                <Button variant="outline" onClick={onClose} disabled={saving || transitioning}>
+                  Закрити
                 </Button>
-              ))}
-              {canEdit && (
-                <Button onClick={save} loading={saving} disabled={saving || transitioning}>
-                  Зберегти зміни
-                </Button>
-              )}
-              <Button variant="outline" onClick={onClose} disabled={saving || transitioning}>
-                Закрити
-              </Button>
+              </div>
             </div>
           ) : (
             <Button
@@ -895,23 +1037,96 @@ export function CreateWorkOrderModal({
                       <label className="block text-[13px] font-medium text-foreground mb-1">
                         Статус
                       </label>
-                      <span
-                        className={cn(
-                          'inline-block text-sm font-medium px-2.5 py-1 rounded-full',
-                          STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
+                      <div ref={statusMenuRef} className="relative flex items-center gap-1">
+                        {(() => {
+                          const statusOrder = Object.keys(WO_STATUS_LABELS);
+                          const curIdx = statusOrder.indexOf(currentStatus);
+                          const prevStatus = [...allowedTransitions]
+                            .reverse()
+                            .find((s: string) => statusOrder.indexOf(s) < curIdx);
+                          const nextStatus = allowedTransitions.find(
+                            (s: string) => statusOrder.indexOf(s) > curIdx,
+                          );
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                disabled={transitioning || !prevStatus}
+                                onClick={() => prevStatus && void doTransition(prevStatus)}
+                                className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+                                <span className="max-w-[80px] truncate">
+                                  {prevStatus ? (WO_STATUS_LABELS[prevStatus] ?? prevStatus) : '—'}
+                                </span>
+                              </button>
+                              <Tooltip
+                                content={WO_STATUS_DESCRIPTIONS[currentStatus] ?? currentStatus}
+                              >
+                                <button
+                                  type="button"
+                                  disabled={transitioning}
+                                  onClick={() => setStatusMenuOpen(o => !o)}
+                                  className={cn(
+                                    'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
+                                    STATUS_COLORS[currentStatus] ??
+                                      'bg-secondary text-muted-foreground',
+                                    !transitioning && 'cursor-pointer hover:opacity-80',
+                                  )}
+                                >
+                                  {WO_STATUS_LABELS[currentStatus] ?? currentStatus}
+                                </button>
+                              </Tooltip>
+                              <button
+                                type="button"
+                                disabled={transitioning || !nextStatus}
+                                onClick={() => nextStatus && void doTransition(nextStatus)}
+                                className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <span className="max-w-[80px] truncate">
+                                  {nextStatus ? (WO_STATUS_LABELS[nextStatus] ?? nextStatus) : '—'}
+                                </span>
+                                <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                              </button>
+                            </>
+                          );
+                        })()}
+                        {statusMenuOpen && allowedTransitions.length > 0 && (
+                          <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] rounded-lg border border-border bg-surface shadow-lg py-1">
+                            {allowedTransitions.map(s => (
+                              <button
+                                key={s}
+                                type="button"
+                                disabled={transitioning}
+                                onClick={() => {
+                                  setStatusMenuOpen(false);
+                                  void doTransition(s);
+                                }}
+                                className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
+                              >
+                                {TRANSITION_LABELS[s] ?? s}
+                              </button>
+                            ))}
+                          </div>
                         )}
-                      >
-                        {WO_STATUS_LABELS[currentStatus] ?? currentStatus}
-                      </span>
+                      </div>
                     </div>
                   ) : (
-                    <Input
-                      label="Статус"
-                      value={WO_STATUS_LABELS[initialStatus] ?? 'Чернетка'}
-                      disabled
-                      readOnly
-                      className="h-8 text-[13px]"
-                    />
+                    <div>
+                      <label className="block text-[13px] font-medium text-foreground mb-1">
+                        Статус
+                      </label>
+                      <Tooltip content={WO_STATUS_DESCRIPTIONS['DRAFT']}>
+                        <span
+                          className={cn(
+                            'inline-block text-sm font-medium px-2.5 py-1 rounded-full cursor-default',
+                            STATUS_COLORS['DRAFT'] ?? 'bg-secondary text-muted-foreground',
+                          )}
+                        >
+                          {WO_STATUS_LABELS['DRAFT'] ?? 'Чернетка'}
+                        </span>
+                      </Tooltip>
+                    </div>
                   )}
                 </div>
 

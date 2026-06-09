@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { WorkOrdersController } from './work-orders.controller';
+import { WorkOrdersPublicController } from './work-orders-public.controller';
 import { WorkOrdersService } from './work-orders.service';
 import { InventoryModule } from '../inventory/inventory.module';
 import { SettlementsModule } from '../settlements/settlements.module';
@@ -23,7 +24,7 @@ import { SettingsModule } from '../settings/settings.module';
     WarrantiesModule,
     SettingsModule,
   ],
-  controllers: [WorkOrdersController],
+  controllers: [WorkOrdersController, WorkOrdersPublicController],
   providers: [WorkOrdersService],
   exports: [WorkOrdersService],
 })

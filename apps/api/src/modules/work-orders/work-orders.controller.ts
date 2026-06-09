@@ -131,6 +131,26 @@ export class WorkOrdersController {
     return this.service.clone(orgId, id, user.id);
   }
 
+  // ─── Estimate Share ──────────────────────────────────────
+
+  @Post(':id/share-token')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Отримати або створити share-токен для кошторису' })
+  getShareToken(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getOrCreateShareToken(orgId, id);
+  }
+
+  @Post(':id/send-estimate-sms')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Надіслати кошторис клієнту через SMS' })
+  sendEstimateSms(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { baseUrl: string },
+  ) {
+    return this.service.sendEstimateSms(orgId, id, dto.baseUrl);
+  }
+
   // ─── Lines ───────────────────────────────────────────────
 
   @Post(':id/lines')

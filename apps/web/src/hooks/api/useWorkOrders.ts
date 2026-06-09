@@ -29,6 +29,8 @@ export interface WorkOrder {
   hasActiveWarranty?: boolean;
   slotStartAt?: string | null;
   slotEndAt?: string | null;
+  liftId?: string | null;
+  liftName?: string | null;
   slotLiftName?: string | null;
   documentDate?: string | null;
   createdAt: string;
