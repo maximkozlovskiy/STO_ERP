@@ -12242,3 +12242,79 @@ Frontend `[id]/PageClient.tsx:862` має умовний рендер бейдж
 **Статус:** [x] виправлено (об'єднано з #396)
 
 ---
+
+## Session 2026-06-09 — Друкована форма кошторису + SMS відправка (тестування фічі)
+
+Тестова сесія після реалізації фічі "Друкована форма кошторису + SMS відправка" (commits `4a7eb004` + `c1a49db4`). Перевірка: TS baseline (api + web + shared) — green; unit tests — 666 passed; E2E (нові 3 тести у `estimate-share.spec.ts`) — green; публічний endpoint повертає коректні дані + 404 для невалідного токена; UI-кнопки Друк / Поділитись / SMS видимі у DRAFT/ESTIMATE.
+
+Знайдено інконсистентність між backend SHAREABLE_STATUSES і UI canShare.
+
+---
+
+### Bug #401 — [MEDIUM] CreateWorkOrderModal — `canShare` не включає `APPROVED`, хоча backend SHAREABLE_STATUSES = DRAFT/ESTIMATE/APPROVED
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:846`
+**Severity:** MEDIUM (фіча розрекламована, але недоступна у легітимному статусі)
+**Категорія:** Frontend / Backend consistency
+
+**Опис:**
+
+Backend `WorkOrdersService.SHAREABLE_STATUSES` (apps/api/src/modules/work-orders/work-orders.service.ts:68-72) явно перелічує:
+
+```ts
+private static readonly SHAREABLE_STATUSES: ReadonlyArray<WorkOrderStatus> = [
+  'DRAFT',
+  'ESTIMATE',
+  'APPROVED',
+];
+```
+
+Коментар: «Після APPROVED-роботи переходять у IN_PROGRESS — публічне посилання губить сенс».
+
+Frontend canShare:
+
+```ts
+const canShare = isEditMode && ['DRAFT', 'ESTIMATE'].includes(currentStatus);
+```
+
+Пропущений `APPROVED`. Наслідок: коли наряд перейшов у статус APPROVED (клієнт затвердив кошторис, але роботи ще не почалися), приймальник:
+
+- НЕ бачить кнопок Друк / Поділитись / SMS у модалі редагування.
+- Не може повторно надіслати клієнту SMS з посиланням (поширений use-case: клієнт втратив SMS, просить ще раз).
+- Не може роздрукувати наряд у статусі APPROVED для підпису.
+
+При цьому backend дозволив би усі ці дії. Інконсистентність прихована — користувач думає, що це обмеження системи.
+
+**Очікувана поведінка:** `canShare = isEditMode && ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(currentStatus)`.
+
+**Фактична поведінка:** Кнопки сховані для APPROVED.
+
+**Фікс:** Додати `'APPROVED'` у масив `canShare` для відповідності backend SHAREABLE_STATUSES. (Альтернатива — звузити backend до DRAFT/ESTIMATE — менш бажано, бо втрачаємо легітимний use-case після затвердження кошторису.)
+
+**Регресія-guard:** Існуючий E2E тест `estimate-share.spec.ts` перевіряє ESTIMATE; розширити до APPROVED у наступній ітерації, коли є seed-наряд у APPROVED.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #402 — [LOW] Prisma Client був перегенерований у data-proxy режимі (`PRISMA_GENERATE_DATAPROXY`?) — API не міг старт��вати, помилка `Error validating datasource db: the URL must start with prisma://`
+
+**Файл:** Локальний `node_modules/.pnpm/@prisma+client@5.22.0_*` (не git tracked)
+**Severity:** LOW (тільки для локальної розробки; CI/prod не зачеплено)
+**Категорія:** Local dev environment
+
+**Опис:**
+
+На початку тестової сесії API не міг стартувати через `InvalidDatasourceError: Error validating datasource db: the URL must start with the protocol prisma://` хоча `.env.dev` має правильний `DATABASE_URL=postgresql://...`. Stack-trace містив `dataproxyEngine` — Prisma Client був згенерований з `engineType=dataproxy` (можливо через `PRISMA_GENERATE_DATAPROXY=true` env var або експеримент).
+
+Розвʼязок: `cd packages/database && pnpm prisma generate` згенерував стандартний library engine, API запустився.
+
+**Очікувана поведінка:** `pnpm prisma generate` за замовчуванням використовує library engine (для postgresql) і API стартує без додаткових ENV.
+
+**Фактична поведінка:** Cached client використовував data-proxy engine.
+
+**Фікс:** Документувати у MemoryManual.md gotcha: «Якщо API падає з `code: P6001 / prisma://`, перегенерувати Prisma client: `pnpm --filter @sto/database prisma generate`».
+
+**Статус:** [x] виправлено (regenerate run, API up). Документуємо у memory.
+
+---

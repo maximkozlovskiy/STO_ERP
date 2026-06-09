@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+[NEW] fix(tester): Bug #401 — canShare include APPROVED for symmetry with backend
+d516ec6c docs(memory): update MemoryManual with estimate share security gotcha
 c1a49db4 fix(review): secure estimate share — public DTO, status guard, server-side baseUrl
 4a7eb004 feat(work-orders): estimate print & share — print page, share link, SMS send
 7b519a99 feat(work-orders): add edit mode + FSM transitions to CreateWorkOrderModal
@@ -31,7 +33,18 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Unit+Contract: ✅ 666/666 API passed; ✅ 358/358 Web component passed
-Latest tester: 2026-06-09 (FULL HEAD~20..HEAD, HEAD ee368574) — Bugs #396-#400:
+Latest tester: 2026-06-09 (FULL feature scope estimate share, HEAD d516ec6c) — Bugs #401-#402:
+  • [MEDIUM #401] CreateWorkOrderModal canShare пропускав APPROVED, але backend
+    SHAREABLE_STATUSES = DRAFT/ESTIMATE/APPROVED. UI приховував Друк/Поділитись/SMS
+    у легітимному статусі. Симетризовано: canShare = isEditMode && ['DRAFT', 'ESTIMATE', 'APPROVED'].
+    Регрес-гард: estimate-share.spec.ts → backend share-token приймає APPROVED.
+  • [LOW #402] Prisma client cached у data-proxy режимі → API падав з `code: P6001`,
+    `the URL must start with prisma://` хоча DATABASE_URL=postgresql://. Fix:
+    `cd packages/database && pnpm prisma generate` регенерує library engine.
+    Документовано як gotcha (локальне середовище, CI/prod не зачеплено).
+  Нові E2E: apps/web/e2e/estimate-share.spec.ts (4 tests) — публічний endpoint
+  + UI кнопки + APPROVED регрес-гард + invalid token шлях.
+Previous tester: 2026-06-09 (FULL HEAD~20..HEAD, HEAD ee368574) — Bugs #396-#400:
   • [CRITICAL #396] WorkOrderAddPartModal посилав GoodUoM.id у поле, де backend
     (post-1facbb67) очікує UnitOfMeasure.id. Backend silent-store null без помилки.
     Fix: interface GoodUoM додає unitOfMeasureId; option value={u.unitOfMeasureId}.

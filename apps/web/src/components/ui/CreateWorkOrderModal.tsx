@@ -843,7 +843,13 @@ export function CreateWorkOrderModal({
 
   const allowedTransitions = isEditMode ? (WO_STATUS_TRANSITIONS[currentStatus] ?? []) : [];
   const canEdit = isEditMode ? ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(currentStatus) : true;
-  const canShare = isEditMode && ['DRAFT', 'ESTIMATE'].includes(currentStatus);
+  // Bug #401: вирівняно з backend SHAREABLE_STATUSES (DRAFT/ESTIMATE/APPROVED).
+  // Після клієнтського затвердження (APPROVED) приймальник часто має необхідність:
+  // (а) повторно надіслати SMS з кошторисом (клієнт втратив посилання),
+  // (б) роздрукувати наряд для підпису. Backend дозволяє share/SMS у APPROVED,
+  // тож UI має експонувати ті ж кнопки. Після IN_PROGRESS публічне посилання
+  // перестає працювати (404) — на стороні backend.
+  const canShare = isEditMode && ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(currentStatus);
 
   const handlePrint = async () => {
     if (!workOrderId) return;
