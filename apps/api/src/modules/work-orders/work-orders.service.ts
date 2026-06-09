@@ -1041,7 +1041,12 @@ export class WorkOrdersService {
       dto.unitOfMeasureId
         ? this.prisma.goodUoM.findFirst({
             where: { unitOfMeasureId: dto.unitOfMeasureId, goodId: dto.goodId, orgId },
-            select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
+            select: {
+              id: true,
+              unitOfMeasureId: true,
+              coefficient: true,
+              unitOfMeasure: { select: { shortName: true } },
+            },
           })
         : Promise.resolve(null),
     ]);
@@ -1075,7 +1080,10 @@ export class WorkOrdersService {
             quantity: dto.quantity,
             price,
             amount,
-            unitOfMeasureId: goodUoM?.id ?? null,
+            // Bug #420: WorkOrderPart.unitOfMeasureId FK → UnitOfMeasure, not GoodUoM.
+            // goodUoM.id is the GoodUoM junction record PK; goodUoM.unitOfMeasureId is
+            // the actual UnitOfMeasure FK. Using goodUoM.id caused P2003 on every addPart.
+            unitOfMeasureId: goodUoM?.unitOfMeasureId ?? null,
           },
           include: {
             good: {
@@ -1126,16 +1134,25 @@ export class WorkOrdersService {
     const amount = quantity * price;
 
     // Validate new unitOfMeasureId if provided
-    let goodUoM: { id: string; coefficient: number; unitOfMeasure: { shortName: string } } | null =
-      null;
+    let goodUoM: {
+      id: string;
+      unitOfMeasureId: string;
+      coefficient: number;
+      unitOfMeasure: { shortName: string };
+    } | null = null;
     // dto.unitOfMeasureId = UnitOfMeasure.id (from /units); resolve to GoodUoM record.
-    // part.unitOfMeasureId stores GoodUoM.id — keep it as-is when dto doesn't override.
+    // part.unitOfMeasureId stores UnitOfMeasure.id (FK) — keep it as-is when dto doesn't override.
     const newUnitOfMeasureId = dto.unitOfMeasureId ?? null;
     if (newUnitOfMeasureId) {
       const goodIdForPart = dto.goodId ?? part.goodId;
       goodUoM = await this.prisma.goodUoM.findFirst({
         where: { unitOfMeasureId: newUnitOfMeasureId, goodId: goodIdForPart, orgId },
-        select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
+        select: {
+          id: true,
+          unitOfMeasureId: true,
+          coefficient: true,
+          unitOfMeasure: { select: { shortName: true } },
+        },
       });
       // Bug #399: fail-loudly — silent-store-null маскує FE contract bugs (#396).
       if (!goodUoM) {
@@ -1153,8 +1170,11 @@ export class WorkOrdersService {
             quantity,
             price,
             amount,
+            // Bug #420: same as addPart — store unitOfMeasureId (FK to UnitOfMeasure), not goodUoM.id.
             unitOfMeasureId:
-              dto.unitOfMeasureId === undefined ? part.unitOfMeasureId : (goodUoM?.id ?? null),
+              dto.unitOfMeasureId === undefined
+                ? part.unitOfMeasureId
+                : (goodUoM?.unitOfMeasureId ?? null),
           },
           include: {
             good: {
