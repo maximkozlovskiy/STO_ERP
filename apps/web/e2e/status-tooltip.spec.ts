@@ -6,23 +6,29 @@ test('status badge tooltip appears on hover in work-orders list', async ({ page 
   await page.goto('/work-orders');
   await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
 
-  // Wait for table rows to load
-  await page.locator('table tbody tr').first().waitFor({ state: 'visible', timeout: 20_000 });
-
-  // Find the first status badge
-  const statusBadge = page
+  // Wait for table rows with real data (skeleton rows have no status badge text)
+  // Real status badge contains one of: Чернетка, Кошторис, В роботі, Виконано, etc.
+  const realStatusBadge = page
     .locator('table tbody tr')
     .first()
-    .locator('[class*="rounded-full"]')
+    .locator('span.inline-flex.rounded-full')
     .first();
-  await statusBadge.waitFor({ state: 'visible', timeout: 15_000 });
+  await realStatusBadge.waitFor({ state: 'visible', timeout: 20_000 });
+  await realStatusBadge.scrollIntoViewIfNeeded();
 
-  // Hover over the badge — tooltip should appear in document.body (portal)
-  await statusBadge.hover();
+  // Move mouse away first so hover re-triggers onMouseEnter reliably even if
+  // a previous test left the cursor over a sibling element.
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(100);
 
-  // Tooltip is rendered via createPortal into body — look for the fixed span
+  // Hover over the badge — Tooltip wraps the badge with onMouseEnter handler.
+  // The badge itself is span.rounded-full; its parent is span.inline-flex (Tooltip wrapper).
+  await realStatusBadge.hover();
+
+  // Tooltip is rendered via createPortal into body — look for the fixed-positioned span
+  // injected by Tooltip component (tooltip.tsx:36 — position: fixed).
   const tooltip = page.locator('body > span[style*="position: fixed"]');
-  await expect(tooltip).toBeVisible({ timeout: 3_000 });
+  await expect(tooltip).toBeVisible({ timeout: 5_000 });
   const text = await tooltip.textContent();
   expect(text?.length).toBeGreaterThan(10);
 });
