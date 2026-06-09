@@ -316,6 +316,25 @@ export function CreateWorkOrderModal({
     return () => document.removeEventListener('mousedown', handler);
   }, [statusMenuOpen]);
 
+  // Bug #408 follow-up: onKeyDown на <div role="presentation"> без tabIndex/focus
+  // не спрацьовує — Esc мовчки ігнорувався. Глобальний listener забезпечує закриття
+  // діалогу-конфлікту з клавіатури згідно §14 a11y.
+  //
+  // useCapture + stopImmediatePropagation: батьківський <Modal> теж слухає Esc на document
+  // (bubble-фаза), тож без capture+stop Esc закрив би одразу і conflict-dialog, і WO modal.
+  // Capture-фаза гарантує що наш listener fire-ить ПЕРШИМ; stopImmediatePropagation відсікає
+  // подальші listeners на document (включно з Modal handler).
+  useEffect(() => {
+    if (!invoiceConflict) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      if (!invoiceLoading) setInvoiceConflict(false);
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [invoiceConflict, invoiceLoading]);
+
   // Inline add-row state
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
   const [newPart, setNewPart] = useState<Omit<LocalPart, '_key'>>(EMPTY_PART);
@@ -2555,14 +2574,12 @@ export function CreateWorkOrderModal({
       />
 
       {invoiceConflict && (
-        // Bug #408: ESC + overlay click + autoFocus для модального UX.
-        // Inline dialog без shared Modal — додаємо мінімальні a11y/UX affordances.
+        // Bug #408: ESC обробляється глобальним document listener (див. useEffect вище —
+        // onKeyDown на <div role="presentation"> без tabIndex/focus не фaйрить).
+        // Overlay click + autoFocus для модального UX.
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+          className="fixed inset-0 z-60 flex items-center justify-center bg-black/50"
           onClick={() => !invoiceLoading && setInvoiceConflict(false)}
-          onKeyDown={e => {
-            if (e.key === 'Escape' && !invoiceLoading) setInvoiceConflict(false);
-          }}
           role="presentation"
         >
           <div

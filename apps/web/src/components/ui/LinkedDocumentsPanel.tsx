@@ -98,6 +98,10 @@ function PreviewPopup({
   const [style, setStyle] = useState<CSSProperties>({ opacity: 0 });
 
   // useLayoutEffect — synchronous DOM measurement to avoid flash at (0,0) before reposition.
+  // Включаємо `preview` у deps: коли користувач відкриває preview іншого рядка без
+  // попереднього закриття, anchorRef.current змінюється — компонент перепозиціонується.
+  // Тільки [anchorRef] (стабільний ref) → ефект ніколи не перезапускався → попап
+  // залишався у позиції першого відкритого рядка (IMPORTANT bug).
   useLayoutEffect(() => {
     if (!anchorRef.current || !popupRef.current) return;
     const rect = anchorRef.current.getBoundingClientRect();
@@ -106,19 +110,24 @@ function PreviewPopup({
     const top = spaceBelow > popupH + 8 ? rect.bottom + 8 : rect.top - popupH - 8;
     const left = Math.min(rect.left, window.innerWidth - 320 - 16);
     setStyle({ top, left: Math.max(8, left), opacity: 1 });
-  }, [anchorRef]);
+  }, [anchorRef, preview]);
 
+  // Capture + stopImmediatePropagation: PreviewPopup може рендеритися всередині
+  // батьківського <Modal> (work-orders Documents tab), який теж слухає Esc на document.
+  // Без capture-фази Esc закрив би одразу і preview, і весь модал.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      onClose();
     };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
   }, [onClose]);
 
   return (
     <>
-      <div className="fixed inset-0 z-[69]" onClick={onClose} />
+      <div className="fixed inset-0 z-69" onClick={onClose} />
       <div
         ref={popupRef}
         style={{ ...style, position: 'fixed', width: 300, zIndex: 70 }}
