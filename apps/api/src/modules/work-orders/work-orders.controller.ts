@@ -31,6 +31,7 @@ import {
   CreateWorkOrderPartDto,
   UpdateWorkOrderPartDto,
   SendEstimateSmsDto,
+  LinkedCountsDto,
 } from './work-orders.dto';
 
 @ApiTags('Work Orders')
@@ -61,7 +62,7 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Кількість пов'язаних документів для списку нарядів (batch)" })
-  getLinkedCounts(@OrgContext() orgId: string, @Body() dto: { workOrderIds: string[] }) {
+  getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
     return this.service.getLinkedCounts(orgId, dto.workOrderIds);
   }
 

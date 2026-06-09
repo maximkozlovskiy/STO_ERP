@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type {
+  CSSProperties,
+  ElementType,
+  MouseEvent as ReactMouseEvent,
+  ReactNode,
+  RefObject,
+} from 'react';
 import { Receipt, CreditCard, Calendar, Shield, X, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { fmtDate, fmtDateTime } from '@/lib/format';
@@ -84,13 +91,14 @@ function PreviewPopup({
   onClose,
 }: {
   preview: PreviewType;
-  anchorRef: React.RefObject<HTMLButtonElement | null>;
+  anchorRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
 }) {
   const popupRef = useRef<HTMLDivElement>(null);
-  const [style, setStyle] = useState<React.CSSProperties>({ opacity: 0 });
+  const [style, setStyle] = useState<CSSProperties>({ opacity: 0 });
 
-  useEffect(() => {
+  // useLayoutEffect — synchronous DOM measurement to avoid flash at (0,0) before reposition.
+  useLayoutEffect(() => {
     if (!anchorRef.current || !popupRef.current) return;
     const rect = anchorRef.current.getBoundingClientRect();
     const popupH = popupRef.current.offsetHeight || 200;
@@ -135,7 +143,7 @@ function PreviewPopup({
   );
 }
 
-function PreviewRow({ label, value }: { label: string; value: React.ReactNode }) {
+function PreviewRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex justify-between gap-2 py-1 border-b border-border last:border-0">
       <span className="text-muted-foreground shrink-0">{label}</span>
@@ -246,11 +254,11 @@ function SectionRow({
   badge,
   onClick,
 }: {
-  icon: React.ElementType;
+  icon: ElementType;
   primary: string;
   secondary?: string;
   badge?: { label: string; className: string };
-  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  onClick: (e: ReactMouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <button
@@ -282,14 +290,26 @@ export function LinkedDocumentsPanel({ workOrderId }: { workOrderId: string }) {
   const anchorRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
+    // Race-guard: користувач швидко перемикає workOrderId → стара відповідь не має
+    // перезаписувати стан від нового запиту (§3.1).
+    let cancelled = false;
     setLoading(true);
     apiFetch<LinkedDocuments>(`/work-orders/${workOrderId}/linked-documents`)
-      .then(setData)
-      .catch(() => setData({ invoices: [], payments: [], calendarSlots: [], warranties: [] }))
-      .finally(() => setLoading(false));
+      .then(d => {
+        if (!cancelled) setData(d);
+      })
+      .catch(() => {
+        if (!cancelled) setData({ invoices: [], payments: [], calendarSlots: [], warranties: [] });
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [workOrderId]);
 
-  const openPreview = (e: React.MouseEvent<HTMLButtonElement>, p: PreviewType) => {
+  const openPreview = (e: ReactMouseEvent<HTMLButtonElement>, p: PreviewType) => {
     anchorRef.current = e.currentTarget;
     setPreview(p);
   };

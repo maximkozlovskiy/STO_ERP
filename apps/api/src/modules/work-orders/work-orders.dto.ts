@@ -12,6 +12,9 @@ import {
   IsDateString,
   IsBoolean,
   IsBooleanString,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
@@ -424,4 +427,18 @@ export class EstimatePublicDto {
 export class SendEstimateSmsDto {
   // Порожнє тіло — навмисно. Залишено для майбутніх параметрів (lang, channel),
   // class-validator забезпечить що жодні зайві поля не приймаються (whitelist у ValidationPipe).
+}
+
+// ─── Linked documents (batch counts) ───────────────────────
+// §2.3 Input validation: без DTO @Body() приймав довільний JSON → DoS-вектор
+// (мільйон IDs у where: { in: [...] } спричиняє важкий B-tree lookup) + потенційно
+// non-UUID значення доходили до Prisma. ArrayMaxSize обмежує batch до page-size+запас.
+
+export class LinkedCountsDto {
+  @ApiProperty({ type: [String], description: 'UUID нарядів (макс. 500)' })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  workOrderIds!: string[];
 }

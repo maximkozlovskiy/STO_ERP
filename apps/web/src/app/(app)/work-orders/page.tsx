@@ -267,9 +267,23 @@ function WorkOrdersPageInner() {
   >({});
   const [linkedDocPopupId, setLinkedDocPopupId] = useState<string | null>(null);
 
-  // Fetch linked document counts for all visible work orders (non-blocking)
+  // Escape closes the linked-documents popup. `onKeyDown` on overlay <div> не спрацьовує
+  // без tabIndex/focus — потрібен глобальний listener (§14 a11y).
+  useEffect(() => {
+    if (!linkedDocPopupId) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLinkedDocPopupId(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [linkedDocPopupId]);
+
+  // Fetch linked document counts for all visible work orders (non-blocking).
+  // Race-guard: швидке перемикання фільтрів змінює `orders`; стара відповідь не має
+  // перезаписувати свіжіший стан (§8.2).
   useEffect(() => {
     if (!orders.length) return;
+    let cancelled = false;
     const ids = orders.map(w => w.id);
     apiFetch<
       Record<
@@ -277,8 +291,13 @@ function WorkOrdersPageInner() {
         { invoices: number; payments: number; calendarSlots: number; warranties: number }
       >
     >('/work-orders/linked-counts', { method: 'POST', body: JSON.stringify({ workOrderIds: ids }) })
-      .then(setLinkedCounts)
+      .then(d => {
+        if (!cancelled) setLinkedCounts(d);
+      })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [orders]);
 
   const searchParams = useSearchParams();
@@ -1066,19 +1085,19 @@ function WorkOrdersPageInner() {
 
       <ConfirmDialog {...confirmDialogProps} />
 
-      {/* Linked documents popup */}
+      {/* Linked documents popup. Escape handled by document-level listener above (§14 a11y). */}
       {linkedDocPopupId && (
         <div
           className="fixed inset-0 z-50 bg-black/30"
           onClick={() => setLinkedDocPopupId(null)}
-          onKeyDown={e => {
-            if (e.key === 'Escape') setLinkedDocPopupId(null);
-          }}
           role="presentation"
         >
           <div
             className="absolute right-4 top-1/2 -translate-y-1/2 w-90 max-h-[80vh] overflow-y-auto bg-background rounded-xl shadow-2xl border border-border p-4"
             onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Пов'язані документи наряду"
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-sm">Пов&apos;язані документи</h2>

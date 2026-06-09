@@ -1695,16 +1695,21 @@ export class WorkOrdersService {
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
 
+    // §3.2/§7.1: take: N — захист від OOM при патологічних обсягах (рідко, але можливо
+    // для довгоживучих нарядів з частковою оплатою або десятками перенесень слотів).
+    const TAKE = 500;
     const [invoices, payments, calendarSlots, warranties] = await Promise.all([
       this.prisma.invoice.findMany({
         where: { workOrderId, orgId, deletedAt: null },
         select: { id: true, number: true, status: true, amount: true, documentDate: true },
         orderBy: { createdAt: 'desc' },
+        take: TAKE,
       }),
       this.prisma.payment.findMany({
         where: { workOrderId, orgId },
         select: { id: true, amount: true, method: true, createdAt: true, notes: true },
         orderBy: { createdAt: 'desc' },
+        take: TAKE,
       }),
       this.prisma.calendarSlot.findMany({
         where: { workOrderId, orgId, deletedAt: null },
@@ -1718,6 +1723,7 @@ export class WorkOrdersService {
           lift: { select: { name: true } },
         },
         orderBy: { startAt: 'desc' },
+        take: TAKE,
       }),
       this.prisma.warranty.findMany({
         where: { workOrderId, orgId, deletedAt: null },
@@ -1729,10 +1735,20 @@ export class WorkOrdersService {
           createdAt: true,
         },
         orderBy: { createdAt: 'desc' },
+        take: TAKE,
       }),
     ]);
 
-    return { invoices, payments, calendarSlots, warranties };
+    // §13 API Contract: Prisma Decimal → number у DTO; Date → ISO string (JSON.stringify
+    // це зробить автоматично, але якщо клієнт типує `string` — серіалізатор Fastify
+    // уже повертає ISO). Decimal без cast серіалізується як рядок — фронт типує
+    // `string | number`, тож приймається обидва, але нормалізація на бекенді консистентніше.
+    return {
+      invoices: invoices.map(i => ({ ...i, amount: Number(i.amount) })),
+      payments: payments.map(p => ({ ...p, amount: Number(p.amount) })),
+      calendarSlots,
+      warranties,
+    };
   }
 
   async getLinkedCounts(orgId: string, workOrderIds: string[]) {
