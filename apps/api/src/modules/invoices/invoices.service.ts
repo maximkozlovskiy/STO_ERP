@@ -584,83 +584,110 @@ export class InvoicesService {
     // Bug #406: vatRate=0 викривлював облік ПДВ. Симетрично з addLine (dto.vatRate ?? 20).
     const DEFAULT_VAT = 20;
 
-    // Bug #407: recalcTotals був ПОЗА $transaction → race window де lines нові, totals старі.
-    // WO lines+parts fetched inside tx (RepeatableRead) to prevent TOCTOU: concurrent
-    // addLine/removePart between pre-check and createMany would silently skew the invoice.
-    await this.prisma.$transaction(
-      async tx => {
-        const wo = await tx.workOrder.findFirst({
-          where: { id: workOrderId, orgId, deletedAt: null },
-          include: {
-            lines: {
-              where: { deletedAt: null },
-              include: { work: { select: { name: true } } },
+    // Bug #407 + sto-optimize: WO lines+parts fetched inside tx to close TOCTOU between
+    // pre-check (reads WO contents) and createMany (writes invoice lines). Plain default
+    // isolation (ReadCommitted) дозволяє concurrent addLine(invoice) або інший
+    // refreshFromWorkOrder злити стан між pre-check і tx-body. Serializable + inner re-check
+    // status — симетрично з createFromWorkOrder (Bug #412): Postgres SSI ловить write-conflict
+    // → P2034 → 4xx з UA-повідомленням замість мовчазного override.
+    try {
+      await this.prisma.$transaction(
+        async tx => {
+          // Re-check інвойсу всередині tx: інший actor міг змінити status DRAFT→SENT
+          // між pre-check і entry у tx. Без перевірки refresh переписав би SENT-рядки,
+          // ламаючи бухоблік. Serializable + явний re-check — двопоясна страховка.
+          const invInTx = await tx.invoice.findFirst({
+            where: { id: existing.id, orgId, deletedAt: null },
+            select: { status: true },
+          });
+          if (!invInTx) throw new NotFoundException('Активний рахунок не знайдено');
+          if (invInTx.status !== InvoiceStatus.DRAFT)
+            throw new BadRequestException(
+              'Оновити можна лише чернетку рахунку. Скасуйте поточний і виставте новий.',
+            );
+
+          const wo = await tx.workOrder.findFirst({
+            where: { id: workOrderId, orgId, deletedAt: null },
+            include: {
+              lines: {
+                where: { deletedAt: null },
+                include: { work: { select: { name: true } } },
+              },
+              parts: {
+                where: { deletedAt: null },
+                include: { good: { select: { name: true } } },
+              },
             },
-            parts: {
-              where: { deletedAt: null },
-              include: { good: { select: { name: true } } },
-            },
-          },
-        });
-        if (!wo) throw new NotFoundException('Наряд не знайдено');
+          });
+          if (!wo) throw new NotFoundException('Наряд не знайдено');
 
-        await tx.invoiceLine.deleteMany({
-          where: { invoiceId: existing.id, orgId },
-        });
+          await tx.invoiceLine.deleteMany({
+            where: { invoiceId: existing.id, orgId },
+          });
 
-        const lineData = [
-          ...wo.lines.map((l, i) => {
-            const priceWithoutVat = l.normoHours * Number(l.price);
-            const vatAmount = priceWithoutVat * (DEFAULT_VAT / 100);
-            const priceWithVat = priceWithoutVat + vatAmount;
-            return {
-              orgId,
-              invoiceId: existing.id,
-              workId: l.workId,
-              description: l.work?.name ?? 'Робота',
-              quantity: l.normoHours,
-              unitPrice: Number(l.price),
-              vatRate: DEFAULT_VAT,
-              priceWithoutVat,
-              vatAmount,
-              priceWithVat,
-              sortOrder: i,
-            };
-          }),
-          ...wo.parts.map((p, i) => {
-            const priceWithoutVat = Number(p.quantity) * Number(p.price);
-            const vatAmount = priceWithoutVat * (DEFAULT_VAT / 100);
-            const priceWithVat = priceWithoutVat + vatAmount;
-            return {
-              orgId,
-              invoiceId: existing.id,
-              goodId: p.goodId,
-              description: p.good?.name ?? 'Запчастина',
-              quantity: Number(p.quantity),
-              unitPrice: Number(p.price),
-              vatRate: DEFAULT_VAT,
-              priceWithoutVat,
-              vatAmount,
-              priceWithVat,
-              sortOrder: wo.lines.length + i,
-            };
-          }),
-        ];
+          const lineData = [
+            ...wo.lines.map((l, i) => {
+              const priceWithoutVat = l.normoHours * Number(l.price);
+              const vatAmount = priceWithoutVat * (DEFAULT_VAT / 100);
+              const priceWithVat = priceWithoutVat + vatAmount;
+              return {
+                orgId,
+                invoiceId: existing.id,
+                workId: l.workId,
+                description: l.work?.name ?? 'Робота',
+                quantity: l.normoHours,
+                unitPrice: Number(l.price),
+                vatRate: DEFAULT_VAT,
+                priceWithoutVat,
+                vatAmount,
+                priceWithVat,
+                sortOrder: i,
+              };
+            }),
+            ...wo.parts.map((p, i) => {
+              const priceWithoutVat = Number(p.quantity) * Number(p.price);
+              const vatAmount = priceWithoutVat * (DEFAULT_VAT / 100);
+              const priceWithVat = priceWithoutVat + vatAmount;
+              return {
+                orgId,
+                invoiceId: existing.id,
+                goodId: p.goodId,
+                description: p.good?.name ?? 'Запчастина',
+                quantity: Number(p.quantity),
+                unitPrice: Number(p.price),
+                vatRate: DEFAULT_VAT,
+                priceWithoutVat,
+                vatAmount,
+                priceWithVat,
+                sortOrder: wo.lines.length + i,
+              };
+            }),
+          ];
 
-        if (lineData.length > 0) {
-          await tx.invoiceLine.createMany({ data: lineData });
-        }
+          if (lineData.length > 0) {
+            await tx.invoiceLine.createMany({ data: lineData });
+          }
 
-        const totalWithoutVat = lineData.reduce((s, l) => s + l.priceWithoutVat, 0);
-        const totalVat = lineData.reduce((s, l) => s + l.vatAmount, 0);
-        const totalWithVat = lineData.reduce((s, l) => s + l.priceWithVat, 0);
-        await tx.invoice.update({
-          where: { id: existing.id, orgId },
-          data: { totalWithoutVat, totalVat, totalWithVat, amount: totalWithVat },
-        });
-      },
-      { timeout: 10_000 },
-    );
+          const totalWithoutVat = lineData.reduce((s, l) => s + l.priceWithoutVat, 0);
+          const totalVat = lineData.reduce((s, l) => s + l.vatAmount, 0);
+          const totalWithVat = lineData.reduce((s, l) => s + l.priceWithVat, 0);
+          await tx.invoice.update({
+            where: { id: existing.id, orgId },
+            data: { totalWithoutVat, totalVat, totalWithVat, amount: totalWithVat },
+          });
+        },
+        { isolationLevel: 'Serializable', timeout: 10_000 },
+      );
+    } catch (err) {
+      // P2034: Postgres SSI detected write-conflict between concurrent refresh+addLine
+      // або двома refresh одночасно. Користувач бачить дружнє повідомлення замість 500.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+        throw new BadRequestException(
+          'Інший користувач щойно оновив цей рахунок. Оновіть сторінку та повторіть.',
+        );
+      }
+      throw err;
+    }
 
     return this.findOne(orgId, existing.id);
   }

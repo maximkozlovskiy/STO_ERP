@@ -141,6 +141,9 @@ describe('InvoicesService — business logic guards', () => {
         status: 'DRAFT',
         workOrderId: WO_ID,
       });
+      // sto-optimize: Serializable inner re-check (status DRAFT) — додано симетрично
+      // з createFromWorkOrder для закриття TOCTOU concurrent addLine/refresh.
+      prisma.invoice.findFirst.mockResolvedValueOnce({ status: 'DRAFT' });
       // findOne (повернути результат після refresh) — мінімальний mock щоб не кидало
       prisma.invoice.findFirst.mockResolvedValueOnce({
         id: INV_ID,
@@ -196,6 +199,8 @@ describe('InvoicesService — business logic guards', () => {
         status: 'DRAFT',
         workOrderId: WO_ID,
       });
+      // sto-optimize: Serializable inner re-check.
+      prisma.invoice.findFirst.mockResolvedValueOnce({ status: 'DRAFT' });
       prisma.invoice.findFirst.mockResolvedValueOnce({
         id: INV_ID,
         orgId: ORG,
@@ -233,6 +238,60 @@ describe('InvoicesService — business logic guards', () => {
           }),
         }),
       );
+    });
+  });
+
+  // ─── sto-optimize: refreshFromWorkOrder Serializable inner re-check ────
+  //
+  // Regression-guard для INNER re-check всередині Serializable $transaction. Без
+  // цього тесту видалення `const invInTx = await tx.invoice.findFirst(...)` блоку
+  // у refactor пройшло б CI зеленим — TOCTOU window повертається silently.
+  //
+  // Сценарій: pre-check бачить DRAFT → переходимо у $tx → re-check бачить status=SENT
+  // (інший actor встиг змінити статус між pre-check і входом у tx) → re-check кидає
+  // BadRequestException без виклику deleteMany/createMany (бухоблік не псується).
+
+  describe('refreshFromWorkOrder — Serializable inner re-check race protection', () => {
+    it('re-check всередині $transaction виявляє статус-mutation → throw без deleteMany', async () => {
+      prisma.workOrder.findFirst.mockResolvedValue({
+        id: WO_ID,
+        orgId: ORG,
+        status: 'COMPLETED',
+        counterpartyId: 'c-1',
+        totalAmount: 100,
+        lines: [],
+        parts: [],
+      });
+      // 1st findFirst (pre-check, поза $tx) → DRAFT (PASS)
+      // 2nd findFirst (re-check, всередині $tx) → SENT (інший actor щойно змінив статус)
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({ id: INV_ID, orgId: ORG, status: 'DRAFT', workOrderId: WO_ID })
+        .mockResolvedValueOnce({ status: 'SENT' });
+
+      await expect(service.refreshFromWorkOrder(ORG, WO_ID)).rejects.toThrow(BadRequestException);
+      // Жодних мутацій якщо re-check спрацював
+      expect(prisma.invoiceLine.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.invoiceLine.createMany).not.toHaveBeenCalled();
+      expect(prisma.invoice.update).not.toHaveBeenCalled();
+    });
+
+    it('re-check всередині $transaction виявляє soft-deleted invoice → NotFound', async () => {
+      prisma.workOrder.findFirst.mockResolvedValue({
+        id: WO_ID,
+        orgId: ORG,
+        status: 'COMPLETED',
+        counterpartyId: 'c-1',
+        totalAmount: 100,
+        lines: [],
+        parts: [],
+      });
+      // pre-check бачить DRAFT, re-check бачить null (інший actor soft-deleted)
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({ id: INV_ID, orgId: ORG, status: 'DRAFT', workOrderId: WO_ID })
+        .mockResolvedValueOnce(null);
+
+      await expect(service.refreshFromWorkOrder(ORG, WO_ID)).rejects.toThrow(NotFoundException);
+      expect(prisma.invoiceLine.deleteMany).not.toHaveBeenCalled();
     });
   });
 
