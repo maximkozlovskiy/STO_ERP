@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+254ce530 fix(tester): Bugs #418-#419 — STATUS_TABS_EXTRA comment drift + select aria-label
+bf90f9b2 docs(memory): update MemoryManual after refresh isolation fix (HEAD a9a5c3ec)
 a9a5c3ec docs(skills): add isolation-comment-vs-actual mismatch pattern to sto-optimize
 e42d5ce3 perf(optimize): Serializable + inner re-check у refreshFromWorkOrder — закриває TOCTOU
 60594c12 docs(memory): update MemoryManual after review of HEAD 44b4dfe4 (commit 5dac586b)
@@ -80,7 +82,36 @@ Latest optimize (попередній): 2026-06-09 (perf scope: linked-documents
   • work-orders/page.tsx formatDate → fmtDate proxy (manual padStart → singleton)
   • Skill self-improvement: reverse-FK index miss pattern + local formatDate proxy pattern
 Unit+Contract: ✅ 693/693 API passed (+2 нові: refreshFromWorkOrder Serializable inner re-check); ✅ 366/366 Web component passed
-Latest tester: 2026-06-09 (FULL post linked-docs/invoice button QA, HEAD pending) — Bugs #414-#417:
+Latest tester: 2026-06-09 (TARGETED audit HEAD 60594c12 → 254ce530, scope: simplify+review cleanup post-44b4dfe4) — Bugs #418-#419:
+  • [LOW #418] e2e спека work-orders-features.spec.ts мала застарілий порядок
+    STATUS_TABS_EXTRA у коментарях ([ON_HOLD, CANCELLED, ARCHIVED]) і неактуальний
+    line-ref page.tsx:125-128. Реальний derived-order з WO_STATUS_LABELS insertion:
+    ON_HOLD, ARCHIVED, CANCELLED. Тести query options by value (не by position),
+    тому drift не падає у CI — comment-only fix.
+  • [LOW #419] Native `<select>` для "Інші статуси" без aria-label → screen-reader
+    NVDA/JAWS оголошує лише "list combobox". Текст "Інші" у `<option disabled hidden>`
+    не projected у accessible-name (WAI-ARIA standard). Fix: aria-label="Інші
+    статуси нарядів".
+  Verified findings (no fix needed):
+  • STATUS_TABS_EXTRA derives correctly з insertion-order WO_STATUS_LABELS
+    (ON_HOLD/ARCHIVED/CANCELLED).
+  • useQuery linked-counts: staleTime: 30_000, enabled: ordersIds.length > 0,
+    sorted memo ordersIds → stable hash; queryKey `[...workOrdersKeys.all,
+    'linked-counts', ordersIds]` коректно invalidate-иться через
+    invalidateQueries({queryKey: workOrdersKeys.all}) prefix match.
+  • refreshFromWorkOrder: WO lines+parts тепер всередині $transaction
+    (Serializable + inner re-check, e42d5ce3). Pre-check ззовні з narrow select.
+  • getLinkedDocuments без findFirst guard: 4 queries фільтрують by orgId+
+    workOrderId → non-existent UUID повертає empty arrays. Same semantics для
+    auth-UI flow де wo.id з useWorkOrders гарантовано існує.
+  • DocSection: count === 0 → return null. Children (`data.X.map`) evaluate
+    на порожньому масиві = no-op render cost.
+  • DOC_COUNTERS: 4 entries (invoices/payments/calendarSlots/warranties)
+    збігаються з backend response keys (work-orders.service.ts:1789).
+  TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+  Unit+Contract: ✅ 693/693 API passed, ✅ 366/366 Web component passed
+
+Latest tester (попередня сесія): 2026-06-09 (FULL post linked-docs/invoice button QA, HEAD pending) — Bugs #414-#417:
   • [MEDIUM #414] LinkedDocumentsPanel `.catch(() => setData({invoices:[],...}))`
     маскував backend помилку 500/network drop як empty-state "Пов'язаних
     документів немає". Користувач не міг розрізнити справжній empty від failure.
