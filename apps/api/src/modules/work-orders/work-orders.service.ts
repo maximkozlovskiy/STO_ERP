@@ -218,13 +218,28 @@ export class WorkOrdersService {
     dto: CreateWorkOrderDto,
     userId?: string,
   ): Promise<WorkOrderResponseDto> {
-    // Bug review §2.2: validate liftId belongs to org (cross-tenant FK attack
-    // vector). Parallelize with the other FK guards — independent queries.
-    const [branch, vehicle, counterparty, lift] = await Promise.all([
-      this.prisma.garageBranch.findFirst({ where: { id: dto.branchId, orgId, deletedAt: null } }),
-      this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId, orgId, deletedAt: null } }),
+    // sto-optimize: narrow FK guards — branch/vehicle/counterparty findFirst без select
+    // тягнули full row (15+ колонок кожна) лише для existence check. select:{id:true}
+    // зменшує wire payload на ~80%. Lift guard уже narrow.
+    //
+    // Tier merger — contract validation/auto-pick об'єднано з FK guards у єдиний
+    // Promise.all. Раніше: 1 RTT (4 FK parallel) + 1 RTT (contract sequential) = 2 RTT.
+    // Тепер: 1 RTT (4 FK + contract parallel). Provided contractId захищає себе через
+    // composite where (orgId+counterpartyId+contractType+deletedAt) — counterparty не
+    // потрібен як guard. Primary auto-pick читає за (counterpartyId+orgId) — той самий
+    // ключ що counterparty FK guard, але незалежний.
+    const [branch, vehicle, counterparty, lift, contractResult] = await Promise.all([
+      this.prisma.garageBranch.findFirst({
+        where: { id: dto.branchId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.vehicle.findFirst({
+        where: { id: dto.vehicleId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
       this.prisma.counterparty.findFirst({
         where: { id: dto.counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
       }),
       dto.liftId
         ? this.prisma.lift.findFirst({
@@ -232,41 +247,36 @@ export class WorkOrdersService {
             select: { id: true },
           })
         : Promise.resolve(null),
+      dto.contractId
+        ? this.prisma.counterpartyContract.findFirst({
+            where: {
+              id: dto.contractId,
+              orgId,
+              counterpartyId: dto.counterpartyId,
+              contractType: 'SALE',
+              deletedAt: null,
+            },
+            select: { id: true },
+          })
+        : this.prisma.counterpartyContract.findFirst({
+            where: {
+              counterpartyId: dto.counterpartyId,
+              orgId,
+              contractType: 'SALE',
+              deletedAt: null,
+            },
+            orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+            select: { id: true },
+          }),
     ]);
     if (!branch) throw new NotFoundException('Філію не знайдено');
     if (!vehicle) throw new NotFoundException('Автомобіль не знайдено');
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
     if (dto.liftId && !lift) throw new NotFoundException('Підйомник не знайдено');
-
-    // Auto-select primary SALE contract if not provided. When the client supplies
-    // a contractId, validate it belongs to the same org + counterparty + SALE type
-    // to prevent cross-tenant FK attacks (Bug review §2.2).
-    let contractId = dto.contractId ?? null;
-    if (contractId) {
-      const provided = await this.prisma.counterpartyContract.findFirst({
-        where: {
-          id: contractId,
-          orgId,
-          counterpartyId: dto.counterpartyId,
-          contractType: 'SALE',
-          deletedAt: null,
-        },
-        select: { id: true },
-      });
-      if (!provided) throw new NotFoundException('Договір не знайдено');
-    } else {
-      const primaryContract = await this.prisma.counterpartyContract.findFirst({
-        where: {
-          counterpartyId: dto.counterpartyId,
-          orgId,
-          contractType: 'SALE',
-          deletedAt: null,
-        },
-        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
-        select: { id: true },
-      });
-      contractId = primaryContract?.id ?? null;
-    }
+    // When client supplies contractId, contractResult must be a match — otherwise 404.
+    // When omitted, primaryContract auto-pick — null is OK (no contract assigned).
+    if (dto.contractId && !contractResult) throw new NotFoundException('Договір не знайдено');
+    const contractId: string | null = contractResult?.id ?? null;
 
     const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
 
@@ -316,21 +326,25 @@ export class WorkOrdersService {
     dto: UpdateWorkOrderDto,
     userId?: string,
   ): Promise<WorkOrderResponseDto> {
-    const wo = await this.prisma.workOrder.findFirst({ where: { id, orgId, deletedAt: null } });
+    // sto-optimize: tier merger — wo (parent guard) + optional lift FK validation у
+    // єдиний Promise.all. Раніше: послідовні 2 RTT (wo, потім lift). Тепер: 1 RTT
+    // паралельно. Lift FK сам себе захищає (orgId+deletedAt у where) — безпечно
+    // запустити до status-перевірки. wo тримається full-row, бо trackField нижче
+    // читає 8+ полів для audit diff (old values).
+    const [wo, lift] = await Promise.all([
+      this.prisma.workOrder.findFirst({ where: { id, orgId, deletedAt: null } }),
+      dto.liftId
+        ? this.prisma.lift.findFirst({
+            where: { id: dto.liftId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
     if (CLOSED_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Не можна редагувати закритий наряд');
     }
-
-    // Bug review §2.2: validate liftId belongs to org (cross-tenant FK attack
-    // vector). Only check when client supplies a non-null value — null clears.
-    if (dto.liftId) {
-      const lift = await this.prisma.lift.findFirst({
-        where: { id: dto.liftId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!lift) throw new NotFoundException('Підйомник не знайдено');
-    }
+    if (dto.liftId && !lift) throw new NotFoundException('Підйомник не знайдено');
 
     // Bug #86: capture old field-values BEFORE update so AuditEvent.diff is meaningful.
     // Only include fields user actually attempted to change (dto.X !== undefined).
@@ -843,10 +857,23 @@ export class WorkOrdersService {
     // + Promise.all([work, employee]) (1 RTT). Об'єднуємо у єдиний Promise.all (1 RTT)
     // оскільки work і employee не залежать від результату парент-guard, а перевірка
     // статусу WO робиться після всіх awaits (порядок NotFound зберігається).
+    //
+    // sto-optimize: narrow projections — wo тільки для status guard,
+    // work лише для normoHours/price defaults, employee лише для existence.
+    // Дроп зайвих 10-20 колонок з кожного row read.
     const [wo, work, employee] = await Promise.all([
-      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
-      this.prisma.work.findFirst({ where: { id: dto.workId, orgId, deletedAt: null } }),
-      this.prisma.employee.findFirst({ where: { id: dto.employeeId, orgId, deletedAt: null } }),
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: { status: true },
+      }),
+      this.prisma.work.findFirst({
+        where: { id: dto.workId, orgId, deletedAt: null },
+        select: { normoHours: true, price: true },
+      }),
+      this.prisma.employee.findFirst({
+        where: { id: dto.employeeId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
     if (!EDITABLE_STATUSES.includes(wo.status)) {
@@ -896,10 +923,15 @@ export class WorkOrdersService {
   ): Promise<WorkOrderLineResponseDto> {
     // Parallel same-aggregate parent (editable WO) + child line fetch — both
     // tenant-safe (orgId+workOrderId у where кожного запиту). -1 RTT per edit.
+    // sto-optimize: wo narrow {status}, line narrow {normoHours, price} (для defaults).
     const [wo, line] = await Promise.all([
-      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: { status: true },
+      }),
       this.prisma.workOrderLine.findFirst({
         where: { id: lineId, workOrderId, orgId, deletedAt: null },
+        select: { normoHours: true, price: true },
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
@@ -940,10 +972,15 @@ export class WorkOrdersService {
 
   async removeLine(orgId: string, workOrderId: string, lineId: string): Promise<void> {
     // Parallel parent (editable WO) + child line fetch — same-aggregate same-tenant guard.
+    // sto-optimize: wo narrow {status}, line narrow {id} (existence only — soft-delete update нижче не читає полів).
     const [wo, line] = await Promise.all([
-      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: { status: true },
+      }),
       this.prisma.workOrderLine.findFirst({
         where: { id: lineId, workOrderId, orgId, deletedAt: null },
+        select: { id: true },
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
@@ -971,10 +1008,21 @@ export class WorkOrdersService {
     dto: CreateWorkOrderPartDto,
   ): Promise<WorkOrderPartResponseDto> {
     // Tiered parallelization — wo + good + warehouse + optional goodUoM у єдиний Promise.all.
+    // sto-optimize: narrow projections — wo {status}, good {salePrice} (для price default),
+    // warehouse {id} (existence only).
     const [wo, good, warehouse, goodUoM] = await Promise.all([
-      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
-      this.prisma.good.findFirst({ where: { id: dto.goodId, orgId, deletedAt: null } }),
-      this.prisma.warehouse.findFirst({ where: { id: dto.warehouseId, orgId, deletedAt: null } }),
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: { status: true },
+      }),
+      this.prisma.good.findFirst({
+        where: { id: dto.goodId, orgId, deletedAt: null },
+        select: { salePrice: true },
+      }),
+      this.prisma.warehouse.findFirst({
+        where: { id: dto.warehouseId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
       dto.unitOfMeasureId
         ? this.prisma.goodUoM.findFirst({
             where: { unitOfMeasureId: dto.unitOfMeasureId, goodId: dto.goodId, orgId },
@@ -1034,10 +1082,16 @@ export class WorkOrdersService {
     dto: UpdateWorkOrderPartDto,
   ): Promise<WorkOrderPartResponseDto> {
     // Parallel parent (editable WO) + child part fetch — same-aggregate same-tenant guard.
+    // sto-optimize: wo narrow {status}, part narrow {quantity, price, goodId, unitOfMeasureId}
+    // (для defaults + goodIdForPart). Full row не потрібен — update повертає updated.
     const [wo, part] = await Promise.all([
-      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: { status: true },
+      }),
       this.prisma.workOrderPart.findFirst({
         where: { id: partId, workOrderId, orgId, deletedAt: null },
+        select: { quantity: true, price: true, goodId: true, unitOfMeasureId: true },
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
@@ -1097,10 +1151,15 @@ export class WorkOrdersService {
 
   async removePart(orgId: string, workOrderId: string, partId: string): Promise<void> {
     // Parallel parent (editable WO) + child part fetch — same-aggregate same-tenant guard.
+    // sto-optimize: wo narrow {status}, part narrow {id} (existence only — soft-delete не читає полів).
     const [wo, part] = await Promise.all([
-      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: { status: true },
+      }),
       this.prisma.workOrderPart.findFirst({
         where: { id: partId, workOrderId, orgId, deletedAt: null },
+        select: { id: true },
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');

@@ -230,9 +230,21 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
       .then(r => setEmployees(Array.isArray(r.items) ? r.items : []))
       .catch(() => {});
 
-    apiFetch<{ items: Unit[] } | Unit[]>('/units?limit=200')
-      .then(r => setUnits(Array.isArray(r) ? r : (r.items ?? [])))
-      .catch(() => {});
+    // sto-optimize: units є reference data з warm sessionStorage cache (TTL ≥30хв).
+    // Cache populated catalog/UnitsTab + catalog/GoodsTab (source pages). Seeding
+    // дає instant first-paint списку одиниць для parts table у WO modal.
+    const cachedUnits = getCached<Unit[]>('cache:units');
+    if (cachedUnits) {
+      setUnits(cachedUnits);
+    } else {
+      apiFetch<{ items: Unit[] } | Unit[]>('/units?limit=200')
+        .then(r => {
+          const list = Array.isArray(r) ? r : (r.items ?? []);
+          setUnits(list);
+          setCache('cache:units', list);
+        })
+        .catch(() => {});
+    }
 
     Promise.all([
       apiFetch<{ vatMode: string; defaultVatRateId?: string | null }>('/settings/organisation'),
@@ -580,9 +592,9 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
             style={{ gridTemplateRows: headerCollapsed ? '0fr' : '1fr' }}
           >
             <div className="overflow-hidden">
-              <div className="divide-y divide-border pb-1">
+              <div className="space-y-4 pb-1">
                 {/* Рядок 1: Номер | Дата документа | Статус */}
-                <div className="grid grid-cols-3 gap-4 pb-4">
+                <div className="grid grid-cols-3 gap-4">
                   <Input
                     label="Номер"
                     value="— присвоюється автоматично —"
@@ -607,7 +619,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 </div>
 
                 {/* Рядок 2: Філія | Підйомник | Пріоритет */}
-                <div className="grid grid-cols-3 gap-4 pt-4 pb-4">
+                <div className="grid grid-cols-3 gap-4">
                   <Select
                     label="Філія"
                     required
@@ -650,7 +662,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 </div>
 
                 {/* Планові та фактичні показники */}
-                <div className="rounded-none border-0 overflow-hidden pt-4 pb-4">
+                <div className="rounded-lg border border-border overflow-hidden">
                   <div className="grid grid-cols-2 divide-x divide-border">
                     <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
                       Планові показники
@@ -693,12 +705,12 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                   </div>
                 </div>
 
-                {/* Секція: Клієнт */}
-                <div className="space-y-3 pt-4 pb-4">
+                {/* Клієнт | Договір / Автомобіль | Категорія */}
+                <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-                        Клієнт <span className="text-destructive-text">*</span>
+                      <label className="block text-[13px] font-medium text-foreground mb-1">
+                        Клієнт <span className="text-destructive">*</span>
                       </label>
                       <EntityPickerField<HeaderCpItem>
                         display={counterpartyDisplayName}
@@ -786,7 +798,7 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                 </div>
 
                 {/* Секція: Опис */}
-                <div className="pt-4 pb-2">
+                <div>
                   <Input
                     label="Опис"
                     value={form.description}
@@ -796,7 +808,6 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
                   />
                 </div>
               </div>
-              {/* /divide-y */}
             </div>
             {/* /overflow-hidden */}
           </div>
