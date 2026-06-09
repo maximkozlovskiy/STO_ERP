@@ -9,9 +9,11 @@
 ## Останній commit
 
 ```
-[NEW] 662e7ecf fix(review): add $transaction timeout, aria-modal to conflict dialog, focus-visible to toast action
-[NEW] 1916b3c6 feat(invoices): add Виставити рахунок button to work order modal
-fix(tester): Bug #401 — canShare include APPROVED for symmetry with backend
+[NEW] 153be445 fix(tester): Bugs #403-#408 — invoice-from-WO refresh guards + UX
+ad9328fb docs(memory): update MemoryManual after review of feat(invoices) commit 1916b3c6
+662e7ecf fix(review): add $transaction timeout, aria-modal to conflict dialog, focus-visible to toast action
+1916b3c6 feat(invoices): add Виставити рахунок button to work order modal
+a63e6cca fix(tester): Bug #401 — canShare include APPROVED for symmetry with backend
 d516ec6c docs(memory): update MemoryManual with estimate share security gotcha
 c1a49db4 fix(review): secure estimate share — public DTO, status guard, server-side baseUrl
 4a7eb004 feat(work-orders): estimate print & share — print page, share link, SMS send
@@ -34,8 +36,33 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Unit+Contract: ✅ 666/666 API passed; ✅ 358/358 Web component passed
-Latest tester: 2026-06-09 (FULL feature scope estimate share, HEAD d516ec6c) — Bugs #401-#402:
+Unit+Contract: ✅ 671/671 API passed; ✅ 358/358 Web component passed
+Latest tester: 2026-06-09 (FULL feature scope feat(invoices) Виставити рахунок, HEAD 153be445) — Bugs #403-#408:
+  • [CRITICAL #403] refreshFromWorkOrder перезаписував рядки SENT/PAID/OVERDUE
+    рахунків — фільтр {status: {not: CANCELLED}} пропускав всі активні. PAID-рахунок
+    + payment + WO зміни → перезапис ламав баланс. Fix: prep-guard
+    if (existing.status !== DRAFT) throw BadRequestException — симетрично з update().
+  • [HIGH #404] handleInvoice залишав WO у статусі INVOICED якщо invoice create
+    failed після успішного transition COMPLETED→INVOICED. FSM-інваріант "INVOICED =
+    invoice exists" порушений. Fix: rollback transition INVOICED→COMPLETED у catch
+    block коли transitionedHere=true і помилка не "вже існує".
+  • [HIGH #405] handleInvoiceOpen: /find повертає null (за дизайном — не 404).
+    Race з другим адміном що cancel-нув рахунок → inv=null → dialog тихо закрився
+    БЕЗ feedback. Fix: else-branch з toast.warning "Рахунок не знайдено. Можливо,
+    його було скасовано."
+  • [HIGH #406] refreshFromWorkOrder створював всі рядки з vatRate=0 (addLine
+    дефолтить 20). Для ПДВ-платників — викривлення totalVat, PDF, експорту в
+    бухгалтерію. Fix: DEFAULT_VAT=20, обчислення vatAmount/priceWithVat коректно.
+  • [MEDIUM #407] recalcTotals викликався ПОЗА $transaction → race window де
+    lines нові, totals старі при крашу між commit і recalc. Fix: inline-обчислення
+    totals і tx.invoice.update всередині того ж $transaction.
+  • [MEDIUM #408] invoiceConflict inline dialog: ESC не закривав, overlay click
+    не закривав, autoFocus відсутній. Fix: onClick на overlay + e.stopPropagation
+    на dialog, onKeyDown Escape, autoFocus на головну кнопку. Guard !invoiceLoading
+    щоб уникнути закриття під час refresh.
+  Регрес-гарди: 5 нових contract тестів у invoices.contract.spec.ts покривають
+    GET /find (null + ok + 400) і POST /refresh (ok + 400). Mock service розширено.
+Previous tester: 2026-06-09 (FULL feature scope estimate share, HEAD d516ec6c) — Bugs #401-#402:
   • [MEDIUM #401] CreateWorkOrderModal canShare пропускав APPROVED, але backend
     SHAREABLE_STATUSES = DRAFT/ESTIMATE/APPROVED. UI приховував Друк/Поділитись/SMS
     у легітимному статусі. Симетризовано: canShare = isEditMode && ['DRAFT', 'ESTIMATE', 'APPROVED'].
