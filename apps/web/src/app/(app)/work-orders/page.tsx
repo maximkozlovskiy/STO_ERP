@@ -117,10 +117,13 @@ const STATUS_TABS: Array<[string, string]> = [
   ['ESTIMATE', 'Кошторис'],
   ['APPROVED', 'Затверджено'],
   ['IN_PROGRESS', 'В роботі'],
-  ['ON_HOLD', 'Призупинено'],
   ['COMPLETED', 'Виконано'],
   ['INVOICED', 'Виставлено'],
   ['PAID', 'Оплачено'],
+];
+
+const STATUS_TABS_EXTRA: Array<[string, string]> = [
+  ['ON_HOLD', 'Призупинено'],
   ['CANCELLED', 'Скасовано'],
   ['ARCHIVED', 'Архів'],
 ];
@@ -494,7 +497,7 @@ function WorkOrdersPageInner() {
 
       {/* Status filter pills + Мої наряди */}
       <div className="flex gap-1.5 flex-wrap items-center justify-between shrink-0">
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap items-center">
           {STATUS_TABS.map(([v, l]) => {
             const btn = (
               <button
@@ -523,6 +526,53 @@ function WorkOrdersPageInner() {
               btn
             );
           })}
+
+          {/* Extra statuses dropdown */}
+          <div className="relative">
+            <select
+              value={STATUS_TABS_EXTRA.some(([v]) => v === statusFilter) ? statusFilter : ''}
+              onChange={e => {
+                if (e.target.value) {
+                  setStatusFilter(e.target.value);
+                  resetPage();
+                  setActiveSavedFilterId(null);
+                }
+              }}
+              className={cn(
+                'appearance-none px-3 py-1 pr-7 rounded-full text-sm font-medium border transition-colors cursor-pointer bg-surface outline-none',
+                STATUS_TABS_EXTRA.some(([v]) => v === statusFilter)
+                  ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                  : 'border-border text-muted-foreground hover:bg-secondary hover:text-foreground',
+              )}
+            >
+              <option value="" disabled hidden>
+                Інші
+              </option>
+              {STATUS_TABS_EXTRA.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <svg
+              className={cn(
+                'pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3',
+                STATUS_TABS_EXTRA.some(([v]) => v === statusFilter)
+                  ? 'text-primary-foreground'
+                  : 'text-muted-foreground',
+              )}
+              viewBox="0 0 12 12"
+              fill="none"
+            >
+              <path
+                d="M2 4l4 4 4-4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
         </div>
         {employee && (
           <button
