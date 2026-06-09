@@ -568,6 +568,22 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-09 — Auto-pick/auto-select optional FK резолюція ПІСЛЯ парallel FK guards — sequential гілка `if (dto.X) validate; else autoSelect` на create-методах
+
+**Сигнал:** create-метод сервісу починається з `Promise.all([fk1, fk2, fk3, fk4])` для tenant-validation FK (branch/vehicle/counterparty/lift), потім має послідовний блок `if (dto.contractId) { provided = await prisma.contract.findFirst(... composite where) } else { primary = await prisma.contract.findFirst(... by counterpartyId, orderBy primary first) }` для резолюції додаткового опціонального FK. Виглядає логічно — "спочатку перевір основні FK, потім обери або валідуй контракт". Насправді auto-pick читає за `counterpartyId` (вже знане з DTO, не залежить від результату counterparty FK guard), а provided validation читає за `id + counterpartyId + orgId + type` (composite tenant guard — самозахищене). Жоден з двох сценаріїв не залежить від попереднього Promise.all — RTT можна зробити паралельним.
+
+**Причина виникнення:** auto-pick сприймається як "бізнес-логіка після валідації" — розробник підсвідомо чекає завершення FK guards перш ніж "робити доменні рішення". Ще одна причина — `if/else` структура: розробнику здається що ці гілки взаємовиключні і не можуть бути обома у Promise.all. Реально кожна гілка повертає `Promise<{id} | null>` з тим самим типом результату — Promise.all працює нормально.
+
+**Підхід до виявлення:** для кожного create-методу що вже має Promise.all з FK guards, прочитати наступні 15-20 рядків. Шукати: `let x = dto.xId; if (x) { x = await prisma.X.findFirst({ composite where з orgId}) } else { auto = await prisma.X.findFirst({ where by knownKey, orderBy }) }`. Якщо composite where включає тенант guard (orgId+counterpartyId+type) і auto-pick читає за knownKey з DTO — обидва безпечно паралель.
+
+**Підхід до фіксу:** замість `if/else` блоку з двома послідовними `await findFirst` — додати n+1-й елемент у Promise.all: `dto.xId ? prisma.X.findFirst({where composite}) : prisma.X.findFirst({where autoPickKey, orderBy})`. Після Promise.all робити перевірку: `if (dto.xId && !result) throw NotFound('X не знайдено')`. `const xId: string | null = result?.id ?? null`. Це зберігає behavior: provided invalid → 404; provided valid → use it; not provided → primary або null. Promise.all збагачено одним елементом без зміни logic.
+
+**Реальний impact:** -1 RTT per create. Для часто-використовуваних endpoints (work-orders.create, invoices.create) — типово 10-50 calls на день × 30ms WAN RTT = 300-1500ms економії UI латенсі. Особливо помітно на slow WAN/VPN. Бонус: код стає лінійнішим (один Promise.all замість Promise.all + if/else).
+
+**Де шукати ще:** будь-який create/update метод що has Promise.all з FK guards + опціональний/auto-pick додатковий FK після. Часті місця: work-orders.create (contract auto-pick), invoices.create (contract, defaultTaxRate), purchase-orders.create (contract auto-pick), services.create (default work category), будь-який create з "якщо не задано — обери primary/default".
+
+---
+
 ### 2026-06-09 — Sequential per-item idempotent service.create() у scheduler/job — multi-tenant bootstrap fetchers
 
 **Сигнал:** scheduler/job метод (приклад: nbu-fetch, daily-rate-sync, bulk-import) ітерує колекцію (currencies/orgs/templates) через `for (const x of list) { await this.someService.create(orgId, ...) }`. Кожна service.create: (1) є **ідемпотентна** — каже ConflictException якщо row вже існує і викликач ловить це у try/catch без re-throw; (2) **незалежна** від інших iterations (унікальна constraint на (orgId, X.id, date) дозволяє паралель без race); (3) має внутрішні findFirst для FK validation. Не помічається бо на on-prem (1 org × 1-3 currencies) sequential 3 × 50ms = 150ms терпимо. На multi-tenant cloud з 20 orgs × 10 currencies = 200 × 50ms = 10 секунд daily lag.
@@ -1746,6 +1762,11 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ completion-acts.cancel: status guard select:{status:true} замість full row read (cycle 4)
 - ✅ completion-acts.generatePdf: findOne + secondary workOrder findFirst (partial overlap, both reading workOrder.counterparty) злито у ОДИН act read з extended counterparty.select (firstName/lastName/companyName + phone + actualAddress) — 2 RTT → 1 RTT + parallel org meta
 - ✅ nbu-fetch.service.fetchAndUpsertForOrg: sequential for-await exchangeRatesService.create → Promise.allSettled (5-15 currencies × 50ms RTT serially → max single insert). Idempotent (ConflictException catch) + independent FK (unique currencyId per iteration) → safe parallel
+- ✅ work-orders.create: tier-merger — counterpartyContract validation/auto-pick (provided contractId або primary SALE pick) inlined у Promise.all з branch/vehicle/counterparty/lift FK guards (2 RTT → 1 RTT). FK guards narrowed select:{id:true} (раніше тягнули full row для existence)
+- ✅ work-orders.update: lift FK validation paralleled з parent guard (sequential 2 RTT → parallel 1 RTT). WO тримається full-row для audit trackField (8+ fields read for diff)
+- ✅ work-orders.addLine/addPart: narrow projections wo {status}, work {normoHours, price}, employee {id}, good {salePrice}, warehouse {id} — hot WO edit path (-50-80% wire payload per row read)
+- ✅ work-orders.updateLine/removeLine/updatePart/removePart: wo narrow {status} + child rows narrowed (defaults або {id} для soft-delete)
+- ✅ CreateWorkOrderModal /units fetch seeded з cache:units ref-cache (warm via catalog/UnitsTab+GoodsTab) — instant UoM dropdown first-paint
 
 **Frontend:**
 

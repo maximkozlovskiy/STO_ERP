@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+cd17ba05 perf(optimize): WO create/update tier merger + narrow guards, units ref-cache
 e97cc120 fix(review): hoist dynamic imports above const + hydration-safe year placeholder
 230f99f6 perf(optimize): parallel NBU fetch, narrow tenant guards, lazy WO modal
 10ac2351 fix(tester): Bugs #390-#395 — stale picker test asserts + anti-DoS MaxLength/ArrayMaxSize
@@ -44,6 +45,23 @@ Latest review: 2026-06-09 (FULL DIFF HEAD~15..HEAD, HEAD e97cc120) — 3 SUGGEST
   Tailwind anti-patterns, 0 fetch( поза auth/booking exception list, 0 Cache-Control: public,
   0 process.env у services, 0 stockItem.update поза InventoryService, 0 settlementAccount.update
   поза SettlementsService, 0 @Param без ParseUUIDPipe, 0 hard-delete prisma.X.delete().
+Latest optimize: 2026-06-09 (HEAD cd17ba05) — cycle 5 (HEAD~20..HEAD scope):
+  • Backend: work-orders.create — counterpartyContract validation/auto-pick (provided
+    или primary SALE) inlined у Promise.all з branch/vehicle/counterparty/lift FK guards.
+    Раніше: 1 RTT (4 FK parallel) + 1 RTT (contract sequential) = 2 RTT. Тепер: 1 RTT
+    (5 reads parallel). branch/vehicle/counterparty FK guards narrow select:{id:true}
+    (раніше тягнули full row 15+ колонок лише для existence check).
+  • Backend: work-orders.update — lift FK validation parallelized з parent guard
+    (sequential 2 RTT → parallel 1 RTT). WO тримається full-row, бо trackField нижче
+    читає 8+ полів для audit diff (old values).
+  • Backend: work-orders.addLine/addPart — narrow projections (wo {status}, work
+    {normoHours, price}, employee {id}, good {salePrice}, warehouse {id}) замість
+    full row read. Hot WO edit path (10+ edits per session).
+  • Backend: work-orders.updateLine/removeLine/updatePart/removePart — wo narrow
+    {status}, child rows narrowed to needed fields (defaults або {id} for soft-delete).
+  • Frontend: CreateWorkOrderModal — /units fetch seeded з cache:units ref-cache (warm
+    via catalog/UnitsTab + catalog/GoodsTab source pages). Instant first-paint UoM
+    dropdown для parts table при першому відкритті modal у сесії.
 Latest optimize: 2026-06-09 (HEAD 230f99f6) — cycle 4:
   • Backend: nbu-fetch.service — sequential for-await exchangeRatesService.create
     переписано на Promise.allSettled (5-15 currencies × 50ms RTT → max single insert);
