@@ -9,7 +9,9 @@
 ## Останній commit
 
 ```
-[NEW] fix(tester): Bug #401 — canShare include APPROVED for symmetry with backend
+[NEW] 662e7ecf fix(review): add $transaction timeout, aria-modal to conflict dialog, focus-visible to toast action
+[NEW] 1916b3c6 feat(invoices): add Виставити рахунок button to work order modal
+fix(tester): Bug #401 — canShare include APPROVED for symmetry with backend
 d516ec6c docs(memory): update MemoryManual with estimate share security gotcha
 c1a49db4 fix(review): secure estimate share — public DTO, status guard, server-side baseUrl
 4a7eb004 feat(work-orders): estimate print & share — print page, share link, SMS send
@@ -55,7 +57,11 @@ Previous tester: 2026-06-09 (FULL HEAD~20..HEAD, HEAD ee368574) — Bugs #396-#4
   • [MEDIUM #399] addPart/updatePart silent-stored null коли GoodUoM не знайдено —
     маскує contract bugs. Fail-loudly NotFoundException з підказкою налаштувати UoM.
   • [LOW #400] GoodUoM interface не оголошував unitOfMeasureId — об'єднано з #396.
-Latest review: 2026-06-09 (FULL DIFF HEAD~15..HEAD, HEAD e97cc120) — 3 SUGGESTION fixed:
+Latest review: 2026-06-09 (FOCUSED commit 1916b3c6, HEAD 662e7ecf) — feat(invoices) Виставити рахунок: 1 IMPORTANT + 2 SUGGESTION fixed:
+  • [IMPORTANT] invoices.service.ts refreshFromWorkOrder: $transaction(async cb) без { timeout: 10_000 } — при великій кількості рядків може hit 5s default timeout під load. Fixed.
+  • [SUGGESTION] toast.tsx action button: відсутній focus-visible:opacity-100 — кнопка "Відкрити" невидима при Tab-навігації. Fixed.
+  • [SUGGESTION] invoiceConflict inline dialog: відсутні role=dialog aria-modal aria-labelledby — screen reader не анонсує діалог. Fixed.
+Previous review: 2026-06-09 (FULL DIFF HEAD~15..HEAD, HEAD e97cc120) — 3 SUGGESTION fixed:
   • [SUGGESTION] nbu-fetch.scheduler.ts: `const MAX_ORGS_PER_SCHEDULER_RUN = 1000` був
     вставлений МІЖ import statements (рядок 3 між '@nestjs/common' і '@nestjs/bull').
     Не runtime bug (const hoisted у TDZ, доступ лише у method below), але порушує
