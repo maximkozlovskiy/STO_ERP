@@ -9,6 +9,11 @@
 ## Останній commit
 
 ```
+c1a49db4 fix(review): secure estimate share — public DTO, status guard, server-side baseUrl
+4a7eb004 feat(work-orders): estimate print & share — print page, share link, SMS send
+7b519a99 feat(work-orders): add edit mode + FSM transitions to CreateWorkOrderModal
+96150712 fix(infrastructure): hide deleted records after delete + reset showDeleted on tab change
+0b16e143 refactor(simplify): extract formatVehicleLabel, deduplicate vehicleLabel, fix pagination DoS cap
 ee368574 fix(tester): Bugs #396-#400 — UoM round-trip, removeGarage promote, hoist imports
 57c518b7 docs(skills): add auto-pick optional FK tier-merger pattern to sto-optimize
 cd17ba05 perf(optimize): WO create/update tier merger + narrow guards, units ref-cache
@@ -23,8 +28,6 @@ ee938240 feat(picker): replace flat category sidebar with hierarchical CategoryT
 4b930538 fix(tester): Bugs #385-#386 — EntityPickerField focus + CreateWorkOrderModal test
 c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
-cd3a67c5 fix(review): work-order liftId — validate tenant FK + add index + sync frontend interface
-5d422345 feat(work-orders): add liftId field to WorkOrder — DB, API, UI
 Дата: 2026-06-09
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Unit+Contract: ✅ 666/666 API passed; ✅ 358/358 Web component passed
@@ -3442,6 +3445,30 @@ pnpm --filter @sto/web build
 | `ebb31f3` | fix(web): NaN/invalid numeric input guards                                                                                                                                                                                      |
 | `4bce74e` | fix(web): form validation + modal error guard                                                                                                                                                                                   |
 | `bd8558f` | fix(review): DTO spread orgId override + zero-amount charge guard                                                                                                                                                               |
+
+---
+
+## Estimate Share (4a7eb004 + c1a49db4 review)
+
+**Фіча.** Публічний друк/share/SMS кошторису:
+
+- `POST /work-orders/:id/share-token` — згенерувати/отримати токен (DRAFT/ESTIMATE/APPROVED only).
+- `GET /public/work-orders/:token` — публічний перегляд (no auth, throttle 20 req/min).
+- `POST /work-orders/:id/send-estimate-sms` — SMS клієнту через BullMQ + WO_ESTIMATE_READY шаблон.
+- Web: `/estimate/[token]` сторінка з `window.print()`; кнопки Друк/Поділитись/SMS у `CreateWorkOrderModal` footer для DRAFT/ESTIMATE.
+
+**Безпека (Gotcha — НЕ повторювати в інших public endpoints).**
+
+1. Публічні DTO — окремі від інтер-DTO; жодного `orgId`, FK, paidAmount, slot\*, dueDate, clientApproval, syncVersion. Файл: `EstimatePublicDto` у `work-orders.dto.ts`.
+2. **status guard** — публічний read обмежений `SHAREABLE_STATUSES = ['DRAFT','ESTIMATE','APPROVED']`; після IN_PROGRESS+ повертає 404. Той самий guard у `getOrCreateShareToken`.
+3. **baseUrl формується НА СЕРВЕРІ** через `ConfigService('WEB_PUBLIC_URL')`, ніколи не приймати з клієнта (open-redirect / phishing).
+4. **route prefix** — публічні endpoints на власному controller з різним `@Controller('public/...')` (НЕ підшарок захищеного), інакше Nest може замапити URL на `:id`-handler з ParseUUIDPipe → 400.
+5. **Throttle** жорсткіший за глобальний (20/хв vs 200/хв) — anti-brute-force shareToken.
+6. **shareToken у PULL_FIELD_BLACKLIST** (sync) — mobile devices не мають read-доступу до share-секретів.
+7. **Race у getOrCreateShareToken** — `updateMany where:{shareToken:null}` (не `update`), щоб уникнути одночасних writes; якщо count=0 — перечитати актуальний токен.
+8. **Шаблон notification** — звірити імена змінних: WO_ESTIMATE_READY = `{{clientName}}, {{vehiclePlate}}, {{totalAmount}}, {{link}}` (seed). Невідповідність → SMS відправляється без посилання (silent).
+
+**Конфіг.** `WEB_PUBLIC_URL=http://localhost:3001` у `.env.dev`/`.env.example`; on-prem installer задає реальний URL при встановленні.
 
 ---
 
