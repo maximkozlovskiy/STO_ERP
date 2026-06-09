@@ -6,6 +6,7 @@ import { kyivToday } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
 import { calculatePagination } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
+import { throwIfSerializationConflict } from '../../common/utils/prisma-errors';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
@@ -20,12 +21,6 @@ import {
 } from './invoices.dto';
 
 type InvStatus = InvoiceStatus;
-
-function throwIfSerializationConflict(err: unknown, message: string): never {
-  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034')
-    throw new BadRequestException(message);
-  throw err as Error;
-}
 
 const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
   DRAFT: [InvoiceStatus.SENT, InvoiceStatus.CANCELLED],
@@ -596,32 +591,34 @@ export class InvoicesService {
     try {
       await this.prisma.$transaction(
         async tx => {
-          // Re-check інвойсу всередині tx: інший actor міг змінити status DRAFT→SENT
-          // між pre-check і entry у tx. Без перевірки refresh переписав би SENT-рядки,
-          // ламаючи бухоблік. Serializable + явний re-check — двопоясна страховка.
-          const invInTx = await tx.invoice.findFirst({
-            where: { id: existing.id, orgId, deletedAt: null },
-            select: { status: true },
-          });
+          // Re-check invoice + fetch WO lines/parts in parallel inside Serializable tx.
+          // invInTx: guard against DRAFT→SENT race between pre-check and tx entry.
+          // wo: lines+parts needed for lineData below. Independent reads → Promise.all
+          // saves one RTT and shortens the Serializable lock window.
+          const [invInTx, wo] = await Promise.all([
+            tx.invoice.findFirst({
+              where: { id: existing.id, orgId, deletedAt: null },
+              select: { status: true },
+            }),
+            tx.workOrder.findFirst({
+              where: { id: workOrderId, orgId, deletedAt: null },
+              include: {
+                lines: {
+                  where: { deletedAt: null },
+                  include: { work: { select: { name: true } } },
+                },
+                parts: {
+                  where: { deletedAt: null },
+                  include: { good: { select: { name: true } } },
+                },
+              },
+            }),
+          ]);
           if (!invInTx) throw new NotFoundException('Активний рахунок не знайдено');
           if (invInTx.status !== InvoiceStatus.DRAFT)
             throw new BadRequestException(
               'Оновити можна лише чернетку рахунку. Скасуйте поточний і виставте новий.',
             );
-
-          const wo = await tx.workOrder.findFirst({
-            where: { id: workOrderId, orgId, deletedAt: null },
-            include: {
-              lines: {
-                where: { deletedAt: null },
-                include: { work: { select: { name: true } } },
-              },
-              parts: {
-                where: { deletedAt: null },
-                include: { good: { select: { name: true } } },
-              },
-            },
-          });
           if (!wo) throw new NotFoundException('Наряд не знайдено');
 
           await tx.invoiceLine.deleteMany({

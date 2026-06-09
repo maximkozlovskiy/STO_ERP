@@ -252,16 +252,21 @@ describe('InvoicesService — business logic guards', () => {
   // BadRequestException без виклику deleteMany/createMany (бухоблік не псується).
 
   describe('refreshFromWorkOrder — Serializable inner re-check race protection', () => {
+    const MOCK_WO = {
+      id: WO_ID,
+      orgId: ORG,
+      status: 'COMPLETED',
+      counterpartyId: 'c-1',
+      totalAmount: 100,
+      lines: [],
+      parts: [],
+    };
+
+    beforeEach(() => {
+      prisma.workOrder.findFirst.mockResolvedValue(MOCK_WO);
+    });
+
     it('re-check всередині $transaction виявляє статус-mutation → throw без deleteMany', async () => {
-      prisma.workOrder.findFirst.mockResolvedValue({
-        id: WO_ID,
-        orgId: ORG,
-        status: 'COMPLETED',
-        counterpartyId: 'c-1',
-        totalAmount: 100,
-        lines: [],
-        parts: [],
-      });
       // 1st findFirst (pre-check, поза $tx) → DRAFT (PASS)
       // 2nd findFirst (re-check, всередині $tx) → SENT (інший actor щойно змінив статус)
       prisma.invoice.findFirst
@@ -276,15 +281,6 @@ describe('InvoicesService — business logic guards', () => {
     });
 
     it('re-check всередині $transaction виявляє soft-deleted invoice → NotFound', async () => {
-      prisma.workOrder.findFirst.mockResolvedValue({
-        id: WO_ID,
-        orgId: ORG,
-        status: 'COMPLETED',
-        counterpartyId: 'c-1',
-        totalAmount: 100,
-        lines: [],
-        parts: [],
-      });
       // pre-check бачить DRAFT, re-check бачить null (інший actor soft-deleted)
       prisma.invoice.findFirst
         .mockResolvedValueOnce({ id: INV_ID, orgId: ORG, status: 'DRAFT', workOrderId: WO_ID })

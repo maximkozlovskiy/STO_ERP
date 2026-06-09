@@ -42,6 +42,18 @@ import {
   WorkOrderPartResponseDto,
 } from './work-orders.dto';
 
+// Shared select for GoodUoM lookups in addPart / updatePart.
+// Centralised so the type (derived via Prisma.GoodUoMGetPayload) and the select
+// clause stay in sync automatically — adding a field here updates both.
+const GOOD_UOM_SELECT = {
+  id: true,
+  unitOfMeasureId: true,
+  coefficient: true,
+  unitOfMeasure: { select: { shortName: true } },
+} satisfies Prisma.GoodUoMSelect;
+
+type UomJunction = Prisma.GoodUoMGetPayload<{ select: typeof GOOD_UOM_SELECT }>;
+
 @Injectable()
 export class WorkOrdersService {
   private readonly logger = new Logger(WorkOrdersService.name);
@@ -1025,7 +1037,7 @@ export class WorkOrdersService {
     // Tiered parallelization — wo + good + warehouse + optional goodUoM у єдиний Promise.all.
     // sto-optimize: narrow projections — wo {status}, good {salePrice} (для price default),
     // warehouse {id} (existence only).
-    const [wo, good, warehouse, goodUoM] = await Promise.all([
+    const [wo, good, warehouse, uomJunction] = await Promise.all([
       this.prisma.workOrder.findFirst({
         where: { id: workOrderId, orgId, deletedAt: null },
         select: { status: true },
@@ -1041,12 +1053,7 @@ export class WorkOrdersService {
       dto.unitOfMeasureId
         ? this.prisma.goodUoM.findFirst({
             where: { unitOfMeasureId: dto.unitOfMeasureId, goodId: dto.goodId, orgId },
-            select: {
-              id: true,
-              unitOfMeasureId: true,
-              coefficient: true,
-              unitOfMeasure: { select: { shortName: true } },
-            },
+            select: GOOD_UOM_SELECT,
           })
         : Promise.resolve(null),
     ]);
@@ -1060,7 +1067,7 @@ export class WorkOrdersService {
     // на FE (#396 — WorkOrderAddPartModal посилав GoodUoM.id у поле UnitOfMeasure.id;
     // backend silent-stored null без сигналу про втрату даних). Якщо unitOfMeasureId
     // переданий але GoodUoM запис для нього відсутній → 404 з підказкою користувачу.
-    if (dto.unitOfMeasureId && !goodUoM) {
+    if (dto.unitOfMeasureId && !uomJunction) {
       throw new NotFoundException(
         'Одиницю виміру не сконфігуровано для цього товару. Налаштуйте у каталозі (Товари → Одиниці виміру) або виберіть базову.',
       );
@@ -1080,10 +1087,9 @@ export class WorkOrdersService {
             quantity: dto.quantity,
             price,
             amount,
-            // Bug #420: WorkOrderPart.unitOfMeasureId FK → UnitOfMeasure, not GoodUoM.
-            // goodUoM.id is the GoodUoM junction record PK; goodUoM.unitOfMeasureId is
-            // the actual UnitOfMeasure FK. Using goodUoM.id caused P2003 on every addPart.
-            unitOfMeasureId: goodUoM?.unitOfMeasureId ?? null,
+            // Bug #420: WorkOrderPart.unitOfMeasureId FK → UnitOfMeasure.
+            // uomJunction.unitOfMeasureId is the FK; uomJunction.id is the GoodUoM PK.
+            unitOfMeasureId: uomJunction?.unitOfMeasureId ?? null,
           },
           include: {
             good: {
@@ -1096,7 +1102,7 @@ export class WorkOrdersService {
           },
         });
         await this.recalcTotals(workOrderId, tx, orgId);
-        return { ...created, goodUoM };
+        return { ...created, goodUoM: uomJunction };
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — create + recalcTotals
@@ -1134,28 +1140,18 @@ export class WorkOrdersService {
     const amount = quantity * price;
 
     // Validate new unitOfMeasureId if provided
-    let goodUoM: {
-      id: string;
-      unitOfMeasureId: string;
-      coefficient: number;
-      unitOfMeasure: { shortName: string };
-    } | null = null;
-    // dto.unitOfMeasureId = UnitOfMeasure.id (from /units); resolve to GoodUoM record.
+    let uomJunction: UomJunction | null = null;
+    // dto.unitOfMeasureId = UnitOfMeasure.id (from /units); resolve to GoodUoM junction record.
     // part.unitOfMeasureId stores UnitOfMeasure.id (FK) — keep it as-is when dto doesn't override.
     const newUnitOfMeasureId = dto.unitOfMeasureId ?? null;
     if (newUnitOfMeasureId) {
       const goodIdForPart = dto.goodId ?? part.goodId;
-      goodUoM = await this.prisma.goodUoM.findFirst({
+      uomJunction = await this.prisma.goodUoM.findFirst({
         where: { unitOfMeasureId: newUnitOfMeasureId, goodId: goodIdForPart, orgId },
-        select: {
-          id: true,
-          unitOfMeasureId: true,
-          coefficient: true,
-          unitOfMeasure: { select: { shortName: true } },
-        },
+        select: GOOD_UOM_SELECT,
       });
       // Bug #399: fail-loudly — silent-store-null маскує FE contract bugs (#396).
-      if (!goodUoM) {
+      if (!uomJunction) {
         throw new NotFoundException(
           'Одиницю виміру не сконфігуровано для цього товару. Налаштуйте у каталозі (Товари → Одиниці виміру) або виберіть базову.',
         );
@@ -1170,11 +1166,11 @@ export class WorkOrdersService {
             quantity,
             price,
             amount,
-            // Bug #420: same as addPart — store unitOfMeasureId (FK to UnitOfMeasure), not goodUoM.id.
+            // Bug #420: store UnitOfMeasure.id (FK); uomJunction.id is the GoodUoM PK.
             unitOfMeasureId:
               dto.unitOfMeasureId === undefined
                 ? part.unitOfMeasureId
-                : (goodUoM?.unitOfMeasureId ?? null),
+                : (uomJunction?.unitOfMeasureId ?? null),
           },
           include: {
             good: {
@@ -1187,7 +1183,7 @@ export class WorkOrdersService {
           },
         });
         await this.recalcTotals(workOrderId, tx, orgId);
-        return { ...result, goodUoM };
+        return { ...result, goodUoM: uomJunction };
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — update + recalcTotals
