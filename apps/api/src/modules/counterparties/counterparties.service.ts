@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ContractType, CounterpartyType, LegalForm, Prisma } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { calculatePagination } from '../../common/utils/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import {
@@ -62,6 +63,7 @@ export class CounterpartiesService {
         : {}),
     };
 
+    const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
     const [items, total] = await this.prisma.$transaction([
       this.prisma.counterparty.findMany({
         where,
@@ -72,8 +74,8 @@ export class CounterpartiesService {
             : query.sortBy === 'balance'
               ? [{ settlementAccount: { balance: query.sortDir === 'asc' ? 'asc' : 'desc' } }]
               : [{ lastName: query.sortDir === 'desc' ? 'desc' : 'asc' }, { companyName: 'asc' }],
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
+        skip,
+        take,
       }),
       this.prisma.counterparty.count({ where }),
     ]);

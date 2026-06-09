@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { CompletionActStatus } from '@prisma/client';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { formatPersonName, formatVehicleLabel, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
@@ -291,9 +291,7 @@ export class CompletionActsService {
 
     const cp = act.workOrder?.counterparty;
     const cpName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || 'Клієнт';
-    const vehicleLabel = act.workOrder?.vehicle
-      ? `${act.workOrder.vehicle.make} ${act.workOrder.vehicle.model}${act.workOrder.vehicle.licensePlate ? ` (${act.workOrder.vehicle.licensePlate})` : ''}`
-      : '';
+    const vehicleLabel = formatVehicleLabel(act.workOrder?.vehicle);
 
     const builtLines = this.buildLines(act.workOrder);
     const total = builtLines.reduce((s, l) => s + l.amount, 0);
@@ -389,10 +387,7 @@ export class CompletionActsService {
     const cp = act.workOrder?.counterparty;
     const counterpartyName =
       formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || undefined;
-    const v = act.workOrder?.vehicle;
-    const vehicleLabel = v
-      ? `${v.make} ${v.model}${v.licensePlate ? ` (${v.licensePlate})` : ''}`
-      : undefined;
+    const vehicleLabel = formatVehicleLabel(act.workOrder?.vehicle) || undefined;
     return {
       id: act.id,
       orgId: act.orgId,

@@ -164,3 +164,10 @@ export function formatPersonName(
   if (companyName) return companyName;
   return [lastName, firstName].filter(Boolean).join(' ') || '';
 }
+
+export function formatVehicleLabel(
+  vehicle?: { make: string; model: string; licensePlate?: string | null } | null,
+): string {
+  if (!vehicle) return '';
+  return `${vehicle.make} ${vehicle.model}${vehicle.licensePlate ? ` (${vehicle.licensePlate})` : ''}`;
+}

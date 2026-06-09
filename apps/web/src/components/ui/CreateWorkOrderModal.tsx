@@ -226,9 +226,18 @@ export function CreateWorkOrderModal({ open, onClose, onCreated, prefill }: Prop
         .catch(() => {});
     }
 
-    apiFetch<{ items: Employee[] }>('/employees?limit=200')
-      .then(r => setEmployees(Array.isArray(r.items) ? r.items : []))
-      .catch(() => {});
+    const cachedEmployees = getCached<Employee[]>('cache:employees');
+    if (cachedEmployees) {
+      setEmployees(cachedEmployees);
+    } else {
+      apiFetch<{ items: Employee[] }>('/employees?limit=200')
+        .then(r => {
+          const list = Array.isArray(r.items) ? r.items : [];
+          setEmployees(list);
+          setCache('cache:employees', list);
+        })
+        .catch(() => {});
+    }
 
     // sto-optimize: units є reference data з warm sessionStorage cache (TTL ≥30хв).
     // Cache populated catalog/UnitsTab + catalog/GoodsTab (source pages). Seeding

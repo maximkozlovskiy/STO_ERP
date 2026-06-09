@@ -11,7 +11,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MaintenanceSchedulesService } from '../maintenance-schedules/maintenance-schedules.service';
 import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { formatPersonName, formatVehicleLabel, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
 import {
@@ -1115,8 +1115,7 @@ export class WorkOrdersService {
       null;
     // dto.unitOfMeasureId = UnitOfMeasure.id (from /units); resolve to GoodUoM record.
     // part.unitOfMeasureId stores GoodUoM.id — keep it as-is when dto doesn't override.
-    const newUnitOfMeasureId = dto.unitOfMeasureId !== undefined ? dto.unitOfMeasureId : null;
-    const keepExistingUoM = dto.unitOfMeasureId === undefined;
+    const newUnitOfMeasureId = dto.unitOfMeasureId ?? null;
     if (newUnitOfMeasureId) {
       const goodIdForPart = dto.goodId ?? part.goodId;
       goodUoM = await this.prisma.goodUoM.findFirst({
@@ -1139,7 +1138,8 @@ export class WorkOrdersService {
             quantity,
             price,
             amount,
-            unitOfMeasureId: keepExistingUoM ? part.unitOfMeasureId : (goodUoM?.id ?? null),
+            unitOfMeasureId:
+              dto.unitOfMeasureId === undefined ? part.unitOfMeasureId : (goodUoM?.id ?? null),
           },
           include: {
             good: {
@@ -1268,9 +1268,7 @@ export class WorkOrdersService {
 
     const cp = wo.counterparty;
     const counterpartyName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || '';
-    const vehicleLabel = wo.vehicle
-      ? `${wo.vehicle.make} ${wo.vehicle.model}${wo.vehicle.licensePlate ? ` (${wo.vehicle.licensePlate})` : ''}`
-      : '';
+    const vehicleLabel = formatVehicleLabel(wo.vehicle);
 
     return this.pdf.generateWorkOrderPdf({
       org: { name: org?.name ?? '', edrpou: org?.edrpou },
@@ -1398,7 +1396,7 @@ export class WorkOrdersService {
       workName: line.work?.name,
       employeeId: line.employeeId,
       employeeName: line.employee
-        ? `${line.employee.lastName} ${line.employee.firstName}`
+        ? formatPersonName(line.employee.lastName, line.employee.firstName) || undefined
         : undefined,
       liftId: line.liftId ?? null,
       normoHours: line.normoHours,

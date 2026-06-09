@@ -80,12 +80,8 @@ export class NbuFetchService {
       }),
     );
 
-    let fetched = 0;
-    let errors = 0;
-    for (const ok of results) {
-      if (ok) fetched++;
-      else errors++;
-    }
+    const fetched = results.filter(Boolean).length;
+    const errors = results.length - fetched;
 
     this.logger.log(`NBU fetch org=${orgId}: fetched=${fetched}, errors=${errors}`);
     return { fetched, errors };
