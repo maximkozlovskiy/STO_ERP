@@ -1036,9 +1036,15 @@ export class WorkOrdersService {
     }
     if (!good) throw new NotFoundException('Товар не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
-    // If no GoodUoM mapping exists for this good+unit combination — silently ignore
-    // (store without unit). The /units endpoint lists all org units; not every unit
-    // is necessarily configured for every good.
+    // Bug #399: fail-loudly — silent-ignore unknown UnitOfMeasureId маскує contract bugs
+    // на FE (#396 — WorkOrderAddPartModal посилав GoodUoM.id у поле UnitOfMeasure.id;
+    // backend silent-stored null без сигналу про втрату даних). Якщо unitOfMeasureId
+    // переданий але GoodUoM запис для нього відсутній → 404 з підказкою користувачу.
+    if (dto.unitOfMeasureId && !goodUoM) {
+      throw new NotFoundException(
+        'Одиницю виміру не сконфігуровано для цього товару. Налаштуйте у каталозі (Товари → Одиниці виміру) або виберіть базову.',
+      );
+    }
 
     const price = dto.price !== undefined ? dto.price : Number(good.salePrice);
     const amount = dto.quantity * price;
@@ -1117,7 +1123,12 @@ export class WorkOrdersService {
         where: { unitOfMeasureId: newUnitOfMeasureId, goodId: goodIdForPart, orgId },
         select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
       });
-      // No GoodUoM mapping — silently ignore, store without unit
+      // Bug #399: fail-loudly — silent-store-null маскує FE contract bugs (#396).
+      if (!goodUoM) {
+        throw new NotFoundException(
+          'Одиницю виміру не сконфігуровано для цього товару. Налаштуйте у каталозі (Товари → Одиниці виміру) або виберіть базову.',
+        );
+      }
     }
 
     const updated = await this.prisma.$transaction(

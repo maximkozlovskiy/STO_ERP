@@ -246,6 +246,7 @@ export class CounterpartiesService {
 
   async removeGarage(orgId: string, counterpartyId: string, garageId: string): Promise<void> {
     // Parallel parent (counterparty) guard + child (garage) tenant-scoped fetch (-1 RTT).
+    // Bug #398: select.isDefault — щоб auto-promote next sibling якщо видаляємо default.
     const [cp, garage] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
@@ -253,15 +254,41 @@ export class CounterpartiesService {
       }),
       this.prisma.customerGarage.findFirst({
         where: { id: garageId, counterpartyId, orgId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, isDefault: true },
       }),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     if (!garage) throw new NotFoundException('Гараж не знайдено');
-    await this.prisma.customerGarage.update({
-      where: { id: garageId, orgId },
-      data: { deletedAt: new Date() },
-    });
+    // Bug #398: auto-promote найстарший активний sibling як новий default,
+    // інакше інваріант «у counterparty є default garage» силентно порушений.
+    // Парний з Bug #355 (WarehousesService.remove) / #356 (GoodsService.deleteBarcode).
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.customerGarage.update({
+          where: { id: garageId, orgId },
+          data: { deletedAt: new Date() },
+        });
+        if (garage.isDefault) {
+          const nextSibling = await tx.customerGarage.findFirst({
+            where: {
+              orgId,
+              counterpartyId,
+              deletedAt: null,
+              id: { not: garageId },
+            },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
+          });
+          if (nextSibling) {
+            await tx.customerGarage.update({
+              where: { id: nextSibling.id, orgId },
+              data: { isDefault: true },
+            });
+          }
+        }
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
   }
 
   // ─── Contracts ───────────────────────────────────────────

@@ -31,13 +31,6 @@ import type {
   PendingSlot,
   SlotForm,
 } from './calendar.types';
-
-// sto-optimize: CreateWorkOrderModal — 1823 LOC; calendar відкривається без створення WO
-// у більшості сесій → lazy-load при першому кліку «Створити наряд» з модалки слота.
-const CreateWorkOrderModal = dynamic(
-  () => import('@/components/ui/CreateWorkOrderModal').then(m => m.CreateWorkOrderModal),
-  { ssr: false },
-);
 import {
   HOURS,
   PICK_MINUTES,
@@ -53,6 +46,16 @@ import {
   fmtTime,
   fmtKyivDate,
 } from './calendar.utils';
+
+// Bug #397: const між import-statement'ами порушує ESLint `import/first` + може
+// плутати Next.js static-export build. Усі imports згруповані вище; dynamic const
+// залишається тут, відразу після останнього import.
+// sto-optimize: CreateWorkOrderModal — 1823 LOC; calendar відкривається без створення WO
+// у більшості сесій → lazy-load при першому кліку «Створити наряд» з модалки слота.
+const CreateWorkOrderModal = dynamic(
+  () => import('@/components/ui/CreateWorkOrderModal').then(m => m.CreateWorkOrderModal),
+  { ssr: false },
+);
 
 // ─── WorkOrderPreviewModal ────────────────────────────────────────────────────
 

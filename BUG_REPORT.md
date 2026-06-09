@@ -12092,3 +12092,153 @@ qs.parse('categoryIds%5B%5D=a&categoryIds%5B%5D=b') → { 'categoryIds[]': [ 'a'
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-09 — FULL tester: HEAD~20..HEAD audit (HEAD 57c518b7)
+
+Scope: останні 20 commits — work-order-modal (1facbb67 UoM refactor), counterparties (auto-promote default garage, narrow tenant guards), exchange-rates (parallel NBU), completion-acts PDF inline, narrow tenant guards у branches/vehicles/warehouses/works/zones, seed-catalog idempotency, calendar/work-orders dynamic-import optimization, style normalization (h-8/text-[13px]) на 30+ форм.
+
+Baseline:
+
+- TS API/web/shared: ✅ green
+- Unit tests API: ✅ 666 passed (56 files)
+- Unit tests web: ✅ 358 passed (34 files)
+- Останній bug у файлі: #372 (попередня сесія записала #381/#382/#390-#395 у commit messages, але НЕ у BUG_REPORT.md → нумерую з #396 щоб не overlap'нути меми регресій).
+
+---
+
+### Bug #396 — [CRITICAL] WorkOrderAddPartModal посилає GoodUoM.id у `unitOfMeasureId` поле, тоді як backend після commit 1facbb67 очікує UnitOfMeasure.id → backend silent-stores null
+
+**Файл:** `apps/web/src/components/ui/WorkOrderAddPartModal.tsx:308-309, 199`
+**Файл (ref):** `apps/api/src/modules/work-orders/work-orders.service.ts:978-983, 1060-1065`
+**Severity:** CRITICAL
+**Категорія:** API contract mismatch / data loss
+
+**Опис:** Commit 1facbb67 "accept UnitOfMeasure.id in parts DTO, resolve to GoodUoM internally" змінив `addPart` / `updatePart` lookup з `where: { id: dto.unitOfMeasureId, goodId, orgId }` на `where: { unitOfMeasureId: dto.unitOfMeasureId, goodId, orgId }` — тобто FE тепер ОБОВ'ЯЗКОВО має посилати UnitOfMeasure.id (FK у Good.unitId), а не GoodUoM.id (PK per-good таблиці).
+
+Більше того — раніше, якщо lookup повертав null, кидався `NotFoundException('Одиницю виміру не знайдено для цього товару')`. Тепер коментар каже "silently ignore (store without unit)" — тобто null проходить мовчки.
+
+`CreateWorkOrderModal.tsx` (preCreate draft state) — посилає `g.unitId` з GoodPickerItem (= UnitOfMeasure.id) → ✅ контракт виконано.
+
+`WorkOrderAddPartModal.tsx` (production: додавання запчастини до існуючого наряду) — посилає `form.unitOfMeasureId = u.id` де `u` приходить з `apiFetch<GoodUoM[]>('/goods/${item.id}/uoms')` → `u.id` це **GoodUoM.id** (PK перехресної таблиці). Backend шукає `where: { unitOfMeasureId: GoodUoM.id_value, ... }` → ніколи не знайде → `goodUoM = null` → `unitOfMeasureId: null` записано → **користувач вибрав «літр» — система записала «без одиниці» без помилки**.
+
+Сценарій:
+
+1. Користувач відкриває WO, тисне "Додати запчастину".
+2. Вибирає товар "Олива моторна 5W30", який має GoodUoM записи: каністра (5л), літр.
+3. Вибирає "літр" у Select.
+4. Тисне "Додати" → POST `/work-orders/:id/parts { unitOfMeasureId: '<uuid GoodUoM>', goodId, ... }`.
+5. Backend: `findFirst({ unitOfMeasureId: '<uuid GoodUoM>', goodId, orgId })` → null (нема GoodUoM з полем `unitOfMeasureId = <uuid GoodUoM>`).
+6. Backend silent stores `unitOfMeasureId: null`. Response `unitOfMeasureId: null, unitShortName: <base unit>`.
+7. UI оновлює список, показує запчастину з ОДИНИЦЯМИ БАЗИ (шт), не "літр". Кількість/ціна — за базою.
+8. Розрахунок vyborки запасу при FSM transition IN_PROGRESS неправильний (множник × коефіцієнт відсутній).
+
+**Очікувана поведінка:** FE посилає `u.unitOfMeasureId` (UnitOfMeasure.id) у POST. Інтерфейс `GoodUoM` додає `unitOfMeasureId`.
+
+**Фактична поведінка:** FE посилає `u.id` (GoodUoM.id). Backend silent-null. Дані спотворені без сигналу.
+
+**Фікс:** (a) Додати `unitOfMeasureId: string` у interface `GoodUoM` у WorkOrderAddPartModal; (b) Select option `value={u.unitOfMeasureId}`; (c) Backend addPart/updatePart коли `dto.unitOfMeasureId` присутній але GoodUoM не знайдено → **кидати** `NotFoundException` (відкочує "silently ignore" — це маскує contract bug на FE).
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #397 — [HIGH] CalendarSlotModal має `const CreateWorkOrderModal = dynamic(...)` МІЖ import-statement'ами → ESLint `import/first` violation, потенційний build break / static-export hydration issue
+
+**Файл:** `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx:37-55`
+**Severity:** HIGH
+**Категорія:** module structure / build
+
+**Опис:** Commit e97cc120 ("fix(review): hoist dynamic imports above const") мав на меті виправити const-between-imports issue. Файл переміщений const BELOW першого batch імпортів (lines 3-33), АЛЕ потім слідує ще один `import { HOURS, ... } from './calendar.utils'` (lines 41-55). Тобто `const CreateWorkOrderModal` ВСЕ ЩЕ між import statements. Це порушує `import/first` ESLint правило.
+
+В JS specification import statements гойстяться, тож на runtime працює. Але:
+
+- ESLint `import/first` падає → CI може бути red, depending на config.
+- Next.js static-export build деколи плутається з не-вгорі дinamic-import — особливо на route-group page chunk splits.
+- Code style/grep для пошуку імпортів забивається.
+
+**Очікувана поведінка:** Всі imports вгорі, всі const/code нижче.
+
+**Фактична поведінка:** Імпорти у двох блоках, посередині const.
+
+**Фікс:** Перемістити `import { HOURS, PICK_MINUTES, ... } from './calendar.utils'` ВИЩЕ блоку коментарів + `const CreateWorkOrderModal`. Тобто block лінок 41-55 hoist before line 35.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #398 — [HIGH] CounterpartiesService.removeGarage не auto-promote next sibling після soft-delete `isDefault: true` гаражу — invariant «у counterparty є default garage» силентно порушений
+
+**Файл:** `apps/api/src/modules/counterparties/counterparties.service.ts:247-265`
+**Severity:** HIGH
+**Категорія:** business invariant / soft-delete
+
+**Опис:** Зміни в commit 5a1887bc / попередніх додали `addGarage` транзакцію з `updateMany(isDefault:false)` при створенні нового default — тобто `isDefault` тепер meaningful. Але `removeGarage`:
+
+1. Робить `findFirst({ select: { id: true } })` — навіть не знає чи був видалений default.
+2. `update({ deletedAt: new Date() })` без logic auto-promote.
+
+Наслідок: якщо у counterparty 3 garages (A=default, B, C) і видалити A → залишаються B (isDefault:false), C (isDefault:false). Інваріант "є default" порушений.
+
+Парний паттерн виправлений у:
+
+- `WarehousesService.remove()` (Bug #355) — auto-promote найстарший sibling як isMain.
+- `GoodsService.deleteBarcode()` (Bug #356) — auto-promote primary barcode.
+- `WorksService` / `TaxRate` / `PaymentMethodConfig` (Bug #357) — аналогічно.
+
+`CustomerGarage` має `isDefault Boolean @default(false)` + auto-create на counterparty.create() + addGarage з updateMany(isDefault:false), і також fallback у FE (`CounterpartyEditModal` auto-creates "Основний" with isDefault:true). Тобто invariant активно підтримується ВЕЗДЕ, окрім removeGarage.
+
+Frontend `[id]/PageClient.tsx:862` має умовний рендер бейджу "За замовчуванням" — після видалення default бейдж зникне ні у кого → UX підказка "немає default" без вибору.
+
+**Очікувана поведінка:** Якщо видаляємо `isDefault:true` garage → у $transaction `(1) soft-delete X; (2) findFirst({ counterpartyId, orgId, deletedAt:null, id:{not:id} }, orderBy:{createdAt:'asc'}) → if found update({isDefault:true})`.
+
+**Фактична поведінка:** Default flag втрачено без promote. Auto-create при наступному додаванні vehicle через FE також не спрацює (бо `garages[0]` все ще буде існувати — non-default).
+
+**Фікс:** Прочитати `existing.isDefault` (розширити select), у `$transaction(timeout)` зробити soft-delete + якщо було default — знайти наступний sibling і встановити isDefault.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #399 — [MEDIUM] WorkOrdersService.addPart silent-ignore unknown UnitOfMeasureId — маскує contract bug на FE (Bug #396)
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:986-993, 1053-1067`
+**Severity:** MEDIUM (амплифікує CRITICAL #396)
+**Категорія:** API design / fail-loudly
+
+**Опис:** Commit 1facbb67 explicitly видалив `if (dto.unitOfMeasureId && !goodUoM) throw NotFoundException(...)` з addPart і updatePart. Коментар: "If no GoodUoM mapping exists for this good+unit combination — silently ignore (store without unit). The /units endpoint lists all org units; not every unit is necessarily configured for every good."
+
+Аргумент звучить розумно для CreateWorkOrderModal, де користувач має доступ до **всіх** org units через `units` ref-data — і деякі з них можуть бути не сконфігуровані для конкретного товару. Без silent-ignore користувач отримав би 404 при першій спробі. Але:
+
+1. Silent-store-null приховує CRITICAL bug #396 (WorkOrderAddPartModal посилає поган��й ID — backend silent-stores null замість 400).
+2. У CreateWorkOrderModal користувач свідомо вибрав одиницю → silently ignoring його вибір = втрата даних без сигналу.
+3. Жодного логування / телеметрії.
+
+Краща стратегія fail-loudly: throw NotFoundException з повідомленням «Цей товар не сконфігурований для одиниці X. Налаштуйте у каталозі (Товари → Одиниці) або виберіть іншу.»
+
+**Очікувана поведінка:** `dto.unitOfMeasureId` присутній + GoodUoM не знайдено → `NotFoundException('Одиницю виміру не сконфігуровано для цього товару. Налаштуйте у каталозі.')`.
+
+**Фактична поведінка:** Silent fallback `null`.
+
+**Фікс:** Повернути throw для обох addPart і updatePart.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #400 — [LOW] WorkOrderAddPartModal — інтерфейс `GoodUoM` не відображає поле `unitOfMeasureId` що повертається з API → TS не каже про помилку у Bug #396 (нема type-safety)
+
+**Файл:** `apps/web/src/components/ui/WorkOrderAddPartModal.tsx:52-57`
+**Severity:** LOW (devx)
+**Категорія:** TypeScript quality
+
+**Опис:** Interface `GoodUoM { id; unitShortName; coefficient; isDefault }` не оголошує `unitOfMeasureId`, хоча `/goods/:id/uoms` API повертає це поле (див. `toUoMDto` у goods.service.ts). Як результат — TypeScript не дає підказки якщо програміст спробує `u.unitOfMeasureId`. Перевірка на правильність контракту з API розривається. Бачте Bug #396 — якби interface включав поле, IDE intellisense одразу б показав правильний вибір.
+
+**Очікувана поведінка:** Interface декларує всі реально повернуті поля.
+
+**Фактична поведінка:** `unitOfMeasureId` відсутнє у interface → silent type narrowing.
+
+**Фікс:** Додати `unitOfMeasureId: string` у `interface GoodUoM`.
+
+**Статус:** [x] виправлено (об'єднано з #396)
+
+---
