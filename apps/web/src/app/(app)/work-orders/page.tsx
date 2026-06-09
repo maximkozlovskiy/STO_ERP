@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Plus,
@@ -17,6 +17,7 @@ import {
   CreditCard,
   Calendar,
   Shield,
+  ChevronDown,
 } from 'lucide-react';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { useRequireAuth, useAuth } from '@/lib/auth';
@@ -122,17 +123,31 @@ const STATUS_TABS: Array<[string, string]> = [
   ['PAID', 'Оплачено'],
 ];
 
-const STATUS_TABS_EXTRA: Array<[string, string]> = [
-  ['ON_HOLD', 'Призупинено'],
-  ['CANCELLED', 'Скасовано'],
-  ['ARCHIVED', 'Архів'],
+type LinkedCountsEntry = {
+  invoices: number;
+  payments: number;
+  calendarSlots: number;
+  warranties: number;
+};
+type LinkedCountsField = keyof LinkedCountsEntry;
+
+const DOC_COUNTERS: Array<{
+  field: LinkedCountsField;
+  Icon: React.ElementType;
+  label: string;
+}> = [
+  { field: 'invoices', Icon: Receipt, label: 'Рахунки' },
+  { field: 'payments', Icon: CreditCard, label: 'Оплати' },
+  { field: 'calendarSlots', Icon: Calendar, label: 'Записи календаря' },
+  { field: 'warranties', Icon: Shield, label: 'Гарантії' },
 ];
 
-// sto-optimize: thin proxy → fmtDate використовує module-level Intl.DateTimeFormat singleton.
-// Раніше manual padStart per cell на кожен render інвокався у dueDate stale-check (.map × renders).
-function formatDate(iso: string): string {
-  return fmtDate(iso);
-}
+// Derived from WO_STATUS_LABELS so adding a new status to the enum automatically routes it
+// into the "Інші" dropdown without any manual update here.
+const PRIMARY_STATUS_KEYS = new Set(STATUS_TABS.map(([v]) => v).filter(Boolean));
+const STATUS_TABS_EXTRA: Array<[string, string]> = Object.keys(WO_STATUS_LABELS)
+  .filter(k => !PRIMARY_STATUS_KEYS.has(k))
+  .map(k => [k, WO_STATUS_LABELS[k]] as [string, string]);
 
 function isOverdue(dueDateIso: string, nowMs: number): boolean {
   const due = new Date(dueDateIso);
@@ -260,13 +275,30 @@ function WorkOrdersPageInner() {
     import('@/components/ui/CreateWorkOrderModal').CreateWOPrefill | undefined
   >();
   const [editWoId, setEditWoId] = useState<string | null>(null);
-  const [linkedCounts, setLinkedCounts] = useState<
-    Record<
-      string,
-      { invoices: number; payments: number; calendarSlots: number; warranties: number }
-    >
-  >({});
   const [linkedDocPopupId, setLinkedDocPopupId] = useState<string | null>(null);
+
+  // Stable sorted ID list — prevents useQuery from refiring when React Query returns a
+  // new array reference for identical data (e.g. background refetch with no changes).
+  const ordersIds = useMemo(() => orders.map(o => o.id).sort(), [orders]);
+
+  type LinkedCountsMap = Record<
+    string,
+    { invoices: number; payments: number; calendarSlots: number; warranties: number }
+  >;
+
+  // useQuery gives dedup, stale-while-revalidate, and automatic invalidation when
+  // workOrdersKeys.all is invalidated (key is nested under it). Replaces the manual
+  // useEffect + setState approach that refired on every reference-stable React Query refresh.
+  const { data: linkedCounts = {} } = useQuery<LinkedCountsMap>({
+    queryKey: [...workOrdersKeys.all, 'linked-counts', ordersIds],
+    queryFn: () =>
+      apiFetch<LinkedCountsMap>('/work-orders/linked-counts', {
+        method: 'POST',
+        body: JSON.stringify({ workOrderIds: ordersIds }),
+      }),
+    enabled: ordersIds.length > 0,
+    staleTime: 30_000,
+  });
 
   // Escape closes the linked-documents popup. `onKeyDown` on overlay <div> не спрацьовує
   // без tabIndex/focus — потрібен глобальний listener (§14 a11y).
@@ -278,28 +310,6 @@ function WorkOrdersPageInner() {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [linkedDocPopupId]);
-
-  // Fetch linked document counts for all visible work orders (non-blocking).
-  // Race-guard: швидке перемикання фільтрів змінює `orders`; стара відповідь не має
-  // перезаписувати свіжіший стан (§8.2).
-  useEffect(() => {
-    if (!orders.length) return;
-    let cancelled = false;
-    const ids = orders.map(w => w.id);
-    apiFetch<
-      Record<
-        string,
-        { invoices: number; payments: number; calendarSlots: number; warranties: number }
-      >
-    >('/work-orders/linked-counts', { method: 'POST', body: JSON.stringify({ workOrderIds: ids }) })
-      .then(d => {
-        if (!cancelled) setLinkedCounts(d);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [orders]);
 
   const searchParams = useSearchParams();
 
@@ -526,51 +536,46 @@ function WorkOrdersPageInner() {
           })}
 
           {/* Extra statuses dropdown */}
-          <div className="relative">
-            <select
-              value={STATUS_TABS_EXTRA.some(([v]) => v === statusFilter) ? statusFilter : ''}
-              onChange={e => {
-                if (e.target.value) {
-                  setStatusFilter(e.target.value);
-                  resetPage();
-                  setActiveSavedFilterId(null);
-                }
-              }}
-              className={cn(
-                'appearance-none px-3 py-1 pr-7 rounded-full text-sm font-medium border transition-colors cursor-pointer bg-surface outline-none',
-                STATUS_TABS_EXTRA.some(([v]) => v === statusFilter)
-                  ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                  : 'border-border text-muted-foreground hover:bg-secondary hover:text-foreground',
-              )}
-            >
-              <option value="" disabled hidden>
-                Інші
-              </option>
-              {STATUS_TABS_EXTRA.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
-            <svg
-              className={cn(
-                'pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3',
-                STATUS_TABS_EXTRA.some(([v]) => v === statusFilter)
-                  ? 'text-primary-foreground'
-                  : 'text-muted-foreground',
-              )}
-              viewBox="0 0 12 12"
-              fill="none"
-            >
-              <path
-                d="M2 4l4 4 4-4"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
+          {(() => {
+            const isExtraActive = STATUS_TABS_EXTRA.some(([v]) => v === statusFilter);
+            return (
+              <div className="relative">
+                <select
+                  value={isExtraActive ? statusFilter : ''}
+                  onChange={e => {
+                    if (e.target.value) {
+                      setStatusFilter(e.target.value);
+                      resetPage();
+                      setActiveSavedFilterId(null);
+                    }
+                  }}
+                  className={cn(
+                    'appearance-none px-3 py-1 pr-7 rounded-full text-sm font-medium border transition-colors cursor-pointer bg-surface outline-none',
+                    isExtraActive
+                      ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                      : 'border-border text-muted-foreground hover:bg-secondary hover:text-foreground',
+                  )}
+                >
+                  <option value="" disabled hidden>
+                    Інші
+                  </option>
+                  {STATUS_TABS_EXTRA.map(([v, l]) => (
+                    <option key={v} value={v}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={12}
+                  className={cn(
+                    'pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2',
+                    isExtraActive ? 'text-primary-foreground' : 'text-muted-foreground',
+                  )}
+                  aria-hidden
+                />
+              </div>
+            );
+          })()}
         </div>
         {employee && (
           <button
@@ -955,7 +960,7 @@ function WorkOrdersPageInner() {
                                         : 'text-muted-foreground',
                                     )}
                                   >
-                                    {formatDate(wo.dueDate)}
+                                    {fmtDate(wo.dueDate)}
                                   </span>
                                 ) : (
                                   <span className="text-muted-foreground">—</span>
@@ -965,50 +970,25 @@ function WorkOrdersPageInner() {
                           </TableCell>
                         );
                       if (col.key === 'linkedDocs') {
-                        const counts = linkedCounts[wo.id];
+                        const counts = linkedCounts[wo.id] as LinkedCountsEntry | undefined;
                         return (
                           <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-                              {counts?.invoices > 0 && (
-                                <button
-                                  onClick={() => setLinkedDocPopupId(wo.id)}
-                                  className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                  title={`Рахунки: ${counts.invoices}`}
-                                >
-                                  <Receipt size={13} />
-                                  <span>{counts.invoices}</span>
-                                </button>
-                              )}
-                              {counts?.payments > 0 && (
-                                <button
-                                  onClick={() => setLinkedDocPopupId(wo.id)}
-                                  className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                  title={`Оплати: ${counts.payments}`}
-                                >
-                                  <CreditCard size={13} />
-                                  <span>{counts.payments}</span>
-                                </button>
-                              )}
-                              {counts?.calendarSlots > 0 && (
-                                <button
-                                  onClick={() => setLinkedDocPopupId(wo.id)}
-                                  className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                  title={`Записи календаря: ${counts.calendarSlots}`}
-                                >
-                                  <Calendar size={13} />
-                                  <span>{counts.calendarSlots}</span>
-                                </button>
-                              )}
-                              {counts?.warranties > 0 && (
-                                <button
-                                  onClick={() => setLinkedDocPopupId(wo.id)}
-                                  className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                  title={`Гарантії: ${counts.warranties}`}
-                                >
-                                  <Shield size={13} />
-                                  <span>{counts.warranties}</span>
-                                </button>
-                              )}
+                              {DOC_COUNTERS.map(({ field, Icon, label }) => {
+                                const n = counts?.[field];
+                                if (!n) return null;
+                                return (
+                                  <button
+                                    key={field}
+                                    onClick={() => setLinkedDocPopupId(wo.id)}
+                                    className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                    title={`${label}: ${n}`}
+                                  >
+                                    <Icon size={13} />
+                                    <span>{n}</span>
+                                  </button>
+                                );
+                              })}
                             </div>
                           </TableCell>
                         );
@@ -1074,7 +1054,7 @@ function WorkOrdersPageInner() {
                             isOverdue(String(v), nowMs) ? 'text-warning' : undefined,
                           )}
                         >
-                          {formatDate(String(v))}
+                          {fmtDate(String(v))}
                           {isOverdue(String(v), nowMs) && (
                             <span className="ml-1 text-[11px]">(прострочено)</span>
                           )}

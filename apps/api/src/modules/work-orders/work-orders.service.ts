@@ -1689,11 +1689,9 @@ export class WorkOrdersService {
   // ─── Linked Documents ──────────────────────────────────
 
   async getLinkedDocuments(orgId: string, workOrderId: string) {
-    const wo = await this.prisma.workOrder.findFirst({
-      where: { id: workOrderId, orgId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    // No pre-existence guard: all 4 queries already filter by orgId+workOrderId, so a
+    // non-existent workOrderId just returns empty arrays — same semantics, 1 fewer RTT.
+    // The controller already validates the UUID format via ParseUUIDPipe.
 
     // §3.2/§7.1: take: N — захист від OOM при патологічних обсягах (рідко, але можливо
     // для довгоживучих нарядів з частковою оплатою або десятками перенесень слотів).

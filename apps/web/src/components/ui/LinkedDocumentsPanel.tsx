@@ -258,6 +258,31 @@ function WarrantyPreview({ item }: { item: LinkedWarranty }) {
 
 // ─── Section ──────────────────────────────────────────────
 
+function DocSection({
+  icon: Icon,
+  title,
+  count,
+  children,
+}: {
+  icon: ElementType;
+  title: string;
+  count: number;
+  children: ReactNode;
+}) {
+  if (count === 0) return null;
+  return (
+    <div className="bg-surface rounded-xl border border-border overflow-hidden">
+      <div className="px-5 py-3 border-b border-border bg-secondary flex items-center gap-2">
+        <Icon size={14} className="text-muted-foreground" />
+        <h3 className="font-medium text-foreground text-sm">
+          {title} <span className="text-muted-foreground font-normal">({count})</span>
+        </h3>
+      </div>
+      <div className="divide-y divide-border">{children}</div>
+    </div>
+  );
+}
+
 function SectionRow({
   icon: Icon,
   primary,
@@ -401,124 +426,72 @@ export function LinkedDocumentsPanel({
   return (
     <>
       <div className="flex flex-col gap-3">
-        {/* Рахунки */}
-        {data.invoices.length > 0 && (
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <div className="px-5 py-3 border-b border-border bg-secondary flex items-center gap-2">
-              <Receipt size={14} className="text-muted-foreground" />
-              <h3 className="font-medium text-foreground text-sm">
-                Рахунки{' '}
-                <span className="text-muted-foreground font-normal">({data.invoices.length})</span>
-              </h3>
-            </div>
-            <div className="divide-y divide-border">
-              {data.invoices.map(inv => (
-                <SectionRow
-                  key={inv.id}
-                  icon={Receipt}
-                  primary={`Рахунок ${inv.number}`}
-                  secondary={inv.documentDate ? fmtDate(inv.documentDate) : undefined}
-                  badge={{
-                    label: INVOICE_STATUS_LABELS[inv.status] ?? inv.status,
-                    className:
-                      INVOICE_STATUS_COLORS[inv.status] ?? 'bg-secondary text-muted-foreground',
-                  }}
-                  onClick={e => openPreview(e, { kind: 'invoice', item: inv })}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        <DocSection icon={Receipt} title="Рахунки" count={data.invoices.length}>
+          {data.invoices.map(inv => (
+            <SectionRow
+              key={inv.id}
+              icon={Receipt}
+              primary={`Рахунок ${inv.number}`}
+              secondary={inv.documentDate ? fmtDate(inv.documentDate) : undefined}
+              badge={{
+                label: INVOICE_STATUS_LABELS[inv.status] ?? inv.status,
+                className:
+                  INVOICE_STATUS_COLORS[inv.status] ?? 'bg-secondary text-muted-foreground',
+              }}
+              onClick={e => openPreview(e, { kind: 'invoice', item: inv })}
+            />
+          ))}
+        </DocSection>
 
-        {/* Оплати */}
-        {data.payments.length > 0 && (
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <div className="px-5 py-3 border-b border-border bg-secondary flex items-center gap-2">
-              <CreditCard size={14} className="text-muted-foreground" />
-              <h3 className="font-medium text-foreground text-sm">
-                Оплати{' '}
-                <span className="text-muted-foreground font-normal">({data.payments.length})</span>
-              </h3>
-            </div>
-            <div className="divide-y divide-border">
-              {data.payments.map(p => (
-                <SectionRow
-                  key={p.id}
-                  icon={CreditCard}
-                  primary={`${fmt(p.amount)} ₴`}
-                  secondary={fmtDateTime(p.createdAt)}
-                  onClick={e => openPreview(e, { kind: 'payment', item: p })}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        <DocSection icon={CreditCard} title="Оплати" count={data.payments.length}>
+          {data.payments.map(p => (
+            <SectionRow
+              key={p.id}
+              icon={CreditCard}
+              primary={`${fmt(p.amount)} ₴`}
+              secondary={fmtDateTime(p.createdAt)}
+              onClick={e => openPreview(e, { kind: 'payment', item: p })}
+            />
+          ))}
+        </DocSection>
 
-        {/* Записи календаря */}
-        {data.calendarSlots.length > 0 && (
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <div className="px-5 py-3 border-b border-border bg-secondary flex items-center gap-2">
-              <Calendar size={14} className="text-muted-foreground" />
-              <h3 className="font-medium text-foreground text-sm">
-                Записи календаря{' '}
-                <span className="text-muted-foreground font-normal">
-                  ({data.calendarSlots.length})
-                </span>
-              </h3>
-            </div>
-            <div className="divide-y divide-border">
-              {data.calendarSlots.map(s => (
-                <SectionRow
-                  key={s.id}
-                  icon={Calendar}
-                  primary={fmtDateTime(s.startAt)}
-                  secondary={s.lift ? s.lift.name : undefined}
-                  badge={{
-                    label: SLOT_STATUS_LABELS[s.status] ?? s.status,
-                    className:
-                      s.status === 'BOOKED'
-                        ? 'bg-info-subtle text-info-text'
-                        : s.status === 'BLOCKED'
-                          ? 'bg-destructive-subtle text-destructive'
-                          : 'bg-success-subtle text-success',
-                  }}
-                  onClick={e => openPreview(e, { kind: 'slot', item: s })}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        <DocSection icon={Calendar} title="Записи календаря" count={data.calendarSlots.length}>
+          {data.calendarSlots.map(s => (
+            <SectionRow
+              key={s.id}
+              icon={Calendar}
+              primary={fmtDateTime(s.startAt)}
+              secondary={s.lift ? s.lift.name : undefined}
+              badge={{
+                label: SLOT_STATUS_LABELS[s.status] ?? s.status,
+                className:
+                  s.status === 'BOOKED'
+                    ? 'bg-info-subtle text-info-text'
+                    : s.status === 'BLOCKED'
+                      ? 'bg-destructive-subtle text-destructive'
+                      : 'bg-success-subtle text-success',
+              }}
+              onClick={e => openPreview(e, { kind: 'slot', item: s })}
+            />
+          ))}
+        </DocSection>
 
-        {/* Гарантії */}
-        {data.warranties.length > 0 && (
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
-            <div className="px-5 py-3 border-b border-border bg-secondary flex items-center gap-2">
-              <Shield size={14} className="text-muted-foreground" />
-              <h3 className="font-medium text-foreground text-sm">
-                Гарантії{' '}
-                <span className="text-muted-foreground font-normal">
-                  ({data.warranties.length})
-                </span>
-              </h3>
-            </div>
-            <div className="divide-y divide-border">
-              {data.warranties.map(w => (
-                <SectionRow
-                  key={w.id}
-                  icon={Shield}
-                  primary={w.description || 'Гарантія'}
-                  secondary={`Дійсна до ${fmtDate(w.expiresAt)}`}
-                  badge={
-                    w.claimedAt
-                      ? { label: 'Звернення', className: 'bg-warning-subtle text-warning' }
-                      : undefined
-                  }
-                  onClick={e => openPreview(e, { kind: 'warranty', item: w })}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        <DocSection icon={Shield} title="Гарантії" count={data.warranties.length}>
+          {data.warranties.map(w => (
+            <SectionRow
+              key={w.id}
+              icon={Shield}
+              primary={w.description || 'Гарантія'}
+              secondary={`Дійсна до ${fmtDate(w.expiresAt)}`}
+              badge={
+                w.claimedAt
+                  ? { label: 'Звернення', className: 'bg-warning-subtle text-warning' }
+                  : undefined
+              }
+              onClick={e => openPreview(e, { kind: 'warranty', item: w })}
+            />
+          ))}
+        </DocSection>
       </div>
 
       {preview && (

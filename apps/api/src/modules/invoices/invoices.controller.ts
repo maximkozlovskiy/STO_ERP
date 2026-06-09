@@ -103,9 +103,8 @@ export class InvoicesController {
   createFromWorkOrder(
     @OrgContext() orgId: string,
     @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
-    @CurrentUser() user: { id: string },
   ) {
-    return this.service.createFromWorkOrder(orgId, workOrderId, user?.id);
+    return this.service.createFromWorkOrder(orgId, workOrderId);
   }
 
   @Patch(':id')

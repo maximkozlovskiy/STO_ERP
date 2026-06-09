@@ -129,11 +129,7 @@ export class InvoicesService {
     return this.toDto(inv, true);
   }
 
-  async createFromWorkOrder(
-    orgId: string,
-    workOrderId: string,
-    _userId?: string,
-  ): Promise<InvoiceResponseDto> {
+  async createFromWorkOrder(orgId: string, workOrderId: string): Promise<InvoiceResponseDto> {
     // Bug #412: prep-check WO existence + duplicate (pre-tx) for fast 4xx feedback.
     // Race still possible — actual create wrapped in Serializable tx with re-check below.
     const [wo, existingPre] = await Promise.all([
@@ -560,26 +556,22 @@ export class InvoicesService {
   }
 
   async refreshFromWorkOrder(orgId: string, workOrderId: string): Promise<InvoiceResponseDto> {
-    const [wo, existing] = await Promise.all([
+    // Narrow pre-check outside tx: fast 4xx for missing WO / wrong status / no active invoice.
+    // Lines+parts are fetched inside the tx to close the TOCTOU window between reading
+    // WO contents and writing invoice lines (a concurrent addLine/removePart would otherwise
+    // be silently missed).
+    const [woPre, existing] = await Promise.all([
       this.prisma.workOrder.findFirst({
         where: { id: workOrderId, orgId, deletedAt: null },
-        include: {
-          lines: {
-            where: { deletedAt: null },
-            include: { work: { select: { name: true } } },
-          },
-          parts: {
-            where: { deletedAt: null },
-            include: { good: { select: { name: true } } },
-          },
-        },
+        select: { id: true, status: true },
       }),
       this.prisma.invoice.findFirst({
         where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
+        select: { id: true, status: true },
       }),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
-    if (!['COMPLETED', 'INVOICED'].includes(wo.status))
+    if (!woPre) throw new NotFoundException('Наряд не знайдено');
+    if (!['COMPLETED', 'INVOICED'].includes(woPre.status))
       throw new BadRequestException('Рахунок можна виставити лише для завершеного наряду');
     if (!existing) throw new NotFoundException('Активний рахунок не знайдено');
     // Bug #403: refreshFromWorkOrder перезаписував рядки SENT/PAID/OVERDUE без перевірки →
@@ -593,9 +585,25 @@ export class InvoicesService {
     const DEFAULT_VAT = 20;
 
     // Bug #407: recalcTotals був ПОЗА $transaction → race window де lines нові, totals старі.
-    // Тепер inline-обчислення всередині того ж транзакції.
+    // WO lines+parts fetched inside tx (RepeatableRead) to prevent TOCTOU: concurrent
+    // addLine/removePart between pre-check and createMany would silently skew the invoice.
     await this.prisma.$transaction(
       async tx => {
+        const wo = await tx.workOrder.findFirst({
+          where: { id: workOrderId, orgId, deletedAt: null },
+          include: {
+            lines: {
+              where: { deletedAt: null },
+              include: { work: { select: { name: true } } },
+            },
+            parts: {
+              where: { deletedAt: null },
+              include: { good: { select: { name: true } } },
+            },
+          },
+        });
+        if (!wo) throw new NotFoundException('Наряд не знайдено');
+
         await tx.invoiceLine.deleteMany({
           where: { invoiceId: existing.id, orgId },
         });
@@ -643,7 +651,6 @@ export class InvoicesService {
           await tx.invoiceLine.createMany({ data: lineData });
         }
 
-        // Inline recalc у тій самій транзакції (Bug #407)
         const totalWithoutVat = lineData.reduce((s, l) => s + l.priceWithoutVat, 0);
         const totalVat = lineData.reduce((s, l) => s + l.vatAmount, 0);
         const totalWithVat = lineData.reduce((s, l) => s + l.priceWithVat, 0);
