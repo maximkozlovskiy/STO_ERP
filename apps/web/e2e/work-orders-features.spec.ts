@@ -4,20 +4,20 @@ test.use({ storageState: 'e2e/.auth/admin.json' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Recently added features in /work-orders:
-// 1. "Інші" dropdown — statuses derived from WO_STATUS_LABELS (statuses.ts) minus
-//    primary STATUS_TABS keys. Current set: ON_HOLD / ARCHIVED / CANCELLED in the
-//    insertion order of WO_STATUS_LABELS. Rendered in page.tsx (look for
-//    STATUS_TABS_EXTRA + <select> with the "Інші" placeholder option).
+// 1. Status filter pills — ВСІ 10 FSM-статусів (DRAFT → ESTIMATE → APPROVED →
+//    IN_PROGRESS → ON_HOLD → COMPLETED → INVOICED → PAID → ARCHIVED → CANCELLED)
+//    плюс «Всі» рендеряться як rounded-pill buttons підряд (commit 57b9d4b9 —
+//    замінили dropdown "Інші" на повний FSM-порядок).
 // 2. "Виставити рахунок" button — appears in WO edit modal when status is
-//    COMPLETED or INVOICED (CreateWorkOrderModal.tsx:938 canInvoice).
+//    COMPLETED or INVOICED (CreateWorkOrderModal.tsx canInvoice).
 // 3. LinkedDocumentsPanel — rendered as the "Документи" tab of the WO edit
-//    modal (CreateWorkOrderModal.tsx:1189) AND as a side popup from the list
-//    when the row shows invoice/payment/calendar/warranty count badges.
+//    modal AND as a side popup from the list when the row shows
+//    invoice/payment/calendar/warranty count badges.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── 1. "Інші" dropdown ──────────────────────────────────────────────────────
+// ─── 1. FSM status pills (commit 57b9d4b9: dropdown "Інші" → pills) ──────────
 
-test.describe('Наряди — статус-фільтр "Інші" dropdown', () => {
+test.describe('Наряди — FSM статус-pills', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/work-orders');
     await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
@@ -30,60 +30,96 @@ test.describe('Наряди — статус-фільтр "Інші" dropdown', 
     ).toBeVisible({ timeout: 20_000 });
   });
 
-  test('dropdown «Інші» присутній поряд зі статусними табами', async ({ page }) => {
-    // Native <select> with default "Інші" option (page.tsx:546).
-    const dropdown = page.locator('select').filter({ hasText: 'Інші' }).first();
-    await expect(dropdown).toBeVisible({ timeout: 10_000 });
+  // Bug #426 follow-up: commit 57b9d4b9 видалив <select> «Інші» і замість нього
+  // показує всі 10 FSM-статусів як pills. Тести оновлені під новий UI.
+  test('всі pills "Всі" + 10 FSM-статусів присутні підряд', async ({ page }) => {
+    // STATUS_TABS визначений у page.tsx (10 статусів + «Всі»). Перевіряємо що всі
+    // потрібні buttons рендеряться у DOM (видимість дозволена з overflow-wrap).
+    const expectedLabels = [
+      'Всі',
+      'Чернетка',
+      'Кошторис',
+      'Затверджено',
+      'В роботі',
+      'Призупинено',
+      'Виконано',
+      'Виставлено',
+      'Оплачено',
+      'Архів',
+      'Скасовано',
+    ];
+    for (const label of expectedLabels) {
+      // exact: true щоб не зловити "Виставити рахунок" як "Виставлено".
+      await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible({
+        timeout: 8_000,
+      });
+    }
   });
 
-  test('dropdown містить опції Призупинено / Скасовано / Архів', async ({ page }) => {
-    const dropdown = page.locator('select').filter({ hasText: 'Інші' }).first();
-    await expect(dropdown).toBeVisible({ timeout: 10_000 });
+  test('FSM порядок pills збігається з backend WO_STATUS_LABELS (DRAFT → CANCELLED)', async ({
+    page,
+  }) => {
+    // Контракт-перевірка: FSM-порядок pills не повинен дрейфувати від
+    // backend WO_STATUS_LABELS. Беремо text content усіх status buttons
+    // після pill «Всі» і порівнюємо з канонічним порядком.
+    const allLabels = await page
+      .locator('div.flex.gap-1\\.5.flex-wrap.items-center >> button')
+      .allTextContents();
 
-    // STATUS_TABS_EXTRA is derived from WO_STATUS_LABELS minus primary STATUS_TABS keys.
-    // Current insertion order in @sto/shared/constants/statuses.ts → ON_HOLD, ARCHIVED,
-    // CANCELLED. We query by value (not by position) so adding/reordering enum members
-    // does not break these assertions, only the comment above needs to follow.
-    await expect(dropdown.locator('option[value="ON_HOLD"]')).toHaveText('Призупинено');
-    await expect(dropdown.locator('option[value="ARCHIVED"]')).toHaveText('Архів');
-    await expect(dropdown.locator('option[value="CANCELLED"]')).toHaveText('Скасовано');
-  });
+    const fsmOrder = [
+      'Всі',
+      'Чернетка',
+      'Кошторис',
+      'Затверджено',
+      'В роботі',
+      'Призупинено',
+      'Виконано',
+      'Виставлено',
+      'Оплачено',
+      'Архів',
+      'Скасовано',
+    ];
 
-  test('вибір "Скасовано" — фільтрує таблицю (URL/state змінюється)', async ({ page }) => {
-    const dropdown = page.locator('select').filter({ hasText: 'Інші' }).first();
-    await expect(dropdown).toBeVisible({ timeout: 10_000 });
-
-    // Capture initial row count so we know the filter took effect even if
-    // there are no CANCELLED rows (empty state is a valid outcome).
-    await dropdown.selectOption('CANCELLED');
-
-    // After selection — dropdown displays "Скасовано" (selected value) AND it
-    // becomes the active tab (primary background style).
-    await expect(dropdown).toHaveValue('CANCELLED', { timeout: 5_000 });
-
-    // Either rows are shown (every row is CANCELLED) or empty-state is shown.
-    const tableBody = page.locator('table tbody');
-    await expect(
-      tableBody.or(page.getByText(/Нічого не знайдено|Нарядів не знайдено/i)),
-    ).toBeVisible({
-      timeout: 15_000,
+    // Перевіряємо що FSM-послідовність присутня як підпослідовність allLabels.
+    // (allLabels може містити додаткові buttons «Мої наряди», «Видалені», тощо.)
+    const indices = fsmOrder.map(label => allLabels.indexOf(label));
+    indices.forEach((idx, i) => {
+      expect(idx, `pill "${fsmOrder[i]}" не знайдено`).toBeGreaterThanOrEqual(0);
     });
+    // Кожен наступний індекс має бути більший за попередній.
+    for (let i = 1; i < indices.length; i++) {
+      expect(indices[i]).toBeGreaterThan(indices[i - 1]!);
+    }
   });
 
-  test('вибір "Архів" — dropdown відображає вибраний статус', async ({ page }) => {
-    const dropdown = page.locator('select').filter({ hasText: 'Інші' }).first();
-    await expect(dropdown).toBeVisible({ timeout: 10_000 });
+  test('клік "Скасовано" — фільтрує таблицю (pill стає active)', async ({ page }) => {
+    const cancelledPill = page.getByRole('button', { name: 'Скасовано', exact: true });
+    await expect(cancelledPill).toBeVisible({ timeout: 10_000 });
+    await cancelledPill.click();
 
-    await dropdown.selectOption('ARCHIVED');
-    await expect(dropdown).toHaveValue('ARCHIVED', { timeout: 5_000 });
+    // Active pill = bg-primary text-primary-foreground (page.tsx STATUS_TABS map).
+    // Чекаємо коли клас з'явиться (signal що setStatusFilter('CANCELLED') відпрацював).
+    await expect(cancelledPill).toHaveClass(/bg-primary/, { timeout: 5_000 });
+
+    // Чекаємо коли refetch завершиться. Може бути або з рядками таблиці,
+    // або empty-state — обидва є валідним станом. Чекаємо <table> (завжди present),
+    // потім перевіряємо що pill лишається active (filter не відкочено через помилку).
+    await expect(page.locator('table').first()).toBeVisible({ timeout: 15_000 });
+    await expect(cancelledPill).toHaveClass(/bg-primary/);
   });
 
-  test('вибір "Призупинено" — dropdown відображає вибраний статус', async ({ page }) => {
-    const dropdown = page.locator('select').filter({ hasText: 'Інші' }).first();
-    await expect(dropdown).toBeVisible({ timeout: 10_000 });
+  test('клік "Архів" — pill стає active (bg-primary)', async ({ page }) => {
+    const pill = page.getByRole('button', { name: 'Архів', exact: true });
+    await expect(pill).toBeVisible({ timeout: 10_000 });
+    await pill.click();
+    await expect(pill).toHaveClass(/bg-primary/, { timeout: 5_000 });
+  });
 
-    await dropdown.selectOption('ON_HOLD');
-    await expect(dropdown).toHaveValue('ON_HOLD', { timeout: 5_000 });
+  test('клік "Призупинено" — pill стає active (bg-primary)', async ({ page }) => {
+    const pill = page.getByRole('button', { name: 'Призупинено', exact: true });
+    await expect(pill).toBeVisible({ timeout: 10_000 });
+    await pill.click();
+    await expect(pill).toHaveClass(/bg-primary/, { timeout: 5_000 });
   });
 });
 

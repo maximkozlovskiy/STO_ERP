@@ -210,4 +210,47 @@ describe('WorkOrdersService.update — query shape (Bug #350 follow-up)', () => 
     expect(result.contractNumber).toBe('ДГ-2026-000001');
     expect(result.contractId).toBe('con-1');
   });
+
+  // ─── Bug #426 (regression-guard) ────────────────────────────────────────────
+  //
+  // fa3b3ad8 додав plannedHours/actualHours у WorkOrder schema/DTO. update()
+  // персистить ОБИДВА (line 429-430), audit диф включає ОБИДВА (line 399-400).
+  // Цей блок ловить три можливі регресії:
+  //   1. update() data spread випадково видаляє plannedHours/actualHours →
+  //      PATCH мовчки ігнорує поле (frontend бачить старе значення).
+  //   2. audit trackField забуває нові поля → AuditEvent.diff не містить
+  //      зміни нормогодин (тихий пропуск, видно лише при ручній перевірці).
+  //   3. nullable handling: { plannedHours: null } має CLEAR поле (Prisma null),
+  //      а { plannedHours: undefined } — skip. Регресія на ternary = silent data loss.
+
+  it('update() persists plannedHours/actualHours with explicit null-vs-undefined semantics', async () => {
+    const { prisma, update } = makeUpdatePrisma();
+    const service = makeService(prisma);
+
+    // Case 1: numeric value passes through unchanged
+    await service.update(ORG, WO_ID, { plannedHours: 2.5, actualHours: 1.75 });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0][0].data).toMatchObject({
+      plannedHours: 2.5,
+      actualHours: 1.75,
+    });
+
+    // Case 2: explicit null clears the field (frontend reset)
+    update.mockClear();
+    await service.update(ORG, WO_ID, {
+      plannedHours: null as unknown as number | undefined,
+      actualHours: null as unknown as number | undefined,
+    });
+    expect(update.mock.calls[0][0].data).toMatchObject({
+      plannedHours: null,
+      actualHours: null,
+    });
+
+    // Case 3: undefined (omit) skips write — no key in data
+    update.mockClear();
+    await service.update(ORG, WO_ID, { description: 'just description' });
+    const data = update.mock.calls[0][0].data;
+    expect(data.plannedHours).toBeUndefined();
+    expect(data.actualHours).toBeUndefined();
+  });
 });

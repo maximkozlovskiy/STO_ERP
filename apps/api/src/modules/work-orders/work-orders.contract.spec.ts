@@ -266,6 +266,106 @@ describe('WorkOrders — HTTP Contract', () => {
         status: expect.any(String),
       });
     });
+
+    // Bug #426 (regression-guard): plannedHours приймається у POST + валідація `@Min(0)`.
+    // Без @Transform(emptyToUndefined) на цьому полі — frontend datetime-обчислений ''
+    // (`calcPlannedHours()` повертає '' коли start/end не задані) спричинить 400 при
+    // створенні WO з прихованими полями.
+    it('повертає 201 коли plannedHours=валідне число; 400 коли відʼємне', async () => {
+      jwtAllow = true;
+      serviceMock.create.mockResolvedValueOnce({
+        id: 'wo-uuid',
+        orgId: 'org-1',
+        number: 'WO-2026-0003',
+        status: 'DRAFT',
+        branchId: 'b',
+        vehicleId: 'v',
+        counterpartyId: 'c',
+        totalLabor: 0,
+        totalParts: 0,
+        totalAmount: 0,
+        paidAmount: 0,
+        plannedHours: 2.5,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const ok = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/work-orders',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({
+          branchId: '11111111-1111-4111-8111-111111111111',
+          vehicleId: '22222222-2222-4222-8222-222222222222',
+          counterpartyId: '33333333-3333-4333-8333-333333333333',
+          plannedHours: 2.5,
+        }),
+      });
+      expect(ok.statusCode).toBe(201);
+      const dtoArg = serviceMock.create.mock.calls.at(-1)![1] as Record<string, unknown>;
+      expect(dtoArg.plannedHours).toBe(2.5);
+
+      const bad = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/work-orders',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({
+          branchId: '11111111-1111-4111-8111-111111111111',
+          vehicleId: '22222222-2222-4222-8222-222222222222',
+          counterpartyId: '33333333-3333-4333-8333-333333333333',
+          plannedHours: -1,
+        }),
+      });
+      expect(bad.statusCode).toBe(400);
+    });
+  });
+
+  // Bug #426 (regression-guard): PATCH-симетрія для plannedHours/actualHours.
+  // Без явного nullable-handling у DTO + сервіс — frontend reset поля (null) НЕ
+  // зможе очистити збережене значення (буде "stuck" у БД).
+  describe('PATCH /work-orders/:id — plannedHours/actualHours nullable handling', () => {
+    const WO_ID = '11111111-1111-4111-8111-100000000001';
+
+    it('приймає plannedHours=число + actualHours=null (clear semantics)', async () => {
+      jwtAllow = true;
+      serviceMock.update.mockResolvedValueOnce({
+        id: WO_ID,
+        orgId: 'org-1',
+        number: 'WO-1',
+        status: 'IN_PROGRESS',
+        branchId: 'b',
+        vehicleId: 'v',
+        counterpartyId: 'c',
+        totalLabor: 0,
+        totalParts: 0,
+        totalAmount: 0,
+        paidAmount: 0,
+        plannedHours: 3,
+        actualHours: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/work-orders/${WO_ID}`,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ plannedHours: 3, actualHours: null }),
+      });
+      expect(res.statusCode).toBe(200);
+      const dtoArg = serviceMock.update.mock.calls[0]![2] as Record<string, unknown>;
+      expect(dtoArg.plannedHours).toBe(3);
+      expect(dtoArg.actualHours).toBeNull();
+    });
+
+    it('відхиляє відʼємний actualHours (Bug #283: numeric DTO @Min guard)', async () => {
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/work-orders/${WO_ID}`,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ actualHours: -0.5 }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
   });
 
   describe('GET /work-orders/:id', () => {

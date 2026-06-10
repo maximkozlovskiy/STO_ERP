@@ -971,6 +971,104 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-10 — Asymmetric-write новий nullable col у clone()/copy mutation (Bug #426) — backend / data integrity / silent loss
+
+**Сигнал:** Mass-DTO migration що додає nullable поле (`Float?`, `String?`, `Int?`) у схему +DTO +`create()` +`update()` +audit-tracking. Окремий метод-копіювальник (`clone()`, `duplicate()`, `cloneFromX()`, `cloneAsTemplate()`) ОДРАЗУ читає поле з оригіналу через `select: { newField: true }` (TS green бо тип валідний), АЛЕ парний `data: { ... }` спред у `prisma.X.create({ data: ... })` НЕ містить запис `newField`. Result: cloned row має `newField=null`, навіть якщо в оригіналі було значення → silent data loss. tsc не ловить (data приймає optional), unit-test через vi.fn() не ловить (mock не пише в БД).
+
+**Реальний приклад (Bug #426):** `apps/api/src/modules/work-orders/work-orders.service.ts`:
+
+```typescript
+// ✓ select оновлено (TS gating підказав додати, інакше не скомпілюється у toDto)
+const original = await this.prisma.workOrder.findFirst({
+  select: { plannedHours: true /* нове поле, додано */ },
+});
+
+// ✗ data НЕ оновлено — silent gap
+const cloned = await this.prisma.workOrder.create({
+  data: {
+    description: original.description,
+    inMileage: original.inMileage,
+    priority: original.priority,
+    repairCategory: original.repairCategory,
+    dueDate: original.dueDate,
+    // plannedHours тут ВІДСУТНІЙ — забуто
+    totalLabor,
+    totalParts,
+  },
+});
+```
+
+**Причина виникнення:** TS gating робить `select: { newField: true }` обов'язковим (бо toDto/mapper читає поле → потрібен select), розробник додає його одразу. Потім переходить до іншого методу. У `clone()` метод не використовує toDto одразу — формує `data:` спред з пам'яті. Поле `newField` не нагадує про себе бо тип `data:` приймає optional. Симетричний `lines.create.map(l => ({ ..., actualHours: null }))` спрацював правильно (бо clone-as-DRAFT семантика очевидна для зайнятих годин), але parent-row `plannedHours` пропущено.
+
+**Підхід до виявлення:**
+
+1. `git diff HEAD~N HEAD -- "**/schema.prisma" "**/*.dto.ts"` — знайти нові nullable поля.
+2. Для кожного знайденого `<NewField>`: grep сервіс за `select.*<newField>: true` І окремо за `data.*<newField>` → mismatch = bug. Приклад:
+   ```bash
+   for field in $(git diff HEAD~5 -- packages/database/prisma/schema.prisma | grep "^+.*Float?\|^+.*String?\|^+.*Int?" | awk '{print $2}'); do
+     selects=$(grep -rln "select.*$field:\s*true" apps/api/src/modules --include="*.service.ts")
+     writes=$(grep -rln "$field:" apps/api/src/modules --include="*.service.ts" | xargs grep -l "data:\s*{")
+     # diff: file у selects але не у writes для clone/duplicate методу = bug
+   done
+   ```
+3. Для КОЖНОГО clone/duplicate/copyFromX/forkX методу у service — перевірити чи `data:` спред має той самий набір полів що оригінал. Симетрія `original.<F>` → `data.<F>` для всіх копійованих полів.
+
+**Підхід до фіксу:**
+
+- Додати missing field у `data:` спред копіювача. Якщо clone інтендов як "fresh state" — пояснити коментарем чому навмисно скинуто (`actualHours: null — clone — нова DRAFT-сесія`).
+- Регресія-guard у `service.spec.ts`: тест на clone() з input що має `newField=X` → assert `expect(prisma.X.create.mock.calls[0][0].data.newField).toBe(X)`.
+
+**Severity:** MEDIUM (data integrity, не runtime crash). Підвищується до HIGH якщо поле фінансове (price, vatRate, balance) або семантично-важливе (status, priority).
+
+**Де шукати ще:**
+
+- Будь-який `cloneX`/`duplicateX`/`copyFromX`/`forkX`/`templateFromX` метод у будь-якому сервісі.
+- `import-from-csv`/`import-from-template` парсери (читають з file → пишуть у БД).
+- Sync engine у `apps/api/src/modules/sync` (Outbox pattern) — поле що додано у model але не у sync payload → cloud sync втрачає.
+- `convertX` методи (наприклад `convertEstimateToWorkOrder`, `convertQuoteToInvoice`).
+
+---
+
+### 2026-06-10 — Test outdated після intentional UI refactor: dropdown → pills (Bug #428) — E2E / test staleness / false negative
+
+**Сигнал:** Після commit що змінює UI-affordance (dropdown → pills, modal → inline, list → grid, tab → accordion) Playwright suite раптово показує N паралельних failures на тестах одного describe-блоку з одним типом помилки (`Locator: ... Expected: visible / Error: element(s) not found`). Усі failures у файлі чітко асоційовані з конкретною UI feature що щойно зрефакторена.
+
+**Реальний приклад (Bug #428):** Commit 57b9d4b9 видалив native `<select>` з опцією "Інші" → 5 тестів `work-orders-features.spec.ts` падали бо шукали `page.locator('select').filter({ hasText: 'Інші' })`. Зміна UI правильна (PM-driven design), тести застаріли.
+
+**Причина виникнення:**
+
+- Розробник інтенційно змінює UI (dropdown→pills краще для UX) у `page.tsx`, забуває оновити E2E selectors.
+- TS не ловить (E2E selectors — string-based, не type-checked).
+- Vitest component-tests не ловлять (rendered DOM з новим UI, тести з тим самим UI).
+- Lint не ловить (selector — string).
+- Перший раз баг виявляється коли запускаєш Playwright.
+
+**Підхід до виявлення:**
+
+1. Базова перевірка Playwright suite у Кроці 4 — обов'язкова.
+2. КЛЮЧОВИЙ принцип: **test failure ≠ code bug**. Перш ніж "виправляти" код:
+   - Прочитати UI-файл (page.tsx, modal.tsx) на сторінці тесту.
+   - Запитати: «Чи поведінка UI що тест очікує — досі коректна?»
+   - Якщо так → тест outdated → виправити ТЕСТ під новий UI.
+   - Якщо ні → справжній bug → виправити код.
+3. Crosscheck: подивитись git log на UI-файлі за останні 5 комітів — чи був intentional refactor що ламає selector?
+
+**Підхід до фіксу:**
+
+- Переписати selectors під новий UI (button:has-text → pill click, dropdown.selectOption → pill click + toHaveClass).
+- ДОДАТКОВО: додати regression-guard тест що захищає frontend-backend синхронізацію (нпр. "FSM порядок pills збігається з WO_STATUS_LABELS") — щоб дрейф у майбутньому ловився E2E.
+- НЕ повертати dropdown у код щоб задовольнити тест — це anti-pattern (тест диктує UI замість UX).
+
+**Severity:** HIGH (тести в CI fail → release-blocker). Регресія-guard рекомендує додавати при кожному UI refactor.
+
+**Де шукати ще:**
+
+- Будь-який intentional UI refactor у `apps/web/src` що чіпає `<select>`/`<input>`/`<button>` selectors.
+- Сторінки що часто рефакторяться: `/work-orders`, `/invoices`, `/counterparties`, `/calendar`, `/inventory` — приймають feature requests часто.
+- Після кожного `feat(<scope>): show as ... / replace ... / unify ...` commit — обов'язково перечитати парний `*.spec.ts` у `apps/web/e2e/`.
+
+---
+
 ### 2026-06-10 — Token-guard debouncer race: early-return не інкрементує reqId (Bug #396) — frontend / async race / state corruption
 
 **Сигнал:** Хук-debouncer з `reqIdRef.current` token-guard (last-fetch-wins) має у `check(params)` ранній вихід (early-return) для невалідних параметрів (порожні дати, `start >= end`, відсутні залежності). Гілка early-return викликає `setState(null)` АЛЕ не бамптить `reqIdRef.current`. Будь-який pending in-flight fetch розпочатий до того як параметри стали невалідні зарезолвиться з `if (reqId === reqIdRef.current) setState(res)` — умова виконається (бо токен не змінювався) і перезапише очищений стан старими даними. Користувач бачить миготіння banner, фантомні badges, "застряглі" UI-елементи що мали зникнути.

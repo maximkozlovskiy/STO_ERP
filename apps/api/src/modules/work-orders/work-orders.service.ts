@@ -568,6 +568,12 @@ export class WorkOrdersService {
         priority: original.priority,
         repairCategory: original.repairCategory,
         dueDate: original.dueDate,
+        // Bug #426: plannedHours прочитаний з original (line 499) але НЕ записаний у
+        // clone — silent loss. clone() копіює всі planning поля (dueDate, lines з normoHours,
+        // parts з quantity), тож plannedHours має бути таким же — forecast має сенс зберегти.
+        // actualHours навмисно ОПУЩЕНО — clone — нова DRAFT-сесія, фактичні години
+        // ще не існують (симетрично з actualHours: null у lines.create нижче).
+        plannedHours: original.plannedHours,
         totalLabor,
         totalParts,
         totalAmount: totalLabor + totalParts,

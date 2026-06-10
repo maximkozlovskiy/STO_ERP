@@ -13189,4 +13189,81 @@ const restoreModal = useCallback(
 
 ---
 
+## Session 2026-06-10 — тест після fa3b3ad8…ecc518fa (WO plannedHours/actualHours + FSM pills)
+
+Контекст: 4 коміти зачепили work-orders модуль (plannedHours/actualHours backend+DB+migration), CreateWorkOrderModal (timezone fix, нормогодин input), CalendarSlotModal (conflict banner з WO номерами), work-orders/page.tsx (всі 10 FSM статусів як pills), TabBar (text-foreground), TopShell (minimizingRestoredRef fix), panel-schema.ts/useWorkOrders.ts (типи). Знайдено та виправлено 3 баги нижче.
+
+### Bug #426 — [MEDIUM] backend / business-logic — clone() читає `plannedHours` але не записує у клоновану WO
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts`
+**Симптом:** Користувач натискає «Клонувати наряд» — отриманий DRAFT-наряд має `plannedHours=null` навіть якщо в оригіналі було задано планові нормогодини.
+
+**Сигнал виявлення (static):** Selective `select` у `clone()` явно тягнув нове поле `plannedHours: true` (line 499) АЛЕ парний `data: { ... }` спред у `prisma.workOrder.create({ data: ... })` (lines 557-573) не містив запис `plannedHours`. Шаблон Bug #232 (mass-DTO migration include audit) у симетрії: тягнемо з БД ✓, але не зберігаємо у side-effect resource ✗.
+
+**Причина:** fa3b3ad8 додав поле у schema + DTO + create() + update() + audit, але `clone()` (окремий метод 100+ рядків нижче у файлі) пропустив запис у `data:`. Розробник додав `plannedHours: true` у select-block заздалегідь (щоб TS компілився при наступних змінах), потім забув про запис.
+
+**Чому проявляється:** `Good.plannedHours: Float?` nullable у schema → відсутній запис не дає помилки → silent data loss. tsc green бо create.data приймає optional. Unit тести через vi.fn() mock-и не торкаються реального Prisma → не ловлять. Знайдено лише grep + cross-read.
+
+**Фікс:** Додано `plannedHours: original.plannedHours` у data-spread. `actualHours` навмисно опущено (clone — нова DRAFT-сесія, фактичні години не існують → симетрія з `actualHours: null` у `lines.create` нижче).
+
+**Регресія-guard:** Тест-блок `describe('WorkOrdersService.update — query shape')` у `work-orders.service.spec.ts` розширено блоком «`update() persists plannedHours/actualHours with explicit null-vs-undefined semantics`» — 3 кейси: (а) numeric → 2.5, (б) explicit null → clear, (в) undefined → omit.
+
+**Статус:** [x] виправлено (commit pending у session-fixes)
+
+---
+
+### Bug #427 — [MEDIUM] test-coverage / backend — відсутні контрактні тести для plannedHours/actualHours у POST/PATCH
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.contract.spec.ts`
+**Симптом:** Нові поля DTO без regression-guard'у — майбутній рефактор (видалення @IsNumber/@Min, заміна типу на string, видалення з DTO) пройде CI зеленим.
+
+**Сигнал виявлення (static):** `grep "plannedHours" apps/api/src/modules/work-orders/*.spec.ts` → 0 матчів. Бекенд персистить ці поля (service.ts:325 create, service.ts:429 update), DTO декларує (`dto.ts:88,140,147`), audit включає (`service.ts:399-400`), але жоден тест не валідує:
+
+- POST з `plannedHours: -1` → 400
+- POST з `plannedHours: 2.5` → 201 + service отримує число
+- PATCH з `plannedHours: null` → 200 + service отримує null (clear semantics)
+- PATCH з `actualHours: -0.5` → 400
+
+**Причина:** Sprint що додавав plannedHours/actualHours зосередився на frontend (CreateWorkOrderModal UI) — backend регресія-тестів не написано. Стандартний pattern для STO ERP: «Bug #283 (regression-guard): contract-spec який POST string `"abc"` / `-1` → 400» — застосувати тепер.
+
+**Фікс:** Додано 2 нові тести у `work-orders.contract.spec.ts`:
+
+1. POST '/work-orders' — приймає `plannedHours=2.5`, відхиляє `plannedHours=-1`.
+2. PATCH '/work-orders/:id' — приймає `{ plannedHours: 3, actualHours: null }`, відхиляє `actualHours: -0.5`.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #428 — [HIGH] test-staleness / E2E — Playwright тести шукають видалений dropdown «Інші»
+
+**Файл:** `apps/web/e2e/work-orders-features.spec.ts`
+**Симптом:** 5 з 9 тестів `Наряди — статус-фільтр "Інші" dropdown` падають з помилкою:
+
+```
+Locator: locator('select').filter({ hasText: 'Інші' }).first()
+Expected: visible / Error: element(s) not found
+```
+
+**Сигнал виявлення (runtime):** Playwright suite — 5 fail, 21 pass, 3 skip. Падіння всі на тих самих 5 тестах одного describe-блоку.
+
+**Причина:** Commit 57b9d4b9 («feat(work-orders): show all statuses as pills in FSM order, remove dropdown») інтенційно видалив native `<select>` з опцією «Інші» — тепер 10 FSM-статусів рендеряться окремими rounded-pill buttons у фіксованому порядку (DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → ON_HOLD → COMPLETED → INVOICED → PAID → ARCHIVED → CANCELLED). E2E тести написані під старий UI — вимагають оновлення під новий, НЕ фікс backend (UI зміна правильна).
+
+**Принципово важливо:** Це класичний «test outdated, not code wrong» — sto-tester не повинен «відкочувати» нову feature тільки тому що тести застаріли. Виправити ТЕСТИ під новий UI, додати парний regression-guard (FSM-порядок pills синхронізований з backend WO_STATUS_LABELS).
+
+**Фікс:**
+
+1. Перепис describe-блоку «Наряди — статус-фільтр "Інші" dropdown» → «Наряди — FSM статус-pills».
+2. Додано 2 нові regression-guard тести:
+   - «всі pills "Всі" + 10 FSM-статусів присутні підряд» — перевіряє існування всіх 11 buttons за text content.
+   - «FSM порядок pills збігається з backend WO_STATUS_LABELS (DRAFT → CANCELLED)» — асертить що індекси text content відповідають FSM-послідовності (відловлює дрейф frontend ↔ backend якщо хтось переставить опції у `STATUS_TABS` без оновлення `WO_STATUS_LABELS`).
+3. Переписано асерти про вибір статусу — замість `dropdown.selectOption('CANCELLED')` тепер `pill.click()` + `expect(pill).toHaveClass(/bg-primary/)`.
+4. Тест "клік Скасовано → фільтрує" зробили більш robust — замість race-prone `<table tbody>` OR `<empty>` чекаємо `<table>` (завжди present) + перевіряємо що pill лишається active після refetch.
+
+**Регресія-guard:** Новий тест «FSM порядок pills» захищає від ситуації коли хтось додасть новий статус у `@sto/shared/constants/statuses.ts` АЛЕ забуде оновити `STATUS_TABS` у `apps/web/src/app/(app)/work-orders/page.tsx` — той сценарій тепер fail-ить E2E.
+
+**Статус:** [x] виправлено
+
+---
+
 ---

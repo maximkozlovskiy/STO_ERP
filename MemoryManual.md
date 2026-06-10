@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+<pending> fix(tester): Bugs #426-#428 — WO clone misses plannedHours + E2E pills + regression-guards
+ecc518fa docs(memory): update MemoryManual after review aadc6317 — WO hours migration + audit fix
 aadc6317 fix(review): add missing migration for WorkOrder.plannedHours/actualHours + audit diff
 0c59b76f fix(sync): add plannedHours/actualHours to frontend WorkOrder types
 f6bb0ae3 docs(skills): add inline-component / context-value / mount-effect patterns to sto-optimize
@@ -79,6 +81,12 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Unit+Contract: ✅ 701/701 API passed (+4 нові: plannedHours create+PATCH+update spec), ✅ 380/380 Web passed
+E2E: ✅ 34/34 work-order suite passed (5 skipped through data gating); було 21 pass + 5 fail до пере-write under FSM-pills UI
+Latest tester: 2026-06-10 (Bugs #426-#428 — fa3b3ad8...ecc518fa cycle):
+  • Bug #426 MEDIUM — clone() селект тягне plannedHours: true, АЛЕ data: { ... } спред у prisma.workOrder.create() не записує його → cloned DRAFT має plannedHours=null навіть якщо original має значення. Фікс: додано plannedHours: original.plannedHours; actualHours навмисно опущено (clone — fresh DRAFT). Регресія-guard: 3-кейс тест у service.spec.ts (numeric / null / undefined семантика для update).
+  • Bug #427 MEDIUM — 0 contract тестів для plannedHours/actualHours у POST/PATCH /work-orders. Майбутня регресія (видалення @IsNumber, заміна типу) пройде CI зеленою. Додано 2 нові тести: POST plannedHours=2.5 → 201, POST plannedHours=-1 → 400; PATCH { plannedHours: 3, actualHours: null } → 200 (clear semantics), PATCH actualHours=-0.5 → 400.
+  • Bug #428 HIGH — 5 E2E тестів у work-orders-features.spec.ts падали з "Locator: select Інші" бо commit 57b9d4b9 видалив <select> dropdown і замінив на 10 FSM-pills. Тести outdated, не код wrong. Перепис: replace selectOption/toHaveValue на pill.click + toHaveClass(/bg-primary/). ДОДАНО regression-guard: "FSM порядок pills збігається з backend WO_STATUS_LABELS" — асерт послідовності text-content всіх 11 pills у фіксованому порядку. Майбутній frontend↔backend дрейф ловиться.
 Latest review: 2026-06-10 (HEAD aadc6317 — work-orders plannedHours/actualHours sweep):
   • CRITICAL — schema.prisma додала plannedHours/actualHours до WorkOrder у fa3b3ad8 без супровідної міграції → prisma generate ламав tsc у work-orders.service.ts (TS2353 на data, TS7006 cascade на cloned original.lines/parts). Фікс: міграція 20260610120000_add_work_order_planned_actual_hours з ADD COLUMN IF NOT EXISTS (idempotent для dev-DB через prisma db push) + регенерація client.
   • IMPORTANT — trackField audit-helper у UpdateWorkOrder не покривав plannedHours/actualHours → зміна нормогодин не записувалась у AuditEvent (silent gap). Додано обидва поля.
