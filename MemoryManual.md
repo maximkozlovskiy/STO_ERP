@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+f6bb0ae3 docs(skills): add inline-component / context-value / mount-effect patterns to sto-optimize
+1436b639 perf(optimize): TabBar/TopShell re-render reductions + Context value memoization
+0141f8a7 fix(tester): Bugs #420-#425 — TabBar/modal restore flow fixes
 f2ef7758 fix(review): dedupe modal tabs, cancel WO fetch race, a11y on TabBar close
 e03a104b fix(sync): correct tab-close ID in TopShell restored-modal + lazy-load CreateWorkOrderModal
 95435ec9 fix(ui): tab bar — modal-only tabs, remove page tab auto-open
