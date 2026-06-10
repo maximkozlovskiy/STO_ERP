@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import type React from 'react';
+import type { ChangeEvent } from 'react';
 import {
   Trash2,
   Plus,
@@ -780,11 +780,11 @@ export function CreateWorkOrderModal({
       plannedHours: calcPlannedHours(f.plannedStartAt, v),
     }));
   }, []);
-  const handlePlannedHoursChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePlannedHoursChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setForm(f => ({ ...f, plannedHours: value }));
   }, []);
-  const handleActualHoursChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleActualHoursChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setForm(f => ({ ...f, actualHours: value }));
   }, []);
