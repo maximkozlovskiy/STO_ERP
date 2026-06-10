@@ -48,6 +48,24 @@ import {
   toDateString,
 } from './calendar.utils';
 
+/**
+ * Given totalMin (start + normoHours in minutes), returns the display HH:mm for the "Кінець" field.
+ * When totalMin overflows WINDOW_END (19:00 = 1140 min), the end time is day-2:
+ *   08:00 + overflowMin (matching what the backend split produces).
+ * When within the same day, returns the direct HH:mm.
+ */
+function calcEndAt(totalMin: number): string {
+  const WORK_END_MIN = 19 * 60; // WINDOW_END * 60
+  const raw = Math.round(totalMin / 15) * 15; // snap to 15-min grid
+  if (raw > WORK_END_MIN) {
+    const overflowMin = raw - WORK_END_MIN;
+    const day2Min = 8 * 60 + overflowMin;
+    return `${pad(Math.floor(day2Min / 60))}:${pad(day2Min % 60)}`;
+  }
+  const clamped = Math.min(raw, 23 * 60 + 59);
+  return `${pad(Math.floor(clamped / 60))}:${pad(clamped % 60)}`;
+}
+
 // Bug #397: const між import-statement'ами порушує ESLint `import/first` + може
 // плутати Next.js static-export build. Усі imports згруповані вище; dynamic const
 // залишається тут, відразу після останнього import.
@@ -718,13 +736,8 @@ export function CalendarSlotModal({
                       const [h, m] = start.split(':').map(Number);
                       const totalMin =
                         (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(f.normoHours) * 60);
-                      // Store real end time without clamping — split handled by backend
-                      const realH = Math.floor(totalMin / 60) % 24;
-                      const realM = Math.round((totalMin % 60) / 15) * 15;
-                      next = {
-                        ...next,
-                        endAt: `${pad(realH)}:${pad(realM >= 60 ? 0 : realM)}`,
-                      };
+                      const endAt = calcEndAt(totalMin);
+                      next = { ...next, endAt };
                     }
                     if (pendingSlot) {
                       const { h: sh, m: sm } = parseHHMM(start);
@@ -755,10 +768,7 @@ export function CalendarSlotModal({
                     if (f.startAt && nh && Number(nh) > 0) {
                       const [h, m] = f.startAt.split(':').map(Number);
                       const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(nh) * 60);
-                      // Store real end time without clamping — split handled by backend
-                      const realH = Math.floor(totalMin / 60) % 24;
-                      const realM = Math.round((totalMin % 60) / 15) * 15;
-                      const endAt = `${pad(realH)}:${pad(realM >= 60 ? 0 : realM)}`;
+                      const endAt = calcEndAt(totalMin);
                       if (pendingSlot) {
                         const { h: eh, m: em2 } = parseHHMM(endAt);
                         setPendingSlot(p => (p ? { ...p, endH: eh + em2 / 60 } : p));
