@@ -394,6 +394,10 @@ export class WorkOrdersService {
         'clientApproval',
         'plannedAt',
         'dueDate',
+        // Bug #421: plannedHours/actualHours були в data-payload але не у audit
+        // diff — зміни нормогодин не з'являлись у AuditEvent (тихий пропуск).
+        'plannedHours',
+        'actualHours',
       ] as const
     ).forEach(trackField);
 
