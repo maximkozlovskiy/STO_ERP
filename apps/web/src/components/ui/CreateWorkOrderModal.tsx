@@ -528,15 +528,20 @@ export function CreateWorkOrderModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Edit mode — load existing WO data when modal opens
+  // Edit mode — load existing WO data when modal opens or workOrderId changes.
+  // Cancellation guard: at TabBar restore time, the user can click tab B while A's
+  // fetch is still in flight — without `cancelled` flag A's late-resolved data would
+  // overwrite B's fresh state (stale-write race).
   useEffect(() => {
     if (!open || !isEditMode || !workOrderId) return;
+    let cancelled = false;
     deletedLineIds.current = [];
     deletedPartIds.current = [];
     setEditModeLoading(true);
     setError('');
     apiFetch<WorkOrderDetail>(`/work-orders/${workOrderId}`)
       .then(wo => {
+        if (cancelled) return;
         setWoNumber(wo.number);
         setCurrentStatus(wo.status);
         setForm({
@@ -583,8 +588,17 @@ export function CreateWorkOrderModal({
           loadContracts(wo.counterpartyId);
         }
       })
-      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження наряду'))
-      .finally(() => setEditModeLoading(false));
+      .catch(e => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : 'Помилка завантаження наряду');
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setEditModeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, workOrderId]);
 

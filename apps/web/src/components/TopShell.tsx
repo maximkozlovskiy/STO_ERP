@@ -395,7 +395,8 @@ export function TopShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!pendingRestore) return;
     if (pendingRestore.modalKey === 'work-order') {
-      const woId = pendingRestore.restoreProps.workOrderId as string | undefined;
+      const raw = pendingRestore.restoreProps.workOrderId;
+      const woId = typeof raw === 'string' && raw.length > 0 ? raw : undefined;
       setRestoredWoId(woId);
       setRestoredTabId(pendingRestore.id);
       setRestoredWoOpen(true);

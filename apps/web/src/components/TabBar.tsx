@@ -28,12 +28,13 @@ const TabChip = memo(function TabChip({ tab, onActivate, onClose }: TabChipProps
       <FileText className="h-3 w-3 shrink-0 opacity-60" />
       <span className="truncate">{tab.label}</span>
       <button
-        className="ml-0.5 shrink-0 rounded-sm p-0.5 opacity-0 group-hover:opacity-60 hover:opacity-100! transition-opacity"
+        className="ml-0.5 shrink-0 rounded-sm p-0.5 opacity-0 group-hover:opacity-60 focus-visible:opacity-100 hover:opacity-100! transition-opacity"
         onClick={e => {
           e.stopPropagation();
           onClose();
         }}
         title="Закрити"
+        aria-label="Закрити вкладку"
       >
         <X className="h-3 w-3" />
       </button>
