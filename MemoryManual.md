@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+aadc6317 fix(review): add missing migration for WorkOrder.plannedHours/actualHours + audit diff
 0c59b76f fix(sync): add plannedHours/actualHours to frontend WorkOrder types
 f6bb0ae3 docs(skills): add inline-component / context-value / mount-effect patterns to sto-optimize
 1436b639 perf(optimize): TabBar/TopShell re-render reductions + Context value memoization
@@ -78,6 +79,10 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest review: 2026-06-10 (HEAD aadc6317 — work-orders plannedHours/actualHours sweep):
+  • CRITICAL — schema.prisma додала plannedHours/actualHours до WorkOrder у fa3b3ad8 без супровідної міграції → prisma generate ламав tsc у work-orders.service.ts (TS2353 на data, TS7006 cascade на cloned original.lines/parts). Фікс: міграція 20260610120000_add_work_order_planned_actual_hours з ADD COLUMN IF NOT EXISTS (idempotent для dev-DB через prisma db push) + регенерація client.
+  • IMPORTANT — trackField audit-helper у UpdateWorkOrder не покривав plannedHours/actualHours → зміна нормогодин не записувалась у AuditEvent (silent gap). Додано обидва поля.
+  • SUGGESTION — новий <input type="number"> для нормогодин у CreateWorkOrderModal використовує inline className (h-8 text-[13px]) замість shared <Input>. Не блокер — h-8 контекст-aware відповідає сусідньому DateTimePickerInput, але <Input className="h-8"> був би одиниця правди. Не міняв (out of scope review).
 Latest sync: 2026-06-10 (HEAD 0c59b76f — plannedHours/actualHours types):
 Latest review: 2026-06-10 (HEAD f2ef7758 — TabBar feat sweep):
   • IMPORTANT — minimizeModal не дедуплікувала: відкривання tab A → клік Minus давало дві вкладки на той самий WO. Фікс: dedupe по (modalKey + identity-keys у restoreProps: workOrderId/invoiceId/id), оновлюємо label на матчу.
