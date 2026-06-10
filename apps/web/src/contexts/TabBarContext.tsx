@@ -46,11 +46,39 @@ const TabBarContext = createContext<TabBarContextValue>({
   setPendingRestore: noop,
 });
 
+// Bug #423: runtime shape validation. Старі версії TabBar зберігали tab-и з
+// `kind: 'page'` або без `restoreProps`. JSON.parse + type-cast пропускав сміття
+// → потім `sameIdentity(undefined, ...)` крашив, або `restoreProps.workOrderId`
+// undefined відкривала модалку у create-mode замість edit. Фільтруємо при load
+// і persist-имо очищений масив назад щоб не нести garbage між сесіями.
+function isValidTab(t: unknown): t is Tab {
+  if (!t || typeof t !== 'object') return false;
+  const o = t as Record<string, unknown>;
+  if (o.kind !== 'modal') return false;
+  if (typeof o.id !== 'string' || o.id.length === 0) return false;
+  if (typeof o.label !== 'string') return false;
+  if (typeof o.modalKey !== 'string' || o.modalKey.length === 0) return false;
+  if (!o.restoreProps || typeof o.restoreProps !== 'object') return false;
+  return true;
+}
+
 function loadTabs(): Tab[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(TABS_KEY);
-    return raw ? (JSON.parse(raw) as Tab[]) : [];
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const valid = parsed.filter(isValidTab);
+    // Drift cleanup: запис чистий масив назад тільки якщо знайшли garbage.
+    if (valid.length !== parsed.length) {
+      try {
+        localStorage.setItem(TABS_KEY, JSON.stringify(valid));
+      } catch {
+        /* ignore */
+      }
+    }
+    return valid;
   } catch {
     return [];
   }
@@ -145,12 +173,13 @@ export function TabBarProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const restoreModal = useCallback(
-    (id: string): ModalTab | null => {
-      return tabs.find(t => t.id === id) ?? null;
-    },
-    [tabs],
-  );
+  // Bug #425: stable reference — читаємо з `tabsRef.current` (синхронізується іншим
+  // useEffect-ом вище) замість залежності від `tabs`. Без цього context value
+  // recreated на кожну зміну tabs → всі consumers re-render (включно з модалкою що
+  // підписана лише на `minimizeModal`).
+  const restoreModal = useCallback((id: string): ModalTab | null => {
+    return tabsRef.current.find(t => t.id === id) ?? null;
+  }, []);
 
   if (!mounted) return <>{children}</>;
 

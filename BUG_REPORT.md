@@ -12963,3 +12963,230 @@ Scope (3 commits, 143c74b8..50b44d73):
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-10 — sto-tester audit (TabBar / modal restore — minimize flow)
+
+**Scope:** перевірка нових файлів і змін:
+
+- `apps/web/src/contexts/TabBarContext.tsx` — modal tabs у localStorage, dedupe по IDENTITY_KEYS
+- `apps/web/src/hooks/useTabBar.ts` — activateTab / closeTab
+- `apps/web/src/components/TabBar.tsx` — amber chips, overflow dropdown
+- `apps/web/src/components/TopShell.tsx` — dynamic CreateWorkOrderModal, pendingRestore flow
+- `apps/web/src/components/ui/modal.tsx` — extraHeaderActions prop
+- `apps/web/src/components/ui/CreateWorkOrderModal.tsx` — Minus кнопка, fetch cancellation у edit-mode useEffect
+
+**Baseline:**
+
+- TS: ✅ 0 errors (api / web / shared)
+- Unit tests (web): ✅ 373/373 passed
+- Unit tests (api): ✅ 697/697 passed
+
+**LocalStorage ключі — конфлікт відсутній**: `sto_modal_tabs` (новий) ≠ `sto_bookmarks` (існуючий); ключа `sto_tabs` у коді не існує.
+
+**Знайдено 6 багів:** 0 CRITICAL, 1 HIGH, 3 MEDIUM, 2 LOW.
+
+---
+
+### Bug #420 — [HIGH] TopShell `onUpdated` callback закриває tab при FSM transition (модалка ще відкрита)
+
+**Файл:** `apps/web/src/components/TopShell.tsx:730-743`
+**Категорія:** frontend / state-flow / SKILL §1.3
+**Severity:** HIGH (UX inconsistency + втрата tab-у з активним модалом)
+
+**Опис:**
+
+TopShell для restored modal передає:
+
+```tsx
+onUpdated={() => {
+  if (restoredTabId) closeTab(restoredTabId);
+}}
+```
+
+`onUpdated` всередині `CreateWorkOrderModal` викликається у ДВОХ місцях:
+
+1. `save()` (line 914) — потім ОДРАЗУ викликається `onClose()` (line 915) → модалка закривається → закриття tab-у логічно ОК
+2. `doTransition()` (line 942) — `onClose()` НЕ викликається, модалка залишається відкритою
+
+Сценарій багу:
+
+- Юзер мінімізує наряд (tab A створено)
+- Кліком на tab A відкриває модалку
+- Натискає "В роботу" → FSM transition → `onUpdated()` → `closeTab(A)`
+- Tab A зникає з TabBar, але модалка все ще відкрита
+- Юзер натискає Minus знову → створюється НОВИЙ tab B з іншим UUID (бо A вже видалено)
+- Юзер думає що "втратив" свою закладку
+
+Парний баг — **`onUpdated` НЕ інвалідує react-query кеш**. Порівняй з `/work-orders/page.tsx:1117`:
+
+```tsx
+onUpdated={() => queryClient.invalidateQueries({ queryKey: workOrdersKeys.all })}
+```
+
+TopShell версія цього не робить → якщо юзер у `/work-orders` списку відкрив через tab наряд, відредагував, зберіг → список показує stale data. Required cache busting відсутнє.
+
+**Очікувана поведінка:**
+
+- Tab закривається ТІЛЬКИ якщо модалка дійсно закривається (після `save()`, але не після `doTransition()`)
+- Cache invalidation для `workOrdersKeys.all` після save/transition
+
+**Фактична поведінка:** Tab видаляється на КОЖЕН `onUpdated` (включаючи FSM transition); cache не інвалідується.
+
+**Фікс:**
+
+1. Розділити логіку: tab-close привʼязати до `onClose` (тільки якщо модалка реально закривається), а cache invalidation — до `onUpdated`.
+2. Додати `queryClient.invalidateQueries({ queryKey: workOrdersKeys.all })` у `onUpdated`.
+
+**Регресія-guard:** ручний test — minimize WO → restore → click "В роботу" → перевірити що tab НЕ зникнув.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #421 — [MEDIUM] Modal state leak при перемиканні tab-ів — error/showLineInput/headerCollapsed зберігається між WO
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:484-529`
+**Категорія:** frontend / state-flow / SKILL §1.3
+**Severity:** MEDIUM (UX cosmetic)
+
+**Опис:**
+
+`useEffect(..., [open])` (line 484) скидає transient state (error, newLine, showLineInput, headerCollapsed, statusMenuOpen, vehicles, contracts, lines, parts тощо) — але виконується ТІЛЬКИ при зміні `open`.
+
+Коли юзер мінімізує модалку WO-A, потім кліком на іншу tab відкриває модалку для WO-B:
+
+- `open` залишається `true` (модалка вже відкрита в TopShell)
+- `workOrderId` змінюється A → B
+- Спрацьовує `useEffect(..., [open, workOrderId])` (line 535) → завантажує дані WO-B
+- АЛЕ stale state (помилка, відкритий "+Додати робот" input row, статус-меню, vehicles A, contracts A) залишається до моменту коли load завершиться
+
+Видно артефакти у proміжку поки fetch WO-B ще не повернувся:
+
+- Banner з помилкою WO-A
+- Inline "Додати рядок" з полями WO-A
+- header не згорнутий хоча юзер вже працював з ним для WO-A
+
+**Очікувана поведінка:** при будь-якій зміні `workOrderId` (не лише при `open`) всі transient state-и скидаються відразу, потім завантажуються нові.
+
+**Фактична поведінка:** transient state зберігається до завершення нового fetch.
+
+**Фікс:** додати `workOrderId` як deps до useEffect-у скидання АБО винести скидання в окремий useEffect що залежить тільки від `workOrderId`.
+
+**Регресія-guard:** ручний test — мінімізуй WO-A → клік tab B → перевірити що error/inline-input одразу скинуті.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #422 — [MEDIUM] TopShell pendingRestore не очищується для невідомого modalKey — stuck state
+
+**Файл:** `apps/web/src/components/TopShell.tsx:395-405`
+**Категорія:** frontend / state-flow / defensive
+**Severity:** MEDIUM (latent — поки modalKey тільки 'work-order', багу не видно; як тільки додається 'invoice'/'counterparty' — pendingRestore зависає)
+
+**Опис:**
+
+useEffect `if (pendingRestore.modalKey === 'work-order')` обробляє ТІЛЬКИ work-order. `setPendingRestore(null)` виконується ВСЕРЕДИНІ цієї гілки.
+
+Якщо у майбутньому додають `invoice` modalKey і забудуть скинути pendingRestore (типова помилка) — pendingRestore зависне у state навіки. Поточна імплементація не має fallback "якщо не оброблено — обнулити", тому ловиться лише review-ом.
+
+Також: якщо payload з localStorage містить старий/невідомий modalKey (юзер мав deprecated tab), pendingRestore зависає і блокує наступні валідні tabs (бо stale value не змінюється на той самий tab → setState бейлається).
+
+**Фікс:** винести `setPendingRestore(null)` ПЕРЕД switch-блоком, або додати `else setPendingRestore(null)`.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #423 — [MEDIUM] `loadTabs` не валідує shape — JSON.parse-кешу зі старою версією crash-нув би UI
+
+**Файл:** `apps/web/src/contexts/TabBarContext.tsx:49-57`
+**Категорія:** frontend / defensive / SKILL §1.3
+**Severity:** MEDIUM
+
+**Опис:**
+
+```ts
+return raw ? (JSON.parse(raw) as Tab[]) : [];
+```
+
+Type-cast без валідації. Якщо у localStorage збережені дані старої версії (наприклад `kind: 'page'` яка більше не підтримується після `95435ec9 fix(ui): tab bar — modal-only tabs`) — компонент TabBar отримує валідний за TypeScript-точкою, але runtime-несумісний об'єкт. `restoreProps` може бути undefined → `sameIdentity(undefined, ...)` крашне з `Cannot read properties of undefined`.
+
+Якщо браузер юзера має старі дані `sto_modal_tabs` із попередньої версії схеми (kind=page) — TabBar показує chip, юзер клікає, `pendingRestore.restoreProps.workOrderId` → undefined → модалка відкривається у "create" mode (бо `isEditMode = !!workOrderId` = false). Видимий glitch.
+
+**Фікс:** ввести типову guard функцію `isValidTab(t)` → відфільтрувати з `loadTabs()`; зберегти оновлений масив назад у storage щоб не lookup-ати garbage щоразу.
+
+**Регресія-guard:** unit test → set localStorage у несумісний формат → перевірити що TabBar пропускає невалідні entries.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #424 — [LOW] TabBar arrow functions у `.map()` ламають React.memo у TabChip
+
+**Файл:** `apps/web/src/components/TabBar.tsx:122-129`
+**Категорія:** frontend / performance / SKILL §1.3
+**Severity:** LOW
+
+**Опис:**
+
+```tsx
+{
+  visibleTabs.map(tab => (
+    <TabChip
+      key={tab.id}
+      tab={tab}
+      onActivate={() => activateTab(tab.id)}
+      onClose={() => closeTab(tab.id)}
+    />
+  ));
+}
+```
+
+`onActivate`/`onClose` — inline arrows, recreated на кожен render TabBar. `TabChip` memoized через `memo()`, але prop reference різний → memo не спрацьовує → всі chips re-render-ять навіть якщо змінилася лише назва однієї tab.
+
+Аналогічно `useTabBar` повертає НЕ мемоізовані `closeTab/activateTab` функції (line 13-23 у `useTabBar.ts`).
+
+**Очікувана поведінка:** stable references для callback-ів → memo працює.
+
+**Фактична поведінка:** memo завжди bypass-иться через нові prop-references.
+
+**Фікс:**
+
+- `useTabBar` — обгорнути `closeTab`/`activateTab` у `useCallback`
+- TabChip — додати `id` пропу і викликати handler-и через id, або зробити `TabChip` приймати `onActivate(id: string)`/`onClose(id: string)` і викликати у memo-stable spot (TabChip робить `() => onActivate(tab.id)` усередині).
+
+**Регресія-guard:** не критично; не пишемо guard.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #425 — [LOW] `restoreModal` `useCallback` deps містить `tabs` → нова reference на кожне оновлення tabs
+
+**Файл:** `apps/web/src/contexts/TabBarContext.tsx:148-153`
+**Категорія:** frontend / performance / SKILL §1.3
+**Severity:** LOW
+
+**Опис:**
+
+```ts
+const restoreModal = useCallback(
+  (id: string): ModalTab | null => {
+    return tabs.find(t => t.id === id) ?? null;
+  },
+  [tabs],
+);
+```
+
+`useCallback` з deps `[tabs]` означає що функція recreated на кожну зміну tabs → context value є новий обʼєкт (`{...minimizeModal, closeTab, restoreModal, ...}`) → всі consumers (включаючи `CreateWorkOrderModal` що споживає лише `minimizeModal`) re-render-ять без потреби.
+
+Парний з `useEffect(() => { tabsRef.current = tabs; }, [tabs]);` (line 106-108) — `tabsRef` уже синхронізується. Тому `restoreModal` може бути `useCallback([], ...)` і читати з `tabsRef.current` — стабільна reference.
+
+**Фікс:** переписати `restoreModal` через `tabsRef.current` і пустий deps array.
+
+**Статус:** [x] виправлено
+
+---
+
+---

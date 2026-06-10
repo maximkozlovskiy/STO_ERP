@@ -480,7 +480,13 @@ export function CreateWorkOrderModal({
       .catch(() => {});
   }, []);
 
-  // Apply prefill + auto-select single branch when modal opens
+  // Apply prefill + auto-select single branch when modal opens.
+  // Bug #421: deps include `workOrderId` — без цього при перемиканні між мінімізованими
+  // tab-ами (A → B, обидва edit-mode, open=true весь час) stale state (error banner,
+  // inline "Додати рядок", showLineInput, lines/parts WO-A, статус-меню) лишається
+  // видимим поки fetch для B ще не resolved. Тепер кожна зміна workOrderId одразу
+  // скидає transient UI до neutral baseline, потім edit-mode useEffect завантажує
+  // фактичні дані WO-B.
   useEffect(() => {
     if (!open) return;
     setError('');
@@ -526,7 +532,7 @@ export function CreateWorkOrderModal({
       loadContracts(prefill.counterpartyId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, workOrderId]);
 
   // Edit mode — load existing WO data when modal opens or workOrderId changes.
   // Cancellation guard: at TabBar restore time, the user can click tab B while A's

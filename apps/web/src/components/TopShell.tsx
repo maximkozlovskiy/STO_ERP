@@ -394,14 +394,20 @@ export function TopShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!pendingRestore) return;
+    // Bug #422: setPendingRestore(null) ВИНЕСЕНО за межі if-блоку. Без цього невідомий
+    // modalKey (deprecated tab з localStorage старої версії або майбутні modalKey-и які
+    // забули обробити тут) лишається у state навіки → блокує наступні валідні відкриття
+    // того ж tab-у (`setPendingRestore(sameRef)` бейлається у React).
     if (pendingRestore.modalKey === 'work-order') {
       const raw = pendingRestore.restoreProps.workOrderId;
       const woId = typeof raw === 'string' && raw.length > 0 ? raw : undefined;
-      setRestoredWoId(woId);
-      setRestoredTabId(pendingRestore.id);
-      setRestoredWoOpen(true);
-      setPendingRestore(null);
+      if (woId) {
+        setRestoredWoId(woId);
+        setRestoredTabId(pendingRestore.id);
+        setRestoredWoOpen(true);
+      }
     }
+    setPendingRestore(null);
   }, [pendingRestore, setPendingRestore]);
 
   useKeyboardShortcut(
@@ -732,13 +738,19 @@ export function TopShell({ children }: { children: ReactNode }) {
           open={restoredWoOpen}
           workOrderId={restoredWoId}
           onClose={() => {
+            // Bug #420: tab-close привʼязаний до закриття модалки, а НЕ до onUpdated.
+            // doTransition() усередині модалки викликає onUpdated() БЕЗ onClose() —
+            // якщо ми б закривали tab у onUpdated, користувач втрачав би tab при
+            // зміні статусу попри те що модалка лишається відкритою.
+            if (restoredTabId) closeTab(restoredTabId);
             setRestoredWoOpen(false);
             setRestoredWoId(undefined);
             setRestoredTabId(undefined);
           }}
           onUpdated={() => {
-            // Remove the modal tab using the tab UUID (not the WO ID) so closeTab finds the right entry
-            if (restoredTabId) closeTab(restoredTabId);
+            // Bug #420: інвалідація списку work-orders + linked queries — без цього сторінка
+            // /work-orders залишиться зі stale кешем після save/transition через restored modal.
+            queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
           }}
         />
       )}
