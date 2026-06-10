@@ -123,6 +123,7 @@ export class CompletionActsService {
           },
         },
       }),
+      // Narrow projection — лише факт існування активного акта потрібен для guard.
       this.prisma.completionAct.findFirst({
         where: {
           orgId,
@@ -130,6 +131,7 @@ export class CompletionActsService {
           deletedAt: null,
           status: { not: CompletionActStatus.CANCELLED },
         },
+        select: { id: true },
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');

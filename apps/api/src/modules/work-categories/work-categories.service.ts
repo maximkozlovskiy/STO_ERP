@@ -57,6 +57,7 @@ export class WorkCategoriesService {
     if (dto.parentId) {
       const parent = await this.prisma.workCategory.findFirst({
         where: { id: dto.parentId, orgId, deletedAt: null },
+        select: { id: true },
       });
       if (!parent) throw new NotFoundException('Батьківську категорію не знайдено');
     }

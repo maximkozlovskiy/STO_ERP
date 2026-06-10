@@ -148,9 +148,16 @@ export class PurchaseOrdersService {
   }
 
   async create(orgId: string, dto: CreatePurchaseOrderDto): Promise<PurchaseOrderResponseDto> {
+    // Narrow FK guards — обидва запити лише для NotFoundException.
     const [supplier, warehouse] = await Promise.all([
-      this.prisma.counterparty.findFirst({ where: { id: dto.supplierId, orgId, deletedAt: null } }),
-      this.prisma.warehouse.findFirst({ where: { id: dto.warehouseId, orgId, deletedAt: null } }),
+      this.prisma.counterparty.findFirst({
+        where: { id: dto.supplierId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.warehouse.findFirst({
+        where: { id: dto.warehouseId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
     ]);
     if (!supplier) throw new NotFoundException('Постачальника не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');

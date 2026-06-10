@@ -70,8 +70,10 @@ export class MaintenanceSchedulesService {
     orgId: string,
     dto: CreateMaintenanceScheduleDto,
   ): Promise<MaintenanceScheduleResponseDto> {
+    // Narrow FK guard — потрібен лише факт існування.
     const vehicle = await this.prisma.vehicle.findFirst({
       where: { id: dto.vehicleId, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!vehicle) throw new NotFoundException('Авто не знайдено');
 
@@ -184,8 +186,15 @@ export class MaintenanceSchedulesService {
     completedDate: Date,
     mileage?: number,
   ): Promise<void> {
+    // Narrow projection — лише ці поля використовуються в recalc.
     const schedules = await this.prisma.maintenanceSchedule.findMany({
       where: { orgId, vehicleId, deletedAt: null, isActive: true },
+      select: {
+        id: true,
+        intervalDays: true,
+        intervalMileage: true,
+        lastMaintenanceMileage: true,
+      },
       take: 50,
     });
     // Each schedule update is independent (different `id`) and runs outside any

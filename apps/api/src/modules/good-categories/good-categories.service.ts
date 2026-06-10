@@ -44,6 +44,7 @@ export class GoodCategoriesService {
     if (dto.parentId) {
       const parent = await this.prisma.goodCategory.findFirst({
         where: { id: dto.parentId, orgId, deletedAt: null },
+        select: { id: true },
       });
       if (!parent) throw new NotFoundException('Батьківську категорію не знайдено');
     }

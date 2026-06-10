@@ -104,8 +104,10 @@ export class WebhooksService {
     orgId: string,
     endpointId: string,
   ): Promise<{ items: WebhookDeliveryResponseDto[]; total: number }> {
+    // Narrow guard — потрібен лише факт існування + tenant-scope для NotFoundException.
     const ep = await this.prisma.webhookEndpoint.findFirst({
       where: { id: endpointId, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!ep) throw new NotFoundException('Вебхук не знайдено');
     const [items, total] = await this.prisma.$transaction([
@@ -134,6 +136,7 @@ export class WebhooksService {
    * Called from other services (WorkOrders, Payments, Inventory).
    */
   async dispatchEvent(orgId: string, event: string, data: object): Promise<void> {
+    // Narrow projection — лише ці три поля передаються в Bull job payload.
     const endpoints = await this.prisma.webhookEndpoint.findMany({
       where: {
         orgId,
@@ -141,6 +144,7 @@ export class WebhooksService {
         isActive: true,
         events: { has: event },
       },
+      select: { id: true, url: true, secret: true },
       take: 50,
     });
 

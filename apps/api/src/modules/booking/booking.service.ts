@@ -81,7 +81,10 @@ export class BookingService {
     // are independent — collapses 2-3 sequential RTT into one.
     const [lifts, busySlots, works] = await Promise.all([
       this.prisma.lift.findMany({
+        // Narrow projection — лише id/name використовуються в slots loop.
+        // Раніше тягнуло status/serialNumber/purchaseDate/warrantyUntil/maxWeightKg/...
         where: { orgId, deletedAt: null, zone: { branchId } },
+        select: { id: true, name: true },
         take: 50,
       }),
       this.prisma.calendarSlot.findMany({

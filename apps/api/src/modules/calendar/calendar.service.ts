@@ -122,27 +122,37 @@ export class CalendarService {
 
     const slot = await this.prisma.$transaction(
       async tx => {
-        if (dto.liftId) {
-          const conflict = await tx.calendarSlot.findFirst({
-            where: {
-              orgId,
-              liftId: dto.liftId,
-              deletedAt: null,
-              OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
-            },
-          });
-          if (conflict) throw new BadRequestException('Підйомник вже зайнятий на цей час');
+        // Lift- + employee-conflict checks незалежні — паралелимо.
+        // Narrow projection (select id) — потрібен лише факт існування.
+        const [conflict, empConflict] = await Promise.all([
+          dto.liftId
+            ? tx.calendarSlot.findFirst({
+                where: {
+                  orgId,
+                  liftId: dto.liftId,
+                  deletedAt: null,
+                  OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
+                },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+          dto.employeeId
+            ? tx.calendarSlot.findFirst({
+                where: {
+                  orgId,
+                  employeeId: dto.employeeId,
+                  deletedAt: null,
+                  OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
+                },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+        ]);
+        if (dto.liftId && conflict) {
+          throw new BadRequestException('Підйомник вже зайнятий на цей час');
         }
-        if (dto.employeeId) {
-          const empConflict = await tx.calendarSlot.findFirst({
-            where: {
-              orgId,
-              employeeId: dto.employeeId,
-              deletedAt: null,
-              OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
-            },
-          });
-          if (empConflict) throw new BadRequestException('Співробітник вже зайнятий на цей час');
+        if (dto.employeeId && empConflict) {
+          throw new BadRequestException('Співробітник вже зайнятий на цей час');
         }
 
         return tx.calendarSlot.create({
@@ -243,33 +253,43 @@ export class CalendarService {
 
     const liftId = dto.liftId !== undefined ? dto.liftId : existing.liftId;
 
+    const employeeId = dto.employeeId !== undefined ? dto.employeeId : existing.employeeId;
+
     const updated = await this.prisma.$transaction(
       async tx => {
-        if (liftId) {
-          const conflict = await tx.calendarSlot.findFirst({
-            where: {
-              orgId,
-              liftId,
-              deletedAt: null,
-              NOT: { id },
-              OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
-            },
-          });
-          if (conflict) throw new BadRequestException('Підйомник вже зайнятий на цей час');
+        // Lift- + employee-conflict checks незалежні — паралелимо.
+        // Narrow projection (select id) — потрібен лише факт існування.
+        const [conflict, empConflict] = await Promise.all([
+          liftId
+            ? tx.calendarSlot.findFirst({
+                where: {
+                  orgId,
+                  liftId,
+                  deletedAt: null,
+                  NOT: { id },
+                  OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
+                },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+          employeeId
+            ? tx.calendarSlot.findFirst({
+                where: {
+                  orgId,
+                  employeeId,
+                  deletedAt: null,
+                  NOT: { id },
+                  OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
+                },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+        ]);
+        if (liftId && conflict) {
+          throw new BadRequestException('Підйомник вже зайнятий на цей час');
         }
-
-        const employeeId = dto.employeeId !== undefined ? dto.employeeId : existing.employeeId;
-        if (employeeId) {
-          const empConflict = await tx.calendarSlot.findFirst({
-            where: {
-              orgId,
-              employeeId,
-              deletedAt: null,
-              NOT: { id },
-              OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
-            },
-          });
-          if (empConflict) throw new BadRequestException('Співробітник вже зайнятий на цей час');
+        if (employeeId && empConflict) {
+          throw new BadRequestException('Співробітник вже зайнятий на цей час');
         }
 
         return tx.calendarSlot.update({

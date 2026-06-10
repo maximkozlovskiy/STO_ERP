@@ -47,11 +47,16 @@ export class BankAccountsService {
   }
 
   async create(orgId: string, dto: CreateBankAccountDto): Promise<BankAccountResponseDto> {
+    // Narrow FK guards — потрібен лише факт існування для NotFoundException.
     const [currency, branch] = await Promise.all([
-      this.prisma.currency.findFirst({ where: { id: dto.currencyId, orgId, deletedAt: null } }),
+      this.prisma.currency.findFirst({
+        where: { id: dto.currencyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
       dto.branchId
         ? this.prisma.garageBranch.findFirst({
             where: { id: dto.branchId, orgId, deletedAt: null },
+            select: { id: true },
           })
         : Promise.resolve(null),
     ]);

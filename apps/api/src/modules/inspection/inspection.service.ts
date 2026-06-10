@@ -60,6 +60,7 @@ export class InspectionService {
     const [wo, existing] = await Promise.all([
       this.prisma.workOrder.findFirst({
         where: { id: workOrderId, orgId, deletedAt: null },
+        select: { status: true },
       }),
       this.prisma.inspectionReport.findUnique({
         where: { workOrderId },

@@ -37,8 +37,10 @@ export class SettlementsAccountService {
   ) {}
 
   async getBalance(orgId: string, counterpartyId: string) {
+    // Narrow projection — лише balance потрібен для відповіді.
     const account = await this.prisma.settlementAccount.findFirst({
       where: { orgId, counterpartyId },
+      select: { balance: true },
     });
     if (!account) return { balance: 0, counterpartyId };
     return { balance: Number(account.balance), counterpartyId };
@@ -51,8 +53,10 @@ export class SettlementsAccountService {
     const safeLimit = Math.min(Math.max(limit, 1), 200);
     const safePage = Math.max(page, 1);
 
+    // Narrow projection — потрібен лише account.id як FK у settlementTransaction queries.
     const account = await this.prisma.settlementAccount.findFirst({
       where: { orgId, counterpartyId },
+      select: { id: true },
     });
     if (!account) return { items: [], total: 0, page: safePage, limit: safeLimit };
 
@@ -93,12 +97,16 @@ export class SettlementsAccountService {
   ) {
     // Parallel cross-tenant validation — counterparty existence + account lookup
     // are independent reads on different tables (no FK chain).
+    // Narrow projections — counterparty потрібен лише для NotFoundException;
+    // account.id + account.balance використовуються для closingBalance розрахунку.
     const [counterparty, account] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
       }),
       this.prisma.settlementAccount.findFirst({
         where: { orgId, counterpartyId },
+        select: { id: true, balance: true },
       }),
     ]);
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');

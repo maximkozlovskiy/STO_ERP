@@ -208,14 +208,17 @@ export class InvoicesService {
   }
 
   async create(orgId: string, dto: CreateInvoiceDto, userId?: string): Promise<InvoiceResponseDto> {
-    // Validate counterparty + workOrder in parallel instead of sequential round-trips
+    // Validate counterparty + workOrder in parallel instead of sequential round-trips.
+    // Narrow projection — guards перевіряють лише існування (NotFoundException).
     const [counterparty, wo] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: dto.counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
       }),
       dto.workOrderId
         ? this.prisma.workOrder.findFirst({
             where: { id: dto.workOrderId, orgId, deletedAt: null },
+            select: { id: true },
           })
         : Promise.resolve(null),
     ]);

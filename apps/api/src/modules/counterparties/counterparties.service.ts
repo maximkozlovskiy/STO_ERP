@@ -407,6 +407,7 @@ export class CounterpartiesService {
       }),
       this.prisma.counterpartyContract.findFirst({
         where: { id: contractId, counterpartyId, orgId, deletedAt: null },
+        select: { contractType: true },
       }),
       dto.currencyCode !== undefined
         ? this.prisma.currency.findFirst({
