@@ -55,7 +55,7 @@ import {
  * When within the same day, returns the direct HH:mm.
  */
 function calcEndAt(totalMin: number): string {
-  const WORK_END_MIN = 19 * 60; // WINDOW_END * 60
+  const WORK_END_MIN = WINDOW_END * 60; // 20:00 — matches backend WORK_DAY_END_H
   const raw = Math.round(totalMin / 15) * 15; // snap to 15-min grid
   if (raw > WORK_END_MIN) {
     const overflowMin = raw - WORK_END_MIN;
@@ -819,7 +819,7 @@ export function CalendarSlotModal({
                 if (!form.startAt || !nh || nh <= 0) return null;
                 const [h, m] = form.startAt.split(':').map(Number);
                 const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(nh * 60);
-                const workEndMin = WINDOW_END * 60; // 19:00 = 1140 min
+                const workEndMin = WINDOW_END * 60; // 20:00 = 1200 min
                 if (totalMin <= workEndMin) return null;
                 const overflowMin = totalMin - workEndMin;
                 const day2EndMin = 8 * 60 + overflowMin; // starts at 08:00
