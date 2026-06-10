@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+198f9dce perf(optimize): narrow projections, parallel DELETEs, drop redundant @@index
 bd1abf6f perf(optimize): parallel template bulk-create + shared cache read in useCachedRefData
 345a0f20 perf(optimize): narrow projections + invoices.recalcTotals SUM aggregate
 4c930d5d perf(optimize): batch xlsx imports + stabilize dashboard fallbacks + estimate Intl singletons
@@ -62,7 +63,54 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Latest optimize: 2026-06-10 (perf scope: narrow projections + recalcTotals SUM + parallel templates, HEAD bd1abf6f):
+Latest optimize: 2026-06-10 (perf scope: narrow projections + parallel DELETEs + redundant @@index, HEAD 198f9dce):
+  • Backend narrow projections (12 hot-path findFirst/findUnique):
+    - loyalty.{getBalance,getTransactions,earn,redeem}: trim 4 reads to ≤5 fields
+      (balance | id | loyaltyEnabled/EarnPer/EarnPoints | loyaltyRedeemRate).
+      earn() runs on every payment; redeem() on every checkout with discount.
+    - notifications.resolveConfig: branchSettings full row → 4 SMS fields;
+      template full row → body only. Hot SMS path (~2000/day per follow-up batch).
+    - notifications.updateTemplate: existence guard full row → select { id }.
+    - cash-registers.create: 2 FK guards (currency+branch) full row → select { id }.
+    - booking.create: branch full row → select { id, name } (only name used in SMS).
+    - payments.create (in tx): invoice full row → select { status, workOrderId }.
+    - warranties.autoCreate: idempotent guard full row → select { id }.
+    - units.{restore,create}: existing/anyExisting full row → narrow (isSystem +
+      shortName for restore guard; id + deletedAt for create resurrect-vs-conflict).
+    - brands.create / payment-methods.create / currencies.create /
+      exchange-rates.create: anyExisting full row → select { id, deletedAt }.
+    - settings.{update,getBranchSettings,updateBranchSettings}: uiFeatures merge
+      reads only uiFeatures JSON column; branch tenant-guards trim to select { id }.
+    - inventory.{createMovement pre-check, getStockLevel}: stockItem full row →
+      select { quantity, reserved } — hot path on every WO/SD movement.
+  • Backend count() over findMany() for length-only validation:
+    - services.{create,update}: foundWorks/foundGoods findMany(take:1000) →
+      tx.X.count(). Postgres returns a single integer instead of N IDs that
+      downstream code only uses for `.length !== dto.X.length`.
+  • Frontend parallel bulk operations:
+    - settings/PaymentsTab.importPaymentsFromTemplates: sequential for-await POST →
+      Promise.allSettled — cycle-N gap (ndi/PaymentsTab was fixed last cycle but
+      a second file with the same pattern existed in settings/).
+    - CreateWorkOrderModal.save(): sequential DELETE loops for removed lines/parts
+      → Promise.allSettled batch. Each delete is independent (by row id).
+  • DB schema — drop 6 redundant @@index (prefix-covered by @@unique):
+    - employee_branches: @@index([employeeId]) ⊆ @@unique([employeeId, branchId])
+    - document_number_configs: @@index([orgId]) ⊆ @@unique([orgId, documentType])
+    - notification_templates: @@index([orgId]) ⊆ @@unique([orgId, eventType, channel])
+    - tax_rates: @@index([orgId]) ⊆ @@unique([orgId, rate])
+    - payment_method_configs: @@index([orgId]) ⊆ @@unique([orgId, code])
+    - user_preferences: @@index([orgId, employeeId]) ⊆ @@unique([orgId, employeeId, key])
+    -1 index write per INSERT/UPDATE on each of these reference tables.
+  • Skill self-improvement (Крок 7):
+    - "findMany({where: id-in}) для FK-existence перевірки замість count()" —
+      services/validators bulk-FK guard pattern for replacing wire-payload-heavy
+      findMany with single-integer count.
+    - "Redundant @@index([orgId]) поверх @@unique([orgId, X])" — reference моделі
+      з composite unique key; pattern для drop redundant prefix-covered indexes.
+    - "Cycle-N gap у дубльованих файлах з однією назвою" — settings/X vs ndi/X;
+      pattern для glob-before-fix щоб не пропускати sibling-copies.
+
+Latest optimize (попередній): 2026-06-10 (perf scope: narrow projections + recalcTotals SUM + parallel templates, HEAD bd1abf6f):
   • Backend narrow projections (8 service methods): comments.remove (select authorId),
     comments.findAll (explicit select drop syncVersion/deletedAt), purchase-orders.update
     (status+totalAmount), purchase-orders.transition (status), invoices.update (status),

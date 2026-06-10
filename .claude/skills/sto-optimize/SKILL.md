@@ -568,6 +568,54 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-10 — `findMany({where: {id: {in:[...]}, take})` для FK-existence перевірки замість `count()` — services/validators bulk-FK guard
+
+**Сигнал:** Backend service метод (типу `create`/`update` що приймає DTO з масивом FK — `dto.works[]`, `dto.goods[]`, `dto.serviceIds[]`) валідує всі переданi IDs через `findMany({ where: { id: { in: ids }, orgId, deletedAt: null }, take: 1000 })`, потім порівнює `foundRows.length !== dto.ids.length` для виявлення відсутніх записів. Жоден downstream код НЕ читає `.id` чи інші поля рядків — лише `.length`. `findMany` тягне N row IDs з диска + serializing JSON, хоча достатньо одного `count()` що повертає лічильник.
+
+**Причина виникнення:** інтуїтивний паттерн — «знайди валідні записи + порівняй кількість». Розробник свідомо НЕ вибирає `count()` бо думає «можливо хтось ще використає foundIds для прив'язки». Реально downstream-код пише `createMany` з ID з оригінального DTO (не з foundRows), отже foundRows — write-only buffer. Окремий тригер: `take: 1000` додається з обережності («раптом DTO має 1000 IDs»), маскуючи що це fan-out read.
+
+**Підхід до виявлення:** для кожного `findMany({ where: { id: { in: ... } })` у service.ts — прочитати наступні 5-10 рядків. Якщо результат використовується **лише** в `if (foundX.length !== dto.X.length) throw` (без `.map()`/`.find()`/`.filter()` на foundX), і downstream `createMany` отримує IDs з DTO (а не з foundX) — кандидат на `count()`. Cross-check: `take: 1000` поряд з `select: { id: true }` або без `select` взагалі — sign що write-only fetch.
+
+**Підхід до фіксу:** замінити `tx.X.findMany({...})` на `tx.X.count({where})`. Постгрес виконає `COUNT(*) WHERE...` що при наявності composite index `(orgId, id)` дає index-only scan з декількома page reads (vs full row marshalling N рядків). Перейменувати змінні: `foundWorks` → `foundWorksCount`. Знизити porting risk: comparison `length !== length` стає `count !== length` (semantic identical). Не плутати з: (a) `findMany` що використовує `foundIds.map(r => r.id)` далі — тут потрібен фактичний список, count не підходить; (b) `findMany` з `select: { id, ім'я}` — це часом валідно бо повертає labels для error message.
+
+**Реальний impact:** для services.create з dto.works = 50 IDs: 50 row reads + JSON serialize → 1 integer return. Wire payload падає в ~50×; CPU JSON parse на Node side падає до константи. На load-test endpoint (адмін імпортує сервіси з шаблону) це 10-20% latency reduction. Найпомітніше коли таблиця FK target має багато колонок (Good з ~30 колонок).
+
+**Де шукати ще:** будь-який create/update сервіс що приймає масив FK у DTO — services.{create,update} (work/good IDs), invoices.addLines (multiple line items), purchase-orders.addLines, booking.create (serviceIds), pricing-rules.{create,update} (goodIds[]), будь-який bulk-assign endpoint. Перевіряти при додаванні нового batch-FK validation паттерну.
+
+---
+
+### 2026-06-10 — Redundant @@index([orgId]) поверх @@unique([orgId, X]) — reference моделі з composite unique key
+
+**Сигнал:** модель Prisma має `@@unique([orgId, X])` (де X = code/rate/eventType+channel/key+...) і **окремий** `@@index([orgId])` поряд. Postgres створює два B-tree індекси: один для unique enforcement (named `*_orgId_X_key`), один звичайний (named `*_orgId_idx`). Запити з `where: { orgId }` (наприклад, `findMany({where:{orgId}})` для reference list) можуть використовувати ПЕРШИЙ стовпець unique-індексу — окремий `@@index([orgId])` нічого не додає. Парний паттерн до cycle 2026-06-08 (auth_accounts) — повторюється у reference моделях.
+
+**Причина виникнення:** історична: модель спочатку мала тільки `@@index([orgId])` для tenant scoping. Пізніше додався `@@unique` для anti-duplicate constraint. Розробник лишив старий `@@index` бо «безпечніше — раптом запити по чистому orgId сповільняться без нього». Без `pg_indexes` audit'у непомітно. Інша причина — copy-paste з іншої моделі де є `@@index([orgId])` без `@@unique` поряд.
+
+**Підхід до виявлення:** для кожного `@@unique([orgId, ...])` у schema.prisma прочитати наступні 2-3 рядки. Якщо є `@@index([orgId])` або `@@index([orgId, prefix-of-unique-cols])` — той index покривається unique-key index. **НЕ** rendundant: `@@index([orgId, otherCol])` де otherCol НЕ є наступним стовпцем у unique — це окремий валідний index. Cross-check у живій БД: `SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'X'` — два B-tree з прикриваючими прі��іксами підтверджують дублікат.
+
+**Підхід до фіксу:** видалити `@@index` (НЕ `@@unique` — він несе constraint-семантику). Залишити коментар над `@@unique` що пояснює чому окремий `@@index` не потрібен (для майбутніх розробників). `prisma db push --skip-generate` створить DROP INDEX автоматично. Якщо проект веде формальні Prisma migrations — створити migration з `DROP INDEX IF EXISTS "X_orgId_idx"`. Не плутати з: (a) `@@index([orgId, syncVersion])` — syncVersion не є префіксом unique, INDEX потрібен для sync pull queries; (b) `@@index([orgId, deletedAt])` — deletedAt теж не префікс, потрібен для list with soft-delete filter.
+
+**Реальний impact:** -1 index write на кожен INSERT/UPDATE моделі. Reference моделі (currencies, payment-methods, tax-rates, notification-templates, document-number-configs, user-preferences) — багато mutating операцій per session (settings page save кожне поле = окремий update). 6 redundant індексів × ~5 reference таблиць × ~50 updates/day = 1500 додаткових index writes/day eliminated. Disk space економиться.
+
+**Де шукати ще:** будь-яка reference модель з composite `@@unique([orgId, X])` де X — це доменний дискримінатор (code, name, key, type, channel). Особливо часто: settings-related моделі, notification/template моделі, tax/currency/payment configs, user preferences, document configs. При додаванні нової reference моделі — обов'язково перевіряти що `@@unique` достатньо без додаткового `@@index([orgId])`.
+
+---
+
+### 2026-06-10 — Cycle-N gap у дубльованих файлах з однією назвою — settings/PaymentsTab vs ndi/PaymentsTab
+
+**Сигнал:** у різних роутах (`apps/web/src/app/(app)/settings/X.tsx` і `apps/web/src/app/(app)/ndi/X.tsx`) існують **два файли з однією назвою компонента** і дуже схожою логікою (CRUD довідника). Попередній optimize-cycle виправив один файл (наприклад, `ndi/PaymentsTab.tsx` з sequential bulk-import → Promise.allSettled), але другий файл (`settings/PaymentsTab.tsx`) лишив тим самим anti-паттерном бо grep по pattern знайшов "первинний" файл, не порівняв чи існують sibling-copies. Розробник не помічає бо UX обох сторінок однаковий (settings/payments-methods і ndi/payments-methods обидва ведуть до того ж API), і виглядає як єдиний компонент.
+
+**Причина виникнення:** історія UI — спочатку довідники жили у `settings/`, пізніше частина переїхала у `ndi/` (нормативно-довідкова інформація). При міграції копії старі НЕ були видалені, а dual-mount забезпечив що обидва шляхи продовжують працювати. Optimize-cycle типово сканує ОДИН файл коли grep дає перший збіг, не перевіряючи `find apps/web -name "PaymentsTab.tsx"` на наявність дублів. Якщо існує тільки одна копія в diff — grep пропускає sibling, бо sibling не в diff.
+
+**Підхід до виявлення:** перед застосуванням frontend fix — `glob '**/{X}.tsx'` де X — це назва файлу що збираєшся правити (Tab/Modal/Form компоненти). Якщо знайдено ≥2 файли — обидва потенційно мають той самий paттерн. Cross-check: для кожного нового optimize-fix на frontend — за останні 3-5 commit history знайти аналогічний коміт в інший каталог (settings vs catalog vs ndi vs admin). Якщо є — апріорі перевір sibling-файл.
+
+**Підхід до фіксу:** застосувати ТОЙ самий patтерн (Promise.allSettled, etc.) до sibling-файлу. У commit-message зазначити "cycle-N gap — pattern applied to sibling X.tsx". Якщо файли семантично дублікати (один і той самий компонент експортується з двох місць) — це окремий refactor candidate (об'єднати в `components/PaymentsTab.tsx`), але не для optimize-cycle. Залишити обом файлам однакову impl, додати TODO про consolidation.
+
+**Реальний impact:** покривається ОДНОЧАСНО обидва шляхи UX (старий + новий). Особливо помітно під час org setup коли admin відкриває settings вкладку (стара) — раніше там був sequential bulk-import. Після fix — обидва шляхи мають parallel behavior. Cumulatively з усіма cycle-N gaps це закриває "long-tail" фіксів що рознесені у часі.
+
+**Де шукати ще:** будь-яка пара дубльованих файлів у `apps/web/src/app/(app)/<route>/X.tsx` — особливо `settings/`, `ndi/`, `catalog/`, `admin/` каталоги. При sweep по optimize patterns — обов'язково `glob '**/X.tsx'` перед фіксом. Periodically (раз на кілька циклів) запустити audit "find duplicate filenames" і вирішити consolidation strategy.
+
+---
+
 ### 2026-06-10 — Frontend для-await POST у "Import from templates" handlers — bulk-create незалежних reference rows із серійним RTT
 
 **Сигнал:** UI sub-tab (PaymentsTab/CurrenciesTab/UnitsTab/будь-який reference-CRUD з "Додати з шаблону") має handler `importFromTemplates(templates: SystemTemplate[])` що ітерує `for (const t of templates) { await apiFetch(POST endpoint, body) }`. Templates з системного каталогу — це 5-15 рядків з unique codes/shortName per template. Sequential N × RTT де максимум 1 RTT досяжний — кожен POST незалежний (нема read-залежностей між templates), backend має unique constraint на `(orgId, code)` що захищає від collision навіть якщо два POST одночасно. На WAN 30-50ms × 10 templates = 300-500ms wasted, користувач бачить spinner.
