@@ -10,6 +10,7 @@
 
 ```
 7c514e32 simplify: 3-cycle cleanup — shared prisma-errors util, GOOD_UOM_SELECT, parallel tx reads
+c01ba672 perf(optimize): stabilize linkedCounts {} fallback to module-level frozen const
 90238a2c fix(work-orders): store UnitOfMeasure.id not GoodUoM.id in WorkOrderPart — Bug #420
 1c391da6 refactor(invoices): extract throwIfSerializationConflict helper; drop e2e sleep
 254ce530 fix(tester): Bugs #418-#419 — STATUS_TABS_EXTRA comment drift + select aria-label

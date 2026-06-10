@@ -1691,6 +1691,22 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 
 ---
 
+### 2026-06-10 — `data: X = {}` destructure default у useQuery — Bug #328 cascade для object literals (не лише arrays)
+
+**Сигнал:** компонент-сторінка викликає `const { data: linkedCounts = {} } = useQuery<Map>(...)` (або інша назва) — fallback empty object при initial-load. Pattern «Fresh `[]` literal у `data?.items ?? []`» уже задокументовано (2026-06-03) для масивів. Той самий cascade існує і для object map / Record types: `{}` — fresh literal кожен render → identity change → будь-який downstream `useEffect([linkedCounts])` ре-фаєрить. Особливо болить коли об'єкт використовується як lookup map у `.map()` (`linkedCounts[wo.id]`) — це не feeding effect, але якщо колись додасться (memo selector, custom hook) — регресія прихована.
+
+**Причина виникнення:** `= {}` у destructure default виглядає синтаксично еквівалентним до `EMPTY = Object.freeze({})` — обидва empty. Розробник свідомо вибирає inline бо короткий і читабельний. Не помічається що: (a) destructure default обчислюється КОЖЕН раз при render компонента (не один раз на module load), (b) downstream consumer що залежить від identity ловить регресію через місяці після додавання cascade trigger.
+
+**Підхід до виявлення:** grep `useQuery.*\n.*data: \w+ = \{\}` (multiline) у frontend сторінках. Те саме для `data: X = []` (вже покрито) і destructure defaults у `useState({})` для seed з cached storage. Не плутати з `useState({})` що оновлюється через setState — той справді один раз як initial value.
+
+**Підхід до фіксу:** оголосити module-level `const EMPTY_X: T = Object.freeze({}) as T` поза функцією-компонентом. Cast потрібен бо TypeScript не дозволяє `Readonly<{}>` присвоювати до mutable map — runtime семантика збережена (immutable empty obj). Замінити destructure default на `data: X = EMPTY_X`. Не варто `useMemo([])` для empty obj — module-level дешевший і простіший.
+
+**Реальний impact:** низький у момент додавання (якщо downstream hook ще не пише deps), але високий як **захист від регресу**. Bug #328 був знайдений у production через cascading useEffect; той самий cascade для objects був би прихованим до моменту коли хтось додасть `useMemo([linkedCounts])` для derive. Pre-emptive fix дешевий (3 рядки коду) — не варто чекати на bug report.
+
+**Де шукати ще:** **кожна сторінка з `useQuery` що повертає Map/Record/lookup-style data**. linked-counts, badge-counts, lookup-tables, dictionary fetches. При code review нових сторінок — grep `data: \w+ = \{\}` чи `data: \w+ = \[\]` → завжди заміна на module-level frozen const. Не лише для Bug #328 — це санитарний loop-prevention pattern.
+
+---
+
 ### 2026-06-05 — Per-render `getCached()`/sessionStorage read — composable hook без lazy state initializer
 
 **Сигнал:** composable hook (типу `useCachedRefData`) робить `const cached = getCached(cacheKey)` як **top-level statement** функції (не в useState lazy initializer) — `cached` потрібен лише для initial state, але виконується на КОЖЕН render. Це означає: `window.sessionStorage.getItem(key)` + `JSON.parse(rawData)` + (можливо ще `Array.isArray` check) — на кожен render компонента, який використовує hook. Особливо болить коли cached data великий (200 goods, 100 employees) — `JSON.parse` синхронний і блокує main thread per render.
@@ -1876,6 +1892,7 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ work-orders/page.tsx + calendar/CalendarSlotModal: CreateWorkOrderModal (1823 LOC: full WO wizard з EntityPickerField + parts/lines tables) static import → next/dynamic. List/calendar opened без створення WO у 80% сесій → modal chunk lazy-loaded на перший клік «Створити»
 - ✅ LinkedDocumentsPanel: local fmt(n) inline `n.toLocaleString('uk-UA', {...})` → thin proxy до `fmtMoney` (module-level Intl.NumberFormat singleton); до 500 invoices+500 payments × ререндери без per-call Intl alloc
 - ✅ work-orders/page.tsx: local formatDate manual `String().padStart()` → proxy `fmtDate` (module-level Intl.DateTimeFormat singleton); 20 рядків × 2 date cells × ререндери без new Date+template alloc
+- ✅ work-orders/page.tsx: `linkedCounts = {}` destructure default → `EMPTY_LINKED_COUNTS = Object.freeze({})` module-level frozen const — pre-empts Bug #328 cascade for `data?.X ?? {}` Object literal на page-level
 
 **DB:**
 
