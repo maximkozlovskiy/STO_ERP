@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type React from 'react';
 import {
   Trash2,
   Plus,
@@ -262,6 +263,11 @@ const localDateTimeToISO = (v: string): string | undefined => {
   const iso = kyivDateTimeToISO(d, t.slice(0, 5));
   return iso || undefined;
 };
+
+// sto-optimize: stable no-op handler for disabled DateTimePickerInput placeholders
+// (actual-section start/end). Inline `() => {}` create new function references each
+// render → DateTimePickerInput memoization marked as dirty even though field is fixed.
+const NOOP_DT_CHANGE: (v: string) => void = () => {};
 
 // Calc working hours between two "YYYY-MM-DDTHH:mm" local datetime strings.
 // Returns rounded-to-2-decimals string, or '' if inputs are missing/invalid.
@@ -740,6 +746,46 @@ export function CreateWorkOrderModal({
     }));
   }, []);
 
+  // sto-optimize: стабільні onChange-handlers для трьох hour-inputs у разделі
+  // "Планові та фактичні показники". Раніше — inline arrow на КОЖНЕ перерендеринг
+  // (typing у будь-якому полі форми → новий handler → DateTimePickerInput не може
+  // memo-skip). useCallback з [] deps безпечний: всі updates йдуть через setForm(f => ...)
+  // — найсвіжіший state читається з callback-аргументу, не з closure.
+  const handlePlannedStartChange = useCallback((v: string) => {
+    setForm(f => ({
+      ...f,
+      plannedStartAt: v,
+      plannedHours: calcPlannedHours(v, f.plannedEndAt),
+    }));
+  }, []);
+  const handlePlannedEndChange = useCallback((v: string) => {
+    setForm(f => ({
+      ...f,
+      plannedEndAt: v,
+      plannedHours: calcPlannedHours(f.plannedStartAt, v),
+    }));
+  }, []);
+  const handlePlannedHoursChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setForm(f => ({ ...f, plannedHours: value }));
+  }, []);
+  const handleActualHoursChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setForm(f => ({ ...f, actualHours: value }));
+  }, []);
+
+  // sto-optimize: derived rendering для warning banner з conflict slots.
+  // Раніше — `.some()` потім `.filter().map().join()` — twin-scan кожного render.
+  // Тепер один pass + memo за [conflictSlots], evaluate-once.
+  const conflictWoNumbers = useMemo(() => {
+    if (!calConflict?.conflictSlots) return '';
+    const nums: string[] = [];
+    for (const s of calConflict.conflictSlots) {
+      if (s.workOrderNumber) nums.push(s.workOrderNumber);
+    }
+    return nums.join(', ');
+  }, [calConflict?.conflictSlots]);
+
   const addLine = () => {
     if (!newLine.workId || !newLine.employeeId) return;
     // Bug #382: блокуємо повний дублікат (work + виконавець) — типовий user-error.
@@ -968,13 +1014,7 @@ export function CreateWorkOrderModal({
       const ok = await confirm({
         title: 'Перевести наряд в "В роботі"?',
         message: `У календарі є перетин слотів (${calConflict.conflictSlots.length} шт.)${
-          calConflict.conflictSlots.some(s => s.workOrderNumber)
-            ? ': ' +
-              calConflict.conflictSlots
-                .filter(s => s.workOrderNumber)
-                .map(s => s.workOrderNumber)
-                .join(', ')
-            : ''
+          conflictWoNumbers ? ': ' + conflictWoNumbers : ''
         }. Продовжити?`,
         confirmLabel: 'Перевести',
         variant: 'destructive',
@@ -1556,26 +1596,14 @@ export function CreateWorkOrderModal({
                           <DateTimePickerInput
                             label="Дата та час початку"
                             value={form.plannedStartAt}
-                            onChange={v =>
-                              setForm(f => ({
-                                ...f,
-                                plannedStartAt: v,
-                                plannedHours: calcPlannedHours(v, f.plannedEndAt),
-                              }))
-                            }
+                            onChange={handlePlannedStartChange}
                             disabled={!canEdit}
                             inputClassName="h-8 text-[13px]"
                           />
                           <DateTimePickerInput
                             label="Дата та час завершення"
                             value={form.plannedEndAt}
-                            onChange={v =>
-                              setForm(f => ({
-                                ...f,
-                                plannedEndAt: v,
-                                plannedHours: calcPlannedHours(f.plannedStartAt, v),
-                              }))
-                            }
+                            onChange={handlePlannedEndChange}
                             disabled={!canEdit}
                             inputClassName="h-8 text-[13px]"
                           />
@@ -1588,7 +1616,7 @@ export function CreateWorkOrderModal({
                               min="0"
                               step="0.5"
                               value={form.plannedHours}
-                              onChange={e => setForm(f => ({ ...f, plannedHours: e.target.value }))}
+                              onChange={handlePlannedHoursChange}
                               disabled={!canEdit}
                               placeholder="0"
                               className="h-8 w-full rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-ring"
@@ -1599,14 +1627,14 @@ export function CreateWorkOrderModal({
                           <DateTimePickerInput
                             label="Дата та час початку"
                             value=""
-                            onChange={() => {}}
+                            onChange={NOOP_DT_CHANGE}
                             disabled
                             inputClassName="h-8 text-[13px]"
                           />
                           <DateTimePickerInput
                             label="Дата та час завершення"
                             value=""
-                            onChange={() => {}}
+                            onChange={NOOP_DT_CHANGE}
                             disabled
                             inputClassName="h-8 text-[13px]"
                           />
@@ -1619,7 +1647,7 @@ export function CreateWorkOrderModal({
                               min="0"
                               step="0.5"
                               value={form.actualHours}
-                              onChange={e => setForm(f => ({ ...f, actualHours: e.target.value }))}
+                              onChange={handleActualHoursChange}
                               disabled={!canEdit}
                               placeholder="0"
                               className="h-8 w-full rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-ring"
@@ -1635,18 +1663,7 @@ export function CreateWorkOrderModal({
                         ⚠{calConflict.liftConflict && ' Підйомник зайнятий.'}
                         {calConflict.employeeConflict && ' Механік зайнятий.'} Є перетин з{' '}
                         {calConflict.conflictSlots.length} слотом(и) у календарі
-                        {calConflict.conflictSlots.some(s => s.workOrderNumber) && (
-                          <>
-                            {' '}
-                            (
-                            {calConflict.conflictSlots
-                              .filter(s => s.workOrderNumber)
-                              .map(s => s.workOrderNumber)
-                              .join(', ')}
-                            )
-                          </>
-                        )}
-                        . Можна зберегти попри це.
+                        {conflictWoNumbers && <> ({conflictWoNumbers})</>}. Можна зберегти попри це.
                       </div>
                     )}
 

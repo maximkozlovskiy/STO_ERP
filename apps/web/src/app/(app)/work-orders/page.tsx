@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, Suspense, memo } from 'react';
 import type { ElementType } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -173,6 +173,40 @@ const WO_COLUMNS: Array<{ key: string; label: string }> = [
   { key: 'linkedDocs', label: 'Документи' },
 ];
 const WO_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(WO_COLUMNS.map(c => c.key));
+
+// sto-optimize: Memoized pill для 11 статус-кнопок. Раніше — inline JSX-block
+// у map() створював 11 нових onClick-замикань на кожне перерендеривание сторінки
+// (typing у search-input → setSearch → re-render → 11 нових closures + 11 Tooltip
+// children-reconcile). Тепер pure props + memo skip коли `active`+`onSelect` стабільні.
+interface StatusPillProps {
+  value: string;
+  label: string;
+  active: boolean;
+  description: string | undefined;
+  onSelect: (v: string) => void;
+}
+const StatusPill = memo(function StatusPill({
+  value,
+  label,
+  active,
+  description,
+  onSelect,
+}: StatusPillProps) {
+  const btn = (
+    <button
+      onClick={() => onSelect(value)}
+      className={cn(
+        'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
+        active
+          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+          : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
+      )}
+    >
+      {label}
+    </button>
+  );
+  return description ? <Tooltip content={description}>{btn}</Tooltip> : btn;
+});
 
 // Bug #354: Suspense обгортка для useSearchParams (Next.js static-export вимога).
 // Inner-функція тримає всю логіку, default-export лише wrapper.
@@ -438,6 +472,17 @@ function WorkOrdersPageInner() {
     [bulkCancel, bulkArchive],
   );
 
+  // sto-optimize: stable onClick для 11 StatusPill, інакше memo() не може пропустити
+  // re-render бо inline arrow міняється кожного render.
+  const handleSelectStatus = useCallback(
+    (v: string) => {
+      setStatusFilter(v);
+      resetPage();
+      setActiveSavedFilterId(null);
+    },
+    [resetPage, setActiveSavedFilterId],
+  );
+
   // Bug #354: підтримка `?action=new` query — Command Palette + N shortcut + calendar prefill.
   useEffect(() => {
     if (searchParams?.get('action') !== 'new') return;
@@ -475,6 +520,76 @@ function WorkOrdersPageInner() {
 
   const totalPages = Math.ceil(total / limit);
 
+  // sto-optimize: stable handler-references для DetailPanel — раніше inline
+  // `() => setSelectedWO(null)` створювалось щоразу, що нівелює useMemo deps
+  // для tabs/configFields/etc.
+  const handleDetailPanelClose = useCallback(() => setSelectedWO(null), []);
+  const handleOpenEdit = useCallback((id: string) => setEditWoId(id), []);
+
+  // sto-optimize: extract IIFE → useMemo. Раніше блок `(() => { const buildWOTabs = ...; return <DetailPanel tabs={buildWOTabs(...)} ... /> })()`
+  // виконувався на кожен render — `buildWOTabs` створювалась наново, потім
+  // викликалась для побудови tabs-масиву + JSX. React Reconciler бачив новий
+  // tabs-prop → DetailPanel/Badge/buildPanelFields обчислювались знову.
+  // Тепер tabs обчислюються лише при зміні selectedWO/panelConfig.config/nowMs.
+  const woDetailTabs = useMemo<DetailPanelTab[] | undefined>(() => {
+    if (!selectedWO) return undefined;
+    const wo = selectedWO;
+    return [
+      {
+        key: 'info',
+        label: 'Основне',
+        content: (
+          <div className="space-y-3">
+            {buildPanelFields(wo, WORK_ORDER_PANEL_SCHEMA, panelConfig.config, {
+              status: v => (
+                <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'} dot>
+                  {STATUS_LABELS[String(v)] ?? String(v)}
+                </Badge>
+              ),
+              priority: v =>
+                v ? (
+                  <Badge variant={PRIORITY_BADGE[String(v)] ?? 'secondary'}>
+                    {PRIORITY_LABELS[String(v)] ?? String(v)}
+                  </Badge>
+                ) : undefined,
+              repairCategory: v => (v ? (CATEGORY_LABELS[String(v)] ?? String(v)) : undefined),
+              dueDate: v =>
+                v ? (
+                  <span
+                    className={cn(
+                      'font-medium',
+                      isOverdue(String(v), nowMs) ? 'text-warning' : undefined,
+                    )}
+                  >
+                    {fmtDate(String(v))}
+                    {isOverdue(String(v), nowMs) && (
+                      <span className="ml-1 text-[11px]">(прострочено)</span>
+                    )}
+                  </span>
+                ) : undefined,
+            }).map(f => (
+              <PanelField
+                key={f.key}
+                fieldKey={f.key}
+                label={f.label}
+                value={f.value}
+                hidden={f.hidden}
+              />
+            ))}
+            <Button className="w-full" size="sm" onClick={() => handleOpenEdit(wo.id)}>
+              Відкрити наряд
+            </Button>
+          </div>
+        ),
+      },
+    ];
+  }, [selectedWO, panelConfig.config, nowMs, handleOpenEdit]);
+
+  const panelConfigFields = useMemo(
+    () => schemaToPanelConfigFields(WORK_ORDER_PANEL_SCHEMA, panelConfig.config),
+    [panelConfig.config],
+  );
+
   return (
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
@@ -504,34 +619,16 @@ function WorkOrdersPageInner() {
       {/* Status filter pills + Мої наряди */}
       <div className="flex gap-1.5 flex-wrap items-center justify-between shrink-0">
         <div className="flex gap-1.5 flex-wrap items-center">
-          {STATUS_TABS.map(([v, l]) => {
-            const btn = (
-              <button
-                key={v}
-                onClick={() => {
-                  setStatusFilter(v);
-                  resetPage();
-                  setActiveSavedFilterId(null);
-                }}
-                className={cn(
-                  'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-                  statusFilter === v
-                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                    : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
-                )}
-              >
-                {l}
-              </button>
-            );
-            const desc = STATUS_DESCRIPTIONS[v];
-            return desc ? (
-              <Tooltip key={v} content={desc}>
-                {btn}
-              </Tooltip>
-            ) : (
-              btn
-            );
-          })}
+          {STATUS_TABS.map(([v, l]) => (
+            <StatusPill
+              key={v}
+              value={v}
+              label={l}
+              active={statusFilter === v}
+              description={STATUS_DESCRIPTIONS[v]}
+              onSelect={handleSelectStatus}
+            />
+          ))}
         </div>
         {employee && (
           <button
@@ -981,70 +1078,16 @@ function WorkOrdersPageInner() {
           </Table>
         </TableContainer>
 
-        {(() => {
-          const buildWOTabs = (wo: WorkOrder): DetailPanelTab[] => [
-            {
-              key: 'info',
-              label: 'Основне',
-              content: (
-                <div className="space-y-3">
-                  {buildPanelFields(wo, WORK_ORDER_PANEL_SCHEMA, panelConfig.config, {
-                    status: v => (
-                      <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'} dot>
-                        {STATUS_LABELS[String(v)] ?? String(v)}
-                      </Badge>
-                    ),
-                    priority: v =>
-                      v ? (
-                        <Badge variant={PRIORITY_BADGE[String(v)] ?? 'secondary'}>
-                          {PRIORITY_LABELS[String(v)] ?? String(v)}
-                        </Badge>
-                      ) : undefined,
-                    repairCategory: v =>
-                      v ? (CATEGORY_LABELS[String(v)] ?? String(v)) : undefined,
-                    dueDate: v =>
-                      v ? (
-                        <span
-                          className={cn(
-                            'font-medium',
-                            isOverdue(String(v), nowMs) ? 'text-warning' : undefined,
-                          )}
-                        >
-                          {fmtDate(String(v))}
-                          {isOverdue(String(v), nowMs) && (
-                            <span className="ml-1 text-[11px]">(прострочено)</span>
-                          )}
-                        </span>
-                      ) : undefined,
-                  }).map(f => (
-                    <PanelField
-                      key={f.key}
-                      fieldKey={f.key}
-                      label={f.label}
-                      value={f.value}
-                      hidden={f.hidden}
-                    />
-                  ))}
-                  <Button className="w-full" size="sm" onClick={() => setEditWoId(wo.id)}>
-                    Відкрити наряд
-                  </Button>
-                </div>
-              ),
-            },
-          ];
-          return (
-            <DetailPanel
-              open={!!selectedWO && detailPanel.enabled}
-              onClose={() => setSelectedWO(null)}
-              title={selectedWO?.number ?? ''}
-              tabs={selectedWO ? buildWOTabs(selectedWO) : undefined}
-              configFields={schemaToPanelConfigFields(WORK_ORDER_PANEL_SCHEMA, panelConfig.config)}
-              onToggleField={panelConfig.toggleField}
-              onReorderFields={panelConfig.reorderFields}
-              onReset={panelConfig.reset}
-            />
-          );
-        })()}
+        <DetailPanel
+          open={!!selectedWO && detailPanel.enabled}
+          onClose={handleDetailPanelClose}
+          title={selectedWO?.number ?? ''}
+          tabs={woDetailTabs}
+          configFields={panelConfigFields}
+          onToggleField={panelConfig.toggleField}
+          onReorderFields={panelConfig.reorderFields}
+          onReset={panelConfig.reset}
+        />
       </div>
 
       {/* Pagination */}

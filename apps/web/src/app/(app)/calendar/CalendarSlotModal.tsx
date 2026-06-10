@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -267,6 +267,17 @@ export function CalendarSlotModal({
   const { confirm, dialogProps } = useConfirm();
   const { conflict: calConflict, check: checkConflict, clear: clearConflict } = useConflictCheck();
   const mountedRef = useRef(true);
+
+  // sto-optimize: single-pass derived string з conflict slots замість
+  // .some() + .filter().map().join() (twin-scan + 3 intermediate arrays per render).
+  const conflictWoNumbers = useMemo(() => {
+    if (!calConflict?.conflictSlots) return '';
+    const nums: string[] = [];
+    for (const s of calConflict.conflictSlots) {
+      if (s.workOrderNumber) nums.push(s.workOrderNumber);
+    }
+    return nums.join(', ');
+  }, [calConflict?.conflictSlots]);
 
   // ── Detail modals ─────────────────────────────────────────────────────────
   const [cpDetailOpen, setCpDetailOpen] = useState(false);
@@ -1374,18 +1385,7 @@ export function CalendarSlotModal({
               ⚠{calConflict.liftConflict && ' Підйомник зайнятий.'}
               {calConflict.employeeConflict && ' Механік зайнятий.'} Є перетин з{' '}
               {calConflict.conflictSlots.length} слотом(и)
-              {calConflict.conflictSlots.some(s => s.workOrderNumber) && (
-                <>
-                  {' '}
-                  (
-                  {calConflict.conflictSlots
-                    .filter(s => s.workOrderNumber)
-                    .map(s => s.workOrderNumber)
-                    .join(', ')}
-                  )
-                </>
-              )}
-              . Можна зберегти попри це.
+              {conflictWoNumbers && <> ({conflictWoNumbers})</>}. Можна зберегти попри це.
             </div>
           )}
           <div className="flex items-center gap-2">

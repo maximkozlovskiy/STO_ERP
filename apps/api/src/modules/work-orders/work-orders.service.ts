@@ -636,9 +636,24 @@ export class WorkOrdersService {
     newStatus: WorkOrderStatus,
     userId?: string,
   ): Promise<WorkOrderResponseDto> {
+    // sto-optimize: narrow select — раніше `include: { parts: take:1000 }` тягнув до 1000
+    // WorkOrderPart рядків для КОЖНОЇ transition(). Виявилось wo.parts не використовується
+    // в цій функції: reserveParts/releasePartReservations/writeOffPartsAndCharge всі
+    // re-fetch parts всередині транзакції (свіжі дані з tx-context), а решта тіла читає
+    // лише status/number/outMileage/vehicleId/repairCategory/counterpartyId/totalAmount.
+    // Знято overfetch для всіх 9 FSM-переходів (DRAFT→ESTIMATE, ESTIMATE→APPROVED, тощо).
     const wo = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { parts: { where: { deletedAt: null }, take: 1000 } },
+      select: {
+        id: true,
+        status: true,
+        number: true,
+        outMileage: true,
+        vehicleId: true,
+        repairCategory: true,
+        counterpartyId: true,
+        totalAmount: true,
+      },
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
 
