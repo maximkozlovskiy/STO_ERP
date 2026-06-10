@@ -15,11 +15,26 @@ vi.mock('@/lib/ref-cache', () => ({
   setCache: vi.fn(),
 }));
 
-// Mock kyivToday — stable date for snapshots.
+// Mock kyivToday — stable date for snapshots. Other exports kept as no-op/pass-through
+// because CreateWorkOrderModal also imports `localDateTimeToISO` та `isoToKyivLocalDateTime`
+// (refactor commit 4a70b0f9 перевів conflict-check + persist payload на ці helpers).
+// Без них pending POST у тесті Bug #381 падає одразу з "No export" → finally setSavingBoth(false)
+// → guard у handleModalClose не спрацьовує → race window не тестується (хибно зелений).
 vi.mock('@/lib/format', () => ({
   kyivToday: () => '2026-06-08',
   formatCounterpartyName: (c: { firstName?: string; lastName?: string; companyName?: string }) =>
     c.companyName || `${c.lastName ?? ''} ${c.firstName ?? ''}`.trim(),
+  // Pass-through stubs. Реальна DST-aware логіка покрита окремо у format.test.ts —
+  // тут модал викликає ці функції лише для побудови payload і conflict-check.
+  isoToKyivLocalDateTime: (iso: string | null | undefined) => (iso ? String(iso) : ''),
+  localDateTimeToISO: (v: string) => (v ? v : undefined),
+  kyivDateTimeToISO: (date: string, time: string) => `${date}T${time}:00.000Z`,
+  fmtMoney: (n: number | null | undefined) => (n == null ? '—' : String(n)),
+  fmtInt: (n: number | null | undefined) => (n == null ? '—' : String(n)),
+  fmtDate: (d: string | Date | null | undefined) => (d ? String(d) : '—'),
+  fmtDateTime: (d: string | Date | null | undefined) => (d ? String(d) : '—'),
+  fmtShortDateTime: (d: string | Date | null | undefined) => (d ? String(d) : '—'),
+  fmtTime: (d: string | Date | number | null | undefined) => (d == null ? '—' : String(d)),
 }));
 
 const mockBranches = [{ id: 'b1', name: 'Філія №1' }];

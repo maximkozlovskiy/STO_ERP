@@ -13267,3 +13267,126 @@ Expected: visible / Error: element(s) not found
 ---
 
 ---
+
+## Session 2026-06-11 — sto-tester після cycle-2 review (commit a7522bb0)
+
+Зміни в scope: `localDateTimeToISO` extract → `format.ts`; `conflictWoNumbers` extract → `useConflictCheck`; `plannedHours/actualHours` додано в `WorkOrderDetail` interface у `[id]/PageClient.tsx`.
+
+Baseline check: `pnpm --filter @sto/api test` → 701 pass; `apps/web/vitest run` → **1 FAIL** (`CreateWorkOrderModal — Bug #381`). Перед сесією червоний — release-blocker. Розкопано двошарову регресію.
+
+---
+
+### Bug #429 — [HIGH] test-staleness / web — mock `@/lib/format` у CreateWorkOrderModal.test НЕ оновлений після extract `localDateTimeToISO` (refactor 4a70b0f9) → Bug #381 regression test хибно-зелений у логіці race-window, але fail-ить на runtime через "No export"
+
+**Файл (тест):** `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.test.tsx:18-23`
+**Файл (компонент):** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:27` (import `localDateTimeToISO` з `@/lib/format`)
+**Severity:** HIGH (release-blocker — baseline-red, ховає регресії)
+**Категорія:** test-staleness / refactor-followup
+
+**Симптом:** Vitest показує:
+
+```
+✗ Bug #381: не закривається при overlay-кліку поки saving=true
+  expected "spy" to not be called at all, but actually been called 1 times
+```
+
+**Сигнал діагностики (DEBUG console.log):**
+
+```
+[DEBUG create] catch — error= Error: [vitest] No "localDateTimeToISO" export is defined
+                                            on the "@/lib/format" mock. Did you forget to return it from "vi.mock"?
+[DEBUG create] finally — setSavingBoth(false)
+```
+
+**Причина:** Commit `4a70b0f9` («refactor(simplify): extract localDateTimeToISO to format.ts») переніс `localDateTimeToISO` з in-line у `format.ts`. CreateWorkOrderModal тепер імпортує його з `@/lib/format` (3 call-sites: conflict-check effect + create() payload + save() payload). Тест мокає `@/lib/format` через `vi.mock('@/lib/format', () => ({ kyivToday, formatCounterpartyName }))` — БЕЗ `localDateTimeToISO`.
+
+Сценарій:
+
+1. Тест клікає «Створити наряд» → `create()` запускається → `setSavingBoth(true)` → `savingRef.current = true`
+2. У `try` блоці викликає `localDateTimeToISO(form.plannedStartAt)` як частина POST `/work-orders` body
+3. Mock не має такого export → throws `No "localDateTimeToISO" export` НЕГАЙНО (синхронно під час побудови JSON.stringify body)
+4. `catch` ловить → `finally` запускає `setSavingBoth(false)` → ref повертається на false
+5. Тест натискає Escape → `handleModalClose` бачить `savingRef=false` → onClose() викликається → assert fail
+
+Race-window що тест намагається протестувати взагалі НЕ перевіряється — pending POST ніколи не доходить до `await`, бо exception падає раніше.
+
+**Фікс:** додати pass-through stubs для всіх `format.ts` exports у mock. DST-aware логіка покрита окремо у `format.test.ts` — для CreateWorkOrderModal достатньо identity-mapping `(v) => v` (повертає рядок як є). Також додано stubs для `fmtMoney/fmtInt/fmtDate/fmtDateTime/fmtShortDateTime/fmtTime` — defensive.
+
+**Регресія-guard:** після цього мок-extension тест Bug #381 ВЖЕ покриває справжній race-window (виявив парний Bug #430). Будь-яке майбутнє додавання нового експорту до `format.ts` що використовується в CreateWorkOrderModal — TS компіляція пройде зеленим (типи живуть лише у компоненті), але тест fail-не з тим самим `No "X" export` patternom → автоматично сигналізує необхідність mock-update.
+
+**Підхід до уникнення повторно:** для критичних компонентів з 5+ depenency-моками краще використовувати `vi.importActual` + override тільки нестабільних:
+
+```typescript
+vi.mock('@/lib/format', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/format')>('@/lib/format');
+  return { ...actual, kyivToday: () => '2026-06-08' };
+});
+```
+
+У нашому випадку залишаємо явні stubs щоб тест не залежав від реальних Intl.\* polyfills у jsdom.
+
+**Статус:** [x] виправлено
+
+---
+
+### Bug #430 — [HIGH] frontend / race window — `handleModalClose` читає `saving`/`transitioning` з React state замість ref → setSaving(true) не flush'иться до Escape press під час pending POST → guard обходиться, модалка закривається з orphan-WO
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:1227-1230` (handleModalClose) + `:314-336` (savingRef/transitioningRef + wrapper setters)
+**Severity:** HIGH (data-integrity: orphan WO, silent failed POST не показує користувачу)
+**Категорія:** frontend / race-condition / data-integrity
+
+**Опис:** Виявлений ТІЛЬКИ після фіксу Bug #429 (mock extension дозволив тесту реально дістатися pending POST → race-window відкритий).
+
+`handleModalClose` був:
+
+```typescript
+const handleModalClose = useCallback(() => {
+  if (saving || transitioning) return; // ← captures stale React state
+  onClose();
+}, [saving, transitioning, onClose]);
+```
+
+Race-сценарій (з реальним pending POST):
+
+1. Користувач клацає «Створити наряд» → `create()` запускається
+2. Синхронно: `setSaving(true)` (React batches → state НЕ flush'иться до next render)
+3. `await apiFetch('/work-orders', ...)` — pending promise → event handler **не завершився**
+4. React НЕ викликав re-render бо event handler що тригернув state update ще не повернувся (batching до commit)
+5. handleModalClose v1 з closure'ом `saving=false` залишається активним → Modal handleKey зберігає reference до нього через deps `[onClose]` (onClose-prop stable; handleModalClose reference також stable бо deps `[saving, transitioning, onClose]` не змінились без re-render)
+6. Користувач натискає Escape → Modal handleKey → handleModalClose v1 → `if (false || false) return` — НЕ блокує → `onClose()` викликається → Modal unmount-иться
+7. POST `/work-orders` завершується у фоні → можливо успішно (orphan WO у БД без UI) або з помилкою (silent, користувач не бачить toast)
+
+Чому DEBUG це показав: `savingRef.current === true` в `create()`, АЛЕ `savingRef.current === false` через 200ms у handleModalClose — бо у тесті `finally setSavingBoth(false)` пройшов через помилку Bug #429. Після фіксу #429 без ref-pattern handleModalClose ВСЕ ОДНО мав би race window — це реальний продакшн-bug, не лише test-artifact.
+
+**Фікс:** двошарова state — `useRef` для синхронного guard-read + `useState` для re-renders/disabled props. Wrapper-сетери `setSavingBoth(v)` / `setTransitioningBoth(v)` оновлюють обидва. handleModalClose читає виключно з ref → бачить актуальне значення відразу після `setSavingBoth(true)`, БЕЗ чекання React commit phase.
+
+```typescript
+const savingRef = useRef(false);
+const transitioningRef = useRef(false);
+const setSavingBoth = useCallback(v => {
+  savingRef.current = v;
+  setSaving(v);
+}, []);
+// Усі set-callsites у create/save/doTransition тепер використовують setSavingBoth/setTransitioningBoth.
+
+const handleModalClose = useCallback(() => {
+  if (savingRef.current || transitioningRef.current) return;
+  onClose();
+}, [onClose]); // ← saving/transitioning з deps прибрані бо тепер ref-driven
+```
+
+**Регресія-guard:** Vitest `Bug #381` тепер ПЕРЕВІРЯЄ що Escape під час pending POST НЕ викликає onClose. Парний test для `transitioning` поки відсутній — додати у наступному review-циклі.
+
+**Чому це не каверзний обхід React batching:** ref-pattern прийнятний для guard-read у async flow де між `setX(true)` і реальним await є інша user-action (Escape/click). Альтернатива — `flushSync(() => setSaving(true))` — синхронно flush state, але блокує всі сусідні pending updates і важче дебажити (можна попасти у "Cannot flushSync inside lifecycle method"). Ref дає той самий ефект з меншою церемонією.
+
+**Парний шаблон для майбутнього (sto-dev):** будь-який async event handler що:
+
+- встановлює state X (флаг blocking-у)
+- блокується на `await externalCall()`
+- УЧАСНИКАМИ якого є guard у іншому обробнику (Escape/click/popstate)
+
+— повинен використовувати `useRef` для guard-read, бо React batching не гарантує re-render до завершення event handler з pending promise. State без ref правильно ТІЛЬКИ для UI-disabled (рендер-залежних) полів.
+
+**Статус:** [x] виправлено
+
+---

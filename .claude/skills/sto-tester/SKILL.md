@@ -579,6 +579,8 @@ done
 - [ ] **Sequential FE mutation chain without rollback on later-step failure (Bug #404):** будь-яка async UI-функція що робить **2+ послідовних** `apiFetch(/X/, {method:'POST'})` де крок 1 змінює state-A (FSM transition / create-related-resource), а крок 2 змінює state-B (create-invoice / charge-payment / send-notification) — потребує rollback крок-1 у catch коли крок-2 провалюється. Сценарій: `await transition(WO, INVOICED); await createInvoice(WO);` — якщо invoice POST throws (validation, network, race), WO застряг у INVOICED без рахунку → FSM-інваріант "INVOICED = invoice exists" порушений. Pattern: захопити `originalStatus` ПЕРЕД step 1, прапор `transitionedHere=false`, після успіху step 1 → `transitionedHere=true`. У catch (поза branch що очікувано-успішний як conflict-409): `if (transitionedHere) try { await transition(WO, originalStatus) } catch {/* warn */}`. Альтернатива (бажана): атомарний backend endpoint що робить обидва steps у `$transaction`. Grep: `grep -rnE "await apiFetch\(.*transition.*\);" apps/web/src --include="*.tsx" -A 5` — для кожного match перевірити чи наступний await є мутацією і чи catch робить rollback. Severity HIGH (порушує business invariant). Регресія-guard: vitest mock step1→200, step2→500 → assert наступний viкlik transition→originalStatus.
 - [ ] **Inline ad-hoc modal/dialog без використання shared `<Modal>` (Bug #408):** будь-який `<div className="fixed inset-0 z-[XX] flex items-center justify-center bg-black/50">` всередині `apps/web/src/components/ui/*.tsx` або `apps/web/src/app/**/*.tsx` що НЕ обгорнутий у shared `<Modal>` — потенційний пропуск modal affordances. Перевірити: (а) `onKeyDown` listener для ESC що закриває; (б) `onClick` на overlay + `e.stopPropagation()` на inner div; (в) `autoFocus` на головну кнопку (або focus trap логіка); (г) `role="dialog" aria-modal aria-labelledby` (часто фіксовано sto-review). Хоча shared `<Modal>` має все це вбудовано, інлайн-копії повторюють виключно макет і обходять shared behaviors. Grep: `grep -rnE "fixed inset-0 z-\[\d+\].*bg-black/50" apps/web/src --include="*.tsx" -A 2` → для кожного match перевірити: чи `onKeyDown` на wrapper? Чи `onClick` на overlay? Чи `autoFocus`? Якщо ні — bug. Парне: важливо guard `!isLoading` щоб не закрити dialog під час in-flight action. Severity MEDIUM (a11y + UX, не release-blocker). Регресія-guard: vitest `userEvent.keyboard('{Escape}')` закриває.
 - [ ] **Hardcoded `0`/`false`/`null` у side-channel mutation що дублює canonical create (Bug #406):** будь-який `tx.<Model>.create({ data: { vatRate: 0, ... } })` або similar copy-from-source mutation де canonical create-метод (`addLine`/`addX`/`createX`) використовує `dto.vatRate ?? <DEFAULT>` АБО читає `<DEFAULT>` з OrganisationSettings — копія повинна використати ТЕ САМЕ дефолтне значення. Сценарій (Bug #406): `addLine` дефолтить `vatRate=20`; `refreshFromWorkOrder` (alternate endpoint) hardcode-ить `vatRate: 0` → totalVat завжди 0 → ПДВ-облік ламається. Інші risk-spots: `discountPercent: 0`, `currencyCode: 'UAH'`, `paymentDays: 14`, `warrantyDays: 0`. Grep для виявлення: спочатку знайти canonical defaults (`grep -rnE "vatRate:\s*dto\.vatRate\s*\?\?\s*\d+" apps/api/src/modules --include="*.service.ts"`), потім alternate mutations у тому ж модулі (`grep -rnE "vatRate:\s*0\b|currencyCode:\s*'UAH'" apps/api/src/modules --include="*.service.ts"`) → mismatch = bug. Pattern fix: extract `const DEFAULT_VAT = 20` constant у service (або читати з OrganisationSettings), використати у обох. Severity HIGH для фінансових полів (ПДВ/discount/currency). Парне з Bug #360 (auto-create child ignores parent settings inheritance).
+- [ ] **`useState` guard у async handler з pending `await` між set і guard-read (Bug #430):** будь-який `handleClose`/`handleCancel`/`handleDismiss`/`handleEscape` що читає React state (`saving`, `loading`, `transitioning`, `submitting`) у тілі — race-prone якщо парний async handler робить `setX(true)` → `await externalCall()`. React batching: state-flush НЕ відбувається до завершення event handler; pending `await` тримає handler open → handleClose v1 з closure `state=false` живий → guard обходиться → modal закривається на pending POST → orphan data. Grep: `grep -rnE "if \((saving|loading|transitioning|submitting)\)\s*return" apps/web/src/components --include="*.tsx" | grep -v "Ref\.current"` — кожен match читає state замість ref. Cross-check: `grep -rnE "set(Saving|Loading|Transitioning|Submitting)\(true\)" apps/web/src/components --include="*.tsx" -A 3` → знайти парний `await apiFetch\|await fetch` — якщо є, race-window CONFIRMED. Фікс-pattern: двошарова state — `useState` для render (disabled-props/spinners) + `useRef` для guard-read у async paths. Wrapper-сетер `setXBoth(v)` оновлює обидва. Guard у handleClose читає **виключно** з ref. Регресія-guard vitest: pending Promise mock (`new Promise(resolve => { resolveFn = resolve; })`) → click submit → keyboard Escape → assert onClose NOT called. Severity: HIGH (data-integrity: orphan rows, silent failed POSTs)
+- [ ] **`vi.mock(...)` зі shared lib НЕ оновлений після refactor-extract (Bug #429):** будь-який `refactor(simplify|extract)` commit що додає нові exports у shared lib (`apps/web/src/lib/*.ts`, `@/hooks/*`, `@sto/shared`) і модифікує компонент щоб імпортувати їх — ОБОВ'ЯЗКОВО перевірити кожний test що мокає той же модуль. Grep: `git diff HEAD~N HEAD -- "apps/web/src/lib/*.ts" "apps/web/src/hooks/*.ts" | grep "^+export"` → для кожного нового export `<X>`: `grep -rln "vi.mock\(['\"]@/lib/<libName>['\"]" apps/web/src --include="*.test.tsx"` → для кожного матчу перевірити чи містить `<X>:` у returned object → якщо ні → stale mock. **Симптом runtime:** тест fail'ить за НЕ ПОВ'ЯЗАНИМ assert (наприклад спостережувана state assertion), а не за "missing export" — бо exception ловиться у `try/catch` у компоненті, `finally` нормалізує state. DEBUG-перевірка: тимчасові `console.log` у компоненті `try/catch/finally` блоки → у логах `[catch] Error: No "X" export is defined on the "@/lib/Y" mock`. Фікс: додати pass-through stub для нового export (identity-mapping `(v) => v` достатньо якщо тест не залежить від DST/Intl-поведінки). Альтернатива (preferable): `vi.mock(..., async () => { const actual = await vi.importActual(...); return { ...actual, override: stub }; })` — only override what test controls. Severity: HIGH (release-blocker, ховає інші регресії). Парний шаблон з Bug #430: stale mock ховав race-window 10+ commit-ів — після фіксу mock, real bug випливає назовні.
 - [ ] **Review-fix completeness audit для крос-файлових патернів (Bug #341):** будь-який review-fix commit `fix(review): replace X with Y` що чіпає **N файлів** (наприклад заміна `.catch(() => {})` на `console.warn`) — після кожного такого commit пройти **ВЕСЬ codebase** на той самий патерн і переконатись що review знайшов УСІ файли. Grep-команда має бути така ж яка вживалась у review, але БЕЗ filter по changed-files. Типові пропуски: (а) сторінки `[id]/PageClient.tsx` коли review працював зі сторінкою у root (`/X/page.tsx`); (б) tabbed-content (`*Tab.tsx`) поза основним route файлом; (в) sub-components всередині той самий сторінки; (г) shared hooks/utilities у `apps/web/src/hooks` чи `lib`. Парний сигнал у git log: `git log --oneline | grep "fix(review)" | head -3` — для останнього review-fix-commit взяти grep-паттерн з нього (наприклад `\.catch(() => {})`) і виконати `grep -rn "<pattern>" apps/web/src --include="*.tsx" --include="*.ts" | grep -v <вже-виправлені>` → нові match = upskipped review (BUG нової tester-сесії). Виключення з cleanup: легітимні випадки документуються у самому місці (toast-double-protection, optional PWA SW, fire-and-forget telemetry) — тестер відрізняє за наявністю парного user-feedback каналу (toast/setError/console.warn вище у фукнції). Severity: успадковує severity оригінального review-fix bug-у. Grep шаблон: `git show --stat <last-review-commit> -- '*.tsx' '*.ts' | awk '/^ /{print $1}'` — список файлів review-fix; для кожного знайденого згодом match → перевірити чи серед них. Якщо ні → bug.
 
 ---
@@ -970,6 +972,142 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-11 — Stale vi.mock для shared module після refactor-extract (Bug #429) — frontend / test-staleness / hides regression-window
+
+**Сигнал:** Vitest падає НЕ за тим assert що тест перевіряє: тест очікує race-window (`expect(onClose).not.toHaveBeenCalled()`), а runtime trace показує що `await apiFetch(...)` throws ДО race-window взагалі відкривається. Якщо запустити з тимчасовими `console.log` всередині try/catch/finally — побачите `[catch] Error: No "X" export is defined on the "@/lib/Y" mock`. Race-window не тестується — тест хибно-зелений за іншою причиною (catch+finally нормалізують стан).
+
+**Причина виникнення:** `refactor(simplify)` commit видалив inline helper з компонента і виніс його в `@/lib/<X>`. Компонент тепер імпортує `import { newHelper } from '@/lib/<X>'`. Тестовий файл мокає `@/lib/<X>` через `vi.mock('@/lib/<X>', () => ({ existingHelper1, existingHelper2 }))` — БЕЗ нового `newHelper`. TS-компіляція зелена (тест не використовує сам новий експорт у assert), unit-test runner попереджає лише runtime при першому виклику компонентом. Якщо компонент викликає `newHelper` всередині async event handler у `try`-блоці — exception ловиться catch → силенто ховається у setError. Зовнішній observable стан (onClose call count, side effects) корумпується через `finally` що скидає flag-state.
+
+**Парне поглиблення:** старий passing-тест #381 захищав не race-window а ту функцію setError що показує помилку (теж не falsy у тестових assert). Цей патерн **double-hide**:
+
+1. Refactor видаляє helper з компонента → mock не потрапляє у refresh-pass
+2. Test continues to pass for unrelated reason (catch nothing, finally restores state)
+3. Реальний race-window bug у компоненті (Bug #430) залишається невиявленим багато commit'ів
+4. Лише коли інший фактор змусить test fail (e.g. зміна mock що відкрила exception як спостережувану побічну дію) — race window випливає назовні
+
+**Підхід до виявлення:**
+
+1. **Перед запуском повного vitest** після refactor: `git diff HEAD~N HEAD -- "apps/web/src/lib/*.ts"` → знайти нові `export function/const`.
+2. Для кожного нового export `<X>` зі shared lib-модуля: `grep -rln "vi.mock\(['\"]@/lib/<libName>['\"]" apps/web/src --include="*.test.tsx"` → для кожного матчу перевірити чи містить `<X>:` у returned object → якщо ні → potential stale mock.
+3. Якщо тест очікує race-window поведінку АЛЕ fail з не-related assert message — додати DEBUG console.log у компонент `try/catch/finally` блоки → перевірити чи catch ловить mock-export error (sign: `Error: No "X" export is defined`).
+4. Запустити повний vitest після **кожного** refactor-extract commit'у — НЕ покладатись що TS green = mock current.
+
+**Підхід до фіксу:**
+
+1. Додати pass-through stub для нового export у vi.mock — identity-mapping `(v) => v` достатньо якщо тест не залежить від DST/Intl поведінки.
+2. ДОДАТКОВО додати stubs для **усіх** інших exports того ж модуля що компонент може импортувати — defensive проти майбутніх refactor-cycles.
+3. **Альтернатива (preferable для критичних компонентів):** `vi.mock('@/lib/X', async () => { const actual = await vi.importActual<typeof import('@/lib/X')>('@/lib/X'); return { ...actual, override: stub }; })` — only override what test actually controls, рештa йде з real impl. Обмеження: deterministic behaviour (kyivToday) залишається controllable, але DOM/timezone-залежне stays real.
+4. **Обов'язково** перезапустити повний test-suite після mock-update — інший прихований race може випливти (як Bug #430).
+
+**Severity:** HIGH (release-blocker → ховає інші регресії; reverse-incentive — тест стає "passing" як no-op, false sense of security)
+
+**Де шукати ще:**
+
+- Усі `apps/web/src/**/__tests__/*.test.tsx` що мокають shared `@/lib/`, `@/hooks/`, `@sto/shared` модулі.
+- Будь-яка `vi.mock('@/lib/<X>', () => ({ ... }))` форма (object literal без `vi.importActual`) — потенційно stale при refactor.
+- **Інверсивний випадок:** тест мокає компонент-prop callback (e.g. `onCounterpartySelected`); компонент після refactor тепер викликає його з новим аргументом — TS green але test assert на старому argument shape → hides regression.
+- Грeп: `grep -rnE "vi\.mock\(['\"]@/" apps/web/src --include="*.test.tsx" | wc -l` — отримати baseline кількість, після refactor перевірити кожний.
+
+**Реальний приклад (Bug #429):**
+
+```typescript
+// apps/web/src/components/ui/__tests__/CreateWorkOrderModal.test.tsx
+// ❌ ДО — застаріле після commit 4a70b0f9 (extract localDateTimeToISO)
+vi.mock('@/lib/format', () => ({
+  kyivToday: () => '2026-06-08',
+  formatCounterpartyName: ...,
+}));
+
+// ✓ ПІСЛЯ — pass-through для всіх exports що компонент може імпортувати
+vi.mock('@/lib/format', () => ({
+  kyivToday: () => '2026-06-08',
+  formatCounterpartyName: ...,
+  isoToKyivLocalDateTime: (iso) => (iso ? String(iso) : ''),
+  localDateTimeToISO: (v) => (v ? v : undefined),
+  kyivDateTimeToISO: (date, time) => `${date}T${time}:00.000Z`,
+  fmtMoney: (n) => (n == null ? '—' : String(n)),
+  fmtInt: (n) => (n == null ? '—' : String(n)),
+  fmtDate: (d) => (d ? String(d) : '—'),
+  fmtDateTime: (d) => (d ? String(d) : '—'),
+  fmtShortDateTime: (d) => (d ? String(d) : '—'),
+  fmtTime: (d) => (d == null ? '—' : String(d)),
+}));
+```
+
+---
+
+### 2026-06-11 — React state guard у async event handler race-window (Bug #430) — frontend / race-condition / data-integrity
+
+**Сигнал:** Modal/dialog/overlay має FSM-блокуючий стан (`saving`, `transitioning`, `submitting`, `loading`) АЛЕ guard у `onClose`/`handleClose` читає React state через closure useCallback з deps `[saving, ...]`. Async event handler що тригерить state-flag робить:
+
+1. Sync `setSaving(true)` всередині click handler.
+2. Block на `await externalCall()` (pending promise).
+3. Інший user input (Escape/click/popstate) спрацьовує МІЖ цими кроками.
+
+React batching: state update викликаний з event handler НЕ flush'иться у DOM до завершення handler-функції (return або throw). Pending `await` НЕ завершує функцію → no re-render → useCallback з deps `[saving]` НЕ створює нову reference → Modal handleKey closure ще тримає стару `onClose=handleClose v1` з `saving=false`. Натиск Escape → handleClose v1 → guard `if (saving) return` бачить `false` → onClose() викликається → modal закривається на pending POST → orphan data.
+
+**Причина виникнення:** Розробник думає що `setSaving(true)` синхронно блокує `handleClose` — це звичайна інтуіція з clear/intentional flow. React 18 automatic batching робить це **не миттєвою істиною**: state update visible лише після event handler return. Якщо handler `await`-ить → render заблокований доки promise resolve. Цей race window відкритий рівно стільки часу як external API call (typically 100-2000ms — більше ніж достатньо для intent-action).
+
+**Подвійний-приховувач:** наш Bug #381 існував ~10 commit-ів бо stale mock (#429) ховав справжню race (#430). Test passed тому що catch+finally кидали state на false, що збігалося зі стартовим станом → assertion `onClose.not.toHaveBeenCalled()` був true з невірної причини. Real bug: orphan WO у БД, silent failed POST не показує toast користувачу.
+
+**Підхід до виявлення:**
+
+1. Grep усі `handleClose`/`handleCancel`/`handleDismiss`/`handleEscape` у components: `grep -rn "if (saving\|if (loading\|if (transitioning\|if (submitting" apps/web/src/components --include="*.tsx" | grep -v ".test."`
+2. Для кожного match: перевірити чи guard читає state (`saving`) чи ref (`savingRef.current`). State → potential race.
+3. Cross-check: знайти `await apiFetch\|await fetch\|await axios` після setSaving(true) у тому ж компоненті. Якщо є — race-window CONFIRMED.
+4. Контр-приклад без race: `setSaving(true)` synchronously followed by `await new Promise(setTimeout)` тільки для UX-debounce (немає external call що блокує неінтерпретовано) — теж потенційний race але severity нижчий.
+
+**Підхід до фіксу:**
+
+1. Двошарова state: `useState` (для disabled-props, loading-spinners — render-залежна) + `useRef` (для guard-read у async event paths).
+2. Wrapper-сетер `setSavingBoth(v)` оновлює обидва — `savingRef.current = v; setSaving(v)`. Виклики у `create()`/`save()`/`transition()` ОБОВ'ЯЗКОВО йдуть через wrapper.
+3. Guard у `handleClose` читає **виключно** з ref: `if (savingRef.current || transitioningRef.current) return`. Deps useCallback зменшуються до `[onClose]`.
+4. **Альтернатива (worse):** `flushSync(() => setSaving(true))` — синхронно flush state, але блокує сусідні pending updates, важче debug, може кидати "Cannot flushSync inside lifecycle method". Ref pattern легший і прозоріший.
+5. Регресія-тест: Vitest з pending Promise mock на external call → click submit → keyboard Escape → expect onClose NOT called. **Обов'язково** з mock що блокує промісс (`new Promise(resolve => { resolveCreate = resolve; })`), не `Promise.resolve(data)` (моментально).
+
+**Severity:** HIGH (data-integrity: orphan rows у БД, silent failed mutations не показані користувачу)
+
+**Де шукати ще:**
+
+- Усі modal-компоненти з `saving`/`transitioning`/`submitting` state: `apps/web/src/components/ui/*Modal.tsx`, `apps/web/src/app/(app)/**/page.tsx` що мають FSM transitions з async API call.
+- Wizard/multi-step форми де `step.advance()` робить `await api.validate()` — Escape між submit і resolve.
+- Confirm-dialog patterns де `onConfirm` робить async work + parent має okay-щодо-close-on-confirm — те ж саме.
+- Грeп: `grep -rnE "useCallback.*saving|useCallback.*loading|useCallback.*submitting" apps/web/src --include="*.tsx"` → перевірити чи guard-checks використовують ref.
+
+**Реальний приклад (Bug #430):**
+
+```typescript
+// ❌ ДО — race window
+const [saving, setSaving] = useState(false);
+const handleModalClose = useCallback(() => {
+  if (saving || transitioning) return;  // ← stale closure capture
+  onClose();
+}, [saving, transitioning, onClose]);
+
+const create = async () => {
+  setSaving(true);  // batched, not flushed yet
+  await apiFetch('/work-orders', { method: 'POST', ... });  // ← race window opens
+  // ...
+};
+
+// ✓ ПІСЛЯ — ref-pattern
+const [saving, setSaving] = useState(false);
+const savingRef = useRef(false);
+const setSavingBoth = useCallback((v) => { savingRef.current = v; setSaving(v); }, []);
+
+const handleModalClose = useCallback(() => {
+  if (savingRef.current || transitioningRef.current) return;  // ← always current
+  onClose();
+}, [onClose]);  // deps reduced — handleModalClose reference stable
+
+const create = async () => {
+  setSavingBoth(true);  // synchronous ref update + queued state update
+  await apiFetch('/work-orders', { method: 'POST', ... });
+};
+```
+
+---
 
 ### 2026-06-10 — Asymmetric-write новий nullable col у clone()/copy mutation (Bug #426) — backend / data integrity / silent loss
 

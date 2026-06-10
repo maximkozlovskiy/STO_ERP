@@ -313,6 +313,26 @@ export function CreateWorkOrderModal({
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  // Bug #381 regression: handleModalClose читає `saving`/`transitioning` через ref —
+  // setSaving(true) у `create()` запускається СИНХРОННО, але React батчить state-flush
+  // до закінчення event-handler. Pending POST `/work-orders` блокує закінчення →
+  // ні re-render, ні нової handleModalClose з оновленим closure. Натиск Escape між
+  // setSaving(true) та resolve POST → старий handleModalClose v1 з `saving=false` →
+  // Modal закривається попри `if (saving) return` guard. Ref читає синхронну,
+  // не-React'івську версію стану — guard завжди бачить актуальне значення.
+  const savingRef = useRef(false);
+  const transitioningRef = useRef(false);
+  // Wrapper sets both ref (синхронно) і React state (для re-render). Виклики
+  // у `create()` / `save()` / `transition()` ОБОВ'ЯЗКОВО йдуть через ці wrapper-и,
+  // інакше `handleModalClose` не побачить актуального значення під час Escape race.
+  const setSavingBoth = useCallback((v: boolean) => {
+    savingRef.current = v;
+    setSaving(v);
+  }, []);
+  const setTransitioningBoth = useCallback((v: boolean) => {
+    transitioningRef.current = v;
+    setTransitioning(v);
+  }, []);
   const [error, setError] = useState('');
   const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
   const [vatRate, setVatRate] = useState(0);
@@ -828,7 +848,7 @@ export function CreateWorkOrderModal({
       return;
     }
 
-    setSaving(true);
+    setSavingBoth(true);
     setError('');
 
     // Auto-flush in-progress rows that the user filled but never clicked "+".
@@ -911,13 +931,13 @@ export function CreateWorkOrderModal({
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка створення наряду');
     } finally {
-      setSaving(false);
+      setSavingBoth(false);
     }
   };
 
   const save = async () => {
     if (!workOrderId) return;
-    setSaving(true);
+    setSavingBoth(true);
     setError('');
     try {
       await apiFetch(`/work-orders/${workOrderId}`, {
@@ -979,7 +999,7 @@ export function CreateWorkOrderModal({
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка збереження');
     } finally {
-      setSaving(false);
+      setSavingBoth(false);
     }
   };
 
@@ -996,7 +1016,7 @@ export function CreateWorkOrderModal({
       });
       if (!ok) return;
     }
-    setTransitioning(true);
+    setTransitioningBoth(true);
     setError('');
     try {
       await apiFetch(`/work-orders/${workOrderId}/transition`, {
@@ -1008,7 +1028,7 @@ export function CreateWorkOrderModal({
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
     } finally {
-      setTransitioning(false);
+      setTransitioningBoth(false);
     }
   };
 
@@ -1197,11 +1217,15 @@ export function CreateWorkOrderModal({
   // у deps — це валідно, бо коли вони міняються поведінка clos має змінитися
   // (no-op під час saving). Краща альтернатива — додаткова ranges-state, але
   // useCallback з 2 deps достатній.
+  // Bug #381 regression: читаємо `saving`/`transitioning` ВИКЛЮЧНО з ref'ів —
+  // вони оновлюються СИНХРОННО у setSavingBoth/setTransitioningBoth ДО React state-flush.
+  // Без ref'а closure захоплює застарілий saving=false коли `create()` ще у `await POST`
+  // → Modal закривається на Escape всупереч guard'у (race window що ловить test #381).
   const handleModalClose = useCallback(() => {
-    if (saving || transitioning) return;
+    if (savingRef.current || transitioningRef.current) return;
     setActiveTab('main');
     onClose();
-  }, [saving, transitioning, onClose]);
+  }, [onClose]);
 
   // Column header widths (shared between table header and input row grid)
   return (
