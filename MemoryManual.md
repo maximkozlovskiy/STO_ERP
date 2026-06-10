@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+4c930d5d perf(optimize): batch xlsx imports + stabilize dashboard fallbacks + estimate Intl singletons
 7c514e32 simplify: 3-cycle cleanup — shared prisma-errors util, GOOD_UOM_SELECT, parallel tx reads
 c01ba672 perf(optimize): stabilize linkedCounts {} fallback to module-level frozen const
 90238a2c fix(work-orders): store UnitOfMeasure.id not GoodUoM.id in WorkOrderPart — Bug #420
@@ -57,9 +58,34 @@ ee938240 feat(picker): replace flat category sidebar with hierarchical CategoryT
 4b930538 fix(tester): Bugs #385-#386 — EntityPickerField focus + CreateWorkOrderModal test
 c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
-Дата: 2026-06-09
+Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Latest optimize: 2026-06-09 (perf scope: refreshFromWorkOrder TOCTOU close, HEAD a9a5c3ec):
+Latest optimize: 2026-06-10 (perf scope: xlsx batch imports + dashboard fallbacks + estimate Intl, HEAD 4c930d5d):
+  • xlsx.applyPricingFromList: per-item $transaction loop (1000 rows × BEGIN+COMMIT ×
+    30-50ms RTT = 30-50 sec) → плановані changes у Plan[] → chunks of 100 у
+    $transaction з priceHistory.createMany. ~10× прискорення для batch імпорту.
+    Pattern узгоджений з pricing.applyRuleToGoods + purchase-orders.applyPricing.
+  • xlsx.importPOLines / importSDLines / importWOParts: sequential update/create
+    per row (post-prefetch але без batching) → updatesPlan + createsPlan +
+    seenGoodIds dedup → Promise.allSettled(updates) + createMany(creates).
+    N RTT × 30-50ms → ~1 sec для 1000 рядків. Explicit dedup захищає xlsx-дублікати.
+  • Test mock update: priceHistory.create → createMany у xlsx.service.spec.ts
+    (4 assertions). Всі 693/693 API tests passed.
+  • dashboard/page.tsx: revenue + upcomingTO `?? []` → EMPTY_REVENUE/EMPTY_MAINTENANCE
+    module-level frozen consts (preemptive Bug #328 cascade prevention).
+  • estimate/[token]/page.tsx (public widget): inline `n.toLocaleString` ×
+    `new Date(...).toLocaleDateString` × table cells → module-level MONEY_FMT/
+    INT_FMT/DATE_FMT singletons (без імпорту lib/format для public bundle).
+  • calendar/CalendarSlotModal.tsx: inline `new Date(nowMs).toLocaleDateString(
+    'sv-SE', { timeZone: KYIV_TZ })` у handleSave → existing toDateString()
+    module-level singleton з calendar.utils.
+  • Skill self-improvement (Крок 7):
+    - "Per-item $transaction у row-importer циклах" — bulk import що відкриває
+      окрему транзакцію для КОЖНОГО рядка замість chunked batches.
+    - "Sequential update/create per-row post-prefetch у row-importer" — writes
+      все ще sequential після bulk read N+1 fix; pattern для allSettled+createMany.
+
+Latest optimize (попередній): 2026-06-09 (perf scope: refreshFromWorkOrder TOCTOU close, HEAD a9a5c3ec):
   • invoices.refreshFromWorkOrder: $transaction коментар обіцяв «RepeatableRead»
     але насправді default ReadCommitted (no isolationLevel) → bump до Serializable
     + inner re-check tx.invoice.findFirst({status:DRAFT}) + catch P2034 →

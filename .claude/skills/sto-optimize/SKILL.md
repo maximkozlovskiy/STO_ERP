@@ -568,6 +568,38 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-10 — Per-item `$transaction(callback, { timeout })` у row-importer циклах — bulk import що відкриває окрему транзакцію для КОЖНОГО рядка
+
+**Сигнал:** import-метод сервісу (приклад: `xlsx.applyPricingFromList`, `xlsx.importX`, bulk CRUD imports) має для кожного row окремий виклик `await this.prisma.$transaction(async tx => { ...mutation + side-effect... }, { timeout })`. Виглядає як «кожен рядок атомарний» — і це правда, але overhead: 1000 рядків × BEGIN+COMMIT × у середньому 30-50ms RTT = 30-50 секунд для типового імпорту. Атрибут безпеки (atomicity per-row) досяжний батч-патерном (chunked tx по 100 рядків) — кожен chunk залишається атомарним, а кількість BEGIN/COMMIT падає у 100 разів.
+
+**Причина виникнення:** import пишеться як «для кожного row → знайти existing → зробити mutation → записати історію». Розробник природно обгортає trio (mutation + history record + side-effect) у tx — `await this.prisma.$transaction(async tx => {...})` — і ставить на місце поточної ітерації. Не помічається: (1) tx overhead amortized погано — N tx коштує N×BEGIN+COMMIT; (2) chunked-tx pattern уже існує у сусідніх сервісах (приклад: pricing.applyRuleToGoods + purchase-orders.applyPricing — обидва батчать по 100), але import-метод не наслідує його; (3) per-row tx не дає кращих гарантій ніж chunked tx з isolation = ReadCommitted (default) — якщо row N failed, попередні N-1 commit'нуті в обох випадках.
+
+**Підхід до виявлення:** grep `for \(const \w+ of \w+\) \{[\s\S]{0,500}await this\.prisma\.\$transaction\(` у `*.service.ts`. Для кожного збігу перевірити: (1) чи тіло циклу містить `$transaction` (не tx параметр зовнішнього tx); (2) чи кожна ітерація обробляє ОДИН entity з масиву (item-by-item processing); (3) чи tx містить лише 2-3 кроки (mutation + 1-2 side-effects)? Якщо так — кандидат на батч у chunks. Не плутати з: (a) поодинокі $transaction для multi-step операції (там 1 tx коректно); (b) per-tenant ітерації у bootstrap (там tx містить багато cross-aggregate змін).
+
+**Підхід до фіксу:** двофазний refactor: (1) **plan phase** — у циклі через items зібрати масив `Plan[]` (`{ id, ...changes }`) у пам'яті, без mutations. Filter early-skip cases (no change, validation failures) у details/errors arrays без tx; (2) **commit phase** — `for (let i = 0; i < plan.length; i += CHUNK) { const chunk = plan.slice(i, i+CHUNK); await prisma.$transaction(async tx => { for (const u of chunk) { await tx.X.updateMany({...}) } await tx.history.createMany({data: chunk.map(...)}) }, { timeout }) }`. CHUNK=100 типове число (короткі транзакції, мало lock contention, batch import не блокує інші users). updateMany з orgId guard зберігається. history через createMany. **Тести**: оновити мок — раніше `priceHistory.create` тепер `priceHistory.createMany` — assert callsites + спостерігати failure mode (mock `createMany` not function → TypeError).
+
+**Реальний impact:** для import 1000 рядків — 30-50 sec (1000 tx × 30-50ms) → 5-10 sec (10 chunks × 500-1000ms). Якщо багато рядків залишаються «без змін» (no-op skip), wall-clock падає ще більше — pre-filter поза tx. Cumulatively для admin batch-операцій (xlsx upload, year-end sync, bulk re-pricing) — UX покращується з «5 хвилин чекання» до «20 секунд».
+
+**Де шукати ще:** будь-який `import*X*Lines` / `applyPricingFromList` / `bulkUpdate*` / `bulkSync*` сервіс. Особливо: xlsx imports (POLines/SDLines/WOParts/goods/services/works/employees), csv imports, settings sync from cloud, bulk re-pricing, applyDiscount/applyMarkup batch operations. Перевіряти при додаванні нового batch endpoint — якщо в тілі циклу `$transaction` — обов'язково chunk.
+
+---
+
+### 2026-06-10 — Sequential update/create per-row у post-prefetch row-importer — bulk import де prefetch вже усуває N+1 reads, але writes залишаються sequential
+
+**Сигнал:** import-метод робить bulk prefetch (`goodsByKey`, `existingByGoodId` map) ДО циклу — це корисно (видалено read N+1). Але всередині `for (const row of rows)` тіло цикла все одно робить `if (existingId) { await prisma.X.update({ where: {id: existingId}, ... }) } else { await prisma.X.create({...}) }` — sequential. Видається безпечним бо «існуючий update не залежить від попереднього create» — і це правда, але кожен write — окрема RTT. На 100 рядків × 30ms RTT = 3 секунди тільки на writes. Альтернатива: updates паралель (unique by id, no contention) + creates у `createMany` (1 INSERT з усіма new rows). Не плутати з patternом «sequential `tx.X.create` loop у $transaction» (там tx серіалізує одне з'єднання) — тут writes ПОЗА tx, отже паралель безпечний.
+
+**Причина виникнення:** import пишеться як CRUD — «для кожного row, ще раз перевір чи існує, потім update або create». Розробник свідомо обирає for-await `try/catch` per row для error reporting (помилка у row N не зупиняє решту). Не помічається: (1) error-tracking працює і з `Promise.allSettled` — results map'ються 1:1 з input, для кожного маємо `fulfilled`/`rejected`; (2) creates безпечно групуються у createMany бо у `Plan[]` уже відфільтровано duplicates (dedup by goodId через Set ДО створення Plan). Сценарій xlsx з дубль-рядками (same sku двічі) — потенційне джерело багів — варто додати explicit dedupe з UA повідомленням.
+
+**Підхід до виявлення:** grep `for \(const \w+ of \w+\) \{[\s\S]{0,300}existingByGoodId\.get|existingById\.get|await this\.prisma\.\w+\.update[\s\S]{0,200}await this\.prisma\.\w+\.create` у `*.service.ts`. Для кожного збігу перевірити: (1) чи prefetch уже зроблено (bulk lookupByX); (2) чи update/create НЕ всередині $transaction; (3) чи rows обробляються незалежно (немає shared accumulator що залежить від попереднього row write). Якщо так — кандидат на parallel updates + batched creates.
+
+**Підхід до фіксу:** трифазний refactor: (1) **plan phase** — `updatesPlan: {id, ...changes, label}[]` + `createsPlan: Prisma.XCreateManyInput[]` + `seenGoodIds: Set<string>` для dedup. У циклі: dup check, FK resolve, push до updates або creates; (2) **updates parallel** — `Promise.allSettled(updatesPlan.map(u => prisma.X.update({ where: {id: u.id}, data: ... })))`; iterate results для error tracking; (3) **creates batched** — `if (createsPlan.length > 0) try { await prisma.X.createMany({data: createsPlan}); result.created += createsPlan.length } catch (e) { result.errors.push(...) }`. Error reporting збережено (per-row labels у updatesPlan, bulk-error для creates у єдиному catch). Dedup explicit — захищає від xlsx-дублікатів. **Важливо:** перевірити що Prisma type для XCreateManyInput відповідає required fields (orgId не nullable, FKs required); імпортувати `Prisma` namespace якщо ще не імпортовано.
+
+**Реальний impact:** для importPOLines 1000 рядків (типовий xlsx розмір): раніше 1000 sequential writes × 30-50ms = 30-50 sec → ~1 sec (parallel updates limited by connection pool; 1 createMany INSERT for all new). Для importWOParts (typically 50-200 lines) — 5-10 sec → < 1 sec. Найпомітніше на повільному WAN/VPN де RTT 50-100ms. Bonus: explicit dedup ловить xlsx duplicates і повертає UA повідомлення замість silent last-write-wins.
+
+**Де шукати ще:** будь-який `import*Lines` / `import*Items` / `bulkUpsert*` сервіс що: (a) уже має bulk prefetch (lookup map), (b) робить sequential write per row, (c) НЕ всередині $transaction. Особливо: PO lines, SD lines, WO parts, batch warranty creation, bulk employee permissions sync. При додаванні нового batch endpoint — обов'язково розділити updates/creates і застосувати allSettled+createMany pattern.
+
+---
+
 ### 2026-06-09 — Коментар обіцяє «RepeatableRead/Serializable» але `$transaction(callback, { timeout })` лишається default ReadCommitted — refresh/update методи що перепи��ують агрегатні стани
 
 **Сигнал:** усередині service-методу є `await this.prisma.$transaction(async tx => { ... }, { timeout: N })` БЕЗ `isolationLevel`. У коментарях вище — фраза на кшталт «inside tx (RepeatableRead) to prevent TOCTOU», «atomic recalc», «closes race window». Метод робить read-modify-write pattern: спочатку читає дочірні записи (`tx.workOrder.findFirst({include: lines, parts})`), потім `deleteMany` старі та `createMany` нові (приклад: invoice line refresh, totals recalc, snapshot rebuild). Pre-check виноситься поза $tx для швидкого 4xx — статус/існування перевіряється там, але всередині tx статус НЕ перевіряється повторно. Це класичний TOCTOU: між pre-check і tx-entry інший actor може змінити статус/додати дочірні рядки. Prisma з'єднання з PostgreSQL — default isolation = ReadCommitted; RepeatableRead/Serializable вмикаються ТІЛЬКИ через явний `isolationLevel` option. Коментар створює false sense of safety — code review проходить, бо «там же написано RepeatableRead», а насправді захист відсутній.
@@ -1833,6 +1865,8 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ CreateWorkOrderModal /units fetch seeded з cache:units ref-cache (warm via catalog/UnitsTab+GoodsTab) — instant UoM dropdown first-paint
 - ✅ invoices.createFromWorkOrder: workOrder tenant guard `findFirst({where, })` без select → narrow `select: {id, status, counterpartyId, totalAmount}` (4 поля замість 20+ row); -wire payload + V8 alloc у hot WO→Invoice flow
 - ✅ invoices.refreshFromWorkOrder: `$transaction` коментар обіцяв «RepeatableRead» але насправді default ReadCommitted (no isolationLevel) → bump до Serializable + inner re-check status DRAFT + catch P2034 → BadRequestException. Закриває race-window concurrent refresh/addLine/status-mutation. Симетрично з createFromWorkOrder (Bug #412 pattern)
+- ✅ xlsx.applyPricingFromList: per-item $transaction loop (1000 rows × BEGIN+COMMIT × 30-50ms RTT = 30-50 sec) → плановані changes у Plan[] → chunks of 100 у $transaction з priceHistory.createMany (10× прискорення для batch імпорту). Pattern узгоджений з pricing.applyRuleToGoods + purchase-orders.applyPricing
+- ✅ xlsx.importPOLines / importSDLines / importWOParts: sequential update/create per-row (post-prefetch але без batching) → updatesPlan + createsPlan + seenGoodIds dedup → Promise.allSettled(updates) + createMany(creates). N RTT × 30-50ms → ~1 sec для 1000 рядків
 
 **Frontend:**
 
@@ -1893,6 +1927,9 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ LinkedDocumentsPanel: local fmt(n) inline `n.toLocaleString('uk-UA', {...})` → thin proxy до `fmtMoney` (module-level Intl.NumberFormat singleton); до 500 invoices+500 payments × ререндери без per-call Intl alloc
 - ✅ work-orders/page.tsx: local formatDate manual `String().padStart()` → proxy `fmtDate` (module-level Intl.DateTimeFormat singleton); 20 рядків × 2 date cells × ререндери без new Date+template alloc
 - ✅ work-orders/page.tsx: `linkedCounts = {}` destructure default → `EMPTY_LINKED_COUNTS = Object.freeze({})` module-level frozen const — pre-empts Bug #328 cascade for `data?.X ?? {}` Object literal на page-level
+- ✅ dashboard/page.tsx: `data?.rows ?? []` (revenue) + `Array.isArray(maintenanceData) ? ... : []` (upcomingTO) → EMPTY_REVENUE/EMPTY_MAINTENANCE module-level frozen consts (preemptive Bug #328 cascade prevention)
+- ✅ estimate/[token]/page.tsx (public widget): inline `n.toLocaleString('uk-UA', {...})` + `new Date(...).toLocaleDateString` × table cells → module-level MONEY_FMT/INT_FMT/DATE_FMT singletons (без імпорту lib/format для public bundle)
+- ✅ calendar/CalendarSlotModal.tsx: inline `new Date(nowMs).toLocaleDateString('sv-SE', { timeZone: KYIV_TZ })` у handleSave → existing toDateString() module-level singleton з calendar.utils
 
 **DB:**
 
