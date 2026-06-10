@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+0c59b76f fix(sync): add plannedHours/actualHours to frontend WorkOrder types
 f6bb0ae3 docs(skills): add inline-component / context-value / mount-effect patterns to sto-optimize
 1436b639 perf(optimize): TabBar/TopShell re-render reductions + Context value memoization
 0141f8a7 fix(tester): Bugs #420-#425 — TabBar/modal restore flow fixes
@@ -77,6 +78,7 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest sync: 2026-06-10 (HEAD 0c59b76f — plannedHours/actualHours types):
 Latest review: 2026-06-10 (HEAD f2ef7758 — TabBar feat sweep):
   • IMPORTANT — minimizeModal не дедуплікувала: відкривання tab A → клік Minus давало дві вкладки на той самий WO. Фікс: dedupe по (modalKey + identity-keys у restoreProps: workOrderId/invoiceId/id), оновлюємо label на матчу.
   • IMPORTANT — CreateWorkOrderModal edit-fetch useEffect не мав cancelled-флагу. Перемикання між вкладками A→B під час in-flight A могло перезаписати свіжий стан B повільнішою A-відповіддю. Додав let cancelled + return () => cancelled = true; з guards у then/catch/finally.
