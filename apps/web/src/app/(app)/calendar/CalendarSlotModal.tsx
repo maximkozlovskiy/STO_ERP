@@ -698,17 +698,18 @@ export function CalendarSlotModal({
                 ? (() => {
                     const s = decimalHoursToHHMM(pendingSlot.startH);
                     const e = decimalHoursToHHMM(pendingSlot.endH);
+                    const startDmy = fmtKyivDate(`${date}T12:00:00Z`);
                     if (pendingSlot.endH < pendingSlot.startH) {
                       try {
                         const d = new Date(`${date}T12:00:00Z`);
                         d.setUTCDate(d.getUTCDate() + 1);
-                        const nextDay = d.toISOString().slice(0, 10);
-                        return `Новий слот ${date} ${s} – ${nextDay} ${e}`;
+                        const endDmy = fmtKyivDate(d.toISOString());
+                        return `Новий слот ${startDmy} ${s} – ${endDmy} ${e}`;
                       } catch {
-                        return `Новий слот ${date} ${s} – ${e}`;
+                        return `Новий слот ${startDmy} ${s} – ${e}`;
                       }
                     }
-                    return `Новий слот ${date} ${s} – ${e}`;
+                    return `Новий слот ${startDmy} ${s} – ${e}`;
                   })()
                 : `Новий слот на ${date}`}
           </h3>
