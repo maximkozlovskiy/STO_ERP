@@ -567,7 +567,13 @@ export function CalendarSlotModal({
       setError('Вкажіть час початку та завершення');
       return;
     }
-    if (form.endAt <= form.startAt) {
+    // overflow slot: endAt (next day, e.g. 10:30) < startAt (19:00) is valid
+    const [sh2, sm2] = form.startAt.split(':').map(Number);
+    const startMin = (sh2 ?? 0) * 60 + (sm2 ?? 0);
+    const nh2 = Number(form.normoHours);
+    const totalMin2 = startMin + Math.round((nh2 > 0 ? nh2 : 0) * 60);
+    const isOverflowSlot = totalMin2 > WINDOW_END * 60;
+    if (!isOverflowSlot && form.endAt <= form.startAt) {
       setError('Час завершення повинен бути після часу початку');
       return;
     }
@@ -606,7 +612,18 @@ export function CalendarSlotModal({
     // Bug #354: kyivDateTimeToISO замість `new Date(...).toISOString()`
     // local-парсингу без TZ. DST-aware (+02 зима, +03 літо).
     const startIso = kyivDateTimeToISO(date, form.startAt);
-    const endIso = kyivDateTimeToISO(date, form.endAt);
+    const endDateForIso = isOverflowSlot
+      ? (() => {
+          try {
+            const d = new Date(`${date}T12:00:00Z`);
+            d.setUTCDate(d.getUTCDate() + 1);
+            return d.toISOString().slice(0, 10);
+          } catch {
+            return date;
+          }
+        })()
+      : date;
+    const endIso = kyivDateTimeToISO(endDateForIso, form.endAt);
     if (!date || !form.startAt || !form.endAt || !startIso || !endIso) {
       setError('Вкажіть коректні дату та час');
       return;
@@ -689,7 +706,22 @@ export function CalendarSlotModal({
                 ? 'Перегляд слоту'
                 : 'Редагування слоту'
               : pendingSlot
-                ? `Новий слот ${decimalHoursToHHMM(pendingSlot.startH)}–${decimalHoursToHHMM(pendingSlot.endH)} на ${date}`
+                ? (() => {
+                    const startLabel = decimalHoursToHHMM(pendingSlot.startH);
+                    const endLabel = decimalHoursToHHMM(pendingSlot.endH);
+                    // endH < startH means overflow into next day
+                    if (pendingSlot.endH < pendingSlot.startH) {
+                      try {
+                        const d = new Date(`${date}T12:00:00Z`);
+                        d.setUTCDate(d.getUTCDate() + 1);
+                        const nextDay = d.toISOString().slice(0, 10);
+                        return `Новий слот ${startLabel}–${endLabel} на ${date}–${nextDay}`;
+                      } catch {
+                        return `Новий слот ${startLabel}–${endLabel} на ${date}`;
+                      }
+                    }
+                    return `Новий слот ${startLabel}–${endLabel} на ${date}`;
+                  })()
                 : `Новий слот на ${date}`}
           </h3>
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
