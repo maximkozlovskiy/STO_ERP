@@ -611,7 +611,19 @@ export function CalendarSlotModal({
     // Bug #354: kyivDateTimeToISO замість `new Date(...).toISOString()`
     // local-парсингу без TZ. DST-aware (+02 зима, +03 літо).
     const startIso = kyivDateTimeToISO(date, form.startAt);
-    const endIso = kyivDateTimeToISO(date, form.endAt);
+    // overflow slot: endAt is on the next calendar day (e.g. 10:00 on day+1)
+    const endSaveDate = isOverflowSlot
+      ? (() => {
+          try {
+            const d = new Date(`${date}T12:00:00Z`);
+            d.setUTCDate(d.getUTCDate() + 1);
+            return d.toISOString().slice(0, 10);
+          } catch {
+            return date;
+          }
+        })()
+      : date;
+    const endIso = kyivDateTimeToISO(endSaveDate, form.endAt);
     if (!date || !form.startAt || !form.endAt || !startIso || !endIso) {
       setError('Вкажіть коректні дату та час');
       return;
