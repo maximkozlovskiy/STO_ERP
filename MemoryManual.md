@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+8a1682cf fix(review): conflict check — TZ-naive plannedAt, unmount leak, take/HTTP semantics
 7afe4125 fix(sync): align ConflictResult interface with CheckConflictsResponseDto
 1004188c docs(skills): add static-toolbar-JSON + parallel-conflict-checks patterns to sto-optimize
 734c171 perf(optimize): lift list-page COLUMNS to module level + precomputed JSON
@@ -68,6 +69,23 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest review: 2026-06-10 (HEAD 8a1682cf, after feat(calendar): conflict-check 143c74b8 + sync 7afe4125):
+  • Critical — useConflictCheck timer leak on unmount: debounce setTimeout
+    кидав apiFetch + setState після unmount → React warning + memory leak.
+    Додано component-level useEffect(() => () => clearTimeout, []) + mountedRef
+    + reqId-token (race-guard на швидкі зміни liftId/часу: остання запитана,
+    не остання резолвлена партія виграє).
+  • Important — CreateWorkOrderModal посилав TZ-naive plannedStartAt (формат
+    "YYYY-MM-DDTHH:mm" від DateTimePickerInput) → backend new Date() парсить
+    як UTC → ±2/3h зсув → false conflict positives. Normalize: якщо value
+    містить Z/±HH:MM → as-is; інакше через kyivDateTimeToISO (DST-aware).
+  • Suggestion — window.confirm() для IN_PROGRESS-with-conflict → useConfirm()
+    + <ConfirmDialog/>: консистентно з рештою застосунку, не блокує main thread.
+  • Backend cleanup — checkConflicts: (1) early-return коли немає liftId+empId
+    (2 марні RTT економимо), (2) validate startAt<endAt, (3) take:50 в обох
+    findMany (§1 OOM-guard), (4) extract CONFLICT_SELECT/CONFLICT_TAKE.
+  • Controller — @HttpCode(200) для read-only POST + @ApiResponse type для
+    Swagger contract.
 Latest sync: 2026-06-10 — ConflictSlot interface expanded to match CalendarSlotResponseDto (status, type, all optional fields)
 Latest optimize: 2026-06-10 (perf scope: narrow projections + parallel calendar conflicts + module-level COLUMNS, HEAD 1004188c):
   • Backend narrow projections (15 hot-path findFirst/findMany guards):
