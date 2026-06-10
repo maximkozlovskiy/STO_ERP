@@ -1407,15 +1407,31 @@ export function CalendarSlotModal({
       <CreateWorkOrderModal
         open={createWoOpen}
         onClose={() => setCreateWoOpen(false)}
-        prefill={{
-          counterpartyId: form.counterpartyId || undefined,
-          counterpartyDisplay: form.counterpartyDisplay || undefined,
-          vehicleId: form.vehicleId || undefined,
-          liftId: form.liftId || undefined,
-          description: form.notes || undefined,
-          plannedStartAt: form.startAt ? `${date}T${form.startAt}` : undefined,
-          plannedEndAt: form.endAt ? `${date}T${form.endAt}` : undefined,
-        }}
+        prefill={(() => {
+          const nh = Number(form.normoHours);
+          const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
+          const totalMin = (sh ?? 0) * 60 + (sm ?? 0) + Math.round((nh > 0 ? nh : 0) * 60);
+          const isOverflow = form.startAt && nh > 0 && totalMin > 19 * 60;
+          const endDate = (() => {
+            if (!isOverflow || !date) return date;
+            try {
+              const d = new Date(`${date}T12:00:00Z`);
+              d.setUTCDate(d.getUTCDate() + 1);
+              return d.toISOString().slice(0, 10);
+            } catch {
+              return date;
+            }
+          })();
+          return {
+            counterpartyId: form.counterpartyId || undefined,
+            counterpartyDisplay: form.counterpartyDisplay || undefined,
+            vehicleId: form.vehicleId || undefined,
+            liftId: form.liftId || undefined,
+            description: form.notes || undefined,
+            plannedStartAt: form.startAt ? `${date}T${form.startAt}` : undefined,
+            plannedEndAt: form.endAt ? `${endDate}T${form.endAt}` : undefined,
+          };
+        })()}
         onCreated={wo => {
           const display = `${wo.number}${form.counterpartyDisplay ? ` · ${form.counterpartyDisplay}` : ''}`;
           setForm(f => ({ ...f, workOrderId: wo.id, workOrderDisplay: display }));
