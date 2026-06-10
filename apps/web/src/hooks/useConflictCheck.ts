@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { apiFetch } from '@/lib/api-client';
 
 export interface ConflictSlot {
@@ -94,5 +94,16 @@ export function useConflictCheck(debounceMs = 400) {
     if (mountedRef.current) setConflict(null);
   }, []);
 
-  return { conflict, check, clear };
+  // Single-pass derived string: WO numbers from conflicting slots.
+  // Computed here once so consumers don't duplicate the .filter().map().join() pattern.
+  const conflictWoNumbers = useMemo(() => {
+    if (!conflict?.conflictSlots) return '';
+    const nums: string[] = [];
+    for (const s of conflict.conflictSlots) {
+      if (s.workOrderNumber) nums.push(s.workOrderNumber);
+    }
+    return nums.join(', ');
+  }, [conflict?.conflictSlots]);
+
+  return { conflict, check, clear, conflictWoNumbers };
 }

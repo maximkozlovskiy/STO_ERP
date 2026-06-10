@@ -182,3 +182,21 @@ export function isoToKyivLocalDateTime(iso: string | null | undefined): string {
   // sv-SE format: "2026-06-12 08:30" → replace space with T for datetime-local
   return KYIV_DATETIME_LOCAL_FMT.format(d).replace(' ', 'T');
 }
+
+/**
+ * Convert a Kyiv-local datetime-local input value ("YYYY-MM-DDTHH:mm") to a UTC
+ * ISO string for the API. Already-zoned strings (ending Z or ±HH:mm) pass through.
+ * Returns undefined for empty/invalid input so optional fields stay absent in API payloads.
+ *
+ * @example localDateTimeToISO('2026-06-10T19:00') → '2026-06-10T16:00:00.000Z' (літо)
+ * @example localDateTimeToISO('2026-06-10T16:00:00.000Z') → '2026-06-10T16:00:00.000Z' (pass-through)
+ * @example localDateTimeToISO('') → undefined
+ */
+export function localDateTimeToISO(v: string): string | undefined {
+  if (!v) return undefined;
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(v)) return v;
+  const [d, t] = v.split('T');
+  if (!d || !t) return undefined;
+  const iso = kyivDateTimeToISO(d, t.slice(0, 5));
+  return iso || undefined;
+}

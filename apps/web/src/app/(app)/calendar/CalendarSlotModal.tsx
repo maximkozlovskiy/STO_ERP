@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -265,19 +265,13 @@ export function CalendarSlotModal({
   setCpDisplay,
 }: CalendarSlotModalProps) {
   const { confirm, dialogProps } = useConfirm();
-  const { conflict: calConflict, check: checkConflict, clear: clearConflict } = useConflictCheck();
+  const {
+    conflict: calConflict,
+    check: checkConflict,
+    clear: clearConflict,
+    conflictWoNumbers,
+  } = useConflictCheck();
   const mountedRef = useRef(true);
-
-  // sto-optimize: single-pass derived string з conflict slots замість
-  // .some() + .filter().map().join() (twin-scan + 3 intermediate arrays per render).
-  const conflictWoNumbers = useMemo(() => {
-    if (!calConflict?.conflictSlots) return '';
-    const nums: string[] = [];
-    for (const s of calConflict.conflictSlots) {
-      if (s.workOrderNumber) nums.push(s.workOrderNumber);
-    }
-    return nums.join(', ');
-  }, [calConflict?.conflictSlots]);
 
   // ── Detail modals ─────────────────────────────────────────────────────────
   const [cpDetailOpen, setCpDetailOpen] = useState(false);

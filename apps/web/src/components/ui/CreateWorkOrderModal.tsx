@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import type React from 'react';
 import {
   Trash2,
@@ -24,7 +24,12 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useConflictCheck } from '@/hooks/useConflictCheck';
 import { useConfirm } from '@/hooks/useConfirm';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { kyivToday, kyivDateTimeToISO, isoToKyivLocalDateTime } from '@/lib/format';
+import {
+  kyivToday,
+  kyivDateTimeToISO,
+  isoToKyivLocalDateTime,
+  localDateTimeToISO,
+} from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
 import {
   WO_STATUS_LABELS,
@@ -252,18 +257,6 @@ const nextKey = () =>
     ? crypto.randomUUID()
     : `k${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 
-// Convert a Kyiv-local datetime input value ("YYYY-MM-DDTHH:mm") to a UTC ISO
-// string for the API. Already-zoned strings (ending Z or ±HH:mm) pass through.
-// Returns undefined for empty/invalid input so optional fields stay absent.
-const localDateTimeToISO = (v: string): string | undefined => {
-  if (!v) return undefined;
-  if (/Z$|[+-]\d{2}:?\d{2}$/.test(v)) return v;
-  const [d, t] = v.split('T');
-  if (!d || !t) return undefined;
-  const iso = kyivDateTimeToISO(d, t.slice(0, 5));
-  return iso || undefined;
-};
-
 // sto-optimize: stable no-op handler for disabled DateTimePickerInput placeholders
 // (actual-section start/end). Inline `() => {}` create new function references each
 // render → DateTimePickerInput memoization marked as dirty even though field is fixed.
@@ -341,7 +334,12 @@ export function CreateWorkOrderModal({
   const [linkedDocsRefreshKey, setLinkedDocsRefreshKey] = useState(0);
   const [activeTab, setActiveTab] = useState<'main' | 'documents'>('main');
   const features = useUiFeatures();
-  const { conflict: calConflict, check: checkConflict, clear: clearConflict } = useConflictCheck();
+  const {
+    conflict: calConflict,
+    check: checkConflict,
+    clear: clearConflict,
+    conflictWoNumbers,
+  } = useConflictCheck();
   const { confirm, dialogProps: confirmDialogProps } = useConfirm();
   const { minimizeModal } = useTabBarContext();
   const deletedLineIds = useRef<string[]>([]);
@@ -773,18 +771,6 @@ export function CreateWorkOrderModal({
     const value = e.target.value;
     setForm(f => ({ ...f, actualHours: value }));
   }, []);
-
-  // sto-optimize: derived rendering для warning banner з conflict slots.
-  // Раніше — `.some()` потім `.filter().map().join()` — twin-scan кожного render.
-  // Тепер один pass + memo за [conflictSlots], evaluate-once.
-  const conflictWoNumbers = useMemo(() => {
-    if (!calConflict?.conflictSlots) return '';
-    const nums: string[] = [];
-    for (const s of calConflict.conflictSlots) {
-      if (s.workOrderNumber) nums.push(s.workOrderNumber);
-    }
-    return nums.join(', ');
-  }, [calConflict?.conflictSlots]);
 
   const addLine = () => {
     if (!newLine.workId || !newLine.employeeId) return;
