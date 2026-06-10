@@ -716,14 +716,14 @@ export function CalendarSlotModal({
                     let next = { ...f, startAt: start };
                     if (start && f.normoHours && Number(f.normoHours) > 0) {
                       const [h, m] = start.split(':').map(Number);
-                      // No upper clamp — allow endAt to exceed WINDOW_END (split across days)
                       const totalMin =
                         (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(f.normoHours) * 60);
-                      const clampedMin = Math.min(totalMin, 23 * 60 + 59);
-                      const em = Math.round((clampedMin % 60) / 15) * 15;
+                      // Store real end time without clamping — split handled by backend
+                      const realH = Math.floor(totalMin / 60) % 24;
+                      const realM = Math.round((totalMin % 60) / 15) * 15;
                       next = {
                         ...next,
-                        endAt: `${pad(Math.floor(clampedMin / 60))}:${pad(em >= 60 ? 0 : em)}`,
+                        endAt: `${pad(realH)}:${pad(realM >= 60 ? 0 : realM)}`,
                       };
                     }
                     if (pendingSlot) {
@@ -754,11 +754,11 @@ export function CalendarSlotModal({
                   setForm(f => {
                     if (f.startAt && nh && Number(nh) > 0) {
                       const [h, m] = f.startAt.split(':').map(Number);
-                      // No upper clamp — allow endAt to exceed WINDOW_END (split across days)
                       const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(nh) * 60);
-                      const clampedMin = Math.min(totalMin, 23 * 60 + 59);
-                      const em = Math.round((clampedMin % 60) / 15) * 15;
-                      const endAt = `${pad(Math.floor(clampedMin / 60))}:${pad(em >= 60 ? 0 : em)}`;
+                      // Store real end time without clamping — split handled by backend
+                      const realH = Math.floor(totalMin / 60) % 24;
+                      const realM = Math.round((totalMin % 60) / 15) * 15;
+                      const endAt = `${pad(realH)}:${pad(realM >= 60 ? 0 : realM)}`;
                       if (pendingSlot) {
                         const { h: eh, m: em2 } = parseHHMM(endAt);
                         setPendingSlot(p => (p ? { ...p, endH: eh + em2 / 60 } : p));
@@ -770,7 +770,7 @@ export function CalendarSlotModal({
                 }}
                 placeholder="1.5"
               />
-              {/* Overflow preview — absolute to avoid pushing sibling columns */}
+              {/* Overflow preview */}
               {(() => {
                 const nh = Number(form.normoHours);
                 if (!form.startAt || !nh || nh <= 0) return null;
@@ -782,7 +782,6 @@ export function CalendarSlotModal({
                 const day2EndMin = 8 * 60 + overflowMin; // starts at 08:00
                 const day2H = Math.floor(day2EndMin / 60);
                 const day2M = day2EndMin % 60;
-                // Next calendar day ISO for display
                 const nextDayIso = (() => {
                   try {
                     const d = new Date(`${date}T12:00:00Z`);
@@ -801,22 +800,41 @@ export function CalendarSlotModal({
               })()}
             </div>
             <div>
-              <DateTimePickerInput
-                label="Кінець"
-                value={date && form.endAt ? `${date}T${form.endAt}` : ''}
-                minHour={WINDOW_START}
-                maxHour={23}
-                disabled={isEditingPast}
-                inputClassName="h-8 text-[13px]"
-                onChange={val => {
-                  const endAt = val ? val.slice(11, 16) : '';
-                  setForm(f => ({ ...f, endAt }));
-                  if (pendingSlot) {
-                    const { h, m } = parseHHMM(endAt);
-                    setPendingSlot(p => (p ? { ...p, endH: h + m / 60 } : p));
+              {/* Compute end date: next calendar day when totalMin overflows WINDOW_END */}
+              {(() => {
+                const nh = Number(form.normoHours);
+                const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
+                const totalMin = (sh ?? 0) * 60 + (sm ?? 0) + Math.round((nh > 0 ? nh : 0) * 60);
+                const isOverflow = form.startAt && nh > 0 && totalMin > WINDOW_END * 60;
+                const endDate = (() => {
+                  if (!isOverflow || !date) return date;
+                  try {
+                    const d = new Date(`${date}T12:00:00Z`);
+                    d.setUTCDate(d.getUTCDate() + 1);
+                    return d.toISOString().slice(0, 10);
+                  } catch {
+                    return date;
                   }
-                }}
-              />
+                })();
+                return (
+                  <DateTimePickerInput
+                    label="Кінець"
+                    value={endDate && form.endAt ? `${endDate}T${form.endAt}` : ''}
+                    minHour={WINDOW_START}
+                    maxHour={23}
+                    disabled={isEditingPast}
+                    inputClassName="h-8 text-[13px]"
+                    onChange={val => {
+                      const endAt = val ? val.slice(11, 16) : '';
+                      setForm(f => ({ ...f, endAt }));
+                      if (pendingSlot) {
+                        const { h, m } = parseHHMM(endAt);
+                        setPendingSlot(p => (p ? { ...p, endH: h + m / 60 } : p));
+                      }
+                    }}
+                  />
+                );
+              })()}
             </div>
           </div>
 
