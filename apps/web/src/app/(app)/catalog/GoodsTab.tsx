@@ -138,6 +138,16 @@ const GOODS_PANEL_FIELDS = [
   { key: 'notes', label: 'Нотатки' },
 ] as const;
 
+// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
+const GOODS_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
+  { key: 'name', label: 'Назва / Артикул', defaultVisible: true },
+  { key: 'category', label: 'Категорія', defaultVisible: true },
+  { key: 'unit', label: 'Одиниця', defaultVisible: false },
+  { key: 'purchase', label: 'Закупівля, ₴', defaultVisible: true },
+  { key: 'sale', label: 'Продаж, ₴', defaultVisible: true },
+];
+const GOODS_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(GOODS_COLUMNS.map(c => c.key));
+
 export default function GoodsTab() {
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
@@ -172,17 +182,6 @@ export default function GoodsTab() {
   const [batchViewerGoodId, setBatchViewerGoodId] = useState<string | null>(null);
   // Bug #309: in-flight set для restore — блокує дублюючі POST.
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
-
-  const GOODS_COLUMNS = useMemo(
-    () => [
-      { key: 'name', label: 'Назва / Артикул', defaultVisible: true },
-      { key: 'category', label: 'Категорія', defaultVisible: true },
-      { key: 'unit', label: 'Одиниця', defaultVisible: false },
-      { key: 'purchase', label: 'Закупівля, ₴', defaultVisible: true },
-      { key: 'sale', label: 'Продаж, ₴', defaultVisible: true },
-    ],
-    [],
-  );
 
   const {
     visibleKeys: goodsColVisible,
@@ -530,7 +529,7 @@ export default function GoodsTab() {
             onRename={renameGoodsCol}
             onReset={resetGoodsConfig}
             hasCustomization={
-              JSON.stringify(goodsOrder) !== JSON.stringify(GOODS_COLUMNS.map(c => c.key)) ||
+              JSON.stringify(goodsOrder) !== GOODS_COLUMNS_DEFAULT_KEYS_JSON ||
               Object.keys(goodsCustomLabels).length > 0
             }
           />

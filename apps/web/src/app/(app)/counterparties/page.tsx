@@ -65,6 +65,16 @@ const TYPE_FILTER_OPTIONS = [
   ['BOTH', 'Обидва'],
 ] as const;
 
+// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
+const CRM_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
+  { key: 'name', label: 'Контрагент', defaultVisible: true },
+  { key: 'type', label: 'Тип', defaultVisible: true },
+  { key: 'phone', label: 'Телефон', defaultVisible: true },
+  { key: 'edrpou', label: 'ЄДРПОУ', defaultVisible: false },
+  { key: 'balance', label: 'Баланс, ₴', defaultVisible: true },
+];
+const CRM_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(CRM_COLUMNS.map(c => c.key));
+
 // Bug #354: Suspense обгортка для useSearchParams (Next.js static-export вимога).
 export default function CrmPage() {
   return (
@@ -81,18 +91,6 @@ function CrmPageInner() {
   const searchParams = useSearchParams();
 
   const { confirm, dialogProps } = useConfirm();
-
-  // ── Column visibility ────────────────────────────────────────────────────────
-  const CRM_COLUMNS = useMemo(
-    () => [
-      { key: 'name', label: 'Контрагент', defaultVisible: true },
-      { key: 'type', label: 'Тип', defaultVisible: true },
-      { key: 'phone', label: 'Телефон', defaultVisible: true },
-      { key: 'edrpou', label: 'ЄДРПОУ', defaultVisible: false },
-      { key: 'balance', label: 'Баланс, ₴', defaultVisible: true },
-    ],
-    [],
-  );
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -424,7 +422,7 @@ function CrmPageInner() {
             onRename={renameColumn}
             onReset={resetConfig}
             hasCustomization={
-              JSON.stringify(order) !== JSON.stringify(CRM_COLUMNS.map(c => c.key)) ||
+              JSON.stringify(order) !== CRM_COLUMNS_DEFAULT_KEYS_JSON ||
               Object.keys(customLabels).length > 0
             }
           />

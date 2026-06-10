@@ -100,24 +100,24 @@ function fmt(n: number) {
   return fmtMoney(n) + ' ₴';
 }
 
+// Module-level constants — стабільні референси і JSON прекомпьютений лише раз
+// (раніше JSON.stringify(INVOICE_COLUMNS.map(c => c.key)) бігав на кожен render).
+const INVOICE_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
+  { key: 'number', label: 'Номер', defaultVisible: true },
+  { key: 'counterparty', label: 'Контрагент', defaultVisible: true },
+  { key: 'workOrder', label: 'Наряд', defaultVisible: true },
+  { key: 'status', label: 'Статус', defaultVisible: true },
+  { key: 'documentDate', label: 'Дата документа', defaultVisible: true },
+  { key: 'amount', label: 'Сума', defaultVisible: true },
+  { key: 'dueDate', label: 'Термін оплати', defaultVisible: true },
+];
+const INVOICE_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(INVOICE_COLUMNS.map(c => c.key));
+
 export default function InvoicesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
-
-  const INVOICE_COLUMNS = useMemo(
-    () => [
-      { key: 'number', label: 'Номер', defaultVisible: true },
-      { key: 'counterparty', label: 'Контрагент', defaultVisible: true },
-      { key: 'workOrder', label: 'Наряд', defaultVisible: true },
-      { key: 'status', label: 'Статус', defaultVisible: true },
-      { key: 'documentDate', label: 'Дата документа', defaultVisible: true },
-      { key: 'amount', label: 'Сума', defaultVisible: true },
-      { key: 'dueDate', label: 'Термін оплати', defaultVisible: true },
-    ],
-    [],
-  );
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -630,7 +630,7 @@ export default function InvoicesPage() {
             onRename={renameColumn}
             onReset={resetConfig}
             hasCustomization={
-              JSON.stringify(order) !== JSON.stringify(INVOICE_COLUMNS.map(c => c.key)) ||
+              JSON.stringify(order) !== INVOICE_COLUMNS_DEFAULT_KEYS_JSON ||
               Object.keys(customLabels).length > 0
             }
           />

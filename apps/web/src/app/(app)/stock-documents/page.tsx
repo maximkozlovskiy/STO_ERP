@@ -105,22 +105,21 @@ const TYPE_BADGE = STOCK_DOC_TYPE_BADGE;
 const STATUS_LABELS = STOCK_DOC_STATUS_LABELS;
 const STATUS_BADGE = STOCK_DOC_STATUS_BADGE;
 
+// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
+const COLUMNS: Array<{ key: string; label: string }> = [
+  { key: 'number', label: 'Номер' },
+  { key: 'type', label: 'Тип' },
+  { key: 'warehouse', label: 'Склад' },
+  { key: 'status', label: 'Статус' },
+  { key: 'lines', label: 'Позицій' },
+  { key: 'date', label: 'Дата документа' },
+];
+const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
+
 export default function StockDocumentsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
   const { confirm, dialogProps } = useConfirm();
-
-  const COLUMNS = useMemo(
-    () => [
-      { key: 'number', label: 'Номер' },
-      { key: 'type', label: 'Тип' },
-      { key: 'warehouse', label: 'Склад' },
-      { key: 'status', label: 'Статус' },
-      { key: 'lines', label: 'Позицій' },
-      { key: 'date', label: 'Дата документа' },
-    ],
-    [],
-  );
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -521,7 +520,7 @@ export default function StockDocumentsPage() {
             onRename={renameColumn}
             onReset={resetConfig}
             hasCustomization={
-              JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c => c.key)) ||
+              JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
               Object.keys(customLabels).length > 0
             }
           />

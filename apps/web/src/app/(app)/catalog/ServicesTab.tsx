@@ -82,6 +82,13 @@ interface ServicesFilters extends Record<string, unknown> {
 
 import { Pagination } from '@/components/ui/pagination';
 
+// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
+const SERVICES_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
+  { key: 'name', label: 'Назва', defaultVisible: true },
+  { key: 'price', label: 'Ціна, ₴', defaultVisible: true },
+];
+const SERVICES_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(SERVICES_COLUMNS.map(c => c.key));
+
 // ─── Services Tab ─────────────────────────────────────────────────────────────
 
 export default function ServicesTab() {
@@ -104,14 +111,6 @@ export default function ServicesTab() {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   // Bug #309: in-flight set для restore — блокує дублюючі POST.
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
-
-  const SERVICES_COLUMNS = useMemo(
-    () => [
-      { key: 'name', label: 'Назва', defaultVisible: true },
-      { key: 'price', label: 'Ціна, ₴', defaultVisible: true },
-    ],
-    [],
-  );
 
   const {
     visibleKeys: servicesColVisible,
@@ -375,7 +374,7 @@ export default function ServicesTab() {
             onRename={renameServicesCol}
             onReset={resetServicesConfig}
             hasCustomization={
-              JSON.stringify(servicesOrder) !== JSON.stringify(SERVICES_COLUMNS.map(c => c.key)) ||
+              JSON.stringify(servicesOrder) !== SERVICES_COLUMNS_DEFAULT_KEYS_JSON ||
               Object.keys(servicesCustomLabels).length > 0
             }
           />

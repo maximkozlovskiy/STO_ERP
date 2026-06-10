@@ -819,7 +819,11 @@ export function CreateWorkOrderModal({
       await Promise.allSettled([...lineDeletes, ...partDeletes]);
       deletedLineIds.current = [];
       deletedPartIds.current = [];
-      // Add new lines (no id = not yet persisted)
+      // Sequentially POST nових ліній/деталей. Кожен addLine/addPart на бекенді
+      // викликає recalcTotals (aggregate + update WO.totalLabor/Parts/Amount).
+      // Паралель = race у READ COMMITTED: тх1/тх2 одна одної не бачать у
+      // SUM(amount), тому останній writer перетирає тotalAmount → втрачені суми
+      // (only count колекції видимі тому).
       for (const line of lines.filter(l => !l.id)) {
         await apiFetch(`/work-orders/${workOrderId}/lines`, {
           method: 'POST',
@@ -831,7 +835,6 @@ export function CreateWorkOrderModal({
           }),
         });
       }
-      // Add new parts (no id = not yet persisted)
       for (const part of parts.filter(p => !p.id)) {
         await apiFetch(`/work-orders/${workOrderId}/parts`, {
           method: 'POST',

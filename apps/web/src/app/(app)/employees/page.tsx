@@ -168,23 +168,22 @@ function flattenTree(cats: WorkCategory[]): { id: string; name: string }[] {
   return cats.flatMap(c => [{ id: c.id, name: c.name }, ...flattenTree(c.children)]);
 }
 
+// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
+const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
+  { key: 'name', label: 'ПІБ', defaultVisible: true },
+  { key: 'role', label: 'Посада', defaultVisible: true },
+  { key: 'status', label: 'Статус', defaultVisible: true },
+  { key: 'rate', label: 'Схема нарахування', defaultVisible: false },
+  { key: 'zones', label: 'Зони', defaultVisible: false },
+  { key: 'lifts', label: 'Підйомники', defaultVisible: false },
+];
+const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
+
 // ─── Main Page ───────────────────────────────────────────
 
 export default function EmployeesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST']);
   const { confirm, dialogProps } = useConfirm();
-
-  const COLUMNS = useMemo(
-    () => [
-      { key: 'name', label: 'ПІБ', defaultVisible: true },
-      { key: 'role', label: 'Посада', defaultVisible: true },
-      { key: 'status', label: 'Статус', defaultVisible: true },
-      { key: 'rate', label: 'Схема нарахування', defaultVisible: false },
-      { key: 'zones', label: 'Зони', defaultVisible: false },
-      { key: 'lifts', label: 'Підйомники', defaultVisible: false },
-    ],
-    [],
-  );
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -503,7 +502,7 @@ export default function EmployeesPage() {
             onRename={renameColumn}
             onReset={resetConfig}
             hasCustomization={
-              JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c => c.key)) ||
+              JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
               Object.keys(customLabels).length > 0
             }
           />

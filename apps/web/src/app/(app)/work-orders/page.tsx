@@ -162,6 +162,23 @@ function isOverdue(dueDateIso: string, nowMs: number): boolean {
   return due.getTime() < nowMs;
 }
 
+// Module-level constants — стабільні референси між рендерами, замість per-render
+// allocate у useMemo. WO_COLUMNS_DEFAULT_KEYS_JSON знімає `JSON.stringify(map())`
+// з кожного render (hasCustomization comparison у toolbar).
+const WO_COLUMNS: Array<{ key: string; label: string }> = [
+  { key: 'number', label: 'Номер' },
+  { key: 'client', label: 'Клієнт / Авто' },
+  { key: 'status', label: 'Статус' },
+  { key: 'lift', label: 'Підйомник' },
+  { key: 'priority', label: 'Пріоритет' },
+  { key: 'amount', label: 'Сума, ₴' },
+  { key: 'documentDate', label: 'Дата документа' },
+  { key: 'plannedAt', label: 'Заплановано' },
+  { key: 'dueDate', label: 'Дедлайн' },
+  { key: 'linkedDocs', label: 'Документи' },
+];
+const WO_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(WO_COLUMNS.map(c => c.key));
+
 // Bug #354: Suspense обгортка для useSearchParams (Next.js static-export вимога).
 // Inner-функція тримає всю логіку, default-export лише wrapper.
 export default function WorkOrdersPage() {
@@ -183,22 +200,6 @@ function WorkOrdersPageInner() {
   useEffect(() => {
     setNowMs(Date.now());
   }, []);
-
-  const WO_COLUMNS = useMemo(
-    () => [
-      { key: 'number', label: 'Номер' },
-      { key: 'client', label: 'Клієнт / Авто' },
-      { key: 'status', label: 'Статус' },
-      { key: 'lift', label: 'Підйомник' },
-      { key: 'priority', label: 'Пріоритет' },
-      { key: 'amount', label: 'Сума, ₴' },
-      { key: 'documentDate', label: 'Дата документа' },
-      { key: 'plannedAt', label: 'Заплановано' },
-      { key: 'dueDate', label: 'Дедлайн' },
-      { key: 'linkedDocs', label: 'Документи' },
-    ],
-    [],
-  );
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -682,7 +683,7 @@ function WorkOrdersPageInner() {
             onRename={renameColumn}
             onReset={resetConfig}
             hasCustomization={
-              JSON.stringify(order) !== JSON.stringify(WO_COLUMNS.map(c => c.key)) ||
+              JSON.stringify(order) !== WO_COLUMNS_DEFAULT_KEYS_JSON ||
               Object.keys(customLabels).length > 0
             }
           />

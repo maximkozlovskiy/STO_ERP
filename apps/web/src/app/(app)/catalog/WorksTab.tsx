@@ -65,6 +65,15 @@ interface WorksFilters extends Record<string, unknown> {
 
 import { Pagination } from '@/components/ui/pagination';
 
+// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
+const WORKS_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
+  { key: 'name', label: 'Назва', defaultVisible: true },
+  { key: 'category', label: 'Категорія', defaultVisible: true },
+  { key: 'normo', label: 'Нормо-год', defaultVisible: true },
+  { key: 'price', label: 'Ціна, ₴', defaultVisible: true },
+];
+const WORKS_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(WORKS_COLUMNS.map(c => c.key));
+
 // ─── Works Tab ────────────────────────────────────────────────────────────────
 
 export default function WorksTab() {
@@ -119,16 +128,6 @@ export default function WorksTab() {
   const [editError, setEditError] = useState('');
   // Bug #309: in-flight set для restore — блокує дублюючі POST.
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
-
-  const WORKS_COLUMNS = useMemo(
-    () => [
-      { key: 'name', label: 'Назва', defaultVisible: true },
-      { key: 'category', label: 'Категорія', defaultVisible: true },
-      { key: 'normo', label: 'Нормо-год', defaultVisible: true },
-      { key: 'price', label: 'Ціна, ₴', defaultVisible: true },
-    ],
-    [],
-  );
 
   const {
     visibleKeys: worksColVisible,
@@ -484,7 +483,7 @@ export default function WorksTab() {
             onRename={renameWorksCol}
             onReset={resetWorksConfig}
             hasCustomization={
-              JSON.stringify(worksOrder) !== JSON.stringify(WORKS_COLUMNS.map(c => c.key)) ||
+              JSON.stringify(worksOrder) !== WORKS_COLUMNS_DEFAULT_KEYS_JSON ||
               Object.keys(worksCustomLabels).length > 0
             }
           />

@@ -78,23 +78,22 @@ function fmt(n: number) {
   return fmtMoney(n) + ' ₴';
 }
 
+// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
+const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
+  { key: 'number', label: 'Номер', defaultVisible: true },
+  { key: 'supplier', label: 'Постачальник', defaultVisible: true },
+  { key: 'warehouse', label: 'Склад', defaultVisible: true },
+  { key: 'status', label: 'Статус', defaultVisible: true },
+  { key: 'amount', label: 'Сума', defaultVisible: true },
+  { key: 'date', label: 'Дата документа', defaultVisible: true },
+];
+const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
+
 export default function PurchaseOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
-
-  const COLUMNS = useMemo(
-    () => [
-      { key: 'number', label: 'Номер', defaultVisible: true },
-      { key: 'supplier', label: 'Постачальник', defaultVisible: true },
-      { key: 'warehouse', label: 'Склад', defaultVisible: true },
-      { key: 'status', label: 'Статус', defaultVisible: true },
-      { key: 'amount', label: 'Сума', defaultVisible: true },
-      { key: 'date', label: 'Дата документа', defaultVisible: true },
-    ],
-    [],
-  );
 
   const {
     page,
@@ -576,7 +575,7 @@ export default function PurchaseOrdersPage() {
             onRename={renameColumn}
             onReset={resetConfig}
             hasCustomization={
-              JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c => c.key)) ||
+              JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
               Object.keys(customLabels).length > 0
             }
           />
