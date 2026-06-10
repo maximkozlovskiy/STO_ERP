@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+f2ef7758 fix(review): dedupe modal tabs, cancel WO fetch race, a11y on TabBar close
 e03a104b fix(sync): correct tab-close ID in TopShell restored-modal + lazy-load CreateWorkOrderModal
 95435ec9 fix(ui): tab bar — modal-only tabs, remove page tab auto-open
 6f9515c6 feat(ui): add tab bar navigation — page tabs + modal minimize
@@ -73,6 +74,11 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest review: 2026-06-10 (HEAD f2ef7758 — TabBar feat sweep):
+  • IMPORTANT — minimizeModal не дедуплікувала: відкривання tab A → клік Minus давало дві вкладки на той самий WO. Фікс: dedupe по (modalKey + identity-keys у restoreProps: workOrderId/invoiceId/id), оновлюємо label на матчу.
+  • IMPORTANT — CreateWorkOrderModal edit-fetch useEffect не мав cancelled-флагу. Перемикання між вкладками A→B під час in-flight A могло перезаписати свіжий стан B повільнішою A-відповіддю. Додав let cancelled + return () => cancelled = true; з guards у then/catch/finally.
+  • SUGGESTION — TopShell.restoreProps.workOrderId був `as string | undefined` на `unknown` — небезпечно. Замінив на runtime guard: typeof raw === 'string' && raw.length > 0.
+  • SUGGESTION — TabBar X close button: group-hover:opacity-60 без focus-visible. Tab-фокус робив кнопку невидимою (WCAG 2.1.1). Додав focus-visible:opacity-100 + aria-label.
 Latest sync: 2026-06-10 — Bug: TopShell.closeTab(restoredWoId) passed WO UUID instead of tab UUID → tab never removed after restoring minimized modal. Fix: track restoredTabId = pendingRestore.id separately; also convert CreateWorkOrderModal to dynamic({ ssr: false }) in TopShell.
 Unit: API 697 passed (57 files), Web 373 passed (36 files) — додано 7 hook-тестів + 4 контрактних кейси
 Latest tester: 2026-06-10 (Bugs #396-#398 — calendar conflict check):
@@ -2220,6 +2226,17 @@ Latest tester: 2026-05-30 (FULL, HEAD f2410ae → b5add44+a6f9aea+eb16f51+f2410a
 Previous tester: 2026-05-29 (AUTO, HEAD fa83635 → 613aef7+561e08b+fc0d1ad+fa83635) — CRM Наряди + Catalog Штрихкоди/Партії ModalTabs. **0 нових багів у scope.** API 357/357 + Web 148/148 baseline ✅. Перевірено: race-guard у обох openEdit (`modalVehiclesReqRef`+`modalWoReqRef` у CRM, `modalBarcodeReqRef`+`modalBatchReqRef` у Catalog) — окремі токени для кожного асинхронного джерела, гейт на КОЖНОМУ `.then`/`.catch`/`.finally`; `setModalGarageId` всередині early-return guard'у (не виставляється з stale-даними); StockBatchDto `.items` unwrap після 561e08b узгоджений з бекенд `{items,total}` shape; `/work-orders?counterpartyId=` filter присутній у DTO+service з tenant-isolation; усі 10 WorkOrderStatus покриті у WO_STATUS_LABELS/BADGE; inline add/delete барcode у ModalTabs з guard `if (!editGood) return` + try/catch + toast feedback; error-state не silent (видимий inline у ModalTabs контенті).
 Previous review: 2026-05-29 (auto, HEAD fc0d1ad → 613aef7+561e08b+fc0d1ad) — crm/page.tsx Наряди-таб + catalog/page.tsx Штрихкоди+Партії-таби + sto-dev §14.1–14.3. **0 проблем знайдено**: race-guard ref (modalWoReqRef, modalBarcodeReqRef, modalBatchReqRef) застосовано згідно патерну з e69bf1e; reset похідного стану на старті openEdit/openEditGood; всі 10 WorkOrderStatus покриті у WO_STATUS_LABELS/BADGE; катаlог не імпортує `cn` (не потрібний); BOM-чистий; немає React.X / any / console.log / Tailwind anti-patterns.
 Previous review: 2026-05-29 (auto, HEAD e69bf1e) — modal-tabs.tsx + crm/employees ModalTabs + counterparties showDeleted/deletedAt. 1 Important fix (CRM edit-modal vehicle fetch race + stale modalGarageId). Backend DTO/service вже коректні після cc44f73 (showDeleted @Transform, orgId зберігається при showDeleted=true, toDto включає deletedAt).
+
+## UI: TabBar — taskbar для згорнутих модалок (6f9515c6 → 95435ec9 → e03a104b → f2ef7758)
+
+`apps/web/src/components/TabBar.tsx` (amber chips, overflow dropdown, lg-only), `apps/web/src/contexts/TabBarContext.tsx` (Provider + localStorage `sto_modal_tabs`), `apps/web/src/hooks/useTabBar.ts` (activateTab/closeTab).
+
+- **Тільки modal-вкладки** (page-tab auto-open знято у 95435ec9 — користувачі скаржились на дублювання таб-бару з браузерним).
+- **Restore flow**: TabBar клік → `setPendingRestore(modalTab)` → TopShell useEffect → `setRestoredWoOpen(true)` + `setRestoredWoId/restoredTabId`. На onClose модалки — очищується. На onUpdated → `closeTab(restoredTabId)` (саме tab UUID, не WO UUID — це був баг e03a104b).
+- **CreateWorkOrderModal lazy** — `dynamic(() => import(...), { ssr: false })` у TopShell щоб розірвати circular module init (TopShell→CreateWorkOrderModal→...→TopShell).
+- **Dedupe (f2ef7758)** — `minimizeModal` має SSOT по (modalKey + identity-keys у restoreProps: workOrderId/invoiceId/id). Restore+минимайз більше НЕ створює два tab-чіпи на той самий WO; label оновлюється на матчу.
+- **Fetch race (f2ef7758)** — CreateWorkOrderModal `useEffect([open, workOrderId])` має `let cancelled` guard. Перемикання вкладок A→B під час in-flight A більше не перезаписує B.
+- **a11y (f2ef7758)** — X-кнопка чіпа має `focus-visible:opacity-100` + `aria-label="Закрити вкладку"`.
 
 ## UI: ModalTabs — нижній таб-секція модалок для 1→N зв'язків (6b886ae)
 
