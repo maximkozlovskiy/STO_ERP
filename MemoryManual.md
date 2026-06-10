@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+e03a104b fix(sync): correct tab-close ID in TopShell restored-modal + lazy-load CreateWorkOrderModal
+95435ec9 fix(ui): tab bar — modal-only tabs, remove page tab auto-open
+6f9515c6 feat(ui): add tab bar navigation — page tabs + modal minimize
 e404586f fix(tester): Bugs #396-#398 — useConflictCheck race + excludeWorkOrderId + DTO enrichment
 8a1682cf fix(review): conflict check — TZ-naive plannedAt, unmount leak, take/HTTP semantics
 7afe4125 fix(sync): align ConflictResult interface with CheckConflictsResponseDto
@@ -70,6 +73,7 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest sync: 2026-06-10 — Bug: TopShell.closeTab(restoredWoId) passed WO UUID instead of tab UUID → tab never removed after restoring minimized modal. Fix: track restoredTabId = pendingRestore.id separately; also convert CreateWorkOrderModal to dynamic({ ssr: false }) in TopShell.
 Unit: API 697 passed (57 files), Web 373 passed (36 files) — додано 7 hook-тестів + 4 контрактних кейси
 Latest tester: 2026-06-10 (Bugs #396-#398 — calendar conflict check):
   • Bug #396 HIGH — useConflictCheck.check() early-return не бамптив reqIdRef.current →
