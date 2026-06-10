@@ -166,9 +166,11 @@ export class CompletionActsService {
 
     await this.prisma.$transaction(
       async tx => {
+        // sto-optimize: narrow projection — потрібен лише act.status (guard) + workOrder.{id,status}.
+        // Раніше include тягнуло orgId/syncVersion/deletedAt/signedAt/signedBy/clientPhone/notes/createdAt/updatedAt — все ігнорується далі (mutation читає id+orgId з where).
         const act = await tx.completionAct.findFirst({
           where: { id, orgId, deletedAt: null },
-          include: { workOrder: { select: { id: true, status: true } } },
+          select: { status: true, workOrder: { select: { id: true, status: true } } },
         });
         if (!act) throw new NotFoundException('Акт не знайдено');
         if (act.status !== CompletionActStatus.DRAFT) {

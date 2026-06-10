@@ -225,9 +225,16 @@ export class WarrantiesService {
     // Perf: warranty tenant guard + claimWo FK validation — обидва tenant-isolated,
     // не залежать один від одного → Promise.all (-1 RTT у happy path).
     const [w, claimWo] = await Promise.all([
-      this.prisma.warranty.findFirst({ where: { id, orgId, deletedAt: null } }),
+      // sto-optimize: narrow projection — guard потрібен лише claimedAt + expiresAt.
+      // Раніше тягнуло workOrderId/counterpartyId/lineId/partId/durationDays/syncVersion +
+      // всі скалярні колонки — все ігнорується далі (updateMany читає id+orgId з where).
+      this.prisma.warranty.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { claimedAt: true, expiresAt: true },
+      }),
       this.prisma.workOrder.findFirst({
         where: { id: dto.claimWoId, orgId, deletedAt: null },
+        select: { id: true },
       }),
     ]);
     if (!w) throw new NotFoundException('Гарантію не знайдено');

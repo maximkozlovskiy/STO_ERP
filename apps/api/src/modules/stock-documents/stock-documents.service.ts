@@ -124,12 +124,21 @@ export class StockDocumentsService {
   async create(orgId: string, dto: CreateStockDocumentDto): Promise<StockDocumentResponseDto> {
     // Усі 3 FK перевірки можуть йти конкурентно — кожна незалежна.
     // Conditional target warehouse: tернарка зберігає типи й уникає зайвого RTT для TRANSFER.
+    // sto-optimize: narrow projection — FK guards використовуються лише для існування 404,
+    // решта полів (name/address/syncVersion/etc.) не читаються далі.
     const [branch, warehouse, target] = await Promise.all([
-      this.prisma.garageBranch.findFirst({ where: { id: dto.branchId, orgId, deletedAt: null } }),
-      this.prisma.warehouse.findFirst({ where: { id: dto.warehouseId, orgId, deletedAt: null } }),
+      this.prisma.garageBranch.findFirst({
+        where: { id: dto.branchId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.warehouse.findFirst({
+        where: { id: dto.warehouseId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
       dto.targetWarehouseId
         ? this.prisma.warehouse.findFirst({
             where: { id: dto.targetWarehouseId, orgId, deletedAt: null },
+            select: { id: true },
           })
         : Promise.resolve(null),
     ]);
@@ -214,8 +223,11 @@ export class StockDocumentsService {
     id: string,
     dto: UpdateStockDocumentDto,
   ): Promise<StockDocumentResponseDto> {
+    // sto-optimize: status-only projection — guard потребує лише DRAFT перевірку.
+    // Раніше тягнуло warehouseId/branchId/notes/documentDate/syncVersion + всі ігноровані колонки.
     const doc = await this.prisma.stockDocument.findFirst({
       where: { id, orgId, deletedAt: null },
+      select: { status: true },
     });
     if (!doc) throw new NotFoundException('Документ не знайдено');
     if (doc.status !== 'DRAFT') throw new BadRequestException('Редагувати можна лише чернетку');

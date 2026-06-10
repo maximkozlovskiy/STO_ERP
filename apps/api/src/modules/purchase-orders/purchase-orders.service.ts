@@ -249,7 +249,13 @@ export class PurchaseOrdersService {
     id: string,
     dto: UpdatePurchaseOrderDto,
   ): Promise<PurchaseOrderResponseDto> {
-    const po = await this.prisma.purchaseOrder.findFirst({ where: { id, orgId, deletedAt: null } });
+    // sto-optimize: narrow projection — потрібен лише status (guard) + totalAmount (fallback
+    // коли dto.lines не передано). Раніше тягнуло supplierId/warehouseId/notes/documentDate +
+    // syncVersion/orgId/deletedAt + 8 інших колонок які ігноруються.
+    const po = await this.prisma.purchaseOrder.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { status: true, totalAmount: true },
+    });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
     if (po.status !== PurchaseOrderStatus.DRAFT)
       throw new BadRequestException('Редагувати можна лише чернетку');
@@ -319,7 +325,11 @@ export class PurchaseOrdersService {
   ): Promise<PurchaseOrderResponseDto> {
     await this.prisma.$transaction(
       async tx => {
-        const po = await tx.purchaseOrder.findFirst({ where: { id, orgId, deletedAt: null } });
+        // sto-optimize: status-only projection — assertFsmTransition потребує лише поточний статус.
+        const po = await tx.purchaseOrder.findFirst({
+          where: { id, orgId, deletedAt: null },
+          select: { status: true },
+        });
         if (!po) throw new NotFoundException('Замовлення не знайдено');
 
         assertFsmTransition(PO_TRANSITIONS, po.status as POStatus, newStatus);

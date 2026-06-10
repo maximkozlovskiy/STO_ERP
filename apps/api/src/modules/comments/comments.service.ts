@@ -49,7 +49,18 @@ export class CommentsService {
     const [items, total] = await Promise.all([
       this.prisma.comment.findMany({
         where: { orgId, entityType, entityId },
-        include: { author: { select: { firstName: true, lastName: true } } },
+        // sto-optimize: narrow select — toDto читає лише id/orgId/entityType/entityId/body/authorId/
+        // createdAt/author. Раніше include тягнуло syncVersion/deletedAt + всі скалярні колонки.
+        select: {
+          id: true,
+          orgId: true,
+          entityType: true,
+          entityId: true,
+          body: true,
+          authorId: true,
+          createdAt: true,
+          author: { select: { firstName: true, lastName: true } },
+        },
         orderBy: { createdAt: 'asc' },
         take: 500,
       }),
@@ -100,7 +111,12 @@ export class CommentsService {
   }
 
   async remove(orgId: string, id: string, user: { id: string; role: string }): Promise<void> {
-    const comment = await this.prisma.comment.findFirst({ where: { id, orgId } });
+    // sto-optimize: narrow select — для permission check потрібен лише authorId.
+    // Раніше тягнуло body/createdAt/syncVersion/deletedAt/entityType/entityId/orgId — все ігнорувалось.
+    const comment = await this.prisma.comment.findFirst({
+      where: { id, orgId },
+      select: { authorId: true },
+    });
     if (!comment) throw new NotFoundException('Коментар не знайдено');
     // Only the comment author or an owner/admin can delete. Without this check ANY authenticated
     // employee could erase another employee's notes — a moderation/audit problem.

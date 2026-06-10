@@ -246,7 +246,12 @@ export class InvoicesService {
   }
 
   async update(orgId: string, id: string, dto: UpdateInvoiceDto): Promise<InvoiceResponseDto> {
-    const inv = await this.prisma.invoice.findFirst({ where: { id, orgId, deletedAt: null } });
+    // sto-optimize: status-only projection — guard перевіряє лише DRAFT, всі інші поля ігноруються.
+    // Раніше тягнуло amount/dueDate/notes/totalWithVat/syncVersion + counterpartyId/workOrderId/orgId.
+    const inv = await this.prisma.invoice.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { status: true },
+    });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
     if (inv.status !== InvoiceStatus.DRAFT)
       throw new BadRequestException('Редагувати можна лише чернетку');
@@ -269,7 +274,11 @@ export class InvoicesService {
   }
 
   async transition(orgId: string, id: string, newStatus: InvStatus): Promise<InvoiceResponseDto> {
-    const inv = await this.prisma.invoice.findFirst({ where: { id, orgId, deletedAt: null } });
+    // sto-optimize: status-only projection — FSM transition потребує лише поточний статус.
+    const inv = await this.prisma.invoice.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { status: true },
+    });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
 
     assertFsmTransition(INV_TRANSITIONS, inv.status as InvStatus, newStatus);
@@ -526,13 +535,18 @@ export class InvoicesService {
   }
 
   private async recalcTotals(orgId: string, invoiceId: string): Promise<void> {
-    const lines = await this.prisma.invoiceLine.findMany({
+    // sto-optimize: Postgres aggregate замість JS reduce 3× по N рядків.
+    // Раніше: findMany(take:1000) тягнув всі invoiceLine рядки + 3× JS reduce.
+    // Тепер: prisma.aggregate({_sum: ...}) — 1 row response, Postgres counts.
+    // Паралель з паттерном work-orders.recalcTotals (2026-05-31).
+    // InvoiceLine uses hard delete (no deletedAt column) — where matches original findMany.
+    const result = await this.prisma.invoiceLine.aggregate({
       where: { invoiceId, orgId },
-      take: 1000,
+      _sum: { priceWithoutVat: true, vatAmount: true, priceWithVat: true },
     });
-    const totalWithoutVat = lines.reduce((s, l) => s + Number(l.priceWithoutVat), 0);
-    const totalVat = lines.reduce((s, l) => s + Number(l.vatAmount), 0);
-    const totalWithVat = lines.reduce((s, l) => s + Number(l.priceWithVat), 0);
+    const totalWithoutVat = Number(result._sum.priceWithoutVat ?? 0);
+    const totalVat = Number(result._sum.vatAmount ?? 0);
+    const totalWithVat = Number(result._sum.priceWithVat ?? 0);
 
     // Bug #76: prior code had a dead ternary (`totalWithVat || lines.length === 0 ? totalWithVat : totalWithVat`).
     // Both branches identical → result always equals totalWithVat. Use it directly.
