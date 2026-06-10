@@ -23,7 +23,7 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useConflictCheck } from '@/hooks/useConflictCheck';
 import { useConfirm } from '@/hooks/useConfirm';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { kyivToday, kyivDateTimeToISO } from '@/lib/format';
+import { kyivToday, kyivDateTimeToISO, isoToKyivLocalDateTime } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
 import {
   WO_STATUS_LABELS,
@@ -574,8 +574,8 @@ export function CreateWorkOrderModal({
           priority: wo.priority ?? 'NORMAL',
           repairCategory: wo.repairCategory ?? '',
           documentDate: wo.documentDate ? wo.documentDate.slice(0, 10) : kyivToday(),
-          plannedStartAt: wo.plannedAt ?? '',
-          plannedEndAt: wo.dueDate ?? '',
+          plannedStartAt: isoToKyivLocalDateTime(wo.plannedAt),
+          plannedEndAt: isoToKyivLocalDateTime(wo.dueDate),
         });
         setCounterpartyDisplayName(wo.counterpartyName ?? '');
         setCpPhone('');

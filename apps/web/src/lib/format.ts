@@ -157,3 +157,28 @@ export function kyivDateTimeToISO(date: string, time: string): string {
   const offset = kyivOffsetMs(naive);
   return new Date(naive.getTime() - offset).toISOString();
 }
+
+/**
+ * Convert a UTC ISO string (from API) to a Kyiv-local datetime string for
+ * <input type="datetime-local"> — format "YYYY-MM-DDTHH:mm". DST-aware.
+ *
+ * @example isoToKyivLocalDateTime('2026-06-12T05:30:00.000Z') → '2026-06-12T08:30'
+ * @example isoToKyivLocalDateTime('2026-01-15T07:00:00.000Z') → '2026-01-15T09:00'
+ */
+const KYIV_DATETIME_LOCAL_FMT = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Europe/Kyiv',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+export function isoToKyivLocalDateTime(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  // sv-SE format: "2026-06-12 08:30" → replace space with T for datetime-local
+  return KYIV_DATETIME_LOCAL_FMT.format(d).replace(' ', 'T');
+}
