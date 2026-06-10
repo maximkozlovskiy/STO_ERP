@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type React from 'react';
 import {
   Trash2,
@@ -31,6 +31,9 @@ import {
   WO_STATUS_TRANSITIONS,
   WO_PRIORITY_LABELS,
   WO_CATEGORY_LABELS,
+  WO_EDITABLE_STATUSES,
+  WO_SHAREABLE_STATUSES,
+  WO_INVOICEABLE_STATUSES,
 } from '@sto/shared';
 import { cn } from '@/lib/utils';
 import { Modal } from '@/components/ui/modal';
@@ -218,13 +221,6 @@ const EMPTY_PART: Omit<LocalPart, '_key'> = {
   unitShortName: '',
 };
 
-// sto-optimize: module-level frozen constants — раніше створювались inline у render path
-// (canEdit/canShare/allowedTransitions у тілі компонента). Statically-known sets:
-// `.includes()` ідентифікатор не залежить від ідентичності масиву → стабільні refs дешевші
-// (V8 cache + менше allocs за кожен keystroke у формі).
-const EDITABLE_STATUSES = Object.freeze(['DRAFT', 'ESTIMATE', 'APPROVED'] as const);
-const SHAREABLE_STATUSES = Object.freeze(['DRAFT', 'ESTIMATE', 'APPROVED'] as const);
-const INVOICEABLE_STATUSES = Object.freeze(['COMPLETED', 'INVOICED'] as const);
 const EMPTY_TRANSITIONS: readonly string[] = Object.freeze([]);
 // Status order = keys of label map; module-level → uses const map once instead of
 // `Object.keys()` per render у IIFE-status-picker (recomputed на КОЖНИЙ keystroke у формі).
@@ -1047,16 +1043,29 @@ export function CreateWorkOrderModal({
   const allowedTransitions = isEditMode
     ? (WO_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
     : EMPTY_TRANSITIONS;
-  const canEdit = isEditMode
-    ? (EDITABLE_STATUSES as readonly string[]).includes(currentStatus)
-    : true;
+
+  const { prevStatus: statusPrevStep, nextStatus: statusNextStep } = useMemo(() => {
+    const curIdx = WO_STATUS_ORDER.indexOf(currentStatus);
+    let prevStatus: string | undefined;
+    for (let i = allowedTransitions.length - 1; i >= 0; i--) {
+      const s = allowedTransitions[i];
+      if (s && WO_STATUS_ORDER.indexOf(s) < curIdx) {
+        prevStatus = s;
+        break;
+      }
+    }
+    const nextStatus = allowedTransitions.find((s: string) => WO_STATUS_ORDER.indexOf(s) > curIdx);
+    return { prevStatus, nextStatus };
+  }, [currentStatus, allowedTransitions]);
+
+  const canEdit = isEditMode ? WO_EDITABLE_STATUSES.includes(currentStatus) : true;
   // Bug #401: вирівняно з backend SHAREABLE_STATUSES (DRAFT/ESTIMATE/APPROVED).
   // Після клієнтського затвердження (APPROVED) приймальник часто має необхідність:
   // (а) повторно надіслати SMS з кошторисом (клієнт втратив посилання),
   // (б) роздрукувати наряд для підпису. Backend дозволяє share/SMS у APPROVED,
   // тож UI має експонувати ті ж кнопки. Після IN_PROGRESS публічне посилання
   // перестає працювати (404) — на стороні backend.
-  const canShare = isEditMode && (SHAREABLE_STATUSES as readonly string[]).includes(currentStatus);
+  const canShare = isEditMode && WO_SHAREABLE_STATUSES.includes(currentStatus);
 
   const handlePrint = async () => {
     if (!workOrderId) return;
@@ -1115,8 +1124,7 @@ export function CreateWorkOrderModal({
     }
   };
 
-  const canInvoice =
-    isEditMode && (INVOICEABLE_STATUSES as readonly string[]).includes(currentStatus);
+  const canInvoice = isEditMode && WO_INVOICEABLE_STATUSES.includes(currentStatus);
 
   const handleInvoice = async () => {
     if (!workOrderId) return;
@@ -1456,71 +1464,51 @@ export function CreateWorkOrderModal({
                             Статус
                           </label>
                           <div ref={statusMenuRef} className="relative flex items-center gap-1">
-                            {(() => {
-                              // WO_STATUS_ORDER — module-level frozen const (раніше
-                              // `Object.keys(WO_STATUS_LABELS)` recomputed на КОЖЕН keystroke у формі).
-                              const curIdx = WO_STATUS_ORDER.indexOf(currentStatus);
-                              // Iterate transitions backwards без створення тимчасового масиву
-                              // (`[...arr].reverse()` allocates + reverses per render).
-                              let prevStatus: string | undefined;
-                              for (let i = allowedTransitions.length - 1; i >= 0; i--) {
-                                const s = allowedTransitions[i];
-                                if (s && WO_STATUS_ORDER.indexOf(s) < curIdx) {
-                                  prevStatus = s;
-                                  break;
-                                }
-                              }
-                              const nextStatus = allowedTransitions.find(
-                                (s: string) => WO_STATUS_ORDER.indexOf(s) > curIdx,
-                              );
-                              return (
-                                <>
-                                  <button
-                                    type="button"
-                                    disabled={transitioning || !prevStatus}
-                                    onClick={() => prevStatus && void doTransition(prevStatus)}
-                                    className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                                  >
-                                    <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-                                    <span className="max-w-[80px] truncate">
-                                      {prevStatus
-                                        ? (WO_STATUS_LABELS[prevStatus] ?? prevStatus)
-                                        : '—'}
-                                    </span>
-                                  </button>
-                                  <Tooltip
-                                    content={WO_STATUS_DESCRIPTIONS[currentStatus] ?? currentStatus}
-                                  >
-                                    <button
-                                      type="button"
-                                      disabled={transitioning}
-                                      onClick={() => setStatusMenuOpen(o => !o)}
-                                      className={cn(
-                                        'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
-                                        STATUS_COLORS[currentStatus] ??
-                                          'bg-secondary text-muted-foreground',
-                                        !transitioning && 'cursor-pointer hover:opacity-80',
-                                      )}
-                                    >
-                                      {WO_STATUS_LABELS[currentStatus] ?? currentStatus}
-                                    </button>
-                                  </Tooltip>
-                                  <button
-                                    type="button"
-                                    disabled={transitioning || !nextStatus}
-                                    onClick={() => nextStatus && void doTransition(nextStatus)}
-                                    className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                                  >
-                                    <span className="max-w-[80px] truncate">
-                                      {nextStatus
-                                        ? (WO_STATUS_LABELS[nextStatus] ?? nextStatus)
-                                        : '—'}
-                                    </span>
-                                    <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                                  </button>
-                                </>
-                              );
-                            })()}
+                            <>
+                              <button
+                                type="button"
+                                disabled={transitioning || !statusPrevStep}
+                                onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
+                                className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+                                <span className="max-w-[80px] truncate">
+                                  {statusPrevStep
+                                    ? (WO_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
+                                    : '—'}
+                                </span>
+                              </button>
+                              <Tooltip
+                                content={WO_STATUS_DESCRIPTIONS[currentStatus] ?? currentStatus}
+                              >
+                                <button
+                                  type="button"
+                                  disabled={transitioning}
+                                  onClick={() => setStatusMenuOpen(o => !o)}
+                                  className={cn(
+                                    'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
+                                    STATUS_COLORS[currentStatus] ??
+                                      'bg-secondary text-muted-foreground',
+                                    !transitioning && 'cursor-pointer hover:opacity-80',
+                                  )}
+                                >
+                                  {WO_STATUS_LABELS[currentStatus] ?? currentStatus}
+                                </button>
+                              </Tooltip>
+                              <button
+                                type="button"
+                                disabled={transitioning || !statusNextStep}
+                                onClick={() => statusNextStep && void doTransition(statusNextStep)}
+                                className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <span className="max-w-[80px] truncate">
+                                  {statusNextStep
+                                    ? (WO_STATUS_LABELS[statusNextStep] ?? statusNextStep)
+                                    : '—'}
+                                </span>
+                                <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                              </button>
+                            </>
                             {statusMenuOpen && allowedTransitions.length > 0 && (
                               <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] rounded-lg border border-border bg-surface shadow-lg py-1">
                                 {allowedTransitions.map(s => (
