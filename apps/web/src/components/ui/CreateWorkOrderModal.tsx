@@ -261,6 +261,17 @@ const localDateTimeToISO = (v: string): string | undefined => {
   return iso || undefined;
 };
 
+// Calc working hours between two "YYYY-MM-DDTHH:mm" local datetime strings.
+// Returns rounded-to-2-decimals string, or '' if inputs are missing/invalid.
+const calcPlannedHours = (start?: string, end?: string): string => {
+  if (!start || !end) return '';
+  const s = new Date(start);
+  const e = new Date(end);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e <= s) return '';
+  const hours = (e.getTime() - s.getTime()) / 3_600_000;
+  return String(Math.round(hours * 100) / 100);
+};
+
 // UA users often type `1,5` for fractional values — accept comma as decimal
 // separator before passing to `Number()`. Returns `undefined` for empty/NaN.
 const toNumberOrUndefined = (raw: string): number | undefined => {
@@ -291,6 +302,8 @@ export function CreateWorkOrderModal({
     documentDate: kyivToday(),
     plannedStartAt: '',
     plannedEndAt: '',
+    plannedHours: '',
+    actualHours: '',
   });
   const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
   const [cpPhone, setCpPhone] = useState('');
@@ -532,6 +545,8 @@ export function CreateWorkOrderModal({
       documentDate: kyivToday(),
       plannedStartAt: prefill?.plannedStartAt ?? '',
       plannedEndAt: prefill?.plannedEndAt ?? '',
+      plannedHours: calcPlannedHours(prefill?.plannedStartAt, prefill?.plannedEndAt),
+      actualHours: '',
     });
     setCounterpartyDisplayName(prefill?.counterpartyDisplay ?? '');
     setCpPhone('');
@@ -576,6 +591,8 @@ export function CreateWorkOrderModal({
           documentDate: wo.documentDate ? wo.documentDate.slice(0, 10) : kyivToday(),
           plannedStartAt: isoToKyivLocalDateTime(wo.plannedAt),
           plannedEndAt: isoToKyivLocalDateTime(wo.dueDate),
+          plannedHours: wo.plannedHours != null ? String(wo.plannedHours) : '',
+          actualHours: wo.actualHours != null ? String(wo.actualHours) : '',
         });
         setCounterpartyDisplayName(wo.counterpartyName ?? '');
         setCpPhone('');
@@ -829,6 +846,7 @@ export function CreateWorkOrderModal({
             documentDate: form.documentDate || undefined,
             plannedAt: localDateTimeToISO(form.plannedStartAt),
             dueDate: localDateTimeToISO(form.plannedEndAt),
+            plannedHours: toNumberOrUndefined(form.plannedHours),
           }),
         });
         createdWoRef.current = wo;
@@ -889,6 +907,8 @@ export function CreateWorkOrderModal({
           liftId: form.liftId || undefined,
           plannedAt: localDateTimeToISO(form.plannedStartAt),
           dueDate: localDateTimeToISO(form.plannedEndAt),
+          plannedHours: form.plannedHours !== '' ? toNumberOrUndefined(form.plannedHours) : null,
+          actualHours: form.actualHours !== '' ? toNumberOrUndefined(form.actualHours) : null,
         }),
       });
       // sto-optimize: DELETEs are independent (each row by id) — fire in parallel
@@ -945,7 +965,15 @@ export function CreateWorkOrderModal({
     if (newStatus === 'IN_PROGRESS' && calConflict?.anyConflict) {
       const ok = await confirm({
         title: 'Перевести наряд в "В роботі"?',
-        message: `У календарі є перетин слотів (${calConflict.conflictSlots.length} шт.). Продовжити?`,
+        message: `У календарі є перетин слотів (${calConflict.conflictSlots.length} шт.)${
+          calConflict.conflictSlots.some(s => s.workOrderNumber)
+            ? ': ' +
+              calConflict.conflictSlots
+                .filter(s => s.workOrderNumber)
+                .map(s => s.workOrderNumber)
+                .join(', ')
+            : ''
+        }. Продовжити?`,
         confirmLabel: 'Перевести',
         variant: 'destructive',
       });
@@ -1522,23 +1550,50 @@ export function CreateWorkOrderModal({
                         </div>
                       </div>
                       <div className="grid grid-cols-2 divide-x divide-border">
-                        <div className="grid grid-cols-2 gap-3 p-3">
+                        <div className="grid grid-cols-[1fr_1fr_auto] gap-3 p-3">
                           <DateTimePickerInput
                             label="Дата та час початку"
                             value={form.plannedStartAt}
-                            onChange={v => setForm(f => ({ ...f, plannedStartAt: v }))}
+                            onChange={v =>
+                              setForm(f => ({
+                                ...f,
+                                plannedStartAt: v,
+                                plannedHours: calcPlannedHours(v, f.plannedEndAt),
+                              }))
+                            }
                             disabled={!canEdit}
                             inputClassName="h-8 text-[13px]"
                           />
                           <DateTimePickerInput
                             label="Дата та час завершення"
                             value={form.plannedEndAt}
-                            onChange={v => setForm(f => ({ ...f, plannedEndAt: v }))}
+                            onChange={v =>
+                              setForm(f => ({
+                                ...f,
+                                plannedEndAt: v,
+                                plannedHours: calcPlannedHours(f.plannedStartAt, v),
+                              }))
+                            }
                             disabled={!canEdit}
                             inputClassName="h-8 text-[13px]"
                           />
+                          <div className="flex flex-col gap-1 min-w-[80px]">
+                            <label className="text-[11px] text-muted-foreground font-medium">
+                              Нормогодин
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={form.plannedHours}
+                              onChange={e => setForm(f => ({ ...f, plannedHours: e.target.value }))}
+                              disabled={!canEdit}
+                              placeholder="0"
+                              className="h-8 w-full rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-3 p-3">
+                        <div className="grid grid-cols-[1fr_1fr_auto] gap-3 p-3">
                           <DateTimePickerInput
                             label="Дата та час початку"
                             value=""
@@ -1553,6 +1608,21 @@ export function CreateWorkOrderModal({
                             disabled
                             inputClassName="h-8 text-[13px]"
                           />
+                          <div className="flex flex-col gap-1 min-w-[80px]">
+                            <label className="text-[11px] text-muted-foreground font-medium">
+                              Нормогодин
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={form.actualHours}
+                              onChange={e => setForm(f => ({ ...f, actualHours: e.target.value }))}
+                              disabled={!canEdit}
+                              placeholder="0"
+                              className="h-8 w-full rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1562,8 +1632,19 @@ export function CreateWorkOrderModal({
                       <div className="rounded-md bg-warning-subtle border border-warning/20 px-3 py-2 text-[12px] text-warning">
                         ⚠{calConflict.liftConflict && ' Підйомник зайнятий.'}
                         {calConflict.employeeConflict && ' Механік зайнятий.'} Є перетин з{' '}
-                        {calConflict.conflictSlots.length} слотом(и) у календарі. Можна зберегти
-                        попри це.
+                        {calConflict.conflictSlots.length} слотом(и) у календарі
+                        {calConflict.conflictSlots.some(s => s.workOrderNumber) && (
+                          <>
+                            {' '}
+                            (
+                            {calConflict.conflictSlots
+                              .filter(s => s.workOrderNumber)
+                              .map(s => s.workOrderNumber)
+                              .join(', ')}
+                            )
+                          </>
+                        )}
+                        . Можна зберегти попри це.
                       </div>
                     )}
 

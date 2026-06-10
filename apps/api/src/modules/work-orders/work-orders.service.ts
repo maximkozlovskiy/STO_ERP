@@ -322,6 +322,7 @@ export class WorkOrdersService {
         repairCategory: dto.repairCategory ?? null,
         plannedAt: dto.plannedAt ? new Date(dto.plannedAt) : null,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        plannedHours: dto.plannedHours ?? null,
         documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
       },
       include: {
@@ -421,6 +422,8 @@ export class WorkOrdersService {
               : new Date(dto.dueDate),
         documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
         liftId: dto.liftId === undefined ? undefined : (dto.liftId ?? null),
+        plannedHours: dto.plannedHours === undefined ? undefined : (dto.plannedHours ?? null),
+        actualHours: dto.actualHours === undefined ? undefined : (dto.actualHours ?? null),
       },
       // Bug #350 follow-up: include contract so PATCH response carries contractNumber.
       // Without it, frontend WorkOrderDetail.contractNumber stays null after edits
@@ -489,6 +492,7 @@ export class WorkOrdersService {
         priority: true,
         repairCategory: true,
         dueDate: true,
+        plannedHours: true,
         lines: {
           where: { deletedAt: null },
           select: {
@@ -1340,6 +1344,8 @@ export class WorkOrdersService {
     outMileage: number | null;
     plannedAt: Date | null;
     dueDate: Date | null;
+    plannedHours?: number | null;
+    actualHours?: number | null;
     completedAt: Date | null;
     clientApproval: boolean;
     totalLabor: Prisma.Decimal;
@@ -1388,6 +1394,8 @@ export class WorkOrdersService {
       outMileage: wo.outMileage ?? null,
       plannedAt: wo.plannedAt ?? null,
       dueDate: wo.dueDate ?? null,
+      plannedHours: wo.plannedHours ?? null,
+      actualHours: wo.actualHours ?? null,
       completedAt: wo.completedAt ?? null,
       clientApproval: wo.clientApproval,
       totalLabor: Number(wo.totalLabor),

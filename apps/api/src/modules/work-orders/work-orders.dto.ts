@@ -81,6 +81,12 @@ export class CreateWorkOrderDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   liftId?: string;
+
+  @ApiPropertyOptional({ description: 'Планові нормогодини' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  plannedHours?: number;
 }
 
 export class UpdateWorkOrderDto {
@@ -128,6 +134,18 @@ export class UpdateWorkOrderDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   liftId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Планові нормогодини', type: Number, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  plannedHours?: number | null;
+
+  @ApiPropertyOptional({ description: 'Фактичні нормогодини', type: Number, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  actualHours?: number | null;
 }
 
 export class TransitionWorkOrderDto {
@@ -267,6 +285,8 @@ export class WorkOrderResponseDto {
   @ApiPropertyOptional() outMileage?: number | null;
   @ApiPropertyOptional() plannedAt?: Date | null;
   @ApiPropertyOptional() dueDate?: Date | null;
+  @ApiPropertyOptional() plannedHours?: number | null;
+  @ApiPropertyOptional() actualHours?: number | null;
   @ApiPropertyOptional() completedAt?: Date | null;
   @ApiProperty() clientApproval!: boolean;
   @ApiProperty() totalLabor!: number;

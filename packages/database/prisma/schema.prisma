@@ -983,6 +983,8 @@ model WorkOrder {
   outMileage     Int?
   plannedAt      DateTime?
   dueDate        DateTime?
+  plannedHours   Float?
+  actualHours    Float?
   completedAt    DateTime?
   warrantyUntil  DateTime?
   clientApproval Boolean           @default(false)
