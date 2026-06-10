@@ -8,13 +8,23 @@ import { cn } from '@/lib/utils';
 
 // ─── TabChip ─────────────────────────────────────────────────────────────────
 
+// sto-optimize: onActivate/onClose accept the tab id як аргумент — без цього
+// батько передає `() => activateTab(tab.id)` inline arrow на кожен render,
+// що ламає `memo` (Bug #424 fix був частковим — useCallback стабілізував
+// activateTab/closeTab у hook, але inline wrappers у `.map()` все одно
+// створювали нові refs кожного render → всі chip-и re-render-или при будь-якій
+// зміні tabs). Тепер batter передає СТАБІЛЬНІ refs onActivate/onClose, TabChip
+// викликає їх з id зі своїх props → memo прохоодить shallow-compare на tab.
 interface TabChipProps {
   tab: Tab;
-  onActivate: () => void;
-  onClose: () => void;
+  onActivate: (id: string) => void;
+  onClose: (id: string) => void;
 }
 
 const TabChip = memo(function TabChip({ tab, onActivate, onClose }: TabChipProps) {
+  // Inline arrows тут безпечні — TabChip уже memo'd, кожен chip має ВЛАСНИЙ
+  // identity через `tab` prop. Нові arrow refs створюються лише коли tab
+  // міняється — тобто щоразу при rerender ЦІЄЇ chip-instance (через зміну tab).
   return (
     <div
       className={cn(
@@ -22,7 +32,7 @@ const TabChip = memo(function TabChip({ tab, onActivate, onClose }: TabChipProps
         'text-[12px] max-w-40 border-r border-border transition-colors',
         'bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border-b-2 border-b-amber-400',
       )}
-      onClick={onActivate}
+      onClick={() => onActivate(tab.id)}
       title={tab.label}
     >
       <FileText className="h-3 w-3 shrink-0 opacity-60" />
@@ -31,7 +41,7 @@ const TabChip = memo(function TabChip({ tab, onActivate, onClose }: TabChipProps
         className="ml-0.5 shrink-0 rounded-sm p-0.5 opacity-0 group-hover:opacity-60 focus-visible:opacity-100 hover:opacity-100! transition-opacity"
         onClick={e => {
           e.stopPropagation();
-          onClose();
+          onClose(tab.id);
         }}
         title="Закрити"
         aria-label="Закрити вкладку"
@@ -120,12 +130,10 @@ export function TabBar() {
   return (
     <div className="hidden lg:flex items-stretch h-9 bg-surface border-b border-border shrink-0 overflow-hidden">
       {visibleTabs.map(tab => (
-        <TabChip
-          key={tab.id}
-          tab={tab}
-          onActivate={() => activateTab(tab.id)}
-          onClose={() => closeTab(tab.id)}
-        />
+        // sto-optimize: передаємо СТАБІЛЬНІ refs (activateTab/closeTab з useCallback)
+        // — без inline-arrow обгорток. TabChip memo тепер реально працює: коли
+        // змінюється ОДНА tab у списку, інші chip-и не re-render-яться.
+        <TabChip key={tab.id} tab={tab} onActivate={activateTab} onClose={closeTab} />
       ))}
       {hiddenTabs.length > 0 && (
         <TabOverflowMenu tabs={hiddenTabs} onActivate={activateTab} onClose={closeTab} />

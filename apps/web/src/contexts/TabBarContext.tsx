@@ -6,6 +6,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   type ReactNode,
 } from 'react';
@@ -181,15 +182,22 @@ export function TabBarProvider({ children }: { children: ReactNode }) {
     return tabsRef.current.find(t => t.id === id) ?? null;
   }, []);
 
+  // sto-optimize: memoize context value щоб уникнути пере-рендеру ВСІХ consumers
+  // коли provider re-render-иться без зміни state. Без useMemo об'єкт-літерал
+  // створюється заново кожен рендер → React Context посилає ВСІМ підписникам
+  // сигнал зміни → всі компоненти що читають context (Modal-и, TabBar, useTabBar
+  // у різних місцях) re-render-яться навіть коли реально нічого не змінилось.
+  // Зміна `tabs`/`pendingRestore` все одно тригерить новий value (правильно),
+  // а minimizeModal/closeTab/restoreModal/setPendingRestore — стабільні refs
+  // (useCallback з [] deps + useState setter), отже не впливають на identity.
+  const value = useMemo(
+    () => ({ tabs, minimizeModal, closeTab, restoreModal, pendingRestore, setPendingRestore }),
+    [tabs, minimizeModal, closeTab, restoreModal, pendingRestore],
+  );
+
   if (!mounted) return <>{children}</>;
 
-  return (
-    <TabBarContext.Provider
-      value={{ tabs, minimizeModal, closeTab, restoreModal, pendingRestore, setPendingRestore }}
-    >
-      {children}
-    </TabBarContext.Provider>
-  );
+  return <TabBarContext.Provider value={value}>{children}</TabBarContext.Provider>;
 }
 
 // ─── Consumer hook ────────────────────────────────────────────────────────────

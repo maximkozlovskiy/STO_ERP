@@ -1130,19 +1130,26 @@ export function CreateWorkOrderModal({
 
   const initialStatus = Object.keys(WO_STATUS_LABELS)[0] ?? 'DRAFT';
 
+  // sto-optimize: stable onClose ref для Modal. Modal має useEffect що додає
+  // document.addEventListener('keydown') з useCallback([onClose]) — кожен новий
+  // ref → effect re-fires → removeEventListener + addEventListener + body
+  // overflow re-write. Без useCallback ця модалка (з частим typing у inputs)
+  // тригерила re-attach на КОЖЕН keystroke. saving/transitioning все одно є
+  // у deps — це валідно, бо коли вони міняються поведінка clos має змінитися
+  // (no-op під час saving). Краща альтернатива — додаткова ranges-state, але
+  // useCallback з 2 deps достатній.
+  const handleModalClose = useCallback(() => {
+    if (saving || transitioning) return;
+    setActiveTab('main');
+    onClose();
+  }, [saving, transitioning, onClose]);
+
   // Column header widths (shared between table header and input row grid)
   return (
     <>
       <Modal
         open={open}
-        onClose={
-          saving || transitioning
-            ? () => {}
-            : () => {
-                setActiveTab('main');
-                onClose();
-              }
-        }
+        onClose={handleModalClose}
         title={isEditMode ? woNumber || 'Наряд' : 'Новий наряд'}
         size="content"
         extraHeaderActions={

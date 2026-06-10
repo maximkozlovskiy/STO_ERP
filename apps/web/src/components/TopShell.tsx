@@ -12,7 +12,7 @@ const CreateWorkOrderModal = dynamic(
   { ssr: false },
 );
 import { Wrench, LogOut, ChevronLeft, Menu, Star, Search, type LucideIcon } from 'lucide-react';
-import { NAV_GROUPS, NAV_GROUPS_FUNCTIONS, type NavItem, type NavGroup } from '@/lib/nav';
+import { NAV_GROUPS, NAV_GROUPS_FUNCTIONS, type NavItem } from '@/lib/nav';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth, isPublicRoute } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -425,29 +425,28 @@ export function TopShell({ children }: { children: ReactNode }) {
   // Disable global shortcuts while palette is open so Alt+W/D/C/I/N don't navigate behind it
   useGlobalShortcuts(!!employee && uiFeatures.keyboardShortcutsEnabled && !paletteOpen);
 
+  // sto-optimize: консолідація трьох mount-only useEffect-ів у один. Раніше кожен
+  // окремо тригерив commit phase + scheduling — React виконував 3 окремі effect-flush
+  // після першого render. Один useEffect читає всі три localStorage ключі за раз і
+  // підписує event listener у тому ж циклі. Менше pending effects = коротший
+  // mount-time critical path; сема��тика ідентична бо deps усіх трьох — `[]`.
   useEffect(() => {
     setMounted(true);
     try {
-      const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-      if (saved !== null) setCollapsed(saved === 'true');
+      const savedCollapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      if (savedCollapsed !== null) setCollapsed(savedCollapsed === 'true');
     } catch {
       /* ignore */
     }
-  }, []);
-
-  useEffect(() => {
     try {
-      const saved = localStorage.getItem(BOOKMARKS_KEY);
-      if (saved) setBookmarks(JSON.parse(saved) as string[]);
+      const savedBookmarks = localStorage.getItem(BOOKMARKS_KEY);
+      if (savedBookmarks) setBookmarks(JSON.parse(savedBookmarks) as string[]);
     } catch {
       /* ignore */
     }
-  }, []);
-
-  useEffect(() => {
     try {
-      const saved = localStorage.getItem(NAV_MODE_KEY) as NavMode | null;
-      if (saved === 'sections' || saved === 'functions') setNavMode(saved);
+      const savedNavMode = localStorage.getItem(NAV_MODE_KEY) as NavMode | null;
+      if (savedNavMode === 'sections' || savedNavMode === 'functions') setNavMode(savedNavMode);
     } catch {
       /* ignore */
     }
@@ -530,7 +529,15 @@ export function TopShell({ children }: { children: ReactNode }) {
     }
   };
 
-  const NavLink = ({ item, showStar = true }: { item: NavItem; showStar?: boolean }) => {
+  // sto-optimize: NavLink/SidebarNav/SidebarContent рендеряться через ВИКЛИК функцій
+  // `renderNavLink(item)`, а НЕ через JSX-elements `<NavLink item={item}/>`. Inline
+  // оголошення React-компонентів усередині TopShell створювало НОВУ функцію-component
+  // type на кожен render TopShell → React порівнював component types по reference →
+  // unmount+remount усього subtree (sidebar + всіх NavLink-ів). Symptom: кожен
+  // setState у TopShell (mobileOpen, paletteOpen, collapsed, ...) знищував DOM-state
+  // sidebar — Link prefetch скидався, кожен NavLink мав initial render. Через виклик
+  // як функції React бачить inline JSX, ніяких component-type змін не відбувається.
+  const renderNavLink = (item: NavItem, showStar = true) => {
     const active = isActive(pathname ?? '', item.href);
     const Icon = item.icon;
     const isBookmarked = bookmarks.includes(item.href);
@@ -570,50 +577,48 @@ export function TopShell({ children }: { children: ReactNode }) {
     );
   };
 
-  const SidebarNav = () => {
-    const bookmarkedItems = ALL_NAV_ITEMS.filter(
-      item => bookmarks.includes(item.href) && (!item.roles || item.roles.includes(role)),
-    );
-    const activeGroups = navMode === 'sections' ? NAV_GROUPS : NAV_GROUPS_FUNCTIONS;
+  // bookmarkedItems та activeGroups — обчислюються один раз за render циклу TopShell.
+  // Раніше були всередині SidebarNav() — викликався двічі (desktop sidebar + mobile
+  // overlay), отже filter+lookup виконувалися два рази на render. Тепер обчислюються
+  // ОДИН раз перед обома використаннями.
+  const bookmarkedItems = ALL_NAV_ITEMS.filter(
+    item => bookmarks.includes(item.href) && (!item.roles || item.roles.includes(role)),
+  );
+  const activeGroups = navMode === 'sections' ? NAV_GROUPS : NAV_GROUPS_FUNCTIONS;
 
-    return (
-      <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-        {/* Bookmarks section — only when bookmarks exist */}
-        {bookmarkedItems.length > 0 && (
-          <div className="pb-1">
-            {!collapsed && (
+  const renderSidebarNav = () => (
+    <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
+      {/* Bookmarks section — only when bookmarks exist */}
+      {bookmarkedItems.length > 0 && (
+        <div className="pb-1">
+          {!collapsed && (
+            <p className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sidebar-muted">
+              Закладки
+            </p>
+          )}
+          {bookmarkedItems.map(item => renderNavLink(item, false))}
+        </div>
+      )}
+
+      {/* Regular nav groups */}
+      {activeGroups.map((group, gi) => {
+        const visible = group.items.filter(n => !n.roles || n.roles.includes(role));
+        if (!visible.length) return null;
+        return (
+          <div key={gi} className={cn((gi > 0 || bookmarkedItems.length > 0) && 'pt-3')}>
+            {group.label && !collapsed && (
               <p className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sidebar-muted">
-                Закладки
+                {group.label}
               </p>
             )}
-            {bookmarkedItems.map(item => (
-              <NavLink key={`bookmark-${item.href}`} item={item} showStar={false} />
-            ))}
+            {visible.map(item => renderNavLink(item))}
           </div>
-        )}
+        );
+      })}
+    </nav>
+  );
 
-        {/* Regular nav groups */}
-        {activeGroups.map((group, gi) => {
-          const visible = group.items.filter(n => !n.roles || n.roles.includes(role));
-          if (!visible.length) return null;
-          return (
-            <div key={gi} className={cn((gi > 0 || bookmarkedItems.length > 0) && 'pt-3')}>
-              {group.label && !collapsed && (
-                <p className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sidebar-muted">
-                  {group.label}
-                </p>
-              )}
-              {visible.map(item => (
-                <NavLink key={item.href} item={item} />
-              ))}
-            </div>
-          );
-        })}
-      </nav>
-    );
-  };
-
-  const SidebarContent = () => (
+  const renderSidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div
@@ -672,7 +677,7 @@ export function TopShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <SidebarNav />
+      {renderSidebarNav()}
 
       {/* User footer */}
       <div className="border-t border-sidebar-border px-2 py-2.5 shrink-0">
@@ -761,7 +766,7 @@ export function TopShell({ children }: { children: ReactNode }) {
           collapsed ? 'w-15' : 'w-54',
         )}
       >
-        <SidebarContent />
+        {renderSidebarContent()}
       </aside>
 
       {/* Mobile overlay */}
@@ -772,7 +777,7 @@ export function TopShell({ children }: { children: ReactNode }) {
             onClick={() => setMobileOpen(false)}
           />
           <aside className="fixed inset-y-0 left-0 w-54 flex flex-col bg-sidebar-bg z-50 lg:hidden shadow-xl">
-            <SidebarContent />
+            {renderSidebarContent()}
           </aside>
         </>
       )}
