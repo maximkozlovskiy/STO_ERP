@@ -18,7 +18,6 @@ import {
   CreditCard,
   Calendar,
   Shield,
-  ChevronDown,
 } from 'lucide-react';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { useRequireAuth, useAuth } from '@/lib/auth';
@@ -119,9 +118,12 @@ const STATUS_TABS: Array<[string, string]> = [
   ['ESTIMATE', 'Кошторис'],
   ['APPROVED', 'Затверджено'],
   ['IN_PROGRESS', 'В роботі'],
+  ['ON_HOLD', 'Призупинено'],
   ['COMPLETED', 'Виконано'],
   ['INVOICED', 'Виставлено'],
   ['PAID', 'Оплачено'],
+  ['ARCHIVED', 'Архів'],
+  ['CANCELLED', 'Скасовано'],
 ];
 
 type LinkedCountsEntry = {
@@ -148,13 +150,6 @@ const DOC_COUNTERS: Array<{
   { field: 'calendarSlots', Icon: Calendar, label: 'Записи календаря' },
   { field: 'warranties', Icon: Shield, label: 'Гарантії' },
 ];
-
-// Derived from WO_STATUS_LABELS so adding a new status to the enum automatically routes it
-// into the "Інші" dropdown without any manual update here.
-const PRIMARY_STATUS_KEYS = new Set(STATUS_TABS.map(([v]) => v).filter(Boolean));
-const STATUS_TABS_EXTRA: Array<[string, string]> = Object.keys(WO_STATUS_LABELS)
-  .filter(k => !PRIMARY_STATUS_KEYS.has(k))
-  .map(k => [k, WO_STATUS_LABELS[k]] as [string, string]);
 
 function isOverdue(dueDateIso: string, nowMs: number): boolean {
   const due = new Date(dueDateIso);
@@ -537,51 +532,6 @@ function WorkOrdersPageInner() {
               btn
             );
           })}
-
-          {/* Extra statuses dropdown */}
-          {(() => {
-            const isExtraActive = STATUS_TABS_EXTRA.some(([v]) => v === statusFilter);
-            return (
-              <div className="relative">
-                <select
-                  // Bug #419: aria-label потрібен бо текст "Інші" рендериться у
-                  // <option value="" disabled hidden> — screen-reader його не оголошує.
-                  aria-label="Інші статуси нарядів"
-                  value={isExtraActive ? statusFilter : ''}
-                  onChange={e => {
-                    if (e.target.value) {
-                      setStatusFilter(e.target.value);
-                      resetPage();
-                      setActiveSavedFilterId(null);
-                    }
-                  }}
-                  className={cn(
-                    'appearance-none px-3 py-1 pr-7 rounded-full text-sm font-medium border transition-colors cursor-pointer bg-surface outline-none',
-                    isExtraActive
-                      ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                      : 'border-border text-muted-foreground hover:bg-secondary hover:text-foreground',
-                  )}
-                >
-                  <option value="" disabled hidden>
-                    Інші
-                  </option>
-                  {STATUS_TABS_EXTRA.map(([v, l]) => (
-                    <option key={v} value={v}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  size={12}
-                  className={cn(
-                    'pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2',
-                    isExtraActive ? 'text-primary-foreground' : 'text-muted-foreground',
-                  )}
-                  aria-hidden
-                />
-              </div>
-            );
-          })()}
         </div>
         {employee && (
           <button
