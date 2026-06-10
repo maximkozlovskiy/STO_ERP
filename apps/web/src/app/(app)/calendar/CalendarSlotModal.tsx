@@ -567,7 +567,12 @@ export function CalendarSlotModal({
       setError('Вкажіть час початку та завершення');
       return;
     }
-    if (form.endAt <= form.startAt) {
+    // overflow: endAt (next-day, e.g. "10:30") < startAt ("19:00") is valid
+    const [sh2, sm2] = form.startAt.split(':').map(Number);
+    const startMin2 = (sh2 ?? 0) * 60 + (sm2 ?? 0);
+    const nh2 = Number(form.normoHours);
+    const isOverflowSlot = nh2 > 0 && startMin2 + Math.round(nh2 * 60) > WINDOW_END * 60;
+    if (!isOverflowSlot && form.endAt <= form.startAt) {
       setError('Час завершення повинен бути після часу початку');
       return;
     }
@@ -689,7 +694,20 @@ export function CalendarSlotModal({
                 ? 'Перегляд слоту'
                 : 'Редагування слоту'
               : pendingSlot
-                ? `Новий слот ${decimalHoursToHHMM(pendingSlot.startH)}–${decimalHoursToHHMM(pendingSlot.endH)} на ${date}`
+                ? (() => {
+                    const s = decimalHoursToHHMM(pendingSlot.startH);
+                    const e = decimalHoursToHHMM(pendingSlot.endH);
+                    if (pendingSlot.endH < pendingSlot.startH) {
+                      try {
+                        const d = new Date(`${date}T12:00:00Z`);
+                        d.setUTCDate(d.getUTCDate() + 1);
+                        return `Новий слот ${s}–${e} на ${date} – ${d.toISOString().slice(0, 10)}`;
+                      } catch {
+                        return `Новий слот ${s}–${e} на ${date}`;
+                      }
+                    }
+                    return `Новий слот ${s}–${e} на ${date}`;
+                  })()
                 : `Новий слот на ${date}`}
           </h3>
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
