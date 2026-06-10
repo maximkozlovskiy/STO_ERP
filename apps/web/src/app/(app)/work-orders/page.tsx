@@ -133,6 +133,11 @@ type LinkedCountsEntry = {
 type LinkedCountsField = keyof LinkedCountsEntry;
 type LinkedCountsMap = Record<string, LinkedCountsEntry>;
 
+// Stable empty fallback — module-level frozen reference avoids fresh {} per render
+// (Bug #328 cascade pattern: even if not feeding useEffect today, a future hook
+// that depends on linkedCounts identity would re-fire each render with a literal).
+const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMap;
+
 const DOC_COUNTERS: Array<{
   field: LinkedCountsField;
   Icon: ElementType;
@@ -286,7 +291,7 @@ function WorkOrdersPageInner() {
   // useQuery gives dedup, stale-while-revalidate, and automatic invalidation when
   // workOrdersKeys.all is invalidated (key is nested under it). Replaces the manual
   // useEffect + setState approach that refired on every reference-stable React Query refresh.
-  const { data: linkedCounts = {} } = useQuery<LinkedCountsMap>({
+  const { data: linkedCounts = EMPTY_LINKED_COUNTS } = useQuery<LinkedCountsMap>({
     queryKey: [...workOrdersKeys.all, 'linked-counts', ordersIds],
     queryFn: () =>
       apiFetch<LinkedCountsMap>('/work-orders/linked-counts', {
