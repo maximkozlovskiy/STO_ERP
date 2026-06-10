@@ -267,7 +267,6 @@ export function CalendarSlotModal({
   const { confirm, dialogProps } = useConfirm();
   const { conflict: calConflict, check: checkConflict, clear: clearConflict } = useConflictCheck();
   const mountedRef = useRef(true);
-  const [woPreviewId, setWoPreviewId] = useState<string | null>(null);
 
   // ── Detail modals ─────────────────────────────────────────────────────────
   const [cpDetailOpen, setCpDetailOpen] = useState(false);
@@ -999,9 +998,7 @@ export function CalendarSlotModal({
                   placeholder="Пошук наряду…"
                   disabled={isEditingPast}
                   hidePick={isEditingPast}
-                  onOpenDetail={
-                    form.workOrderId ? () => setWoPreviewId(form.workOrderId) : undefined
-                  }
+                  onOpenDetail={form.workOrderId ? () => setCreateWoOpen(true) : undefined}
                   onPick={() => setWoPickerOpen(true)}
                   onSearch={!isEditingPast ? fetchWoItems : undefined}
                   onSearchSelect={async item => {
@@ -1406,9 +1403,6 @@ export function CalendarSlotModal({
         </div>
       </div>
       <ConfirmDialog {...dialogProps} />
-      {woPreviewId && (
-        <WorkOrderPreviewModal id={woPreviewId} onClose={() => setWoPreviewId(null)} />
-      )}
       <CounterpartyEditModal
         open={cpDetailOpen}
         counterparty={cpDetailData}
