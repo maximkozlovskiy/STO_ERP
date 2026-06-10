@@ -23,7 +23,7 @@ const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv'
 
 // Working day boundaries (hardcoded for MVP; will come from BranchSettings later).
 const WORK_DAY_START_H = 8;
-const WORK_DAY_END_H = 19;
+const WORK_DAY_END_H = 20;
 
 /** Returns the UTC timestamp for 19:00 Kyiv time on the same calendar day as `d`. */
 function kyivEndOfWorkDay(d: Date): Date {
