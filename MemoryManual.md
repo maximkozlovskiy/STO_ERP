@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-TBD     fix(tester): Bugs #396-#398 — useConflictCheck race + excludeWorkOrderId + DTO enrichment
+e404586f fix(tester): Bugs #396-#398 — useConflictCheck race + excludeWorkOrderId + DTO enrichment
 8a1682cf fix(review): conflict check — TZ-naive plannedAt, unmount leak, take/HTTP semantics
 7afe4125 fix(sync): align ConflictResult interface with CheckConflictsResponseDto
 1004188c docs(skills): add static-toolbar-JSON + parallel-conflict-checks patterns to sto-optimize
