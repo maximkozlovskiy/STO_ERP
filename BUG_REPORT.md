@@ -12883,3 +12883,83 @@ Native `<select>` для "Інші" статусів НЕ має `aria-label`. �
 **Статус:** [x] виправлено (commit 90238a2c)
 
 ---
+
+## Session 2026-06-10 — AUTO tester: Calendar conflict check (HEAD 50b44d73)
+
+Scope (3 commits, 143c74b8..50b44d73):
+
+- `143c74b8` feat(calendar): add calendar conflict check for work orders — POST /calendar/slots/check-conflicts + useConflictCheck (debounce 400 ms, mountedRef, reqId)
+- `7afe4125` fix(sync): align ConflictResult interface with CheckConflictsResponseDto
+- `8a1682cf` fix(review): conflict check — TZ-naive plannedAt, unmount leak, take/HTTP semantics
+
+### Baseline (Крок 0)
+
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 670/670 (worker exit unhandled — tinypool flake, не блокер)
+- Web components — ✅ 351/351 (worker exit unhandled — tinypool flake, не блокер)
+- Dev server web (3001) — недоступний → E2E пропущено
+- API (3000) — доступний
+
+### Перевірка специфічна Calendar conflict check
+
+- ✅ TypeScript обох пакетів = 0 (виявляє лише структурні зломи; runtime race нижче)
+- ✅ Інший calendar тестовий suite (15 існуючих контрактних тестів) — зелений
+- ❌ **Бажаний race-test був відсутній** — race у early-return гілці `useConflictCheck.check()` лишався не зафіксованим жодним тестом (потім додано — див Bug #396)
+- ❌ **Edit-self false positive** — backend контракт `checkConflicts` не приймав `excludeWorkOrderId`, тому редагування власного наряду показувало "Підйомник зайнятий" (див Bug #397)
+- ❌ **Enrichment-degrade** — `toDtoSimple` повертав плоскі поля, без `workOrderNumber/counterpartyName/vehicleSummary/cpPhone/vehiclePlate` (див Bug #398)
+- ✅ Infinite-loop у useEffect deps відсутній (check/clear identity стабільні, conflict не пишеться назад у form)
+- ✅ Early-return `!liftId && !employeeId` у сервісі коректний (0 RTT short-circuit)
+- ✅ `excludeSlotId` коректно прокидається при редагуванні слота (CalendarSlotModal, рядок 479)
+
+## Bug #396 — HIGH — race у `useConflictCheck.check()` early-return: in-flight fetch перезаписує очищений стан
+
+**Файл:** `apps/web/src/hooks/useConflictCheck.ts:62-66` (early-return гілка `!startAt || !endAt || startAt >= endAt`)
+
+**Що сталось:** `check()` бамптить `reqIdRef.current++` тільки коли йде у валідну гілку (запуск debounce). У early-return — `clearTimeout` + `setConflict(null)` без інкременту токену. Якщо до цього вже стартував in-flight fetch (timer спрацював, але response ще не прийшов) — `reqIdRef.current` не змінюється, `then(res => reqId === reqIdRef.current ? setConflict(res))` оцінюється як ✓ і пише старі дані поверх null.
+
+**Сценарій:** користувач у CreateWorkOrderModal: змінив plannedStartAt → debounce 400ms → fetch стартує (in-flight). Поки чекає — стер plannedEndAt (стало пусте) → early-return → `setConflict(null)`. Через 200ms приходить response з конфліктом → банер з'являється попри порожнє поле.
+
+**Симптоми:** фальшивий банер "Підйомник зайнятий" миготить після очистки полів. UX flicker.
+
+**Фікс:** інкрементувати `reqIdRef.current++` у early-return перед `setConflict(null)`. Будь-який in-flight fetch буде проігноровано через `reqId !== reqIdRef.current`. Унітарний регресійний тест додано: `apps/web/src/hooks/useConflictCheck.test.tsx` (Bug #396: early-return invalidate in-flight fetch).
+
+**Статус:** [x] виправлено
+
+## Bug #397 — HIGH — `checkConflicts` без `excludeWorkOrderId` → редагування власного наряду показує "Підйомник зайнятий"
+
+**Файли:**
+
+- `apps/api/src/modules/calendar/calendar.dto.ts:127-148` (CheckConflictsDto)
+- `apps/api/src/modules/calendar/calendar.service.ts:443-491` (checkConflicts service)
+- `apps/web/src/hooks/useConflictCheck.ts:32-37` (CheckParams interface)
+- `apps/web/src/components/ui/CreateWorkOrderModal.tsx:365-377` (effect що викликає checkConflict)
+
+**Що сталось:** CreateWorkOrderModal в edit-mode викликає `checkConflict({liftId, startAt, endAt})` без `excludeSlotId` — бо WO не зберігає посилання на свій slot id (response містить лише `slotStartAt/slotEndAt/slotLiftName`, не `slotId`). Backend знаходить існуючий слот цього самого наряду на цьому лифті/часі → повертає `liftConflict=true`. Користувач бачить amber-банер "Підйомник зайнятий" коли просто відкриває модалку існуючого WO з вже забронoваним слотом.
+
+**Симптоми:** будь-який вже заплановий наряд при відкритті в edit-modal показує "Перетин слотів". Користувач не може зрозуміти конфлікт із собою чи реальний.
+
+**Фікс:**
+
+- Додано `excludeWorkOrderId?: string` у `CheckConflictsDto` (`@IsUUID @IsOptional @Transform(emptyToUndefined)`)
+- Сервіс `checkConflicts` додає `workOrderId: { not: dto.excludeWorkOrderId }` фільтр в обидва findMany (lift+employee)
+- `CreateWorkOrderModal` передає `excludeWorkOrderId: workOrderId` (`workOrderId` додано в deps useEffect)
+- `useConflictCheck.CheckParams` отримав поле `excludeWorkOrderId?: string` → JSON.stringify тіла
+- Контрактний тест `calendar.contract.spec.ts` отримав 4 нових кейси для нового endpoint (200 + short-circuit, прокидання `excludeWorkOrderId`, 400 на не-UUID, emptyToUndefined для `''`)
+- Хук-тест `useConflictCheck.test.tsx` додав кейс що `excludeWorkOrderId` потрапляє у body
+
+**Статус:** [x] виправлено
+
+## Bug #398 — MEDIUM — `checkConflicts` повертає degraded DTO (без `workOrderNumber/counterpartyName/cpPhone/vehicleSummary/vehiclePlate`)
+
+**Файл:** `apps/api/src/modules/calendar/calendar.service.ts:447-513` (CONFLICT_SELECT + toDtoSimple)
+
+**Що сталось:** `toDtoSimple` повертав лише плоскі id-поля + час + статус. `CalendarSlotResponseDto` декларує `workOrderNumber?/counterpartyName?/cpPhone?/vehicleSummary?/vehiclePlate?` як optional → TypeScript ОК але семантично контракт не відповідає основному `toDto()`. Фронт `ConflictSlot` має ті ж optional-поля → теж не падає. Жоден споживач зараз не рендерить деталі конфліктних слотів (тільки `length`), тому регресія latent. Але як тільки UX додасть список конфліктних слотів — побачить undefined всюди.
+
+**Симптоми:** прихована регресія контракту — `conflictSlots[i].workOrderNumber` завжди undefined попри існування наряду. Майбутній код що покаже список конфліктів буде показувати "—".
+
+**Фікс:** додано `counterparty/vehicle/workOrder` у `CONFLICT_SELECT`, видалено локальний `toDtoSimple`, переключено на `this.toDto(s)` — той самий метод що використовують findSlots/createSlot/updateSlot. Контракт тепер сумісний.
+
+**Статус:** [x] виправлено
+
+---

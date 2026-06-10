@@ -143,6 +143,16 @@ export class CheckConflictsDto {
   @IsUUID()
   excludeSlotId?: string;
 
+  // Bug #397: при перевірці конфлікту з модалки наряду треба ігнорувати слоти
+  // цього самого наряду — інакше будь-який редагований наряд що вже має слот
+  // конфліктує сам із собою. excludeSlotId не підходить — наряд може мати кілька
+  // слотів (split-across-days). Тому фільтруємо за workOrderId.
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  excludeWorkOrderId?: string;
+
   @ApiProperty() @IsDateString() startAt!: string;
   @ApiProperty() @IsDateString() endAt!: string;
 }

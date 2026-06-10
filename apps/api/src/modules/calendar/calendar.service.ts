@@ -441,9 +441,14 @@ export class CalendarService {
       throw new BadRequestException('Невірний інтервал часу');
     }
     const excludeFilter = dto.excludeSlotId ? { not: dto.excludeSlotId } : undefined;
+    // Bug #397: фільтр workOrderId — щоб виключити слоти що належать поточному
+    // наряду під час редагування його планового періоду.
+    const excludeWoFilter = dto.excludeWorkOrderId ? { not: dto.excludeWorkOrderId } : undefined;
     // bug-cycle (calendar conflict): findMany без take — порушує §1 (OOM на патологічних
     // даних). Realistic upper bound для часового вікна = декілька десятків.
     const CONFLICT_TAKE = 50;
+    // Bug #398: enrichment — щоб фронт міг показати інформативний слот у банері
+    // (номер наряду / клієнт / авто), а не лише `${count} слотом`.
     const CONFLICT_SELECT = {
       id: true,
       startAt: true,
@@ -457,6 +462,20 @@ export class CalendarService {
       notes: true,
       status: true,
       type: true,
+      counterparty: {
+        select: { firstName: true, lastName: true, companyName: true, phone: true },
+      },
+      vehicle: { select: { make: true, model: true, licensePlate: true } },
+      workOrder: {
+        select: {
+          number: true,
+          counterpartyId: true,
+          counterparty: {
+            select: { firstName: true, lastName: true, companyName: true, phone: true },
+          },
+          vehicle: { select: { make: true, model: true, licensePlate: true } },
+        },
+      },
     } as const;
 
     const [liftSlots, empSlots] = await Promise.all([
@@ -467,6 +486,7 @@ export class CalendarService {
               liftId: dto.liftId,
               deletedAt: null,
               id: excludeFilter,
+              workOrderId: excludeWoFilter,
               startAt: { lt: endAt },
               endAt: { gt: startAt },
             },
@@ -481,6 +501,7 @@ export class CalendarService {
               employeeId: dto.employeeId,
               deletedAt: null,
               id: excludeFilter,
+              workOrderId: excludeWoFilter,
               startAt: { lt: endAt },
               endAt: { gt: startAt },
             },
@@ -497,26 +518,14 @@ export class CalendarService {
       return true;
     });
 
-    const toDtoSimple = (s: (typeof allSlots)[number]): CalendarSlotResponseDto => ({
-      id: s.id,
-      liftId: s.liftId ?? null,
-      employeeId: s.employeeId ?? null,
-      workOrderId: s.workOrderId ?? null,
-      vehicleId: s.vehicleId ?? null,
-      counterpartyId: s.counterpartyId ?? null,
-      parentSlotId: s.parentSlotId ?? null,
-      startAt: s.startAt,
-      endAt: s.endAt,
-      notes: s.notes ?? null,
-      status: s.status,
-      type: s.type,
-    });
-
+    // Bug #398: використовуємо спільний toDto з повним enrichment, щоб клієнт міг
+    // показати корисні дані у банері (номер наряду / клієнт / авто), а не лише
+    // підрахунок. CalendarSlotResponseDto уже декларує ці optional-поля.
     return {
       liftConflict: liftSlots.length > 0,
       employeeConflict: empSlots.length > 0,
       anyConflict: allSlots.length > 0,
-      conflictSlots: allSlots.map(toDtoSimple),
+      conflictSlots: allSlots.map(s => this.toDto(s)),
     };
   }
 

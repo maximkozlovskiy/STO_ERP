@@ -366,12 +366,16 @@ export function CreateWorkOrderModal({
       liftId: form.liftId || undefined,
       startAt: startIso,
       endAt: endIso,
+      // Bug #397: виключити слоти цього самого наряду — інакше будь-який наряд
+      // з уже створеним слотом показує "Підйомник зайнятий" на власний час.
+      excludeWorkOrderId: workOrderId,
     });
   }, [
     form.plannedStartAt,
     form.plannedEndAt,
     form.liftId,
     isEditMode,
+    workOrderId,
     checkConflict,
     clearConflict,
   ]);

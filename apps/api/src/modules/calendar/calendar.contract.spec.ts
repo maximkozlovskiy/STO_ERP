@@ -17,6 +17,7 @@ const serviceMock = {
   createSlot: vi.fn(),
   updateSlot: vi.fn(),
   removeSlot: vi.fn(),
+  checkConflicts: vi.fn(),
 };
 
 let jwtAllow = true;
@@ -290,6 +291,77 @@ describe('Calendar — HTTP Contract', () => {
         url: `/calendar/slots/${SLOT_ID}`,
       });
       expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('POST /calendar/slots/check-conflicts', () => {
+    const EMPTY_RESULT = {
+      liftConflict: false,
+      employeeConflict: false,
+      anyConflict: false,
+      conflictSlots: [],
+    };
+
+    it('повертає 200 + порожній результат коли немає liftId+employeeId (read-only, short-circuit)', async () => {
+      serviceMock.checkConflicts.mockResolvedValueOnce(EMPTY_RESULT);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/calendar/slots/check-conflicts',
+        payload: {
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ anyConflict: false });
+    });
+
+    it('прокидає excludeWorkOrderId у сервіс (Bug #397: edit own WO has no false positives)', async () => {
+      serviceMock.checkConflicts.mockResolvedValueOnce(EMPTY_RESULT);
+      await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/calendar/slots/check-conflicts',
+        payload: {
+          liftId: LIFT_ID,
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+          excludeWorkOrderId: WO_ID,
+        },
+      });
+      expect(serviceMock.checkConflicts).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ excludeWorkOrderId: WO_ID, liftId: LIFT_ID }),
+      );
+    });
+
+    it('повертає 400 коли excludeWorkOrderId не UUID', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/calendar/slots/check-conflicts',
+        payload: {
+          liftId: LIFT_ID,
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+          excludeWorkOrderId: 'not-a-uuid',
+        },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.checkConflicts).not.toHaveBeenCalled();
+    });
+
+    it('emptyToUndefined: excludeWorkOrderId="" → проходить валідацію', async () => {
+      serviceMock.checkConflicts.mockResolvedValueOnce(EMPTY_RESULT);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/calendar/slots/check-conflicts',
+        payload: {
+          liftId: LIFT_ID,
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+          excludeWorkOrderId: '',
+        },
+      });
+      expect(res.statusCode).toBe(200);
     });
   });
 });

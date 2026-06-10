@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+TBD     fix(tester): Bugs #396-#398 — useConflictCheck race + excludeWorkOrderId + DTO enrichment
 8a1682cf fix(review): conflict check — TZ-naive plannedAt, unmount leak, take/HTTP semantics
 7afe4125 fix(sync): align ConflictResult interface with CheckConflictsResponseDto
 1004188c docs(skills): add static-toolbar-JSON + parallel-conflict-checks patterns to sto-optimize
@@ -69,6 +70,29 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Unit: API 697 passed (57 files), Web 373 passed (36 files) — додано 7 hook-тестів + 4 контрактних кейси
+Latest tester: 2026-06-10 (Bugs #396-#398 — calendar conflict check):
+  • Bug #396 HIGH — useConflictCheck.check() early-return не бамптив reqIdRef.current →
+    in-flight fetch розпочатий до невалідного input повертався і перезаписував
+    очищений стан конфлікту (миготіння banner). Fix: reqIdRef.current++ перед
+    setConflict(null) у early-return. Регресія підтверджена git-stash + test rerun.
+  • Bug #397 HIGH — CreateWorkOrderModal edit-mode завжди показував "Підйомник
+    зайнятий" якщо у WO вже є слот. Backend checkConflicts не мав способу
+    виключити власні слоти наряду (excludeSlotId не годиться: WO може мати
+    кілька slot rows при split-across-days). Fix: новий поле excludeWorkOrderId
+    у CheckConflictsDto + workOrderId: { not } фільтр у service + передається
+    із CreateWorkOrderModal.
+  • Bug #398 MEDIUM — toDtoSimple в checkConflicts повертав плоский DTO без
+    workOrderNumber/counterpartyName/cpPhone/vehicleSummary/vehiclePlate. Latent
+    регресія контракту: фронт ConflictSlot декларує ці optional поля → завжди
+    undefined. Fix: розширено CONFLICT_SELECT (counterparty/vehicle/workOrder)
+    + переключено на this.toDto(s) (той самий метод що findSlots/createSlot).
+  • Нові тести:
+    - apps/web/src/hooks/useConflictCheck.test.tsx (7 кейсів: debounce, last-fetch-wins,
+      endAt<=startAt → no fetch, Bug #396 race, clear() invalidates in-flight, unmount
+      guard, excludeWorkOrderId у body)
+    - calendar.contract.spec.ts (+4: check-conflicts 200 short-circuit, excludeWorkOrderId
+      прокидається, 400 на не-UUID excludeWorkOrderId, emptyToUndefined для '')
 Latest review: 2026-06-10 (HEAD 8a1682cf, after feat(calendar): conflict-check 143c74b8 + sync 7afe4125):
   • Critical — useConflictCheck timer leak on unmount: debounce setTimeout
     кидав apiFetch + setState після unmount → React warning + memory leak.
@@ -2333,6 +2357,58 @@ colSpan={visibleColumns.length + ...}
 `goodUoM.id` = UUID рядка з таблиці `GoodUoM` (junction record).
 `goodUoM.unitOfMeasureId` = правильний FK на `UnitOfMeasure`.
 Якщо будь-де зберігаєш `unitOfMeasureId` в DB-record — завжди `goodUoM.unitOfMeasureId`, не `goodUoM.id`.
+
+---
+
+## Gotcha — Token-guard debounce: інкрементуй reqId у КОЖНІЙ early-return гілці (Bug #396)
+
+Pattern: дебаунс-хук з reqId-token + setConflict.
+
+```ts
+const reqId = ++reqIdRef.current;
+setTimeout(() => apiFetch(...).then(res => {
+  if (reqId === reqIdRef.current) setConflict(res);
+}), debounceMs);
+```
+
+**Race:** якщо у `check()` є early-return (наприклад `!startAt || !endAt`)
+де викликається `setConflict(null)` БЕЗ інкременту `reqIdRef.current` —
+старий in-flight fetch що стартував до того як параметри стали невалідні
+зарезолвиться і перезапише очищений стан. Banner мигне з фальшивими даними.
+
+**Правило:** будь-яка гілка `check()` що змінює стан (включно з early-return)
+МАЄ бамптити `reqIdRef.current` — інакше pending fetch не може бути visited
+race-guard'ом. Те саме для будь-якого хука з last-write-wins + cancellation.
+
+---
+
+## Gotcha — Conflict-check: WO + slot — потрібен excludeWorkOrderId (Bug #397)
+
+При перевірці конфлікту слотів з модалки **наряду** (не модалки слота)
+не можна виключити "власні" слоти через `excludeSlotId`:
+
+1. WO response не повертає id слота (тільки startAt/endAt/liftName).
+2. WO може мати кілька слотів (split-across-days → parent+child).
+
+**Правило:** API `POST /calendar/slots/check-conflicts` приймає `excludeWorkOrderId`.
+Backend фільтрує `workOrderId: { not: excludeWorkOrderId }` в обох findMany
+(lift+employee). Frontend з контексту "наряд" завжди передає `workOrderId`;
+з контексту "слот" — `excludeSlotId`. Обидва фільтри незалежні і поєднуються.
+
+---
+
+## Gotcha — DTO enrichment у read-only endpoint обов'язковий (Bug #398)
+
+`checkConflicts` повертав плоский DTO без `workOrderNumber/counterpartyName/
+cpPhone/vehicleSummary/vehiclePlate` — frontend ConflictSlot декларує ці
+optional → TypeScript ОК, але рендер `{slot.workOrderNumber ?? '—'}` завжди
+дає прочерк.
+
+**Правило:** якщо response type = `CalendarSlotResponseDto[]` (або інший
+shared DTO) — використовуй той самий enrichment-метод (`this.toDto`) і той
+самий `select`-include (counterparty/vehicle/workOrder) як основний endpoint
+(findSlots/createSlot). Окремий `toDtoSimple` = латентна regression: працює
+поки UI не показує деталі, ламається мовчки коли показує.
 
 ---
 
