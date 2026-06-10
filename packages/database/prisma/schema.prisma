@@ -1653,6 +1653,7 @@ model CalendarSlot {
   workOrderId    String?            @db.Uuid
   counterpartyId String?            @db.Uuid
   vehicleId      String?            @db.Uuid
+  parentSlotId   String?            @db.Uuid
   startAt        DateTime
   endAt          DateTime
   status         CalendarSlotStatus @default(BOOKED)
@@ -1667,6 +1668,8 @@ model CalendarSlot {
   workOrder    WorkOrder?    @relation(fields: [workOrderId], references: [id])
   counterparty Counterparty? @relation(fields: [counterpartyId], references: [id])
   vehicle      Vehicle?      @relation(fields: [vehicleId], references: [id])
+  parent       CalendarSlot?   @relation("SlotContinuation", fields: [parentSlotId], references: [id])
+  continuation CalendarSlot[]  @relation("SlotContinuation")
 
   @@index([orgId, deletedAt])
   @@index([orgId, startAt, deletedAt])

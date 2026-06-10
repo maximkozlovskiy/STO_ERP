@@ -18,7 +18,11 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CalendarService } from './calendar.service';
-import { CreateCalendarSlotDto, UpdateCalendarSlotDto } from './calendar.dto';
+import {
+  CreateCalendarSlotDto,
+  UpdateCalendarSlotDto,
+  CreateCalendarSlotResponseDto,
+} from './calendar.dto';
 
 @ApiTags('Calendar')
 @Controller('calendar/slots')
@@ -44,8 +48,13 @@ export class CalendarController {
 
   @Post()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Створити слот' })
-  createSlot(@OrgContext() orgId: string, @Body() dto: CreateCalendarSlotDto) {
+  @ApiOperation({
+    summary: 'Створити слот (повертає 1 або 2 слоти якщо виходить за межі робочого дня)',
+  })
+  createSlot(
+    @OrgContext() orgId: string,
+    @Body() dto: CreateCalendarSlotDto,
+  ): Promise<CreateCalendarSlotResponseDto> {
     return this.service.createSlot(orgId, dto);
   }
 

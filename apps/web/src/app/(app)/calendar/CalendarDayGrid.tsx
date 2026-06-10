@@ -94,7 +94,10 @@ const DraggableSlot = memo(function DraggableSlot({
         onClick={() => onEdit(slot)}
       >
         {/* Time — top-left, small */}
-        <span className="text-[10px] leading-none opacity-75 mb-1">{timeLabel}</span>
+        <span className="text-[10px] leading-none opacity-75 mb-1">
+          {timeLabel}
+          {slot.parentSlotId && <span className="ml-1 opacity-60">↩</span>}
+        </span>
         {/* Main info — centered */}
         <div className="flex-1 flex flex-col justify-center gap-0.5 min-w-0">
           {slot.workOrderNumber && (

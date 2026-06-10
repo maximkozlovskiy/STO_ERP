@@ -580,11 +580,19 @@ export function CalendarSlotModal({
         });
         toast.success('Слот оновлено');
       } else {
-        await apiFetch<CalendarSlot>('/calendar/slots', {
+        const res = await apiFetch<{ slots: CalendarSlot[] }>('/calendar/slots', {
           method: 'POST',
           body: JSON.stringify(body),
         });
-        toast.success('Слот створено');
+        if (res.slots.length === 2) {
+          const s1 = res.slots[0]!;
+          const s2 = res.slots[1]!;
+          toast.success(
+            `Слот розбито на 2 дні: ${fmtTime(s1.startAt)}–${fmtTime(s1.endAt)} та ${fmtKyivDate(s2.startAt)} ${fmtTime(s2.startAt)}–${fmtTime(s2.endAt)}`,
+          );
+        } else {
+          toast.success('Слот створено');
+        }
       }
       onSaved();
     } catch (e: unknown) {
@@ -675,14 +683,14 @@ export function CalendarSlotModal({
                     let next = { ...f, startAt: start };
                     if (start && f.normoHours && Number(f.normoHours) > 0) {
                       const [h, m] = start.split(':').map(Number);
-                      const totalMin = Math.min(
-                        (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(f.normoHours) * 60),
-                        23 * 60 + 59,
-                      );
-                      const em = Math.round((totalMin % 60) / 15) * 15;
+                      // No upper clamp — allow endAt to exceed WINDOW_END (split across days)
+                      const totalMin =
+                        (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(f.normoHours) * 60);
+                      const clampedMin = Math.min(totalMin, 23 * 60 + 59);
+                      const em = Math.round((clampedMin % 60) / 15) * 15;
                       next = {
                         ...next,
-                        endAt: `${pad(Math.floor(totalMin / 60))}:${pad(em >= 60 ? 0 : em)}`,
+                        endAt: `${pad(Math.floor(clampedMin / 60))}:${pad(em >= 60 ? 0 : em)}`,
                       };
                     }
                     if (pendingSlot) {
@@ -713,12 +721,11 @@ export function CalendarSlotModal({
                   setForm(f => {
                     if (f.startAt && nh && Number(nh) > 0) {
                       const [h, m] = f.startAt.split(':').map(Number);
-                      const totalMin = Math.min(
-                        (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(nh) * 60),
-                        23 * 60 + 59,
-                      );
-                      const em = Math.round((totalMin % 60) / 15) * 15;
-                      const endAt = `${pad(Math.floor(totalMin / 60))}:${pad(em >= 60 ? 0 : em)}`;
+                      // No upper clamp — allow endAt to exceed WINDOW_END (split across days)
+                      const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(nh) * 60);
+                      const clampedMin = Math.min(totalMin, 23 * 60 + 59);
+                      const em = Math.round((clampedMin % 60) / 15) * 15;
+                      const endAt = `${pad(Math.floor(clampedMin / 60))}:${pad(em >= 60 ? 0 : em)}`;
                       if (pendingSlot) {
                         const { h: eh, m: em2 } = parseHHMM(endAt);
                         setPendingSlot(p => (p ? { ...p, endH: eh + em2 / 60 } : p));
@@ -730,6 +737,35 @@ export function CalendarSlotModal({
                 }}
                 placeholder="1.5"
               />
+              {/* Overflow preview — show split info when endAt exceeds work day end */}
+              {(() => {
+                const nh = Number(form.normoHours);
+                if (!form.startAt || !nh || nh <= 0) return null;
+                const [h, m] = form.startAt.split(':').map(Number);
+                const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(nh * 60);
+                const workEndMin = WINDOW_END * 60; // 19:00 = 1140 min
+                if (totalMin <= workEndMin) return null;
+                const overflowMin = totalMin - workEndMin;
+                const day2EndMin = 8 * 60 + overflowMin; // starts at 08:00
+                const day2H = Math.floor(day2EndMin / 60);
+                const day2M = day2EndMin % 60;
+                // Next calendar day ISO for display
+                const nextDayIso = (() => {
+                  try {
+                    const d = new Date(`${date}T12:00:00Z`);
+                    d.setUTCDate(d.getUTCDate() + 1);
+                    return fmtKyivDate(d.toISOString());
+                  } catch {
+                    return '';
+                  }
+                })();
+                return (
+                  <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                    ⚠ Буде розбито: {form.startAt}–{pad(WINDOW_END)}:00 + {nextDayIso} 08:00–
+                    {pad(day2H)}:{pad(day2M)}
+                  </p>
+                );
+              })()}
             </div>
             <div>
               <DateTimePickerInput
@@ -737,7 +773,7 @@ export function CalendarSlotModal({
                 timeOnly
                 value={form.endAt}
                 minHour={WINDOW_START}
-                maxHour={WINDOW_END}
+                maxHour={23}
                 disabled={isEditingPast}
                 inputClassName="h-8 text-[13px]"
                 onChange={endAt => {

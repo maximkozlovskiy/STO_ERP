@@ -105,6 +105,7 @@ export class CalendarSlotResponseDto {
   @ApiPropertyOptional() employeeId?: string | null;
   @ApiPropertyOptional() workOrderId?: string | null;
   @ApiPropertyOptional() vehicleId?: string | null;
+  @ApiPropertyOptional() parentSlotId?: string | null;
   @ApiProperty() startAt!: Date;
   @ApiProperty() endAt!: Date;
   @ApiPropertyOptional() notes?: string | null;
@@ -116,4 +117,9 @@ export class CalendarSlotResponseDto {
   @ApiPropertyOptional() vehiclePlate?: string | null;
   @ApiProperty({ enum: CalendarSlotStatus }) status!: CalendarSlotStatus;
   @ApiProperty({ enum: CalendarSlotType }) type!: CalendarSlotType;
+}
+
+export class CreateCalendarSlotResponseDto {
+  @ApiProperty({ type: [CalendarSlotResponseDto] })
+  slots!: CalendarSlotResponseDto[];
 }

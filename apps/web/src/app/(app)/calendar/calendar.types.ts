@@ -7,6 +7,7 @@ export interface CalendarSlot {
   workOrderId?: string | null;
   vehicleId?: string | null;
   counterpartyId?: string | null;
+  parentSlotId?: string | null;
   startAt: string;
   endAt: string;
   notes?: string | null;

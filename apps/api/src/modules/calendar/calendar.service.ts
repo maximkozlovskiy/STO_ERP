@@ -6,6 +6,7 @@ import {
   CreateCalendarSlotDto,
   UpdateCalendarSlotDto,
   CalendarSlotResponseDto,
+  CreateCalendarSlotResponseDto,
 } from './calendar.dto';
 
 // Module-level Intl singleton — kyivOffsetMs is called on every findSlots/createSlot/updateSlot,
@@ -15,6 +16,44 @@ const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
   hour: '2-digit',
   hour12: false,
 });
+
+const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+
+// Working day boundaries (hardcoded for MVP; will come from BranchSettings later).
+const WORK_DAY_START_H = 8;
+const WORK_DAY_END_H = 19;
+
+/** Returns the UTC timestamp for 19:00 Kyiv time on the same calendar day as `d`. */
+function kyivEndOfWorkDay(d: Date): Date {
+  const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
+  // Build "YYYY-MM-DDT19:00:00" as a local Kyiv wall-clock time, then convert to UTC.
+  // We use the same DST-aware approach: find the UTC offset at noon of that day.
+  const noonUtc = new Date(`${kyivDate}T12:00:00Z`);
+  const offsetMs = kyivOffsetMsStatic(noonUtc);
+  return new Date(
+    new Date(`${kyivDate}T${String(WORK_DAY_END_H).padStart(2, '0')}:00:00Z`).getTime() - offsetMs,
+  );
+}
+
+/** Returns the UTC timestamp for 08:00 Kyiv time on the calendar day AFTER `d`. */
+function kyivStartOfNextWorkDay(d: Date): Date {
+  const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
+  const [y, m, day] = kyivDate.split('-').map(Number);
+  const nextDay = new Date(Date.UTC(y!, m! - 1, day! + 1));
+  const nextDateStr = KYIV_DATE_FMT.format(nextDay);
+  const noonUtc = new Date(`${nextDateStr}T12:00:00Z`);
+  const offsetMs = kyivOffsetMsStatic(noonUtc);
+  return new Date(
+    new Date(`${nextDateStr}T${String(WORK_DAY_START_H).padStart(2, '0')}:00:00Z`).getTime() -
+      offsetMs,
+  );
+}
+
+function kyivOffsetMsStatic(d: Date): number {
+  const utcHour = d.getUTCHours();
+  const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
+  return ((kyivHour - utcHour + 24) % 24) * 3600000;
+}
 
 @Injectable()
 export class CalendarService {
@@ -74,7 +113,10 @@ export class CalendarService {
     return slots.map(item => this.toDto(item));
   }
 
-  async createSlot(orgId: string, dto: CreateCalendarSlotDto): Promise<CalendarSlotResponseDto> {
+  async createSlot(
+    orgId: string,
+    dto: CreateCalendarSlotDto,
+  ): Promise<CreateCalendarSlotResponseDto> {
     const startAt = new Date(dto.startAt);
     const endAt = new Date(dto.endAt);
 
@@ -120,18 +162,44 @@ export class CalendarService {
     if (dto.counterpartyId && !counterparty) throw new NotFoundException('Клієнта не знайдено');
     if (dto.vehicleId && !vehicle) throw new NotFoundException('Автомобіль не знайдено');
 
-    const slot = await this.prisma.$transaction(
+    // Determine if slot overflows the working day end (19:00 Kyiv)
+    const workDayEnd = kyivEndOfWorkDay(startAt);
+    const isSplit = endAt > workDayEnd;
+
+    const slot1End = isSplit ? workDayEnd : endAt;
+    const slot2Start = isSplit ? kyivStartOfNextWorkDay(startAt) : null;
+    const slot2End = isSplit
+      ? new Date(slot2Start!.getTime() + (endAt.getTime() - workDayEnd.getTime()))
+      : null;
+
+    const SLOT_INCLUDE = {
+      counterparty: {
+        select: { firstName: true, lastName: true, companyName: true, phone: true } as const,
+      },
+      vehicle: { select: { make: true, model: true, licensePlate: true } as const },
+      workOrder: {
+        select: {
+          number: true,
+          counterpartyId: true,
+          counterparty: {
+            select: { firstName: true, lastName: true, companyName: true, phone: true } as const,
+          },
+          vehicle: { select: { make: true, model: true, licensePlate: true } as const },
+        },
+      },
+    } as const;
+
+    const slots = await this.prisma.$transaction(
       async tx => {
-        // Lift- + employee-conflict checks незалежні — паралелимо.
-        // Narrow projection (select id) — потрібен лише факт існування.
-        const [conflict, empConflict] = await Promise.all([
+        // Conflict check for slot1 interval (+ slot2 interval if split) — all in parallel.
+        const [conflict1, empConflict1, conflict2, empConflict2] = await Promise.all([
           dto.liftId
             ? tx.calendarSlot.findFirst({
                 where: {
                   orgId,
                   liftId: dto.liftId,
                   deletedAt: null,
-                  OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
+                  OR: [{ startAt: { lt: slot1End }, endAt: { gt: startAt } }],
                 },
                 select: { id: true },
               })
@@ -142,56 +210,74 @@ export class CalendarService {
                   orgId,
                   employeeId: dto.employeeId,
                   deletedAt: null,
-                  OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
+                  OR: [{ startAt: { lt: slot1End }, endAt: { gt: startAt } }],
+                },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+          isSplit && dto.liftId
+            ? tx.calendarSlot.findFirst({
+                where: {
+                  orgId,
+                  liftId: dto.liftId,
+                  deletedAt: null,
+                  OR: [{ startAt: { lt: slot2End! }, endAt: { gt: slot2Start! } }],
+                },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+          isSplit && dto.employeeId
+            ? tx.calendarSlot.findFirst({
+                where: {
+                  orgId,
+                  employeeId: dto.employeeId,
+                  deletedAt: null,
+                  OR: [{ startAt: { lt: slot2End! }, endAt: { gt: slot2Start! } }],
                 },
                 select: { id: true },
               })
             : Promise.resolve(null),
         ]);
-        if (dto.liftId && conflict) {
+        if (dto.liftId && conflict1)
           throw new BadRequestException('Підйомник вже зайнятий на цей час');
-        }
-        if (dto.employeeId && empConflict) {
+        if (dto.employeeId && empConflict1)
           throw new BadRequestException('Співробітник вже зайнятий на цей час');
-        }
+        if (dto.liftId && conflict2)
+          throw new BadRequestException('Підйомник вже зайнятий на наступний день');
+        if (dto.employeeId && empConflict2)
+          throw new BadRequestException('Співробітник вже зайнятий на наступний день');
 
-        return tx.calendarSlot.create({
-          data: {
-            orgId,
-            liftId: dto.liftId ?? null,
-            employeeId: dto.employeeId ?? null,
-            workOrderId: dto.workOrderId ?? null,
-            counterpartyId: dto.counterpartyId ?? null,
-            vehicleId: dto.vehicleId ?? null,
-            startAt,
-            endAt,
-            notes: dto.notes ?? null,
-            status: dto.status ?? CalendarSlotStatus.BOOKED,
-            type: dto.type ?? CalendarSlotType.WORK,
-          },
-          include: {
-            counterparty: {
-              select: { firstName: true, lastName: true, companyName: true, phone: true },
-            },
-            vehicle: { select: { make: true, model: true, licensePlate: true } },
-            workOrder: {
-              select: {
-                number: true,
-                counterpartyId: true,
-                counterparty: {
-                  select: { firstName: true, lastName: true, companyName: true, phone: true },
-                },
-                vehicle: { select: { make: true, model: true, licensePlate: true } },
-              },
-            },
-          },
+        const slotData = {
+          orgId,
+          liftId: dto.liftId ?? null,
+          employeeId: dto.employeeId ?? null,
+          workOrderId: dto.workOrderId ?? null,
+          counterpartyId: dto.counterpartyId ?? null,
+          vehicleId: dto.vehicleId ?? null,
+          notes: dto.notes ?? null,
+          status: dto.status ?? CalendarSlotStatus.BOOKED,
+          type: dto.type ?? CalendarSlotType.WORK,
+        };
+
+        const created1 = await tx.calendarSlot.create({
+          data: { ...slotData, startAt, endAt: slot1End },
+          include: SLOT_INCLUDE,
         });
-        // Bug #130: explicit 5s timeout (2 conflict checks + 1 create — well below default).
+
+        if (!isSplit) return [created1];
+
+        const created2 = await tx.calendarSlot.create({
+          data: { ...slotData, startAt: slot2Start!, endAt: slot2End!, parentSlotId: created1.id },
+          include: SLOT_INCLUDE,
+        });
+
+        return [created1, created2];
+        // Bug #130: explicit 5s timeout (2 conflict checks + 1-2 creates — well below default).
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
 
-    return this.toDto(slot);
+    return { slots: slots.map(s => this.toDto(s)) };
   }
 
   async updateSlot(
@@ -199,6 +285,15 @@ export class CalendarService {
     id: string,
     dto: UpdateCalendarSlotDto,
   ): Promise<CalendarSlotResponseDto> {
+    // MVP: slots that have a continuation (split across days) must be edited individually.
+    const hasContinuation = await this.prisma.calendarSlot.findFirst({
+      where: { parentSlotId: id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (hasContinuation) {
+      throw new BadRequestException('Слот розбитий на 2 дні — редагуйте кожен окремо');
+    }
+
     // Existing slot + independent FK ownership checks run in parallel; error priority preserved below
     const checkLift = dto.liftId !== undefined && dto.liftId !== null;
     const checkEmployee = dto.employeeId !== undefined && dto.employeeId !== null;
@@ -352,6 +447,7 @@ export class CalendarService {
     workOrderId: string | null;
     vehicleId?: string | null;
     counterpartyId?: string | null;
+    parentSlotId?: string | null;
     startAt: Date;
     endAt: Date;
     notes: string | null;
@@ -397,6 +493,7 @@ export class CalendarService {
       employeeId: slot.employeeId ?? null,
       workOrderId: slot.workOrderId ?? null,
       vehicleId: slot.vehicleId ?? null,
+      parentSlotId: slot.parentSlotId ?? null,
       startAt: slot.startAt,
       endAt: slot.endAt,
       notes: slot.notes ?? null,
