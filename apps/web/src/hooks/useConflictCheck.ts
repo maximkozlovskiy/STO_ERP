@@ -1,11 +1,31 @@
 import { useCallback, useState, useRef } from 'react';
 import { apiFetch } from '@/lib/api-client';
 
+export interface ConflictSlot {
+  id: string;
+  startAt: string;
+  endAt: string;
+  liftId?: string | null;
+  employeeId?: string | null;
+  workOrderId?: string | null;
+  vehicleId?: string | null;
+  counterpartyId?: string | null;
+  parentSlotId?: string | null;
+  notes?: string | null;
+  workOrderNumber?: string;
+  counterpartyName?: string;
+  cpPhone?: string | null;
+  vehicleSummary?: string | null;
+  vehiclePlate?: string | null;
+  status: string;
+  type: string;
+}
+
 export interface ConflictResult {
   liftConflict: boolean;
   employeeConflict: boolean;
   anyConflict: boolean;
-  conflictSlots: Array<{ id: string; startAt: string; endAt: string }>;
+  conflictSlots: ConflictSlot[];
 }
 
 interface CheckParams {
