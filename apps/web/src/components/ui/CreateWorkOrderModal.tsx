@@ -24,12 +24,7 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useConflictCheck } from '@/hooks/useConflictCheck';
 import { useConfirm } from '@/hooks/useConfirm';
 import { getCached, setCache } from '@/lib/ref-cache';
-import {
-  kyivToday,
-  kyivDateTimeToISO,
-  isoToKyivLocalDateTime,
-  localDateTimeToISO,
-} from '@/lib/format';
+import { kyivToday, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
 import {
   WO_STATUS_LABELS,
@@ -378,22 +373,16 @@ export function CreateWorkOrderModal({
 
   // Conflict check when planned period or liftId changes (edit mode only).
   // Backend expects ISO with TZ; DateTimePickerInput emits naive "YYYY-MM-DDTHH:mm"
-  // (no TZ). Якщо value вже містить Z / ±HH:MM (loaded from server) — використовуємо
-  // як є; інакше нормалізуємо через DST-aware kyivDateTimeToISO. Без цієї нормалізації
-  // backend new Date("2026-06-10T14:00") парсить як UTC → +2/+3h зсув → false positives.
+  // (no TZ). Normalize via DST-aware localDateTimeToISO (passes through values
+  // already ending Z / ±HH:MM). Без цієї нормалізації backend new Date("2026-06-10T14:00")
+  // парсить як UTC → +2/+3h зсув → false positives.
   useEffect(() => {
     if (!isEditMode || !form.plannedStartAt || !form.plannedEndAt) {
       clearConflict();
       return;
     }
-    const toIso = (v: string): string => {
-      if (/Z$|[+-]\d{2}:?\d{2}$/.test(v)) return v;
-      const [d, t] = v.split('T');
-      if (!d || !t) return '';
-      return kyivDateTimeToISO(d, t.slice(0, 5));
-    };
-    const startIso = toIso(form.plannedStartAt);
-    const endIso = toIso(form.plannedEndAt);
+    const startIso = localDateTimeToISO(form.plannedStartAt);
+    const endIso = localDateTimeToISO(form.plannedEndAt);
     if (!startIso || !endIso) {
       clearConflict();
       return;

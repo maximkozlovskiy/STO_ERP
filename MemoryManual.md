@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+<NEW> fix(review): inline date parser у CreateWorkOrderModal заміщено shared localDateTimeToISO
+f7fe9d53 fix(sync): add plannedHours/actualHours to WorkOrderDetail interface in PageClient
+4a70b0f9 refactor(simplify): extract localDateTimeToISO to format.ts + conflictWoNumbers to useConflictCheck
 c9940bd4 perf(optimize): WO transition narrow select + WO modal/page memo refactor
 b04731a0 fix(tester): Bugs #426-#428 — WO clone misses plannedHours + E2E pills + regression-guards
 ecc518fa docs(memory): update MemoryManual after review aadc6317 — WO hours migration + audit fix
@@ -93,6 +96,10 @@ Latest tester: 2026-06-10 (Bugs #426-#428 — fa3b3ad8...ecc518fa cycle):
   • Bug #426 MEDIUM — clone() селект тягне plannedHours: true, АЛЕ data: { ... } спред у prisma.workOrder.create() не записує його → cloned DRAFT має plannedHours=null навіть якщо original має значення. Фікс: додано plannedHours: original.plannedHours; actualHours навмисно опущено (clone — fresh DRAFT). Регресія-guard: 3-кейс тест у service.spec.ts (numeric / null / undefined семантика для update).
   • Bug #427 MEDIUM — 0 contract тестів для plannedHours/actualHours у POST/PATCH /work-orders. Майбутня регресія (видалення @IsNumber, заміна типу) пройде CI зеленою. Додано 2 нові тести: POST plannedHours=2.5 → 201, POST plannedHours=-1 → 400; PATCH { plannedHours: 3, actualHours: null } → 200 (clear semantics), PATCH actualHours=-0.5 → 400.
   • Bug #428 HIGH — 5 E2E тестів у work-orders-features.spec.ts падали з "Locator: select Інші" бо commit 57b9d4b9 видалив <select> dropdown і замінив на 10 FSM-pills. Тести outdated, не код wrong. Перепис: replace selectOption/toHaveValue на pill.click + toHaveClass(/bg-primary/). ДОДАНО regression-guard: "FSM порядок pills збігається з backend WO_STATUS_LABELS" — асерт послідовності text-content всіх 11 pills у фіксованому порядку. Майбутній frontend↔backend дрейф ловиться.
+Latest review: 2026-06-11 (HEAD f7fe9d53 — cycle-1 QA post-extract sweep):
+  • SUGGESTION (fixed) — inline `toIso` helper у CreateWorkOrderModal.useEffect (conflict-check) дублював свіжо-екстрагований `localDateTimeToISO` з lib/format.ts. Replace + drop unused `kyivDateTimeToISO` import. Один шлях DST-aware конверсії; будь-який майбутній fix у localDateTimeToISO автоматично покриває conflict-check.
+  • Огляд решти diff: format.ts (нова export-функція), useConflictCheck.ts (новий conflictWoNumbers useMemo з deps `[conflict?.conflictSlots]` — коректно, fresh array refs при кожному setConflict), CalendarSlotModal.tsx (видалено duplicate useMemo, useMemo імпорт прибраний), PageClient.tsx (додано plannedHours/actualHours у WorkOrderDetail — sync з backend toResponseDto). API contract: WorkOrderResponseDto.plannedHours/actualHours існують у dto.ts:288-289 → frontend interface вирівняний.
+  • Перевірки: tsc web --incremental false → 0 errors; React.X named-import scan → 0; any/console.log → 0; BOM scan для 5 файлів → 0.
 Latest review: 2026-06-10 (HEAD aadc6317 — work-orders plannedHours/actualHours sweep):
   • CRITICAL — schema.prisma додала plannedHours/actualHours до WorkOrder у fa3b3ad8 без супровідної міграції → prisma generate ламав tsc у work-orders.service.ts (TS2353 на data, TS7006 cascade на cloned original.lines/parts). Фікс: міграція 20260610120000_add_work_order_planned_actual_hours з ADD COLUMN IF NOT EXISTS (idempotent для dev-DB через prisma db push) + регенерація client.
   • IMPORTANT — trackField audit-helper у UpdateWorkOrder не покривав plannedHours/actualHours → зміна нормогодин не записувалась у AuditEvent (silent gap). Додано обидва поля.
