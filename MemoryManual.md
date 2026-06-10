@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+7afe4125 fix(sync): align ConflictResult interface with CheckConflictsResponseDto
 1004188c docs(skills): add static-toolbar-JSON + parallel-conflict-checks patterns to sto-optimize
 734c171 perf(optimize): lift list-page COLUMNS to module level + precomputed JSON
 d31ac053 perf(optimize): narrow projections + parallel calendar conflict checks
@@ -67,6 +68,7 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest sync: 2026-06-10 — ConflictSlot interface expanded to match CalendarSlotResponseDto (status, type, all optional fields)
 Latest optimize: 2026-06-10 (perf scope: narrow projections + parallel calendar conflicts + module-level COLUMNS, HEAD 1004188c):
   • Backend narrow projections (15 hot-path findFirst/findMany guards):
     - good-categories/work-categories.create: parent FK guard → select { id }.
