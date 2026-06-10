@@ -683,7 +683,7 @@ export function CalendarSlotModal({
             </div>
           )}
 
-          <div className="grid grid-cols-4 gap-3 items-end">
+          <div className="grid grid-cols-4 gap-3 items-start">
             <div>
               <label className="block text-[13px] font-medium text-muted-foreground mb-1">
                 Підйомник
@@ -705,13 +705,13 @@ export function CalendarSlotModal({
             <div>
               <DateTimePickerInput
                 label="Початок"
-                timeOnly
-                value={form.startAt}
+                value={date && form.startAt ? `${date}T${form.startAt}` : ''}
                 minHour={editingSlotId ? WINDOW_START : minHour}
                 maxHour={WINDOW_END - 1}
                 disabled={isEditingPast}
                 inputClassName="h-8 text-[13px]"
-                onChange={start => {
+                onChange={val => {
+                  const start = val ? val.slice(11, 16) : '';
                   setForm(f => {
                     let next = { ...f, startAt: start };
                     if (start && f.normoHours && Number(f.normoHours) > 0) {
@@ -770,7 +770,7 @@ export function CalendarSlotModal({
                 }}
                 placeholder="1.5"
               />
-              {/* Overflow preview — show split info when endAt exceeds work day end */}
+              {/* Overflow preview — absolute to avoid pushing sibling columns */}
               {(() => {
                 const nh = Number(form.normoHours);
                 if (!form.startAt || !nh || nh <= 0) return null;
@@ -803,13 +803,13 @@ export function CalendarSlotModal({
             <div>
               <DateTimePickerInput
                 label="Кінець"
-                timeOnly
-                value={form.endAt}
+                value={date && form.endAt ? `${date}T${form.endAt}` : ''}
                 minHour={WINDOW_START}
                 maxHour={23}
                 disabled={isEditingPast}
                 inputClassName="h-8 text-[13px]"
-                onChange={endAt => {
+                onChange={val => {
+                  const endAt = val ? val.slice(11, 16) : '';
                   setForm(f => ({ ...f, endAt }));
                   if (pendingSlot) {
                     const { h, m } = parseHHMM(endAt);
