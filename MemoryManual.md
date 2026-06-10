@@ -9,7 +9,9 @@
 ## Останній commit
 
 ```
-<NEW> perf(optimize): CreateWorkOrderModal status-set hoisting + IIFE-statusOrder + dead initialStatus removal
+f8a56cb6 fix(review): CreateWorkOrderModal — React.ChangeEvent → named ChangeEvent import (Cycle 3 §1 TypeScript)
+094916bc refactor(work-orders): replace IIFE in status picker with useMemo
+7e01d749 perf(optimize): CreateWorkOrderModal status-set hoisting + IIFE-statusOrder + dead initialStatus removal
 6d6dab96 fix(tester): Bugs #429-#430 — stale @/lib/format mock + savingRef race window у CreateWorkOrderModal
 a7522bb0 fix(review): inline date parser у CreateWorkOrderModal заміщено shared localDateTimeToISO
 f7fe9d53 fix(sync): add plannedHours/actualHours to WorkOrderDetail interface in PageClient
@@ -109,7 +111,15 @@ Latest tester: 2026-06-10 (Bugs #426-#428 — fa3b3ad8...ecc518fa cycle):
   • Bug #426 MEDIUM — clone() селект тягне plannedHours: true, АЛЕ data: { ... } спред у prisma.workOrder.create() не записує його → cloned DRAFT має plannedHours=null навіть якщо original має значення. Фікс: додано plannedHours: original.plannedHours; actualHours навмисно опущено (clone — fresh DRAFT). Регресія-guard: 3-кейс тест у service.spec.ts (numeric / null / undefined семантика для update).
   • Bug #427 MEDIUM — 0 contract тестів для plannedHours/actualHours у POST/PATCH /work-orders. Майбутня регресія (видалення @IsNumber, заміна типу) пройде CI зеленою. Додано 2 нові тести: POST plannedHours=2.5 → 201, POST plannedHours=-1 → 400; PATCH { plannedHours: 3, actualHours: null } → 200 (clear semantics), PATCH actualHours=-0.5 → 400.
   • Bug #428 HIGH — 5 E2E тестів у work-orders-features.spec.ts падали з "Locator: select Інші" бо commit 57b9d4b9 видалив <select> dropdown і замінив на 10 FSM-pills. Тести outdated, не код wrong. Перепис: replace selectOption/toHaveValue на pill.click + toHaveClass(/bg-primary/). ДОДАНО regression-guard: "FSM порядок pills збігається з backend WO_STATUS_LABELS" — асерт послідовності text-content всіх 11 pills у фіксованому порядку. Майбутній frontend↔backend дрейф ловиться.
-Latest review: 2026-06-11 (HEAD f7fe9d53 — cycle-1 QA post-extract sweep):
+Latest review: 2026-06-11 (HEAD f8a56cb6 — Cycle 3 QA, scope: HEAD~6..HEAD WO hours feature + tester race-window fixes):
+  • IMPORTANT (fixed) — CreateWorkOrderModal.tsx `handlePlannedHoursChange`/`handleActualHoursChange` використовували `React.ChangeEvent<HTMLInputElement>` через `import type React from 'react'`. Skill §1 вимагає named imports з 'react'. Заміна: `import type { ChangeEvent } from 'react'` + ChangeEvent<HTMLInputElement>. Фікс косметичний, але узгоджує з рештою codebase (web/src/components/ui/*.tsx уже всі використовують named imports).
+  • Глибокі greps без знахідок: any у production (тільки тести), console.log у production (тільки e2e setup), findMany без take (всі mature take:1000 чи bounded by `id: { in: [...] }`), rgba(var(--...)) на missing CSS vars, key={i} у re-sortable списках (тільки skeleton loaders), addEventListener/setInterval/setTimeout без cleanup, IIFE у JSX у нових файлах (тільки pre-existing у CreateWorkOrderModal price math).
+  • Перевірені структурні зміни:
+    – packages/shared/src/constants/statuses.ts: 3 нові frozen const (WO_EDITABLE_STATUSES, WO_SHAREABLE_STATUSES, WO_INVOICEABLE_STATUSES) — mirror backend EDITABLE_STATUSES (work-orders.fsm.ts:25) + private static SHAREABLE_STATUSES (work-orders.service.ts:80). INVOICEABLE — frontend-only UI gate, не дублює backend.
+    – work-orders.service.ts transition() narrow select drops `parts: take:1000` → 8 fields замість full row. writeOffPartsAndCharge signature `{ id, counterpartyId, totalAmount }` — narrow select задовольняє.
+    – CreateWorkOrderModal двошаровий setSavingBoth/setTransitioningBoth: savingRef + setSaving sync, handleModalClose deps shrunk до [onClose]. Pattern документований у sto-tester (Bug #430 ref+state race).
+  • Перевірки: tsc web --incremental false → 0 errors; tsc api → 0; tsc shared → 0; pnpm vitest CreateWorkOrderModal → 3/3 pass; pnpm vitest work-orders backend → 38/38 pass.
+Latest review (попередній): 2026-06-11 (HEAD f7fe9d53 — cycle-1 QA post-extract sweep):
   • SUGGESTION (fixed) — inline `toIso` helper у CreateWorkOrderModal.useEffect (conflict-check) дублював свіжо-екстрагований `localDateTimeToISO` з lib/format.ts. Replace + drop unused `kyivDateTimeToISO` import. Один шлях DST-aware конверсії; будь-який майбутній fix у localDateTimeToISO автоматично покриває conflict-check.
   • Огляд решти diff: format.ts (нова export-функція), useConflictCheck.ts (новий conflictWoNumbers useMemo з deps `[conflict?.conflictSlots]` — коректно, fresh array refs при кожному setConflict), CalendarSlotModal.tsx (видалено duplicate useMemo, useMemo імпорт прибраний), PageClient.tsx (додано plannedHours/actualHours у WorkOrderDetail — sync з backend toResponseDto). API contract: WorkOrderResponseDto.plannedHours/actualHours існують у dto.ts:288-289 → frontend interface вирівняний.
   • Перевірки: tsc web --incremental false → 0 errors; React.X named-import scan → 0; any/console.log → 0; BOM scan для 5 файлів → 0.
