@@ -239,6 +239,7 @@ interface Props {
   prefill?: CreateWOPrefill;
   workOrderId?: string; // edit mode when provided
   onUpdated?: () => void; // called after PATCH or FSM transition
+  onMinimize?: () => void; // called before onClose when user clicks "−"
 }
 
 // Crypto-randomUUID gives globally-unique row keys without relying on a
@@ -263,6 +264,7 @@ export function CreateWorkOrderModal({
   prefill,
   workOrderId,
   onUpdated,
+  onMinimize,
 }: Props) {
   const isEditMode = !!workOrderId;
   const [form, setForm] = useState({
@@ -1162,6 +1164,7 @@ export function CreateWorkOrderModal({
                   modalKey: 'work-order',
                   restoreProps: { workOrderId },
                 });
+                onMinimize?.(); // signal caller to skip closeTab
                 setActiveTab('main');
                 onClose();
               }}

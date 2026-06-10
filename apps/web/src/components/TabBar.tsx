@@ -30,7 +30,7 @@ const TabChip = memo(function TabChip({ tab, onActivate, onClose }: TabChipProps
       className={cn(
         'group relative flex items-center gap-1 px-2.5 h-full shrink-0 cursor-pointer select-none',
         'text-[12px] max-w-40 border-r border-border transition-colors',
-        'bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border-b-2 border-b-amber-400',
+        'bg-amber-50 dark:bg-amber-950/30 text-foreground border-b-2 border-b-amber-400',
       )}
       onClick={() => onActivate(tab.id)}
       title={tab.label}
@@ -89,7 +89,7 @@ function TabOverflowMenu({ tabs, onActivate, onClose }: OverflowMenuProps) {
           {tabs.map(tab => (
             <div
               key={tab.id}
-              className="flex items-center gap-2 px-3 py-1.5 text-[12px] cursor-pointer hover:bg-secondary/60 text-amber-700 dark:text-amber-300"
+              className="flex items-center gap-2 px-3 py-1.5 text-[12px] cursor-pointer hover:bg-secondary/60 text-foreground"
               onClick={() => {
                 onActivate(tab.id);
                 setOpen(false);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, type ReactNode, type MouseEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode, type MouseEvent } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
@@ -391,6 +391,8 @@ export function TopShell({ children }: { children: ReactNode }) {
   // Track the tab UUID (not the WO ID) so closeTab removes the correct tab entry
   const [restoredTabId, setRestoredTabId] = useState<string | undefined>(undefined);
   const [restoredWoOpen, setRestoredWoOpen] = useState(false);
+  // Set to true when user clicks "−" to minimize — onClose must NOT remove the tab
+  const minimizingRestoredRef = useRef(false);
 
   useEffect(() => {
     if (!pendingRestore) return;
@@ -743,14 +745,17 @@ export function TopShell({ children }: { children: ReactNode }) {
           open={restoredWoOpen}
           workOrderId={restoredWoId}
           onClose={() => {
-            // Bug #420: tab-close привʼязаний до закриття модалки, а НЕ до onUpdated.
-            // doTransition() усередині модалки викликає onUpdated() БЕЗ onClose() —
-            // якщо ми б закривали tab у onUpdated, користувач втрачав би tab при
-            // зміні статусу попри те що модалка лишається відкритою.
-            if (restoredTabId) closeTab(restoredTabId);
+            // Bug #420: tab-close при закритті, але НЕ при мінімізації.
+            // minimizingRestoredRef=true коли юзер натиснув "−" — в цьому випадку
+            // minimizeModal вже оновив/додав вкладку, closeTab не потрібен.
+            if (!minimizingRestoredRef.current && restoredTabId) closeTab(restoredTabId);
+            minimizingRestoredRef.current = false;
             setRestoredWoOpen(false);
             setRestoredWoId(undefined);
             setRestoredTabId(undefined);
+          }}
+          onMinimize={() => {
+            minimizingRestoredRef.current = true;
           }}
           onUpdated={() => {
             // Bug #420: інвалідація списку work-orders + linked queries — без цього сторінка
