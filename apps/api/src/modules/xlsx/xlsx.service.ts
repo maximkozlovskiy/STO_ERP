@@ -7,6 +7,7 @@ import {
 import ExcelJS from 'exceljs';
 import { parse as parseCSV } from 'csv-parse/sync';
 import { TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../inventory/pricing.service';
 
@@ -401,6 +402,14 @@ export class XlsxService {
       : [];
     const existingByGoodId = new Map(existingLines.map(l => [l.goodId, l.id]));
 
+    // sto-optimize: розділяємо updates і creates — updates паралель через Promise.all
+    // (unique where: { id }, no contention), creates батч'имо у createMany (1 INSERT vs N).
+    // Раніше: N sequential queries (по 30-50ms RTT кожен) → 30-50s для 1000 рядків.
+    // Дедуплікація по goodId — якщо xlsx має дублікати, лишаємо ПЕРШИЙ рядок (last-write-wins
+    // сценарій раніше теж не гарантувався порядком — користувач має чистити вхід сам).
+    const updatesPlan: { id: string; quantity: number; price: number; label: string }[] = [];
+    const createsPlan: Prisma.PurchaseOrderLineCreateManyInput[] = [];
+    const seenGoodIds = new Set<string>();
     for (const row of rows) {
       try {
         const good = this.resolveGood(goodsByKey, row);
@@ -408,28 +417,64 @@ export class XlsxService {
           result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
           continue;
         }
+        if (seenGoodIds.has(good.id)) {
+          result.errors.push(`Дублікат товару у файлі: ${row.sku ?? row.name}`);
+          continue;
+        }
+        seenGoodIds.add(good.id);
 
         const existingId = existingByGoodId.get(good.id);
         if (existingId) {
-          await this.prisma.purchaseOrderLine.update({
-            where: { id: existingId },
-            data: { quantity: row.quantity, price: row.price },
+          updatesPlan.push({
+            id: existingId,
+            quantity: row.quantity,
+            price: row.price,
+            label: row.sku ?? row.name,
           });
-          result.updated++;
         } else {
-          await this.prisma.purchaseOrderLine.create({
-            data: {
-              orgId,
-              purchaseOrderId: poId,
-              goodId: good.id,
-              quantity: row.quantity,
-              price: row.price,
-            },
+          createsPlan.push({
+            orgId,
+            purchaseOrderId: poId,
+            goodId: good.id,
+            quantity: row.quantity,
+            price: row.price,
           });
-          result.created++;
         }
       } catch (e: unknown) {
         result.errors.push(`${row.sku ?? row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+      }
+    }
+
+    // Updates паралель — кожен унікальний by id, ніяких конфліктів.
+    const updateResults = await Promise.allSettled(
+      updatesPlan.map(u =>
+        this.prisma.purchaseOrderLine.update({
+          where: { id: u.id },
+          data: { quantity: u.quantity, price: u.price },
+        }),
+      ),
+    );
+    for (let i = 0; i < updateResults.length; i++) {
+      const r = updateResults[i];
+      const u = updatesPlan[i];
+      if (!r || !u) continue;
+      if (r.status === 'fulfilled') {
+        result.updated++;
+      } else {
+        const reason = r.reason instanceof Error ? r.reason.message : 'помилка';
+        result.errors.push(`${u.label}: ${reason}`);
+      }
+    }
+
+    // Creates батчем — один INSERT з усіма рядками.
+    if (createsPlan.length > 0) {
+      try {
+        await this.prisma.purchaseOrderLine.createMany({ data: createsPlan });
+        result.created += createsPlan.length;
+      } catch (e: unknown) {
+        result.errors.push(
+          `Помилка масового створення: ${e instanceof Error ? e.message : 'помилка'}`,
+        );
       }
     }
 
@@ -467,6 +512,10 @@ export class XlsxService {
       : [];
     const existingByGoodId = new Map(existingLines.map(l => [l.goodId, l.id]));
 
+    // sto-optimize: дивись importPOLines — той самий патерн (updates паралель + creates createMany).
+    const updatesPlan: { id: string; quantity: number; price: number; label: string }[] = [];
+    const createsPlan: Prisma.StockDocumentLineCreateManyInput[] = [];
+    const seenGoodIds = new Set<string>();
     for (const row of rows) {
       try {
         const good = this.resolveGood(goodsByKey, row);
@@ -474,28 +523,62 @@ export class XlsxService {
           result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
           continue;
         }
+        if (seenGoodIds.has(good.id)) {
+          result.errors.push(`Дублікат товару у файлі: ${row.sku ?? row.name}`);
+          continue;
+        }
+        seenGoodIds.add(good.id);
 
         const existingId = existingByGoodId.get(good.id);
         if (existingId) {
-          await this.prisma.stockDocumentLine.update({
-            where: { id: existingId },
-            data: { quantity: row.quantity, price: row.price },
+          updatesPlan.push({
+            id: existingId,
+            quantity: row.quantity,
+            price: row.price,
+            label: row.sku ?? row.name,
           });
-          result.updated++;
         } else {
-          await this.prisma.stockDocumentLine.create({
-            data: {
-              orgId,
-              stockDocumentId: docId,
-              goodId: good.id,
-              quantity: row.quantity,
-              price: row.price,
-            },
+          createsPlan.push({
+            orgId,
+            stockDocumentId: docId,
+            goodId: good.id,
+            quantity: row.quantity,
+            price: row.price,
           });
-          result.created++;
         }
       } catch (e: unknown) {
         result.errors.push(`${row.sku ?? row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+      }
+    }
+
+    const updateResults = await Promise.allSettled(
+      updatesPlan.map(u =>
+        this.prisma.stockDocumentLine.update({
+          where: { id: u.id },
+          data: { quantity: u.quantity, price: u.price },
+        }),
+      ),
+    );
+    for (let i = 0; i < updateResults.length; i++) {
+      const r = updateResults[i];
+      const u = updatesPlan[i];
+      if (!r || !u) continue;
+      if (r.status === 'fulfilled') {
+        result.updated++;
+      } else {
+        const reason = r.reason instanceof Error ? r.reason.message : 'помилка';
+        result.errors.push(`${u.label}: ${reason}`);
+      }
+    }
+
+    if (createsPlan.length > 0) {
+      try {
+        await this.prisma.stockDocumentLine.createMany({ data: createsPlan });
+        result.created += createsPlan.length;
+      } catch (e: unknown) {
+        result.errors.push(
+          `Помилка масового створення: ${e instanceof Error ? e.message : 'помилка'}`,
+        );
       }
     }
 
@@ -535,6 +618,16 @@ export class XlsxService {
     ]);
     const existingByGoodId = new Map(existingParts.map(p => [p.goodId, p.id]));
 
+    // sto-optimize: дивись importPOLines — той самий патерн (updates паралель + creates createMany).
+    const updatesPlan: {
+      id: string;
+      quantity: number;
+      price: number;
+      amount: number;
+      label: string;
+    }[] = [];
+    const createsPlan: Prisma.WorkOrderPartCreateManyInput[] = [];
+    const seenGoodIds = new Set<string>();
     for (const row of rows) {
       try {
         const good = this.resolveGood(goodsByKey, row);
@@ -542,36 +635,71 @@ export class XlsxService {
           result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
           continue;
         }
+        if (seenGoodIds.has(good.id)) {
+          result.errors.push(`Дублікат товару у файлі: ${row.sku ?? row.name}`);
+          continue;
+        }
+        seenGoodIds.add(good.id);
 
         const existingId = existingByGoodId.get(good.id);
         const amount = row.quantity * row.price;
 
         if (existingId) {
-          await this.prisma.workOrderPart.update({
-            where: { id: existingId },
-            data: { quantity: row.quantity, price: row.price, amount },
+          updatesPlan.push({
+            id: existingId,
+            quantity: row.quantity,
+            price: row.price,
+            amount,
+            label: row.sku ?? row.name,
           });
-          result.updated++;
         } else {
           if (!defaultWarehouse) {
             result.errors.push(`${row.sku ?? row.name}: склад не знайдено для організації`);
             continue;
           }
-          await this.prisma.workOrderPart.create({
-            data: {
-              orgId,
-              workOrderId: woId,
-              goodId: good.id,
-              warehouseId: defaultWarehouse.id,
-              quantity: row.quantity,
-              price: row.price,
-              amount,
-            },
+          createsPlan.push({
+            orgId,
+            workOrderId: woId,
+            goodId: good.id,
+            warehouseId: defaultWarehouse.id,
+            quantity: row.quantity,
+            price: row.price,
+            amount,
           });
-          result.created++;
         }
       } catch (e: unknown) {
         result.errors.push(`${row.sku ?? row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+      }
+    }
+
+    const updateResults = await Promise.allSettled(
+      updatesPlan.map(u =>
+        this.prisma.workOrderPart.update({
+          where: { id: u.id },
+          data: { quantity: u.quantity, price: u.price, amount: u.amount },
+        }),
+      ),
+    );
+    for (let i = 0; i < updateResults.length; i++) {
+      const r = updateResults[i];
+      const u = updatesPlan[i];
+      if (!r || !u) continue;
+      if (r.status === 'fulfilled') {
+        result.updated++;
+      } else {
+        const reason = r.reason instanceof Error ? r.reason.message : 'помилка';
+        result.errors.push(`${u.label}: ${reason}`);
+      }
+    }
+
+    if (createsPlan.length > 0) {
+      try {
+        await this.prisma.workOrderPart.createMany({ data: createsPlan });
+        result.created += createsPlan.length;
+      } catch (e: unknown) {
+        result.errors.push(
+          `Помилка масового створення: ${e instanceof Error ? e.message : 'помилка'}`,
+        );
       }
     }
 
@@ -715,6 +843,21 @@ export class XlsxService {
       }
     }
 
+    // sto-optimize: batch плани змін у пам'яті, потім chunk'ами по 100
+    // у $transaction. Раніше — per-item $transaction (1000 items × BEGIN/COMMIT
+    // sequentially). Тепер: 1000 items → 10 transactions × 100 ops; -90% RTT і
+    // суттєво швидше через amortized tx overhead. Pattern узгоджений з
+    // pricing.applyRuleToGoods + purchase-orders.applyPricing.
+    type Plan = {
+      goodId: string;
+      goodName: string;
+      sku: string | null;
+      costPrice: number;
+      oldSalePrice: number;
+      newSalePrice: number;
+    };
+    const plan: Plan[] = [];
+
     for (const item of items) {
       let good: (typeof goods)[number] | undefined;
       if (item.sku) good = goodBySku.get(item.sku.toLowerCase());
@@ -744,39 +887,6 @@ export class XlsxService {
         costPrice,
       );
 
-      if (Math.abs(newSalePrice - oldSalePrice) < 0.001) {
-        details.push({
-          goodId: good.id,
-          goodName: good.name,
-          sku: good.sku,
-          costPrice,
-          oldSalePrice,
-          newSalePrice,
-        });
-        continue;
-      }
-
-      // Bug #191: updateMany з orgId — defense-in-depth tenant guard.
-      await this.prisma.$transaction(
-        async tx => {
-          await tx.good.updateMany({
-            where: { id: good.id, orgId, deletedAt: null },
-            data: { salePrice: newSalePrice },
-          });
-          await tx.priceHistory.create({
-            data: {
-              orgId,
-              goodId: good.id,
-              oldPrice: oldSalePrice,
-              newPrice: newSalePrice,
-              costPrice,
-              reason: 'List pricing import',
-            },
-          });
-        },
-        { timeout: TRANSACTION_TIMEOUT_MS },
-      );
-
       details.push({
         goodId: good.id,
         goodName: good.name,
@@ -785,6 +895,45 @@ export class XlsxService {
         oldSalePrice,
         newSalePrice,
       });
+
+      if (Math.abs(newSalePrice - oldSalePrice) < 0.001) continue;
+
+      plan.push({
+        goodId: good.id,
+        goodName: good.name,
+        sku: good.sku,
+        costPrice,
+        oldSalePrice,
+        newSalePrice,
+      });
+    }
+
+    // Batch у chunks по 100 — короткі транзакції, менше lock contention.
+    // Bug #191: updateMany з orgId — defense-in-depth tenant guard.
+    const CHUNK = 100;
+    for (let i = 0; i < plan.length; i += CHUNK) {
+      const chunk = plan.slice(i, i + CHUNK);
+      await this.prisma.$transaction(
+        async tx => {
+          for (const u of chunk) {
+            await tx.good.updateMany({
+              where: { id: u.goodId, orgId, deletedAt: null },
+              data: { salePrice: u.newSalePrice },
+            });
+          }
+          await tx.priceHistory.createMany({
+            data: chunk.map(u => ({
+              orgId,
+              goodId: u.goodId,
+              oldPrice: u.oldSalePrice,
+              newPrice: u.newSalePrice,
+              costPrice: u.costPrice,
+              reason: 'List pricing import',
+            })),
+          });
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      );
     }
 
     return {

@@ -11,7 +11,10 @@ describe('XlsxService', () => {
   let service: XlsxService;
   let prisma: {
     good: { findMany: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
-    priceHistory: { create: ReturnType<typeof vi.fn> };
+    priceHistory: {
+      create: ReturnType<typeof vi.fn>;
+      createMany: ReturnType<typeof vi.fn>;
+    };
     $transaction: ReturnType<typeof vi.fn>;
   };
   // Bulk-перехід: applyPricingFromList тепер prefetch-ить goods batch-ом і правила один раз
@@ -30,7 +33,12 @@ describe('XlsxService', () => {
         findMany: vi.fn().mockResolvedValue([]),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
-      priceHistory: { create: vi.fn().mockResolvedValue({}) },
+      priceHistory: {
+        create: vi.fn().mockResolvedValue({}),
+        // sto-optimize: applyPricingFromList тепер батчить changes по 100 у єдиний
+        // $transaction з priceHistory.createMany замість per-item create.
+        createMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
@@ -110,7 +118,8 @@ describe('XlsxService', () => {
         where: { id: 'good-1', orgId: ORG, deletedAt: null },
         data: { salePrice: 150 },
       });
-      expect(prisma.priceHistory.create).toHaveBeenCalled();
+      // sto-optimize: батч createMany замість per-item create
+      expect(prisma.priceHistory.createMany).toHaveBeenCalled();
     });
 
     it('розпізнає alternative CSV headers (SKU, Артикул, Штрихкод)', async () => {
@@ -171,7 +180,7 @@ describe('XlsxService', () => {
       expect(result.updated).toBe(0);
       expect(result.notFound).toEqual(['UNKNOWN-SKU']);
       expect(prisma.good.updateMany).not.toHaveBeenCalled();
-      expect(prisma.priceHistory.create).not.toHaveBeenCalled();
+      expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
     });
 
     it('ціна не змінилась → у details АЛЕ не пише good.updateMany/priceHistory', async () => {
@@ -198,7 +207,7 @@ describe('XlsxService', () => {
       expect(result.updated).toBe(0); // skip count
       expect(result.details).toHaveLength(1); // запис у details ДЛЯ unchanged теж
       expect(prisma.good.updateMany).not.toHaveBeenCalled();
-      expect(prisma.priceHistory.create).not.toHaveBeenCalled();
+      expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
     });
 
     it('порожній CSV (тільки header) → BadRequestException', async () => {
@@ -243,7 +252,7 @@ describe('XlsxService', () => {
       // computePriceFromRules НЕ викликаний — щоб не марнувати compute
       expect(pricingService.computePriceFromRules).not.toHaveBeenCalled();
       expect(prisma.good.updateMany).not.toHaveBeenCalled();
-      expect(prisma.priceHistory.create).not.toHaveBeenCalled();
+      expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
     });
 
     it('Bug #198: purchasePrice=0 → потрапляє у notFound (захист від PERCENT/COST_TIER 0%-результату)', async () => {

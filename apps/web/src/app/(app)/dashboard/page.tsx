@@ -103,6 +103,13 @@ function fmt(n: number) {
   return fmtInt(n) + ' ₴';
 }
 
+// Stable fallbacks для Bug #328 cascade prevention — `data?.rows ?? []` створював
+// fresh array literal кожен render → identity change → downstream useMemo/useEffect
+// з deps на цю змінну ре-фаєрить. RevenueChart та upcomingTO .map() прямо не
+// мають effect deps, але hoist module-level — як санітарний loop-prevention pattern.
+const EMPTY_REVENUE: readonly RevenueDay[] = Object.freeze([]);
+const EMPTY_MAINTENANCE: readonly MaintenanceSchedule[] = Object.freeze([]);
+
 // Module-level Intl singletons — раніше створювались inline у useEffect (loadData kyivDate
 // callback + monthStart kyivStr + setTodayStr + greeting hour) = 4 формати на кожен mount.
 // Hoist робить кожен виклик дешевим .format() без locale-data init.
@@ -196,10 +203,11 @@ export default function DashboardPage() {
     };
   }, [ordersData, lowStockData, invoicesData, revenueData]);
 
-  const revenue: RevenueDay[] = (revenueData as { rows?: RevenueDay[] } | undefined)?.rows ?? [];
+  const revenue: RevenueDay[] =
+    (revenueData as { rows?: RevenueDay[] } | undefined)?.rows ?? (EMPTY_REVENUE as RevenueDay[]);
   const upcomingTO: MaintenanceSchedule[] = Array.isArray(maintenanceData)
     ? (maintenanceData as MaintenanceSchedule[])
-    : [];
+    : (EMPTY_MAINTENANCE as MaintenanceSchedule[]);
 
   useEffect(() => {
     setTodayStr(KYIV_FULL_DATE_FMT.format(new Date()));

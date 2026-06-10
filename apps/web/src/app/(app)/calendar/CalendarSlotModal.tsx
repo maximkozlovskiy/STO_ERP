@@ -35,7 +35,6 @@ import {
   HOURS,
   PICK_MINUTES,
   UUID_RE,
-  KYIV_TZ,
   WINDOW_START,
   WINDOW_END,
   decimalHoursToHHMM,
@@ -45,6 +44,7 @@ import {
   displayCounterparty,
   fmtTime,
   fmtKyivDate,
+  toDateString,
 } from './calendar.utils';
 
 // Bug #397: const між import-statement'ами порушує ESLint `import/first` + може
@@ -537,7 +537,9 @@ export function CalendarSlotModal({
       return;
     }
     if (!editingSlotId && nowMs) {
-      const todayKyiv = new Date(nowMs).toLocaleDateString('sv-SE', { timeZone: KYIV_TZ });
+      // sto-optimize: toDateString module-level singleton замість per-call
+      // .toLocaleDateString({ timeZone: KYIV_TZ }) — той самий sv-SE Kyiv-TZ формат.
+      const todayKyiv = toDateString(new Date(nowMs));
       if (date < todayKyiv) {
         setError('Не можна створити запис у минулому');
         return;

@@ -39,8 +39,19 @@ interface EstimateData {
   parts: EstimatePart[];
 }
 
+// Public widget — module-level Intl singletons.
+// Без імпорту з lib/format щоб мінімізувати public bundle.
+// Раніше — `n.toLocaleString('uk-UA', {...})` всередині fmt() створював новий
+// Intl.NumberFormat на кожен виклик (рядок таблиці × ререндери).
+const MONEY_FMT = new Intl.NumberFormat('uk-UA', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const INT_FMT = new Intl.NumberFormat('uk-UA');
+const DATE_FMT = new Intl.DateTimeFormat('uk-UA');
+
 function fmt(n: number) {
-  return n.toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return MONEY_FMT.format(n);
 }
 
 export default function EstimatePage() {
@@ -94,8 +105,8 @@ export default function EstimatePage() {
   }
 
   const docDate = data.documentDate
-    ? new Date(data.documentDate).toLocaleDateString('uk-UA')
-    : new Date().toLocaleDateString('uk-UA');
+    ? DATE_FMT.format(new Date(data.documentDate))
+    : DATE_FMT.format(new Date());
 
   return (
     <>
@@ -141,7 +152,7 @@ export default function EstimatePage() {
           {data.inMileage != null && (
             <>
               <span className="text-gray-500">Пробіг при прийомі</span>
-              <span className="font-medium">{data.inMileage.toLocaleString('uk-UA')} км</span>
+              <span className="font-medium">{INT_FMT.format(data.inMileage)} км</span>
             </>
           )}
           <span className="text-gray-500">Дата</span>
