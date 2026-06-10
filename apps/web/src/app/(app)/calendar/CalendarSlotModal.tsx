@@ -611,19 +611,17 @@ export function CalendarSlotModal({
     // Bug #354: kyivDateTimeToISO замість `new Date(...).toISOString()`
     // local-парсингу без TZ. DST-aware (+02 зима, +03 літо).
     const startIso = kyivDateTimeToISO(date, form.startAt);
-    // overflow slot: endAt is on the next calendar day (e.g. 10:00 on day+1)
-    const endSaveDate = isOverflowSlot
+    // For overflow slots the backend expects endAt as the real wall-clock end time
+    // on the *same* day (e.g. 21:00 for 2 h from 19:00), not the next-day display time.
+    // calcEndAt() converts overflow to "08:00 + remainder" for display only — we must
+    // send the raw totalMin end time so the backend split logic works correctly.
+    const endTimeForSave = isOverflowSlot
       ? (() => {
-          try {
-            const d = new Date(`${date}T12:00:00Z`);
-            d.setUTCDate(d.getUTCDate() + 1);
-            return d.toISOString().slice(0, 10);
-          } catch {
-            return date;
-          }
+          const totalMinRaw = startMin2 + Math.round(nh2 * 60);
+          return `${pad(Math.floor(totalMinRaw / 60))}:${pad(totalMinRaw % 60)}`;
         })()
-      : date;
-    const endIso = kyivDateTimeToISO(endSaveDate, form.endAt);
+      : form.endAt;
+    const endIso = kyivDateTimeToISO(date, endTimeForSave);
     if (!date || !form.startAt || !form.endAt || !startIso || !endIso) {
       setError('Вкажіть коректні дату та час');
       return;
