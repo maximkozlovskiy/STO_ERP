@@ -568,6 +568,38 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-10 — Frontend для-await POST у "Import from templates" handlers — bulk-create незалежних reference rows із серійним RTT
+
+**Сигнал:** UI sub-tab (PaymentsTab/CurrenciesTab/UnitsTab/будь-який reference-CRUD з "Додати з шаблону") має handler `importFromTemplates(templates: SystemTemplate[])` що ітерує `for (const t of templates) { await apiFetch(POST endpoint, body) }`. Templates з системного каталогу — це 5-15 рядків з unique codes/shortName per template. Sequential N × RTT де максимум 1 RTT досяжний — кожен POST незалежний (нема read-залежностей між templates), backend має unique constraint на `(orgId, code)` що захищає від collision навіть якщо два POST одночасно. На WAN 30-50ms × 10 templates = 300-500ms wasted, користувач бачить spinner.
+
+**Причина виникнення:** for-await — найбільш звичний паттерн для bulk-create на фронті бо: (a) error handling per-template через try/catch у тілі циклу легко відстежити; (b) state update (`setItems(prev => [...prev, created])`) лінійно push'ить у кінець списку — зрозумілий результат. Розробник свідомо вважає що паралель «бомбардуватиме» бекенд, не помічаючи що backend сам serialize'ить через connection pool + unique constraint на (orgId, code) ловить дублі без race condition. Інший сценарій: handler пишеться «по-старому» (як до знання про Promise.allSettled) і не переписаний.
+
+**Підхід до виявлення:** grep `for \(const \w+ of templates\)` у `apps/web/src/app/`, особливо у файлах `(ndi|catalog|settings)/*Tab.tsx` де є "Додати з шаблону" / "TemplatePickerModal" / "onImport" callbacks. Перевірити: (1) чи тіло — лише `await apiFetch(POST)`; (2) чи кожна ітерація використовує власні дані з template (унікальний `code`/`shortName`); (3) чи state update може приймати batch (Set/Array.concat) замість push один-за-одним.
+
+**Підхід до фіксу:** `Promise.allSettled(templates.map(t => apiFetch(POST, body)))` → iterate results: `for (const r of results) { if (r.status === 'fulfilled') created.push(r.value) }`. Batch state update в кінці: `setItems(prev => [...prev, ...created])`. Промахи (409 Conflict на duplicate code) тихо пропускаються — користувач бачить рекордs що додалися. Якщо handler потім робить `load()` (рефреш списку через GET) — Promise.allSettled все одно правильна семантика (load() покаже актуальний стан незалежно від часткового success). Error message — bulk показ "X з Y додано, Y-X пропущено" у toast (опціонально).
+
+**Реальний impact:** для типового import з 10 system templates (поширені UoM, currencies, payment methods): 10 × 30-50ms = 300-500ms серійно → ~50ms паралель. На повільному WAN/VPN — sub-second UX замість 1-2s з spinner. Особливо помітно на initial org setup (адмін додає всі дефолтні template одразу) — раніше це 5+ секунд через всі довідники, тепер ~1.
+
+**Де шукати ще:** будь-який frontend bulk-import handler — TemplatePickerModal callbacks у Settings/Catalog/Reference data UI. Особливо часто при додаванні нового reference CRUD: brands (templates), tax-rates (системні ставки), notification-templates (preset SMS). При перевірці нового CRUD page з "Import templates" функцією — обов'язково Promise.allSettled. **Виняток:** якщо backend POST має side-effects що залежать від previous (sequence number generation, FK chains між templates) — лишити sequential.
+
+---
+
+### 2026-06-10 — Duplicate getCached() у парних useState lazy initializers — composable hooks з data+loading pair
+
+**Сигнал:** composable hook (типу `useCachedRefData`, `useSavedFilters`, `useCachedQuery`) має паттерн: `const [data, setData] = useState<T>(() => getCached<T>(key) ?? fallback); const [loading, setLoading] = useState<boolean>(() => getCached<T>(key) === null);`. Два лазі initializers викликають **той самий** getCached(key) дізнатися був чи ні кеш-хіт. Lazy initializers рятують від per-render виконання (це **вже** оптимізовано — patterm 2026-06-05), але тут є **другий** рівень дублювання: sessionStorage.getItem + JSON.parse виконуються двічі для одного й того ж ключа на mount. Для маленьких cached values (< 1KB) непомітно; для великих (200 goods × 200 bytes = 40KB JSON) — main thread blocked twice на parse.
+
+**Причина виникнення:** парадигма "одна useState — одна лазі-init функція" виглядає симетрично. Розробник природно дублює виклик getCached бо `data` потребує fallback при miss, а `loading` потребує boolean при hit. Не помічається що результат getCached не змінюється між цими двома виразами (тот самий тіrендер, той самий key). Shared variable між lazy initializers неможливе через React API (lazy init викликається React, не в нашому контролі) — потрібен useRef як міст.
+
+**Підхід до виявлення:** для кожного composable hook у `apps/web/src/hooks/` шукати парні `useState(() => getX(...))` де `getX` дороге (sessionStorage/localStorage/IndexedDB read, JSON.parse, regex compile). Якщо обидва lazy initializers викликають той самий `getX(samekey)` — кандидат на дедуплікацію через useRef.
+
+**Підхід до фіксу:** `const initialCacheRef = useRef<T | null | undefined>(undefined); const readOnce = (): T | null => { if (initialCacheRef.current === undefined) initialCacheRef.current = getCached<T>(key); return initialCacheRef.current; };` — потім обидва lazy initializers викликають `readOnce()`. React викличе lazy initializers ОДИН раз кожен на mount (для useState), у тому самому render — useRef живе через цей render (фактично між двома useState calls). Альтернатива — поєднати у один useState з об'єктом `{ data, loading }`, але це ускладнює API hook (callers очікують tuple-style). useRef простіший і backward-compatible.
+
+**Реальний impact:** на mount компонента з 200-item кешем (200 goods × ~200 bytes JSON): 2 × sessionStorage.getItem (cheap synchronous) + 2 × JSON.parse (~5-10ms) → 1 × кожне (~2.5-5ms економії). На повільних пристроях (планшет механіка) — помітна різниця у time-to-first-paint. Кумулятивно з усіма composable hooks (useCachedRefData викликається 10+ разів за сесію на heavy pages) — секунди zaaгом.
+
+**Де шукати ще:** будь-який composable hook що повертає `{ data, loading, ... }` і використовує lazy useState для seed з persistent storage. Особливо: useCachedRefData (виправлено), useSavedFilters (вже OK через useEffect), любий новий useCachedXxx hook. При додаванні нового composable hook — обов'язково перевіряти чи getCached/getStored викликається ≥2 рази у lazy initializers того ж компонента.
+
+---
+
 ### 2026-06-10 — Per-item `$transaction(callback, { timeout })` у row-importer циклах — bulk import що відкриває окрему транзакцію для КОЖНОГО рядка
 
 **Сигнал:** import-метод сервісу (приклад: `xlsx.applyPricingFromList`, `xlsx.importX`, bulk CRUD imports) має для кожного row окремий виклик `await this.prisma.$transaction(async tx => { ...mutation + side-effect... }, { timeout })`. Виглядає як «кожен рядок атомарний» — і це правда, але overhead: 1000 рядків × BEGIN+COMMIT × у середньому 30-50ms RTT = 30-50 секунд для типового імпорту. Атрибут безпеки (atomicity per-row) досяжний батч-патерном (chunked tx по 100 рядків) — кожен chunk залишається атомарним, а кількість BEGIN/COMMIT падає у 100 разів.
@@ -1867,6 +1899,17 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ invoices.refreshFromWorkOrder: `$transaction` коментар обіцяв «RepeatableRead» але насправді default ReadCommitted (no isolationLevel) → bump до Serializable + inner re-check status DRAFT + catch P2034 → BadRequestException. Закриває race-window concurrent refresh/addLine/status-mutation. Симетрично з createFromWorkOrder (Bug #412 pattern)
 - ✅ xlsx.applyPricingFromList: per-item $transaction loop (1000 rows × BEGIN+COMMIT × 30-50ms RTT = 30-50 sec) → плановані changes у Plan[] → chunks of 100 у $transaction з priceHistory.createMany (10× прискорення для batch імпорту). Pattern узгоджений з pricing.applyRuleToGoods + purchase-orders.applyPricing
 - ✅ xlsx.importPOLines / importSDLines / importWOParts: sequential update/create per-row (post-prefetch але без batching) → updatesPlan + createsPlan + seenGoodIds dedup → Promise.allSettled(updates) + createMany(creates). N RTT × 30-50ms → ~1 sec для 1000 рядків
+- ✅ comments.remove: full row read для permission check → `select: { authorId: true }` (раніше тягнуло body/createdAt/entityType/entityId/syncVersion/deletedAt — все ігноруване)
+- ✅ comments.findAll: `include: { author: ... }` → explicit `select` projection (drop syncVersion/deletedAt over-fetch у findAll з take:500)
+- ✅ purchase-orders.update: full row → `select: { status, totalAmount }` (status guard + totalAmount fallback коли dto.lines не передано)
+- ✅ purchase-orders.transition (in tx): full row → `select: { status }` (FSM transition потребує лише поточний статус)
+- ✅ invoices.update: full row → `select: { status }` (DRAFT guard only)
+- ✅ invoices.transition: full row → `select: { status }` (FSM transition)
+- ✅ warranties.claim: full warranty row → `select: { claimedAt, expiresAt }`; claimWo guard narrowed `{ id }` (parallel Promise.all зберігся)
+- ✅ completion-acts.sign (in tx): `include: { workOrder: ... }` → `select: { status, workOrder: { id, status } }` (drop signedAt/clientPhone/notes що мутуються самим update)
+- ✅ stock-documents.create FK guards: full row × 3 (branch + warehouse + targetWarehouse) → `select: { id: true }` (existence-only checks)
+- ✅ stock-documents.update: full row → `select: { status }` (DRAFT guard only)
+- ✅ invoices.recalcTotals: `findMany(take:1000) + 3× JS reduce` → `prisma.invoiceLine.aggregate({ _sum: { priceWithoutVat, vatAmount, priceWithVat } })` — Postgres SUM, 1 row response, паралель з work-orders.recalcTotals pattern (hot-path: викликається при кожному add/update/remove line)
 
 **Frontend:**
 
@@ -1970,3 +2013,5 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 **Universal Frontend Hooks:**
 
 - ✅ useCachedRefData: getCached() винесено у `useState(() => ...)` lazy initializer (раніше виконувалось на КОЖЕН render — sessionStorage + JSON.parse для великих cached lists 200+ items)
+- ✅ useCachedRefData: data + loading useState pair шарінгує initialCacheRef.current — обидва lazy initializers викликалися getCached(cacheKey) на mount (двічі для одного й того ж ключа). Тепер sessionStorage.getItem + JSON.parse один раз через useRef кеш. Для 200-item cached list — економія main thread на mount
+- ✅ PaymentsTab/UnitsTab/CurrenciesTab importFromTemplates: sequential for-await POST → Promise.allSettled(templates.map(POST)) — кожен create незалежний (unique codes/shortName per template), N × RTT serial → max single RTT. Promise.allSettled зберігає per-item success/failure для toast notifications + дозволяє пропустити 409 Conflict на дублях у шаблоні

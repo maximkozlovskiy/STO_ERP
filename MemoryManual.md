@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+bd1abf6f perf(optimize): parallel template bulk-create + shared cache read in useCachedRefData
+345a0f20 perf(optimize): narrow projections + invoices.recalcTotals SUM aggregate
 4c930d5d perf(optimize): batch xlsx imports + stabilize dashboard fallbacks + estimate Intl singletons
 7c514e32 simplify: 3-cycle cleanup — shared prisma-errors util, GOOD_UOM_SELECT, parallel tx reads
 c01ba672 perf(optimize): stabilize linkedCounts {} fallback to module-level frozen const
@@ -60,7 +62,37 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Latest optimize: 2026-06-10 (perf scope: xlsx batch imports + dashboard fallbacks + estimate Intl, HEAD 4c930d5d):
+Latest optimize: 2026-06-10 (perf scope: narrow projections + recalcTotals SUM + parallel templates, HEAD bd1abf6f):
+  • Backend narrow projections (8 service methods): comments.remove (select authorId),
+    comments.findAll (explicit select drop syncVersion/deletedAt), purchase-orders.update
+    (status+totalAmount), purchase-orders.transition (status), invoices.update (status),
+    invoices.transition (status), warranties.claim (claimedAt+expiresAt), completion-acts.sign
+    (status+workOrder.{id,status}). Кожна заміна full-row → narrow drops 10-20 unused
+    columns per read; cumulatively на CRUD-важких сторінках ~30-50% wire payload reduction.
+  • stock-documents.create: 3× FK guards (branch+warehouse+targetWarehouse) full row →
+    select { id: true } — паттерн "FK guard без narrow projection" з 2026-06-05 знов
+    знайдено у пропущеному раніше hot-path створення документа.
+  • stock-documents.update: full row → select { status } (DRAFT guard only) — parallel
+    з invoices/PO update which had same fix.
+  • invoices.recalcTotals: findMany(take:1000) + 3× JS reduce → prisma.invoiceLine.
+    aggregate({_sum: priceWithoutVat, vatAmount, priceWithVat}) — Postgres SUM, 1-row
+    response. Hot-path: викликається при кожному add/update/remove invoice line.
+    Pattern parallel work-orders.recalcTotals (вже виправлений 2026-05-31).
+  • Frontend bulk-create parallel: PaymentsTab/UnitsTab/CurrenciesTab importFromTemplates
+    sequential for-await POST → Promise.allSettled(templates.map(POST)). Each create
+    independent (unique codes/shortName), N × RTT serial → max single RTT. На admin
+    initial setup (8-15 templates per category × 4 categories) ~5s → ~1s wall-clock.
+  • useCachedRefData: data + loading useState pair шарінгує initialCacheRef.current —
+    getCached(key) викликався двічі на mount (один раз з кожного lazy initializer).
+    Через useRef один читач — обидва useState переюзують. На 200-item cached lists
+    (200 goods × ~200 bytes) — 1 JSON.parse замість 2 на mount.
+  • Skill self-improvement (Крок 7):
+    - "Frontend для-await POST у Import from templates handlers" — sequential bulk-create
+      independent reference rows; pattern для Promise.allSettled.
+    - "Duplicate getCached() у парних useState lazy initializers" — composable hooks
+      з data+loading pair; pattern для useRef-міст між lazy initializers.
+
+Latest optimize (попередній): 2026-06-10 (perf scope: xlsx batch imports + dashboard fallbacks + estimate Intl, HEAD 4c930d5d):
   • xlsx.applyPricingFromList: per-item $transaction loop (1000 rows × BEGIN+COMMIT ×
     30-50ms RTT = 30-50 sec) → плановані changes у Plan[] → chunks of 100 у
     $transaction з priceHistory.createMany. ~10× прискорення для batch імпорту.
