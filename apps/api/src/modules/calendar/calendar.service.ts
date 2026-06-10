@@ -426,9 +426,38 @@ export class CalendarService {
   }
 
   async checkConflicts(orgId: string, dto: CheckConflictsDto): Promise<CheckConflictsResponseDto> {
+    if (!dto.liftId && !dto.employeeId) {
+      // No resource selected — nothing to conflict against. Short-circuit без RTT.
+      return {
+        liftConflict: false,
+        employeeConflict: false,
+        anyConflict: false,
+        conflictSlots: [],
+      };
+    }
     const startAt = new Date(dto.startAt);
     const endAt = new Date(dto.endAt);
+    if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime()) || endAt <= startAt) {
+      throw new BadRequestException('Невірний інтервал часу');
+    }
     const excludeFilter = dto.excludeSlotId ? { not: dto.excludeSlotId } : undefined;
+    // bug-cycle (calendar conflict): findMany без take — порушує §1 (OOM на патологічних
+    // даних). Realistic upper bound для часового вікна = декілька десятків.
+    const CONFLICT_TAKE = 50;
+    const CONFLICT_SELECT = {
+      id: true,
+      startAt: true,
+      endAt: true,
+      liftId: true,
+      employeeId: true,
+      workOrderId: true,
+      vehicleId: true,
+      counterpartyId: true,
+      parentSlotId: true,
+      notes: true,
+      status: true,
+      type: true,
+    } as const;
 
     const [liftSlots, empSlots] = await Promise.all([
       dto.liftId
@@ -441,20 +470,8 @@ export class CalendarService {
               startAt: { lt: endAt },
               endAt: { gt: startAt },
             },
-            select: {
-              id: true,
-              startAt: true,
-              endAt: true,
-              liftId: true,
-              employeeId: true,
-              workOrderId: true,
-              vehicleId: true,
-              counterpartyId: true,
-              parentSlotId: true,
-              notes: true,
-              status: true,
-              type: true,
-            },
+            select: CONFLICT_SELECT,
+            take: CONFLICT_TAKE,
           })
         : Promise.resolve([]),
       dto.employeeId
@@ -467,20 +484,8 @@ export class CalendarService {
               startAt: { lt: endAt },
               endAt: { gt: startAt },
             },
-            select: {
-              id: true,
-              startAt: true,
-              endAt: true,
-              liftId: true,
-              employeeId: true,
-              workOrderId: true,
-              vehicleId: true,
-              counterpartyId: true,
-              parentSlotId: true,
-              notes: true,
-              status: true,
-              type: true,
-            },
+            select: CONFLICT_SELECT,
+            take: CONFLICT_TAKE,
           })
         : Promise.resolve([]),
     ]);

@@ -19,8 +19,9 @@ import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useConflictCheck } from '@/hooks/useConflictCheck';
+import { useConfirm } from '@/hooks/useConfirm';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { kyivToday } from '@/lib/format';
+import { kyivToday, kyivDateTimeToISO } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
 import {
   WO_STATUS_LABELS,
@@ -30,6 +31,7 @@ import {
 } from '@sto/shared';
 import { cn } from '@/lib/utils';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
@@ -303,6 +305,7 @@ export function CreateWorkOrderModal({
   const [activeTab, setActiveTab] = useState<'main' | 'documents'>('main');
   const features = useUiFeatures();
   const { conflict: calConflict, check: checkConflict, clear: clearConflict } = useConflictCheck();
+  const { confirm, dialogProps: confirmDialogProps } = useConfirm();
   const deletedLineIds = useRef<string[]>([]);
   const deletedPartIds = useRef<string[]>([]);
   const statusMenuRef = useRef<HTMLDivElement>(null);
@@ -337,16 +340,32 @@ export function CreateWorkOrderModal({
     return () => document.removeEventListener('keydown', handler, true);
   }, [invoiceConflict, invoiceLoading]);
 
-  // Conflict check when planned period or liftId changes (edit mode only)
+  // Conflict check when planned period or liftId changes (edit mode only).
+  // Backend expects ISO with TZ; DateTimePickerInput emits naive "YYYY-MM-DDTHH:mm"
+  // (no TZ). Якщо value вже містить Z / ±HH:MM (loaded from server) — використовуємо
+  // як є; інакше нормалізуємо через DST-aware kyivDateTimeToISO. Без цієї нормалізації
+  // backend new Date("2026-06-10T14:00") парсить як UTC → +2/+3h зсув → false positives.
   useEffect(() => {
     if (!isEditMode || !form.plannedStartAt || !form.plannedEndAt) {
       clearConflict();
       return;
     }
+    const toIso = (v: string): string => {
+      if (/Z$|[+-]\d{2}:?\d{2}$/.test(v)) return v;
+      const [d, t] = v.split('T');
+      if (!d || !t) return '';
+      return kyivDateTimeToISO(d, t.slice(0, 5));
+    };
+    const startIso = toIso(form.plannedStartAt);
+    const endIso = toIso(form.plannedEndAt);
+    if (!startIso || !endIso) {
+      clearConflict();
+      return;
+    }
     checkConflict({
       liftId: form.liftId || undefined,
-      startAt: form.plannedStartAt,
-      endAt: form.plannedEndAt,
+      startAt: startIso,
+      endAt: endIso,
     });
   }, [
     form.plannedStartAt,
@@ -881,9 +900,12 @@ export function CreateWorkOrderModal({
   const doTransition = async (newStatus: string) => {
     if (!workOrderId) return;
     if (newStatus === 'IN_PROGRESS' && calConflict?.anyConflict) {
-      const ok = window.confirm(
-        `У календарі є перетин слотів (${calConflict.conflictSlots.length} шт.). Перевести наряд в "В роботі"?`,
-      );
+      const ok = await confirm({
+        title: 'Перевести наряд в "В роботі"?',
+        message: `У календарі є перетин слотів (${calConflict.conflictSlots.length} шт.). Продовжити?`,
+        confirmLabel: 'Перевести',
+        variant: 'destructive',
+      });
       if (!ok) return;
     }
     setTransitioning(true);
@@ -2672,6 +2694,7 @@ export function CreateWorkOrderModal({
           </div>
         </div>
       )}
+      <ConfirmDialog {...confirmDialogProps} />
     </>
   );
 }

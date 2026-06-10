@@ -12,7 +12,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -49,8 +49,10 @@ export class CalendarController {
   }
 
   @Post('check-conflicts')
+  @HttpCode(HttpStatus.OK)
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Перевірити конфлікти слотів по підйомнику / механіку (read-only)' })
+  @ApiResponse({ status: 200, type: CheckConflictsResponseDto })
   checkConflicts(
     @OrgContext() orgId: string,
     @Body() dto: CheckConflictsDto,
