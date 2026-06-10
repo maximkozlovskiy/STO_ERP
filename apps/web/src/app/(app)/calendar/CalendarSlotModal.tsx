@@ -570,8 +570,10 @@ export function CalendarSlotModal({
     const [sh2, sm2] = form.startAt.split(':').map(Number);
     const startMin2 = (sh2 ?? 0) * 60 + (sm2 ?? 0);
     const nh2 = parseFloat(String(form.normoHours).replace(',', '.'));
+    // Backend splits at 19:00 (WORK_DAY_END_H=19), not at WINDOW_END (20:00).
+    const BACKEND_END_MIN = 19 * 60;
     const isOverflowSlot =
-      !isNaN(nh2) && nh2 > 0 && startMin2 + Math.round(nh2 * 60) > WINDOW_END * 60;
+      !isNaN(nh2) && nh2 > 0 && startMin2 + Math.round(nh2 * 60) > BACKEND_END_MIN;
     if (!isOverflowSlot && form.endAt <= form.startAt) {
       setError('Час завершення повинен бути після часу початку');
       return;
@@ -617,6 +619,8 @@ export function CalendarSlotModal({
     // send the raw totalMin end time so the backend split logic works correctly.
     const endTimeForSave = isOverflowSlot
       ? (() => {
+          // Send real wall-clock end on the same day so the backend split computes correctly:
+          // slot2 duration = endAt - 19:00 (WORK_DAY_END_H). E.g. 2h from 19:00 → endAt=21:00.
           const totalMinRaw = startMin2 + Math.round(nh2 * 60);
           return `${pad(Math.floor(totalMinRaw / 60))}:${pad(totalMinRaw % 60)}`;
         })()
