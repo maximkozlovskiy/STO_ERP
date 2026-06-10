@@ -7,6 +7,8 @@ import {
   UpdateCalendarSlotDto,
   CalendarSlotResponseDto,
   CreateCalendarSlotResponseDto,
+  CheckConflictsDto,
+  CheckConflictsResponseDto,
 } from './calendar.dto';
 
 // Module-level Intl singleton — kyivOffsetMs is called on every findSlots/createSlot/updateSlot,
@@ -421,6 +423,96 @@ export class CalendarService {
     );
 
     return this.toDto(updated);
+  }
+
+  async checkConflicts(orgId: string, dto: CheckConflictsDto): Promise<CheckConflictsResponseDto> {
+    const startAt = new Date(dto.startAt);
+    const endAt = new Date(dto.endAt);
+    const excludeFilter = dto.excludeSlotId ? { not: dto.excludeSlotId } : undefined;
+
+    const [liftSlots, empSlots] = await Promise.all([
+      dto.liftId
+        ? this.prisma.calendarSlot.findMany({
+            where: {
+              orgId,
+              liftId: dto.liftId,
+              deletedAt: null,
+              id: excludeFilter,
+              startAt: { lt: endAt },
+              endAt: { gt: startAt },
+            },
+            select: {
+              id: true,
+              startAt: true,
+              endAt: true,
+              liftId: true,
+              employeeId: true,
+              workOrderId: true,
+              vehicleId: true,
+              counterpartyId: true,
+              parentSlotId: true,
+              notes: true,
+              status: true,
+              type: true,
+            },
+          })
+        : Promise.resolve([]),
+      dto.employeeId
+        ? this.prisma.calendarSlot.findMany({
+            where: {
+              orgId,
+              employeeId: dto.employeeId,
+              deletedAt: null,
+              id: excludeFilter,
+              startAt: { lt: endAt },
+              endAt: { gt: startAt },
+            },
+            select: {
+              id: true,
+              startAt: true,
+              endAt: true,
+              liftId: true,
+              employeeId: true,
+              workOrderId: true,
+              vehicleId: true,
+              counterpartyId: true,
+              parentSlotId: true,
+              notes: true,
+              status: true,
+              type: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const seen = new Set<string>();
+    const allSlots = [...liftSlots, ...empSlots].filter(s => {
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
+
+    const toDtoSimple = (s: (typeof allSlots)[number]): CalendarSlotResponseDto => ({
+      id: s.id,
+      liftId: s.liftId ?? null,
+      employeeId: s.employeeId ?? null,
+      workOrderId: s.workOrderId ?? null,
+      vehicleId: s.vehicleId ?? null,
+      counterpartyId: s.counterpartyId ?? null,
+      parentSlotId: s.parentSlotId ?? null,
+      startAt: s.startAt,
+      endAt: s.endAt,
+      notes: s.notes ?? null,
+      status: s.status,
+      type: s.type,
+    });
+
+    return {
+      liftConflict: liftSlots.length > 0,
+      employeeConflict: empSlots.length > 0,
+      anyConflict: allSlots.length > 0,
+      conflictSlots: allSlots.map(toDtoSimple),
+    };
   }
 
   async removeSlot(orgId: string, id: string): Promise<void> {

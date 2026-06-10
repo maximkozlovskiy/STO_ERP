@@ -1,4 +1,4 @@
-import { IsUUID, IsOptional, IsString, IsISO8601, IsEnum } from 'class-validator';
+import { IsUUID, IsOptional, IsString, IsISO8601, IsEnum, IsDateString } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
@@ -122,4 +122,34 @@ export class CalendarSlotResponseDto {
 export class CreateCalendarSlotResponseDto {
   @ApiProperty({ type: [CalendarSlotResponseDto] })
   slots!: CalendarSlotResponseDto[];
+}
+
+export class CheckConflictsDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  liftId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  employeeId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  excludeSlotId?: string;
+
+  @ApiProperty() @IsDateString() startAt!: string;
+  @ApiProperty() @IsDateString() endAt!: string;
+}
+
+export class CheckConflictsResponseDto {
+  @ApiProperty() liftConflict!: boolean;
+  @ApiProperty() employeeConflict!: boolean;
+  @ApiProperty() anyConflict!: boolean;
+  @ApiProperty({ type: [CalendarSlotResponseDto] }) conflictSlots!: CalendarSlotResponseDto[];
 }

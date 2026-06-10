@@ -18,6 +18,7 @@ import {
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useConflictCheck } from '@/hooks/useConflictCheck';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { kyivToday } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
@@ -301,6 +302,7 @@ export function CreateWorkOrderModal({
   const [linkedDocsRefreshKey, setLinkedDocsRefreshKey] = useState(0);
   const [activeTab, setActiveTab] = useState<'main' | 'documents'>('main');
   const features = useUiFeatures();
+  const { conflict: calConflict, check: checkConflict, clear: clearConflict } = useConflictCheck();
   const deletedLineIds = useRef<string[]>([]);
   const deletedPartIds = useRef<string[]>([]);
   const statusMenuRef = useRef<HTMLDivElement>(null);
@@ -334,6 +336,26 @@ export function CreateWorkOrderModal({
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
   }, [invoiceConflict, invoiceLoading]);
+
+  // Conflict check when planned period or liftId changes (edit mode only)
+  useEffect(() => {
+    if (!isEditMode || !form.plannedStartAt || !form.plannedEndAt) {
+      clearConflict();
+      return;
+    }
+    checkConflict({
+      liftId: form.liftId || undefined,
+      startAt: form.plannedStartAt,
+      endAt: form.plannedEndAt,
+    });
+  }, [
+    form.plannedStartAt,
+    form.plannedEndAt,
+    form.liftId,
+    isEditMode,
+    checkConflict,
+    clearConflict,
+  ]);
 
   // Inline add-row state
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
@@ -858,6 +880,12 @@ export function CreateWorkOrderModal({
 
   const doTransition = async (newStatus: string) => {
     if (!workOrderId) return;
+    if (newStatus === 'IN_PROGRESS' && calConflict?.anyConflict) {
+      const ok = window.confirm(
+        `У календарі є перетин слотів (${calConflict.conflictSlots.length} шт.). Перевести наряд в "В роботі"?`,
+      );
+      if (!ok) return;
+    }
     setTransitioning(true);
     setError('');
     try {
@@ -1434,6 +1462,16 @@ export function CreateWorkOrderModal({
                         </div>
                       </div>
                     </div>
+
+                    {/* Попередження про конфлікт у календарі */}
+                    {calConflict?.anyConflict && (
+                      <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-300">
+                        ⚠{calConflict.liftConflict && ' Підйомник зайнятий.'}
+                        {calConflict.employeeConflict && ' Механік зайнятий.'} Є перетин з{' '}
+                        {calConflict.conflictSlots.length} слотом(и) у календарі. Можна зберегти
+                        попри це.
+                      </div>
+                    )}
 
                     {/* Клієнт | Договір / Автомобіль | Категорія */}
                     <div className="space-y-3">

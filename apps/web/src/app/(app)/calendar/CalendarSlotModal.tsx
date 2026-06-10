@@ -22,6 +22,7 @@ import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useConflictCheck } from '@/hooks/useConflictCheck';
 import type {
   CalendarSlot,
   Lift,
@@ -246,6 +247,7 @@ export function CalendarSlotModal({
   setCpDisplay,
 }: CalendarSlotModalProps) {
   const { confirm, dialogProps } = useConfirm();
+  const { conflict: calConflict, check: checkConflict, clear: clearConflict } = useConflictCheck();
   const mountedRef = useRef(true);
   const [woPreviewId, setWoPreviewId] = useState<string | null>(null);
 
@@ -456,6 +458,37 @@ export function CalendarSlotModal({
       ac.abort();
     };
   }, [open, form.counterpartyId, setForm, vehiclesRefetchKey]);
+
+  // Conflict check when liftId / employeeId / times change
+  useEffect(() => {
+    if (!open) {
+      clearConflict();
+      return;
+    }
+    const startIso = form.startAt ? kyivDateTimeToISO(date, form.startAt) : null;
+    const endIso = form.endAt ? kyivDateTimeToISO(date, form.endAt) : null;
+    if (!startIso || !endIso) {
+      clearConflict();
+      return;
+    }
+    checkConflict({
+      liftId: form.liftId || undefined,
+      employeeId: form.employeeId || undefined,
+      startAt: startIso,
+      endAt: endIso,
+      excludeSlotId: editingSlotId ?? undefined,
+    });
+  }, [
+    open,
+    form.liftId,
+    form.employeeId,
+    form.startAt,
+    form.endAt,
+    date,
+    editingSlotId,
+    checkConflict,
+    clearConflict,
+  ]);
 
   // ── New work-order modal ──────────────────────────────────────────────────
   const [createWoOpen, setCreateWoOpen] = useState(false);
@@ -1266,6 +1299,13 @@ export function CalendarSlotModal({
               setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
             }}
           />
+          {calConflict?.anyConflict && (
+            <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-300">
+              ⚠{calConflict.liftConflict && ' Підйомник зайнятий.'}
+              {calConflict.employeeConflict && ' Механік зайнятий.'} Є перетин з{' '}
+              {calConflict.conflictSlots.length} слотом(и). Можна зберегти попри це.
+            </div>
+          )}
           <div className="flex items-center gap-2">
             {!isEditingPast && (
               <Button

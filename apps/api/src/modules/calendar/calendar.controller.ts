@@ -22,6 +22,8 @@ import {
   CreateCalendarSlotDto,
   UpdateCalendarSlotDto,
   CreateCalendarSlotResponseDto,
+  CheckConflictsDto,
+  CheckConflictsResponseDto,
 } from './calendar.dto';
 
 @ApiTags('Calendar')
@@ -44,6 +46,16 @@ export class CalendarController {
     @Query('employeeId', new ParseUUIDPipe({ optional: true })) employeeId?: string,
   ) {
     return this.service.findSlots(orgId, date, branchId, employeeId);
+  }
+
+  @Post('check-conflicts')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
+  @ApiOperation({ summary: 'Перевірити конфлікти слотів по підйомнику / механіку (read-only)' })
+  checkConflicts(
+    @OrgContext() orgId: string,
+    @Body() dto: CheckConflictsDto,
+  ): Promise<CheckConflictsResponseDto> {
+    return this.service.checkConflicts(orgId, dto);
   }
 
   @Post()
