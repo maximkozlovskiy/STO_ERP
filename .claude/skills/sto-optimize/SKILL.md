@@ -438,6 +438,44 @@ grep -rn "^  const [A-Z][A-Z_]\+\s*[:=]" apps/web/src/app/ --include="*.tsx" | g
 
 **Фікс:** Підняти декларацію на module-level (поза функцією-компонентом). Якщо тип з того ж файлу — теж підняти. Не плутати з `useMemo`-залежними значеннями.
 
+### 2.13 Inline React component всередині parent component body
+
+```bash
+# Local components оголошені у тілі великих Shell/Layout компонентів
+grep -rn "^\s\+const [A-Z]\w\+ = (\|^\s\+function [A-Z]\w\+(" apps/web/src/components/ --include="*.tsx" | grep -v "memo\|spec\|^$" | head -20
+```
+
+**Фікс:** перевірити чи виклик через `<Name/>` JSX-syntax. Якщо так — або: (А) перейменувати на `renderName(...)` + кликати як function call `{renderName(...)}` (closure збережений, ніяких component-type змін); (Б) підняти на module-level + memo + props drilling. **Симптом для перевірки:** React DevTools profiler показує unmount+mount замість update коли setState батька fire-иться.
+
+### 2.14 Context Provider value object без useMemo
+
+```bash
+# Inline-літерал value у Provider
+grep -rn "Context\.Provider value={{" apps/web/src/ --include="*.tsx" | head -20
+# Або value змінна що створюється inline вище без useMemo
+grep -rn "Context\.Provider value={value}" apps/web/src/ --include="*.tsx" | head -10
+```
+
+**Фікс:** `const value = useMemo(() => ({ ...поля }), [...reactive deps...])`. callback-и у value мають бути useCallback-стабільні щоб не bloat-ити deps. **Альтернатива** — context splitting (один Context для state, інший для actions) якщо є чітка границя.
+
+### 2.15 Multiple mount-only useEffect з `[]` deps у одному компоненті
+
+```bash
+# Файли з 3+ окремими useEffect [] у одному файлі
+grep -rln "useEffect.*\[\]" apps/web/src/ --include="*.tsx" | xargs -I {} sh -c 'count=$(grep -c "useEffect.*\[\]" {}); [ $count -ge 3 ] && echo "$count {}"' | sort -rn | head -10
+```
+
+**Фікс:** об'єднати у один useEffect якщо: (1) deps усіх — `[]`; (2) бодyx незалежні (один не пише `localStorage.X` що інший читає); (3) cleanup-функції можна об'єднати у один return. Виняток — якщо ефект справді концептуально окремий і має нетривіальну cleanup-логіку, лишити окремо.
+
+### 2.16 Modal onClose без useCallback у parent — keydown/overflow listener thrashing
+
+```bash
+# Модальні компоненти що приймають onClose і Modal.useEffect для keydown
+grep -rn "onClose:.*=>\|onClose={() => {\|onClose={\\s*saving" apps/web/src/components/ui/ --include="*.tsx" | head -20
+```
+
+**Фікс:** у parent компоненті обгорнути обробник у `const handleClose = useCallback(() => {...}, [deps])`. Без цього Modal.useEffect `[open, handleKey]` (де handleKey depends on onClose identity) re-fires на КОЖЕН render батька → addEventListener/removeEventListener + body.style.overflow re-write. Особливо помітно у модалках з частим typing у внутрішніх inputs.
+
 ---
 
 ## Крок 3 — DB аудит
@@ -567,6 +605,54 @@ TypeScript: ✅ 0 errors
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-10 — Inline React component declared inside parent component body — sidebar/shell/layout композити з вкладеними NavLink/Row/Cell
+
+**Сигнал:** усередині функції-компонента (особливо великих `Shell`/`Layout`/`Wizard` компонентів) оголошений локальний підкомпонент через `const NavLink = ({ item }) => (...)` або `function Row(props) { return <tr>...</tr> }`. Підкомпонент потім використовується через JSX-element-синтаксис `<NavLink item={item}/>`. Виглядає "як приватний компонент бо живе у тому ж файлі і має доступ до closure". Проблема: на КОЖЕН render батька функція-підкомпонент створюється ЗАНОВО (інший reference) → React порівнює component types по reference → бачить НОВИЙ component type → **unmount + remount усього subtree**. Symptom: внутрішній state (Link prefetch, focus, scroll position у вкладених lists) скидається при будь-якому setState батька; React DevTools profiler показує постійні mounts замість updates у sidebar/nav.
+
+**Причина виникнення:** інкапсуляція виглядає чистою — підкомпонент має доступ до closure (props, state, callbacks батька) без додаткового prop drilling. ESLint/TypeScript не попереджають бо валидний JSX. Розробник не помічає бо UI виглядає правильно (state у топ-batьku зберігається, лише дочірні `useState` skid'аються — а у NavLink/Row зазвичай немає state). Особливо часто з'являється при поступовій декомпозиції — `Shell` починався без підкомпонентів, потім блок JSX винесли у локальну функцію для читабельності, забувши що це створює component-identity issue.
+
+**Підхід до виявлення:** для кожного великого компонента (>200 LOC) грепнути `const [A-Z]\w+ = \(\{.*\}\) =>` або `function [A-Z]\w+\(` у тілі функції (не на module-level). Кросс-перевірка — пошук JSX-element-syntax виклику цих імен: `<NavLink`, `<Row`, `<SidebarContent`. Якщо знайдено — підкомпонент пересоздається. Окремий сигнал: цей підкомпонент закриває (captures) state батька через closure (`bookmarks.includes(...)`, `pathname`, `collapsed`) — лазі стимул залишити inline бо props drilling здається верхом.
+
+**Підхід до фіксу:** дві стратегії, обидві валідні: **(A) функція-render-helper** — перейменувати на `renderNavLink(item, opts?)` і кликати як **function call** `{renderNavLink(item)}` замість JSX-element. React тоді бачить inline JSX, ніяких component-type змін. Closure лишається — code залишається лаконічним. Підходить коли підкомпонент НЕ має локального state і використовується 1-3 рази. **(B) module-level memo'd component** — підняти на module-level, переписати щоб усі closure-залежності стали props (5-15 props), додати React.memo. Підходить коли підкомпонент має локальний state АБО використовується багато разів і важко передати всі props. Не використовувати: `useMemo(() => function Inner() {...}, [deps])` — це маскує проблему, кожна зміна deps все одно пересоздає component-type.
+
+**Реальний impact:** TopShell (sidebar shell) — кожен `setState` (`mobileOpen` toggle, `paletteOpen`, `collapsed`, `setNavMode`) раніше скидав весь sidebar subtree → Link prefetch скидався → react-query prefetch race → візуальна "стрибок" sidebar при відкритті mobile menu. Після фіксу — лише `update` фаза React (diff existing DOM), sidebar state стабільний. На midrange laptop економія 30-100ms per click у будь-якому shell button. На планшеті механіка (Bug-prone path) — реально помітне покращення responsiveness.
+
+**Де шукати ще:** будь-який `*Shell.tsx`, `*Layout.tsx`, `*Wizard.tsx`, `*StepperContainer.tsx`, `*Modal.tsx` що >200 LOC. Часті місця: navigation shells (sidebar+topbar+drawer), multi-step wizards (Step1/Step2/Step3 inline як local components), settings page tabs (TabPane inline), dashboard widgets composer. При code-review нових Shell-комп��нентів — перевіряти кожен `<UpperCaseName/>` що знаходиться у JSX батька і не імпортований ззовні.
+
+---
+
+### 2026-06-10 — React Context Provider value object без useMemo — providers що тримають частину state у useState + частину callbacks у useCallback
+
+**Сигнал:** Provider компонент рендерить `<XContext.Provider value={{ state1, state2, callback1, callback2 }}>` — об'єкт-літерал inline у JSX. `state1`/`state2` живуть у useState (стабільні поки не змінюються), `callback1`/`callback2` мають `useCallback([])` (стабільні). Об'єкт-литерал створюється ЗАНОВО на кожен render провайдера → React Context викликає ВСІХ підписників з "новим" value (по reference) → consumers що читають через `useContext(X)` re-render-яться навіть коли вони використовують ЛИШЕ стабільну частину (наприклад, лише `callback1`). Особливо болить коли під одним Provider живе багато компонентів (Modal-и, lists, deep-tree forms) і реально змінюється лише одна частина value.
+
+**Причина виникнення:** Provider пишеться інтуїтивно — `value={{ ...все підряд }}`. Розробник свідомо НЕ обгортає у useMemo бо: (1) state1/state2 справді міняються — здається що useMemo не допоможе; (2) `useMemo([state1, state2, callback1, callback2])` виглядає як "майже все у deps — навіщо?"; (3) React docs про Provider value memoization згадуються нерегулярно. Не помічається бо UI працює правильно — лише profiler показує дивні мережі re-render у consumers. Особливо болить у TabBar/Toast/Theme контекстах де consumers — це кожна сторінка/модалка.
+
+**Підхід до виявлення:** грепнути `<\w+Context\.Provider value=\{\{` (or `value=\{value\}` де `value` створюється inline вище). Для кожного знахідки перевірити: (1) чи value — це inline-літерал `{...}`; (2) чи Provider містить АБО useState АБО зовнішні props що могли б змінюватись; (3) чи усі callback-и у value мають useCallback з вузькими deps. Якщо так — кандидат на useMemo. Контр-приклад: якщо value — це **єдина** константа `value={CONSTANT}` (статичні enum/dict) — useMemo не потрібен бо reference і так стабільний.
+
+**Підхід до фіксу:** обгорнути value у `useMemo(() => ({ state1, state2, callback1, callback2 }), [state1, state2, callback1, callback2])`. callback-и у deps безпечні бо самі стабільні через useCallback. Якщо у Provider є щось що змінюється поза state (наприклад derived value через `useRef.current`) — НЕ кладе у deps, але тоді доведеться обмежити що value відображає лише snapshot. **Альтернатива** — context splitting: розділити на два Context (state context + actions context), state читається лише там де потрібен, actions завжди стабільні. Підходить коли є чітка границя між reactive і stable частинами value.
+
+**Реальний impact:** TabBarContext має 6-полями value: 2 state (tabs, pendingRestore) + 4 stable callbacks. До фіксу — кожен render Provider'а (через будь-який inputerror у consumer що бабблить bubbling) пересоздавав об'єкт → ВСЕ дерево під TabBarProvider (layout.tsx → весь app) re-render'ило context-залежні nodes. Після useMemo — value identity змінюється лише при справжній зміні tabs/pendingRestore. На сторінках з частим typing (search inputs, form fields) — суттєве зменшення непотрібного reconciliation.
+
+**Де шукати ще:** будь-який `*Context.tsx` / `*Provider.tsx` з `useState` у body що рендерить `<X.Provider value={{ ... }}>`. Часті місця: TabBar, Toast, Theme, Auth, Sidebar, ModalStack, NotificationCenter, FeatureFlags providers. При додаванні нового Context — за замовчуванням useMemo для value object (правило має стати reflex).
+
+---
+
+### 2026-06-10 — Multiple mount-only useEffect з `[]` deps у одному компоненті — localStorage seeding/window event setup розпорошений по 3+ окремих ефектах
+
+**Сигнал:** великий компонент (Shell/Page/Layout) має 3+ окремих `useEffect(() => {...}, [])` що всі виконуються ОДИН раз при mount. Типовий вміст: `localStorage.getItem(KEY1)` + `setStateFromSaved`, `localStorage.getItem(KEY2)` + `setOtherState`, `window.addEventListener('focus', handler)` + cleanup. Кожен живе як окремий "concern" (sidebar collapsed state, bookmarks, navMode) — виглядає логічно з точки зору SRP. Cost: React фліщить ефекти по черзі, кожен — окрема `useEffect` slot у fiber, окреме commit-phase scheduling. На mount критично-важливого shell (TopShell, RootLayout) це додає кілька мс затримки до interactive першого frame + більше pending effects у scheduler queue.
+
+**Причина виникнення:** «один useEffect — одна відповідальність» — SOLID-style розкладання. Розробник природно групує по концептуальній темі (collapsed → один effect, bookmarks → інший, navMode → третій). Не помічається що кожен `[]`-effect має нульову залежність від іншого і всі вони виконуються в той самий mount. У повсякденному коді (компонент з 1-2 useEffect) це не проблема — лише у великих compose-shell з накопиченням mount-only ефектів.
+
+**Підхід до виявлення:** грепнути `useEffect.*\(\).*\[\]` (порожній deps array) у компоненті. Якщо ≥3 знахідки у одному файлі — кандидат на консолідацію. Перевірити: (1) чи всі вони реально `[]` (без замаскованих deps); (2) чи їхні бодyx не залежать один від одного (один не пише `localStorage.X` а інший його читає — якщо так, sequential matter і не консолідувати); (3) чи cleanup-функції незалежні (можна об'єднати у один return з декількома `removeEventListener`).
+
+**Підхід до фіксу:** об'єднати в один `useEffect(() => { /* all mount-only logic */; return () => { /* cleanups */ } }, [])`. Зберегти `try/catch` блоки навколо кожного localStorage read (один впав не зупиняє інших). Якщо є addEventListener — у cleanup return-функції зробити список removeEventListener. Не плутати з: (a) useEffect з різними deps — їх НЕ об'єднувати, deps різні; (b) effects що залежать від props/derived state — їх теж окремо. Якщо ефект справді концептуально окремий і має зрозумілу cleanup-логіку, краще лишити окремо (читабельність важливіша за мікро-затримку).
+
+**Реальний impact:** TopShell mount раніше фліщив 3 окремі ефекти + 1 з event listener subscribe — 4 окремих slots у React commit queue. Після консолідації — 1 slot. Економія ~1-2 мс на mount-критичному path (вимірюється через `performance.mark`). Окрема перевага — менше шуму у React DevTools profiler (один effect-fire замість 3+).
+
+**Де шукати ще:** будь-який Shell/Layout/RootProvider з accumulated mount-only ефектами (storage seeding, event listeners setup, analytics init, theme detection, locale detection). При додаванні нового mount-only effect — спочатку спитати "чи можна додати у існуючий?".
+
+---
 
 ### 2026-06-10 — `findMany({where: {id: {in:[...]}, take})` для FK-existence перевірки замість `count()` — services/validators bulk-FK guard
 
