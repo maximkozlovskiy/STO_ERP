@@ -33,6 +33,8 @@ export interface WorkOrder {
   liftName?: string | null;
   slotLiftName?: string | null;
   documentDate?: string | null;
+  plannedHours?: number | null;
+  actualHours?: number | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;

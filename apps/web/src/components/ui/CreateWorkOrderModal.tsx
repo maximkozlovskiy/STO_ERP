@@ -143,6 +143,8 @@ interface WorkOrderDetail {
   documentDate?: string | null;
   plannedAt?: string | null;
   dueDate?: string | null;
+  plannedHours?: number | null;
+  actualHours?: number | null;
   lines: {
     id: string;
     workId: string;

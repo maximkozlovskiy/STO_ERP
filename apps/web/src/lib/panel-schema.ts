@@ -159,6 +159,8 @@ export const WORK_ORDER_PANEL_SCHEMA = [
   { key: 'documentDate', label: 'Дата документа', type: 'date' },
   { key: 'dueDate', label: 'Дедлайн', type: 'date' },
   { key: 'plannedAt', label: 'Заплановано', type: 'datetime' },
+  { key: 'plannedHours', label: 'Планові нормогодини', type: 'number' },
+  { key: 'actualHours', label: 'Фактичні нормогодини', type: 'number' },
   { key: 'createdAt', label: 'Створено', type: 'datetime' },
   { key: 'description', label: 'Опис' },
 ] as const satisfies readonly PanelFieldDef<WorkOrder>[];
