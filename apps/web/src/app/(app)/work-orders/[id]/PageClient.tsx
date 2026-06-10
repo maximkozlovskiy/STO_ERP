@@ -102,6 +102,8 @@ interface WorkOrderDetail {
   plannedAt?: string | null;
   completedAt?: string | null;
   dueDate?: string | null;
+  plannedHours?: number | null;
+  actualHours?: number | null;
   priority?: string;
   repairCategory?: string | null;
   clientApproval?: boolean;
