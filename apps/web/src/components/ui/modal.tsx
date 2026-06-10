@@ -27,6 +27,8 @@ interface ModalProps {
   bodyMinHeight?: number | string;
   className?: string;
   hideClose?: boolean;
+  /** Extra action buttons rendered to the left of the × close button */
+  extraHeaderActions?: ReactNode;
 }
 
 // Pixel max-width per size — used for smooth CSS transition via inline style
@@ -135,6 +137,7 @@ export function Modal({
   bodyMinHeight,
   className,
   hideClose,
+  extraHeaderActions,
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
   const { visible, state } = useAnimatedPresence(open);
@@ -206,19 +209,24 @@ export function Modal({
               )}
               {description && <p className="text-[13px] text-muted-foreground">{description}</p>}
             </div>
-            {!hideClose && (
-              <button
-                onClick={onClose}
-                className={cn(
-                  'shrink-0 rounded p-1.5 -mr-1 -mt-0.5',
-                  'text-muted-foreground',
-                  'hover:bg-secondary hover:text-foreground',
-                  'transition-colors duration-150',
+            {(!hideClose || extraHeaderActions) && (
+              <div className="flex items-center gap-1 shrink-0 -mr-1 -mt-0.5">
+                {extraHeaderActions}
+                {!hideClose && (
+                  <button
+                    onClick={onClose}
+                    className={cn(
+                      'rounded p-1.5',
+                      'text-muted-foreground',
+                      'hover:bg-secondary hover:text-foreground',
+                      'transition-colors duration-150',
+                    )}
+                    aria-label="Закрити"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 )}
-                aria-label="Закрити"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              </div>
             )}
           </div>
         )}

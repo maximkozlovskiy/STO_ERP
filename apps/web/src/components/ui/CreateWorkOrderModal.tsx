@@ -14,7 +14,9 @@ import {
   Share2,
   MessageSquare,
   Receipt,
+  Minus,
 } from 'lucide-react';
+import { useTabBarContext } from '@/contexts/TabBarContext';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -306,6 +308,7 @@ export function CreateWorkOrderModal({
   const features = useUiFeatures();
   const { conflict: calConflict, check: checkConflict, clear: clearConflict } = useConflictCheck();
   const { confirm, dialogProps: confirmDialogProps } = useConfirm();
+  const { minimizeModal } = useTabBarContext();
   const deletedLineIds = useRef<string[]>([]);
   const deletedPartIds = useRef<string[]>([]);
   const statusMenuRef = useRef<HTMLDivElement>(null);
@@ -493,6 +496,8 @@ export function CreateWorkOrderModal({
     setEditingLineKey(null);
     setEditingPartKey(null);
     setHeaderCollapsed(false);
+    setWoNumber('');
+    setCurrentStatus('DRAFT');
     // A fresh modal session starts without a prior partial create.
     createdWoRef.current = null;
     setForm({
@@ -1120,6 +1125,27 @@ export function CreateWorkOrderModal({
         }
         title={isEditMode ? woNumber || 'Наряд' : 'Новий наряд'}
         size="content"
+        extraHeaderActions={
+          isEditMode && workOrderId ? (
+            <button
+              onClick={() => {
+                minimizeModal({
+                  kind: 'modal',
+                  label: woNumber || 'Наряд',
+                  modalKey: 'work-order',
+                  restoreProps: { workOrderId },
+                });
+                setActiveTab('main');
+                onClose();
+              }}
+              className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
+              title="Згорнути у вкладку"
+              disabled={saving || transitioning}
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+          ) : undefined
+        }
         footer={
           isEditMode ? (
             <div className="flex items-center justify-between w-full gap-2">
@@ -1282,7 +1308,7 @@ export function CreateWorkOrderModal({
                     <div className="grid grid-cols-3 gap-4">
                       <Input
                         label="Номер"
-                        value="— присвоюється автоматично —"
+                        value={isEditMode && woNumber ? woNumber : '— присвоюється автоматично —'}
                         disabled
                         readOnly
                         className="h-8 text-[13px]"

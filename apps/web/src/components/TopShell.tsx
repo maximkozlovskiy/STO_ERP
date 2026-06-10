@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, type ReactNode, type MouseEvent } fro
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
+import { TabBar } from '@/components/TabBar';
+import { useTabBarContext } from '@/contexts/TabBarContext';
+import { CreateWorkOrderModal } from '@/components/ui/CreateWorkOrderModal';
 import { Wrench, LogOut, ChevronLeft, Menu, Star, Search, type LucideIcon } from 'lucide-react';
 import { NAV_GROUPS, NAV_GROUPS_FUNCTIONS, type NavItem, type NavGroup } from '@/lib/nav';
 import { useQueryClient } from '@tanstack/react-query';
@@ -378,6 +381,21 @@ export function TopShell({ children }: { children: ReactNode }) {
   const uiFeatures = useUiFeatures();
   const queryClient = useQueryClient();
 
+  // Modal restore from TabBar modal tabs
+  const { pendingRestore, setPendingRestore, closeTab } = useTabBarContext();
+  const [restoredWoId, setRestoredWoId] = useState<string | undefined>(undefined);
+  const [restoredWoOpen, setRestoredWoOpen] = useState(false);
+
+  useEffect(() => {
+    if (!pendingRestore) return;
+    if (pendingRestore.modalKey === 'work-order') {
+      const woId = pendingRestore.restoreProps.workOrderId as string | undefined;
+      setRestoredWoId(woId);
+      setRestoredWoOpen(true);
+      setPendingRestore(null);
+    }
+  }, [pendingRestore, setPendingRestore]);
+
   useKeyboardShortcut(
     'ctrl+k',
     useCallback(
@@ -701,6 +719,20 @@ export function TopShell({ children }: { children: ReactNode }) {
       {employee && uiFeatures.commandPaletteEnabled && (
         <CommandPalette open={paletteOpen} role={role} onClose={() => setPaletteOpen(false)} />
       )}
+      {restoredWoOpen && restoredWoId && (
+        <CreateWorkOrderModal
+          open={restoredWoOpen}
+          workOrderId={restoredWoId}
+          onClose={() => {
+            setRestoredWoOpen(false);
+            setRestoredWoId(undefined);
+          }}
+          onUpdated={() => {
+            // Remove the modal tab since it was restored and closed normally
+            closeTab(restoredWoId);
+          }}
+        />
+      )}
       {/* Desktop sidebar */}
       <aside
         className={cn(
@@ -753,6 +785,7 @@ export function TopShell({ children }: { children: ReactNode }) {
           )}
         </header>
 
+        <TabBar />
         <main className="flex-1 min-h-0 flex flex-col overflow-hidden">{children}</main>
       </div>
     </div>
