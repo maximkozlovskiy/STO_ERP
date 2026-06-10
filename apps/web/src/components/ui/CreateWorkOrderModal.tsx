@@ -249,6 +249,18 @@ const nextKey = () =>
     ? crypto.randomUUID()
     : `k${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 
+// Convert a Kyiv-local datetime input value ("YYYY-MM-DDTHH:mm") to a UTC ISO
+// string for the API. Already-zoned strings (ending Z or ±HH:mm) pass through.
+// Returns undefined for empty/invalid input so optional fields stay absent.
+const localDateTimeToISO = (v: string): string | undefined => {
+  if (!v) return undefined;
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(v)) return v;
+  const [d, t] = v.split('T');
+  if (!d || !t) return undefined;
+  const iso = kyivDateTimeToISO(d, t.slice(0, 5));
+  return iso || undefined;
+};
+
 // UA users often type `1,5` for fractional values — accept comma as decimal
 // separator before passing to `Number()`. Returns `undefined` for empty/NaN.
 const toNumberOrUndefined = (raw: string): number | undefined => {
@@ -815,8 +827,8 @@ export function CreateWorkOrderModal({
             priority: form.priority || 'NORMAL',
             repairCategory: form.repairCategory || undefined,
             documentDate: form.documentDate || undefined,
-            plannedAt: form.plannedStartAt || undefined,
-            dueDate: form.plannedEndAt || undefined,
+            plannedAt: localDateTimeToISO(form.plannedStartAt),
+            dueDate: localDateTimeToISO(form.plannedEndAt),
           }),
         });
         createdWoRef.current = wo;
@@ -875,8 +887,8 @@ export function CreateWorkOrderModal({
           repairCategory: form.repairCategory || undefined,
           description: form.description || undefined,
           liftId: form.liftId || undefined,
-          plannedAt: form.plannedStartAt || undefined,
-          dueDate: form.plannedEndAt || undefined,
+          plannedAt: localDateTimeToISO(form.plannedStartAt),
+          dueDate: localDateTimeToISO(form.plannedEndAt),
         }),
       });
       // sto-optimize: DELETEs are independent (each row by id) — fire in parallel
