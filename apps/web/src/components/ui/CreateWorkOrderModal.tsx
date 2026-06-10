@@ -218,6 +218,18 @@ const EMPTY_PART: Omit<LocalPart, '_key'> = {
   unitShortName: '',
 };
 
+// sto-optimize: module-level frozen constants — раніше створювались inline у render path
+// (canEdit/canShare/allowedTransitions у тілі компонента). Statically-known sets:
+// `.includes()` ідентифікатор не залежить від ідентичності масиву → стабільні refs дешевші
+// (V8 cache + менше allocs за кожен keystroke у формі).
+const EDITABLE_STATUSES = Object.freeze(['DRAFT', 'ESTIMATE', 'APPROVED'] as const);
+const SHAREABLE_STATUSES = Object.freeze(['DRAFT', 'ESTIMATE', 'APPROVED'] as const);
+const INVOICEABLE_STATUSES = Object.freeze(['COMPLETED', 'INVOICED'] as const);
+const EMPTY_TRANSITIONS: readonly string[] = Object.freeze([]);
+// Status order = keys of label map; module-level → uses const map once instead of
+// `Object.keys()` per render у IIFE-status-picker (recomputed на КОЖНИЙ keystroke у формі).
+const WO_STATUS_ORDER: readonly string[] = Object.freeze(Object.keys(WO_STATUS_LABELS));
+
 export interface CreateWOPrefill {
   counterpartyId?: string;
   counterpartyDisplay?: string;
@@ -1032,15 +1044,19 @@ export function CreateWorkOrderModal({
     }
   };
 
-  const allowedTransitions = isEditMode ? (WO_STATUS_TRANSITIONS[currentStatus] ?? []) : [];
-  const canEdit = isEditMode ? ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(currentStatus) : true;
+  const allowedTransitions = isEditMode
+    ? (WO_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
+    : EMPTY_TRANSITIONS;
+  const canEdit = isEditMode
+    ? (EDITABLE_STATUSES as readonly string[]).includes(currentStatus)
+    : true;
   // Bug #401: вирівняно з backend SHAREABLE_STATUSES (DRAFT/ESTIMATE/APPROVED).
   // Після клієнтського затвердження (APPROVED) приймальник часто має необхідність:
   // (а) повторно надіслати SMS з кошторисом (клієнт втратив посилання),
   // (б) роздрукувати наряд для підпису. Backend дозволяє share/SMS у APPROVED,
   // тож UI має експонувати ті ж кнопки. Після IN_PROGRESS публічне посилання
   // перестає працювати (404) — на стороні backend.
-  const canShare = isEditMode && ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(currentStatus);
+  const canShare = isEditMode && (SHAREABLE_STATUSES as readonly string[]).includes(currentStatus);
 
   const handlePrint = async () => {
     if (!workOrderId) return;
@@ -1099,7 +1115,8 @@ export function CreateWorkOrderModal({
     }
   };
 
-  const canInvoice = isEditMode && ['COMPLETED', 'INVOICED'].includes(currentStatus);
+  const canInvoice =
+    isEditMode && (INVOICEABLE_STATUSES as readonly string[]).includes(currentStatus);
 
   const handleInvoice = async () => {
     if (!workOrderId) return;
@@ -1207,20 +1224,21 @@ export function CreateWorkOrderModal({
     }
   };
 
-  const initialStatus = Object.keys(WO_STATUS_LABELS)[0] ?? 'DRAFT';
-
   // sto-optimize: stable onClose ref для Modal. Modal має useEffect що додає
   // document.addEventListener('keydown') з useCallback([onClose]) — кожен новий
   // ref → effect re-fires → removeEventListener + addEventListener + body
   // overflow re-write. Без useCallback ця модалка (з частим typing у inputs)
-  // тригерила re-attach на КОЖЕН keystroke. saving/transitioning все одно є
-  // у deps — це валідно, бо коли вони міняються поведінка clos має змінитися
-  // (no-op під час saving). Краща альтернатива — додаткова ranges-state, але
-  // useCallback з 2 deps достатній.
+  // тригерила re-attach на КОЖЕН keystroke.
+  //
   // Bug #381 regression: читаємо `saving`/`transitioning` ВИКЛЮЧНО з ref'ів —
   // вони оновлюються СИНХРОННО у setSavingBoth/setTransitioningBoth ДО React state-flush.
   // Без ref'а closure захоплює застарілий saving=false коли `create()` ще у `await POST`
   // → Modal закривається на Escape всупереч guard'у (race window що ловить test #381).
+  //
+  // Бонус: deps = [onClose] (не [saving, transitioning, onClose]) — ref reads не
+  // повинні бути у deps. Stable identity → Modal keydown listener не перевідв'язується
+  // при кожному flip saving/transitioning (раніше re-attach на START + END кожного
+  // save/transition; зараз лише при зміні onClose у parent).
   const handleModalClose = useCallback(() => {
     if (savingRef.current || transitioningRef.current) return;
     setActiveTab('main');
@@ -1439,13 +1457,21 @@ export function CreateWorkOrderModal({
                           </label>
                           <div ref={statusMenuRef} className="relative flex items-center gap-1">
                             {(() => {
-                              const statusOrder = Object.keys(WO_STATUS_LABELS);
-                              const curIdx = statusOrder.indexOf(currentStatus);
-                              const prevStatus = [...allowedTransitions]
-                                .reverse()
-                                .find((s: string) => statusOrder.indexOf(s) < curIdx);
+                              // WO_STATUS_ORDER — module-level frozen const (раніше
+                              // `Object.keys(WO_STATUS_LABELS)` recomputed на КОЖЕН keystroke у формі).
+                              const curIdx = WO_STATUS_ORDER.indexOf(currentStatus);
+                              // Iterate transitions backwards без створення тимчасового масиву
+                              // (`[...arr].reverse()` allocates + reverses per render).
+                              let prevStatus: string | undefined;
+                              for (let i = allowedTransitions.length - 1; i >= 0; i--) {
+                                const s = allowedTransitions[i];
+                                if (s && WO_STATUS_ORDER.indexOf(s) < curIdx) {
+                                  prevStatus = s;
+                                  break;
+                                }
+                              }
                               const nextStatus = allowedTransitions.find(
-                                (s: string) => statusOrder.indexOf(s) > curIdx,
+                                (s: string) => WO_STATUS_ORDER.indexOf(s) > curIdx,
                               );
                               return (
                                 <>

@@ -9,7 +9,8 @@
 ## Останній commit
 
 ```
-<NEW> fix(tester): Bugs #429-#430 — stale @/lib/format mock + savingRef race window у CreateWorkOrderModal
+<NEW> perf(optimize): CreateWorkOrderModal status-set hoisting + IIFE-statusOrder + dead initialStatus removal
+6d6dab96 fix(tester): Bugs #429-#430 — stale @/lib/format mock + savingRef race window у CreateWorkOrderModal
 a7522bb0 fix(review): inline date parser у CreateWorkOrderModal заміщено shared localDateTimeToISO
 f7fe9d53 fix(sync): add plannedHours/actualHours to WorkOrderDetail interface in PageClient
 4a70b0f9 refactor(simplify): extract localDateTimeToISO to format.ts + conflictWoNumbers to useConflictCheck
@@ -84,10 +85,16 @@ ee938240 feat(picker): replace flat category sidebar with hierarchical CategoryT
 4b930538 fix(tester): Bugs #385-#386 — EntityPickerField focus + CreateWorkOrderModal test
 c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
-Дата: 2026-06-10
+Дата: 2026-06-11
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Unit+Contract: ✅ 701/701 API passed, ✅ 380/380 Web passed (Bug #381 race-window тест зелений після Bug #429+#430 fixes)
 E2E: ✅ 222/222 chromium passed + 10 skipped (full Playwright suite; повторно з Bug #428 fix); було baseline-red CreateWorkOrderModal Bug #381 у Web vitest
+Latest optimize: 2026-06-11 (post-cycle-2 tester sweep, HEAD 6d6dab96):
+  • Frontend CreateWorkOrderModal — module-level frozen consts: EDITABLE_STATUSES / SHAREABLE_STATUSES / INVOICEABLE_STATUSES (раніше `['DRAFT','ESTIMATE','APPROVED'].includes(currentStatus)` create новий array literal на КОЖЕН render — typing у будь-якому полі форми × N status-checks); EMPTY_TRANSITIONS frozen для fallback `?? []` (stable identity); WO_STATUS_ORDER frozen `Object.keys(WO_STATUS_LABELS)` (раніше recompute'iвся у IIFE-status-picker на КОЖЕН keystroke).
+  • Frontend CreateWorkOrderModal — `[...allowedTransitions].reverse().find()` (temp array allocation per render) → reverse `for` loop (linear scan backwards, 0 allocation). prevStatus у status-picker з prev/next chevrons.
+  • Frontend CreateWorkOrderModal — видалено dead-code `const initialStatus = Object.keys(WO_STATUS_LABELS)[0] ?? 'DRAFT'` (рядок 1210) — змінна оголошувалась, але ніколи не читалась (legacy від попереднього API).
+  • Frontend CreateWorkOrderModal — стилістично оновлено коментар у `handleModalClose`: deps narrowed до `[onClose]` (не `[saving, transitioning, onClose]`), бо ref reads не потребують deps tracking. Stable identity → Modal keydown listener (document.addEventListener у Modal.tsx) не re-attach'ується при save/transition toggle (раніше re-attach на START + END кожного save → 2 thrash'i per save).
+  • Аналіз нового двошарового state (savingRef+saving): perf-NEUTRAL для re-renders (setSavingBoth → 1 React setState + 1 ref mutation = 1 re-render, як і раніше). Бонус: useCallback deps shrunk → stable handleModalClose identity → -2 keydown re-attach per save click. Не регресія, а додаткова мікро-оптимізація.
 Latest optimize: 2026-06-10 (HEAD c9940bd4 — WO transition + modal/page memo refactor):
   • Backend — work-orders.service.transition() drop `include: { parts: take:1000 }` → narrow select { id, status, number, outMileage, vehicleId, repairCategory, counterpartyId, totalAmount }. wo.parts ніколи не використовувалось у цій функції (всі 3 side-effect helpers — reserveParts/releasePartReservations/writeOffPartsAndCharge — re-fetch parts всередині транзакції). Економимо до 1000 рядків × 9 FSM-переходів × 11 статусних pills (потенційно багато transition() кликів за сесію).
   • Frontend CreateWorkOrderModal — 4 stable useCallback handlers (plannedStart/plannedEnd/plannedHours/actualHours) + NOOP_DT_CHANGE module-level → DateTimePickerInput memo-skippable при typing у інших полях форми; conflictWoNumbers useMemo (single-pass) замість twin-scan .some()+.filter().map().join() у двох render sites + один confirm-message site.

@@ -606,6 +606,54 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-11 — Dead `Object.keys(MAP)[0]` / `Object.keys(MAP)` в IIFE-render — module-level frozen `*_ORDER` const
+
+**Сигнал:** компонент-форма має `const initialStatus = Object.keys(STATUS_LABELS)[0] ?? 'DRAFT'` (раз на рендер) АБО IIFE-pattern `{(() => { const statusOrder = Object.keys(STATUS_LABELS); const curIdx = statusOrder.indexOf(currentStatus); ... })()}` у тілі JSX. `Object.keys()` створює новий масив на КОЖЕН render — у формі з частим typing це означає `keys(MAP)` × N keystrokes × array allocation. Часто супроводжується dead-code сторінкою — змінна оголошується, але ніколи не читається у решті тіла (рефакторинг забув видалити). У IIFE-сценарії: status-picker з prev/next chevrons рекомпʼютить statusOrder.indexOf() N разів через N статусів — `O(M × N)` per render де M = transitions count.
+
+**Причина виникнення:** `Object.keys()` виглядає як constant-time read, тож розробники не помічають що це alloc + iteration. У IIFE — pattern «локалізувати залежності» сильніший за «hoist constants»: розробник свідомо тримає statusOrder локально щоб не мати inter-module залежностей. Dead-code варіант: компонент колись використовував `initialStatus` як defaultValue useState, потім value перенесли у parent prefill — `initialStatus` забули видалити (TS не warn'ить про unused local const).
+
+**Підхід до виявлення:** grep `Object\.keys\(\w+_LABELS\)|Object\.keys\(.*_MAP\)|Object\.keys\(.*STATUS.*\)` у `.tsx` файлах — кандидати на module-level хоістинг. Cross-check: чи це константа shared/ map (frozen Record) — якщо так, keys теж statically known. Окремий signal: `const xxxOrder = Object.keys(...)` всередині IIFE `(() => { ... })()` у JSX. Dead-code: grep для всіх вживань визначеної константи у тілі функції — якщо знайдено лише оголошення, видалити.
+
+**Підхід до фіксу:** module-level `const X_ORDER: readonly string[] = Object.freeze(Object.keys(X_LABELS))` поза компонентом. Імпорт у IIFE замість recompute. `[...arr].reverse().find(...)` patterns переписати як reverse `for` loop без temp array allocation: `for (let i = arr.length - 1; i >= 0; i--) { if (predicate(arr[i])) { result = arr[i]; break; } }`. Dead локали — видаляти без церемонії (TS pass = коректне видалення). Не плутати з: (a) keys що дійсно динамічні (з runtime config) — там Object.keys обовʼязковий; (b) sorted keys (нумеровані FSM) — sort усе одно required.
+
+**Реальний impact:** на CreateWorkOrderModal (форма WO з 30+ полями, найчастіше відкритий modal) — typing в опис/коментар спричиняв `Object.keys(WO_STATUS_LABELS)` × 2 (initialStatus dead + IIFE statusOrder) × keystroke. Плюс `[...allowedTransitions].reverse()` створював temp array кожен render. Після фіксу: 0 alloc для keys (frozen const), 0 alloc для reverse (linear scan backwards). Bundle size теж: dead initialStatus + closure capture (WO_STATUS_LABELS вже у деклараціях) → V8 inline opportunity розблокована.
+
+**Де шукати ще:** будь-який ENUM/FSM-driven UI з `*_LABELS`/`*_TRANSITIONS`/`*_ORDER` константою у shared package: invoice/PO/SD/payment status pickers, calendar slot status, settlement transaction kind. Сторінки/модалки що мають prev-current-next pill UI з indexOf-based навігацією — найголовніші кандидати. Також: `STATUSES.map().reverse()` у фільтрах списків.
+
+---
+
+### 2026-06-11 — Inline status-list literals `['DRAFT', 'X', 'Y'].includes(v)` у render path — module-level frozen sets
+
+**Сигнал:** компонент має `const canX = status === 'A' || status === 'B'` АБО `const canY = isMode && ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(currentStatus)` всередині render body. На КОЖЕН render створюється новий array literal — V8 cache не залучається, alloc + linear scan кожен раз. У типовій формі (modal/page) це 2-4 такі constants — canEdit/canShare/canInvoice/canDelete. Помножити на typing-induced re-renders і це pure waste.
+
+**Причина виникнення:** статуси business-rule write з backend (shared SHAREABLE_STATUSES, EDITABLE_STATUSES). Frontend дублює inline бо bring frozen const у scope здається over-engineering для 3-5 значень. `Array.includes` локальний — швидкий, тож impact не помічається у DevTools profiler (агрегований). Ще одне джерело: copy-paste між canX checks — кожне has свій inline array.
+
+**Підхід до виявлення:** grep `\['[A-Z_]+'(,\s*'[A-Z_]+')+\]\.includes\(` у `.tsx` файлах — якщо статуси FSM-style (uppercase enum), вони statically-known і кандидат на хоістинг. Cross-check: чи вже існує `const X_STATUSES` у backend service.ts? Симетричність frontend ↔ backend бажана (Bug #401 проблема: розбіжність). Окремий signal: ту саму літеральну колекцію видно у 2+ місцях файлу.
+
+**Підхід до фіксу:** module-level `const EDITABLE_STATUSES = Object.freeze(['DRAFT', 'ESTIMATE', 'APPROVED'] as const)`. У render: `(EDITABLE_STATUSES as readonly string[]).includes(currentStatus)`. Якщо backend має той самий список — додати коментар із посиланням на backend constant для майбутнього sync. Не плутати з: (a) UI-tab фільтри, де список колись може стати динамічним (запис у settings) — там залишити inline або генерувати з runtime config; (b) одноразова перевірка (один canX у компоненті без typing) — пропустити.
+
+**Реальний impact:** мікро (1-2µs per check × N checks × M re-renders). АЛЕ символічний — code quality + грає у tandem з memo/useCallback strategy. Якщо `canEdit` потрапляє у `useMemo` deps або prop передається у memoized child, inline `[].includes` ВЖЕ робить ref unstable (бо result boolean це primitive — OK, ref stable). НО: якщо логіка eskaльована до `const editableStatusSet = useMemo(() => [...], [])` — module-level const цілком замінює зайвий hook + dep tracking.
+
+**Де шукати ще:** будь-яка modal/form з canEdit/canShare/canDelete/canTransition-style gates: WO, invoice, PO, SD, completion-act, warranty. Backend ↔ frontend pair: `SHAREABLE_STATUSES` (backend) + `canShare` (frontend) — синхронізувати константи.
+
+---
+
+### 2026-06-11 — Race-window guard через двошарову state (useRef + useState) — wrapper-setters замість додавання state у useCallback deps
+
+**Сигнал:** modal/dialog має guard у `onClose`/`handleClose`: `if (saving || transitioning) return` — щоб НЕ закривати під час pending POST. Коли guard читає `saving` через React closure у `useCallback([saving, transitioning, onClose], ...)` — два побічних ефекти: (а) **race-window**: React батчить state-flush до закінчення event handler — між `setSaving(true)` і `await fetch.resolve` нова closure ще не створена, стара з `saving=false` ловить Escape; (б) **listener thrashing**: щоразу як saving/transitioning toggle, ref handleClose змінюється → Modal/document keydown listener re-attach (`removeEventListener` + `addEventListener` + body overflow re-write). На формі з частим typing у inputs + saving toggle при кожному save attempt — десятки re-attach операцій.
+
+**Причина виникнення:** "класичний" React idiom — closure state у callback, deps вказують state. Це працює для render-derived UI (disabled prop у button), але НЕ для async event handler guards де event може trigger'итись між setState і re-render. Не помічається бо: тест на save+Escape гонку треба свідомо писати (Bug #381) — стандартний UAT не покриває; listener re-attach не видно у DevTools agregate (треба профіль keydown frequency). Поширюється виключно при поєднанні: async POST + Escape-close + state guard.
+
+**Підхід до виявлення:** у компонентах з `useState` для booleans типу `saving`/`loading`/`processing`/`transitioning`/`uploading` — перевірити чи є close/cancel handler що читає ці bools у guard. Якщо є `useCallback([saving, ..., onClose], ...)` — кандидат. Cross-check: handler — async або викликається з async context (await ... then close)? Якщо так, race-window реальний. Окремий сигнал: коментар про "Escape race" / "Bug #N з race" у тілі handler-а.
+
+**Підхід до фіксу:** пара `const xRef = useRef(false); const [x, setX] = useState(false);` + wrapper-setter `const setXBoth = useCallback((v: boolean) => { xRef.current = v; setX(v); }, [])`. Кожен виклик `setSaving(true)` → `setSavingBoth(true)`. У handler-guard: `if (xRef.current) return` — синхронний read, актуальний до закінчення event handler. Useless у callback deps → useCallback`[onClose]` — stable ref, listener не re-attach. Не плутати з: (a) render-залежні bool (disabled prop у button) — там useState достатньо; (b) бool що не критичний для async race (toast confirm) — overhead не виправдовує. Тестувати: vitest з vi.advanceTimersByTime + Escape press під час pending fetch (не fake-resolve fetch одразу).
+
+**Реальний impact:** Bug #381 (test що ловив orphan WO у БД після Escape під час save). Перевірено vitest mock: pending POST × Escape press → guard читає `savingRef.current=true` → no-op (правильно). Заодно: listener re-attach зник для будь-якого typing-induced re-render (раніше: 1 typing keystroke = 0 re-attach, бо saving стабільний; але 1 save click = 2 re-attach: setSaving(true) + setSaving(false); зараз: 0 re-attach взагалі — handleClose stable identity).
+
+**Де шукати ще:** будь-який modal/dialog з async submit + close button + Escape key support: payment confirmation, file upload, bulk-action confirm, FSM transition dialogs. Особливо ті що мають "Скасувати під час збереження?" UX — там guard критичний.
+
+---
+
 ### 2026-06-10 — Overfetch `include: { childRel: take:1000 }` у FSM transition/guard методах де child-rel не читається у тілі функції — service methods з конвенцією "повний WO для side-effects" що насправді re-fetch внутрішньо
 
 **Сигнал:** FSM/transition метод сервісу починається з `findFirst({ include: { childRel: { where: { deletedAt: null }, take: N } } })` де childRel — це one-to-many relation (parts, lines, items, allocations) на батьківському документі. У тілі функції далі викликаються 1-3 private helpers (`reserveParts`, `releaseReservations`, `writeOffAndCharge`, `applyAllocations`) — і ВСІ вони повторно `findMany({ where: { parentId, orgId, deletedAt: null } })` всередині transaction client (tx) для свіжих даних з consistency snapshot всередині $tx. Парадокс: outer findFirst з include тягне 1000 рядків, які НІКОЛИ не використовуються — функція читає лише з findFirst row scalar поля (status, number, totals, FK keys для side-effects), а child-rel проходить мимо. Hidden cost: per-transition зайвий read 1000 × row size + JSON marshalling + Prisma row materialization. Помножити на частоту FSM-переходів (work-orders можуть transition'итися 5-10 разів за свій lifecycle через всі статуси).
@@ -2203,6 +2251,7 @@ ssr:false бо modal часто має `<Suspense>` boundary і form state — c
 - ✅ dashboard/page.tsx: `data?.rows ?? []` (revenue) + `Array.isArray(maintenanceData) ? ... : []` (upcomingTO) → EMPTY_REVENUE/EMPTY_MAINTENANCE module-level frozen consts (preemptive Bug #328 cascade prevention)
 - ✅ estimate/[token]/page.tsx (public widget): inline `n.toLocaleString('uk-UA', {...})` + `new Date(...).toLocaleDateString` × table cells → module-level MONEY_FMT/INT_FMT/DATE_FMT singletons (без імпорту lib/format для public bundle)
 - ✅ calendar/CalendarSlotModal.tsx: inline `new Date(nowMs).toLocaleDateString('sv-SE', { timeZone: KYIV_TZ })` у handleSave → existing toDateString() module-level singleton з calendar.utils
+- ✅ CreateWorkOrderModal: module-level `EDITABLE_STATUSES` / `SHAREABLE_STATUSES` / `INVOICEABLE_STATUSES` / `EMPTY_TRANSITIONS` / `WO_STATUS_ORDER` frozen consts — раніше `['DRAFT', 'ESTIMATE', 'APPROVED'].includes()` + `Object.keys(WO_STATUS_LABELS)` рекомпʼютились у render path (form з частим typing → typing keystroke = N array allocations); IIFE-status-picker `[...allowedTransitions].reverse().find()` замінено на reverse `for` loop (без temp array); dead-code `initialStatus = Object.keys(...)[0]` видалено
 
 **DB:**
 
