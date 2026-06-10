@@ -374,12 +374,17 @@ export default function UnitsTab() {
         title="Додати одиниці виміру з шаблону"
         existingKeys={units.filter(u => !u.deletedAt).map(u => u.shortName)}
         onImport={async (templates: SystemTemplate[]) => {
-          for (const t of templates) {
-            await apiFetch<Unit>('/units', {
-              method: 'POST',
-              body: JSON.stringify(t.data),
-            });
-          }
+          // sto-optimize: bulk-create templates паралель — кожен POST незалежний
+          // (унікальні shortName у шаблонах). N × RTT sequential → max single RTT.
+          // Promise.allSettled — load() однаково перезавантажує повний список.
+          await Promise.allSettled(
+            templates.map(t =>
+              apiFetch<Unit>('/units', {
+                method: 'POST',
+                body: JSON.stringify(t.data),
+              }),
+            ),
+          );
           load();
         }}
       />

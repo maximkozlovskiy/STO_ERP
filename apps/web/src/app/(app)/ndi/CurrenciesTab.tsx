@@ -151,13 +151,24 @@ export default function CurrenciesTab() {
   };
 
   const importCurrenciesFromTemplates = async (templates: SystemTemplate[]) => {
-    for (const t of templates) {
-      const created = await apiFetch<Currency>('/currencies', {
-        method: 'POST',
-        body: JSON.stringify(t.data),
-      });
+    // sto-optimize: bulk-create templates паралель — кожен POST незалежний (унікальні
+    // codes у шаблонах). Sequential N × RTT → max single RTT. Promise.allSettled зберігає
+    // успішні INSERTы навіть якщо деякі дублі впадуть з 409 Conflict.
+    const results = await Promise.allSettled(
+      templates.map(t =>
+        apiFetch<Currency>('/currencies', {
+          method: 'POST',
+          body: JSON.stringify(t.data),
+        }),
+      ),
+    );
+    const created: Currency[] = [];
+    for (const r of results) {
+      if (r.status === 'fulfilled') created.push(r.value);
+    }
+    if (created.length > 0) {
       setCurrencies(prev => {
-        const next = [...prev, created];
+        const next = [...prev, ...created];
         setCache('cache:currencies', { items: next });
         return next;
       });

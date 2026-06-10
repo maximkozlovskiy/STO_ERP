@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache, type RefCacheKey } from '@/lib/ref-cache';
 
@@ -35,14 +35,20 @@ export function useCachedRefData<T>(
   fallback: T,
   transform?: (raw: unknown) => T,
 ): UseCachedRefDataResult<T> {
-  // Lazy initializers — getCached() reads sessionStorage + JSON.parse;
-  // without lazy init this runs on EVERY render (impacts large cached lists like 200 goods).
-  // Pair pattern: data initial from cache OR fallback; loading=false iff cache hit.
-  const [data, setData] = useState<T>(() => {
-    const cached = getCached<T>(cacheKey);
-    return cached ?? fallback;
-  });
-  const [loading, setLoading] = useState<boolean>(() => getCached<T>(cacheKey) === null);
+  // sto-optimize: share initial cache read across data + loading useState pair.
+  // Раніше lazy init викликав getCached() ДВІЧІ на mount — sessionStorage.getItem + JSON.parse
+  // виконувались двічі для одного й того ж ключа (для великих cached lists 200+ items
+  // це непотрібний main thread block). Однократний read у useRef → обидва useState
+  // переюзують той самий результат.
+  const initialCacheRef = useRef<T | null | undefined>(undefined);
+  const readCacheOnce = (): T | null => {
+    if (initialCacheRef.current === undefined) {
+      initialCacheRef.current = getCached<T>(cacheKey);
+    }
+    return initialCacheRef.current;
+  };
+  const [data, setData] = useState<T>(() => readCacheOnce() ?? fallback);
+  const [loading, setLoading] = useState<boolean>(() => readCacheOnce() === null);
   const [error, setError] = useState('');
 
   useEffect(() => {
