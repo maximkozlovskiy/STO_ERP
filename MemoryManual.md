@@ -9,6 +9,10 @@
 ## Останній commit
 
 ```
+1004188c docs(skills): add static-toolbar-JSON + parallel-conflict-checks patterns to sto-optimize
+734c171 perf(optimize): lift list-page COLUMNS to module level + precomputed JSON
+d31ac053 perf(optimize): narrow projections + parallel calendar conflict checks
+c2582901 docs(skills): add count-vs-findMany + redundant-index + duplicate-file patterns to sto-optimize
 198f9dce perf(optimize): narrow projections, parallel DELETEs, drop redundant @@index
 bd1abf6f perf(optimize): parallel template bulk-create + shared cache read in useCachedRefData
 345a0f20 perf(optimize): narrow projections + invoices.recalcTotals SUM aggregate
@@ -63,7 +67,45 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-10
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Latest optimize: 2026-06-10 (perf scope: narrow projections + parallel DELETEs + redundant @@index, HEAD 198f9dce):
+Latest optimize: 2026-06-10 (perf scope: narrow projections + parallel calendar conflicts + module-level COLUMNS, HEAD 1004188c):
+  • Backend narrow projections (15 hot-path findFirst/findMany guards):
+    - good-categories/work-categories.create: parent FK guard → select { id }.
+    - bank-accounts.create: currency + branch FK guards → select { id }.
+    - purchase-orders.create: supplier + warehouse FK guards → select { id }.
+    - maintenance-schedules.create: vehicle FK guard → select { id }.
+    - maintenance-schedules.updateAfterWorkOrder: schedules findMany trim to
+      id/intervalDays/intervalMileage/lastMaintenanceMileage (4 fields vs 11+).
+    - settlements-account.{getBalance,getTransactions,createReconciliationAct}:
+      account → balance | id | { id, balance }; counterparty → select { id }.
+    - webhooks.findDeliveries: endpoint guard → select { id }.
+    - webhooks.dispatchEvent: endpoints findMany → select { id, url, secret }
+      (only payload fields). 50 endpoints × event saving wire bytes.
+    - inspection.create: wo guard → select { status }.
+    - invoices.create: counterparty + wo FK guards → select { id }.
+    - counterparties.updateContract: contract → select { contractType }.
+    - completion-acts.createFromWorkOrder: existing idempotent → select { id }.
+    - booking.checkAvailability: lifts findMany → select { id, name }.
+  • Calendar create/update conflict checks (parallel inside $transaction):
+    - calendar.createSlot/updateSlot: lift- + employee-conflict findFirst calls
+      were sequential inside tx (2 RTT). Now Promise.all + select { id }; error
+      priority preserved via guards after the await. Independent reads on same
+      table with disjoint WHERE — safe to parallelise (no write dependency).
+  • Frontend list-page toolbar JSON precompute (9 files):
+    - work-orders, invoices, counterparties, employees, purchase-orders,
+      stock-documents, catalog Goods/Works/Services: COLUMNS lifted from
+      in-component useMemo([],[]) to module level + COLUMNS_DEFAULT_KEYS_JSON
+      precomputed once. Replaces `JSON.stringify(COLUMNS.map(c => c.key))`
+      per-render allocation in ColumnsDropdown hasCustomization comparison.
+    - CreateWorkOrderModal save flow: added comment explaining why edit-mode
+      POST loop MUST stay sequential — concurrent recalcTotals() reads sum
+      aggregate in READ COMMITTED, parallel POST race loses totalLabor/Parts.
+  • Skill self-improvement (HEAD 1004188c):
+    - Static-toolbar-JSON pattern: derived static values (CONSTANTS.map +
+      JSON.stringify) in render path — lift to module-level precompute.
+    - Parallel-conflict-checks pattern: disjoint-where reads inside one
+      $transaction can run in Promise.all (reads independent, only writes
+      need serialisation).
+Latest optimize (попередній): 2026-06-10 (perf scope: narrow projections + parallel DELETEs + redundant @@index, HEAD 198f9dce):
   • Backend narrow projections (12 hot-path findFirst/findUnique):
     - loyalty.{getBalance,getTransactions,earn,redeem}: trim 4 reads to ≤5 fields
       (balance | id | loyaltyEnabled/EarnPer/EarnPoints | loyaltyRedeemRate).
