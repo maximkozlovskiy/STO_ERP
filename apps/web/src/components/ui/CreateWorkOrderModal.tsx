@@ -1547,7 +1547,7 @@ export function CreateWorkOrderModal({
 
                     {/* Попередження про конфлікт у календарі */}
                     {calConflict?.anyConflict && (
-                      <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-300">
+                      <div className="rounded-md bg-warning-subtle border border-warning/20 px-3 py-2 text-[12px] text-warning">
                         ⚠{calConflict.liftConflict && ' Підйомник зайнятий.'}
                         {calConflict.employeeConflict && ' Механік зайнятий.'} Є перетин з{' '}
                         {calConflict.conflictSlots.length} слотом(и) у календарі. Можна зберегти
