@@ -558,6 +558,9 @@ done
 - [ ] **React Query cross-resource invalidation audit (Bug #210-#212):** для КОЖНОГО `await apiFetch(/X/:id/Y, { method: 'POST'|'PATCH'|'DELETE' })` у migrated page → прочитати **серверний** controller+service цього endpoint і знайти всі side-effect updates на ІНШИХ resource-ах: (1) `inventory.createMovement(...)` → invalidate `inventoryKeys.all`; (2) `workOrders.transition(...)` → invalidate `workOrdersKeys.all`; (3) `settlements.createTransaction(...)` → invalidate `counterpartiesKeys.all` (якщо list показує balance); (4) `priceHistory.create(...)` + `good.update({ salePrice })` → invalidate `inventoryKeys.all` / `goodsKeys.all`. Same-resource invalidation (own-keys.all) — звичайна; cross-resource — невидимий gap бо клієнт не знає що endpoint мутує сторонній resource. Не покладатись на `staleTime=30s` — користувач може мати другий tab з відповідним list-view або переходити швидше за staleTime. Grep: `grep -B2 -A5 "method: 'POST'\|method: 'PATCH'\|method: 'DELETE'" apps/web/src/app/<migrated-page>` → кожен endpoint pair-check проти `apps/api/src/modules/<resource>/<resource>.service.ts`. Severity: MEDIUM коли впливає на бізнес-метрику (залишки/ціни/балансу); LOW коли лише UX (new row не з'являється у list до router.back)
 - [ ] **React Query migration completeness: mutation hooks експортовані але не використовуються (Bug #213):** після `feat(rq): migrate X` commits — grep usage `useXMutation`/`useDeleteX`/`useUpdateX` у `apps/web/src/app` (поза tests). Якщо count === 0 → migration зробила лише READ-path, WRITE-path лишається raw `apiFetch` + manual invalidate. Це **не runtime-bug**, але: (1) bundle bloat; (2) misleading commit-message; (3) maintenance burden (invalidation у двох місцях). Severity LOW; фікс: задокументувати у MemoryManual як known-state АБО видалити hooks; full migration = окремий sprint
 - [ ] **React Query custom hook без `*.test.tsx` (Bug #214):** новий `apps/web/src/hooks/api/use*.ts` з `useQuery`/`useMutation` потребує парний `*.test.tsx`. Тести покривають: (1) queryKey factory ізоляція (різні фільтри → різні ключі); (2) enabled-gate (`employee=null` → no fetch); (3) URLSearchParams build (кожне опціональне поле → відповідний URL param АБО відсутній якщо false-y); (4) signal abort (apiFetch отримує signal). Шаблон: `useWorkOrders.test.tsx`. Mock `apiFetch` + `useAuth`. Не використовувати реальний `QueryClientProvider` — створити свіжий `QueryClient` per-test з `retry: false`. Без цих тестів — silent URL param drift (як 3d5136d repairCategory regression) пройде CI зеленим
+- [ ] **Token-guard debouncer: early-return гілка інкрементує reqId (Bug #396):** для КОЖНОГО хука з `reqIdRef`/`requestIdRef`/`tokenRef` (last-fetch-wins pattern) — переконатись що ВСІ гілки `check()`/`run()`/`load()` що змінюють стан (включно з early-return на невалідних параметрах: `!startAt || endAt<=startAt`) бамптять `reqIdRef.current++` ПЕРЕД `setX(null)`. Інакше pending in-flight fetch розпочатий до невалідного зміни перезапише очищений стан (banner мигне з фальшивими даними). Grep: `grep -rn "reqIdRef\|requestIdRef\|tokenRef" apps/web/src --include="*.ts" --include="*.tsx" -l` → для кожного `check`/`run`/`load` метод знайти early-return з `setX(null)` без `reqIdRef.current++`. Регресія-гард тест: simulate in-flight via never-resolving Promise + trigger early-return + delayed resolve → assert state still null
+- [ ] **Conflict-check endpoint: parent-context потребує `excludeParentId` (Bug #397):** для кожного `POST /X/check-conflicts|check-availability|check-overlap` що має `excludeSelfId` — перевірити чи фронт викликає його з контексту "edit parent" (modal батьківської entity що має 1:N до self-entity). Приклад: WO modal → check-conflicts по slots (1 WO → N slots). Без `excludeParentWO Id` backend завжди знаходить власні slots цього WO → false positive banner при кожному відкритті уже-запланованого batch-parent. Grep usage: `grep -rn "check-conflicts\|checkConflict" apps/web/src --include="*.tsx" -l`; для кожного споживача — чи контекст modal = parent-entity (WO/RecurringEvent/PurchaseOrder)? Якщо так — потрібен симетричний `excludeParentId` field у DTO та фільтр у сервісі (обидва прапори незалежні, поєднуються). Тест: contract case на прокидання `excludeParentId` + 400 на не-UUID + `excludeParentId` deps у useEffect модалки
+- [ ] **Read-only DTO degraded-form: contract drift (Bug #398):** будь-який service-метод що повертає `T[]` де `T = SharedResponseDto` (той самий тип що інші CRUD-методи) і має ЛОКАЛЬНИЙ mapper `toDtoSimple()`/`mapBriefly()`/`projectMinimal()` — потенційна латентна регресія. Optional поля у DTO компілюються БЕЗ enrichment → TS green → UI зараз тільки `.length` → майбутній рендер деталей отримає undefined у всьому масиві. Grep: `grep -rn "const toDto[A-Z]\w* = " apps/api/src/modules --include="*.service.ts" -A 2`. Фікс: видалити локальний mapper, використовувати `this.toDto(s)`; розширити CONFLICT_SELECT/SEARCH_SELECT щоб включити ті ж relations (counterparty/vehicle/parent). Якщо degraded shape потрібна для публічного endpoint — окремий type (`PublicXDto`) замість того ж загального
 - [ ] **UoM display-vs-base mismatch на submit (Bug #231):** будь-який `<Select>` що дозволяє перемикати UoM з recalc display quantity (Krok 5 patten: `coefficient` + `unitId` + `unitShortName` у local lines state) ОБОВ'ЯЗКОВО має у submit-функції конвертувати display→base: `quantity: parseFloat(l.quantity) * (l.coefficient || 1)` і `price: parseFloat(l.price) / (l.coefficient || 1)`. Display-transition formula `newDisplay = oldDisplay * oldCoeff / newCoeff` зберігає інваріант між двома UoMs, АЛЕ submit потребує **окремої** конверсії до base. Якщо submit шле `parseFloat(l.quantity)` як-є → backend (що очікує base units) отримує display value → silent data corruption у stock movement / payable / applyPricing. Видно ЛИШЕ коли coefficient != 1; happy-path з default UoM (coeff=1) — без регресії. Grep: `grep -rnE "quantity:\s*parseFloat\(l\.quantity\)[^*]" apps/web/src/app --include="*.tsx" -B5 | grep -B5 "coefficient"` — кожен match без `* coeff`/`* (l.coefficient` = CRITICAL bug. Backend пара: `inventory.createMovement(quantity: l.quantity)` без UoM-conversion — підтвердження що quantity ОЧІКУЄТЬСЯ у base units. Severity: CRITICAL (release-blocker)
 - [ ] **Mass DTO field migration completeness — include audit (Bug #232):** додавання нового поля (`unitShortName`/`coefficient`) у `*.dto.ts` `LineResponseDto` + `toLineDto`-mapping без оновлення Prisma `include` queries → поле завжди undefined у API response. Розробник додав `select: { unitOfMeasure: { select: { shortName, coefficient } } }` у service X, забув у service Y. Grep: для кожного `unitShortName`/`coefficient`/інше нове DTO-поле — для кожного `prisma.X.findFirst/findMany/findFirstOrThrow/create/update` що повертається через `toLineDto`/`toDto` → перевірити що relevant `include` присутній. Pair-check: `grep -n "good?.unitOfMeasure" apps/api/src/modules/**/*.service.ts` (consumer) vs `grep -n "unitOfMeasure:" apps/api/src/modules/**/*.service.ts | grep -v ".dto.ts"` (producer/include). Якщо consumer-count > producer-count за модулем — bug. Severity: MEDIUM (data display, не runtime crash; але feature що додано саме для UX — мертвий)
 - [ ] **Frontend hint обіцяє backend behavior якого немає (Bug #266):** для кожного UI-хінту що містить «буде (додано|застосовано|скопійовано|створено|нараховано|використано|враховано|оновлено)» / «автоматично (X|застосується|створиться|нарахується|спрацює)» / «після (створення|відкриття|збереження)» — знайти найближчу POST/PATCH-функцію + перевірити чи body передає поле що упроваджує обіцяну дію. Grep: `grep -rnE "буде (додано|застосовано|скопійовано|створено|нараховано|використано|враховано|оновлено)|автоматично" apps/web/src --include="*.tsx"`. Парний сигнал: `<Select>`/`<input>` поряд з хінтом — value не передається у submit body → bug. Severity HIGH (feature розрекламована як автоматична). Фікс: реалізувати backend integration АБО переписати hint чесно `"додайте вручну ... після створення"`
@@ -967,6 +970,152 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-10 — Token-guard debouncer race: early-return не інкрементує reqId (Bug #396) — frontend / async race / state corruption
+
+**Сигнал:** Хук-debouncer з `reqIdRef.current` token-guard (last-fetch-wins) має у `check(params)` ранній вихід (early-return) для невалідних параметрів (порожні дати, `start >= end`, відсутні залежності). Гілка early-return викликає `setState(null)` АЛЕ не бамптить `reqIdRef.current`. Будь-який pending in-flight fetch розпочатий до того як параметри стали невалідні зарезолвиться з `if (reqId === reqIdRef.current) setState(res)` — умова виконається (бо токен не змінювався) і перезапише очищений стан старими даними. Користувач бачить миготіння banner, фантомні badges, "застряглі" UI-елементи що мали зникнути.
+
+**Реальний приклад (Bug #396):** `apps/web/src/hooks/useConflictCheck.ts`:
+
+```ts
+const check = useCallback(
+  (params: CheckParams) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    // ❌ Early-return: state cleared, але reqId не змінено
+    if (!params.startAt || !params.endAt || params.startAt >= params.endAt) {
+      if (mountedRef.current) setConflict(null); // ← in-flight fetch перезапише!
+      return;
+    }
+    const reqId = ++reqIdRef.current;
+    timerRef.current = setTimeout(() => {
+      apiFetch<T>(url, opts).then(res => {
+        if (!mountedRef.current || reqId !== reqIdRef.current) return;
+        setConflict(res);
+      });
+    }, debounceMs);
+  },
+  [debounceMs],
+);
+```
+
+Сценарій: user змінює `startAt` → debounce 400ms → fetch стартує (reqId=1). Поки in-flight — user стер `endAt` → early-return → `setConflict(null)` (reqIdRef.current залишається 1). Через 200ms прилетіла відповідь → `reqId(1) === reqIdRef.current(1)` → `setConflict(res)` → banner з'явився попри порожні поля.
+
+**Причина виникнення:** Розробник додає token-guard у "happy path" і не зауважує що early-return — теж state mutation. Логіка "якщо я просто `setConflict(null)`, то fetch вже неактуальний — навіщо бампити?" — помилкова: token-guard потрібен у обох напрямках. Якщо ж є `clear()` (окрема функція скидання) — там зазвичай інкремент є, але дублювання логіки у check() пропускають.
+
+**Підхід до виявлення:**
+
+1. Знайти хуки з `reqIdRef.current` / `requestIdRef.current` / `tokenRef.current` patterns у async-fetcher:
+
+   ```bash
+   grep -rn "reqIdRef\|requestIdRef\|tokenRef" apps/web/src --include="*.ts" --include="*.tsx" -l
+   ```
+
+2. Для кожного — перевірити чи всередині `check()`/`run()`/`load()` є early-return гілка з `setState(null)` без `reqIdRef.current++`:
+
+   ```bash
+   # grep early-returns with setState(null) (або setX(null))
+   grep -nE "setState\(null\)|set\w+\(null\)" <hook>.ts -B 3 | grep -B 1 "return"
+   ```
+
+3. Якщо early-return стоїть до інкременту токену — bug.
+
+**Підхід до фіксу:**
+
+```ts
+if (!params.startAt || !params.endAt || params.startAt >= params.endAt) {
+  reqIdRef.current++; // ← invalidate pending fetch
+  if (mountedRef.current) setConflict(null);
+  return;
+}
+```
+
+Альтернатива: завжди інкрементувати на самому початку `check()` ще до перевірки. Менш ефективно по семантиці (`reqId` мутується навіть коли fetch не стартує), але простіше дотримуватись.
+
+**Severity:** HIGH (видима UI-регресія, race-condition воспроизводиться легко при швидкому вводі/clear)
+
+**Де шукати ще:** будь-які debounce-хуки з last-fetch-wins (`useDebouncedFetch`, `useSearchSuggest`, `useAutocomplete`, `useConflictCheck`, `useAvailabilityCheck`), а також типові React-Query alternatives без queryKey-invalidation. Регресійний тест: simulate in-flight + early-return + delayed resolve → assert state still null.
+
+---
+
+### 2026-06-10 — Edit-self false positive у parent-context conflict-check (Bug #397) — backend+frontend / business logic / FK exclusion
+
+**Сигнал:** Endpoint типу `check-conflicts` / `check-availability` / `check-overlap` приймає параметр часу + ресурсу (lift, room, employee, slot). Frontend modal який редагує **batch-parent** entity (work-order що має N slots, recurring event що має N occurrences, sales-order що має N items) викликає цей endpoint щоб попередити перетин. Але backend не має способу виключити власні діти. Frontend знає parent.id, але не знає id-шників всіх child-rows (їх може не бути у response — лише агрегати, або їх кілька через batch-split).
+
+**Реальний приклад (Bug #397):** `apps/web/src/components/ui/CreateWorkOrderModal.tsx` викликає `POST /calendar/slots/check-conflicts` з liftId+plannedStartAt+plannedEndAt. Backend знаходить власний slot цього WO (бо WO має `calendarSlot.workOrderId = thisWO`) → повертає `liftConflict=true`. Будь-який вже запланований WO при відкритті в edit-modal показує amber banner "Перетин слотів", тоді як реального конфлікту немає. `excludeSlotId` не годиться: (1) WO response не повертає `slotId` (тільки агрегати `slotStartAt/slotEndAt/slotLiftName`), (2) WO може мати кілька slots (split-across-days → parent+child).
+
+**Причина виникнення:** Розробник додає `excludeSlotId` думаючи про use-case "edit own slot" (CalendarSlotModal) і пропускає use-case "edit parent that owns N slots" (CreateWorkOrderModal). Особливо коли два модали мають різні форми та контексти — патерн не reused.
+
+**Підхід до виявлення:**
+
+1. Список усіх `check-*` ендпоінтів і їх споживачів:
+
+   ```bash
+   grep -rn "check-conflicts\|check-availability\|check-overlap\|checkConflict\|checkAvailability" apps/web/src --include="*.tsx" -l
+   ```
+
+2. Для кожного споживача — визначити "контекст" виклику: editing self-row vs editing parent-row. Парний сигнал:
+   - модал викликає endpoint у `useEffect` без `excludeSelfId`
+   - parent-entity має FK relation з child-table що індексується по тому ж time-range фільтру
+   - response parent-entity не містить child IDs
+
+3. Перевірити чи fixture-test покриває edit-self кейс. Зазвичай ні — це регресія яка не ловиться без специфічного тесту.
+
+**Підхід до фіксу:**
+
+1. Backend: додати `excludeParentId?: string` (UUID) у DTO. `@IsOptional @Transform(emptyToUndefined) @IsUUID()`.
+2. Backend service: додати симетричний фільтр `parentFkColumn: { not: dto.excludeParentId }` у findMany. Не плутати з `excludeSelfId` — обидва прапори незалежні і поєднуються.
+3. Frontend: parent-context modal завжди передає `excludeParentId: parentEntity.id` у `useEffect`. **Включити `parentEntity.id` у deps useEffect** — інакше при переключенні parent старий filter застрягне.
+4. Тест: контрактний кейс що `excludeParentId` прокидається у сервіс + кейс що 400 на не-UUID.
+
+**Severity:** HIGH (постійна UX-регресія: банер видно при кожному відкритті уже-запланованого парента → користувач навчається ігнорувати → справжні конфлікти теж проґавлюються — desensitization)
+
+**Де шукати ще:** будь-який endpoint що валідує "не перетинай N існуючих" від parent entity: WO+slots, Invoice+lines, PurchaseOrder+items, RecurringEvent+occurrences, MaintenanceSchedule+services. Загальний патерн: parent з N дочірніх часових/ресурсних резервацій → API має приймати exclusion на двох рівнях (self-row + parent).
+
+---
+
+### 2026-06-10 — DTO degraded simple-form в read-only endpoint (Bug #398) — backend / contract drift / latent regression
+
+**Сигнал:** Service-метод повертає `T[]` де `T = SharedDto` (той самий тип що використовують основні CRUD-методи). Але всередині методу — окремий локальний mapper `toDtoSimple()` що повертає лише підмножину полів (id, time, status). `SharedDto` має optional поля для enrichment (counterparty.name, vehicle.summary, parent.number); фронт ConflictResult/Suggestion/AvailabilityItem декларує їх optional → TS компілюється БЕЗ помилок. UI поки що рендерить лише `length`/`count` → візуальної регресії немає. Як тільки UX додасть деталізацію (список конфліктних слотів з номером наряду / клієнтом) — побачить undefined в усьому масиві.
+
+**Реальний приклад (Bug #398):** `apps/api/src/modules/calendar/calendar.service.ts.checkConflicts`:
+
+```ts
+const CONFLICT_SELECT = { id, startAt, endAt, liftId, ..., status, type };  // ← лише плоскі поля
+const toDtoSimple = (s) => ({ ...s });  // ← без counterparty/vehicle/workOrder enrichment
+return { conflictSlots: allSlots.map(toDtoSimple) };  // ← type-compatible з CalendarSlotResponseDto, але без enrichment
+```
+
+`CalendarSlotResponseDto` має `workOrderNumber?: string`, `counterpartyName?: string`, `vehicleSummary?: string` — всі optional. Контракт виконано формально, але семантично відрізняється від основного `toDto()`.
+
+**Причина виникнення:** Розробник оптимізує query (читає менше колонок — "ми ж лише count потрібен у UI"), але повертає той самий response type. Думка: "якщо колись треба буде розширити — додам поля". Реально: розширюють UX без модифікації backend → silent NULL-renders по всьому масиву.
+
+**Підхід до виявлення:**
+
+1. Знайти методи що повертають вже існуючий response DTO але мають локальний mapper:
+
+   ```bash
+   # шукаємо локальні toDto* функції у сервісах
+   grep -rn "const toDto[A-Z]\w* = " apps/api/src/modules --include="*.service.ts" -A 2
+   ```
+
+2. Для кожного знайденого — порівняти shape mapper з основним `this.toDto()` методу:
+   - чи усі поля основного toDto присутні у локальному?
+   - чи всі вкладені `include`/`select` (counterparty/vehicle/parent) збігаються?
+
+3. Парний сигнал: метод повертає `T[]` де `T = CommonResponseDto` (не локальний type) + `select` без relations.
+
+**Підхід до фіксу:**
+
+1. Видалити локальний `toDtoSimple` — використовувати `this.toDto(s)`.
+2. Розширити `CONFLICT_SELECT` (або інший назві select-const) щоб включити ті ж relations що основний select: `counterparty`, `vehicle`, `workOrder.{number, counterparty, vehicle}` тощо.
+3. Якщо є валідна причина для degraded shape (e.g., публічний share endpoint) — використовувати **окремий type** (`PublicSlotDto`) замість того ж загального → TS заборонить запхати degraded shape у full type.
+4. Тест: assert на конкретні enrichment-поля (не лише `.length`).
+
+**Severity:** MEDIUM (латентна, але блокує майбутній UX без явного code-change у backend; легко проґавлюється у review)
+
+**Де шукати ще:** будь-який backend де є локальний mapper + return type = shared DTO. Особливо `findManyForX`, `searchY`, `availabilityZ` — методи що повертають "lite" версію основної entity. Правило: shared response type ⇔ shared enrichment mapper.
+
+---
 
 ### 2026-06-09 — Swallowed-fetch error rendered AS empty-state у read-only panel (Bug #414) — frontend / error handling / UX false-reassurance
 
