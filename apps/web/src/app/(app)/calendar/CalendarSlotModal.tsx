@@ -509,6 +509,7 @@ export function CalendarSlotModal({
 
   // ── New work-order modal ──────────────────────────────────────────────────
   const [createWoOpen, setCreateWoOpen] = useState(false);
+  const [createWoEditId, setCreateWoEditId] = useState<string | undefined>(undefined);
 
   // ── Picker modals ─────────────────────────────────────────────────────────
 
@@ -1011,7 +1012,14 @@ export function CalendarSlotModal({
                   placeholder="Пошук наряду…"
                   disabled={isEditingPast}
                   hidePick={isEditingPast}
-                  onOpenDetail={form.workOrderId ? () => setCreateWoOpen(true) : undefined}
+                  onOpenDetail={
+                    form.workOrderId
+                      ? () => {
+                          setCreateWoEditId(form.workOrderId || undefined);
+                          setCreateWoOpen(true);
+                        }
+                      : undefined
+                  }
                   onPick={() => setWoPickerOpen(true)}
                   onSearch={!isEditingPast ? fetchWoItems : undefined}
                   onSearchSelect={async item => {
@@ -1072,7 +1080,10 @@ export function CalendarSlotModal({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCreateWoOpen(true)}
+                  onClick={() => {
+                    setCreateWoEditId(undefined);
+                    setCreateWoOpen(true);
+                  }}
                   title="Новий наряд"
                   className="h-8 w-8 p-0 shrink-0"
                 >
@@ -1434,7 +1445,11 @@ export function CalendarSlotModal({
       />
       <CreateWorkOrderModal
         open={createWoOpen}
-        onClose={() => setCreateWoOpen(false)}
+        workOrderId={createWoEditId}
+        onClose={() => {
+          setCreateWoOpen(false);
+          setCreateWoEditId(undefined);
+        }}
         prefill={(() => {
           const nh = Number(form.normoHours);
           const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
