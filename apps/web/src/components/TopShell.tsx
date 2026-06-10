@@ -6,7 +6,11 @@ import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { TabBar } from '@/components/TabBar';
 import { useTabBarContext } from '@/contexts/TabBarContext';
-import { CreateWorkOrderModal } from '@/components/ui/CreateWorkOrderModal';
+
+const CreateWorkOrderModal = dynamic(
+  () => import('@/components/ui/CreateWorkOrderModal').then(m => m.CreateWorkOrderModal),
+  { ssr: false },
+);
 import { Wrench, LogOut, ChevronLeft, Menu, Star, Search, type LucideIcon } from 'lucide-react';
 import { NAV_GROUPS, NAV_GROUPS_FUNCTIONS, type NavItem, type NavGroup } from '@/lib/nav';
 import { useQueryClient } from '@tanstack/react-query';
@@ -384,6 +388,8 @@ export function TopShell({ children }: { children: ReactNode }) {
   // Modal restore from TabBar modal tabs
   const { pendingRestore, setPendingRestore, closeTab } = useTabBarContext();
   const [restoredWoId, setRestoredWoId] = useState<string | undefined>(undefined);
+  // Track the tab UUID (not the WO ID) so closeTab removes the correct tab entry
+  const [restoredTabId, setRestoredTabId] = useState<string | undefined>(undefined);
   const [restoredWoOpen, setRestoredWoOpen] = useState(false);
 
   useEffect(() => {
@@ -391,6 +397,7 @@ export function TopShell({ children }: { children: ReactNode }) {
     if (pendingRestore.modalKey === 'work-order') {
       const woId = pendingRestore.restoreProps.workOrderId as string | undefined;
       setRestoredWoId(woId);
+      setRestoredTabId(pendingRestore.id);
       setRestoredWoOpen(true);
       setPendingRestore(null);
     }
@@ -726,10 +733,11 @@ export function TopShell({ children }: { children: ReactNode }) {
           onClose={() => {
             setRestoredWoOpen(false);
             setRestoredWoId(undefined);
+            setRestoredTabId(undefined);
           }}
           onUpdated={() => {
-            // Remove the modal tab since it was restored and closed normally
-            closeTab(restoredWoId);
+            // Remove the modal tab using the tab UUID (not the WO ID) so closeTab finds the right entry
+            if (restoredTabId) closeTab(restoredTabId);
           }}
         />
       )}
