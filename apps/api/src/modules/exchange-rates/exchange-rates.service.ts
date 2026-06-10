@@ -63,8 +63,10 @@ export class ExchangeRatesService {
         where: { id: dto.currencyId, orgId, deletedAt: null },
         select: { id: true },
       }),
+      // sto-optimize: only id + deletedAt consumed (resurrect-vs-conflict branch).
       this.prisma.exchangeRate.findFirst({
         where: { orgId, currencyId: dto.currencyId, date },
+        select: { id: true, deletedAt: true },
       }),
     ]);
     if (!currency) throw new NotFoundException('Валюту не знайдено');

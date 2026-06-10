@@ -132,8 +132,10 @@ export class WarrantiesService {
         where: { id: workOrderId, orgId, deletedAt: null },
         select: { id: true, number: true, counterpartyId: true },
       }),
+      // sto-optimize: idempotent guard — only existence matters.
       this.prisma.warranty.findFirst({
         where: { orgId, workOrderId, deletedAt: null },
+        select: { id: true },
       }),
     ]);
     if (!wo || !wo.counterpartyId) return;

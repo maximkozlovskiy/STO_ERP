@@ -41,8 +41,10 @@ export class CurrenciesService {
   async create(orgId: string, dto: CreateCurrencyDto): Promise<CurrencyResponseDto> {
     // Single query: fetch any row (active or soft-deleted) with the same unique key.
     // Handles both the active-duplicate check and the resurrection case (Bug #152) in one round-trip.
+    // sto-optimize: only id + deletedAt consumed (resurrect-vs-conflict branch).
     const anyExisting = await this.prisma.currency.findFirst({
       where: { orgId, code: dto.code },
+      select: { id: true, deletedAt: true },
     });
     if (anyExisting) {
       if (!anyExisting.deletedAt) {

@@ -62,7 +62,11 @@ export class BrandsService {
   }
 
   async create(orgId: string, dto: CreateBrandDto): Promise<BrandResponseDto> {
-    const anyExisting = await this.prisma.brand.findFirst({ where: { orgId, name: dto.name } });
+    // sto-optimize: only id + deletedAt consumed (resurrect-vs-conflict branch).
+    const anyExisting = await this.prisma.brand.findFirst({
+      where: { orgId, name: dto.name },
+      select: { id: true, deletedAt: true },
+    });
     if (anyExisting) {
       if (!anyExisting.deletedAt) throw new ConflictException('Бренд з такою назвою вже існує');
       const restored = await this.prisma.brand.update({

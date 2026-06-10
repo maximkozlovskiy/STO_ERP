@@ -506,8 +506,9 @@ model EmployeeBranch {
   org      Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, branchId])
+  // sto-optimize: @@index([employeeId]) is redundant — @@unique([employeeId, branchId])
+  // already creates a B-tree that serves equality lookups on (employeeId) alone.
   @@index([orgId])
-  @@index([employeeId])
   @@map("employee_branches")
 }
 
@@ -1403,7 +1404,8 @@ model DocumentNumberConfig {
   org Organisation @relation(fields: [orgId], references: [id])
 
   @@unique([orgId, documentType])
-  @@index([orgId])
+  // sto-optimize: @@index([orgId]) is redundant — @@unique([orgId, documentType])
+  // already covers equality lookups on (orgId) alone.
   @@index([orgId, syncVersion])
   @@map("document_number_configs")
 }
@@ -1475,7 +1477,8 @@ model NotificationTemplate {
   org Organisation @relation(fields: [orgId], references: [id])
 
   @@unique([orgId, eventType, channel])
-  @@index([orgId])
+  // sto-optimize: @@index([orgId]) is redundant — @@unique([orgId, eventType, channel])
+  // covers prefix lookups on (orgId).
   @@map("notification_templates")
 }
 
@@ -1492,7 +1495,8 @@ model TaxRate {
   org Organisation @relation(fields: [orgId], references: [id])
 
   @@unique([orgId, rate])
-  @@index([orgId])
+  // sto-optimize: @@index([orgId]) is redundant — @@unique([orgId, rate]) covers
+  // prefix lookups on (orgId).
   @@map("tax_rates")
 }
 
@@ -1511,7 +1515,8 @@ model PaymentMethodConfig {
   org Organisation @relation(fields: [orgId], references: [id])
 
   @@unique([orgId, code])
-  @@index([orgId])
+  // sto-optimize: @@index([orgId]) is redundant — @@unique([orgId, code]) covers
+  // prefix lookups on (orgId).
   @@map("payment_method_configs")
 }
 
@@ -2106,7 +2111,8 @@ model UserPreference {
   employee Employee @relation(fields: [employeeId], references: [id])
 
   @@unique([orgId, employeeId, key])
-  @@index([orgId, employeeId])
+  // sto-optimize: @@index([orgId, employeeId]) is redundant — @@unique([orgId, employeeId, key])
+  // covers prefix lookups on (orgId, employeeId).
   @@map("user_preferences")
 }
 

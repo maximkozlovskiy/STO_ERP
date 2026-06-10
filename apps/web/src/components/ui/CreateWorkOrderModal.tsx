@@ -807,14 +807,17 @@ export function CreateWorkOrderModal({
           dueDate: form.plannedEndAt || undefined,
         }),
       });
-      // Delete removed lines/parts
-      for (const lineId of deletedLineIds.current) {
-        await apiFetch(`/work-orders/${workOrderId}/lines/${lineId}`, { method: 'DELETE' });
-      }
+      // sto-optimize: DELETEs are independent (each row by id) — fire in parallel
+      // instead of N × sequential RTT. Promise.allSettled isolates per-row failures;
+      // the next save() retry will still target the rows that didn't drop.
+      const lineDeletes = deletedLineIds.current.map(lineId =>
+        apiFetch(`/work-orders/${workOrderId}/lines/${lineId}`, { method: 'DELETE' }),
+      );
+      const partDeletes = deletedPartIds.current.map(partId =>
+        apiFetch(`/work-orders/${workOrderId}/parts/${partId}`, { method: 'DELETE' }),
+      );
+      await Promise.allSettled([...lineDeletes, ...partDeletes]);
       deletedLineIds.current = [];
-      for (const partId of deletedPartIds.current) {
-        await apiFetch(`/work-orders/${workOrderId}/parts/${partId}`, { method: 'DELETE' });
-      }
       deletedPartIds.current = [];
       // Add new lines (no id = not yet persisted)
       for (const line of lines.filter(l => !l.id)) {

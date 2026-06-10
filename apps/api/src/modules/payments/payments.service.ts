@@ -122,8 +122,10 @@ export class PaymentsService {
 
         // Mark invoice SENT→PAID if linked
         if (dto.invoiceId) {
+          // sto-optimize: only status + workOrderId guards consulted; full row not needed.
           const inv = await tx.invoice.findFirst({
             where: { id: dto.invoiceId, orgId, deletedAt: null },
+            select: { status: true, workOrderId: true },
           });
           if (inv) {
             if (inv.status !== 'SENT')

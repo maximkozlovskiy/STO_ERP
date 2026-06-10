@@ -45,22 +45,22 @@ export class ServicesService {
 
         // Validate works + goods in parallel — independent queries on different tables.
         // Both are read-only within the transaction, so concurrent execution is safe.
-        const [foundWorks, foundGoods] = await Promise.all([
+        // sto-optimize: count() instead of findMany() — Postgres returns a single
+        // integer instead of N IDs that downstream code never reads.
+        const [foundWorksCount, foundGoodsCount] = await Promise.all([
           dto.works?.length
-            ? tx.work.findMany({
+            ? tx.work.count({
                 where: { id: { in: dto.works.map(w => w.workId) }, orgId, deletedAt: null },
-                take: 1000,
               })
-            : Promise.resolve([] as Array<{ id: string }>),
+            : Promise.resolve(0),
           dto.goods?.length
-            ? tx.good.findMany({
+            ? tx.good.count({
                 where: { id: { in: dto.goods.map(g => g.goodId) }, orgId, deletedAt: null },
-                take: 1000,
               })
-            : Promise.resolve([] as Array<{ id: string }>),
+            : Promise.resolve(0),
         ]);
         if (dto.works?.length) {
-          if (foundWorks.length !== dto.works.length)
+          if (foundWorksCount !== dto.works.length)
             throw new NotFoundException('Одну або кілька робіт не знайдено');
           await tx.serviceWork.createMany({
             data: dto.works.map(w => ({
@@ -71,7 +71,7 @@ export class ServicesService {
           });
         }
         if (dto.goods?.length) {
-          if (foundGoods.length !== dto.goods.length)
+          if (foundGoodsCount !== dto.goods.length)
             throw new NotFoundException('Один або кілька товарів не знайдено');
           await tx.serviceGood.createMany({
             data: dto.goods.map(g => ({
@@ -123,22 +123,22 @@ export class ServicesService {
         });
 
         // Parallel cross-tenant FK validation for works + goods (independent reads).
-        const [foundWorks, foundGoods] = await Promise.all([
+        // sto-optimize: count() instead of findMany() — only the length comparison
+        // is used downstream; Postgres returns a single integer instead of N row IDs.
+        const [foundWorksCount, foundGoodsCount] = await Promise.all([
           dto.works?.length
-            ? tx.work.findMany({
+            ? tx.work.count({
                 where: { id: { in: dto.works.map(w => w.workId) }, orgId, deletedAt: null },
-                take: 1000,
               })
-            : Promise.resolve([] as Array<{ id: string }>),
+            : Promise.resolve(0),
           dto.goods?.length
-            ? tx.good.findMany({
+            ? tx.good.count({
                 where: { id: { in: dto.goods.map(g => g.goodId) }, orgId, deletedAt: null },
-                take: 1000,
               })
-            : Promise.resolve([] as Array<{ id: string }>),
+            : Promise.resolve(0),
         ]);
         if (dto.works !== undefined) {
-          if (dto.works.length && foundWorks.length !== dto.works.length) {
+          if (dto.works.length && foundWorksCount !== dto.works.length) {
             throw new NotFoundException('Одну або кілька робіт не знайдено');
           }
           await tx.serviceWork.deleteMany({ where: { serviceId: id } });
@@ -153,7 +153,7 @@ export class ServicesService {
           }
         }
         if (dto.goods !== undefined) {
-          if (dto.goods.length && foundGoods.length !== dto.goods.length) {
+          if (dto.goods.length && foundGoodsCount !== dto.goods.length) {
             throw new NotFoundException('Один або кілька товарів не знайдено');
           }
           await tx.serviceGood.deleteMany({ where: { serviceId: id } });

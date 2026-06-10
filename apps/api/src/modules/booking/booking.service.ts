@@ -145,8 +145,10 @@ export class BookingService {
     // text[] не FK, Prisma не валідує) → cross-tenant linkage у заявці. Parallel
     // з branch-guard бо обидва незалежні (різні таблиці).
     const [branch, serviceCount] = await Promise.all([
+      // sto-optimize: only branch.name used for SMS template — narrow projection.
       this.prisma.garageBranch.findFirst({
         where: { id: dto.branchId, orgId, deletedAt: null },
+        select: { id: true, name: true },
       }),
       dto.serviceIds?.length
         ? this.prisma.work.count({

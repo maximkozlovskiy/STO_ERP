@@ -40,8 +40,10 @@ export class PaymentMethodsService {
   }
 
   async create(orgId: string, dto: CreatePaymentMethodDto): Promise<PaymentMethodResponseDto> {
+    // sto-optimize: only id + deletedAt consumed (restore-vs-conflict branch).
     const anyExisting = await this.prisma.paymentMethodConfig.findFirst({
       where: { orgId, code: dto.code },
+      select: { id: true, deletedAt: true },
     });
     if (anyExisting) {
       if (!anyExisting.deletedAt)

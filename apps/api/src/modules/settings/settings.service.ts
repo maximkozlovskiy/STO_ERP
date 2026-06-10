@@ -78,7 +78,11 @@ export class SettingsService {
     // Whitelist allowed keys to prevent unbounded JSON growth via arbitrary payload.
     let updateData: Record<string, unknown> = { ...dto };
     if (dto.uiFeatures !== undefined) {
-      const current = await this.prisma.organisationSettings.findUnique({ where: { orgId } });
+      // sto-optimize: merge needs only the existing uiFeatures JSON column.
+      const current = await this.prisma.organisationSettings.findUnique({
+        where: { orgId },
+        select: { uiFeatures: true },
+      });
       const currentFeatures = this.parseUiFeatures(current?.uiFeatures);
       const patch = this.pickUiFeatureKeys(dto.uiFeatures);
       updateData = { ...dto, uiFeatures: { ...currentFeatures, ...patch } };
@@ -110,8 +114,10 @@ export class SettingsService {
       // offline
     }
 
+    // sto-optimize: tenant guard only — branch fields unused; lookup is cache-cold path.
     const branch = await this.prisma.garageBranch.findFirst({
       where: { id: branchId, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!branch) throw new NotFoundException('Філію не знайдено');
 
@@ -145,8 +151,10 @@ export class SettingsService {
     branchId: string,
     dto: UpdateBranchSettingsDto,
   ): Promise<BranchSettingsResponseDto> {
+    // sto-optimize: tenant guard only — narrow projection.
     const branch = await this.prisma.garageBranch.findFirst({
       where: { id: branchId, orgId, deletedAt: null },
+      select: { id: true },
     });
     if (!branch) throw new NotFoundException('Філію не знайдено');
 

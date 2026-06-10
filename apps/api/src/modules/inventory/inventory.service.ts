@@ -80,8 +80,10 @@ export class InventoryService {
     }
 
     if (dto.quantity < 0 || dto.type === 'RESERVATION' || dto.type === 'RESERVATION_RELEASE') {
+      // sto-optimize: pre-check needs only counters — strip wire payload from full row.
       const item = await db.stockItem.findFirst({
         where: { orgId, goodId: dto.goodId, warehouseId: dto.warehouseId, deletedAt: null },
+        select: { quantity: true, reserved: true },
       });
       const quantity = item?.quantity ?? 0;
       const reserved = item?.reserved ?? 0;
@@ -174,8 +176,10 @@ export class InventoryService {
     goodId: string,
     warehouseId: string,
   ): Promise<{ quantity: number; reserved: number; available: number }> {
+    // sto-optimize: read only the two counters needed for the response.
     const item = await this.prisma.stockItem.findFirst({
       where: { orgId, goodId, warehouseId, deletedAt: null },
+      select: { quantity: true, reserved: true },
     });
     const quantity = item ? item.quantity : 0;
     const reserved = item ? item.reserved : 0;

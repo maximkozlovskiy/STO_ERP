@@ -56,10 +56,22 @@ export class NotificationsService {
     branchId: string,
     event: NotificationEvent,
   ): Promise<NotificationConfig | null> {
+    // sto-optimize: narrow to the fields actually consumed downstream — SMS resolve
+    // runs on every notification (booking, follow-up batch up to 2000/day), wire
+    // payload shrinks from ~25 settings columns to 5 + 1 template body.
     const [branchSettings, template] = await Promise.all([
-      this.prisma.branchSettings.findFirst({ where: { branchId, orgId } }),
+      this.prisma.branchSettings.findFirst({
+        where: { branchId, orgId },
+        select: {
+          smsEnabled: true,
+          smsApiKey: true,
+          smsProvider: true,
+          smsSenderName: true,
+        },
+      }),
       this.prisma.notificationTemplate.findFirst({
         where: { orgId, eventType: event, channel: 'SMS', isActive: true },
+        select: { body: true },
       }),
     ]);
 
@@ -123,8 +135,10 @@ export class NotificationsService {
     id: string,
     dto: { body: string; subject?: string; isActive: boolean },
   ) {
+    // sto-optimize: narrow existence guard — full row not needed, update returns it.
     const template = await this.prisma.notificationTemplate.findFirst({
       where: { id, orgId },
+      select: { id: true },
     });
     if (!template) throw new NotFoundException('Шаблон не знайдено');
     const updated = await this.prisma.notificationTemplate.update({

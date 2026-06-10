@@ -39,8 +39,10 @@ export class UnitsService {
   }
 
   async restore(orgId: string, id: string): Promise<UnitResponseDto> {
+    // sto-optimize: narrow existing guard — restore needs only isSystem + shortName.
     const existing = await this.prisma.unitOfMeasure.findFirst({
       where: { id, orgId, NOT: { deletedAt: null } },
+      select: { id: true, isSystem: true, shortName: true },
     });
     if (!existing) throw new NotFoundException('Видалену одиницю виміру не знайдено');
     // Bug #305: defense-in-depth — системні одиниці не повинні бути soft-deleted взагалі
@@ -52,6 +54,7 @@ export class UnitsService {
     // (наприклад, новий active рядок створений після soft-delete старого) — інакше P2002 → 500.
     const activeDuplicate = await this.prisma.unitOfMeasure.findFirst({
       where: { orgId, shortName: existing.shortName, deletedAt: null, NOT: { id } },
+      select: { id: true },
     });
     if (activeDuplicate)
       throw new ConflictException(
@@ -74,8 +77,10 @@ export class UnitsService {
   }
 
   async create(orgId: string, dto: CreateUnitDto): Promise<UnitResponseDto> {
+    // sto-optimize: only id + deletedAt consumed (restore-vs-conflict branch).
     const anyExisting = await this.prisma.unitOfMeasure.findFirst({
       where: { orgId, shortName: dto.shortName },
+      select: { id: true, deletedAt: true },
     });
     if (anyExisting) {
       if (!anyExisting.deletedAt)

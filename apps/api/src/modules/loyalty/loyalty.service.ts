@@ -41,7 +41,11 @@ export class LoyaltyService {
         where: { id: counterpartyId, orgId, deletedAt: null },
         select: { id: true },
       }),
-      this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } }),
+      // sto-optimize: read only the field that toDto consumes.
+      this.prisma.loyaltyAccount.findFirst({
+        where: { counterpartyId, orgId },
+        select: { balance: true },
+      }),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     return { balance: acc ? Number(acc.balance) : 0, counterpartyId };
@@ -54,7 +58,11 @@ export class LoyaltyService {
         where: { id: counterpartyId, orgId, deletedAt: null },
         select: { id: true },
       }),
-      this.prisma.loyaltyAccount.findFirst({ where: { counterpartyId, orgId } }),
+      // sto-optimize: only acc.id used downstream for accountId filter.
+      this.prisma.loyaltyAccount.findFirst({
+        where: { counterpartyId, orgId },
+        select: { id: true },
+      }),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     if (!acc) return { items: [], total: 0 };
@@ -114,7 +122,11 @@ export class LoyaltyService {
     // незалежні reads разом — settings гарантовано потрібен (якщо disabled — early
     // return до upsert), counterparty гарантовано потрібен (для upsert).
     const [settings, cp] = await Promise.all([
-      this.prisma.organisationSettings.findFirst({ where: { orgId } }),
+      // sto-optimize: only loyalty config fields used here.
+      this.prisma.organisationSettings.findFirst({
+        where: { orgId },
+        select: { loyaltyEnabled: true, loyaltyEarnPer: true, loyaltyEarnPoints: true },
+      }),
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
         select: { id: true },
@@ -172,7 +184,11 @@ export class LoyaltyService {
         where: { id: counterpartyId, orgId, deletedAt: null },
         select: { id: true },
       }),
-      this.prisma.organisationSettings.findFirst({ where: { orgId } }),
+      // sto-optimize: only redeem rate is consumed downstream.
+      this.prisma.organisationSettings.findFirst({
+        where: { orgId },
+        select: { loyaltyRedeemRate: true },
+      }),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     const redeemRate = Number(settings?.loyaltyRedeemRate ?? 1);

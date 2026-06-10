@@ -59,9 +59,16 @@ export class CashRegistersService {
   }
 
   async create(orgId: string, dto: CreateCashRegisterDto): Promise<CashRegisterResponseDto> {
+    // sto-optimize: narrow FK guards — only existence is checked, full rows are not used.
     const [currency, branch] = await Promise.all([
-      this.prisma.currency.findFirst({ where: { id: dto.currencyId, orgId, deletedAt: null } }),
-      this.prisma.garageBranch.findFirst({ where: { id: dto.branchId, orgId, deletedAt: null } }),
+      this.prisma.currency.findFirst({
+        where: { id: dto.currencyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.garageBranch.findFirst({
+        where: { id: dto.branchId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
     ]);
     if (!currency) throw new NotFoundException('Валюту не знайдено');
     if (!branch) throw new NotFoundException('Філію не знайдено');

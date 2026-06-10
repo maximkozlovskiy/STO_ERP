@@ -103,12 +103,24 @@ export default function PaymentsTab() {
   };
 
   const importPaymentsFromTemplates = async (templates: SystemTemplate[]) => {
-    for (const t of templates) {
-      const created = await apiFetch<PaymentMethod>('/payment-methods', {
-        method: 'POST',
-        body: JSON.stringify(t.data),
-      });
-      setPayments(prev => [...prev, created]);
+    // sto-optimize: bulk-create templates паралель — кожен POST незалежний (унікальні
+    // codes у шаблонах). Sequential N × RTT → max single RTT. Promise.allSettled зберігає
+    // per-item error tracking без abort'у решти при першій помилці (паралельний паттерн
+    // з ndi/PaymentsTab — cycle-N gap по другому файлу з тим самим pattern).
+    const results = await Promise.allSettled(
+      templates.map(t =>
+        apiFetch<PaymentMethod>('/payment-methods', {
+          method: 'POST',
+          body: JSON.stringify(t.data),
+        }),
+      ),
+    );
+    const created: PaymentMethod[] = [];
+    for (const r of results) {
+      if (r.status === 'fulfilled') created.push(r.value);
+    }
+    if (created.length > 0) {
+      setPayments(prev => [...prev, ...created]);
     }
   };
 
