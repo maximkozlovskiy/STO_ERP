@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+9d87c119 fix(security): strip PII from checkConflicts response
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 094cb4f6 docs(memory): update MemoryManual after CreateWorkOrderModal perf optimize
@@ -2518,6 +2519,16 @@ shared DTO) — використовуй той самий enrichment-метод
 - `daysUntil(date, nowMs)` — кількість днів до дати
 - `toIdMap<T extends {id}>(arr)` — O(N) build, O(1) lookup Map; use instead of `.find()` per row in `.map()`
 - `calcVatTotals(rows: {qty, price}[], vatRate)` — single-pass total + vat; use in tfoot/footer instead of twin `.reduce()` calls
+
+---
+
+## Gotcha — Security: PII у read-endpoint з широким доступом (9d87c119)
+
+`POST /calendar/slots/check-conflicts` доступний MECHANIC ролі. `CONFLICT_SELECT` включав
+`counterparty.phone`, `vehiclePlate` — тобто MECHANIC міг enumерувати всіх клієнтів.
+**Правило:** read-only endpoints з MECHANIC/wide-role доступом НІКОЛИ не повинні повертати PII
+(cpPhone, counterpartyName, vehiclePlate). Якщо endpoint потребує і non-PII і PII полів для різних ролей
+— зробити окремий `toConflictDto()` без PII для wide-access шляху.
 
 ---
 
