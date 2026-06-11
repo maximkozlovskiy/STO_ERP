@@ -450,6 +450,8 @@ export class CalendarService {
     // Security: strip PII — conflict check only needs scheduling fields + WO number.
     // MECHANIC role has access to this endpoint; returning cpPhone/vehiclePlate would
     // allow enumeration of all customer PII across the org.
+    // Defense-in-depth: counterpartyId also dropped — no consumer uses it, and exposing
+    // it would let MECHANIC enumerate customer UUIDs via time-window probing.
     const CONFLICT_SELECT = {
       id: true,
       startAt: true,
@@ -457,7 +459,6 @@ export class CalendarService {
       liftId: true,
       employeeId: true,
       workOrderId: true,
-      counterpartyId: true,
       parentSlotId: true,
       status: true,
       type: true,
@@ -531,13 +532,12 @@ export class CalendarService {
     return ((kyivHour - utcHour + 24) % 24) * 3600000;
   }
 
-  /** Minimal DTO for conflict-check response — no PII fields. */
+  /** Minimal DTO for conflict-check response — no PII fields, no counterparty enumeration. */
   private toConflictDto(slot: {
     id: string;
     liftId: string | null;
     employeeId: string | null;
     workOrderId: string | null;
-    counterpartyId?: string | null;
     parentSlotId?: string | null;
     startAt: Date;
     endAt: Date;
@@ -558,7 +558,7 @@ export class CalendarService {
       status: slot.status,
       type: slot.type,
       workOrderNumber: slot.workOrder?.number,
-      counterpartyId: slot.counterpartyId ?? null,
+      counterpartyId: null,
       counterpartyName: undefined,
       cpPhone: null,
       vehicleSummary: null,
