@@ -21,11 +21,13 @@ const serviceMock = {
 };
 
 let jwtAllow = true;
+let jwtRole = 'ADMIN';
 const mockJwtGuard = {
   canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
-    req.user = { sub: 'emp-1', orgId: 'org-1', role: 'ADMIN' };
+    // sub/id parity: @CurrentUser() reads request.user; jwt.strategy returns { id, orgId, role }.
+    req.user = { id: 'emp-1', sub: 'emp-1', orgId: 'org-1', role: jwtRole };
     return true;
   }),
 };
@@ -65,11 +67,12 @@ describe('Calendar — HTTP Contract', () => {
 
   beforeEach(() => {
     jwtAllow = true;
+    jwtRole = 'ADMIN';
     vi.clearAllMocks();
   });
 
   describe('GET /calendar/slots', () => {
-    it('повертає 200 + масив слотів, прокидає date у сервіс', async () => {
+    it('повертає 200 + масив слотів, прокидає date + user.role у сервіс', async () => {
       serviceMock.findSlots.mockResolvedValueOnce([]);
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
@@ -77,21 +80,47 @@ describe('Calendar — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(200);
       expect(Array.isArray(res.json())).toBe(true);
+      // Security (11c8ded7): role прокидається 3-м аргументом для PII-strip MECHANIC.
       expect(serviceMock.findSlots).toHaveBeenCalledWith(
         'org-1',
         '2026-05-22',
+        'ADMIN',
         undefined,
         undefined,
       );
     });
 
-    it('прокидає branchId/employeeId-фільтри у сервіс', async () => {
+    it('прокидає branchId/employeeId-фільтри + role у сервіс', async () => {
       serviceMock.findSlots.mockResolvedValueOnce([]);
       await (app as NestFastifyApplication).inject({
         method: 'GET',
         url: `/calendar/slots?date=2026-05-22&branchId=${LIFT_ID}&employeeId=${WO_ID}`,
       });
-      expect(serviceMock.findSlots).toHaveBeenCalledWith('org-1', '2026-05-22', LIFT_ID, WO_ID);
+      expect(serviceMock.findSlots).toHaveBeenCalledWith(
+        'org-1',
+        '2026-05-22',
+        'ADMIN',
+        LIFT_ID,
+        WO_ID,
+      );
+    });
+
+    // Security regression (11c8ded7): MECHANIC role → service отримує 'MECHANIC',
+    // щоб піти narrow-SELECT-гілкою без counterparty/vehicle PII.
+    it('прокидає role="MECHANIC" коли юзер — механік (PII-strip path)', async () => {
+      jwtRole = 'MECHANIC';
+      serviceMock.findSlots.mockResolvedValueOnce([]);
+      await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/calendar/slots?date=2026-05-22',
+      });
+      expect(serviceMock.findSlots).toHaveBeenCalledWith(
+        'org-1',
+        '2026-05-22',
+        'MECHANIC',
+        undefined,
+        undefined,
+      );
     });
 
     it('повертає 400 коли branchId не UUID (ParseUUIDPipe optional)', async () => {

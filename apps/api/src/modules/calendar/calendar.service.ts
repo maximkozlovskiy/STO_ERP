@@ -95,6 +95,9 @@ export class CalendarService {
 
     if (isMechanic) {
       // MECHANIC sees scheduling fields + WO number only — no customer PII.
+      // counterpartyId deliberately NOT selected: it gets dropped by toConflictDto()
+      // anyway, and exposing it would let MECHANIC enumerate customer UUIDs via
+      // time-window probing (defense-in-depth, same rationale as checkConflicts).
       const slots = await this.prisma.calendarSlot.findMany({
         where,
         orderBy: { startAt: 'asc' },
@@ -105,7 +108,6 @@ export class CalendarService {
           liftId: true,
           employeeId: true,
           workOrderId: true,
-          counterpartyId: true,
           parentSlotId: true,
           status: true,
           type: true,
