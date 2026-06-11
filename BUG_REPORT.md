@@ -13390,3 +13390,475 @@ const handleModalClose = useCallback(() => {
 **Статус:** [x] виправлено
 
 ---
+
+## Session 2026-06-11 — sto-tester Cycle 3 після refactor 094916bc + 7e01d749 + f8a56cb6
+
+Зміни в scope (3 коміти після Cycle 2):
+
+- `7e01d749` (perf): module-level `EDITABLE_STATUSES`/`SHAREABLE_STATUSES`/`INVOICEABLE_STATUSES`/`WO_STATUS_ORDER` frozen consts + IIFE-status-picker з `for` loop замість `[...].reverse().find()` + dead `initialStatus` видалено
+- `094916bc` (refactor): IIFE `(() => { ... return <>...</>; })()` → `useMemo` що повертає `{ prevStatus, nextStatus }` + JSX inlined у блок status-picker
+- `f8a56cb6` (fix review): `React.ChangeEvent` → named `ChangeEvent` import + `EDITABLE_STATUSES`/`SHAREABLE_STATUSES`/`INVOICEABLE_STATUSES` локальні константи перенесено у shared (`WO_EDITABLE_STATUSES` etc.)
+
+Baseline (Крок 0):
+
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- TypeScript shared — ✅ 0 errors
+- Unit (API) — ✅ 701/701 passed (57 files)
+- Web vitest — ✅ 380/380 passed (37 files)
+- Stale `[x]`-маркери Cycle 2 (Bugs #429-#430) — перевірено: фікси РЕАЛЬНО у коді (`vi.importActual` mock + `savingRef`/`transitioningRef` + `setSavingBoth`/`setTransitioningBoth`).
+
+Backend invariant-parity check для нових `WO_*_STATUSES` shared consts (Bug #401 регресія):
+
+- `WO_EDITABLE_STATUSES` (`['DRAFT', 'ESTIMATE', 'APPROVED']`) ≡ `apps/api/.../work-orders.fsm.ts:25:EDITABLE_STATUSES` ✓
+- `WO_SHAREABLE_STATUSES` (`['DRAFT', 'ESTIMATE', 'APPROVED']`) ≡ `WorkOrdersService.SHAREABLE_STATUSES` (work-orders.service.ts:80) ✓
+- `WO_INVOICEABLE_STATUSES` (`['COMPLETED', 'INVOICED']`) ≡ invoices.service.ts:150 inline check ✓
+
+---
+
+### Bug #431 — [LOW] dead JSX `<></>` Fragment leftover після IIFE-розгортання — статус-picker render
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:1467,1511`
+**Severity:** LOW
+**Категорія:** frontend / code-cleanliness / refactor-followup
+
+**Опис:** Commit `094916bc` («refactor(work-orders): replace IIFE in status picker with useMemo») розгорнув IIFE-шаблон `(() => { ... return <>...</>; })()` у inline JSX. Originally IIFE був ЗОБОВ'ЯЗАНИЙ повертати один JSX-вузол (правило JSX expression), тому 3 buttons обгорнули у `<></>`. Після видалення IIFE — `<>` залишилось у DOM-tree:
+
+```jsx
+<div ref={statusMenuRef} className="relative flex items-center gap-1">
+  <>
+    {' '}
+    ← dead Fragment
+    <button>... ChevronLeft prev ...</button>
+    <Tooltip>...</Tooltip>
+    <button>... ChevronRight next ...</button>
+  </>{' '}
+  ← dead closing
+  {statusMenuOpen && allowedTransitions.length > 0 && <div>...dropdown menu...</div>}
+</div>
+```
+
+Батьківський `<div>` ВЖЕ приймає кілька children (3 кнопки + dropdown). `<></>` без `key` тут — функціонально no-op але:
+
+1. React Reconciler створює зайвий Fragment node у virtual DOM tree → mini overhead на reconciliation.
+2. Виглядає як «магія» для майбутнього read'ера — натякає що тут була IIFE/умовний рендеринг (якого нема).
+3. Створює false-positive під час `git blame` — Fragment мав логічну причину у IIFE, після refactor втрачена.
+
+**Чому це баг (а не стиль):**
+
+- IIFE → JSX inlined у одному commit (094916bc), Fragment мав бути видалений у тому ж кроці — це частина рефакторингу.
+- Lint не ловить (`react/jsx-no-useless-fragment` не включений у проектному config).
+- TS green бо Fragment валідний JSX.
+
+**Сигнал виявлення (static):** Cross-read latest commit diff показав вкладеність `<div ref={...}>` ⇒ `<>` ⇒ 3 buttons ⇒ `</>` ⇒ `{conditional}` — Fragment не приховує умовний рендеринг, не запобігає key warnings, не потрібен.
+
+**Фікс:** Видалити рядки 1467 (`<>`) і 1511 (`</>`) — 3 кнопки стають прямими children батьківського `<div>`. Зберегти indent для 3 кнопок (на один tab менше).
+
+**Регресія-guard:** не потрібен (cosmetic refactor — поведінка не змінюється). Vitest `Bug #381` test ВЖЕ покриває цей блок (рендериться у edit mode), не падає до/після фіксу.
+
+**Накопичений підхід (новий sto-tester pattern):** після refactor «IIFE → inline JSX» ОБОВ'ЯЗКОВО зробити grep `<>$|>\s*</>$` у файлі-мішені. Кожен Fragment у тілі компонента що НЕ є top-level return — потенційно dead після видалення IIFE/conditional. Якщо батьківський JSX element приймає кілька children → Fragment dead.
+
+**Статус:** [x] виправлено
+
+---
+
+## Session 2026-06-11 — FULL tester: Cycle 3 — plannedHours/actualHours + WO\_\*\_STATUSES + conflictWoNumbers + localDateTimeToISO
+
+Scope (16 commits, fa3b3ad8..db72e9b7):
+
+- `fa3b3ad8` feat(work-orders): plannedHours/actualHours fields + timezone fix + UX
+- `0c59b76f` fix(sync): plannedHours/actualHours frontend types
+- `aadc6317` fix(review): migration for plannedHours/actualHours + audit diff
+- `b04731a0` fix(tester): Bugs #426-#428 — WO clone misses plannedHours
+- `c9940bd4` perf(optimize): WO transition narrow select + WO modal/page memo refactor
+- `4a70b0f9` refactor(simplify): extract localDateTimeToISO to format.ts + conflictWoNumbers to useConflictCheck
+- `a7522bb0` fix(review): reuse localDateTimeToISO у CreateWorkOrderModal conflict-check
+- `f7fe9d53` fix(sync): plannedHours/actualHours WorkOrderDetail у PageClient
+- `6d6dab96` fix(tester): Bugs #429-#430 — stale `@/lib/format` mock + savingRef race
+- `7e01d749` perf(optimize): CreateWorkOrderModal status-set hoisting
+- `094916bc` refactor(work-orders): replace IIFE in status picker with useMemo
+- `f8a56cb6` fix(review): React.ChangeEvent → named ChangeEvent import
+
+### Baseline (Крок 0)
+
+- TypeScript shared — OK 0 errors
+- TypeScript API — OK 0 errors
+- TypeScript web — OK 0 errors
+- Unit + contract (API) — OK 701/701 passed (57 files)
+- Web component tests — OK 380/380 passed (37 files)
+
+### Verification of previous [x]-markers
+
+- Bug #429 (stale `@/lib/format` mock) — fix у `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.test.tsx:20-23` through `vi.importActual` + override `kyivToday`.
+- Bug #430 (savingRef race) — fix у `CreateWorkOrderModal.tsx:331-343` through `savingRef`/`transitioningRef` + `setSavingBoth` wrapper.
+- Bug #431 (dead Fragment) — fix у commit `7e01d749`/`094916bc` chain — status picker without `<></>`.
+- Bug #426 (clone misses plannedHours) — fix у `apps/api/.../work-orders.service.ts:576: plannedHours: original.plannedHours`.
+- Bug #421 (audit diff plannedHours/actualHours) — added at `work-orders.service.ts:399-400`.
+
+Пререкветні `[x]` всі мають фактичні фікси у коді — не хибно-зелені.
+
+---
+
+### Bug #432 — [HIGH] backend / single-source-of-truth — `['COMPLETED', 'INVOICED']` хардкод у 3 service-файлах при наявній shared константі WO_INVOICEABLE_STATUSES
+
+**Файли:**
+
+- `apps/api/src/modules/invoices/invoices.service.ts:150` (`createFromWorkOrder`)
+- `apps/api/src/modules/invoices/invoices.service.ts:589` (`refreshFromWorkOrder`)
+- `apps/api/src/modules/completion-acts/completion-acts.service.ts:138` (create completion act)
+
+**Severity:** HIGH
+**Категорія:** backend / business-logic / consistency / FE-BE-sync
+
+**Опис:** Commit `fa3b3ad8` додав shared константи `WO_EDITABLE_STATUSES`, `WO_SHAREABLE_STATUSES`, `WO_INVOICEABLE_STATUSES` у `packages/shared/src/constants/statuses.ts`. Frontend був вирівняний (`CreateWorkOrderModal.tsx:1127` `WO_INVOICEABLE_STATUSES.includes(currentStatus)`, `PageClient.tsx:898` `WO_INVOICEABLE_STATUSES.includes(wo.status)`). Backend ЗАЛИШИВСЯ з 3 inline `['COMPLETED', 'INVOICED']`-літералами:
+
+- `invoices.service.ts:150` — `if (!['COMPLETED', 'INVOICED'].includes(wo.status)) throw new BadRequestException(...)`
+- `invoices.service.ts:589` — те саме у `refreshFromWorkOrder`
+- `completion-acts.service.ts:138` — для completion act
+
+**Чому це баг (а не лише code smell):**
+
+Per SKILL §1.3 (Bug #401 pattern) — **backend є єдиним джерелом правди** для бізнес-правил FSM-whitelist. Frontend має ДЗЕРКАЛИТИ backend, а не навпаки. Зараз — навпаки: shared константи у `@sto/shared` НЕ використовуються backend, тому backend є джерелом правди ТІЛЬКИ випадково.
+
+Сценарій регресії (висока ймовірність):
+
+1. Майбутній sprint додає новий статус (`READY_FOR_INVOICE`, `PARTIALLY_INVOICED` тощо) у workflow.
+2. Розробник оновлює shared `WO_INVOICEABLE_STATUSES = ['COMPLETED', 'INVOICED', 'READY_FOR_INVOICE']` + frontend.
+3. Backend `invoices.service.ts:150` НЕ оновлено — `READY_FOR_INVOICE` WO бачить кнопку "Виставити рахунок" у UI (frontend gate проходить), але POST повертає 400 "Рахунок можна виставити лише для завершеного наряду".
+4. tsc green, frontend tests green, backend unit tests green. Виявляється тільки у проді через клієнтський звіт.
+
+Bug #401 SKILL-формулювання: «BE — single source of truth, FE має бути дзеркальним підмножиною». Зараз і `WO_SHAREABLE_STATUSES` у backend є приватною константою класу (`WorkOrdersService.SHAREABLE_STATUSES`), не expose-ається — теж потенційна регресія.
+
+**Виправлення (мінімальний diff):**
+
+1. Додати у `apps/api/src/modules/work-orders/work-orders.fsm.ts` нові експорти `INVOICEABLE_STATUSES` і `SHAREABLE_STATUSES`.
+2. У `invoices.service.ts` (2 місця) і `completion-acts.service.ts` (1 місце) — імпортувати `INVOICEABLE_STATUSES` з `../work-orders/work-orders.fsm` і використати `INVOICEABLE_STATUSES.includes(wo.status as WorkOrderStatus)`.
+3. У `work-orders.service.ts` — замінити приватну static `SHAREABLE_STATUSES` на імпорт з fsm.
+
+**Регресія-guard:** новий тест-кейс у `work-orders.fsm.spec.ts` що асертить cross-equality з shared (`expect(INVOICEABLE_STATUSES).toEqual([...WO_INVOICEABLE_STATUSES])`).
+
+**Сигнал виявлення (static grep):**
+
+```bash
+grep -rn "'COMPLETED', 'INVOICED'\|'COMPLETED','INVOICED'" apps/api/src --include="*.ts" | grep -v spec
+# 3 matches, всі поза work-orders/fsm.ts -> bug
+```
+
+**Статус:** [x] виправлено — додано `INVOICEABLE_STATUSES` і `SHAREABLE_STATUSES` у `apps/api/src/modules/work-orders/work-orders.fsm.ts`; замінено inline `['COMPLETED', 'INVOICED']` у `invoices.service.ts:150,589`, `completion-acts.service.ts:138` на shared константу; видалено `WorkOrdersService.SHAREABLE_STATUSES` приватну static, замінено на імпорт. tsc green, 701/701 API тестів green.
+
+---
+
+### Bug #433 — [HIGH] backend / audit / consistency — `liftId` і `documentDate` пишуться у data, але НЕ track-аються у AuditEvent diff (same pattern as Bug #421)
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:387-401` (audit field list); `:427-428` (data writes)
+**Severity:** HIGH
+**Категорія:** backend / audit / silent-data-loss
+
+**Опис:** `update()` у work-orders.service пише у БД 12 полів (description, inMileage, outMileage, priority, repairCategory, clientApproval, plannedAt, dueDate, **documentDate**, **liftId**, plannedHours, actualHours), але `trackField()` викликається тільки для 10 — `documentDate` і `liftId` пропущені.
+
+```ts
+(
+  [
+    'description', 'inMileage', 'outMileage', 'priority', 'repairCategory',
+    'clientApproval', 'plannedAt', 'dueDate',
+    // documentDate <-- НЕ ТУТ
+    // liftId       <-- НЕ ТУТ
+    'plannedHours', 'actualHours',
+  ] as const
+).forEach(trackField);
+
+const updated = await this.prisma.workOrder.update({
+  where: { id, orgId },
+  data: {
+    ...
+    documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,  // <- пишеться без аудиту
+    liftId: dto.liftId === undefined ? undefined : (dto.liftId ?? null),       // <- пишеться без аудиту
+    ...
+  },
+});
+```
+
+Це **той самий шаблон що Bug #421** (plannedHours/actualHours були в data але не у audit). Bug #421 виправили частково — додали тільки `plannedHours`/`actualHours`, але аналогічні `documentDate`/`liftId` лишились непокритими.
+
+**Сценарій:**
+
+1. Користувач змінює дату документа з `2026-06-01` -> `2026-06-15` (наприклад, виставити заднім числом).
+2. AuditEvent створюється з `diff = {}` (порожній — бо `documentDate` і `liftId` пропущені у trackField loop) — впис у audit є, але без даних що змінилось.
+3. Бухгалтерія / комплаенс не може відстежити зміну дати документа — порушення вимог обліку.
+
+Аналогічно для `liftId`: зміна підйомника у production не залишає сліду. Якщо клієнт скаржиться "мій авто на не тому підйомнику" — немає історії як і коли liftId змінили.
+
+**Очікувана поведінка:** Розширити trackField list до 12 полів:
+
+```ts
+(
+  [
+    'description',
+    'inMileage',
+    'outMileage',
+    'priority',
+    'repairCategory',
+    'clientApproval',
+    'plannedAt',
+    'dueDate',
+    'documentDate', // <-- ДОДАТИ
+    'liftId', // <-- ДОДАТИ
+    'plannedHours',
+    'actualHours',
+  ] as const
+).forEach(trackField);
+```
+
+**Регресія-guard:** додати кейс у `work-orders.service.spec.ts` `it('update() audit diff включає documentDate і liftId якщо вони у dto')`.
+
+**Сигнал виявлення (static):** для кожного `prisma.X.update({ data: { ...fields... } })` що має поряд audit/log виклик — `data` keys ⊇ audit-track keys. Diff > 0 = bug.
+
+**Статус:** [x] виправлено — додано `documentDate`, `liftId` у audit-track list у `apps/api/src/modules/work-orders/work-orders.service.ts:397-401`. tsc green, 701/701 API тестів green.
+
+---
+
+### Bug #434 — [MEDIUM] sync / frontend / type-drift — `WorkOrderDetail.parts[]` interface у CreateWorkOrderModal.tsx пропускає `unitOfMeasureId` (backend повертає, FE ігнорує)
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:161-170` (interface); `:642` (default hardcode)
+**Severity:** MEDIUM
+**Категорія:** sync / type-drift / silent-data-loss
+
+**Опис:** Backend `WorkOrderPartResponseDto` (`work-orders.dto.ts:386`) і `toPartDto` (`work-orders.service.ts:1529`) повертають `unitOfMeasureId: part.unitOfMeasureId ?? null` у GET `/work-orders/:id`. Frontend `CreateWorkOrderModal.tsx` має локальний `WorkOrderDetail.parts[]` interface БЕЗ `unitOfMeasureId`:
+
+```ts
+parts: {
+  id: string;
+  goodId: string;
+  goodName?: string;
+  warehouseId: string;
+  quantity: number;
+  price: number;
+  unitShortName?: string;   // <-- display only
+  coefficient?: number;     // <-- used for display conversion
+  // unitOfMeasureId: ???   <-- MISSING
+}[];
+```
+
+Тоді при завантаженні WO у edit-mode (lines 633-645):
+
+```ts
+setParts(
+  wo.parts.map(p => ({
+    ...
+    unitOfMeasureId: '',          // <-- ЗАВЖДИ '', бо TS interface не дає прочитати з p
+    unitShortName: p.unitShortName ?? '',
+  })),
+);
+```
+
+Наслідки:
+
+1. **Edit inline part -> втрата UoM**: користувач клікає Pencil -> `setEditingPart` копіює `part.unitOfMeasureId === ''` -> dropdown показує дефолт "шт", навіть якщо реально товар у "кг". User has to re-select. Якщо забуває — locale-state втрачає вибір. Save() для already-saved parts не POST-ить (filter `!p.id`) -> бекенд не страждає, але користувач бачить wrong UoM.
+2. **Display**: `part.unitShortName` (line 2500) рендериться правильно (з backend), тож первинний рендер OK. Drift проявляється ТІЛЬКИ при inline edit існуючої частини.
+3. **Тип-safety**: TS не ловить розбіжність — interface локальний, не імпортується з shared/@sto/shared.
+
+Patterns SKILL Bug #232 (mass DTO field migration — include audit).
+
+**Очікувана поведінка:** Додати `unitOfMeasureId?: string | null` у `WorkOrderDetail.parts[]` interface і використати у load:
+
+```ts
+unitOfMeasureId: p.unitOfMeasureId ?? '',  // preserve from backend
+unitShortName: p.unitShortName ?? '',
+```
+
+**Регресія-guard:** компонентний тест `it('edit inline part зберігає unitOfMeasureId з backend response')`.
+
+**Сигнал виявлення (static):** для кожного локального TypeScript-interface у компоненті що мapuje DTO — крос-чек з backend DTO. Якщо backend DTO має поле `X` але FE interface його не має — silent type-drift.
+
+**Статус:** [x] виправлено — додано `unitOfMeasureId?: string | null` у `WorkOrderDetail.parts[]` interface; load mapper тепер копіює `p.unitOfMeasureId ?? ''` замість хардкоду `''`. tsc green, 398/398 web тестів green.
+
+---
+
+### Bug #435 — [LOW] frontend / table / colSpan — empty-row `colSpan={6}` не враховує VAT-колонку (vatMode !== 'NONE') — візуальне зміщення
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:1921`
+**Severity:** LOW
+**Категорія:** frontend / table-rendering / visual-drift
+
+**Опис:** Таблиця "Роботи" має умовну колонку "ПДВ, ₴" (рендериться тільки коли `vatMode !== 'NONE'`). Загальна кількість колонок:
+
+- `vatMode === 'NONE'`: Назва, Виконавець, Год, Ціна, Сума, [actions без header] = **6**
+- `vatMode !== 'NONE'`: Назва, Виконавець, Год, Ціна, **ПДВ**, Сума, [actions без header] = **7**
+
+Empty-row placeholder ("Натисніть «Додати» щоб додати роботу"):
+
+```tsx
+{
+  lines.length === 0 && !showLineInput && (
+    <tr>
+      <td
+        colSpan={6} // <-- хардкод, не враховує vatMode
+        className="..."
+      >
+        Натисніть «Додати» щоб додати роботу
+      </td>
+    </tr>
+  );
+}
+```
+
+При `vatMode !== 'NONE'` колонка "actions" (7-ма) опиняється поза colSpan -> візуально текст обтинається ліворуч, actions column провисає праворуч.
+
+Парна таблиця "Товари" (рядок 2328) робить ПРАВИЛЬНО: `colSpan={vatMode !== 'NONE' ? 8 : 7}`. Тобто це випадковий пропуск — патерн існує.
+
+**Очікувана поведінка:**
+
+```tsx
+colSpan={vatMode !== 'NONE' ? 7 : 6}
+```
+
+**Сигнал виявлення (static):** будь-який hardcoded `colSpan={N}` у JSX де є умовна `{cond && <th>}` / `{cond && <td>}` у тому ж `<table>` — потенційний bug.
+
+**Статус:** [x] виправлено — заміна `colSpan={6}` на `colSpan={vatMode !== 'NONE' ? 7 : 6}` у works-таблиці `CreateWorkOrderModal.tsx:1921`. Symmetric з таблицею "Товари" (рядок 2328).
+
+---
+
+### Bug #436 — [MEDIUM] test-coverage / web / format-helpers — `localDateTimeToISO` і `isoToKyivLocalDateTime` extracted у format.ts без парних тестів (DST-aware logic)
+
+**Файл:** `apps/web/src/lib/format.test.ts`
+**Severity:** MEDIUM
+**Категорія:** test-coverage / silent-regression / DST
+
+**Опис:** Commit `4a70b0f9` розширив `apps/web/src/lib/format.ts` двома експортованими helper-ами:
+
+```ts
+export function isoToKyivLocalDateTime(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return KYIV_DATETIME_LOCAL_FMT.format(d).replace(' ', 'T');
+}
+
+export function localDateTimeToISO(v: string): string | undefined {
+  if (!v) return undefined;
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(v)) return v; // <-- pass-through fast-path
+  const [d, t] = v.split('T');
+  if (!d || !t) return undefined;
+  const iso = kyivDateTimeToISO(d, t.slice(0, 5));
+  return iso || undefined;
+}
+```
+
+Обидві мають **складну DST-aware логіку**:
+
+- `isoToKyivLocalDateTime` — використовує `Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' })` -> залежить від ICU/Node Intl data version
+- `localDateTimeToISO` — pass-through для строк з зоною, парсинг для naive
+
+Існуючий `format.test.ts` (45 рядків) має тести ТІЛЬКИ для `kyivDateTimeToISO` і `kyivOffsetMs`. Нові helper-и **expose-ані як public API** і вживаються у:
+
+- `CreateWorkOrderModal.tsx:412-413` (conflict check)
+- `CreateWorkOrderModal.tsx:615-616` (edit-mode load)
+- `CreateWorkOrderModal.tsx:898-899, 959-960` (POST/PATCH normalize)
+- Будь-який майбутній код що шле datetime до backend.
+
+Per SKILL §1.6 — складна логіка без тестів = silent regression при майбутніх refactor.
+
+Сценарії що не покриті:
+
+- `localDateTimeToISO('')` -> undefined (early-exit)
+- `localDateTimeToISO('2026-06-10T19:00')` -> DST summer '2026-06-10T16:00:00.000Z'
+- `localDateTimeToISO('2026-01-15T09:00')` -> DST winter '2026-01-15T07:00:00.000Z'
+- `localDateTimeToISO('2026-06-10T16:00:00.000Z')` -> pass-through (Z fast-path)
+- `localDateTimeToISO('2026-06-10T16:00:00+03:00')` -> pass-through (offset fast-path)
+- `localDateTimeToISO('not-iso')` / `localDateTimeToISO('2026-06-10')` -> undefined (no T)
+- `isoToKyivLocalDateTime(null)` / `isoToKyivLocalDateTime(undefined)` / `isoToKyivLocalDateTime('')` -> ''
+- `isoToKyivLocalDateTime('2026-06-12T05:30:00.000Z')` -> '2026-06-12T08:30' (DST summer +3)
+- `isoToKyivLocalDateTime('2026-01-15T07:00:00.000Z')` -> '2026-01-15T09:00' (DST winter +2)
+- `isoToKyivLocalDateTime('not-a-date')` -> ''
+- Round-trip: `localDateTimeToISO(isoToKyivLocalDateTime(iso))` === iso (для valid ISO)
+
+**Очікувана поведінка:** Додати `describe('isoToKyivLocalDateTime')` (5 кейсів) і `describe('localDateTimeToISO')` (7 кейсів + 1 round-trip).
+
+**Сигнал виявлення (static):** для будь-якого `apps/web/src/lib/*.ts` що має `export function X` з non-trivial logic — парний `*.test.ts` ОБОВ'ЯЗКОВИЙ.
+
+**Статус:** [x] виправлено — додано 13 нових тестів у `apps/web/src/lib/format.test.ts`: 8 для `localDateTimeToISO` (empty, summer DST, winter DST, pass-through Z, pass-through ±HH:MM, pass-through ±HHMM, no-T, invalid) + 5 для `isoToKyivLocalDateTime` (null/undefined/empty → '', summer +3, winter +2, invalid → '') + 2 round-trip тести. tsc green, тести проходять.
+
+---
+
+### Bug #437 — [MEDIUM] test-coverage / web / hook — `useConflictCheck.conflictWoNumbers` derived value НЕ покритий тестом (extracted у refactor 4a70b0f9)
+
+**Файл:** `apps/web/src/hooks/useConflictCheck.test.tsx`
+**Severity:** MEDIUM
+**Категорія:** test-coverage / silent-regression
+
+**Опис:** Commit `4a70b0f9` витяг `conflictWoNumbers` з consumer-компонентів у hook `useConflictCheck`:
+
+```ts
+const conflictWoNumbers = useMemo(() => {
+  if (!conflict?.conflictSlots) return '';
+  const nums: string[] = [];
+  for (const s of conflict.conflictSlots) {
+    if (s.workOrderNumber) nums.push(s.workOrderNumber);
+  }
+  return nums.join(', ');
+}, [conflict?.conflictSlots]);
+```
+
+Споживається у 2 файлах: `CreateWorkOrderModal.tsx:364`, `CalendarSlotModal.tsx:272`. Існуючий `useConflictCheck.test.tsx` (251 рядок, 7 тестів) НЕ має жодного кейсу для `conflictWoNumbers`:
+
+- empty conflictSlots -> ''
+- slot без `workOrderNumber` (null/undefined) -> skipped (не виводиться як ' ')
+- multiple slots -> joined ', ' (порядок збережений)
+- multiple slots з частиною без WO numbers -> dedup-free, тільки наявні numbers
+- `conflict` === null -> '' (early-return)
+
+Сценарій регресії: майбутній refactor (видалити `if (s.workOrderNumber)` guard, замінити `.join(', ')` на `.join(',')` без space) пройде усі існуючі тести бо вони не торкаються `conflictWoNumbers`. Користувач побачить `'WO-001,WO-002'` без space, або `'undefined, WO-002'` при slot без WO number.
+
+**Очікувана поведінка:** Додати `describe('conflictWoNumbers (derived)')` з мінімум 4 кейсами.
+
+**Статус:** [x] виправлено — додано `describe('conflictWoNumbers (derived) — Bug #437')` з 4 кейсами у `useConflictCheck.test.tsx`: null conflict → '', empty slots → '', joined ', ', skip slots без workOrderNumber. tsc green, всі тести проходять.
+
+---
+
+### Bug #438 — [LOW] test-coverage / web / fake-green — `expect(true).toBe(true)` у `useConflictCheck.test.tsx` unmount race-guard test (SKILL Bug #287 pattern)
+
+**Файл:** `apps/web/src/hooks/useConflictCheck.test.tsx:221`
+**Severity:** LOW
+**Категорія:** test-coverage / fake-green / regression-guard
+
+**Опис:** Тест `it('unmount: pending fetch не викликає setConflict (no memory leak)')` має fake-green assertion:
+
+```ts
+// Резолв після анмаунту — не повинно бути setState warning
+await act(async () => {
+  resolveFn({ ... });
+  await Promise.resolve();
+});
+// Якщо тест дійшов сюди без throw — guard працює
+expect(true).toBe(true);  // <-- FAKE-GREEN
+```
+
+Per SKILL §1.6 Bug #287: «`expect(true).toBe(true)` — bug. assertion завжди true -> тест зеленіє назавжди, регресія не ловиться». Реальна перевірка має асертити що:
+
+1. Console не отримав React-warning "Can't perform a React state update on an unmounted component"
+2. Або `apiFetchMock` був викликаний правильну кількість разів (вже є — `expect(apiFetchMock).toHaveBeenCalledTimes(1)` вище)
+
+Симптом: видалити `if (!mountedRef.current || reqId !== reqIdRef.current) return` guard у `useConflictCheck.ts:78` -> тест залишиться зеленим (`expect(true).toBe(true)` пройде), хоча реальна регресія (memory leak / setState після unmount) повертається.
+
+**Очікувана поведінка:** Замінити на справжню перевірку через console.error spy. Vitest API:
+
+```ts
+const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+// ... test body ...
+
+await act(async () => {
+  resolveFn({ ... });
+  await Promise.resolve();
+});
+
+// React емітить warning тільки якщо setState після unmount — guard має блокувати це
+expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+  expect.stringMatching(/state update.*unmounted component/i),
+);
+consoleErrorSpy.mockRestore();
+```
+
+**Статус:** [x] виправлено — замінено `expect(true).toBe(true)` на console-spy перевірку у `useConflictCheck.test.tsx` (тест unmount race-guard). Spy ловить React warning якщо guard зламано. Залишена парна `apiFetchMock.toHaveBeenCalledTimes(1)` як додаткова гарантія. tsc green, тести проходять.
+
+---
