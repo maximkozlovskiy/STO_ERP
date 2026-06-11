@@ -185,6 +185,13 @@ describe('useConflictCheck', () => {
   });
 
   it('unmount: pending fetch не викликає setConflict (no memory leak)', async () => {
+    // Bug #438 (SKILL §1.6 Bug #287): попередня версія мала `expect(true).toBe(true)`
+    // → завжди зелений. Видалення guard `if (!mountedRef.current) return` у hook не
+    // ловиться тестом. Реальна перевірка через console-spy:
+    // React емітить warning «Can't perform a React state update on an unmounted component»
+    // тільки якщо setState виконано після unmount → spy ловить регресію.
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     let resolveFn!: (v: unknown) => void;
     apiFetchMock.mockImplementationOnce(
       () =>
@@ -207,7 +214,7 @@ describe('useConflictCheck', () => {
 
     unmount();
 
-    // Резолв після анмаунту — не повинно бути setState warning
+    // Резолв після анмаунту — guard має блокувати setConflict
     await act(async () => {
       resolveFn({
         liftConflict: true,
@@ -217,8 +224,99 @@ describe('useConflictCheck', () => {
       });
       await Promise.resolve();
     });
-    // Якщо тест дійшов сюди без throw — guard працює
-    expect(true).toBe(true);
+
+    // Bug #438: replace fake-green з реальною асертацією — будь-яка регресія
+    // mountedRef guard викличе React warning у console.error.
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.stringMatching(/state update.*unmounted component/i),
+    );
+
+    // Stale apiFetch count — гарантоване (нічого нового не додалось)
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+
+    // result.current.conflict ХОДА недоступне після unmount, тому не асертимо.
+    consoleErrorSpy.mockRestore();
+  });
+
+  // Bug #437: conflictWoNumbers витягнуто у hook у refactor 4a70b0f9 з consumer-компонентів.
+  // Без тестів — майбутній refactor (видалити guard `if (s.workOrderNumber)`, змінити
+  // join separator) пройде CI зеленим, але користувач побачить зламаний banner.
+  describe('conflictWoNumbers (derived) — Bug #437', () => {
+    it('повертає порожній рядок коли conflict=null (initial state)', () => {
+      const { result } = renderHook(() => useConflictCheck(400));
+      expect(result.current.conflictWoNumbers).toBe('');
+    });
+
+    it('повертає порожній рядок коли conflictSlots=[]', async () => {
+      apiFetchMock.mockResolvedValue({
+        liftConflict: false,
+        employeeConflict: false,
+        anyConflict: false,
+        conflictSlots: [],
+      });
+      const { result } = renderHook(() => useConflictCheck(400));
+      act(() => {
+        result.current.check({
+          liftId: 'L1',
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      expect(result.current.conflictWoNumbers).toBe('');
+    });
+
+    it('joins workOrderNumber з кожного slot через ", " (з пробілом)', async () => {
+      apiFetchMock.mockResolvedValue({
+        liftConflict: true,
+        employeeConflict: false,
+        anyConflict: true,
+        conflictSlots: [
+          { id: 's1', workOrderNumber: 'WO-001', startAt: '', endAt: '', status: 'X', type: 'Y' },
+          { id: 's2', workOrderNumber: 'WO-002', startAt: '', endAt: '', status: 'X', type: 'Y' },
+        ],
+      });
+      const { result } = renderHook(() => useConflictCheck(400));
+      act(() => {
+        result.current.check({
+          liftId: 'L1',
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      expect(result.current.conflictWoNumbers).toBe('WO-001, WO-002');
+    });
+
+    it('пропускає slots без workOrderNumber — повертає тільки наявні номери', async () => {
+      apiFetchMock.mockResolvedValue({
+        liftConflict: true,
+        employeeConflict: false,
+        anyConflict: true,
+        conflictSlots: [
+          { id: 's1', workOrderNumber: 'WO-001', startAt: '', endAt: '', status: 'X', type: 'Y' },
+          { id: 's2', startAt: '', endAt: '', status: 'X', type: 'Y' }, // no workOrderNumber
+          { id: 's3', workOrderNumber: 'WO-003', startAt: '', endAt: '', status: 'X', type: 'Y' },
+        ],
+      });
+      const { result } = renderHook(() => useConflictCheck(400));
+      act(() => {
+        result.current.check({
+          liftId: 'L1',
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      // НЕ містить undefined/null/порожнечі — тільки явно задані номери
+      expect(result.current.conflictWoNumbers).toBe('WO-001, WO-003');
+    });
   });
 
   it('excludeWorkOrderId передається у body запиту (Bug #397)', async () => {

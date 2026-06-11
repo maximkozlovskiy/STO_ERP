@@ -165,6 +165,11 @@ interface WorkOrderDetail {
     warehouseId: string;
     quantity: number;
     price: number;
+    // Bug #434: backend `toPartDto` повертає unitOfMeasureId (work-orders.service.ts:1529),
+    // але локальний interface його пропускав → load mapper хардкодив '' → inline-edit
+    // dropdown губив попередньо обраний UoM. Type drift: interface локальний, не
+    // імпортується з shared, тож TS не ловив розбіжність з backend DTO.
+    unitOfMeasureId?: string | null;
     unitShortName?: string;
     coefficient?: number;
   }[];
@@ -639,7 +644,9 @@ export function CreateWorkOrderModal({
             warehouseId: p.warehouseId,
             quantity: String(p.quantity),
             price: String(p.price),
-            unitOfMeasureId: '',
+            // Bug #434: зберігаємо UoM що повернув backend, інакше inline-edit dropdown
+            // скине вибір до дефолту "шт" навіть якщо реально товар у "кг".
+            unitOfMeasureId: p.unitOfMeasureId ?? '',
             unitShortName: p.unitShortName ?? '',
           })),
         );
@@ -1464,51 +1471,49 @@ export function CreateWorkOrderModal({
                             Статус
                           </label>
                           <div ref={statusMenuRef} className="relative flex items-center gap-1">
-                            <>
+                            <button
+                              type="button"
+                              disabled={transitioning || !statusPrevStep}
+                              onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
+                              className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                            >
+                              <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+                              <span className="max-w-[80px] truncate">
+                                {statusPrevStep
+                                  ? (WO_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
+                                  : '—'}
+                              </span>
+                            </button>
+                            <Tooltip
+                              content={WO_STATUS_DESCRIPTIONS[currentStatus] ?? currentStatus}
+                            >
                               <button
                                 type="button"
-                                disabled={transitioning || !statusPrevStep}
-                                onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
-                                className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                disabled={transitioning}
+                                onClick={() => setStatusMenuOpen(o => !o)}
+                                className={cn(
+                                  'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
+                                  STATUS_COLORS[currentStatus] ??
+                                    'bg-secondary text-muted-foreground',
+                                  !transitioning && 'cursor-pointer hover:opacity-80',
+                                )}
                               >
-                                <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-                                <span className="max-w-[80px] truncate">
-                                  {statusPrevStep
-                                    ? (WO_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
-                                    : '—'}
-                                </span>
+                                {WO_STATUS_LABELS[currentStatus] ?? currentStatus}
                               </button>
-                              <Tooltip
-                                content={WO_STATUS_DESCRIPTIONS[currentStatus] ?? currentStatus}
-                              >
-                                <button
-                                  type="button"
-                                  disabled={transitioning}
-                                  onClick={() => setStatusMenuOpen(o => !o)}
-                                  className={cn(
-                                    'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
-                                    STATUS_COLORS[currentStatus] ??
-                                      'bg-secondary text-muted-foreground',
-                                    !transitioning && 'cursor-pointer hover:opacity-80',
-                                  )}
-                                >
-                                  {WO_STATUS_LABELS[currentStatus] ?? currentStatus}
-                                </button>
-                              </Tooltip>
-                              <button
-                                type="button"
-                                disabled={transitioning || !statusNextStep}
-                                onClick={() => statusNextStep && void doTransition(statusNextStep)}
-                                className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                              >
-                                <span className="max-w-[80px] truncate">
-                                  {statusNextStep
-                                    ? (WO_STATUS_LABELS[statusNextStep] ?? statusNextStep)
-                                    : '—'}
-                                </span>
-                                <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                              </button>
-                            </>
+                            </Tooltip>
+                            <button
+                              type="button"
+                              disabled={transitioning || !statusNextStep}
+                              onClick={() => statusNextStep && void doTransition(statusNextStep)}
+                              className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                            >
+                              <span className="max-w-[80px] truncate">
+                                {statusNextStep
+                                  ? (WO_STATUS_LABELS[statusNextStep] ?? statusNextStep)
+                                  : '—'}
+                              </span>
+                              <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                            </button>
                             {statusMenuOpen && allowedTransitions.length > 0 && (
                               <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] rounded-lg border border-border bg-surface shadow-lg py-1">
                                 {allowedTransitions.map(s => (
@@ -1920,7 +1925,11 @@ export function CreateWorkOrderModal({
                         {lines.length === 0 && !showLineInput && (
                           <tr>
                             <td
-                              colSpan={6}
+                              // Bug #435: VAT-колонка умовна (vatMode !== 'NONE'), тож
+                              // загальна кількість колонок 6 або 7. Парна таблиця "Товари"
+                              // вже робить умовний colSpan; для works був хардкод 6 →
+                              // visual drift коли VAT-колонка є.
+                              colSpan={vatMode !== 'NONE' ? 7 : 6}
                               className="px-3 py-4 text-center text-[12px] text-muted-foreground"
                             >
                               Натисніть «Додати» щоб додати роботу
