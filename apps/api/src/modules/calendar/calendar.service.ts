@@ -447,8 +447,9 @@ export class CalendarService {
     // bug-cycle (calendar conflict): findMany без take — порушує §1 (OOM на патологічних
     // даних). Realistic upper bound для часового вікна = декілька десятків.
     const CONFLICT_TAKE = 50;
-    // Bug #398: enrichment — щоб фронт міг показати інформативний слот у банері
-    // (номер наряду / клієнт / авто), а не лише `${count} слотом`.
+    // Security: strip PII — conflict check only needs scheduling fields + WO number.
+    // MECHANIC role has access to this endpoint; returning cpPhone/vehiclePlate would
+    // allow enumeration of all customer PII across the org.
     const CONFLICT_SELECT = {
       id: true,
       startAt: true,
@@ -456,25 +457,12 @@ export class CalendarService {
       liftId: true,
       employeeId: true,
       workOrderId: true,
-      vehicleId: true,
       counterpartyId: true,
       parentSlotId: true,
-      notes: true,
       status: true,
       type: true,
-      counterparty: {
-        select: { firstName: true, lastName: true, companyName: true, phone: true },
-      },
-      vehicle: { select: { make: true, model: true, licensePlate: true } },
       workOrder: {
-        select: {
-          number: true,
-          counterpartyId: true,
-          counterparty: {
-            select: { firstName: true, lastName: true, companyName: true, phone: true },
-          },
-          vehicle: { select: { make: true, model: true, licensePlate: true } },
-        },
+        select: { number: true },
       },
     } as const;
 
@@ -518,14 +506,11 @@ export class CalendarService {
       return true;
     });
 
-    // Bug #398: використовуємо спільний toDto з повним enrichment, щоб клієнт міг
-    // показати корисні дані у банері (номер наряду / клієнт / авто), а не лише
-    // підрахунок. CalendarSlotResponseDto уже декларує ці optional-поля.
     return {
       liftConflict: liftSlots.length > 0,
       employeeConflict: empSlots.length > 0,
       anyConflict: allSlots.length > 0,
-      conflictSlots: allSlots.map(s => this.toDto(s)),
+      conflictSlots: allSlots.map(s => this.toConflictDto(s)),
     };
   }
 
@@ -544,6 +529,41 @@ export class CalendarService {
     const utcHour = new Date(d).getUTCHours();
     const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
     return ((kyivHour - utcHour + 24) % 24) * 3600000;
+  }
+
+  /** Minimal DTO for conflict-check response — no PII fields. */
+  private toConflictDto(slot: {
+    id: string;
+    liftId: string | null;
+    employeeId: string | null;
+    workOrderId: string | null;
+    counterpartyId?: string | null;
+    parentSlotId?: string | null;
+    startAt: Date;
+    endAt: Date;
+    status: CalendarSlotStatus;
+    type: CalendarSlotType;
+    workOrder: { number: string } | null;
+  }): CalendarSlotResponseDto {
+    return {
+      id: slot.id,
+      liftId: slot.liftId ?? null,
+      employeeId: slot.employeeId ?? null,
+      workOrderId: slot.workOrderId ?? null,
+      vehicleId: null,
+      parentSlotId: slot.parentSlotId ?? null,
+      startAt: slot.startAt,
+      endAt: slot.endAt,
+      notes: null,
+      status: slot.status,
+      type: slot.type,
+      workOrderNumber: slot.workOrder?.number,
+      counterpartyId: slot.counterpartyId ?? null,
+      counterpartyName: undefined,
+      cpPhone: null,
+      vehicleSummary: null,
+      vehiclePlate: null,
+    };
   }
 
   private toDto(slot: {

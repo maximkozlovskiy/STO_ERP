@@ -8,15 +8,9 @@ export interface ConflictSlot {
   liftId?: string | null;
   employeeId?: string | null;
   workOrderId?: string | null;
-  vehicleId?: string | null;
   counterpartyId?: string | null;
   parentSlotId?: string | null;
-  notes?: string | null;
   workOrderNumber?: string;
-  counterpartyName?: string;
-  cpPhone?: string | null;
-  vehicleSummary?: string | null;
-  vehiclePlate?: string | null;
   status: string;
   type: string;
 }
