@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { WO_EDITABLE_STATUSES } from '@sto/shared';
 import { useRequireAuth } from '@/lib/auth';
 import {
   useDashboardOrders,
@@ -191,8 +192,7 @@ export default function DashboardPage() {
       .reduce((s, r) => s + r.revenue, 0);
     const lowArr = Array.isArray(lowStockData) ? lowStockData : [];
     return {
-      openOrders: allOrders.filter(o => ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(o.status))
-        .length,
+      openOrders: allOrders.filter(o => WO_EDITABLE_STATUSES.includes(o.status)).length,
       inProgressOrders: allOrders.filter(o => o.status === 'IN_PROGRESS').length,
       completedToday: todayOrders.length,
       revenueToday: todayOrders.reduce((s, o) => s + o.totalAmount, 0),

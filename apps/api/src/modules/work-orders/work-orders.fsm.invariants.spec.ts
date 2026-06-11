@@ -1,7 +1,13 @@
 import * as fc from 'fast-check';
 import { describe, it, expect } from 'vitest';
 import { WorkOrderStatus } from '@prisma/client';
-import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
+import { WO_EDITABLE_STATUSES, WO_INVOICEABLE_STATUSES, WO_SHAREABLE_STATUSES } from '@sto/shared';
+import {
+  WORK_ORDER_TRANSITIONS,
+  EDITABLE_STATUSES,
+  INVOICEABLE_STATUSES,
+  SHAREABLE_STATUSES,
+} from './work-orders.fsm';
 
 const ALL_STATUSES = Object.keys(WORK_ORDER_TRANSITIONS) as WorkOrderStatus[];
 
@@ -104,5 +110,29 @@ describe('WORK_ORDER_TRANSITIONS — property-based invariants', () => {
     for (const status of ALL_STATUSES) {
       expect(WORK_ORDER_TRANSITIONS[status]).not.toContain(status);
     }
+  });
+});
+
+/**
+ * Bug #439 (Bug #432 family regression-guard):
+ * Запобігає silent FE↔BE divergence для статус-сетів що читаються з обох сторін.
+ * Коментарі у `work-orders.fsm.ts` і `packages/shared/src/constants/statuses.ts` ствердять
+ * «Must mirror …» — цей тест перетворює коментар на enforceable invariant.
+ *
+ * Якщо хтось додає 'BLOCKED' у BE EDITABLE_STATUSES але забуває FE — CI стає червоним
+ * замість silently рендерити невідповідний UI (canEdit=false для статусу де backend
+ * фактично дозволяє редагувати).
+ */
+describe('FE↔BE status sets symmetry — Bug #432/#439 regression-guard', () => {
+  it('EDITABLE_STATUSES (BE) == WO_EDITABLE_STATUSES (FE)', () => {
+    expect([...EDITABLE_STATUSES].sort()).toEqual([...WO_EDITABLE_STATUSES].sort());
+  });
+
+  it('INVOICEABLE_STATUSES (BE) == WO_INVOICEABLE_STATUSES (FE)', () => {
+    expect([...INVOICEABLE_STATUSES].sort()).toEqual([...WO_INVOICEABLE_STATUSES].sort());
+  });
+
+  it('SHAREABLE_STATUSES (BE) == WO_SHAREABLE_STATUSES (FE)', () => {
+    expect([...SHAREABLE_STATUSES].sort()).toEqual([...WO_SHAREABLE_STATUSES].sort());
   });
 });

@@ -42,6 +42,20 @@ export const WO_STATUS_BADGE: Record<string, BadgeVariant> = {
   CANCELLED: 'destructive',
 };
 
+// Status sets for business-rule gates. Must mirror backend work-orders.fsm.ts constants.
+// Frontend reads these instead of hardcoding inline status arrays.
+export const WO_EDITABLE_STATUSES: readonly string[] = Object.freeze([
+  'DRAFT',
+  'ESTIMATE',
+  'APPROVED',
+]);
+export const WO_SHAREABLE_STATUSES: readonly string[] = Object.freeze([
+  'DRAFT',
+  'ESTIMATE',
+  'APPROVED',
+]);
+export const WO_INVOICEABLE_STATUSES: readonly string[] = Object.freeze(['COMPLETED', 'INVOICED']);
+
 // Single source of truth: must mirror backend `WORK_ORDER_TRANSITIONS`
 // in apps/api/src/modules/work-orders/work-orders.fsm.ts. Backend is authoritative —
 // if these diverge the UI offers transitions the API will reject with 400.

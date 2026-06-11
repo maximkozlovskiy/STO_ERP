@@ -23,6 +23,8 @@ import {
   WO_PRIORITY_LABELS,
   WO_PRIORITY_BADGE,
   WO_CATEGORY_LABELS,
+  WO_EDITABLE_STATUSES,
+  WO_INVOICEABLE_STATUSES,
 } from '@sto/shared';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
@@ -694,7 +696,7 @@ export default function WorkOrderCardPage() {
       </div>
     );
 
-  const canEdit = ['DRAFT', 'ESTIMATE', 'APPROVED'].includes(wo.status);
+  const canEdit = WO_EDITABLE_STATUSES.includes(wo.status);
   const allowedTransitions = TRANSITIONS[wo.status] ?? [];
 
   return (
@@ -893,11 +895,11 @@ export default function WorkOrderCardPage() {
       </div>
 
       {/* Completion Act */}
-      {(['COMPLETED', 'INVOICED'].includes(wo.status) || completionAct) && (
+      {(WO_INVOICEABLE_STATUSES.includes(wo.status) || completionAct) && (
         <div className="bg-surface rounded-xl border border-border p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-foreground">Акт виконаних робіт</h2>
-            {['COMPLETED', 'INVOICED'].includes(wo.status) && !completionAct && (
+            {WO_INVOICEABLE_STATUSES.includes(wo.status) && !completionAct && (
               <Button variant="outline" size="sm" onClick={generateAct} loading={generatingAct}>
                 Сформувати акт
               </Button>

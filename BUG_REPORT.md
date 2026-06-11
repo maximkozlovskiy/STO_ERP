@@ -13862,3 +13862,77 @@ consoleErrorSpy.mockRestore();
 **Статус:** [x] виправлено — замінено `expect(true).toBe(true)` на console-spy перевірку у `useConflictCheck.test.tsx` (тест unmount race-guard). Spy ловить React warning якщо guard зламано. Залишена парна `apiFetchMock.toHaveBeenCalledTimes(1)` як додаткова гарантія. tsc green, тести проходять.
 
 ---
+
+## Session 2026-06-11 — AUTO tester: shared FE status sets без regression-guard (HEAD 84b91fc4..f3633cd7)
+
+Scope (git diff HEAD vs unstaged):
+
+- `packages/shared/src/constants/statuses.ts` — додано `WO_EDITABLE_STATUSES` / `WO_SHAREABLE_STATUSES` / `WO_INVOICEABLE_STATUSES`
+- `apps/web/src/app/(app)/dashboard/page.tsx` — замінено inline `['DRAFT','ESTIMATE','APPROVED']` на `WO_EDITABLE_STATUSES`
+- `apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx` — замінено два inline масиви на `WO_EDITABLE_STATUSES` / `WO_INVOICEABLE_STATUSES`
+- `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.test.tsx` — переробка mock `@/lib/format` через `vi.importActual` (часткова заміна)
+
+### Baseline (Крок 0)
+
+- TypeScript shared / API / web — ✅ 0 errors
+- Unit + contract API — ✅ 702/702 passed (новий тест порівняно з MemoryManual)
+- Web components — ✅ 398/398 passed
+- Хибно-зелені `[x]`: Bugs #432-#438 — перевірено git log `9a879ac0` має реальні code-зміни (не лише докі) → коректні
+
+### Перевірка FE↔BE constants parity (SKILL §1.1 Bug #432)
+
+- `WO_EDITABLE_STATUSES` (FE) ↔ `EDITABLE_STATUSES` (BE) — value identical (`['DRAFT','ESTIMATE','APPROVED']`) ✅
+- `WO_INVOICEABLE_STATUSES` (FE) ↔ `INVOICEABLE_STATUSES` (BE) — value identical (`['COMPLETED','INVOICED']`) ✅
+- `WO_SHAREABLE_STATUSES` (FE) ↔ `SHAREABLE_STATUSES` (BE) — value identical (`['DRAFT','ESTIMATE','APPROVED']`) ✅
+- Не залишилось inline-масивів типу `['DRAFT','ESTIMATE','APPROVED']` / `['COMPLETED','INVOICED']` у `apps/web/src/` ✅
+- **GAP:** немає `*.fsm.spec.ts` що перевіряє `expect(BE_EDITABLE.sort()).toEqual([...FE_EDITABLE].sort())` — це регресія-guard з SKILL §1.1 Bug #432 «Регресія-guard: spec у `*.fsm.spec.ts` `expect(BE_STATUSES.sort()).toEqual([...FE_STATUSES].sort())`». Без нього майбутнє розходження (хтось додав 'ON_HOLD' тільки у FE) пройде CI зеленим.
+
+---
+
+## Bug #439 — [MEDIUM] test-coverage / backend — Відсутній FE↔BE symmetry regression-guard для нових `WO_EDITABLE_STATUSES` / `WO_INVOICEABLE_STATUSES` / `WO_SHAREABLE_STATUSES`
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.fsm.invariants.spec.ts` (потрібен новий test-block) ↔ `packages/shared/src/constants/statuses.ts:47-57` ↔ `apps/api/src/modules/work-orders/work-orders.fsm.ts:28-43`
+**Severity:** MEDIUM
+**Категорія:** test-coverage / fsm / shared-vs-backend symmetry / regression-guard
+
+**Опис:** Commit `84b91fc4` додав три парні константи: BE-side у `work-orders.fsm.ts` (`EDITABLE_STATUSES`/`INVOICEABLE_STATUSES`/`SHAREABLE_STATUSES`) і FE-side у `@sto/shared/constants/statuses.ts` (`WO_EDITABLE_STATUSES`/`WO_INVOICEABLE_STATUSES`/`WO_SHAREABLE_STATUSES`). Коментарі у обох файлах ствердують «Must mirror backend» / «Mirrors WO\_\*\_STATUSES in @sto/shared», але **немає жодного тесту** що це насправді перевіряє.
+
+Симптом: майбутній developer додає нове FSM-стан (наприклад `'BLOCKED'`) у `EDITABLE_STATUSES` (BE), забуває оновити `WO_EDITABLE_STATUSES` (FE) → tsc green (різні файли), unit green (BE тести беруть BE-константу, FE тести беруть FE-константу), runtime divergence:
+
+- BE дозволяє `PATCH /work-orders/:id { items: [...] }` для статусу 'BLOCKED'
+- FE ховає кнопку «Редагувати» бо `canEdit = WO_EDITABLE_STATUSES.includes('BLOCKED') === false`
+- Користувач не може використати feature що backend підтримує — CRITICAL UX gap проходить без error.
+
+Перевірено grep:
+
+- `grep -rn "WO_EDITABLE_STATUSES" apps/api/src` → 0 матчів (BE ніколи не імпортує FE-константу)
+- `grep -rn "EDITABLE_STATUSES.*toEqual\|EDITABLE_STATUSES.*sort" apps/api/src` → 0 матчів
+
+SKILL §1.1 Bug #432 чек-айтем чітко вимагає: «Регресія-guard: spec у `*.fsm.spec.ts` `expect(BE_STATUSES.sort()).toEqual([...FE_STATUSES].sort())`».
+
+**Очікувана поведінка:** У `work-orders.fsm.invariants.spec.ts` додати describe-блок `«FE↔BE constants symmetry»` з трьома `it()`:
+
+```ts
+import { WO_EDITABLE_STATUSES, WO_INVOICEABLE_STATUSES, WO_SHAREABLE_STATUSES } from '@sto/shared';
+import { EDITABLE_STATUSES, INVOICEABLE_STATUSES, SHAREABLE_STATUSES } from './work-orders.fsm';
+
+describe('FE↔BE status sets symmetry — Bug #432 regression-guard', () => {
+  it('EDITABLE_STATUSES (BE) == WO_EDITABLE_STATUSES (FE)', () => {
+    expect([...EDITABLE_STATUSES].sort()).toEqual([...WO_EDITABLE_STATUSES].sort());
+  });
+  it('INVOICEABLE_STATUSES (BE) == WO_INVOICEABLE_STATUSES (FE)', () => {
+    expect([...INVOICEABLE_STATUSES].sort()).toEqual([...WO_INVOICEABLE_STATUSES].sort());
+  });
+  it('SHAREABLE_STATUSES (BE) == WO_SHAREABLE_STATUSES (FE)', () => {
+    expect([...SHAREABLE_STATUSES].sort()).toEqual([...WO_SHAREABLE_STATUSES].sort());
+  });
+});
+```
+
+Будь-яке майбутнє розходження → CI red одразу.
+
+**Фактична поведінка:** Жодного парного тесту. Drift силенто можливий.
+
+**Статус:** [x] виправлено — додано `describe('FE↔BE status sets symmetry')` у `work-orders.fsm.invariants.spec.ts` з трьома `it()` що порівнюють sorted arrays. Тести зелені — поточні значення співпадають. Регресія (видалення/додавання стану в одній стороні) тепер ловиться.
+
+---
