@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+50c550bd fix(review): logic bugs — WO completion deadlock, kyivOffsetMs unit, dashboard TO overdue
 (pending) test(tester): Bug #439 — FE↔BE WO_*_STATUSES symmetry regression-guard у fsm.invariants.spec.ts
 f3633cd7 chore: remove leftover .bak file from skills optimization
 f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k → 7.2k lines)
@@ -22,15 +23,21 @@ c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTot
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
 84b91fc4 fix(tester): Bugs #432-#433 — backend INVOICEABLE/SHAREABLE_STATUSES + audit-track liftId/documentDate
 6d6dab96 fix(tester): Bugs #429-#430 — stale @/lib/format mock + savingRef race window
-c9940bd4 perf(optimize): WO transition narrow select + WO modal/page memo refactor
 Дата: 2026-06-11
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Unit+Contract: ✅ 705/705 API passed (+3 нових FE↔BE symmetry), ✅ 398/398 Web passed
-E2E: ✅ 222/222 chromium (baseline); dev servers офлайн у Cycle 3 — unit suite all green
-Latest tester (2026-06-11): Bug #439 — додано FE↔BE symmetry regression-guard у `work-orders.fsm.invariants.spec.ts` для `EDITABLE/INVOICEABLE/SHAREABLE_STATUSES` (3 нових `it()` `expect(BE.sort()).toEqual(FE.sort())`). Виявлено через статичний аудит Bug #432 регресія-guard вимоги після commit 84b91fc4 додав shared FE-константи без парного symmetry-spec. Поточні значення збігаються; майбутній drift тепер ловиться у CI.
+Unit+Contract: ✅ inventory.invariants 7/7 + work-orders 41/41 (re-run після logic-fix)
+Latest review (2026-06-11, logic audit): 3 баги — (1) CRITICAL: `writeOffPartsAndCharge` робив WRITEOFF перед RESERVATION_RELEASE — при qty=reserved за тим самим WO available=0 → COMPLETED падав «Недостатньо товару» хоча запчастини фізично присутні; reordered RELEASE → WRITEOFF; (2) IMPORTANT: `common/utils/kyiv-date.ts:kyivOffsetMs` повертав хвилини попри суфікс `Ms` — мертвий код, але silent failure для першого ж нового імпорту; прибрано `/60_000`; (3) IMPORTANT: dashboard overdue TO badge — `new Date('YYYY-MM-DD').getTime() < nowMs` показував «Прострочено» з 03:00 ранку у день ТО (UTC midnight = 03:00 Kyiv) — string-compare YMD < kyivToday().
+Latest tester (2026-06-11): Bug #439 — додано FE↔BE symmetry regression-guard у `work-orders.fsm.invariants.spec.ts`.
 Latest tester (2026-06-11, prev): Bugs #429-#433 — savingRef race (CreateWorkOrderModal), stale format mock, INVOICEABLE/SHAREABLE_STATUSES backend sync, audit liftId/documentDate.
-Latest review (2026-06-11): Security — strip PII from checkConflicts + findSlots for MECHANIC role. Cycle 3 — React.ChangeEvent named import. TabBar review — dedupe modal tabs, fetch race cancel, a11y.
 ```
+
+### Gotcha #review-50c — RELEASE перед WRITEOFF у тій самій WO-COMPLETED транзакції
+
+Класична пастка: `InventoryService.createMovement` гейтить `WRITEOFF` через `available = quantity - reserved`. Якщо WO зарезервував саме той фізичний залишок який зараз пишемо у списання (стандарт для свіжо-receipted запчастин що відразу йдуть у роботу), `available=0` і WRITEOFF падає. Правильний порядок у `writeOffPartsAndCharge`: спочатку `RESERVATION_RELEASE -baseQty` (зменшує `reserved`, не змінює `quantity`), потім `WRITEOFF -baseQty` (зменшує `quantity`, тепер available=quantity > 0). Альтернатива «послабити WRITEOFF guard до перевірки `quantity` замість `available`» **порушує** property-based інваріант `available >= 0` після кожного руху — той у `inventory.invariants.spec.ts`. Replace-order дешевший.
+
+### Gotcha #review-50c-2 — `new Date('YYYY-MM-DD').getTime() < Date.now()` на полях типу date
+
+`new Date('2026-06-15')` парсить як `2026-06-15T00:00:00Z` (UTC midnight). Для Києва (EET/EEST +02/+03) це означає 03:00 ранку. Будь-яке порівняння "чи дата у минулому" через `.getTime() < nowMs` буде передчасно true з ранку. Правильно: string-compare `dateStr.slice(0,10) < kyivToday()` (де `kyivToday()` повертає `'YYYY-MM-DD'` у київському календарі). Той самий патерн працює і на BE (`kyivToday()` повертає Date але порівняння через ISO-prefix також безпечне).
 
 ### Gotcha #439 — FE↔BE constants symmetry потребує enforce-spec, не лише коментар
 
