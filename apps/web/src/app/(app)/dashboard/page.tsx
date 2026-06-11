@@ -162,13 +162,6 @@ export default function DashboardPage() {
   const [greeting, setGreeting] = useState('Вітаємо');
   const [enabledQA, setEnabledQA] = useState<string[]>(DEFAULT_QUICK_ACTIONS);
   const [qaConfigOpen, setQaConfigOpen] = useState(false);
-  // Bug (review): nowMs з useEffect замість new Date() у render — запобігає SSR hydration mismatch
-  // та переобчисленню кожного рядка у .map(). Виставляється після mount.
-  const [nowMs, setNowMs] = useState(0);
-  useEffect(() => {
-    setNowMs(Date.now());
-  }, []);
-
   // F7: Live SSE dashboard stream
   const { data: streamData, isLive } = useDashboardStream();
 
@@ -386,10 +379,15 @@ export default function DashboardPage() {
                     const dateStr = item.nextMaintenanceDate
                       ? fmtDate(item.nextMaintenanceDate)
                       : null;
-                    const isOverdue =
-                      item.nextMaintenanceDate && nowMs > 0
-                        ? new Date(item.nextMaintenanceDate).getTime() < nowMs
-                        : false;
+                    // Logic-bug fix: попередня перевірка `new Date(YMD).getTime() < nowMs`
+                    // інтерпретувала "2026-06-15" як 00:00 UTC = 03:00 Kyiv → ТО на сьогодні
+                    // показувалось "Прострочено" вже з 03:00 ночі. Порівнюємо дату-string зі
+                    // string-датою «сьогодні у Києві» (kyivToday()) — спрацьовує тільки коли
+                    // YMD у минулому за київським календарем.
+                    const todayKyiv = kyivToday();
+                    const isOverdue = item.nextMaintenanceDate
+                      ? item.nextMaintenanceDate.slice(0, 10) < todayKyiv
+                      : false;
                     return (
                       <div key={item.id} className="flex items-center justify-between py-2">
                         <div>

@@ -857,6 +857,25 @@ export class WorkOrdersService {
     for (const part of parts) {
       const coeff = coeffMap[part.id] ?? 1;
       const baseQty = part.quantity / coeff;
+      // Logic-bug fix: release the reservation BEFORE writeoff. InventoryService.createMovement
+      // gates WRITEOFF on `available = quantity - reserved >= |qty|`. Якщо весь фізичний
+      // залишок зарезервовано саме цим нарядом (квантитет = резерв = baseQty), available=0
+      // і WRITEOFF падає з "Недостатньо товару на складі" попри те, що фізичні запчастини
+      // на складі присутні. Послідовність RELEASE → WRITEOFF: спочатку звільняємо резерв
+      // (reserved -= baseQty), потім списуємо (тепер available = quantity > 0).
+      await this.inventory.createMovement(
+        orgId,
+        {
+          goodId: part.goodId,
+          warehouseId: part.warehouseId,
+          type: 'RESERVATION_RELEASE',
+          quantity: -baseQty,
+          documentType: 'WorkOrder',
+          documentId: wo.id,
+          createdBy: userId,
+        },
+        db,
+      );
       await this.inventory.createMovement(
         orgId,
         {
@@ -865,20 +884,6 @@ export class WorkOrdersService {
           type: 'WRITEOFF',
           quantity: -baseQty,
           price: Number(part.price),
-          documentType: 'WorkOrder',
-          documentId: wo.id,
-          createdBy: userId,
-        },
-        db,
-      );
-      // Release the reservation that was created on IN_PROGRESS
-      await this.inventory.createMovement(
-        orgId,
-        {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
-          type: 'RESERVATION_RELEASE',
-          quantity: -baseQty,
           documentType: 'WorkOrder',
           documentId: wo.id,
           createdBy: userId,
