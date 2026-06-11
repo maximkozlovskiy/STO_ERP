@@ -25,7 +25,7 @@ import { useConflictCheck } from '@/hooks/useConflictCheck';
 import { useConfirm } from '@/hooks/useConfirm';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { kyivToday, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/format';
-import { displayCounterpartyName } from '@/lib/utils';
+import { cn, displayCounterpartyName, toIdMap, calcVatTotals } from '@/lib/utils';
 import {
   WO_STATUS_LABELS,
   WO_STATUS_TRANSITIONS,
@@ -35,7 +35,6 @@ import {
   WO_SHAREABLE_STATUSES,
   WO_INVOICEABLE_STATUSES,
 } from '@sto/shared';
-import { cn } from '@/lib/utils';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
@@ -326,26 +325,17 @@ export function CreateWorkOrderModal({
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
-  // Bug #381 regression: handleModalClose читає `saving`/`transitioning` через ref —
-  // setSaving(true) у `create()` запускається СИНХРОННО, але React батчить state-flush
-  // до закінчення event-handler. Pending POST `/work-orders` блокує закінчення →
-  // ні re-render, ні нової handleModalClose з оновленим closure. Натиск Escape між
-  // setSaving(true) та resolve POST → старий handleModalClose v1 з `saving=false` →
-  // Modal закривається попри `if (saving) return` guard. Ref читає синхронну,
-  // не-React'івську версію стану — guard завжди бачить актуальне значення.
+  // Refs ensure handleModalClose sees sync state, not stale closure (Bug #381 race).
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
-  // Wrapper sets both ref (синхронно) і React state (для re-render). Виклики
-  // у `create()` / `save()` / `transition()` ОБОВ'ЯЗКОВО йдуть через ці wrapper-и,
-  // інакше `handleModalClose` не побачить актуального значення під час Escape race.
-  const setSavingBoth = useCallback((v: boolean) => {
+  const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
     setSaving(v);
-  }, []);
-  const setTransitioningBoth = useCallback((v: boolean) => {
+  };
+  const setTransitioningBoth = (v: boolean) => {
     transitioningRef.current = v;
     setTransitioning(v);
-  }, []);
+  };
   const [error, setError] = useState('');
   const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
   const [vatRate, setVatRate] = useState(0);
@@ -1063,82 +1053,41 @@ export function CreateWorkOrderModal({
     }
     const nextStatus = allowedTransitions.find((s: string) => WO_STATUS_ORDER.indexOf(s) > curIdx);
     return { prevStatus, nextStatus };
-  }, [currentStatus, allowedTransitions]);
+  }, [currentStatus, isEditMode]);
 
-  // sto-optimize: O(N×M) → O(N+M) ref-data lookup maps. Раніше `employees.find()`,
-  // `warehouses.find()`, `units.find()` викликались per-row у tbody.map() і у onChange
-  // handlers — typing у будь-якому полі форми × N rows × linear scan довідника.
-  // Map.get — O(1) hit. При 30 рядків × 10 employees × keystroke = 300 find ops → 30 Map.get.
-  const employeesById = useMemo(() => {
-    const m = new Map<string, Employee>();
-    for (const e of employees) m.set(e.id, e);
-    return m;
-  }, [employees]);
-  const warehousesById = useMemo(() => {
-    const m = new Map<string, Warehouse>();
-    for (const w of warehouses) m.set(w.id, w);
-    return m;
-  }, [warehouses]);
-  const unitsById = useMemo(() => {
-    const m = new Map<string, Unit>();
-    for (const u of units) m.set(u.id, u);
-    return m;
-  }, [units]);
-  const vehiclesById = useMemo(() => {
-    const m = new Map<string, Vehicle>();
-    for (const v of vehicles) m.set(v.id, v);
-    return m;
-  }, [vehicles]);
-  const liftsById = useMemo(() => {
-    const m = new Map<string, Lift>();
-    for (const l of lifts) m.set(l.id, l);
-    return m;
-  }, [lifts]);
-  const branchesById = useMemo(() => {
-    const m = new Map<string, Branch>();
-    for (const b of branches) m.set(b.id, b);
-    return m;
-  }, [branches]);
+  // O(N×M) → O(N+M): Map.get instead of .find() per rendered row/onChange.
+  const employeesById = useMemo(() => toIdMap(employees), [employees]);
+  const warehousesById = useMemo(() => toIdMap(warehouses), [warehouses]);
+  const unitsById = useMemo(() => toIdMap(units), [units]);
+  const vehiclesById = useMemo(() => toIdMap(vehicles), [vehicles]);
+  const liftsById = useMemo(() => toIdMap(lifts), [lifts]);
+  const branchesById = useMemo(() => toIdMap(branches), [branches]);
 
-  // sto-optimize: single-pass totals computation для tfoot — раніше `lines.reduce()`
-  // викликався двічі (VAT sum + total sum), кожен `toNumberOrUndefined(h)` × 2 виклики
-  // string→Number conversion. Тепер один pass, два акумулятори. Симетрично для parts.
-  const linesTotals = useMemo(() => {
-    let total = 0;
-    let vat = 0;
-    for (const l of lines) {
-      const h = toNumberOrUndefined(l.normoHours);
-      const p = toNumberOrUndefined(l.price);
-      if (h != null && p != null) {
-        const sum = h * p;
-        total += sum;
-        if (vatRate > 0) vat += (sum * vatRate) / 100;
-      }
-    }
-    return { total, vat };
-  }, [lines, vatRate]);
-  const partsTotals = useMemo(() => {
-    let total = 0;
-    let vat = 0;
-    for (const pt of parts) {
-      const q = toNumberOrUndefined(pt.quantity);
-      const p = toNumberOrUndefined(pt.price);
-      if (q != null && p != null) {
-        const sum = q * p;
-        total += sum;
-        if (vatRate > 0) vat += (sum * vatRate) / 100;
-      }
-    }
-    return { total, vat };
-  }, [parts, vatRate]);
-
+  // Single-pass totals: one scan over lines/parts, two accumulators (total + vat).
+  const linesTotals = useMemo(
+    () =>
+      calcVatTotals(
+        lines.map(l => ({
+          qty: toNumberOrUndefined(l.normoHours),
+          price: toNumberOrUndefined(l.price),
+        })),
+        vatRate,
+      ),
+    [lines, vatRate],
+  );
+  const partsTotals = useMemo(
+    () =>
+      calcVatTotals(
+        parts.map(pt => ({
+          qty: toNumberOrUndefined(pt.quantity),
+          price: toNumberOrUndefined(pt.price),
+        })),
+        vatRate,
+      ),
+    [parts, vatRate],
+  );
   const canEdit = isEditMode ? WO_EDITABLE_STATUSES.includes(currentStatus) : true;
-  // Bug #401: вирівняно з backend SHAREABLE_STATUSES (DRAFT/ESTIMATE/APPROVED).
-  // Після клієнтського затвердження (APPROVED) приймальник часто має необхідність:
-  // (а) повторно надіслати SMS з кошторисом (клієнт втратив посилання),
-  // (б) роздрукувати наряд для підпису. Backend дозволяє share/SMS у APPROVED,
-  // тож UI має експонувати ті ж кнопки. Після IN_PROGRESS публічне посилання
-  // перестає працювати (404) — на стороні backend.
+  // Share/print/SMS allowed in DRAFT/ESTIMATE/APPROVED; after IN_PROGRESS the public link is inactive.
   const canShare = isEditMode && WO_SHAREABLE_STATUSES.includes(currentStatus);
 
   const handlePrint = async () => {

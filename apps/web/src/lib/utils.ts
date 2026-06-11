@@ -46,3 +46,27 @@ export function daysUntil(date: string | Date | null | undefined, nowMs: number)
   if (Number.isNaN(t)) return null;
   return Math.ceil((t - nowMs) / MS_PER_DAY);
 }
+
+/** Build an id→item Map from an array. O(N) one-time cost; O(1) lookups. */
+export function toIdMap<T extends { id: string }>(arr: T[]): Map<string, T> {
+  const m = new Map<string, T>();
+  for (const x of arr) m.set(x.id, x);
+  return m;
+}
+
+/** Single-pass VAT + total computation for line/part rows. */
+export function calcVatTotals(
+  rows: { qty: number | undefined; price: number | undefined }[],
+  vatRate: number,
+): { total: number; vat: number } {
+  let total = 0;
+  let vat = 0;
+  for (const r of rows) {
+    if (r.qty != null && r.price != null) {
+      const sum = r.qty * r.price;
+      total += sum;
+      if (vatRate > 0) vat += (sum * vatRate) / 100;
+    }
+  }
+  return { total, vat };
+}
