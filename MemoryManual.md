@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+1d9cd19d fix(review): broken contract spec + extra defense-in-depth for MECHANIC calendar PII
 11c8ded7 fix(security): strip PII from GET /calendar/slots for MECHANIC role
 86d22367 fix(review): drop counterpartyId from checkConflicts response (defense-in-depth)
 9d87c119 fix(security): strip PII from checkConflicts response
@@ -2253,6 +2254,10 @@ State: `modalBarcodes[]`, `modalBatches[]`, `barcodeError`, `batchError`, `showA
 **Gotcha — Prisma Json type у upsert:** `Record<string, unknown>` не assignable до `InputJsonValue` → cast `value as Prisma.InputJsonValue` у service.
 
 **Gotcha — CurrentUser decorator:** повертає `AuthenticatedUser` з полем `id` (не `sub`). `sub` є у `JwtPayload` але контролери отримують `AuthenticatedUser` після `validate()`.
+
+**Gotcha — Контрактний spec ламається при зміні signature сервісу (1d9cd19d):** `calendar.contract.spec.ts` мокає `serviceMock.findSlots` і перевіряє через `toHaveBeenCalledWith(...positional)`. Будь-яка зміна параметрів сервіс-методу — додавання `role` між `date` і `branchId` для PII-strip — тихо ламає тільки 2 з 19 кейсів (rest pass, бо мокаються resolveValue). Правило: при зміні signature сервісу який має contract-spec — оновити всі `toHaveBeenCalledWith` + додати regression test що ВЕРИФІКУЄ новий параметр пробрасується (e.g. `role='MECHANIC'` → service отримує PII-strip path). Також mockJwtGuard має повертати `{ id, sub, orgId, role }` — `id` потрібен `@CurrentUser()` (AuthenticatedUser.id), `sub` лишаємо для backward compat у спеках що читають payload напряму.
+
+**Gotcha — Не SELECT'и поля які потім дропає DTO (1d9cd19d):** MECHANIC-гілка `CalendarService.findSlots` спочатку селектила `counterpartyId: true`, але `toConflictDto()` повертає `counterpartyId: null` завжди (defense-in-depth проти UUID-enumeration). Витяг через PG → API без споживача = bandwidth waste + смисловий fake. Правило: якщо DTO mapping повертає `null` для поля — НЕ select'ити його з БД (зекономлено = 1 UUID per row × 500 rows для MECHANIC view).
 
 ## Поточний стан проєкту
 
