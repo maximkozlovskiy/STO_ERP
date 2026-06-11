@@ -64,6 +64,7 @@ export class CalendarService {
   async findSlots(
     orgId: string,
     date: string,
+    role: string,
     branchId?: string,
     employeeId?: string,
   ): Promise<CalendarSlotResponseDto[]> {
@@ -89,6 +90,31 @@ export class CalendarService {
     };
     if (branchId) where.lift = { zone: { branchId, orgId } };
     if (employeeId) where.employeeId = employeeId;
+
+    const isMechanic = role === 'MECHANIC';
+
+    if (isMechanic) {
+      // MECHANIC sees scheduling fields + WO number only — no customer PII.
+      const slots = await this.prisma.calendarSlot.findMany({
+        where,
+        orderBy: { startAt: 'asc' },
+        select: {
+          id: true,
+          startAt: true,
+          endAt: true,
+          liftId: true,
+          employeeId: true,
+          workOrderId: true,
+          counterpartyId: true,
+          parentSlotId: true,
+          status: true,
+          type: true,
+          workOrder: { select: { number: true } },
+        },
+        take: 500,
+      });
+      return slots.map(s => this.toConflictDto(s));
+    }
 
     const slots = await this.prisma.calendarSlot.findMany({
       where,

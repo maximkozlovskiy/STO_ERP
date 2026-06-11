@@ -17,6 +17,8 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { CalendarService } from './calendar.service';
 import {
   CreateCalendarSlotDto,
@@ -41,11 +43,12 @@ export class CalendarController {
   @ApiQuery({ name: 'employeeId', required: false })
   findSlots(
     @OrgContext() orgId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Query('date') date: string,
     @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
     @Query('employeeId', new ParseUUIDPipe({ optional: true })) employeeId?: string,
   ) {
-    return this.service.findSlots(orgId, date, branchId, employeeId);
+    return this.service.findSlots(orgId, date, user.role, branchId, employeeId);
   }
 
   @Post('check-conflicts')
