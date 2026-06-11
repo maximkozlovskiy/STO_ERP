@@ -405,3 +405,95 @@ test.describe('Наряд — вкладка "Документи" (LinkedDocumen
     await page.keyboard.press('Escape');
   });
 });
+
+// ─── 4. plannedHours / actualHours fields in WO edit modal ───────────────────
+
+test.describe('Наряд — поля "Планових год." / "Фактичних год."', () => {
+  test('поля Планових та Фактичних годин присутні в edit-mode модалці', async ({ page }) => {
+    await page.goto('/work-orders');
+    await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
+
+    await page.locator('table').first().waitFor({ state: 'visible', timeout: 20_000 });
+    await clearDateFilters(page);
+    await page.waitForTimeout(500);
+
+    const firstRow = realRowLocator(page).first();
+    const hasRow = await firstRow
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!hasRow) {
+      test.skip(true, 'Немає нарядів у БД для перевірки полів годин');
+      return;
+    }
+
+    await firstRow.hover();
+    const editBtn = firstRow.locator('button[title="Відкрити наряд"]').first();
+    await expect(editBtn).toBeVisible({ timeout: 5_000 });
+    await editBtn.click();
+
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 15_000 });
+
+    // plannedHours/actualHours inputs rendered in CreateWorkOrderModal.tsx
+    // as number inputs with placeholder "0" near the status picker section.
+    const plannedInput = modal.locator('input[placeholder="0"]').first();
+    await expect(plannedInput).toBeVisible({ timeout: 10_000 });
+
+    // Both inputs must be present (plannedHours + actualHours).
+    const hourInputs = modal.locator('input[placeholder="0"]');
+    const count = await hourInputs.count();
+    expect(count).toBeGreaterThanOrEqual(2);
+
+    await page.keyboard.press('Escape');
+  });
+
+  test('зміна Планових год. — поле приймає числове значення', async ({ page }) => {
+    await page.goto('/work-orders');
+    await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
+
+    await page.locator('table').first().waitFor({ state: 'visible', timeout: 20_000 });
+    await clearDateFilters(page);
+    await page.waitForTimeout(500);
+
+    // Find DRAFT/ESTIMATE/APPROVED row (editable statuses only).
+    let foundRow = false;
+    for (const statusLabel of ['Чернетка', 'Кошторис', 'Затверджено']) {
+      const pill = page.getByRole('button', { name: statusLabel, exact: true });
+      if (!(await pill.isVisible({ timeout: 3_000 }).catch(() => false))) continue;
+      await pill.click();
+      await page.waitForTimeout(600);
+      const row = realRowLocator(page).first();
+      const ok = await row
+        .waitFor({ state: 'visible', timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!ok) continue;
+      foundRow = true;
+      await row.hover();
+      const btn = row.locator('button[title="Відкрити наряд"]').first();
+      await expect(btn).toBeVisible({ timeout: 5_000 });
+      await btn.click();
+      break;
+    }
+
+    if (!foundRow) {
+      test.skip(true, 'Немає редагованих нарядів (DRAFT/ESTIMATE/APPROVED) у БД');
+      return;
+    }
+
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 15_000 });
+
+    const plannedInput = modal.locator('input[placeholder="0"]').first();
+    await expect(plannedInput).toBeVisible({ timeout: 10_000 });
+    await expect(plannedInput).toBeEnabled();
+
+    // Clear and fill with a test value.
+    await plannedInput.click();
+    await plannedInput.fill('3.5');
+    await expect(plannedInput).toHaveValue('3.5');
+
+    await page.keyboard.press('Escape');
+  });
+});
