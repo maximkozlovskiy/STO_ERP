@@ -1065,6 +1065,73 @@ export function CreateWorkOrderModal({
     return { prevStatus, nextStatus };
   }, [currentStatus, allowedTransitions]);
 
+  // sto-optimize: O(N×M) → O(N+M) ref-data lookup maps. Раніше `employees.find()`,
+  // `warehouses.find()`, `units.find()` викликались per-row у tbody.map() і у onChange
+  // handlers — typing у будь-якому полі форми × N rows × linear scan довідника.
+  // Map.get — O(1) hit. При 30 рядків × 10 employees × keystroke = 300 find ops → 30 Map.get.
+  const employeesById = useMemo(() => {
+    const m = new Map<string, Employee>();
+    for (const e of employees) m.set(e.id, e);
+    return m;
+  }, [employees]);
+  const warehousesById = useMemo(() => {
+    const m = new Map<string, Warehouse>();
+    for (const w of warehouses) m.set(w.id, w);
+    return m;
+  }, [warehouses]);
+  const unitsById = useMemo(() => {
+    const m = new Map<string, Unit>();
+    for (const u of units) m.set(u.id, u);
+    return m;
+  }, [units]);
+  const vehiclesById = useMemo(() => {
+    const m = new Map<string, Vehicle>();
+    for (const v of vehicles) m.set(v.id, v);
+    return m;
+  }, [vehicles]);
+  const liftsById = useMemo(() => {
+    const m = new Map<string, Lift>();
+    for (const l of lifts) m.set(l.id, l);
+    return m;
+  }, [lifts]);
+  const branchesById = useMemo(() => {
+    const m = new Map<string, Branch>();
+    for (const b of branches) m.set(b.id, b);
+    return m;
+  }, [branches]);
+
+  // sto-optimize: single-pass totals computation для tfoot — раніше `lines.reduce()`
+  // викликався двічі (VAT sum + total sum), кожен `toNumberOrUndefined(h)` × 2 виклики
+  // string→Number conversion. Тепер один pass, два акумулятори. Симетрично для parts.
+  const linesTotals = useMemo(() => {
+    let total = 0;
+    let vat = 0;
+    for (const l of lines) {
+      const h = toNumberOrUndefined(l.normoHours);
+      const p = toNumberOrUndefined(l.price);
+      if (h != null && p != null) {
+        const sum = h * p;
+        total += sum;
+        if (vatRate > 0) vat += (sum * vatRate) / 100;
+      }
+    }
+    return { total, vat };
+  }, [lines, vatRate]);
+  const partsTotals = useMemo(() => {
+    let total = 0;
+    let vat = 0;
+    for (const pt of parts) {
+      const q = toNumberOrUndefined(pt.quantity);
+      const p = toNumberOrUndefined(pt.price);
+      if (q != null && p != null) {
+        const sum = q * p;
+        total += sum;
+        if (vatRate > 0) vat += (sum * vatRate) / 100;
+      }
+    }
+    return { total, vat };
+  }, [parts, vatRate]);
+
   const canEdit = isEditMode ? WO_EDITABLE_STATUSES.includes(currentStatus) : true;
   // Bug #401: вирівняно з backend SHAREABLE_STATUSES (DRAFT/ESTIMATE/APPROVED).
   // Після клієнтського затвердження (APPROVED) приймальник часто має необхідність:
@@ -1819,34 +1886,31 @@ export function CreateWorkOrderModal({
                           {cpPhone}
                         </span>
                       )}
-                      {form.vehicleId &&
-                        (() => {
-                          const v = vehicles.find(v => v.id === form.vehicleId);
-                          return v ? (
-                            <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-45">
-                              {v.make} {v.model}
-                              {v.licensePlate ? ` · ${v.licensePlate}` : ''}
-                            </span>
-                          ) : null;
-                        })()}
-                      {form.liftId &&
-                        (() => {
-                          const l = lifts.find(l => l.id === form.liftId);
-                          return l ? (
-                            <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-30">
-                              {l.name}
-                            </span>
-                          ) : null;
-                        })()}
-                      {form.branchId &&
-                        (() => {
-                          const b = branches.find(b => b.id === form.branchId);
-                          return b ? (
-                            <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-35">
-                              {b.name}
-                            </span>
-                          ) : null;
-                        })()}
+                      {(() => {
+                        const v = form.vehicleId ? vehiclesById.get(form.vehicleId) : null;
+                        return v ? (
+                          <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-45">
+                            {v.make} {v.model}
+                            {v.licensePlate ? ` · ${v.licensePlate}` : ''}
+                          </span>
+                        ) : null;
+                      })()}
+                      {(() => {
+                        const l = form.liftId ? liftsById.get(form.liftId) : null;
+                        return l ? (
+                          <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-30">
+                            {l.name}
+                          </span>
+                        ) : null;
+                      })()}
+                      {(() => {
+                        const b = form.branchId ? branchesById.get(form.branchId) : null;
+                        return b ? (
+                          <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-35">
+                            {b.name}
+                          </span>
+                        ) : null;
+                      })()}
                       {!counterpartyDisplayName && !form.vehicleId && (
                         <span className="text-muted-foreground">Розгорнути шапку</span>
                       )}
@@ -1937,7 +2001,7 @@ export function CreateWorkOrderModal({
                           </tr>
                         )}
                         {lines.map(line => {
-                          const emp = employees.find(e => e.id === line.employeeId);
+                          const emp = employeesById.get(line.employeeId);
                           const h = toNumberOrUndefined(line.normoHours);
                           const p = toNumberOrUndefined(line.price);
                           const sum = h != null && p != null ? h * p : null;
@@ -2242,28 +2306,11 @@ export function CreateWorkOrderModal({
                             </td>
                             {vatMode !== 'NONE' && (
                               <td className="px-2 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
-                                {lines
-                                  .reduce((acc, l) => {
-                                    const h = toNumberOrUndefined(l.normoHours);
-                                    const p = toNumberOrUndefined(l.price);
-                                    return (
-                                      acc +
-                                      (h != null && p != null && vatRate > 0
-                                        ? (h * p * vatRate) / 100
-                                        : 0)
-                                    );
-                                  }, 0)
-                                  .toFixed(2)}
+                                {linesTotals.vat.toFixed(2)}
                               </td>
                             )}
                             <td className="px-2 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
-                              {lines
-                                .reduce((acc, l) => {
-                                  const h = toNumberOrUndefined(l.normoHours);
-                                  const p = toNumberOrUndefined(l.price);
-                                  return acc + (h != null && p != null ? h * p : 0);
-                                }, 0)
-                                .toFixed(2)}
+                              {linesTotals.total.toFixed(2)}
                             </td>
                             <td />
                           </tr>
@@ -2344,7 +2391,7 @@ export function CreateWorkOrderModal({
                           </tr>
                         )}
                         {parts.map(part => {
-                          const wh = warehouses.find(w => w.id === part.warehouseId);
+                          const wh = warehousesById.get(part.warehouseId);
                           const qty = toNumberOrUndefined(part.quantity);
                           const p = toNumberOrUndefined(part.price);
                           const sum = qty != null && p != null ? qty * p : null;
@@ -2418,7 +2465,7 @@ export function CreateWorkOrderModal({
                                     <Select
                                       value={editingPart.unitOfMeasureId}
                                       onChange={e => {
-                                        const u = units.find(u => u.id === e.target.value);
+                                        const u = unitsById.get(e.target.value);
                                         setEditingPart(p => ({
                                           ...p,
                                           unitOfMeasureId: e.target.value,
@@ -2625,7 +2672,7 @@ export function CreateWorkOrderModal({
                               <Select
                                 value={newPart.unitOfMeasureId}
                                 onChange={e => {
-                                  const u = units.find(u => u.id === e.target.value);
+                                  const u = unitsById.get(e.target.value);
                                   setNewPart(p => ({
                                     ...p,
                                     unitOfMeasureId: e.target.value,
@@ -2709,28 +2756,11 @@ export function CreateWorkOrderModal({
                             )}
                             {vatMode !== 'NONE' && (
                               <td className="px-2 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
-                                {parts
-                                  .reduce((acc, pt) => {
-                                    const qty = toNumberOrUndefined(pt.quantity);
-                                    const p = toNumberOrUndefined(pt.price);
-                                    return (
-                                      acc +
-                                      (qty != null && p != null && vatRate > 0
-                                        ? (qty * p * vatRate) / 100
-                                        : 0)
-                                    );
-                                  }, 0)
-                                  .toFixed(2)}
+                                {partsTotals.vat.toFixed(2)}
                               </td>
                             )}
                             <td className="px-2 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
-                              {parts
-                                .reduce((acc, pt) => {
-                                  const qty = toNumberOrUndefined(pt.quantity);
-                                  const p = toNumberOrUndefined(pt.price);
-                                  return acc + (qty != null && p != null ? qty * p : 0);
-                                }, 0)
-                                .toFixed(2)}
+                              {partsTotals.total.toFixed(2)}
                             </td>
                             <td />
                           </tr>
