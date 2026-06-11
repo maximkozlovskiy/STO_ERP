@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+11c8ded7 fix(security): strip PII from GET /calendar/slots for MECHANIC role
 86d22367 fix(review): drop counterpartyId from checkConflicts response (defense-in-depth)
 9d87c119 fix(security): strip PII from checkConflicts response
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
