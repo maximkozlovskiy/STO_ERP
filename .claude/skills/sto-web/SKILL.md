@@ -494,139 +494,58 @@ import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 
 const bulkSelect = useBulkSelect(data?.items ?? []);
-
-// indeterminate через ref (DOM property — не можна через React prop)
 const selectAllRef = useRef<HTMLInputElement | null>(null);
 useEffect(() => {
   if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
 }, [bulkSelect.someSelected]);
 
-// Дії
-const bulkActions: BulkAction[] = [{
-  label: 'Видалити вибрані',
-  variant: 'destructive',
-  onClick: async (ids) => {
-    if (!(await confirm({ title: `Видалити ${ids.length}?`, variant: 'destructive' }))) return;
-    // ✅ Promise.allSettled — ніколи Promise.all для bulk
-    const results = await Promise.allSettled(ids.map(id => apiFetch(`/resource/${id}`, { method: 'DELETE' })));
-    const failed = results.filter(r => r.status === 'rejected').length;
-    if (failed === 0) toast.success(`Видалено ${ids.length}`);
-    else toast.warning(`Видалено ${ids.length - failed} з ${ids.length}. ${failed} помилок`);
-    bulkSelect.clear(); load();
+const bulkActions: BulkAction[] = [
+  {
+    label: 'Видалити вибрані',
+    variant: 'destructive',
+    onClick: async ids => {
+      if (!(await confirm({ title: `Видалити ${ids.length}?`, variant: 'destructive' }))) return;
+      const results = await Promise.allSettled(
+        ids.map(id => apiFetch(`/resource/${id}`, { method: 'DELETE' })),
+      );
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed === 0) toast.success(`Видалено ${ids.length}`);
+      else toast.warning(`Видалено ${ids.length - failed} з ${ids.length}. ${failed} помилок`);
+      bulkSelect.clear();
+      load();
+    },
   },
-}];
-
-// Render
-{features.bulkActionsEnabled && bulkSelect.count > 0 && (
-  <BulkActionsBar count={bulkSelect.count} selectedIds={Array.from(bulkSelect.selected)}
-    actions={bulkActions} onClear={bulkSelect.clear} className="mb-3" />
-)}
-
-// TableHead checkbox
-{features.bulkActionsEnabled && (
-  <TableHead className="w-9 pr-0">
-    <input type="checkbox" checked={bulkSelect.allSelected} ref={selectAllRef}
-      onChange={bulkSelect.toggleAll} className="h-3.5 w-3.5 rounded border-border" />
-  </TableHead>
-)}
-
-// TableRow checkbox
-{features.bulkActionsEnabled && (
-  <TableCell className="w-9 pr-0">
-    <input type="checkbox" checked={bulkSelect.isSelected(item.id)}
-      onChange={() => bulkSelect.toggle(item.id)} className="h-3.5 w-3.5 rounded border-border" />
-  </TableCell>
-)}
+];
 ```
+
+Рендер: `{features.bulkActionsEnabled && bulkSelect.count > 0 && <BulkActionsBar ... />}`; колонка чекбокс в `TableHead`/`TableRow` у `{features.bulkActionsEnabled && ...}`; `colSpan={...length + (features.bulkActionsEnabled ? 2 : 1)}`.
 
 ---
 
-## useSavedFilters — збережені фільтри
+## useSavedFilters + useDirtyForm + useConfirm — коротко
 
 ```typescript
-import { useSavedFilters } from '@/hooks/useSavedFilters';
-import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
-
-// Тип фільтрів extends Record<string, unknown>
-interface MyFilters extends Record<string, unknown> {
-  search: string; status: string; showDeleted: boolean;
-}
-
-const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
-const { saved: savedFilters, save: saveFilter, remove: removeFilter } = useSavedFilters<MyFilters>('my-page');
-
+// useSavedFilters
+const {
+  saved: savedFilters,
+  save: saveFilter,
+  remove: removeFilter,
+} = useSavedFilters<MyFilters>('my-page');
 const applyFilter = useCallback((preset: { id: string; filters: MyFilters }) => {
   setSearch(preset.filters.search ?? '');
-  setStatusFilter(preset.filters.status ?? '');
-  setShowDeleted(preset.filters.showDeleted ?? false);
   setPage(1);
   setActiveSavedFilterId(preset.id);
 }, []);
+// При зміні будь-якого фільтра: setPage(1); setActiveSavedFilterId(null);
 
-const handleSaveFilter = useCallback((name: string) => {
-  const preset = saveFilter(name, { search, status: statusFilter, showDeleted });
-  setActiveSavedFilterId(preset.id);
-  toast.success(`Фільтр "${name}" збережено`);
-}, [saveFilter, search, statusFilter, showDeleted]);
-
-// При зміні будь-якого фільтра — скинути активний пресет
-setSearch(v); setPage(1); setActiveSavedFilterId(null);
-
-// Render
-{features.savedFiltersEnabled && (
-  <SavedFiltersBar<MyFilters>
-    saved={savedFilters} activeId={activeSavedFilterId}
-    onApply={applyFilter} onSave={handleSaveFilter} onRemove={removeFilter}
-    className="mb-3"
-  />
-)}
-```
-
----
-
-## useDirtyForm — захист незбережених змін
-
-```typescript
-import { useDirtyForm } from '@/hooks/useDirtyForm';
-
+// useDirtyForm
 const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+// відкриття: dirty.resetDirty(); кожне поле: dirty.markDirty(); закриття: if (!(await dirty.confirmClose())) return; збереження: dirty.resetDirty()
 
-// При відкритті форми
-dirty.resetDirty();
-
-// На кожну зміну поля
-<Input onChange={e => { setForm(f => ({ ...f, name: e.target.value })); dirty.markDirty(); }} />
-
-// Перед закриттям модалі (confirmClose — синхронний, повертає Promise<boolean>)
-const closeModal = async () => {
-  if (!(await dirty.confirmClose())) return;
-  setShowModal(false);
-};
-
-// Після збереження
-dirty.resetDirty();
-```
-
----
-
-## useConfirm — підтвердження дій
-
-```typescript
-import { useConfirm } from '@/hooks/useConfirm';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-
+// useConfirm
 const { confirm, dialogProps } = useConfirm();
-
-// Видалення
-const handleDelete = async (id: string) => {
-  if (!(await confirm({ title: 'Видалити запис?', variant: 'destructive' }))) return;
-  await apiFetch(`/resource/${id}`, { method: 'DELETE' });
-  toast.success('Видалено');
-  load();
-};
-
-// Обов'язково в кінці return JSX:
-<ConfirmDialog {...dialogProps} />
+if (!(await confirm({ title: 'Видалити?', variant: 'destructive' }))) return;
+// в JSX: <ConfirmDialog {...dialogProps} />
 ```
 
 ---
@@ -635,19 +554,11 @@ const handleDelete = async (id: string) => {
 
 ```typescript
 import { toast } from '@/lib/toast';
-
-// ✅ Використовуй toast напряму — НЕ перевіряй features.toastEnabled вручну
-// (ToastContainer рендериться тільки коли потрібно)
+// ✅ Завжди toast напряму — НЕ перевіряй features.toastEnabled
 toast.success('Збережено');
-toast.success(`Фільтр "${name}" збережено`);
-toast.success(`Видалено ${n}`);
-toast.warning(`Видалено ${ok} з ${total}. ${total - ok} помилок`); // bulk partial
 toast.error(e instanceof Error ? e.message : 'Помилка');
-toast.info('Синхронізацію завершено');
-
-// ❌ Не перевіряй if (features.toastEnabled) — це зайве
-// ❌ Не використовуй setError для системних помилок — тільки toast.error
-// ✅ setError залишай тільки для валідаційних помилок всередині форми
+toast.warning(`Видалено ${ok} з ${total}. ${total - ok} помилок`); // bulk partial
+// setError — тільки для валідаційних помилок у формі
 ```
 
 ---
@@ -656,17 +567,14 @@ toast.info('Синхронізацію завершено');
 
 ```typescript
 import { getCached, setCache } from '@/lib/ref-cache';
-
-// Для довідників (filials, lifts, warehouses) — завжди через cache
+// Для довідників (branches, lifts, warehouses) — завжди через cache
 useEffect(() => {
   const cached = getCached<Branch[]>('cache:branches');
   if (cached) setBranches(cached);
-  apiFetch<Branch[]>('/branches')
-    .then(data => {
-      setCache('cache:branches', data);
-      setBranches(data);
-    })
-    .catch(() => {});
+  apiFetch<Branch[]>('/branches').then(data => {
+    setCache('cache:branches', data);
+    setBranches(data);
+  });
 }, []);
 ```
 
@@ -734,42 +642,22 @@ export function useInvalidateMyResource() {
 ### Патерн сторінки з useQuery
 
 ```typescript
-'use client';
-import { useState } from 'react'; // useEffect НЕ потрібен для завантаження даних
-import { useQueryClient } from '@tanstack/react-query';
-import { useMyResource, myResourceKeys } from '@/hooks/api/useMyResource';
-import { useDebounce } from '@/hooks/useDebounce';
-
-export default function MyPage() {
-  useRequireAuth(['OWNER', 'ADMIN']);
-  const qc = useQueryClient();
-
-  // Фільтри
-  const [q, setQ] = useState('');
-  const debouncedQ = useDebounce(q);
-  const [page, setPage] = useState(1);
-  const [showDeleted, setShowDeleted] = useState(false);
-
-  // Дані — автоматично завантажуються/оновлюються при зміні фільтрів
-  const { data, isLoading: loading } = useMyResource({
-    q: debouncedQ || undefined,
-    page,
-    showDeleted,
-  });
-  const items = data?.items ?? [];
-  const total = data?.total ?? 0;
-
-  // Після мутацій (create/update/delete) — інвалідуємо кеш
-  const invalidate = () => qc.invalidateQueries({ queryKey: myResourceKeys.all });
-
-  const create = async () => {
-    await apiFetch('/my-resource', { method: 'POST', body: JSON.stringify(form) });
-    toast.success('Створено');
-    invalidate(); // ← не load(), а invalidate
-  };
-
-  // ... render
-}
+// Фільтри
+const [q, setQ] = useState('');
+const debouncedQ = useDebounce(q);
+const [page, setPage] = useState(1);
+const [showDeleted, setShowDeleted] = useState(false);
+// Дані — autorefetch при зміні фільтрів, useEffect НЕ потрібен
+const { data, isLoading: loading } = useMyResource({
+  q: debouncedQ || undefined,
+  page,
+  showDeleted,
+});
+const items = data?.items ?? [];
+const total = data?.total ?? 0;
+// Після мутацій — invalidate замість load()
+const qc = useQueryClient();
+const invalidate = () => qc.invalidateQueries({ queryKey: myResourceKeys.all });
 ```
 
 ### Коли useEffect, а коли useQuery
@@ -813,94 +701,6 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
 > **Еталон:** `apps/web/src/app/(app)/crm/page.tsx`  
 > Всі довідникові сторінки (список + фільтри + таблиця) МАЮТЬ виглядати однаково.  
 > Якщо правиш існуючу сторінку — звір з цим стандартом і виправ відступи.
-
-### Структура сторінки
-
-```tsx
-<div className="page-fill p-4 md:p-6">
-  {/* 1. Заголовок — ТІЛЬКИ h1, обгорнутий у <div>, кнопок НЕ МАЄ */}
-  <div className="page-header">
-    <div>
-      <h1 className="page-title">Назва розділу</h1>
-    </div>
-  </div>
-  {/*
-    ⚠️ ЧОМУ <div> навколо h1:
-    .page-fill > .page-header { margin-bottom: -0.25rem } — скорочує gap між header і filters.
-    Якщо h1 без обгортки — правило спрацьовує і відступ стискається.
-    Якщо h1 в <div> — правило НЕ спрацьовує (не прямий дочірній) — відступ = spacing-section (16px).
-    Еталон CRM використовує <div> обгортку — тому відступ виглядає правильно.
-  */}
-
-  {/*
-    2. Вкладки (якщо є)
-    - Клас -mx-6 px-6: вкладки тягнуться від краю до краю (компенсує p-6 батька)
-    - НЕ додавати mb-* / pt-*: відступ між вкладками і фільтрами = gap:0.5rem від page-fill (8px)
-      + py-2.5 кнопок вкладок дає достатнє візуальне повітря (~16px сприйняте)
-    - Еталон: catalog/page.tsx + infrastructure/page.tsx
-  */}
-  <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
-    {TABS.map(t => (
-      <button
-        key={t.key}
-        onClick={() => setTab(t.key)}
-        className={cn(
-          'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
-          tab === t.key
-            ? 'border-primary text-primary'
-            : 'border-transparent text-muted-foreground hover:text-foreground',
-        )}
-      >
-        {t.label}
-      </button>
-    ))}
-  </div>
-
-  {/*
-    3. Рядок фільтрів
-    - НЕ додавати mb-* / pt-*: відступ між фільтрами і таблицею = gap:0.5rem від page-fill
-    - Пошук завжди через <Input leftElement={<Search />}>, НЕ кастомний input
-    - Права група кнопок — ml-auto всередині цього ж flex-рядка
-  */}
-  <div className="flex gap-3 flex-wrap shrink-0">
-    {/* Пошук — Input з leftElement */}
-    <Input
-      value={search}
-      onChange={e => setSearch(e.target.value)}
-      placeholder="Пошук..."
-      leftElement={<Search />}
-      className="flex-1 min-w-48"
-    />
-
-    {/* Інші Select-фільтри */}
-    <Select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="w-44">
-      ...
-    </Select>
-
-    {/* Права група — ml-auto, gap-2 */}
-    <div className="flex items-center gap-2 ml-auto">
-      {/* Eye — icon-sm, border-primary при showDeleted=true */}
-      <Button
-        variant="outline"
-        size="icon-sm"
-        title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
-        onClick={() => setShowDeleted(v => !v)}
-        className={showDeleted ? 'border-primary text-primary' : ''}
-      >
-        {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-      </Button>
-
-      {/* Кнопка створення — стандартний розмір (БЕЗ size="sm") */}
-      <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-        Назва об'єкта {/* НЕ "Додати" — конкретна назва: "Філія", "Зона", "Контрагент" */}
-      </Button>
-    </div>
-  </div>
-
-  {/* 4. Scrollable область */}
-  <div className="flex-1 min-h-0 overflow-y-auto">{/* таблиця, спінер, empty state */}</div>
-</div>
-```
 
 ### Ключові правила
 
@@ -978,125 +778,6 @@ import { TableContainer } from '@/components/ui/table-container';
 ```
 
 ---
-
-```tsx
-{/* Table + DetailPanel (якщо є) */}
-<div className="flex flex-1 min-h-0">
-  <TableContainer>
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {features.bulkActionsEnabled && (
-            <TableHead className="w-9 pr-0">
-              <input type="checkbox" checked={bulkSelect.allSelected} ref={selectAllRef}
-                onChange={bulkSelect.toggleAll} className="h-3.5 w-3.5 rounded border-border"
-                aria-label="Вибрати всіх" />
-            </TableHead>
-          )}
-          {visibleColumns.map(col => (
-            <TableHead key={col.key} {...dragProps(col.key)}>{col.label}</TableHead>
-          ))}
-          <TableHead /> {/* actions column */}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {/* Loading */}
-        {loading && (
-          <TableRow>
-            <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-              className="py-12 text-center">
-              <div className="flex justify-center"><Spinner size="md" /></div>
-            </TableCell>
-          </TableRow>
-        )}
-        {/* Empty */}
-        {!loading && items.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-              className="p-0">
-              <EmptyState icon={MyIcon} title="Нічого не знайдено"
-                description="Спробуйте змінити параметри пошуку" size="sm" />
-            </TableCell>
-          </TableRow>
-        )}
-        {/* Rows */}
-        {!loading && items.map(item => {
-          const isDeleted = !!item.deletedAt;
-          return (
-            <TableRow key={item.id} className={cn(
-              'group transition-colors',
-              isDeleted && 'opacity-60',
-              detailPanel.enabled && 'cursor-pointer',
-              selectedItem?.id === item.id && detailPanel.enabled && 'bg-secondary',
-              bulkSelect.isSelected(item.id) && 'bg-primary/5',
-            )}
-              onClick={() => detailPanel.enabled && setSelectedItem(prev =>
-                prev?.id === item.id ? null : item)}>
-              {features.bulkActionsEnabled && (
-                <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                  <input type="checkbox" checked={bulkSelect.isSelected(item.id)}
-                    onChange={() => bulkSelect.toggle(item.id)}
-                    className="h-3.5 w-3.5 rounded border-border" />
-                </TableCell>
-              )}
-              {visibleColumns.map(col => {
-                if (col.key === 'name') return (
-                  <TableCell key="name">
-                    <div className="flex items-center gap-2">
-                      {/* text-primary якщо рядок клікабельний (веде на деталі) */}
-                      <span className="text-[13px] font-medium text-primary">{item.name}</span>
-                      {isDeleted && <Badge variant="secondary">видалено</Badge>}
-                    </div>
-                    {item.phone && (
-                      <p className="text-[12px] text-muted-foreground mt-0.5">{item.phone}</p>
-                    )}
-                  </TableCell>
-                );
-                if (col.key === 'status') return (
-                  <TableCell key="status">
-                    <Badge variant={STATUS_BADGE[item.status]}>{STATUS_LABELS[item.status]}</Badge>
-                  </TableCell>
-                );
-                if (col.key === 'extra') return (
-                  <TableCell key="extra" className="text-muted-foreground text-[13px]">
-                    {item.extra ?? '—'}
-                  </TableCell>
-                );
-                return null;
-              })}
-              {/* Actions — stopPropagation щоб не відкривати DetailPanel */}
-              <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-end gap-1">
-                  {!isDeleted && (
-                    <Button variant="ghost" size="icon-sm" title="Редагувати"
-                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                      onClick={() => openEdit(item)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                  {!isDeleted && (
-                    <Button variant="ghost" size="icon-sm" title="Видалити"
-                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => markDeleted(item.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                </div>
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
-  </TableContainer>
-
-  {/* DetailPanel — якщо є */}
-  <DetailPanel open={!!selectedItem && detailPanel.enabled} ... />
-</div>
-
-{/* Пагінація — ЗАВЖДИ <Pagination>, не кнопки Prev/Next */}
-<Pagination page={page} totalPages={totalPages} onChange={setPage} />
-```
 
 ### Пагінація на бекенді — стандарт
 
@@ -1293,95 +974,21 @@ import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 
 **Джерело правди:** `apps/web/src/hooks/useAnimatedPresence.ts` + `apps/web/src/app/globals.css` (`[data-state]` rules)
 
-### Проблема
+**Патерн:** `const { visible, state } = useAnimatedPresence(open)` → `if (!visible) return null` → `<div data-animate data-state={state}>`.
 
-`if (!open) return null` прибирає DOM миттєво — анімація виходу неможлива. `animate-in` Tailwind дає лише enter-анімацію.
-
-### Патерн: useAnimatedPresence + data-animate + data-state
-
-**Важливо:** анімації застосовуються ТІЛЬКИ якщо разом з `data-state` присутній маркер `data-animate`. Без маркера CSS rule не спрацьовує — це захист від:
-
-- Radix UI / HeadlessUI компонентів які теж використовують `data-state="open|closed"`
-- Випадкових співпадінь у власних компонентах
-- Каскадного впливу outer-modal на backdrop вкладеного modal'у (direct-child `>` селектор)
-
-```tsx
-// ✅ ПРАВИЛЬНО — плавний вхід І вихід
-import { useAnimatedPresence } from '@/hooks/useAnimatedPresence';
-
-const { visible, state } = useAnimatedPresence(open); // exitDuration за замовчуванням 180ms
-
-if (!visible) return null; // DOM зникає ПІСЛЯ exit-анімації
-
-return (
-  <div data-animate data-state={state} className="my-panel">
-    {children}
-  </div>
-);
-// globals.css: [data-animate][data-state="open"] → modal-in 200ms
-//              [data-animate][data-state="closed"] → modal-out 180ms
-```
-
-```tsx
-// ❌ ЗАБОРОНЕНО — миттєве зникнення без анімації виходу
-if (!open) return null;
-return <div className="animate-in fade-in zoom-in-95 duration-200">{children}</div>;
-
-// ❌ ЗАБОРОНЕНО — обгортка над <Modal> з `if (!open) return null` ламає Modal's exit
-// (Modal сам тримає DOM під час exit-анімації — не дублюй guard)
-export function MyDialog({ open, onClose }: Props) {
-  if (!open) return null; // ← BUG: Modal не отримає open=false для exit
-  return (
-    <Modal open={open} onClose={onClose}>
-      ...
-    </Modal>
-  );
-}
-```
-
-### Де застосовується
-
-| Компонент             | data-state на             | exitDuration           |
-| --------------------- | ------------------------- | ---------------------- |
-| `Modal` backdrop      | `[data-backdrop]`         | 180ms                  |
-| `Modal` panel         | root div                  | 180ms                  |
-| `DetailPanel` content | scrollable div            | 150ms                  |
-| Tab content           | `key={activeTab}` wrapper | remount → тільки enter |
-
-### Tab content — key remount патерн
-
-```tsx
-// ✅ При зміні таба — React remount'ить → завжди enter-анімація
-<div key={activeTab} data-animate data-state="open" data-variant="content"
-     className="flex-1 overflow-y-auto p-4">
-  {activeContent}
-</div>
-// Exit при зміні таба не потрібен — DOM замінюється одразу
-
-// ❌ animate-in fade-in duration-150 (тільки enter, нема exit, hardcoded duration)
-<div key="tab-main" className="animate-in fade-in duration-150">{content}</div>
-```
-
-### CSS easing токени (globals.css)
-
-```css
---ease-enter: cubic-bezier(0.22, 1, 0.36, 1); /* spring, для появлення */
---ease-exit: cubic-bezier(0.4, 0, 1, 1); /* ease-in, для зникнення */
---ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* стандартний */
---duration-enter: 200ms;
---duration-exit: 180ms;
-```
+- `data-animate` обов'язковий — захищає від Radix `data-state` конфліктів
+- ❌ `if (!open) return null` без `useAnimatedPresence` — нема exit-анімації
+- ❌ Обгортка над `<Modal>` з `if (!open) return null` — Modal сам тримає DOM при exit
+- Tab content: `<div key={activeTab} data-animate data-state="open">` — remount → enter-анімація
+- CSS: `--ease-enter: cubic-bezier(0.22,1,0.36,1)` / `--ease-exit: cubic-bezier(0.4,0,1,1)` / `--duration-enter: 200ms` / `--duration-exit: 180ms`
 
 ### Checklist для нового модального компонента
 
-- [ ] Рендерить через базовий `<Modal>` — анімація успадковується автоматично
-- [ ] Якщо кастомний overlay — використовує `useAnimatedPresence(open)` + `data-animate data-state={state}`
-- [ ] НЕ використовує `if (!open) return null` напряму (тільки `if (!visible) return null`)
-- [ ] **Обгортка над `<Modal>` НЕ має власного `if (!open) return null`** — Modal сам тримає DOM на час exit-анімації; раннє null-повернення у wrapper'і ламає exit (актуально для ConfirmDialog/PickerModal/SearchPickerModal patterns)
-- [ ] Якщо ставите `data-state` на власному елементі — додайте `data-animate` маркер
-- [ ] Backdrop використовує direct-child селектор у CSS (`> [data-backdrop]`), не descendant — інакше вкладена модалка (ConfirmDialog у CategoryManagerModal) отримує паразитну анімацію коли outer змінює state
-- [ ] НЕ має `animate-in` Tailwind-класів на root-елементі (замінені `[data-state]` rules)
-- [ ] Для accordion/collapse — використовує `<AnimatedBody>` з `modal.tsx`
+- [ ] Через `<Modal>` — анімація автоматично. Кастомний overlay → `useAnimatedPresence` + `data-animate data-state`
+- [ ] НЕ `if (!open) return null` (лише `if (!visible) return null`)
+- [ ] Обгортка над `<Modal>` НЕ має `if (!open) return null`
+- [ ] `data-state` на власному елементі → додати `data-animate` маркер
+- [ ] Accordion/collapse → `<AnimatedBody>` з `modal.tsx`
 
 ---
 

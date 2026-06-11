@@ -351,7 +351,9 @@ const data = await apiFetch<WorkOrder[]>('/work-orders');
 ## UX/UI Features System (Phase 20)
 
 > STO ERP підтримує 10 UX-прапорців у `OrganisationSettings.uiFeatures` (JSON, per-org).
-> Всі прапорці за замовчуванням `true`. Читаються через `useUiFeatures()` хук.
+> Всі прапорці за замовчуванням `true`. Endpoint: `GET /settings/ui-features` (доступний всім ролям).
+> Module-level cache з TTL — один fetch на сесію. При помилці кешує DEFAULTS на 60 сек.
+> Очищення при logout: слухає `sto:logout` event → скидає до DEFAULTS.
 
 ### uiFeatures — повна схема
 
@@ -377,326 +379,69 @@ const UI_FEATURES_DEFAULTS: UiFeatures = {
 ### useUiFeatures — отримання прапорців
 
 ```typescript
-// apps/web/src/hooks/useUiFeatures.ts
-import { useUiFeatures } from '@/hooks/useUiFeatures';
-
-// В компоненті:
 const features = useUiFeatures();
 if (features.toastEnabled) toast.success('Збережено');
-
-// ОБОВ'ЯЗКОВО: всі прапорці захищають свій функціонал
 {features.bulkActionsEnabled && <BulkActionsBar ... />}
+// Інвалідація після зміни: invalidateUiFeaturesCache() → dispatch 'sto:ui-features-change'
 ```
-
-**Правила useUiFeatures:**
-
-- Module-level cache з TTL: один fetch на всю сесію, не на кожен mount
-- Endpoint: `GET /settings/ui-features` — доступний ВСІМ ролям (не тільки OWNER/ADMIN)
-- При помилці — кешує `DEFAULTS` на 60 сек щоб не спамити backend
-- Очищення при logout: слухає `sto:logout` event → скидає до `DEFAULTS`
-- Інвалідація після зміни налаштувань: `invalidateUiFeaturesCache()` → dispatch `sto:ui-features-change`
 
 ### Toast — сповіщення після мутацій
 
-```typescript
-// apps/web/src/lib/toast.ts
-import { toast } from '@/lib/toast';
-
-// ✅ Завжди перевіряй прапорець
-if (features.toastEnabled) toast.success('Збережено');
-if (features.toastEnabled) toast.error(`Помилка: ${e.message}`);
-if (features.toastEnabled) toast.warning('Залишок < мінімального рівня');
-if (features.toastEnabled) toast.info('Синхронізацію завершено');
-
-// ❌ Не використовуй напряму без прапорця
-toast.success('...');  // може бути вимкнено в налаштуваннях
-
-// ✅ Резервний варіант коли toast вимкнено
-try {
-  await apiFetch(...);
-  if (features.toastEnabled) toast.success('Збережено');
-} catch (e) {
-  const msg = e instanceof Error ? e.message : 'Помилка';
-  if (features.toastEnabled) toast.error(msg);
-  else setError(msg);  // fallback у inline error display
-}
-```
-
-**ToastContainer** монтується в `TopShell.tsx` — підключати в новому layout не потрібно.
+- Завжди перевіряй прапорець: `if (features.toastEnabled) toast.success('Збережено')`
+- При вимкненому toast — fallback: `else setError(msg)` (inline error display)
+- `ToastContainer` монтується в `TopShell.tsx` — не підключати в новому layout
 
 ### useDirtyForm — захист від випадкового закриття
 
-```typescript
-// apps/web/src/hooks/useDirtyForm.ts
-const { isDirty, markDirty, resetDirty, confirmClose } = useDirtyForm({
-  enabled: features.unsavedGuardEnabled,
-});
+API: `const { isDirty, markDirty, resetDirty, confirmClose } = useDirtyForm({ enabled: features.unsavedGuardEnabled })`
 
-// onChange будь-якого поля:
-onChange={e => { setForm(f => ({ ...f, name: e.target.value })); markDirty(); }}
-
-// У кнопці "Скасувати":
-onClick={async () => {
-  if (await confirmClose()) { resetDirty(); setModal(false); }
-}}
-
-// Після успішного збереження:
-onSave: async () => {
-  await apiFetch(...);
-  resetDirty();  // ОБОВ'ЯЗКОВО — скидає брудний стан
-}
-```
-
-**Правила useDirtyForm:**
-
-- `isDirtyRef` (useRef) — для синхронного `beforeunload` обробника
-- `isDirty` (useState) — для React рендерингу (кнопка Скасувати показує "Є зміни")
-- `confirmClose()` — повертає `Promise<boolean>`: `true` якщо можна закривати
+- `onChange` → `markDirty()`; після збереження → `resetDirty()` (ОБОВ'ЯЗКОВО)
+- `confirmClose()` → `Promise<boolean>`; `isDirtyRef` (useRef) для `beforeunload`, `isDirty` (useState) для рендеру
 
 ### useInlineEdit — редагування у таблиці
 
-```typescript
-// apps/web/src/hooks/useInlineEdit.ts
-const inlineEdit = useInlineEdit({
-  enabled: features.inlineEditEnabled,
-  onSave: async (rowId, field, value) => {
-    await apiFetch(`/work-orders/${rowId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ [field]: value === '' ? null : value }),
-    });
-    if (features.toastEnabled) toast.success('Збережено');
-    load(); // оновити список
-  },
-});
+API: `const inlineEdit = useInlineEdit({ enabled, onSave: async (rowId, field, value) => ... })`
 
-// В JSX — текстовий/числовий input:
-{inlineEdit.isEditing(row.id, 'field') ? (
-  <InlineEditCell
-    value={inlineEdit.editing?.value ?? row.field}
-    saving={inlineEdit.saving}
-    onCommit={v => { void inlineEdit.commitEdit(v).catch(() => {}); }}
-    onCancel={inlineEdit.cancelEdit}
-    type="text"
-  />
-) : (
-  <InlineViewCell
-    value={row.field}
-    enabled={features.inlineEditEnabled}
-    onClick={() => inlineEdit.startEdit(row.id, 'field', row.field)}
-  >
-    {row.field}
-  </InlineViewCell>
-)}
-
-// Для enum (select) — uncontrolled pattern:
-{inlineEdit.isEditing(row.id, 'priority') ? (
-  <select
-    defaultValue={inlineEdit.editing?.value ?? row.priority}
-    onChange={e => { void inlineEdit.commitEdit(e.target.value).catch(() => {}); }}
-    onBlur={() => inlineEdit.cancelEdit()}
-    onKeyDown={e => { if (e.key === 'Escape') inlineEdit.cancelEdit(); }}
-    disabled={inlineEdit.saving}
-    autoFocus
-    className="rounded border border-primary bg-surface text-[12px] px-1.5 py-0.5 outline-none disabled:opacity-50"
-  >
-    {OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-  </select>
-) : (...)}
-```
-
-**Правила useInlineEdit:**
-
-- `savingRef` всередині хука запобігає подвійному коміту (blur + click обидва фаєряться)
-- `commitEdit` re-throws після показу toast → call-сайт ЗАВЖДИ `.catch(() => {})`
-- `defaultValue` (uncontrolled) для `<select>` — контрольований `value` "відскакує" візуально при in-flight save
-- `inputRef.current?.select()` обгорнутий у try/catch — date inputs кидають `InvalidStateError`
+- `inlineEdit.isEditing(row.id, 'field')` → рендерить `<InlineEditCell>` або `<InlineViewCell>`
+- `commitEdit(v).catch(() => {})` — ЗАВЖДИ `.catch` бо re-throws після toast
+- `<select>` → `defaultValue` (uncontrolled) — controlled `value` "відскакує" при in-flight save
+- `savingRef` блокує подвійний коміт (blur + click)
 
 ### useBulkSelect — множинний вибір у таблиці
 
-```typescript
-// apps/web/src/hooks/useBulkSelect.ts
-const bulkSelect = useBulkSelect(data?.items ?? []);
+API: `const bulkSelect = useBulkSelect(data?.items ?? [])` — auto-prunes stale IDs при рефетч
 
-// КРИТИЧНО: useBulkSelect автоматично прибирає stale IDs при зміні items
-// (при пагінації / фільтрації / refetch — обрані ID з попередньої сторінки зникають)
-
-// TableHeader:
-{features.bulkActionsEnabled && (
-  <TableHead className="w-9 pr-0">
-    <input
-      type="checkbox"
-      ref={selectAllRef}   // useRef<HTMLInputElement>(null) + useEffect для indeterminate
-      checked={bulkSelect.allSelected}
-      onChange={bulkSelect.toggleAll}
-      aria-label="Вибрати всі"
-    />
-  </TableHead>
-)}
-
-// Imperative indeterminate (НЕ через inline ref callback):
-const selectAllRef = useRef<HTMLInputElement>(null);
-useEffect(() => {
-  if (selectAllRef.current) selectAllRef.current.indeterminate = bulkSelect.someSelected;
-}, [bulkSelect.someSelected]);
-
-// BulkActionsBar — ЗАВЖДИ Promise.allSettled для множинних мутацій:
-const bulkActions = useMemo<BulkAction[]>(() => [
-  {
-    id: 'cancel', label: 'Скасувати', variant: 'destructive',
-    onClick: async (ids) => {
-      const results = await Promise.allSettled(
-        ids.map(id => apiFetch(`/resource/${id}/transition`, {
-          method: 'POST', body: JSON.stringify({ status: 'CANCELLED' }),
-        }))
-      );
-      const ok = results.filter(r => r.status === 'fulfilled').length;
-      bulkSelect.clear();
-      load();  // в finally-логіці — завжди reload
-      if (features.toastEnabled) {
-        if (ok === ids.length) toast.success(`Скасовано ${ok}`);
-        else toast.warning(`Скасовано ${ok} з ${ids.length}. ${ids.length - ok} не змінено`);
-      }
-    },
-  },
-], [bulkSelect, features.toastEnabled, load]);
-```
-
-**Правила useBulkSelect + BulkActionsBar:**
-
-- `Promise.allSettled` — ніколи `Promise.all` для bulk-мутацій (один 400 не зупиняє решту)
-- `bulkSelect.clear()` + `load()` — ЗАВЖДИ, незалежно від кількості помилок
-- colSpan у loading/empty rows: `features.bulkActionsEnabled ? cols + 1 : cols`
-- `useMemo` для `bulkActions` array — щоб не перестворювати нову референцію на кожен render
+- `indeterminate` → imperative через `useEffect + ref`, НЕ inline ref callback
+- Bulk-мутації → `Promise.allSettled` (НЕ `Promise.all`); завжди `bulkSelect.clear()` + `load()`
+- colSpan у loading/empty: `features.bulkActionsEnabled ? cols + 1 : cols`
+- `useMemo` для `bulkActions` array
 
 ### useSavedFilters — збережені пресети фільтрів
 
-```typescript
-// apps/web/src/hooks/useSavedFilters.ts
-interface MyFilters extends Record<string, unknown> {
-  statusFilter: string;
-  search: string;
-}
-const { saved, save, remove } = useSavedFilters<MyFilters>('page-key');
-
-// save повертає збережений пресет з .id:
-const preset = save('Активні', { statusFilter: 'IN_PROGRESS', search: '' });
-setActiveSavedFilterId(preset.id);
-if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
-
-// onApply:
-const applyFilter = useCallback((preset: { id: string; filters: MyFilters }) => {
-  setStatusFilter(preset.filters.statusFilter ?? '');
-  setSearch(preset.filters.search ?? '');
-  setPage(1);
-  setActiveSavedFilterId(preset.id);
-}, []);
-```
-
-**Правила useSavedFilters:**
+API: `const { saved, save, remove } = useSavedFilters<MyFilters>('page-key')`
 
 - SSR-safe: `useState([])` → гідратація у `useEffect` з localStorage
-- `Array.isArray` guard при читанні — захист від corruption localStorage (стара версія додатку)
+- `Array.isArray` guard при читанні — захист від corruption
 - `pageKey` — унікальний per-page рядок (`'work-orders'`, `'inventory'`, `'employees'`)
 
-### Hover-actions у рядках таблиці — канонічний патерн
+### Hover-actions у рядках таблиці
 
-Єдиний стандарт для кнопок дій (редагувати / видалити / відкрити) у рядках усіх списків.
-
-```tsx
-// ✅ ПРАВИЛЬНО — TableRow отримує group, кнопки opacity-0 → group-hover
-<TableRow
-  className={cn(
-    'group transition-colors',
-    isDeleted && 'opacity-60',
-    detailPanel.enabled && 'cursor-pointer',
-    isSelected && 'bg-primary/5',
-  )}
->
-  {/* ... колонки ... */}
-  <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-    <div className="flex items-center justify-end gap-1">
-      {/* Основна дія (відкрити деталі / edit modal) */}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title="Редагувати"
-        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-        onClick={() => openEdit(item)}
-      >
-        <Pencil className="h-3.5 w-3.5" />
-      </Button>
-      {/* Видалення — тільки для не-видалених */}
-      {!isDeleted && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title="Позначити на видалення"
-          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-          onClick={() => void markDeleted(item)}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      )}
-    </div>
-  </TableCell>
-</TableRow>
-```
-
-**Правила hover-actions:**
-
-- `group` обов'язково на `<TableRow>` — без нього `group-hover` не працює
-- `opacity-0 group-hover:opacity-100 focus-visible:opacity-100` — обидва стани (hover + keyboard nav)
-- `onClick={e => e.stopPropagation()}` на `<TableCell>` — щоб не тригерило row-click (detail panel)
-- `size="icon-sm"` — стандарт для icon-only кнопок у таблиці
-- Trash2 завжди у умові `{!isDeleted && ...}` — видалений рядок не можна видалити повторно
-- `markDeleted` завжди через `confirm({ variant: 'destructive' })` перед DELETE-запитом
-- Для навігації до сторінки деталей — `ExternalLink` іконка замість `Pencil`
-- Для додаткових специфічних дій (напр. "Розцінити") — окрема іконка `Zap` зліва від Pencil
-
-**Де застосовується (всі списки-документи):**
-
-- `work-orders/page.tsx` — ExternalLink (→ /work-orders/:id) + Trash2
-- `invoices/page.tsx` — Pencil (відкрити detail panel) + Trash2
-- `purchase-orders/page.tsx` — Zap (розцінити, умовно) + Pencil + Trash2
-- `stock-documents/page.tsx` — Pencil (setShowDetail) + Trash2
-- `crm/page.tsx` — Pencil (edit modal) + Trash2
-- `employees/page.tsx` — Pencil (edit modal) + Trash2
-- Усі catalog tabs (BrandsTab, GoodsTab, WorksTab, ServicesTab, UnitsTab) — Pencil + Trash2/RotateCcw
+- `group` на `<TableRow>`, кнопки: `opacity-0 group-hover:opacity-100 focus-visible:opacity-100`
+- `size="icon-sm"` для icon-only кнопок; `onClick={e => e.stopPropagation()}` на `<TableCell>`
+- Trash2 у `{!isDeleted && ...}`; перед DELETE — `confirm({ variant: 'destructive' })`
+- Навігація до деталей → `ExternalLink`; додаткові дії (Розцінити) → `Zap` зліва від Pencil
+- Застосовується: work-orders (ExternalLink+Trash2), invoices/purchase-orders/stock-documents (Pencil+Trash2), catalog tabs (Pencil+Trash2/RotateCcw)
 
 ### NotificationCenter — сповіщення у sidebar
 
-```typescript
-// apps/web/src/components/ui/notification-center.tsx
-import { useNotifications } from '@/components/ui/notification-center';
+API: `const { add } = useNotifications(); add('success'|'error'|'warning', title, body)`
 
-// Додати сповіщення програматично:
-const { add } = useNotifications();
-add('success', 'Наряд виконано', `#${wo.number} перейшов у статус "Виконано"`);
-add('error', 'Помилка синхронізації', error.message);
-add('warning', 'Низький залишок', `${good.name}: залишилось ${qty} шт.`);
-```
-
-**Правила NotificationCenter:**
-
-- `group` клас на батьківській картці + `opacity-0 group-hover:opacity-100` на кнопці delete
-- `focus:opacity-100` на кнопці — для клавіатурних користувачів
-- `onKeyDown` на `role="button"` рядку — guard `if (e.target !== e.currentTarget) return`
+- `group` + `opacity-0 group-hover:opacity-100 focus:opacity-100` на кнопці delete
+- `onKeyDown` на `role="button"` → guard `if (e.target !== e.currentTarget) return`
 
 ### SyncIndicator — статус синхронізації
 
-```typescript
-// Диспетч статусу синхронізації з будь-якого місця:
-window.dispatchEvent(
-  new CustomEvent('sto:sync-status', {
-    detail: { status: 'syncing' }, // 'idle' | 'syncing' | 'offline' | 'error'
-  }),
-);
-
-// Після завершення:
-window.dispatchEvent(new CustomEvent('sto:sync-status', { detail: { status: 'idle' } }));
-```
-
-**SyncIndicator** відображається автоматично у sidebar (wired у TopShell). Показується тільки коли `status !== 'idle'` або `lastSync !== null`.
+`window.dispatchEvent(new CustomEvent('sto:sync-status', { detail: { status: 'syncing' } }))` — `'idle'|'syncing'|'offline'|'error'`; wired у TopShell, показується коли `status !== 'idle'` або `lastSync !== null`
 
 ---
 
@@ -1626,162 +1371,19 @@ tabs={[
 
 ### §14.3 — Race guard + скидання стану при відкритті
 
-**Обов'язково:** openEdit запускається в event handler (не useEffect), тому повільний fetch попереднього об'єкта може перезаписати дані поточного.
+`openEdit` в event handler → race guard: `const reqId = ++modalChildReqRef.current` + перевірка `if (modalChildReqRef.current !== reqId) return` в `.then/.catch/.finally`.
 
-```ts
-const openEdit = (item: Item) => {
-  setEditingItem(item);
-  setForm({ ...extractFields(item) });
-  dirty.resetDirty();
-  setError('');
-
-  // Скинути стан дочірніх колекцій при відкритті
-  setModalChildren([]);
-  setChildError('');
-
-  setModal(true);
-
-  // Race guard: кожне відкриття отримує унікальний token
-  const reqId = ++modalChildReqRef.current;
-  setModalChildrenLoading(true);
-  apiFetch<Child[]>(`/items/${item.id}/children`)
-    .then(data => {
-      if (modalChildReqRef.current !== reqId) return; // стара відповідь — ігнорувати
-      setModalChildren(data);
-    })
-    .catch(err => {
-      if (modalChildReqRef.current !== reqId) return;
-      setChildError(err instanceof Error ? err.message : 'Помилка завантаження');
-    })
-    .finally(() => {
-      if (modalChildReqRef.current !== reqId) return;
-      setModalChildrenLoading(false);
-    });
-};
-```
-
-**Якщо декілька дочірніх колекцій** — окремий reqRef для кожної:
-
-```ts
-const vehiclesReqRef = useRef(0);
-const workOrdersReqRef = useRef(0);
-
-// В openEdit — bump ОБИДВА перед стартом fetch
-const vReqId = ++vehiclesReqRef.current;
-const woReqId = ++workOrdersReqRef.current;
-
-// Паралельний fetch двох колекцій:
-Promise.all([
-  apiFetch<Vehicle[]>(`/counterparties/${cp.id}/garages`).then(...),
-  apiFetch<WorkOrder[]>(`/work-orders?counterpartyId=${cp.id}&limit=50`).then(...),
-]);
-```
-
-**❌ Типові помилки:**
-
-```ts
-// ❌ Немає race guard — stale fetch перезаписує поточний CP
-apiFetch<Child[]>(`/items/${item.id}/children`)
-  .then(data => setModalChildren(data));  // без перевірки reqRef!
-
-// ❌ Не скидати стан при відкритті — попередній CP залишається у вкладці
-const openEdit = (cp) => {
-  setEditingCp(cp);
-  // setModalVehicles([]);  ← пропущено!
-  setModal(true);
-};
-
-// ❌ catch без error state — юзер бачить порожній список замість помилки
-.catch(() => {})  // ← ковтаємо помилку
-```
+- Скидати `setModalChildren([])` + `setChildError('')` при відкритті (до fetch)
+- Декілька колекцій → окремий reqRef для кожної; fetch паралельно через `Promise.all`
+- ❌ `.catch(() => {})` — ковтає помилку; завжди `setChildError(err.message)`
 
 ### §14.4 — AnimatedBody: плавна зміна висоти Modal та collapsible-секцій
 
-`AnimatedBody` вбудований у `<Modal>` — **всі `<Modal>` компоненти анімують висоту автоматично**, нічого окремо робити не потрібно.
+`<Modal>` анімує висоту автоматично. Для collapse-секцій поза Modal: `import { AnimatedBody } from '@/components/ui/modal'`; `{isOpen && <AnimatedBody className="px-4 py-3">{children}</AnimatedBody>}`.
 
-Застосовуй `AnimatedBody` безпосередньо (імпорт з `@/components/ui/modal`) коли:
-
-- Accordion / collapse-секція поза Modal
-- Панель що розгортається при кліку (show/hide форми на сторінці)
-- Будь-який контейнер де висота змінюється динамічно і `transition-all max-h-[Npx]` дає стрибок або потребує магічного числа
-
-```tsx
-import { AnimatedBody } from '@/components/ui/modal';
-
-// ✅ Accordion / collapsible section
-{
-  isOpen && (
-    <AnimatedBody className="px-4 py-3">
-      {/* вміст довільної висоти — анімується автоматично */}
-      <p>Рядок 1</p>
-      <p>Рядок 2</p>
-    </AnimatedBody>
-  );
-}
-```
-
-❌ НЕ використовувати:
-
-- `maxHeight: '900px'` як magic number для collapse — стрибає при контенті більшому/меншому за число
-- `transition: 'max-height ...'` без ResizeObserver — потребує підбору константи, ламається при зміні вмісту
-- `transition-all` на контейнері з `overflow:hidden` — анімує всі CSS-властивості, важко передбачити
-
-✅ Паттерн для collapse з анімацією 0 ↔ контент (коли потрібна анімація закриття до 0):
-
-```tsx
-// refs
-const outerRef = useRef<HTMLDivElement>(null);
-const innerRef = useRef<HTMLDivElement>(null);
-
-// ResizeObserver — оновлює висоту при зміні вмісту
-useEffect(() => {
-  if (!mounted) return;
-  const ro = new ResizeObserver(() => {
-    if (outerRef.current && innerRef.current && isVisible) {
-      outerRef.current.style.height = `${innerRef.current.scrollHeight}px`;
-    }
-  });
-  if (innerRef.current) ro.observe(innerRef.current);
-  return () => ro.disconnect();
-}, [mounted, isVisible]);
-
-// Анімація відкриття — ResizeObserver встановить реальну висоту
-// Анімація закриття — вручну через rAF:
-const closePanel = () => {
-  const outer = outerRef.current;
-  if (outer) {
-    outer.style.height = `${outer.scrollHeight}px`; // закріпити
-    requestAnimationFrame(() => {
-      if (outerRef.current) {
-        outerRef.current.style.transition = 'height 320ms cubic-bezier(0.4,0,0.6,1)';
-        outerRef.current.style.height = '0px';
-      }
-    });
-  }
-  setVisible(false);
-  setTimeout(() => setMounted(false), 420);
-};
-
-// JSX
-{
-  mounted && (
-    <div
-      ref={outerRef}
-      style={{
-        overflow: 'hidden',
-        height: isVisible ? undefined : '0px',
-        transition: isVisible ? 'height 480ms cubic-bezier(0.22,1,0.36,1)' : undefined,
-      }}
-    >
-      <div ref={innerRef} className="px-4 py-3">
-        {children}
-      </div>
-    </div>
-  );
-}
-```
-
-> Реальний приклад: `apps/web/src/app/calendar/page.tsx` — форма слоту (showAdd → formMounted/formVisible).
+- ❌ `maxHeight: '900px'` — magic number; ❌ `transition: 'max-height ...'` без ResizeObserver
+- ✅ Для анімації 0↔контент з close: `outerRef`+`innerRef` + `ResizeObserver` + rAF закриття
+- Приклад: `apps/web/src/app/calendar/page.tsx` (showAdd → formMounted/formVisible)
 
 ---
 
@@ -1895,113 +1497,16 @@ const MY_PANEL_FIELDS = [
 
 ---
 
-## §16 SharedStatusConstants — єдине місце для статусів, лейблів, badge-варіантів
+## §16 SharedStatusConstants — єдине місце для статусів
 
-> **Правило:** `STATUS_LABELS`, `STATUS_BADGE`, `PRIORITY_LABELS` і будь-які enum→string мапи **ніколи не оголошуються** inline у page.tsx. Єдине місце — `packages/shared/src/constants/statuses.ts`.
-
-### Чому це важливо
-
-`Record<WorkOrderStatus, string>` — TypeScript гарантує що при додаванні нового статусу в enum **compile-error** виникне одразу, а не при runtime. Inline-оголошення у 8 файлах → розсинхронізація при рефакторингу.
-
-### ❌ Заборонено
-
-```typescript
-// ❌ У page.tsx — оголошення STATUS_LABELS
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Чернетка',
-  IN_PROGRESS: 'В роботі',
-  // легко пропустити новий статус
-};
-```
-
-### ✅ Правильно
-
-```typescript
-// packages/shared/src/constants/statuses.ts
-import { WorkOrderStatus, InvoiceStatus } from '@prisma/client';
-export const WO_STATUS_LABELS: Record<WorkOrderStatus, string> = {
-  DRAFT: 'Чернетка',
-  ESTIMATE: 'Кошторис',
-  APPROVED: 'Затверджено',
-  IN_PROGRESS: 'В роботі',
-  ON_HOLD: 'Призупинено',
-  COMPLETED: 'Виконано',
-  INVOICED: 'Виставлено',
-  PAID: 'Оплачено',
-  ARCHIVED: 'Архів',
-  CANCELLED: 'Скасовано',
-}; // ← compile-error якщо пропущено статус
-
-// У page.tsx:
-import { WO_STATUS_LABELS, WO_STATUS_BADGE } from '@sto/shared';
-```
-
-**Файл-джерело правди:** `packages/shared/src/constants/statuses.ts`  
-**Re-export через:** `packages/shared/src/index.ts`
+`STATUS_LABELS`, `STATUS_BADGE`, `PRIORITY_LABELS` — тільки в `packages/shared/src/constants/statuses.ts`. `Record<WorkOrderStatus, string>` → compile-error при пропущеному статусі.
+`import { WO_STATUS_LABELS, WO_STATUS_BADGE } from '@sto/shared'` — НЕ inline у page.tsx.
 
 ---
 
 ## §17 usePaginatedList — generic API hook factory
 
-> **Правило:** Новий list-хук не пишеться з нуля. Використовується `usePaginatedList<T, F>()` factory.
-
-### ❌ Заборонено
-
-```typescript
-// ❌ Повторення URLSearchParams boilerplate
-export function useMyEntities(filters: MyFilter) {
-  const params = new URLSearchParams({ page: String(filters.page ?? 1), ... });
-  if (filters.status) params.set('status', filters.status);
-  if (filters.q) params.set('q', filters.q);
-  // ... 20 рядків одного й того самого
-  return useQuery({ queryKey: ['my-entities', filters], queryFn: () => apiFetch(...) });
-}
-```
-
-### ✅ Правильно
-
-```typescript
-// apps/web/src/hooks/api/usePaginatedList.ts
-export function usePaginatedList<T, F extends Record<string, unknown>>(
-  endpoint: string,
-  filters: F,
-  options?: { staleTime?: number; enabled?: boolean }
-) { ... }
-
-// Використання:
-export function useWorkOrders(filters: WorkOrdersFilter) {
-  return usePaginatedList<WorkOrder, WorkOrdersFilter>('/work-orders', filters);
-}
-```
-
-**Файл:** `apps/web/src/hooks/api/usePaginatedList.ts`
-
----
-
-## §18 useListPage — composable hook для list-сторінок
-
-> **Правило:** Нова list-сторінка не підключає хуки вручну. Використовується `useListPage()`.
-
-### Що композує
-
-`useBulkSelect` + `useTableColumns` + `useDetailPanel` + `useDetailPanelConfig` + `useSavedFilters` + pagination state → ~200 рядків boilerplate → 5 рядків.
-
-### ✅ Правильно
-
-```typescript
-// apps/web/src/hooks/useListPage.ts
-const list = useListPage('work-orders', WO_COLUMNS, { defaultLimit: 20 });
-
-// Доступно:
-list.pagination; // { page, setPage, limit }
-list.bulkSelect; // useBulkSelect result
-list.detailPanel; // useDetailPanel result
-list.panelConfig; // useDetailPanelConfig result
-list.savedFilters; // useSavedFilters result
-list.columns; // useTableColumns result
-```
-
-**Файл:** `apps/web/src/hooks/useListPage.ts`
+Новий list-хук: `return usePaginatedList<WorkOrder, WorkOrdersFilter>('/work-orders', filters)` — НЕ вручну URLSearchParams boilerplate. Файл: `apps/web/src/hooks/api/usePaginatedList.ts`
 
 ---
 
@@ -2039,44 +1544,7 @@ list.columns; // useTableColumns result
 
 ## §20 useApiMutation — wrapper для мутацій
 
-> **Правило:** Нова форма або дія не пише `saving/error` стан вручну. Використовується `useApiMutation()`.
-
-### ❌ Заборонено
-
-```typescript
-// ❌ 20 рядків boilerplate per-action
-const [saving, setSaving] = useState(false);
-const [error, setError] = useState('');
-const handleCreate = async () => {
-  setSaving(true);
-  setError('');
-  try {
-    await apiFetch('/items', { method: 'POST', body: JSON.stringify(dto) });
-    toast.success('Збережено');
-    load();
-  } catch (e) {
-    setError(e instanceof Error ? e.message : 'Помилка');
-  } finally {
-    setSaving(false);
-  }
-};
-```
-
-### ✅ Правильно
-
-```typescript
-// apps/web/src/hooks/useApiMutation.ts
-const {
-  mutate: createItem,
-  saving,
-  error,
-} = useApiMutation(
-  (dto: CreateDto) => apiFetch('/items', { method: 'POST', body: JSON.stringify(dto) }),
-  { onSuccess: load, successMsg: 'Збережено' },
-);
-```
-
-**Файл:** `apps/web/src/hooks/useApiMutation.ts`
+Нова форма/дія: `const { mutate, saving, error } = useApiMutation(fn, { onSuccess: load, successMsg: 'Збережено' })` — НЕ вручну saving/error state + try/catch. Файл: `apps/web/src/hooks/useApiMutation.ts`
 
 ---
 
@@ -2108,26 +1576,7 @@ phone: string;
 
 ## §22 useApiError — централізований handler помилок
 
-> **Правило:** `const [error, setError] = useState('')` не пишеться вручну. Є `useApiError()`.
-
-### ❌ Заборонено
-
-```typescript
-// ❌ Розкид логіки помилок
-const [error, setError] = useState('');
-} catch (e) { setError(e instanceof Error ? e.message : 'Помилка'); }
-// + 5 місць де потрібно clearError вручну
-```
-
-### ✅ Правильно
-
-```typescript
-// apps/web/src/hooks/useApiError.ts
-const { error, handleError, clearError } = useApiError();
-} catch (e) { handleError(e); } // → auto-локалізація + setError
-```
-
-**Файл:** `apps/web/src/hooks/useApiError.ts`
+`const { error, handleError, clearError } = useApiError()` — НЕ вручну `useState('')` + `catch(e) { setError(e.message) }`. Файл: `apps/web/src/hooks/useApiError.ts`
 
 ---
 
@@ -2265,163 +1714,50 @@ interface EntityPickerFieldProps {
 
 ### §24.2 — \*EditModal — стандарт компонента редагування об'єкта
 
-Кожна сутність що може відкриватись через лупу — повинна мати **окремий компонент** `*EditModal.tsx` у `apps/web/src/components/ui/`.
+Кожна сутність через лупу → окремий `*EditModal.tsx` у `apps/web/src/components/ui/`.
 
-**Обов'язкові props:**
+Props: `{ open, entity: XxxForModal | null, onClose, onSaved }` — `null` = режим створення.
 
-```ts
-interface XxxEditModalProps {
-  open: boolean;
-  entity: XxxForModal | null; // null = режим створення нового
-  onClose: () => void;
-  onSaved: (saved: XxxForModal) => void;
-}
-```
+Внутрішня структура:
 
-**Обов'язкова внутрішня структура:**
-
-```tsx
-export function XxxEditModal({ open, entity, onClose, onSaved }: XxxEditModalProps) {
-  const dirty = useDirtyForm();
-  const { confirm, dialogProps: confirmProps } = useConfirm();
-  const isEdit = !!entity;
-
-  // 1. Синхронізація форми при відкритті — useEffect на [open, entity?.id]
-  useEffect(() => {
-    if (!open) return;
-    if (entity) {
-      setForm({
-        /* поля з entity */
-      });
-    } else {
-      setForm(EMPTY_FORM);
-    }
-    dirty.resetDirty();
-    setError('');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, entity?.id]);
-
-  // 2. Завантаження дочірніх колекцій — useEffect на [open, entity?.id]
-  useEffect(() => {
-    if (!open || !entity) return;
-    const reqId = ++reqRef.current;
-    setChildrenLoading(true);
-    apiFetch<Child[]>(`/xxx/${entity.id}/children`)
-      .then(data => {
-        if (reqRef.current === reqId) setChildren(data);
-      })
-      .catch(err => {
-        if (reqRef.current === reqId) setChildError(err.message);
-      })
-      .finally(() => {
-        if (reqRef.current === reqId) setChildrenLoading(false);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, entity?.id]);
-
-  // 3. handleClose завжди через dirty guard
-  const handleClose = useCallback(async () => {
-    if (!(await dirty.confirmClose())) return;
-    onClose();
-  }, [dirty, onClose]);
-
-  return (
-    <>
-      <Modal
-        open={open}
-        onClose={handleClose}
-        title={isEdit ? 'Редагування X' : 'Новий X'}
-        size="lg"
-      >
-        {/* tab bar — тільки при редагуванні */}
-        {/* main form tab */}
-        {/* 1-N tabs (vehicles, barcodes, etc.) */}
-        {/* footer: save button */}
-      </Modal>
-      <DirtyConfirmDialog {...dirty.dialogProps} />
-      <ConfirmDialog {...confirmProps} />
-    </>
-  );
-}
-```
+1. `useEffect([open, entity?.id])` — синхронізація форми, `dirty.resetDirty()`, `setError('')`
+2. `useEffect([open, entity?.id])` — завантаження дочірніх з race guard (`reqRef.current`)
+3. `handleClose` → `dirty.confirmClose()` перед `onClose()`
+4. `<DirtyConfirmDialog {...dirty.dialogProps} />` + `<ConfirmDialog {...confirmProps} />` у return
 
 ---
 
 ### §24.3 — Повний патерн: reference-поле у формі
 
-```tsx
-// ── State ─────────────────────────────────────────────────────────────────
+```ts
+// State
 const [cpPickerOpen, setCpPickerOpen] = useState(false);
 const [cpDetailOpen, setCpDetailOpen] = useState(false);
 const [cpDetailData, setCpDetailData] = useState<CounterpartyForModal | null>(null);
 
-// ── openDetail — lazy fetch ───────────────────────────────────────────────
+// lazy fetch
 const openCpDetail = useCallback(async () => {
   if (!form.counterpartyId) return;
-  try {
-    const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${form.counterpartyId}`);
-    setCpDetailData(cp);
-    setCpDetailOpen(true);
-  } catch {
-    /* ignore */
-  }
+  const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${form.counterpartyId}`);
+  setCpDetailData(cp); setCpDetailOpen(true);
 }, [form.counterpartyId]);
 
-// ── JSX ───────────────────────────────────────────────────────────────────
-<div>
-  <label className="block text-xs font-medium text-muted-foreground mb-1">
-    Контрагент <span className="text-destructive-text">*</span>
-  </label>
-  <div className="flex items-center gap-1">
-    <div className="flex-1 min-w-0">
-      <EntityPickerField
-        display={form.counterpartyDisplay}
-        placeholder="Обрати контрагента..."
-        disabled={isEditingPast}
-        hidePick={isEditingPast}
-        onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
-        onPick={() => setCpPickerOpen(true)}
-        onClear={() => setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' }))}
-      />
-    </div>
-    {/* необов'язково: кнопка створення нового */}
-    {!isEditingPast && (
-      <Button variant="outline" size="sm" onClick={openNewCpWizard} className="h-9 w-9 p-0">
-        <UserPlus className="h-4 w-4" />
-      </Button>
-    )}
-  </div>
-</div>;
-
-{
-  /* SearchPickerModal для вибору */
-}
-<SearchPickerModal<CpItem>
-  open={cpPickerOpen}
-  onClose={() => setCpPickerOpen(false)}
-  title="Оберіть контрагента"
-  selectedId={form.counterpartyId}
+// JSX
+<EntityPickerField
+  display={form.counterpartyDisplay} placeholder="Обрати контрагента..."
+  onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
+  onPick={() => setCpPickerOpen(true)}
+  onClear={() => setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' }))}
+/>
+<SearchPickerModal<CpItem> open={cpPickerOpen} onClose={() => setCpPickerOpen(false)}
+  title="Оберіть контрагента" selectedId={form.counterpartyId}
   fetchItems={fetchCpItems}
-  onSelect={item => {
-    setForm(f => ({ ...f, counterpartyId: item.id, counterpartyDisplay: item.primary }));
-    setCpPickerOpen(false);
-  }}
-/>;
-
-{
-  /* EditModal для перегляду/редагування через лупу */
-}
-<CounterpartyEditModal
-  open={cpDetailOpen}
-  counterparty={cpDetailData}
+  onSelect={item => { setForm(f => ({ ...f, counterpartyId: item.id, counterpartyDisplay: item.primary })); setCpPickerOpen(false); }}
+/>
+<CounterpartyEditModal open={cpDetailOpen} counterparty={cpDetailData}
   onClose={() => setCpDetailOpen(false)}
-  onSaved={updated => {
-    const display =
-      updated.companyName ?? [updated.lastName, updated.firstName].filter(Boolean).join(' ') ?? '';
-    setForm(f => ({ ...f, counterpartyDisplay: display }));
-    setCpDetailOpen(false);
-  }}
-/>;
+  onSaved={u => { setForm(f => ({ ...f, counterpartyDisplay: u.companyName ?? '' })); setCpDetailOpen(false); }}
+/>
 ```
 
 ---
