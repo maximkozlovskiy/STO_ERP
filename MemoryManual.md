@@ -9,7 +9,9 @@
 ## Останній commit
 
 ```
-<PENDING> docs(memory): update MemoryManual after Cycle 3 tester session #432-#438
+f2fc61cd docs(skills): add twin-scan-reduce + per-row-find lookup patterns to sto-optimize
+2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
+6291166d docs(memory,skills): record Cycle 3 tester session + add 3 new approaches
 9a879ac0 docs(tester): record Cycle 3 bugs #432-#438 + mark fixed
 0adde3d9 fix(tester): Bugs #434-#438 — WO modal unitOfMeasureId + colSpan + format tests + conflictWoNumbers + fake-green
 84b91fc4 fix(tester): Bugs #432-#433 — backend INVOICEABLE/SHAREABLE_STATUSES + audit-track liftId/documentDate
@@ -94,8 +96,12 @@ c7a5fde9 fix(review): code review fixes after EntityPickerField onSearch
 7b58af2c feat(ui): add inline fulltext search to EntityPickerField + Variant B add-row
 Дата: 2026-06-11
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Unit+Contract: ✅ 701/701 API passed, ✅ 380/380 Web passed (Bug #381 race-window тест зелений після Bug #429+#430 fixes)
+Unit+Contract: ✅ 701/701 API passed, ✅ 398/398 Web passed (Bug #381 race-window тест зелений після Bug #429+#430 fixes)
 E2E: ✅ 222/222 chromium passed + 10 skipped (full Playwright suite; повторно з Bug #428 fix); було baseline-red CreateWorkOrderModal Bug #381 у Web vitest
+Latest optimize: 2026-06-11 (Cycle 3 post-tester sweep, HEAD 2a8da05a/f2fc61cd):
+  • Frontend CreateWorkOrderModal — linesTotals/partsTotals useMemo з single-pass {total, vat} замість twin-scan reduce у tfoot (раніше `lines.reduce()` × 2 за render — VAT + total — кожен робив `toNumberOrUndefined(l.normoHours)` × 2 string→Number parsings). Тепер 1 pass через масив, 2 акумулятори; useMemo skip при незмінному [lines/parts/vatRate] — typing у не-table полях НЕ запускає reduce. Для 20 lines + 15 parts × 10 keystrokes economy ~2800 string parsings.
+  • Frontend CreateWorkOrderModal — employeesById/warehousesById/unitsById/vehiclesById/liftsById/branchesById useMemo<Map<string, X>> замість `.find()` у `.map()` рядків і onChange. O(N×M) → O(N+M build) + O(1) lookup. На WO modal з 15 lines + 10 parts + 3 IIFE summary chips = 28 linear scans per render → 0. Maps персистентні через рендери — GC pressure знижено. UX-effect: typing latency у формі на планшеті механіка вісібельно швидша.
+  • Skill update — додано два нові підходи у "Накопичені підходи" sto-optimize SKILL.md: twin-scan reduce у tfoot/footer (single-pass useMemo з двома акумуляторами); per-row `.find()` у `.map()`/onChange handlers → useMemo Map<id, X>. Frontend "Що вже оптимізовано" розширено CreateWorkOrderModal entry.
 Latest optimize: 2026-06-11 (post-cycle-2 tester sweep, HEAD 6d6dab96):
   • Frontend CreateWorkOrderModal — module-level frozen consts: EDITABLE_STATUSES / SHAREABLE_STATUSES / INVOICEABLE_STATUSES (раніше `['DRAFT','ESTIMATE','APPROVED'].includes(currentStatus)` create новий array literal на КОЖЕН render — typing у будь-якому полі форми × N status-checks); EMPTY_TRANSITIONS frozen для fallback `?? []` (stable identity); WO_STATUS_ORDER frozen `Object.keys(WO_STATUS_LABELS)` (раніше recompute'iвся у IIFE-status-picker на КОЖЕН keystroke).
   • Frontend CreateWorkOrderModal — `[...allowedTransitions].reverse().find()` (temp array allocation per render) → reverse `for` loop (linear scan backwards, 0 allocation). prevStatus у status-picker з prev/next chevrons.
