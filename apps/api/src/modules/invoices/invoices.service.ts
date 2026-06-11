@@ -10,6 +10,7 @@ import { throwIfSerializationConflict } from '../../common/utils/prisma-errors';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
+import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import {
   CreateInvoiceDto,
   UpdateInvoiceDto,
@@ -147,7 +148,9 @@ export class InvoicesService {
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-    if (!['COMPLETED', 'INVOICED'].includes(wo.status)) {
+    // Bug #432: shared INVOICEABLE_STATUSES — раніше inline `['COMPLETED', 'INVOICED']`.
+    // Будь-який новий статус у whitelist оновлюється тільки у одному місці тепер.
+    if (!INVOICEABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Рахунок можна виставити лише для завершеного наряду');
     }
     if (existingPre) throw new BadRequestException('Для цього наряду вже існує активний рахунок');
@@ -586,7 +589,8 @@ export class InvoicesService {
       }),
     ]);
     if (!woPre) throw new NotFoundException('Наряд не знайдено');
-    if (!['COMPLETED', 'INVOICED'].includes(woPre.status))
+    // Bug #432: shared INVOICEABLE_STATUSES — раніше inline `['COMPLETED', 'INVOICED']`.
+    if (!INVOICEABLE_STATUSES.includes(woPre.status))
       throw new BadRequestException('Рахунок можна виставити лише для завершеного наряду');
     if (!existing) throw new NotFoundException('Активний рахунок не знайдено');
     // Bug #403: refreshFromWorkOrder перезаписував рядки SENT/PAID/OVERDUE без перевірки →

@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { PdfService } from '../pdf/pdf.service';
+import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import {
   CompletionActResponseDto,
   CompletionActLineDto,
@@ -135,7 +136,9 @@ export class CompletionActsService {
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-    if (!['COMPLETED', 'INVOICED'].includes(wo.status)) {
+    // Bug #432: shared INVOICEABLE_STATUSES — раніше inline `['COMPLETED', 'INVOICED']`.
+    // Той самий whitelist що у InvoicesService.createFromWorkOrder.
+    if (!INVOICEABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Акт можна сформувати лише для завершеного наряду');
     }
     if (existing) throw new BadRequestException('Для цього наряду вже існує активний акт');

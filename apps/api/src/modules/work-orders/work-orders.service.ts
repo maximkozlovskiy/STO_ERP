@@ -22,6 +22,7 @@ import {
   DELETABLE_STATUSES,
   RESERVATION_ACTIVE_STATUSES,
   EDITABLE_STATUSES,
+  SHAREABLE_STATUSES,
 } from './work-orders.fsm';
 import { AuditService } from '../audit/audit.service';
 import { WarrantiesService } from '../warranties/warranties.service';
@@ -72,18 +73,12 @@ export class WorkOrdersService {
     private readonly config: ConfigService,
   ) {}
 
-  /**
-   * Статуси, у яких дозволено публічно ділитися кошторисом.
-   * Після APPROVED-роботи переходять у IN_PROGRESS — публічне посилання губить сенс,
-   * а COMPLETED/INVOICED/PAID/ARCHIVED містять чутливі дані оплати/виставленого рахунку.
-   */
-  private static readonly SHAREABLE_STATUSES: ReadonlyArray<WorkOrderStatus> = [
-    'DRAFT',
-    'ESTIMATE',
-    'APPROVED',
-  ];
-
   // ─── CRUD ────────────────────────────────────────────────
+  // Bug #432: SHAREABLE_STATUSES перенесено у work-orders.fsm.ts для cross-module
+  // експорту (FE shared mirror + completion-acts.service потенційно). Раніше
+  // приватна static — тепер public expor з fsm.ts. Семантика та сама:
+  // публічне share-посилання активне у DRAFT/ESTIMATE/APPROVED; після IN_PROGRESS
+  // публічне посилання губить сенс, а CLOSED-статуси містять чутливі дані.
 
   async findAll(orgId: string, query: WorkOrderQueryDto): Promise<PaginatedWorkOrdersDto> {
     const showDeleted = query.showDeleted === 'true';
@@ -394,6 +389,12 @@ export class WorkOrdersService {
         'clientApproval',
         'plannedAt',
         'dueDate',
+        // Bug #433: documentDate і liftId пишуться у data (рядки нижче),
+        // але були пропущені у audit-list — той самий шаблон що Bug #421.
+        // Зміна дати документа / підйомника не з'являлась у AuditEvent (silent gap
+        // у compliance/bookkeeping audit trail).
+        'documentDate',
+        'liftId',
         // Bug #421: plannedHours/actualHours були в data-payload але не у audit
         // diff — зміни нормогодин не з'являлись у AuditEvent (тихий пропуск).
         'plannedHours',
@@ -1555,7 +1556,8 @@ export class WorkOrdersService {
       select: { id: true, status: true, shareToken: true },
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-    if (!WorkOrdersService.SHAREABLE_STATUSES.includes(wo.status)) {
+    // Bug #432: SHAREABLE_STATUSES перенесено з private static у fsm.ts експорт.
+    if (!SHAREABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException(
         'Поділитися кошторисом можна лише у статусі чернетка / кошторис / затверджено',
       );
@@ -1592,7 +1594,8 @@ export class WorkOrdersService {
       where: {
         shareToken: token,
         deletedAt: null,
-        status: { in: [...WorkOrdersService.SHAREABLE_STATUSES] },
+        // Bug #432: shared SHAREABLE_STATUSES з fsm.ts.
+        status: { in: [...SHAREABLE_STATUSES] },
       },
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
