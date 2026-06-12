@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+(pending) perf(optimize): calendar sync parallel reads/writes + dashboard kyivToday hoist
+4d7eef47 docs(memory): update MemoryManual after review fef027b0 — 5 issues fixed
 fef027b0 fix(review): 5 issues — calendar comment drift, silent sync failure, DocumentsTab PATCH/label
 fba87ce4 fix(tester): Bugs #444, #446, #447 — calendar sync hardening + settings coverage
 7640de9b fix(review): calendar sync — endAt>startAt guard, parent-only update, ConfirmDialog reuse
@@ -37,6 +39,14 @@ Latest tester (2026-06-12, after 7640de9b calendar sync feat): Bugs #444 (HIGH),
 Latest tester (2026-06-11): Bug #439 — додано FE↔BE symmetry regression-guard у `work-orders.fsm.invariants.spec.ts`.
 Latest tester (2026-06-11, prev): Bugs #429-#433 — savingRef race (CreateWorkOrderModal), stale format mock, INVOICEABLE/SHAREABLE_STATUSES backend sync, audit liftId/documentDate.
 ```
+
+### Gotcha (perf, 2026-06-12) — `kyivToday()` всередині `.map()` render hot-path
+
+Dashboard `upcomingTO.slice(0,8).map(item => { const todayKyiv = kyivToday(); ... })` — `kyivToday()` робить `new Date()` + `Intl.DateTimeFormat.format()` КОЖНОГО рядка. Це impure (порушує React's pure-render contract — обчислення може зайти за `00:00 Kyiv` між рядками) і витратне (8 row × `new Date()` + Intl overhead на кожен render). Виправлено: lift `const todayKyiv = useMemo(() => kyivToday(), [])` на рівень компонента, deps `[]` для mount-stable значення (одна page-сесія не перетинає опівніч у нормальному UX flow). Загальний підхід — будь-який module-level helper `kyivToday()/kyivDate()/kyivNow()/nowMs()` всередині `.map()` callback → lift у компонент. Якщо потрібно реактивне оновлення на зміну дня — `useEffect` + interval.
+
+### Gotcha (perf, 2026-06-12) — Disjoint-set `updateMany` pairs всередині `$transaction` — Promise.all замість sequential
+
+`syncWorkOrderSlots()` всередині `$transaction(async tx => { ... })` робив 2 послідовні `tx.calendarSlot.updateMany(...)` — спочатку soft-delete continuation (`parentSlotId IS NOT NULL`), потім update parent (`parentSlotId IS NULL`). Обидва WHERE — disjoint row sets (різні значення `parentSlotId`), independent writes. Prisma підтримує `Promise.all` всередині interactive tx — обидва запити йдуть на одну connection concurrently. Виправлено: `const [, parentResult] = await Promise.all([tx.X.updateMany(children), tx.X.updateMany(parent)])`. Та сама ж оптимізація для tenant guard + parentSlot lookup (раніше було workOrder.findFirst поза tx, потім parentSlot всередині tx) — об'єднано у `Promise.all([tx.workOrder.findFirst, tx.calendarSlot.findFirst])` всередині tx. Race-safe бо орgId+workOrderId scope + disjoint predicate. **Підхід:** при перевірці $transaction callback — шукати чи всі `await tx.X.Y(...)` справді залежать від попередніх результатів. Якщо ні — об'єднувати у Promise.all (один RTT замість N).
 
 ### Gotcha #review-fef027 — Settings Tab PATCH весь об'єкт замість diff → маскує merge-баги
 

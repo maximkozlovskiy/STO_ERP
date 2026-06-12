@@ -606,6 +606,30 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-12 — Disjoint-set `tx.X.updateMany()` pairs всередині `$transaction` callback — Promise.all замість sequential await
+
+**Сигнал:** service-метод (sync/refresh/cascade-update) всередині `await this.prisma.$transaction(async tx => { ... })` робить 2+ послідовні `await tx.X.updateMany({where:A,data:...})` потім `await tx.X.updateMany({where:B,data:...})` де A і B — DISJOINT row sets (різні значення FK/предикату, не перетинаються). Наприклад: одна оновлює children-rows (`parentSlotId: { not: null }`), інша parent (`parentSlotId: null`). Sequential await блокує — кожен write коштує 1 RTT + DB execution time. Симптом у git diff: дві updateMany підряд з різним `where` але однаковою mutation-семантикою.
+**Grep:** `await tx\.\w+\.updateMany[\s\S]{0,300}await tx\.\w+\.updateMany`
+**Причина виникнення:** розробник пише код «зрозуміло-сильно» — спочатку soft-delete A, потім update B. Sequential reads легко рознести у Promise.all (немає ризику), але `updateMany` виглядає «небезпечніше» через схожість з sync logic.
+**Підхід до виявлення:** при перегляді $transaction callback зчитати ВСІ `await tx.X.Y(...)` що йдуть підряд → перевірити чи кожен реально залежить від попереднього результату. Якщо результат не читається або where-clauses disjoint → кандидат на Promise.all.
+**Підхід до фіксу:** `const [, result2] = await Promise.all([tx.X.updateMany({where:A,data:...}), tx.X.updateMany({where:B,data:...})])`. Prisma підтримує parallel queries всередині interactive tx — обидва запити йдуть на одну connection concurrently. Race-safe бо WHERE disjoint. Той самий патерн діє для tenant-guard + parentSlot lookup (раніше workOrder.findFirst поза tx, потім parentSlot всередині tx — об'єднати в `Promise.all([tx.workOrder.findFirst, tx.calendarSlot.findFirst])` всередині tx; 404 throw скасовує tx без mutation cost).
+**Реальний impact:** sync endpoints ~30% швидші у hot path — 2 sequential round-trips → 1 parallel. На 100-RPS endpoint це ~50ms loop savings.
+**Де шукати ще:** будь-який cascade-update / sync / refresh / propagate / `markAsX` метод; bulk soft-delete після status transition; refresh-totals helpers які одночасно скидають кеш і оновлюють агрегат.
+
+---
+
+### 2026-06-12 — `kyivToday()`/date helper всередині render `.map()` callback — lift у useMemo на рівень компонента
+
+**Сигнал:** компонент-сторінка (dashboard, reports, calendar widgets) має `array.map(item => { const todayKyiv = kyivToday(); const isOverdue = item.date < todayKyiv; ... })` — `kyivToday()` (module-level helper що робить `new Date() + Intl.format()`) викликається у тілі callback `.map()`. На 8-row список — 8× `new Date() + Intl.format()` per render. Helper сам по собі «cheap» (module-level Intl singleton), але кумулятивно вартість росте з row count + ререндер-частотою.
+**Grep:** `\.map\([^)]*=>\s*\{[^}]*kyivToday\(\)|\.map\([^)]*=>\s*\{[^}]*Date\.now\(\)`
+**Причина виникнення:** kyivToday() виглядає як константа («сьогодні»), розробник інтуїтивно ставить її у map-body де відбувається порівняння. Виносити "сьогодні" поза map здається передчасним.
+**Підхід до виявлення:** при перегляді render `.map()` callback — шукати виклики helpers `kyivToday()/now()/Date.now()/new Date()`. Якщо результат функції не залежить від `item` — це по суті константа на render → lift up.
+**Підхід до фіксу:** `const todayKyiv = useMemo(() => kyivToday(), [])` на компонент-рівні над JSX. Deps `[]` (eslint-disable-next-line react-hooks/exhaustive-deps з коментарем — mount-stable, якщо UX flow не перетинає опівніч у одній page-сесії). Якщо потрібен auto-refresh — `useState` + `useEffect` interval. Це також виправляє pure-render порушення: значення може фактично змінитись між викликами всередині одного render (race з timer).
+**Реальний impact:** 8-row dashboard render: 8× new Date() + Intl.format() → 1× на компонент. Незначно у мс, але важлива чистота render для majior render frequency components (dashboards з 15s polling, table cells у great-длinm scroll).
+**Де шукати ще:** будь-яка date-helper функція з `new Date()` всередині — kyivNow, kyivToday, isoToday, todayMs, dateNow; також `Date.now()`, `new Date()` direct; reports/audit/maintenance lists з порівнянням `item.date < today`. Той самий патерн діє для `formatXyz` helpers що мають Intl singleton всередині (cheap але per-row alloc).
+
+---
+
 ### 2026-06-11 — Dead `Object.keys(MAP)[0]` / `Object.keys(MAP)` в IIFE-render — module-level frozen `*_ORDER` const
 
 **Сигнал:** компонент-форма має `const initialStatus = Object.keys(STATUS_LABELS)[0] ?? 'DRAFT'` (раз на рендер) АБО IIFE-pattern `{(() => { const statusOrder = Object.keys(STATUS_LABELS); const curIdx =...
