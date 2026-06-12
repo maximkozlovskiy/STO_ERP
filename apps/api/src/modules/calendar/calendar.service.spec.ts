@@ -19,13 +19,14 @@ describe('CalendarService.syncWorkOrderSlots', () => {
     conflictingSlot?: { id: string; liftId: string | null; employeeId: string | null } | null;
   }) {
     const updateMany = vi.fn();
-    // First call inside $transaction — soft-delete continuation
+    // Both updateMany calls inside $transaction — soft-delete continuation + update parent.
+    // sto-optimize: run in Promise.all (parallel) but mock returns are queued the same way.
     updateMany.mockResolvedValueOnce({ count: 0 });
-    // Second call — update parent
     updateMany.mockResolvedValueOnce({ count: opts.updatedCount ?? 1 });
 
-    // findFirst within $transaction is called twice for the conflict check path
-    // (parentSlot lookup, then conflict probe). Default: no parent → conflict check skipped.
+    // findFirst within $transaction:
+    //   1) parentSlot lookup on calendarSlot
+    //   2) conflict probe on calendarSlot (only when parentSlot has lift/employee)
     const findFirst = vi.fn();
     findFirst.mockResolvedValueOnce(opts.parentSlot ?? null); // parent slot lookup
     if (opts.parentSlot) {
@@ -33,15 +34,22 @@ describe('CalendarService.syncWorkOrderSlots', () => {
     }
 
     const txCalendarSlot = { updateMany, findFirst };
+    // sto-optimize: tenant guard moved INSIDE $transaction для parallel виконання з parentSlot.
+    // Mock tx.workOrder.findFirst тепер потрібен (не prisma.workOrder.findFirst).
+    const txWorkOrderFindFirst = vi
+      .fn()
+      .mockResolvedValue(opts.workOrderExists === false ? null : { id: workOrderId });
 
     return {
-      workOrder: {
-        findFirst: vi
-          .fn()
-          .mockResolvedValue(opts.workOrderExists === false ? null : { id: workOrderId }),
-      },
-      $transaction: vi.fn().mockImplementation(async cb => cb({ calendarSlot: txCalendarSlot })),
+      // Legacy: deprecated outside-tx path. Залишаємо stub щоб старі асерти не падали з undefined.
+      workOrder: { findFirst: vi.fn() },
+      $transaction: vi
+        .fn()
+        .mockImplementation(async cb =>
+          cb({ calendarSlot: txCalendarSlot, workOrder: { findFirst: txWorkOrderFindFirst } }),
+        ),
       _txCalendarSlot: txCalendarSlot,
+      _txWorkOrderFindFirst: txWorkOrderFindFirst,
     };
   }
 
@@ -55,9 +63,9 @@ describe('CalendarService.syncWorkOrderSlots', () => {
         endAt: '2026-05-22T10:00:00.000Z',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    // Жодного запиту до DB не повинно бути — перевірка до tenant lookup.
-    expect(prisma.workOrder.findFirst).not.toHaveBeenCalled();
+    // Жодного запиту до DB не повинно бути — перевірка до $transaction.
     expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma._txWorkOrderFindFirst).not.toHaveBeenCalled();
   });
 
   it('кидає 400 коли startAt/endAt не парсяться у валідну Date', async () => {
@@ -82,11 +90,14 @@ describe('CalendarService.syncWorkOrderSlots', () => {
         endAt: '2026-05-22T11:00:00.000Z',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(prisma.workOrder.findFirst).toHaveBeenCalledWith({
+    // sto-optimize: tenant guard now runs inside $transaction in parallel з parentSlot.
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma._txWorkOrderFindFirst).toHaveBeenCalledWith({
       where: { id: workOrderId, orgId, deletedAt: null },
       select: { id: true },
     });
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    // updateMany не повинен запуститися — 404 throw скасовує tx.
+    expect(prisma._txCalendarSlot.updateMany).not.toHaveBeenCalled();
   });
 
   it('у $transaction робить soft-delete continuation FIRST, потім update parent (Gotcha #review-7640de)', async () => {

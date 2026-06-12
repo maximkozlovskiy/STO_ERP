@@ -201,6 +201,12 @@ export default function DashboardPage() {
   const upcomingTO: MaintenanceSchedule[] = Array.isArray(maintenanceData)
     ? (maintenanceData as MaintenanceSchedule[])
     : (EMPTY_MAINTENANCE as MaintenanceSchedule[]);
+  // sto-optimize: kyivToday() обчислюється раз для всього компонента (mount-stable).
+  // Раніше викликалась всередині .map() для upcomingTO → kyivToday() inside hot-path
+  // (new Date() + Intl.format() per row). Empty deps — поточна дата на mount достатня
+  // для UI на одну page-сесію.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const todayKyiv = useMemo(() => kyivToday(), []);
 
   useEffect(() => {
     setTodayStr(KYIV_FULL_DATE_FMT.format(new Date()));
@@ -382,9 +388,7 @@ export default function DashboardPage() {
                     // Logic-bug fix: попередня перевірка `new Date(YMD).getTime() < nowMs`
                     // інтерпретувала "2026-06-15" як 00:00 UTC = 03:00 Kyiv → ТО на сьогодні
                     // показувалось "Прострочено" вже з 03:00 ночі. Порівнюємо дату-string зі
-                    // string-датою «сьогодні у Києві» (kyivToday()) — спрацьовує тільки коли
-                    // YMD у минулому за київським календарем.
-                    const todayKyiv = kyivToday();
+                    // string-датою «сьогодні у Києві» (todayKyiv через useMemo вище).
                     const isOverdue = item.nextMaintenanceDate
                       ? item.nextMaintenanceDate.slice(0, 10) < todayKyiv
                       : false;
