@@ -543,6 +543,18 @@ export class CalendarService {
     };
   }
 
+  async syncWorkOrderSlots(
+    orgId: string,
+    workOrderId: string,
+    dto: { startAt: string; endAt: string },
+  ): Promise<{ updated: number }> {
+    const result = await this.prisma.calendarSlot.updateMany({
+      where: { orgId, workOrderId, deletedAt: null },
+      data: { startAt: new Date(dto.startAt), endAt: new Date(dto.endAt) },
+    });
+    return { updated: result.count };
+  }
+
   async removeSlot(orgId: string, id: string): Promise<void> {
     // Race-safe 1-RTT soft delete via updateMany — compound where (id+orgId+deletedAt:null)
     // блокує double-delete race. Той самий патерн що 8 інших remove() сервісів (cycle 1).

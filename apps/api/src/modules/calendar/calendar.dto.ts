@@ -157,6 +157,20 @@ export class CheckConflictsDto {
   @ApiProperty() @IsDateString() endAt!: string;
 }
 
+export class SyncWorkOrderSlotsDto {
+  @ApiProperty({ description: 'Новий startAt для всіх слотів наряду' })
+  @IsISO8601()
+  startAt!: string;
+
+  @ApiProperty({ description: 'Новий endAt для всіх слотів наряду' })
+  @IsISO8601()
+  endAt!: string;
+}
+
+export class SyncWorkOrderSlotsResponseDto {
+  @ApiProperty() updated!: number;
+}
+
 export class CheckConflictsResponseDto {
   @ApiProperty() liftConflict!: boolean;
   @ApiProperty() employeeConflict!: boolean;

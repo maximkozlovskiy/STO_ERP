@@ -106,6 +106,25 @@ export default function DocumentsTab() {
             onChange={v => setOrgSettings({ ...orgSettings, recalcPlannedHoursFromLines: v })}
           />
         </div>
+
+        <div
+          className="flex items-center justify-between gap-4 py-2 border-b border-border"
+          title="Якщо увімкнено, при збереженні наряду перевіряє чи планові дати збігаються зі слотами в календарі та пропонує синхронізувати."
+        >
+          <div>
+            <p className="text-sm font-medium text-foreground">
+              Перераховувати нормогодини слоту календаря до змін планових годин в наряді
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              При збереженні наряду, якщо планові дати відрізняються від слоту в календарі — система
+              запропонує синхронізувати слот.
+            </p>
+          </div>
+          <Toggle
+            checked={orgSettings.syncCalendarSlotWithPlannedHours ?? true}
+            onChange={v => setOrgSettings({ ...orgSettings, syncCalendarSlotWithPlannedHours: v })}
+          />
+        </div>
       </section>
 
       <div>

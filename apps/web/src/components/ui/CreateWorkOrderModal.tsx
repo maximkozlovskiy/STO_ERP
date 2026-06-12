@@ -399,6 +399,9 @@ export function CreateWorkOrderModal({
   const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
   const [vatRate, setVatRate] = useState(0);
   const [recalcPlannedHoursEnabled, setRecalcPlannedHoursEnabled] = useState(false);
+  const [syncCalendarEnabled, setSyncCalendarEnabled] = useState(true);
+  const [calendarSyncPending, setCalendarSyncPending] = useState(false);
+  const calendarSyncDataRef = useRef<{ startAt: string; endAt: string } | null>(null);
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [editModeLoading, setEditModeLoading] = useState(false);
@@ -578,12 +581,14 @@ export function CreateWorkOrderModal({
         vatMode: string;
         defaultVatRateId?: string | null;
         recalcPlannedHoursFromLines?: boolean;
+        syncCalendarSlotWithPlannedHours?: boolean;
       }>('/settings/organisation'),
       apiFetch<{ id: string; rate: number; isDefault: boolean }[]>('/settings/tax-rates'),
     ])
       .then(([org, rates]) => {
         setVatMode((org.vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE') ?? 'NONE');
         setRecalcPlannedHoursEnabled(org.recalcPlannedHoursFromLines ?? false);
+        setSyncCalendarEnabled(org.syncCalendarSlotWithPlannedHours ?? true);
         const def = (Array.isArray(rates) ? rates : []).find(r => r.isDefault);
         if (def) setVatRate(Number(def.rate));
       })
@@ -1084,6 +1089,14 @@ export function CreateWorkOrderModal({
             unitOfMeasureId: part.unitOfMeasureId || undefined,
           }),
         });
+      }
+      if (syncCalendarEnabled && workOrderId && form.plannedStartAt && form.plannedEndAt) {
+        calendarSyncDataRef.current = {
+          startAt: localDateTimeToISO(form.plannedStartAt) ?? form.plannedStartAt,
+          endAt: localDateTimeToISO(form.plannedEndAt) ?? form.plannedEndAt,
+        };
+        setCalendarSyncPending(true);
+        return;
       }
       onUpdated?.();
       onClose();
@@ -2977,6 +2990,51 @@ export function CreateWorkOrderModal({
         </div>
       )}
       <ConfirmDialog {...confirmDialogProps} />
+      {calendarSyncPending && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40">
+          <div className="bg-surface rounded-xl border border-border p-6 shadow-xl w-full max-w-sm mx-4 space-y-4">
+            <p className="text-sm font-semibold text-foreground">Оновити слот в календарі?</p>
+            <p className="text-xs text-muted-foreground">
+              Планові дати наряду змінились. Оновити відповідний слот в календарі?
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setCalendarSyncPending(false);
+                  calendarSyncDataRef.current = null;
+                  onUpdated?.();
+                  onClose();
+                }}
+              >
+                Ні
+              </Button>
+              <Button
+                size="sm"
+                onClick={async () => {
+                  if (calendarSyncDataRef.current && workOrderId) {
+                    try {
+                      await apiFetch(`/calendar/slots/by-work-order/${workOrderId}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify(calendarSyncDataRef.current),
+                      });
+                    } catch {
+                      /* best-effort — не блокуємо закриття наряду */
+                    }
+                  }
+                  setCalendarSyncPending(false);
+                  calendarSyncDataRef.current = null;
+                  onUpdated?.();
+                  onClose();
+                }}
+              >
+                Так, оновити
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

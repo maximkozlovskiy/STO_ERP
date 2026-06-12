@@ -26,6 +26,8 @@ import {
   CreateCalendarSlotResponseDto,
   CheckConflictsDto,
   CheckConflictsResponseDto,
+  SyncWorkOrderSlotsDto,
+  SyncWorkOrderSlotsResponseDto,
 } from './calendar.dto';
 
 @ApiTags('Calendar')
@@ -73,6 +75,18 @@ export class CalendarController {
     @Body() dto: CreateCalendarSlotDto,
   ): Promise<CreateCalendarSlotResponseDto> {
     return this.service.createSlot(orgId, dto);
+  }
+
+  @Patch('by-work-order/:workOrderId')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Синхронізувати всі слоти наряду з новими датами' })
+  @ApiResponse({ status: 200, type: SyncWorkOrderSlotsResponseDto })
+  syncWorkOrderSlots(
+    @OrgContext() orgId: string,
+    @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
+    @Body() dto: SyncWorkOrderSlotsDto,
+  ): Promise<SyncWorkOrderSlotsResponseDto> {
+    return this.service.syncWorkOrderSlots(orgId, workOrderId, dto);
   }
 
   @Patch(':id')

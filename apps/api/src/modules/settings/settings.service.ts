@@ -233,6 +233,7 @@ export class SettingsService {
     loyaltyEarnPoints: { toNumber(): number } | number;
     loyaltyRedeemRate: { toNumber(): number } | number;
     recalcPlannedHoursFromLines: boolean;
+    syncCalendarSlotWithPlannedHours: boolean;
     updatedAt: Date;
   }): OrganisationSettingsResponseDto {
     const toNum = (v: { toNumber(): number } | number) =>
@@ -258,6 +259,7 @@ export class SettingsService {
       loyaltyEarnPoints: toNum(s.loyaltyEarnPoints),
       loyaltyRedeemRate: toNum(s.loyaltyRedeemRate),
       recalcPlannedHoursFromLines: s.recalcPlannedHoursFromLines,
+      syncCalendarSlotWithPlannedHours: s.syncCalendarSlotWithPlannedHours,
       updatedAt: s.updatedAt,
     };
   }
