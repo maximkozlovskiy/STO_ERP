@@ -1112,11 +1112,12 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ---
 
-### 2026-06-09 — Alternate-mutation endpoint обходить canonical guards (Bug #403) — backend / FSM enforcement
+### 2026-06-09 — Alternate-mutation endpoint обходить canonical guards (Bug #403, #444) — backend / FSM enforcement / capacity invariants
 
-**Сигнал:** `refreshFromWorkOrder/syncFromX/recalculateZ` мутує той самий resource без FSM-guard `if (X.status !== DRAFT) throw`.
-**Grep:** `grep -rnE "async (refresh|sync|import|recalculate)[A-Z]" apps/api/src/modules --include="*.service.ts"` → порівняти guards з canonical `update()`.
-**Severity:** CRITICAL (перезаписує SENT/PAID/locked record без error).
+**Сигнал:** `refreshFromWorkOrder/syncFromX/recalculateZ/syncWorkOrderSlots` мутує той самий resource без guards канонічного `update()`. Типові guards що пропускаються: (а) FSM `if (X.status !== DRAFT) throw`; (б) **capacity/conflict probe** (Bug #444: `calendarSlot.startAt/endAt` write має перевіряти overlap з іншими bookings на тому ж lift/employee — інакше silent double-booking); (в) `isLocked/isSystem` guards.
+**Grep:** `grep -rnE "async (refresh|sync|import|recalculate|regenerate|rebuild)[A-Z]" apps/api/src/modules --include="*.service.ts"` → для кожного метода знайти canonical `update()`/`updateLine()` у тому ж файлі, скопіювати ВСІ `if (...) throw` + conflict-check блоки.
+**Severity:** CRITICAL (FSM перезаписує SENT/PAID record без error); HIGH (capacity invariant overlap → double-booking, broken capacity).
+**Регресія-guard:** spec mock-ить conflict-row → метод має throw + `expect(updateMany).not.toHaveBeenCalled()`.
 
 ---
 

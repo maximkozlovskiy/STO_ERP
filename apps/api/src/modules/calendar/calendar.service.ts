@@ -550,7 +550,20 @@ export class CalendarService {
   ): Promise<{ updated: number }> {
     const startAt = new Date(dto.startAt);
     const endAt = new Date(dto.endAt);
+    if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+      throw new BadRequestException('Невірний формат дати');
+    }
     if (endAt <= startAt) throw new BadRequestException('Час завершення має бути після початку');
+
+    // Bug #442: tenant-isolation guard — без цієї перевірки cross-tenant
+    // workOrderId silenо повертає { updated: 0 } замість 404 → probe vector
+    // через time-window (атакувальник з валідним JWT іншої org може перевірити
+    // існування WO-ID). Парне з шаблоном #161 у SKILL §1.1 Tenant Isolation.
+    const workOrder = await this.prisma.workOrder.findFirst({
+      where: { id: workOrderId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!workOrder) throw new NotFoundException('Наряд не знайдено');
 
     // Slots can be split across working-day boundary (parent + continuation children).
     // Collapsing all of them onto the same {startAt, endAt} corrupts the parent/child interval.
@@ -559,6 +572,44 @@ export class CalendarService {
     // This keeps the invariant: each WO has 1 canonical anchor slot after sync.
     return this.prisma.$transaction(
       async tx => {
+        // Bug #444: conflict check vs OTHER WO slots on same lift/employee.
+        // Canonical createSlot()/updateSlot() guard against double-booking; this alternate
+        // mutation endpoint MUST replicate the guard (SKILL §1.1 «Alternate-mutation endpoint
+        // обходить canonical guards» — pattern Bug #403). Without it, moving WO planned dates
+        // can silently overlap another WO's slot on the same lift/employee → 2 overlapping
+        // calendar entries, broken capacity invariant.
+        //
+        // We fetch the parent slot first (need its liftId/employeeId for the conflict OR clause)
+        // — and skip the conflict check if there's no parent slot to move.
+        const parentSlot = await tx.calendarSlot.findFirst({
+          where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
+          select: { id: true, liftId: true, employeeId: true },
+        });
+
+        if (parentSlot && (parentSlot.liftId || parentSlot.employeeId)) {
+          const orConflicts: Array<{ liftId?: string; employeeId?: string }> = [];
+          if (parentSlot.liftId) orConflicts.push({ liftId: parentSlot.liftId });
+          if (parentSlot.employeeId) orConflicts.push({ employeeId: parentSlot.employeeId });
+
+          const conflict = await tx.calendarSlot.findFirst({
+            where: {
+              orgId,
+              deletedAt: null,
+              workOrderId: { not: workOrderId },
+              startAt: { lt: endAt },
+              endAt: { gt: startAt },
+              OR: orConflicts,
+            },
+            select: { id: true, liftId: true, employeeId: true },
+          });
+          if (conflict) {
+            if (parentSlot.liftId && conflict.liftId === parentSlot.liftId) {
+              throw new BadRequestException('Підйомник вже зайнятий на цей час');
+            }
+            throw new BadRequestException('Співробітник вже зайнятий на цей час');
+          }
+        }
+
         // Soft-delete continuation children first (race-safe — orgId scoped).
         await tx.calendarSlot.updateMany({
           where: { orgId, workOrderId, parentSlotId: { not: null }, deletedAt: null },

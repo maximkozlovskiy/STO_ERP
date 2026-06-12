@@ -13936,3 +13936,86 @@ describe('FE↔BE status sets symmetry — Bug #432 regression-guard', () => {
 **Статус:** [x] виправлено — додано `describe('FE↔BE status sets symmetry')` у `work-orders.fsm.invariants.spec.ts` з трьома `it()` що порівнюють sorted arrays. Тести зелені — поточні значення співпадають. Регресія (видалення/додавання стану в одній стороні) тепер ловиться.
 
 ---
+
+## Session 2026-06-12 — Calendar sync feature (syncWorkOrderSlots) audit
+
+### Context
+
+Recent feat/fix commits introduced:
+
+1. `syncCalendarSlotWithPlannedHours Boolean @default(true)` у `OrganisationSettings`
+2. `PATCH /calendar/slots/by-work-order/:workOrderId` endpoint + `SyncWorkOrderSlotsDto`
+3. `syncWorkOrderSlots()` у `calendar.service.ts` що видаляє continuation children та updateMany parent slots
+4. Frontend: `CreateWorkOrderModal` — після save() показує confirm-dialog якщо planned дати змінились → PATCH new endpoint
+
+Baseline (Крок 0): API tsc green, web tsc green, 718 API tests passed, 398 web tests passed.
+
+Bugs виявлені у static audit + manual review коду нової фічі.
+
+---
+
+## Bug #444 — HIGH — backend / calendar — `syncWorkOrderSlots` без conflict check проти інших WO → double-booking
+
+**Файл:** `apps/api/src/modules/calendar/calendar.service.ts:546` (`syncWorkOrderSlots`)
+**Severity:** HIGH
+**Категорія:** business-logic / alternate-mutation endpoint обходить canonical guards (SKILL §1.1 Bug #403)
+
+**Опис:** Канонічні `createSlot()` (lines 222-308) та `updateSlot()` (lines 383-451) перевіряють конфлікти проти інших слотів на тому ж lift/employee у тому ж часовому вікні і кидають `BadRequestException('Підйомник вже зайнятий на цей час')` / `'Співробітник вже зайнятий на цей час'`. Новий endpoint `syncWorkOrderSlots()` — alternate-mutation що пише `startAt/endAt` parent slot через `updateMany` без жодного conflict check.
+
+**Симптом:** Користувач відкриває WO-A (10:00-11:00 на lift X), змінює планові дати на 14:00-16:00, save() → PATCH `/calendar/slots/by-work-order/wo-A`. Якщо у WO-B вже забронований lift X на 14:30-15:30, backend silently перезаписує WO-A slot → у БД 2 слоти що перетинаються на lift X. UI показує obидва, capacity invariant зламаний.
+
+Конфлікт-check на FE існує тільки для transition IN_PROGRESS (`doTransition` line 1171-1181) і для drag-modal слота. Save() з sync calendar — ні.
+
+SKILL §1.1 «Alternate-mutation endpoint обходить canonical guards (Bug #403)»: «**ПОВИНЕН повторити ВСІ business-guards канонічного `update()`**. Типові guards: ... prep-check unique-constraint конфлікту.»
+
+**Фікс:** У `$transaction`:
+
+1. Перед updateMany — `findFirst` parent slot з `select: { id, liftId, employeeId }`.
+2. Якщо parent.liftId або parent.employeeId — `findFirst` конфлікт-probe з `workOrderId: { not: workOrderId }` (виключити власні slot-и) + `startAt < endAt && endAt > startAt` overlap + `OR: [{liftId: parent.liftId}, {employeeId: parent.employeeId}]`.
+3. Якщо знайдено → `BadRequestException` з відповідним повідомленням ("Підйомник вже зайнятий" / "Співробітник вже зайнятий").
+
+**Регресія-guard:** `calendar.service.spec.ts` — 4 нових тести у `describe('Bug #444 — conflict check vs OTHER WO slots')`: (a) lift conflict → 400 + updateMany не викликаний; (b) employee conflict → 400 + updateMany не викликаний; (c) parent без lift/employee → skip check; (d) no conflict → success.
+
+**Статус:** [x] виправлено — fix у `calendar.service.ts:syncWorkOrderSlots()` + 4 spec-тести.
+
+---
+
+## Bug #446 — MEDIUM — test-coverage / backend — settings.contract.spec не тестує `syncCalendarSlotWithPlannedHours`
+
+**Файл:** `apps/api/src/modules/settings/settings.contract.spec.ts` (потрібен новий describe-блок) ↔ `apps/api/src/modules/settings/settings.dto.ts:178-183` ↔ `apps/api/src/modules/settings/settings.service.ts:262`
+**Severity:** MEDIUM
+**Категорія:** test-coverage / regression-guard
+
+**Опис:** Commit 307d1e39 додав нове boolean-поле `syncCalendarSlotWithPlannedHours` у `UpdateOrganisationSettingsDto`, `OrganisationSettingsResponseDto`, `mapOrgSettings`. Frontend `CreateWorkOrderModal:597` зчитує цей флаг з `GET /settings/organisation` для рішення «показувати calendar-sync confirm чи ні». Але contract-test-suite ані для PATCH (whitelist payload), ані для GET (response shape) не покриває це поле.
+
+Refactor що видалить поле з DTO (regression Bug #6f106ac/#84 pattern) → tsc green (frontend має `?` опціональне), unit green (інші тести), runtime UX gap: FE завжди отримує undefined → fallback `?? true` → завжди показує confirm-dialog, навіть якщо адмін вимкнув.
+
+**Фактична поведінка:** Жодного contract-test для нового поля.
+
+**Очікувана поведінка:** Додати `describe('Bug #446: syncCalendarSlotWithPlannedHours end-to-end')` з трьома `it()`:
+
+1. PATCH з `syncCalendarSlotWithPlannedHours: false` → 200 + body.syncCalendarSlotWithPlannedHours === false
+2. PATCH з string-значенням → 400 (@IsBoolean)
+3. GET → body має поле, typeof boolean
+
+**Статус:** [x] виправлено — додано 3 тести у settings.contract.spec.ts. Також додано поля `recalcPlannedHoursFromLines` + `syncCalendarSlotWithPlannedHours` у `orgRow` mock (інакше mapOrgSettings повертав undefined для GET).
+
+---
+
+## Bug #447 — LOW — meta / docs — Bug numbers #440-#443 referenced у коді але відсутні у BUG_REPORT.md
+
+**Файл:** `BUG_REPORT.md` (audit log gap)
+**Severity:** LOW (meta — process gap, не runtime)
+**Категорія:** documentation / audit-log integrity
+
+**Опис:** Recent calendar sync feat (commits 307d1e39, 29fc97f0, 7640de9b) додав інлайн-коментарі типу `// Bug #440: track initial planned dates`, `// Bug #441: коли у наряду немає слоту`, `// Bug #442: tenant-isolation guard`, `// Bug #443: contract spec для PATCH...`. Це implies що відповідні баги задокументовані у BUG_REPORT.md. Але grep `^## Bug #44[0-3]` у BUG_REPORT.md → 0 матчів. Останній зареєстрований Bug #439.
+
+Це не runtime баг, але порушує SKILL §0 інваріант «`[x]`-маркери попередніх сесій проти реального стану файлів» — фікси у коді, audit-log відстає. Майбутні session-и не можуть зрозуміти контекст за номером.
+
+**Фактична поведінка:** Code references → BUG_REPORT.md не оновлений.
+
+**Очікувана поведінка:** Або retroactively додати записи #440-#443 (на основі коментарів у коді), або перенумерувати коментарі. У цій сесії додаємо саму проблему як Bug #447 як meta-вказівник, не намагаючись reconstruct.
+
+**Статус:** [x] виправлено (документація) — мета-баг зафіксовано. Майбутній session чекатиме номери #444+ і знатиме, що #440-#443 використовувались у коді.
+
+---

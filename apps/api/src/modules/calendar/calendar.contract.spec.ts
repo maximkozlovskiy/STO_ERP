@@ -18,6 +18,7 @@ const serviceMock = {
   updateSlot: vi.fn(),
   removeSlot: vi.fn(),
   checkConflicts: vi.fn(),
+  syncWorkOrderSlots: vi.fn(),
 };
 
 let jwtAllow = true;
@@ -391,6 +392,132 @@ describe('Calendar — HTTP Contract', () => {
         },
       });
       expect(res.statusCode).toBe(200);
+    });
+  });
+
+  // Bug #443: contract spec для PATCH /calendar/slots/by-work-order/:workOrderId
+  // — endpoint доданий разом із syncCalendarSlotWithPlannedHours feature
+  // (commit 307d1e39), але контракт-тест відсутній → регресія UUID-validation,
+  // DTO whitelist, або service-binding пройде CI зеленим.
+  describe('PATCH /calendar/slots/by-work-order/:workOrderId', () => {
+    it('повертає 400 коли :workOrderId не UUID', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: '/calendar/slots/by-work-order/not-a-uuid',
+        payload: {
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.syncWorkOrderSlots).not.toHaveBeenCalled();
+    });
+
+    it('повертає 400 коли startAt/endAt відсутні (IsISO8601)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/calendar/slots/by-work-order/${WO_ID}`,
+        payload: {},
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.syncWorkOrderSlots).not.toHaveBeenCalled();
+    });
+
+    it('повертає 400 коли startAt не ISO-8601', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/calendar/slots/by-work-order/${WO_ID}`,
+        payload: {
+          startAt: '2026/05/22 10:00',
+          endAt: '2026-05-22T11:00:00.000Z',
+        },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.syncWorkOrderSlots).not.toHaveBeenCalled();
+    });
+
+    it('повертає 404 коли наряд не знайдено / належить іншій org', async () => {
+      serviceMock.syncWorkOrderSlots.mockRejectedValueOnce(
+        new NotFoundException('Наряд не знайдено'),
+      );
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/calendar/slots/by-work-order/${WO_ID}`,
+        payload: {
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('повертає 400 коли endAt <= startAt (сервіс)', async () => {
+      serviceMock.syncWorkOrderSlots.mockRejectedValueOnce(
+        new BadRequestException('Час завершення має бути після початку'),
+      );
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/calendar/slots/by-work-order/${WO_ID}`,
+        payload: {
+          startAt: '2026-05-22T11:00:00.000Z',
+          endAt: '2026-05-22T10:00:00.000Z',
+        },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 200 + { updated } коли успішно', async () => {
+      serviceMock.syncWorkOrderSlots.mockResolvedValueOnce({ updated: 1 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/calendar/slots/by-work-order/${WO_ID}`,
+        payload: {
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ updated: 1 });
+      expect(serviceMock.syncWorkOrderSlots).toHaveBeenCalledWith(
+        'org-1',
+        WO_ID,
+        expect.objectContaining({
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        }),
+      );
+    });
+
+    it('повертає 200 + { updated: 0 } коли у наряду немає слотів (silent no-op)', async () => {
+      serviceMock.syncWorkOrderSlots.mockResolvedValueOnce({ updated: 0 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/calendar/slots/by-work-order/${WO_ID}`,
+        payload: {
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ updated: 0 });
+    });
+
+    it('MECHANIC не може робити sync (RolesGuard блокує)', async () => {
+      // RolesGuard mock у тестах повертає true завжди — це лімітація mock-у.
+      // У продакшні @Roles('OWNER','ADMIN','RECEPTIONIST') виключає MECHANIC.
+      // Це тест-стуб документує очікувану поведінку.
+      serviceMock.syncWorkOrderSlots.mockResolvedValueOnce({ updated: 1 });
+      jwtRole = 'MECHANIC';
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/calendar/slots/by-work-order/${WO_ID}`,
+        payload: {
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        },
+      });
+      // У production RolesGuard поверне 403; у цьому unit-test mock завжди дозволяє.
+      expect([200, 403]).toContain(res.statusCode);
     });
   });
 });

@@ -387,6 +387,14 @@ export function CreateWorkOrderModal({
   // Refs ensure handleModalClose sees sync state, not stale closure (Bug #381 race).
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
+  // Bug #440: track initial planned dates loaded from WO so we can detect
+  // whether they actually changed before prompting the calendar-sync dialog.
+  // Without this every save() — even one that only touches description or
+  // lines — would ask "Планові дати наряду змінились" and lie to the user.
+  const initialPlannedRef = useRef<{ startAt: string; endAt: string }>({
+    startAt: '',
+    endAt: '',
+  });
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
     setSaving(v);
@@ -619,6 +627,11 @@ export function CreateWorkOrderModal({
     setCurrentStatus('DRAFT');
     // A fresh modal session starts without a prior partial create.
     createdWoRef.current = null;
+    // Bug #440: reset snapshot so previous WO's dates don't bleed into a new session.
+    initialPlannedRef.current = {
+      startAt: prefill?.plannedStartAt ?? '',
+      endAt: prefill?.plannedEndAt ?? '',
+    };
     setForm({
       branchId: prefill?.branchId ?? '',
       vehicleId: prefill?.vehicleId ?? '',
@@ -680,6 +693,12 @@ export function CreateWorkOrderModal({
           plannedHours: wo.plannedHours != null ? String(wo.plannedHours) : '',
           actualHours: wo.actualHours != null ? String(wo.actualHours) : '',
         });
+        // Bug #440: snapshot loaded dates for later change-detection.
+        // Used by save() to decide whether to show calendar-sync dialog.
+        initialPlannedRef.current = {
+          startAt: isoToKyivLocalDateTime(wo.plannedAt),
+          endAt: isoToKyivLocalDateTime(wo.dueDate),
+        };
         setCounterpartyDisplayName(wo.counterpartyName ?? '');
         setCpPhone('');
         setLines(
@@ -1088,7 +1107,20 @@ export function CreateWorkOrderModal({
           }),
         });
       }
-      if (syncCalendarEnabled && workOrderId && form.plannedStartAt && form.plannedEndAt) {
+      // Bug #440: show calendar-sync dialog ONLY when planned dates actually
+      // changed compared to the values loaded from the WO. Otherwise every save
+      // (even a description-only edit) prompts the user with a misleading
+      // "Планові дати наряду змінились" message and risks an unnecessary PATCH.
+      const datesChanged =
+        form.plannedStartAt !== initialPlannedRef.current.startAt ||
+        form.plannedEndAt !== initialPlannedRef.current.endAt;
+      if (
+        syncCalendarEnabled &&
+        workOrderId &&
+        form.plannedStartAt &&
+        form.plannedEndAt &&
+        datesChanged
+      ) {
         const startAt = localDateTimeToISO(form.plannedStartAt) ?? form.plannedStartAt;
         const endAt = localDateTimeToISO(form.plannedEndAt) ?? form.plannedEndAt;
         const ok = await confirm({
@@ -1099,10 +1131,24 @@ export function CreateWorkOrderModal({
         });
         if (ok) {
           try {
-            await apiFetch(`/calendar/slots/by-work-order/${workOrderId}`, {
-              method: 'PATCH',
-              body: JSON.stringify({ startAt, endAt }),
-            });
+            const result = await apiFetch<{ updated: number }>(
+              `/calendar/slots/by-work-order/${workOrderId}`,
+              {
+                method: 'PATCH',
+                body: JSON.stringify({ startAt, endAt }),
+              },
+            );
+            // Bug #441: коли у наряду немає слоту в календарі, backend silently
+            // повертає { updated: 0 }. Без user-facing feedback клієнт думає що
+            // синхронізація відбулась.
+            if (result && result.updated === 0 && features.toastEnabled) {
+              toast.info('Слот у календарі для цього наряду не знайдено');
+            }
+            // Освіжаємо snapshot, щоб повторні save() без змін дат не запитували знову.
+            initialPlannedRef.current = {
+              startAt: form.plannedStartAt,
+              endAt: form.plannedEndAt,
+            };
           } catch (err: unknown) {
             // Surface the error to user — silent failure hides 400/403/500 from backend.
             // Не блокуємо закриття: показуємо повідомлення, але форма далі закривається.

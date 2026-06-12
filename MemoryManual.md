@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+(pending) fix(tester): Bug #444 — syncWorkOrderSlots conflict check + #446 settings spec
 7640de9b fix(review): calendar sync — endAt>startAt guard, parent-only update, ConfirmDialog reuse
 29fc97f0 fix(settings): include syncCalendarSlotWithPlannedHours in DocumentsTab PATCH body
 307d1e39 feat(settings): add syncCalendarSlotWithPlannedHours setting
@@ -30,9 +31,14 @@ c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTot
 Дата: 2026-06-12
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Latest review (2026-06-12, 7640de9b, after 307d1e39+29fc97f0 calendar sync feat): 3 фікси — (1) CRITICAL: `syncWorkOrderSlots` робив naive updateMany на parent+continuation children одночасно → колапс split-day слотів на однаковий interval (data corruption); виправлено: $transaction, спочатку soft-delete continuation (parentSlotId IS NOT NULL), потім update parent (parentSlotId IS NULL); (2) IMPORTANT: відсутній `endAt > startAt` guard (createSlot/updateSlot його мають) — додано BadRequestException; (3) IMPORTANT: CreateWorkOrderModal реінвентував Modal — ad-hoc `<div className="fixed inset-0 z-[70]">` без `role="dialog"`, `aria-modal`, Escape handler, exit-animation; замінено на існуючий `await confirm(...)` через useConfirm hook (-50 lines, +3 a11y); також silent `catch {}` для PATCH /calendar/slots/by-work-order/* приховував 400/403/500 — додано console.warn.
+Latest tester (2026-06-12, after 7640de9b calendar sync feat): Bugs #444 (HIGH), #446 (MEDIUM), #447 (LOW) — alternate-mutation endpoint без conflict check (double-booking risk), settings contract spec не покривав `syncCalendarSlotWithPlannedHours`, meta-bug про gaps у audit-log #440-#443. Виправлено: conflict-check у `syncWorkOrderSlots()` ($transaction probe parent.liftId/employeeId vs other-WO slots overlap), +4 service spec tests, +3 settings contract tests, +поля у orgRow mock.
 Latest tester (2026-06-11): Bug #439 — додано FE↔BE symmetry regression-guard у `work-orders.fsm.invariants.spec.ts`.
 Latest tester (2026-06-11, prev): Bugs #429-#433 — savingRef race (CreateWorkOrderModal), stale format mock, INVOICEABLE/SHAREABLE_STATUSES backend sync, audit liftId/documentDate.
 ```
+
+### Gotcha #444 — Alternate-mutation endpoint обходить canonical guards (calendar sync приклад)
+
+Будь-який bulk/sync/refresh service-метод що мутує ТОЙ ЖЕ resource що канонічний `update()` (тут — `calendarSlot.startAt/endAt`) ОБОВ'ЯЗКОВО повторює ВСІ business-guards канонічного методу. `syncWorkOrderSlots()` був написаний як «найпростіший updateMany» — без conflict probe vs other-WO slots. Канонічні `createSlot()`/`updateSlot()` мають conflict check на lift/employee overlap і кидають "Підйомник вже зайнятий" / "Співробітник вже зайнятий" — sync теж тепер має. Інакше: WO-A move planned hours → silent overlap з WO-B на тому ж lift → 2 visible слоти на одному lift у тому ж часовому вікні. SKILL §1.1 «Alternate-mutation endpoint обходить canonical guards» (Bug #403) — добавлено новий instance #444 для calendar.
 
 ### Gotcha #review-7640de — Calendar slot continuation колапс при updateMany з однаковим {startAt, endAt}
 

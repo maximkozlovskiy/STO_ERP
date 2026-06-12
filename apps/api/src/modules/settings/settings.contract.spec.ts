@@ -29,6 +29,10 @@ let orgRow: {
   followUpActive: boolean;
   followUpDays: number;
   uiFeatures: Record<string, unknown>;
+  // Bug #446: нові boolean-поля додані у DTO + service mapping (commit 307d1e39).
+  // Мають бути у моку — інакше mapOrgSettings повертає undefined → contract test fail.
+  recalcPlannedHoursFromLines: boolean;
+  syncCalendarSlotWithPlannedHours: boolean;
   updatedAt: Date;
 };
 
@@ -48,6 +52,8 @@ function freshOrgRow() {
     followUpActive: false,
     followUpDays: 90,
     uiFeatures: { ...UI_FEATURES_DEFAULTS },
+    recalcPlannedHoursFromLines: true,
+    syncCalendarSlotWithPlannedHours: true,
     updatedAt: new Date('2026-01-01T00:00:00Z'),
   };
 }
@@ -415,6 +421,41 @@ describe('Settings — HTTP Contract', () => {
       // toUpperCurrencyCode виконує slice(0,10) → 'TOOLONGCOD' (10 chars) → пройде
       // @MaxLength але currency mock поверне null → 400. Допустимо обидва шляхи.
       expect([400]).toContain(res.statusCode);
+    });
+  });
+
+  // Bug #446 regression-guard: syncCalendarSlotWithPlannedHours (commit 307d1e39)
+  // — нове boolean-поле у DTO + service mapping. Без contract-тестів refactor
+  // що видалить його з DTO/whitelist пройде CI зеленим, а frontend (CreateWorkOrderModal
+  // зчитує цей флаг з /settings/organisation) silently повернеться на default true.
+  describe('Bug #446: syncCalendarSlotWithPlannedHours end-to-end', () => {
+    it('PATCH /settings/organisation з syncCalendarSlotWithPlannedHours=false → 200 + body.syncCalendarSlotWithPlannedHours=false', async () => {
+      redisMock.get.mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { syncCalendarSlotWithPlannedHours: false },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { syncCalendarSlotWithPlannedHours: boolean };
+      expect(body.syncCalendarSlotWithPlannedHours).toBe(false);
+    });
+
+    it('PATCH /settings/organisation з syncCalendarSlotWithPlannedHours="not-boolean" → 400', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { syncCalendarSlotWithPlannedHours: 'yes' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('GET /settings/organisation повертає syncCalendarSlotWithPlannedHours boolean', async () => {
+      const res = await app.inject({ method: 'GET', url: '/settings/organisation' });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as Record<string, unknown>;
+      expect(body).toHaveProperty('syncCalendarSlotWithPlannedHours');
+      expect(typeof body.syncCalendarSlotWithPlannedHours).toBe('boolean');
     });
   });
 });
