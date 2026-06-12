@@ -61,6 +61,7 @@ export default function DocumentsTab() {
         method: 'PATCH',
         body: JSON.stringify({
           recalcPlannedHoursFromLines: orgSettings.recalcPlannedHoursFromLines ?? true,
+          syncCalendarSlotWithPlannedHours: orgSettings.syncCalendarSlotWithPlannedHours ?? true,
         }),
       });
       setOrgSettings(updated);
