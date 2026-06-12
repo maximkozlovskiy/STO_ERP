@@ -232,6 +232,7 @@ export class SettingsService {
     loyaltyEarnPer: { toNumber(): number } | number;
     loyaltyEarnPoints: { toNumber(): number } | number;
     loyaltyRedeemRate: { toNumber(): number } | number;
+    recalcPlannedHoursFromLines: boolean;
     updatedAt: Date;
   }): OrganisationSettingsResponseDto {
     const toNum = (v: { toNumber(): number } | number) =>
@@ -256,6 +257,7 @@ export class SettingsService {
       loyaltyEarnPer: toNum(s.loyaltyEarnPer),
       loyaltyEarnPoints: toNum(s.loyaltyEarnPoints),
       loyaltyRedeemRate: toNum(s.loyaltyRedeemRate),
+      recalcPlannedHoursFromLines: s.recalcPlannedHoursFromLines,
       updatedAt: s.updatedAt,
     };
   }

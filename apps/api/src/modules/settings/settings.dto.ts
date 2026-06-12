@@ -169,6 +169,11 @@ export class UpdateOrganisationSettingsDto {
   @IsNumber()
   @Min(0)
   loyaltyRedeemRate?: number;
+
+  @ApiPropertyOptional({ description: 'Перераховувати планові нормогодини по сумі рядків робіт' })
+  @IsOptional()
+  @IsBoolean()
+  recalcPlannedHoursFromLines?: boolean;
 }
 
 export class UpdateBranchSettingsDto {
@@ -264,6 +269,8 @@ export class OrganisationSettingsResponseDto {
   @ApiProperty() loyaltyEarnPer!: number;
   @ApiProperty() loyaltyEarnPoints!: number;
   @ApiProperty() loyaltyRedeemRate!: number;
+  @ApiProperty({ description: 'Перераховувати планові нормогодини по сумі рядків робіт' })
+  recalcPlannedHoursFromLines!: boolean;
   @ApiProperty() updatedAt!: Date;
 }
 

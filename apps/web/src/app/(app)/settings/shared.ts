@@ -30,6 +30,7 @@ export interface OrgSettings {
   loyaltyEarnPer?: number;
   loyaltyEarnPoints?: number;
   loyaltyRedeemRate?: number;
+  recalcPlannedHoursFromLines?: boolean;
   updatedAt: string;
 }
 

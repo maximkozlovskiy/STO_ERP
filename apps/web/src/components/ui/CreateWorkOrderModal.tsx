@@ -322,6 +322,23 @@ const calcEndFromHours = (start: string, hours: number): string => {
   return `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}T${pad(endH)}:${pad(endM)}`;
 };
 
+// Recalc plannedHours = max(currentVal, sum of normoHours across all lines).
+// Used when recalcPlannedHoursFromLines setting is enabled.
+// Does NOT decrease the value if user manually set it higher.
+const calcPlannedHoursFromLines = (
+  currentVal: string,
+  linesArr: { normoHours: string }[],
+): string => {
+  const sum = linesArr.reduce((acc, l) => {
+    const n = Number(l.normoHours.replace(',', '.'));
+    return acc + (Number.isFinite(n) && n > 0 ? n : 0);
+  }, 0);
+  if (sum === 0) return currentVal;
+  const current = Number(currentVal.replace(',', '.'));
+  const result = Number.isFinite(current) && current > 0 ? Math.max(current, sum) : sum;
+  return String(Math.round(result * 100) / 100);
+};
+
 // UA users often type `1,5` for fractional values — accept comma as decimal
 // separator before passing to `Number()`. Returns `undefined` for empty/NaN.
 const toNumberOrUndefined = (raw: string): number | undefined => {
@@ -381,6 +398,7 @@ export function CreateWorkOrderModal({
   const [error, setError] = useState('');
   const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
   const [vatRate, setVatRate] = useState(0);
+  const [recalcPlannedHoursEnabled, setRecalcPlannedHoursEnabled] = useState(false);
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [editModeLoading, setEditModeLoading] = useState(false);
@@ -556,11 +574,16 @@ export function CreateWorkOrderModal({
     }
 
     Promise.all([
-      apiFetch<{ vatMode: string; defaultVatRateId?: string | null }>('/settings/organisation'),
+      apiFetch<{
+        vatMode: string;
+        defaultVatRateId?: string | null;
+        recalcPlannedHoursFromLines?: boolean;
+      }>('/settings/organisation'),
       apiFetch<{ id: string; rate: number; isDefault: boolean }[]>('/settings/tax-rates'),
     ])
       .then(([org, rates]) => {
         setVatMode((org.vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE') ?? 'NONE');
+        setRecalcPlannedHoursEnabled(org.recalcPlannedHoursFromLines ?? false);
         const def = (Array.isArray(rates) ? rates : []).find(r => r.isDefault);
         if (def) setVatRate(Number(def.rate));
       })
@@ -854,7 +877,21 @@ export function CreateWorkOrderModal({
       return;
     }
     setError('');
-    setLines(prev => [...prev, { ...newLine, _key: nextKey() }]);
+    const newEntry = { ...newLine, _key: nextKey() };
+    setLines(prev => {
+      const updated = [...prev, newEntry];
+      if (recalcPlannedHoursEnabled) {
+        setForm(f => {
+          const newHours = calcPlannedHoursFromLines(f.plannedHours, updated);
+          const newEnd =
+            newHours !== f.plannedHours && f.plannedStartAt
+              ? calcEndFromHours(f.plannedStartAt, Number(newHours.replace(',', '.')))
+              : f.plannedEndAt;
+          return { ...f, plannedHours: newHours, plannedEndAt: newEnd || f.plannedEndAt };
+        });
+      }
+      return updated;
+    });
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
   };
@@ -2173,7 +2210,30 @@ export function CreateWorkOrderModal({
                                         type="button"
                                         onClick={() => {
                                           if (line.id) deletedLineIds.current.push(line.id);
-                                          setLines(prev => prev.filter(l => l._key !== line._key));
+                                          setLines(prev => {
+                                            const updated = prev.filter(l => l._key !== line._key);
+                                            if (recalcPlannedHoursEnabled) {
+                                              setForm(f => {
+                                                const newHours = calcPlannedHoursFromLines(
+                                                  f.plannedHours,
+                                                  updated,
+                                                );
+                                                const newEnd =
+                                                  newHours !== f.plannedHours && f.plannedStartAt
+                                                    ? calcEndFromHours(
+                                                        f.plannedStartAt,
+                                                        Number(newHours.replace(',', '.')),
+                                                      )
+                                                    : f.plannedEndAt;
+                                                return {
+                                                  ...f,
+                                                  plannedHours: newHours,
+                                                  plannedEndAt: newEnd || f.plannedEndAt,
+                                                };
+                                              });
+                                            }
+                                            return updated;
+                                          });
                                         }}
                                         disabled={saving || !canEdit}
                                         aria-label="Видалити роботу"
