@@ -5,7 +5,38 @@ import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { type OrgSettings } from './shared';
+
+function Toggle({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onChange(!checked)}
+      disabled={disabled}
+      className={cn(
+        'relative inline-flex h-5 w-9 rounded-full transition-colors shrink-0',
+        checked ? 'bg-primary' : 'bg-border',
+        disabled && 'opacity-50 cursor-not-allowed',
+      )}
+    >
+      <span
+        className={cn(
+          'inline-block h-4 w-4 rounded-full bg-surface shadow transform transition-transform mt-0.5',
+          checked ? 'translate-x-4' : 'translate-x-0.5',
+        )}
+      />
+    </button>
+  );
+}
 
 export default function DocumentsTab() {
   const features = useUiFeatures();
@@ -29,7 +60,7 @@ export default function DocumentsTab() {
       const updated = await apiFetch<OrgSettings>('/settings/organisation', {
         method: 'PATCH',
         body: JSON.stringify({
-          recalcPlannedHoursFromLines: orgSettings.recalcPlannedHoursFromLines ?? false,
+          recalcPlannedHoursFromLines: orgSettings.recalcPlannedHoursFromLines ?? true,
         }),
       });
       setOrgSettings(updated);
@@ -53,37 +84,31 @@ export default function DocumentsTab() {
         </div>
       )}
 
-      {/* Наряди */}
-      <section>
-        <h2 className="text-sm font-semibold text-foreground mb-4">Наряди</h2>
-        <div className="flex items-start justify-between gap-4">
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-foreground">Наряди</h2>
+
+        <div
+          className="flex items-center justify-between gap-4 py-2 border-b border-border"
+          title="Якщо увімкнено, при додаванні або видаленні робіт поле «Планові нормогодини» автоматично збільшується до суми нормогодин по рядках. Зменшення вручну — дозволено."
+        >
           <div>
             <p className="text-sm font-medium text-foreground">
               Перераховувати планові нормогодини по роботах
             </p>
-            <p className="text-xs text-muted-foreground mt-1 max-w-md">
-              Якщо увімкнено — при додаванні або видаленні рядків робіт поле «Планові нормогодини»
-              автоматично збільшується до суми нормогодин по рядках. Якщо вручну встановлено більше
-              значення — воно не зменшується автоматично.
+            <p className="text-xs text-muted-foreground mt-0.5">
+              При додаванні або видаленні рядків робіт поле «Планові нормогодини» автоматично
+              збільшується до суми нормогодин по рядках. Якщо вручну встановлено більше значення —
+              воно не зменшується автоматично.
             </p>
           </div>
-          <label
-            className="relative flex-shrink-0 mt-0.5 cursor-pointer"
-            title="Якщо увімкнено, при додаванні або видаленні робіт поле «Планові нормогодини» автоматично збільшується до суми нормогодин по рядках. Зменшення вручну — дозволено."
-          >
-            <input
-              type="checkbox"
-              checked={orgSettings.recalcPlannedHoursFromLines ?? false}
-              onChange={e =>
-                setOrgSettings({ ...orgSettings, recalcPlannedHoursFromLines: e.target.checked })
-              }
-              className="h-4 w-4 rounded border-border cursor-pointer"
-            />
-          </label>
+          <Toggle
+            checked={orgSettings.recalcPlannedHoursFromLines ?? true}
+            onChange={v => setOrgSettings({ ...orgSettings, recalcPlannedHoursFromLines: v })}
+          />
         </div>
       </section>
 
-      <div className="pt-2">
+      <div>
         <Button onClick={() => void save()} disabled={saving}>
           {saving ? 'Збереження...' : 'Зберегти'}
         </Button>
