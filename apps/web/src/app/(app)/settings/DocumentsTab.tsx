@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -43,10 +43,23 @@ export default function DocumentsTab() {
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Snapshot of loaded values — used to PATCH only changed fields (§26 sto-dev:
+  // "PATCH тільки змінені поля, не весь об'єкт"). Without this, saving with no
+  // toggle change still sends both flags, masking server-side merge bugs.
+  const initialRef = useRef<{
+    recalcPlannedHoursFromLines: boolean;
+    syncCalendarSlotWithPlannedHours: boolean;
+  } | null>(null);
 
   useEffect(() => {
     apiFetch<OrgSettings>('/settings/organisation')
-      .then(setOrgSettings)
+      .then(s => {
+        setOrgSettings(s);
+        initialRef.current = {
+          recalcPlannedHoursFromLines: s.recalcPlannedHoursFromLines ?? true,
+          syncCalendarSlotWithPlannedHours: s.syncCalendarSlotWithPlannedHours ?? true,
+        };
+      })
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'),
       );
@@ -57,14 +70,33 @@ export default function DocumentsTab() {
     setSaving(true);
     setError('');
     try {
+      const initial = initialRef.current;
+      const recalcNow = orgSettings.recalcPlannedHoursFromLines ?? true;
+      const syncNow = orgSettings.syncCalendarSlotWithPlannedHours ?? true;
+      const patch: {
+        recalcPlannedHoursFromLines?: boolean;
+        syncCalendarSlotWithPlannedHours?: boolean;
+      } = {};
+      if (!initial || initial.recalcPlannedHoursFromLines !== recalcNow) {
+        patch.recalcPlannedHoursFromLines = recalcNow;
+      }
+      if (!initial || initial.syncCalendarSlotWithPlannedHours !== syncNow) {
+        patch.syncCalendarSlotWithPlannedHours = syncNow;
+      }
+      // Nothing actually changed — short-circuit без RTT і без зайвого toast.
+      if (Object.keys(patch).length === 0) {
+        if (features.toastEnabled) toast.info('Змін немає');
+        return;
+      }
       const updated = await apiFetch<OrgSettings>('/settings/organisation', {
         method: 'PATCH',
-        body: JSON.stringify({
-          recalcPlannedHoursFromLines: orgSettings.recalcPlannedHoursFromLines ?? true,
-          syncCalendarSlotWithPlannedHours: orgSettings.syncCalendarSlotWithPlannedHours ?? true,
-        }),
+        body: JSON.stringify(patch),
       });
       setOrgSettings(updated);
+      initialRef.current = {
+        recalcPlannedHoursFromLines: updated.recalcPlannedHoursFromLines ?? true,
+        syncCalendarSlotWithPlannedHours: updated.syncCalendarSlotWithPlannedHours ?? true,
+      };
       if (features.toastEnabled) toast.success('Збережено');
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : 'Помилка збереження';
@@ -114,7 +146,7 @@ export default function DocumentsTab() {
         >
           <div>
             <p className="text-sm font-medium text-foreground">
-              Перераховувати нормогодини слоту календаря до змін планових годин в наряді
+              Синхронізувати слот календаря при зміні планових годин наряду
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
               При збереженні наряду, якщо планові дати відрізняються від слоту в календарі — система

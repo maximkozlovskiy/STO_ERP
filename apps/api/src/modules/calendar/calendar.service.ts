@@ -9,6 +9,7 @@ import {
   CreateCalendarSlotResponseDto,
   CheckConflictsDto,
   CheckConflictsResponseDto,
+  SyncWorkOrderSlotsDto,
 } from './calendar.dto';
 
 // Module-level Intl singleton — kyivOffsetMs is called on every findSlots/createSlot/updateSlot,
@@ -25,10 +26,10 @@ const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv'
 const WORK_DAY_START_H = 8;
 const WORK_DAY_END_H = 20;
 
-/** Returns the UTC timestamp for 19:00 Kyiv time on the same calendar day as `d`. */
+/** Returns the UTC timestamp for WORK_DAY_END_H (20:00) Kyiv time on the same calendar day as `d`. */
 function kyivEndOfWorkDay(d: Date): Date {
   const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
-  // Build "YYYY-MM-DDT19:00:00" as a local Kyiv wall-clock time, then convert to UTC.
+  // Build "YYYY-MM-DDT20:00:00" as a local Kyiv wall-clock time, then convert to UTC.
   // We use the same DST-aware approach: find the UTC offset at noon of that day.
   const noonUtc = new Date(`${kyivDate}T12:00:00Z`);
   const offsetMs = kyivOffsetMsStatic(noonUtc);
@@ -37,7 +38,7 @@ function kyivEndOfWorkDay(d: Date): Date {
   );
 }
 
-/** Returns the UTC timestamp for 08:00 Kyiv time on the calendar day AFTER `d`. */
+/** Returns the UTC timestamp for WORK_DAY_START_H (08:00) Kyiv time on the calendar day AFTER `d`. */
 function kyivStartOfNextWorkDay(d: Date): Date {
   const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
   const [y, m, day] = kyivDate.split('-').map(Number);
@@ -192,7 +193,7 @@ export class CalendarService {
     if (dto.counterpartyId && !counterparty) throw new NotFoundException('Клієнта не знайдено');
     if (dto.vehicleId && !vehicle) throw new NotFoundException('Автомобіль не знайдено');
 
-    // Determine if slot overflows the working day end (19:00 Kyiv)
+    // Determine if slot overflows the working day end (WORK_DAY_END_H = 20:00 Kyiv)
     const workDayEnd = kyivEndOfWorkDay(startAt);
     const isSplit = endAt > workDayEnd;
 
@@ -546,7 +547,7 @@ export class CalendarService {
   async syncWorkOrderSlots(
     orgId: string,
     workOrderId: string,
-    dto: { startAt: string; endAt: string },
+    dto: SyncWorkOrderSlotsDto,
   ): Promise<{ updated: number }> {
     const startAt = new Date(dto.startAt);
     const endAt = new Date(dto.endAt);
@@ -555,16 +556,6 @@ export class CalendarService {
     }
     if (endAt <= startAt) throw new BadRequestException('Час завершення має бути після початку');
 
-    // Bug #442: tenant-isolation guard — без цієї перевірки cross-tenant
-    // workOrderId silenо повертає { updated: 0 } замість 404 → probe vector
-    // через time-window (атакувальник з валідним JWT іншої org може перевірити
-    // існування WO-ID). Парне з шаблоном #161 у SKILL §1.1 Tenant Isolation.
-    const workOrder = await this.prisma.workOrder.findFirst({
-      where: { id: workOrderId, orgId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!workOrder) throw new NotFoundException('Наряд не знайдено');
-
     // Slots can be split across working-day boundary (parent + continuation children).
     // Collapsing all of them onto the same {startAt, endAt} corrupts the parent/child interval.
     // Strategy: update ONLY the parent slot (parentSlotId IS NULL) to the new range, and soft-delete
@@ -572,6 +563,27 @@ export class CalendarService {
     // This keeps the invariant: each WO has 1 canonical anchor slot after sync.
     return this.prisma.$transaction(
       async tx => {
+        // sto-optimize: tenant guard + parentSlot lookup are independent reads — run in parallel
+        // to save 1 RTT. Both are needed before any mutation: workOrder for 404 (Bug #442),
+        // parentSlot for conflict OR clause (Bug #444). Promise.all inside $transaction
+        // executes both queries on the same Prisma connection concurrently.
+        const [workOrder, parentSlot] = await Promise.all([
+          // Bug #442: tenant-isolation guard — без цієї перевірки cross-tenant
+          // workOrderId silenо повертає { updated: 0 } замість 404 → probe vector
+          // через time-window (атакувальник з валідним JWT іншої org може перевірити
+          // існування WO-ID). Парне з шаблоном #161 у SKILL §1.1 Tenant Isolation.
+          tx.workOrder.findFirst({
+            where: { id: workOrderId, orgId, deletedAt: null },
+            select: { id: true },
+          }),
+          // Bug #444: we need parentSlot's liftId/employeeId for the conflict OR clause.
+          tx.calendarSlot.findFirst({
+            where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
+            select: { id: true, liftId: true, employeeId: true },
+          }),
+        ]);
+        if (!workOrder) throw new NotFoundException('Наряд не знайдено');
+
         // Bug #444: conflict check vs OTHER WO slots on same lift/employee.
         // Canonical createSlot()/updateSlot() guard against double-booking; this alternate
         // mutation endpoint MUST replicate the guard (SKILL §1.1 «Alternate-mutation endpoint
@@ -579,13 +591,7 @@ export class CalendarService {
         // can silently overlap another WO's slot on the same lift/employee → 2 overlapping
         // calendar entries, broken capacity invariant.
         //
-        // We fetch the parent slot first (need its liftId/employeeId for the conflict OR clause)
-        // — and skip the conflict check if there's no parent slot to move.
-        const parentSlot = await tx.calendarSlot.findFirst({
-          where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
-          select: { id: true, liftId: true, employeeId: true },
-        });
-
+        // If no parent slot exists or has no resources, the conflict probe would be a no-op.
         if (parentSlot && (parentSlot.liftId || parentSlot.employeeId)) {
           const orConflicts: Array<{ liftId?: string; employeeId?: string }> = [];
           if (parentSlot.liftId) orConflicts.push({ liftId: parentSlot.liftId });
@@ -610,16 +616,21 @@ export class CalendarService {
           }
         }
 
-        // Soft-delete continuation children first (race-safe — orgId scoped).
-        await tx.calendarSlot.updateMany({
-          where: { orgId, workOrderId, parentSlotId: { not: null }, deletedAt: null },
-          data: { deletedAt: new Date() },
-        });
-        const result = await tx.calendarSlot.updateMany({
-          where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
-          data: { startAt, endAt },
-        });
-        return { updated: result.count };
+        // sto-optimize: child soft-delete + parent update оперують над DISJOINT row sets
+        // (parentSlotId IS NOT NULL vs IS NULL) — independent writes. Promise.all дає одну
+        // round-trip замість двох. Race-safe — обидва updateMany scope-овані orgId+workOrderId.
+        const deletedAt = new Date();
+        const [, parentResult] = await Promise.all([
+          tx.calendarSlot.updateMany({
+            where: { orgId, workOrderId, parentSlotId: { not: null }, deletedAt: null },
+            data: { deletedAt },
+          }),
+          tx.calendarSlot.updateMany({
+            where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
+            data: { startAt, endAt },
+          }),
+        ]);
+        return { updated: parentResult.count };
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
@@ -636,10 +647,10 @@ export class CalendarService {
   }
 
   private kyivOffsetMs(d: Date): number {
-    // Returns Kyiv UTC offset in ms (e.g. +3h = 10800000) using Intl singleton
-    const utcHour = new Date(d).getUTCHours();
-    const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
-    return ((kyivHour - utcHour + 24) % 24) * 3600000;
+    // Thin wrapper around the module-level helper used by kyivEndOfWorkDay /
+    // kyivStartOfNextWorkDay — keeps `this.kyivOffsetMs(...)` call-sites readable
+    // without duplicating the Intl-based offset calculation.
+    return kyivOffsetMsStatic(d);
   }
 
   /** Minimal DTO for conflict-check response — no PII fields, no counterparty enumeration. */

@@ -1152,6 +1152,8 @@ export function CreateWorkOrderModal({
           } catch (err: unknown) {
             // Surface the error to user — silent failure hides 400/403/500 from backend.
             // Не блокуємо закриття: показуємо повідомлення, але форма далі закривається.
+            const syncMsg = err instanceof Error ? err.message : 'Помилка синхронізації слоту';
+            if (features.toastEnabled) toast.warning(`Слот календаря не оновлено: ${syncMsg}`);
             // eslint-disable-next-line no-console
             console.warn('Calendar sync failed:', err);
           }
