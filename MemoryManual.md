@@ -9,7 +9,8 @@
 ## Останній commit
 
 ```
-(pending) fix(tester): Bug #444 — syncWorkOrderSlots conflict check + #446 settings spec
+fef027b0 fix(review): 5 issues — calendar comment drift, silent sync failure, DocumentsTab PATCH/label
+fba87ce4 fix(tester): Bugs #444, #446, #447 — calendar sync hardening + settings coverage
 7640de9b fix(review): calendar sync — endAt>startAt guard, parent-only update, ConfirmDialog reuse
 29fc97f0 fix(settings): include syncCalendarSlotWithPlannedHours in DocumentsTab PATCH body
 307d1e39 feat(settings): add syncCalendarSlotWithPlannedHours setting
@@ -30,11 +31,24 @@ c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTot
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
 Дата: 2026-06-12
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest review (2026-06-12, fef027b0, after fba87ce4 tester cycle): 5 фіксів — (1) `calendar.service.ts` doc-drift: коментарі говорили "19:00 Kyiv" коли `WORK_DAY_END_H=20`; оновлено docstrings посилатися на константи (20:00/08:00); (2) instance `kyivOffsetMs()` дублював module-level `kyivOffsetMsStatic()` — згорнули в тонкий wrapper, Intl-обчислення тепер в одному місці; (3) `syncWorkOrderSlots()` мав inline-типізацію `dto: { startAt; endAt }` замість існуючого `SyncWorkOrderSlotsDto` — вирівняли з контролером для type-safety при refactor; (4) `CreateWorkOrderModal.save()` calendar sync failure тільки `console.warn`ив попри коментар "Surface the error to user" — додано `toast.warning('Слот календаря не оновлено: <reason>')` коли PATCH `/calendar/slots/by-work-order/:id` падає; (5) `DocumentsTab.tsx` PATCH `/settings/organisation` завжди слав ОБА поля незалежно що користувач реально перемкнув (порушує §26 sto-dev "PATCH тільки змінені поля") — додано `initialRef` snapshot + diff-логіка, save без змін short-circuit з `toast.info('Змін немає')`; також виправлено awkward label "Перераховувати нормогодини слоту календаря до змін планових годин в наряді" → "Синхронізувати слот календаря при зміні планових годин наряду" (matches DTO description). TS 0 errors. Contract tests: calendar 28/28, settings 24/24. Component: CreateWorkOrderModal 3/3.
 Latest review (2026-06-12, 7640de9b, after 307d1e39+29fc97f0 calendar sync feat): 3 фікси — (1) CRITICAL: `syncWorkOrderSlots` робив naive updateMany на parent+continuation children одночасно → колапс split-day слотів на однаковий interval (data corruption); виправлено: $transaction, спочатку soft-delete continuation (parentSlotId IS NOT NULL), потім update parent (parentSlotId IS NULL); (2) IMPORTANT: відсутній `endAt > startAt` guard (createSlot/updateSlot його мають) — додано BadRequestException; (3) IMPORTANT: CreateWorkOrderModal реінвентував Modal — ad-hoc `<div className="fixed inset-0 z-[70]">` без `role="dialog"`, `aria-modal`, Escape handler, exit-animation; замінено на існуючий `await confirm(...)` через useConfirm hook (-50 lines, +3 a11y); також silent `catch {}` для PATCH /calendar/slots/by-work-order/* приховував 400/403/500 — додано console.warn.
 Latest tester (2026-06-12, after 7640de9b calendar sync feat): Bugs #444 (HIGH), #446 (MEDIUM), #447 (LOW) — alternate-mutation endpoint без conflict check (double-booking risk), settings contract spec не покривав `syncCalendarSlotWithPlannedHours`, meta-bug про gaps у audit-log #440-#443. Виправлено: conflict-check у `syncWorkOrderSlots()` ($transaction probe parent.liftId/employeeId vs other-WO slots overlap), +4 service spec tests, +3 settings contract tests, +поля у orgRow mock.
 Latest tester (2026-06-11): Bug #439 — додано FE↔BE symmetry regression-guard у `work-orders.fsm.invariants.spec.ts`.
 Latest tester (2026-06-11, prev): Bugs #429-#433 — savingRef race (CreateWorkOrderModal), stale format mock, INVOICEABLE/SHAREABLE_STATUSES backend sync, audit liftId/documentDate.
 ```
+
+### Gotcha #review-fef027 — Settings Tab PATCH весь об'єкт замість diff → маскує merge-баги
+
+Settings tab (DocumentsTab.tsx) робив `PATCH /settings/organisation` з усіма boolean-полями з форми незалежно що користувач реально перемикнув: `body: { recalcPlannedHoursFromLines, syncCalendarSlotWithPlannedHours }`. Проблема: (1) порушення §26 sto-dev «PATCH тільки змінені поля»; (2) сервер `upsert.update` отримує обидва поля → не можна відрізнити intent юзера від default-pass-through → server-side merge-баги (зміна dotа коли користувач не торкався toggle) залишаються невидимими у спеках. Правильно: snapshot завантажених значень у `useRef`, перед save побудувати `patch: Partial<...>` тільки з полів що `current !== initial`, якщо `Object.keys(patch).length===0` → `toast.info('Змін немає')` і short-circuit без RTT. Після успіху — refresh `initialRef` з відповіді сервера. Той самий патерн застосовувати при додаванні нових boolean/string toggle у Settings tab.
+
+### Gotcha #review-fef027-2 — Silent calendar sync failure всупереч намірам коментаря
+
+`CreateWorkOrderModal.save()` після `await confirm(...)` робить `PATCH /calendar/slots/by-work-order/:id`. Catch-блок мав коментар «Surface the error to user — silent failure hides 400/403/500 from backend. Не блокуємо закриття: показуємо повідомлення, але форма далі закривається.» — але код викликав ТІЛЬКИ `console.warn`. Це **прихований мерлок**: коментар обіцяє UX, код доставляє лише dev-tools log. Користувач бачить «Збережено» (toast від основного PATCH), модал закривається, слот у календарі залишається на старих датах — silent inconsistency. Правильно: коли коментар обіцяє user-visible feedback — додати `toast.warning(...)` під feature-flag `if (features.toastEnabled)`. Pattern: при code-review шукати `catch { console.warn(...) }` після `await` через API → перевіряти що коментар не обіцяє те, чого код не робить.
+
+### Gotcha #review-fef027-3 — Doc-drift "19:00 Kyiv" vs WORK_DAY_END_H=20
+
+`calendar.service.ts` мав JSDoc «Returns the UTC timestamp for 19:00 Kyiv time» на функції `kyivEndOfWorkDay` коли константа `WORK_DAY_END_H = 20`. Числа в коментарях — fertile ground для drift коли константа змінюється. Pattern для нових helpers: посилатися на константу в коментарі (`WORK_DAY_END_H (20:00)`), не на сире число. Це робить будь-яку майбутню зміну константи self-documenting (grep WORK_DAY_END_H знаходить і коментар).
 
 ### Gotcha #444 — Alternate-mutation endpoint обходить canonical guards (calendar sync приклад)
 
