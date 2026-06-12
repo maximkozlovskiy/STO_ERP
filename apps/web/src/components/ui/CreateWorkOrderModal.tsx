@@ -280,6 +280,48 @@ const calcPlannedHours = (start?: string, end?: string): string => {
   return String(Math.round(hours * 100) / 100);
 };
 
+// Working day window: 08:00–20:00 (matches calendar WINDOW_START/WINDOW_END).
+const WORK_START_H = 8;
+const WORK_END_H = 20;
+
+// Given a "YYYY-MM-DDTHH:mm" start and hours value, compute plannedEndAt
+// respecting the working-hours window. Overflow beyond 20:00 continues on the
+// next day starting at 08:00 (same logic as CalendarSlotModal.calcEndAt).
+// Returns "YYYY-MM-DDTHH:mm" string, or '' if inputs invalid.
+const calcEndFromHours = (start: string, hours: number): string => {
+  if (!start || !Number.isFinite(hours) || hours <= 0) return '';
+  const base = new Date(start);
+  if (Number.isNaN(base.getTime())) return '';
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const startH = base.getHours();
+  const startM = base.getMinutes();
+  const startMinOfDay = startH * 60 + startM;
+  const durationMin = Math.round(hours * 60);
+  const endMinOfDay = startMinOfDay + durationMin;
+  const workEndMin = WORK_END_H * 60;
+
+  let endDate: Date;
+  let endH: number;
+  let endM: number;
+
+  if (endMinOfDay <= workEndMin) {
+    endDate = new Date(base);
+    endH = Math.floor(endMinOfDay / 60);
+    endM = endMinOfDay % 60;
+  } else {
+    // Overflow: next calendar day, starting at WORK_START_H
+    const overflowMin = endMinOfDay - workEndMin;
+    const day2Min = WORK_START_H * 60 + overflowMin;
+    endDate = new Date(base);
+    endDate.setDate(endDate.getDate() + 1);
+    endH = Math.floor(day2Min / 60);
+    endM = day2Min % 60;
+  }
+
+  return `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}T${pad(endH)}:${pad(endM)}`;
+};
+
 // UA users often type `1,5` for fractional values — accept comma as decimal
 // separator before passing to `Number()`. Returns `undefined` for empty/NaN.
 const toNumberOrUndefined = (raw: string): number | undefined => {
@@ -779,7 +821,14 @@ export function CreateWorkOrderModal({
   }, []);
   const handlePlannedHoursChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    setForm(f => ({ ...f, plannedHours: value }));
+    setForm(f => {
+      const hours = Number(value.replace(',', '.'));
+      const newEnd =
+        f.plannedStartAt && Number.isFinite(hours) && hours > 0
+          ? calcEndFromHours(f.plannedStartAt, hours)
+          : f.plannedEndAt;
+      return { ...f, plannedHours: value, plannedEndAt: newEnd || f.plannedEndAt };
+    });
   }, []);
   const handleActualHoursChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
