@@ -9,6 +9,12 @@
 ## Останній commit
 
 ```
+7640de9b fix(review): calendar sync — endAt>startAt guard, parent-only update, ConfirmDialog reuse
+29fc97f0 fix(settings): include syncCalendarSlotWithPlannedHours in DocumentsTab PATCH body
+307d1e39 feat(settings): add syncCalendarSlotWithPlannedHours setting
+99616a4b docs(skills): add §26 Settings Tab standard to sto-dev — Toggle pattern, tab registration, boolean field checklist
+e266f4a2 fix(settings): use Toggle style for recalcPlannedHoursFromLines, default true
+8778d3f1 feat(settings): add 'Налаштування документів' tab with plannedHours recalc toggle
 50c550bd fix(review): logic bugs — WO completion deadlock, kyivOffsetMs unit, dashboard TO overdue
 (pending) test(tester): Bug #439 — FE↔BE WO_*_STATUSES symmetry regression-guard у fsm.invariants.spec.ts
 f3633cd7 chore: remove leftover .bak file from skills optimization
@@ -21,15 +27,20 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-84b91fc4 fix(tester): Bugs #432-#433 — backend INVOICEABLE/SHAREABLE_STATUSES + audit-track liftId/documentDate
-6d6dab96 fix(tester): Bugs #429-#430 — stale @/lib/format mock + savingRef race window
-Дата: 2026-06-11
+Дата: 2026-06-12
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Unit+Contract: ✅ inventory.invariants 7/7 + work-orders 41/41 (re-run після logic-fix)
-Latest review (2026-06-11, logic audit): 3 баги — (1) CRITICAL: `writeOffPartsAndCharge` робив WRITEOFF перед RESERVATION_RELEASE — при qty=reserved за тим самим WO available=0 → COMPLETED падав «Недостатньо товару» хоча запчастини фізично присутні; reordered RELEASE → WRITEOFF; (2) IMPORTANT: `common/utils/kyiv-date.ts:kyivOffsetMs` повертав хвилини попри суфікс `Ms` — мертвий код, але silent failure для першого ж нового імпорту; прибрано `/60_000`; (3) IMPORTANT: dashboard overdue TO badge — `new Date('YYYY-MM-DD').getTime() < nowMs` показував «Прострочено» з 03:00 ранку у день ТО (UTC midnight = 03:00 Kyiv) — string-compare YMD < kyivToday().
+Latest review (2026-06-12, 7640de9b, after 307d1e39+29fc97f0 calendar sync feat): 3 фікси — (1) CRITICAL: `syncWorkOrderSlots` робив naive updateMany на parent+continuation children одночасно → колапс split-day слотів на однаковий interval (data corruption); виправлено: $transaction, спочатку soft-delete continuation (parentSlotId IS NOT NULL), потім update parent (parentSlotId IS NULL); (2) IMPORTANT: відсутній `endAt > startAt` guard (createSlot/updateSlot його мають) — додано BadRequestException; (3) IMPORTANT: CreateWorkOrderModal реінвентував Modal — ad-hoc `<div className="fixed inset-0 z-[70]">` без `role="dialog"`, `aria-modal`, Escape handler, exit-animation; замінено на існуючий `await confirm(...)` через useConfirm hook (-50 lines, +3 a11y); також silent `catch {}` для PATCH /calendar/slots/by-work-order/* приховував 400/403/500 — додано console.warn.
 Latest tester (2026-06-11): Bug #439 — додано FE↔BE symmetry regression-guard у `work-orders.fsm.invariants.spec.ts`.
 Latest tester (2026-06-11, prev): Bugs #429-#433 — savingRef race (CreateWorkOrderModal), stale format mock, INVOICEABLE/SHAREABLE_STATUSES backend sync, audit liftId/documentDate.
 ```
+
+### Gotcha #review-7640de — Calendar slot continuation колапс при updateMany з однаковим {startAt, endAt}
+
+`CalendarSlot` має `parentSlotId` для split-day continuation: один наряд може мати parent slot + child slot якщо `createSlot` зашовло за межі робочого дня (див. `kyivEndOfWorkDay` / `kyivStartOfNextWorkDay`). Будь-який bulk `updateMany({ workOrderId, ... })` із одним `{startAt, endAt}` колапсує parent+child на однаковий interval — це **data corruption** інваріанту "parent.endAt < child.startAt". Правильний патерн для cascade-update slots: (1) soft-delete всі continuation children (parentSlotId IS NOT NULL); (2) update тільки parent (parentSlotId IS NULL); (3) опційно — recreate child якщо новий range перевищує робочий день. Це зберігає інваріант "кожен WO має 1 canonical anchor slot після sync".
+
+### Gotcha #review-7640de-2 — Ad-hoc `<div className="fixed inset-0 z-[N]">` замість ConfirmDialog/useConfirm
+
+Кодова база має готовий `useConfirm()` hook + `<ConfirmDialog {...confirmDialogProps} />` патерн. Інлайн `<div className="fixed inset-0 z-[70]"><div ...>Yes/No</div></div>` модал без `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, Escape handler, focus trap, exit-animation — порушує §8.5 (modularity), §8 (a11y) і `useAnimatedPresence` invariant (state="closed" → 180ms → unmount). Правильно: `const ok = await confirm({ title, message, confirmLabel, cancelLabel })` всередині async handler. Hook + Promise resolver elegant: -50 рядків коду, +3 a11y, синхронно з рештою codebase. У `CreateWorkOrderModal.tsx` `useConfirm` уже imported і використовується 5+ разів — будь-яке наступне підтвердження має йти через нього, не через копіпасту.
 
 ### Gotcha #review-50c — RELEASE перед WRITEOFF у тій самій WO-COMPLETED транзакції
 
