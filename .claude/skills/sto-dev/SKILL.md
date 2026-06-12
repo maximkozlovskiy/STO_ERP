@@ -1826,6 +1826,176 @@ onClick={() => router.push(`/counterparties/${id}`)}
 
 ---
 
+## §26 Settings Tab — стандарт вкладки налаштувань
+
+### Структура файлу
+
+```
+apps/web/src/app/(app)/settings/
+├── page.tsx          ← реєстрація вкладки (Tab type + TABS array + рендер)
+├── shared.ts         ← OrgSettings / BranchSettings типи
+└── XxxTab.tsx        ← окремий файл на кожну вкладку
+```
+
+**Реєстрація вкладки в `page.tsx`:**
+
+```typescript
+// 1. dynamic import (ssr: false — всі вкладки налаштувань)
+const DocumentsTab = dynamic(() => import('./DocumentsTab'), { ssr: false });
+
+// 2. розширити Tab union
+type Tab = 'numbers' | 'workdays' | 'documents' | ...;
+
+// 3. додати до TABS array (порядок = порядок у UI)
+{ key: 'documents', label: 'Налаштування документів' },
+
+// 4. рендер
+{tab === 'documents' && <DocumentsTab />}
+```
+
+### Шаблон вкладки (XxxTab.tsx)
+
+```tsx
+'use client';
+import { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { type OrgSettings } from './shared';
+
+// Toggle — локальний компонент (не виноси в shared, кожна вкладка незалежна)
+function Toggle({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onChange(!checked)}
+      disabled={disabled}
+      className={cn(
+        'relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors',
+        checked ? 'bg-primary' : 'bg-border',
+        disabled && 'opacity-50 cursor-not-allowed',
+      )}
+    >
+      <span
+        className={cn(
+          'inline-block h-4 w-4 rounded-full bg-surface shadow transform transition-transform mt-0.5',
+          checked ? 'translate-x-4' : 'translate-x-0.5',
+        )}
+      />
+    </button>
+  );
+}
+
+export default function XxxTab() {
+  const features = useUiFeatures();
+  const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiFetch<OrgSettings>('/settings/organisation')
+      .then(setOrgSettings)
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'),
+      );
+  }, []);
+
+  const save = async () => {
+    if (!orgSettings) return;
+    setSaving(true);
+    setError('');
+    try {
+      const updated = await apiFetch<OrgSettings>('/settings/organisation', {
+        method: 'PATCH',
+        body: JSON.stringify({ fieldA: orgSettings.fieldA }),
+      });
+      setOrgSettings(updated);
+      if (features.toastEnabled) toast.success('Збережено');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка збереження';
+      setError(msg);
+      if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!orgSettings) return null;
+
+  return (
+    <div className="bg-surface rounded-xl border border-border p-6 space-y-6">
+      {error && (
+        <div className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3">
+          {error}
+        </div>
+      )}
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-foreground">Назва секції</h2>
+
+        {/* Рядок налаштування з Toggle */}
+        <div
+          className="flex items-center justify-between gap-4 py-2 border-b border-border last:border-0"
+          title="Розширений опис для tooltip при наведенні"
+        >
+          <div>
+            <p className="text-sm font-medium text-foreground">Назва налаштування</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Короткий опис під назвою</p>
+          </div>
+          <Toggle
+            checked={orgSettings.fieldA ?? false}
+            onChange={v => setOrgSettings({ ...orgSettings, fieldA: v })}
+          />
+        </div>
+      </section>
+
+      <div>
+        <Button onClick={() => void save()} disabled={saving}>
+          {saving ? 'Збереження...' : 'Зберегти'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+```
+
+### Правила
+
+```
+✅ Toggle (синій перемикач) — для boolean налаштувань
+✅ title на рядку div — tooltip при наведенні з повним описом
+✅ Короткий опис під назвою (text-xs text-muted-foreground)
+✅ border-b border-border last:border-0 — розділювач між рядками
+✅ if (!orgSettings) return null — не рендерити поки не завантажено
+✅ features.toastEnabled — перевірка перед toast
+✅ PATCH тільки змінені поля (не весь об'єкт)
+
+❌ НЕ input type="checkbox" для boolean налаштувань — тільки Toggle
+❌ НЕ зберігати автоматично onChange — завжди кнопка "Зберегти"
+❌ НЕ виносити Toggle у shared — локальний компонент у файлі вкладки
+```
+
+### Додавання нового boolean поля
+
+1. `schema.prisma` → `OrganisationSettings`: `newField Boolean @default(true/false)`
+2. `db push` (dev) або міграція (prod)
+3. `settings.dto.ts` → `UpdateOrganisationSettingsDto` + `OrganisationSettingsResponseDto`
+4. `settings.service.ts` → параметр inline-типу `mapOrganisationSettings()` + return об'єкт
+5. `settings/shared.ts` → `OrgSettings` тип
+6. Новий або існуючий `XxxTab.tsx` → Toggle
+
+---
+
 ## Інтеграція у флоу
 
 ```
