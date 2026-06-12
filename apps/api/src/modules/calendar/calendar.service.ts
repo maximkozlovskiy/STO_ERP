@@ -548,11 +548,30 @@ export class CalendarService {
     workOrderId: string,
     dto: { startAt: string; endAt: string },
   ): Promise<{ updated: number }> {
-    const result = await this.prisma.calendarSlot.updateMany({
-      where: { orgId, workOrderId, deletedAt: null },
-      data: { startAt: new Date(dto.startAt), endAt: new Date(dto.endAt) },
-    });
-    return { updated: result.count };
+    const startAt = new Date(dto.startAt);
+    const endAt = new Date(dto.endAt);
+    if (endAt <= startAt) throw new BadRequestException('Час завершення має бути після початку');
+
+    // Slots can be split across working-day boundary (parent + continuation children).
+    // Collapsing all of them onto the same {startAt, endAt} corrupts the parent/child interval.
+    // Strategy: update ONLY the parent slot (parentSlotId IS NULL) to the new range, and soft-delete
+    // any continuation children — the user can recreate them via the calendar UI if needed.
+    // This keeps the invariant: each WO has 1 canonical anchor slot after sync.
+    return this.prisma.$transaction(
+      async tx => {
+        // Soft-delete continuation children first (race-safe — orgId scoped).
+        await tx.calendarSlot.updateMany({
+          where: { orgId, workOrderId, parentSlotId: { not: null }, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+        const result = await tx.calendarSlot.updateMany({
+          where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
+          data: { startAt, endAt },
+        });
+        return { updated: result.count };
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
   }
 
   async removeSlot(orgId: string, id: string): Promise<void> {
