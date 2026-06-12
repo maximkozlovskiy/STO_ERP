@@ -1138,6 +1138,24 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ---
 
+### 2026-06-12 — Naive `updateMany` на parent+continuation children колапсує split-day інтервал — §5 Business Rules / §6 Database
+
+**Сигнал:** новий cascade-update сервіс (`syncWorkOrderSlots`, `bulkUpdateXByParent`) робить `updateMany({ where: { parentRefId }, data: { startAt, endAt } })` без розрізнення parent slot vs continuation children. У `CalendarSlot` model `parentSlotId` дозволяє split-day (createSlot ділить slot що зашовло за межі робочого дня на parent+child). updateMany із одним `{startAt, endAt}` колапсує обидва slot'и на однаковий interval → invariant `parent.endAt < child.startAt` порушений → calendar UI шиє overlapping intervals.
+**Grep:** `grep -rn "updateMany.*workOrderId\|updateMany.*parentSlotId" apps/api/src/modules/calendar` — для кожного match перевірити чи розрізняє `parentSlotId: null` vs `parentSlotId: { not: null }`
+**Фікс:** wrap у `$transaction({ timeout: TRANSACTION_TIMEOUT_MS })`; (1) soft-delete continuation children (`parentSlotId: { not: null }`) → (2) update тільки parent (`parentSlotId: null`). Якщо новий range > working day — можна додатково recreate continuation, але мінімально безпечно — залишити 1 anchor slot. Також обов'язково додати `endAt > startAt` guard (як у createSlot/updateSlot).
+**Severity:** CRITICAL — silent data corruption на будь-якому WO з split-day slot (звичайний кейс коли наряд починається ввечері й переходить на наступний день); user-visible тільки коли натрапиш на overlapping slot у календарі.
+
+---
+
+### 2026-06-12 — Ad-hoc `<div className="fixed inset-0 z-[N]">` confirm-dialog замість useConfirm — §8 Web Frontend / §8.5 a11y
+
+**Сигнал:** новий inline блок `{somePending && (<div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40">…<Button>Так</Button><Button>Ні</Button></div>)}` всередині великого modal-компоненту, для async confirm після save(). Файл уже imports `useConfirm` + `ConfirmDialog` + використовує `<ConfirmDialog {...confirmDialogProps} />` 5+ разів. Ad-hoc div: немає `role="dialog"`, `aria-modal="true"`, `aria-labelledby`; немає Escape handler; немає focus trap; немає exit-animation (Modal-wrapper sustains state="closed" → 180ms → unmount, а тут unmount миттєвий).
+**Grep:** `grep -rnE "fixed inset-0.*z-\[?[0-9]+" apps/web/src --include="*.tsx"` — для кожного match перевірити чи має `role="dialog"`; якщо ні і в тому ж файлі є `useConfirm` import → mandatory заміна
+**Фікс:** замінити inline div + `usePendingState + useRef<payload>` парою на `const ok = await confirm({ title, message, confirmLabel, cancelLabel }); if (ok) { try { await apiFetch(...) } catch (err) { console.warn(...) } }` всередині save-handler. Hook через Promise resolver elegantly serializує async flow + reuse-ить існуючий ConfirmDialog. -50 LOC, +3 a11y attrs, синхронно з рештою codebase.
+**Severity:** IMPORTANT — порушує §8.5 modularity, §8 a11y, useAnimatedPresence invariant; degradation без crash, але клавіатурні юзери не можуть закрити dialog, screen reader не озвучує "dialog opened".
+
+---
+
 ### 2026-06-05 — Partial `setPage(1)→resetPage()` migration: applyFilter мігровано, inline JSX handlers пропущено — §8.2 UI Стани / §8.6 Модульність UI
 
 **Сигнал:** Сторінка використовує `useListPage` хук що експортує і `setPage` і `resetPage = useCallback(() => setPage(1), [])`. Один callback (зазвичай `applyFilter`) використовує `resetPage()` — а інші 5 сайтів...
