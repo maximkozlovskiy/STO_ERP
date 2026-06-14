@@ -334,7 +334,7 @@ export default function StockDocumentsPage() {
     }
   };
 
-  const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'];
+  const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT'];
   const statuses = ['', 'DRAFT', 'CONFIRMED', 'CANCELLED'];
 
   const buildDocTabs = (doc: StockDoc): DetailPanelTab[] => [
