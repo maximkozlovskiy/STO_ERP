@@ -1278,25 +1278,38 @@ export function CreateWorkOrderModal({
   const handleSaveAs = async (format: 'pdf' | 'xlsx' | 'docx') => {
     setSaveAsOpen(false);
     if (!workOrderId) return;
-    if (format === 'pdf') {
-      setShareLoading(true);
-      try {
-        const { token } = await apiFetch<{ token: string }>(
-          `/work-orders/${workOrderId}/share-token`,
-          { method: 'POST' },
-        );
+    setShareLoading(true);
+    try {
+      const { token } = await apiFetch<{ token: string }>(
+        `/work-orders/${workOrderId}/share-token`,
+        { method: 'POST' },
+      );
+      if (format === 'pdf') {
         const win = window.open(`/estimate/${token}?print=1`, '_blank');
         if (win) win.focus();
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : 'Помилка';
-        if (features.toastEnabled) toast.error(msg);
-        else setError(msg);
-      } finally {
-        setShareLoading(false);
+        return;
       }
-      return;
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+      const res = await fetch(`${apiBase}/api/public/work-orders/${token}/export/${format}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition') ?? '';
+      const match =
+        disposition.match(/filename\*=UTF-8''(.+)/i) ?? disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match ? decodeURIComponent(match[1]) : `Кошторис.${format}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка';
+      if (features.toastEnabled) toast.error(msg);
+      else setError(msg);
+    } finally {
+      setShareLoading(false);
     }
-    if (features.toastEnabled) toast.info(`Експорт у ${format.toUpperCase()} — незабаром`);
   };
 
   const handleShare = async () => {
