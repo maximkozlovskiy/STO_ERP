@@ -42,7 +42,7 @@ import {
   schemaToPanelConfigFields,
 } from '@/lib/panel-schema';
 import { cn } from '@/lib/utils';
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, fmtDate, fmtDateTime } from '@/lib/format';
 
 type PanelConfigHook = ReturnType<typeof useDetailPanelConfig>;
 
@@ -59,32 +59,8 @@ const VIEW_LABELS: Record<ViewMode, string> = {
   batches: 'По партіях',
 };
 
-// Module-level Intl singletons
-const KYIV_DATE_FMT = new Intl.DateTimeFormat('uk-UA', {
-  timeZone: 'Europe/Kyiv',
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
-const KYIV_DATETIME_FMT = new Intl.DateTimeFormat('uk-UA', {
-  timeZone: 'Europe/Kyiv',
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-
 function fmt(n: number) {
   return `${fmtMoney(n)} ₴`;
-}
-
-function fmtDate(d: string | Date) {
-  return KYIV_DATE_FMT.format(typeof d === 'string' ? new Date(d) : d);
-}
-
-function fmtDatetime(d: string | Date) {
-  return KYIV_DATETIME_FMT.format(typeof d === 'string' ? new Date(d) : d);
 }
 
 // Matches Prisma StockMovementType enum (schema.prisma)
@@ -178,19 +154,20 @@ export default function InventoryPage() {
     });
   }, [rawItems, invSort]);
 
-  const docFilters = useMemo(
-    () => ({ warehouseId: warehouseId || undefined, from: from || undefined, to: to || undefined }),
-    [warehouseId, from, to],
-  );
+  const viewFilters = {
+    warehouseId: warehouseId || undefined,
+    from: from || undefined,
+    to: to || undefined,
+  };
 
   // Bug #457: gate за viewMode — без enabled три hooks тригерили запити
   // одразу при mount, агрегуючи до 5500 рядків навіть коли user у режимі 'goods'.
   const { data: byDocData, isLoading: loadingDoc } = useStockByDocument(
-    { ...docFilters, goodId: undefined },
+    viewFilters,
     viewMode === 'documents',
   );
   const { data: byBatchData, isLoading: loadingBatch } = useStockByBatch(
-    { ...docFilters, goodId: undefined },
+    viewFilters,
     viewMode === 'batches',
   );
 
@@ -531,6 +508,17 @@ export default function InventoryPage() {
 
 // ─── By Documents View ────────────────────────────────────────────────────────
 
+function matchesQuery(
+  g: { goodName: string; goodSku?: string | null; goodBrand?: string | null },
+  lower: string,
+) {
+  return (
+    g.goodName.toLowerCase().includes(lower) ||
+    (g.goodSku ?? '').toLowerCase().includes(lower) ||
+    (g.goodBrand ?? '').toLowerCase().includes(lower)
+  );
+}
+
 interface ByDocumentsViewProps {
   goods: GoodWithDocuments[];
   expanded: Set<string>;
@@ -547,12 +535,7 @@ const ByDocumentsView = memo(function ByDocumentsView({
   const filtered = useMemo(() => {
     if (!q) return goods;
     const lower = q.toLowerCase();
-    return goods.filter(
-      g =>
-        g.goodName.toLowerCase().includes(lower) ||
-        (g.goodSku ?? '').toLowerCase().includes(lower) ||
-        (g.goodBrand ?? '').toLowerCase().includes(lower),
-    );
+    return goods.filter(g => matchesQuery(g, lower));
   }, [goods, q]);
 
   if (filtered.length === 0) {
@@ -648,7 +631,7 @@ const ByDocumentsView = memo(function ByDocumentsView({
                           {mv.quantity} {good.goodUnit}
                         </TableCell>
                         <TableCell className="text-[12px] text-muted-foreground">
-                          {fmtDatetime(mv.createdAt)}
+                          {fmtDateTime(mv.createdAt)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -681,15 +664,7 @@ const ByBatchesView = memo(function ByBatchesView({
     if (!q) return batches;
     const lower = q.toLowerCase();
     return batches
-      .map(bg => ({
-        ...bg,
-        goods: bg.goods.filter(
-          g =>
-            g.goodName.toLowerCase().includes(lower) ||
-            (g.goodSku ?? '').toLowerCase().includes(lower) ||
-            (g.goodBrand ?? '').toLowerCase().includes(lower),
-        ),
-      }))
+      .map(bg => ({ ...bg, goods: bg.goods.filter(g => matchesQuery(g, lower)) }))
       .filter(bg => bg.goods.length > 0 || (bg.poNumber ?? '').toLowerCase().includes(lower));
   }, [batches, q]);
 
@@ -808,7 +783,7 @@ const ByBatchesView = memo(function ByBatchesView({
                               {c.quantity}
                             </TableCell>
                             <TableCell className="text-[12px] text-muted-foreground">
-                              {fmtDatetime(c.createdAt)}
+                              {fmtDateTime(c.createdAt)}
                             </TableCell>
                           </TableRow>
                         ))}

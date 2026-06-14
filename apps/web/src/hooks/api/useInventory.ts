@@ -122,23 +122,24 @@ export function useStockItems(filters: InventoryFilter = {}) {
   });
 }
 
-// Bug #457: optional `enabled` parameter — page-overhead дроп з 3 запитів до 1.
-// Користувач відкриває inventory у режимі 'goods' за замовчуванням. Без gating
-// усі 3 хуки (useStockItems, useStockByDocument, useStockByBatch) тригеряться
-// одразу, агрегуючи до 5000 рядків навіть якщо UI їх не показує. Споживач має
-// передавати `enabled: viewMode === 'documents'` (відповідно для batches).
-export function useStockByDocument(filters: StockByDocumentFilter, enabled: boolean = true) {
-  const { employee } = useAuth();
+function buildStockQuery(filters: StockByDocumentFilter): string {
   const params = new URLSearchParams();
   if (filters.warehouseId) params.set('warehouseId', filters.warehouseId);
   if (filters.goodId) params.set('goodId', filters.goodId);
   if (filters.from) params.set('from', filters.from);
   if (filters.to) params.set('to', filters.to);
   const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
 
+// Bug #457: `enabled` gate — без нього всі 3 hooks тригерились при mount у режимі 'goods',
+// агрегуючи до 5000 рядків. Споживач передає `enabled: viewMode === 'documents'` (або 'batches').
+export function useStockByDocument(filters: StockByDocumentFilter, enabled: boolean = true) {
+  const { employee } = useAuth();
   return useQuery<{ goods: GoodWithDocuments[] }>({
     queryKey: inventoryKeys.byDocument(filters),
-    queryFn: ({ signal }) => apiFetch(`/stock-items/by-document${qs ? `?${qs}` : ''}`, { signal }),
+    queryFn: ({ signal }) =>
+      apiFetch(`/stock-items/by-document${buildStockQuery(filters)}`, { signal }),
     enabled: !!employee && enabled,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
@@ -147,16 +148,10 @@ export function useStockByDocument(filters: StockByDocumentFilter, enabled: bool
 
 export function useStockByBatch(filters: StockByDocumentFilter, enabled: boolean = true) {
   const { employee } = useAuth();
-  const params = new URLSearchParams();
-  if (filters.warehouseId) params.set('warehouseId', filters.warehouseId);
-  if (filters.goodId) params.set('goodId', filters.goodId);
-  if (filters.from) params.set('from', filters.from);
-  if (filters.to) params.set('to', filters.to);
-  const qs = params.toString();
-
   return useQuery<{ batches: BatchGroup[] }>({
     queryKey: inventoryKeys.byBatch(filters),
-    queryFn: ({ signal }) => apiFetch(`/stock-items/by-batch${qs ? `?${qs}` : ''}`, { signal }),
+    queryFn: ({ signal }) =>
+      apiFetch(`/stock-items/by-batch${buildStockQuery(filters)}`, { signal }),
     enabled: !!employee && enabled,
     staleTime: 30_000,
     placeholderData: keepPreviousData,

@@ -8,14 +8,14 @@ import {
 import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BatchService } from './batch.service';
+import { kyivOffsetMs } from '../../common/utils/kyiv-date';
 
-// Module-level singleton — constructing Intl.DateTimeFormat per call allocates
-// internal locale data and is meaningfully more expensive than reuse.
-const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Europe/Kyiv',
-  hour: '2-digit',
-  hour12: false,
-});
+const DOC_TYPE_LABELS: Record<string, string> = {
+  PurchaseOrder: 'Замовлення',
+  WorkOrder: 'Наряд',
+  StockDocument: 'Документ',
+  Invoice: 'Рахунок',
+};
 
 export interface CreateMovementDto {
   goodId: string;
@@ -295,36 +295,22 @@ export class InventoryService {
     }));
   }
 
-  // Kyiv timezone offset for date normalization (same pattern as reports.service.ts).
-  // Uses module-level KYIV_HOUR_FMT singleton to avoid per-call Intl allocation.
-  private kyivOffsetMs(d: Date): number {
-    const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
-    return ((kyivHour - d.getUTCHours() + 24) % 24) * 3_600_000;
-  }
-
   private normalizeDates(from?: string, to?: string): { gte?: Date; lte?: Date } | undefined {
     if (!from && !to) return undefined;
     const range: { gte?: Date; lte?: Date } = {};
     if (from) {
       const d = new Date(`${from}T00:00:00Z`);
-      range.gte = new Date(d.getTime() - this.kyivOffsetMs(d));
+      range.gte = new Date(d.getTime() - kyivOffsetMs(d));
     }
     if (to) {
       const d = new Date(`${to}T23:59:59.999Z`);
-      range.lte = new Date(d.getTime() - this.kyivOffsetMs(d));
+      range.lte = new Date(d.getTime() - kyivOffsetMs(d));
     }
     return range;
   }
 
-  // Human-readable label for document type + short id
   private docLabel(documentType: string | null, documentId: string | null): string {
-    const TYPE_LABELS: Record<string, string> = {
-      PurchaseOrder: 'Замовлення',
-      WorkOrder: 'Наряд',
-      StockDocument: 'Документ',
-      Invoice: 'Рахунок',
-    };
-    const typePart = documentType ? (TYPE_LABELS[documentType] ?? documentType) : 'Документ';
+    const typePart = documentType ? (DOC_TYPE_LABELS[documentType] ?? documentType) : 'Документ';
     const idPart = documentId ? documentId.slice(0, 8) : '—';
     return `${typePart} ${idPart}`;
   }
@@ -378,16 +364,12 @@ export class InventoryService {
       }),
     ]);
 
-    // Build goodId → stockQty map
-    const qtyMap = new Map<string, number>();
-    for (const si of stockItems) {
-      qtyMap.set(si.goodId, (qtyMap.get(si.goodId) ?? 0) + si.quantity);
-    }
-
-    // Build goodId → good info map (from stockItems)
+    // Build goodId → {qty, info} in a single pass
     type GoodInfo = { name: string; sku: string | null; unit: string; brand: string | null };
+    const qtyMap = new Map<string, number>();
     const goodMap = new Map<string, GoodInfo>();
     for (const si of stockItems) {
+      qtyMap.set(si.goodId, (qtyMap.get(si.goodId) ?? 0) + si.quantity);
       if (!goodMap.has(si.goodId)) {
         goodMap.set(si.goodId, {
           name: si.good.name,
