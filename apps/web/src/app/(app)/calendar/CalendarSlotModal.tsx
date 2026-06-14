@@ -1478,8 +1478,10 @@ export function CalendarSlotModal({
             vehicleId: form.vehicleId || undefined,
             liftId: form.liftId || undefined,
             description: form.notes || undefined,
-            plannedStartAt: form.startAt ? `${date}T${form.startAt}` : undefined,
-            plannedEndAt: form.endAt ? `${endDate}T${form.endAt}` : undefined,
+            // Bug #451: guard against `date = ''` (URL без ?date param на першому
+            // render до effect default-у). Без guard будуємо "T17:00" — invalid ISO.
+            plannedStartAt: form.startAt && date ? `${date}T${form.startAt}` : undefined,
+            plannedEndAt: form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined,
             plannedHours: nh > 0 ? String(nh) : undefined,
           };
         })()}

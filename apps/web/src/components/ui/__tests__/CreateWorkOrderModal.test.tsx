@@ -144,4 +144,96 @@ describe('CreateWorkOrderModal — regression guards', () => {
     expect(screen.getByText(/Товари \/ Запчастини/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Створити наряд/ })).toBeInTheDocument();
   });
+
+  it('Bug #448: prefill.plannedHours використовується напряму, не перерахунок з дат', async () => {
+    // Контекст: CalendarSlotModal передає normoHours (наприклад "3") у prefill.plannedHours.
+    // До фіксу form init робив calcPlannedHours(start, end) → перераховував з ISO-дат, що
+    // могло видати інше значення через округлення/таймзону. Тепер init має використати
+    // prefill.plannedHours напряму, fallback на calcPlannedHours лише коли plannedHours
+    // не задано.
+    render(
+      <CreateWorkOrderModal
+        open
+        onClose={vi.fn()}
+        prefill={{
+          branchId: 'b1',
+          counterpartyId: 'cp1',
+          vehicleId: 'v1',
+          // Slot з 17:00 + 3 норм-год — endAt = 20:00 (no overflow, WINDOW_END=20)
+          plannedStartAt: '2026-06-14T17:00',
+          plannedEndAt: '2026-06-14T20:00',
+          plannedHours: '3',
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
+
+    // Перевіряємо що input "Нормогодин" показує "3" — отримане з prefill.plannedHours,
+    // а не з calcPlannedHours(17:00, 20:00) = "3" (для цього кейсу збіг, але регресія
+    // ловиться кейсом нижче з overflow).
+    const plannedHoursInput = screen.getAllByDisplayValue('3').find(el => {
+      // Знайти саме input у секції "Планові показники" (input type=number з step="0.5")
+      return el instanceof HTMLInputElement && el.type === 'number' && el.step === '0.5';
+    });
+    expect(plannedHoursInput).toBeDefined();
+  });
+
+  it('Bug #448: prefill з overflow слотом (next-day end) використовує plannedHours зі слоту, не calcPlannedHours', async () => {
+    // Контекст: slot 17:00 + 3.5 норм-год → endAt = 08:30 наступного дня (overflow).
+    // calcPlannedHours(17:00, next-day 08:30) обчислила б ~15.5h (різниця через ніч).
+    // А slot має нормогодин 3.5. Тільки prefill.plannedHours дає правильне значення.
+    render(
+      <CreateWorkOrderModal
+        open
+        onClose={vi.fn()}
+        prefill={{
+          branchId: 'b1',
+          counterpartyId: 'cp1',
+          vehicleId: 'v1',
+          plannedStartAt: '2026-06-14T17:00',
+          plannedEndAt: '2026-06-15T08:30', // next-day overflow display
+          plannedHours: '3.5', // actual normoHours from slot
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
+
+    // input "Нормогодин" має показати "3.5" з prefill, НЕ ~15.5 з calcPlannedHours
+    const plannedHoursInput = screen.getAllByDisplayValue('3.5').find(el => {
+      return el instanceof HTMLInputElement && el.type === 'number' && el.step === '0.5';
+    });
+    expect(plannedHoursInput).toBeDefined();
+    // Подвійна перевірка — НЕ 15.5
+    const inputs = screen.queryAllByDisplayValue('15.5');
+    expect(inputs.length).toBe(0);
+  });
+
+  it('Bug #448: fallback на calcPlannedHours коли prefill.plannedHours не заданий', async () => {
+    // Backward compat: старі call-sites що не передають plannedHours все ще працюють —
+    // плановіh обчислюється з дат.
+    render(
+      <CreateWorkOrderModal
+        open
+        onClose={vi.fn()}
+        prefill={{
+          branchId: 'b1',
+          counterpartyId: 'cp1',
+          vehicleId: 'v1',
+          plannedStartAt: '2026-06-14T08:00',
+          plannedEndAt: '2026-06-14T10:00',
+          // plannedHours відсутній
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
+
+    // calcPlannedHours("2026-06-14T08:00", "2026-06-14T10:00") = "2"
+    const plannedHoursInput = screen.getAllByDisplayValue('2').find(el => {
+      return el instanceof HTMLInputElement && el.type === 'number' && el.step === '0.5';
+    });
+    expect(plannedHoursInput).toBeDefined();
+  });
 });

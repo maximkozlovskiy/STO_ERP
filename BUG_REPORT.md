@@ -14019,3 +14019,153 @@ Refactor що видалить поле з DTO (regression Bug #6f106ac/#84 patt
 **Статус:** [x] виправлено (документація) — мета-баг зафіксовано. Майбутній session чекатиме номери #444+ і знатиме, що #440-#443 використовувались у коді.
 
 ---
+
+## Session 2026-06-14 — Post-fix tester: Bug #448 prefill fix audit (HEAD 07d6afed)
+
+### Context
+
+Recent commit `94de0b34 fix(calendar): correct WO prefill from calendar slot` виправив дві проблеми у CalendarSlotModal → CreateWorkOrderModal prefill: (1) `isOverflow` використовував hardcoded `19 * 60` замість `WINDOW_END * 60` (=20) → slot 17:00+3h помилково розглядався як overflow, endDate зсувався на наступний день; (2) `plannedHours` не передавалось у prefill, WO modal перераховував з дат замість використання slot normoHours.
+
+Tester завдання: знайти суміжні проблеми, зафіксувати regression-guard, додати docs.
+
+Baseline (Крок 0): API tsc green, web tsc green, 725 API tests passed, 398 web tests passed.
+
+---
+
+## Bug #448 — HIGH — frontend / calendar — WO prefill з slot — overflow threshold + missing plannedHours (recorded retroactively)
+
+**Файл:** `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx:1460-1483` + `apps/web/src/components/ui/CreateWorkOrderModal.tsx:233-243, 644-651`
+**Severity:** HIGH
+**Категорія:** boundary-constant drift (SKILL §1.3) + data-flow gap
+
+**Опис (для audit-trail — фіксився у commit 94de0b34):**
+
+Два пов'язані баги у data flow CalendarSlotModal → CreateWorkOrderModal:
+
+1. **Hardcoded boundary `19 * 60`** замість `WINDOW_END * 60` у обчисленні `isOverflow` для prefill. `WINDOW_END = 20` (з `calendar.utils.ts:12`, `HOURS[HOURS.length - 1]! + 1 = 19 + 1 = 20`). Slot з 17:00 + 3 норм-год → totalMin = 1200 → з hardcoded `19 * 60 = 1140` → `1200 > 1140` → isOverflow=true → endDate=next day → WO створювався з plannedEndAt = 2026-06-15T20:00 замість 2026-06-14T20:00 (silent corruption).
+
+2. **`plannedHours` відсутній у CreateWOPrefill** інтерфейсі та return object. WO modal init робив `calcPlannedHours(plannedStartAt, plannedEndAt)` — для overflow слотів це давало неправильне значення (різниця між next-day endAt і same-day startAt). Slot 17:00+3.5h → plannedStartAt='17:00', plannedEndAt='next-day 08:30' → calcPlannedHours = ~15.5h замість 3.5h.
+
+**Фікс (commit 94de0b34):**
+
+- `CalendarSlotModal.tsx:1464` — `WINDOW_END * 60` замість `19 * 60`
+- `CalendarSlotModal.tsx:1483` — `plannedHours: nh > 0 ? String(nh) : undefined` у prefill
+- `CreateWorkOrderModal.tsx:242` — `plannedHours?: string` додано в `CreateWOPrefill`
+- `CreateWorkOrderModal.tsx:648-649` — `prefill?.plannedHours ?? calcPlannedHours(...)` fallback
+
+**Статус:** [x] виправлено у commit 94de0b34 — записано retroactively у Session 2026-06-14 для audit-trail consistency (Bug #447 pattern).
+
+---
+
+## Bug #449 — MEDIUM — test-coverage / frontend — Відсутній regression-guard test для Bug #448 prefill fix
+
+**Файл:** `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.test.tsx`
+**Severity:** MEDIUM
+**Категорія:** test-coverage / regression-guard
+
+**Опис:** Commit 94de0b34 виправив prefill data flow (Bug #448) у двох файлах: `CalendarSlotModal.tsx` (3 рядки: hardcoded 19→WINDOW_END, додано `plannedHours` у return), `CreateWorkOrderModal.tsx` (2 рядки: додано `plannedHours?: string` у `CreateWOPrefill` інтерфейс, fallback `prefill?.plannedHours ?? calcPlannedHours(...)` у form init).
+
+Жоден тест не перевіряє нову поведінку:
+
+- `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.test.tsx` мав 3 тести (Bug #381, #382, #384) — жоден не торкається prefill.plannedHours
+- Жоден тест для CalendarSlotModal не існує (взагалі)
+
+Refactor що видалить поле `plannedHours` з `CreateWOPrefill` (наприклад автоматичний `noUnusedLocals` cleanup, або повернення до старого calcPlannedHours-only поведінки) → tsc green (frontend має `?` опціональне), unit green (інші тести), runtime regression — WO modal знову показує неправильні плановіh для overflow слотів.
+
+SKILL §1.3 «Bug #432 patterns»: «будь-який commit з виправленням бізнес-логіки потребує парного regression-guard». SKILL §0 також згадує: «`[x]`-маркери попередніх сесій проти реального стану файлів — `[x]` без парного тесту приховує регресію».
+
+**Фактична поведінка:** Жодного тесту що асертить:
+
+- `prefill.plannedHours = '3'` → form input "Нормогодин" має `value="3"`
+- `prefill` з overflow слотом (next-day endAt) + `plannedHours = '3.5'` → input має "3.5", НЕ `~15.5`
+- Backward compat: `prefill` БЕЗ `plannedHours` → fallback на `calcPlannedHours(start, end)` працює
+
+**Очікувана поведінка:** 3 нових `it()` у `describe('CreateWorkOrderModal — regression guards')`:
+
+1. `Bug #448: prefill.plannedHours використовується напряму, не перерахунок з дат` — render з `prefill.plannedHours='3'` + узгоджені дати → input показує "3"
+2. `Bug #448: prefill з overflow слотом (next-day end) використовує plannedHours зі слоту, не calcPlannedHours` — render з overflow дат + `plannedHours='3.5'` → input показує "3.5", НЕ ~15.5
+3. `Bug #448: fallback на calcPlannedHours коли prefill.plannedHours не заданий` — render з only start/end дат → input показує calc-результат
+
+**Регресія-guard:** Видалення `plannedHours` з `CreateWOPrefill` або заміна fallback на pure `calcPlannedHours()` → тест 2 падає (input показує ~15.5 замість 3.5). Видалення поля повністю → TS error у тесті (good, ловиться compile-time).
+
+**Статус:** [x] виправлено — додано 3 тести у `CreateWorkOrderModal.test.tsx`:
+
+- `Bug #448: prefill.plannedHours використовується напряму, не перерахунок з дат`
+- `Bug #448: prefill з overflow слотом (next-day end) використовує plannedHours зі слоту, не calcPlannedHours`
+- `Bug #448: fallback на calcPlannedHours коли prefill.plannedHours не заданий`
+
+Total web tests: 398 → 401.
+
+---
+
+## Bug #450 — LOW — frontend / calendar — `Number(form.normoHours)` без normalization (comma→dot), асиметрично з `parseFloat(replace(',', '.'))`
+
+**Файл:** `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx:1460` (prefill) ↔ `1462` (totalMin) ↔ `1483` (plannedHours)
+**Severity:** LOW
+**Категорія:** consistency / defensive normalization
+
+**Опис:** У `addSlot()` (line 578) використовується `parseFloat(String(form.normoHours).replace(',', '.'))` для нормалізації коми в крапку (Ukrainian locale decimal separator). Але у prefill block (lines 1460, 1462, 1483) використовується pure `Number(form.normoHours)`:
+
+```typescript
+// line 578 (addSlot) — defensive normalization
+const nh2 = parseFloat(String(form.normoHours).replace(',', '.'));
+
+// line 1460 (prefill) — NO normalization
+const nh = Number(form.normoHours);
+```
+
+Це **inconsistent** код стиль. Для `<input type="number">` браузер зазвичай sanitize-ує введення (comma не приймається у англомовних browser-ах), але:
+
+- Ukrainian locale browser може дозволити comma input → `Number("1,5") = NaN` → `nh > 0 = false` → plannedHours = undefined → fallback на calcPlannedHours (хоч і працює, але порушує намір)
+- Інші usage у file (lines 774, 777, 824, 854) теж використовують pure `Number()` — той самий subtle gap
+
+**Фактична поведінка:** Якщо `form.normoHours = "1,5"`:
+
+- `addSlot()` → `nh2 = 1.5` ✓ (працює)
+- `prefill block` → `nh = NaN` → totalMin рахується з `nh > 0 ? nh : 0 = 0` → totalMin = startMin → не overflow → `plannedHours = undefined` (fallback) → WO modal calc з дат
+
+**Очікувана поведінка:** Уніфікувати — використати helper `normalizeDecimal(s: string): number` або інлайн `parseFloat(String(form.normoHours).replace(',', '.'))` у всіх 6 місцях. Однієї точки правди достатньо.
+
+**Виправлення:** У file `CalendarSlotModal.tsx`, замінити всі 5 `Number(form.normoHours)`/`Number(f.normoHours)`/`Number(nh)` де `nh` походить від `form.normoHours` на `parseFloat(String(...).replace(',', '.'))`. Або витягнути `normoHoursAsNumber(form.normoHours)` helper.
+
+**Статус:** [ ] не виправлено — LOW severity, runtime impact мінімальний (input type=number guard). Залишається як known consistency gap для майбутнього cleanup.
+
+---
+
+## Bug #451 — LOW — frontend / calendar — `date = ''` boundary case у prefill — invalid datetime string
+
+**Файл:** `apps/web/src/app/(app)/calendar/CalendarSlotModal.tsx:1481-1482`
+**Severity:** LOW
+**Категорія:** defensive guard / edge case
+
+**Опис:** Prop `date: string` (line 211) походить з `useCalendarState.ts:90-91`: `const urlDate = searchParams.get('date') ?? ''; const [date, setDateState] = useState(urlDate)`. На першому render якщо URL не має `?date=` param — `date = ''`. Ефект default-у на сьогодні fire-иться пізніше (line 235: `if (!date) setDate(toDateString(new Date()))`).
+
+Prefill block будує:
+
+```typescript
+plannedStartAt: form.startAt ? `${date}T${form.startAt}` : undefined,
+plannedEndAt: form.endAt ? `${endDate}T${form.endAt}` : undefined,
+```
+
+Якщо `form.startAt = '17:00'` І `date = ''` — `plannedStartAt = "T17:00"` (invalid ISO datetime). WO modal потім робить `new Date("T17:00") → Invalid Date`. UI input показує empty (DateTimePickerInput parse fail).
+
+Це rare edge case бо:
+
+- User must первістю відкрити calendar без `?date=` param (default flow → today set immediately)
+- Form `startAt` typically empty доки user не клікне на лист
+- Pending slot створюється з `decimalHoursToHHMM(p.startH)` що теж має `date` set
+
+Але runtime guard коштує мало.
+
+**Фактична поведінка:** Малоймовірно triggers, але формально некоректно — побудова ISO datetime з потенційно empty `date`.
+
+**Очікувана поведінка:** Defensive guard:
+
+```typescript
+plannedStartAt: form.startAt && date ? `${date}T${form.startAt}` : undefined,
+plannedEndAt: form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined,
+```
+
+**Статус:** [x] виправлено — додано `&& date` / `&& endDate` guards. Захищає від invalid ISO у edge case коли `date` ще не ініціалізований.
+
+---
