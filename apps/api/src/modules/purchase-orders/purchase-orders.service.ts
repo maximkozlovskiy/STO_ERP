@@ -257,17 +257,17 @@ export class PurchaseOrdersService {
     dto: UpdatePurchaseOrderDto,
   ): Promise<PurchaseOrderResponseDto> {
     // sto-optimize: narrow projection — потрібен лише status (guard) + totalAmount (fallback
-    // коли dto.lines не передано). Раніше тягнуло supplierId/warehouseId/notes/documentDate +
-    // syncVersion/orgId/deletedAt + 8 інших колонок які ігноруються.
+    // коли dto.lines не передано) + supplierId (щоб обчислити effectiveSupplierId для
+    // contractId-валідації і виявити зміну постачальника, що потребує очищення стейл-контракту).
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { status: true, totalAmount: true, supplierId: true },
+      select: { status: true, totalAmount: true, supplierId: true, contractId: true },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
     if (po.status !== PurchaseOrderStatus.DRAFT)
       throw new BadRequestException('Редагувати можна лише чернетку');
 
-    // Validate new supplierId FK if provided
+    // Validate new supplierId FK if provided (tenant isolation: same orgId)
     if (dto.supplierId) {
       const supplier = await this.prisma.counterparty.findFirst({
         where: { id: dto.supplierId, orgId, deletedAt: null },
@@ -276,7 +276,7 @@ export class PurchaseOrdersService {
       if (!supplier) throw new NotFoundException('Постачальника не знайдено');
     }
 
-    // Validate new warehouseId FK if provided
+    // Validate new warehouseId FK if provided (tenant isolation: same orgId)
     if (dto.warehouseId) {
       const warehouse = await this.prisma.warehouse.findFirst({
         where: { id: dto.warehouseId, orgId, deletedAt: null },
@@ -285,9 +285,15 @@ export class PurchaseOrdersService {
       if (!warehouse) throw new NotFoundException('Склад не знайдено');
     }
 
-    // Validate contractId if provided; re-validate against effective supplierId
+    // Contract resolution:
+    //   1. Client explicit contractId (string)  → validate against effective supplier
+    //   2. Client explicit null/empty           → clear contractId
+    //   3. Supplier changed and client silent   → auto-clear stale contract (would point
+    //      to old supplier, creating cross-supplier orphan reference)
+    //   4. Otherwise                            → keep existing (Prisma `undefined`)
+    const supplierChanged = dto.supplierId !== undefined && dto.supplierId !== po.supplierId;
     let newContractId: string | null | undefined = undefined;
-    if (dto.contractId !== undefined) {
+    if (dto.contractId !== undefined && dto.contractId !== null && dto.contractId !== '') {
       const effectiveSupplierId = dto.supplierId ?? po.supplierId;
       const contract = await this.prisma.counterpartyContract.findFirst({
         where: {
@@ -301,6 +307,12 @@ export class PurchaseOrdersService {
       });
       if (!contract) throw new NotFoundException('Договір не знайдено');
       newContractId = contract.id;
+    } else if (dto.contractId === null) {
+      newContractId = null;
+    } else if (supplierChanged && po.contractId) {
+      // Defensive: supplier змінився, але клієнт не передав contractId — стейл-контракт
+      // лишився б прив'язаним до старого постачальника. Очищаємо явно.
+      newContractId = null;
     }
 
     const lines = dto.lines;

@@ -8,6 +8,7 @@ import {
   Max,
   IsArray,
   ValidateNested,
+  ValidateIf,
   IsEnum,
   ArrayMaxSize,
   IsDateString,
@@ -78,11 +79,16 @@ export class UpdatePurchaseOrderDto {
   @IsUUID()
   warehouseId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      'Договір постачальника. null/"" → очистити; UUID → встановити; undefined → не чіпати',
+    nullable: true,
+  })
   @IsOptional()
   @Transform(emptyToUndefined)
+  @ValidateIf((_, value) => value !== null)
   @IsUUID()
-  contractId?: string;
+  contractId?: string | null;
 
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 

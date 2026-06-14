@@ -446,7 +446,10 @@ export function PurchaseOrderCreateModal({
         body: JSON.stringify({
           supplierId: form.supplierId || undefined,
           warehouseId: form.warehouseId || undefined,
-          contractId: contractId || undefined,
+          // null → backend clears contractId; UUID → set; undefined → keep current.
+          // We always send the explicit value because supplier picker resets contract
+          // state to null and backend must persist that clear.
+          contractId: contractId ?? null,
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
           lines: allLines,
@@ -1014,6 +1017,11 @@ export function PurchaseOrderCreateModal({
         onSelect={item => {
           setSupplierDisplay(item.primary);
           setForm(f => ({ ...f, supplierId: item.id }));
+          // Clear stale contract when supplier changes via picker modal
+          // (mirrors inline EntityPickerField.onSearchSelect/onClear behaviour;
+          // without this the PO would retain a contractId tied to the old supplier).
+          setContractId(null);
+          setContractNumber(null);
           setSupplierPickerOpen(false);
         }}
       />
