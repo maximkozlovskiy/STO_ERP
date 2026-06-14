@@ -156,14 +156,16 @@ export default function InventoryPage() {
     [warehouseId, from, to],
   );
 
-  const { data: byDocData, isLoading: loadingDoc } = useStockByDocument({
-    ...docFilters,
-    goodId: undefined,
-  });
-  const { data: byBatchData, isLoading: loadingBatch } = useStockByBatch({
-    ...docFilters,
-    goodId: undefined,
-  });
+  // Bug #457: gate за viewMode — без enabled три hooks тригерили запити
+  // одразу при mount, агрегуючи до 5500 рядків навіть коли user у режимі 'goods'.
+  const { data: byDocData, isLoading: loadingDoc } = useStockByDocument(
+    { ...docFilters, goodId: undefined },
+    viewMode === 'documents',
+  );
+  const { data: byBatchData, isLoading: loadingBatch } = useStockByBatch(
+    { ...docFilters, goodId: undefined },
+    viewMode === 'batches',
+  );
 
   const { data: lowItems = [], refetch: refetchLowItems } = useLowStockItems();
 

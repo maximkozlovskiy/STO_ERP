@@ -26,9 +26,13 @@ export interface GoodWithDocuments {
   documents: GoodMovementDoc[];
 }
 
+// Bug #458: BatchConsumption schema (packages/database/prisma/schema.prisma:1196)
+// has `documentType String` + `documentId String` — both NON-null. Backend
+// `byBatch()` maps them verbatim without `?? null`. Previously typed as
+// `string | null` here — over-permissive, would TS-allow dead null checks.
 export interface BatchConsumptionRow {
-  documentType: string | null;
-  documentId: string | null;
+  documentType: string;
+  documentId: string;
   docLabel: string;
   quantity: number;
   createdAt: string;
@@ -118,7 +122,12 @@ export function useStockItems(filters: InventoryFilter = {}) {
   });
 }
 
-export function useStockByDocument(filters: StockByDocumentFilter) {
+// Bug #457: optional `enabled` parameter — page-overhead дроп з 3 запитів до 1.
+// Користувач відкриває inventory у режимі 'goods' за замовчуванням. Без gating
+// усі 3 хуки (useStockItems, useStockByDocument, useStockByBatch) тригеряться
+// одразу, агрегуючи до 5000 рядків навіть якщо UI їх не показує. Споживач має
+// передавати `enabled: viewMode === 'documents'` (відповідно для batches).
+export function useStockByDocument(filters: StockByDocumentFilter, enabled: boolean = true) {
   const { employee } = useAuth();
   const params = new URLSearchParams();
   if (filters.warehouseId) params.set('warehouseId', filters.warehouseId);
@@ -130,13 +139,13 @@ export function useStockByDocument(filters: StockByDocumentFilter) {
   return useQuery<{ goods: GoodWithDocuments[] }>({
     queryKey: inventoryKeys.byDocument(filters),
     queryFn: ({ signal }) => apiFetch(`/stock-items/by-document${qs ? `?${qs}` : ''}`, { signal }),
-    enabled: !!employee,
+    enabled: !!employee && enabled,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });
 }
 
-export function useStockByBatch(filters: StockByDocumentFilter) {
+export function useStockByBatch(filters: StockByDocumentFilter, enabled: boolean = true) {
   const { employee } = useAuth();
   const params = new URLSearchParams();
   if (filters.warehouseId) params.set('warehouseId', filters.warehouseId);
@@ -148,7 +157,7 @@ export function useStockByBatch(filters: StockByDocumentFilter) {
   return useQuery<{ batches: BatchGroup[] }>({
     queryKey: inventoryKeys.byBatch(filters),
     queryFn: ({ signal }) => apiFetch(`/stock-items/by-batch${qs ? `?${qs}` : ''}`, { signal }),
-    enabled: !!employee,
+    enabled: !!employee && enabled,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });

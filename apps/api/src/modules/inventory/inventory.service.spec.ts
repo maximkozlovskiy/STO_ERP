@@ -206,3 +206,342 @@ describe('InventoryService.createMovement guards', () => {
     });
   });
 });
+
+// ─── Bug #455: byDocument() / byBatch() unit specs ────────────────────────────
+// Регресія-guard для 3-view stock report (commit a5f01d37 + fixes 1752a753).
+// Покриває: tenant isolation, soft-delete relation-filter, групування, мульти-
+// warehouse SUM, з/без покази документів, конверсія Decimal→Number, date range.
+
+describe('InventoryService.byDocument()', () => {
+  let service: InventoryService;
+  let prisma: {
+    stockItem: { findMany: ReturnType<typeof vi.fn> };
+    stockMovement: { findMany: ReturnType<typeof vi.fn> };
+    stockBatch: { findMany: ReturnType<typeof vi.fn> };
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      stockItem: { findMany: vi.fn().mockResolvedValue([]) },
+      stockMovement: { findMany: vi.fn().mockResolvedValue([]) },
+      stockBatch: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        InventoryService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: BatchService, useValue: { createFromReceipt: vi.fn() } },
+      ],
+    }).compile();
+    service = module.get(InventoryService);
+  });
+
+  it('повертає `{ goods: [] }` коли немає stockItems', async () => {
+    const result = await service.byDocument('org-1');
+    expect(result).toEqual({ goods: [] });
+  });
+
+  it('передає orgId і soft-delete фільтри у обидва Prisma запити', async () => {
+    await service.byDocument('org-1');
+    expect(prisma.stockItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          orgId: 'org-1',
+          deletedAt: null,
+          good: { deletedAt: null },
+          warehouse: { deletedAt: null },
+        }),
+      }),
+    );
+    expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          orgId: 'org-1',
+          good: { deletedAt: null },
+          warehouse: { deletedAt: null },
+        }),
+      }),
+    );
+  });
+
+  it('передає warehouseId/goodId у where коли вказані', async () => {
+    await service.byDocument('org-1', 'wh-1', 'good-1');
+    expect(prisma.stockItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ warehouseId: 'wh-1', goodId: 'good-1' }),
+      }),
+    );
+    expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ warehouseId: 'wh-1', goodId: 'good-1' }),
+      }),
+    );
+  });
+
+  it('агрегує quantity по мульти-warehouse stockItems одного good', async () => {
+    prisma.stockItem.findMany.mockResolvedValueOnce([
+      {
+        goodId: 'good-1',
+        quantity: 10,
+        good: { name: 'A', sku: 'A1', unit: 'шт', brand: null },
+        warehouse: { name: 'wh1' },
+      },
+      {
+        goodId: 'good-1',
+        quantity: 25,
+        good: { name: 'A', sku: 'A1', unit: 'шт', brand: null },
+        warehouse: { name: 'wh2' },
+      },
+    ]);
+    const result = await service.byDocument('org-1');
+    expect(result.goods).toHaveLength(1);
+    expect(result.goods[0].totalQuantity).toBe(35);
+  });
+
+  it('групує movements по documentType::documentId у `documents[]`', async () => {
+    prisma.stockItem.findMany.mockResolvedValueOnce([
+      {
+        goodId: 'good-1',
+        quantity: 10,
+        good: { name: 'A', sku: null, unit: 'шт', brand: null },
+        warehouse: { name: 'wh1' },
+      },
+    ]);
+    prisma.stockMovement.findMany.mockResolvedValueOnce([
+      {
+        goodId: 'good-1',
+        type: 'RECEIPT',
+        quantity: 5,
+        createdAt: new Date('2025-01-15'),
+        documentType: 'PurchaseOrder',
+        documentId: 'po-1',
+      },
+      {
+        goodId: 'good-1',
+        type: 'RECEIPT',
+        quantity: 3,
+        createdAt: new Date('2025-01-16'),
+        documentType: 'PurchaseOrder',
+        documentId: 'po-1',
+      },
+      {
+        goodId: 'good-1',
+        type: 'WRITEOFF',
+        quantity: -2,
+        createdAt: new Date('2025-01-17'),
+        documentType: 'WorkOrder',
+        documentId: 'wo-1',
+      },
+    ]);
+    const result = await service.byDocument('org-1');
+    expect(result.goods[0].documents).toHaveLength(2);
+    const poDoc = result.goods[0].documents.find(d => d.documentId === 'po-1');
+    expect(poDoc?.movements).toHaveLength(2);
+    expect(poDoc?.docLabel).toMatch(/Замовлення/);
+    const woDoc = result.goods[0].documents.find(d => d.documentId === 'wo-1');
+    expect(woDoc?.docLabel).toMatch(/Наряд/);
+  });
+
+  it('застосовує date range до stockMovement.createdAt (не до stockItem)', async () => {
+    await service.byDocument('org-1', undefined, undefined, '2025-01-01', '2025-01-31');
+    const movementCall = prisma.stockMovement.findMany.mock.calls[0][0];
+    expect(movementCall.where.createdAt).toBeDefined();
+    expect(movementCall.where.createdAt.gte).toBeInstanceOf(Date);
+    expect(movementCall.where.createdAt.lte).toBeInstanceOf(Date);
+    // stockItem.findMany має НЕ мати createdAt у where — це звіт по поточному
+    // балансу + рухам у вікні, а не лише новостворені stockItems.
+    const stockCall = prisma.stockItem.findMany.mock.calls[0][0];
+    expect(stockCall.where.createdAt).toBeUndefined();
+  });
+
+  it('сортує goods по goodName з українською локаллю', async () => {
+    prisma.stockItem.findMany.mockResolvedValueOnce([
+      {
+        goodId: 'g-z',
+        quantity: 1,
+        good: { name: 'Ярлик', sku: null, unit: 'шт', brand: null },
+        warehouse: { name: 'wh1' },
+      },
+      {
+        goodId: 'g-a',
+        quantity: 1,
+        good: { name: 'Алмаз', sku: null, unit: 'шт', brand: null },
+        warehouse: { name: 'wh1' },
+      },
+      {
+        goodId: 'g-b',
+        quantity: 1,
+        good: { name: 'Бочка', sku: null, unit: 'шт', brand: null },
+        warehouse: { name: 'wh1' },
+      },
+    ]);
+    const result = await service.byDocument('org-1');
+    expect(result.goods.map(g => g.goodName)).toEqual(['Алмаз', 'Бочка', 'Ярлик']);
+  });
+
+  it('включає good.brand.name у вихід', async () => {
+    prisma.stockItem.findMany.mockResolvedValueOnce([
+      {
+        goodId: 'g-1',
+        quantity: 5,
+        good: { name: 'Олива', sku: null, unit: 'л', brand: { name: 'Mobil' } },
+        warehouse: { name: 'wh1' },
+      },
+    ]);
+    const result = await service.byDocument('org-1');
+    expect(result.goods[0].goodBrand).toBe('Mobil');
+  });
+
+  it('встановлює goodBrand=null коли brand relation відсутній', async () => {
+    prisma.stockItem.findMany.mockResolvedValueOnce([
+      {
+        goodId: 'g-1',
+        quantity: 5,
+        good: { name: 'Деталь', sku: null, unit: 'шт', brand: null },
+        warehouse: { name: 'wh1' },
+      },
+    ]);
+    const result = await service.byDocument('org-1');
+    expect(result.goods[0].goodBrand).toBeNull();
+  });
+});
+
+describe('InventoryService.byBatch()', () => {
+  let service: InventoryService;
+  let prisma: {
+    stockBatch: { findMany: ReturnType<typeof vi.fn> };
+  };
+
+  beforeEach(async () => {
+    prisma = { stockBatch: { findMany: vi.fn().mockResolvedValue([]) } };
+    const module = await Test.createTestingModule({
+      providers: [
+        InventoryService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: BatchService, useValue: { createFromReceipt: vi.fn() } },
+      ],
+    }).compile();
+    service = module.get(InventoryService);
+  });
+
+  it('повертає `{ batches: [] }` коли немає батчів', async () => {
+    const result = await service.byBatch('org-1');
+    expect(result).toEqual({ batches: [] });
+  });
+
+  it('передає orgId + soft-delete relation-фільтри у where', async () => {
+    await service.byBatch('org-1');
+    expect(prisma.stockBatch.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          orgId: 'org-1',
+          good: { deletedAt: null },
+          warehouse: { deletedAt: null },
+        }),
+      }),
+    );
+  });
+
+  it('групує батчі по PO number + warehouseId', async () => {
+    prisma.stockBatch.findMany.mockResolvedValueOnce([
+      {
+        id: 'b-1',
+        goodId: 'g-1',
+        warehouseId: 'wh-1',
+        batchNumber: null,
+        receivedQty: 10,
+        remainingQty: 7,
+        costPrice: 100,
+        salePrice: 250,
+        good: { name: 'Олива', sku: 'OIL-1', brand: { name: 'Mobil' } },
+        warehouse: { name: 'Центр' },
+        purchaseOrderLine: {
+          purchaseOrder: { number: 'PO-001', documentDate: new Date('2025-01-10') },
+        },
+        consumptions: [],
+      },
+      {
+        id: 'b-2',
+        goodId: 'g-2',
+        warehouseId: 'wh-1',
+        batchNumber: null,
+        receivedQty: 5,
+        remainingQty: 5,
+        costPrice: 200,
+        salePrice: 500,
+        good: { name: 'Фільтр', sku: 'F-1', brand: null },
+        warehouse: { name: 'Центр' },
+        purchaseOrderLine: {
+          purchaseOrder: { number: 'PO-001', documentDate: new Date('2025-01-10') },
+        },
+        consumptions: [],
+      },
+    ]);
+    const result = await service.byBatch('org-1');
+    expect(result.batches).toHaveLength(1);
+    expect(result.batches[0].poNumber).toBe('PO-001');
+    expect(result.batches[0].goods).toHaveLength(2);
+  });
+
+  it('manual батчі (без purchaseOrderLine) групуються під ключем `manual::warehouseId`', async () => {
+    prisma.stockBatch.findMany.mockResolvedValueOnce([
+      {
+        id: 'b-m',
+        goodId: 'g-1',
+        warehouseId: 'wh-1',
+        batchNumber: 'manual-001',
+        receivedQty: 3,
+        remainingQty: 3,
+        costPrice: 50,
+        salePrice: 100,
+        good: { name: 'Олива', sku: null, brand: null },
+        warehouse: { name: 'Центр' },
+        purchaseOrderLine: null,
+        consumptions: [],
+      },
+    ]);
+    const result = await service.byBatch('org-1');
+    expect(result.batches).toHaveLength(1);
+    expect(result.batches[0].poNumber).toBeNull();
+    expect(result.batches[0].poDate).toBeNull();
+    expect(result.batches[0].batchGroupKey).toBe('manual::wh-1');
+  });
+
+  it('конвертує Decimal costPrice/salePrice у number', async () => {
+    // Prisma Decimal — об'єкт; service має робити Number(...)
+    prisma.stockBatch.findMany.mockResolvedValueOnce([
+      {
+        id: 'b-1',
+        goodId: 'g-1',
+        warehouseId: 'wh-1',
+        batchNumber: null,
+        receivedQty: 10,
+        remainingQty: 7,
+        costPrice: { toString: () => '123.45' } as unknown as number,
+        salePrice: { toString: () => '250.00' } as unknown as number,
+        good: { name: 'X', sku: null, brand: null },
+        warehouse: { name: 'wh1' },
+        purchaseOrderLine: null,
+        consumptions: [],
+      },
+    ]);
+    const result = await service.byBatch('org-1');
+    expect(typeof result.batches[0].goods[0].costPrice).toBe('number');
+    expect(typeof result.batches[0].goods[0].salePrice).toBe('number');
+  });
+
+  it('застосовує date range до stockBatch.createdAt', async () => {
+    await service.byBatch('org-1', undefined, undefined, '2025-01-01', '2025-01-31');
+    const call = prisma.stockBatch.findMany.mock.calls[0][0];
+    expect(call.where.createdAt).toBeDefined();
+    expect(call.where.createdAt.gte).toBeInstanceOf(Date);
+    expect(call.where.createdAt.lte).toBeInstanceOf(Date);
+  });
+
+  it('передає warehouseId/goodId у where коли вказані', async () => {
+    await service.byBatch('org-1', 'wh-1', 'good-1');
+    const call = prisma.stockBatch.findMany.mock.calls[0][0];
+    expect(call.where.warehouseId).toBe('wh-1');
+    expect(call.where.goodId).toBe('good-1');
+  });
+});

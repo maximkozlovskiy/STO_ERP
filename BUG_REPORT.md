@@ -14199,3 +14199,41 @@ plannedEndAt: form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined,
 **Статус:** [x] виправлено — додано `useMemo(stockGoodIdsKey)`, useEffect deps скорочено до `[stockGoodIdsKey]`. Regression-guard test додано (Bug #454: sort стабільний; +typing у quantity не тригерить refetch). TS green, тести 11/11 pass.
 
 ---
+
+## Session 2026-06-14 — Tester after 3-view inventory feature (HEAD 8cc6bb31)
+
+Контекст: фіча "3-view stock report" (По товарах / По документах / По партіях) додана commit a5f01d37; review fix commit 1752a753 (Fragment keys, KYIV_HOUR_FMT singleton, soft-delete parity, OPENING_BALANCE label). Тестер запускається для unit/contract coverage нових `byDocument()` + `byBatch()` методів і UUID/date filter валідації.
+
+## Bug #455 — HIGH — test-coverage / backend — Відсутній unit spec для InventoryService.byDocument() / byBatch()
+
+**Файл:** `apps/api/src/modules/inventory/inventory.service.spec.ts`
+**Опис:** Два нових методи (`byDocument()` 110 рядків, `byBatch()` 110 рядків) у InventoryService додані commit-ом a5f01d37 / 1752a753. У `inventory.service.spec.ts` (209 рядків) ВІДСУТНІ describe-блоки для них. Регресія яка зламає: (а) tenant isolation `orgId` у where; (б) soft-delete фільтр на `good.deletedAt: null`; (в) merge-logic `qtyMap` / `goodMap` (мульти-warehouse SUM); (г) групування `${type}::${id}` для документів; (д) групування `${poNumber}::${warehouseId}` для batches; (е) сортування `localeCompare 'uk'` — пройде tsc + 88 існуючих тестів green. Парний код-сигнал #220 release-blocker.
+**Сигнал:** `grep -E "byDocument|byBatch" apps/api/src/modules/inventory/inventory.service.spec.ts` → 0 матчів.
+**Очікувана поведінка:** describe('byDocument') з 6+ кейсами: (а) emp goods → `{ goods: [] }`; (б) merge мульти-warehouse: SUM quantity по goodId; (в) групування рухів по `documentType::documentId`; (г) `from/to` фільтр застосовується ТІЛЬКИ до movements.createdAt; (д) goodMap використовує good.brand?.name з include; (е) сортування by goodName (uk). describe('byBatch') з 5+ кейсами: (а) emp batches → `{ batches: [] }`; (б) групування by `poNumber::warehouseId`; (в) manual batches (poNumber=null) → key 'manual::wh-id'; (г) costPrice/salePrice конвертовано через Number(); (д) `from/to` фільтр на batch.createdAt.
+**Статус:** [x] виправлено — додано describe('byDocument') 7 тестів і describe('byBatch') 6 тестів у `inventory.service.spec.ts`. TS green, тести pass.
+
+## Bug #456 — HIGH — test-coverage / contract — Відсутній contract spec для GET /stock-items/by-document і /stock-items/by-batch
+
+**Файл:** `apps/api/src/modules/inventory/stock-items.contract.spec.ts` (новий)
+**Опис:** Два нових endpoint-и у `StockItemsController` (`byDocument`, `byBatch`) додано commit-ом a5f01d37. Розташовані ПЕРЕД `:id` маршрутом (Fastify ordering); ParseUUIDPipe({ optional: true }) для warehouseId/goodId. ЖОДНОГО contract spec для них. Регресія: (а) видалення `optional: true` з ParseUUIDPipe → 400 для відсутніх параметрів; (б) перенесення `byDocument` ПІСЛЯ `:id` → Fastify shadow і 400; (в) видалення Role-check → 403 не повертається; (г) видалення from/to query → silent drop date filter.
+**Сигнал:** `find apps/api/src/modules/inventory -name '*.contract.spec.ts'` → лише batches/pricing-rules, нема stock-items.
+**Очікувана поведінка:** Новий `stock-items.contract.spec.ts` з 10+ кейсами: (а) GET /by-document без params → 200 + service-call orgId,undefined,undefined,undefined,undefined; (б) GET /by-document?warehouseId=<UUID> → передає у service; (в) невалідний UUID → 400 (ParseUUIDPipe); (г) GET /by-document?from=2025-01-01&to=2025-01-31 → передає у service; (д) GET /by-batch — аналогічні 4 кейси; (е) JWT блокує → 403; (ж) MECHANIC має доступ (RBAC підтримує).
+**Статус:** [x] виправлено — створено `stock-items.contract.spec.ts` з 14 тестами. Всі pass.
+
+## Bug #457 — HIGH — frontend / perf — useStockByDocument і useStockByBatch завжди тригеряться навіть коли viewMode='goods'
+
+**Файл:** `apps/web/src/app/(app)/inventory/page.tsx` рядки 159-166
+**Опис:** Три hooks (`useStockItems`, `useStockByDocument`, `useStockByBatch`) викликаються БЕЗ умовного gating по `viewMode`. Користувач відкрив сторінку у режимі 'goods' (default) → одразу 3 GET запити: `/stock-items`, `/stock-items/by-document`, `/stock-items/by-batch`. Серверу віддає 3 запити замість 1. byDocument агрегує до 2000 stockItems + 3000 movements; byBatch — 500 batches з 50 consumptions кожна. Для org з 1000 active goods: 3 запити × ~500KB = ~1.5MB зайвого трафіку на open.
+**Сигнал:** `cat apps/web/src/app/(app)/inventory/page.tsx | grep -A2 "useStockByDocument\|useStockByBatch"` — нема `enabled:` gating. Code review SKILL §1.3 — fetch заздалегідь шкідливий якщо результат непотрібний для current view.
+**Очікувана поведінка:** Додати опціональний параметр `enabled?: boolean` у hooks `useStockByDocument`/`useStockByBatch`, дефолт `true`. На page.tsx: `enabled: viewMode === 'documents'` / `enabled: viewMode === 'batches'`. Page-overhead зменшується з 3 запитів до 1 (тільки активний режим).
+**Статус:** [x] виправлено — додано `enabled?: boolean` параметр у обидва хуки + comment про gating; на page.tsx передано `viewMode === 'documents' | 'batches'` відповідно. TS green.
+
+## Bug #458 — MEDIUM — frontend / TS contract — BatchConsumptionRow.documentType/documentId типи не співпадають з backend схемою
+
+**Файл:** `apps/web/src/hooks/api/useInventory.ts` рядки 29-35
+**Опис:** Interface `BatchConsumptionRow` декларує `documentType: string | null` і `documentId: string | null`. Однак у `packages/database/prisma/schema.prisma` модель `BatchConsumption` (рядки 1196-1206) має ОБИДВА як `String` (non-null). Backend `byBatch()` мапить `c.documentType` напряму без `?? null` (рядки 528-535 inventory.service.ts) — фактичне значення завжди string. FE типи занадто permissive — TS не сигналізує про мертві defensive checks `?? '—'` і `if (c.documentType == null) ...` у UI коді. Парний баг для GoodMovementDoc якій же `documentType`/`documentId` нullable у `StockMovement` schema (там правильно nullable). У `BatchConsumptionRow` — над-захист.
+**Сигнал:** `grep "documentType\b" packages/database/prisma/schema.prisma` — `model BatchConsumption { ... documentType String\n documentId String\n ... }` (non-null). FE hook каже `string | null`.
+**Очікувана поведінка:** У `useInventory.ts` тип `BatchConsumptionRow.documentType: string` (NOT null), `documentId: string` (NOT null). Залишити `docLabel: string` як є (фоллбек до 'Документ —' опрацьований у service `docLabel()`). Mismatch у `GoodMovementDoc` (StockMovement) — там залишити nullable (правильно).
+**Статус:** [x] виправлено — звужено типи `BatchConsumptionRow.documentType/documentId` до non-null `string` у `useInventory.ts`. TS green.
+
+---
