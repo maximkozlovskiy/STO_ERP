@@ -53,6 +53,7 @@ interface InvoiceDetail {
   amount: number;
   dueDate?: string | null;
   documentDate?: string | null;
+  notes?: string | null;
   lines?: InvoiceLine[];
 }
 
@@ -136,6 +137,7 @@ export function InvoiceCreateModal({
     invoiceType: 'STANDARD',
     dueDate: '',
     documentDate: kyivToday(),
+    notes: '',
   });
   const [counterpartyDisplay, setCounterpartyDisplay] = useState('');
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
@@ -199,6 +201,7 @@ export function InvoiceCreateModal({
         invoiceType: 'STANDARD',
         dueDate: '',
         documentDate: kyivToday(),
+        notes: '',
       });
       setCounterpartyDisplay('');
     }
@@ -220,6 +223,7 @@ export function InvoiceCreateModal({
           invoiceType: inv.invoiceType ?? 'STANDARD',
           dueDate: inv.dueDate ? inv.dueDate.slice(0, 10) : '',
           documentDate: inv.documentDate ? inv.documentDate.slice(0, 10) : kyivToday(),
+          notes: inv.notes ?? '',
         });
         setCounterpartyDisplay(inv.counterpartyName ?? '');
         const loadedLines = (inv.lines ?? []).map(l => ({
@@ -361,6 +365,7 @@ export function InvoiceCreateModal({
           amount: computedTotal >= 0.01 ? computedTotal : 0.01,
           dueDate: form.dueDate || undefined,
           documentDate: form.documentDate || undefined,
+          notes: form.notes || undefined,
         }),
       });
 
@@ -395,6 +400,7 @@ export function InvoiceCreateModal({
         body: JSON.stringify({
           dueDate: form.dueDate || undefined,
           documentDate: form.documentDate || undefined,
+          notes: form.notes || undefined,
         }),
       });
 
@@ -740,13 +746,21 @@ export function InvoiceCreateModal({
                   </Select>
                 </div>
 
-                {/* Рядок 3: Термін оплати */}
+                {/* Рядок 3: Термін оплати | Примітки */}
                 <div className="grid grid-cols-2 gap-4">
                   <DatePickerInput
                     label="Термін оплати"
                     value={form.dueDate}
                     onChange={v => setForm(f => ({ ...f, dueDate: v }))}
                     disabled={!canEdit}
+                  />
+                  <Input
+                    label="Примітки"
+                    value={form.notes}
+                    onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                    disabled={!canEdit}
+                    placeholder="Додаткова інформація…"
+                    className="h-8 text-[13px]"
                   />
                 </div>
               </div>
