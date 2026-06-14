@@ -290,4 +290,94 @@ describe('PurchaseOrders — HTTP Contract', () => {
       expect(body.items[0].deletedAt).toBe('2026-01-15T00:00:00.000Z');
     });
   });
+
+  // Bug #477: UpdatePurchaseOrderDto має `@ValidateIf((_, v) => v !== null) @IsUUID()`
+  // для contractId, що дозволяє frontend надсилати explicit null для clear контракту.
+  // Якщо @ValidateIf видалити → null триггерить @IsUUID → 400 → frontend не може зняти договір.
+  describe('PATCH /purchase-orders/:id (contractId nullable)', () => {
+    beforeEach(() => {
+      serviceMock.update.mockResolvedValue({
+        id: VALID_UUID,
+        status: 'DRAFT',
+        contractId: null,
+        contractNumber: null,
+      });
+    });
+
+    it('Bug #477: PATCH з contractId=null → 200, service.update викликаний з dto.contractId=null', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/purchase-orders/${VALID_UUID}`,
+        payload: { contractId: null },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.update).toHaveBeenCalledWith(
+        'org-1',
+        VALID_UUID,
+        expect.objectContaining({ contractId: null }),
+      );
+    });
+
+    it('Bug #477: PATCH з contractId=valid UUID → 200, service.update отримує UUID', async () => {
+      const CONTRACT_ID = '99999999-9999-4999-8999-999999999999';
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/purchase-orders/${VALID_UUID}`,
+        payload: { contractId: CONTRACT_ID },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.update).toHaveBeenCalledWith(
+        'org-1',
+        VALID_UUID,
+        expect.objectContaining({ contractId: CONTRACT_ID }),
+      );
+    });
+
+    it('Bug #477: PATCH з contractId="" → emptyToUndefined → service отримує undefined', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/purchase-orders/${VALID_UUID}`,
+        payload: { contractId: '' },
+      });
+      expect(res.statusCode).toBe(200);
+      // emptyToUndefined transform → '' → undefined → IsOptional skips IsUUID
+      const callArgs = serviceMock.update.mock.calls[0][2];
+      expect(callArgs.contractId).toBeUndefined();
+    });
+
+    it('Bug #477: PATCH з contractId="not-a-uuid" → 400 (IsUUID validation)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/purchase-orders/${VALID_UUID}`,
+        payload: { contractId: 'not-a-uuid' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.update).not.toHaveBeenCalled();
+    });
+
+    // Bug #475 contract layer: PATCH з supplierId/warehouseId переадресовується у service
+    it('Bug #475: PATCH з supplierId+warehouseId+contractId=null → всі поля forward до service', async () => {
+      const NEW_SUPPLIER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const NEW_WAREHOUSE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/purchase-orders/${VALID_UUID}`,
+        payload: {
+          supplierId: NEW_SUPPLIER,
+          warehouseId: NEW_WAREHOUSE,
+          contractId: null,
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.update).toHaveBeenCalledWith(
+        'org-1',
+        VALID_UUID,
+        expect.objectContaining({
+          supplierId: NEW_SUPPLIER,
+          warehouseId: NEW_WAREHOUSE,
+          contractId: null,
+        }),
+      );
+    });
+  });
 });

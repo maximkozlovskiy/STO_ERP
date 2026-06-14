@@ -14372,3 +14372,62 @@ dialog "Нове замовлення постачальнику" [ref=e460]:  #
 **Опис:** Тест клікав на рядок і чекав `text=Склад-призначення` (з дефіса, з Detail Panel). Після e6d2e148 row.click відкриває edit modal, де label `Склад призначення` (без дефіса). Окрім тесту — у коді є реальна інконсистентність: detail panel називає поле "Склад-призначення", edit modal — "Склад призначення". Для тесту досить оновити локатор; для UX варто уніфікувати у майбутньому (LOW).
 **Очікувана поведінка:** Тест перевіряє `Склад призначення` (без дефіса) у edit modal — це факт. Sub-bug: у фінальному cleanup-passi розглянути уніфікацію panel-schema labels (use spaces).
 **Статус:** [x] виправлено — тест оновлено. Окремий тікет для уніфікації pending (LOW).
+
+## Session 2026-06-15 — Tester after PurchaseOrder edit-mode feature (HEAD 705c9e91)
+
+Запуск sto-tester FULL після commits 115fea9e (feat: contractId/receivedQty/editable supplier/warehouse у DRAFT) + 32c6115f (fix: stale-contract clear) + 705c9e91 (docs).
+
+**Baseline (Крок 0):**
+
+- TypeScript: API + web — 0 errors
+- Unit tests: API 775 passed (60 files), web 423 passed (39 files)
+- PurchaseOrders specs: 26 tests passed (14 service + 12 contract)
+- E2E (crud-purchase-order.spec.ts + purchase-orders-receive.spec.ts): 9 tests passed
+
+**Знайдені баги (test-coverage gaps для нової логіки update()):**
+
+### Bug #473 — [HIGH] test-coverage / backend — regression-guard для stale-contract auto-clear (commit 32c6115f) ВІДСУТНІЙ
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts` — немає блоку `describe('PurchaseOrdersService.update', ...)`.
+**Опис:** Commit 32c6115f додав CRITICAL fix: коли DRAFT PO змінює `supplierId` через PATCH, але `contractId` НЕ передано — backend очищає `contractId` явно (raw `tx.purchaseOrder.update({ data: { contractId: newContractId } })` де `newContractId = null`). Без цього стейл-контракт залишається з прив'язкою до старого постачальника = cross-supplier orphan FK. **Відсутній regression-тест — будь-яке refactor видалення Branch 3 у `update()` (lines 312-316) пройде CI зеленим.**
+**Сигнал:** `grep -rn "supplierChanged\|stale contract\|stale-contract" apps/api/src/modules/purchase-orders` → 0 matches у spec.
+**Очікувана поведінка:** Створити `describe('PurchaseOrdersService.update — contract resolution', ...)` з мінімум 4 кейсами:
+
+1. supplier changed без contractId у dto → newContractId=null persisted
+2. supplier changed з валідним contractId → validates проти new supplier, persists
+3. supplier unchanged + contractId=null → clears existing contract
+4. supplier unchanged + contractId=undefined → existing kept (Prisma `undefined`)
+
+**Статус:** [x] виправлено — додано блок `describe('PurchaseOrdersService.update — contract resolution')` з 6 кейсами у `purchase-orders.service.spec.ts`.
+
+### Bug #474 — [HIGH] test-coverage / backend — explicit contractId clear (null/empty) НЕ покрито
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts`
+**Опис:** Branch 2 у `update()` обробляє `dto.contractId === null` (явний clear від frontend). Логіка: `newContractId = null` → Prisma пише NULL у DB. Якщо хтось видалить `} else if (dto.contractId === null) { newContractId = null;` → backend silent skip → frontend дзвонить PATCH з `contractId: null` після ручного зняття договору, але DB зберігає старий UUID. Без тесту — regression проходить.
+**Сигнал:** spec не має mock що повертає `contractId === null` у dto.
+**Очікувана поведінка:** Тест-кейс «explicit contractId=null → newContractId=null persisted, не валідується через findFirst».
+**Статус:** [x] виправлено — покрито у новому describe-блоці (кейс 3).
+
+### Bug #475 — [HIGH] test-coverage / backend — cross-org supplierId/warehouseId rejection у update() НЕ покрито
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts`
+**Опис:** Commit 115fea9e додав tenant guard для нових `dto.supplierId` і `dto.warehouseId` у `update()` (lines 271-286 service): кожен валідується через `findFirst({ id, orgId, deletedAt: null })`. Якщо guard видалити → cross-tenant FK update проходить тихо (P2003 не спрацює — FK існує у іншій org). **Без regression-тесту guard може зникнути.**
+**Сигнал:** `grep -n "Постачальника не знайдено\|Склад не знайдено" apps/api/src/modules/purchase-orders/*.spec.ts` → 0 matches.
+**Очікувана поведінка:** Кейс «supplierId з чужої org → NotFoundException, жоден write»; кейс «warehouseId з чужої org → NotFoundException».
+**Статус:** [x] виправлено — додано у новому describe-блоці (кейси 4-5).
+
+### Bug #476 — [HIGH] test-coverage / backend — cross-supplier contractId rejection у update() НЕ покрито
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts`
+**Опис:** Branch 1 у `update()` валідує `dto.contractId` проти `effectiveSupplierId = dto.supplierId ?? po.supplierId` І `contractType: 'PURCHASE'`. Якщо хтось передає contractId від іншого постачальника (cross-supplier) АБО SALE-контракт → має бути NotFoundException. Без тесту guard може silently degrade на `{ id, orgId, deletedAt: null }` (втративши `counterpartyId` фільтр) → cross-supplier orphan через PATCH.
+**Сигнал:** spec не має mock де `counterpartyContract.findFirst` повертає null для valid contract id.
+**Очікувана поведінка:** Кейс «contractId не належить ефективному постачальнику → NotFoundException».
+**Статус:** [x] виправлено — додано у новому describe-блоці (кейс 6).
+
+### Bug #477 — [MEDIUM] test-coverage / backend / contract — UpdatePurchaseOrderDto ValidateIf для contractId=null НЕ перевірений у HTTP layer
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.contract.spec.ts`
+**Опис:** DTO UpdatePurchaseOrderDto має `@ValidateIf((_, value) => value !== null) @IsUUID()` для contractId. Це дозволяє frontend надсилати `contractId: null` (explicit clear) БЕЗ 400. Якщо хтось випадково видалить `@ValidateIf` → null триггерить `@IsUUID` → 400 → користувач не може зняти договір через UI. Не покрито у contract spec.
+**Сигнал:** `grep -n "PATCH\|update" apps/api/src/modules/purchase-orders/purchase-orders.contract.spec.ts` → 0 PATCH-кейсів.
+**Очікувана поведінка:** Contract spec кейс «PATCH /:id з body `{ contractId: null }` → service.update викликаний з dto.contractId=null, status 200».
+**Статус:** [x] виправлено — додано describe-блок `PATCH /purchase-orders/:id (contractId nullable)` з 3 кейсами.

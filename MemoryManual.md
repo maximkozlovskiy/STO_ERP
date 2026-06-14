@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+<тут new commit для test additions>
+705c9e91 docs(memory): update MemoryManual after review 32c6115f — purchase-orders contract guards
 32c6115f fix(review): purchase-orders contract clear + stale-contract guard on supplier change
 115fea9e feat(purchase-orders): show all fields, editable supplier/warehouse/contract in DRAFT, FSM arrows always visible, receivedQty column
 355fb445 fix(e2e): align spec locators with redesigned modals + fix Modal id collision (Bugs #467-#472)
@@ -65,8 +67,16 @@ Latest review (2026-06-15, 32c6115f, after 115fea9e): code review feat(purchase-
   - IMPORTANT §8.2 Paired-state reset gap: PurchaseOrderCreateModal SearchPickerModal onSelect (line 1014) did not clear contractId/contractNumber when supplier changed via picker modal — only the inline EntityPickerField did. Stale contract would persist across save. Now mirrors inline picker behaviour.
   - IMPORTANT §8.2 Implicit-skip on save: handleSave sent `contractId: contractId || undefined` so a user-driven null clear never reached backend. Now sends `contractId: contractId ?? null` so backend persists the clear via the new DTO null-path.
 TS clean both packages. Other matrix checks (§1 React namespace, any, console.log, findMany take, §2 tenant isolation orgId on every find/update, §4 controller-free of business logic, §5 FSM unchanged, §6 no new schema/migration needed) — all green.
-Tests: API 775/775; Web 423/423 (+3 DocumentCreateModals.test.tsx)
-E2E (Playwright): 228 passed / 13 skipped / 0 failed (33 spec files, ~4 min)
+Tests: API 788/788 (+13 з sto-tester 2026-06-15: contract resolution + tenant guards у update()); Web 423/423 (+3 DocumentCreateModals.test.tsx)
+E2E (Playwright): 228 passed / 13 skipped / 0 failed (33 spec files, ~4 min). PO specs: 9 passed (crud-purchase-order + purchase-orders-receive).
+
+Latest tester (2026-06-15, after 705c9e91): sto-tester FULL для PurchaseOrder edit-mode feature. Знайдено 5 test-coverage gap-ів:
+  🐛 #473 (HIGH): regression-guard для stale-contract auto-clear (commit 32c6115f) ВІДСУТНІЙ. Branch 3 у service.update() (`supplierChanged && po.contractId → newContractId = null`) міг тихо зникнути у refactor.
+  🐛 #474 (HIGH): explicit contractId=null path (`dto.contractId === null → newContractId = null`) не покрито.
+  🐛 #475 (HIGH): cross-org supplierId/warehouseId rejection у update() без regression-test.
+  🐛 #476 (HIGH): cross-supplier contractId rejection (Branch 1 валідує counterpartyId=effective) без regression-test.
+  🐛 #477 (MEDIUM): PATCH contract spec для contractId nullable (ValidateIf для null) ВІДСУТНІЙ → frontend міг зламатись якщо @ValidateIf видалити.
+  Фікси: 7 нових кейсів у purchase-orders.service.spec.ts (describe «update — contract resolution») + 5 нових у purchase-orders.contract.spec.ts (describe «PATCH /:id contractId nullable»). API total 775 → 788.
 
 Latest e2e (2026-06-15, commit 355fb445): full Playwright suite green після modal redesign QA. Bugs #467-#472:
   🐛 #467 (CRITICAL): Modal.tsx мав фіксований `id="modal-title"` → ID collision у вкладених модалках (Invoice + SearchPickerModal). Усі діалоги адаптовували перший h2 як accessible name. Fix: useId() per Modal instance.
