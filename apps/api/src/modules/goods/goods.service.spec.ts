@@ -33,6 +33,7 @@ describe('GoodsService', () => {
       updateMany: any;
       delete: any;
     };
+    stockItem: { groupBy: any };
     $transaction: ReturnType<typeof vi.fn>;
   };
 
@@ -78,6 +79,7 @@ describe('GoodsService', () => {
         updateMany: vi.fn(),
         delete: vi.fn(),
       },
+      stockItem: { groupBy: vi.fn() },
       $transaction: vi.fn(),
     };
 
@@ -410,6 +412,78 @@ describe('GoodsService', () => {
         where: { id: 'good-1', orgId: 'org-1', deletedAt: null },
         data: { unitId: 'unit-2', unit: 'кг' },
       });
+    });
+  });
+
+  // Bug #452: regression-guard для /goods/stock-totals (фіча "К-ть на складі"
+  // у CreateWorkOrderModal, додана commit 0618c621 + fix c0879445 — раніше без spec).
+  describe('stockTotals', () => {
+    it('Bug #452: порожній масив goodIds → повертає [] без запиту до БД', async () => {
+      const res = await service.stockTotals('org-1', []);
+      expect(res).toEqual([]);
+      expect(prisma.stockItem.groupBy).not.toHaveBeenCalled();
+    });
+
+    it('Bug #452: query фільтрується по orgId + deletedAt: null (tenant isolation + soft-delete)', async () => {
+      prisma.stockItem.groupBy.mockResolvedValueOnce([]);
+      await service.stockTotals('org-1', ['g1', 'g2']);
+      expect(prisma.stockItem.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          by: ['goodId'],
+          where: { orgId: 'org-1', goodId: { in: ['g1', 'g2'] }, deletedAt: null },
+          _sum: { quantity: true },
+        }),
+      );
+    });
+
+    it('Bug #452: SUM(quantity) за goodId по кільком складам — повертає агрегат', async () => {
+      // g1 присутній на 2 складах (10 + 5 = 15), g2 на 1 (3)
+      prisma.stockItem.groupBy.mockResolvedValueOnce([
+        { goodId: 'g1', _sum: { quantity: 15 } },
+        { goodId: 'g2', _sum: { quantity: 3 } },
+      ]);
+      const res = await service.stockTotals('org-1', ['g1', 'g2']);
+      expect(res).toEqual([
+        { goodId: 'g1', totalQuantity: 15 },
+        { goodId: 'g2', totalQuantity: 3 },
+      ]);
+    });
+
+    it('Bug #452: товар без StockItem → groupBy опускає bucket, повертається без нього (FE мапить у 0)', async () => {
+      // g1 існує, g3 НЕ існує — groupBy опускає (нема рядків); FE сам fallback-ить у 0.
+      prisma.stockItem.groupBy.mockResolvedValueOnce([{ goodId: 'g1', _sum: { quantity: 7 } }]);
+      const res = await service.stockTotals('org-1', ['g1', 'g3']);
+      expect(res).toEqual([{ goodId: 'g1', totalQuantity: 7 }]);
+      // g3 НЕ повертається — це навмисна семантика: FE pre-seed Map за всіма ids у 0.
+      expect(res.find(r => r.goodId === 'g3')).toBeUndefined();
+    });
+
+    it('Bug #452: _sum.quantity = null (Prisma агрегат без рядків) → totalQuantity 0, не NaN', async () => {
+      // Захист від крайового кейсу: якщо groupBy повертає bucket з _sum.quantity: null
+      // (теоретично можливо при edge-кейсах WHERE), Number(null ?? 0) = 0, не NaN.
+      prisma.stockItem.groupBy.mockResolvedValueOnce([{ goodId: 'g1', _sum: { quantity: null } }]);
+      const res = await service.stockTotals('org-1', ['g1']);
+      expect(res).toEqual([{ goodId: 'g1', totalQuantity: 0 }]);
+      expect(Number.isFinite(res[0].totalQuantity)).toBe(true);
+    });
+
+    it('Bug #452: НЕ повертає товар з іншої org (cross-tenant isolation)', async () => {
+      // Сервіс просто додає orgId у where → якщо Prisma поверне 0 buckets, контрольно
+      // перевіряємо що where містив правильний orgId. Спрощено: симулюємо що
+      // запит від 'org-A' до товару 'g-from-org-B' повертає [] (немає StockItem).
+      prisma.stockItem.groupBy.mockResolvedValueOnce([]);
+      const res = await service.stockTotals('org-A', ['g-from-org-B']);
+      expect(res).toEqual([]);
+      const callArgs = prisma.stockItem.groupBy.mock.calls[0][0];
+      expect(callArgs.where.orgId).toBe('org-A');
+    });
+
+    it('Bug #452: soft-deleted StockItem (deletedAt!=null) не включається в SUM', async () => {
+      // Контракт сервісу: where { deletedAt: null }. Prisma фільтрує — повернеться 0.
+      prisma.stockItem.groupBy.mockResolvedValueOnce([]);
+      await service.stockTotals('org-1', ['g1']);
+      const callArgs = prisma.stockItem.groupBy.mock.calls[0][0];
+      expect(callArgs.where.deletedAt).toBeNull();
     });
   });
 });

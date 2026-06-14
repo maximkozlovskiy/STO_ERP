@@ -833,18 +833,33 @@ export function CreateWorkOrderModal({
   // including any good currently being added/edited (so the column shows while typing).
   // Goods with no StockItem rows are explicitly mapped to 0 (groupBy omits empty buckets,
   // but UX-wise "no stock" should read as 0, not '—' which we reserve for "unknown goodId").
-  useEffect(() => {
-    const ids = new Set(parts.map(p => p.goodId).filter(Boolean));
+  //
+  // Bug #454: derive a *stable string key* from the set of goodId-s. The previous
+  // dep array `[parts, newPart.goodId, editingPart.goodId]` re-fired the effect on
+  // ANY parts mutation — including typing in quantity/price — issuing a fresh
+  // /goods/stock-totals request per keystroke even when the set of goods had not
+  // changed. We memoize a sorted-comma-joined fingerprint so the effect re-runs
+  // ONLY when the actual set of goodIds changes.
+  const stockGoodIdsKey = useMemo(() => {
+    const ids = new Set<string>();
+    for (const p of parts) if (p.goodId) ids.add(p.goodId);
     if (newPart.goodId) ids.add(newPart.goodId);
     if (editingPart.goodId) ids.add(editingPart.goodId);
-    const goodIds = [...ids];
-    if (goodIds.length === 0) {
+    // Sort for stability — Set iteration order is insertion-based, but reordering
+    // parts (move/delete + re-add) would yield a different key while the *set*
+    // is unchanged. Sorting kills that false positive.
+    return [...ids].sort().join(',');
+  }, [parts, newPart.goodId, editingPart.goodId]);
+
+  useEffect(() => {
+    if (!stockGoodIdsKey) {
       setStockTotalsMap(new Map());
       return;
     }
+    const goodIds = stockGoodIdsKey.split(',');
     let cancelled = false;
     void apiFetch<{ goodId: string; totalQuantity: number }[]>(
-      `/goods/stock-totals?ids=${goodIds.join(',')}`,
+      `/goods/stock-totals?ids=${stockGoodIdsKey}`,
     )
       .then(rows => {
         if (cancelled) return;
@@ -859,7 +874,7 @@ export function CreateWorkOrderModal({
     return () => {
       cancelled = true;
     };
-  }, [parts, newPart.goodId, editingPart.goodId]);
+  }, [stockGoodIdsKey]);
 
   // Counterparty search for the header picker.
   // Wrapped in useCallback so EntityPickerField's outside-click listener

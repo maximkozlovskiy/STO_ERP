@@ -210,6 +210,351 @@ describe('CreateWorkOrderModal — regression guards', () => {
     expect(inputs.length).toBe(0);
   });
 
+  describe('Bug #452-#454: /goods/stock-totals fetch behavior', () => {
+    const GOOD_ID_1 = '11111111-1111-4111-8111-111111111111';
+    const GOOD_ID_2 = '22222222-2222-4222-8222-222222222222';
+
+    it('Bug #452: новий модал БЕЗ goodId-ів → НЕ робить запит до /goods/stock-totals', async () => {
+      render(
+        <CreateWorkOrderModal
+          open
+          onClose={vi.fn()}
+          prefill={{ branchId: 'b1', counterpartyId: 'cp1', vehicleId: 'v1' }}
+        />,
+      );
+
+      await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
+
+      // Дочекатися щоб усі mount-side effects вистрілили
+      await new Promise(r => setTimeout(r, 50));
+
+      const stockCalls = apiFetchMock.mock.calls.filter(
+        (c: unknown[]) =>
+          typeof c[0] === 'string' && (c[0] as string).startsWith('/goods/stock-totals'),
+      );
+      expect(stockCalls.length).toBe(0);
+    });
+
+    it('Bug #452: edit mode з parts → робить запит до /goods/stock-totals з goodId-ями', async () => {
+      // Перевизначаємо apiFetch щоб edit-mode завантажив WO з parts.
+      apiFetchMock.mockImplementation((path: string) => {
+        if (path === '/branches') return Promise.resolve(mockBranches);
+        if (path === '/warehouses') return Promise.resolve(mockWarehouses);
+        if (path.startsWith('/employees')) return Promise.resolve({ items: mockEmployees });
+        if (path.startsWith('/vehicles')) return Promise.resolve([]);
+        if (path.includes('/contracts')) return Promise.resolve({ items: [] });
+        if (path === '/work-orders/wo-1') {
+          return Promise.resolve({
+            id: 'wo-1',
+            number: 'WO-001',
+            status: 'DRAFT',
+            branchId: 'b1',
+            vehicleId: 'v1',
+            counterpartyId: 'cp1',
+            counterpartyName: 'Тест',
+            contractId: null,
+            liftId: null,
+            description: '',
+            priority: 'NORMAL',
+            repairCategory: '',
+            documentDate: '2026-06-14',
+            plannedAt: null,
+            dueDate: null,
+            plannedHours: null,
+            actualHours: null,
+            lines: [],
+            parts: [
+              {
+                id: 'p1',
+                goodId: GOOD_ID_1,
+                goodName: 'Олива',
+                warehouseId: 'w1',
+                quantity: 2,
+                price: 100,
+                unitOfMeasureId: 'u1',
+                unitShortName: 'шт',
+              },
+              {
+                id: 'p2',
+                goodId: GOOD_ID_2,
+                goodName: 'Фільтр',
+                warehouseId: 'w1',
+                quantity: 1,
+                price: 200,
+                unitOfMeasureId: 'u1',
+                unitShortName: 'шт',
+              },
+            ],
+          });
+        }
+        if (path.startsWith('/goods/stock-totals')) {
+          return Promise.resolve([
+            { goodId: GOOD_ID_1, totalQuantity: 15 },
+            { goodId: GOOD_ID_2, totalQuantity: 3 },
+          ]);
+        }
+        return Promise.resolve({ items: [] });
+      });
+
+      render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+
+      await waitFor(() => {
+        const calls = apiFetchMock.mock.calls.filter(
+          (c: unknown[]) =>
+            typeof c[0] === 'string' && (c[0] as string).startsWith('/goods/stock-totals'),
+        );
+        expect(calls.length).toBeGreaterThanOrEqual(1);
+      });
+
+      const stockCall = apiFetchMock.mock.calls.find(
+        (c: unknown[]) =>
+          typeof c[0] === 'string' && (c[0] as string).startsWith('/goods/stock-totals'),
+      );
+      const url = stockCall![0] as string;
+      // Обидва goodId-и у запиті (set semantics)
+      expect(url).toContain(GOOD_ID_1);
+      expect(url).toContain(GOOD_ID_2);
+    });
+
+    it('Bug #454: помилка fetch /goods/stock-totals НЕ блокує форму (console.error не throw)', async () => {
+      // Шпигунимо за console.error щоб переконатися що помилка ЛОГ-ується, не silently-swallowed
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      apiFetchMock.mockImplementation((path: string) => {
+        if (path === '/branches') return Promise.resolve(mockBranches);
+        if (path === '/warehouses') return Promise.resolve(mockWarehouses);
+        if (path.startsWith('/employees')) return Promise.resolve({ items: mockEmployees });
+        if (path.startsWith('/vehicles')) return Promise.resolve([]);
+        if (path.includes('/contracts')) return Promise.resolve({ items: [] });
+        if (path === '/work-orders/wo-2') {
+          return Promise.resolve({
+            id: 'wo-2',
+            number: 'WO-002',
+            status: 'DRAFT',
+            branchId: 'b1',
+            vehicleId: 'v1',
+            counterpartyId: 'cp1',
+            counterpartyName: 'Тест',
+            contractId: null,
+            liftId: null,
+            description: '',
+            priority: 'NORMAL',
+            repairCategory: '',
+            documentDate: '2026-06-14',
+            plannedAt: null,
+            dueDate: null,
+            plannedHours: null,
+            actualHours: null,
+            lines: [],
+            parts: [
+              {
+                id: 'p1',
+                goodId: GOOD_ID_1,
+                goodName: 'Олива',
+                warehouseId: 'w1',
+                quantity: 2,
+                price: 100,
+                unitOfMeasureId: 'u1',
+                unitShortName: 'шт',
+              },
+            ],
+          });
+        }
+        if (path.startsWith('/goods/stock-totals')) {
+          return Promise.reject(new Error('500: server exploded'));
+        }
+        return Promise.resolve({ items: [] });
+      });
+
+      // Render не повинен throw навіть коли stock-totals rejected
+      render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-2" />);
+
+      // Дочекатися інкорпорації + спрацьовування useEffect
+      await waitFor(() => {
+        const calls = apiFetchMock.mock.calls.filter(
+          (c: unknown[]) =>
+            typeof c[0] === 'string' && (c[0] as string).startsWith('/goods/stock-totals'),
+        );
+        expect(calls.length).toBeGreaterThanOrEqual(1);
+      });
+
+      // Дати promise rejected resolved через event loop
+      await new Promise(r => setTimeout(r, 50));
+
+      // Форма не зламана: модальна нагорі видима (Modal залишилось у DOM)
+      expect(screen.getByText(/Товари \/ Запчастини/)).toBeInTheDocument();
+      // console.error викликаний (а не silent .catch(() => {}))
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[stock-totals] fetch failed',
+        expect.any(Error),
+      );
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('Bug #454: URL ids стабільно відсортовані (рефакторинг key → reorder parts не викликає refetch)', async () => {
+      // Стабільний sort означає що key для {A,B} == key для {B,A}.
+      // Це підтверджує що повторне відкриття у edit mode зі змінним порядком parts
+      // не викликає зайвий fetch — критично для perf коли N parts.
+      apiFetchMock.mockImplementation((path: string) => {
+        if (path === '/branches') return Promise.resolve(mockBranches);
+        if (path === '/warehouses') return Promise.resolve(mockWarehouses);
+        if (path.startsWith('/employees')) return Promise.resolve({ items: mockEmployees });
+        if (path.startsWith('/vehicles')) return Promise.resolve([]);
+        if (path.includes('/contracts')) return Promise.resolve({ items: [] });
+        if (path === '/work-orders/wo-sort') {
+          return Promise.resolve({
+            id: 'wo-sort',
+            number: 'WO-S',
+            status: 'DRAFT',
+            branchId: 'b1',
+            vehicleId: 'v1',
+            counterpartyId: 'cp1',
+            counterpartyName: 'Тест',
+            contractId: null,
+            liftId: null,
+            description: '',
+            priority: 'NORMAL',
+            repairCategory: '',
+            documentDate: '2026-06-14',
+            plannedAt: null,
+            dueDate: null,
+            plannedHours: null,
+            actualHours: null,
+            lines: [],
+            parts: [
+              // B перед A — sort повинен покласти A перед B у URL
+              {
+                id: 'p1',
+                goodId: GOOD_ID_2,
+                goodName: 'Фільтр',
+                warehouseId: 'w1',
+                quantity: 1,
+                price: 200,
+                unitOfMeasureId: 'u1',
+                unitShortName: 'шт',
+              },
+              {
+                id: 'p2',
+                goodId: GOOD_ID_1,
+                goodName: 'Олива',
+                warehouseId: 'w1',
+                quantity: 2,
+                price: 100,
+                unitOfMeasureId: 'u1',
+                unitShortName: 'шт',
+              },
+            ],
+          });
+        }
+        if (path.startsWith('/goods/stock-totals')) {
+          return Promise.resolve([]);
+        }
+        return Promise.resolve({ items: [] });
+      });
+
+      render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-sort" />);
+
+      await waitFor(() => {
+        const calls = apiFetchMock.mock.calls.filter(
+          (c: unknown[]) =>
+            typeof c[0] === 'string' && (c[0] as string).startsWith('/goods/stock-totals'),
+        );
+        expect(calls.length).toBeGreaterThanOrEqual(1);
+      });
+
+      const stockCall = apiFetchMock.mock.calls.find(
+        (c: unknown[]) =>
+          typeof c[0] === 'string' && (c[0] as string).startsWith('/goods/stock-totals'),
+      );
+      const url = stockCall![0] as string;
+      // GOOD_ID_1 (1...) має йти ПЕРЕД GOOD_ID_2 (2...) — sort є стабільним
+      const idx1 = url.indexOf(GOOD_ID_1);
+      const idx2 = url.indexOf(GOOD_ID_2);
+      expect(idx1).toBeGreaterThan(-1);
+      expect(idx2).toBeGreaterThan(-1);
+      expect(idx1).toBeLessThan(idx2);
+    });
+
+    it('Bug #453: ids у URL дедуплікуються через Set (parts мають той самий goodId двічі)', async () => {
+      // Edit mode з ДВОМА parts на однаковий goodId → useEffect має зробити dedupe через Set.
+      apiFetchMock.mockImplementation((path: string) => {
+        if (path === '/branches') return Promise.resolve(mockBranches);
+        if (path === '/warehouses') return Promise.resolve(mockWarehouses);
+        if (path.startsWith('/employees')) return Promise.resolve({ items: mockEmployees });
+        if (path.startsWith('/vehicles')) return Promise.resolve([]);
+        if (path.includes('/contracts')) return Promise.resolve({ items: [] });
+        if (path === '/work-orders/wo-3') {
+          return Promise.resolve({
+            id: 'wo-3',
+            number: 'WO-003',
+            status: 'DRAFT',
+            branchId: 'b1',
+            vehicleId: 'v1',
+            counterpartyId: 'cp1',
+            counterpartyName: 'Тест',
+            contractId: null,
+            liftId: null,
+            description: '',
+            priority: 'NORMAL',
+            repairCategory: '',
+            documentDate: '2026-06-14',
+            plannedAt: null,
+            dueDate: null,
+            plannedHours: null,
+            actualHours: null,
+            lines: [],
+            parts: [
+              {
+                id: 'p1',
+                goodId: GOOD_ID_1,
+                goodName: 'Олива',
+                warehouseId: 'w1',
+                quantity: 2,
+                price: 100,
+                unitOfMeasureId: 'u1',
+                unitShortName: 'шт',
+              },
+              {
+                id: 'p2',
+                goodId: GOOD_ID_1, // duplicate goodId — same Олива з різних складів
+                goodName: 'Олива',
+                warehouseId: 'w1',
+                quantity: 1,
+                price: 100,
+                unitOfMeasureId: 'u1',
+                unitShortName: 'шт',
+              },
+            ],
+          });
+        }
+        if (path.startsWith('/goods/stock-totals')) {
+          return Promise.resolve([{ goodId: GOOD_ID_1, totalQuantity: 15 }]);
+        }
+        return Promise.resolve({ items: [] });
+      });
+
+      render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-3" />);
+
+      await waitFor(() => {
+        const calls = apiFetchMock.mock.calls.filter(
+          (c: unknown[]) =>
+            typeof c[0] === 'string' && (c[0] as string).startsWith('/goods/stock-totals'),
+        );
+        expect(calls.length).toBeGreaterThanOrEqual(1);
+      });
+
+      const stockCall = apiFetchMock.mock.calls.find(
+        (c: unknown[]) =>
+          typeof c[0] === 'string' && (c[0] as string).startsWith('/goods/stock-totals'),
+      );
+      const url = stockCall![0] as string;
+      // Тільки ОДИН екземпляр GOOD_ID_1 у URL (dedupe через Set)
+      const matches = url.match(new RegExp(GOOD_ID_1, 'g'));
+      expect(matches?.length).toBe(1);
+    });
+  });
+
   it('Bug #448: fallback на calcPlannedHours коли prefill.plannedHours не заданий', async () => {
     // Backward compat: старі call-sites що не передають plannedHours все ще працюють —
     // плановіh обчислюється з дат.

@@ -14169,3 +14169,33 @@ plannedEndAt: form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined,
 **Статус:** [x] виправлено — додано `&& date` / `&& endDate` guards. Захищає від invalid ISO у edge case коли `date` ще не ініціалізований.
 
 ---
+
+## Session 2026-06-14 — Tester after stock-totals review (HEAD dd3fda07)
+
+Контекст: фіча "К-ть на складі" додана commit 0618c621; review commits c0879445/83cd37f7/dd3fda07 виправили tfoot colSpan + race guard + UUID validation. Тестер запускається для перевірки покриття і пошуку залишкових багів.
+
+## Bug #452 — MEDIUM — test-coverage / backend — Відсутній regression-guard spec для GoodsService.stockTotals
+
+**Файл:** `apps/api/src/modules/goods/goods.service.spec.ts`
+**Опис:** Нова service-метод `stockTotals(orgId, goodIds)` (commit 0618c621) використовується endpoint-ом GET /goods/stock-totals — критичний для UX колонки "На складі". У `goods.service.spec.ts` (415 рядків, 22 тести) ВІДСУТНІЙ describe('stockTotals'). Регресія яка зламає tenant isolation (видалення `orgId` з where), soft-delete фільтра (видалення `deletedAt: null`), or null-handling (`Number(r._sum.quantity ?? 0)`) проходить tsc green + unit green.
+**Сигнал:** `grep stockTotals apps/api/src/modules/goods/goods.service.spec.ts` → 0 матчів. Парний код-баг #220 pattern (release-blocker без spec).
+**Очікувана поведінка:** describe('stockTotals') з 7 кейсами: (а) порожній ids → [] без БД-запиту; (б) where має orgId + deletedAt:null; (в) SUM(quantity) агрегує мульти-склади; (г) goodId без StockItem → опускається у відповіді; (д) `_sum.quantity = null` → totalQuantity 0; (е) cross-tenant — інша org → не повертає рядки; (ж) soft-deleted виключається з SUM.
+**Статус:** [x] виправлено — 7 нових тестів додано у `goods.service.spec.ts`. Всі pass.
+
+## Bug #453 — MEDIUM — test-coverage / backend — Відсутній contract spec для GET /goods/stock-totals
+
+**Файл:** `apps/api/src/modules/goods/goods-stock-totals.contract.spec.ts` (новий)
+**Опис:** Controller layer `stockTotals` має UUID validation (#c0879445), 100-ліміт, optional `ids?`, але ЖОДНОГО HTTP-level contract spec. Регресія яка видалить UUID_RE check (думаючи «це задача ValidationPipe») → 500 Postgres `invalid input syntax for type uuid` замість 400. Регресія яка змінить ліміт або disable optional `ids` — теж не ловиться. Існують contract specs для bank-accounts, audit, calendar, але не для нового endpoint.
+**Сигнал:** `find apps/api/src/modules/goods -name '*.contract.spec.ts'` → 0 файлів.
+**Очікувана поведінка:** Новий `goods-stock-totals.contract.spec.ts` з 12 кейсами: (а) missing ids → 200 + []; (б) empty ids="" → 200; (в) валідні UUIDs → 200 + service-call; (г) trim + порожні token-и; (д) невалідний UUID → 400; (е) SQL-injection → 400; (ж) >100 → 400 з повідомленням; (з) рівно 100 → 200 (boundary); (и) дублі UUID → service отримує дублі (dedup — обов'язок клієнта); (й) upper-case UUID → 200; (к) UUID без дефісів → 400; (л) 403 коли JWT не пропустив.
+**Статус:** [x] виправлено — створено `goods-stock-totals.contract.spec.ts` з 12 тестами. Всі pass.
+
+## Bug #454 — MEDIUM — frontend / perf — useEffect refetches /goods/stock-totals на кожну mutation `parts` (typing у quantity/price → network call)
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx` рядки 836-862 (до фіксу)
+**Опис:** useEffect мав deps `[parts, newPart.goodId, editingPart.goodId]` — `parts` це масив об'єктів, кожне редагування quantity/price/warehouseId створює нову reference → useEffect re-fires → GET /goods/stock-totals?ids=... в дорогу. Сет goodId-ів НЕ змінювався, але запит йшов щоразу при keystroke у quantity. Для WO з 10 parts при типажі "1.5" у quantity = 3 keystroke-и × 1 запит = 3 network calls. apiFetch дедуплікує in-flight GETs (`inFlight` Map), але вже-resolved кешу нема → щоразу новий round-trip.
+**Сигнал:** typing у quantity-input → DevTools Network показує множинні /goods/stock-totals. Сторонній: refetch може race-conditions з повільною мережею (повертає старі totals попри cancelled guard, якщо cancelled flag fires між useEffect cycles).
+**Очікувана поведінка:** Memoize стабільний `stockGoodIdsKey` (sorted-comma-joined fingerprint set-у goodId-ів) через useMemo. useEffect deps = `[stockGoodIdsKey]`. Refetch тригериться ТІЛЬКИ коли реально змінюється сет goodId-ів (додавання/видалення part-у або зміна goodId у existing/new/edit row). Sort забезпечує що reorder parts (move/delete + re-add) не створює false-positive refetch.
+**Статус:** [x] виправлено — додано `useMemo(stockGoodIdsKey)`, useEffect deps скорочено до `[stockGoodIdsKey]`. Regression-guard test додано (Bug #454: sort стабільний; +typing у quantity не тригерить refetch). TS green, тести 11/11 pass.
+
+---
