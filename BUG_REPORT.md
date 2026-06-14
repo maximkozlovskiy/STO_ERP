@@ -14514,3 +14514,64 @@ dialog "Нове замовлення постачальнику" [ref=e460]:  #
 8. RECEIPT без рядків → BadRequestException, createMovement не викликаний
 9. Doc не знайдено → NotFoundException
 10. MOVEMENT_TYPES['RECEIPT'] resolved → НЕ кидає "Непідтримуваний тип документу"
+
+---
+
+## Session 2026-06-15 — PurchaseOrder FSM transition coverage (post-821de2d2)
+
+**Запит від користувача:** перевірити покриття для recent PO + RECEIPT змін, особливо «тести для FSM transition у purchase orders».
+
+**Контекст:**
+
+- commit `115fea9e` додав «FSM arrows always visible» у `PurchaseOrderCreateModal` — фронт тепер може ініціювати будь-який FSM-перехід.
+- commit `32c6115f` додав stale-contract auto-clear у `service.update()` — покрито Bugs #473-#477.
+- commit `d059b9a9 + a067ec21` додав `StockDocumentType.RECEIPT` — покрито Bugs #478-#480.
+- Прогалина: `PurchaseOrdersService.transition()` (FSM map `PO_TRANSITIONS`, `assertFsmTransition`) і `POST /purchase-orders/:id/transition` controller endpoint не мали ЖОДНОГО unit/contract тесту. Frontend без обмежень випускав transition events на сервер.
+
+### Знайдено баги
+
+🐛 **#481 [MEDIUM]** — `PurchaseOrdersService.transition()` без regression-guards (FSM map `PO_TRANSITIONS`).
+
+- **Сигнал:** `grep -n "describe.*transition\|transition(" apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts` → 0 matches.
+- **Ризик:** видалення `PO_TRANSITIONS[STATE] = [...]` або заміна `assertFsmTransition()` на голий `tx.purchaseOrder.update({ status })` пройде CI зеленим — runtime отримає silently corrupted FSM (можна перевести `RECEIVED → DRAFT` без error, або `DRAFT → RECEIVED` skipping `ORDERED`).
+- **Severity:** MEDIUM (silent data corruption у документообігу; вплив на settlements/inventory CRITICAL якщо transitіon отриманий без перевірки після receive).
+- **Статус:** [x] виправлено — додано describe-блок `PurchaseOrdersService.transition — FSM map` з 14 кейсами:
+  - 6 allowed transitions: DRAFT→ORDERED, DRAFT→CANCELLED, ORDERED→PARTIAL, ORDERED→RECEIVED, PARTIAL→RECEIVED, PARTIAL→CANCELLED.
+  - 5 forbidden transitions: RECEIVED→DRAFT, CANCELLED→DRAFT, DRAFT→PARTIAL (skip), DRAFT→RECEIVED (skip), ORDERED→DRAFT (reverse).
+  - 3 edge cases: PO не знайдено → NotFoundException; tenant isolation (orgId+deletedAt у where першого findFirst); $transaction обгортає весь FSM перехід з explicit timeout.
+
+🐛 **#482 [MEDIUM]** — `POST /purchase-orders/:id/transition` HTTP endpoint без contract-coverage.
+
+- **Сигнал:** `grep -n "transition" apps/api/src/modules/purchase-orders/purchase-orders.contract.spec.ts` → лише `transition: vi.fn()` mock declaration на рядку 22; жодного `describe('POST /:id/transition')` block.
+- **Ризик:** видалення `@Body() dto: TransitionPurchaseOrderDto` або зміна route path не ловиться TS (декоратори у NestJS opacо для tsc-noEmit). Видалення `@IsEnum(PurchaseOrderStatus)` з DTO дозволить будь-який string у status — service не валідує enum (assertFsmTransition очікує валідну enum-value).
+- **Severity:** MEDIUM (паралельне покриття для Bug #481 на іншому рівні).
+- **Статус:** [x] виправлено — додано describe-блок `POST /purchase-orders/:id/transition` з 9 кейсами:
+  - 3 happy paths: status=ORDERED → 201, status=CANCELLED → 201, status=RECEIVED → 201 (з різними service-result mocks).
+  - 2 DTO validation: невалідний status → 400 (IsEnum whitelist), відсутній status → 400 (IsEnum required).
+  - 4 cross-cutting: не-UUID id → 400 (ParseUUIDPipe), без JWT → 403, forbidden FSM (DRAFT→PARTIAL) → 400 (BadRequestException), PO не знайдено → 404 (NotFoundException).
+
+### Перевірено і чисто
+
+- ✅ TypeScript: api/web/shared — 0 errors.
+- ✅ `service.update()` має повний tenant-isolation: `findFirst({ id, orgId, deletedAt: null })` для po, `counterparty.findFirst({ id, orgId, deletedAt: null })` для нового supplier, `warehouse.findFirst({ id, orgId, deletedAt: null })` для нового warehouse, `counterpartyContract.findFirst({ id, orgId, counterpartyId: effectiveSupplierId, contractType: 'PURCHASE', deletedAt: null })` для contract. Покрито Bugs #473-#476.
+- ✅ `service.update()` — contract auto-clear на supplier change (Branch 3) покрито Bug #473. Explicit null-clear (Branch 2) покрито Bug #474. Cross-supplier contract rejection (Branch 1) покрито Bug #476.
+- ✅ `UpdatePurchaseOrderDto.contractId` — `@ValidateIf((_, v) => v !== null) @IsUUID()` дозволяє explicit null від frontend (clear контракту). Покрито Bug #477.
+- ✅ Stock-documents page tab bar — `types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT']` містить RECEIPT (рядок 337). Перевірено `apps/web/src/app/(app)/stock-documents/page.tsx`.
+- ✅ `StockDocumentsService.transition(RECEIPT → CONFIRMED)` — покрито Bug #480 (6 кейсів у `stock-documents.service.spec.ts`).
+- ✅ `StockDoc` interface у page.tsx — `branchName: string | null`, `confirmedAt?: string | null` (узгоджено з backend DTO у sync commit 821de2d2).
+
+### Файли змінено
+
+- `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts` — +14 кейсів у новому describe-блоку «PurchaseOrdersService.transition — FSM map».
+- `apps/api/src/modules/purchase-orders/purchase-orders.contract.spec.ts` — +9 кейсів у новому describe-блоку «POST /purchase-orders/:id/transition».
+
+### Підсумок сесії
+
+- Знайдено багів: 2 (обидва MEDIUM — test-coverage gaps для FSM transition).
+- Виправлено: 2.
+- Залишилось: 0.
+- TypeScript (API/web/shared): ✅ 0 errors.
+- Unit (API baseline → after): 797 → 820 (+23 tests, 61 files).
+- Unit (Web): 423 passed (39 files).
+- Contract тести для PATCH з supplierId/warehouseId/contractId: ✅ покрито Bugs #475-#477 (попередня сесія) + Bug #482 для POST transition.
+- Тести для FSM transition: ✅ покрито Bug #481 (14 service + 9 contract = 23 нові кейси).

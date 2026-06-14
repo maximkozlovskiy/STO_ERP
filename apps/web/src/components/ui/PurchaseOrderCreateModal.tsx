@@ -243,7 +243,7 @@ export function PurchaseOrderCreateModal({
       setForm({ supplierId: '', warehouseId: '', notes: '', documentDate: kyivToday() });
       setSupplierDisplay('');
     }
-  }, [open, purchaseOrderId]);
+  }, [open, purchaseOrderId, isEditMode]);
 
   // Load PO data in edit mode
   useEffect(() => {
@@ -291,7 +291,7 @@ export function PurchaseOrderCreateModal({
     return () => {
       cancelled = true;
     };
-  }, [open, purchaseOrderId]);
+  }, [open, purchaseOrderId, isEditMode]);
 
   // Auto-collapse header when adding lines
   useEffect(() => {
@@ -336,9 +336,14 @@ export function PurchaseOrderCreateModal({
 
   // ── FSM ───────────────────────────────────────────────────────────────────
 
-  const allowedTransitions = isEditMode
-    ? (PO_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
-    : EMPTY_TRANSITIONS;
+  // Memoize allowedTransitions itself to keep referential stability (each render
+  // would otherwise produce a fresh fallback array). This also lets the prev/next
+  // useMemo below depend on `allowedTransitions` directly without thrashing.
+  const allowedTransitions = useMemo<readonly string[]>(
+    () =>
+      isEditMode ? (PO_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS) : EMPTY_TRANSITIONS,
+    [currentStatus, isEditMode],
+  );
 
   const { statusPrevStep, statusNextStep } = useMemo(() => {
     const curIdx = PO_STATUS_ORDER.indexOf(currentStatus);
@@ -354,7 +359,7 @@ export function PurchaseOrderCreateModal({
       (s: string) => PO_STATUS_ORDER.indexOf(s) > curIdx,
     );
     return { statusPrevStep, statusNextStep };
-  }, [currentStatus, isEditMode]);
+  }, [currentStatus, allowedTransitions]);
 
   const doTransition = async (newStatus: string) => {
     if (!purchaseOrderId) return;

@@ -887,3 +887,240 @@ describe('PurchaseOrdersService.update — contract resolution', () => {
     expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
   });
 });
+
+// Bug #481: regression guards для transition() — FSM map PO_TRANSITIONS + assertFsmTransition.
+// Commit 115fea9e (feat(purchase-orders): show all fields, editable supplier/warehouse/contract
+// in DRAFT, FSM arrows always visible) виставив "FSM arrows always visible" у фронті — без
+// будь-яких backend unit-тестів на FSM-перехід. Видалення PO_TRANSITIONS[STATE] = [...]
+// або заміна assertFsmTransition на голий tx.update({ status }) пройде CI зеленим,
+// runtime отримає silently corrupted FSM (можна перевести RECEIVED→DRAFT без error).
+// Без цих guards: майбутній refactor FSM-map або "FSM arrows always visible" feature
+// (commit 115fea9e) може посилати недозволений status зі фронту → бекенд silently апдейтить
+// → broken invariant.
+describe('PurchaseOrdersService.transition — FSM map', () => {
+  let service: PurchaseOrdersService;
+  let prisma: {
+    purchaseOrder: {
+      findFirst: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
+    };
+    $transaction: ReturnType<typeof vi.fn>;
+  };
+
+  const ORG = 'org-fsm';
+  const PO_ID = '88888888-8888-4888-8888-888888888888';
+
+  // findOne shape — викликається після transition для return
+  const findOneResult = {
+    id: PO_ID,
+    orgId: ORG,
+    number: 'PO-FSM',
+    supplierId: 'supplier-x',
+    warehouseId: 'warehouse-x',
+    contractId: null,
+    totalAmount: 0,
+    notes: null,
+    documentDate: new Date('2026-06-15'),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    supplier: { firstName: 'S', lastName: '', companyName: null },
+    warehouse: { name: 'W' },
+    contract: null,
+    lines: [],
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      purchaseOrder: {
+        findFirst: vi.fn(),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      $transaction: vi.fn().mockImplementation((arg: unknown) => {
+        if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+        return Promise.resolve(arg);
+      }),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        PurchaseOrdersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: InventoryService, useValue: {} },
+        { provide: SettlementsService, useValue: {} },
+        { provide: DocumentNumberService, useValue: {} },
+        { provide: PricingService, useValue: {} },
+      ],
+    }).compile();
+    service = module.get(PurchaseOrdersService);
+
+    // service.transition() кличе findOne() в return — мокаємо обидва findFirst-и
+    // у одному mock-runner-і шляхом resequenced returns.
+  });
+
+  // ── Allowed transitions ───────────────────────────────────────────────────
+
+  it('Bug #481: DRAFT → ORDERED дозволено (PO_TRANSITIONS map)', async () => {
+    // first findFirst — у tx.purchaseOrder.findFirst у transition(); second — findOne() return
+    prisma.purchaseOrder.findFirst
+      .mockResolvedValueOnce({ status: PurchaseOrderStatus.DRAFT })
+      .mockResolvedValueOnce(findOneResult);
+
+    await service.transition(ORG, PO_ID, PurchaseOrderStatus.ORDERED);
+
+    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG },
+      data: { status: PurchaseOrderStatus.ORDERED },
+    });
+  });
+
+  it('Bug #481: DRAFT → CANCELLED дозволено', async () => {
+    prisma.purchaseOrder.findFirst
+      .mockResolvedValueOnce({ status: PurchaseOrderStatus.DRAFT })
+      .mockResolvedValueOnce(findOneResult);
+
+    await service.transition(ORG, PO_ID, PurchaseOrderStatus.CANCELLED);
+
+    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG },
+      data: { status: PurchaseOrderStatus.CANCELLED },
+    });
+  });
+
+  it('Bug #481: ORDERED → PARTIAL дозволено', async () => {
+    prisma.purchaseOrder.findFirst
+      .mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED })
+      .mockResolvedValueOnce(findOneResult);
+
+    await service.transition(ORG, PO_ID, PurchaseOrderStatus.PARTIAL);
+
+    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG },
+      data: { status: PurchaseOrderStatus.PARTIAL },
+    });
+  });
+
+  it('Bug #481: ORDERED → RECEIVED дозволено', async () => {
+    prisma.purchaseOrder.findFirst
+      .mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED })
+      .mockResolvedValueOnce(findOneResult);
+
+    await service.transition(ORG, PO_ID, PurchaseOrderStatus.RECEIVED);
+
+    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG },
+      data: { status: PurchaseOrderStatus.RECEIVED },
+    });
+  });
+
+  it('Bug #481: PARTIAL → RECEIVED дозволено', async () => {
+    prisma.purchaseOrder.findFirst
+      .mockResolvedValueOnce({ status: PurchaseOrderStatus.PARTIAL })
+      .mockResolvedValueOnce(findOneResult);
+
+    await service.transition(ORG, PO_ID, PurchaseOrderStatus.RECEIVED);
+
+    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG },
+      data: { status: PurchaseOrderStatus.RECEIVED },
+    });
+  });
+
+  it('Bug #481: PARTIAL → CANCELLED дозволено', async () => {
+    prisma.purchaseOrder.findFirst
+      .mockResolvedValueOnce({ status: PurchaseOrderStatus.PARTIAL })
+      .mockResolvedValueOnce(findOneResult);
+
+    await service.transition(ORG, PO_ID, PurchaseOrderStatus.CANCELLED);
+
+    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG },
+      data: { status: PurchaseOrderStatus.CANCELLED },
+    });
+  });
+
+  // ── Forbidden transitions ─────────────────────────────────────────────────
+
+  it('Bug #481: RECEIVED → DRAFT заборонено (термінальний статус)', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.RECEIVED });
+
+    await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.DRAFT)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+  });
+
+  it('Bug #481: CANCELLED → DRAFT заборонено (термінальний статус)', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.CANCELLED });
+
+    await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.DRAFT)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+  });
+
+  it('Bug #481: DRAFT → PARTIAL заборонено (FSM skip — потребує проходження ORDERED)', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.DRAFT });
+
+    await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.PARTIAL)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+  });
+
+  it('Bug #481: DRAFT → RECEIVED заборонено (FSM skip — потребує проходження ORDERED)', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.DRAFT });
+
+    await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.RECEIVED)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+  });
+
+  it('Bug #481: ORDERED → DRAFT заборонено (зворотний перехід)', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED });
+
+    await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.DRAFT)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+  });
+
+  // ── Edge cases ────────────────────────────────────────────────────────────
+
+  it('Bug #481: PO не знайдено → NotFoundException + ніяких write', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce(null);
+
+    await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.ORDERED)).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+  });
+
+  it('Bug #481: tenant isolation — findFirst отримує orgId+deletedAt у where', async () => {
+    prisma.purchaseOrder.findFirst
+      .mockResolvedValueOnce({ status: PurchaseOrderStatus.DRAFT })
+      .mockResolvedValueOnce(findOneResult);
+
+    await service.transition(ORG, PO_ID, PurchaseOrderStatus.ORDERED);
+
+    // первый findFirst у tx.transition() — потрібно orgId, deletedAt: null, id
+    expect(prisma.purchaseOrder.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { id: PO_ID, orgId: ORG, deletedAt: null },
+      select: { status: true },
+    });
+  });
+
+  it('Bug #481: $transaction обгортає весь FSM перехід з explicit timeout', async () => {
+    prisma.purchaseOrder.findFirst
+      .mockResolvedValueOnce({ status: PurchaseOrderStatus.DRAFT })
+      .mockResolvedValueOnce(findOneResult);
+
+    await service.transition(ORG, PO_ID, PurchaseOrderStatus.ORDERED);
+
+    // $transaction викликаний з callback + { timeout } options
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ timeout: expect.any(Number) }),
+    );
+  });
+});

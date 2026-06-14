@@ -241,7 +241,16 @@ export default function StockDocumentsPage() {
       setActiveSavedFilterId(preset.id);
       if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
     },
-    [saveFilter, typeFilter, statusFilter, showDeleted, dateFrom, dateTo, features.toastEnabled],
+    [
+      saveFilter,
+      typeFilter,
+      statusFilter,
+      showDeleted,
+      dateFrom,
+      dateTo,
+      features.toastEnabled,
+      setActiveSavedFilterId,
+    ],
   );
 
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(docs);

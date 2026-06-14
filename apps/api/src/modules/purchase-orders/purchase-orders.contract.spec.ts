@@ -380,4 +380,111 @@ describe('PurchaseOrders — HTTP Contract', () => {
       );
     });
   });
+
+  // Bug #482: regression guards для POST /:id/transition HTTP-contract.
+  // Commit 115fea9e "FSM arrows always visible" — фронт тепер може надсилати ЛЮБИЙ
+  // PurchaseOrderStatus при transition. TransitionPurchaseOrderDto має @IsEnum guard,
+  // service кидає BadRequestException на forbidden FSM-перехід — обидва шари
+  // покриваються нижче.
+  describe('POST /purchase-orders/:id/transition', () => {
+    beforeEach(() => {
+      serviceMock.transition.mockResolvedValue({
+        id: VALID_UUID,
+        status: 'ORDERED',
+      });
+    });
+
+    it('Bug #482: POST з valid status → 201, service.transition отримує (orgId, id, status)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/purchase-orders/${VALID_UUID}/transition`,
+        payload: { status: 'ORDERED' },
+      });
+      expect(res.statusCode).toBe(201);
+      expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'ORDERED');
+    });
+
+    it('Bug #482: POST з status=CANCELLED → 201 (термінальний з DRAFT)', async () => {
+      serviceMock.transition.mockResolvedValueOnce({ id: VALID_UUID, status: 'CANCELLED' });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/purchase-orders/${VALID_UUID}/transition`,
+        payload: { status: 'CANCELLED' },
+      });
+      expect(res.statusCode).toBe(201);
+      expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'CANCELLED');
+    });
+
+    it('Bug #482: POST з status=RECEIVED → 201 (Bug #481 ORDERED→RECEIVED FSM happy-path)', async () => {
+      serviceMock.transition.mockResolvedValueOnce({ id: VALID_UUID, status: 'RECEIVED' });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/purchase-orders/${VALID_UUID}/transition`,
+        payload: { status: 'RECEIVED' },
+      });
+      expect(res.statusCode).toBe(201);
+      expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'RECEIVED');
+    });
+
+    it('Bug #482: POST з невалідним status → 400 (IsEnum whitelist)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/purchase-orders/${VALID_UUID}/transition`,
+        payload: { status: 'INVALID_STATUS' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.transition).not.toHaveBeenCalled();
+    });
+
+    it('Bug #482: POST з відсутнім status → 400 (IsEnum required)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/purchase-orders/${VALID_UUID}/transition`,
+        payload: {},
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.transition).not.toHaveBeenCalled();
+    });
+
+    it('Bug #482: POST з не-UUID id → 400 (ParseUUIDPipe)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/purchase-orders/not-a-uuid/transition',
+        payload: { status: 'ORDERED' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.transition).not.toHaveBeenCalled();
+    });
+
+    it('Bug #482: POST без JWT → 403', async () => {
+      jwtAllow = false;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/purchase-orders/${VALID_UUID}/transition`,
+        payload: { status: 'ORDERED' },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(serviceMock.transition).not.toHaveBeenCalled();
+    });
+
+    it('Bug #482: forbidden FSM (DRAFT→PARTIAL) → 400 з service BadRequestException', async () => {
+      serviceMock.transition.mockRejectedValueOnce(new BadRequestException('Недозволений перехід'));
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/purchase-orders/${VALID_UUID}/transition`,
+        payload: { status: 'PARTIAL' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('Bug #482: 404 коли PO не знайдено', async () => {
+      serviceMock.transition.mockRejectedValueOnce(new NotFoundException('Замовлення не знайдено'));
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/purchase-orders/${VALID_UUID}/transition`,
+        payload: { status: 'ORDERED' },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
 });
