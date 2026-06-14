@@ -11,8 +11,8 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 //   GET /stock-items/by-document
 //   GET /stock-items/by-batch
 // Покриває: route ordering (PERED :id), ParseUUIDPipe({ optional: true }),
-// проброс параметрів у InventoryService, RBAC (MECHANIC має доступ),
-// JWT-блокування (403).
+// проброс параметрів у InventoryService, RBAC (by-document відкритий MECHANIC,
+// by-batch — НІ, бо повертає costPrice/salePrice), JWT-блокування (403).
 
 const inventoryMock = {
   byDocument: vi.fn(),

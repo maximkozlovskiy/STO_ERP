@@ -72,7 +72,10 @@ export class StockItemsController {
   }
 
   @Get('by-batch')
-  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC')
+  // MECHANIC excluded — response includes batch.costPrice/salePrice. Pricing
+  // exposure is restricted to OWNER/ADMIN/STOREKEEPER/ACCOUNTANT/RECEPTIONIST
+  // (RECEPTIONIST already sees salePrice on the goods-list endpoint).
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Залишки по партіях (партія → товар → рухи)' })
   @ApiQuery({ name: 'warehouseId', required: false })
   @ApiQuery({ name: 'goodId', required: false })

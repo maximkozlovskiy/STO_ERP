@@ -484,10 +484,13 @@ export class InventoryService {
       take: 500,
     });
 
-    // Group by PO key: poNumber + warehouseName
+    // Group by PO key: poNumber + warehouseName.
+    // BatchConsumption.documentType + documentId — NON-null per schema
+    // (packages/database/prisma/schema.prisma:1212-1213); keep types tight so
+    // frontend `BatchConsumptionRow` (non-null) stays in sync.
     type ConsumptionRow = {
-      documentType: string | null;
-      documentId: string | null;
+      documentType: string;
+      documentId: string;
       docLabel: string;
       quantity: number;
       createdAt: Date;

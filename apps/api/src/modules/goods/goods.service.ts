@@ -666,16 +666,40 @@ export class GoodsService {
   async stockTotals(
     orgId: string,
     goodIds: string[],
-  ): Promise<{ goodId: string; totalQuantity: number }[]> {
+  ): Promise<
+    {
+      goodId: string;
+      totalQuantity: number;
+      byWarehouse: { warehouseId: string; quantity: number }[];
+    }[]
+  > {
     if (goodIds.length === 0) return [];
-    const rows = await this.prisma.stockItem.groupBy({
-      by: ['goodId'],
-      where: { orgId, goodId: { in: goodIds }, deletedAt: null },
-      _sum: { quantity: true },
-    });
-    return rows.map(r => ({
+    const [totals, byWarehouse] = await Promise.all([
+      this.prisma.stockItem.groupBy({
+        by: ['goodId'],
+        where: { orgId, goodId: { in: goodIds }, deletedAt: null },
+        _sum: { quantity: true },
+      }),
+      this.prisma.stockItem.findMany({
+        where: { orgId, goodId: { in: goodIds }, deletedAt: null },
+        select: { goodId: true, warehouseId: true, quantity: true },
+        // Defensive cap: goodIds is controller-capped at 100; with typical
+        // ≤10 warehouses per org the result is ~1000 rows. Hard-cap protects
+        // against pathological tenants with hundreds of warehouses (and meets
+        // sto-review §1 findMany-must-have-take rule).
+        take: 2000,
+      }),
+    ]);
+    const whMap = new Map<string, { warehouseId: string; quantity: number }[]>();
+    for (const r of byWarehouse) {
+      const key = r.goodId;
+      if (!whMap.has(key)) whMap.set(key, []);
+      whMap.get(key)!.push({ warehouseId: r.warehouseId, quantity: Number(r.quantity) });
+    }
+    return totals.map(r => ({
       goodId: r.goodId,
       totalQuantity: Number(r._sum.quantity ?? 0),
+      byWarehouse: whMap.get(r.goodId) ?? [],
     }));
   }
 }

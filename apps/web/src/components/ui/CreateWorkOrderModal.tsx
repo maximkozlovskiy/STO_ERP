@@ -516,6 +516,8 @@ export function CreateWorkOrderModal({
   const [lines, setLines] = useState<LocalLine[]>([]);
   const [parts, setParts] = useState<LocalPart[]>([]);
   const [stockTotalsMap, setStockTotalsMap] = useState<Map<string, number>>(new Map());
+  // key = `${goodId}:${warehouseId}` → quantity on that specific warehouse
+  const [stockWarehouseMap, setStockWarehouseMap] = useState<Map<string, number>>(new Map());
 
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
 
@@ -854,18 +856,30 @@ export function CreateWorkOrderModal({
   useEffect(() => {
     if (!stockGoodIdsKey) {
       setStockTotalsMap(new Map());
+      setStockWarehouseMap(new Map());
       return;
     }
     const goodIds = stockGoodIdsKey.split(',');
     let cancelled = false;
-    void apiFetch<{ goodId: string; totalQuantity: number }[]>(
-      `/goods/stock-totals?ids=${stockGoodIdsKey}`,
-    )
+    void apiFetch<
+      {
+        goodId: string;
+        totalQuantity: number;
+        byWarehouse: { warehouseId: string; quantity: number }[];
+      }[]
+    >(`/goods/stock-totals?ids=${stockGoodIdsKey}`)
       .then(rows => {
         if (cancelled) return;
-        const next = new Map<string, number>(goodIds.map(id => [id, 0]));
-        for (const r of rows) next.set(r.goodId, r.totalQuantity);
-        setStockTotalsMap(next);
+        const nextTotals = new Map<string, number>(goodIds.map(id => [id, 0]));
+        const nextWh = new Map<string, number>();
+        for (const r of rows) {
+          nextTotals.set(r.goodId, r.totalQuantity);
+          for (const w of r.byWarehouse) {
+            nextWh.set(`${r.goodId}:${w.warehouseId}`, w.quantity);
+          }
+        }
+        setStockTotalsMap(nextTotals);
+        setStockWarehouseMap(nextWh);
       })
       .catch(err => {
         if (cancelled) return;
@@ -2609,7 +2623,7 @@ export function CreateWorkOrderModal({
                       <colgroup>
                         <col />
                         <col className="w-44" />
-                        <col className="w-16" />
+                        <col className="w-20" />
                         <col className="w-20" />
                         <col className="w-28" />
                         <col className="w-24" />
@@ -2625,7 +2639,7 @@ export function CreateWorkOrderModal({
                           <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                             Склад
                           </th>
-                          <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                          <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                             На складі
                           </th>
                           <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
@@ -2718,10 +2732,24 @@ export function CreateWorkOrderModal({
                                       ))}
                                     </Select>
                                   </td>
-                                  <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
-                                    {editingPart.goodId
-                                      ? (stockTotalsMap.get(editingPart.goodId) ?? '—')
-                                      : '—'}
+                                  <td className="px-2 py-1.5 text-left tabular-nums text-[12px] text-muted-foreground">
+                                    {editingPart.goodId ? (
+                                      <>
+                                        <span>
+                                          {editingPart.warehouseId
+                                            ? (stockWarehouseMap.get(
+                                                `${editingPart.goodId}:${editingPart.warehouseId}`,
+                                              ) ?? 0)
+                                            : '—'}
+                                        </span>
+                                        <span className="opacity-40">/</span>
+                                        <span className="opacity-60">
+                                          {stockTotalsMap.get(editingPart.goodId) ?? 0}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      '—'
+                                    )}
                                   </td>
                                   <td className="px-2 py-1.5">
                                     <Input
@@ -2825,8 +2853,22 @@ export function CreateWorkOrderModal({
                                   <td className="px-2 py-1.5 text-muted-foreground truncate">
                                     {wh?.name ?? '—'}
                                   </td>
-                                  <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
-                                    {part.goodId ? (stockTotalsMap.get(part.goodId) ?? '—') : '—'}
+                                  <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
+                                    {part.goodId ? (
+                                      <>
+                                        <span>
+                                          {stockWarehouseMap.get(
+                                            `${part.goodId}:${part.warehouseId}`,
+                                          ) ?? 0}
+                                        </span>
+                                        <span className="opacity-40">/</span>
+                                        <span className="opacity-60">
+                                          {stockTotalsMap.get(part.goodId) ?? 0}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      '—'
+                                    )}
                                   </td>
                                   <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                                     {part.quantity}
@@ -2933,8 +2975,24 @@ export function CreateWorkOrderModal({
                                 ))}
                               </Select>
                             </td>
-                            <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
-                              {newPart.goodId ? (stockTotalsMap.get(newPart.goodId) ?? '—') : '—'}
+                            <td className="px-2 py-1.5 text-left tabular-nums text-[12px] text-muted-foreground">
+                              {newPart.goodId ? (
+                                <>
+                                  <span>
+                                    {newPart.warehouseId
+                                      ? (stockWarehouseMap.get(
+                                          `${newPart.goodId}:${newPart.warehouseId}`,
+                                        ) ?? 0)
+                                      : '—'}
+                                  </span>
+                                  <span className="opacity-40">/</span>
+                                  <span className="opacity-60">
+                                    {stockTotalsMap.get(newPart.goodId) ?? 0}
+                                  </span>
+                                </>
+                              ) : (
+                                '—'
+                              )}
                             </td>
                             <td className="px-2 py-1.5">
                               <Input
