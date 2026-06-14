@@ -976,6 +976,35 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-14 — useEffect deps на array-of-object refetches network на кожну mutation НЕ-key поля (Bug #454) — frontend / perf / network-overuse
+
+**Сигнал:** useEffect фетчить data за деякими "key" полями (наприклад `goodId` set з масиву об'єктів), але має у deps сам масив (`[parts, ...]`) → typing у НЕ-key поле (quantity, price, name) створює нову reference масиву → effect re-fires → network call дублюється на кожен keystroke.
+**Причина виникнення:** автор бачить що deps має містити `parts` бо ефект «читає» `parts.map(p => p.goodId)`. ESLint react-hooks/exhaustive-deps вимагає `parts`. Але семантично — потрібен ТІЛЬКИ derived set.
+**Підхід до виявлення:**
+
+- grep: `useEffect.*apiFetch` де deps містить array prop/state + всередині `.map(/.filter()` для derived ключа
+- runtime: open DevTools Network, type у quantity/price input → observe множинні calls до того ж endpoint
+- code-review: будь-який `[arrayOfObjects, otherKey1, otherKey2]` де effect body виконує `.map(x => x.specificField)` — підозрілий
+  **Підхід до фіксу:** memoize stable string fingerprint `useMemo(() => sortedSetOfKeys.join(','), [array, ...])` → useEffect deps = `[fingerprint]`. Sort обов'язковий для уникнення false-positive при reorder. Apply same pattern для будь-якого derived-set ефекту.
+  **Severity:** MEDIUM (perf-only; не data corruption, але dev → production scaling cost). HIGH якщо ефект має race-conditions (cancelled flag insufficient при швидких циклах) або endpoint дорогий (групує по 100+ елементах).
+  **Де шукати ще:** `BulkActionsBar`, list pages з batch-select (ids → fetch metadata), filter sidebar з debounce, settings sub-screens з `Promise.all(...).then(setMap)`.
+
+---
+
+### 2026-06-14 — Новий endpoint без service spec + contract spec при доданні фічі (Bugs #452, #453) — test-coverage / regression-guard gap
+
+**Сигнал:** commit з новим `@Get('endpoint')` у controller + новим method у service → grep по spec-файлу для нового method → 0 матчів. Особливо коли endpoint потрапляє у hot-path UI (modal, list-page filter).
+**Причина виникнення:** "це маленький endpoint, перевірю руками"; автор робить browser-test через Network tab → працює → не пише spec. Перший review (sto-review) fix-ить guard-и (UUID validation, etc.) АЛЕ без spec-ів регресія цих guard-ів пройде CI green.
+**Підхід до виявлення:**
+
+- `git diff HEAD~N HEAD --name-only -- "apps/api/src/modules/**/*.controller.ts" "apps/api/src/modules/**/*.service.ts"` → для кожного нового method → grep у парному `.spec.ts`
+- список пар: `find apps/api/src/modules -name "*.controller.ts"` для кожного → перевірити чи є `*.contract.spec.ts` у тій же папці
+  **Підхід до фіксу:** додати describe('newMethod') у service spec з 5-7 кейсами (empty input, tenant isolation, soft-delete, edge null/0, cross-tenant); створити окремий `*-<feature>.contract.spec.ts` з 10-12 HTTP-кейсами (validation 400, RBAC 403, boundary, dups, malformed).
+  **Severity:** MEDIUM (release-blocker якщо guard CRITICAL — UUID validation, ліміти; LOW якщо тільки happy path).
+  **Де шукати ще:** будь-який `feat(<scope>):` commit без парного `test(<scope>):` або `spec` modifications. Auto-rule: commit що додає метод у service МАЄ мати diff у `<service>.spec.ts`.
+
+---
+
 ### 2026-06-11 — Shared FE-BE константа: backend inline literals замість спільної const (Bug #432) — backend / FE-BE drift
 
 **Сигнал:** shared const у `packages/shared/src/constants/*.ts` оновлена для FE, але backend service має inline `['STATUS_A', 'STATUS_B']`.
