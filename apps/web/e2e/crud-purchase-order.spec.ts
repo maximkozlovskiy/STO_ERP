@@ -41,17 +41,17 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     // Вибрати постачальника через EntityPickerField → SearchPickerModal.
     // У EntityPickerField є кнопка з aria-label="Обрати" (MoreHorizontal).
     await modal.locator('button[aria-label="Обрати"]').first().click();
+    // SearchPickerModal має унікальний search input "Назва, телефон, компанія...".
+    // Через aria-labelledby ID collision усі модалки мають однаковий accessible name.
     const supplierPicker = page
       .locator('[role="dialog"]')
-      .filter({ hasText: 'Оберіть постачальника' })
+      .filter({ has: page.locator('input[placeholder="Назва, телефон, компанія..."]') })
       .first();
     await expect(supplierPicker).toBeVisible({ timeout: 5_000 });
-    // SearchPickerModal: кожен результат — <button class="w-full text-left ...">.
     const firstSupplier = supplierPicker.locator('button.w-full.text-left').first();
-    if (await firstSupplier.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await firstSupplier.click();
-      await expect(supplierPicker).not.toBeVisible({ timeout: 5_000 });
-    }
+    await expect(firstSupplier).toBeVisible({ timeout: 5_000 });
+    await firstSupplier.click();
+    await expect(supplierPicker).not.toBeVisible({ timeout: 5_000 });
 
     // Вибрати склад — перший combobox після постачальника
     const warehouseSelect = modal
@@ -63,35 +63,40 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       if (opts > 1) await warehouseSelect.selectOption({ index: 1 });
     }
 
-    // Додати позицію: кнопка "Додати позицію" або "+"
+    // Додати позицію: кнопка "Додати товар" (modal redesign e6d2e148 — "Додати товар", не "Додати позицію")
     const addLineBtn = modal
-      .locator(
-        'button:has-text("Додати позицію"), button:has-text("Додати товар"), button:has-text("+")',
-      )
+      .locator('button:has-text("Додати товар"), button:has-text("Додати позицію")')
       .first();
     if (await addLineBtn.isVisible({ timeout: 3_000 })) {
       await addLineBtn.click();
-      // Заповнити товар через EntityPickerField → SearchPickerModal "Оберіть товар"
-      const lineGoodPickerBtns = modal.locator('button[aria-label="Обрати"]');
-      const lineGoodPicker = lineGoodPickerBtns.nth((await lineGoodPickerBtns.count()) - 1);
-      if (await lineGoodPicker.isVisible({ timeout: 2_000 }).catch(() => false)) {
-        await lineGoodPicker.click();
+      // У PO modal line input — окрема кнопка з текстом "Оберіть товар…" відкриває SearchPickerModal.
+      // Це НЕ EntityPickerField з aria-label="Обрати", а звичайна <button> у комірці.
+      const goodPickBtn = modal.locator('button:has-text("Оберіть товар")').first();
+      if (await goodPickBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await goodPickBtn.click();
+        // SearchPickerModal має унікальний search input з placeholder "Назва, артикул…".
+        // Через ID collision у aria-labelledby="modal-title" обидві модалки мають однаковий
+        // accessible name — фільтруємо за наявністю search-input.
         const goodPicker = page
           .locator('[role="dialog"]')
-          .filter({ hasText: 'Оберіть товар' })
+          .filter({ has: page.locator('input[placeholder="Назва, артикул…"]') })
           .first();
-        if (await goodPicker.isVisible({ timeout: 3_000 }).catch(() => false)) {
-          const firstGood = goodPicker.locator('button.w-full.text-left').first();
-          if (await firstGood.isVisible({ timeout: 3_000 }).catch(() => false)) {
-            await firstGood.click();
-            await expect(goodPicker).not.toBeVisible({ timeout: 5_000 });
-          }
-        }
+        await expect(goodPicker).toBeVisible({ timeout: 5_000 });
+        const firstGood = goodPicker.locator('button.w-full.text-left').first();
+        await expect(firstGood).toBeVisible({ timeout: 5_000 });
+        await firstGood.click();
+        await expect(goodPicker).not.toBeVisible({ timeout: 5_000 });
       }
-      const qtyInput = modal.locator('input[placeholder*="Кіл"]').first();
+      // К-сть і ціна — spinbutton/input number; placeholder для price = "0.00".
+      const qtyInput = modal.locator('input[type="number"]').first();
       if (await qtyInput.isVisible({ timeout: 2_000 })) await qtyInput.fill('1');
-      const priceInput = modal.locator('input[placeholder*="Ціна"]').first();
+      const priceInput = modal.getByPlaceholder('0.00').first();
       if (await priceInput.isVisible({ timeout: 2_000 })) await priceInput.fill('100');
+      // Натиснути "+" щоб додати рядок до lines.
+      const plusBtn = modal.locator('button:has(svg.lucide-plus)').last();
+      if (await plusBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await plusBtn.click();
+      }
     }
 
     const saveBtn = modal.locator('button:has-text("Створити замовлення")');

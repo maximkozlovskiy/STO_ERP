@@ -5,6 +5,7 @@ import {
   useCallback,
   useState,
   useRef,
+  useId,
   type ReactNode,
   type CSSProperties,
 } from 'react';
@@ -141,6 +142,12 @@ export function Modal({
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
   const { visible, state } = useAnimatedPresence(open);
+  // Bug fix (sto-tester): unique title id per Modal instance — without useId() multiple
+  // nested modals (e.g. CreateInvoiceModal opening SearchPickerModal) shared the same
+  // `id="modal-title"`, causing aria-labelledby ID collision: ALL dialogs adopted the
+  // FIRST h2 with that ID as their accessible name. E2E tests filtering by accessible
+  // name (`dialog "Оберіть товар"`) matched the wrong modal.
+  const titleId = useId();
 
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
@@ -172,7 +179,7 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      aria-labelledby={title ? 'modal-title' : undefined}
+      aria-labelledby={title ? titleId : undefined}
     >
       {/* Backdrop — анімується через [data-state] > [data-backdrop] у globals.css */}
       <div
@@ -201,7 +208,7 @@ export function Modal({
             <div className="flex flex-col gap-1">
               {title && (
                 <h2
-                  id="modal-title"
+                  id={titleId}
                   className="text-[16px] font-semibold text-foreground leading-tight tracking-[-0.01em]"
                 >
                   {title}

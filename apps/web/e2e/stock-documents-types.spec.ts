@@ -141,8 +141,11 @@ test.describe('Документи складу — TRANSFER (Переміщен�
     const row = page.locator(`table tbody tr:has-text("${doc.number}")`).first();
     if (await row.isVisible({ timeout: 10_000 })) {
       await row.click();
-      // Detail panel показує "Склад-призначення"
-      await expect(page.locator('text=Склад-призначення').first()).toBeVisible({ timeout: 8_000 });
+      // Modal redesign (commit e6d2e148): клік на рядок відкриває edit modal, у якому
+      // для TRANSFER показується лейбл "Склад призначення" (без дефіса) + Select зі складами.
+      const modal = page.locator('[role="dialog"]').first();
+      await expect(modal).toBeVisible({ timeout: 8_000 });
+      await expect(modal.locator('text=Склад призначення').first()).toBeVisible({ timeout: 8_000 });
     }
 
     await apiCall(page, 'DELETE', `/stock-documents/${doc.id}`);

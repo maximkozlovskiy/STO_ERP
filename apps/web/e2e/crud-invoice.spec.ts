@@ -41,20 +41,32 @@ test.describe('Рахунки — CRUD', () => {
     // Вибрати контрагента через EntityPickerField → SearchPickerModal.
     // У формі є кнопка з aria-label="Обрати" (MoreHorizontal "…").
     await modal.locator('button[aria-label="Обрати"]').first().click();
+    // SearchPickerModal: фільтруємо за унікальним search placeholder, оскільки aria-labelledby
+    // ID collision означає що обидві модалки мають однаковий accessible name.
     const picker = page
       .locator('[role="dialog"]')
-      .filter({ hasText: 'Оберіть контрагента' })
+      .filter({ has: page.locator('input[placeholder="Ім\'я, телефон, компанія..."]') })
       .first();
     await expect(picker).toBeVisible({ timeout: 5_000 });
-    // SearchPickerModal: кожен результат — <button class="w-full text-left ..."> у scrollable list.
     const firstResult = picker.locator('button.w-full.text-left').first();
-    if (await firstResult.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await firstResult.click();
-      await expect(picker).not.toBeVisible({ timeout: 5_000 });
-    }
+    await expect(firstResult).toBeVisible({ timeout: 5_000 });
+    await firstResult.click();
+    await expect(picker).not.toBeVisible({ timeout: 5_000 });
 
-    // Сума
-    await modal.getByPlaceholder('0.00').fill('100');
+    // Modal redesign (commit e6d2e148): немає окремого поля "Сума" — amount
+    // обчислюється з рядків (line items). Додаємо одну позицію через "Додати позицію".
+    const addLineBtn = modal.locator('button:has-text("Додати позицію")').first();
+    if (await addLineBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await addLineBtn.click();
+      // Поля рядка: опис (placeholder "Опис позиції…"), кіл-сть (input number), ціна (placeholder "0.00").
+      await modal.getByPlaceholder('Опис позиції…').fill('Тест послуга E2E');
+      const priceInput = modal.getByPlaceholder('0.00').first();
+      await priceInput.fill('100');
+      // Натиснути "+" щоб додати рядок до lines (кнопка Plus у кінці line input row).
+      // Знайти кнопку Plus яка стає enabled коли description заповнений.
+      const plusBtn = modal.locator('button:has(svg.lucide-plus)').last();
+      await plusBtn.click();
+    }
 
     const saveBtn = modal.locator('button:has-text("Створити рахунок")');
     const enabled = await saveBtn.isEnabled({ timeout: 5_000 }).catch(() => false);
@@ -156,10 +168,19 @@ test.describe('Рахунки — CRUD', () => {
     const row = page.locator(`table tbody tr:has-text("${inv.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
-    const sendBtn = page.locator('button:has-text("Надіслати")').first();
+    // Modal redesign (commit e6d2e148): клік на рядок відкриває edit modal з FSM steper.
+    // Next-step кнопка показує label цільового статусу (INVOICE_STATUS_LABELS),
+    // для DRAFT → next = SENT = "Надіслано". Транзиція виконується через цю кнопку.
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
+    const sendBtn = modal.locator('button:has-text("Надіслано")').first();
     await expect(sendBtn).toBeVisible({ timeout: 8_000 });
     await sendBtn.click();
-    await expect(page.locator('text=Надіслано').first()).toBeVisible({ timeout: 8_000 });
+    // Після transition статус (badge у середині steper) має показати "Надіслано".
+    // Чекаємо що current-status badge змінився — кнопка тепер показує наступний крок ("Оплачено" або "Прострочено").
+    await expect(
+      modal.locator('button:has-text("Оплачено"), button:has-text("Прострочено")').first(),
+    ).toBeVisible({ timeout: 8_000 });
 
     // Cleanup
     await page.evaluate(

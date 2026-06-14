@@ -133,11 +133,13 @@ test.describe('Рахунки — створення через UI', () => {
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 20_000 });
     await expect(modal.locator('h2:has-text("Новий рахунок")')).toBeVisible();
-    // Поля форми:
-    // Контрагент — EntityPickerField (placeholder text у span "Обрати контрагента…", не input).
-    // Сума — input з placeholder "0.00".
+    // Modal redesign (commit e6d2e148): окремого поля "Сума" немає — amount обчислюється
+    // з рядків (line items). Перевіряємо наявність полів шапки + кнопки "Додати позицію".
+    // Контрагент — EntityPickerField (input у searchMode з placeholder "Пошук контрагента…").
     await expect(modal.getByPlaceholder(/Пошук контрагента/)).toBeVisible();
-    await expect(modal.getByPlaceholder('0.00')).toBeVisible();
+    // Таблиця позицій + кнопка "Додати позицію"
+    await expect(modal.locator('th:has-text("ОПИС")').first()).toBeVisible();
+    await expect(modal.locator('button:has-text("Додати позицію")').first()).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(modal).not.toBeVisible({ timeout: 5_000 });
   });
@@ -150,8 +152,8 @@ test.describe('Рахунки — створення через UI', () => {
       .click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 20_000 });
-    // Лише сума — без контрагента кнопка має бути disabled
-    await modal.getByPlaceholder('0.00').fill('100');
+    // Modal redesign (commit e6d2e148): без контрагента кнопка "Створити рахунок" disabled
+    // (форма вимагає counterpartyId). Перевіряємо одразу після відкриття.
     const saveBtn = modal.locator('button:has-text("Створити рахунок")');
     await expect(saveBtn).toBeDisabled();
     await page.keyboard.press('Escape');
@@ -172,13 +174,13 @@ test.describe('Рахунки — створення через UI', () => {
 
     // Контрагент — EntityPickerField → SearchPickerModal (aria-label="Обрати" відкриває picker).
     await modal.locator('button[aria-label="Обрати"]').first().click();
+    // Через aria-labelledby ID collision усі модалки мають однаковий accessible name;
+    // фільтруємо за унікальним search input picker-а.
     const picker = page
       .locator('[role="dialog"]')
-      .filter({ hasText: 'Оберіть контрагента' })
+      .filter({ has: page.locator('input[placeholder="Ім\'я, телефон, компанія..."]') })
       .first();
     await expect(picker).toBeVisible({ timeout: 5_000 });
-    // SearchPickerModal: результати — <button class="w-full text-left ..."> у scrollable list.
-    // Фільтруємо by class signature замість text exclusion.
     const firstResult = picker.locator('button.w-full.text-left').first();
     if (!(await firstResult.isVisible({ timeout: 5_000 }).catch(() => false))) {
       return test.skip(true, 'Picker не знайшов контрагентів');
@@ -186,7 +188,13 @@ test.describe('Рахунки — створення через UI', () => {
     await firstResult.click();
     await expect(picker).not.toBeVisible({ timeout: 5_000 });
 
-    await modal.getByPlaceholder('0.00').fill('500');
+    // Modal redesign (commit e6d2e148): немає окремої "Сума" — додаємо одну позицію.
+    await modal.locator('button:has-text("Додати позицію")').first().click();
+    await modal.getByPlaceholder('Опис позиції…').fill('Тест E2E');
+    await modal.getByPlaceholder('0.00').first().fill('500');
+    // Натиснути "+" щоб додати рядок до lines.
+    await modal.locator('button:has(svg.lucide-plus)').last().click();
+
     const saveBtn = modal.locator('button:has-text("Створити рахунок")');
     await expect(saveBtn).toBeEnabled({ timeout: 5_000 });
     await saveBtn.click();
@@ -239,26 +247,29 @@ test.describe('Рахунки — Detail Panel', () => {
     await ctx.close();
   });
 
-  test('клік на рядок → Detail Panel відкривається', async ({ page }) => {
+  test('клік на рядок → Edit Modal відкривається', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
-    // Panel відображає номер рахунку
-    await expect(
-      page.locator(`[data-testid="detail-panel"], .detail-panel, aside`).first(),
-    ).toBeVisible({ timeout: 8_000 });
+    // Modal redesign (commit e6d2e148): клік на рядок відкриває edit modal (InvoiceCreateModal у edit-режимі).
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
+    // Заголовок модалки = номер рахунку
+    await expect(modal.locator(`h2:has-text("${invNumber}")`)).toBeVisible({ timeout: 5_000 });
   });
 
-  test('Detail Panel — вкладка «Основне» показує статус Чернетка', async ({ page }) => {
+  test('Edit Modal — статус Чернетка показується у steper-і', async ({ page }) => {
     if (!invId) return test.skip(true, 'Рахунок не створено');
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
-    // Badge «Чернетка» у панелі
-    await expect(page.locator('text=Чернетка').first()).toBeVisible({ timeout: 8_000 });
+    // Modal redesign (commit e6d2e148): badge «Чернетка» — у status steper модалки.
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
+    await expect(modal.locator('text=Чернетка').first()).toBeVisible({ timeout: 8_000 });
   });
 
   test('Detail Panel — кнопка «Надіслати» присутня для DRAFT', async ({ page }) => {
@@ -267,7 +278,11 @@ test.describe('Рахунки — Detail Panel', () => {
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
-    await expect(page.locator('button:has-text("Надіслати")').first()).toBeVisible({
+    // Modal redesign (commit e6d2e148): клік на рядок відкриває edit modal з FSM steper.
+    // Next-step кнопка показує label статусу-цілі (INVOICE_STATUS_LABELS) — для DRAFT це "Надіслано".
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
+    await expect(modal.locator('button:has-text("Надіслано")').first()).toBeVisible({
       timeout: 8_000,
     });
   });
@@ -278,18 +293,13 @@ test.describe('Рахунки — Detail Panel', () => {
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
-    const linesTab = page
-      .locator('button:has-text("Позиції"), [role="tab"]:has-text("Позиції")')
-      .first();
-    await expect(linesTab).toBeVisible({ timeout: 8_000 });
-    await linesTab.click();
-    // Empty state або список
-    await expect(
-      page
-        .locator('text=Немає позицій')
-        .or(page.locator('.rounded-lg.border.border-border'))
-        .first(),
-    ).toBeVisible({ timeout: 5_000 });
+    // Modal redesign (commit e6d2e148): немає окремої вкладки «Позиції» —
+    // таблиця рядків (ОПИС / К-СТЬ / ЦІНА / СУМА) рендериться інлайн у модалці.
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
+    await expect(modal.locator('th:has-text("ОПИС")').first()).toBeVisible({ timeout: 5_000 });
+    // Footer "Разом:" присутній (порожні lines дають "0.00 ₴")
+    await expect(modal.locator('text=Разом:').first()).toBeVisible({ timeout: 5_000 });
   });
 });
 
@@ -331,22 +341,20 @@ test.describe('Рахунки — FSM переходи', () => {
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
+    // Modal redesign (commit e6d2e148): клік на рядок відкриває edit modal.
+    // FSM-steper: next-step кнопка показує label цільового статусу. DRAFT → SENT = "Надіслано".
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
 
-    const sendBtn = page.locator('button:has-text("Надіслати")').first();
+    const sendBtn = modal.locator('button:has-text("Надіслано")').first();
     await expect(sendBtn).toBeVisible({ timeout: 8_000 });
     await sendBtn.click();
 
-    // Confirm dialog
-    const confirmBtn = page
-      .locator(
-        '[role="dialog"] button:has-text("Надіслати"), [role="dialog"] button:has-text("Підтвердити"), [role="dialog"] button:has-text("Так")',
-      )
-      .first();
-    if (await confirmBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await confirmBtn.click();
-    }
-
-    await expect(page.locator('text=Надіслано').first()).toBeVisible({ timeout: 10_000 });
+    // doTransition виконує API виклик без додаткового confirm — статус оновлюється у модалці.
+    // Після переходу next-step показує наступний крок ("Оплачено"); current — "Надіслано" (поряд як badge).
+    await expect(
+      modal.locator('button:has-text("Оплачено"), button:has-text("Прострочено")').first(),
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test('SENT → CANCELLED: клік «Скасувати» → badge «Скасовано»', async ({ page }) => {
@@ -355,32 +363,27 @@ test.describe('Рахунки — FSM переходи', () => {
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
+    // Modal redesign (commit e6d2e148): row.click() відкриває edit modal.
+    // Кнопка "Скасувати" — у footer модалки (destructive variant), доступна якщо CANCELLED у allowedTransitions.
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
 
-    // Перевірити поточний стан — якщо вже CANCELLED (попередній тест не переходив)
-    const alreadyCancelled = await page
+    // Перевірити поточний стан — якщо вже CANCELLED
+    const alreadyCancelled = await modal
       .locator('text=Скасовано')
       .first()
       .isVisible({ timeout: 2_000 })
       .catch(() => false);
     if (alreadyCancelled) return;
 
-    // Якщо SENT — є кнопка Скасувати
-    const cancelBtn = page.locator('button:has-text("Скасувати")').first();
+    const cancelBtn = modal.locator('button:has-text("Скасувати")').first();
     if (!(await cancelBtn.isVisible({ timeout: 5_000 }).catch(() => false))) {
-      return test.skip(true, 'Рахунок не у статусі SENT');
+      return test.skip(true, 'Кнопка Скасувати недоступна для поточного статусу');
     }
     await cancelBtn.click();
 
-    const confirmBtn = page
-      .locator(
-        '[role="dialog"] button:has-text("Скасувати"), [role="dialog"] button:has-text("Підтвердити"), [role="dialog"] button:has-text("Так")',
-      )
-      .first();
-    if (await confirmBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await confirmBtn.click();
-    }
-
-    await expect(page.locator('text=Скасовано').first()).toBeVisible({ timeout: 10_000 });
+    // doTransition виконується без додаткового confirm dialog.
+    await expect(modal.locator('text=Скасовано').first()).toBeVisible({ timeout: 10_000 });
   });
 });
 
@@ -423,7 +426,12 @@ test.describe('Рахунки — реєстрація оплати', () => {
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
+    // Modal redesign (commit e6d2e148): row.click() відкриває edit modal без кнопки "Оплатити".
+    // Кнопка "Оплатити" живе у detail panel — відкривається через hover + icon "Відкрити деталі".
+    await row.hover();
+    const detailsBtn = row.locator('button[title="Відкрити деталі"]').first();
+    await expect(detailsBtn).toBeVisible({ timeout: 5_000 });
+    await detailsBtn.click();
 
     const payBtn = page.locator('button:has-text("Оплатити")').first();
     await expect(payBtn).toBeVisible({ timeout: 8_000 });
@@ -495,7 +503,12 @@ test.describe('Рахунки — клонування', () => {
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
+    // Modal redesign (commit e6d2e148): row.click() відкриває edit modal без кнопки "Дублювати".
+    // Кнопка "Дублювати" живе у detail panel — відкривається через hover + icon "Відкрити деталі".
+    await row.hover();
+    const detailsBtn = row.locator('button[title="Відкрити деталі"]').first();
+    await expect(detailsBtn).toBeVisible({ timeout: 5_000 });
+    await detailsBtn.click();
 
     const cloneBtn = page.locator('button:has-text("Дублювати")').first();
     await expect(cloneBtn).toBeVisible({ timeout: 8_000 });
@@ -757,7 +770,12 @@ test.describe('Рахунки — PDF', () => {
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
+    // Modal redesign (commit e6d2e148): row.click() відкриває edit modal без кнопки PDF.
+    // Кнопка "Завантажити PDF" живе у detail panel — відкривається через icon "Відкрити деталі".
+    await row.hover();
+    const detailsBtn = row.locator('button[title="Відкрити деталі"]').first();
+    await expect(detailsBtn).toBeVisible({ timeout: 5_000 });
+    await detailsBtn.click();
 
     const pdfBtn = page.locator('button:has-text("Завантажити PDF")').first();
     await expect(pdfBtn).toBeVisible({ timeout: 8_000 });

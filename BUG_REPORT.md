@@ -14311,3 +14311,64 @@ plannedEndAt: form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined,
 **Сигнал:** `ls apps/web/src/components/ui/__tests__/ | grep -iE "invoice|purchase|stock"` → 0 матчів.
 **Очікувана поведінка:** Створити `DocumentCreateModals.test.tsx` з regression тестами для Bug #460, #461, #462.
 **Статус:** [x] виправлено — створено `apps/web/src/components/ui/__tests__/DocumentCreateModals.test.tsx` з 3 тестами (по одному на bug). Web test suite: 39 файлів / 423 теста pass.
+
+## Session 2026-06-15 — E2E suite пост-modal-redesign (sto-tester FULL)
+
+Запуск повного Playwright E2E suite (33 spec файли) після e6d2e148 (Invoice/PO/StockDoc modal redesign) + QA cycle 0b144de9. Знайдено 5 hard-fail тестів + 1 структурний баг у Modal компоненті.
+
+## Bug #467 — CRITICAL — frontend / a11y — Modal компонент має фіксований `id="modal-title"` → ID collision у вкладених модалках
+
+**Файл:** `apps/web/src/components/ui/modal.tsx` рядки 175, 204
+**Опис:** Усі модалки рендеряться з `<h2 id="modal-title">` і `aria-labelledby="modal-title"`. Коли відкрита одночасно картка-модалка (наприклад `InvoiceCreateModal`) + вкладений `SearchPickerModal`, обидва `<h2>` мають однаковий ID. У DOM лише ПЕРШИЙ елемент з даним ID знаходиться через `document.getElementById` — accessible name ВСІХ open dialogs стає назвою першої модалки. У Playwright snapshot це проявляється як:
+
+```
+dialog "Нове замовлення постачальнику" [ref=e303]:  # main modal
+  heading "Нове замовлення постачальнику" [level=2]
+dialog "Нове замовлення постачальнику" [ref=e460]:  # picker, але name неправильний
+  heading "Оберіть постачальника" [level=2]
+```
+
+**Сигнал:** E2E фільтри `page.locator('[role="dialog"]').filter({ hasText: 'Оберіть постачальника' })` не матчать picker правильно, бо обидва діалоги мають однаковий `aria-label`. Тест думає picker закритий — клікає на головну модалку — backdrop інтерсептит.
+**Очікувана поведінка:** Кожен Modal генерує власний `titleId = useId()` і використовує його у `<h2 id={titleId}>` + `aria-labelledby={titleId}`. Це стандартна React 18 практика (`useId()` гарантує унікальні ID між клієнтом і сервером).
+**Статус:** [x] виправлено — у `Modal.tsx` додано `const titleId = useId()`, заміна `'modal-title'` → `titleId` у обох місцях. Решта місць використовує `aria-labelledby` динамічно. screen reader тепер правильно оголошує назву вкладеного диалогу. E2E тести працюють зі стабільними локаторами.
+
+## Bug #468 — HIGH — e2e / stale — `crud-invoice.spec.ts:28` — створити рахунок через UI з полем `0.00` (Сума), якого більше немає у редизайнованій модалці
+
+**Файл:** `apps/web/e2e/crud-invoice.spec.ts` рядки 28-77, `invoices.spec.ts:127-143, 145-158, 160-209, 250-282, 287-300, 335-357, 358-388, 501-515, 768-790`
+**Опис:** Після redesign e6d2e148 `InvoiceCreateModal` НЕ має окремого input з placeholder `"0.00"` для загальної суми — amount обчислюється з line items (рядки таблиці). Тест намагається заповнити `modal.getByPlaceholder('0.00')` → timeout. Аналогічно для FSM-тестів — у новій модалці next-step кнопка показує label цільового статусу (`"Надіслано"`, `"Оплачено"`), не дієслово `"Надіслати"`. Кнопки `"Завантажити PDF"`, `"Дублювати"`, `"Оплатити"` живуть у detail panel — недоступні через row.click() (тепер відкриває edit modal).
+**Сигнал:** `grep -n "0.00\|getByPlaceholder.*0" apps/web/src/components/ui/InvoiceCreateModal.tsx` → лише input у line input row (`unitPrice`), невидимий поки користувач не натиснув `"Додати позицію"`.
+**Очікувана поведінка:** Тести оновлено щоб:
+
+1. Замість `getByPlaceholder('0.00')` для суми → відкривати `"Додати позицію"` → fill `Опис позиції…` + price → click `+` button;
+2. FSM-кнопки шукати у `modal.locator('button:has-text("<status label>")')` (наприклад `"Надіслано"`);
+3. Detail-panel-only кнопки відкривати через `row.hover()` + `row.locator('button[title="Відкрити деталі"]').click()` (row.click тепер відкриває edit modal).
+   **Статус:** [x] виправлено — оновлено 10 тестів у двох spec-файлах. Logic-shift: row.click → edit modal; hover + icon → detail panel.
+
+## Bug #469 — HIGH — e2e / stale — `crud-purchase-order.spec.ts:28` — PO modal line input має кнопку `"Оберіть товар…"` не EntityPickerField
+
+**Файл:** `apps/web/e2e/crud-purchase-order.spec.ts` рядки 28-115
+**Опис:** Після redesign e6d2e148 PO modal line input — окрема кнопка з текстом `"Оберіть товар…"` (не EntityPickerField з `aria-label="Обрати"`). Тест шукав останній `aria-label="Обрати"` (думав це line picker), але насправді це supplier picker → клік повторно відкриває supplier picker. Також: `[role="dialog"].filter({ hasText: 'Оберіть товар' })` матчив головну модалку (бо там є кнопка `"Оберіть товар…"`).
+**Сигнал:** `grep -n "Оберіть товар" apps/web/src/components/ui/PurchaseOrderCreateModal.tsx` → 1 match (line cell button), 1 match у SearchPickerModal (title).
+**Очікувана поведінка:** Використовувати `modal.locator('button:has-text("Оберіть товар")')` для відкриття picker; фільтрувати picker за унікальним `input[placeholder="Назва, артикул…"]` (а не за heading, оскільки головна модалка теж містить текст).
+**Статус:** [x] виправлено — оновлено локатори у crud-purchase-order spec. Також зроблено симетричні правки у crud-invoice і invoices для уніфікації filter-by-search-placeholder pattern.
+
+## Bug #470 — MEDIUM — e2e / stale — `invoices.spec.ts:127` — `getByPlaceholder('0.00')` як ready-signal модалки
+
+**Файл:** `apps/web/e2e/invoices.spec.ts` рядки 127-143
+**Опис:** Тест перевіряв наявність полів модалки через `getByPlaceholder('0.00')`. У редизайнованій модалці amount-поле відсутнє, а placeholder `0.00` лише у line-input row (прихований поки не натиснуто "Додати позицію").
+**Очікувана поведінка:** Перевіряти ready-signal через стабільні елементи: `th:has-text("ОПИС")` (заголовок таблиці позицій) + `button:has-text("Додати позицію")`.
+**Статус:** [x] виправлено.
+
+## Bug #471 — LOW — e2e / stale — `stock-documents.spec.ts:600` — `text=Позиції` + button `^Додати$` не існують
+
+**Файл:** `apps/web/e2e/stock-documents.spec.ts` рядки 600-617
+**Опис:** Тест шукав секцію `"Позиції"` і кнопку `"Додати"` (exact). У редизайні немає окремої секції — таблиця позицій інлайн, кнопка має повний текст `"Додати товар"`.
+**Очікувана поведінка:** Перевіряти `th:has-text("ТОВАР")` (заголовок таблиці) + `button:has-text("Додати товар")`.
+**Статус:** [x] виправлено.
+
+## Bug #472 — LOW — e2e / stale — `stock-documents-types.spec.ts:111` — TRANSFER detail panel label `Склад-призначення` (з дефісом) vs edit modal `Склад призначення` (з пробілом)
+
+**Файл:** `apps/web/e2e/stock-documents-types.spec.ts` рядки 111-149; також inconsistency у самому продукті: `panel-schema.ts:192` має дефіс, `StockDocumentCreateModal.tsx:811` має пробіл.
+**Опис:** Тест клікав на рядок і чекав `text=Склад-призначення` (з дефіса, з Detail Panel). Після e6d2e148 row.click відкриває edit modal, де label `Склад призначення` (без дефіса). Окрім тесту — у коді є реальна інконсистентність: detail panel називає поле "Склад-призначення", edit modal — "Склад призначення". Для тесту досить оновити локатор; для UX варто уніфікувати у майбутньому (LOW).
+**Очікувана поведінка:** Тест перевіряє `Склад призначення` (без дефіса) у edit modal — це факт. Sub-bug: у фінальному cleanup-passi розглянути уніфікацію panel-schema labels (use spaces).
+**Статус:** [x] виправлено — тест оновлено. Окремий тікет для уніфікації pending (LOW).
