@@ -1205,6 +1205,31 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ---
 
+### 2026-06-15 — Новий enum-value не підхоплений жорстко-закодованим масивом на фронті — §8 Web Frontend
+
+**Сигнал:** Backend додає нове значення в enum (`StockDocumentType.RECEIPT`, `WorkOrderStatus.X`) і оновлює відповідний `*_LABELS` у `@sto/shared`. Але на фронті фільтр-таби рендеряться з локального хардкоду:
+
+```ts
+const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE']; // ❌ RECEIPT відсутній
+```
+
+Користувач не бачить нову опцію в UI попри повну підтримку у Prisma/seed/API/labels.
+
+**Grep:**
+
+```bash
+# Після `feat: add <NEW_VALUE> to <ENUM>` — звірити що в апп-сторінках немає hardcoded масивів з рештою значень того ж enum
+grep -rnE "'WRITEOFF',\s*'TRANSFER',\s*'OPENING_BALANCE'" apps/web/src/
+grep -rn "STOCK_DOC_TYPE_LABELS\|WO_STATUS_LABELS" apps/web/src/ --include="*.tsx" -A1 | grep -E "const \w+ = \["
+# або загально: знайти сторінки що іменують enum-values в локальних масивах поряд із імпортом labels
+```
+
+**Фікс:** додати новий value у hardcoded array. Краще — замінити array на `['', ...Object.keys(STOCK_DOC_TYPE_LABELS)]` щоб майбутні значення підхоплювались автоматично.
+
+**Severity:** CRITICAL — фіча відвантажена, але не доступна користувачу в UI (тип-таб для нового значення відсутній → не можна фільтрувати/орієнтуватись). TS green — компілятор не ловить «не повний union».
+
+---
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
