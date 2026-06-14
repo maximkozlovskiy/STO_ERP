@@ -831,6 +831,8 @@ export function CreateWorkOrderModal({
 
   // Fetch total stock across all warehouses for each unique good in the parts list,
   // including any good currently being added/edited (so the column shows while typing).
+  // Goods with no StockItem rows are explicitly mapped to 0 (groupBy omits empty buckets,
+  // but UX-wise "no stock" should read as 0, not '—' which we reserve for "unknown goodId").
   useEffect(() => {
     const ids = new Set(parts.map(p => p.goodId).filter(Boolean));
     if (newPart.goodId) ids.add(newPart.goodId);
@@ -840,13 +842,23 @@ export function CreateWorkOrderModal({
       setStockTotalsMap(new Map());
       return;
     }
+    let cancelled = false;
     void apiFetch<{ goodId: string; totalQuantity: number }[]>(
       `/goods/stock-totals?ids=${goodIds.join(',')}`,
     )
       .then(rows => {
-        setStockTotalsMap(new Map(rows.map(r => [r.goodId, r.totalQuantity])));
+        if (cancelled) return;
+        const next = new Map<string, number>(goodIds.map(id => [id, 0]));
+        for (const r of rows) next.set(r.goodId, r.totalQuantity);
+        setStockTotalsMap(next);
       })
-      .catch(() => {});
+      .catch(err => {
+        if (cancelled) return;
+        console.error('[stock-totals] fetch failed', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [parts, newPart.goodId, editingPart.goodId]);
 
   // Counterparty search for the header picker.
@@ -2999,7 +3011,7 @@ export function CreateWorkOrderModal({
                         <tfoot>
                           <tr className="bg-secondary/50 border-t border-border">
                             <td
-                              colSpan={vatMode !== 'NONE' ? 4 : 5}
+                              colSpan={vatMode !== 'NONE' ? 5 : 6}
                               className="px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
                             >
                               Разом товарів:

@@ -33,6 +33,10 @@ import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 import { BatchService } from '../inventory/batch.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
+// RFC 4122 v1-v8 UUID — Postgres gen_random_uuid() emits v4, tests sometimes use v0.
+// Loose enough to match anything Prisma `@db.Uuid` accepts.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @ApiTags('Goods')
 @Controller('goods')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -55,7 +59,7 @@ export class GoodsController {
   @Get('stock-totals')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC')
   @ApiOperation({ summary: 'Загальна кількість товарів на всіх складах (за goodId)' })
-  stockTotals(@OrgContext() orgId: string, @Query('ids') ids: string) {
+  stockTotals(@OrgContext() orgId: string, @Query('ids') ids?: string) {
     const goodIds = ids
       ? ids
           .split(',')
@@ -63,6 +67,10 @@ export class GoodsController {
           .filter(Boolean)
       : [];
     if (goodIds.length > 100) throw new BadRequestException('Максимум 100 товарів за раз');
+    // Defence-in-depth: invalid UUID would reach Postgres as `invalid input syntax for type uuid`
+    // (500 with cryptic message). Validate up-front and reject with 400.
+    const invalid = goodIds.find(id => !UUID_RE.test(id));
+    if (invalid) throw new BadRequestException(`Некоректний goodId: ${invalid}`);
     return this.service.stockTotals(orgId, goodIds);
   }
 
