@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+821de2d2 fix(sync): align StockDoc interface with StockDocumentResponseDto
 f59c6a47 test(stock-documents): Bug #478-#480 — regression guards for RECEIPT type
 a067ec21 fix(review): expose RECEIPT in stock-documents type tabs
 d059b9a9 feat(stock-documents): add RECEIPT type (Оприбуткування)
@@ -63,7 +64,7 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-tester-agent на a067ec21 — RECEIPT regression guards)
+Дата: 2026-06-15 (post sto-sync — StockDoc interface alignment)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Latest tester (2026-06-15, f59c6a47, after a067ec21): /sto-tester audit feat(stock-documents) RECEIPT — 3 HIGH bugs (test-coverage gaps), all fixed.
   - Bug #478 [HIGH] — POST /stock-documents with type=RECEIPT had no contract test. Existing spec only exercised WRITEOFF. Without guard, dropping 'RECEIPT' from CreateStockDocumentDto.@IsEnum array silently passes CI while the new "Оприбуткування" tab returns 400. Added describe-block "POST /stock-documents — RECEIPT type" with 3 cases (201 success + type filter + 400 reject non-enum) to stock-documents.contract.spec.ts.
