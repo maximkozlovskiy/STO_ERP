@@ -646,78 +646,68 @@ export function InvoiceCreateModal({
                     <label className="block text-[13px] font-medium text-foreground mb-1">
                       Статус
                     </label>
-                    {isEditMode ? (
-                      <div ref={statusMenuRef} className="relative flex items-center gap-1">
-                        <button
-                          type="button"
-                          disabled={transitioning || !statusPrevStep}
-                          onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
-                          className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          title={statusPrevStep ? INVOICE_STATUS_LABELS[statusPrevStep] : undefined}
-                        >
-                          <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-                          <span className="max-w-20 truncate">
-                            {statusPrevStep
-                              ? (INVOICE_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
-                              : '—'}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={transitioning}
-                          onClick={() => setStatusMenuOpen(o => !o)}
-                          title={STATUS_DESCRIPTIONS[currentStatus]}
-                          className={cn(
-                            'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
-                            STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
-                            !transitioning && 'cursor-pointer hover:opacity-80',
-                          )}
-                        >
-                          {INVOICE_STATUS_LABELS[currentStatus] ?? currentStatus}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={transitioning || !statusNextStep}
-                          onClick={() => statusNextStep && void doTransition(statusNextStep)}
-                          className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          title={statusNextStep ? INVOICE_STATUS_LABELS[statusNextStep] : undefined}
-                        >
-                          <span className="max-w-20 truncate">
-                            {statusNextStep
-                              ? (INVOICE_STATUS_LABELS[statusNextStep] ?? statusNextStep)
-                              : '—'}
-                          </span>
-                          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                        </button>
-                        {statusMenuOpen && allowedTransitions.length > 0 && (
-                          <div className="absolute top-full left-0 mt-1 z-50 min-w-40 rounded-lg border border-border bg-surface shadow-lg py-1">
-                            {allowedTransitions.map(s => (
-                              <button
-                                key={s}
-                                type="button"
-                                disabled={transitioning}
-                                onClick={() => {
-                                  setStatusMenuOpen(false);
-                                  void doTransition(s);
-                                }}
-                                className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
-                              >
-                                {TRANSITION_LABELS[s] ?? s}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span
+                    <div ref={statusMenuRef} className="relative flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={transitioning || !statusPrevStep}
+                        onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
+                        className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title={statusPrevStep ? INVOICE_STATUS_LABELS[statusPrevStep] : undefined}
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+                        <span className="max-w-20 truncate">
+                          {statusPrevStep
+                            ? (INVOICE_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
+                            : '—'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={transitioning || !isEditMode}
+                        onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
+                        title={STATUS_DESCRIPTIONS[currentStatus]}
                         className={cn(
-                          'inline-block text-sm font-medium px-2.5 py-1 rounded-full cursor-default',
-                          STATUS_COLORS['DRAFT'] ?? 'bg-secondary text-muted-foreground',
+                          'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
+                          STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
+                          isEditMode && !transitioning && 'cursor-pointer hover:opacity-80',
+                          !isEditMode && 'cursor-default',
                         )}
                       >
-                        {INVOICE_STATUS_LABELS['DRAFT']}
-                      </span>
-                    )}
+                        {INVOICE_STATUS_LABELS[currentStatus] ?? currentStatus}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={transitioning || !statusNextStep}
+                        onClick={() => statusNextStep && void doTransition(statusNextStep)}
+                        className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title={statusNextStep ? INVOICE_STATUS_LABELS[statusNextStep] : undefined}
+                      >
+                        <span className="max-w-20 truncate">
+                          {statusNextStep
+                            ? (INVOICE_STATUS_LABELS[statusNextStep] ?? statusNextStep)
+                            : '—'}
+                        </span>
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                      </button>
+                      {statusMenuOpen && allowedTransitions.length > 0 && (
+                        <div className="absolute top-full left-0 mt-1 z-50 min-w-40 rounded-lg border border-border bg-surface shadow-lg py-1">
+                          {allowedTransitions.map(s => (
+                            <button
+                              key={s}
+                              type="button"
+                              disabled={transitioning}
+                              onClick={() => {
+                                setStatusMenuOpen(false);
+                                void doTransition(s);
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
+                            >
+                              {TRANSITION_LABELS[s] ?? s}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
