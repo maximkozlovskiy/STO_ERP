@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { publicFetch } from '@/lib/api-client';
 
@@ -26,6 +26,8 @@ interface EstimatePart {
 interface EstimateData {
   number: string;
   status: string;
+  orgName?: string;
+  orgLogoUrl?: string | null;
   branchName?: string;
   counterpartyName?: string;
   vehicleSummary?: string;
@@ -40,9 +42,6 @@ interface EstimateData {
 }
 
 // Public widget — module-level Intl singletons.
-// Без імпорту з lib/format щоб мінімізувати public bundle.
-// Раніше — `n.toLocaleString('uk-UA', {...})` всередині fmt() створював новий
-// Intl.NumberFormat на кожен виклик (рядок таблиці × ререндери).
 const MONEY_FMT = new Intl.NumberFormat('uk-UA', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -56,7 +55,9 @@ function fmt(n: number) {
 
 export default function EstimatePage() {
   const params = useParams<{ token: string }>();
+  const searchParams = useSearchParams();
   const token = params?.token ?? '';
+  const autoPrint = searchParams?.get('print') === '1';
 
   const [data, setData] = useState<EstimateData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,7 +73,6 @@ export default function EstimatePage() {
       .catch(e => {
         if (cancelled) return;
         const msg = e instanceof Error ? e.message : 'Помилка';
-        // publicFetch кидає `HTTP 404` або текст з body — нормалізуємо до `not_found`.
         setError(/HTTP 404|не дійсне|термін дії минув/i.test(msg) ? 'not_found' : msg);
       })
       .finally(() => {
@@ -82,6 +82,14 @@ export default function EstimatePage() {
       cancelled = true;
     };
   }, [token]);
+
+  // Auto-trigger print dialog after data loads when ?print=1
+  useEffect(() => {
+    if (!autoPrint || !data) return;
+    // Small delay so images (logo) can load before print dialog opens
+    const id = setTimeout(() => window.print(), 600);
+    return () => clearTimeout(id);
+  }, [autoPrint, data]);
 
   if (loading) {
     return (
@@ -122,13 +130,29 @@ export default function EstimatePage() {
       <div className="max-w-3xl mx-auto p-6 font-sans text-gray-900 text-sm">
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Кошторис {data.number}</h1>
-            {data.branchName && <p className="text-gray-500 mt-0.5">{data.branchName}</p>}
+          <div className="flex items-center gap-4">
+            {data.orgLogoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={data.orgLogoUrl}
+                alt={data.orgName ?? 'Логотип'}
+                className="h-14 w-auto object-contain"
+                onError={e => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            )}
+            <div>
+              {data.orgName && (
+                <p className="text-base font-semibold text-gray-700">{data.orgName}</p>
+              )}
+              <h1 className="text-2xl font-bold">Кошторис {data.number}</h1>
+              {data.branchName && <p className="text-gray-500 mt-0.5">{data.branchName}</p>}
+            </div>
           </div>
           <button
             onClick={() => window.print()}
-            className="no-print flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+            className="no-print flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shrink-0"
           >
             <Printer size={16} />
             Надрукувати

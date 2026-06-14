@@ -1638,6 +1638,11 @@ export class WorkOrdersService {
     });
     if (!wo) throw new NotFoundException('Посилання не дійсне або термін дії минув');
 
+    const org = await this.prisma.organisation.findFirst({
+      where: { id: wo.orgId },
+      select: { name: true, logoUrl: true },
+    });
+
     // Підвантажуємо per-good UoM назви одним запитом для парт, що мають окрему UoM.
     const uomIds = wo.parts.map(p => p.unitOfMeasureId).filter((x): x is string => !!x);
     const uomMap: Record<string, string> = {};
@@ -1659,6 +1664,8 @@ export class WorkOrdersService {
     return {
       number: wo.number,
       status: wo.status,
+      orgName: org?.name,
+      orgLogoUrl: org?.logoUrl ?? null,
       branchName: wo.branch?.name,
       counterpartyName,
       vehicleSummary,

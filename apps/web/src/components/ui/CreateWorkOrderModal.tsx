@@ -1260,7 +1260,8 @@ export function CreateWorkOrderModal({
         `/work-orders/${workOrderId}/share-token`,
         { method: 'POST' },
       );
-      window.open(`/estimate/${token}`, '_blank');
+      const win = window.open(`/estimate/${token}?print=1`, '_blank');
+      if (win) win.focus();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка';
       if (features.toastEnabled) toast.error(msg);

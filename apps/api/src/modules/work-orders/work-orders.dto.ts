@@ -427,6 +427,8 @@ export class EstimatePublicPartDto {
 export class EstimatePublicDto {
   @ApiProperty() number!: string;
   @ApiProperty({ enum: WorkOrderStatus }) status!: WorkOrderStatus;
+  @ApiPropertyOptional() orgName?: string;
+  @ApiPropertyOptional() orgLogoUrl?: string | null;
   @ApiPropertyOptional() branchName?: string;
   @ApiPropertyOptional() counterpartyName?: string;
   @ApiPropertyOptional() vehicleSummary?: string;
