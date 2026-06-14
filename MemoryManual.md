@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-<тут new commit для test additions>
+65552dcb test(purchase-orders): Bug #473-#477 — regression guards for update() contract resolution
 705c9e91 docs(memory): update MemoryManual after review 32c6115f — purchase-orders contract guards
 32c6115f fix(review): purchase-orders contract clear + stale-contract guard on supplier change
 115fea9e feat(purchase-orders): show all fields, editable supplier/warehouse/contract in DRAFT, FSM arrows always visible, receivedQty column
