@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Fragment, useEffect, useState, useCallback, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ChevronRight, Package, Search } from 'lucide-react';
@@ -85,13 +85,14 @@ function fmtDatetime(d: string | Date) {
   return KYIV_DATETIME_FMT.format(typeof d === 'string' ? new Date(d) : d);
 }
 
+// Matches Prisma StockMovementType enum (schema.prisma)
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   RECEIPT: 'Надходження',
   WRITEOFF: 'Списання',
   TRANSFER: 'Переміщення',
   RESERVATION: 'Резерв',
   RESERVATION_RELEASE: 'Зняття резерву',
-  ADJUSTMENT: 'Коригування',
+  OPENING_BALANCE: 'Початковий залишок',
 };
 
 function toggle(set: Set<string>, key: string): Set<string> {
@@ -657,10 +658,9 @@ function ByDocumentsView({ goods, expanded, onToggle, q }: ByDocumentsViewProps)
         {filtered.map(good => {
           const isOpen = expanded.has(good.goodId);
           return (
-            <>
+            <Fragment key={good.goodId}>
               {/* Good row */}
               <TableRow
-                key={good.goodId}
                 onClick={() => onToggle(good.goodId)}
                 className="cursor-pointer hover:bg-surface-hover font-medium bg-surface"
               >
@@ -692,11 +692,8 @@ function ByDocumentsView({ goods, expanded, onToggle, q }: ByDocumentsViewProps)
               {/* Expanded: documents and their movements */}
               {isOpen &&
                 good.documents.map(doc => (
-                  <>
-                    <TableRow
-                      key={`${good.goodId}::${doc.documentId ?? doc.documentType}`}
-                      className="bg-surface-hover/50"
-                    >
+                  <Fragment key={`${good.goodId}::${doc.documentId ?? doc.documentType}`}>
+                    <TableRow className="bg-surface-hover/50">
                       <TableCell className="w-8" />
                       <TableCell
                         colSpan={4}
@@ -735,9 +732,9 @@ function ByDocumentsView({ goods, expanded, onToggle, q }: ByDocumentsViewProps)
                         </TableCell>
                       </TableRow>
                     ))}
-                  </>
+                  </Fragment>
                 ))}
-            </>
+            </Fragment>
           );
         })}
       </TableBody>
@@ -799,10 +796,9 @@ function ByBatchesView({ batches, expanded, onToggle, q }: ByBatchesViewProps) {
             : `Партія без ЗП`;
 
           return (
-            <>
+            <Fragment key={bg.batchGroupKey}>
               {/* Batch group row */}
               <TableRow
-                key={bg.batchGroupKey}
                 onClick={() => onToggle(bg.batchGroupKey)}
                 className="cursor-pointer hover:bg-surface-hover font-medium bg-surface"
               >
@@ -831,9 +827,8 @@ function ByBatchesView({ batches, expanded, onToggle, q }: ByBatchesViewProps) {
                   const goodKey = `${bg.batchGroupKey}::${g.batchId}`;
                   const goodOpen = expanded.has(goodKey);
                   return (
-                    <>
+                    <Fragment key={goodKey}>
                       <TableRow
-                        key={goodKey}
                         onClick={e => {
                           e.stopPropagation();
                           onToggle(goodKey);
@@ -892,10 +887,10 @@ function ByBatchesView({ batches, expanded, onToggle, q }: ByBatchesViewProps) {
                             </TableCell>
                           </TableRow>
                         ))}
-                    </>
+                    </Fragment>
                   );
                 })}
-            </>
+            </Fragment>
           );
         })}
       </TableBody>

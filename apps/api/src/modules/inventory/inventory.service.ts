@@ -9,6 +9,14 @@ import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BatchService } from './batch.service';
 
+// Module-level singleton — constructing Intl.DateTimeFormat per call allocates
+// internal locale data and is meaningfully more expensive than reuse.
+const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Kyiv',
+  hour: '2-digit',
+  hour12: false,
+});
+
 export interface CreateMovementDto {
   goodId: string;
   warehouseId: string;
@@ -275,16 +283,10 @@ export class InventoryService {
     }));
   }
 
-  // Kyiv timezone offset for date normalization (same pattern as reports.service.ts)
+  // Kyiv timezone offset for date normalization (same pattern as reports.service.ts).
+  // Uses module-level KYIV_HOUR_FMT singleton to avoid per-call Intl allocation.
   private kyivOffsetMs(d: Date): number {
-    const kyivHour = parseInt(
-      new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Europe/Kyiv',
-        hour: '2-digit',
-        hour12: false,
-      }).format(d),
-      10,
-    );
+    const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
     return ((kyivHour - d.getUTCHours() + 24) % 24) * 3_600_000;
   }
 
@@ -354,6 +356,10 @@ export class InventoryService {
           ...(warehouseId && { warehouseId }),
           ...(goodId && { goodId }),
           ...(createdAt && { createdAt }),
+          // Не показувати рухи для soft-deleted товарів/складів — узгоджується
+          // з фільтром на stockItem.findMany вище.
+          good: { deletedAt: null },
+          warehouse: { deletedAt: null },
         },
         orderBy: { createdAt: 'desc' },
         take: 3000,
@@ -431,6 +437,11 @@ export class InventoryService {
         ...(warehouseId && { warehouseId }),
         ...(goodId && { goodId }),
         ...(createdAt && { createdAt }),
+        // Bug-prevention parity з byDocument: не показувати батчі для soft-deleted
+        // товарів/складів (StockBatch не має власного deletedAt, але добра практика
+        // обмежити вибірку активними сутностями).
+        good: { deletedAt: null },
+        warehouse: { deletedAt: null },
       },
       include: {
         good: {
