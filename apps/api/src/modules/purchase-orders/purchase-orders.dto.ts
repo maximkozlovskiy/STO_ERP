@@ -66,6 +66,24 @@ export class CreatePurchaseOrderDto {
 }
 
 export class UpdatePurchaseOrderDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  supplierId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  warehouseId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  contractId?: string;
+
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })

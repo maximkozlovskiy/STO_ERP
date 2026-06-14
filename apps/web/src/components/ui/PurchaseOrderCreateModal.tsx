@@ -61,6 +61,9 @@ interface PODetail {
   supplierId: string;
   supplierName?: string | null;
   warehouseId: string;
+  warehouseName?: string | null;
+  contractId?: string | null;
+  contractNumber?: string | null;
   notes?: string | null;
   documentDate?: string | null;
   lines?: POLine[];
@@ -74,6 +77,7 @@ interface LocalLine {
   unit: string;
   quantity: string;
   price: string;
+  receivedQty?: number;
 }
 
 interface POLine {
@@ -83,6 +87,7 @@ interface POLine {
   unit?: string | null;
   quantity: number;
   price: number;
+  receivedQty?: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -152,6 +157,8 @@ export function PurchaseOrderCreateModal({
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [poNumber, setPoNumber] = useState('');
+  const [contractId, setContractId] = useState<string | null>(null);
+  const [contractNumber, setContractNumber] = useState<string | null>(null);
   const [lines, setLines] = useState<LocalLine[]>([]);
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
   const [showLineInput, setShowLineInput] = useState(false);
@@ -225,6 +232,8 @@ export function PurchaseOrderCreateModal({
     setLines([]);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
+    setContractId(null);
+    setContractNumber(null);
     if (!isEditMode) {
       setForm({ supplierId: '', warehouseId: '', notes: '', documentDate: kyivToday() });
       setSupplierDisplay('');
@@ -249,6 +258,8 @@ export function PurchaseOrderCreateModal({
           documentDate: po.documentDate ? po.documentDate.slice(0, 10) : kyivToday(),
         });
         setSupplierDisplay(po.supplierName ?? '');
+        setContractId(po.contractId ?? null);
+        setContractNumber(po.contractNumber ?? null);
         setLines(
           (po.lines ?? []).map(l => ({
             _key: nextKey(),
@@ -258,6 +269,7 @@ export function PurchaseOrderCreateModal({
             unit: l.unit ?? 'шт',
             quantity: String(l.quantity),
             price: String(l.price),
+            receivedQty: l.receivedQty,
           })),
         );
       })
@@ -373,7 +385,7 @@ export function PurchaseOrderCreateModal({
 
   // ── Save / Create ─────────────────────────────────────────────────────────
 
-  const canEdit = isEditMode ? currentStatus === 'DRAFT' || currentStatus === 'ORDERED' : true;
+  const canEdit = isEditMode ? currentStatus === 'DRAFT' : true;
 
   const handleCreate = async () => {
     if (!form.supplierId || !form.warehouseId) {
@@ -417,12 +429,13 @@ export function PurchaseOrderCreateModal({
 
   const handleSave = async () => {
     if (!purchaseOrderId) return;
+    if (!form.supplierId || !form.warehouseId) {
+      setError('Оберіть постачальника та склад');
+      return;
+    }
     setSavingBoth(true);
     setError('');
     try {
-      // Backend has no separate POST /purchase-orders/:id/lines endpoint.
-      // PATCH with lines replaces ALL lines (soft-deletes existing, re-creates from body).
-      // We always send the full current list so no lines are lost.
       const allLines = lines.map(l => ({
         goodId: l.goodId,
         quantity: parseFloat(l.quantity) || 1,
@@ -431,6 +444,9 @@ export function PurchaseOrderCreateModal({
       await apiFetch(`/purchase-orders/${purchaseOrderId}`, {
         method: 'PATCH',
         body: JSON.stringify({
+          supplierId: form.supplierId || undefined,
+          warehouseId: form.warehouseId || undefined,
+          contractId: contractId || undefined,
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
           lines: allLines,
@@ -454,13 +470,13 @@ export function PurchaseOrderCreateModal({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const headerChips =
-    isEditMode && headerCollapsed
-      ? [
-          supplierDisplay || null,
-          form.warehouseId ? (warehouses.find(w => w.id === form.warehouseId)?.name ?? null) : null,
-        ].filter(Boolean)
-      : [];
+  const headerChips = headerCollapsed
+    ? [
+        supplierDisplay || null,
+        form.warehouseId ? (warehouses.find(w => w.id === form.warehouseId)?.name ?? null) : null,
+        contractNumber ? `Дог. ${contractNumber}` : null,
+      ].filter(Boolean)
+    : [];
 
   return (
     <>
@@ -655,76 +671,66 @@ export function PurchaseOrderCreateModal({
                     <label className="block text-[13px] font-medium text-foreground mb-1">
                       Статус
                     </label>
-                    {isEditMode ? (
-                      <div ref={statusMenuRef} className="relative flex items-center gap-1">
-                        <button
-                          type="button"
-                          disabled={transitioning || !statusPrevStep}
-                          onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
-                          className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-                          <span className="max-w-20 truncate">
-                            {statusPrevStep
-                              ? (PO_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
-                              : '—'}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={transitioning}
-                          onClick={() => setStatusMenuOpen(o => !o)}
-                          title={STATUS_DESCRIPTIONS[currentStatus]}
-                          className={cn(
-                            'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
-                            STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
-                            !transitioning && 'cursor-pointer hover:opacity-80',
-                          )}
-                        >
-                          {PO_STATUS_LABELS[currentStatus] ?? currentStatus}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={transitioning || !statusNextStep}
-                          onClick={() => statusNextStep && void doTransition(statusNextStep)}
-                          className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <span className="max-w-20 truncate">
-                            {statusNextStep
-                              ? (PO_STATUS_LABELS[statusNextStep] ?? statusNextStep)
-                              : '—'}
-                          </span>
-                          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                        </button>
-                        {statusMenuOpen && allowedTransitions.length > 0 && (
-                          <div className="absolute top-full left-0 mt-1 z-50 min-w-40 rounded-lg border border-border bg-surface shadow-lg py-1">
-                            {allowedTransitions.map(s => (
-                              <button
-                                key={s}
-                                type="button"
-                                disabled={transitioning}
-                                onClick={() => {
-                                  setStatusMenuOpen(false);
-                                  void doTransition(s);
-                                }}
-                                className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
-                              >
-                                {PO_STATUS_ACTION_LABELS[s] ?? PO_STATUS_LABELS[s] ?? s}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span
+                    <div ref={statusMenuRef} className="relative flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={transitioning || !statusPrevStep || !isEditMode}
+                        onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
+                        className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+                        <span className="max-w-20 truncate">
+                          {statusPrevStep
+                            ? (PO_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
+                            : '—'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={transitioning || !isEditMode}
+                        onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
+                        title={STATUS_DESCRIPTIONS[currentStatus]}
                         className={cn(
-                          'inline-block text-sm font-medium px-2.5 py-1 rounded-full cursor-default',
-                          STATUS_COLORS['DRAFT'] ?? 'bg-secondary text-muted-foreground',
+                          'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
+                          STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
+                          isEditMode && !transitioning && 'cursor-pointer hover:opacity-80',
+                          !isEditMode && 'cursor-default',
                         )}
                       >
-                        {PO_STATUS_LABELS['DRAFT']}
-                      </span>
-                    )}
+                        {PO_STATUS_LABELS[currentStatus] ?? currentStatus}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={transitioning || !statusNextStep || !isEditMode}
+                        onClick={() => statusNextStep && void doTransition(statusNextStep)}
+                        className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <span className="max-w-20 truncate">
+                          {statusNextStep
+                            ? (PO_STATUS_LABELS[statusNextStep] ?? statusNextStep)
+                            : '—'}
+                        </span>
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                      </button>
+                      {statusMenuOpen && allowedTransitions.length > 0 && (
+                        <div className="absolute top-full left-0 mt-1 z-50 min-w-40 rounded-lg border border-border bg-surface shadow-lg py-1">
+                          {allowedTransitions.map(s => (
+                            <button
+                              key={s}
+                              type="button"
+                              disabled={transitioning}
+                              onClick={() => {
+                                setStatusMenuOpen(false);
+                                void doTransition(s);
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
+                            >
+                              {PO_STATUS_ACTION_LABELS[s] ?? PO_STATUS_LABELS[s] ?? s}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -732,22 +738,27 @@ export function PurchaseOrderCreateModal({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[13px] font-medium text-foreground mb-1">
-                      Постачальник {!isEditMode && <span className="text-destructive">*</span>}
+                      Постачальник <span className="text-destructive">*</span>
                     </label>
                     <EntityPickerField<SupplierItem>
                       display={supplierDisplay}
                       placeholder="Пошук постачальника…"
                       className="h-8 text-[13px]"
-                      disabled={isEditMode}
+                      disabled={!canEdit}
                       onPick={() => setSupplierPickerOpen(true)}
                       onSearch={fetchSupplierItems}
                       onSearchSelect={item => {
                         setSupplierDisplay(item.primary);
                         setForm(f => ({ ...f, supplierId: item.id }));
+                        // Clear contract when supplier changes
+                        setContractId(null);
+                        setContractNumber(null);
                       }}
                       onClear={() => {
                         setSupplierDisplay('');
                         setForm(f => ({ ...f, supplierId: '' }));
+                        setContractId(null);
+                        setContractNumber(null);
                       }}
                     />
                   </div>
@@ -756,7 +767,7 @@ export function PurchaseOrderCreateModal({
                     required
                     value={form.warehouseId}
                     onChange={e => setForm(f => ({ ...f, warehouseId: e.target.value }))}
-                    disabled={!canEdit || isEditMode}
+                    disabled={!canEdit}
                     className="h-8 text-[13px] py-0.5 px-2 pr-7"
                   >
                     <option value="">— Оберіть —</option>
@@ -768,15 +779,25 @@ export function PurchaseOrderCreateModal({
                   </Select>
                 </div>
 
-                {/* Рядок 3: Примітки */}
-                <Input
-                  label="Примітки"
-                  value={form.notes}
-                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                  disabled={!canEdit}
-                  placeholder="Додаткова інформація…"
-                  className="h-8 text-[13px]"
-                />
+                {/* Рядок 3: Договір | Примітки */}
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="Договір"
+                    value={contractNumber ?? ''}
+                    disabled
+                    readOnly
+                    placeholder="— автоматично —"
+                    className="h-8 text-[13px]"
+                  />
+                  <Input
+                    label="Примітки"
+                    value={form.notes}
+                    onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                    disabled={!canEdit}
+                    placeholder="Додаткова інформація…"
+                    className="h-8 text-[13px]"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -811,18 +832,37 @@ export function PurchaseOrderCreateModal({
           <div className="flex-1 overflow-auto">
             <table className="w-full table-fixed text-[12px]">
               <colgroup>
-                <col className="w-[40%]" />
-                <col className="w-[10%]" />
-                <col className="w-[13%]" />
-                <col className="w-[16%]" />
-                <col className="w-[16%]" />
-                <col className="w-[5%]" />
+                {isEditMode ? (
+                  <>
+                    <col className="w-[36%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[14%]" />
+                    <col className="w-[14%]" />
+                    <col className="w-[5%]" />
+                  </>
+                ) : (
+                  <>
+                    <col className="w-[40%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[13%]" />
+                    <col className="w-[16%]" />
+                    <col className="w-[16%]" />
+                    <col className="w-[5%]" />
+                  </>
+                )}
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-secondary/40">
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">ТОВАР</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">ОВ</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">К-СТЬ</th>
+                  {isEditMode && (
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                      ОТРИМАНО
+                    </th>
+                  )}
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">
                     ЦІНА, ₴
                   </th>
@@ -838,6 +878,11 @@ export function PurchaseOrderCreateModal({
                     <td className="px-3 py-2">{line.goodName}</td>
                     <td className="px-3 py-2 text-right text-muted-foreground">{line.unit}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
+                    {isEditMode && (
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                        {line.receivedQty != null ? line.receivedQty : '—'}
+                      </td>
+                    )}
                     <td className="px-3 py-2 text-right tabular-nums">{line.price}</td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {((parseFloat(line.quantity) || 0) * (parseFloat(line.price) || 0)).toFixed(
@@ -885,6 +930,7 @@ export function PurchaseOrderCreateModal({
                         className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
                       />
                     </td>
+                    {isEditMode && <td />}
                     <td className="px-2 py-1.5">
                       <input
                         type="number"
@@ -929,7 +975,7 @@ export function PurchaseOrderCreateModal({
               <tfoot>
                 <tr className="border-t-2 border-border bg-secondary/20">
                   <td
-                    colSpan={4}
+                    colSpan={isEditMode ? 5 : 4}
                     className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
                   >
                     Разом:

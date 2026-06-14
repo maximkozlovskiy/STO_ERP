@@ -261,11 +261,47 @@ export class PurchaseOrdersService {
     // syncVersion/orgId/deletedAt + 8 інших колонок які ігноруються.
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { status: true, totalAmount: true },
+      select: { status: true, totalAmount: true, supplierId: true },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
     if (po.status !== PurchaseOrderStatus.DRAFT)
       throw new BadRequestException('Редагувати можна лише чернетку');
+
+    // Validate new supplierId FK if provided
+    if (dto.supplierId) {
+      const supplier = await this.prisma.counterparty.findFirst({
+        where: { id: dto.supplierId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!supplier) throw new NotFoundException('Постачальника не знайдено');
+    }
+
+    // Validate new warehouseId FK if provided
+    if (dto.warehouseId) {
+      const warehouse = await this.prisma.warehouse.findFirst({
+        where: { id: dto.warehouseId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!warehouse) throw new NotFoundException('Склад не знайдено');
+    }
+
+    // Validate contractId if provided; re-validate against effective supplierId
+    let newContractId: string | null | undefined = undefined;
+    if (dto.contractId !== undefined) {
+      const effectiveSupplierId = dto.supplierId ?? po.supplierId;
+      const contract = await this.prisma.counterpartyContract.findFirst({
+        where: {
+          id: dto.contractId,
+          orgId,
+          counterpartyId: effectiveSupplierId,
+          contractType: 'PURCHASE',
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!contract) throw new NotFoundException('Договір не знайдено');
+      newContractId = contract.id;
+    }
 
     const lines = dto.lines;
     const totalAmount = lines
@@ -294,6 +330,9 @@ export class PurchaseOrdersService {
         return tx.purchaseOrder.update({
           where: { id, orgId },
           data: {
+            supplierId: dto.supplierId ?? undefined,
+            warehouseId: dto.warehouseId ?? undefined,
+            contractId: newContractId,
             notes: dto.notes,
             totalAmount,
             documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
