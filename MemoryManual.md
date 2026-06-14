@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+4a05d7c7 fix(review): full QA review fixes — pricing leak + types + per-warehouse stock
+fd8be3b3 perf(inventory): parallelize batch.service writes
+c4b249f2 perf(inventory): optimize 3-view report (DB indexes + memo + parallel FK guards)
 1752a75  fix(inventory): review fixes — Fragment keys + MOVEMENT_TYPE_LABELS enum sync + Intl singleton + relation soft-delete filters
 a5f01d37 feat(inventory): add 3-view stock report (По товарах / По документах / По партіях)
 65081b4e docs(memory): update MemoryManual + skill after tester 38baaea2 — stock-totals complete
@@ -45,7 +48,7 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-14 (post review 1752a75)
+Дата: 2026-06-14 (post optimize fd8be3b3)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Tests: API 744/744 ✅ (+19 для stock-totals: 7 service + 12 contract); web 406/406 ✅ (+4 для stockTotalsMap)
 BUG CYCLE (3 bugs fixed auto):
@@ -67,6 +70,25 @@ Latest tester (2026-06-12, after 7640de9b calendar sync feat): Bugs #444 (HIGH),
 Latest tester (2026-06-11): Bug #439 — додано FE↔BE symmetry regression-guard у `work-orders.fsm.invariants.spec.ts`.
 Latest tester (2026-06-11, prev): Bugs #429-#433 — savingRef race (CreateWorkOrderModal), stale format mock, INVOICEABLE/SHAREABLE_STATUSES backend sync, audit liftId/documentDate.
 ```
+
+### Gotcha (perf, 2026-06-14) — IIFE detail-panel у render батьківського компонента → tabs[].content rebuild на КОЖЕН render parent
+
+`InventoryPage` мав `{ viewMode === 'goods' && (() => { const buildInventoryTabs = item => [...]; return <DetailPanel tabs={selectedItem ? buildInventoryTabs(selectedItem) : undefined} ... /> })()` — IIFE створював замикання + tabs array + content JSX на КОЖЕН render батька. Symptom: typing у фільтрі пошуку (debounce ~300мс) триггерить page render → useEffect refetch → react Query update → ще один render → tabs object identity змінюється → `DetailPanel` keydown/overflow useEffect re-fires → Input focus у minStock edit скидається. Виправлено: винесено в окремий memo-компонент `InventoryDetailPanel` з useMemo навколо tabs (deps на actual reactive state — selectedItem, editingMinStock, minStockVal, panelConfig). Всі handlers у parent обгорнуто useCallback щоб memo блокував re-render коли selectedItem не мінявся. Той самий патерн діє для будь-якої list-page з DetailPanel/Drawer/Modal який будує tabs/sections inline у тілі парента. **Загальне правило:** якщо JSX містить `(() => { ... })()` що повертає React елемент з масивом — це сигнал що inline-логіка має бути memo-компонент.
+
+### Gotcha (perf, 2026-06-14) — Stock report queries не покривались існуючими індексами
+
+Новий `byDocument`/`byBatch` 3-view endpoint фільтрує `StockMovement`/`StockBatch` по `(orgId, [warehouseId?], [goodId?], [createdAt?])` з `ORDER BY createdAt DESC LIMIT 3000/500`. Існуючі індекси:
+
+- `stock_movements(orgId, warehouseId, createdAt)` — працює лише якщо warehouseId у WHERE
+- `stock_batches(orgId, warehouseId, isActive, createdAt)` — вимагає isActive у WHERE (якого у byBatch немає)
+
+При unfiltered або тільки goodId-filter — Postgres робив seqscan на цілу таблицю + external sort. Додано:
+
+- `stock_movements(orgId, goodId, createdAt)` — для goodId-only filter з date sort
+- `stock_movements(orgId, createdAt)` — для unfiltered date sort
+- `stock_batches(orgId, createdAt)` — для byBatch без isActive predicate
+
+**Загальний підхід:** при додаванні нового list-endpoint з date sort — grep усі @@index на цій таблиці і перевірити чи будь-яка комбінація `(orgId, [optional col]*, sortKey)` присутня. Якщо ні — додати covering index що покриває кожний типовий фільтр-сценарій (без фільтра, з goodId, з warehouseId).
 
 ### Gotcha (perf, 2026-06-12) — `kyivToday()` всередині `.map()` render hot-path
 

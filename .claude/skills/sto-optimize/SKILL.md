@@ -606,6 +606,42 @@ TypeScript: ✅ 0 errors
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-14 — Detail-panel/Drawer/Modal будівник через IIFE `(() => { const build = ...; return <Panel tabs={selectedItem ? build(selectedItem) : undefined} /> })()` у тілі parent list-page — tabs object identity рекреюється на КОЖЕН render
+
+**Сигнал:** list-page має secondary panel (DetailPanel/Drawer/Modal/Slide-over) з вкладеним tabs масивом будуваним у JSX-тілі parent через IIFE `(() => { const buildX = (item) => [...]; return <Panel tabs={selectedItem ? buildX(selectedItem) : undefined} configFields={schemaToConfigFields(SCHEMA, panelConfig.config)} ... /> })()`. tabs array і configFields пересоздаються при КОЖНОМУ render parent — навіть якщо selectedItem не мінявся. Якщо у panel.useEffect deps містять onClose/tabs identity (типовий case у Modal/keydown listeners) → ефект re-fires → `addEventListener`/`removeEventListener` чашка + Input focus у inner controls (наприклад редагування minStock) скидається.
+**Grep:** `\{\(\(\) =>` у JSX-тілі великих компонентів (>300 LoC) поряд з `<DetailPanel|<Modal|<Drawer|<SlidePanel`.
+**Причина виникнення:** натуральна реакція коли "tabs залежать від selectedItem" — інлайн закриття дає миттєвий доступ до state без props drilling. IIFE здається легким — "lambda всередині JSX, нічого не коштує". Реально: tabs.content включає вкладений `<Input value={minStockVal} onChange={e => onChangeX(e.target.value)} />` де onChange — inline arrow, recreated на render → memo дочірніх не зловить identity-stable і re-render піде каскадом до Modal/keydown effects.
+**Підхід до виявлення:** при перегляді list-page файлу шукати IIFE pattern перед `<Panel tabs={...} />`. Перевіряти що (1) tabs будуються динамічно, (2) контент tabs має controlled Input/Select (особливо minStock-edit, deviceId-pick, password-set). Якщо хоча б одне виконано — потенційний focus-loss бажано перевірити вручну у DevTools profiler.
+**Підхід до фіксу:** двофазний refactor: (1) Винести у memo-компонент `XDetailPanel` на module-level з explicit props (selectedItem, editingX, onCloseX, onSaveX, panelConfig...). (2) Всередині — `const tabs = useMemo(() => { ... }, [selectedItem, editingX, ...])`. configFields теж useMemo з deps на `panelConfig.config`. (3) У parent — всі handlers через useCallback (onCloseDetail, onStartEditX, onSaveX...). Type для panelConfig prop — `ReturnType<typeof useDetailPanelConfig>` (alias на module-level для перевикористання).
+**Реальний impact:** typing у parent search debounce: кожен render → tabs identity stable → Modal.useEffect skips re-add listener → Input focus у edit-mode не зривається. Subjective UX (Input focus loss) > мс.
+**Де шукати ще:** будь-яка list-page з DetailPanel/Drawer/Modal збудованим inline (counterparties, work-orders, invoices, purchase-orders, stock-documents — всі мають "edit field у panel" pattern). Особливо ризиковано при поєднанні з debounce-search у parent.
+
+---
+
+### 2026-06-14 — Новий list/report endpoint з date sort без covering index — `findMany({orderBy: createdAt, take})` сканує таблицю seqscan коли existing index не покриває WHERE pattern
+
+**Сигнал:** новий feature додає endpoint що робить `findMany({where: {orgId, [optionalCol1], [optionalCol2], [createdAt range]}, orderBy: {createdAt}, take: N})` на high-write append-only таблицю (StockMovement, AuditLog, Notification, BatchConsumption). Існуючі індекси покривають типові паттерни старих endpoint-ів (наприклад `(orgId, warehouseId, createdAt)`), але новий endpoint має more permissive WHERE — `warehouseId` тепер optional, або filter тільки по `goodId`. Postgres вимагає leading-cols match для index seek — якщо `warehouseId` IS NULL у WHERE, index `(orgId, warehouseId, createdAt)` не вибирається → seqscan + external sort на take:N рядках.
+**Grep:** `findMany.*orderBy.*createdAt` + `take: \d{3,}` + перевірити `grep "@@index" packages/database/prisma/schema.prisma` на таблиці. Якщо найкращий індекс має >1 col перед `createdAt` що ця query не фільтрує — гап.
+**Причина виникнення:** старі індекси проектувались під старі endpoint-и. Новий звітний endpoint часто має ширшу area (all-warehouses, all-goods, by-date). Розробник пише `findMany` стандартно, не задумуючись про explain.
+**Підхід до виявлення:** при review-of-perf — спершу зібрати усі WHERE patterns для конкретної таблиці (grep по `prisma.X.findMany` + наступні рядки `where:` block). Для кожного унікального set фільтрів — перевірити чи існує index що (a) має `orgId` (tenant guard) як leading col, (b) включає sortKey у tail, (c) optional cols вкладені у середині (порядок: фікс → optional → sort).
+**Підхід до фіксу:** додати COVERING index у форматі `@@index([orgId, sortKey])` для unfiltered case + `@@index([orgId, optionalCol, sortKey])` для кожного типового фільтру. Не плодити надлишкові — Postgres може брати prefix існуючого `(a,b,c,d)` як `(a,b,c)` index, тому додаємо тільки коли prefix не покриває. У commit-message — explain trace (current plan: seqscan; expected: index scan).
+**Реальний impact:** для звітного endpoint з take:3000 на таблиці 100k-500k рядків — seqscan ~150-300мс → index scan ~5-15мс. На SaaS з 50+ org-ів полегшує shared connection pressure.
+**Де шукати ще:** після кожного нового report/list endpoint (особливо append-only models: StockMovement, AuditLog, BatchConsumption, Notification, WorkOrderStatusLog) — grep `@@index` поверх таблиці і compare з actual WHERE patterns у service.
+
+---
+
+### 2026-06-14 — Sequential `await tx.X.update(...); await tx.Y.create(...)` у loop-карриджних батч-операціях — Promise.all всередині ітерації без злому loop-carried стану
+
+**Сигнал:** loop `for (const x of batches) { ... await db.X.update(...); await db.Y.create(...); remaining -= take; }` — два writes на ту саму ітерацію не залежать один від одного (update на batchId, create нового batchConsumption), але loop-carried state (`remaining`, `consumed`, etc.) лишається сериально. Sequential await ВСЕРЕДИНІ ітерації коштує зайвий RTT, multiply на N-iter.
+**Grep:** `for \(const .* of .*\)\s*\{[\s\S]{0,300}await .*\.\w+\.update[\s\S]{0,200}await .*\.\w+\.create`
+**Причина виникнення:** "update partition, потім create consumption record" виглядає як sequential business event — update partition повертає void, create отримує partition.id з batch object у scope. Розробник не помічає що результат update нікуди не йде.
+**Підхід до виявлення:** при перегляді циклу — для кожного `await db.X.action(...)` всередині запитати "чи наступний рядок читає РЕЗУЛЬТАТ цієї операції?". Якщо ні (void return або просто `await` без destructure) — кандидат на `Promise.all` ВСЕРЕДИНІ ітерації. Loop-carried state (`remaining`, accumulators) лишається outside Promise.all → ітерації між собою сериальні (правильно), всередині — parallel (виграш).
+**Підхід до фіксу:** `await Promise.all([db.X.update({...}), db.Y.create({...})])`. Запити йдуть на одну Prisma connection concurrently — race-safe бо різні таблиці/різні primary keys. Loop-carried mutations (`remaining -= take`, `results.push`) лишаються post-await — ітерації сериальні. Той самий патерн працює для `findFirst(tenant guard) → update + create` де update + create незалежні від результату findFirst (лише від `.id`/`.foreignKey` поля).
+**Реальний impact:** на consumeBatch (FIFO/LIFO) з 5 partitions: 5×2=10 sequential RTTs → 5×1=5 parallel-pair RTTs (50% time-save для DB roundtrips). Аналогічно для returnToBatch у WO cancellation з 10 parts → 10 RTT економії.
+**Де шукати ще:** будь-який batch-consume/release/return loop у inventory.service, batch.service, work-orders.service; також settlement reconciliation (debt-update + transaction-create), invoice payment apply (line-update + payment-record-create).
+
+---
+
 ### 2026-06-12 — Disjoint-set `tx.X.updateMany()` pairs всередині `$transaction` callback — Promise.all замість sequential await
 
 **Сигнал:** service-метод (sync/refresh/cascade-update) всередині `await this.prisma.$transaction(async tx => { ... })` робить 2+ послідовні `await tx.X.updateMany({where:A,data:...})` потім `await tx.X.updateMany({where:B,data:...})` де A і B — DISJOINT row sets (різні значення FK/предикату, не перетинаються). Наприклад: одна оновлює children-rows (`parentSlotId: { not: null }`), інша parent (`parentSlotId: null`). Sequential await блокує — кожен write коштує 1 RTT + DB execution time. Симптом у git diff: дві updateMany підряд з різним `where` але однаковою mutation-семантикою.
