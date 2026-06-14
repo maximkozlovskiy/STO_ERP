@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+3d242bf4 docs(memory): update MemoryManual after tester 0b144de9 — document modal fixes
 0b144de9 fix(tester): Bugs #459-#466 — modal contract fixes + baseline spec restore
 dae793c8 docs(memory): update MemoryManual after review d08efb8d — modal redesign cleanup
 d08efb8d fix(review): surface ref-load errors + fix stale-closure auto-select in PO/StockDoc modals
@@ -53,9 +54,9 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post tester #459-#466 — document modal fixes)
+Дата: 2026-06-15 (post full QA cycle — Invoice/PO/StockDoc modal redesign complete)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Tests: API 775/775 (was 768/774 — fixed baseline-red goods.service.spec mock for stockTotals findMany); Web 423/423 (+3 from new DocumentCreateModals.test.tsx)
+Tests: API 775/775; Web 423/423 (+3 DocumentCreateModals.test.tsx)
 
 Latest tester (2026-06-15, after dae793c8): tester run перевірив 3 переписані модалки (Invoice/PO/StockDoc) і list-pages інтеграцію. 8 bugs знайдено і виправлено:
   🐛 #459 (CRITICAL baseline): goods.service.spec mock не містив stockItem.findMany — 6 тестів падали з TypeError. Додано findMany у beforeEach factory + новий positive test для byWarehouse breakdown.
@@ -90,6 +91,27 @@ Latest tester (2026-06-12, after 7640de9b calendar sync feat): Bugs #444 (HIGH),
 Latest tester (2026-06-11): Bug #439 — додано FE↔BE symmetry regression-guard у `work-orders.fsm.invariants.spec.ts`.
 Latest tester (2026-06-11, prev): Bugs #429-#433 — savingRef race (CreateWorkOrderModal), stale format mock, INVOICEABLE/SHAREABLE_STATUSES backend sync, audit liftId/documentDate.
 ```
+
+### Gotcha #460-461 (2026-06-15) — Edit-mode modal: lines sync pattern
+
+При переписанні create-only модалки в edit-mode — дві типові помилки:
+
+1. **POST /:id/lines не існує** (Bug #460): якщо backend `CreateDto` вже приймає `lines: [...]` у body POST root і `service.create()` атомарно в `$transaction` — окремий endpoint для рядків не потрібен. `handleCreate` має включати всі рядки в body основного POST, не робити N окремих запитів.
+
+2. **handleSave не видаляє prune-d рядки** (Bug #461): якщо UI дозволяє прибирати рядки через кнопку delete, `handleSave` має snapshot `initialLineIds` при завантаженні документа і порівнювати з поточним `lines[]` стейтом. Рядки що були в `initialLineIds` але відсутні тепер → `DELETE /resource/:id/lines/:lineId`. Інакше після `PATCH` + reload вони повернуться з бекенду.
+
+**Загальне правило перед написанням handleCreate/handleSave:** перевірити backend controller на наявність `POST /:id/lines` endpoint. Якщо немає — використовувати lines у body root endpoint або PATCH з `lines: allLines` (replace-all pattern).
+
+### Gotcha #462 (2026-06-15) — Conditional required field у modal без disabled guard
+
+`StockDocumentCreateModal` мав `targetWarehouseId` — обов'язковий тільки для `type === 'TRANSFER'`. Кнопка "Створити" була enabled завжди → `POST` повертав `400` з backend. Правильний патерн:
+
+```tsx
+// disabled коли TRANSFER але targetWarehouseId відсутній
+disabled={saving || !form.branchId || !form.warehouseId || (form.type === 'TRANSFER' && !form.targetWarehouseId)}
+```
+
+І окрема inline помилка у `handleCreate`: `if (form.type === 'TRANSFER' && !form.targetWarehouseId) { setError('...'); return; }`.
 
 ### Gotcha (perf, 2026-06-14) — IIFE detail-panel у render батьківського компонента → tabs[].content rebuild на КОЖЕН render parent
 
