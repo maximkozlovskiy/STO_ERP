@@ -239,6 +239,7 @@ export interface CreateWOPrefill {
   description?: string;
   plannedStartAt?: string;
   plannedEndAt?: string;
+  plannedHours?: string;
 }
 
 export interface CreatedWorkOrder {
@@ -644,7 +645,8 @@ export function CreateWorkOrderModal({
       documentDate: kyivToday(),
       plannedStartAt: prefill?.plannedStartAt ?? '',
       plannedEndAt: prefill?.plannedEndAt ?? '',
-      plannedHours: calcPlannedHours(prefill?.plannedStartAt, prefill?.plannedEndAt),
+      plannedHours:
+        prefill?.plannedHours ?? calcPlannedHours(prefill?.plannedStartAt, prefill?.plannedEndAt),
       actualHours: '',
     });
     setCounterpartyDisplayName(prefill?.counterpartyDisplay ?? '');

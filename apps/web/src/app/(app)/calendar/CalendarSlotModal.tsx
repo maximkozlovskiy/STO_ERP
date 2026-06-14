@@ -1460,7 +1460,8 @@ export function CalendarSlotModal({
           const nh = Number(form.normoHours);
           const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
           const totalMin = (sh ?? 0) * 60 + (sm ?? 0) + Math.round((nh > 0 ? nh : 0) * 60);
-          const isOverflow = form.startAt && nh > 0 && totalMin > 19 * 60;
+          // Use WINDOW_END (20), not hardcoded 19 — slot 17:00+3h=20:00 is NOT overflow
+          const isOverflow = form.startAt && nh > 0 && totalMin > WINDOW_END * 60;
           const endDate = (() => {
             if (!isOverflow || !date) return date;
             try {
@@ -1479,6 +1480,7 @@ export function CalendarSlotModal({
             description: form.notes || undefined,
             plannedStartAt: form.startAt ? `${date}T${form.startAt}` : undefined,
             plannedEndAt: form.endAt ? `${endDate}T${form.endAt}` : undefined,
+            plannedHours: nh > 0 ? String(nh) : undefined,
           };
         })()}
         onCreated={wo => {
