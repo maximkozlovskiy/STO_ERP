@@ -267,4 +267,86 @@ describe('StockDocuments — HTTP Contract', () => {
       expect(res.statusCode).toBe(400);
     });
   });
+
+  // Bug #478-#479: commits d059b9a9 + a067ec21 added RECEIPT to StockDocumentType
+  // enum (CreateStockDocumentDto + StockDocumentQueryDto). Existing contract spec
+  // only exercised WRITEOFF — RECEIPT acceptance was untested. Without these
+  // regression-guards: dropping 'RECEIPT' from either enum array silently passes
+  // CI while the new "Оприбуткування" tab in /stock-documents fails with 400
+  // ("type must be one of WRITEOFF, TRANSFER, OPENING_BALANCE").
+  describe('POST /stock-documents — RECEIPT type', () => {
+    it('Bug #478: POST з type=RECEIPT → 201, service.create отримує dto.type=RECEIPT', async () => {
+      serviceMock.create.mockResolvedValueOnce({
+        id: VALID_UUID,
+        orgId: 'org-1',
+        number: 'ПТ-2026-0001',
+        type: 'RECEIPT',
+        status: 'DRAFT',
+        branchId: VALID_UUID,
+        warehouseId: VALID_UUID,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lines: [],
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/stock-documents',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({
+          type: 'RECEIPT',
+          branchId: VALID_UUID,
+          warehouseId: VALID_UUID,
+        }),
+      });
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toMatchObject({ type: 'RECEIPT' });
+      // Service contract: orgId, dto — RECEIPT must reach service untouched.
+      expect(serviceMock.create).toHaveBeenCalledTimes(1);
+      const dtoArg = serviceMock.create.mock.calls[0]![1] as Record<string, unknown>;
+      expect(dtoArg.type).toBe('RECEIPT');
+      // RECEIPT does NOT require targetWarehouseId (unlike TRANSFER).
+      expect(dtoArg.targetWarehouseId).toBeUndefined();
+    });
+
+    it('Bug #479: GET /stock-documents?type=RECEIPT → 200, service.findAll отримує type=RECEIPT', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/stock-documents?type=RECEIPT',
+      });
+      expect(res.statusCode).toBe(200);
+      // 4-й arg findAll = type — має бути 'RECEIPT'.
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        'org-1',
+        1,
+        20,
+        'RECEIPT',
+        undefined,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      );
+    });
+
+    it('сторонній enum value (NOT_IN_ENUM) → 400 (захист whitelist)', async () => {
+      // Регресія-страховка: переконуємось що ValidationPipe з forbidNonWhitelisted досі активний
+      // для enum-поля. Якщо хтось видалить @IsEnum або зробить type: string без validate — тест
+      // зловить.
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/stock-documents',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({
+          type: 'NOT_IN_ENUM',
+          branchId: VALID_UUID,
+          warehouseId: VALID_UUID,
+        }),
+      });
+      expect(res.statusCode).toBe(400);
+      // service.create не повинен бути викликаний — guard зупиняє pipeline на ValidationPipe.
+      expect(serviceMock.create).not.toHaveBeenCalled();
+    });
+  });
 });

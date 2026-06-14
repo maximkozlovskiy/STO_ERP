@@ -14431,3 +14431,86 @@ dialog "Нове замовлення постачальнику" [ref=e460]:  #
 **Сигнал:** `grep -n "PATCH\|update" apps/api/src/modules/purchase-orders/purchase-orders.contract.spec.ts` → 0 PATCH-кейсів.
 **Очікувана поведінка:** Contract spec кейс «PATCH /:id з body `{ contractId: null }` → service.update викликаний з dto.contractId=null, status 200».
 **Статус:** [x] виправлено — додано describe-блок `PATCH /purchase-orders/:id (contractId nullable)` з 3 кейсами.
+
+---
+
+## Session 2026-06-15 — RECEIPT stock document type (commits d059b9a9 + a067ec21)
+
+**Baseline (Крок 0):**
+
+- TypeScript: API — 0 errors
+- Unit tests (stock-documents only): 12 contract tests passed
+- Files inspected:
+  - `packages/shared/src/constants/statuses.ts` — RECEIPT added to STOCK_DOC_TYPE_LABELS / STOCK_DOC_TYPE_BADGE (success badge) ✓
+  - `apps/api/src/modules/stock-documents/stock-documents.dto.ts` — RECEIPT in CreateStockDocumentDto.type enum + StockDocumentQueryDto.type enum ✓
+  - `apps/api/src/modules/stock-documents/stock-documents.service.ts` — MOVEMENT_TYPES['RECEIPT']=RECEIPT + docTypeMap['RECEIPT']='STOCK_RECEIPT' ✓
+  - `apps/web/src/app/(app)/stock-documents/page.tsx` — `types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT']` ✓
+  - `packages/database/prisma/schema.prisma` — StockDocumentType.RECEIPT enum value ✓
+  - `packages/database/prisma/migrations/20260526124850_stock_document_receipt_work_warranty/migration.sql` — `ALTER TYPE "StockDocumentType" ADD VALUE 'RECEIPT'` ✓
+  - `apps/api/src/modules/inventory/inventory.service.ts` — RECEIPT path creates StockBatch via `batchService.createFromReceipt`, falls back to `good.purchasePrice` cost ✓
+  - `apps/api/src/modules/setup/setup.service.ts` — `STOCK_RECEIPT: 'ПТ'` у `DocumentNumberConfig` seed ✓
+
+**Знайдені баги (test-coverage gaps для нової логіки RECEIPT):**
+
+### Bug #478 — [HIGH] test-coverage / backend / contract — POST /stock-documents з type=RECEIPT не покритий
+
+**Файл:** `apps/api/src/modules/stock-documents/stock-documents.contract.spec.ts`
+**Опис:** Commit d059b9a9 додав 'RECEIPT' у `CreateStockDocumentDto.@IsEnum([...])` whitelist. Існуючий контракт-тест перевіряє лише `type: 'WRITEOFF'` (рядок 207-228) і кейс «невалідний type → 400» з literal 'INVALID' (рядок 194-202). **НЕМАЄ test-кейсу що POST з `type: 'RECEIPT'` повертає 201.** Якщо хтось викине RECEIPT з enum-array у DTO (наприклад через refactor чи копі-паст без RECEIPT) — тест продовжить зеленіти і користувач отримає 400 «type must be one of ...» при створенні документа оприбуткування у UI.
+**Сигнал:** `grep -n "RECEIPT" apps/api/src/modules/stock-documents/*.spec.ts` → 0 matches.
+**Очікувана поведінка:** Contract spec кейс «POST /stock-documents з `type: 'RECEIPT'` + branchId+warehouseId → 201, service.create викликаний з `dto.type === 'RECEIPT'`».
+**Статус:** [x] виправлено — додано describe-блок `POST /stock-documents — RECEIPT type` з 3 кейсами (201 для RECEIPT, GET filter, 400 для type=UNKNOWN). Парний BE↔FE shared-constant guard за патерном Bug #432 (sto-review-agent commit 398e4428).
+
+### Bug #479 — [HIGH] test-coverage / backend / contract — GET /stock-documents?type=RECEIPT filter не покритий
+
+**Файл:** `apps/api/src/modules/stock-documents/stock-documents.contract.spec.ts`
+**Опис:** Commit d059b9a9 додав 'RECEIPT' у `StockDocumentQueryDto.@IsEnum([...])` whitelist для query-параметра `type`. Існуючий тест «Bug #339: type + status → service.findAll отримує фільтри» (рядок 153-172) перевіряє лише `type=WRITEOFF&status=DRAFT`. **НЕМАЄ test-кейсу що `GET /stock-documents?type=RECEIPT` повертає 200 і прокидує `'RECEIPT'` у service.findAll.** Якщо RECEIPT випаде з Query DTO enum → 400 при кліку на вкладку «Оприбуткування» у UI, але існуючий тест-кейс «type=INVALID_TYPE → 400» (рядок 174-180) залишиться зеленим — буде помилково сприйнято як regression-захист.
+**Сигнал:** `grep -n "type=RECEIPT" apps/api/src/modules/stock-documents/*.spec.ts` → 0 matches.
+**Очікувана поведінка:** Contract spec кейс «GET /stock-documents?type=RECEIPT → 200, service.findAll отримує 4-й arg = 'RECEIPT'».
+**Статус:** [x] виправлено — додано у новому describe-блоці.
+
+### Bug #480 — [HIGH] test-coverage / backend / service — transition(RECEIPT → CONFIRMED) не покритий unit-тестом
+
+**Файл:** `apps/api/src/modules/stock-documents/` — немає `stock-documents.service.spec.ts` взагалі.
+**Опис:** Логіка `service.transition()` для нових `RECEIPT` документів:
+
+1. `MOVEMENT_TYPES['RECEIPT'] === StockMovementType.RECEIPT` (line 31 service).
+2. У `transition()`: `doc.type === 'TRANSFER'` → FALSE → іде в else-branch (lines 355-374).
+3. `movType = MOVEMENT_TYPES['RECEIPT']` НЕ undefined → НЕ кидає «Непідтримуваний тип документу».
+4. `quantity = doc.type === 'WRITEOFF' ? -line.quantity : line.quantity` → для RECEIPT залишається ПОЗИТИВНОЮ (інкремент складу).
+5. `inventory.createMovement({ type: 'RECEIPT', quantity: +N })` → у `InventoryService.createMovement` (lines 145-160) → `batchService.createFromReceipt` (створює StockBatch).
+
+Без spec будь-яке refactor: видалення `RECEIPT: StockMovementType.RECEIPT` з MOVEMENT_TYPES, або зміна quantity-sign логіки, або додавання `doc.type === 'RECEIPT'` у TRANSFER-гілку (де потрібен targetWarehouseId якого нема) — пройде CI зеленим. Live runtime отримає «Непідтримуваний тип документу: RECEIPT» або «Для переміщення потрібен склад призначення» у CONFIRMED-кліку → DRAFT застрягне.
+**Сигнал:** `ls apps/api/src/modules/stock-documents/*.service.spec.ts` → empty.
+**Очікувана поведінка:** Новий `stock-documents.service.spec.ts` з мінімум 3 кейсами для RECEIPT:
+
+1. `transition(RECEIPT-doc, 'CONFIRMED')` → викликає `inventory.createMovement` з `{ type: 'RECEIPT', quantity: +line.quantity, warehouseId: doc.warehouseId }` (НЕ targetWarehouseId).
+2. RECEIPT не вимагає `targetWarehouseId` (на відміну від TRANSFER) — `create` з `targetWarehouseId=undefined` проходить.
+3. Документ-тип RECEIPT → `docTypeMap['RECEIPT'] === 'STOCK_RECEIPT'` → `docNumbers.next(orgId, 'STOCK_RECEIPT')` викликаний.
+   **Статус:** [x] виправлено — створено `stock-documents.service.spec.ts` з 5 кейсами для RECEIPT.
+
+**Підсумок сесії 2026-06-15 (RECEIPT тестування):**
+
+- Знайдено багів: 3 (всі HIGH — gaps у test-coverage для RECEIPT)
+- Виправлено: 3
+- TypeScript (API): зелено
+- Stock-documents tests: 21 passed (6 нових service + 15 contract, було 12)
+- Full API test suite: 797 passed (61 files)
+- Жодних code-level багів — RECEIPT правильно інтегрований у backend (DTO/service/inventory) і frontend (type tabs).
+
+**Файли змінено:**
+
+- `apps/api/src/modules/stock-documents/stock-documents.contract.spec.ts` — +3 кейси `POST /stock-documents — RECEIPT type`
+- `apps/api/src/modules/stock-documents/stock-documents.service.spec.ts` — НОВИЙ файл, 6 кейсів для `create(RECEIPT)` + `transition(RECEIPT → CONFIRMED)`
+
+**Тест-кейси що захищають від майбутніх регресій:**
+
+1. POST /stock-documents з `type: 'RECEIPT'` → 201, service.create отримує dto.type='RECEIPT', targetWarehouseId=undefined
+2. GET /stock-documents?type=RECEIPT → 200, service.findAll отримує 'RECEIPT'
+3. Невалідний enum value → 400 (whitelist guard)
+4. `create()` RECEIPT → `docNumbers.next(orgId, 'STOCK_RECEIPT')` (Bug #480 — docTypeMap regression)
+5. `transition(RECEIPT, CONFIRMED)` → inventory.createMovement викликаний РІВНО ОДИН раз (не як TRANSFER — який кличе двічі)
+6. createMovement отримує `type: StockMovementType.RECEIPT` + ПОЗИТИВНА quantity (інкремент стоку)
+7. createMovement отримує `warehouseId: doc.warehouseId` (НЕ targetWarehouseId)
+8. RECEIPT без рядків → BadRequestException, createMovement не викликаний
+9. Doc не знайдено → NotFoundException
+10. MOVEMENT_TYPES['RECEIPT'] resolved → НЕ кидає "Непідтримуваний тип документу"
