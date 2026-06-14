@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+5c38dcd4 fix(review): strip UTF-8 BOM from stock-documents/page.tsx
+96579181 test(purchase-orders): Bug #481-#482 — FSM transition regression guards
 821de2d2 fix(sync): align StockDoc interface with StockDocumentResponseDto
 f59c6a47 test(stock-documents): Bug #478-#480 — regression guards for RECEIPT type
 a067ec21 fix(review): expose RECEIPT in stock-documents type tabs
@@ -64,8 +66,12 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-tester — PO FSM transition coverage)
+Дата: 2026-06-15 (post sto-review — BOM cleanup; lint warnings already fixed by parallel tester)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest review (2026-06-15, 5c38dcd4, after 96579181): /sto-review full scan of last 10 commits (RECEIPT type + PO contract clear + tab bar + FSM coverage). Single Important fix.
+  - IMPORTANT: apps/web/src/app/(app)/stock-documents/page.tsx had UTF-8 BOM (ef bb bf) prepended by Windows/PowerShell editor during recent tab-bar tweaks. Stripped via tail -c +4. No other .tsx in the changed set carries BOM — restores consistency.
+  - SUGGESTION: 4 react-hooks/exhaustive-deps warnings (3 in PurchaseOrderCreateModal — useEffect [open, purchaseOrderId] missing isEditMode ×2, useMemo missing allowedTransitions; 1 in stock-documents/page.tsx — useCallback missing setActiveSavedFilterId). All ALREADY FIXED in HEAD by parallel tester run (commit 96579181 includes the lint-tightened deps as part of FSM test scaffolding; stock-documents fix landed earlier). Verified post-commit: 0 lint warnings on both files.
+  - Verified clean: tsc all 3 packages (api/web/shared) 0 errors; stock-documents 21 tests pass; purchase-orders 62 tests pass; tenant isolation OK; soft-delete OK; FSM via assertFsmTransition; contract.update three-path resolution (UUID/null/auto-clear) correct; @Transform(emptyToUndefined) covers contract-id "" case (defense-in-depth `dto.contractId !== ''` check is harmless redundancy).
 Latest tester (2026-06-15, after 821de2d2): /sto-tester audit для PurchaseOrder edit-mode + RECEIPT type — 2 MEDIUM bugs (test-coverage gaps для FSM transition), all fixed.
   - Bug #481 [MEDIUM] — PurchaseOrdersService.transition() мала ZERO unit-тестів. Commit 115fea9e "FSM arrows always visible" відкрив фронту можливість надсилати будь-який PurchaseOrderStatus без backend regression-guard. Видалення PO_TRANSITIONS[STATE] = [...] або заміна assertFsmTransition() на голий tx.update({ status }) пройде CI зеленим. Додано describe-блок "PurchaseOrdersService.transition — FSM map" з 14 кейсами: 6 allowed transitions (DRAFT→ORDERED/CANCELLED, ORDERED→PARTIAL/RECEIVED, PARTIAL→RECEIVED/CANCELLED), 5 forbidden (RECEIVED→DRAFT, CANCELLED→DRAFT, DRAFT→PARTIAL/RECEIVED skip, ORDERED→DRAFT reverse), 3 edge cases (NotFound, tenant isolation orgId+deletedAt у first findFirst where, $transaction з explicit timeout).
   - Bug #482 [MEDIUM] — POST /purchase-orders/:id/transition HTTP endpoint без contract-coverage. Mock `transition: vi.fn()` був оголошений але жоден describe-блок його не викликав. Додано "POST /purchase-orders/:id/transition" з 9 кейсами: 3 happy paths (status=ORDERED/CANCELLED/RECEIVED → 201), 2 DTO validation (invalid enum → 400, missing status → 400), 4 cross-cutting (не-UUID id → 400, без JWT → 403, forbidden FSM → 400 з BadRequestException, PO не знайдено → 404).
