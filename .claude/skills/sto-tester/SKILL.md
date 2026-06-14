@@ -1256,6 +1256,37 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ---
 
+### 2026-06-15 — Backend stale-FK cleanup у service.update() (Bug #473, paired Bugs #365, #367 frontend) — backend / business-logic / data-integrity
+
+**Сигнал:** service.update() приймає `dto.parentFkId` (`supplierId`/`counterpartyId`/`vehicleId`) АЛЕ FE забуває включити dependent child FK (`contractId`/`agreementId`/...) у PATCH body. Якщо backend silent-keep-ає старий `child` FK → cross-parent orphan: `child.parentFk` тепер відмінне від `parent.id` (`po.contract.counterpartyId !== po.supplierId`). P2003 не спрацює (target row існує у self-org); UI показує "договір N" що насправді належить ІНШОМУ постачальнику.
+**Підхід до виявлення:** для КОЖНОГО `service.update()` на ресурсі з ≥2 пов'язаними FK (`parentFkId` + dependent `childFkId`):
+
+```bash
+# 1. SELECT po має включати BOTH parent FK і dependent child FK
+grep -nE "findFirst.*select:.*{(\s|$)" apps/api/src/modules/<resource>/<resource>.service.ts -A5 | \
+  grep -E "Id:\s*true" | sort
+# 2. Branch має: `if (dto.parentFkId !== po.parentFkId && po.childFkId) { newChildFkId = null; }`
+grep -n "parentChanged\|supplierChanged" apps/api/src/modules/<resource>/<resource>.service.ts
+```
+
+**Підхід до фіксу:**
+
+1. SELECT extends to include parent FK + ВСІ dependent FK у `findFirst().select`
+2. Compute `<parent>Changed = dto.<parent>Id !== undefined && dto.<parent>Id !== po.<parent>Id`
+3. Логіка для dependent child FK у 4 гілки:
+   - (a) `dto.childFkId === string` — validate проти `effective<Parent>Id = dto.<parent>Id ?? po.<parent>Id` (cross-parent rejection)
+   - (b) `dto.childFkId === null` — explicit clear (frontend manual unset)
+   - (c) `<parent>Changed && po.<child>FkId` — auto-clear stale
+   - (d) otherwise — keep existing (Prisma `undefined`)
+4. ОБОВ'ЯЗКОВО парний regression-spec для всіх 4 гілок (особливо (c) — стає невидимою у refactor якщо нема тесту).
+5. DTO: `child?: string | null` з `@ValidateIf((_, v) => v !== null) @IsUUID()` + `@Transform(emptyToUndefined)` (приймає null/UUID/'')
+
+**Severity:** HIGH (silent cross-parent data corruption; frontend може правильно очищати, але backend silent-keep-ає, що особливо ризиково коли FE/BE розробляються паралельно і фронт reset робить ОДИН з трьох код-шляхів — picker modal, inline picker, manual unset).
+**Де шукати ще:** `WorkOrderService.update` (counterpartyId + vehicleId), `InvoiceService.update` (counterpartyId + workOrderId + paymentMethodId), `StockDocumentService.update` (counterpartyId + warehouseId target), `SettlementService.transferTransaction` (fromAccountId + toAccountId), `PurchaseOrderService.update` ✅ (Bug #473), `CounterpartyContractService` (parentId + currencyCode), `AppointmentService` (counterpartyId + vehicleId).
+**Регресія-guard:** spec має ОКРЕМІ кейси для (b), (c), (d). Тест для (c) ОБОВ'ЯЗКОВО mocks `prisma.X.findFirst` повертає `po.childFkId !== null` І dto WITHOUT childFkId → asserts `update.data.childFkId === null`. Без цього specific кейсу будь-яке refactor видалення Branch (c) проходить CI зеленим. Парний regression-test для Bug #477: contract spec має кейс `PATCH /:id { childFkId: null } → 200` (захищає `@ValidateIf` від випадкового видалення).
+
+---
+
 ### 2026-06-06 — Toggle callback виконує full open-logic при CLOSING (Bug #364) — frontend / callback design
 
 **Сигнал:** `onToggle(open: boolean)` при `open=false` виконує повну open-логіку (reset форми, fetch даних) замість cleanup.
