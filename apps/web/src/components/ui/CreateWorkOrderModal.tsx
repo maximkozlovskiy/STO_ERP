@@ -11,11 +11,13 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Printer,
   Share2,
   MessageSquare,
   Receipt,
   Minus,
+  Download,
 } from 'lucide-react';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { apiFetch } from '@/lib/api-client';
@@ -1252,6 +1254,8 @@ export function CreateWorkOrderModal({
   // Share/print/SMS allowed in DRAFT/ESTIMATE/APPROVED; after IN_PROGRESS the public link is inactive.
   const canShare = isEditMode && WO_SHAREABLE_STATUSES.includes(currentStatus);
 
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
+
   const handlePrint = async () => {
     if (!workOrderId) return;
     setShareLoading(true);
@@ -1269,6 +1273,30 @@ export function CreateWorkOrderModal({
     } finally {
       setShareLoading(false);
     }
+  };
+
+  const handleSaveAs = async (format: 'pdf' | 'xlsx' | 'docx') => {
+    setSaveAsOpen(false);
+    if (!workOrderId) return;
+    if (format === 'pdf') {
+      setShareLoading(true);
+      try {
+        const { token } = await apiFetch<{ token: string }>(
+          `/work-orders/${workOrderId}/share-token`,
+          { method: 'POST' },
+        );
+        const win = window.open(`/estimate/${token}?print=1`, '_blank');
+        if (win) win.focus();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Помилка';
+        if (features.toastEnabled) toast.error(msg);
+        else setError(msg);
+      } finally {
+        setShareLoading(false);
+      }
+      return;
+    }
+    if (features.toastEnabled) toast.info(`Експорт у ${format.toUpperCase()} — незабаром`);
   };
 
   const handleShare = async () => {
@@ -1499,6 +1527,45 @@ export function CreateWorkOrderModal({
                       <Printer size={15} className="mr-1" />
                       Друк
                     </Button>
+                    <div className="relative">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSaveAsOpen(v => !v)}
+                        disabled={shareLoading || smsLoading || saving || transitioning}
+                        title="Зберегти як..."
+                      >
+                        <Download size={15} className="mr-1" />
+                        Зберегти як
+                        <ChevronDown size={13} className="ml-1" />
+                      </Button>
+                      {saveAsOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setSaveAsOpen(false)}
+                          />
+                          <div className="absolute bottom-full mb-1 right-0 z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
+                            {(
+                              [
+                                { fmt: 'pdf', label: 'PDF' },
+                                { fmt: 'xlsx', label: 'Excel (.xlsx)' },
+                                { fmt: 'docx', label: 'Word (.docx)' },
+                              ] as const
+                            ).map(({ fmt, label }) => (
+                              <button
+                                key={fmt}
+                                type="button"
+                                onClick={() => void handleSaveAs(fmt)}
+                                className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors"
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
