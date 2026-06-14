@@ -198,25 +198,29 @@ export class BatchService {
       if (remaining <= 0) break;
       const take = Math.min(remaining, batch.remainingQty);
 
-      await db.stockBatch.update({
-        where: { id: batch.id },
-        data: {
-          remainingQty: { decrement: take },
-          isActive: batch.remainingQty - take > 0,
-        },
-      });
-
-      await db.batchConsumption.create({
-        data: {
-          orgId,
-          batchId: batch.id,
-          goodId,
-          quantity: -take,
-          documentType,
-          documentId,
-          documentLineId: documentLineId ?? null,
-        },
-      });
+      // sto-optimize: update + create на ОДНУ ітерацію не залежать один від
+      // одного — Promise.all зекономить 1 RTT на батч. Loop-carried лишається
+      // (`remaining -= take`), тому ітерації між собою сериалізовані як і раніше.
+      await Promise.all([
+        db.stockBatch.update({
+          where: { id: batch.id },
+          data: {
+            remainingQty: { decrement: take },
+            isActive: batch.remainingQty - take > 0,
+          },
+        }),
+        db.batchConsumption.create({
+          data: {
+            orgId,
+            batchId: batch.id,
+            goodId,
+            quantity: -take,
+            documentType,
+            documentId,
+            documentLineId: documentLineId ?? null,
+          },
+        }),
+      ]);
 
       results.push({ batchId: batch.id, quantity: take, costPrice: Number(batch.costPrice) });
       remaining -= take;
@@ -338,18 +342,24 @@ export class BatchService {
       return;
     }
     const db = tx;
+    // sto-optimize: tenant guard читає лише goodId — інші колонки не потрібні.
     const batch = await db.stockBatch.findFirst({
       where: { id: batchId, orgId },
+      select: { goodId: true },
     });
     if (!batch) throw new BadRequestException('Партію не знайдено');
 
-    await db.stockBatch.update({
-      where: { id: batchId },
-      data: { remainingQty: { increment: qty }, isActive: true },
-    });
-
-    await db.batchConsumption.create({
-      data: { orgId, batchId, goodId: batch.goodId, quantity: qty, documentType, documentId },
-    });
+    // sto-optimize: update + create не залежать один від одного — Promise.all
+    // економить 1 RTT (важливо у WO cancellation hot-path де returnToBatch
+    // викликається у циклі по parts[]).
+    await Promise.all([
+      db.stockBatch.update({
+        where: { id: batchId },
+        data: { remainingQty: { increment: qty }, isActive: true },
+      }),
+      db.batchConsumption.create({
+        data: { orgId, batchId, goodId: batch.goodId, quantity: qty, documentType, documentId },
+      }),
+    ]);
   }
 }
