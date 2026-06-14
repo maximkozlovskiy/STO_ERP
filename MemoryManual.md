@@ -9,7 +9,7 @@
 ## Останній commit
 
 ```
-(pending) fix(tester): Bugs #459-#466 — baseline spec mock + PO/Invoice/StockDoc modal contract fixes + component regression tests
+0b144de9 fix(tester): Bugs #459-#466 — modal contract fixes + baseline spec restore
 dae793c8 docs(memory): update MemoryManual after review d08efb8d — modal redesign cleanup
 d08efb8d fix(review): surface ref-load errors + fix stale-closure auto-select in PO/StockDoc modals
 7084d676 docs(memory): update MemoryManual after sync 71677c94 — invoice/PO/stock-doc modal fixes
