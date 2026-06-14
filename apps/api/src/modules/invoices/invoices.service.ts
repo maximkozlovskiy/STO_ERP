@@ -267,6 +267,8 @@ export class InvoicesService {
       where: { id, orgId },
       data: {
         amount: dto.amount ?? undefined,
+        invoiceType: dto.invoiceType ?? undefined,
+        counterpartyId: dto.counterpartyId ?? undefined,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
         documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
         notes: dto.notes ?? undefined,

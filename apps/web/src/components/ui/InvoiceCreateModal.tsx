@@ -411,6 +411,8 @@ export function InvoiceCreateModal({
       await apiFetch(`/invoices/${invoiceId}`, {
         method: 'PATCH',
         body: JSON.stringify({
+          counterpartyId: form.counterpartyId || undefined,
+          invoiceType: form.invoiceType || undefined,
           dueDate: form.dueDate || undefined,
           documentDate: form.documentDate || undefined,
           notes: form.notes || undefined,
@@ -721,7 +723,7 @@ export function InvoiceCreateModal({
                       display={counterpartyDisplay}
                       placeholder="Пошук контрагента…"
                       className="h-8 text-[13px]"
-                      disabled={isEditMode}
+                      disabled={!canEdit}
                       onPick={() => setCpPickerOpen(true)}
                       onSearch={fetchCpItems}
                       onSearchSelect={item => {

@@ -43,6 +43,12 @@ export class CreateInvoiceDto {
 
 export class UpdateInvoiceDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) amount?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() invoiceType?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  counterpartyId?: string;
   // Bug #260: emptyToUndefined gap у PATCH-шляху.
   @ApiPropertyOptional()
   @IsOptional()
