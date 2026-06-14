@@ -68,13 +68,13 @@ interface StockDoc {
   type: string;
   status: string;
   branchId: string;
-  branchName?: string;
+  branchName?: string | null;
   warehouseId: string;
   warehouseName?: string;
   targetWarehouseId?: string | null;
   targetWarehouseName?: string | null;
   notes: string | null;
-  confirmedAt: string | null;
+  confirmedAt?: string | null;
   documentDate?: string | null;
   // List endpoint omits `lines` and supplies `linesCount` (perf: -20K row marshalling).
   // findOne (/stock-documents/:id) returns full lines[] for DetailPanel — fetched lazily.
