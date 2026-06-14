@@ -26,8 +26,8 @@ export class StockDocumentLineDto {
 }
 
 export class CreateStockDocumentDto {
-  @ApiProperty({ enum: ['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'] })
-  @IsEnum(['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'])
+  @ApiProperty({ enum: ['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT'] })
+  @IsEnum(['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT'])
   type!: string;
 
   @ApiProperty()
@@ -135,10 +135,10 @@ export class PaginatedStockDocumentsDto {
 }
 
 export class StockDocumentQueryDto {
-  @ApiPropertyOptional({ enum: ['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'] })
+  @ApiPropertyOptional({ enum: ['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT'] })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsEnum(['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE'])
+  @IsEnum(['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT'])
   type?: string;
 
   @ApiPropertyOptional({ enum: ['DRAFT', 'CONFIRMED', 'CANCELLED'] })

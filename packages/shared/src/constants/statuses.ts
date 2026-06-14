@@ -191,12 +191,14 @@ export const STOCK_DOC_TYPE_LABELS: Record<string, string> = {
   WRITEOFF: 'Списання',
   TRANSFER: 'Переміщення',
   OPENING_BALANCE: 'Поч. залишки',
+  RECEIPT: 'Оприбуткування',
 };
 
 export const STOCK_DOC_TYPE_BADGE: Record<string, BadgeVariant> = {
   WRITEOFF: 'destructive',
   TRANSFER: 'default',
   OPENING_BALANCE: 'secondary',
+  RECEIPT: 'success',
 };
 
 // ─── Employees ────────────────────────────────────────────────────────────────

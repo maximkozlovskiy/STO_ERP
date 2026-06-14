@@ -28,6 +28,7 @@ const DOC_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
 const MOVEMENT_TYPES: Partial<Record<StockDocumentType, StockMovementType>> = {
   WRITEOFF: StockMovementType.WRITEOFF,
   OPENING_BALANCE: StockMovementType.OPENING_BALANCE,
+  RECEIPT: StockMovementType.RECEIPT,
 };
 
 @Injectable()
@@ -159,6 +160,7 @@ export class StockDocumentsService {
       WRITEOFF: 'STOCK_WRITEOFF',
       TRANSFER: 'STOCK_TRANSFER',
       OPENING_BALANCE: 'STOCK_OPENING',
+      RECEIPT: 'STOCK_RECEIPT',
     };
     const number = await this.docNumbers.next(orgId, docTypeMap[dto.type] ?? 'STOCK_WRITEOFF');
 
