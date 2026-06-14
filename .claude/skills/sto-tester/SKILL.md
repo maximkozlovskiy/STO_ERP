@@ -192,6 +192,8 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 
 - [ ] **Case-sensitive lookup vs canonical-form seed data (Bug #359):** для КОЖНОГО `findFirst({ where: { code: dto.X } })` або `where: { eventType: dto.Y }` або `where: { documentType: dto.Z }` де target field зберігається у канонічній формі (UPPERCASE ISO code, snake_case event type) — DTO ОБОВ'ЯЗКОВО має `@Transform(toUpperCurrencyCode)` / `@Transform(toLowerCase)` / etc. до `@IsString`. Postgres VARCHAR/TEXT case-sensitive за замовчуванням → користувач набирає `uah` у fallback Input → backend lookup `code: 'uah'` не знаходить `'UAH'` → 400 з валідним кодом. Парний UI-fix: `<Input onChange={e => set(e.target.value.toUpperCase())} maxLength={N}>` у fallback inputs (коли dropdown reference data не завантажилось через offline-first). Grep: `grep -rnE "findFirst\(\s*\{\s*where:\s*\{[^}]*\b(code|type|status):\s*dto\." apps/api/src/modules --include="*.service.ts"` → перевірити що DTO field має нормалізацію transform. Severity HIGH (UX): валідний код → 400 → користувач думає «зламано».
 
+- [ ] **Нове enum value без regression-guard у contract+service spec (Bugs #478-#480):** будь-який commit вигляду `feat(<scope>): add <NEW_VALUE> to <Enum>` що змінює (а) Prisma schema enum + migration `ALTER TYPE ... ADD VALUE`, (б) `@IsEnum([...])` whitelist у Create/Query DTO, (в) backend service maps (`MOVEMENT_TYPES[NEW]`, `docTypeMap[NEW]`), (г) frontend hardcoded array — ОБОВ'ЯЗКОВО має парні regression-тести для нового значення у `*.contract.spec.ts` І `*.service.spec.ts`. Grep: `grep -rn "<NEW_VALUE>" apps/api/src/modules/<scope>/ --include="*.spec.ts"` — 0 matches = bug. Мінімальний набір regression-guards: (1) POST з `type: NEW_VALUE` → 201 + service отримує dto.type=NEW_VALUE; (2) GET з `?type=NEW_VALUE` → 200 + service.findAll отримує NEW_VALUE; (3) `transition(NEW-doc, CONFIRMED)` (або equivalent FSM-step) → асерти на map-резолв (`docNumbers.next(orgId, PARENT_DOC_TYPE)`, `inventory.createMovement type=StockMovementType.NEW`), branch logic (`toHaveBeenCalledTimes(1)` — не як TRANSFER з двома), sign quantity (`.toBeGreaterThan(0)`). Якщо service spec ВЗАГАЛІ нема — створити новий (як `stock-documents.service.spec.ts` у f59c6a47). Без guards: refactor що видаляє `NEW: StockMovementType.NEW` з MOVEMENT_TYPES або додає `NEW` у TRANSFER-branch проходить CI зеленим, runtime отримує 400/«Непідтримуваний тип документу». Severity HIGH. Where else: `WorkOrderStatus`, `InvoiceStatus`, `PurchaseOrderStatus`, `StockMovementType`, `DocumentType`, `PaymentMethod`, `CounterpartyType`, `EmployeeRole`, будь-який backend service з `switch (type)` або `Record<EnumType, X>` map.
+
 - [ ] **Shared FE constant без парної backend константи (Bug #432):** будь-який commit що додає `export const <NAME>_STATUSES`/`<NAME>_TRANSITIONS` у `packages/shared/src/constants/*.ts` І оновлює FE-компоненти щоб використати її, ПОВИНЕН паралельно мати backend константу у `apps/api/src/modules/<entity>/<entity>.fsm.ts` (або `*.constants.ts`). Backend service-файл НЕ має містити inline `['LITERAL_A', 'LITERAL_B']` що дублює значення shared константи — інакше FE = single source of truth (порушує SKILL §1.3 Bug #401 принцип «BE — single source, FE — mirror»). Grep: для кожного нового shared `<NAME>_STATUSES` literal-array → `grep -rnE "'<literal-A>', '<literal-B>'" apps/api/src --include="*.ts" | grep -v spec` → matches = bug. Особливо CRITICAL коли whitelist гейтить financial/legal ops (invoice creation, completion-act). Парне з Bug #401 (FE↔BE status whitelist symmetry — там FE асиметричний за подію; тут структурна gap до first-class const). Регресія-guard: spec у `*.fsm.spec.ts` `expect(BE_STATUSES.sort()).toEqual([...FE_STATUSES].sort())`. Severity HIGH. Where else: будь-який модуль з FSM/gate-whitelist (PO, Invoice, StockDocument, CompletionAct, Calendar slots).
 - [ ] **Audit-track list ↔ update.data symmetry (Bug #433, family Bug #421):** для КОЖНОГО `service.update()` що має `auditService.record(...)` поряд з `prisma.X.update({ data: { ...fields } })` — keys у audit-track array (`['fieldA', 'fieldB', ...] as const).forEach(trackField)` ⊇ keys у data-payload. Якщо data пише поле що НЕМАЄ у audit-list → AuditEvent.diff силенто порожній для цього поля → compliance/bookkeeping gap. Особливо ризиково для FK (`liftId`, `branchId`, `contractId`), документ-дат, фінансових сум. Свіжий `fix(tester): Bug #N audit gap` commit означає що один specific field виправили, але **уся сімʼя fields у тому ж update()** залишилась підозрілою — split-fix pattern. Grep: ручний audit для кожного service.update() з audit-list — diff data-keys vs audit-keys; будь-який diff > 0 = bug. Регресія-guard: spec `it('update() diff включає <new field> якщо у dto')`. Severity HIGH (audit-trail). Where else: усі `*.service.ts` що мають update + auditService — особливо ті що нещодавно мали додавання нового поля.
 - [ ] **Cross-endpoint status-filter inconsistency для одного resource (Bug #415):** для КОЖНОГО resource з status-enum (`Invoice.status`, `WorkOrder.status`, `Payment.status`) — звірити status filtering між усіма ендпоінтами що оперують одним resource. Типова асиметрія: `findByX(parentId)` має `status: { not: 'CANCELLED' }`, але `getLinkedY(parentId)` / `getCountsZ(parentIds)` — БЕЗ status фільтра. Result: badge count показує "2 invoices" коли активний 1 (другий CANCELLED), користувач відкриває панель → бачить мертвий запис → confused UX. Pre-check `createFromX` тоді блокує "вже існує", але badge показав 2 — користувач сприймає як bug. Grep: для кожного `prisma.<model>.find*/count/groupBy` query — перевірити чи `where.status` уніфікований через усі service-методи того ж модуля. Якщо `findByWorkOrder` exclude CANCELLED АЛЕ `getLinked*/`/getCounts` include — bug. Imp: import enum (`InvoiceStatus`) з `@prisma/client`замість string literal`'CANCELLED'` — TS catches typo + renaming. Severity LOW (UX inconsistency); MEDIUM коли inconsistency caused decision-making error. Регресія-guard: contract spec кейс «WO має 1 CANCELLED + 1 DRAFT → counts.X===1». Парне з Bug #401 (FE↔BE status whitelist symmetry — той самий принцип, інший рівень).
@@ -1003,6 +1005,66 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
   **Підхід до фіксу:** memoize stable string fingerprint `useMemo(() => sortedSetOfKeys.join(','), [array, ...])` → useEffect deps = `[fingerprint]`. Sort обов'язковий для уникнення false-positive при reorder. Apply same pattern для будь-якого derived-set ефекту.
   **Severity:** MEDIUM (perf-only; не data corruption, але dev → production scaling cost). HIGH якщо ефект має race-conditions (cancelled flag insufficient при швидких циклах) або endpoint дорогий (групує по 100+ елементах).
   **Де шукати ще:** `BulkActionsBar`, list pages з batch-select (ids → fetch metadata), filter sidebar з debounce, settings sub-screens з `Promise.all(...).then(setMap)`.
+
+---
+
+### 2026-06-15 — Нове enum value додано через DTO+service+frontend БЕЗ regression-guard для самого value (Bugs #478-#480) — test-coverage / regression-guard gap
+
+**Сигнал:** commit вигляду `feat(<scope>): add <NEW_VALUE> to <Enum>` що змінює:
+
+1. Prisma schema enum (`StockDocumentType.RECEIPT`) + migration `ALTER TYPE ... ADD VALUE`;
+2. `@sto/shared` constants (`*_LABELS`, `*_BADGE`);
+3. backend DTO whitelist (`@IsEnum(['A', 'B', 'NEW'])` у Create + Query DTO);
+4. backend service maps (`MOVEMENT_TYPES[NEW] = ...`, `docTypeMap[NEW] = ...`);
+5. frontend hardcoded array (`const types = ['', 'A', 'B', 'NEW']`).
+
+АЛЕ парний spec-файл (`*.contract.spec.ts` / `*.service.spec.ts`) **залишається з тестами тільки для старих values**. Grep по `*.spec.ts` для `NEW_VALUE` → 0 matches.
+
+**Причина виникнення:** автор фокусується на runtime — клікає у UI, бачить що вкладка відкривається, документ створюється → "працює". Перевіряє happy path лайв-сервером, але існуючі тести вже зелені — і нові тести не пише, бо «логіка така ж як для WRITEOFF» (асиметрично-помилкове припущення: RECEIPT vs TRANSFER має різну гілку — TRANSFER кличе createMovement двічі з target+source, RECEIPT раз; RECEIPT vs WRITEOFF — sign quantity). sto-review-agent ловить frontend-side gap (hardcoded array — патерн Bug #432-family), АЛЕ test-coverage gap НЕ катить TS-помилку → проходить непомітно.
+
+**Підхід до виявлення:**
+
+```bash
+# Step 1: знайти commit що додає enum value
+git log --oneline -10 | grep -iE "add.*type|new.*enum|feat\(.*\): add"
+
+# Step 2: extract new value name з commit body / diff schema.prisma
+git show <commit> -- packages/database/prisma/schema.prisma | grep -A1 "^enum"
+
+# Step 3: для КОЖНОЇ зміни DTO/service з новим value — grep spec
+for spec in apps/api/src/modules/<scope>/*.spec.ts; do
+  matches=$(grep -c "<NEW_VALUE>" "$spec")
+  echo "$spec: $matches matches for <NEW_VALUE>"
+done
+# 0 matches = bug
+
+# Альтернативно: повний аудит по всіх spec-файлах модуля
+grep -rn "<NEW_VALUE>" apps/api/src/modules/<scope>/ --include="*.spec.ts"
+```
+
+**Підхід до фіксу:** додати мінімум 3 regression-guards у парному contract+service spec:
+
+1. **Contract — POST з `type: NEW_VALUE` → 201** (захищає `@IsEnum` whitelist у Create DTO).
+2. **Contract — GET з `?type=NEW_VALUE` → 200, service отримує `NEW_VALUE`** (захищає Query DTO + контрольний argv-position у findAll).
+3. **Service — `transition(NEW_VALUE-doc, CONFIRMED)` або еквівалент** → перевіряє map-резолв (movement type, doc type) ТА сторону side-effect (count викликів, sign quantity, target vs source warehouse), гілку switch/if. Specifically:
+   - `expect(inventory.createMovement).toHaveBeenCalledTimes(1)` ← ловить «хтось випадково додав NEW до TRANSFER-branch що кличе двічі».
+   - `expect(dtoArg.type).toBe(StockMovementType.NEW_VALUE)` ← ловить `MOVEMENT_TYPES[NEW]` resolved (не undefined → не «Непідтримуваний тип»).
+   - `expect(dtoArg.quantity).toBeGreaterThan(0)` (або `< 0` для WRITEOFF-family) ← ловить помилку quantity-sign логіки у `doc.type === 'WRITEOFF' ? -line.quantity : line.quantity`.
+   - `expect(docNumbers.next).toHaveBeenCalledWith(orgId, 'PARENT_DOC_TYPE')` ← ловить `docTypeMap[NEW]` resolved.
+   - `expect(dtoArg.warehouseId).toBe(WAREHOUSE_ID)` ← перевірка що НЕ targetWarehouseId (для RECEIPT/WRITEOFF без target).
+
+Якщо service spec-файлу ВЗАГАЛІ нема (Bug #480 case) — створити новий з `Test.createTestingModule` + mock усіх injectable dependencies + `vi.fn()` для prisma sub-models. Pattern: див. `apps/api/src/modules/stock-documents/stock-documents.service.spec.ts` (створений у f59c6a47).
+
+**Severity:** HIGH — кожен з 3 рівнів (whitelist DTO, map resolve, branch logic) може мовчазно зламатись у наступному refactor. TS green, baseline tests green. Live runtime: 400 на POST, 400 на GET filter, «Непідтримуваний тип документу» на CONFIRM — все три ловляться лише користувачем.
+
+**Де шукати ще:** будь-який модуль що має enum-керовані гілки. Перевіряти кожен sprint:
+
+- `WorkOrderStatus` (FSM transitions) — новий статус повинен мати spec для `transition(currentStatus, NEW_STATUS)` що перевіряє side-effects (резервування / списання / settlement).
+- `InvoiceStatus`, `PurchaseOrderStatus` — теж саме.
+- `StockMovementType`, `StockDocumentType` — як у Bug #480.
+- `DocumentType` (numbering prefixes) — `documentNumberService.next(orgId, NEW_TYPE)` має мати unit + e2e тест що prefix правильний.
+- `PaymentMethod`, `CounterpartyType`, `EmployeeRole` — додавання нової ролі/типу платежу часто має if-else у guards.
+- Будь-який backend service з `switch (type)` або `Record<EnumType, X>` map.
 
 ---
 

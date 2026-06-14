@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+f59c6a47 test(stock-documents): Bug #478-#480 — regression guards for RECEIPT type
 a067ec21 fix(review): expose RECEIPT in stock-documents type tabs
 d059b9a9 feat(stock-documents): add RECEIPT type (Оприбуткування)
 65552dcb test(purchase-orders): Bug #473-#477 — regression guards for update() contract resolution
@@ -62,9 +63,16 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-review-agent на d059b9a9 — stock-documents RECEIPT type)
+Дата: 2026-06-15 (post sto-tester-agent на a067ec21 — RECEIPT regression guards)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Latest review (2026-06-15, a067ec21, after d059b9a9): code review feat(stock-documents) RECEIPT — 1 CRITICAL fix.
+Latest tester (2026-06-15, f59c6a47, after a067ec21): /sto-tester audit feat(stock-documents) RECEIPT — 3 HIGH bugs (test-coverage gaps), all fixed.
+  - Bug #478 [HIGH] — POST /stock-documents with type=RECEIPT had no contract test. Existing spec only exercised WRITEOFF. Without guard, dropping 'RECEIPT' from CreateStockDocumentDto.@IsEnum array silently passes CI while the new "Оприбуткування" tab returns 400. Added describe-block "POST /stock-documents — RECEIPT type" with 3 cases (201 success + type filter + 400 reject non-enum) to stock-documents.contract.spec.ts.
+  - Bug #479 [HIGH] — GET /stock-documents?type=RECEIPT not covered. Existing tests only filtered WRITEOFF. Added regression-guard verifying service.findAll receives 4th arg = 'RECEIPT'.
+  - Bug #480 [HIGH] — service.transition(RECEIPT → CONFIRMED) had no unit test (module had no service spec at all). Created stock-documents.service.spec.ts with 6 cases verifying: docNumbers.next(orgId, 'STOCK_RECEIPT'), inventory.createMovement called EXACTLY ONCE (not twice like TRANSFER), type=RECEIPT, quantity POSITIVE, warehouseId=doc.warehouseId (not target), no "Непідтримуваний тип документу" error, empty-lines BadRequestException, not-found NotFoundException.
+  - Code-level review: NO bugs in d059b9a9 + a067ec21. All layers correctly integrated — Prisma enum value present, migration 20260526124850 applied, setup seeds STOCK_RECEIPT prefix 'ПТ', InventoryService.createMovement RECEIPT branch creates StockBatch with cost fallback, frontend `types` tab array correct, modal Object.entries(LABELS) auto-picks up RECEIPT.
+  - Tests: 797 passed (61 files, +22 vs baseline 775 — both stock-doc and PO new specs counted). stock-documents-only: 21 passed (15 contract + 6 service).
+
+Previous review (2026-06-15, a067ec21, after d059b9a9): code review feat(stock-documents) RECEIPT — 1 CRITICAL fix.
   - CRITICAL §8 Stock-documents page hardcoded `const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE']` — the new RECEIPT type didn't appear as a filter tab, so users could not filter or browse the new document kind despite backend/Prisma/seed support being in place. Added 'RECEIPT' to the array. STOCK_DOC_TYPE_LABELS pickup is automatic everywhere else (modals iterate Object.entries).
   - Verified end-to-end: Prisma StockDocumentType.RECEIPT migration 20260526124850 already applied; DocumentType.STOCK_RECEIPT in init migration; setup.service seeds DocumentNumberConfig prefix 'ПТ'; InventoryService.createMovement treats RECEIPT as positive-quantity batch-creating receipt (cost fallback to good.purchasePrice); service.transition() uses MOVEMENT_TYPES['RECEIPT']=StockMovementType.RECEIPT and docTypeMap['RECEIPT']='STOCK_RECEIPT'; no targetWarehouseId guard (only TRANSFER requires it); StockDocumentCreateModal renders RECEIPT via Object.entries(STOCK_DOC_TYPE_LABELS).
 
