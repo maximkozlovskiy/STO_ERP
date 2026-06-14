@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+71677c94 fix(sync): align modal interfaces and endpoints with backend API contracts
 4a05d7c7 fix(review): full QA review fixes — pricing leak + types + per-warehouse stock
 fd8be3b3 perf(inventory): parallelize batch.service writes
 c4b249f2 perf(inventory): optimize 3-view report (DB indexes + memo + parallel FK guards)
@@ -48,7 +49,7 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-14 (post review 4a05d7c7)
+Дата: 2026-06-14 (post sync 71677c94)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Tests: API 744/744 ✅ (+19 для stock-totals: 7 service + 12 contract); web 406/406 ✅ (+4 для stockTotalsMap)
 BUG CYCLE (3 bugs fixed auto):
