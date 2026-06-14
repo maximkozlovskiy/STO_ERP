@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+32c6115f fix(review): purchase-orders contract clear + stale-contract guard on supplier change
+115fea9e feat(purchase-orders): show all fields, editable supplier/warehouse/contract in DRAFT, FSM arrows always visible, receivedQty column
 355fb445 fix(e2e): align spec locators with redesigned modals + fix Modal id collision (Bugs #467-#472)
 4f75f61b docs(memory): update MemoryManual after tester 0b144de9 — document modal QA cycle complete
 3d242bf4 docs(memory): update MemoryManual after tester 0b144de9 — document modal fixes
@@ -56,8 +58,13 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post full QA cycle + E2E suite green — Invoice/PO/StockDoc modal redesign complete)
+Дата: 2026-06-15 (post sto-review-agent на 115fea9e — purchase-orders editable supplier/warehouse/contract)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest review (2026-06-15, 32c6115f, after 115fea9e): code review feat(purchase-orders) — 1 CRITICAL + 2 IMPORTANT fixes around contract editability in DRAFT.
+  - CRITICAL §5/§2.2 Cross-supplier contract orphan: PATCH /purchase-orders/:id without contractId but with new supplierId left the old contractId pointing to the OLD supplier (data inconsistency, future FK-validation failures). Service.update() now selects po.contractId, detects supplierChanged, and auto-clears stale contract when client is silent. Added explicit null-clear path: dto.contractId = null → newContractId = null (UpdatePurchaseOrderDto.contractId now string | null with ValidateIf to skip IsUUID on null; OpenAPI nullable: true).
+  - IMPORTANT §8.2 Paired-state reset gap: PurchaseOrderCreateModal SearchPickerModal onSelect (line 1014) did not clear contractId/contractNumber when supplier changed via picker modal — only the inline EntityPickerField did. Stale contract would persist across save. Now mirrors inline picker behaviour.
+  - IMPORTANT §8.2 Implicit-skip on save: handleSave sent `contractId: contractId || undefined` so a user-driven null clear never reached backend. Now sends `contractId: contractId ?? null` so backend persists the clear via the new DTO null-path.
+TS clean both packages. Other matrix checks (§1 React namespace, any, console.log, findMany take, §2 tenant isolation orgId on every find/update, §4 controller-free of business logic, §5 FSM unchanged, §6 no new schema/migration needed) — all green.
 Tests: API 775/775; Web 423/423 (+3 DocumentCreateModals.test.tsx)
 E2E (Playwright): 228 passed / 13 skipped / 0 failed (33 spec files, ~4 min)
 
