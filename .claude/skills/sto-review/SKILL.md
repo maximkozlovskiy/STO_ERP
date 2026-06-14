@@ -1156,6 +1156,15 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ---
 
+### 2026-06-14 — Boundary-константа змінена у коді, але jsdoc/inline comments досі посилаються на старе значення — §1 TypeScript / §8 Web Frontend
+
+**Сигнал:** свіжий fix-commit замінив hardcoded magic number на named const (наприклад `19 * 60` → `WINDOW_END * 60` де `WINDOW_END = 20`). Перевір diff — fix торкається ОДНОГО місця, але у тому самому файлі є 3+ jsdoc/inline коментарі (`@param`, `// e.g.`, `// matches backend X = 19`) які пояснюють логіку через приклад зі СТАРИМ значенням. Comments не падають у tsc, не ламають runtime, але вводять в оману наступного читача — він поправить новий код назад "щоб відповідав документації". Рекурентний баг: `fef027b0` (calendar.service.ts doc-drift) і `02e16389` (CalendarSlotModal 3 stale comments).
+**Grep:** після будь-якого `(\d+) \* 60 → CONST_NAME \* 60` fix → `grep -rn "<old_number>\|<old_HHmm>" <file>` у тому ж файлі та сусідніх; також звірити з backend константою (`grep -rn "WORK_DAY_END_H\|CONST_NAME" apps/api/src`) — frontend і backend константи мають збігатися (іманентний інваріант).
+**Фікс:** масово оновити всі коментарі/jsdoc у тому ж файлі — заміна сирих чисел на ім'я константи (`WORK_DAY_END_H = 20`) робить майбутній drift неможливим; якщо приклад залишається конкретним ("2h from 20:00 → endAt=22:00"), окремий commit `fix(review): stale comments — X is Y, not Z`.
+**Severity:** IMPORTANT — degradation якості документації; ризик майбутнього regression коли наступний розробник довіряє коменту і "виправляє" правильний код.
+
+---
+
 ### 2026-06-05 — Partial `setPage(1)→resetPage()` migration: applyFilter мігровано, inline JSX handlers пропущено — §8.2 UI Стани / §8.6 Модульність UI
 
 **Сигнал:** Сторінка використовує `useListPage` хук що експортує і `setPage` і `resetPage = useCallback(() => setPage(1), [])`. Один callback (зазвичай `applyFilter`) використовує `resetPage()` — а інші 5 сайтів...
