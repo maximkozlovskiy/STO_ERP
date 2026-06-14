@@ -976,6 +976,21 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-14 — Multi-mode page викликає всі data hooks одночасно замість gate-у по mode (Bug #457) — frontend / perf / wasted-fetches
+
+**Сигнал:** Сторінка має `viewMode` switcher (tabs / pill buttons / select) що показує одну з N data-source. Hooks (`useStockByDocument`, `useStockByBatch`, `useStockItems` etc.) викликані безумовно на top-level — ВСІ N запитів стартують одночасно на mount, навіть якщо лише 1 visible.
+**Причина виникнення:** автор бачить що hooks мають React-rules (не можна виклика��и в `if`); знає що TanStack Query кешує → "при перемиканні mode дані вже готові". Plus TanStack `enabled: !!employee` гейт виглядає достатнім. Cost: для звіту з 5000 рядків × 3 hooks = ~1.5MB зайвого трафіку при кожному mount + race з backend під час інтенсивного використання.
+**Підхід до виявлення:**
+
+- grep: `useState<.*ViewMode\|viewMode\s*===\s*['"]` у `.tsx` → знайти switch-state. Для того ж файлу — порахувати `useQuery` хуки на top-level. Якщо `count(useQuery) > 1` АЛЕ `count(enabled.*viewMode|enabled:.*===)` = 0 → bug.
+- runtime: open DevTools Network на page mount у default mode → побачити N >1 запитів до різних endpoints, де тільки 1 потрібен.
+- code-review: будь-який `viewMode === 'X' && <ComponentUsingHook>` → але hook викликається вище незалежно → fetch стартує дарма.
+  **Підхід до фіксу:** додати opt-in `enabled?: boolean` параметр у кожен mode-specific hook (default `true` для зворотньої сумісності), внутрішньо `enabled: !!employee && enabled`. Споживач передає `viewMode === 'documents'` / `viewMode === 'batches'`. AND-юється з auth gate. Regression-guard: hook test що `renderHook(useX({}, false))` → НЕ викликає `apiFetch` (>50ms wait).
+  **Severity:** MEDIUM (perf-only; не data corruption). HIGH якщо endpoint важкий (агрегації >1000 рядків, JOIN з мульти-таблицями) або mode рідко використовується ⇒ більшість запитів зайві.
+  **Де шукати ще:** будь-яка `*/page.tsx` зі switcher: `inventory`, `reports`, `dashboard`, `analytics`, `calendar` (week/month/list views), dispatch board, settings sub-tabs з різними даними.
+
+---
+
 ### 2026-06-14 — useEffect deps на array-of-object refetches network на кожну mutation НЕ-key поля (Bug #454) — frontend / perf / network-overuse
 
 **Сигнал:** useEffect фетчить data за деякими "key" полями (наприклад `goodId` set з масиву об'єктів), але має у deps сам масив (`[parts, ...]`) → typing у НЕ-key поле (quantity, price, name) створює нову reference масиву → effect re-fires → network call дублюється на кожен keystroke.
