@@ -50,7 +50,7 @@ import {
 
 /**
  * Given totalMin (start + normoHours in minutes), returns the display HH:mm for the "Кінець" field.
- * When totalMin overflows WINDOW_END (19:00 = 1140 min), the end time is day-2:
+ * When totalMin overflows WINDOW_END (20:00 = 1200 min), the end time is day-2:
  *   08:00 + overflowMin (matching what the backend split produces).
  * When within the same day, returns the direct HH:mm.
  */
@@ -619,13 +619,13 @@ export function CalendarSlotModal({
     // local-парсингу без TZ. DST-aware (+02 зима, +03 літо).
     const startIso = kyivDateTimeToISO(date, form.startAt);
     // For overflow slots the backend expects endAt as the real wall-clock end time
-    // on the *same* day (e.g. 21:00 for 2 h from 19:00), not the next-day display time.
+    // on the *same* day (e.g. 22:00 for 2 h from 20:00), not the next-day display time.
     // calcEndAt() converts overflow to "08:00 + remainder" for display only — we must
     // send the raw totalMin end time so the backend split logic works correctly.
     const endTimeForSave = isOverflowSlot
       ? (() => {
           // Send real wall-clock end on the same day so the backend split computes correctly:
-          // slot2 duration = endAt - 19:00 (WORK_DAY_END_H). E.g. 2h from 19:00 → endAt=21:00.
+          // slot2 duration = endAt - 20:00 (WORK_DAY_END_H). E.g. 2h from 20:00 → endAt=22:00.
           const totalMinRaw = startMin2 + Math.round(nh2 * 60);
           return `${pad(Math.floor(totalMinRaw / 60))}:${pad(totalMinRaw % 60)}`;
         })()
