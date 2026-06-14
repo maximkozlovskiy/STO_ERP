@@ -396,6 +396,12 @@ export function StockDocumentCreateModal({
       setError('Оберіть філію та склад');
       return;
     }
+    // Bug #462: для типу TRANSFER бекенд вимагає targetWarehouseId. Без цієї перевірки
+    // POST йде з incomplete payload і повертає 400 — погана UX.
+    if (form.type === 'TRANSFER' && !form.targetWarehouseId) {
+      setError('Для переміщення оберіть склад призначення');
+      return;
+    }
     setSavingBoth(true);
     setError('');
     try {
@@ -615,7 +621,13 @@ export function StockDocumentCreateModal({
                 <Button
                   onClick={handleCreate}
                   loading={saving}
-                  disabled={saving || !form.branchId || !form.warehouseId}
+                  // Bug #462: TRANSFER potrebue targetWarehouseId — інакше backend 400.
+                  disabled={
+                    saving ||
+                    !form.branchId ||
+                    !form.warehouseId ||
+                    (form.type === 'TRANSFER' && !form.targetWarehouseId)
+                  }
                   size="sm"
                 >
                   Створити документ

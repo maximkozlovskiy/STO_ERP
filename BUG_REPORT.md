@@ -14237,3 +14237,77 @@ plannedEndAt: form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined,
 **Статус:** [x] виправлено — звужено типи `BatchConsumptionRow.documentType/documentId` до non-null `string` у `useInventory.ts`. TS green.
 
 ---
+
+## Session 2026-06-15 — Tester after document modal redesign (Invoice/PO/StockDoc, HEAD dae793c8)
+
+Контекст: 3 модалки (Invoice/PO/StockDoc) переписані у стилі WorkOrder (commits e6d2e148 + sync 71677c94 + review d08efb8d). Тестер після перевіряє: інтеграцію з backend контрактами, list-pages інтеграцію edit modal через клік на рядок, FSM переходи, baseline tests.
+
+## Bug #459 — CRITICAL — backend tests / baseline regression — goods.service.spec не мокає stockItem.findMany → 6 тестів падають
+
+**Файл:** `apps/api/src/modules/goods/goods.service.spec.ts` рядок 36 + 82 (mock declaration)
+**Опис:** commit `4a05d7c7` (review Bug #211 per-warehouse) розширив `GoodsService.stockTotals` додавши `prisma.stockItem.findMany` у `Promise.all` поряд із існуючим `groupBy`. Mock у спеці залишився `stockItem: { groupBy: vi.fn() }` БЕЗ `findMany`. Усі 6 тестів `stockTotals` падають з `TypeError: this.prisma.stockItem.findMany is not a function`. Червоний baseline-тест (60/60 файлів, 768/774 тестів) — release-blocker за §0 SKILL: «червоний baseline-тест (навіть не зачеплений scope-коммітами) — release-blocker: ховає регресії за шумом».
+**Сигнал:** `pnpm --filter @sto/api test --run` → 6 failed, всі у `goods.service.spec.ts > stockTotals`. Сервіс має `Promise.all([groupBy, findMany])` (рядки 677-691), spec мокає лише `groupBy`.
+**Очікувана поведінка:** Додати `findMany: vi.fn()` у тип `stockItem` (рядок 36) та інстанс (рядок 82). Кожен існуючий `stockTotals` тест має мати `prisma.stockItem.findMany.mockResolvedValueOnce([])` для дефолтного no-warehouse-data path; додати ОДИН новий тест `Bug #459: byWarehouse` що мокає findMany з реальними rows і асертить `byWarehouse: [{warehouseId, quantity}]` у відповіді.
+**Статус:** [x] виправлено — додано `findMany: vi.fn().mockResolvedValue([])` у beforeEach mock, existing тести оновлені щоб очікувати `byWarehouse: []`, додано Bug #459 тест на per-warehouse breakdown. 30/30 у `goods.service.spec.ts` pass; API total 775/775.
+
+## Bug #460 — CRITICAL — frontend / backend contract — PurchaseOrderCreateModal.handleCreate робить POST /purchase-orders/:id/lines (endpoint НЕ існує)
+
+**Файл:** `apps/web/src/components/ui/PurchaseOrderCreateModal.tsx` рядки 397-406
+**Опис:** Після успішного `POST /purchase-orders` модалка ходить у циклі `for (const line of allLines)` і робить `POST /purchase-orders/${po.id}/lines` для кожної позиції. Цей endpoint **не існує** у `purchase-orders.controller.ts` (тільки POST/PATCH/DELETE на корінь + transition/receive/apply-pricing). Кожен виклик повертає 404 → catch-block → `setError('Помилка створення замовлення')`. PO створено у БД БЕЗ позицій. UX: користувач бачить помилку, але `onSaved` не викликано → список не оновлюється; PO залишається у БД як orphan-draft.
+
+Однак backend `CreatePurchaseOrderDto` ВЖЕ ПРИЙМАЄ `lines: PurchaseOrderLineDto[]` у body, і `service.create()` створює всі рядки у `$transaction` (атомарно, з recalc totalAmount). Модалка просто не використовує цей контракт.
+**Сигнал:** `grep "/lines" apps/api/src/modules/purchase-orders/purchase-orders.controller.ts` → 0 матчів. `grep "POST.*lines" apps/web/src/components/ui/PurchaseOrderCreateModal.tsx` → 1 match (рядок 398).
+**Очікувана поведінка:** Видалити `for ... POST /lines` цикл. У body POST `/purchase-orders` передати `lines: allLines.map(l => ({ goodId, quantity: parseFloat(l.quantity)||1, price: parseFloat(l.price)||0 }))`. Атомарність забезпечує backend `$transaction`. Bonus: -N+1 RTT для PO з N позиціями.
+**Статус:** [x] виправлено — `handleCreate` тепер передає `lines` у body POST `/purchase-orders`. Backend `service.create` атомарно створює PO + lines + recalc totalAmount. Цикл `POST /:id/lines` видалено. Regression-test у `DocumentCreateModals.test.tsx` асертить що жодний `/purchase-orders/:id/lines` POST не виконується.
+
+## Bug #461 — HIGH — frontend / data integrity — InvoiceCreateModal.handleSave не синхронізує видалені рядки (тільки додає нові)
+
+**Файл:** `apps/web/src/components/ui/InvoiceCreateModal.tsx` рядки 386-397
+**Опис:** `handleSave` (PATCH /invoices/:id) фільтрує `lines.filter(l => !l.id)` і POST-ить лише НОВІ рядки. Якщо користувач у модалці клікнув "removeLine" на існуючому рядку (id присутній) → `setLines` локально видаляє з UI, але backend не отримує `DELETE /invoices/:id/lines/:lineId` → у БД рядок залишається. Після reload модалки видалений рядок повертається — UX bug + integrity gap.
+**Сигнал:** `grep -A8 "handleSave" apps/web/src/components/ui/InvoiceCreateModal.tsx` — лише POST /lines для `!l.id`. Нема DELETE /:lineId викликів.
+**Очікувана поведінка:** Зберігати `initialLineIds` snapshot після завантаження (useRef). У `handleSave`:
+
+1. Видалені рядки (були у initialLineIds, нема у поточних) → `DELETE /invoices/:invoiceId/lines/:lineId`;
+2. Нові рядки (`!l.id`) → POST як зараз.
+   Реалізуємо (1) + (2). Backend має `DELETE /invoices/:id/lines/:lineId` (рядок 186 controller).
+   **Статус:** [x] виправлено — додано `initialLineIdsRef` (useRef Set), у load-effect зберігається snapshot id-шників, у `handleSave` обчислюється `removedIds = initialLineIds \ currentIds` і виконується `DELETE /invoices/:id/lines/:lineId` перед POST нових. Reset useEffect очищає ref. Regression-test асертить що видалення UI-рядка → DELETE call.
+
+## Bug #462 — HIGH — frontend / validation — StockDocumentCreateModal не валідує targetWarehouseId для TRANSFER
+
+**Файл:** `apps/web/src/components/ui/StockDocumentCreateModal.tsx` рядки 394-398, 618
+**Опис:** Для типу `TRANSFER` бекенд вимагає `targetWarehouseId` (контрольовано у `service.create`: `throw new BadRequestException('Для переміщення потрібен склад призначення')`). Однак фронтенд `handleCreate` валідує лише `branchId` + `warehouseId`. Якщо тип TRANSFER без обраного складу призначення → POST → 400. Кнопка `Створити документ` `disabled={saving || !form.branchId || !form.warehouseId}` теж не враховує targetWarehouseId. UX: користувач натискає → видає backend помилку замість inline валідації.
+**Сигнал:** `grep "type.*TRANSFER" apps/web/src/components/ui/StockDocumentCreateModal.tsx` — Select з required → але без js-guard у submit.
+**Очікувана поведінка:** У `handleCreate` додати: `if (form.type === 'TRANSFER' && !form.targetWarehouseId) { setError('Для переміщення оберіть склад призначення'); return; }`. У disabled-condition додати `|| (form.type === 'TRANSFER' && !form.targetWarehouseId)`.
+**Статус:** [x] виправлено — додано inline-валідацію у `handleCreate` і умову в `disabled` кнопки. Regression-test асертить що кнопка disabled і POST не виконується.
+
+## Bug #463 — MEDIUM — frontend / consistency — InvoiceCreateModal: amount placeholder 0.01 і несинхронізований invoiceType
+
+**Файл:** `apps/web/src/components/ui/InvoiceCreateModal.tsx` рядки 341-362
+**Опис:** `handleCreate` посилає `amount: 0.01` як placeholder тому що `CreateInvoiceDto.amount >= 0.01` (required). Потім N+1 POST `/invoices/:id/lines` кожен з яких викликає `recalcTotals` у backend (`invoices.service.ts:455`). Якщо всі POST line failed → invoice залишається у БД з `amount=0.01` як orphan. Аналогічно: `invoiceType` (`form.invoiceType`) є у UI state, але НЕ передається у POST body (DTO його взагалі не має). Поле відображається у UI як "Тип рахунку", але silently dropped — UX gap.
+**Сигнал:** `grep "invoiceType" apps/web/src/components/ui/InvoiceCreateModal.tsx` — UI state + display. `grep "invoiceType" apps/api/src/modules/invoices/invoices.dto.ts` — лише у response.
+**Очікувана поведінка:** Розрахувати локальну `totalForCreate` (sum quantity\*unitPrice) і передати у POST replace `0.01` (мінімум 0.01 fallback якщо нема рядків). Зменшує ймовірність orphan-у з некоректним amount.
+**Статус:** [x] виправлено — `handleCreate` тепер розраховує `computedTotal` з рядків і передає `amount: computedTotal >= 0.01 ? computedTotal : 0.01` у POST. Якщо мережа впаде між POST /invoices і POST /lines, invoice залишається з релевантним amount а не з 0.01.
+
+## Bug #464 — MEDIUM — frontend / dead imports — stock-documents/page.tsx імпортує useRef і useEffect, не використовує
+
+**Файл:** `apps/web/src/app/(app)/stock-documents/page.tsx` рядок 3
+**Опис:** `import { useEffect, useState, useCallback, useRef, useMemo } from 'react'` — `useEffect` і `useRef` НЕ використовуються після рефакторингу (зник `useEffect` для load-ефекту, замість нього useStockDocuments hook). tsconfig має `noUnusedLocals: false` → tsc мовчить, але tree-shaking погіршується + code review плутає. SKILL §1.2 чек: «Dead imports after page/module split (Bug #204-#205)».
+**Сигнал:** `grep "useEffect\|useRef" apps/web/src/app/(app)/stock-documents/page.tsx` → лише рядок 3 (один match для кожного).
+**Очікувана поведінка:** Видалити `useEffect` і `useRef` з imports. Залишити `useState, useCallback, useMemo`.
+**Статус:** [x] виправлено — import рядок звужено до `useState, useCallback, useMemo`. TS green.
+
+## Bug #465 — MEDIUM — frontend / readability — stock-documents/page.tsx: `const load = invalidate` оголошено ПІСЛЯ useCallback що його використовує
+
+**Файл:** `apps/web/src/app/(app)/stock-documents/page.tsx` рядок 296 (`const load = invalidate`) використовується у `handleBulkDelete` рядок 265.
+**Опис:** `handleBulkDelete` (useCallback) — функція; її тіло захоплює `load` через замикання. На момент **виклику** callback-у (after onClick) `load` вже існує — TDZ не спрацьовує (JS scoping: const до declaration лише у render-time коду). АЛЕ: оскільки `load` оголошено ПІСЛЯ `handleBulkDelete`, ESLint react-hooks/exhaustive-deps плутається. Краще перенести `const load = invalidate` ПЕРЕД `handleBulkDelete`. Зменшує когнітивне навантаження.
+**Сигнал:** `grep -n "const load = invalidate\|handleBulkDelete\|load()" apps/web/src/app/(app)/stock-documents/page.tsx`
+**Очікувана поведінка:** Перенести `const load = invalidate;` ПЕРЕД useCallback-ами що його викликають.
+**Статус:** [x] виправлено — `const load = invalidate;` тепер декларується відразу після `const invalidate`, дублікат нижче видалено.
+
+## Bug #466 — HIGH — frontend tests / coverage gap — Жодного component test для 3 нових модалок (InvoiceCreate / POCreate / StockDocCreate)
+
+**Файл:** `apps/web/src/components/ui/__tests__/` — відсутні `InvoiceCreateModal.test.tsx`, `PurchaseOrderCreateModal.test.tsx`, `StockDocumentCreateModal.test.tsx`.
+**Опис:** Три повністю переписані модалки (~3000 рядків коду total) без жодного regression-теста. CreateWorkOrderModal має 11 тестів (Bugs #381, #382, #452-#454). Регресія яка ці 3 модалки зможуть привнести без виявлення: (а) `handleCreate` PO sends lines у body (Bug #460); (б) `handleSave` Invoice видаляє existing lines через DELETE (Bug #461); (в) TRANSFER без target — inline помилка, POST не відбувається (Bug #462).
+**Сигнал:** `ls apps/web/src/components/ui/__tests__/ | grep -iE "invoice|purchase|stock"` → 0 матчів.
+**Очікувана поведінка:** Створити `DocumentCreateModals.test.tsx` з regression тестами для Bug #460, #461, #462.
+**Статус:** [x] виправлено — створено `apps/web/src/components/ui/__tests__/DocumentCreateModals.test.tsx` з 3 тестами (по одному на bug). Web test suite: 39 файлів / 423 теста pass.

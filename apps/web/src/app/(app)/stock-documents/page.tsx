@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useStockDocuments, stockDocsKeys } from '@/hooks/api/useStockDocuments';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
@@ -172,6 +172,9 @@ export default function StockDocumentsPage() {
   const docs = docsData?.items ?? (EMPTY_ITEMS as unknown as StockDoc[]);
   const total = docsData?.total ?? 0;
   const invalidate = () => qc.invalidateQueries({ queryKey: stockDocsKeys.all });
+  // Bug #465: оголошуємо `load` поряд з invalidate, щоб handleBulkDelete/handleTransition/markDeleted
+  // що його використовують посилались на вже визначену константу (а не на TDZ-trap при copy-paste у refactor).
+  const load = invalidate;
   const [error, setError] = useState('');
 
   const [selectedDoc, setSelectedDoc] = useState<StockDoc | null>(null);
@@ -293,7 +296,6 @@ export default function StockDocumentsPage() {
   );
 
   const totalPages = Math.ceil(total / limit) || 1;
-  const load = invalidate;
 
   const handleTransition = async (doc: StockDoc, newStatus: string) => {
     const label = newStatus === 'CONFIRMED' ? 'підтвердити' : 'скасувати';

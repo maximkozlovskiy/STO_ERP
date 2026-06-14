@@ -155,6 +155,10 @@ export function InvoiceCreateModal({
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
+  // Bug #461: snapshot id-шників рядків станом на load — щоб у handleSave виявити
+  // рядки які користувач видалив локально (з UI). Без цього DELETE на бекенд не
+  // йде і видалені рядки повертаються при наступному перезавантаженні модалки.
+  const initialLineIdsRef = useRef<Set<string>>(new Set());
 
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
@@ -188,6 +192,7 @@ export function InvoiceCreateModal({
     setLines([]);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
+    initialLineIdsRef.current = new Set();
     if (!isEditMode) {
       setForm({
         counterpartyId: '',
@@ -217,15 +222,17 @@ export function InvoiceCreateModal({
           documentDate: inv.documentDate ? inv.documentDate.slice(0, 10) : kyivToday(),
         });
         setCounterpartyDisplay(inv.counterpartyName ?? '');
-        setLines(
-          (inv.lines ?? []).map(l => ({
-            _key: nextKey(),
-            id: l.id,
-            description: l.description,
-            quantity: String(l.quantity),
-            unitPrice: String(l.unitPrice),
-          })),
-        );
+        const loadedLines = (inv.lines ?? []).map(l => ({
+          _key: nextKey(),
+          id: l.id,
+          description: l.description,
+          quantity: String(l.quantity),
+          unitPrice: String(l.unitPrice),
+        }));
+        setLines(loadedLines);
+        // Bug #461: запам'ятати початковий набір id-шників. handleSave порівняє з поточним
+        // станом і пошле DELETE для тих що зникли (користувач натиснув removeLine).
+        initialLineIdsRef.current = new Set(loadedLines.map(l => l.id!).filter(Boolean));
       })
       .catch(e => {
         if (cancelled) return;
@@ -338,13 +345,20 @@ export function InvoiceCreateModal({
         setNewLine(EMPTY_LINE);
       }
 
+      // Bug #463: розрахувати total з рядків і передати у POST замість 0.01 placeholder.
+      // Backend `addLine` потім перерахує точно з ПДВ через recalcTotals, але якщо
+      // мережа впала між POST /invoices і POST /lines — invoice не залишається з
+      // нерелевантним amount=0.01.
+      const computedTotal = linesToPost.reduce((s, l) => {
+        const qty = parseFloat(l.quantity) || 0;
+        const price = parseFloat(l.unitPrice) || 0;
+        return s + qty * price;
+      }, 0);
       const inv = await apiFetch<{ id: string; number: string }>('/invoices', {
         method: 'POST',
         body: JSON.stringify({
           counterpartyId: form.counterpartyId || undefined,
-          // Backend CreateInvoiceDto requires amount (>= 0.01); lines are added separately after create.
-          // We send 0.01 as placeholder — lines will set the real amount via addLine calls.
-          amount: 0.01,
+          amount: computedTotal >= 0.01 ? computedTotal : 0.01,
           dueDate: form.dueDate || undefined,
           documentDate: form.documentDate || undefined,
         }),
@@ -383,6 +397,14 @@ export function InvoiceCreateModal({
           documentDate: form.documentDate || undefined,
         }),
       });
+
+      // Bug #461: видалити рядки що були у початковому списку але користувач
+      // прибрав через removeLine. Без цього бекенд лишає їх у БД.
+      const currentIds = new Set(lines.map(l => l.id).filter(Boolean) as string[]);
+      const removedIds = [...initialLineIdsRef.current].filter(id => !currentIds.has(id));
+      for (const lineId of removedIds) {
+        await apiFetch(`/invoices/${invoiceId}/lines/${lineId}`, { method: 'DELETE' });
+      }
 
       // Post new lines (those without id)
       for (const line of lines.filter(l => !l.id)) {

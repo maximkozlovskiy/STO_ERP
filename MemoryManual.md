@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+(pending) fix(tester): Bugs #459-#466 — baseline spec mock + PO/Invoice/StockDoc modal contract fixes + component regression tests
+dae793c8 docs(memory): update MemoryManual after review d08efb8d — modal redesign cleanup
 d08efb8d fix(review): surface ref-load errors + fix stale-closure auto-select in PO/StockDoc modals
 7084d676 docs(memory): update MemoryManual after sync 71677c94 — invoice/PO/stock-doc modal fixes
 71677c94 fix(sync): align modal interfaces and endpoints with backend API contracts
@@ -51,8 +53,19 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-14 (post review d08efb8d)
+Дата: 2026-06-15 (post tester #459-#466 — document modal fixes)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Tests: API 775/775 (was 768/774 — fixed baseline-red goods.service.spec mock for stockTotals findMany); Web 423/423 (+3 from new DocumentCreateModals.test.tsx)
+
+Latest tester (2026-06-15, after dae793c8): tester run перевірив 3 переписані модалки (Invoice/PO/StockDoc) і list-pages інтеграцію. 8 bugs знайдено і виправлено:
+  🐛 #459 (CRITICAL baseline): goods.service.spec mock не містив stockItem.findMany — 6 тестів падали з TypeError. Додано findMany у beforeEach factory + новий positive test для byWarehouse breakdown.
+  🐛 #460 (CRITICAL): PurchaseOrderCreateModal.handleCreate робив POST /purchase-orders/:id/lines (endpoint НЕ існує) — 404 на кожен виклик, PO залишався orphan-draft без lines. Виправлено: `lines: [...]` тепер передаються у body POST /purchase-orders (backend service.create вже атомарно у $transaction).
+  🐛 #461 (HIGH): InvoiceCreateModal.handleSave не видаляв існуючі рядки що користувач прибрав через UI. Додано initialLineIdsRef snapshot + DELETE /invoices/:id/lines/:lineId для removedIds.
+  🐛 #462 (HIGH): StockDocumentCreateModal не валідувала targetWarehouseId для TRANSFER — кнопка enabled, POST повертав 400. Додано disabled condition + inline error у handleCreate.
+  🐛 #463 (MEDIUM): InvoiceCreateModal handleCreate надсилав amount=0.01 placeholder. Тепер computedTotal = sum(qty*unitPrice).
+  🐛 #464 (MEDIUM): stock-documents/page.tsx мав dead imports useRef/useEffect — видалено.
+  🐛 #465 (MEDIUM): stock-documents/page.tsx — `const load = invalidate` оголошено ПІСЛЯ useCallback що його використовує. Перенесено перед.
+  🐛 #466 (HIGH): жодного component test для 3 нових модалок (3000 рядків коду). Створено `DocumentCreateModals.test.tsx` з 3 regression-тестами (по одному на bug #460, #461, #462).
 
 Latest review (2026-06-14, d08efb8d, after sync 71677c94 + redesign e6d2e148): code review of three document modals (Invoice/PO/StockDoc) redesigned in WorkOrder style. 2 fixes — (1) IMPORTANT §8.2 silent error swallowing: `.catch(() => {})` на `/warehouses` (PurchaseOrderCreateModal:210) і `/branches`+`/warehouses` (StockDocumentCreateModal:217, 230) ховали API/network errors при load reference data — users бачили б порожні Select без жодного сигналу що щось зламалось; замінено на `.catch(e => setError(...))` для всіх трьох викликів з локалізованими повідомленнями ("Помилка завантаження складів/філій"). (2) IMPORTANT §3.1 stale-closure auto-select: PurchaseOrderCreateModal — inline `if (!form.warehouseId && cached.length === 1) setForm(...)` всередині `useEffect([open])` мав stale `form.warehouseId` з closure АТА auto-select не спрацьовував коли cache miss + fresh fetch повертав 1 склад (тільки cache hit path встановлював); винесено в окремий `useEffect([warehouses])` як вже зроблено для branches в StockDocumentCreateModal. StockDocumentCreateModal — видалено аналогічний redundant inline check для branchId (effect на `[branches]` lines 306-310 вже коректно обробляє). TS clean. Інші перевірки чисті: 0 `React.X` namespace, 0 `any`, 0 `console.log`, 0 inline pixel arbitrary values, всі addEventListener мають cleanup, всі fetch у useEffect мають cancelled-flag guard.
 Tests: API 744/744 ✅ (+19 для stock-totals: 7 service + 12 contract); web 406/406 ✅ (+4 для stockTotalsMap)

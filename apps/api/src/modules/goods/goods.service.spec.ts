@@ -33,7 +33,7 @@ describe('GoodsService', () => {
       updateMany: any;
       delete: any;
     };
-    stockItem: { groupBy: any };
+    stockItem: { groupBy: any; findMany: any };
     $transaction: ReturnType<typeof vi.fn>;
   };
 
@@ -79,7 +79,12 @@ describe('GoodsService', () => {
         updateMany: vi.fn(),
         delete: vi.fn(),
       },
-      stockItem: { groupBy: vi.fn() },
+      // Bug #459: service.stockTotals() з commit 4a05d7c7 викликає БОТКИ
+      // groupBy (агрегати) і findMany (per-warehouse breakdown) у Promise.all.
+      stockItem: {
+        groupBy: vi.fn().mockResolvedValue([]),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
       $transaction: vi.fn(),
     };
 
@@ -444,8 +449,8 @@ describe('GoodsService', () => {
       ]);
       const res = await service.stockTotals('org-1', ['g1', 'g2']);
       expect(res).toEqual([
-        { goodId: 'g1', totalQuantity: 15 },
-        { goodId: 'g2', totalQuantity: 3 },
+        { goodId: 'g1', totalQuantity: 15, byWarehouse: [] },
+        { goodId: 'g2', totalQuantity: 3, byWarehouse: [] },
       ]);
     });
 
@@ -453,7 +458,7 @@ describe('GoodsService', () => {
       // g1 існує, g3 НЕ існує — groupBy опускає (нема рядків); FE сам fallback-ить у 0.
       prisma.stockItem.groupBy.mockResolvedValueOnce([{ goodId: 'g1', _sum: { quantity: 7 } }]);
       const res = await service.stockTotals('org-1', ['g1', 'g3']);
-      expect(res).toEqual([{ goodId: 'g1', totalQuantity: 7 }]);
+      expect(res).toEqual([{ goodId: 'g1', totalQuantity: 7, byWarehouse: [] }]);
       // g3 НЕ повертається — це навмисна семантика: FE pre-seed Map за всіма ids у 0.
       expect(res.find(r => r.goodId === 'g3')).toBeUndefined();
     });
@@ -463,8 +468,41 @@ describe('GoodsService', () => {
       // (теоретично можливо при edge-кейсах WHERE), Number(null ?? 0) = 0, не NaN.
       prisma.stockItem.groupBy.mockResolvedValueOnce([{ goodId: 'g1', _sum: { quantity: null } }]);
       const res = await service.stockTotals('org-1', ['g1']);
-      expect(res).toEqual([{ goodId: 'g1', totalQuantity: 0 }]);
+      expect(res).toEqual([{ goodId: 'g1', totalQuantity: 0, byWarehouse: [] }]);
       expect(Number.isFinite(res[0].totalQuantity)).toBe(true);
+    });
+
+    it('Bug #459: byWarehouse breakdown — findMany повертає per-warehouse rows, мапиться у byWarehouse[]', async () => {
+      // g1 присутній на 2 складах (wh-1: 10, wh-2: 5 = 15), g2 на 1 (wh-1: 3)
+      prisma.stockItem.groupBy.mockResolvedValueOnce([
+        { goodId: 'g1', _sum: { quantity: 15 } },
+        { goodId: 'g2', _sum: { quantity: 3 } },
+      ]);
+      prisma.stockItem.findMany.mockResolvedValueOnce([
+        { goodId: 'g1', warehouseId: 'wh-1', quantity: 10 },
+        { goodId: 'g1', warehouseId: 'wh-2', quantity: 5 },
+        { goodId: 'g2', warehouseId: 'wh-1', quantity: 3 },
+      ]);
+      const res = await service.stockTotals('org-1', ['g1', 'g2']);
+      expect(res).toEqual([
+        {
+          goodId: 'g1',
+          totalQuantity: 15,
+          byWarehouse: [
+            { warehouseId: 'wh-1', quantity: 10 },
+            { warehouseId: 'wh-2', quantity: 5 },
+          ],
+        },
+        { goodId: 'g2', totalQuantity: 3, byWarehouse: [{ warehouseId: 'wh-1', quantity: 3 }] },
+      ]);
+      // findMany застосовує ті ж guards: orgId, deletedAt: null, goodId IN [...]
+      const findManyArgs = prisma.stockItem.findMany.mock.calls[0][0];
+      expect(findManyArgs.where).toEqual({
+        orgId: 'org-1',
+        goodId: { in: ['g1', 'g2'] },
+        deletedAt: null,
+      });
+      expect(findManyArgs.take).toBe(2000); // hard-cap проти OOM
     });
 
     it('Bug #452: НЕ повертає товар з іншої org (cross-tenant isolation)', async () => {

@@ -383,6 +383,17 @@ export function PurchaseOrderCreateModal({
     setSavingBoth(true);
     setError('');
     try {
+      // Bug #460: backend CreatePurchaseOrderDto приймає `lines` у body та створює всі рядки
+      // у $transaction (атомарно, з recalc totalAmount). Endpoint POST /purchase-orders/:id/lines
+      // НЕ існує — попередній цикл `for ... POST /lines` повертав 404 на кожен виклик і залишав
+      // PO як orphan-draft без позицій.
+      const allLines = newLine.goodId ? [...lines, { ...newLine, _key: nextKey() }] : lines;
+      const linesPayload = allLines.map(l => ({
+        goodId: l.goodId,
+        quantity: parseFloat(l.quantity) || 1,
+        price: parseFloat(l.price) || 0,
+      }));
+
       const po = await apiFetch<{ id: string; number: string }>('/purchase-orders', {
         method: 'POST',
         body: JSON.stringify({
@@ -390,20 +401,9 @@ export function PurchaseOrderCreateModal({
           warehouseId: form.warehouseId,
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
+          lines: linesPayload.length > 0 ? linesPayload : undefined,
         }),
       });
-
-      const allLines = newLine.goodId ? [...lines, { ...newLine, _key: nextKey() }] : lines;
-      for (const line of allLines) {
-        await apiFetch(`/purchase-orders/${po.id}/lines`, {
-          method: 'POST',
-          body: JSON.stringify({
-            goodId: line.goodId,
-            quantity: parseFloat(line.quantity) || 1,
-            unitPrice: parseFloat(line.price) || 0,
-          }),
-        });
-      }
 
       if (features.toastEnabled) toast.success(`Замовлення ${po.number} створено`);
       onSaved?.();
