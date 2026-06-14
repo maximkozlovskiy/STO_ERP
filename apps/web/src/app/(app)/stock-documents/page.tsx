@@ -422,34 +422,30 @@ export default function StockDocumentsPage() {
         />
       )}
 
+      {/* Type tabs */}
+      <div className="flex items-center border-b border-border -mx-4 md:-mx-6 px-4 md:px-6 shrink-0">
+        {types.map(t => (
+          <button
+            key={t}
+            onClick={() => {
+              setTypeFilter(t);
+              resetPage();
+              setActiveSavedFilterId(null);
+            }}
+            className={cn(
+              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
+              typeFilter === t
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
+            )}
+          >
+            {t ? TYPE_LABELS[t] : 'Всі'}
+          </button>
+        ))}
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 shrink-0">
-        {/* Type filters */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">
-            Тип
-          </span>
-          {types.map(t => (
-            <button
-              key={t}
-              onClick={() => {
-                setTypeFilter(t);
-                resetPage();
-                setActiveSavedFilterId(null);
-              }}
-              className={cn(
-                'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-                typeFilter === t
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
-              )}
-            >
-              {t ? TYPE_LABELS[t] : 'Всі'}
-            </button>
-          ))}
-        </div>
-        {/* Divider */}
-        <div className="h-6 w-px bg-border" />
         {/* Status filters */}
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">
