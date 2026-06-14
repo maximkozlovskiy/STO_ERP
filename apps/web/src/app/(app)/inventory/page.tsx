@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState, useCallback, useMemo } from 'react';
+import { Fragment, memo, useEffect, useState, useCallback, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ChevronRight, Package, Search } from 'lucide-react';
@@ -43,6 +43,8 @@ import {
 } from '@/lib/panel-schema';
 import { cn } from '@/lib/utils';
 import { fmtMoney } from '@/lib/format';
+
+type PanelConfigHook = ReturnType<typeof useDetailPanelConfig>;
 
 interface Warehouse {
   id: string;
@@ -128,6 +130,31 @@ export default function InventoryPage() {
   const [minStockVal, setMinStockVal] = useState('');
   const [savingMinStock, setSavingMinStock] = useState(false);
 
+  // sto-optimize: stable handler ref — без useCallback inline arrow recreated
+  // на кожен render, що дає false-positive prop change для ByDocumentsView/ByBatchesView.
+  // ВАЖЛИВО: handlers оголошені ПІСЛЯ useState — інакше TDZ (Bug #N: 'Cannot access
+  // selectedItem before initialization' при першому рендері).
+  const handleToggleExpanded = useCallback((key: string) => {
+    setExpanded(prev => toggle(prev, key));
+  }, []);
+
+  // sto-optimize: setViewMode resets expanded — також стабільний.
+  const handleSwitchView = useCallback((m: ViewMode) => {
+    setViewMode(m);
+    setExpanded(new Set());
+  }, []);
+
+  // sto-optimize: stable handlers для InventoryDetailPanel — без них panel re-mount-ить
+  // tabs[].content на КОЖЕН render батька (typing у фільтрі, scroll, query refetch),
+  // що скидає Input focus при редагуванні minStock.
+  const handleCloseDetail = useCallback(() => setSelectedItem(null), []);
+  const handleStartEditMinStock = useCallback(() => {
+    if (!selectedItem) return;
+    setMinStockVal(selectedItem.minStock != null ? String(selectedItem.minStock) : '');
+    setEditingMinStock(true);
+  }, [selectedItem]);
+  const handleCancelEditMinStock = useCallback(() => setEditingMinStock(false), []);
+
   // Low stock modal
   const [showLowModal, setShowLowModal] = useState(false);
 
@@ -212,7 +239,9 @@ export default function InventoryPage() {
     }
   };
 
-  const displayed = showLow ? items.filter(i => i.isLow) : items;
+  // sto-optimize: useMemo щоб filter не виконувався на КОЖЕН render (low-mode toggle
+  // rarely changes vs typing у пошук, який already triggers items refresh).
+  const displayed = useMemo(() => (showLow ? items.filter(i => i.isLow) : items), [items, showLow]);
 
   // Loading state for current mode
   const loading =
@@ -249,10 +278,7 @@ export default function InventoryPage() {
           {(Object.keys(VIEW_LABELS) as ViewMode[]).map(m => (
             <button
               key={m}
-              onClick={() => {
-                setViewMode(m);
-                setExpanded(new Set());
-              }}
+              onClick={() => handleSwitchView(m)}
               className={cn(
                 'px-3 py-1 text-[13px] transition-colors',
                 viewMode === m
@@ -434,7 +460,7 @@ export default function InventoryPage() {
             <ByDocumentsView
               goods={byDocData?.goods ?? []}
               expanded={expanded}
-              onToggle={key => setExpanded(prev => toggle(prev, key))}
+              onToggle={handleToggleExpanded}
               q={debouncedQ}
             />
           )}
@@ -444,140 +470,27 @@ export default function InventoryPage() {
             <ByBatchesView
               batches={byBatchData?.batches ?? []}
               expanded={expanded}
-              onToggle={key => setExpanded(prev => toggle(prev, key))}
+              onToggle={handleToggleExpanded}
               q={debouncedQ}
             />
           )}
         </div>
 
         {/* Detail panel — only in goods mode */}
-        {viewMode === 'goods' &&
-          (() => {
-            const buildInventoryTabs = (item: StockItem): DetailPanelTab[] => [
-              {
-                key: 'info',
-                label: 'Основне',
-                content: (
-                  <div className="space-y-4">
-                    {item.isLow && (
-                      <div className="flex items-center gap-2 p-2.5 bg-warning-subtle border border-warning-border rounded-lg text-[13px] text-warning-text">
-                        <AlertTriangle className="h-4 w-4 shrink-0" />
-                        <span>Залишок нижче мінімального</span>
-                      </div>
-                    )}
-                    <div className="space-y-3">
-                      {buildPanelFields(item, STOCK_ITEM_PANEL_SCHEMA, panelConfig.config, {
-                        quantity: v => `${String(v)} ${item.unit}`,
-                        reserved: v =>
-                          Number(v) > 0 ? (
-                            <span className="text-warning-text tabular-nums">
-                              {String(v)} {item.unit}
-                            </span>
-                          ) : undefined,
-                        available: v => (
-                          <span
-                            className={cn(
-                              'font-semibold tabular-nums',
-                              Number(v) <= 0 ? 'text-destructive' : 'text-success',
-                            )}
-                          >
-                            {String(v)} {item.unit}
-                          </span>
-                        ),
-                        minStock: () => undefined,
-                      })
-                        .filter(f => f.key !== 'minStock')
-                        .map(f => (
-                          <PanelField
-                            key={f.key}
-                            fieldKey={f.key}
-                            label={f.label}
-                            value={f.value}
-                            hidden={f.hidden}
-                          />
-                        ))}
-                    </div>
-                    {!panelConfig.isFieldHidden('minStock') && (
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
-                            Мінімальний залишок
-                          </span>
-                          {!editingMinStock && (
-                            <button
-                              className="text-xs text-primary hover:underline"
-                              onClick={() => {
-                                setMinStockVal(item.minStock != null ? String(item.minStock) : '');
-                                setEditingMinStock(true);
-                              }}
-                            >
-                              змінити
-                            </button>
-                          )}
-                        </div>
-                        {editingMinStock ? (
-                          <div className="flex gap-1.5 mt-1.5">
-                            <Input
-                              type="number"
-                              value={minStockVal}
-                              onChange={e => setMinStockVal(e.target.value)}
-                              placeholder="0"
-                              min="0"
-                              step="1"
-                              className="h-7 text-sm"
-                            />
-                            <Button
-                              size="sm"
-                              onClick={saveMinStock}
-                              loading={savingMinStock}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Зберегти
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setEditingMinStock(false)}
-                              className="h-7 px-2 text-xs"
-                            >
-                              ✕
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="mt-1">
-                            {item.minStock != null ? (
-                              <Badge variant={item.isLow ? 'warning' : 'secondary'}>
-                                ≥ {item.minStock} {item.unit}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground text-[12px]">
-                                не встановлено
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ),
-              },
-            ];
-            return (
-              <DetailPanel
-                open={!!selectedItem}
-                onClose={() => setSelectedItem(null)}
-                title={selectedItem?.goodName ?? ''}
-                tabs={selectedItem ? buildInventoryTabs(selectedItem) : undefined}
-                configFields={schemaToPanelConfigFields(
-                  STOCK_ITEM_PANEL_SCHEMA,
-                  panelConfig.config,
-                )}
-                onToggleField={panelConfig.toggleField}
-                onReorderFields={panelConfig.reorderFields}
-                onReset={panelConfig.reset}
-              />
-            );
-          })()}
+        {viewMode === 'goods' && (
+          <InventoryDetailPanel
+            selectedItem={selectedItem}
+            onClose={handleCloseDetail}
+            panelConfig={panelConfig}
+            editingMinStock={editingMinStock}
+            minStockVal={minStockVal}
+            savingMinStock={savingMinStock}
+            onStartEditMinStock={handleStartEditMinStock}
+            onCancelEditMinStock={handleCancelEditMinStock}
+            onChangeMinStockVal={setMinStockVal}
+            onSaveMinStock={saveMinStock}
+          />
+        )}
       </div>
 
       {/* Low stock modal */}
@@ -625,7 +538,12 @@ interface ByDocumentsViewProps {
   q: string;
 }
 
-function ByDocumentsView({ goods, expanded, onToggle, q }: ByDocumentsViewProps) {
+const ByDocumentsView = memo(function ByDocumentsView({
+  goods,
+  expanded,
+  onToggle,
+  q,
+}: ByDocumentsViewProps) {
   const filtered = useMemo(() => {
     if (!q) return goods;
     const lower = q.toLowerCase();
@@ -742,7 +660,7 @@ function ByDocumentsView({ goods, expanded, onToggle, q }: ByDocumentsViewProps)
       </TableBody>
     </Table>
   );
-}
+});
 
 // ─── By Batches View ──────────────────────────────────────────────────────────
 
@@ -753,7 +671,12 @@ interface ByBatchesViewProps {
   q: string;
 }
 
-function ByBatchesView({ batches, expanded, onToggle, q }: ByBatchesViewProps) {
+const ByBatchesView = memo(function ByBatchesView({
+  batches,
+  expanded,
+  onToggle,
+  q,
+}: ByBatchesViewProps) {
   const filtered = useMemo(() => {
     if (!q) return batches;
     const lower = q.toLowerCase();
@@ -898,4 +821,172 @@ function ByBatchesView({ batches, expanded, onToggle, q }: ByBatchesViewProps) {
       </TableBody>
     </Table>
   );
+});
+
+// ─── Inventory Detail Panel ───────────────────────────────────────────────────
+// sto-optimize: винесено з IIFE у тілі InventoryPage щоб (1) tabs не перебудовувались
+// на КОЖЕН render батька (typing у пошук, refetch), (2) memo блокує re-render коли
+// selectedItem не змінився, (3) handlers стабільні через useCallback у parent.
+
+interface InventoryDetailPanelProps {
+  selectedItem: StockItem | null;
+  onClose: () => void;
+  panelConfig: PanelConfigHook;
+  editingMinStock: boolean;
+  minStockVal: string;
+  savingMinStock: boolean;
+  onStartEditMinStock: () => void;
+  onCancelEditMinStock: () => void;
+  onChangeMinStockVal: (v: string) => void;
+  onSaveMinStock: () => void;
 }
+
+const InventoryDetailPanel = memo(function InventoryDetailPanel({
+  selectedItem,
+  onClose,
+  panelConfig,
+  editingMinStock,
+  minStockVal,
+  savingMinStock,
+  onStartEditMinStock,
+  onCancelEditMinStock,
+  onChangeMinStockVal,
+  onSaveMinStock,
+}: InventoryDetailPanelProps) {
+  const tabs = useMemo<DetailPanelTab[] | undefined>(() => {
+    if (!selectedItem) return undefined;
+    const item = selectedItem;
+    return [
+      {
+        key: 'info',
+        label: 'Основне',
+        content: (
+          <div className="space-y-4">
+            {item.isLow && (
+              <div className="flex items-center gap-2 p-2.5 bg-warning-subtle border border-warning-border rounded-lg text-[13px] text-warning-text">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>Залишок нижче мінімального</span>
+              </div>
+            )}
+            <div className="space-y-3">
+              {buildPanelFields(item, STOCK_ITEM_PANEL_SCHEMA, panelConfig.config, {
+                quantity: v => `${String(v)} ${item.unit}`,
+                reserved: v =>
+                  Number(v) > 0 ? (
+                    <span className="text-warning-text tabular-nums">
+                      {String(v)} {item.unit}
+                    </span>
+                  ) : undefined,
+                available: v => (
+                  <span
+                    className={cn(
+                      'font-semibold tabular-nums',
+                      Number(v) <= 0 ? 'text-destructive' : 'text-success',
+                    )}
+                  >
+                    {String(v)} {item.unit}
+                  </span>
+                ),
+                minStock: () => undefined,
+              })
+                .filter(f => f.key !== 'minStock')
+                .map(f => (
+                  <PanelField
+                    key={f.key}
+                    fieldKey={f.key}
+                    label={f.label}
+                    value={f.value}
+                    hidden={f.hidden}
+                  />
+                ))}
+            </div>
+            {!panelConfig.isFieldHidden('minStock') && (
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
+                    Мінімальний залишок
+                  </span>
+                  {!editingMinStock && (
+                    <button
+                      className="text-xs text-primary hover:underline"
+                      onClick={onStartEditMinStock}
+                    >
+                      змінити
+                    </button>
+                  )}
+                </div>
+                {editingMinStock ? (
+                  <div className="flex gap-1.5 mt-1.5">
+                    <Input
+                      type="number"
+                      value={minStockVal}
+                      onChange={e => onChangeMinStockVal(e.target.value)}
+                      placeholder="0"
+                      min="0"
+                      step="1"
+                      className="h-7 text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={onSaveMinStock}
+                      loading={savingMinStock}
+                      className="h-7 px-2 text-xs"
+                    >
+                      Зберегти
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={onCancelEditMinStock}
+                      className="h-7 px-2 text-xs"
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-1">
+                    {item.minStock != null ? (
+                      <Badge variant={item.isLow ? 'warning' : 'secondary'}>
+                        ≥ {item.minStock} {item.unit}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-[12px]">не встановлено</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ),
+      },
+    ];
+  }, [
+    selectedItem,
+    panelConfig,
+    editingMinStock,
+    minStockVal,
+    savingMinStock,
+    onStartEditMinStock,
+    onCancelEditMinStock,
+    onChangeMinStockVal,
+    onSaveMinStock,
+  ]);
+
+  const configFields = useMemo(
+    () => schemaToPanelConfigFields(STOCK_ITEM_PANEL_SCHEMA, panelConfig.config),
+    [panelConfig.config],
+  );
+
+  return (
+    <DetailPanel
+      open={!!selectedItem}
+      onClose={onClose}
+      title={selectedItem?.goodName ?? ''}
+      tabs={tabs}
+      configFields={configFields}
+      onToggleField={panelConfig.toggleField}
+      onReorderFields={panelConfig.reorderFields}
+      onReset={panelConfig.reset}
+    />
+  );
+});

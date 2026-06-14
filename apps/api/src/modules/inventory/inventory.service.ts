@@ -63,28 +63,40 @@ export class InventoryService {
     // відсутня (типове для TRANSFER або інвентаризаційного оприбуткування) — fallback
     // на good.purchasePrice, інакше 0 (безкоштовні зразки). Це зберігає батч-tracking
     // без блокування легітимних бізнес-операцій.
-    let resolvedCostPrice: number | null = dto.price ?? null;
-    if (dto.type === 'RECEIPT' && dto.quantity > 0 && resolvedCostPrice === null) {
-      const good = await db.good.findFirst({
-        where: { id: dto.goodId, orgId, deletedAt: null },
-        select: { purchasePrice: true },
-      });
-      resolvedCostPrice = good?.purchasePrice != null ? Number(good.purchasePrice) : 0;
-    }
-
+    //
     // Bug #238 defense-in-depth: validate tenant boundary for caller-supplied UoM.
     // Current callers (PO receive, SD transition, batch.service) already validate or
     // pass org-trusted values, but InventoryService is a public API surface — any
     // future caller (work-orders, mobile sync, manual adjustments) could leak
     // cross-tenant linkage. FK alone enforces only global existence, not orgId.
-    if (dto.unitOfMeasureId) {
-      const uom = await db.unitOfMeasure.findFirst({
-        where: { id: dto.unitOfMeasureId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!uom) {
-        throw new BadRequestException('Одиницю виміру не знайдено в межах організації');
-      }
+    //
+    // sto-optimize: обидва lookups незалежні (good.purchasePrice + uom.tenant guard) →
+    // Promise.all замість sequential await. Економить 1 RTT на створенні
+    // RECEIPT-руху з UoM (типовий випадок PO receive).
+    const needsCostLookup =
+      dto.type === 'RECEIPT' && dto.quantity > 0 && (dto.price === undefined || dto.price === null);
+    const needsUomGuard = !!dto.unitOfMeasureId;
+    const [goodForCost, uom] = await Promise.all([
+      needsCostLookup
+        ? db.good.findFirst({
+            where: { id: dto.goodId, orgId, deletedAt: null },
+            select: { purchasePrice: true },
+          })
+        : Promise.resolve(null),
+      needsUomGuard
+        ? db.unitOfMeasure.findFirst({
+            where: { id: dto.unitOfMeasureId!, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    if (needsUomGuard && !uom) {
+      throw new BadRequestException('Одиницю виміру не знайдено в межах організації');
+    }
+    let resolvedCostPrice: number | null = dto.price ?? null;
+    if (needsCostLookup) {
+      resolvedCostPrice =
+        goodForCost?.purchasePrice != null ? Number(goodForCost.purchasePrice) : 0;
     }
 
     if (dto.quantity < 0 || dto.type === 'RESERVATION' || dto.type === 'RESERVATION_RELEASE') {

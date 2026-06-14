@@ -1152,6 +1152,11 @@ model StockMovement {
   @@index([orgId, goodId, warehouseId])
   @@index([orgId, warehouseId, createdAt])
   @@index([orgId, documentType, documentId])
+  // sto-optimize: covers `byDocument` StockMovement query (orgId + [goodId?] +
+  // createdAt DESC sort), used when goodId filter present or no warehouseId.
+  // Без цього індекса Postgres робив seqscan + sort на take:3000 рядках.
+  @@index([orgId, goodId, createdAt])
+  @@index([orgId, createdAt])
   @@map("stock_movements")
 }
 
@@ -1189,6 +1194,11 @@ model StockBatch {
   @@index([orgId, warehouseId, isActive, createdAt])
   @@index([orgId, goodId, expiryDate])
   @@index([orgId, syncVersion])
+  // sto-optimize: covers `byBatch` query (orgId + optional warehouseId/goodId +
+  // createdAt DESC sort) without isActive predicate. Існуючий
+  // (orgId, warehouseId, isActive, createdAt) не вибирається коли WHERE не має
+  // isActive — Postgres вимагає leading-cols match.
+  @@index([orgId, createdAt])
   @@map("stock_batches")
 }
 
