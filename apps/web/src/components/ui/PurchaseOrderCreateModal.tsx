@@ -82,7 +82,7 @@ interface POLine {
   goodName?: string | null;
   unit?: string | null;
   quantity: number;
-  unitPrice: number;
+  price: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -253,7 +253,7 @@ export function PurchaseOrderCreateModal({
             goodName: l.goodName ?? '',
             unit: l.unit ?? 'шт',
             quantity: String(l.quantity),
-            price: String(l.unitPrice),
+            price: String(l.price),
           })),
         );
       })
@@ -416,25 +416,22 @@ export function PurchaseOrderCreateModal({
     setSavingBoth(true);
     setError('');
     try {
+      // Backend has no separate POST /purchase-orders/:id/lines endpoint.
+      // PATCH with lines replaces ALL lines (soft-deletes existing, re-creates from body).
+      // We always send the full current list so no lines are lost.
+      const allLines = lines.map(l => ({
+        goodId: l.goodId,
+        quantity: parseFloat(l.quantity) || 1,
+        price: parseFloat(l.price) || 0,
+      }));
       await apiFetch(`/purchase-orders/${purchaseOrderId}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          warehouseId: form.warehouseId || undefined,
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
+          lines: allLines,
         }),
       });
-
-      for (const line of lines.filter(l => !l.id)) {
-        await apiFetch(`/purchase-orders/${purchaseOrderId}/lines`, {
-          method: 'POST',
-          body: JSON.stringify({
-            goodId: line.goodId,
-            quantity: parseFloat(line.quantity) || 1,
-            unitPrice: parseFloat(line.price) || 0,
-          }),
-        });
-      }
 
       if (features.toastEnabled) toast.success('Замовлення збережено');
       onSaved?.();

@@ -435,24 +435,22 @@ export function StockDocumentCreateModal({
     setSavingBoth(true);
     setError('');
     try {
+      // Backend has no separate POST /stock-documents/:id/lines endpoint.
+      // PATCH with lines replaces ALL lines (soft-deletes existing, re-creates from body).
+      // We always send the full current list so no lines are lost.
+      const allLines = lines.map(l => ({
+        goodId: l.goodId,
+        quantity: parseFloat(l.quantity) || 1,
+        price: parseFloat(l.price) || undefined,
+      }));
       await apiFetch(`/stock-documents/${stockDocumentId}`, {
         method: 'PATCH',
         body: JSON.stringify({
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
+          lines: allLines,
         }),
       });
-
-      for (const line of lines.filter(l => !l.id)) {
-        await apiFetch(`/stock-documents/${stockDocumentId}/lines`, {
-          method: 'POST',
-          body: JSON.stringify({
-            goodId: line.goodId,
-            quantity: parseFloat(line.quantity) || 1,
-            price: parseFloat(line.price) || undefined,
-          }),
-        });
-      }
 
       if (features.toastEnabled) toast.success('Документ збережено');
       onSaved?.();

@@ -47,7 +47,7 @@ interface InvoiceDetail {
   id: string;
   number: string;
   status: string;
-  type: string;
+  invoiceType?: string | null;
   counterpartyId: string;
   counterpartyName?: string | null;
   amount: number;
@@ -133,7 +133,7 @@ export function InvoiceCreateModal({
 
   const [form, setForm] = useState({
     counterpartyId: '',
-    type: 'STANDARD',
+    invoiceType: 'STANDARD',
     dueDate: '',
     documentDate: kyivToday(),
   });
@@ -189,7 +189,12 @@ export function InvoiceCreateModal({
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
     if (!isEditMode) {
-      setForm({ counterpartyId: '', type: 'STANDARD', dueDate: '', documentDate: kyivToday() });
+      setForm({
+        counterpartyId: '',
+        invoiceType: 'STANDARD',
+        dueDate: '',
+        documentDate: kyivToday(),
+      });
       setCounterpartyDisplay('');
     }
   }, [open, invoiceId]);
@@ -207,7 +212,7 @@ export function InvoiceCreateModal({
         setCurrentStatus(inv.status);
         setForm({
           counterpartyId: inv.counterpartyId ?? '',
-          type: inv.type ?? 'STANDARD',
+          invoiceType: inv.invoiceType ?? 'STANDARD',
           dueDate: inv.dueDate ? inv.dueDate.slice(0, 10) : '',
           documentDate: inv.documentDate ? inv.documentDate.slice(0, 10) : kyivToday(),
         });
@@ -337,7 +342,9 @@ export function InvoiceCreateModal({
         method: 'POST',
         body: JSON.stringify({
           counterpartyId: form.counterpartyId || undefined,
-          type: form.type,
+          // Backend CreateInvoiceDto requires amount (>= 0.01); lines are added separately after create.
+          // We send 0.01 as placeholder — lines will set the real amount via addLine calls.
+          amount: 0.01,
           dueDate: form.dueDate || undefined,
           documentDate: form.documentDate || undefined,
         }),
@@ -372,7 +379,6 @@ export function InvoiceCreateModal({
       await apiFetch(`/invoices/${invoiceId}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          type: form.type,
           dueDate: form.dueDate || undefined,
           documentDate: form.documentDate || undefined,
         }),
@@ -410,7 +416,7 @@ export function InvoiceCreateModal({
   const headerChips =
     isEditMode && headerCollapsed
       ? [
-          form.type ? (INVOICE_TYPE_LABELS[form.type] ?? form.type) : null,
+          form.invoiceType ? (INVOICE_TYPE_LABELS[form.invoiceType] ?? form.invoiceType) : null,
           counterpartyDisplay || null,
           form.dueDate ? `до ${form.dueDate}` : null,
         ].filter(Boolean)
@@ -699,8 +705,8 @@ export function InvoiceCreateModal({
                   </div>
                   <Select
                     label="Тип рахунку"
-                    value={form.type}
-                    onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+                    value={form.invoiceType}
+                    onChange={e => setForm(f => ({ ...f, invoiceType: e.target.value }))}
                     disabled={!canEdit}
                     className="h-8 text-[13px] py-0.5 px-2 pr-7"
                   >
