@@ -515,6 +515,7 @@ export function CreateWorkOrderModal({
   // Accumulated pre-save rows
   const [lines, setLines] = useState<LocalLine[]>([]);
   const [parts, setParts] = useState<LocalPart[]>([]);
+  const [stockTotalsMap, setStockTotalsMap] = useState<Map<string, number>>(new Map());
 
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
 
@@ -827,6 +828,26 @@ export function CreateWorkOrderModal({
       ),
     [],
   );
+
+  // Fetch total stock across all warehouses for each unique good in the parts list,
+  // including any good currently being added/edited (so the column shows while typing).
+  useEffect(() => {
+    const ids = new Set(parts.map(p => p.goodId).filter(Boolean));
+    if (newPart.goodId) ids.add(newPart.goodId);
+    if (editingPart.goodId) ids.add(editingPart.goodId);
+    const goodIds = [...ids];
+    if (goodIds.length === 0) {
+      setStockTotalsMap(new Map());
+      return;
+    }
+    void apiFetch<{ goodId: string; totalQuantity: number }[]>(
+      `/goods/stock-totals?ids=${goodIds.join(',')}`,
+    )
+      .then(rows => {
+        setStockTotalsMap(new Map(rows.map(r => [r.goodId, r.totalQuantity])));
+      })
+      .catch(() => {});
+  }, [parts, newPart.goodId, editingPart.goodId]);
 
   // Counterparty search for the header picker.
   // Wrapped in useCallback so EntityPickerField's outside-click listener
@@ -2561,6 +2582,7 @@ export function CreateWorkOrderModal({
                       <colgroup>
                         <col />
                         <col className="w-44" />
+                        <col className="w-16" />
                         <col className="w-20" />
                         <col className="w-28" />
                         <col className="w-24" />
@@ -2575,6 +2597,9 @@ export function CreateWorkOrderModal({
                           </th>
                           <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                             Склад
+                          </th>
+                          <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                            На складі
                           </th>
                           <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                             К-сть
@@ -2600,7 +2625,7 @@ export function CreateWorkOrderModal({
                         {parts.length === 0 && !showPartInput && (
                           <tr>
                             <td
-                              colSpan={vatMode !== 'NONE' ? 8 : 7}
+                              colSpan={vatMode !== 'NONE' ? 9 : 8}
                               className="px-3 py-4 text-center text-[12px] text-muted-foreground"
                             >
                               Натисніть «Додати» щоб додати товар
@@ -2665,6 +2690,11 @@ export function CreateWorkOrderModal({
                                         </option>
                                       ))}
                                     </Select>
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
+                                    {editingPart.goodId
+                                      ? (stockTotalsMap.get(editingPart.goodId) ?? '—')
+                                      : '—'}
                                   </td>
                                   <td className="px-2 py-1.5">
                                     <Input
@@ -2767,6 +2797,9 @@ export function CreateWorkOrderModal({
                                   </td>
                                   <td className="px-2 py-1.5 text-muted-foreground truncate">
                                     {wh?.name ?? '—'}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                                    {part.goodId ? (stockTotalsMap.get(part.goodId) ?? '—') : '—'}
                                   </td>
                                   <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                                     {part.quantity}
@@ -2872,6 +2905,9 @@ export function CreateWorkOrderModal({
                                   </option>
                                 ))}
                               </Select>
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
+                              {newPart.goodId ? (stockTotalsMap.get(newPart.goodId) ?? '—') : '—'}
                             </td>
                             <td className="px-2 py-1.5">
                               <Input

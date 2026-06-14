@@ -662,4 +662,20 @@ export class GoodsService {
       updatedAt: item.updatedAt,
     };
   }
+
+  async stockTotals(
+    orgId: string,
+    goodIds: string[],
+  ): Promise<{ goodId: string; totalQuantity: number }[]> {
+    if (goodIds.length === 0) return [];
+    const rows = await this.prisma.stockItem.groupBy({
+      by: ['goodId'],
+      where: { orgId, goodId: { in: goodIds }, deletedAt: null },
+      _sum: { quantity: true },
+    });
+    return rows.map(r => ({
+      goodId: r.goodId,
+      totalQuantity: Number(r._sum.quantity ?? 0),
+    }));
+  }
 }

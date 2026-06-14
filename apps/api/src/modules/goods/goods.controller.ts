@@ -12,6 +12,7 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -48,6 +49,21 @@ export class GoodsController {
   @ApiOperation({ summary: 'Список товарів/запчастин' })
   findAll(@OrgContext() orgId: string, @Query() query: GoodQueryDto) {
     return this.service.findAll(orgId, query);
+  }
+
+  // Specific sub-routes BEFORE :id — Fastify matches in declaration order, :id is greedy
+  @Get('stock-totals')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC')
+  @ApiOperation({ summary: 'Загальна кількість товарів на всіх складах (за goodId)' })
+  stockTotals(@OrgContext() orgId: string, @Query('ids') ids: string) {
+    const goodIds = ids
+      ? ids
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+      : [];
+    if (goodIds.length > 100) throw new BadRequestException('Максимум 100 товарів за раз');
+    return this.service.stockTotals(orgId, goodIds);
   }
 
   @Get(':id')
