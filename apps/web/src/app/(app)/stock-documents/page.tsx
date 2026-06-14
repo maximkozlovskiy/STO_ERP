@@ -176,6 +176,7 @@ export default function StockDocumentsPage() {
 
   const [selectedDoc, setSelectedDoc] = useState<StockDoc | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState<StockDoc | null>(null);
 
   // Lazy-fetch full doc with lines when opening the DetailPanel.
@@ -614,14 +615,13 @@ export default function StockDocumentsPage() {
                   <TableRow
                     key={doc.id}
                     className={cn(
-                      'group transition-colors',
-                      detailPanel.enabled && 'cursor-pointer',
+                      'group transition-colors cursor-pointer',
                       selectedDoc?.id === doc.id && detailPanel.enabled && 'bg-secondary',
                       bulkSelect.isSelected(doc.id) && 'bg-primary/5',
                       doc.deletedAt && 'opacity-60',
                     )}
                     onClick={() => {
-                      if (detailPanel.enabled) toggleSelectDoc(doc);
+                      setEditingDocId(doc.id);
                     }}
                   >
                     {features.bulkActionsEnabled && (
@@ -743,6 +743,16 @@ export default function StockDocumentsPage() {
         onSaved={() => {
           setShowCreate(false);
           load();
+        }}
+      />
+
+      {/* Edit modal */}
+      <StockDocumentCreateModal
+        open={!!editingDocId}
+        stockDocumentId={editingDocId ?? undefined}
+        onClose={() => setEditingDocId(null)}
+        onSaved={() => {
+          invalidate();
         }}
       />
 

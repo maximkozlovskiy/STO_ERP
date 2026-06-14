@@ -192,6 +192,7 @@ export default function PurchaseOrdersPage() {
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState<PurchaseOrder | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
 
@@ -672,15 +673,12 @@ export default function PurchaseOrdersPage() {
                   <TableRow
                     key={po.id}
                     className={cn(
-                      'group transition-colors',
-                      detailPanel.enabled && 'cursor-pointer',
-                      selectedPO?.id === po.id && detailPanel.enabled && 'bg-secondary',
+                      'group transition-colors cursor-pointer',
                       bulkSelect.isSelected(po.id) && 'bg-primary/5',
                       po.deletedAt && 'opacity-60',
                     )}
                     onClick={() => {
-                      if (detailPanel.enabled)
-                        setSelectedPO(prev => (prev?.id === po.id ? null : po));
+                      setEditingPOId(po.id);
                     }}
                   >
                     {features.bulkActionsEnabled && (
@@ -807,6 +805,16 @@ export default function PurchaseOrdersPage() {
         onClose={() => setShowCreate(false)}
         onSaved={() => {
           setShowCreate(false);
+          queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+        }}
+      />
+
+      {/* Edit modal — відкривається при кліку на рядок */}
+      <PurchaseOrderCreateModal
+        open={!!editingPOId}
+        purchaseOrderId={editingPOId ?? undefined}
+        onClose={() => setEditingPOId(null)}
+        onSaved={() => {
           queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
         }}
       />

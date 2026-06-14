@@ -183,6 +183,7 @@ export default function InvoicesPage() {
   const [selectedInv, setSelectedInv] = useState<InvoiceWithOptionals | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [showPayment, setShowPayment] = useState<InvoiceWithOptionals | null>(null);
 
   const [payMethods, setPayMethods] = useState<{ code: string; name: string }[]>([]);
@@ -722,11 +723,10 @@ export default function InvoicesPage() {
                   <TableRow
                     key={inv.id}
                     onClick={() => {
-                      if (detailPanel.enabled) selectInvoice(inv);
+                      setEditingInvoiceId(inv.id);
                     }}
                     className={cn(
-                      'group transition-colors',
-                      detailPanel.enabled && 'cursor-pointer',
+                      'group transition-colors cursor-pointer',
                       inv.deletedAt && 'opacity-60',
                       selectedInv?.id === inv.id && detailPanel.enabled && 'bg-primary/5',
                       bulkSelect.isSelected(inv.id) && 'bg-primary/5',
@@ -845,6 +845,16 @@ export default function InvoicesPage() {
         onClose={() => setShowCreate(false)}
         onSaved={() => {
           setShowCreate(false);
+          queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+        }}
+      />
+
+      {/* Edit modal — відкривається при кліку на рядок */}
+      <InvoiceCreateModal
+        open={!!editingInvoiceId}
+        invoiceId={editingInvoiceId ?? undefined}
+        onClose={() => setEditingInvoiceId(null)}
+        onSaved={() => {
           queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
         }}
       />
