@@ -598,6 +598,11 @@ grep -nE "^\[data-state=" apps/web/src/app/globals.css | grep -v "data-animate"
 # Inline IIFE у JSX
 grep -rnE "\{\(\(\) =>" apps/web/src/app/ --include="*.tsx"
 
+# Нова <col> додана у <colgroup> але tfoot colSpan не оновлений
+# (порівняти кількість <col> у <colgroup> з усіма colSpan-ами + сусідніми cells у tfoot/empty-state row)
+# Сигнал: feat-diff показує `+ <col className="w-N">` у тому ж файлі що має <tfoot> з captured colSpan
+git diff HEAD~5 --unified=0 apps/web/src/components --include="*.tsx" 2>/dev/null | grep -E "^\+\s+<col\b"
+
 # Дубльована date badge математика
 grep -rn "86_400_000\|diffDays" apps/web/src/app/ --include="*.tsx" | grep -v "lib/utils\|expiry-badge"
 
@@ -1162,6 +1167,33 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 **Grep:** після будь-якого `(\d+) \* 60 → CONST_NAME \* 60` fix → `grep -rn "<old_number>\|<old_HHmm>" <file>` у тому ж файлі та сусідніх; також звірити з backend константою (`grep -rn "WORK_DAY_END_H\|CONST_NAME" apps/api/src`) — frontend і backend константи мають збігатися (іманентний інваріант).
 **Фікс:** масово оновити всі коментарі/jsdoc у тому ж файлі — заміна сирих чисел на ім'я константи (`WORK_DAY_END_H = 20`) робить майбутній drift неможливим; якщо приклад залишається конкретним ("2h from 20:00 → endAt=22:00"), окремий commit `fix(review): stale comments — X is Y, not Z`.
 **Severity:** IMPORTANT — degradation якості документації; ризик майбутнього regression коли наступний розробник довіряє коменту і "виправляє" правильний код.
+
+---
+
+### 2026-06-14 — Нова `<col>` у `<colgroup>` додана, але `tfoot colSpan` не інкрементнутий → totals у неправильній колонці — §8 Web Frontend
+
+**Сигнал:** feat-commit додає колонку у table (`<colgroup>` отримує новий `<col>`, `<thead>` — новий `<th>`, у `<tbody>` map-рядках — новий `<td>` у всіх режимах view/edit/new-input). АЛЕ у `<tfoot>` залишений старий `colSpan={vatMode !== 'NONE' ? 4 : 5}` що покривав попередню кількість колонок. Після зміни layout (8→9 з ПДВ, 7→8 без ПДВ) колонок, тлумачення `colSpan` зсувається: label "Разом товарів:" розтягується на 4 (замість потрібних 5) — `partsTotals.vat` потрапляє у комірку де має бути сума, `partsTotals.total` — у комірку дій. Empty-state `<td colSpan>` зазвичай оновлюють разом з рядками (видно), а tfoot прихований у кінці файлу й часто пропускають.
+**Grep:** `grep -n "colSpan" <modal>.tsx` — для кожного match: порахувати фактичні `<col>` у тому самому table + `<col>{cond}` умовні; формула: `colSpan + (кількість cells після нього у тому ж row) === count(<col>)`. Якщо у diff додано новий `<col>` — інкрементнути ВСІ `colSpan` у `<tfoot>` та `<tbody>` empty-state row.
+**Фікс:** ручно перерахувати: `<thead>` row має N `<th>` (включно з умовними) = N `<col>` у `<colgroup>`. `<tfoot>` row: `colSpan + (кожна сусідня `<td>`чи умовна`<td>` після label) = N`. У нашому випадку: VAT-on path = 9 cells = `colSpan=5` + 1 empty + 1 vat + 1 total + 1 actions. VAT-off path = 8 cells = `colSpan=6` + 1 total + 1 actions.
+**Severity:** CRITICAL — visible layout bug одразу при додаванні parts (`Разом товарів:` totals у колонці дій, кнопки накладені на цифри); порушує table-formatting інваріант. Empty-state colSpan оновлений (видно бо завжди показується перед додаванням), а tfoot ні (показується лише після першого item — пропустили у smoke-test).
+
+---
+
+### 2026-06-14 — Bulk lookup endpoint без UUID-validation на `@Query('ids')` → 500 замість 400 — §2.3 Input Validation
+
+**Сигнал:** новий "bulk get" контролер-метод приймає comma-separated IDs: `@Query('ids') ids: string` → `ids.split(',').map(trim).filter(Boolean)` → пряме `prisma.X.findMany({ where: { goodId: { in: goodIds } } })`. Postgres `@db.Uuid` колонки відхиляють non-UUID literal → `invalid input syntax for type uuid: "abc"` → 500 з не-i18n повідомленням. ParseUUIDPipe працює тільки на `@Param`, не на split-out item-ах усередині query. Окремий ризик: `ids: string` (required) тоді як логіка коректно обробляє відсутній ids (`ids ? ... : []`) → краще зробити `ids?: string`.
+**Grep:** `grep -rnE "@Query\('ids'\)" apps/api/src/modules --include="*.controller.ts"` — для кожного match: чи виконується split + чи валідуються UUID-и; також — чи parameter позначений optional `?: string`.
+**Фікс:** module-level `const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;` (RFC4122 v1-v8, дозволяє тестовий nil UUID `00000000-...`). Після split + filter — `const invalid = goodIds.find(id => !UUID_RE.test(id)); if (invalid) throw new BadRequestException(`Некоректний goodId: ${invalid}`);`. `@Query('ids') ids?: string` коли handler коректно обробляє відсутнє значення.
+**Severity:** IMPORTANT — degradation: 500 замість 400; не data-breach, але порушує defence-in-depth (Prisma error message потрапляє у логи/Sentry зі stack trace зайвої глибини).
+
+---
+
+### 2026-06-14 — `apiFetch().catch(() => {})` у новому useEffect — silent stale-data race без cancelled-guard — §3.1 Memory / §8.2 UI Стани
+
+**Сигнал:** новий `useEffect` що тягне суміжні дані (totals, counters, related items) для поточного стану форми: `void apiFetch<T[]>('/x/bulk?ids=...').then(rows => setState(new Map(...))).catch(() => {});`. Без `cancelled` flag — резолв старого запиту після unmount/deps-change перезаписує свіжий state. Без `console.error` у catch — будь-яка серверна помилка (500/timeout) пройде непомітно для розробника й користувача. Третій ризик: `Map` побудовано лише з реально-повернених рядків — для goodId без `StockItem` строки (groupBy omits empty buckets) `map.get(id)` повертає `undefined` → `'—'` у UI, хоча правильніше показати `0`.
+**Grep:** `grep -rnE "useEffect\(\(\) => \{" apps/web/src/components/ui --include="*.tsx" -A20` → для кожного блоку що містить `apiFetch` + `.then(setState)`: (1) чи є `let cancelled = false` + cleanup; (2) чи catch робить `console.error` (а не `() => {}`); (3) для Map-результату — чи pre-initialized z `0`/default для всіх запитуваних ID.
+**Фікс:** `let cancelled = false; void apiFetch(...).then(rows => { if (cancelled) return; const next = new Map(ids.map(id => [id, 0])); for (const r of rows) next.set(r.id, r.value); setState(next); }).catch(err => { if (cancelled) return; console.error('[label] fetch failed', err); }); return () => { cancelled = true; };`. Pre-init з `0` дає правильний UX для goods без StockItem рядків.
+**Severity:** IMPORTANT — race-window коли користувач швидко змінює selection/parts (degradation без crash); silent server-error blackout зашкоджує діагностиці; UX edge-case (`'—'` коли має бути `0`) — мінорна але часта плутанина зі складом.
 
 ---
 
