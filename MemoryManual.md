@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+355fb445 fix(e2e): align spec locators with redesigned modals + fix Modal id collision (Bugs #467-#472)
+4f75f61b docs(memory): update MemoryManual after tester 0b144de9 — document modal QA cycle complete
 3d242bf4 docs(memory): update MemoryManual after tester 0b144de9 — document modal fixes
 0b144de9 fix(tester): Bugs #459-#466 — modal contract fixes + baseline spec restore
 dae793c8 docs(memory): update MemoryManual after review d08efb8d — modal redesign cleanup
@@ -54,9 +56,16 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post full QA cycle — Invoice/PO/StockDoc modal redesign complete)
+Дата: 2026-06-15 (post full QA cycle + E2E suite green — Invoice/PO/StockDoc modal redesign complete)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
 Tests: API 775/775; Web 423/423 (+3 DocumentCreateModals.test.tsx)
+E2E (Playwright): 228 passed / 13 skipped / 0 failed (33 spec files, ~4 min)
+
+Latest e2e (2026-06-15, commit 355fb445): full Playwright suite green після modal redesign QA. Bugs #467-#472:
+  🐛 #467 (CRITICAL): Modal.tsx мав фіксований `id="modal-title"` → ID collision у вкладених модалках (Invoice + SearchPickerModal). Усі діалоги адаптовували перший h2 як accessible name. Fix: useId() per Modal instance.
+  🐛 #468-#472 (e2e stale): row.click() тепер відкриває edit modal (commit e6d2e148). Тести що шукали detail-panel-only елементи (Завантажити PDF, Дублювати, Оплатити) оновлено на row.hover() + button[title="Відкрити деталі"]. FSM кнопки тепер показують label цільового статусу ("Надіслано"), не дієслово ("Надіслати"). Поле "Сума" замінено на line-items таблицю — тести тепер клікають "Додати позицію" → fill price → click "+".
+  Інстансів модалок з id="modal-title" → один useId per instance. screen readers тепер правильно оголошують назву вкладеної модалки.
+
 
 Latest tester (2026-06-15, after dae793c8): tester run перевірив 3 переписані модалки (Invoice/PO/StockDoc) і list-pages інтеграцію. 8 bugs знайдено і виправлено:
   🐛 #459 (CRITICAL baseline): goods.service.spec mock не містив stockItem.findMany — 6 тестів падали з TypeError. Додано findMany у beforeEach factory + новий positive test для byWarehouse breakdown.
