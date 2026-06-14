@@ -1,16 +1,20 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Package, Search } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Package, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
   useStockItems,
   useLowStockItems,
+  useStockByDocument,
+  useStockByBatch,
   StockItem,
+  GoodWithDocuments,
+  BatchGroup,
   inventoryKeys,
 } from '@/hooks/api/useInventory';
 import { Button } from '@/components/ui/button';
@@ -45,11 +49,56 @@ interface Warehouse {
   name: string;
 }
 
-// Thin proxy над module-level Intl singleton (lib/format) — без локального форматера
-// у кожному файлі. Inline toLocaleString створює новий Intl.NumberFormat на кожну
-// комірку × ререндер; тут — один інстанс на весь модуль.
+type ViewMode = 'goods' | 'documents' | 'batches';
+
+const VIEW_LABELS: Record<ViewMode, string> = {
+  goods: 'По товарах',
+  documents: 'По документах',
+  batches: 'По партіях',
+};
+
+// Module-level Intl singletons
+const KYIV_DATE_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: 'Europe/Kyiv',
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+});
+const KYIV_DATETIME_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: 'Europe/Kyiv',
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
 function fmt(n: number) {
   return `${fmtMoney(n)} ₴`;
+}
+
+function fmtDate(d: string | Date) {
+  return KYIV_DATE_FMT.format(typeof d === 'string' ? new Date(d) : d);
+}
+
+function fmtDatetime(d: string | Date) {
+  return KYIV_DATETIME_FMT.format(typeof d === 'string' ? new Date(d) : d);
+}
+
+const MOVEMENT_TYPE_LABELS: Record<string, string> = {
+  RECEIPT: 'Надходження',
+  WRITEOFF: 'Списання',
+  TRANSFER: 'Переміщення',
+  RESERVATION: 'Резерв',
+  RESERVATION_RELEASE: 'Зняття резерву',
+  ADJUSTMENT: 'Коригування',
+};
+
+function toggle(set: Set<string>, key: string): Set<string> {
+  const next = new Set(set);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
 }
 
 export default function InventoryPage() {
@@ -58,36 +107,38 @@ export default function InventoryPage() {
   const queryClient = useQueryClient();
   const panelConfig = useDetailPanelConfig('inventory-panel');
 
-  // Local filter & UI state
+  // View mode
+  const [viewMode, setViewMode] = useState<ViewMode>('goods');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Filters
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState('');
   const [q, setQ] = useState('');
   const debouncedQ = useDebounce(q);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [showLow, setShowLow] = useState(false);
   const [error, setError] = useState('');
 
-  // Detail panel state
+  // Detail panel state (goods mode only)
   const [selectedItem, setSelectedItem] = useState<StockItem | null>(null);
   const [editingMinStock, setEditingMinStock] = useState(false);
   const [minStockVal, setMinStockVal] = useState('');
   const [savingMinStock, setSavingMinStock] = useState(false);
 
-  // Low stock modal state
+  // Low stock modal
   const [showLowModal, setShowLowModal] = useState(false);
 
   const { sort: invSort, toggle: toggleInvSort } = useSortState('goodName', 'asc');
 
-  // React Query hooks
+  // --- Data hooks ---
   const {
     data: rawItems = [],
-    isLoading: loading,
+    isLoading: loadingGoods,
     error: queryError,
-  } = useStockItems({
-    warehouseId,
-    q: debouncedQ,
-  });
+  } = useStockItems({ warehouseId, q: debouncedQ });
 
-  // Client-side sort (StockItem has no indexed date fields — sort on fetched page)
   const items = useMemo(() => {
     if (!rawItems.length) return rawItems;
     const dir = invSort.sortDir === 'asc' ? 1 : -1;
@@ -95,13 +146,27 @@ export default function InventoryPage() {
       if (invSort.sortBy === 'quantity') return (a.quantity - b.quantity) * dir;
       if (invSort.sortBy === 'available') return (a.available - b.available) * dir;
       if (invSort.sortBy === 'salePrice') return (a.salePrice - b.salePrice) * dir;
-      // default: goodName
       return a.goodName.localeCompare(b.goodName, 'uk') * dir;
     });
   }, [rawItems, invSort]);
+
+  const docFilters = useMemo(
+    () => ({ warehouseId: warehouseId || undefined, from: from || undefined, to: to || undefined }),
+    [warehouseId, from, to],
+  );
+
+  const { data: byDocData, isLoading: loadingDoc } = useStockByDocument({
+    ...docFilters,
+    goodId: undefined,
+  });
+  const { data: byBatchData, isLoading: loadingBatch } = useStockByBatch({
+    ...docFilters,
+    goodId: undefined,
+  });
+
   const { data: lowItems = [], refetch: refetchLowItems } = useLowStockItems();
 
-  // Reference data — paint instantly from sessionStorage, refresh in background
+  // Reference data
   const loadWarehouses = useCallback(async () => {
     const cached = getCached<Warehouse[]>('cache:warehouses');
     if (cached) setWarehouses(cached);
@@ -114,6 +179,10 @@ export default function InventoryPage() {
       if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження складів');
     }
   }, []);
+
+  useEffect(() => {
+    loadWarehouses();
+  }, [loadWarehouses]);
 
   const saveMinStock = async () => {
     if (!selectedItem) return;
@@ -131,7 +200,6 @@ export default function InventoryPage() {
       setSelectedItem(prev =>
         prev ? { ...prev, minStock: val, isLow: val !== null && prev.quantity <= val } : prev,
       );
-      // Invalidate the query to refresh
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items() });
       setEditingMinStock(false);
     } catch (e: unknown) {
@@ -141,11 +209,11 @@ export default function InventoryPage() {
     }
   };
 
-  useEffect(() => {
-    loadWarehouses();
-  }, [loadWarehouses]);
-
   const displayed = showLow ? items.filter(i => i.isLow) : items;
+
+  // Loading state for current mode
+  const loading =
+    viewMode === 'goods' ? loadingGoods : viewMode === 'documents' ? loadingDoc : loadingBatch;
 
   return (
     <div className="page-fill p-4 md:p-6">
@@ -172,7 +240,28 @@ export default function InventoryPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 shrink-0">
+      <div className="flex flex-wrap gap-3 shrink-0 items-center">
+        {/* View mode switcher */}
+        <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
+          {(Object.keys(VIEW_LABELS) as ViewMode[]).map(m => (
+            <button
+              key={m}
+              onClick={() => {
+                setViewMode(m);
+                setExpanded(new Set());
+              }}
+              className={cn(
+                'px-3 py-1 text-[13px] transition-colors',
+                viewMode === m
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-surface text-muted-foreground hover:bg-surface-hover',
+              )}
+            >
+              {VIEW_LABELS[m]}
+            </button>
+          ))}
+        </div>
+
         <Input
           value={q}
           onChange={e => setQ(e.target.value)}
@@ -192,75 +281,97 @@ export default function InventoryPage() {
             </option>
           ))}
         </Select>
-        <label className="flex items-center gap-2 text-[13px] text-muted-foreground cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showLow}
-            onChange={e => setShowLow(e.target.checked)}
-            className="rounded"
-          />
-          Тільки з низьким залишком
-        </label>
+
+        {/* Date range — only in documents/batches modes */}
+        {viewMode !== 'goods' && (
+          <>
+            <Input
+              type="date"
+              value={from}
+              onChange={e => setFrom(e.target.value)}
+              className="h-8 text-[13px] w-36"
+            />
+            <span className="text-muted-foreground text-[13px]">—</span>
+            <Input
+              type="date"
+              value={to}
+              onChange={e => setTo(e.target.value)}
+              className="h-8 text-[13px] w-36"
+            />
+          </>
+        )}
+
+        {/* Low stock filter — only in goods mode */}
+        {viewMode === 'goods' && (
+          <label className="flex items-center gap-2 text-[13px] text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showLow}
+              onChange={e => setShowLow(e.target.checked)}
+              className="rounded"
+            />
+            Тільки з низьким залишком
+          </label>
+        )}
       </div>
 
-      {/* Table + DetailPanel */}
+      {/* Content area */}
       <div className="flex flex-1 min-h-0 gap-3">
         <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortableHead sortKey="goodName" currentSort={invSort} onSort={toggleInvSort}>
-                  Товар
-                </SortableHead>
-                <TableHead>Артикул</TableHead>
-                <TableHead>Склад</TableHead>
-                <SortableHead
-                  sortKey="quantity"
-                  currentSort={invSort}
-                  onSort={toggleInvSort}
-                  className="text-right"
-                >
-                  Кількість
-                </SortableHead>
-                <TableHead className="text-right">Резерв</TableHead>
-                <SortableHead
-                  sortKey="available"
-                  currentSort={invSort}
-                  onSort={toggleInvSort}
-                  className="text-right"
-                >
-                  Доступно
-                </SortableHead>
-                <SortableHead
-                  sortKey="salePrice"
-                  currentSort={invSort}
-                  onSort={toggleInvSort}
-                  className="text-right"
-                >
-                  Ціна продажу
-                </SortableHead>
-                <TableHead>Мін. залишок</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
+          {loading && (
+            <div className="flex justify-center py-12">
+              <Spinner size="md" />
+            </div>
+          )}
+
+          {/* === MODE: BY GOODS === */}
+          {!loading && viewMode === 'goods' && (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={8} className="py-12 text-center">
-                    <div className="flex justify-center">
-                      <Spinner size="md" />
-                    </div>
-                  </TableCell>
+                  <SortableHead sortKey="goodName" currentSort={invSort} onSort={toggleInvSort}>
+                    Товар
+                  </SortableHead>
+                  <TableHead>Артикул</TableHead>
+                  <TableHead>Бренд</TableHead>
+                  <TableHead>Склад</TableHead>
+                  <SortableHead
+                    sortKey="quantity"
+                    currentSort={invSort}
+                    onSort={toggleInvSort}
+                    className="text-right"
+                  >
+                    Кількість
+                  </SortableHead>
+                  <TableHead className="text-right">Резерв</TableHead>
+                  <SortableHead
+                    sortKey="available"
+                    currentSort={invSort}
+                    onSort={toggleInvSort}
+                    className="text-right"
+                  >
+                    Доступно
+                  </SortableHead>
+                  <SortableHead
+                    sortKey="salePrice"
+                    currentSort={invSort}
+                    onSort={toggleInvSort}
+                    className="text-right"
+                  >
+                    Ціна продажу
+                  </SortableHead>
+                  <TableHead>Мін. залишок</TableHead>
                 </TableRow>
-              )}
-              {!loading && displayed.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={8} className="p-0">
-                    <EmptyState icon={Package} title="Позицій не знайдено" />
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading &&
-                displayed.map(item => (
+              </TableHeader>
+              <TableBody>
+                {displayed.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={9} className="p-0">
+                      <EmptyState icon={Package} title="Позицій не знайдено" />
+                    </TableCell>
+                  </TableRow>
+                )}
+                {displayed.map(item => (
                   <TableRow
                     key={item.id}
                     onClick={() => setSelectedItem(item)}
@@ -279,22 +390,25 @@ export default function InventoryPage() {
                     <TableCell className="text-muted-foreground font-mono text-xs">
                       {item.goodSku ?? '—'}
                     </TableCell>
+                    <TableCell className="text-muted-foreground text-[13px]">
+                      {(item as StockItem & { goodBrand?: string | null }).goodBrand ?? '—'}
+                    </TableCell>
                     <TableCell className="text-foreground-muted">{item.warehouseName}</TableCell>
-                    <TableCell className="text-right font-medium">
+                    <TableCell className="text-right font-medium tabular-nums">
                       {item.quantity} {item.unit}
                     </TableCell>
-                    <TableCell className="text-right text-warning-text">
+                    <TableCell className="text-right text-warning-text tabular-nums">
                       {item.reserved > 0 ? item.reserved : '—'}
                     </TableCell>
                     <TableCell
                       className={cn(
-                        'text-right font-semibold',
+                        'text-right font-semibold tabular-nums',
                         item.available <= 0 ? 'text-destructive' : 'text-success',
                       )}
                     >
                       {item.available} {item.unit}
                     </TableCell>
-                    <TableCell className="text-right text-foreground-muted">
+                    <TableCell className="text-right text-foreground-muted tabular-nums">
                       {fmt(item.salePrice)}
                     </TableCell>
                     <TableCell>
@@ -308,135 +422,159 @@ export default function InventoryPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-            </TableBody>
-          </Table>
+              </TableBody>
+            </Table>
+          )}
+
+          {/* === MODE: BY DOCUMENTS === */}
+          {!loading && viewMode === 'documents' && (
+            <ByDocumentsView
+              goods={byDocData?.goods ?? []}
+              expanded={expanded}
+              onToggle={key => setExpanded(prev => toggle(prev, key))}
+              q={debouncedQ}
+            />
+          )}
+
+          {/* === MODE: BY BATCHES === */}
+          {!loading && viewMode === 'batches' && (
+            <ByBatchesView
+              batches={byBatchData?.batches ?? []}
+              expanded={expanded}
+              onToggle={key => setExpanded(prev => toggle(prev, key))}
+              q={debouncedQ}
+            />
+          )}
         </div>
 
-        {(() => {
-          const buildInventoryTabs = (item: StockItem): DetailPanelTab[] => [
-            {
-              key: 'info',
-              label: 'Основне',
-              content: (
-                <div className="space-y-4">
-                  {/* Low stock warning */}
-                  {item.isLow && (
-                    <div className="flex items-center gap-2 p-2.5 bg-warning-subtle border border-warning-border rounded-lg text-[13px] text-warning-text">
-                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                      <span>Залишок нижче мінімального</span>
-                    </div>
-                  )}
-                  <div className="space-y-3">
-                    {buildPanelFields(item, STOCK_ITEM_PANEL_SCHEMA, panelConfig.config, {
-                      quantity: v => `${String(v)} ${item.unit}`,
-                      reserved: v =>
-                        Number(v) > 0 ? (
-                          <span className="text-warning-text tabular-nums">
+        {/* Detail panel — only in goods mode */}
+        {viewMode === 'goods' &&
+          (() => {
+            const buildInventoryTabs = (item: StockItem): DetailPanelTab[] => [
+              {
+                key: 'info',
+                label: 'Основне',
+                content: (
+                  <div className="space-y-4">
+                    {item.isLow && (
+                      <div className="flex items-center gap-2 p-2.5 bg-warning-subtle border border-warning-border rounded-lg text-[13px] text-warning-text">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        <span>Залишок нижче мінімального</span>
+                      </div>
+                    )}
+                    <div className="space-y-3">
+                      {buildPanelFields(item, STOCK_ITEM_PANEL_SCHEMA, panelConfig.config, {
+                        quantity: v => `${String(v)} ${item.unit}`,
+                        reserved: v =>
+                          Number(v) > 0 ? (
+                            <span className="text-warning-text tabular-nums">
+                              {String(v)} {item.unit}
+                            </span>
+                          ) : undefined,
+                        available: v => (
+                          <span
+                            className={cn(
+                              'font-semibold tabular-nums',
+                              Number(v) <= 0 ? 'text-destructive' : 'text-success',
+                            )}
+                          >
                             {String(v)} {item.unit}
                           </span>
-                        ) : undefined,
-                      available: v => (
-                        <span
-                          className={cn(
-                            'font-semibold tabular-nums',
-                            Number(v) <= 0 ? 'text-destructive' : 'text-success',
+                        ),
+                        minStock: () => undefined,
+                      })
+                        .filter(f => f.key !== 'minStock')
+                        .map(f => (
+                          <PanelField
+                            key={f.key}
+                            fieldKey={f.key}
+                            label={f.label}
+                            value={f.value}
+                            hidden={f.hidden}
+                          />
+                        ))}
+                    </div>
+                    {!panelConfig.isFieldHidden('minStock') && (
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
+                            Мінімальний залишок
+                          </span>
+                          {!editingMinStock && (
+                            <button
+                              className="text-xs text-primary hover:underline"
+                              onClick={() => {
+                                setMinStockVal(item.minStock != null ? String(item.minStock) : '');
+                                setEditingMinStock(true);
+                              }}
+                            >
+                              змінити
+                            </button>
                           )}
-                        >
-                          {String(v)} {item.unit}
-                        </span>
-                      ),
-                      // minStock rendered separately below — skip here
-                      minStock: () => undefined,
-                    })
-                      .filter(f => f.key !== 'minStock')
-                      .map(f => (
-                        <PanelField
-                          key={f.key}
-                          fieldKey={f.key}
-                          label={f.label}
-                          value={f.value}
-                          hidden={f.hidden}
-                        />
-                      ))}
-                  </div>
-                  {!panelConfig.isFieldHidden('minStock') && (
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
-                          Мінімальний залишок
-                        </span>
-                        {!editingMinStock && (
-                          <button
-                            className="text-xs text-primary hover:underline"
-                            onClick={() => {
-                              setMinStockVal(item.minStock != null ? String(item.minStock) : '');
-                              setEditingMinStock(true);
-                            }}
-                          >
-                            змінити
-                          </button>
+                        </div>
+                        {editingMinStock ? (
+                          <div className="flex gap-1.5 mt-1.5">
+                            <Input
+                              type="number"
+                              value={minStockVal}
+                              onChange={e => setMinStockVal(e.target.value)}
+                              placeholder="0"
+                              min="0"
+                              step="1"
+                              className="h-7 text-sm"
+                            />
+                            <Button
+                              size="sm"
+                              onClick={saveMinStock}
+                              loading={savingMinStock}
+                              className="h-7 px-2 text-xs"
+                            >
+                              Зберегти
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingMinStock(false)}
+                              className="h-7 px-2 text-xs"
+                            >
+                              ✕
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="mt-1">
+                            {item.minStock != null ? (
+                              <Badge variant={item.isLow ? 'warning' : 'secondary'}>
+                                ≥ {item.minStock} {item.unit}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-[12px]">
+                                не встановлено
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
-                      {editingMinStock ? (
-                        <div className="flex gap-1.5 mt-1.5">
-                          <Input
-                            type="number"
-                            value={minStockVal}
-                            onChange={e => setMinStockVal(e.target.value)}
-                            placeholder="0"
-                            min="0"
-                            step="1"
-                            className="h-7 text-sm"
-                          />
-                          <Button
-                            size="sm"
-                            onClick={saveMinStock}
-                            loading={savingMinStock}
-                            className="h-7 px-2 text-xs"
-                          >
-                            Зберегти
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setEditingMinStock(false)}
-                            className="h-7 px-2 text-xs"
-                          >
-                            ✕
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="mt-1">
-                          {item.minStock != null ? (
-                            <Badge variant={item.isLow ? 'warning' : 'secondary'}>
-                              ≥ {item.minStock} {item.unit}
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-[12px]">
-                              не встановлено
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ),
-            },
-          ];
-          return (
-            <DetailPanel
-              open={!!selectedItem}
-              onClose={() => setSelectedItem(null)}
-              title={selectedItem?.goodName ?? ''}
-              tabs={selectedItem ? buildInventoryTabs(selectedItem) : undefined}
-              configFields={schemaToPanelConfigFields(STOCK_ITEM_PANEL_SCHEMA, panelConfig.config)}
-              onToggleField={panelConfig.toggleField}
-              onReorderFields={panelConfig.reorderFields}
-              onReset={panelConfig.reset}
-            />
-          );
-        })()}
+                    )}
+                  </div>
+                ),
+              },
+            ];
+            return (
+              <DetailPanel
+                open={!!selectedItem}
+                onClose={() => setSelectedItem(null)}
+                title={selectedItem?.goodName ?? ''}
+                tabs={selectedItem ? buildInventoryTabs(selectedItem) : undefined}
+                configFields={schemaToPanelConfigFields(
+                  STOCK_ITEM_PANEL_SCHEMA,
+                  panelConfig.config,
+                )}
+                onToggleField={panelConfig.toggleField}
+                onReorderFields={panelConfig.reorderFields}
+                onReset={panelConfig.reset}
+              />
+            );
+          })()}
       </div>
 
       {/* Low stock modal */}
@@ -472,5 +610,295 @@ export default function InventoryPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+// ─── By Documents View ────────────────────────────────────────────────────────
+
+interface ByDocumentsViewProps {
+  goods: GoodWithDocuments[];
+  expanded: Set<string>;
+  onToggle: (key: string) => void;
+  q: string;
+}
+
+function ByDocumentsView({ goods, expanded, onToggle, q }: ByDocumentsViewProps) {
+  const filtered = useMemo(() => {
+    if (!q) return goods;
+    const lower = q.toLowerCase();
+    return goods.filter(
+      g =>
+        g.goodName.toLowerCase().includes(lower) ||
+        (g.goodSku ?? '').toLowerCase().includes(lower) ||
+        (g.goodBrand ?? '').toLowerCase().includes(lower),
+    );
+  }, [goods, q]);
+
+  if (filtered.length === 0) {
+    return <EmptyState icon={Package} title="Позицій не знайдено" />;
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-8" />
+          <TableHead>Товар</TableHead>
+          <TableHead>Артикул</TableHead>
+          <TableHead>Бренд</TableHead>
+          <TableHead className="text-right">На складі</TableHead>
+          <TableHead>Документ</TableHead>
+          <TableHead>Тип руху</TableHead>
+          <TableHead className="text-right">Кількість</TableHead>
+          <TableHead>Дата</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {filtered.map(good => {
+          const isOpen = expanded.has(good.goodId);
+          return (
+            <>
+              {/* Good row */}
+              <TableRow
+                key={good.goodId}
+                onClick={() => onToggle(good.goodId)}
+                className="cursor-pointer hover:bg-surface-hover font-medium bg-surface"
+              >
+                <TableCell className="w-8 pr-0">
+                  <ChevronRight
+                    className={cn(
+                      'h-4 w-4 text-muted-foreground transition-transform',
+                      isOpen && 'rotate-90',
+                    )}
+                  />
+                </TableCell>
+                <TableCell className="font-medium text-foreground">{good.goodName}</TableCell>
+                <TableCell className="text-muted-foreground font-mono text-xs">
+                  {good.goodSku ?? '—'}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-[13px]">
+                  {good.goodBrand ?? '—'}
+                </TableCell>
+                <TableCell className="text-right tabular-nums font-semibold">
+                  {good.totalQuantity} {good.goodUnit}
+                </TableCell>
+                <TableCell colSpan={4} className="text-muted-foreground text-[12px]">
+                  {good.documents.length > 0
+                    ? `${good.documents.length} документ(ів)`
+                    : 'Рухів не знайдено'}
+                </TableCell>
+              </TableRow>
+
+              {/* Expanded: documents and their movements */}
+              {isOpen &&
+                good.documents.map(doc => (
+                  <>
+                    <TableRow
+                      key={`${good.goodId}::${doc.documentId ?? doc.documentType}`}
+                      className="bg-surface-hover/50"
+                    >
+                      <TableCell className="w-8" />
+                      <TableCell
+                        colSpan={4}
+                        className="pl-6 text-[13px] font-medium text-foreground-muted"
+                      >
+                        {doc.docLabel}
+                      </TableCell>
+                      <TableCell colSpan={4} className="text-[12px] text-muted-foreground">
+                        {doc.movements.length} рух(ів)
+                      </TableCell>
+                    </TableRow>
+                    {doc.movements.map((mv, i) => (
+                      <TableRow
+                        key={`${good.goodId}::${doc.documentId ?? doc.documentType}::${i}`}
+                        className="bg-surface-hover/20"
+                      >
+                        <TableCell className="w-8" />
+                        <TableCell colSpan={4} className="pl-10" />
+                        <TableCell className="text-[12px] text-muted-foreground">
+                          {doc.docLabel}
+                        </TableCell>
+                        <TableCell className="text-[12px] text-foreground">
+                          {MOVEMENT_TYPE_LABELS[mv.type] ?? mv.type}
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            'text-right tabular-nums text-[12px] font-medium',
+                            mv.quantity > 0 ? 'text-success' : 'text-destructive',
+                          )}
+                        >
+                          {mv.quantity > 0 ? '+' : ''}
+                          {mv.quantity} {good.goodUnit}
+                        </TableCell>
+                        <TableCell className="text-[12px] text-muted-foreground">
+                          {fmtDatetime(mv.createdAt)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </>
+                ))}
+            </>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+}
+
+// ─── By Batches View ──────────────────────────────────────────────────────────
+
+interface ByBatchesViewProps {
+  batches: BatchGroup[];
+  expanded: Set<string>;
+  onToggle: (key: string) => void;
+  q: string;
+}
+
+function ByBatchesView({ batches, expanded, onToggle, q }: ByBatchesViewProps) {
+  const filtered = useMemo(() => {
+    if (!q) return batches;
+    const lower = q.toLowerCase();
+    return batches
+      .map(bg => ({
+        ...bg,
+        goods: bg.goods.filter(
+          g =>
+            g.goodName.toLowerCase().includes(lower) ||
+            (g.goodSku ?? '').toLowerCase().includes(lower) ||
+            (g.goodBrand ?? '').toLowerCase().includes(lower),
+        ),
+      }))
+      .filter(bg => bg.goods.length > 0 || (bg.poNumber ?? '').toLowerCase().includes(lower));
+  }, [batches, q]);
+
+  if (filtered.length === 0) {
+    return <EmptyState icon={Package} title="Партій не знайдено" />;
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-8" />
+          <TableHead>Партія / Товар</TableHead>
+          <TableHead>Артикул</TableHead>
+          <TableHead>Бренд</TableHead>
+          <TableHead>Склад</TableHead>
+          <TableHead className="text-right">Отримано</TableHead>
+          <TableHead className="text-right">Залишок</TableHead>
+          <TableHead>Документ руху</TableHead>
+          <TableHead className="text-right">К-ть</TableHead>
+          <TableHead>Дата</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {filtered.map(bg => {
+          const bgOpen = expanded.has(bg.batchGroupKey);
+          const bgLabel = bg.poNumber
+            ? `Замовлення ${bg.poNumber}${bg.poDate ? ` від ${fmtDate(bg.poDate)}` : ''}`
+            : `Партія без ЗП`;
+
+          return (
+            <>
+              {/* Batch group row */}
+              <TableRow
+                key={bg.batchGroupKey}
+                onClick={() => onToggle(bg.batchGroupKey)}
+                className="cursor-pointer hover:bg-surface-hover font-medium bg-surface"
+              >
+                <TableCell className="w-8 pr-0">
+                  <ChevronRight
+                    className={cn(
+                      'h-4 w-4 text-muted-foreground transition-transform',
+                      bgOpen && 'rotate-90',
+                    )}
+                  />
+                </TableCell>
+                <TableCell className="font-medium text-foreground" colSpan={3}>
+                  {bgLabel}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-[13px]">
+                  {bg.warehouseName}
+                </TableCell>
+                <TableCell colSpan={5} className="text-muted-foreground text-[12px]">
+                  {bg.goods.length} товар(ів)
+                </TableCell>
+              </TableRow>
+
+              {/* Expanded: goods in batch */}
+              {bgOpen &&
+                bg.goods.map(g => {
+                  const goodKey = `${bg.batchGroupKey}::${g.batchId}`;
+                  const goodOpen = expanded.has(goodKey);
+                  return (
+                    <>
+                      <TableRow
+                        key={goodKey}
+                        onClick={e => {
+                          e.stopPropagation();
+                          onToggle(goodKey);
+                        }}
+                        className="cursor-pointer hover:bg-surface-hover/70 bg-surface-hover/30"
+                      >
+                        <TableCell className="w-8" />
+                        <TableCell className="pl-6 font-medium text-foreground text-[13px]">
+                          <ChevronRight
+                            className={cn(
+                              'inline h-3.5 w-3.5 text-muted-foreground mr-1.5 transition-transform',
+                              goodOpen && 'rotate-90',
+                            )}
+                          />
+                          {g.goodName}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground font-mono text-xs">
+                          {g.goodSku ?? '—'}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-[13px]">
+                          {g.goodBrand ?? '—'}
+                        </TableCell>
+                        <TableCell />
+                        <TableCell className="text-right tabular-nums text-[13px]">
+                          {g.receivedQty}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-[13px] font-semibold text-foreground">
+                          {g.remainingQty}
+                        </TableCell>
+                        <TableCell colSpan={3} className="text-muted-foreground text-[12px]">
+                          {g.consumptions.length > 0
+                            ? `${g.consumptions.length} рух(ів)`
+                            : 'Не витрачалась'}
+                        </TableCell>
+                      </TableRow>
+
+                      {/* Expanded: consumptions */}
+                      {goodOpen &&
+                        g.consumptions.map((c, i) => (
+                          <TableRow key={`${goodKey}::${i}`} className="bg-surface-hover/10">
+                            <TableCell colSpan={7} />
+                            <TableCell className="text-[12px] text-muted-foreground pl-10">
+                              {c.docLabel}
+                            </TableCell>
+                            <TableCell
+                              className={cn(
+                                'text-right tabular-nums text-[12px] font-medium',
+                                c.quantity < 0 ? 'text-destructive' : 'text-success',
+                              )}
+                            >
+                              {c.quantity > 0 ? '+' : ''}
+                              {c.quantity}
+                            </TableCell>
+                            <TableCell className="text-[12px] text-muted-foreground">
+                              {fmtDatetime(c.createdAt)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </>
+                  );
+                })}
+            </>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }

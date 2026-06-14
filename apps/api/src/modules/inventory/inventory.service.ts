@@ -275,6 +275,259 @@ export class InventoryService {
     }));
   }
 
+  // Kyiv timezone offset for date normalization (same pattern as reports.service.ts)
+  private kyivOffsetMs(d: Date): number {
+    const kyivHour = parseInt(
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        hour: '2-digit',
+        hour12: false,
+      }).format(d),
+      10,
+    );
+    return ((kyivHour - d.getUTCHours() + 24) % 24) * 3_600_000;
+  }
+
+  private normalizeDates(from?: string, to?: string): { gte?: Date; lte?: Date } | undefined {
+    if (!from && !to) return undefined;
+    const range: { gte?: Date; lte?: Date } = {};
+    if (from) {
+      const d = new Date(`${from}T00:00:00Z`);
+      range.gte = new Date(d.getTime() - this.kyivOffsetMs(d));
+    }
+    if (to) {
+      const d = new Date(`${to}T23:59:59.999Z`);
+      range.lte = new Date(d.getTime() - this.kyivOffsetMs(d));
+    }
+    return range;
+  }
+
+  // Human-readable label for document type + short id
+  private docLabel(documentType: string | null, documentId: string | null): string {
+    const TYPE_LABELS: Record<string, string> = {
+      PurchaseOrder: 'Замовлення',
+      WorkOrder: 'Наряд',
+      StockDocument: 'Документ',
+      Invoice: 'Рахунок',
+    };
+    const typePart = documentType ? (TYPE_LABELS[documentType] ?? documentType) : 'Документ';
+    const idPart = documentId ? documentId.slice(0, 8) : '—';
+    return `${typePart} ${idPart}`;
+  }
+
+  async byDocument(
+    orgId: string,
+    warehouseId?: string,
+    goodId?: string,
+    from?: string,
+    to?: string,
+  ) {
+    const createdAt = this.normalizeDates(from, to);
+
+    const [stockItems, movements] = await Promise.all([
+      this.prisma.stockItem.findMany({
+        where: {
+          orgId,
+          deletedAt: null,
+          ...(warehouseId && { warehouseId }),
+          ...(goodId && { goodId }),
+          good: { deletedAt: null },
+          warehouse: { deletedAt: null },
+        },
+        include: {
+          good: {
+            select: {
+              name: true,
+              sku: true,
+              unit: true,
+              brand: { select: { name: true } },
+            },
+          },
+          warehouse: { select: { name: true } },
+        },
+        orderBy: [{ good: { name: 'asc' } }],
+        take: 2000,
+      }),
+      this.prisma.stockMovement.findMany({
+        where: {
+          orgId,
+          ...(warehouseId && { warehouseId }),
+          ...(goodId && { goodId }),
+          ...(createdAt && { createdAt }),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 3000,
+      }),
+    ]);
+
+    // Build goodId → stockQty map
+    const qtyMap = new Map<string, number>();
+    for (const si of stockItems) {
+      qtyMap.set(si.goodId, (qtyMap.get(si.goodId) ?? 0) + si.quantity);
+    }
+
+    // Build goodId → good info map (from stockItems)
+    type GoodInfo = { name: string; sku: string | null; unit: string; brand: string | null };
+    const goodMap = new Map<string, GoodInfo>();
+    for (const si of stockItems) {
+      if (!goodMap.has(si.goodId)) {
+        goodMap.set(si.goodId, {
+          name: si.good.name,
+          sku: si.good.sku,
+          unit: si.good.unit,
+          brand: si.good.brand?.name ?? null,
+        });
+      }
+    }
+
+    // Group movements by goodId → documentKey → movements[]
+    type DocGroup = {
+      documentType: string | null;
+      documentId: string | null;
+      docLabel: string;
+      movements: { type: string; quantity: number; createdAt: Date }[];
+    };
+    const docsByGood = new Map<string, Map<string, DocGroup>>();
+
+    for (const m of movements) {
+      if (!docsByGood.has(m.goodId)) docsByGood.set(m.goodId, new Map());
+      const docKey = `${m.documentType ?? ''}::${m.documentId ?? ''}`;
+      const docs = docsByGood.get(m.goodId)!;
+      if (!docs.has(docKey)) {
+        docs.set(docKey, {
+          documentType: m.documentType,
+          documentId: m.documentId,
+          docLabel: this.docLabel(m.documentType, m.documentId),
+          movements: [],
+        });
+      }
+      docs
+        .get(docKey)!
+        .movements.push({ type: m.type, quantity: m.quantity, createdAt: m.createdAt });
+    }
+
+    // Merge: only goods that appear in stockItems (current balance holders)
+    const goods = Array.from(goodMap.entries()).map(([gId, info]) => ({
+      goodId: gId,
+      goodName: info.name,
+      goodSku: info.sku,
+      goodBrand: info.brand,
+      goodUnit: info.unit,
+      totalQuantity: qtyMap.get(gId) ?? 0,
+      documents: Array.from(docsByGood.get(gId)?.values() ?? []),
+    }));
+
+    goods.sort((a, b) => a.goodName.localeCompare(b.goodName, 'uk'));
+
+    return { goods };
+  }
+
+  async byBatch(orgId: string, warehouseId?: string, goodId?: string, from?: string, to?: string) {
+    const createdAt = this.normalizeDates(from, to);
+
+    const batches = await this.prisma.stockBatch.findMany({
+      where: {
+        orgId,
+        ...(warehouseId && { warehouseId }),
+        ...(goodId && { goodId }),
+        ...(createdAt && { createdAt }),
+      },
+      include: {
+        good: {
+          select: {
+            name: true,
+            sku: true,
+            brand: { select: { name: true } },
+          },
+        },
+        warehouse: { select: { name: true } },
+        purchaseOrderLine: {
+          select: {
+            purchaseOrder: { select: { number: true, documentDate: true } },
+          },
+        },
+        consumptions: {
+          select: {
+            quantity: true,
+            documentType: true,
+            documentId: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+
+    // Group by PO key: poNumber + warehouseName
+    type ConsumptionRow = {
+      documentType: string | null;
+      documentId: string | null;
+      docLabel: string;
+      quantity: number;
+      createdAt: Date;
+    };
+    type GoodInBatch = {
+      goodId: string;
+      goodName: string;
+      goodSku: string | null;
+      goodBrand: string | null;
+      batchId: string;
+      batchNumber: string | null;
+      receivedQty: number;
+      remainingQty: number;
+      costPrice: number;
+      salePrice: number;
+      consumptions: ConsumptionRow[];
+    };
+    type BatchGroup = {
+      batchGroupKey: string;
+      poNumber: string | null;
+      poDate: Date | null;
+      warehouseName: string;
+      goods: GoodInBatch[];
+    };
+
+    const groupMap = new Map<string, BatchGroup>();
+
+    for (const b of batches) {
+      const po = b.purchaseOrderLine?.purchaseOrder;
+      const groupKey = `${po?.number ?? 'manual'}::${b.warehouseId}`;
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, {
+          batchGroupKey: groupKey,
+          poNumber: po?.number ?? null,
+          poDate: po?.documentDate ?? null,
+          warehouseName: b.warehouse.name,
+          goods: [],
+        });
+      }
+      groupMap.get(groupKey)!.goods.push({
+        goodId: b.goodId,
+        goodName: b.good.name,
+        goodSku: b.good.sku,
+        goodBrand: b.good.brand?.name ?? null,
+        batchId: b.id,
+        batchNumber: b.batchNumber,
+        receivedQty: b.receivedQty,
+        remainingQty: b.remainingQty,
+        costPrice: Number(b.costPrice),
+        salePrice: Number(b.salePrice),
+        consumptions: b.consumptions.map(c => ({
+          documentType: c.documentType,
+          documentId: c.documentId,
+          docLabel: this.docLabel(c.documentType, c.documentId),
+          quantity: c.quantity,
+          createdAt: c.createdAt,
+        })),
+      });
+    }
+
+    return { batches: Array.from(groupMap.values()) };
+  }
+
   async updateMinStock(
     orgId: string,
     stockItemId: string,

@@ -2,6 +2,60 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 
+export interface StockByDocumentFilter {
+  warehouseId?: string;
+  goodId?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface GoodMovementDoc {
+  documentType: string | null;
+  documentId: string | null;
+  docLabel: string;
+  movements: { type: string; quantity: number; createdAt: string }[];
+}
+
+export interface GoodWithDocuments {
+  goodId: string;
+  goodName: string;
+  goodSku: string | null;
+  goodBrand: string | null;
+  goodUnit: string;
+  totalQuantity: number;
+  documents: GoodMovementDoc[];
+}
+
+export interface BatchConsumptionRow {
+  documentType: string | null;
+  documentId: string | null;
+  docLabel: string;
+  quantity: number;
+  createdAt: string;
+}
+
+export interface GoodInBatch {
+  goodId: string;
+  goodName: string;
+  goodSku: string | null;
+  goodBrand: string | null;
+  batchId: string;
+  batchNumber: string | null;
+  receivedQty: number;
+  remainingQty: number;
+  costPrice: number;
+  salePrice: number;
+  consumptions: BatchConsumptionRow[];
+}
+
+export interface BatchGroup {
+  batchGroupKey: string;
+  poNumber: string | null;
+  poDate: string | null;
+  warehouseName: string;
+  goods: GoodInBatch[];
+}
+
 export interface StockItem {
   id: string;
   goodId: string;
@@ -42,6 +96,9 @@ export const inventoryKeys = {
   items: () => [...inventoryKeys.all, 'items'] as const,
   list: (filters: InventoryFilter) => [...inventoryKeys.items(), filters] as const,
   low: () => [...inventoryKeys.all, 'low'] as const,
+  byDocument: (filters: StockByDocumentFilter) =>
+    [...inventoryKeys.all, 'by-document', filters] as const,
+  byBatch: (filters: StockByDocumentFilter) => [...inventoryKeys.all, 'by-batch', filters] as const,
 };
 
 export function useStockItems(filters: InventoryFilter = {}) {
@@ -55,6 +112,42 @@ export function useStockItems(filters: InventoryFilter = {}) {
   return useQuery<StockItem[]>({
     queryKey: inventoryKeys.list(filters),
     queryFn: ({ signal }) => apiFetch(`/stock-items${qs ? `?${qs}` : ''}`, { signal }),
+    enabled: !!employee,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useStockByDocument(filters: StockByDocumentFilter) {
+  const { employee } = useAuth();
+  const params = new URLSearchParams();
+  if (filters.warehouseId) params.set('warehouseId', filters.warehouseId);
+  if (filters.goodId) params.set('goodId', filters.goodId);
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
+  const qs = params.toString();
+
+  return useQuery<{ goods: GoodWithDocuments[] }>({
+    queryKey: inventoryKeys.byDocument(filters),
+    queryFn: ({ signal }) => apiFetch(`/stock-items/by-document${qs ? `?${qs}` : ''}`, { signal }),
+    enabled: !!employee,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useStockByBatch(filters: StockByDocumentFilter) {
+  const { employee } = useAuth();
+  const params = new URLSearchParams();
+  if (filters.warehouseId) params.set('warehouseId', filters.warehouseId);
+  if (filters.goodId) params.set('goodId', filters.goodId);
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
+  const qs = params.toString();
+
+  return useQuery<{ batches: BatchGroup[] }>({
+    queryKey: inventoryKeys.byBatch(filters),
+    queryFn: ({ signal }) => apiFetch(`/stock-items/by-batch${qs ? `?${qs}` : ''}`, { signal }),
     enabled: !!employee,
     staleTime: 30_000,
     placeholderData: keepPreviousData,

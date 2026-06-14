@@ -53,6 +53,41 @@ export class StockItemsController {
     return this.inventory.findLowStockItems(orgId);
   }
 
+  // Specific sub-routes BEFORE :id — Fastify matches in declaration order
+  @Get('by-document')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC')
+  @ApiOperation({ summary: 'Залишки по документах (товар → рухи по документах)' })
+  @ApiQuery({ name: 'warehouseId', required: false })
+  @ApiQuery({ name: 'goodId', required: false })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  byDocument(
+    @OrgContext() orgId: string,
+    @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
+    @Query('goodId', new ParseUUIDPipe({ optional: true })) goodId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.inventory.byDocument(orgId, warehouseId, goodId, from, to);
+  }
+
+  @Get('by-batch')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC')
+  @ApiOperation({ summary: 'Залишки по партіях (партія → товар → рухи)' })
+  @ApiQuery({ name: 'warehouseId', required: false })
+  @ApiQuery({ name: 'goodId', required: false })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  byBatch(
+    @OrgContext() orgId: string,
+    @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
+    @Query('goodId', new ParseUUIDPipe({ optional: true })) goodId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.inventory.byBatch(orgId, warehouseId, goodId, from, to);
+  }
+
   @Patch(':id/min-stock')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Встановити мінімальний залишок' })
