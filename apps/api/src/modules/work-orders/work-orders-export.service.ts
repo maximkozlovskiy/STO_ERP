@@ -135,13 +135,19 @@ export class EstimateExportService {
   async generatePdf(token: string): Promise<{ buffer: Buffer; filename: string }> {
     const d = await this.getEstimateData(token);
 
-    // Locate Roboto TTFs — search multiple candidate paths (pnpm hoist, flat, pnpm store)
-    // process.cwd() is monorepo root when running via pnpm dev from root
-    const fontCandidates = [
-      path.resolve(process.cwd(), 'apps', 'api', 'node_modules', 'pdfmake', 'fonts', 'Roboto'),
-      path.resolve(process.cwd(), 'node_modules', 'pdfmake', 'fonts', 'Roboto'),
-      path.resolve(
-        process.cwd(),
+    // Locate Roboto TTFs from pdfmake's font bundle.
+    // __dirname in compiled dist = apps/api/dist/ → 3 levels up = monorepo root
+    // __dirname in ts-node dev  = apps/api/src/modules/work-orders/ → 5 levels up = monorepo root
+    const monorepoCandidates = [
+      path.resolve(__dirname, '..', '..', '..'), // dist/ → monorepo root
+      path.resolve(__dirname, '..', '..', '..', '..', '..'), // src/…/ → monorepo root
+      process.cwd(), // cwd if launched from root
+    ];
+    const fontCandidates = monorepoCandidates.flatMap(root => [
+      path.join(root, 'apps', 'api', 'node_modules', 'pdfmake', 'fonts', 'Roboto'),
+      path.join(root, 'node_modules', 'pdfmake', 'fonts', 'Roboto'),
+      path.join(
+        root,
         'node_modules',
         '.pnpm',
         'pdfmake@0.3.9',
@@ -150,19 +156,7 @@ export class EstimateExportService {
         'fonts',
         'Roboto',
       ),
-      path.resolve(
-        __dirname,
-        '..',
-        '..',
-        '..',
-        '..',
-        '..',
-        'node_modules',
-        'pdfmake',
-        'fonts',
-        'Roboto',
-      ),
-    ];
+    ]);
     const robotoDir = fontCandidates.find(p => fs.existsSync(path.join(p, 'Roboto-Regular.ttf')));
     if (!robotoDir) throw new Error('Roboto fonts not found for PDF generation');
 
