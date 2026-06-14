@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+a067ec21 fix(review): expose RECEIPT in stock-documents type tabs
+d059b9a9 feat(stock-documents): add RECEIPT type (Оприбуткування)
 65552dcb test(purchase-orders): Bug #473-#477 — regression guards for update() contract resolution
 705c9e91 docs(memory): update MemoryManual after review 32c6115f — purchase-orders contract guards
 32c6115f fix(review): purchase-orders contract clear + stale-contract guard on supplier change
@@ -60,9 +62,13 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-review-agent на 115fea9e — purchase-orders editable supplier/warehouse/contract)
+Дата: 2026-06-15 (post sto-review-agent на d059b9a9 — stock-documents RECEIPT type)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
-Latest review (2026-06-15, 32c6115f, after 115fea9e): code review feat(purchase-orders) — 1 CRITICAL + 2 IMPORTANT fixes around contract editability in DRAFT.
+Latest review (2026-06-15, a067ec21, after d059b9a9): code review feat(stock-documents) RECEIPT — 1 CRITICAL fix.
+  - CRITICAL §8 Stock-documents page hardcoded `const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE']` — the new RECEIPT type didn't appear as a filter tab, so users could not filter or browse the new document kind despite backend/Prisma/seed support being in place. Added 'RECEIPT' to the array. STOCK_DOC_TYPE_LABELS pickup is automatic everywhere else (modals iterate Object.entries).
+  - Verified end-to-end: Prisma StockDocumentType.RECEIPT migration 20260526124850 already applied; DocumentType.STOCK_RECEIPT in init migration; setup.service seeds DocumentNumberConfig prefix 'ПТ'; InventoryService.createMovement treats RECEIPT as positive-quantity batch-creating receipt (cost fallback to good.purchasePrice); service.transition() uses MOVEMENT_TYPES['RECEIPT']=StockMovementType.RECEIPT and docTypeMap['RECEIPT']='STOCK_RECEIPT'; no targetWarehouseId guard (only TRANSFER requires it); StockDocumentCreateModal renders RECEIPT via Object.entries(STOCK_DOC_TYPE_LABELS).
+
+Previous review (2026-06-15, 32c6115f, after 115fea9e): code review feat(purchase-orders) — 1 CRITICAL + 2 IMPORTANT fixes around contract editability in DRAFT.
   - CRITICAL §5/§2.2 Cross-supplier contract orphan: PATCH /purchase-orders/:id without contractId but with new supplierId left the old contractId pointing to the OLD supplier (data inconsistency, future FK-validation failures). Service.update() now selects po.contractId, detects supplierChanged, and auto-clears stale contract when client is silent. Added explicit null-clear path: dto.contractId = null → newContractId = null (UpdatePurchaseOrderDto.contractId now string | null with ValidateIf to skip IsUUID on null; OpenAPI nullable: true).
   - IMPORTANT §8.2 Paired-state reset gap: PurchaseOrderCreateModal SearchPickerModal onSelect (line 1014) did not clear contractId/contractNumber when supplier changed via picker modal — only the inline EntityPickerField did. Stale contract would persist across save. Now mirrors inline picker behaviour.
   - IMPORTANT §8.2 Implicit-skip on save: handleSave sent `contractId: contractId || undefined` so a user-driven null clear never reached backend. Now sends `contractId: contractId ?? null` so backend persists the clear via the new DTO null-path.
@@ -117,6 +123,29 @@ Latest tester (2026-06-12, after 7640de9b calendar sync feat): Bugs #444 (HIGH),
 Latest tester (2026-06-11): Bug #439 — додано FE↔BE symmetry regression-guard у `work-orders.fsm.invariants.spec.ts`.
 Latest tester (2026-06-11, prev): Bugs #429-#433 — savingRef race (CreateWorkOrderModal), stale format mock, INVOICEABLE/SHAREABLE_STATUSES backend sync, audit liftId/documentDate.
 ```
+
+### Gotcha (2026-06-15) — Новий enum-value: hunt for hardcoded arrays на фронті
+
+При додаванні нового значення до enum (`StockDocumentType.RECEIPT`, `WorkOrderStatus.X`, etc.) — обов'язково grep по фронту на наявність **жорстко-закодованих масивів старих значень**, які не імпортують з `@sto/shared`. Типовий випадок (commit d059b9a9 + fix a067ec21):
+
+```ts
+// apps/web/src/app/(app)/stock-documents/page.tsx
+const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE']; // ❌ RECEIPT missing
+```
+
+Сигнал: `STOCK_DOC_TYPE_LABELS` мав `RECEIPT`, але фільтр-таби рендерились із локальної константи `types`, тому новий тип був "невидимий" в UI попри повну підтримку у Prisma/API/seed.
+
+**Grep:**
+
+```bash
+# Знайти hardcoded arrays зі старим набором значень
+grep -rnE "'WRITEOFF',\s*'TRANSFER',\s*'OPENING_BALANCE'" apps/web/src/
+# Для будь-якого нового enum-value пробігтись по всіх іменах enum-values з попереднього набору
+```
+
+**Фікс:** або додати новий value, або (краще) замінити hardcoded array на `Object.keys(STOCK_DOC_TYPE_LABELS)` (with `''` prepend) — щоб майбутні значення підхоплювались автоматично.
+
+**Severity:** CRITICAL — фіча відвантажена, але користувач не бачить її в UI (тип-таб для RECEIPT відсутній → не можна фільтрувати/орієнтуватись).
 
 ### Gotcha #460-461 (2026-06-15) — Edit-mode modal: lines sync pattern
 
