@@ -66,6 +66,7 @@ interface PODetail {
   contractNumber?: string | null;
   notes?: string | null;
   documentDate?: string | null;
+  createdAt?: string | Date | null;
   lines?: POLine[];
 }
 
@@ -74,6 +75,7 @@ interface LocalLine {
   id?: string;
   goodId: string;
   goodName: string;
+  goodSku?: string | null;
   unit: string;
   quantity: string;
   price: string;
@@ -84,6 +86,7 @@ interface POLine {
   id: string;
   goodId: string;
   goodName?: string | null;
+  goodSku?: string | null;
   unit?: string | null;
   quantity: number;
   price: number;
@@ -159,6 +162,7 @@ export function PurchaseOrderCreateModal({
   const [poNumber, setPoNumber] = useState('');
   const [contractId, setContractId] = useState<string | null>(null);
   const [contractNumber, setContractNumber] = useState<string | null>(null);
+  const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [lines, setLines] = useState<LocalLine[]>([]);
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
   const [showLineInput, setShowLineInput] = useState(false);
@@ -234,6 +238,7 @@ export function PurchaseOrderCreateModal({
     setShowLineInput(false);
     setContractId(null);
     setContractNumber(null);
+    setCreatedAt(null);
     if (!isEditMode) {
       setForm({ supplierId: '', warehouseId: '', notes: '', documentDate: kyivToday() });
       setSupplierDisplay('');
@@ -260,12 +265,14 @@ export function PurchaseOrderCreateModal({
         setSupplierDisplay(po.supplierName ?? '');
         setContractId(po.contractId ?? null);
         setContractNumber(po.contractNumber ?? null);
+        setCreatedAt(po.createdAt ? new Date(po.createdAt).toLocaleDateString('uk-UA') : null);
         setLines(
           (po.lines ?? []).map(l => ({
             _key: nextKey(),
             id: l.id,
             goodId: l.goodId,
             goodName: l.goodName ?? '',
+            goodSku: l.goodSku,
             unit: l.unit ?? 'шт',
             quantity: String(l.quantity),
             price: String(l.price),
@@ -309,7 +316,11 @@ export function PurchaseOrderCreateModal({
 
   // ── Good picker ───────────────────────────────────────────────────────────
 
-  type GoodItem = SearchPickerItem & { unit?: string | null; purchasePrice?: number | null };
+  type GoodItem = SearchPickerItem & {
+    unit?: string | null;
+    purchasePrice?: number | null;
+    sku?: string | null;
+  };
 
   const fetchGoodItems = useCallback(async (q: string): Promise<GoodItem[]> => {
     const data = await apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=20`);
@@ -319,6 +330,7 @@ export function PurchaseOrderCreateModal({
       secondary: g.sku ?? undefined,
       unit: g.unit,
       purchasePrice: g.purchasePrice,
+      sku: g.sku,
     }));
   }, []);
 
@@ -655,8 +667,8 @@ export function PurchaseOrderCreateModal({
                   </div>
                 )}
 
-                {/* Рядок 1: Номер | Дата документа | Статус */}
-                <div className="grid grid-cols-3 gap-4">
+                {/* Рядок 1: Номер | Дата створення (edit) | Дата документа | Статус */}
+                <div className={cn('gap-4', isEditMode ? 'grid grid-cols-4' : 'grid grid-cols-3')}>
                   <Input
                     label="Номер"
                     value={isEditMode && poNumber ? poNumber : '— присвоюється автоматично —'}
@@ -664,6 +676,15 @@ export function PurchaseOrderCreateModal({
                     readOnly
                     className="h-8 text-[13px]"
                   />
+                  {isEditMode && (
+                    <Input
+                      label="Дата створення"
+                      value={createdAt ?? '—'}
+                      disabled
+                      readOnly
+                      className="h-8 text-[13px]"
+                    />
+                  )}
                   <DatePickerInput
                     label="Дата документа"
                     value={form.documentDate}
@@ -878,7 +899,12 @@ export function PurchaseOrderCreateModal({
               <tbody className="divide-y divide-border">
                 {lines.map(line => (
                   <tr key={line._key} className="hover:bg-secondary/20 group">
-                    <td className="px-3 py-2">{line.goodName}</td>
+                    <td className="px-3 py-2">
+                      <div>{line.goodName}</div>
+                      {line.goodSku && (
+                        <div className="text-[11px] text-muted-foreground">{line.goodSku}</div>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-right text-muted-foreground">{line.unit}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
                     {isEditMode && (
@@ -1039,6 +1065,7 @@ export function PurchaseOrderCreateModal({
             ...l,
             goodId: item.id,
             goodName: item.primary,
+            goodSku: (item as GoodItem).sku ?? null,
             unit: (item as GoodItem).unit ?? 'шт',
             price: String((item as GoodItem).purchasePrice ?? ''),
           }));
