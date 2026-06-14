@@ -196,9 +196,6 @@ export function PurchaseOrderCreateModal({
     const cached = getCached<Warehouse[]>('cache:warehouses');
     if (cached) {
       setWarehouses(cached.filter(w => !w.deletedAt));
-      if (!form.warehouseId && cached.length === 1) {
-        setForm(f => ({ ...f, warehouseId: cached[0].id }));
-      }
     }
     apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses')
       .then(r => {
@@ -207,8 +204,15 @@ export function PurchaseOrderCreateModal({
         setWarehouses(list);
         setCache('cache:warehouses', list);
       })
-      .catch(() => {});
+      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження складів'));
   }, [open]);
+
+  // Auto-select single warehouse (runs both on cache hit and after fetch resolves)
+  useEffect(() => {
+    if (warehouses.length === 1) {
+      setForm(f => (f.warehouseId ? f : { ...f, warehouseId: warehouses[0].id }));
+    }
+  }, [warehouses]);
 
   // Reset on open
   useEffect(() => {

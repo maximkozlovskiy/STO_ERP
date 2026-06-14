@@ -205,16 +205,13 @@ export function StockDocumentCreateModal({
     const cachedBranches = getCached<Branch[]>('cache:branches');
     if (cachedBranches) {
       setBranches(cachedBranches);
-      if (!form.branchId && cachedBranches.length === 1) {
-        setForm(f => ({ ...f, branchId: cachedBranches[0].id }));
-      }
     }
     apiFetch<Branch[]>('/branches')
       .then(bs => {
         setBranches(bs);
         setCache('cache:branches', bs);
       })
-      .catch(() => {});
+      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження філій'));
 
     const cachedWarehouses = getCached<Warehouse[]>('cache:warehouses');
     if (cachedWarehouses) {
@@ -227,7 +224,7 @@ export function StockDocumentCreateModal({
         setWarehouses(list);
         setCache('cache:warehouses', list);
       })
-      .catch(() => {});
+      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження складів'));
   }, [open]);
 
   // Reset on open
