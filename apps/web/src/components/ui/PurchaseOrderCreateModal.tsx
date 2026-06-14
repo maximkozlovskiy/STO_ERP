@@ -667,8 +667,8 @@ export function PurchaseOrderCreateModal({
                   </div>
                 )}
 
-                {/* Рядок 1: Номер | Дата створення (edit) | Дата документа | Статус */}
-                <div className={cn('gap-4', isEditMode ? 'grid grid-cols-4' : 'grid grid-cols-3')}>
+                {/* Рядок 1: Номер | Дата документа | Статус */}
+                <div className="grid grid-cols-3 gap-4">
                   <Input
                     label="Номер"
                     value={isEditMode && poNumber ? poNumber : '— присвоюється автоматично —'}
@@ -676,15 +676,6 @@ export function PurchaseOrderCreateModal({
                     readOnly
                     className="h-8 text-[13px]"
                   />
-                  {isEditMode && (
-                    <Input
-                      label="Дата створення"
-                      value={createdAt ?? '—'}
-                      disabled
-                      readOnly
-                      className="h-8 text-[13px]"
-                    />
-                  )}
                   <DatePickerInput
                     label="Дата документа"
                     value={form.documentDate}
@@ -803,8 +794,8 @@ export function PurchaseOrderCreateModal({
                   </Select>
                 </div>
 
-                {/* Рядок 3: Договір | Примітки */}
-                <div className="grid grid-cols-2 gap-4">
+                {/* Рядок 3: Договір | Примітки | Дата створення (edit) */}
+                <div className={cn('gap-4', isEditMode ? 'grid grid-cols-3' : 'grid grid-cols-2')}>
                   <Input
                     label="Договір"
                     value={contractNumber ?? ''}
@@ -821,6 +812,15 @@ export function PurchaseOrderCreateModal({
                     placeholder="Додаткова інформація…"
                     className="h-8 text-[13px]"
                   />
+                  {isEditMode && (
+                    <Input
+                      label="Дата створення"
+                      value={createdAt ?? '—'}
+                      disabled
+                      readOnly
+                      className="h-8 text-[13px]"
+                    />
+                  )}
                 </div>
               </div>
             </div>
