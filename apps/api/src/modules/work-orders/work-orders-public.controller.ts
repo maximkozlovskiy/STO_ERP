@@ -25,14 +25,21 @@ export class WorkOrdersPublicController {
     private readonly exportService: EstimateExportService,
   ) {}
 
-  @Get(':token')
-  @Throttle({ default: { ttl: 60_000, limit: 20 } })
-  @ApiOperation({ summary: 'Публічний перегляд кошторису за share-токеном' })
-  getPublicEstimate(@Param('token') token: string) {
-    return this.service.findByShareToken(token);
+  // Specific sub-routes BEFORE :token — Fastify matches in declaration order, :token is greedy
+  @Get(':token/export/pdf')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({ summary: 'Завантажити кошторис у форматі PDF' })
+  @ApiProduces('application/pdf')
+  async exportPdf(@Param('token') token: string, @Res() reply: FastifyReply) {
+    const { buffer, filename } = await this.exportService.generatePdf(token);
+    const encoded = encodeURIComponent(filename);
+    void reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename*=UTF-8''${encoded}`)
+      .header('Content-Length', buffer.length)
+      .send(buffer);
   }
 
-  // Specific routes before :token to avoid Fastify route collision
   @Get(':token/export/xlsx')
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiOperation({ summary: 'Завантажити кошторис у форматі XLSX' })
@@ -62,5 +69,12 @@ export class WorkOrdersPublicController {
       .header('Content-Disposition', `attachment; filename*=UTF-8''${encoded}`)
       .header('Content-Length', buffer.length)
       .send(buffer);
+  }
+
+  @Get(':token')
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @ApiOperation({ summary: 'Публічний перегляд кошторису за share-токеном' })
+  getPublicEstimate(@Param('token') token: string) {
+    return this.service.findByShareToken(token);
   }
 }

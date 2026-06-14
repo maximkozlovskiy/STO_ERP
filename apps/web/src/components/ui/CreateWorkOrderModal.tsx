@@ -1258,15 +1258,22 @@ export function CreateWorkOrderModal({
 
   const handlePrint = async () => {
     if (!workOrderId) return;
+    // Open blank window synchronously inside click handler — browsers block window.open after await.
+    const win = window.open('', '_blank');
     setShareLoading(true);
     try {
       const { token } = await apiFetch<{ token: string }>(
         `/work-orders/${workOrderId}/share-token`,
         { method: 'POST' },
       );
-      const win = window.open(`/estimate/${token}?print=1`, '_blank');
-      if (win) win.focus();
+      if (win) {
+        win.location.href = `/estimate/${token}?print=1`;
+      } else {
+        // Popup blocked — fallback: navigate directly (user already in click handler context)
+        window.open(`/estimate/${token}?print=1`, '_blank');
+      }
     } catch (e: unknown) {
+      win?.close();
       const msg = e instanceof Error ? e.message : 'Помилка';
       if (features.toastEnabled) toast.error(msg);
       else setError(msg);
@@ -1284,11 +1291,6 @@ export function CreateWorkOrderModal({
         `/work-orders/${workOrderId}/share-token`,
         { method: 'POST' },
       );
-      if (format === 'pdf') {
-        const win = window.open(`/estimate/${token}?print=1`, '_blank');
-        if (win) win.focus();
-        return;
-      }
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
       const res = await fetch(`${apiBase}/api/public/work-orders/${token}/export/${format}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

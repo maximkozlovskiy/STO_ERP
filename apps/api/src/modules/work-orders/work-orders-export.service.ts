@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import PizZip from 'pizzip';
-import Docxtemplater from 'docxtemplater';
 import * as path from 'path';
 import * as fs from 'fs';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -129,6 +128,248 @@ export class EstimateExportService {
         amount: Number(p.amount),
       })),
     };
+  }
+
+  // ─── PDF ────────────────────────────────────────────────────────────────────
+
+  async generatePdf(token: string): Promise<{ buffer: Buffer; filename: string }> {
+    const d = await this.getEstimateData(token);
+
+    // Locate Roboto TTFs — search multiple candidate paths (pnpm hoist, flat, pnpm store)
+    // process.cwd() is monorepo root when running via pnpm dev from root
+    const fontCandidates = [
+      path.resolve(process.cwd(), 'apps', 'api', 'node_modules', 'pdfmake', 'fonts', 'Roboto'),
+      path.resolve(process.cwd(), 'node_modules', 'pdfmake', 'fonts', 'Roboto'),
+      path.resolve(
+        process.cwd(),
+        'node_modules',
+        '.pnpm',
+        'pdfmake@0.3.9',
+        'node_modules',
+        'pdfmake',
+        'fonts',
+        'Roboto',
+      ),
+      path.resolve(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        '..',
+        '..',
+        'node_modules',
+        'pdfmake',
+        'fonts',
+        'Roboto',
+      ),
+    ];
+    const robotoDir = fontCandidates.find(p => fs.existsSync(path.join(p, 'Roboto-Regular.ttf')));
+    if (!robotoDir) throw new Error('Roboto fonts not found for PDF generation');
+
+    // pdfkit uses `export =` so require() returns the constructor directly
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+    const PDFDocumentCtor: new (
+      opts: Record<string, unknown>,
+    ) => PDFKit.PDFDocument = require('pdfkit');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    const doc: PDFKit.PDFDocument = new PDFDocumentCtor({
+      size: 'A4',
+      margin: 40,
+      autoFirstPage: true,
+    });
+    doc.registerFont('Roboto', path.join(robotoDir, 'Roboto-Regular.ttf'));
+    doc.registerFont('Roboto-Bold', path.join(robotoDir, 'Roboto-Medium.ttf'));
+
+    const PAGE_W = doc.page.width - 80; // usable width (margin 40 each side)
+    const GRAY = '#666666';
+    const HEADER_BG = '#D9E1F2';
+    const TOTAL_BG = '#DCE6F1';
+    const GRAND_BG = '#FFF2CC';
+    const BORDER = '#CCCCCC';
+    const ROW_H = 16;
+    const HEAD_H = 18;
+
+    // ── Helper: draw table ──────────────────────────────────────────────────
+    function drawTable(
+      doc: PDFKit.PDFDocument,
+      headers: string[],
+      rows: string[][],
+      colWidths: number[],
+      totalRow?: string[],
+    ) {
+      const x0 = doc.page.margins.left;
+      let y = doc.y;
+
+      const drawRowBg = (rowY: number, h: number, bg: string) => {
+        doc.save().rect(x0, rowY, PAGE_W, h).fill(bg).restore();
+      };
+      const drawCellText = (
+        text: string,
+        cx: number,
+        cy: number,
+        w: number,
+        h: number,
+        bold = false,
+        align: 'left' | 'right' | 'center' = 'left',
+        color = '#000000',
+      ) => {
+        doc
+          .font(bold ? 'Roboto-Bold' : 'Roboto')
+          .fontSize(8)
+          .fillColor(color)
+          .text(text, cx + 3, cy + (h - 8) / 2, { width: w - 6, align, lineBreak: false });
+      };
+      const drawBorders = (rowY: number, h: number) => {
+        doc.save().strokeColor(BORDER).lineWidth(0.5);
+        // horizontal
+        doc
+          .moveTo(x0, rowY)
+          .lineTo(x0 + PAGE_W, rowY)
+          .stroke();
+        doc
+          .moveTo(x0, rowY + h)
+          .lineTo(x0 + PAGE_W, rowY + h)
+          .stroke();
+        // vertical
+        let cx = x0;
+        for (let i = 0; i <= colWidths.length; i++) {
+          doc
+            .moveTo(cx, rowY)
+            .lineTo(cx, rowY + h)
+            .stroke();
+          cx += colWidths[i] ?? 0;
+        }
+        doc.restore();
+      };
+
+      // Header row
+      drawRowBg(y, HEAD_H, HEADER_BG);
+      let cx = x0;
+      headers.forEach((h, i) => {
+        const isRight = i > 0;
+        drawCellText(h, cx, y, colWidths[i], HEAD_H, true, isRight ? 'right' : 'left');
+        cx += colWidths[i];
+      });
+      drawBorders(y, HEAD_H);
+      y += HEAD_H;
+
+      // Data rows
+      rows.forEach((row, ri) => {
+        if (y + ROW_H > doc.page.height - doc.page.margins.bottom) {
+          doc.addPage();
+          y = doc.page.margins.top;
+        }
+        if (ri % 2 === 1) drawRowBg(y, ROW_H, '#F7F9FC');
+        cx = x0;
+        row.forEach((cell, i) => {
+          const isRight = i > 0;
+          drawCellText(cell, cx, y, colWidths[i], ROW_H, false, isRight ? 'right' : 'left');
+          cx += colWidths[i];
+        });
+        drawBorders(y, ROW_H);
+        y += ROW_H;
+      });
+
+      // Total row
+      if (totalRow) {
+        if (y + ROW_H > doc.page.height - doc.page.margins.bottom) {
+          doc.addPage();
+          y = doc.page.margins.top;
+        }
+        drawRowBg(y, ROW_H, TOTAL_BG);
+        cx = x0;
+        totalRow.forEach((cell, i) => {
+          const isRight = i > 0;
+          drawCellText(cell, cx, y, colWidths[i], ROW_H, true, isRight ? 'right' : 'left');
+          cx += colWidths[i];
+        });
+        drawBorders(y, ROW_H);
+        y += ROW_H;
+      }
+
+      doc.y = y + 8;
+    }
+
+    // ── Document content ────────────────────────────────────────────────────
+    if (d.orgName) {
+      doc.font('Roboto-Bold').fontSize(10).fillColor(GRAY).text(d.orgName);
+    }
+    doc.font('Roboto-Bold').fontSize(16).fillColor('#000000').text(`Кошторис ${d.number}`);
+    if (d.branchName) {
+      doc.font('Roboto').fontSize(9).fillColor(GRAY).text(d.branchName);
+    }
+    doc.moveDown(0.5);
+
+    // Info block
+    const infoRows: [string, string][] = [
+      ['Клієнт', d.counterpartyName],
+      ['Автомобіль', d.vehicleSummary],
+      ['Дата', d.documentDate],
+      ...(d.description ? ([['Примітка', d.description]] as [string, string][]) : []),
+    ];
+    for (const [label, value] of infoRows) {
+      const y = doc.y;
+      doc.font('Roboto').fontSize(9).fillColor(GRAY).text(label, { continued: false, width: 90 });
+      doc
+        .font('Roboto')
+        .fontSize(9)
+        .fillColor('#000000')
+        .text(value, 130, y, { width: PAGE_W - 90 });
+    }
+    doc.moveDown(0.8);
+
+    // Works table
+    if (d.lines.length > 0) {
+      doc.font('Roboto-Bold').fontSize(11).fillColor('#000000').text('Роботи');
+      doc.moveDown(0.3);
+      const colW = [PAGE_W - 135, 45, 45, 45];
+      drawTable(
+        doc,
+        ['Назва', 'Н/год', 'Ціна, грн', 'Сума, грн'],
+        d.lines.map(l => [l.name, String(l.normoHours), fmt(l.price), fmt(l.amount)]),
+        colW,
+        ['', '', 'Разом роботи:', fmt(d.totalLabor)],
+      );
+    }
+
+    // Parts table
+    if (d.parts.length > 0) {
+      doc.font('Roboto-Bold').fontSize(11).fillColor('#000000').text('Запчастини та матеріали');
+      doc.moveDown(0.3);
+      const colW = [PAGE_W - 175, 50, 30, 47, 48];
+      drawTable(
+        doc,
+        ['Назва', 'Кількість', 'Од.', 'Ціна, грн', 'Сума, грн'],
+        d.parts.map(p => [p.name, String(p.quantity), p.unit, fmt(p.price), fmt(p.amount)]),
+        colW,
+        ['', '', '', 'Разом запч.:', fmt(d.totalParts)],
+      );
+    }
+
+    // Grand total
+    doc.moveDown(0.3);
+    const gtY = doc.y;
+    doc.save().rect(doc.page.margins.left, gtY, PAGE_W, 22).fill(GRAND_BG).restore();
+    doc
+      .font('Roboto-Bold')
+      .fontSize(12)
+      .fillColor('#000000')
+      .text(`ЗАГАЛЬНА СУМА: ${fmt(d.totalAmount)} грн`, doc.page.margins.left + 4, gtY + 5, {
+        width: PAGE_W - 8,
+        align: 'right',
+      });
+
+    // Collect buffer
+    const chunks: Buffer[] = [];
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      doc.end();
+    });
+
+    const safeNum = d.number.replace(/[/\\:*?"<>|]/g, '-');
+    return { buffer, filename: `Кошторис-${safeNum}.pdf` };
   }
 
   // ─── XLSX ───────────────────────────────────────────────────────────────────
