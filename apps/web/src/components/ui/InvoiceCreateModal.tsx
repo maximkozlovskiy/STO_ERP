@@ -50,7 +50,13 @@ interface InvoiceDetail {
   invoiceType?: string | null;
   counterpartyId: string;
   counterpartyName?: string | null;
+  workOrderId?: string | null;
+  workOrderNumber?: string | null;
   amount: number;
+  totalWithoutVat?: number;
+  totalVat?: number;
+  totalWithVat?: number;
+  paidAmount?: number;
   dueDate?: string | null;
   documentDate?: string | null;
   notes?: string | null;
@@ -142,6 +148,8 @@ export function InvoiceCreateModal({
   const [counterpartyDisplay, setCounterpartyDisplay] = useState('');
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [workOrderNumber, setWorkOrderNumber] = useState<string | null>(null);
+  const [paidAmount, setPaidAmount] = useState<number | null>(null);
   const [lines, setLines] = useState<LocalLine[]>([]);
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
   const [showLineInput, setShowLineInput] = useState(false);
@@ -191,6 +199,8 @@ export function InvoiceCreateModal({
     setHeaderCollapsed(false);
     setInvoiceNumber('');
     setCurrentStatus('DRAFT');
+    setWorkOrderNumber(null);
+    setPaidAmount(null);
     setLines([]);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
@@ -218,6 +228,8 @@ export function InvoiceCreateModal({
         if (cancelled) return;
         setInvoiceNumber(inv.number);
         setCurrentStatus(inv.status);
+        setWorkOrderNumber(inv.workOrderNumber ?? null);
+        setPaidAmount(inv.paidAmount ?? null);
         setForm({
           counterpartyId: inv.counterpartyId ?? '',
           invoiceType: inv.invoiceType ?? 'STANDARD',
@@ -362,6 +374,7 @@ export function InvoiceCreateModal({
         method: 'POST',
         body: JSON.stringify({
           counterpartyId: form.counterpartyId || undefined,
+          invoiceType: form.invoiceType || undefined,
           amount: computedTotal >= 0.01 ? computedTotal : 0.01,
           dueDate: form.dueDate || undefined,
           documentDate: form.documentDate || undefined,
@@ -763,6 +776,19 @@ export function InvoiceCreateModal({
                     className="h-8 text-[13px]"
                   />
                 </div>
+
+                {/* Рядок 4: Наряд (тільки в edit mode якщо прив'язаний) */}
+                {isEditMode && workOrderNumber && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <Input
+                      label="Наряд"
+                      value={workOrderNumber}
+                      disabled
+                      readOnly
+                      className="h-8 text-[13px]"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -917,6 +943,32 @@ export function InvoiceCreateModal({
                     {total.toFixed(2)} ₴
                   </td>
                 </tr>
+                {isEditMode && paidAmount != null && paidAmount > 0 && (
+                  <tr className="bg-success-subtle/40">
+                    <td
+                      colSpan={3}
+                      className="px-3 py-1.5 text-right text-[12px] font-medium text-success"
+                    >
+                      Оплачено:
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-success">
+                      {paidAmount.toFixed(2)} ₴
+                    </td>
+                  </tr>
+                )}
+                {isEditMode && paidAmount != null && total > 0 && paidAmount < total && (
+                  <tr className="bg-secondary/10">
+                    <td
+                      colSpan={3}
+                      className="px-3 py-1.5 text-right text-[12px] font-medium text-muted-foreground"
+                    >
+                      Залишок:
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-destructive">
+                      {(total - paidAmount).toFixed(2)} ₴
+                    </td>
+                  </tr>
+                )}
               </tfoot>
             </table>
 

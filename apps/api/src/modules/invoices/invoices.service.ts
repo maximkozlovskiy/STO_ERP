@@ -237,6 +237,7 @@ export class InvoicesService {
         workOrderId: dto.workOrderId ?? null,
         number,
         amount: dto.amount,
+        invoiceType: dto.invoiceType ?? 'INVOICE',
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
         documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
         notes: dto.notes ?? null,
