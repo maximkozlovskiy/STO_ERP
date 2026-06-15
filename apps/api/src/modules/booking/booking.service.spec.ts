@@ -3,10 +3,16 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { BookingService } from './booking.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { getQueueToken } from '@nestjs/bullmq';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /**
  * Bug #254: unit-покриття `BookingService.create` + `confirm` + `cancel`.
+ * Bug #506: SMS confirmation тепер йде через `NotificationsService.send()`,
+ *           а НЕ через прямий `smsQueue.add()`. Spec оновлено щоб перевіряти
+ *           правильний event type + payload contract — інакше регресія яка
+ *           замінить виклик назад на прямий queue.add({ templateCode, params })
+ *           пройде CI зеленою (Bug #507 — попередня spec перевіряла лише
+ *           `attempts: 10` у options, не shape job.data).
  *
  * Фокус:
  *   • Cross-tenant FK validation для `serviceIds` (Bug #252 — public endpoint
@@ -14,6 +20,8 @@ import { getQueueToken } from '@nestjs/bullmq';
  *     foreign IDs).
  *   • Defense-in-depth `updateMany({ id, orgId, deletedAt: null })` у confirm/cancel.
  *   • Branch tenant guard.
+ *   • Bug #506: NotificationsService.send('BOOKING_CONFIRMATION', { branchId,
+ *     phone, clientName, date, branchName }) — повний payload контракт.
  *
  * Без spec regression у tenant-FK (e.g. видалення count-check під рефактор)
  * пройде CI зеленим — публічний endpoint буде приймати UUID-и з чужих org.
@@ -23,7 +31,7 @@ describe('BookingService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let smsQueue: any;
+  let notifications: any;
   const orgId = 'org-1';
   const branchId = 'branch-1';
   const bookingId = 'booking-1';
@@ -39,12 +47,12 @@ describe('BookingService', () => {
       },
       work: { count: vi.fn() },
     };
-    smsQueue = { add: vi.fn() };
+    notifications = { send: vi.fn().mockResolvedValue(undefined) };
     const module = await Test.createTestingModule({
       providers: [
         BookingService,
         { provide: PrismaService, useValue: prisma },
-        { provide: getQueueToken('sms'), useValue: smsQueue },
+        { provide: NotificationsService, useValue: notifications },
       ],
     }).compile();
     service = module.get(BookingService);
@@ -58,7 +66,7 @@ describe('BookingService', () => {
       requestedDate: '2026-06-01',
     };
 
-    it('happy path без serviceIds: створює booking + queue SMS', async () => {
+    it('Bug #506: happy path — booking створюється + notifications.send викликано з правильним event+payload', async () => {
       prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
       prisma.work.count.mockResolvedValueOnce(0);
       prisma.bookingRequest.create.mockResolvedValueOnce({
@@ -75,13 +83,51 @@ describe('BookingService', () => {
       const result = await service.create(orgId, validDto);
 
       expect(prisma.bookingRequest.create).toHaveBeenCalledTimes(1);
-      // SMS додано до черги з offline-first attempts=10
-      expect(smsQueue.add).toHaveBeenCalledTimes(1);
-      const smsArgs = smsQueue.add.mock.calls[0][2];
-      expect(smsArgs.attempts).toBe(10);
+
+      // Bug #506: КРИТИЧНИЙ guard — NotificationsService.send викликано з:
+      //   (1) правильним event type 'BOOKING_CONFIRMATION'
+      //   (2) branchId (резолвить branchSettings provider/apiKey)
+      //   (3) phone (target SMS recipient)
+      //   (4) template placeholders: clientName, date, branchName
+      // Регресія яка замінить це на прямий smsQueue.add({ templateCode, params })
+      // упаде на цей expect — попередня spec пропускала такі регресії.
+      expect(notifications.send).toHaveBeenCalledTimes(1);
+      expect(notifications.send).toHaveBeenCalledWith(
+        orgId,
+        'BOOKING_CONFIRMATION',
+        expect.objectContaining({
+          branchId,
+          phone: validDto.clientPhone,
+          clientName: validDto.clientName,
+          branchName: 'Філія 1',
+          date: expect.any(String),
+        }),
+      );
 
       expect(result.id).toBe(bookingId);
       expect(result.status).toBe('PENDING');
+    });
+
+    it('Bug #506: notifications.send падає → booking не блокується (.catch warn)', async () => {
+      prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
+      prisma.work.count.mockResolvedValueOnce(0);
+      prisma.bookingRequest.create.mockResolvedValueOnce({
+        id: bookingId,
+        status: 'PENDING',
+        clientName: validDto.clientName,
+        clientPhone: validDto.clientPhone,
+        requestedDate: new Date('2026-06-01'),
+        branchId,
+        notes: null,
+        createdAt: new Date(),
+      });
+      // SMS template missing or queue down — public booking widget must NOT fail.
+      notifications.send.mockRejectedValueOnce(new Error('Redis недоступний'));
+
+      const result = await service.create(orgId, validDto);
+
+      expect(result.id).toBe(bookingId);
+      // Booking створений; SMS-помилка ловиться через .catch(warn) — користувач отримує OK.
     });
 
     it('Bug #252: cross-tenant serviceIds → BadRequestException; bookingRequest НЕ створюється', async () => {
@@ -107,7 +153,7 @@ describe('BookingService', () => {
 
       // Booking НЕ створюється.
       expect(prisma.bookingRequest.create).not.toHaveBeenCalled();
-      expect(smsQueue.add).not.toHaveBeenCalled();
+      expect(notifications.send).not.toHaveBeenCalled();
     });
 
     it('branch не знайдено (cross-tenant or soft-deleted) → NotFoundException', async () => {
@@ -117,6 +163,7 @@ describe('BookingService', () => {
       await expect(service.create(orgId, validDto)).rejects.toBeInstanceOf(NotFoundException);
 
       expect(prisma.bookingRequest.create).not.toHaveBeenCalled();
+      expect(notifications.send).not.toHaveBeenCalled();
     });
   });
 

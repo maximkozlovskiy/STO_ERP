@@ -15191,3 +15191,117 @@ Row click → `setEditingDocId(doc.id)` → відкривається StockDocu
 **Статус:** [x] виправлено — видалено 3 точки DetailPanelToggle + відповідні destructure / імпорти.
 
 ---
+
+## Session 2026-06-15 — FULL tester after bull→bullmq migration (HEAD f84132a1)
+
+Scope (1 commit, f84132a1):
+
+- `f84132a1` perf(tech): font local (geist), turbopack, swc builder, Promise.all замість `$transaction([])` у 24 read-only сервісах, **bull→bullmq міграція** (6 processors, 6 schedulers/services/modules + 3 spec файли).
+
+### Baseline (Крок 0)
+
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 849/849 passed (63 файлів)
+- Web components — ✅ 423/423 passed (39 файлів)
+- E2E — ⏭ skipped (Docker DOWN, per user інструкції)
+- `[x]`-маркери попередніх сесій: останній tester commit `1788dd0a fix(tester): Bug #504-#505` зачіпає `apps/web/src/app/(app)/{purchase-orders,stock-documents}/page.tsx` — реальний код, не тільки docs → хибно-зелених `[x]` немає.
+
+### Перевірка специфічна цій сесії (bullmq migration)
+
+Static audit:
+
+- `app.module.ts:73` — `BullModule.forRootAsync` використовує `connection: { host, port, password, db }` (НЕ `redis:`) — ✅
+- Всі 6 schedulers/services з `queue.add(name, data, { repeat: { pattern: '...' } })`:
+  - `followup.scheduler.ts:44` — `pattern: '0 9 * * *', tz: 'Europe/Kyiv'` ✅
+  - `nbu-fetch.scheduler.ts:55,75` — `pattern: '0 ${hour} * * *', tz: 'Europe/Kyiv'` ✅
+- Жодного `cron:` префіксу в `RepeatOptions` (`grep "cron:\s*['\"]"` — 0 matches) ✅
+- Жодного `from 'bull'` / `from '@nestjs/bull'` (без `mq`) — 0 matches ✅
+- Жодного `@Process(` декоратора (старий `@nestjs/bull` API) — 0 matches ✅
+- 6 processors usе `@Processor('queue', { concurrency: N })` + `extends WorkerHost` + `async process(job: Job<T>)` сигнатуру ✅
+- Spec файли (3) — `followup.processor.spec.ts`, `checkbox.processor.spec.ts`, `webhooks.processor.spec.ts` — імпортують `Job` з `'bullmq'`, викликають `processor.process(...)` напряму (не legacy `handleX`) ✅
+
+Виявлена розбіжність job.name vs job.data shape — див. Bug #506 нижче.
+
+---
+
+### Bug #506 — [HIGH] business logic / backend / notifications — booking SMS використовує неправильну форму job.data → SMS ніколи не надсилається
+
+**Файл:** `apps/api/src/modules/booking/booking.service.ts:180-194`
+
+**Severity:** HIGH (фіча "SMS-підтвердження бронювання" мертва: tsc green, unit-spec green, але клієнти не отримують SMS — silent regression).
+**Категорія:** business logic / backend / queue contract drift
+
+**Сигнал:** Static audit виявив що `booking.service.ts` додає job до queue `'sms'` з shape:
+
+```ts
+await this.smsQueue.add('send-sms', {
+  orgId,
+  phone: dto.clientPhone,
+  templateCode: 'BOOKING_CONFIRMATION',
+  params: { clientName, date, branchName },
+});
+```
+
+Але `SmsProcessor.process()` у `apps/api/src/modules/notifications/sms.processor.ts:21-29` чекає інший shape:
+
+```ts
+interface SendSmsJob {
+  orgId: string;
+  phone: string;
+  message: string; // ← booking не передає
+  provider: string; // ← booking не передає
+  apiKey: string; // ← booking не передає
+  senderName: string; // ← booking не передає
+}
+```
+
+Усі споживані поля (`provider`, `apiKey`, `senderName`, `message`) — `undefined` після destructuring. Branch `if (provider === 'turbosms')` хибний → `else { logger.warn('Невідомий SMS-провайдер: undefined') }` → SMS не надсилається.
+
+**Очікувана поведінка:** booking SMS має проходити через `NotificationsService.send(orgId, event, { branchId, phone, ...vars })` — той самий шлях що `PaymentsService` для `PAYMENT_RECEIVED` і `FollowUpProcessor` для `FOLLOWUP_REMINDER`. Service резолвить `branchSettings` (provider/apiKey/senderName) + `notificationTemplate.body`, рендерить шаблон і ставить у чергу СПРАВЖНІЙ `SendSmsJob`.
+
+**Фактична поведінка:** booking бомбардує `smsQueue` мертвими job-ами що логуються як "Невідомий SMS-провайдер: undefined" — і BullMQ не retry-ить (job завершується успішно, бо processor не throw).
+
+**Корінь:** booking було написано як public widget (без auth) перед існуванням `NotificationsService.send()`-flow. Migration `bull→bullmq` не зачепила, але FULL processor-audit після міграції виявив.
+
+**Фікс:**
+
+1. Додати enum value `BOOKING_CONFIRMATION` у `NotificationEventType` (`packages/database/prisma/schema.prisma`).
+2. Створити Prisma міграцію `<timestamp>_add_booking_confirmation_event/migration.sql` з `ALTER TYPE "NotificationEventType" ADD VALUE IF NOT EXISTS 'BOOKING_CONFIRMATION';`.
+3. Додати `BOOKING_CONFIRMATION` SMS template у `packages/database/prisma/seed.ts` (body з `{{clientName}}`, `{{date}}`, `{{branchName}}` placeholders).
+4. `booking.service.ts`: інжектити `NotificationsService` (через `NotificationsModule` import у `BookingModule`); видалити прямий `smsQueue.add(...)`; викликати `notifications.send(orgId, 'BOOKING_CONFIRMATION', { branchId, phone, clientName, date, branchName }).catch(warn)` (non-blocking — бронювання не блокується якщо SMS не налаштовано).
+5. Видалити `@InjectQueue('sms')` і `BullModule.registerQueue({ name: 'sms' })` з `BookingModule`.
+6. Оновити `booking.service.spec.ts`: замінити `getQueueToken('sms')` на `NotificationsService` mock; видалити `smsQueue.add` асерти; додати `notifications.send` асерт з правильним event/payload.
+
+**Перевірка:** spec `booking.service.spec.ts` має assert що `notifications.send` викликано один раз з `('BOOKING_CONFIRMATION', expect.objectContaining({ branchId, phone, clientName, ... }))`.
+
+**Статус:** [x] виправлено — додано enum value + migration + seed entry + рефактор `booking.service.ts` через `NotificationsService.send()`, spec оновлений.
+
+---
+
+### Bug #507 — [LOW] tests / backend / notifications — booking spec перевіряє лише `attempts: 10` а не shape job.data → пропустив Bug #506
+
+**Файл:** `apps/api/src/modules/booking/booking.service.spec.ts:78-82`
+
+**Severity:** LOW (регресія-guard gap — spec існує, але tested invariant занадто слабкий).
+**Категорія:** tests / regression-guard quality
+
+**Сигнал:** Spec `it('happy path без serviceIds: створює booking + queue SMS')` робить:
+
+```ts
+expect(smsQueue.add).toHaveBeenCalledTimes(1);
+const smsArgs = smsQueue.add.mock.calls[0][2];
+expect(smsArgs.attempts).toBe(10); // ← перевіряє лише options!
+```
+
+Spec не перевіряє `mock.calls[0][1]` (job.data) — тому будь-який shape `{ orgId, phone, foo: 'bar' }` проходить тест. Bug #506 жив рік+ без виявлення саме через цю слабку асерцію.
+
+**Очікувана поведінка:** після перетягування на `NotificationsService.send()` — асерти на event type + payload keys.
+
+**Фактична поведінка:** один з найкритичніших public-fail-modes (SMS не йде) не покривався регресія-guard.
+
+**Фікс:** після #506 refactor — `expect(notifications.send).toHaveBeenCalledWith('BOOKING_CONFIRMATION', expect.objectContaining({ phone: '+380...', branchId: 'branch-1', clientName: 'Іван Тестовий' }))`. Це CRASHes якщо хтось у майбутньому замінить виклик на прямий `smsQueue.add(...)` без template-resolve.
+
+**Статус:** [x] виправлено разом з #506 — spec тестує `notifications.send` з повним payload contract.
+
+---

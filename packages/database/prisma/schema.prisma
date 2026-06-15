@@ -130,6 +130,7 @@ enum NotificationEventType {
   INVOICE_SENT
   LOW_STOCK_ALERT
   FOLLOWUP_REMINDER
+  BOOKING_CONFIRMATION
 }
 
 enum NotificationChannel {

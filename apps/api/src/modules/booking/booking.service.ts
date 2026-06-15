@@ -1,7 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateBookingRequestDto,
   BookingRequestResponseDto,
@@ -14,9 +13,15 @@ const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA');
 
 @Injectable()
 export class BookingService {
+  private readonly logger = new Logger(BookingService.name);
+
   constructor(
     private readonly prisma: PrismaService,
-    @InjectQueue('sms') private readonly smsQueue: Queue,
+    // Bug #506: route booking SMS through NotificationsService.send() — single source
+    // of truth for branchSettings provider/apiKey + NotificationTemplate body. Previously
+    // smsQueue.add() bypassed template resolve and pushed `{ templateCode, params }` —
+    // SmsProcessor.process() saw provider=undefined → silent skip ("Невідомий SMS-провайдер").
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -176,22 +181,24 @@ export class BookingService {
       },
     });
 
-    // SMS confirmation via BullMQ (offline-first)
-    await this.smsQueue.add(
-      'send-sms',
-      {
-        orgId,
+    // Bug #506: SMS confirmation via NotificationsService.send() — резолвить branchSettings
+    // (provider/apiKey/senderName) + NotificationTemplate.body, рендерить шаблон і кладе
+    // справжній SendSmsJob shape у queue. Non-blocking: помилка резолву (SMS не налаштовано
+    // на branch або шаблону немає) логується, але бронювання залишається.
+    // attempts=10 (offline-first) уже виставляється всередині `sendWithConfig`.
+    this.notifications
+      .send(orgId, 'BOOKING_CONFIRMATION', {
+        branchId: dto.branchId,
         phone: dto.clientPhone,
-        templateCode: 'BOOKING_CONFIRMATION',
-        params: {
-          clientName: dto.clientName,
-          date: UA_DATE_FMT.format(new Date(dto.requestedDate)),
-          branchName: branch.name,
-        },
-      },
-      // Offline-first SMS retry: 10 attempts (skill rule), exponential backoff 60s start
-      { attempts: 10, backoff: { type: 'exponential', delay: 60_000 } },
-    );
+        clientName: dto.clientName,
+        date: UA_DATE_FMT.format(new Date(dto.requestedDate)),
+        branchName: branch.name,
+      })
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `Booking SMS notification failed: ${err instanceof Error ? err.message : err}`,
+        ),
+      );
 
     return this.toDto(req);
   }

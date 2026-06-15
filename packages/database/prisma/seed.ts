@@ -197,6 +197,14 @@ async function main() {
       channel: NotificationChannel.SMS,
       body: 'Вітаємо, {{clientName}}! Запрошуємо на планове ТО для {{vehicleMake}} {{vehicleModel}} ({{licensePlate}}){{nextMaintenanceDate}}. Зателефонуйте нам для запису.',
     },
+    {
+      // Bug #506: public booking widget — без шаблону SMS-підтвердження не йде.
+      // Placeholders читаються з payload що передається у NotificationsService.send():
+      //   clientName, date, branchName.
+      eventType: NotificationEventType.BOOKING_CONFIRMATION,
+      channel: NotificationChannel.SMS,
+      body: 'Вітаємо, {{clientName}}! Запис на {{date}} прийнято. Чекаємо на вас у {{branchName}}.',
+    },
   ];
   for (const t of templates) {
     await prisma.notificationTemplate.upsert({

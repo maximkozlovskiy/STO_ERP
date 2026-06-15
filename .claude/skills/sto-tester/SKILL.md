@@ -1014,6 +1014,48 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-15 — Queue.add(name, data) shape не співпадає з processor `process(job)` interface (Bug #506) — backend / queue / contract drift
+
+**Сигнал:** `someQueue.add('job-name', { fieldA, fieldB, fieldC })` у service-A, але `@Processor('queue') WorkerHost.process(job)` у processor-B робить `const { fieldX, fieldY } = job.data` — **жодне поле не співпадає**. tsc green (queue payload типується як `any`/JSON у BullMQ — не валідується). Unit-spec service-A проходить (mock на queue.add асертить лише `attempts` у options, не shape data). Unit-spec processor-B проходить (тестується з власним коректним shape). Кінцевий runtime-результат: processor читає `undefined` для всіх потрібних полів → branch `if (provider === 'X')` false → fall through до `else { logger.warn(...) }` АБО fetch з `undefined` headers → **silent skip** замість throw → BullMQ НЕ retry → side-effect не відбувається → користувач бачить успіх (booking створено) але SMS не приходить.
+
+**Причина виникнення:** дві типові траєкторії:
+
+1. Service-A написано РАНІШЕ за NotificationsService.send() consolidation — розробник передавав raw `{ templateCode, params }` шукаючи майбутній central template resolver, а той resolver потім реалізовано в іншому місці. Service-A не оновили (no compile-time signal).
+2. Refactor `bull → bullmq` — processor підпис зміниться з `@Process({ name: 'X' }) async handleX(job)` на `WorkerHost.process(job)`. Старий `@Process({ name })` фільтрував job.name — старий код міг покладатися на цей filter (наприклад, два handler-и на одну чергу для різних name). Новий `WorkerHost.process()` НЕ фільтрує — всі jobs queue потрапляють до одного process(). Якщо два callsite-и додають різні shape з різним name, processor мовчки obj-spread receives обидва і ламається на тому що не його.
+
+**Підхід до виявлення:**
+
+```bash
+# Для КОЖНОЇ черги у проекті:
+# 1) Знайти ВСІ callsite-и `<queue>.add(name, data, opts)` → витягти `name` + shape `data`
+grep -rnE "Queue.*add\(\s*['\"]([^'\"]+)['\"]" apps/api/src --include="*.ts" | grep -v spec
+
+# 2) Знайти @Processor('<queue>') processor і прочитати destructuring у process(job)
+grep -rnE "@Processor\(['\"]([^'\"]+)['\"]" apps/api/src --include="*.processor.ts"
+
+# 3) Для кожного processor — прочитати interface SendXJob / FooJob що тип job.data, порівняти з callsite shape
+# Конкретно: знайти `interface XxxJob {` у processor.ts → порівняти ключі з ключами data-об'єкту у Queue.add()
+# Будь-який unique-у-callsite key (templateCode, params, fooBar) що відсутній у Job interface = bug
+
+# 4) Bonus — якщо одна черга має ДЕКІЛЬКА callsite з РІЗНИМИ shape:
+# Старий @Process({ name: 'A' }) + @Process({ name: 'B' }) у двох handlers оброблятимуть різні shape
+# Новий WorkerHost.process(job) обробляє ВСІ name → потрібна in-process диспетчеризація через switch (job.name)
+# АБО (краще) — окремі черги. Граючий шлях: для NotificationsService.send() — завжди через template-resolve helper, не raw queue.add
+```
+
+**Підхід до фіксу:**
+
+1. **Знайти canonical service** для черги (`NotificationsService.send()` для SMS, `SettlementsService.createTransaction()` для balance, `InventoryService.createMovement()` для stock). Канонічний service агрегує `branchSettings`/`template`/`config` resolve + ставить у чергу СПРАВЖНІЙ shape що processor чекає.
+2. **Переписати порушуючий callsite** на canonical service. Прибрати `@InjectQueue('queue')` з порушуючого service і відповідний `BullModule.registerQueue` з його модуля. Імпортувати canonical Module замість.
+3. **Якщо потрібен новий event-type** (як `BOOKING_CONFIRMATION`) — додати enum value у Prisma schema + написати парний migration `ALTER TYPE ... ADD VALUE IF NOT EXISTS '...'` + seed `NotificationTemplate` у `seed.ts`. Прив'язується до Bug #220 (schema↔migration parity) і Bug #478-#480 (enum coverage у contract+service spec).
+4. **Виправити spec**: видалити assert типу `expect(queue.add).toHaveBeenCalledTimes(1); expect(opts.attempts).toBe(10)` (Bug #507 — лише options перевіряє); замість — `expect(canonicalService.send).toHaveBeenCalledWith(orgId, expect.any(String), expect.objectContaining({ branchId, phone, ...placeholders }))`. Регресія яка повертає прямий queue.add упаде на цей expect.
+
+**Severity:** HIGH (фіча розрекламована користувачу = "ми надішлемо SMS" АЛЕ SMS ніколи не приходить — silent UX/business gap; payments аналог був би CRITICAL). MEDIUM якщо побічний ефект не критичний (loyalty earn — клієнт не бачить що бал не нараховано). Підвищується до CRITICAL якщо queue ставить ФІНАНСОВУ операцію (ПРРО фіскальний чек, settlement transaction).
+
+**Де шукати ще:** будь-який `@InjectQueue(name)` поза canonical service. Особливо public/widget endpoints (booking, public form, lead capture) які з'явилися ПЕРЕД centralized service consolidation. Регулярно: після кожного `bull → bullmq` (або major queue-library) migration — повний audit `queue.add` shape vs processor `process` interface для всіх черг. Парне з Bug #267 / #268 (dead-feature integration audit) — там canonical service injected але викликається з мертвого path; тут canonical service не injected взагалі.
+
+---
+
 ### 2026-06-15 — `setX(value)` викликається у async-операції, але `x` не читається у JSX (Bug #497) — frontend / dead-state / UX feedback
 
 **Сигнал:** `const [loading, setLoading] = useState(false)` (або `loadingId`, `saving`, `processingId`) → setter викликається ВСЕРЕДИНІ async-handler (`setLoading(true)` перед `await apiFetch`, `setLoading(false)` у finally), state перевертає React render, але `loading` НІКОЛИ не читається у JSX — немає `{loading && <Spinner/>}`, немає `disabled={loading}` на кнопці, немає `loading={loading}` prop. Класичний Bug #160 — обидві сторони (setter + reader) мертві. Тут гірше: setter викликається → extra renders + memory churn + закидаються mutation queue events, але user НЕ бачить жодної реакції UI на запит. UX silent: користувач клікає Pencil → 1-3s нічого не відбувається → бачить що з'явився Modal → не розуміє чому затримка.
