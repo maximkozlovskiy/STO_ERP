@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+46b5df7f perf(optimize): parallel FK guards + per-line writes in PO/SD services
+eb5faa60 docs(memory): update MemoryManual after review 5c38dcd4 — BOM strip + lint deps verified
 5c38dcd4 fix(review): strip UTF-8 BOM from stock-documents/page.tsx
 96579181 test(purchase-orders): Bug #481-#482 — FSM transition regression guards
 821de2d2 fix(sync): align StockDoc interface with StockDocumentResponseDto
@@ -66,8 +68,14 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-review — BOM cleanup; lint warnings already fixed by parallel tester)
+Дата: 2026-06-15 (post sto-optimize — parallel FK guards + per-line Promise.all writes у PO/SD)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest optimize (2026-06-15, 46b5df7f, after 5c38dcd4): /sto-optimize аудит на recent RECEIPT type + PO contract clear + tab bar + FSM coverage комітах. 4 знахідки виправлені одним коммітом.
+  - purchase-orders.service.ts update() — три послідовні findFirst (supplierId, warehouseId, contractId) переписані на Promise.all. Раніше editing post-feature 115fea9e (всі поля editable у DRAFT) міг робити 3 sequential RTT. Збережена логіка: stale-contract auto-clear, effectiveSupplierId computed once, помилки 404 у тому ж порядку.
+  - stock-documents.service.ts transition() — у per-line $transaction loop: inventory.createMovement + stockDocumentLine.update(UoM) → Promise.all. Для TRANSFER додатково parallelizes writeoff (source warehouse) + receipt (target warehouse) — disjoint StockItem rows race-safe. Економія: ~1-2 RTT × N ліній.
+  - purchase-orders.service.ts receive() — аналогічно: inventory.createMovement + purchaseOrderLine.update → Promise.all per line. shouldUpdateLineUom Bug #237 guard збережено.
+  - stock-documents/page.tsx — types/statuses filter arrays були inline у функції-компоненті (re-alloc на render). Підняті на module-level як TYPE_FILTERS/STATUS_FILTERS frozen const. RECEIPT включений.
+  - Тести: 83/83 у changed модулях (PO 62 + SD 21) — зелені. Frontend tests не торкались (тільки readonly array reorganization).
 Latest review (2026-06-15, 5c38dcd4, after 96579181): /sto-review full scan of last 10 commits (RECEIPT type + PO contract clear + tab bar + FSM coverage). Single Important fix.
   - IMPORTANT: apps/web/src/app/(app)/stock-documents/page.tsx had UTF-8 BOM (ef bb bf) prepended by Windows/PowerShell editor during recent tab-bar tweaks. Stripped via tail -c +4. No other .tsx in the changed set carries BOM — restores consistency.
   - SUGGESTION: 4 react-hooks/exhaustive-deps warnings (3 in PurchaseOrderCreateModal — useEffect [open, purchaseOrderId] missing isEditMode ×2, useMemo missing allowedTransitions; 1 in stock-documents/page.tsx — useCallback missing setActiveSavedFilterId). All ALREADY FIXED in HEAD by parallel tester run (commit 96579181 includes the lint-tightened deps as part of FSM test scaffolding; stock-documents fix landed earlier). Verified post-commit: 0 lint warnings on both files.
