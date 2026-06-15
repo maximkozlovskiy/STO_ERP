@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+4400dfb7 docs(skills): add branching ternary inside Promise.all + tenant-guard create-update parallel patterns to sto-optimize
+f23abfd3 perf(optimize): tier-merger contract Promise.all + settlements parallel write + reconciliation acts covering index
 852d5fa4 fix(review): defense-in-depth orgId tenant guard on tx.X.update writes (pricing+SD)
 493c46ad docs(memory+skills): record self-seeding pattern after Bug #486
 231b0be2 test(e2e): Bug #486 — estimate-share self-seeds ESTIMATE WO (3 skips → real coverage)
@@ -78,8 +80,24 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-review 852d5fa4 — defense-in-depth tenant guard)
+Дата: 2026-06-15 (post sto-optimize 4400dfb7 — tier-merger contract + parallel write + RA covering index)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest optimize (2026-06-15, f23abfd3 + 4400dfb7, after 852d5fa4): /sto-optimize-agent повний аудит (backend N+1 / FK guards / DB indexes + frontend debounce/waterfall/bundle). 3 знахідки виправлені одним коммітом, 1 skill update.
+  - apps/api/src/modules/purchase-orders/purchase-orders.service.ts L150-193 — create() contract resolution sequential після Promise.all (auto-pick АБО validate). Лite-up: тернарка `hasContractId ? validate-by-id-findFirst : auto-pick-with-orderBy-findFirst` як третій слот Promise.all з supplier/warehouse FK guards. Throw order збережено (post-Promise.all guard блоки). Економія: 1 RTT на кожен PO create (33% time-save).
+  - apps/api/src/modules/settlements/settlements.service.ts L20-70 — createTransaction sequential `findFirst → create + update`. SettlementTransaction.create та SettlementAccount.update пишуть у різні таблиці, обидва читають account.id зі scope → Promise.all всередині $transaction. balanceDelta lifted ДО tx для fail-fast на unknown enum. select: {id} замість full-row findFirst.
+  - packages/database/prisma/schema.prisma ReconciliationAct: замінено @@index([orgId, counterpartyId]) на covering @@index([orgId, counterpartyId, createdAt]) — getReconciliationActs з orderBy: createdAt desc + take 200 тепер index-order scan без Sort node.
+  - prisma db push --skip-generate: схема синхронізована з БД (~549ms). Існуючі індекси для PO/SD/PaymentI/Warranty/CompletionAct — всі already covering і не змінювались.
+  - Verified non-issues:
+    · purchase-orders update() (L254-380) — уже має Promise.all для supplier/warehouse/contract guards (попередній optimize cycle 46b5df7f).
+    · invoices.create/update — уже Promise.all (counterparty + workOrder).
+    · infrastructure/inventory pages — `search` debounce уже є (inventory:97 useDebounce; infrastructure: search client-side only, не API → не потрібен debounce).
+    · TopShell PREFETCH_MAP — 16/18 NAV items покриті, не покриті /ndi (lazy-tab, no page-level data) і /settings (landing). Skip — недостатньо ROI.
+    · RevenueChart — уже dynamic import у dashboard.
+    · Backend findMany з createdAt orderBy — всі (CompletionAct/Payment/Warranty/SettlementTransaction/AuditEvent/BookingRequest) уже мають covering indexes; tільки ReconciliationAct (новий gap) виправлено.
+    · vehicles/[id]/PageClient.tsx — useEffect уже Promise.all для 3 паралельних fetches.
+    · settlements.service.ts createTransaction — викликається з work-orders.service.ts (COMPLETED flow) + invoices.service.ts (PAID flow) + payments.service.ts (новий payment) + purchase-orders.service.ts (PO receive). Tests pass всі модулі.
+  - Skill update (4400dfb7): два нові патерни записано у "Накопичені підходи" — (1) "Branching ternary cond ? findFirst(validate-by-id) : findFirst(auto-pick-by-criteria) всередині Promise.all" — узагальнення PO contract case-у; (2) "Sequential findFirst (tenant guard) → create + update пара у $transaction де create і update пишуть у РІЗНІ таблиці" — узагальнення settlements createTransaction.
+  - Tests: API 81 PO+settlements pass (37 service + 26 contract + 8 invariants + 10 service settlements) + 41 work-orders pass (14 fsm + 8 service + 19 contract). TypeScript api+web 0 errors.
 Latest review (2026-06-15, 852d5fa4, after 493c46ad): /sto-review-agent повний скан last-10-commits range. 1 IMPORTANT виправлений у 2 файли (один коміт).
   - IMPORTANT §2.2: tx.X.update без orgId у where — asymmetric з sibling pattern.
     · apps/api/src/modules/inventory/pricing.service.ts L168-172 — `tx.good.update({ where: { id: u.goodId } })` всередині chunked $transaction. Сусідні `purchase-orders.applyPricing` (L681-687) і `xlsx.applyPricingFromList` (L926-934) обидва вже використовують `updateMany({ where: { id, orgId, deletedAt: null } })`. Виправлено: switch на updateMany з compound where.
