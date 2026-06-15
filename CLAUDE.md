@@ -143,6 +143,31 @@ ExitPlanMode
 - Зміна бізнес-правил/FSM → `docs/BUSINESS-RULES.md`
 - Новий модуль/модель → `docs/ARCHITECTURE.md`
 
+**`docs/objects/<entity>.md`** — оновлювати якщо зачеплено відповідний агрегат:
+
+| Зміна в коді                                    | Оновити дос'є               |
+| ----------------------------------------------- | --------------------------- |
+| Новий endpoint у controller                     | секція "API Endpoints"      |
+| Нове поле або зв'язок у Prisma schema           | секція "Prisma модель"      |
+| Новий FSM-статус або transition                 | секція "FSM" + side-effects |
+| Новий компонент або сторінка для цього агрегату | секція "UI (Web)"           |
+| Нове бізнес-правило специфічне для агрегату     | секція "Бізнес-правила"     |
+
+Таблиця відповідності агрегат → файл:
+
+```
+WorkOrder       → docs/objects/work-order.md
+Invoice         → docs/objects/invoice.md
+PurchaseOrder   → docs/objects/purchase-order.md
+StockDocument   → docs/objects/stock-document.md
+Counterparty    → docs/objects/counterparty.md
+Good            → docs/objects/good.md
+Work/WorkCategory → docs/objects/work.md
+CalendarSlot    → docs/objects/calendar.md
+StockItem/StockMovement → docs/objects/inventory.md
+SettlementAccount/Transaction → docs/objects/settlements.md
+```
+
 **НЕ** дублювати деталі між файлами — одне місце правди.
 
 > Виняток скілів: якщо запит є скіл-командою (`/sto-database`) — скіл вже завантажений, не читай повторно.  
@@ -213,6 +238,7 @@ Agent(subagent_type="sto-optimize-agent", description="perf audit after <block>"
 2. Прочитати `docs/PHASES.md` — де зупинились
 3. Прочитати `.claude/memory/MEMORY.md` — preferences
 4. За потреби — відкрити довідник: `docs/ARCHITECTURE.md`, `docs/PATTERNS.md`, `docs/BUSINESS-RULES.md`, `docs/GOTCHAS.md`
+   - Якщо торкаєшся конкретного агрегату → прочитати його `docs/objects/<entity>.md`
 5. Продовжити з місця зупинки без питань
 6. Перезапустити щогодинний моніторинг: `/loop 1h` з промптом із `.claude/scheduled_tasks.json`
 
