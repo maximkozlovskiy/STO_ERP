@@ -1090,6 +1090,86 @@ $transaction: vi.fn().mockImplementation((arg: unknown) => {
 
 ---
 
+### 2026-06-15 — Новий documentType literal не зареєстрований у DOC_TYPE_LABELS map (Bug #491) — backend / i18n / UI consistency
+
+**Сигнал:** Новий ресурс/feature (наприклад `SupplierReturn`, `ServiceContract`, `ReconciliationAct`) додає в schema.prisma модель, її сервіс пише StockMovement/SettlementTransaction з `documentType: '<NewName>'` (PascalCase model-name convention), АЛЕ `apps/api/src/modules/inventory/inventory.service.ts:DOC_TYPE_LABELS` НЕ має парного запису. Через те `docLabel(documentType, documentId)` робить fallback `DOC_TYPE_LABELS[documentType] ?? documentType` → у UI (stock movement history, settlement history) показується англомовний літерал `'SupplierReturn'` замість українського `'Повернення постачальнику'`. CLAUDE.md правило #15-#17 (UI українською) силенто порушене.
+
+**Причина виникнення:** автор фокусується на business логіці confirm(), на правильному WRITEOFF/REFUND, на FSM — і пропускає UI label maps у downstream services (inventory/settlements). Map знаходиться у ЧУЖОМУ модулі (inventory) і не імпортується у новий сервіс — фокус-blindness. Жоден TS compile-error не виникає (Record<string,string> приймає будь-який ключ).
+
+**Підхід до виявлення:**
+
+```bash
+# Step 1: знайти ВСІ unique documentType literals що передаються у inventory/settlements
+grep -rnE "documentType:\s*'[A-Z][a-zA-Z]+'" apps/api/src/modules --include="*.service.ts" | \
+  grep -oE "'[A-Z][a-zA-Z]+'" | sort -u
+
+# Step 2: cross-check проти DOC_TYPE_LABELS map keys
+grep -oE "^\s+[A-Z][a-zA-Z]+:\s*'" apps/api/src/modules/inventory/inventory.service.ts | \
+  grep -oE "[A-Z][a-zA-Z]+" | sort -u
+
+# diff двох списків → unmapped literals = bug
+```
+
+**Підхід до фіксу:** додати запис `<NewModel>: 'Український label'` у `DOC_TYPE_LABELS` map. Альтернатива (better): винести map у `packages/shared/src/constants/document-labels.ts` як `DOCUMENT_TYPE_LABELS: Record<DocumentType, string>` з `Record<>` (НЕ Partial) — TS-exhaustiveness заверне commit що додає новий enum value без парного label.
+
+**Severity:** MEDIUM (UI inconsistency; не runtime crash; не data corruption). LOW якщо feature internal/admin-only.
+
+**Де шукати ще:** новий ресурс що пише `documentType` у будь-яку history-таблицю: `StockMovement.documentType`, `SettlementTransaction.documentType`, `AuditEvent.entityType`, `NotificationEvent.relatedDocumentType`. Парна перевірка: чи `i18n/uk-UA.json` / shared label maps мають localized string для нового enum value.
+
+---
+
+### 2026-06-15 — DTO line-level FK поля (`goodId`, `unitOfMeasureId`) пишуться через `createMany` без cross-tenant guard (Bug #495) — backend / tenant isolation / Bug #161 family
+
+**Сигнал:** Service `create()`/`update()` приймає `dto.lines: Array<{ goodId, unitOfMeasureId?, ... }>` і пише прямо через `tx.<resource>Line.createMany({ data: dedupedLines.map(...) })` БЕЗ preceding `prisma.good.findFirst({ orgId, id: l.goodId })` валідації для КОЖНОГО FK у lines. Це Bug #161 (Optional FK у data-spread) розширене на nested arrays — додатково ризикове бо batch-write масштабує impact. Sister patterns: PO lines, WO parts, Invoice lines, StockDocument lines, ServiceContract items.
+
+**Причина виникнення:** автор валідує parent FKs (`supplierId`, `warehouseId`) явним `findFirst({ orgId })` на топ-рівні DTO, але child line FKs пропускає тому що (а) Prisma FK constraint вже валідує — здається достатньо; (б) batch validation виглядає затратним (N RTT?); (в) автор тестує тільки happy-path з валідними IDs з тієї ж org. Prisma FK constraint валідує лише глобальне існування `id`, НЕ `orgId` → cross-tenant FK linkage проходить без error → ADMIN з валідним JWT може створити повернення/наряд/документ з goodId з чужої org.
+
+**Підхід до виявлення:**
+
+```bash
+# Step 1: знайти всі service-методи що роблять createMany з масиву lines DTO
+grep -rnE "tx\.\w+Line\.createMany\s*\(\s*\{" apps/api/src/modules --include="*.service.ts" -l
+
+# Step 2: для кожного service — перевірити що ПЕРЕД createMany є batch-validation:
+# `prisma.good.findMany({ where: { id: { in: [...] }, orgId, deletedAt: null }, select: { id: true } })`
+# або per-line findFirst в loop (антипаттерн, але працює)
+grep -B5 "Line\.createMany" <service.ts> | grep -E "good\.findMany.*orgId|good\.findFirst.*orgId"
+# 0 matches = bug
+
+# Step 3: парна перевірка унікальних FK fields у lines DTO:
+# для кожного `*Id` поля у `<resource>LineDto` (goodId, unitOfMeasureId, brandId, supplierId)
+# має бути guard.
+```
+
+**Підхід до фіксу:** додати приватний метод `validateLineRefs(orgId, lines)` що робить batch through `Promise.all`:
+
+```ts
+const goodIds = Array.from(new Set(lines.map(l => l.goodId)));
+const uomIds = Array.from(new Set(lines.map(l => l.unitOfMeasureId).filter(Boolean)));
+const [goods, uoms] = await Promise.all([
+  prisma.good.findMany({
+    where: { id: { in: goodIds }, orgId, deletedAt: null },
+    select: { id: true },
+  }),
+  uomIds.length > 0
+    ? prisma.unitOfMeasure.findMany({
+        where: { id: { in: uomIds }, orgId, deletedAt: null },
+        select: { id: true },
+      })
+    : Promise.resolve([]),
+]);
+if (goods.length !== goodIds.length)
+  throw new NotFoundException(`Товар не знайдено: ${missing[0]}`);
+```
+
+— 1-2 RTT регдрозу від N послідовних. Викликати ПЕРЕД `$transaction` (read-only). Регресія-guard: spec з cross-tenant fixture (`good.findMany` повертає N-1 з N) → асерт `rejects.toThrow(NotFoundException)` + `expect(prisma.X.create).not.toHaveBeenCalled()`.
+
+**Severity:** HIGH (tenant isolation gap; defense-in-depth; не runtime crash але дозволяє data leak/linkage cross-org). CRITICAL якщо feature видима через UI з drop-down що показує тільки власні org-данні, але API direct call дозволяє cross-tenant FK.
+
+**Де шукати ще:** будь-який `<resource>Line[]` DTO у create/update: `SupplierReturn`, `PurchaseOrder`, `Invoice`, `StockDocument`, `WorkOrder` (parts), `ReconciliationAct`, `ServiceContractItem`. Також: nested `recipients[]` у notifications, `permissions[]` у roles, `vehicleIds[]` у customers — будь-який masked-as-string FK всередині array DTO.
+
+---
+
 ### 2026-06-14 — Multi-mode page викликає всі data hooks одночасно замість gate-у по mode (Bug #457) — frontend / perf / wasted-fetches
 
 **Сигнал:** Сторінка має `viewMode` switcher (tabs / pill buttons / select) що показує одну з N data-source. Hooks (`useStockByDocument`, `useStockByBatch`, `useStockItems` etc.) викликані безумовно на top-level — ВСІ N запитів стартують одночасно на mount, навіть якщо лише 1 visible.
