@@ -99,12 +99,6 @@ interface StockDocFilters extends Record<string, unknown> {
   dateTo: string;
 }
 
-// Type/status/badge constants imported from @sto/shared
-const TYPE_LABELS = STOCK_DOC_TYPE_LABELS;
-const TYPE_BADGE = STOCK_DOC_TYPE_BADGE;
-const STATUS_LABELS = STOCK_DOC_STATUS_LABELS;
-const STATUS_BADGE = STOCK_DOC_STATUS_BADGE;
-
 // Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
 const COLUMNS: Array<{ key: string; label: string }> = [
   { key: 'number', label: 'Номер' },
@@ -116,17 +110,13 @@ const COLUMNS: Array<{ key: string; label: string }> = [
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
 
-// Filter tab arrays — frozen, module-level. Раніше re-allocated кожен render компонента.
-// '' = «Всі» — використовується як key для першої вкладки. Новий тип додавати сюди
-// + у STOCK_DOC_TYPE_LABELS у @sto/shared (одне місце правди).
-const TYPE_FILTERS: readonly string[] = Object.freeze([
+// Filter tab arrays derived from shared constants — single source of truth.
+// Adding a new type to STOCK_DOC_TYPE_LABELS automatically appears as a tab.
+const TYPE_FILTERS: readonly string[] = Object.freeze(['', ...Object.keys(STOCK_DOC_TYPE_LABELS)]);
+const STATUS_FILTERS: readonly string[] = Object.freeze([
   '',
-  'WRITEOFF',
-  'TRANSFER',
-  'OPENING_BALANCE',
-  'RECEIPT',
+  ...Object.keys(STOCK_DOC_STATUS_LABELS),
 ]);
-const STATUS_FILTERS: readonly string[] = Object.freeze(['', 'DRAFT', 'CONFIRMED', 'CANCELLED']);
 
 export default function StockDocumentsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
@@ -367,11 +357,13 @@ export default function StockDocumentsPage() {
         <div className="space-y-3">
           {buildPanelFields(doc as any, STOCK_DOC_PANEL_SCHEMA as any, panelConfig.config, {
             type: v => (
-              <Badge variant={TYPE_BADGE[String(v)] ?? 'secondary'}>{TYPE_LABELS[String(v)]}</Badge>
+              <Badge variant={STOCK_DOC_TYPE_BADGE[String(v)] ?? 'secondary'}>
+                {STOCK_DOC_TYPE_LABELS[String(v)]}
+              </Badge>
             ),
             status: v => (
-              <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'}>
-                {STATUS_LABELS[String(v)]}
+              <Badge variant={STOCK_DOC_STATUS_BADGE[String(v)] ?? 'secondary'}>
+                {STOCK_DOC_STATUS_LABELS[String(v)]}
               </Badge>
             ),
           }).map(f => (
@@ -461,7 +453,7 @@ export default function StockDocumentsPage() {
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
             )}
           >
-            {t ? TYPE_LABELS[t] : 'Всі'}
+            {t ? STOCK_DOC_TYPE_LABELS[t] : 'Всі'}
           </button>
         ))}
       </div>
@@ -488,7 +480,7 @@ export default function StockDocumentsPage() {
                   : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
               )}
             >
-              {s ? STATUS_LABELS[s] : 'Всі'}
+              {s ? STOCK_DOC_STATUS_LABELS[s] : 'Всі'}
             </button>
           ))}
         </div>
@@ -670,8 +662,8 @@ export default function StockDocumentsPage() {
                       if (col.key === 'type')
                         return (
                           <TableCell key="type">
-                            <Badge variant={TYPE_BADGE[doc.type] ?? 'secondary'}>
-                              {TYPE_LABELS[doc.type]}
+                            <Badge variant={STOCK_DOC_TYPE_BADGE[doc.type] ?? 'secondary'}>
+                              {STOCK_DOC_TYPE_LABELS[doc.type]}
                             </Badge>
                           </TableCell>
                         );
@@ -684,8 +676,8 @@ export default function StockDocumentsPage() {
                       if (col.key === 'status')
                         return (
                           <TableCell key="status">
-                            <Badge variant={STATUS_BADGE[doc.status] ?? 'secondary'}>
-                              {STATUS_LABELS[doc.status]}
+                            <Badge variant={STOCK_DOC_STATUS_BADGE[doc.status] ?? 'secondary'}>
+                              {STOCK_DOC_STATUS_LABELS[doc.status]}
                             </Badge>
                           </TableCell>
                         );
@@ -741,7 +733,7 @@ export default function StockDocumentsPage() {
           open={!!selectedDoc && detailPanel.enabled}
           onClose={() => setSelectedDoc(null)}
           title={selectedDoc?.number ?? ''}
-          subtitle={selectedDoc ? TYPE_LABELS[selectedDoc.type] : undefined}
+          subtitle={selectedDoc ? STOCK_DOC_TYPE_LABELS[selectedDoc.type] : undefined}
           tabs={selectedDoc ? buildDocTabs(selectedDoc) : undefined}
           configFields={schemaToPanelConfigFields(
             STOCK_DOC_PANEL_SCHEMA as any,
@@ -780,7 +772,7 @@ export default function StockDocumentsPage() {
       <Modal
         open={!!showDetail}
         onClose={() => setShowDetail(null)}
-        title={showDetail ? `${TYPE_LABELS[showDetail.type]} ${showDetail.number}` : ''}
+        title={showDetail ? `${STOCK_DOC_TYPE_LABELS[showDetail.type]} ${showDetail.number}` : ''}
         size="lg"
         footer={
           showDetail?.status === 'DRAFT' ? (
@@ -806,11 +798,11 @@ export default function StockDocumentsPage() {
         {showDetail && (
           <div className="space-y-4">
             <div className="flex items-center gap-3 flex-wrap">
-              <Badge variant={TYPE_BADGE[showDetail.type] ?? 'secondary'}>
-                {TYPE_LABELS[showDetail.type]}
+              <Badge variant={STOCK_DOC_TYPE_BADGE[showDetail.type] ?? 'secondary'}>
+                {STOCK_DOC_TYPE_LABELS[showDetail.type]}
               </Badge>
-              <Badge variant={STATUS_BADGE[showDetail.status] ?? 'secondary'}>
-                {STATUS_LABELS[showDetail.status]}
+              <Badge variant={STOCK_DOC_STATUS_BADGE[showDetail.status] ?? 'secondary'}>
+                {STOCK_DOC_STATUS_LABELS[showDetail.status]}
               </Badge>
               <span className="text-muted-foreground text-sm">{showDetail.warehouseName}</span>
               {showDetail.targetWarehouseName && (

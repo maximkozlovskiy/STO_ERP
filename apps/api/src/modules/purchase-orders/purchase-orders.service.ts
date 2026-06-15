@@ -280,8 +280,7 @@ export class PurchaseOrdersService {
     //   4. Otherwise                            → keep existing (Prisma `undefined`)
     const supplierChanged = dto.supplierId !== undefined && dto.supplierId !== po.supplierId;
     const effectiveSupplierId = dto.supplierId ?? po.supplierId;
-    const shouldValidateContract =
-      dto.contractId !== undefined && dto.contractId !== null && dto.contractId !== '';
+    const shouldValidateContract = !!dto.contractId;
 
     const [supplier, warehouse, contract] = await Promise.all([
       dto.supplierId
@@ -314,16 +313,12 @@ export class PurchaseOrdersService {
     if (dto.warehouseId && !warehouse) throw new NotFoundException('Склад не знайдено');
     if (shouldValidateContract && !contract) throw new NotFoundException('Договір не знайдено');
 
-    let newContractId: string | null | undefined = undefined;
-    if (shouldValidateContract && contract) {
-      newContractId = contract.id;
-    } else if (dto.contractId === null) {
-      newContractId = null;
-    } else if (supplierChanged && po.contractId) {
-      // Defensive: supplier змінився, але клієнт не передав contractId — стейл-контракт
-      // лишився б прив'язаним до старого постачальника. Очищаємо явно.
-      newContractId = null;
-    }
+    const newContractId: string | null | undefined =
+      shouldValidateContract && contract
+        ? contract.id
+        : dto.contractId === null || (supplierChanged && po.contractId)
+          ? null
+          : undefined;
 
     const lines = dto.lines;
     const totalAmount = lines
@@ -458,58 +453,63 @@ export class PurchaseOrdersService {
       }
     }
 
-    let receivedAmount = 0;
+    // sto-optimize: всі лінії незалежні (різні lineId/goodId rows) — паралелимо.
+    // Всередині лінії: createMovement і lineUpdate пишуть у різні таблиці → теж паралельно.
+    // receivedAmount акумулюємо через map → reduce (уникаємо shared mutable у async callbacks).
+    const activeLines = dto.lines
+      .map(recv => ({ recv, line: po.lines.find(l => l.id === recv.lineId) }))
+      .filter(
+        (x): x is { recv: (typeof dto.lines)[0]; line: NonNullable<typeof x.line> } =>
+          !!x.line && x.recv.receivedQty > 0,
+      );
+
+    const receivedAmount = activeLines.reduce(
+      (sum, { recv, line }) => sum + recv.receivedQty * Number(line.price),
+      0,
+    );
 
     await this.prisma.$transaction(
       async tx => {
-        for (const recv of dto.lines) {
-          const line = po.lines.find(l => l.id === recv.lineId);
-          if (!line) continue;
-          if (recv.receivedQty <= 0) continue;
-
-          // Prefer caller-provided UoM override (already validated against orgId above);
-          // fall back to Good.unitId, then null (backward compat with nullable column).
-          const resolvedUomId =
-            (recv.unitOfMeasureId && allowedUomIds.has(recv.unitOfMeasureId)
-              ? recv.unitOfMeasureId
-              : null) ??
-            line.good?.unitId ??
-            null;
-
-          // Bug #237: avoid overwriting an existing PO line UoM on subsequent partial
-          // receives. Only persist UoM when (a) this is the first receive (no prior qty),
-          // or (b) the caller passed an explicit override — otherwise keep the original.
-          const shouldUpdateLineUom = line.receivedQty === 0 || !!recv.unitOfMeasureId;
-          // sto-optimize: inventory.createMovement пише в StockMovement/StockBatch/StockItem;
-          // purchaseOrderLine.update — в окрему таблицю по lineId. Незалежні writes на одній
-          // tx connection → Promise.all економить 1 RTT на лінію (×N ліній у PO receive).
-          await Promise.all([
-            this.inventory.createMovement(
-              orgId,
-              {
-                goodId: line.goodId,
-                warehouseId: po.warehouseId,
-                type: 'RECEIPT',
-                quantity: recv.receivedQty,
-                price: Number(line.price),
-                documentType: 'PurchaseOrder',
-                documentId: id,
-                createdBy: userId,
-                unitOfMeasureId: resolvedUomId,
-              },
-              tx,
-            ),
-            tx.purchaseOrderLine.update({
-              where: { id: recv.lineId, orgId },
-              data: {
-                receivedQty: { increment: recv.receivedQty },
-                ...(shouldUpdateLineUom ? { unitOfMeasureId: resolvedUomId } : {}),
-              },
-            }),
-          ]);
-
-          receivedAmount += recv.receivedQty * Number(line.price);
-        }
+        await Promise.all(
+          activeLines.map(({ recv, line }) => {
+            // Prefer caller-provided UoM override (already validated against orgId above);
+            // fall back to Good.unitId, then null (backward compat with nullable column).
+            const resolvedUomId =
+              (recv.unitOfMeasureId && allowedUomIds.has(recv.unitOfMeasureId)
+                ? recv.unitOfMeasureId
+                : null) ??
+              line.good?.unitId ??
+              null;
+            // Bug #237: avoid overwriting an existing PO line UoM on subsequent partial
+            // receives. Only persist UoM when (a) this is the first receive (no prior qty),
+            // or (b) the caller passed an explicit override — otherwise keep the original.
+            const shouldUpdateLineUom = line.receivedQty === 0 || !!recv.unitOfMeasureId;
+            return Promise.all([
+              this.inventory.createMovement(
+                orgId,
+                {
+                  goodId: line.goodId,
+                  warehouseId: po.warehouseId,
+                  type: 'RECEIPT',
+                  quantity: recv.receivedQty,
+                  price: Number(line.price),
+                  documentType: 'PurchaseOrder',
+                  documentId: id,
+                  createdBy: userId,
+                  unitOfMeasureId: resolvedUomId,
+                },
+                tx,
+              ),
+              tx.purchaseOrderLine.update({
+                where: { id: recv.lineId, orgId },
+                data: {
+                  receivedQty: { increment: recv.receivedQty },
+                  ...(shouldUpdateLineUom ? { unitOfMeasureId: resolvedUomId } : {}),
+                },
+              }),
+            ]);
+          }),
+        );
 
         // Record payable to supplier for goods received in this batch
         if (receivedAmount > 0) {

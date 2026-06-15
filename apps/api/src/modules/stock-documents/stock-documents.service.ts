@@ -314,89 +314,69 @@ export class StockDocumentsService {
       await this.prisma.$transaction(
         async tx => {
           const movType = MOVEMENT_TYPES[doc.type as StockDocumentType];
+          if (doc.type !== 'TRANSFER' && !movType)
+            throw new BadRequestException(`Непідтримуваний тип документу: ${doc.type}`);
 
-          for (const line of doc.lines) {
-            const lineUnitId =
-              (line as typeof line & { good?: { unitId: string | null } | null }).good?.unitId ??
-              null;
-            // sto-optimize: stock movements (inventory.createMovement) і
-            // stockDocumentLine.update (UoM persistence — Bug #236) пишуть у РІЗНІ
-            // таблиці і незалежні одне від одного — їх можна виконати паралельно
-            // в одній interactive tx connection. Економить 1 RTT на лінію (×N ліній).
-            // Для TRANSFER — додатково паралелимо writeoff+receipt (різні warehouseId,
-            // різні StockItem rows, race-safe).
-            if (doc.type === 'TRANSFER') {
-              await Promise.all([
-                // Write off from source
-                this.inventory.createMovement(
-                  orgId,
-                  {
-                    goodId: line.goodId,
-                    warehouseId: doc.warehouseId,
-                    type: 'WRITEOFF',
-                    quantity: -line.quantity,
-                    price: line.price ? Number(line.price) : undefined,
-                    documentType: 'StockDocument',
-                    documentId: id,
-                    createdBy: userId,
-                    unitOfMeasureId: lineUnitId,
-                  },
-                  tx,
-                ),
-                // Receipt at target
-                this.inventory.createMovement(
-                  orgId,
-                  {
-                    goodId: line.goodId,
-                    warehouseId: doc.targetWarehouseId!,
-                    type: 'RECEIPT',
-                    quantity: line.quantity,
-                    price: line.price ? Number(line.price) : undefined,
-                    documentType: 'StockDocument',
-                    documentId: id,
-                    createdBy: userId,
-                    unitOfMeasureId: lineUnitId,
-                  },
-                  tx,
-                ),
-                // Bug #236: persist resolved UoM on the SD line so toDto returns it.
-                lineUnitId
-                  ? tx.stockDocumentLine.update({
-                      where: { id: line.id },
-                      data: { unitOfMeasureId: lineUnitId },
-                    })
-                  : Promise.resolve(),
-              ]);
-            } else {
-              if (!movType)
-                throw new BadRequestException(`Непідтримуваний тип документу: ${doc.type}`);
+          // sto-optimize: всі лінії незалежні (різні goodId/warehouseId rows) — паралелимо.
+          // Всередині кожної лінії: createMovement і UoM-update пишуть у різні таблиці — теж
+          // паралельно. Для TRANSFER: writeoff+receipt мають різні warehouseId → race-safe.
+          await Promise.all(
+            doc.lines.map(line => {
+              const lineUnitId =
+                (line as typeof line & { good?: { unitId: string | null } | null }).good?.unitId ??
+                null;
+              // Bug #236: persist resolved UoM — extracted to avoid duplication in both branches.
+              const maybeUpdateUom = lineUnitId
+                ? tx.stockDocumentLine.update({
+                    where: { id: line.id },
+                    data: { unitOfMeasureId: lineUnitId },
+                  })
+                : Promise.resolve();
+              // Shared movement fields — only warehouseId/type/quantity differ per branch.
+              const baseArgs = {
+                goodId: line.goodId,
+                price: line.price ? Number(line.price) : undefined,
+                documentType: 'StockDocument' as const,
+                documentId: id,
+                createdBy: userId,
+                unitOfMeasureId: lineUnitId,
+              };
+              if (doc.type === 'TRANSFER') {
+                return Promise.all([
+                  this.inventory.createMovement(
+                    orgId,
+                    {
+                      ...baseArgs,
+                      warehouseId: doc.warehouseId,
+                      type: 'WRITEOFF',
+                      quantity: -line.quantity,
+                    },
+                    tx,
+                  ),
+                  this.inventory.createMovement(
+                    orgId,
+                    {
+                      ...baseArgs,
+                      warehouseId: doc.targetWarehouseId!,
+                      type: 'RECEIPT',
+                      quantity: line.quantity,
+                    },
+                    tx,
+                  ),
+                  maybeUpdateUom,
+                ]);
+              }
               const quantity = doc.type === 'WRITEOFF' ? -line.quantity : line.quantity;
-              await Promise.all([
+              return Promise.all([
                 this.inventory.createMovement(
                   orgId,
-                  {
-                    goodId: line.goodId,
-                    warehouseId: doc.warehouseId,
-                    type: movType,
-                    quantity,
-                    price: line.price ? Number(line.price) : undefined,
-                    documentType: 'StockDocument',
-                    documentId: id,
-                    createdBy: userId,
-                    unitOfMeasureId: lineUnitId,
-                  },
+                  { ...baseArgs, warehouseId: doc.warehouseId, type: movType!, quantity },
                   tx,
                 ),
-                // Bug #236: persist resolved UoM on the SD line so toDto returns it.
-                lineUnitId
-                  ? tx.stockDocumentLine.update({
-                      where: { id: line.id },
-                      data: { unitOfMeasureId: lineUnitId },
-                    })
-                  : Promise.resolve(),
+                maybeUpdateUom,
               ]);
-            }
-          }
+            }),
+          );
 
           await tx.stockDocument.update({
             where: { id, orgId },

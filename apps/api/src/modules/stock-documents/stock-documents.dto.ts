@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { StockDocumentType } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class StockDocumentLineDto {
@@ -26,9 +27,9 @@ export class StockDocumentLineDto {
 }
 
 export class CreateStockDocumentDto {
-  @ApiProperty({ enum: ['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT'] })
-  @IsEnum(['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT'])
-  type!: string;
+  @ApiProperty({ enum: StockDocumentType })
+  @IsEnum(StockDocumentType)
+  type!: StockDocumentType;
 
   @ApiProperty()
   @IsUUID()
@@ -135,11 +136,11 @@ export class PaginatedStockDocumentsDto {
 }
 
 export class StockDocumentQueryDto {
-  @ApiPropertyOptional({ enum: ['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT'] })
+  @ApiPropertyOptional({ enum: StockDocumentType })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsEnum(['WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT'])
-  type?: string;
+  @IsEnum(StockDocumentType)
+  type?: StockDocumentType;
 
   @ApiPropertyOptional({ enum: ['DRAFT', 'CONFIRMED', 'CANCELLED'] })
   @IsOptional()
