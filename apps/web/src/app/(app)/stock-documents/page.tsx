@@ -116,6 +116,18 @@ const COLUMNS: Array<{ key: string; label: string }> = [
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
 
+// Filter tab arrays — frozen, module-level. Раніше re-allocated кожен render компонента.
+// '' = «Всі» — використовується як key для першої вкладки. Новий тип додавати сюди
+// + у STOCK_DOC_TYPE_LABELS у @sto/shared (одне місце правди).
+const TYPE_FILTERS: readonly string[] = Object.freeze([
+  '',
+  'WRITEOFF',
+  'TRANSFER',
+  'OPENING_BALANCE',
+  'RECEIPT',
+]);
+const STATUS_FILTERS: readonly string[] = Object.freeze(['', 'DRAFT', 'CONFIRMED', 'CANCELLED']);
+
 export default function StockDocumentsPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
@@ -343,8 +355,9 @@ export default function StockDocumentsPage() {
     }
   };
 
-  const types = ['', 'WRITEOFF', 'TRANSFER', 'OPENING_BALANCE', 'RECEIPT'];
-  const statuses = ['', 'DRAFT', 'CONFIRMED', 'CANCELLED'];
+  // sto-optimize: TYPE_FILTERS/STATUS_FILTERS — module-level frozen, не re-alloc на render.
+  const types = TYPE_FILTERS;
+  const statuses = STATUS_FILTERS;
 
   const buildDocTabs = (doc: StockDoc): DetailPanelTab[] => [
     {

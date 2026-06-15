@@ -267,24 +267,11 @@ export class PurchaseOrdersService {
     if (po.status !== PurchaseOrderStatus.DRAFT)
       throw new BadRequestException('Редагувати можна лише чернетку');
 
-    // Validate new supplierId FK if provided (tenant isolation: same orgId)
-    if (dto.supplierId) {
-      const supplier = await this.prisma.counterparty.findFirst({
-        where: { id: dto.supplierId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!supplier) throw new NotFoundException('Постачальника не знайдено');
-    }
-
-    // Validate new warehouseId FK if provided (tenant isolation: same orgId)
-    if (dto.warehouseId) {
-      const warehouse = await this.prisma.warehouse.findFirst({
-        where: { id: dto.warehouseId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!warehouse) throw new NotFoundException('Склад не знайдено');
-    }
-
+    // sto-optimize: всі 3 FK guards незалежні (supplier, warehouse, contract) — кожна
+    // лише для NotFoundException-перевірки. Раніше sequential — кожен await блокував
+    // наступний. Тепер Promise.all з тернарками — економить до 2 RTT при повному
+    // оновленні форми (supplier+warehouse+contract разом). Bug review §1.2.
+    //
     // Contract resolution:
     //   1. Client explicit contractId (string)  → validate against effective supplier
     //   2. Client explicit null/empty           → clear contractId
@@ -292,20 +279,43 @@ export class PurchaseOrdersService {
     //      to old supplier, creating cross-supplier orphan reference)
     //   4. Otherwise                            → keep existing (Prisma `undefined`)
     const supplierChanged = dto.supplierId !== undefined && dto.supplierId !== po.supplierId;
+    const effectiveSupplierId = dto.supplierId ?? po.supplierId;
+    const shouldValidateContract =
+      dto.contractId !== undefined && dto.contractId !== null && dto.contractId !== '';
+
+    const [supplier, warehouse, contract] = await Promise.all([
+      dto.supplierId
+        ? this.prisma.counterparty.findFirst({
+            where: { id: dto.supplierId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      dto.warehouseId
+        ? this.prisma.warehouse.findFirst({
+            where: { id: dto.warehouseId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      shouldValidateContract
+        ? this.prisma.counterpartyContract.findFirst({
+            where: {
+              id: dto.contractId as string,
+              orgId,
+              counterpartyId: effectiveSupplierId,
+              contractType: 'PURCHASE',
+              deletedAt: null,
+            },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    if (dto.supplierId && !supplier) throw new NotFoundException('Постачальника не знайдено');
+    if (dto.warehouseId && !warehouse) throw new NotFoundException('Склад не знайдено');
+    if (shouldValidateContract && !contract) throw new NotFoundException('Договір не знайдено');
+
     let newContractId: string | null | undefined = undefined;
-    if (dto.contractId !== undefined && dto.contractId !== null && dto.contractId !== '') {
-      const effectiveSupplierId = dto.supplierId ?? po.supplierId;
-      const contract = await this.prisma.counterpartyContract.findFirst({
-        where: {
-          id: dto.contractId,
-          orgId,
-          counterpartyId: effectiveSupplierId,
-          contractType: 'PURCHASE',
-          deletedAt: null,
-        },
-        select: { id: true },
-      });
-      if (!contract) throw new NotFoundException('Договір не знайдено');
+    if (shouldValidateContract && contract) {
       newContractId = contract.id;
     } else if (dto.contractId === null) {
       newContractId = null;
@@ -466,33 +476,37 @@ export class PurchaseOrdersService {
             line.good?.unitId ??
             null;
 
-          await this.inventory.createMovement(
-            orgId,
-            {
-              goodId: line.goodId,
-              warehouseId: po.warehouseId,
-              type: 'RECEIPT',
-              quantity: recv.receivedQty,
-              price: Number(line.price),
-              documentType: 'PurchaseOrder',
-              documentId: id,
-              createdBy: userId,
-              unitOfMeasureId: resolvedUomId,
-            },
-            tx,
-          );
-
           // Bug #237: avoid overwriting an existing PO line UoM on subsequent partial
           // receives. Only persist UoM when (a) this is the first receive (no prior qty),
           // or (b) the caller passed an explicit override — otherwise keep the original.
           const shouldUpdateLineUom = line.receivedQty === 0 || !!recv.unitOfMeasureId;
-          await tx.purchaseOrderLine.update({
-            where: { id: recv.lineId, orgId },
-            data: {
-              receivedQty: { increment: recv.receivedQty },
-              ...(shouldUpdateLineUom ? { unitOfMeasureId: resolvedUomId } : {}),
-            },
-          });
+          // sto-optimize: inventory.createMovement пише в StockMovement/StockBatch/StockItem;
+          // purchaseOrderLine.update — в окрему таблицю по lineId. Незалежні writes на одній
+          // tx connection → Promise.all економить 1 RTT на лінію (×N ліній у PO receive).
+          await Promise.all([
+            this.inventory.createMovement(
+              orgId,
+              {
+                goodId: line.goodId,
+                warehouseId: po.warehouseId,
+                type: 'RECEIPT',
+                quantity: recv.receivedQty,
+                price: Number(line.price),
+                documentType: 'PurchaseOrder',
+                documentId: id,
+                createdBy: userId,
+                unitOfMeasureId: resolvedUomId,
+              },
+              tx,
+            ),
+            tx.purchaseOrderLine.update({
+              where: { id: recv.lineId, orgId },
+              data: {
+                receivedQty: { increment: recv.receivedQty },
+                ...(shouldUpdateLineUom ? { unitOfMeasureId: resolvedUomId } : {}),
+              },
+            }),
+          ]);
 
           receivedAmount += recv.receivedQty * Number(line.price);
         }
