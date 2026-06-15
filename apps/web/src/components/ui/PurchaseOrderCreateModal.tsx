@@ -938,7 +938,8 @@ export function PurchaseOrderCreateModal({
                           <button
                             type="button"
                             onClick={() => removeLine(line._key)}
-                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                            aria-label="Видалити позицію"
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-destructive transition-all"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>

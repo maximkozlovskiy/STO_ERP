@@ -118,6 +118,9 @@ const STATUS_FILTERS: readonly string[] = Object.freeze([
   '',
   ...Object.keys(STOCK_DOC_STATUS_LABELS),
 ]);
+// Module-level Set for O(1) lookup of valid URL `?type=` values (avoids re-allocating
+// `Object.keys()` array on every render in `typeFromUrl` validation below).
+const VALID_TYPES: ReadonlySet<string> = new Set(Object.keys(STOCK_DOC_TYPE_LABELS));
 
 function StockDocumentsPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
@@ -155,15 +158,19 @@ function StockDocumentsPageClient() {
   // Local filter state (specific to stock-documents)
   const searchParams = useSearchParams();
   const router = useRouter();
-  const validTypes = Object.keys(STOCK_DOC_TYPE_LABELS);
   const typeFromUrl = searchParams.get('type') ?? '';
-  const typeFilter = validTypes.includes(typeFromUrl) ? typeFromUrl : '';
-  const setTypeFilter = (t: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (t) params.set('type', t);
-    else params.delete('type');
-    router.replace(`?${params.toString()}`);
-  };
+  const typeFilter = VALID_TYPES.has(typeFromUrl) ? typeFromUrl : '';
+  const setTypeFilter = useCallback(
+    (t: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (t) params.set('type', t);
+      else params.delete('type');
+      // scroll: false — keep current scroll position (otherwise switching tabs scrolls
+      // page-fill container to top, which is jarring in long lists).
+      router.replace(`?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
@@ -195,34 +202,9 @@ function StockDocumentsPageClient() {
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState<StockDoc | null>(null);
 
-  // Lazy-fetch full doc with lines when opening the DetailPanel.
-  // List endpoint omits `lines` (perf: -20K line rows per page). Pattern mirrors
-  // invoices/page.tsx selectInvoice — paint summary instantly, then upgrade
-  // via GET /stock-documents/:id which includes lines + good + UoM.
-  const selectDoc = useCallback(async (doc: StockDoc) => {
-    setSelectedDoc(doc);
-    try {
-      const detail = await apiFetch<StockDoc>(`/stock-documents/${doc.id}`);
-      setSelectedDoc(prev => (prev?.id === doc.id ? detail : prev));
-    } catch {
-      // keep basic doc data if detail fetch fails — UI shows empty lines list
-    }
-  }, []);
-
-  const toggleSelectDoc = useCallback(
-    (doc: StockDoc) => {
-      setSelectedDoc(prev => {
-        if (prev?.id === doc.id) return null;
-        // Async upgrade — kicked off after returning the basic doc.
-        void selectDoc(doc);
-        return doc;
-      });
-    },
-    [selectDoc],
-  );
-
-  // Open the standalone detail Modal (FSM buttons, full table). Same lazy-fetch
-  // pattern as selectDoc — list response no longer carries lines.
+  // Open the standalone detail Modal (FSM buttons, full table).
+  // List endpoint omits `lines` (perf: -20K line rows per page) — fetch full doc
+  // via GET /stock-documents/:id and upgrade once it arrives.
   const openDetailModal = useCallback(async (doc: StockDoc) => {
     setShowDetail(doc);
     try {
@@ -245,7 +227,7 @@ function StockDocumentsPageClient() {
       resetPage();
       setActiveSavedFilterId(preset.id);
     },
-    [setShowDeleted, resetPage, setActiveSavedFilterId],
+    [setTypeFilter, setShowDeleted, resetPage, setActiveSavedFilterId],
   );
 
   const handleSaveFilter = useCallback(
@@ -390,7 +372,7 @@ function StockDocumentsPageClient() {
       label: 'Позиції',
       content:
         // List endpoint omits `lines` (perf: 20 docs × 1000 line rows). Lines load
-        // lazily via selectDoc() → GET /stock-documents/:id when the user opens the panel.
+        // lazily via openDetailModal() → GET /stock-documents/:id when the user opens the panel.
         // While the detail fetch is in flight, show a loading hint; otherwise render the list.
         doc.lines === undefined ? (
           <p className="text-[13px] text-muted-foreground">Завантаження позицій…</p>
@@ -454,7 +436,7 @@ function StockDocumentsPageClient() {
               setActiveSavedFilterId(null);
             }}
             className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none',
+              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm',
               typeFilter === t
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',

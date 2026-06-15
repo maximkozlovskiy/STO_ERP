@@ -42,7 +42,7 @@ function CalendarPageClient() {
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <h1 className="page-title">Календар</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-6">
           {/* View switcher */}
           <div className="flex rounded-lg border border-border overflow-hidden text-sm">
             {VIEW_SWITCHER.map(([v, label, Icon]) => (

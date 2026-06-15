@@ -128,11 +128,16 @@ function PurchaseOrdersPageClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const activeTab: PurchaseTab = searchParams.get('tab') === 'returns' ? 'returns' : 'orders';
-  const setActiveTab = (tab: PurchaseTab) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('tab', tab);
-    router.replace(`?${params.toString()}`);
-  };
+  const setActiveTab = useCallback(
+    (tab: PurchaseTab) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('tab', tab);
+      // scroll: false — keep current scroll position (otherwise switching tabs scrolls
+      // page-fill container to top, which is jarring in long lists).
+      router.replace(`?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
@@ -606,7 +611,7 @@ function PurchaseOrdersPageClient() {
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none',
+              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm',
               activeTab === tab.key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -853,7 +858,7 @@ function PurchaseOrdersPageClient() {
                           return null;
                         })}
                         <TableCell className="w-16" onClick={e => e.stopPropagation()}>
-                          <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100">
+                          <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
                             <button
                               className="rounded p-1 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
                               title="Відкрити"
