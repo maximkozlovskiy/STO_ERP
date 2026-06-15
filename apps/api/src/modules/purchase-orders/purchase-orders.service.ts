@@ -93,7 +93,7 @@ export class PurchaseOrdersService {
     };
     const sortField = PO_SORT[sortBy ?? ''] ?? 'createdAt';
     const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.purchaseOrder.findMany({
         where,
         skip,

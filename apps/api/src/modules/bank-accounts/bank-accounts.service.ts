@@ -23,7 +23,7 @@ export class BankAccountsService {
     );
     if (cached) return cached;
 
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.bankAccount.findMany({
         where: { orgId, deletedAt: null },
         include: { currency: { select: { code: true } }, branch: { select: { name: true } } },

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateBookingRequestDto,
@@ -197,7 +197,7 @@ export class BookingService {
   }
 
   async findAll(orgId: string): Promise<{ items: BookingRequestResponseDto[]; total: number }> {
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.bookingRequest.findMany({
         where: { orgId, deletedAt: null },
         orderBy: { createdAt: 'desc' },

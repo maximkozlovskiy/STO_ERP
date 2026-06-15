@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Job } from 'bull';
+import { Job } from 'bullmq';
 import { OutboundWebhookProcessor } from './webhooks.processor';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -65,7 +65,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
 
   describe('SSRF pre-flight (Bug #114 / IPv6 cycle-2)', () => {
     it('блокує loopback URL: не викликає fetch, пише FAILED delivery, не throw', async () => {
-      await processor.processDeliver(makeJob({ url: 'http://127.0.0.1:6379/' }));
+      await processor.process(makeJob({ url: 'http://127.0.0.1:6379/' }));
 
       expect(fetchSpy).not.toHaveBeenCalled();
       expect(prisma.webhookDelivery.create).toHaveBeenCalledTimes(1);
@@ -75,7 +75,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
     });
 
     it('блокує IPv6 ULA (брекети + regex bypass з cycle-2)', async () => {
-      await processor.processDeliver(makeJob({ url: 'http://[fc00::1]/hook' }));
+      await processor.process(makeJob({ url: 'http://[fc00::1]/hook' }));
 
       expect(fetchSpy).not.toHaveBeenCalled();
       expect(prisma.webhookDelivery.create).toHaveBeenCalledWith(
@@ -89,7 +89,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
     });
 
     it('блокує IPv4-mapped IPv6 loopback (::ffff:127.0.0.1)', async () => {
-      await processor.processDeliver(makeJob({ url: 'http://[::ffff:127.0.0.1]/' }));
+      await processor.process(makeJob({ url: 'http://[::ffff:127.0.0.1]/' }));
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
@@ -97,7 +97,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
       // If this re-threw, BullMQ would retry indefinitely against an internal
       // endpoint that will never be valid. The processor must return cleanly.
       await expect(
-        processor.processDeliver(makeJob({ url: 'http://localhost/' })),
+        processor.process(makeJob({ url: 'http://localhost/' })),
       ).resolves.toBeUndefined();
     });
   });
@@ -105,7 +105,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
   describe('redirect handling (cycle-2 SSRF defense)', () => {
     it('викликає fetch з redirect: "manual"', async () => {
       fetchSpy.mockResolvedValueOnce(new Response('ok', { status: 200 }));
-      await processor.processDeliver(makeJob({}));
+      await processor.process(makeJob({}));
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       const [, init] = fetchSpy.mock.calls[0];
@@ -120,7 +120,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
         }),
       );
 
-      await expect(processor.processDeliver(makeJob({}))).rejects.toThrow(/Redirect not allowed/);
+      await expect(processor.process(makeJob({}))).rejects.toThrow(/Redirect not allowed/);
 
       // 302 path writes its OWN delivery record (with the redirect target),
       // then re-throws BEFORE the success-path duplicate write. So we expect
@@ -140,7 +140,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
           headers: { Location: 'http://[::1]/admin' },
         }),
       );
-      await expect(processor.processDeliver(makeJob({}))).rejects.toThrow();
+      await expect(processor.process(makeJob({}))).rejects.toThrow();
       expect(prisma.webhookDelivery.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ responseCode: 301, status: 'FAILED' }),
@@ -152,7 +152,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
   describe('successful delivery', () => {
     it('200 → status="DELIVERED", не re-throw', async () => {
       fetchSpy.mockResolvedValueOnce(new Response('processed', { status: 200 }));
-      await expect(processor.processDeliver(makeJob({}))).resolves.toBeUndefined();
+      await expect(processor.process(makeJob({}))).resolves.toBeUndefined();
       expect(prisma.webhookDelivery.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -166,7 +166,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
 
     it('додає X-STO-Signature header при наявності secret (HMAC-SHA256)', async () => {
       fetchSpy.mockResolvedValueOnce(new Response('ok', { status: 200 }));
-      await processor.processDeliver(makeJob({ secret: 'super-secret-key' }));
+      await processor.process(makeJob({ secret: 'super-secret-key' }));
 
       const [, init] = fetchSpy.mock.calls[0];
       const headers = (init as RequestInit).headers as Record<string, string>;
@@ -175,7 +175,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
 
     it('НЕ додає X-STO-Signature при порожньому secret', async () => {
       fetchSpy.mockResolvedValueOnce(new Response('ok', { status: 200 }));
-      await processor.processDeliver(makeJob({ secret: '' }));
+      await processor.process(makeJob({ secret: '' }));
 
       const [, init] = fetchSpy.mock.calls[0];
       const headers = (init as RequestInit).headers as Record<string, string>;
@@ -186,7 +186,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
   describe('failed delivery (5xx, network errors)', () => {
     it('500 → status="FAILED" + re-throw для BullMQ retry', async () => {
       fetchSpy.mockResolvedValueOnce(new Response('server error', { status: 500 }));
-      await expect(processor.processDeliver(makeJob({}))).rejects.toThrow(/HTTP 500/);
+      await expect(processor.process(makeJob({}))).rejects.toThrow(/HTTP 500/);
       expect(prisma.webhookDelivery.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'FAILED', responseCode: 500 }),
@@ -196,7 +196,7 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
 
     it('network error (timeout) → FAILED + re-throw', async () => {
       fetchSpy.mockRejectedValueOnce(new Error('AbortError: aborted'));
-      await expect(processor.processDeliver(makeJob({}))).rejects.toThrow(/aborted/);
+      await expect(processor.process(makeJob({}))).rejects.toThrow(/aborted/);
       expect(prisma.webhookDelivery.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'FAILED', responseCode: null }),
@@ -210,14 +210,14 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
 
       // Original HTTP 500 error must still surface for BullMQ retry — the DB
       // logging failure is swallowed by its own try/catch.
-      await expect(processor.processDeliver(makeJob({}))).rejects.toThrow(/HTTP 500/);
+      await expect(processor.process(makeJob({}))).rejects.toThrow(/HTTP 500/);
     });
   });
 
   describe('attempt counter', () => {
     it('attempts = job.attemptsMade + 1', async () => {
       fetchSpy.mockResolvedValueOnce(new Response('ok', { status: 200 }));
-      await processor.processDeliver(makeJob({}, 4));
+      await processor.process(makeJob({}, 4));
       expect(prisma.webhookDelivery.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ attempts: 5 }) }),
       );

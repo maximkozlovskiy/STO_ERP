@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -66,7 +66,7 @@ export class LoyaltyService {
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     if (!acc) return { items: [], total: 0 };
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.loyaltyTransaction.findMany({
         where: { accountId: acc.id },
         orderBy: { createdAt: 'desc' },

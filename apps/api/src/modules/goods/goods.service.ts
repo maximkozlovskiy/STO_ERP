@@ -47,7 +47,7 @@ export class GoodsService {
       select: { firstName: true, lastName: true, companyName: true },
     } as const;
     const goodCategorySelect = { select: { id: true, name: true } } as const;
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.good.findMany({
         where,
         // Bug #306: показуємо активні (deletedAt=NULL) перед видаленими у showDeleted=true списках.

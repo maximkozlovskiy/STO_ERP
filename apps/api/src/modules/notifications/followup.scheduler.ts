@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -41,7 +41,7 @@ export class FollowUpScheduler implements OnModuleInit {
           'send-reminders',
           { orgId: org.id },
           {
-            repeat: { cron: '0 9 * * *', tz: 'Europe/Kyiv' },
+            repeat: { pattern: '0 9 * * *', tz: 'Europe/Kyiv' },
             attempts: 10,
             backoff: { type: 'exponential', delay: 60_000 },
             jobId: `followup-${org.id}`,

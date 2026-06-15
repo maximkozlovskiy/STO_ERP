@@ -3,7 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { LoyaltyService } from './loyalty.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { getQueueToken } from '@nestjs/bull';
+import { getQueueToken } from '@nestjs/bullmq';
 
 /**
  * Bug #254: unit-покриття `LoyaltyService.redeem`.

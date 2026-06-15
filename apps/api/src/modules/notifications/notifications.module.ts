@@ -1,5 +1,5 @@
 import { Module, Global } from '@nestjs/common';
-import { BullModule } from '@nestjs/bull';
+import { BullModule } from '@nestjs/bullmq';
 import { NotificationsService } from './notifications.service';
 import { NotificationsController } from './notifications.controller';
 import { SmsProcessor } from './sms.processor';

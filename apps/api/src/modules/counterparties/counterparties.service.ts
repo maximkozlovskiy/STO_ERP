@@ -64,7 +64,7 @@ export class CounterpartiesService {
     };
 
     const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.counterparty.findMany({
         where,
         include: { settlementAccount: { select: { balance: true } } },

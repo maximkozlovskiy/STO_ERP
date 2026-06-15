@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { BullModule } from '@nestjs/bull';
+import { BullModule } from '@nestjs/bullmq';
 import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
 import { CheckboxProcessor } from './checkbox.processor';

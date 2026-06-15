@@ -1,5 +1,5 @@
-import { Process, Processor } from '@nestjs/bull';
-import { Job } from 'bull';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { LoyaltyService } from './loyalty.service';
 
 interface EarnJob {
@@ -9,14 +9,15 @@ interface EarnJob {
   documentId?: string;
 }
 
-@Processor('loyalty')
-export class LoyaltyProcessor {
-  constructor(private readonly loyaltyService: LoyaltyService) {}
+// concurrency: 3 — loyalty earn jobs are lightweight DB writes; parallelising reduces
+// latency when multiple payments arrive simultaneously (e.g. bulk settlement batch).
+@Processor('loyalty', { concurrency: 3 })
+export class LoyaltyProcessor extends WorkerHost {
+  constructor(private readonly loyaltyService: LoyaltyService) {
+    super();
+  }
 
-  // concurrency: 3 — loyalty earn jobs are lightweight DB writes; parallelising reduces
-  // latency when multiple payments arrive simultaneously (e.g. bulk settlement batch).
-  @Process({ name: 'earn', concurrency: 3 })
-  async handleEarn(job: Job<EarnJob>): Promise<void> {
+  async process(job: Job<EarnJob>): Promise<void> {
     const { orgId, counterpartyId, paymentAmount, documentId } = job.data;
     await this.loyaltyService.earn(orgId, counterpartyId, paymentAmount, documentId);
   }

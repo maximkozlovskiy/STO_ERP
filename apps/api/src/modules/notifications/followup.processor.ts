@@ -1,5 +1,5 @@
-import { Process, Processor } from '@nestjs/bull';
-import { Job } from 'bull';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService, NotificationConfig } from './notifications.service';
@@ -19,21 +19,22 @@ const MAINTENANCE_FORECAST_DAYS = 14;
 // × щоденний tick → hoist to module-level (sto-optimize: Intl.DateTimeFormat у hot-path).
 const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA');
 
+// concurrency: 1 — followup is a scheduled daily batch per org; a single run fans-out
+// all SMS via Promise.allSettled internally. Parallel org runs would contend on the SMS
+// provider rate limit — serialize at the queue level to avoid cascading 429s.
 @Injectable()
-@Processor('followup')
-export class FollowUpProcessor {
+@Processor('followup', { concurrency: 1 })
+export class FollowUpProcessor extends WorkerHost {
   private readonly logger = new Logger(FollowUpProcessor.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
-  ) {}
+  ) {
+    super();
+  }
 
-  // concurrency: 1 — followup is a scheduled daily batch per org; a single run fans-out
-  // all SMS via Promise.allSettled internally. Parallel org runs would contend on the SMS
-  // provider rate limit — serialize at the queue level to avoid cascading 429s.
-  @Process({ name: 'send-reminders', concurrency: 1 })
-  async handleSendReminders(job: Job<FollowUpJob>) {
+  async process(job: Job<FollowUpJob>): Promise<void> {
     const { orgId } = job.data;
 
     // Parallel: settings + branch — independent reads (різні таблиці, обидва orgId-scoped).

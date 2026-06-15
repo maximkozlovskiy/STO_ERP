@@ -76,7 +76,7 @@ export class StockDocumentsService {
     // вибраного doc і завантажується lazily через GET /stock-documents/:id (findOne уже
     // включає lines з full include). Винесли `lines` з findAll → economy: 1000 × 20 = 20K
     // line rows на запит → 0; кількість віддаємо через `_count.lines`. linesCount → toDto.
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.stockDocument.findMany({
         where,
         skip,

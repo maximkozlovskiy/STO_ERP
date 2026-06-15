@@ -47,7 +47,7 @@ export class EmployeesService {
     }
     const limit = query.limit ?? 20;
     const skip = query.page && query.limit ? (query.page - 1) * query.limit : 0;
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.employee.findMany({
         where,
         include: {

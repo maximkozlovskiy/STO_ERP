@@ -1,5 +1,5 @@
-import { Process, Processor } from '@nestjs/bull';
-import { Job } from 'bull';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 
 interface SendSmsJob {
@@ -11,15 +11,14 @@ interface SendSmsJob {
   senderName: string;
 }
 
-@Processor('sms')
-export class SmsProcessor {
+// Concurrency=3: кожна SMS — окремий зовнішній HTTP виклик (10s timeout).
+// Без concurrency черга з 30 SMS виконувалась би ~300s серійно.
+// 3 паралельних виклики до TurboSMS — безпечно (провайдер не має rate-limit per key).
+@Processor('sms', { concurrency: 3 })
+export class SmsProcessor extends WorkerHost {
   private readonly logger = new Logger(SmsProcessor.name);
 
-  // Concurrency=3: кожна SMS — окремий зовнішній HTTP виклик (10s timeout).
-  // Без concurrency черга з 30 SMS виконувалась би ~300s серійно.
-  // 3 паралельних виклики до TurboSMS — безпечно (провайдер не має rate-limit per key).
-  @Process({ name: 'send-sms', concurrency: 3 })
-  async handleSendSms(job: Job<SendSmsJob>) {
+  async process(job: Job<SendSmsJob>): Promise<void> {
     const { phone, message, provider, apiKey, senderName } = job.data;
 
     if (provider === 'turbosms') {

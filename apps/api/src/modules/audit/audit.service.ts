@@ -51,7 +51,7 @@ export class AuditService {
     // явний `select` прибирає over-fetch (orgId/entityType/entityId/userId). Index
     // (orgId, entityType, entityId, createdAt) залишається covering — Postgres відає рядки
     // в індекс-order, без heap-read для непотрібних колонок.
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.auditEvent.findMany({
         where,
         orderBy: { createdAt: 'desc' },

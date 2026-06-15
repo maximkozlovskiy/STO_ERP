@@ -61,7 +61,7 @@ export class SettlementsAccountService {
     if (!account) return { items: [], total: 0, page: safePage, limit: safeLimit };
 
     const skip = (safePage - 1) * safeLimit;
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.settlementTransaction.findMany({
         where: { settlementAccountId: account.id, orgId },
         orderBy: { createdAt: 'desc' },

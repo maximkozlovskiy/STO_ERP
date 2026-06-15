@@ -102,7 +102,7 @@ export class WorkOrderMediaService {
 
     // Bug #88 pattern: total must reflect actual count in DB, not the take-capped length —
     // otherwise UI thinks the user is seeing everything when 51+ items exist.
-    const [records, total] = await this.prisma.$transaction([
+    const [records, total] = await Promise.all([
       this.prisma.workOrderMedia.findMany({
         where: { orgId, workOrderId },
         orderBy: { createdAt: 'desc' },

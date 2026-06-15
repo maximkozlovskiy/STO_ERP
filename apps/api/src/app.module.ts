@@ -1,6 +1,6 @@
 import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { BullModule } from '@nestjs/bull';
+import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
@@ -72,9 +72,18 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
     }),
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        redis: config.get<string>('REDIS_URL') ?? 'redis://localhost:6379',
-      }),
+      useFactory: (config: ConfigService) => {
+        const url = config.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
+        const parsed = new URL(url);
+        return {
+          connection: {
+            host: parsed.hostname,
+            port: Number(parsed.port) || 6379,
+            password: parsed.password || undefined,
+            db: parsed.pathname ? Number(parsed.pathname.slice(1)) || 0 : 0,
+          },
+        };
+      },
     }),
     // Global rate limiting: 200 req/min per IP; stricter limits on specific routes
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),

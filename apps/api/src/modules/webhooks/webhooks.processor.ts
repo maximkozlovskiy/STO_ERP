@@ -1,23 +1,24 @@
-import { Processor, Process } from '@nestjs/bull';
-import { Job } from 'bull';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { createHmac } from 'crypto';
 import { Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { validatePublicUrl } from '../../common/utils/url-guard';
 
-@Processor('outbound-webhook')
-export class OutboundWebhookProcessor {
+// Concurrency=5: кожна доставка — окремий зовнішній HTTP виклик (10s timeout).
+// За замовчуванням bull обробляє 1 job за раз на processor → черга з 20 webhook
+// виконувалась би 200+ секунд серійно. З concurrency=5 — до 5 паралельних HTTP
+// calls, burst-latency знижується в 5× (20 jobs → ~40s замість ~200s).
+@Processor('outbound-webhook', { concurrency: 5 })
+export class OutboundWebhookProcessor extends WorkerHost {
   private readonly logger = new Logger(OutboundWebhookProcessor.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) {
+    super();
+  }
 
-  // Concurrency=5: кожна доставка — окремий зовнішній HTTP виклик (10s timeout).
-  // За замовчуванням bull обробляє 1 job за раз на processor → черга з 20 webhook
-  // виконувалась би 200+ секунд серійно. З concurrency=5 — до 5 паралельних HTTP
-  // calls, burst-latency знижується в 5× (20 jobs → ~40s замість ~200s).
-  @Process({ name: 'deliver', concurrency: 5 })
-  async processDeliver(job: Job): Promise<void> {
+  async process(job: Job): Promise<void> {
     const { endpointId, url, secret, event, payload } = job.data as {
       endpointId: string;
       url: string;

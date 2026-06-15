@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const MAX_ORGS_PER_SCHEDULER_RUN = 1000;
@@ -52,7 +52,7 @@ export class NbuFetchScheduler implements OnModuleInit {
       'fetch-rates',
       { orgId },
       {
-        repeat: { cron: `0 ${hour} * * *`, tz: 'Europe/Kyiv' },
+        repeat: { pattern: `0 ${hour} * * *`, tz: 'Europe/Kyiv' },
         attempts: 5,
         backoff: { type: 'exponential', delay: 300_000 },
         jobId: `nbu-fetch-${orgId}`,
@@ -72,7 +72,7 @@ export class NbuFetchScheduler implements OnModuleInit {
       'fetch-rates',
       { orgId },
       {
-        repeat: { cron: `0 ${newHour} * * *`, tz: 'Europe/Kyiv' },
+        repeat: { pattern: `0 ${newHour} * * *`, tz: 'Europe/Kyiv' },
         attempts: 5,
         backoff: { type: 'exponential', delay: 300_000 },
         jobId: `nbu-fetch-${orgId}`,

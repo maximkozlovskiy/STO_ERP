@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { validatePublicUrl } from '../../common/utils/url-guard';
 import {
@@ -55,7 +55,7 @@ export class WebhooksService {
   }
 
   async findAll(orgId: string): Promise<{ items: WebhookEndpointResponseDto[]; total: number }> {
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.webhookEndpoint.findMany({
         where: { orgId, deletedAt: null },
         orderBy: { createdAt: 'desc' },
@@ -110,7 +110,7 @@ export class WebhooksService {
       select: { id: true },
     });
     if (!ep) throw new NotFoundException('Вебхук не знайдено');
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.webhookDelivery.findMany({
         where: { endpointId },
         orderBy: { createdAt: 'desc' },

@@ -165,7 +165,7 @@ export class WarrantiesService {
     });
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
 
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.warranty.findMany({
         where: { orgId, counterpartyId, deletedAt: null },
         include: {
@@ -184,7 +184,7 @@ export class WarrantiesService {
     const until = new Date();
     until.setDate(until.getDate() + days);
     const now = new Date();
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.warranty.findMany({
         where: { orgId, deletedAt: null, claimedAt: null, expiresAt: { gt: now, lte: until } },
         include: {
@@ -208,7 +208,7 @@ export class WarrantiesService {
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
 
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.warranty.findMany({
         where: { orgId, workOrderId, deletedAt: null },
         include: {

@@ -3,7 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { BookingService } from './booking.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { getQueueToken } from '@nestjs/bull';
+import { getQueueToken } from '@nestjs/bullmq';
 
 /**
  * Bug #254: unit-покриття `BookingService.create` + `confirm` + `cancel`.

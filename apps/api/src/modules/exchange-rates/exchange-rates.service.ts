@@ -33,7 +33,7 @@ export class ExchangeRatesService {
       };
     }
 
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.exchangeRate.findMany({
         where,
         include: { currency: { select: { code: true, name: true } } },

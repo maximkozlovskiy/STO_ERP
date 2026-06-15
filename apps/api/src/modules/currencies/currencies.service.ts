@@ -19,7 +19,7 @@ export class CurrenciesService {
     );
     if (cached) return cached;
 
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.currency.findMany({
         where: { orgId, deletedAt: null },
         orderBy: { name: 'asc' },

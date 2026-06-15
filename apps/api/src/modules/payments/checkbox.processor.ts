@@ -1,5 +1,5 @@
-import { Process, Processor } from '@nestjs/bull';
-import { Job } from 'bull';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { validatePublicUrl } from '../../common/utils/url-guard';
@@ -12,18 +12,19 @@ interface FiscalReceiptJob {
   method: string;
 }
 
-@Processor('checkbox')
-export class CheckboxProcessor {
+// concurrency: 3 — each fiscal-receipt job makes a 15s network call to Checkbox API.
+// Without concurrency the single-threaded Bull worker serializes jobs: 100 receipts ≈ 1500s.
+// concurrency: 3 caps parallelism to respect Checkbox's per-licence rate limits while
+// still draining the queue ~3× faster. Paired with AbortController timeout (15s) above.
+@Processor('checkbox', { concurrency: 3 })
+export class CheckboxProcessor extends WorkerHost {
   private readonly logger = new Logger(CheckboxProcessor.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {
+    super();
+  }
 
-  // concurrency: 3 — each fiscal-receipt job makes a 15s network call to Checkbox API.
-  // Without concurrency the single-threaded Bull worker serializes jobs: 100 receipts ≈ 1500s.
-  // concurrency: 3 caps parallelism to respect Checkbox's per-licence rate limits while
-  // still draining the queue ~3× faster. Paired with AbortController timeout (15s) above.
-  @Process({ name: 'fiscal-receipt', concurrency: 3 })
-  async handleFiscalReceipt(job: Job<FiscalReceiptJob>) {
+  async process(job: Job<FiscalReceiptJob>): Promise<void> {
     const { paymentId, orgId, branchId, amount, method } = job.data;
 
     // Bug #346: idempotency guard — if fiscalReceiptId already set (from a previous

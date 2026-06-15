@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { Job } from 'bull';
+import { Job } from 'bullmq';
 import { FollowUpProcessor, FollowUpJob } from './followup.processor';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
@@ -96,7 +96,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
       followUpActive: false,
       followUpDays: 90,
     });
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
     expect(notifications.sendWithConfig).not.toHaveBeenCalled();
     expect(notifications.resolveConfig).not.toHaveBeenCalled();
   });
@@ -107,7 +107,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
       followUpDays: 90,
     });
     prisma.garageBranch.findFirst.mockResolvedValue(null);
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
     expect(notifications.sendWithConfig).not.toHaveBeenCalled();
   });
 
@@ -122,7 +122,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     // Simulate: SMS not configured or template missing
     notifications.resolveConfig.mockResolvedValue(null);
 
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
     expect(notifications.sendWithConfig).not.toHaveBeenCalled();
     // resolveConfig called once (not per-recipient)
     expect(notifications.resolveConfig).toHaveBeenCalledTimes(1);
@@ -165,7 +165,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     ]);
     prisma.vehicle.findMany.mockResolvedValue([]);
 
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
     // Тільки 1 SMS — для активного запису
     expect(notifications.sendWithConfig).toHaveBeenCalledTimes(1);
     expect(notifications.sendWithConfig).toHaveBeenCalledWith(
@@ -191,7 +191,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     ]);
     prisma.vehicle.findMany.mockResolvedValue([]);
 
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
     expect(notifications.sendWithConfig).toHaveBeenCalledTimes(1);
   });
 
@@ -210,7 +210,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     ]);
     prisma.vehicle.findMany.mockResolvedValue([]);
 
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
     expect(notifications.sendWithConfig).not.toHaveBeenCalled();
   });
 
@@ -233,7 +233,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
       }),
     ]);
 
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
     expect(notifications.sendWithConfig).toHaveBeenCalledTimes(1);
     expect(notifications.sendWithConfig).toHaveBeenCalledWith(
       'org-1',
@@ -261,7 +261,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
       }),
     ]);
 
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
     expect(notifications.sendWithConfig).not.toHaveBeenCalled();
   });
 
@@ -275,7 +275,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     prisma.vehicle.findMany.mockResolvedValue([]);
     notifications.sendWithConfig.mockRejectedValueOnce(new Error('Redis недоступний'));
 
-    await expect(processor.handleSendReminders(makeJob())).rejects.toThrow('Redis недоступний');
+    await expect(processor.process(makeJob())).rejects.toThrow('Redis недоступний');
   });
 
   it('НЕ throw якщо частина sendWithConfig успішна (часткові помилки не блокують batch)', async () => {
@@ -312,7 +312,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     notifications.sendWithConfig.mockRejectedValueOnce(new Error('Phone invalid')); // 1st fails
     notifications.sendWithConfig.mockResolvedValueOnce(undefined); // 2nd succeeds
 
-    await expect(processor.handleSendReminders(makeJob())).resolves.toBeUndefined();
+    await expect(processor.process(makeJob())).resolves.toBeUndefined();
     expect(notifications.sendWithConfig).toHaveBeenCalledTimes(2);
   });
 
@@ -340,7 +340,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     ]);
     prisma.vehicle.findMany.mockResolvedValue([]);
 
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
     expect(notifications.sendWithConfig).toHaveBeenCalledWith(
       'org-1',
       '+380000',
@@ -358,7 +358,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     prisma.maintenanceSchedule.findMany.mockResolvedValue([]);
     prisma.vehicle.findMany.mockResolvedValue([]);
 
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
 
     expect(prisma.maintenanceSchedule.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -381,7 +381,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     prisma.maintenanceSchedule.findMany.mockResolvedValue([]);
     prisma.vehicle.findMany.mockResolvedValue([]);
 
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
 
     const where = prisma.vehicle.findMany.mock.calls[0][0].where;
     expect(where.workOrders).toBeDefined();
@@ -398,7 +398,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     prisma.maintenanceSchedule.findMany.mockResolvedValue([]);
     prisma.vehicle.findMany.mockResolvedValue([]);
 
-    await processor.handleSendReminders(makeJob());
+    await processor.process(makeJob());
 
     expect(prisma.garageBranch.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({

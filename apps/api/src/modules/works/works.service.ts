@@ -25,7 +25,7 @@ export class WorksService {
     if (query.q) where.name = { contains: query.q, mode: 'insensitive' };
 
     const skip = (query.page - 1) * query.limit;
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.work.findMany({
         where,
         include: { category: { select: { name: true } } },

@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
+import { InjectQueue } from '@nestjs/bullmq';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
-import { Queue } from 'bull';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -50,7 +50,7 @@ export class PaymentsService {
     }
 
     const skip = (safePage - 1) * safeLimit;
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.payment.findMany({
         where,
         skip,

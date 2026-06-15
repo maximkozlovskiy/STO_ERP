@@ -239,7 +239,7 @@ export class ServicesService {
     if (q) where.name = { contains: q, mode: 'insensitive' };
 
     const skip = (page - 1) * limit;
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.service.findMany({
         where,
         // Bug #306: показуємо активні (deletedAt=NULL) перед видаленими у showDeleted=true списках.

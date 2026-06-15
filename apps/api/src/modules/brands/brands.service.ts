@@ -25,7 +25,7 @@ export class BrandsService {
     }
 
     const where = { orgId, ...(showDeleted ? {} : { deletedAt: null }) };
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.brand.findMany({
         where,
         // Bug #306: explicit `nulls: 'first'` для deletedAt — Postgres за замовчуванням

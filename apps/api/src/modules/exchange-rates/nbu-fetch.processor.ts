@@ -1,6 +1,6 @@
-import { Process, Processor } from '@nestjs/bull';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { Job } from 'bull';
+import { Job } from 'bullmq';
 import { NbuFetchService } from './nbu-fetch.service';
 
 export interface NbuFetchJob {
@@ -8,14 +8,15 @@ export interface NbuFetchJob {
 }
 
 @Injectable()
-@Processor('nbu-fetch')
-export class NbuFetchProcessor {
+@Processor('nbu-fetch', { concurrency: 2 })
+export class NbuFetchProcessor extends WorkerHost {
   private readonly logger = new Logger(NbuFetchProcessor.name);
 
-  constructor(private readonly nbuFetchService: NbuFetchService) {}
+  constructor(private readonly nbuFetchService: NbuFetchService) {
+    super();
+  }
 
-  @Process({ name: 'fetch-rates', concurrency: 2 })
-  async handleFetchRates(job: Job<NbuFetchJob>): Promise<void> {
+  async process(job: Job<NbuFetchJob>): Promise<void> {
     const { orgId } = job.data;
     const result = await this.nbuFetchService.fetchAndUpsertForOrg(orgId);
     this.logger.log(`NBU fetch завершено org=${orgId}: ${JSON.stringify(result)}`);

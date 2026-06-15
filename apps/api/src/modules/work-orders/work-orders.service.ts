@@ -122,7 +122,7 @@ export class WorkOrdersService {
     };
     const sortField = WO_SORT[query.sortBy ?? ''] ?? 'createdAt';
     const sortDir = query.sortDir === 'asc' ? 'asc' : 'desc';
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.workOrder.findMany({
         where,
         skip,

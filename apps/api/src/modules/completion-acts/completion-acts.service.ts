@@ -37,7 +37,7 @@ export class CompletionActsService {
       status: { not: CompletionActStatus.CANCELLED },
       ...(workOrderId ? { workOrderId } : {}),
     };
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.completionAct.findMany({
         where,
         include: {

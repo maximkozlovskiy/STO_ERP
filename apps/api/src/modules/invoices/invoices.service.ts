@@ -87,7 +87,7 @@ export class InvoicesService {
     };
     const sortField = INV_SORT[sortBy ?? ''] ?? 'createdAt';
     const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
         skip,

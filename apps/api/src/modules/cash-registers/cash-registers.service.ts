@@ -29,7 +29,7 @@ export class CashRegistersService {
     const where: Record<string, unknown> = { orgId, deletedAt: null };
     if (branchId) where['branchId'] = branchId;
 
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.cashRegister.findMany({
         where,
         include: {

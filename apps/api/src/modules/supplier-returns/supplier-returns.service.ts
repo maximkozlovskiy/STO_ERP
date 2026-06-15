@@ -73,7 +73,7 @@ export class SupplierReturnsService {
     }
 
     const { skip, take } = calculatePagination({ page, limit });
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total] = await Promise.all([
       this.prisma.supplierReturn.findMany({
         where,
         skip,

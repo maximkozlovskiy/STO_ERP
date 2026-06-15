@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Job } from 'bull';
+import { Job } from 'bullmq';
 import { CheckboxProcessor } from './checkbox.processor';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -78,7 +78,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
     it('пропускає зовнішній виклик якщо fiscalReceiptId вже встановлено', async () => {
       prisma.payment.findFirst.mockResolvedValueOnce({ fiscalReceiptId: 'fr-existing' });
 
-      await expect(processor.handleFiscalReceipt(makeJob())).resolves.toBeUndefined();
+      await expect(processor.process(makeJob())).resolves.toBeUndefined();
 
       // Must NOT call Checkbox API or update payment
       expect(fetchSpy).not.toHaveBeenCalled();
@@ -88,7 +88,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
     it('пропускає якщо платіж не знайдено (deleted / cross-tenant)', async () => {
       prisma.payment.findFirst.mockResolvedValueOnce(null);
 
-      await expect(processor.handleFiscalReceipt(makeJob())).resolves.toBeUndefined();
+      await expect(processor.process(makeJob())).resolves.toBeUndefined();
 
       expect(fetchSpy).not.toHaveBeenCalled();
       expect(prisma.payment.update).not.toHaveBeenCalled();
@@ -102,7 +102,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
       });
 
       // branchSettings → skip path (fiscalEnabled:false), но fetch НЕ викликається
-      await expect(processor.handleFiscalReceipt(makeJob())).resolves.toBeUndefined();
+      await expect(processor.process(makeJob())).resolves.toBeUndefined();
       expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
@@ -119,7 +119,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
     it('викликає fetch з redirect: "manual"', async () => {
       fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'fr-1' }), { status: 200 }));
 
-      await processor.handleFiscalReceipt(makeJob());
+      await processor.process(makeJob());
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       const [, init] = fetchSpy.mock.calls[0];
@@ -134,7 +134,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
         }),
       );
 
-      await expect(processor.handleFiscalReceipt(makeJob())).rejects.toThrow(/перенаправлення/);
+      await expect(processor.process(makeJob())).rejects.toThrow(/перенаправлення/);
 
       // No payment update — fiscal receipt MUST NOT be set when redirect blocked
       expect(prisma.payment.update).not.toHaveBeenCalled();
@@ -147,7 +147,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
           headers: { Location: 'http://internal.local/' },
         }),
       );
-      await expect(processor.handleFiscalReceipt(makeJob())).rejects.toThrow(/перенаправлення/);
+      await expect(processor.process(makeJob())).rejects.toThrow(/перенаправлення/);
     });
 
     it('200 OK — payment.update викликається з fiscalReceiptId', async () => {
@@ -155,7 +155,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
         new Response(JSON.stringify({ id: 'fr-99' }), { status: 200 }),
       );
 
-      await processor.handleFiscalReceipt(makeJob({ paymentId: 'pay-99' }));
+      await processor.process(makeJob({ paymentId: 'pay-99' }));
 
       expect(prisma.payment.update).toHaveBeenCalledWith({
         where: { id: 'pay-99', orgId: 'org-1' },
@@ -172,9 +172,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
         checkboxApiUrl: 'http://127.0.0.1:8080',
       });
 
-      await expect(processor.handleFiscalReceipt(makeJob())).rejects.toThrow(
-        /Невалідний Checkbox API URL/,
-      );
+      await expect(processor.process(makeJob())).rejects.toThrow(/Невалідний Checkbox API URL/);
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
@@ -185,9 +183,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
         checkboxApiUrl: 'http://169.254.169.254/latest/meta-data',
       });
 
-      await expect(processor.handleFiscalReceipt(makeJob())).rejects.toThrow(
-        /Невалідний Checkbox API URL/,
-      );
+      await expect(processor.process(makeJob())).rejects.toThrow(/Невалідний Checkbox API URL/);
       expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
@@ -199,7 +195,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
         fiscalEnabled: true,
         checkboxApiUrl: 'https://api.checkbox.ua',
       });
-      await expect(processor.handleFiscalReceipt(makeJob())).resolves.toBeUndefined();
+      await expect(processor.process(makeJob())).resolves.toBeUndefined();
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
@@ -209,7 +205,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
         fiscalEnabled: false,
         checkboxApiUrl: 'https://api.checkbox.ua',
       });
-      await expect(processor.handleFiscalReceipt(makeJob())).resolves.toBeUndefined();
+      await expect(processor.process(makeJob())).resolves.toBeUndefined();
       expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
