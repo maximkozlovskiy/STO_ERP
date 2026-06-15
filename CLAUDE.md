@@ -123,15 +123,27 @@ ExitPlanMode
 | Після review                          | `Agent(subagent_type="sto-tester-agent")` — обов'язково   |
 | Велика фіча / рефакторинг (>5 файлів) | `Agent(subagent_type="sto-optimize-agent")` — опціонально |
 
-### Крок 3 — оновлення MemoryManual (після кожного коміту)
+### Крок 3 — оновлення документації (після кожного коміту)
 
-Після **кожного** коміту — оновити `MemoryManual.md`:
+**`MemoryManual.md`** (тонкий, ~150 рядків) — оновлювати завжди:
 
-- `Останній commit` → нові хеші
-- `TypeScript:` рядок → актуальний статус
-- Нові компоненти/хуки/утиліти → розділ "UI / Компоненти"
-- Нові фічі → відповідний розділ
-- Gotcha / нетривіальні баги → розділ "Gotcha"
+- `Останній commit` → нові хеші (5–6 рядків)
+- `Поточний стан` → TypeScript статус, тести, дата
+- `Нові файли/утиліти` → якщо з'явились нові
+- `Активні особливості` → якщо щось змінилось у логіці
+
+**`CHANGELOG.md`** — append нового запису (3–5 рядків):
+
+- `### <hash> <type>(<scope>): <message>` + ключові зміни
+
+**Довідники** (оновлювати за потреби, не щоразу):
+
+- Нова пастка/gotcha → `docs/GOTCHAS.md` (prepend зверху)
+- Новий патерн/компонент → `docs/PATTERNS.md`
+- Зміна бізнес-правил/FSM → `docs/BUSINESS-RULES.md`
+- Новий модуль/модель → `docs/ARCHITECTURE.md`
+
+**НЕ** дублювати деталі між файлами — одне місце правди.
 
 > Виняток скілів: якщо запит є скіл-командою (`/sto-database`) — скіл вже завантажений, не читай повторно.  
 > Виняток агентів: якщо сам запит був review або tester — не запускати рекурсивно.
@@ -172,7 +184,7 @@ Agent(subagent_type="sto-optimize-agent", description="perf audit after <block>"
 1. [якщо змінились frontend і backend] → Agent(sto-sync-agent)
 2. → Agent(sto-review-agent)   — code review, виправити всі знайдені проблеми
 3. → Agent(sto-tester-agent)   — тести, BUG_REPORT.md, виправити всі баги
-4. → Оновити MemoryManual.md   — завжди, навіть для дрібних фіксів
+4. → Оновити документацію: MemoryManual.md (commit + стан) + CHANGELOG.md (append) + довідник якщо знайдено нову пастку
 ```
 
 > Виняток: якщо сам запит був review або tester агент — не запускати рекурсивно.
@@ -197,27 +209,28 @@ Agent(subagent_type="sto-optimize-agent", description="perf audit after <block>"
 
 Після відновлення (rate limit, новий контекст, нова сесія):
 
-1. Прочитати `MemoryManual.md` — поточний стан коду
+1. Прочитати `MemoryManual.md` — поточний стан, останній commit, посилання
 2. Прочитати `docs/PHASES.md` — де зупинились
 3. Прочитати `.claude/memory/MEMORY.md` — preferences
-4. Продовжити з місця зупинки без питань
-5. Перезапустити щогодинний моніторинг: `/loop 1h` з промптом із `.claude/scheduled_tasks.json`
+4. За потреби — відкрити довідник: `docs/ARCHITECTURE.md`, `docs/PATTERNS.md`, `docs/BUSINESS-RULES.md`, `docs/GOTCHAS.md`
+5. Продовжити з місця зупинки без питань
+6. Перезапустити щогодинний моніторинг: `/loop 1h` з промптом із `.claude/scheduled_tasks.json`
 
 ## Щогодинний моніторинг (loop)
 
-Cron живе тільки в межах сесії. При ст��рті нової сесії — перезапустити через:
+Cron живе тільки в межах сесії. При старті нової сесії — перезапустити через:
 
 ```
 /loop 1h
 ```
 
-Промпт дл�� loop знаходиться у `.claude/scheduled_tasks.json`.
+Промпт для loop знаходиться у `.claude/scheduled_tasks.json`.
 
-Що роби��ь loop кожну годину:
+Що робить loop кожну годину:
 
 - Читає `MemoryManual.md` + `PHASES.md` + `MEMORY.md`
 - Якщо є `[~]` задача — продовжує виконання
-- Якщо є незавершене QA — запус��ає `/sto-review` -> `/sto-tester` -> оновлює `MemoryManual.md`
+- Якщо є незавершене QA — запускає `/sto-review` -> `/sto-tester` -> оновлює `MemoryManual.md`
 - Якщо все чисто — виводить статус і чекає наступного тіку
 
 ## Критичні правила (ОБОВ'ЯЗКОВО)

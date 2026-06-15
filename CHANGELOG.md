@@ -1,0 +1,248 @@
+# CHANGELOG — STO ERP
+
+> Журнал комітів по фічах. Append-only. Найновіше — зверху.
+> Архівується раз на фазу: старі записи переносяться у `docs/archive/CHANGELOG-phaseN.md`.
+
+---
+
+## 2026-06-15
+
+### cc2cd2e1 fix(tester): Bugs #487-#490 — post-cycle3 spec gaps + BALANCE_SIGN exhaustiveness
+
+- array.spec.ts: 9 кейсів для `deduplicateBy<T>`
+- BALANCE_SIGN: `Partial<Record>` → плоский `Record` (TS-exhaustive)
+- regression-guards для deduplicateBy у PO/xlsx/pricing
+- стаб `$transaction` mock у pricing.service.spec.ts виправлено
+
+### 93473ad7 refactor(simplify): Cycle 3 — deduplicateBy<T> shared utility + BALANCE_SIGN lookup table
+
+- `apps/api/src/common/utils/array.ts` NEW: `deduplicateBy<T>(arr, key)`
+- purchase-orders.service.ts + xlsx.service.ts: call-sites → `deduplicateBy(plan, u => u.goodId)`
+- settlements.service.ts: 5-branch if/else → `BALANCE_SIGN: Record<SettlementTransactionType, 1|-1>` lookup
+
+### 4648446b docs(memory): update MemoryManual after Cycle 3 simplify
+
+### c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
+
+- work-orders.fsm.ts: все → `readonly WorkOrderStatus[] + Object.freeze`
+- apps/web/src/lib/utils.ts: `toIdMap<T extends {id}>` + `calcVatTotals` helpers
+- CreateWorkOrderModal: 6 useMemo Map blocks → toIdMap(), 2 reduce blocks → calcVatTotals()
+- useMemo deps: `[currentStatus, isEditMode]` (allowedTransitions derived, redundant dep removed)
+
+### 4400dfb7 docs(skills): branching ternary inside Promise.all + tenant-guard patterns to sto-optimize
+
+### f23abfd3 perf(optimize): tier-merger contract Promise.all + settlements parallel write + ReconciliationAct covering index
+
+- purchase-orders.service.ts create(): contract resolution merged into Promise.all 3rd slot
+- settlements.service.ts createTransaction(): `Promise.all([create, update])` inside $transaction
+- ReconciliationAct: `@@index([orgId, counterpartyId])` → covering `@@index([orgId, counterpartyId, createdAt])`
+
+### 852d5fa4 fix(review): defense-in-depth orgId tenant guard on tx.X.update writes (pricing+SD)
+
+- pricing.service.ts: `tx.good.update({ id })` → `tx.good.updateMany({ id, orgId, deletedAt: null })`
+- stock-documents.service.ts: `tx.stockDocumentLine.update({ id: line.id })` → `{ id: line.id, orgId }`
+
+### e33a5b58 docs(skills): chunked bulk-update + dedup pattern to sto-optimize
+
+### 8fff4289 perf(optimize): parallelize chunked good.update loops with dedup safety
+
+- pricing.service.ts applyRuleToGoods: for-loop → `Promise.all(chunk.map(...))`
+- purchase-orders.service.ts applyPricing: dedup + `Promise.all`
+- xlsx.service.ts applyPricingFromList: dedup + `Promise.all`
+
+### a26cd68a fix(review): purchase-orders dedup lineId guard + drop redundant StockDocumentType casts
+
+- receive(): pre-$transaction `Set` dedup guard → `BadRequestException` (Bug #483)
+- stock-documents.service.ts: зайві `as StockDocumentType` касти видалено
+
+### 705e25e7 refactor(simplify): cleanup after /simplify review
+
+- TYPE_FILTERS/STATUS_FILTERS → module-level `Object.freeze(['', ...Object.keys(LABELS)])`
+- @IsEnum(StockDocumentType) → Prisma enum import (not hardcoded array)
+- stock-documents/page.tsx: aliases TYPE_LABELS/STATUS_LABELS видалено
+
+### 147cd3fe test(e2e): add coverage for RECEIPT tab and purchase-orders edit-mode
+
+### 46b5df7f perf(optimize): parallel FK guards + per-line writes in PO/SD services
+
+- purchase-orders.service.ts update(): 3 sequential findFirst → `Promise.all`
+- stock-documents.service.ts transition(): createMovement + updateLine → `Promise.all` per line
+- purchase-orders.service.ts receive(): createMovement + updateLine → `Promise.all` per line
+
+### 96579181 test(purchase-orders): Bug #481-#482 — FSM transition regression guards (+23 tests)
+
+### 821de2d2 fix(sync): align StockDoc interface with StockDocumentResponseDto
+
+### f59c6a47 test(stock-documents): Bug #478-#480 — regression guards for RECEIPT type (+22 tests)
+
+### a067ec21 fix(review): CRITICAL — expose RECEIPT in stock-documents type tabs
+
+### d059b9a9 feat(stock-documents): add RECEIPT type (Оприбуткування)
+
+- STOCK_DOC_TYPE_LABELS/BADGE: `RECEIPT: 'Оприбуткування'` / `'success'`
+- stock-documents.dto.ts: @IsEnum(StockDocumentType) + `type!: StockDocumentType`
+- stock-documents.service.ts: `MOVEMENT_TYPES.RECEIPT`, `docTypeMap.RECEIPT = 'STOCK_RECEIPT'`
+
+### 65552dcb test(purchase-orders): Bug #473-#477 — regression guards for update() contract resolution
+
+### 32c6115f fix(review): purchase-orders contract clear + stale-contract guard on supplier change
+
+- CRITICAL: auto-clear stale contract when supplierId changes
+- IMPORTANT: SearchPickerModal onSelect clear contractId/contractNumber
+- IMPORTANT: handleSave `contractId: contractId ?? null`
+
+### 115fea9e feat(purchase-orders): editable supplier/warehouse/contract in DRAFT, FSM arrows, receivedQty column
+
+---
+
+## 2026-06-14
+
+### 355fb445 fix(e2e): align spec locators with redesigned modals + fix Modal id collision (Bugs #467-#472)
+
+- Modal.tsx: useId() per instance (was fixed `id="modal-title"`)
+
+### 0b144de9 fix(tester): Bugs #459-#466 — modal contract fixes + baseline spec restore
+
+- PurchaseOrderCreateModal: lines у body POST /purchase-orders (не POST /lines)
+- InvoiceCreateModal: initialLineIdsRef snapshot + DELETE /invoices/:id/lines/:lineId для removed
+- StockDocumentCreateModal: TRANSFER targetWarehouseId validation
+- InvoiceCreateModal: computedTotal = sum(qty\*unitPrice)
+
+### d08efb8d fix(review): surface ref-load errors + fix stale-closure auto-select in PO/StockDoc modals
+
+### 71677c94 fix(sync): align modal interfaces and endpoints with backend API contracts
+
+### 4a05d7c7 fix(review): pricing leak + types + per-warehouse stock
+
+- CRITICAL: MECHANIC роль видалено з GET /stock-items/by-batch (costPrice/salePrice PII)
+- ConsumptionRow type tightened (non-null alignment with schema)
+- goods.service.stockTotals(): `take: 2000`
+- CreateWorkOrderModal: `setStockWarehouseMap(new Map())` на reset
+
+### fd8be3b3 perf(inventory): parallelize batch.service writes
+
+### c4b249f2 perf(inventory): optimize 3-view report (DB indexes + memo + parallel FK guards)
+
+- Додано 3 covering indexes: `stock_movements(orgId, goodId, createdAt)` + `(orgId, createdAt)` + `stock_batches(orgId, createdAt)`
+
+### 1752a75 fix(inventory): Fragment keys + MOVEMENT_TYPE_LABELS enum sync + Intl singleton + relation soft-delete filters
+
+### a5f01d37 feat(inventory): add 3-view stock report (По товарах / По документах / По партіях)
+
+### c0879445 fix(review): stock-totals column — tfoot colSpan, race guard, UUID validation
+
+### 0618c621 feat(work-orders): add "К-т на складі" column to parts table
+
+### 94de0b34 fix(calendar): correct WO prefill from calendar slot (Bug #448)
+
+- WINDOW_END _ 60 замість hardcoded `19 _ 60`
+- plannedHours у CreateWOPrefill interface
+
+### af09a681 fix(tester): Bugs #449, #451 — regression tests + date='' guard
+
+---
+
+## 2026-06-12
+
+### fef027b0 fix(review): calendar comment drift, silent sync failure, DocumentsTab PATCH/label
+
+### 7640de9b fix(review): calendar sync — endAt>startAt guard, parent-only update, ConfirmDialog reuse
+
+### fba87ce4 fix(tester): Bugs #444, #446, #447 — calendar sync hardening + settings coverage
+
+### 29fc97f0 fix(settings): syncCalendarSlotWithPlannedHours in DocumentsTab PATCH body
+
+### 307d1e39 feat(settings): add syncCalendarSlotWithPlannedHours setting
+
+### e266f4a2 fix(settings): Toggle style for recalcPlannedHoursFromLines, default true
+
+### 8778d3f1 feat(settings): add 'Налаштування документів' tab with plannedHours recalc toggle
+
+### 50c550bd fix(review): WO completion deadlock, kyivOffsetMs unit, dashboard TO overdue
+
+### 1d9cd19d fix(review): calendar contract spec + MECHANIC PII defense-in-depth
+
+### 11c8ded7 fix(security): strip PII from GET /calendar/slots for MECHANIC role
+
+### 86d22367 fix(review): drop counterpartyId from checkConflicts response
+
+### 9d87c119 fix(security): strip PII from checkConflicts response
+
+---
+
+## 2026-06-11
+
+### c24014ed refactor(simplify): Cycle 3 (prev) — readonly FSM arrays, toIdMap/calcVatTotals
+
+### 51c22418 test(e2e): plannedHours/actualHours E2E specs
+
+### 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
+
+### f1d3f805 docs(skills): optimize skill files — reduce total size by 46%
+
+### f3633cd7 chore: remove leftover .bak file
+
+---
+
+## 2026-06-10 (Calendar sync + plannedHours)
+
+### 231b0be2 test(e2e): Bug #486 — estimate-share self-seeding pattern
+
+- beforeAll: clone DRAFT WO → transition to ESTIMATE
+- afterAll: ESTIMATE → CANCELLED → DELETE (FSM-aware cleanup)
+
+### 493c46ad docs(memory+skills): record self-seeding pattern
+
+### 747cc445 perf(optimize): dashboard kyivToday hoist + calendar sync spec
+
+### 294a5ed6 docs(skills): 2 perf patterns to sto-optimize
+
+### 4d7eef47 docs(memory): update after review fef027b0
+
+---
+
+## Попередні фази (довідка)
+
+### Inventory 3-view (a5f01d37)
+
+Звіт «По товарах / По документах / По партіях» з DB covering indexes.
+
+### PurchaseOrder edit-mode (115fea9e)
+
+Editable supplier/warehouse/contract у DRAFT, FSM arrows завжди видимі, receivedQty column.
+
+### StockDocuments (d059b9a9)
+
+RECEIPT тип (Оприбуткування): 3 файли, без міграції (enum вже був у Prisma).
+
+### Pricing: brand markup + COST_TIER (fdcf7ea)
+
+`PricingRuleType.COST_TIER`, `brandId` у PricingRule, `PricingRuleTier` модель.  
+Міграція: `20260530100000_add_pricing_brand_cost_tier`.
+
+### UserPreference + Detail Panel Config (5d003e4)
+
+`UserPreference` модель, `GET/PUT /user-preferences/:key`, `useDetailPanelConfig(pageKey)`.  
+Міграція: `20260530200000_add_user_preferences`.
+
+### CounterpartyContract (4f7a9be)
+
+Contract entity + PURCHASE/SALE types + auto-primary promote + DocumentNumberService.
+
+### TabBar — taskbar для згорнутих модалок (6f9515c6–f2ef7758)
+
+`TabBarContext`, `useTabBar`, dedupe by (modalKey + identity-keys), fetch race guard.
+
+### CreateWorkOrderModal — inline таблиці (eb929140)
+
+Роботи + Товари pre-save рядки, toNumberOrUndefined(), close-guard Bug #381.
+
+### PhoneInput — маска +38 (0XX) XXX-XX-XX (225ff70)
+
+### AnimatedBody — плавна зміна висоти Modal (b5add44)
+
+### useDirtyForm — async confirmClose + DirtyConfirmDialog (921afb7)
+
+### Detail Panel System — useDetailPanel + DetailPanelToggle (f529d0f)
+
+### ModalTabs — нижній таб-секція модалок (6b886ae)
