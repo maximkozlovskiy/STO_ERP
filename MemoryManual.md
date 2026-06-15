@@ -20,16 +20,17 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 ## Останній commit
 
 ```
-9e656cd4  fix(supplier-returns): review fixes — WRITEOFF qty sign, REFUND vs PAYMENT,
-          /goods + /warehouses endpoints, DocumentType convention, DocumentNumberConfig backfill
-28edc08c  feat(supplier-returns): full backend + frontend for supplier returns
-f321d07d  docs: restructure MemoryManual — object dossiers + spec template + B1-B7 patterns
-e64bca47  docs: restructure MemoryManual into layered docs (ARCHITECTURE/PATTERNS/BUSINESS-RULES/CHANGELOG)
-cc2cd2e1  fix(tester): Bugs #487-#490 — post-cycle3 spec gaps + BALANCE_SIGN exhaustiveness
-93473ad7  refactor(simplify): deduplicateBy<T> utility + BALANCE_SIGN lookup table
+24dc273d  fix(review): a11y + dead code after UI-polish series
+          — tabs focus-visible ring, router.replace({scroll:false}), VALID_TYPES Set hoist,
+          remove dead selectDoc/toggleSelectDoc, focus-within reveal, aria-label на trash
+8ec394c7  fix(purchase-order-modal): unify lines table style with work order modal
+f215dbbb  fix(tabs): unify tab bar style with catalog (stock-documents, purchase-orders)
+3297ea22  feat(nav): sync tab/type filter with URL via searchParams
+5e58ee28  fix(calendar): contain scrollbar inside grid, fix slot z-index above header
+9e656cd4  fix(supplier-returns): review fixes — WRITEOFF qty sign, REFUND vs PAYMENT
 ```
 
-Latest review: 2026-06-15 (auto, HEAD 9e656cd4) — supplier-returns critical/important fixes
+Latest review: 2026-06-15 (auto, HEAD 24dc273d) — UI-polish a11y/dead-code fixes
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
 

@@ -1248,6 +1248,61 @@ grep -rn "STOCK_DOC_TYPE_LABELS\|WO_STATUS_LABELS" apps/web/src/ --include="*.ts
 
 ---
 
+### 2026-06-15 — Tab buttons з `focus:outline-none` без `focus-visible:*` заміни — §8.5 a11y / §1 Tailwind
+
+**Сигнал:** новий tab-bar (section tabs у purchase-orders, type tabs у stock-documents, будь-який кастомний `<button>` із styled border-b) додає `focus:outline-none` щоб прибрати браузерний outline, але НЕ додає `focus-visible:ring-*` або `focus-visible:rounded-*`. Результат: клавіатурний користувач (Tab navigation) не бачить де він знаходиться — focus indicator повністю прибраний, WCAG 2.1.1 (Keyboard accessible) і 2.4.7 (Focus visible) порушено. Типовий патерн виник з desire прибрати "потворний" нативний outline без розуміння що `focus-visible` — це окремий перемикач (тільки коли input modality = keyboard), `:focus` ловить навіть mouse click.
+
+**Grep:**
+
+```bash
+# Tab/button із focus:outline-none БЕЗ focus-visible:* заміни
+grep -rnE "focus:outline-none" apps/web/src/app --include="*.tsx" | grep -v "focus-visible:\|focus:ring-"
+# Інакше: знайти <button> або клас-композицію де є focus:outline-none тa немає focus-visible:ring/border/bg
+```
+
+**Фікс:** додати `focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm` (або еквівалентний focus indicator що відповідає design system). Для якщо tab уже має активний `border-primary` колір — focus-visible не дублює, а додає легкий outline-ring навколо.
+
+**Severity:** IMPORTANT — degradation без crash; keyboard-only користувачі (a11y user, power user, screen reader) не можуть зорієнтуватись. WCAG fail.
+
+---
+
+### 2026-06-15 — `router.replace(url)` без `{ scroll: false }` для URL sync — §8 Web Frontend
+
+**Сигнал:** новий URL sync патерн (`?tab=`, `?type=`, `?status=` на list-сторінках) використовує `router.replace(\`?${params.toString()}\`)`без опцій. Next.js 13+ App Router default scroll behavior:`router.replace`(як і`router.push`) **скролить контейнер до top** після route change, навіть якщо path не змінився. На длинних сторінках (table з 50+ рядків, scroll вниз → клік tab → стрибок наверх) це руйнує UX continuity. Спрацьовує також при `setActiveTab` через ChangeEvent — кожен клік повертає до header.
+
+**Grep:**
+
+```bash
+# router.replace/push без { scroll: false } у tab/filter-sync handlers
+grep -rnE "router\.(replace|push)\(" apps/web/src/app --include="*.tsx" | grep -v "scroll:\s*false\|//\|spec"
+# Звернути увагу на ті де URL — query-string update (`/?x=` чи `?tab=`), а не повний path
+```
+
+**Фікс:** `router.replace(\`?${params.toString()}\`, { scroll: false })`. Те саме для `router.push` коли URL change cosmetic (filter/tab sync). Для реальної навігації (open detail page) scroll-to-top нормальний — НЕ додавати.
+
+**Severity:** IMPORTANT — UX degradation; не data loss, але втрата context (користувач відскролив до конкретного рядка → клік на tab → знову зверху).
+
+---
+
+### 2026-06-15 — Dead code після onClick refactor: orphan `selectX/toggleSelectX` після redirect на edit modal — §8 Web Frontend / §1 TS
+
+**Сигнал:** list-сторінка має пару функцій `const selectDoc = useCallback(...)` + `const toggleSelectDoc = useCallback(() => { setSelectedDoc; void selectDoc; }, [selectDoc])` для DetailPanel selection. Розробник міняє onClick рядка з `() => toggleSelectDoc(doc)` на `() => setEditingDocId(doc.id)` (відкриває edit modal замість DetailPanel selection). АЛЕ `toggleSelectDoc` і `selectDoc` лишаються в файлі і ніхто на них не посилається — TS green (функції оголошені), runtime ніколи не виконує. Результат: DetailPanel ніколи не показує дані бо `selectedDoc` залишається `null` — `setSelectedDoc` викликається тільки з `toggleSelectDoc` що мертвий. Toggle button у toolbar є, але `selectedDoc` ніколи не присвоюється → panel порожній.
+
+**Grep:**
+
+```bash
+# Подвійна функція + orphan check
+grep -rnE "const (select|toggle)[A-Z][A-Za-z]+ = useCallback" apps/web/src/app/ --include="*.tsx" -A1
+# Для кожного знайденого: grep -n "<functionName>(" <file>; якщо тільки місце оголошення → dead
+# Особливо ризиковано коли є setSelectedX state + DetailPanel що покладається на нього
+```
+
+**Фікс:** видалити мертві `selectDoc` + `toggleSelectDoc`; **АБО** якщо DetailPanel реально потрібен — додати окремий handler `onSelect` (через icon-button "очі") чи long-press; не пересікати з row-click що відкриває edit. Перевірити: чи `selectedDoc` state взагалі потрібен якщо DetailPanel не використовується? Тоді видалити весь pipeline.
+
+**Severity:** IMPORTANT — broken feature без TS/runtime error; DetailPanel "є у UI" (toggle button) але порожній → користувач думає що це bug панелі, а не зламана wiring; також dead code = шум для майбутніх читачів.
+
+---
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
