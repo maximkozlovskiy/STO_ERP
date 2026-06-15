@@ -1,6 +1,8 @@
 ﻿'use client';
 
+import { Suspense } from 'react';
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, ShoppingCart, Search, Eye, EyeOff, Pencil, Trash2, Zap } from 'lucide-react';
@@ -120,10 +122,17 @@ interface SrFilters extends Record<string, unknown> {
 
 type PurchaseTab = 'orders' | 'returns';
 
-export default function PurchaseOrdersPage() {
+function PurchaseOrdersPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
-  const [activeTab, setActiveTab] = useState<PurchaseTab>('orders');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const activeTab: PurchaseTab = searchParams.get('tab') === 'returns' ? 'returns' : 'orders';
+  const setActiveTab = (tab: PurchaseTab) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', tab);
+    router.replace(`?${params.toString()}`);
+  };
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
@@ -1401,5 +1410,13 @@ export default function PurchaseOrdersPage() {
         editId={srEditId}
       />
     </div>
+  );
+}
+
+export default function PurchaseOrdersPage() {
+  return (
+    <Suspense fallback={null}>
+      <PurchaseOrdersPageClient />
+    </Suspense>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { Suspense, useState, useCallback, useMemo } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useStockDocuments, stockDocsKeys } from '@/hooks/api/useStockDocuments';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
@@ -118,7 +119,7 @@ const STATUS_FILTERS: readonly string[] = Object.freeze([
   ...Object.keys(STOCK_DOC_STATUS_LABELS),
 ]);
 
-export default function StockDocumentsPage() {
+function StockDocumentsPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
   const { confirm, dialogProps } = useConfirm();
@@ -152,7 +153,17 @@ export default function StockDocumentsPage() {
   } = useListPage<StockDocFilters>('stock-documents', COLUMNS, { defaultLimit: 20 });
 
   // Local filter state (specific to stock-documents)
-  const [typeFilter, setTypeFilter] = useState('');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const validTypes = Object.keys(STOCK_DOC_TYPE_LABELS);
+  const typeFromUrl = searchParams.get('type') ?? '';
+  const typeFilter = validTypes.includes(typeFromUrl) ? typeFromUrl : '';
+  const setTypeFilter = (t: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (t) params.set('type', t);
+    else params.delete('type');
+    router.replace(`?${params.toString()}`);
+  };
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
@@ -859,5 +870,13 @@ export default function StockDocumentsPage() {
       </Modal>
       <ConfirmDialog {...dialogProps} />
     </div>
+  );
+}
+
+export default function StockDocumentsPage() {
+  return (
+    <Suspense fallback={null}>
+      <StockDocumentsPageClient />
+    </Suspense>
   );
 }
