@@ -12,8 +12,9 @@
 Дата:       2026-06-15
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 849/849 | Web 423/423 | E2E пропущено (Docker DOWN у цій сесії)
-Останній optimize: 2026-06-15 — UI-polish files: memo headerChips/total/isPastDay; useCallback handlers
+Тести:      API 850/850 | Web 423/423 | E2E пропущено (Docker DOWN у цій сесії)
+Останній tester: 2026-06-15 — Bug #506-#507 — booking SMS shape mismatch після bull→bullmq audit
+Останній review: 2026-06-15 (HEAD 4ed163b5) — bullmq міграція OK; +@Injectable 4 processors; React.ChangeEvent → named import
 ```
 
 ---
@@ -21,17 +22,21 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 ## Останній commit
 
 ```
+4ed163b5  fix(review): @Injectable для 4 BullMQ processors (loyalty/sms/checkbox/
+          webhooks) — SWC builder consistency; React.ChangeEvent → named import
+<pending>  fix(tester): Bug #506-#507 — booking SMS через NotificationsService.send()
+          + BOOKING_CONFIRMATION enum + migration + seed; spec full-shape assert
+f84132a1  perf(tech): font local (geist), turbopack, swc builder, Promise.all
+          для read queries, bull→bullmq міграція (6 processors)
 09617df5  perf(optimize): UI-polish files — useMemo/useCallback row & modal
           handlers; PO modal headerChips (filter + warehouses.find на typing);
           SR modal total reduce; calendar isPastDay; 5 файлів, +275/-190
 1788dd0a  fix(tester): Bug #504-#505 — dead DetailPanel/Toggle paired-files
 c83f8e29  fix(tester): UI-polish follow-up bugs #496-#503 (HIGH+MEDIUM+LOW)
 24dc273d  fix(review): a11y + dead code after UI-polish series
-8ec394c7  fix(purchase-order-modal): unify lines table style with work order modal
-f215dbbb  fix(tabs): unify tab bar style with catalog (stock-documents, purchase-orders)
 ```
 
-Latest optimize: 2026-06-15 (auto, HEAD 09617df5) — UI-polish memoization round
+Latest tester: 2026-06-15 (FULL, post-bullmq) — booking SMS shape mismatch (HIGH) + weak spec (LOW)
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
 
@@ -55,6 +60,11 @@ Latest optimize: 2026-06-15 (auto, HEAD 09617df5) — UI-polish memoization roun
 - `Promise.all` для per-line writes у SD transition/PO receive (disjoint rows — safe)
 - work-orders.service.ts parts loops — **sequential** (shared StockItem composite key — unsafe to parallelize)
 - CalendarSlot.parentSlotId — split-day continuation invariant (не колапсувати через updateMany)
+- BullMQ API: `@Processor('queue', { concurrency: N })` + `extends WorkerHost` + `async process(job: Job<T>)` (НЕ legacy `@Process({ name, concurrency })`)
+- `BullModule.forRootAsync` — `connection: { host, port, password, db }` (НЕ `redis:`)
+- `RepeatOptions` — `pattern: '0 9 * * *', tz: 'Europe/Kyiv'` (НЕ `cron:`)
+- SMS-канал через `NotificationsService.send(orgId, eventType, payload)` — НЕ прямий `smsQueue.add()`. payload має `branchId` + `phone` + template placeholders. service резолвить branchSettings provider/apiKey + NotificationTemplate.body.
+- `NotificationEventType` enum: WO_CREATED/WO_ESTIMATE_READY/WO_APPROVED/WO_IN_PROGRESS/WO_COMPLETED/WO_READY_FOR_PICKUP/PAYMENT_RECEIVED/INVOICE_SENT/LOW_STOCK_ALERT/FOLLOWUP_REMINDER/**BOOKING_CONFIRMATION** (новий)
 
 ---
 
