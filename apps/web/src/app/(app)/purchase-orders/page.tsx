@@ -726,7 +726,7 @@ export default function PurchaseOrdersPage() {
                 }}
                 leftIcon={<Plus className="h-4 w-4" />}
               >
-                Нове повернення
+                Повернення
               </Button>
             </div>
           </div>
@@ -750,7 +750,7 @@ export default function PurchaseOrdersPage() {
                   }}
                 >
                   <Plus className="mr-1 h-4 w-4" />
-                  Нове повернення
+                  Повернення
                 </Button>
               }
             />
