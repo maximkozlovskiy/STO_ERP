@@ -535,7 +535,7 @@ export default function StockDocumentsPage() {
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
           <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            Документ
+            {typeFilter ? STOCK_DOC_TYPE_LABELS[typeFilter] : 'Документ'}
           </Button>
         </div>
       </div>
