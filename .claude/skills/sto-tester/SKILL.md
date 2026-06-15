@@ -200,6 +200,8 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 - [ ] **Concurrent-create race for "1 active per parent" resources без unique index (Bug #412):** будь-який service-метод що створює дочірній resource з логіко-унікальним FK (`Invoice.workOrderId`, `FiscalReceipt.paymentId`, `InspectionReport.workOrderId`) використовуючи pattern `find existing → if (existing) throw → create` БЕЗ обгортки у `$transaction({ isolationLevel: 'Serializable' })` АБО без `@@unique` partial-index на FK = race-window для дублікатів. Два паралельних POST (double-click через UI lag, два tab-и, два admin) обидва бачать `existing === null` між findFirst і create → 2 invoice створено з тим самим `workOrderId`. Grep: `grep -rnE "async (create|createFrom|issueFor|generateFor)[A-Z]" apps/api/src/modules --include="*.service.ts"` → для кожного знайти `findFirst({ <fkField>: id })` prep-check ПЕРЕД `create()` → перевірити schema.prisma на парний `@@unique([<fkField>])` АБО Serializable $tx. Fix-pattern: pre-fetch `docNumbers.next()` (свій внутрішній $tx), потім обернути read+create у Serializable з re-check existing всередині; map P2034 → friendly BadRequestException. `DocumentNumberService.next()` серіалізує лише ПО docType, НЕ по parent FK — не достатньо для invariant "1 active per parent". Severity HIGH (фінансовий ризик). Регресія-guard: service spec з 2-3 кейсами (existing у pre-check → 400, status guard → 400, non-existent WO → 404).
 - [ ] **Inner $tx re-check тест для Serializable race fix (Bug #416, paired with #412):** для КОЖНОГО service-метода з Bug #412 фіксом (`$transaction({ isolationLevel: 'Serializable' })` з inner `tx.X.findFirst` re-check) — парний `*.spec.ts` має ОКРЕМИЙ test з `mockResolvedValueOnce(null).mockResolvedValueOnce({id})` sequence + `expect(prisma.X.create).not.toHaveBeenCalled()`. Без цього тесту видалення `const existing = await tx.X.findFirst(...); if (existing) throw ...` блоку у refactor (типовий "цей блок дублює pre-check вище") пройде CI зеленим — CRITICAL race window повертається. Grep: для кожного `$transaction.*Serializable` у service.ts → у парному `.spec.ts` шукати `mockResolvedValueOnce` для того ж `findFirst` ДВА рази підряд. Якщо тільки один `mockResolvedValue` (constant) → gap. Severity MEDIUM (regression risk для CRITICAL fix). Ключовий assert: `expect(prisma.<resource>.create).not.toHaveBeenCalled()` — інакше тест-зелений-проходить навіть при видаленні re-check (бо pre-check теж кидає з тим же moc-setup).
 
+- [ ] **`Partial<Record<Enum, V>>` lookup map з runtime fallthrough (Bug #488):** будь-який `Partial<Record<<EnumType>, V>>` у service-методі для look-up знаку/типу/factor (BALANCE_SIGN, MOVEMENT_FACTOR, TAX_RATE) — потенційний gap у TS-exhaustiveness. `Partial<>` дозволяє додавання нового enum value через Prisma migration `ALTER TYPE ... ADD VALUE` БЕЗ compile-error → runtime throw у проді коли новий тип потрапляє до lookup. Grep: `grep -rnE "Partial<Record<[A-Z][a-zA-Z]+(Type|Status|Role|Kind),\s" apps/api/src/modules --include="*.ts" | grep -v spec`. Якщо ВСІ enum values уже у map → `Partial<>` непотрібно (видалити + видалити runtime guard). Якщо проєктно потрібен partial — задокументувати inline + додати regression-guard для default-branch. Парне з Bug #478-#480 (enum coverage у contract+service spec). Severity MEDIUM (release-blocker якщо gating financial operation: settlement/payment/tax).
+
 - [ ] **Alternate-mutation endpoint обходить canonical guards (Bug #403):** будь-який backend service-метод що **мутує той самий resource** що і `update()`/`addLine()`/`removeLine()` АЛЕ зі своєю окремою сигнатурою (`refreshFromWorkOrder`/`syncFromX`/`importFromY`/`recalculateZ`/`refreshFromExternalSource`...) — ПОВИНЕН повторити ВСІ business-guards канонічного `update()`. Типові guards що пропускаються: (а) `if (X.status !== 'DRAFT') throw BadRequestException` (FSM-readonly для submitted/paid/sent статусів); (б) `if (existing.isLocked) throw ...` (manually locked records); (в) `if (existing.isSystem) throw ...` (seed-керовані); (г) prep-check unique-constraint конфлікту. Сценарій: оригінальний `update()` має FSM-guard `!DRAFT → throw`; альтернативний endpoint забуває цей guard → перезаписує дані SENT/PAID/locked record-у без error → silently corrupts data. Grep: `grep -rnE "async (refresh|sync|import|recalculate|regenerate|rebuild)[A-Z]" apps/api/src/modules --include="*.service.ts"` — для кожного знайденого метода: знайти canonical `update()`/`updateLine()`/`updateX()` у тому ж файлі, скопіювати ВСІ `if (...) throw` guards (особливо `inv.status !== 'DRAFT'`, `existing.status !== ...`), перевірити що alternate-метод їх має. Парний підхід: будь-який mutation що приймає workOrderId/parentId і робить `deleteMany + createMany` на child resource (full overwrite) — обов'язково prep-check status батьківського resource через `if (parent.status !== <ALLOWED>) throw`. Severity CRITICAL (фінансовий ризик для invoice/payment/settlement resources). Регресія-guard: contract spec для alternate endpoint що мокає existing.status=non-DRAFT → 400.
 
 #### Prisma schema ↔ migration parity (release-blocker)
@@ -699,6 +701,20 @@ done
 - [ ] **Controller arg-count drift у `toHaveBeenCalledWith` форвардингу (Bug #340):** feature-commit що додає `sortBy`/`sortDir`/`branchId`/інший новий query-param у `*.dto.ts` зазвичай також редагує controller щоб прокинути `query.NEW` як додатковий positional arg у `this.service.findAll(orgId, ...args, query.NEW)`. Існуючі regression-guard contract specs (Bug #339 patten) асертять `toHaveBeenCalledWith(orgId, ...8 args)` — після рефактору controller передає 9-10 args → AssertionError на КОЖНОМУ існуючому contract spec тому ж модулю. tsc green (TypeScript не перевіряє кількість positional args при варіадичному передаванні всередині `.then(query => service.X(orgId, query.A, query.B, ...))`). Grep для виявлення pre-commit: `git diff HEAD~N HEAD -- "*.controller.ts" | grep -E "^\+.*service\.findAll\(.*\bquery\.[a-zA-Z]+\b"` — кожен новий `query.X` arg → перевірити **усі** `*.contract.spec.ts` у тому ж модулі на `toHaveBeenCalledWith` з фіксованою кількістю args і додати `undefined` для нових parametrів. Альтернатива (безпечніший pattern для майбутнього): передавати **об'єкт** `{ page, limit, ..., sortBy, sortDir }` замість positional args → нові поля не ламають existing specs (вони асертять об'єкт, додаткові поля у новому об'єкті НЕ матчаться assertion'ом якщо використовується `expect.objectContaining({...})`). Severity: MEDIUM (release-blocker — baseline червоний → tester-сесії неможливі). Boundary-check: після КОЖНОГО `feat(api|ui): add X filter`/`feat(api|ui): add X sorting` commit що чіпає controller — пройти `*.contract.spec.ts` того ж модулю.
 - [ ] **Stale mock після додавання cascade-helper у service-method (Bug #340):** review-fix що додає каскадну логіку через helper-метод (`getDescendantIds`, `getAncestorIds`, `getLinkedRecords`) у існуючий service-метод (`toggleActive`/`deactivate`/`archive`/`remove`) часто додає НОВИЙ Prisma call (`findMany`, `count`, `groupBy`) ВСЕРЕДИНІ helper-а. Існуючі spec що мокали лише top-level Prisma calls (наприклад `updateMany` + `findFirstOrThrow`) тепер ловлять `TypeError: X is not iterable`/`Cannot read property 'length' of undefined` бо helper отримує `undefined` від unmocked `findMany`. Grep: `git diff HEAD~N HEAD -- "*.service.ts" | grep -E "^\+.*await this\.(getDescendantIds|getAncestorIds|getLinkedX|expandX|cascade)"` → для кожного нового helper-виклику читати helper-метод і знайти усі Prisma read-ops → у відповідному `*.spec.ts` додати `prisma.<model>.findMany.mockResolvedValueOnce([])` (порожній цаскад = mock default) ПЕРЕД викликом service-методу. Severity: MEDIUM. Парне з Bug #200 (Defense-in-depth status guard) — той самий принцип «новий read у сервісі → новий mock у spec».
 
+- [ ] **Dedup invariant додано після simplify-to-Promise.all БЕЗ regression-guard (Bug #489):** simplify/optimize-цикл що замінив sequential `for-loop { await tx.X.update(...) }` на `await Promise.all(plan.map(u => tx.X.update(...)))` І додав `const dedupedPlan = deduplicateBy(plan, u => u.pk)` ПЕРЕД Promise.all → ПОТРЕБУЄ regression-guard у парному `*.service.spec.ts`. Без нього refactor що дропне `deduplicateBy` (наприклад «бачу dead code на унікальному масиві») пройде CI зеленим, а production-дані з duplicate-PK (PO multi-lot lines на той самий goodId, xlsx-import з повтором SKU) → race-deterministic ОДНОГО winner серед N writes на той самий PK → silent data corruption. Grep: `grep -rn "deduplicateBy\|new Map(.*\.map.*=> \[" apps/api/src/modules --include="*.service.ts" -l` → для кожного service знайти парний spec → `grep -cE "deduplicate|duplicate.*(goodId|lineId|id)" $spec` = 0 → bug. Regression-guard test: 2 entries з ОДНИМ PK + різні compute results → `expect(prisma.<model>.updateMany).toHaveBeenCalledTimes(1)` (НЕ 2!) + `data: { <field>: <last-value> }` (last-wins). Severity MEDIUM.
+
+- [ ] **Stale `$transaction` callback mock (Bug #489 sub-pattern):** spec мок `$transaction: vi.fn(async (ops: unknown[]) => ops)` (повертає arg напряму) НЕ виконує callback-форму `$transaction(async tx => { ... })` — INNER логіка $transaction body МОВЧКИ пропускається. ВСІ assert-и на `tx.X.updateMany`/`tx.priceHistory.createMany`/`tx.<model>.X` у тестах **проходять як зелені без виклику** → defense-in-depth orgId guards, dedup invariants, FSM side-effects не покриті. Шаблон правильного моку: розпізнавати ОБИДВІ форми + виконувати callback з `prisma` як `tx`:
+
+```ts
+$transaction: vi.fn().mockImplementation((arg: unknown) => {
+  if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
+  if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+  return Promise.resolve(arg);
+}),
+```
+
+Grep: для кожного `$transaction(async ... =>` у service.ts → у парному spec.ts шукати `$transaction:.*async\s*\(\s*ops`/`async\s*\(\s*op` (старий array-only мок) → bug. Severity HIGH (стирає весь test-coverage внутрішнього $transaction body — інші regression-guard checklist items неефективні).
+
 **Query-shape фікс потребує service-spec, не contract-spec (Bug #163):**
 
 - [ ] Fix що змінив **relation-ім'я** (`customerGarage`→`customerGarages`), **форму вкладеного `where`** (`some`/`every`/nested `OR`), `include`/`select` shape, або `mode: 'insensitive'` → це **runtime `PrismaClientValidationError`**, який mock-based contract spec (`{ provide: Service, useValue: serviceMock }`) НЕ виконує. Потрібен **service-spec** який будує реальний `where` через `{ provide: PrismaService, useValue: { model: { findMany: vi.fn() }, $transaction: ops => Promise.all(ops) } }` і асертить форму `findMany.mock.calls[0][0].where` (правильні relation-імена + nested `deletedAt: null` + tenant `orgId`). Перевіряти ОБИДВА напрями: правильне ім'я присутнє AND singular/старе ім'я відсутнє
@@ -977,6 +993,85 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-15 — `Partial<Record<Enum, V>>` lookup з runtime fallthrough ховає TS-exhaustiveness (Bug #488) — backend / business logic / type-safety
+
+**Сигнал:** service-метод заводить map `Partial<Record<EnumX, ValueY>>` для look-up знаку/типу/factor по enum value, з runtime guard `if (sign === undefined) throw new Error(\`Unknown EnumX: ${dto.type}\`)`. Зараз ВСІ значення enum присутні у map — runtime throw неможливий. АЛЕ через `Partial<>`додавання нового enum value (через Prisma migration`ALTER TYPE ... ADD VALUE`) **пройде compile зеленим** → runtime exception у проді при першому використанні нового типу.
+
+**Причина виникнення:** автор почав з порожньої мапи (`{}` literal) → TS вимагав `Partial<Record<...>>` щоб literal був валідним. Потім додав 5 значень — забув видалити `Partial<>`. Compile-час забезпечує безпеку лише при `Record<Enum, V>` (без Partial); `Partial<>` спеціально знімає цю гарантію.
+
+**Підхід до виявлення:**
+
+```bash
+# grep: Partial<Record<EnumType, ...>>
+grep -rnE "Partial<Record<[A-Z][a-zA-Z]+(Type|Status|Role|Kind),\s" apps/api/src/modules --include="*.ts" | grep -v spec
+# для кожного match — перевірити чи всі enum values присутні у map; якщо так — Partial<> непотрібно (compile-time помилка краще ніж runtime).
+# додатковий tell: `if (X === undefined) throw new Error(...)` у наступних рядках = compensation для слабкого TS.
+```
+
+**Підхід до фіксу:** замінити `Partial<Record<Enum, V>>` на плоский `Record<Enum, V>`. TS-compiler вимагатиме всі enum values → додавання нового через migration зловить compile-error у service. Видалити runtime guard (unreachable з exhaustive map). Якщо проєктно потрібна `Partial<>` (опційний lookup з legitimate fallback) — залишити, АЛЕ задокументувати inline коментарем "intentional partial: <причина>" і додати regression-guard spec для default-branch.
+
+**Severity:** MEDIUM (runtime exception у проді при додаванні enum value, але рідкісне). HIGH якщо map гейтить фінансову операцію (BALANCE_SIGN, TAX_RATE, VAT_FACTOR) — невідомий enum value → throw blocks transaction commit → бізнес-операція зупиняється.
+
+**Де шукати ще:** `MOVEMENT_TYPES`, `docTypeMap`, `TRANSITIONS` (FSM maps), `LABELS`/`BADGE`/`COLOR` UI maps (для UI — допускається `Partial<>` з fallback "—"), будь-який `Record<EnumX, fn>` switch-replacement у sales/payments/inventory services.
+
+---
+
+### 2026-06-15 — Dedup invariant додано після simplify-to-Promise.all БЕЗ regression-guard у spec (Bug #489) — test-coverage / silent data corruption
+
+**Сигнал:** simplify-цикл замінив sequential `for-loop { await tx.X.update(...) }` на `await Promise.all(plan.map(u => tx.X.update(...)))` для batch-write. Sequential loop мав last-write-wins (наступний overwrite попередній); Promise.all без dedup → race-deterministic ОДНОГО winner на той самий PK. Щоб зберегти last-wins, simplify також додає `const dedupedPlan = deduplicateBy(plan, u => u.pk)` ПЕРЕД Promise.all. АЛЕ парний `*.service.spec.ts` НЕ перевіряє цей invariant — refactor що дропне `deduplicateBy` (наприклад, рефакторщик «бачить dead code — викликаємо deduplicateBy на масив де PK уже унікальний») пройде CI зеленим, бо тести не конструюють duplicate-PK сценарій.
+
+**Причина виникнення:** автор знає що production-дані можуть мати дублікати PK (PO multi-lot lines на той самий goodId, xlsx-import з повтор��ваним SKU), але тестові fixture-и завжди використовують унікальні PK для зручності. SKILL §1.5 «Стала spec після рефактору сервісу» ловить TS/DI gaps, але НЕ ловить semantic-invariant gaps типу dedup.
+
+**Підхід до виявлення:**
+
+```bash
+# Step 1: знайти всі deduplicateBy/Map-based dedup callsites
+grep -rn "deduplicateBy\|new Map(.*\.map.*=> \[" apps/api/src/modules --include="*.service.ts" -l
+
+# Step 2: для кожного service — перевірити чи parent spec має duplicate-PK regression-guard
+for svc in $(grep -rl "deduplicateBy" apps/api/src/modules --include="*.service.ts"); do
+  spec="${svc%.ts}.spec.ts"
+  matches=$(grep -cE "deduplicate|duplicate.*(goodId|lineId|id)" "$spec" 2>/dev/null)
+  echo "$spec: $matches matches"
+done
+# 0 matches = bug
+
+# Step 3: верифікувати exactly-once expectation у dedup-spec
+# expect(prisma.X.updateMany).toHaveBeenCalledTimes(1)  ← КРИТИЧНИЙ
+# expect(prisma.X.updateMany).toHaveBeenCalledWith({ data: { Y: <last-value> } })  ← last-wins
+```
+
+**Підхід до фіксу:** додати regression-guard test у `*.service.spec.ts` що:
+
+1. Конструює `plan`/`lines`/`items` з 2+ entries з ОДНИМ PK (різні `newSalePrice`/`price`/`quantity`).
+2. Mock-ит downstream lookup (`pricingService.computePriceFromRules`) щоб повернути різні значення для двох ітерацій.
+3. Запускає method (`applyPricing`/`applyPricingFromList`/`receive`/`transition`).
+4. Асертить `expect(prisma.<model>.updateMany).toHaveBeenCalledTimes(1)` (НЕ 2!).
+5. Асертить `data: { <field>: <last-value> }` (last-wins у БД).
+6. Опційно: `result.updated === 2` (informational count з оригінального plan) — задокументувати у тесті, що різниця між `dedupedPlan.length` (writes) і `plan.length` (informational) — навмисна.
+
+**Severity:** MEDIUM (silent data corruption на production даних з duplicate-PK; runtime exception відсутній, race-determinism дає випадковий winner у БД).
+
+**Окремий sub-pattern: stale `$transaction` mock у callback-form (виявлено у `pricing.service.spec.ts`):**
+
+```ts
+// ❌ ПОМИЛКА: повертає callback як значення, БЕЗ виклику.
+$transaction: vi.fn(async (ops: unknown[]) => ops),
+
+// ✅ ПРАВИЛЬНО: розпізнає ОБИДВІ форми (array + callback) і виконує callback з self як tx.
+$transaction: vi.fn().mockImplementation((arg: unknown) => {
+  if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
+  if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+  return Promise.resolve(arg);
+}),
+```
+
+Якщо service спрощено з array-form до callback-form `$transaction(async tx => { ... }, { timeout })` АЛЕ spec мок не оновлено → INNER логіка ($transaction body) НЕ виконується → ВСІ внутрішні `updateMany`/`createMany`/`tx.X` asserts мовчки проходять без виклику. Перевірити: для кожного `$transaction(async ... ) ` у service → spec мок ОБОВ'ЯЗКОВО розпізнає callback.
+
+**Де шукати ще:** будь-який `applyX`/`bulkUpdateX`/`recalculateX`/`syncFromY` service-метод що обробляє массив з потенційними duplicates PK. Особливо вразливі: pricing (PO/xlsx/manual rule apply), reservation release on FSM transition, batch FEFO writeoff, settlement reconciliation, period-end accounting close.
+
+---
 
 ### 2026-06-14 — Multi-mode page викликає всі data hooks одночасно замість gate-у по mode (Bug #457) — frontend / perf / wasted-fetches
 
