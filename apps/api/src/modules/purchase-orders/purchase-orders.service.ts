@@ -148,8 +148,14 @@ export class PurchaseOrdersService {
   }
 
   async create(orgId: string, dto: CreatePurchaseOrderDto): Promise<PurchaseOrderResponseDto> {
-    // Narrow FK guards — обидва запити лише для NotFoundException.
-    const [supplier, warehouse] = await Promise.all([
+    // sto-optimize: tier-merger Promise.all — supplier+warehouse guards паралельні з
+    // contract resolution. Раніше contract auto-pick/validate йшов sequential ПІСЛЯ Promise.all,
+    // додаючи 1 RTT навіть коли FK guards проходили миттєво. Auto-pick предикат
+    // (counterpartyId=dto.supplierId) відомий синхронно з DTO, не потребує результату
+    // supplier guard. NotFound/order повідомлень не страждає — всі awaits завершуються
+    // ДО throw-блоків, помилки кидаються у тому самому порядку.
+    const hasContractId = !!dto.contractId;
+    const [supplier, warehouse, contract] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: dto.supplierId, orgId, deletedAt: null },
         select: { id: true },
@@ -158,39 +164,34 @@ export class PurchaseOrdersService {
         where: { id: dto.warehouseId, orgId, deletedAt: null },
         select: { id: true },
       }),
+      hasContractId
+        ? this.prisma.counterpartyContract.findFirst({
+            where: {
+              id: dto.contractId as string,
+              orgId,
+              counterpartyId: dto.supplierId,
+              contractType: 'PURCHASE',
+              deletedAt: null,
+            },
+            select: { id: true },
+          })
+        : this.prisma.counterpartyContract.findFirst({
+            where: {
+              counterpartyId: dto.supplierId,
+              orgId,
+              contractType: 'PURCHASE',
+              deletedAt: null,
+            },
+            orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+            select: { id: true },
+          }),
     ]);
     if (!supplier) throw new NotFoundException('Постачальника не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
-
-    // Auto-select primary PURCHASE contract if not provided. When the client
-    // supplies a contractId, validate it belongs to the same org + supplier +
-    // PURCHASE type to prevent cross-tenant FK attacks (Bug review §2.2).
-    let contractId = dto.contractId ?? null;
-    if (contractId) {
-      const provided = await this.prisma.counterpartyContract.findFirst({
-        where: {
-          id: contractId,
-          orgId,
-          counterpartyId: dto.supplierId,
-          contractType: 'PURCHASE',
-          deletedAt: null,
-        },
-        select: { id: true },
-      });
-      if (!provided) throw new NotFoundException('Договір не знайдено');
-    } else {
-      const primaryContract = await this.prisma.counterpartyContract.findFirst({
-        where: {
-          counterpartyId: dto.supplierId,
-          orgId,
-          contractType: 'PURCHASE',
-          deletedAt: null,
-        },
-        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
-        select: { id: true },
-      });
-      contractId = primaryContract?.id ?? null;
-    }
+    if (hasContractId && !contract) throw new NotFoundException('Договір не знайдено');
+    const contractId: string | null = hasContractId
+      ? (contract as { id: string }).id
+      : (contract?.id ?? null);
 
     const number = await this.docNumbers.next(orgId, 'PURCHASE_ORDER');
 

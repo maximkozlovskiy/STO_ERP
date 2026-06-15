@@ -1652,7 +1652,11 @@ model ReconciliationAct {
 
   counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
 
-  @@index([orgId, counterpartyId])
+  // sto-optimize: covering index — getReconciliationActs sortує по createdAt DESC + filter
+  // по orgId+counterpartyId. Колишній (orgId, counterpartyId) без createdAt → Postgres
+  // Sort node поверх Index Scan. Index-order DESC scan усуває Sort node на типовому
+  // навантаженні (~200 акт. на контрагента) — index-only scan без heap-read для sort.
+  @@index([orgId, counterpartyId, createdAt])
   @@index([orgId, syncVersion])
   @@map("reconciliation_acts")
 }
