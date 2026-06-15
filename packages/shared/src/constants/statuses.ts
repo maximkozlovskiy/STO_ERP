@@ -202,10 +202,10 @@ export const STOCK_DOC_STATUS_TRANSITIONS: Record<string, string[]> = {
 };
 
 export const STOCK_DOC_TYPE_LABELS: Record<string, string> = {
-  WRITEOFF: 'Списання',
   TRANSFER: 'Переміщення',
-  OPENING_BALANCE: 'Поч. залишки',
+  WRITEOFF: 'Списання',
   RECEIPT: 'Оприбуткування',
+  OPENING_BALANCE: 'Поч. залишки',
 };
 
 export const STOCK_DOC_TYPE_BADGE: Record<string, BadgeVariant> = {
