@@ -13,6 +13,7 @@
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 849/849 | Web 423/423 | E2E пропущено (Docker DOWN у цій сесії)
+Останній tester: 2026-06-15 — bugs #504-#505 (HIGH+MEDIUM) — dead DetailPanel/Toggle paired-files
 ```
 
 ---
@@ -20,18 +21,18 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 ## Останній commit
 
 ```
+1788dd0a  fix(tester): Bug #504-#505 — dead DetailPanel/Toggle paired-files
+          — selectedDoc у stock-documents (paired Bug #496); 3× DetailPanelToggle
+          без consumer-а у PO orders + PO returns + SD; видалено ~120 рядків dead
+          code, dead imports, detailPanel destructure у двох файлах
 c83f8e29  fix(tester): UI-polish follow-up bugs #496-#503 (HIGH+MEDIUM+LOW)
-          — dead DetailPanel в PO; detailLoadingId per-row; POLine unitShortName
-          у CreateModal; try/catch навколо mutateAsync supplier-return delete;
-          type=button, aria-label, key=l.id для list rows
 24dc273d  fix(review): a11y + dead code after UI-polish series
 8ec394c7  fix(purchase-order-modal): unify lines table style with work order modal
 f215dbbb  fix(tabs): unify tab bar style with catalog (stock-documents, purchase-orders)
 3297ea22  feat(nav): sync tab/type filter with URL via searchParams
-5e58ee28  fix(calendar): contain scrollbar inside grid, fix slot z-index above header
 ```
 
-Latest tester: 2026-06-15 (auto, HEAD c83f8e29) — UI-polish follow-up bugs #496-#503
+Latest tester: 2026-06-15 (auto, HEAD 1788dd0a) — bugs #504-#505 (HIGH+MEDIUM) dead DetailPanel paired-files
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
 

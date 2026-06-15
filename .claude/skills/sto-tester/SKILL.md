@@ -1585,6 +1585,29 @@ grep -rn "<NEW_VALUE>" apps/api/src/modules/<scope>/ --include="*.spec.ts"
 
 ---
 
+### 2026-06-15 — Orphan affordance UI: toggle/button без consumer-а після dead-code cleanup (Bugs #504, #505) — frontend / UX / Bug #341 sub-pattern
+
+**Сигнал:** review-fix або попередня tester-сесія видалила dead state (typu `useState<X|null>(null)` + render-залежний компонент). Залишилась **affordance**: `<Toggle enabled={x.enabled} onToggle={x.toggle}/>`, `<Button onClick={openX}>`, hotkey-handler, або command palette entry — які керують hook/state, що більше **нічого не контролює**. tsc green, тести green, баг невидимий бо UI кнопка лишається. Користувач натискає → нічого не відбувається (або щось мутується у localStorage без візуального ефекту).
+**Причина виникнення:** review-fix орієнтується на компонент-консумент (DetailPanel/Modal/Tooltip), видаляє його, але affordance live у іншому регіоні JSX і не помічена. Особливо ризиково коли affordance імпортує hook з shared utility (`useListPage` повертає `detailPanel` завжди), і destructure не позначений як unused (TS без `noUnusedLocals` мовчить).
+**Підхід до виявлення:**
+
+1. Після `Bug #496`-стилю dead-state fix у одному файлі — пройти ВСІ paired list-pages: `grep -rln "DetailPanel\b\|DetailPanelToggle\|<XPanel" apps/web/src/app/\(app\)`.
+2. Для кожного знайденого консумента → перевірити чи його `open`/`enabled` prop отримує state, який десь у файлі set non-null/true з події. Якщо state set тільки до null/false → бо умовний rendering завжди false → affordance мертвий.
+3. Grep affordance-pattern: `grep -rnE "<DetailPanelToggle |hotkey:|cmdK:|<MinimizeButton" apps/web/src --include="*.tsx"` → для кожного match знайти hook-стан що toggle мутує (`useDetailPanel.enabled`) → пошукати **єдиний** consumer-компонент у тому ж файлі → якщо немає або consumer-prop завжди false → bug.
+4. Парний сигнал: review-fix commit з `delete` рядками >50% від `insert` — підозра що видалено renderable consumer без видалення affordance.
+
+**Підхід до фіксу:**
+
+- Видалити affordance (toggle button, hotkey, command entry) разом з destructure hook поля.
+- Якщо affordance використовується у багатьох файлах і консумент мертвий лише у деяких → залишити affordance у працюючих файлах, видалити тільки у dead files.
+- НЕ залишати "TODO: відновити DetailPanel" коментар — або відновити, або видалити. Mертвий код + TODO = подвоєний tech debt.
+
+**Severity:** MEDIUM (UX confusion + dead localStorage writes via useDetailPanel; LOW якщо affordance не глобально-видима — наприклад hotkey без UI hint). HIGH якщо affordance декларована як key feature (toolbar з підказкою).
+**Де шукати ще:** будь-який shared hook що повертає toggle-state (`useDetailPanel`, `useColumnsConfig`, `useSavedFilters`, `useBulkSelect`) — destructure без render consumer = bug-shaped. Команд-палітра entries що ведуть до неіснуючої сторінки (Bug #354 sub-pattern). Hotkey handlers що змінюють state не зчитуваний у JSX.
+**Регресія-guard:** vitest snapshot тест на JSX layout страниці що падає коли affordance виник, але consumer ні. Альтернатива: rule-of-thumb commit hygiene "при видаленні React-компонента — обов'язково grep affordance у тому ж файлі".
+
+---
+
 ### 2026-06-15 — Backend stale-FK cleanup у service.update() (Bug #473, paired Bugs #365, #367 frontend) — backend / business-logic / data-integrity
 
 **Сигнал:** service.update() приймає `dto.parentFkId` (`supplierId`/`counterpartyId`/`vehicleId`) АЛЕ FE забуває включити dependent child FK (`contractId`/`agreementId`/...) у PATCH body. Якщо backend silent-keep-ає старий `child` FK → cross-parent orphan: `child.parentFk` тепер відмінне від `parent.id` (`po.contract.counterpartyId !== po.supplierId`). P2003 не спрацює (target row існує у self-org); UI показує "договір N" що насправді належить ІНШОМУ постачальнику.
