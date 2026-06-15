@@ -41,7 +41,25 @@ grep -n "\[ \]\|\[x\]" docs/PHASES.md | head -100
 cat .claude/memory/MEMORY.md
 ```
 
-> **Sub-skills (sto-database, sto-backend, sto-web)** мають у своїх Before Starting "Read MemoryManual.md". При виклику з sto-phase **пропускай цей крок в sub-skills** — він вже виконаний тут. Це зменшує подвійне читання одного файлу.
+**Після визначення блоку — визнач агрегат(и) і читай дос'є перед делегуванням sub-skills:**
+
+| Блок торкається           | Читай перед реалізацією          |
+| ------------------------- | -------------------------------- |
+| WorkOrder / наряд         | `docs/objects/work-order.md`     |
+| Invoice / рахунок         | `docs/objects/invoice.md`        |
+| PurchaseOrder / закупівля | `docs/objects/purchase-order.md` |
+| StockDocument / склад     | `docs/objects/stock-document.md` |
+| Counterparty / клієнт     | `docs/objects/counterparty.md`   |
+| Good / товар              | `docs/objects/good.md`           |
+| Work / каталог робіт      | `docs/objects/work.md`           |
+| Calendar / розклад        | `docs/objects/calendar.md`       |
+| Inventory / залишки       | `docs/objects/inventory.md`      |
+| Settlements / розрахунки  | `docs/objects/settlements.md`    |
+
+Також: `docs/GOTCHAS.md` — якщо блок містить нові сторінки або компоненти.
+Також: `docs/BUSINESS-RULES.md` — якщо блок містить сервісну логіку або FSM.
+
+> **Sub-skills (sto-database, sto-backend, sto-web)** мають у своїх Before Starting "Read MemoryManual.md". При виклику з sto-phase **пропускай цей крок в sub-skills** — він вже виконаний тут. Те ж саме для дос'є — якщо вже прочитав тут, sub-skill не перечитує.
 
 Виведи статус-блок перед початком роботи:
 
@@ -88,6 +106,7 @@ cat .claude/memory/MEMORY.md
 → Читай **`sto-database`** скіл для повних правил.
 
 Швидкий чеклист:
+
 ```
 1. Прочитай schema.prisma — перевір чи модель вже існує
 2. Додай модель з обов'язковими полями (id UUID, orgId, createdAt, updatedAt, deletedAt, syncVersion)
@@ -100,6 +119,7 @@ cat .claude/memory/MEMORY.md
 → Читай **`sto-backend`** + **`sto-dev`** скіли для повних правил.
 
 Швидкий чеклист:
+
 ```
 1. Структура: {domain}.module.ts / .controller.ts / .service.ts / .dto.ts / .spec.ts
 2. Controller: @UseGuards + @Roles на кожному методі, повертає тільки Dto
@@ -109,24 +129,25 @@ cat .claude/memory/MEMORY.md
 
 **Специфіка блоків** (критичні деталі яких немає в sto-backend):
 
-| Блок | Критичні деталі |
-|---|---|
+| Блок               | Критичні деталі                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
 | B12 WorkOrderMedia | MinIO через `FilesService.upload()`; signed URL `getSignedUrl(key, 3600)`; multipart `req.file()`; max 10MB; JPEG/PNG/HEIC/PDF |
-| B11 AuditEvent | Append-only; `diff` = JSON.stringify({old, new}); викликати через `.record()` — не через interceptor |
-| B9 SSE Dashboard | `@Sse('/stream')` + `Observable`; JWT через query param `token`; fallback `GET /dashboard/summary` |
-| B8 FollowUp | BullMQ CRON `'0 9 * * *'` + `tz: 'Europe/Kyiv'`; `followUpDays` з OrganisationSettings |
-| B5 Webhooks | `@OnEvent()` + HMAC-SHA256 в `X-STO-Signature`; attempts=5 |
-| B4 Loyalty | `earn()` і `redeem()` через BullMQ; `redeem()` → `SettlementsService.createTransaction(CREDIT_NOTE)` |
-| B3 Warranty | Auto-create при WO `COMPLETED`; `warrantyDays` з `SettingsService.get(orgId)` |
-| B2 Booking | `/availability` + `/request` — `@Public()`; SMS через BullMQ |
-| B1 Inspection | CRITICAL point → `prisma.workOrderLine.createMany()` з каталогу |
-| F4 Clone WO | БЕЗ: payments, reservations, media; статус=DRAFT; номер через `DocumentNumberService.next()` |
+| B11 AuditEvent     | Append-only; `diff` = JSON.stringify({old, new}); викликати через `.record()` — не через interceptor                           |
+| B9 SSE Dashboard   | `@Sse('/stream')` + `Observable`; JWT через query param `token`; fallback `GET /dashboard/summary`                             |
+| B8 FollowUp        | BullMQ CRON `'0 9 * * *'` + `tz: 'Europe/Kyiv'`; `followUpDays` з OrganisationSettings                                         |
+| B5 Webhooks        | `@OnEvent()` + HMAC-SHA256 в `X-STO-Signature`; attempts=5                                                                     |
+| B4 Loyalty         | `earn()` і `redeem()` через BullMQ; `redeem()` → `SettlementsService.createTransaction(CREDIT_NOTE)`                           |
+| B3 Warranty        | Auto-create при WO `COMPLETED`; `warrantyDays` з `SettingsService.get(orgId)`                                                  |
+| B2 Booking         | `/availability` + `/request` — `@Public()`; SMS через BullMQ                                                                   |
+| B1 Inspection      | CRITICAL point → `prisma.workOrderLine.createMany()` з каталогу                                                                |
+| F4 Clone WO        | БЕЗ: payments, reservations, media; статус=DRAFT; номер через `DocumentNumberService.next()`                                   |
 
 ### 2.3 Frontend (якщо є `[sto-web]` задача)
 
 → Читай **`sto-web`** + **`sto-dev`** скіли для повних правил.
 
 Швидкий чеклист:
+
 ```
 1. loading / empty / error стани на кожній сторінці
 2. useEffect з fetch → cancelled flag або AbortController
@@ -136,16 +157,16 @@ cat .claude/memory/MEMORY.md
 
 **Специфіка блоків** (критичні деталі яких немає в sto-web):
 
-| Блок | Критичні деталі |
-|---|---|
-| B12 Media Gallery | `<input type="file" accept="image/*" multiple />` + onDrop; lightbox через state; `URL.revokeObjectURL` |
-| B11 Audit | Стрічка під коментарями; формат: "Іван змінив статус DRAFT → IN_PROGRESS о 14:32 21.05.2026" |
-| B9 SSE | `EventSource` з cleanup `es.close()`; reconnect onerror + setTimeout 5s; fallback якщо `!window.EventSource` |
-| F9 DatePicker | `react-day-picker` v9 + `date-fns` uk; `weekStartsOn: 1`; display `DD.MM.YYYY`, value `YYYY-MM-DD` |
-| F4 Clone | Після clone → `router.push('/work-orders/' + newId)` |
-| F5 Print | `@media print` в globals.css; кнопка "Друк" у WO і Invoice |
-| F3 Optimistic | `useOptimisticMutation<T>` хук; FSM-кнопки WO + оплата Invoice |
-| F2 Calendar DnD | `@dnd-kit/core`; drop → `PATCH /calendar/slots/:id`; ghost slot під час drag |
+| Блок              | Критичні деталі                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| B12 Media Gallery | `<input type="file" accept="image/*" multiple />` + onDrop; lightbox через state; `URL.revokeObjectURL`      |
+| B11 Audit         | Стрічка під коментарями; формат: "Іван змінив статус DRAFT → IN_PROGRESS о 14:32 21.05.2026"                 |
+| B9 SSE            | `EventSource` з cleanup `es.close()`; reconnect onerror + setTimeout 5s; fallback якщо `!window.EventSource` |
+| F9 DatePicker     | `react-day-picker` v9 + `date-fns` uk; `weekStartsOn: 1`; display `DD.MM.YYYY`, value `YYYY-MM-DD`           |
+| F4 Clone          | Після clone → `router.push('/work-orders/' + newId)`                                                         |
+| F5 Print          | `@media print` в globals.css; кнопка "Друк" у WO і Invoice                                                   |
+| F3 Optimistic     | `useOptimisticMutation<T>` хук; FSM-кнопки WO + оплата Invoice                                               |
+| F2 Calendar DnD   | `@dnd-kit/core`; drop → `PATCH /calendar/slots/:id`; ghost slot під час drag                                 |
 
 ---
 
@@ -205,11 +226,13 @@ Agent(subagent_type="sto-tester-agent", description="test after <block>")
 
 ```markdown
 ## Останній commit
+
 <hash> <commit message>
 Дата: YYYY-MM-DD
 
 ## Поточний стан проєкту
-TypeScript: ✅ 0 errors  (або ❌ N errors)
+
+TypeScript: ✅ 0 errors (або ❌ N errors)
 ```
 
 Якщо новий блок додав нові gotchas або змінив архітектуру — дописати у відповідний розділ.
@@ -235,22 +258,22 @@ TypeScript: ✅ 0 errors  (або ❌ N errors)
 
 ## Пріоритетна таблиця залишкових блоків
 
-| Блок | Назва | Задач | Складність |
-|---|---|---|---|
-| B12 | Фотозвіт (WorkOrderMedia) | 3 | MEDIUM |
-| B11 | Audit Log | 3 | MEDIUM |
-| B9+F7 | SSE Dashboard | 4 | MEDIUM |
-| B8 | FollowUp CRON | 3 | LOW |
-| B5 | Webhooks | 3 | MEDIUM |
-| B4 | Loyalty | 3 | HIGH |
-| B3 | Warranty | 3 | MEDIUM |
-| B2 | Booking | 3 | HIGH |
-| B1 | Inspection Report | 3 | MEDIUM |
-| F9 | DatePickerInput | 1 | LOW |
-| F4 | Clone WO/Invoice | 2 | LOW |
-| F5 | Print CSS | 1 | LOW |
-| F3 | useOptimisticMutation | 1 | LOW |
-| F2 | Calendar DnD | 1 | MEDIUM |
-| F11 | SyncIndicator offline | 1 | LOW |
-| B10 (залишок) | Employee branches UI | 1 | LOW |
-| Фаза 18 | Installer | 7 | HIGH |
+| Блок          | Назва                     | Задач | Складність |
+| ------------- | ------------------------- | ----- | ---------- |
+| B12           | Фотозвіт (WorkOrderMedia) | 3     | MEDIUM     |
+| B11           | Audit Log                 | 3     | MEDIUM     |
+| B9+F7         | SSE Dashboard             | 4     | MEDIUM     |
+| B8            | FollowUp CRON             | 3     | LOW        |
+| B5            | Webhooks                  | 3     | MEDIUM     |
+| B4            | Loyalty                   | 3     | HIGH       |
+| B3            | Warranty                  | 3     | MEDIUM     |
+| B2            | Booking                   | 3     | HIGH       |
+| B1            | Inspection Report         | 3     | MEDIUM     |
+| F9            | DatePickerInput           | 1     | LOW        |
+| F4            | Clone WO/Invoice          | 2     | LOW        |
+| F5            | Print CSS                 | 1     | LOW        |
+| F3            | useOptimisticMutation     | 1     | LOW        |
+| F2            | Calendar DnD              | 1     | MEDIUM     |
+| F11           | SyncIndicator offline     | 1     | LOW        |
+| B10 (залишок) | Employee branches UI      | 1     | LOW        |
+| Фаза 18       | Installer                 | 7     | HIGH       |

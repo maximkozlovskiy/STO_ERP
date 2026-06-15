@@ -56,6 +56,23 @@ git diff HEAD --name-only | head -30
 cat MemoryManual.md | head -50
 ```
 
+**Визнач агрегати зі scope → читай відповідні дос'є (бізнес-правила для тест-кейсів):**
+
+| Ключові слова у змінених файлах   | Читати                                                           |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `work-order`, `WorkOrder`         | `docs/objects/work-order.md` (FSM transitions + side-effects)    |
+| `invoice`, `Invoice`              | `docs/objects/invoice.md` (from-work-order flow, calcVatTotals)  |
+| `purchase-order`, `PurchaseOrder` | `docs/objects/purchase-order.md` (receive() invariants)          |
+| `stock-document`, `StockDocument` | `docs/objects/stock-document.md` (type→movement map)             |
+| `counterpart`, `Counterparty`     | `docs/objects/counterparty.md` (isPrimary promote)               |
+| `good`, `Good`                    | `docs/objects/good.md` (pricing hierarchy, GoodUoM guard)        |
+| `work`, `Work`, `WorkCategory`    | `docs/objects/work.md`                                           |
+| `calendar`, `CalendarSlot`        | `docs/objects/calendar.md` (split-day invariant, conflict check) |
+| `stock-item`, `StockMovement`     | `docs/objects/inventory.md` (createMovement only)                |
+| `settlement`, `transaction`       | `docs/objects/settlements.md` (createTransaction only)           |
+
+Дос'є містять **бізнес-інваріанти** — саме їх порушення і є багами, які треба шукати.
+
 TS або unit (API **і** web) червоні → зафіксуй як Bug #0, виправ ПЕРШИМ. Червоний baseline-тест (навіть не зачеплений scope-коммітами) — release-blocker: ховає регресії за шумом і блокує наступні сесії.
 
 **ОБОВ'ЯЗКОВО: перевірити `[x]`-маркери попередніх сесій проти реального стану файлів.**

@@ -38,6 +38,24 @@ echo "Змінено файлів: $CHANGED"
 cat MemoryManual.md | head -50
 ```
 
+**Визнач агрегати зі scope → читай відповідні дос'є паралельно:**
+
+| Ключові слова у змінених файлах            | Читати                           |
+| ------------------------------------------ | -------------------------------- |
+| `work-order`, `WorkOrder`, `work-orders.`  | `docs/objects/work-order.md`     |
+| `invoice`, `Invoice`                       | `docs/objects/invoice.md`        |
+| `purchase-order`, `PurchaseOrder`          | `docs/objects/purchase-order.md` |
+| `stock-document`, `StockDocument`          | `docs/objects/stock-document.md` |
+| `counterpart`, `Counterparty`              | `docs/objects/counterparty.md`   |
+| `good`, `Good`, `catalog`                  | `docs/objects/good.md`           |
+| `work-categor`, `Work`, `works.`           | `docs/objects/work.md`           |
+| `calendar`, `CalendarSlot`                 | `docs/objects/calendar.md`       |
+| `stock-item`, `StockMovement`, `inventory` | `docs/objects/inventory.md`      |
+| `settlement`, `transaction`, `payment`     | `docs/objects/settlements.md`    |
+
+Якщо scope торкається сервісних файлів (`*.service.ts`) → також читай `docs/BUSINESS-RULES.md`.
+Якщо scope — нова сторінка або компонент → також читай `docs/GOTCHAS.md`.
+
 **Матриця: тип зміни → секції що запускати**
 
 | Тип зміни              | Обов'язкові секції            | Пропустити           |

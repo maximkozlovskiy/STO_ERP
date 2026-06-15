@@ -11,9 +11,14 @@ bypassPermissions: true
 ## Before Starting
 
 1. Read `MemoryManual.md` — current state, gotchas, recent changes
-2. Read `sto-dev` — coding standards (patterns, anti-patterns)
-3. Check existing similar page for patterns — **не вигадуй, копіюй існуючий стиль**
-4. Confirm API endpoint exists (або запусти `sto-backend` спочатку)
+2. **Identify the aggregate** being touched → read its `docs/objects/<entity>.md` dossier — UI files, panel schemas, hooks, FSM buttons, business rules
+3. Read `docs/GOTCHAS.md` — before adding any new page or component (UI gotchas, SSR traps, auth patterns)
+4. Read `sto-dev` — coding standards (patterns, anti-patterns)
+5. Check existing similar page for patterns — **не вигадуй, копіюй існуючий стиль**
+6. Confirm API endpoint exists (або запусти `sto-backend` спочатку)
+
+**Aggregate → dossier lookup:**
+`WorkOrder→work-order.md` | `Invoice→invoice.md` | `PurchaseOrder→purchase-order.md` | `StockDocument→stock-document.md` | `Counterparty→counterparty.md` | `Good→good.md` | `Work/WorkCategory→work.md` | `CalendarSlot→calendar.md` | `StockItem/StockMovement→inventory.md` | `SettlementAccount/Transaction→settlements.md`
 
 ---
 

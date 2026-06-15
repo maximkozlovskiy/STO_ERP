@@ -41,6 +41,11 @@ git diff HEAD --name-only | head -30
 cat MemoryManual.md | head -50
 ```
 
+Визнач агрегати зі scope → читай відповідні дос'є (`docs/objects/<entity>.md`).
+Дос'є містять існуючі індекси, відомі N+1 патерни та кеш-патерни специфічні для агрегату.
+
+**Lookup:** `WorkOrder→work-order.md` | `Invoice→invoice.md` | `PurchaseOrder→purchase-order.md` | `Good→good.md` | `Counterparty→counterparty.md` | `CalendarSlot→calendar.md` | `StockItem→inventory.md`
+
 **Якщо передано аргумент** (`/sto-optimize backend` або `/sto-optimize frontend` або `/sto-optimize db`):
 → виконати тільки відповідний крок.
 

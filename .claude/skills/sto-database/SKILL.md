@@ -11,9 +11,18 @@ bypassPermissions: true
 ## Before Starting
 
 1. Read `MemoryManual.md` — current project state, gotchas, last migration
-2. Read `packages/database/schema.prisma` — know current state
-3. Read `sto-context` if not loaded — understand domain model
-4. Identify which Bounded Context you're modifying
+2. **Identify the aggregate** being touched → read its `docs/objects/<entity>.md` dossier — existing Prisma model, relations, indexes, business rules
+3. Read `docs/BUSINESS-RULES.md` — FSM rules, append-only tables (StockMovement, SettlementTransaction have NO deletedAt), soft-delete rules
+4. Read `packages/database/schema.prisma` — know current state
+5. Identify which Bounded Context you're modifying
+
+**Aggregate → dossier lookup:**
+`WorkOrder→work-order.md` | `Invoice→invoice.md` | `PurchaseOrder→purchase-order.md` | `StockDocument→stock-document.md` | `Counterparty→counterparty.md` | `Good→good.md` | `Work/WorkCategory→work.md` | `CalendarSlot→calendar.md` | `StockItem/StockMovement→inventory.md` | `SettlementAccount/Transaction→settlements.md`
+
+**Red flags from dossiers to check before migrating:**
+
+- Models without `deletedAt`: SettlementAccount, SettlementTransaction, StockMovement, Payment, WorkOrderLineEmployee — never add soft-delete to these
+- GIN trgm indexes (Good.name/sku, Counterparty.firstName/lastName) are manual migrations — do NOT add to schema.prisma
 
 ---
 

@@ -18,14 +18,21 @@ model: claude-sonnet-4-6
 
 > **ЗАВЖДИ виконувати перед виконанням запиту:**
 >
-> 1. **Якщо задача неоднозначна** — задай уточнюючі питання через `AskUserQuestion` перш ніж складати план:
+> 1. Read `MemoryManual.md` — поточний стан, gotchas, останні зміни
+> 2. **Визнач агрегат(и)** яких стосується фіча → читай `docs/objects/<entity>.md` — поточна Prisma модель, FSM, endpoints, бізнес-правила; **без цього план буде конфліктувати з тим що вже є**
+> 3. Read `docs/GOTCHAS.md` — перед плануванням нових сторінок/компонентів
+> 4. Read `docs/BUSINESS-RULES.md` — якщо фіча торкається сервісної логіки (FSM, інвентар, розрахунки)
+> 5. **Якщо задача неоднозначна** — задай уточнюючі питання через `AskUserQuestion`:
 >    - незрозумілий scope ("переробити X" — що саме?)
 >    - кілька рівноцінних підходів (вибір архітектури, UI патерну)
 >    - ризик що виконання не відповідатиме очікуванням
-> 2. **Якщо задача велика** (3+ файли, нова фіча, архітектурний вибір) — використовуй `EnterPlanMode`:
+> 6. **Якщо задача велика** (3+ файли, нова фіча, архітектурний вибір) — використовуй `EnterPlanMode`:
 >    - Досліди код → склади план → узгодь з користувачем (`ExitPlanMode`) → реалізуй
 >    - **Не починай кодування** до виходу з план моду
-> 3. **Виняток:** дрібні зміни (1–2 файли, правка тексту, стилі) — виконувати без плану і без питань.
+> 7. **Виняток:** дрібні зміни (1–2 файли, правка тексту, стилі) — виконувати без плану і без питань.
+
+**Aggregate → dossier lookup:**
+`WorkOrder→work-order.md` | `Invoice→invoice.md` | `PurchaseOrder→purchase-order.md` | `StockDocument→stock-document.md` | `Counterparty→counterparty.md` | `Good→good.md` | `Work/WorkCategory→work.md` | `CalendarSlot→calendar.md` | `StockItem/StockMovement→inventory.md` | `SettlementAccount/Transaction→settlements.md`
 
 ## Output Format
 

@@ -11,10 +11,14 @@ bypassPermissions: true
 ## Before Starting
 
 1. Read `MemoryManual.md` — current project state, gotchas, recent changes
-2. Read `packages/database/schema.prisma` — know the models
-3. Read `sto-context` — understand domain rules
-4. Read `sto-dev` — coding standards (TS, NestJS, Prisma patterns) — prevents sto-review findings
-5. Check existing similar module for patterns
+2. **Identify the aggregate** being touched (WorkOrder / Invoice / PurchaseOrder / StockDocument / Counterparty / Good / Work / CalendarSlot / StockItem / SettlementAccount) → read its `docs/objects/<entity>.md` dossier — FSM, endpoints, business rules
+3. Read `docs/BUSINESS-RULES.md` — mandatory before writing any service logic (FSM transitions, inventory/settlement singletons)
+4. Read `packages/database/schema.prisma` — know the models
+5. Read `sto-dev` — coding standards (TS, NestJS, Prisma patterns) — prevents sto-review findings
+6. Check existing similar module for patterns
+
+**Aggregate → dossier lookup:**
+`WorkOrder→work-order.md` | `Invoice→invoice.md` | `PurchaseOrder→purchase-order.md` | `StockDocument→stock-document.md` | `Counterparty→counterparty.md` | `Good→good.md` | `Work/WorkCategory→work.md` | `CalendarSlot→calendar.md` | `StockItem/StockMovement→inventory.md` | `SettlementAccount/Transaction→settlements.md`
 
 ---
 
@@ -72,11 +76,17 @@ export class WorkOrderResponseDto {
 
 export class PaginatedQueryDto {
   @ApiPropertyOptional({ default: 1 })
-  @IsOptional() @Type(() => Number) @IsNumber() @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
   page: number = 1;
 
   @ApiPropertyOptional({ default: 20 })
-  @IsOptional() @Type(() => Number) @IsNumber() @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
   limit: number = 20;
 }
 ```
@@ -87,7 +97,12 @@ export class PaginatedQueryDto {
 
 ```typescript
 // {domain}.service.ts
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
@@ -146,7 +161,10 @@ export class WorkOrdersService {
 
     return this.prisma.workOrder.update({
       where: { id },
-      data: { status: newStatus, ...(newStatus === 'COMPLETED' ? { completedAt: new Date() } : {}) },
+      data: {
+        status: newStatus,
+        ...(newStatus === 'COMPLETED' ? { completedAt: new Date() } : {}),
+      },
     });
   }
 
@@ -193,16 +211,16 @@ export class WorkOrdersService {
 
 // FSM transition map
 const WORK_ORDER_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
-  DRAFT:      ['ESTIMATE', 'CANCELLED'],
-  ESTIMATE:   ['APPROVED', 'DRAFT', 'CANCELLED'],
-  APPROVED:   ['IN_PROGRESS', 'ON_HOLD', 'CANCELLED'],
-  IN_PROGRESS:['ON_HOLD', 'COMPLETED'],
-  ON_HOLD:    ['IN_PROGRESS', 'CANCELLED'],
-  COMPLETED:  ['INVOICED'],
-  INVOICED:   ['PAID'],
-  PAID:       ['ARCHIVED'],
-  ARCHIVED:   [],
-  CANCELLED:  [],
+  DRAFT: ['ESTIMATE', 'CANCELLED'],
+  ESTIMATE: ['APPROVED', 'DRAFT', 'CANCELLED'],
+  APPROVED: ['IN_PROGRESS', 'ON_HOLD', 'CANCELLED'],
+  IN_PROGRESS: ['ON_HOLD', 'COMPLETED'],
+  ON_HOLD: ['IN_PROGRESS', 'CANCELLED'],
+  COMPLETED: ['INVOICED'],
+  INVOICED: ['PAID'],
+  PAID: ['ARCHIVED'],
+  ARCHIVED: [],
+  CANCELLED: [],
 };
 ```
 
@@ -231,20 +249,14 @@ export class WorkOrdersController {
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER)
   @ApiOperation({ summary: 'Create new work order' })
   @ApiResponse({ status: 201, type: WorkOrderResponseDto })
-  create(
-    @OrgContext() orgId: string,
-    @Body() dto: CreateWorkOrderDto,
-  ) {
+  create(@OrgContext() orgId: string, @Body() dto: CreateWorkOrderDto) {
     return this.service.create(orgId, dto);
   }
 
   @Get()
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER, UserRole.ACCOUNTANT)
   @ApiOperation({ summary: 'List work orders with pagination' })
-  findAll(
-    @OrgContext() orgId: string,
-    @Query() query: PaginatedQueryDto,
-  ) {
+  findAll(@OrgContext() orgId: string, @Query() query: PaginatedQueryDto) {
     return this.service.findAll(orgId, query.page, query.limit);
   }
 
@@ -292,7 +304,7 @@ await this.inventoryService.createMovement(orgId, {
   goodId,
   warehouseId,
   type: 'WRITEOFF',
-  quantity: -qty,  // negative = out
+  quantity: -qty, // negative = out
   documentType: 'WorkOrder',
   documentId: workOrderId,
 });
@@ -321,9 +333,15 @@ describe('WorkOrdersService', () => {
         {
           provide: PrismaService,
           useValue: {
-            workOrder: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), update: jest.fn() },
+            workOrder: {
+              create: jest.fn(),
+              findFirst: jest.fn(),
+              findMany: jest.fn(),
+              count: jest.fn(),
+              update: jest.fn(),
+            },
             vehicle: { findFirst: jest.fn() },
-            $transaction: jest.fn().mockImplementation((arr) => Promise.all(arr)),
+            $transaction: jest.fn().mockImplementation(arr => Promise.all(arr)),
           },
         },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
@@ -336,16 +354,18 @@ describe('WorkOrdersService', () => {
   describe('create', () => {
     it('throws NotFoundException if vehicle not found', async () => {
       prisma.vehicle.findFirst.mockResolvedValue(null);
-      await expect(service.create('org-1', { vehicleId: 'v-1', counterpartyId: 'c-1', branchId: 'b-1' }))
-        .rejects.toThrow(NotFoundException);
+      await expect(
+        service.create('org-1', { vehicleId: 'v-1', counterpartyId: 'c-1', branchId: 'b-1' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('transition', () => {
     it('throws BadRequestException for invalid FSM transition', async () => {
       prisma.workOrder.findFirst.mockResolvedValue({ id: 'wo-1', status: 'COMPLETED' });
-      await expect(service.transition('org-1', 'wo-1', 'DRAFT', 'emp-1'))
-        .rejects.toThrow(BadRequestException);
+      await expect(service.transition('org-1', 'wo-1', 'DRAFT', 'emp-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });
@@ -371,15 +391,19 @@ describe('WorkOrdersService', () => {
 ## Windows & Ukrainian UI Notes for Backend
 
 ### Ukrainian Error Messages in NestJS
+
 ```typescript
 // Always throw Ukrainian messages — never English to the client
 throw new NotFoundException('Замовлення-наряд не знайдено');
-throw new BadRequestException('Неможливо перевести наряд у статус "В роботі" — недостатньо запчастин на складі');
+throw new BadRequestException(
+  'Неможливо перевести наряд у статус "В роботі" — недостатньо запчастин на складі',
+);
 throw new ConflictException('Підйомник вже зайнятий з 10:00 до 12:00');
 throw new ForbiddenException('Недостатньо прав для виконання цієї дії');
 ```
 
 ### Locale Middleware (set Accept-Language + timezone header)
+
 ```typescript
 // apps/api/src/common/middleware/locale.middleware.ts
 import { Injectable, NestMiddleware } from '@nestjs/common';
@@ -394,6 +418,7 @@ export class LocaleMiddleware implements NestMiddleware {
 ```
 
 ### PostgreSQL Ukrainian Full-Text Search
+
 ```prisma
 // For search on Ukrainian names/descriptions
 // Add tsvector column and GIN index
@@ -402,6 +427,7 @@ model Counterparty {
   @@index([searchVector], type: Gin)
 }
 ```
+
 ```typescript
 // Search query with Ukrainian dictionary
 const results = await this.prisma.$queryRaw`
@@ -413,6 +439,7 @@ const results = await this.prisma.$queryRaw`
 ```
 
 ### Date/Time Handling
+
 ```typescript
 // Always store in UTC in PostgreSQL
 // Convert to Kyiv timezone only in response DTOs or frontend
@@ -427,6 +454,7 @@ private formatDateTime(date: Date): string {
 ```
 
 ### Running on Windows
+
 ```powershell
 # All pnpm commands work in PowerShell / Git Bash
 pnpm --filter @sto/api dev       # starts on http://localhost:3000

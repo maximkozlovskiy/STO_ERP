@@ -19,6 +19,7 @@ bypassPermissions: true
 Знаходь розбіжності → виправляй одразу → без питань.
 
 ```
+0. Крок 0 — Контекст: MemoryManual + визнач агрегати зі scope
 1. Крок 1 — Direction 1: бек→фронт (є API — немає UI)
 2. Крок 2 — Direction 2: фронт→бек (неправильні endpoint URLs)
 3. Крок 3 — Direction 3: контракт типів (interface vs toResponseDto)
@@ -28,6 +29,20 @@ bypassPermissions: true
 ```
 
 > Не питай дозволу — виправляй і комітай автоматично.
+
+---
+
+## Крок 0 — Контекст
+
+```bash
+cat MemoryManual.md | head -50
+git diff HEAD --name-only | head -30
+```
+
+Визнач агрегати зі scope → читай відповідні дос'є (`docs/objects/<entity>.md`).
+Дос'є містять еталонні endpoint paths і TypeScript-контракти — це основа для Direction 2 і 3.
+
+**Lookup:** `WorkOrder→work-order.md` | `Invoice→invoice.md` | `PurchaseOrder→purchase-order.md` | `StockDocument→stock-document.md` | `Counterparty→counterparty.md` | `Good→good.md` | `Work→work.md` | `CalendarSlot→calendar.md` | `StockItem→inventory.md` | `Settlement→settlements.md`
 
 ---
 
@@ -43,13 +58,14 @@ ls apps/web/src/app/
 
 Для кожного backend модуля знайди відповідний UI:
 
-| Якщо модуль є, але... | Куди додати UI |
-|---|---|
-| Немає сторінки зовсім | Нова сторінка `app/(dashboard)/{domain}/page.tsx` |
-| Немає вкладки у батьківській | Нова вкладка у деталях батьківської сутності |
-| Довідник (payment-methods, tax-rates, brands) | Вкладка у `/settings` або `/catalog` |
+| Якщо модуль є, але...                         | Куди додати UI                                    |
+| --------------------------------------------- | ------------------------------------------------- |
+| Немає сторінки зовсім                         | Нова сторінка `app/(dashboard)/{domain}/page.tsx` |
+| Немає вкладки у батьківській                  | Нова вкладка у деталях батьківської сутності      |
+| Довідник (payment-methods, tax-rates, brands) | Вкладка у `/settings` або `/catalog`              |
 
 **Відомі виключення** (backend модулі без власного UI — це норма):
+
 - `auth/` — немає сторінки, логін через `/login`
 - `sync/` — немає сторінки, мобільний sync endpoint
 - `health/` — немає сторінки, docker healthcheck
@@ -116,14 +132,14 @@ grep -rn "toResponseDto\|toDto\|mapToDto" apps/api/src/modules/ --include="*.ser
 
 ### Найчастіші розбіжності
 
-| Фронтенд `interface` | Бекенд `toResponseDto()` | Проблема |
-|---|---|---|
-| `description: string` | `notes: string` | Різні назви поля |
-| `amount: number` | `amount: Decimal` (Prisma) | Потрібен `Number(x.amount)` |
-| `userId: string` | `user.sub` у контролері | Правильно: `user.id` |
-| `status: string` | `status: WorkOrderStatus` | Фронт має використовувати enum |
-| `rateScheme: {...}` | omitted у `findAll` (security) | Фронт: `rateScheme?: {...}` — optional |
-| `items: T[]` | `{ items, total }` | Фронт деструктурує `data.items` |
+| Фронтенд `interface`  | Бекенд `toResponseDto()`       | Проблема                               |
+| --------------------- | ------------------------------ | -------------------------------------- |
+| `description: string` | `notes: string`                | Різні назви поля                       |
+| `amount: number`      | `amount: Decimal` (Prisma)     | Потрібен `Number(x.amount)`            |
+| `userId: string`      | `user.sub` у контролері        | Правильно: `user.id`                   |
+| `status: string`      | `status: WorkOrderStatus`      | Фронт має використовувати enum         |
+| `rateScheme: {...}`   | omitted у `findAll` (security) | Фронт: `rateScheme?: {...}` — optional |
+| `items: T[]`          | `{ items, total }`             | Фронт деструктурує `data.items`        |
 
 ### Знаки транзакцій (КРИТИЧНО для фінансів)
 
@@ -141,12 +157,12 @@ grep -rn "toResponseDto\|toDto\|mapToDto" apps/api/src/modules/ --include="*.ser
 // Якщо бекенд omits поле в findAll (але повертає в findOne):
 // ❌
 interface Employee {
-  rateScheme: { type: string; rate: number };  // обов'язкове, але findAll не повертає
+  rateScheme: { type: string; rate: number }; // обов'язкове, але findAll не повертає
 }
 
 // ✅
 interface Employee {
-  rateScheme?: { type: string; rate: number };  // optional — може бути відсутнім
+  rateScheme?: { type: string; rate: number }; // optional — може бути відсутнім
 }
 // + guard у JSX: {emp.rateScheme && <span>{emp.rateScheme.type}</span>}
 ```
@@ -182,10 +198,12 @@ git commit -m "fix(sync): align frontend interfaces with API contracts
 
 ```markdown
 ## Останній commit
+
 <hash> fix(sync): align frontend interfaces with API contracts
 Дата: YYYY-MM-DD
 
 ## Поточний стан проєкту
+
 TypeScript: ✅ 0 errors
 ```
 
