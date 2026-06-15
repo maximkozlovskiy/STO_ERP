@@ -662,21 +662,30 @@ export class PurchaseOrdersService {
 
     if (plan.length === 0) return { updated: 0, details: [] };
 
+    // sto-optimize: PO може мати кілька ліній з однаковим goodId (різна ціна за лот).
+    // Старий sequential for-loop мав last-write-wins семантику — зберігаємо її через
+    // dedup по goodId (Map last-wins) ДО Promise.all, щоб два write на той самий PK
+    // не гонилися всередині chunk.
+    const dedupedPlan = Array.from(new Map(plan.map(u => [u.goodId, u])).values());
+
     // Batch у chunks по 100 щоб не лочити велику кількість рядків у одній tx;
     // explicit { timeout: 10_000 } — array-form $transaction default 5s не вистачає на 100 рядків.
     const CHUNK = 100;
-    for (let i = 0; i < plan.length; i += CHUNK) {
-      const chunk = plan.slice(i, i + CHUNK);
+    for (let i = 0; i < dedupedPlan.length; i += CHUNK) {
+      const chunk = dedupedPlan.slice(i, i + CHUNK);
       await this.prisma.$transaction(
         async tx => {
-          for (const u of chunk) {
-            // Bug #191: updateMany з orgId — defense-in-depth tenant guard
-            // (u.goodId уже org-trusted через po.lines, але дублюємо щоб патерн був безпечним для копіювання)
-            await tx.good.updateMany({
-              where: { id: u.goodId, orgId, deletedAt: null },
-              data: { salePrice: u.newSalePrice },
-            });
-          }
+          // sto-optimize: chunk вже дедуплікований по goodId → disjoint PK writes, race-safe.
+          // У $transaction Prisma serializes на pinned connection, тож Promise.all дає
+          // JS-overhead-economy без втрати safety. Bug #191 tenant guard збережений.
+          await Promise.all(
+            chunk.map(u =>
+              tx.good.updateMany({
+                where: { id: u.goodId, orgId, deletedAt: null },
+                data: { salePrice: u.newSalePrice },
+              }),
+            ),
+          );
           await tx.priceHistory.createMany({
             data: chunk.map(u => ({
               orgId,

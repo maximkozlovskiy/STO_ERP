@@ -161,9 +161,15 @@ export class PricingService {
       const chunk = updates.slice(i, i + CHUNK);
       await this.prisma.$transaction(
         async tx => {
-          for (const u of chunk) {
-            await tx.good.update({ where: { id: u.goodId }, data: { salePrice: u.newPrice } });
-          }
+          // sto-optimize: всі u.goodId всередині chunk унікальні (plan accumulator не дублює PK)
+          // → disjoint PK writes, race-safe. Promise.all дає JS-overhead-economy у $transaction
+          // (Prisma serializes на pinned connection — рядкові writes йдуть послідовно у SQL,
+          // але без JS await між ними скорочується кількість мікрозадач event-loop).
+          await Promise.all(
+            chunk.map(u =>
+              tx.good.update({ where: { id: u.goodId }, data: { salePrice: u.newPrice } }),
+            ),
+          );
           await tx.priceHistory.createMany({
             data: chunk.map(u => ({
               orgId,

@@ -908,19 +908,30 @@ export class XlsxService {
       });
     }
 
+    // sto-optimize: xlsx-імпорт може мати дублікати по goodId (різні SKU/barcode на той
+    // самий товар). Старий for-loop sequential мав last-write-wins семантику — зберігаємо
+    // через dedup по goodId (Map last-wins) ДО Promise.all, щоб два write на той самий
+    // PK не гонилися всередині chunk.
+    const dedupedPlan = Array.from(new Map(plan.map(u => [u.goodId, u])).values());
+
     // Batch у chunks по 100 — короткі транзакції, менше lock contention.
     // Bug #191: updateMany з orgId — defense-in-depth tenant guard.
     const CHUNK = 100;
-    for (let i = 0; i < plan.length; i += CHUNK) {
-      const chunk = plan.slice(i, i + CHUNK);
+    for (let i = 0; i < dedupedPlan.length; i += CHUNK) {
+      const chunk = dedupedPlan.slice(i, i + CHUNK);
       await this.prisma.$transaction(
         async tx => {
-          for (const u of chunk) {
-            await tx.good.updateMany({
-              where: { id: u.goodId, orgId, deletedAt: null },
-              data: { salePrice: u.newSalePrice },
-            });
-          }
+          // sto-optimize: chunk вже дедуплікований по goodId → disjoint PK writes, race-safe.
+          // У $transaction Prisma serializes на pinned connection — Promise.all дає
+          // JS-overhead-economy без втрати safety. Bug #191 tenant guard збережений у where.
+          await Promise.all(
+            chunk.map(u =>
+              tx.good.updateMany({
+                where: { id: u.goodId, orgId, deletedAt: null },
+                data: { salePrice: u.newSalePrice },
+              }),
+            ),
+          );
           await tx.priceHistory.createMany({
             data: chunk.map(u => ({
               orgId,
