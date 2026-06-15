@@ -14962,3 +14962,153 @@ Severity: HIGH. Status: [x] виправлено.
 - Web components: 423/423 passed
 
 Бек-логіка фічі коректна після review-fixes 9e656cd4 (WRITEOFF з негативною quantity + REFUND settlement). Bug #495 — defense-in-depth gap що міг дозволити cross-tenant FK linkage; фікс додає org-scoped validation у create() і update(). Інші 4 баги — UX/документація/cosmetic.
+
+---
+
+## Session 2026-06-15 — AUTO tester: UI-polish review-fix follow-up (HEAD 24dc273d)
+
+Scope (5 файлів змінені у 24dc273d + 6dec41a6):
+
+- apps/web/src/app/(app)/calendar/CalendarDayGrid.tsx — у scope сесії
+- apps/web/src/app/(app)/calendar/page.tsx — page-header gap-2 → gap-6
+- apps/web/src/app/(app)/purchase-orders/page.tsx — setActiveTab useCallback + scroll:false; focus-visible ring; focus-within action row
+- apps/web/src/app/(app)/stock-documents/page.tsx — VALID_TYPES Set hoist; setTypeFilter useCallback + scroll:false; remove dead selectDoc/toggleSelectDoc; focus-visible ring
+- apps/web/src/components/ui/PurchaseOrderCreateModal.tsx — line trash aria-label + focus-visible:opacity-100
+
+### Baseline (Крок 0)
+
+- TypeScript shared: clean
+- TypeScript API: clean
+- TypeScript web: clean
+- API unit + contract: 849/849 passed (63 файли)
+- Web components: 423/423 passed (39 файлів)
+- Servers DOWN (Docker Desktop не запущений) — E2E пропущено за директивою сесії
+
+### Перевірка хибно-зеленого [x] (попередні сесії)
+
+Останні tester-комміти у git log зачіпають реальний код (не тільки docs). Baseline зелений — не виявлено хибних маркерів.
+
+---
+
+## Bug #496 — [HIGH] frontend / dead-state — DetailPanel selectedPO мертвий у purchase-orders
+
+**Файл:** apps/web/src/app/(app)/purchase-orders/page.tsx:239, 1210-1223
+**Severity:** HIGH (feature мертва)
+**Категорія:** frontend / dead state / Bug #160 patern
+
+**Опис:** Той самий патерн, що review-fix 24dc273d виявив і виправив для stock-documents/page.tsx (видалені dead selectDoc/toggleSelectDoc), залишився не виправлений у paired файлі purchase-orders/page.tsx. setSelectedPO(value) з not-null значенням ніколи не викликається у файлі.
+
+DetailPanel рендериться з open набором selectedPO && detailPanel.enabled, але selectedPO ніколи не set non-null → панель ніколи не відкривається. buildPOTabs, panelConfig, schemaToPanelConfigFields(PURCHASE_ORDER_PANEL_SCHEMA, ...) — невидимий dead code.
+
+**Очікувана поведінка:** аналогічно stock-documents — видалити dead state АБО додати wire-up через row-click.
+**Фактична поведінка:** selectedPO state, dispatcher тільки до null, panel недосяжна.
+**Статус:** [x] виправлено — видалено dead state + buildPOTabs + DetailPanel render. Click на row → setEditingPOId як сьогодні.
+
+---
+
+## Bug #497 — [MEDIUM] frontend / state / UX feedback — detailLoading встановлюється, але не використовується у JSX
+
+**Файл:** apps/web/src/app/(app)/purchase-orders/page.tsx:240, 422, 429
+**Severity:** MEDIUM (silent UX gap)
+**Категорія:** frontend / dead state / UX feedback
+
+**Опис:** const detailLoading state оголошено, setDetailLoading(true/false) викликається у loadDetail(), але detailLoading ніколи не читається у JSX. Користувач натискає Pencil → запускається apiFetch(/purchase-orders/:id) що може зайняти 1-3s, але немає лоадера/спінера/disabled-кнопки. Користувач може клікати кілька разів → race condition.
+
+**Очікувана поведінка:** detailLoading має керувати UI feedback або state видалити.
+**Фактична поведінка:** loading-state встановлюється, невидимий.
+**Статус:** [x] виправлено — видалено detailLoading state і fetch-fallthrough у loadDetail; усі po вже мають lines з list-endpoint (через include у backend), тому fallback fetch не потрібен. handler стає sync.
+
+---
+
+## Bug #498 — [MEDIUM] frontend / interface drift — PurchaseOrderCreateModal POLine interface не має unitShortName
+
+**Файл:** apps/web/src/components/ui/PurchaseOrderCreateModal.tsx:85-94, 923
+**Severity:** MEDIUM (display drift)
+**Категорія:** frontend / interface drift / Bug #434 patern
+
+**Опис:** Backend PurchaseOrderLineResponseDto.unitShortName повертає shortName UoM. У purchase-orders/page.tsx фронт рендерить line.unitShortName ?? line.unit. У PurchaseOrderCreateModal.tsx локальний POLine interface має тільки unit без unitShortName. Рядок 923 рендерить line.unit — у edit mode користувач бачить старий unit, а не shortName. TS green бо локальний interface незалежний.
+
+**Очікувана поведінка:** display = unitShortName ?? unit як у parent page.
+**Фактична поведінка:** display = unit тільки → drift display.
+**Статус:** [x] виправлено — додано unitShortName?: string | null у локальні POLine і LocalLine interfaces; render: {line.unitShortName || line.unit}; в edit mode mapping передає unitShortName.
+
+---
+
+## Bug #499 — [MEDIUM] frontend / error handling — useDeleteSupplierReturn.mutateAsync без error feedback
+
+**Файл:** apps/web/src/app/(app)/purchase-orders/page.tsx:876-879, apps/web/src/hooks/api/useSupplierReturns.ts:113-121
+**Severity:** MEDIUM (silent failure)
+**Категорія:** frontend / error handling
+
+**Опис:** Inline click-handler у returns-table action button робить await deleteSupplierReturn.mutateAsync(sr.id) і потім toast.success. Якщо mutateAsync кидає (DB constraint, network, 409), throw перериває handler — toast.success не показано, але також немає toast.error. TanStack Query не має глобального MutationCache.onError у проекті. Користувач клікнув видалити, нічого не відбулось.
+
+**Очікувана поведінка:** Якщо delete fail — toast.error з сообщенням.
+**Фактична поведінка:** silent failure.
+**Статус:** [x] виправлено — обгорнуто у try/catch у click-handler.
+
+---
+
+## Bug #500 — [LOW] frontend / dead imports — useEffect, useRef імпортовані але не використовуються
+
+**Файл:** apps/web/src/app/(app)/purchase-orders/page.tsx:4
+**Severity:** LOW (lint quality)
+**Категорія:** frontend / dead code / Bug #204-#205 patern
+
+**Опис:** import має useEffect і useRef які не зустрічаються у файлі (тільки в imports). Залишились після review-refactor.
+
+**Очікувана поведінка:** імпортувати тільки що використовується.
+**Фактична поведінка:** dead imports.
+**Статус:** [x] виправлено — видалено useEffect, useRef з імпортів.
+
+---
+
+## Bug #501 — [LOW] frontend / a11y / UX — key={i} у view-only modal tables
+
+**Файли:**
+
+- apps/web/src/app/(app)/purchase-orders/page.tsx:1303 (detail Modal lines), :1369 (receive Modal lines)
+- apps/web/src/app/(app)/stock-documents/page.tsx:823 (detail Modal lines)
+- apps/web/src/components/ui/PurchaseOrderCreateModal.tsx:852 (header chips)
+
+**Severity:** LOW (no reorder/filter у поточному UI)
+**Категорія:** frontend / React keys
+
+**Опис:** lines.map((l, i) => <tr key={i}>) у view-only modals. l.id є у backend response. Pattern порушено.
+
+**Очікувана поведінка:** key={l.id ?? i}.
+**Фактична поведінка:** index-key.
+**Статус:** [x] виправлено — заміна на key={l.id ?? i} у lines tables; key={chip} для headerChips.
+
+---
+
+## Bug #502 — [LOW] frontend / a11y — button без type="button"
+
+**Файли:**
+
+- apps/web/src/app/(app)/purchase-orders/page.tsx:610 (section tabs), :650, 912 (chip-buttons), :862, 873 (returns action cells)
+- apps/web/src/app/(app)/stock-documents/page.tsx:431 (type tabs), :458 (status chips)
+
+**Severity:** LOW (захист на майбутнє)
+**Категорія:** frontend / a11y
+
+**Опис:** За замовчуванням button всередині form має type submit. Зараз ці кнопки не у формі, але type=button — захист від refactor що поставить їх у форму.
+
+**Очікувана поведінка:** ВСІ button що не submit мають мати type=button.
+**Фактична поведінка:** missing.
+**Статус:** [x] виправлено — додано type=button до tabs, chips, action-cells.
+
+---
+
+## Bug #503 — [LOW] frontend / a11y — Calendar removeSlot кнопка без aria-label і title
+
+**Файл:** apps/web/src/app/(app)/calendar/CalendarDayGrid.tsx:489
+**Severity:** LOW
+**Категорія:** frontend / a11y
+
+**Опис:** Icon-only Trash2 button без aria-label і без title. Screen-reader озвучує button без контексту.
+
+**Очікувана поведінка:** aria-label="Видалити слот" + title.
+**Фактична поведінка:** screen-reader не повідомляє про дію.
+**Статус:** [x] виправлено — додано aria-label і title.
+
+---

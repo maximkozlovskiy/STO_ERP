@@ -430,6 +430,7 @@ function StockDocumentsPageClient() {
         {TYPE_FILTERS.map(t => (
           <button
             key={t}
+            type="button"
             onClick={() => {
               setTypeFilter(t);
               resetPage();
@@ -457,6 +458,7 @@ function StockDocumentsPageClient() {
           {STATUS_FILTERS.map(s => (
             <button
               key={s}
+              type="button"
               onClick={() => {
                 setStatusFilter(s);
                 resetPage();
@@ -820,7 +822,7 @@ function StockDocumentsPageClient() {
                     </tr>
                   ) : (
                     showDetail.lines.map((l, i) => (
-                      <tr key={i}>
+                      <tr key={l.id ?? i}>
                         <td className="px-3 py-2 text-foreground">{l.goodName}</td>
                         <td className="px-3 py-2 text-foreground-faint font-mono">
                           {l.goodSku ?? '—'}

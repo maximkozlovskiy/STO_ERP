@@ -77,6 +77,10 @@ interface LocalLine {
   goodName: string;
   goodSku?: string | null;
   unit: string;
+  // Bug #498: backend повертає unitShortName з UoM relation (purchase-orders.service.ts:771).
+  // Parent page.tsx рендерить line.unitShortName ?? line.unit; цей modal раніше показував
+  // тільки сирий unit (drift display).
+  unitShortName?: string | null;
   quantity: string;
   price: string;
   receivedQty?: number;
@@ -88,6 +92,7 @@ interface POLine {
   goodName?: string | null;
   goodSku?: string | null;
   unit?: string | null;
+  unitShortName?: string | null;
   quantity: number;
   price: number;
   receivedQty?: number;
@@ -274,6 +279,7 @@ export function PurchaseOrderCreateModal({
             goodName: l.goodName ?? '',
             goodSku: l.goodSku,
             unit: l.unit ?? 'шт',
+            unitShortName: l.unitShortName,
             quantity: String(l.quantity),
             price: String(l.price),
             receivedQty: l.receivedQty,
@@ -847,9 +853,9 @@ export function PurchaseOrderCreateModal({
               <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             )}
             <span className="text-muted-foreground">Шапка документа</span>
-            {headerChips.map((chip, i) => (
+            {headerChips.map(chip => (
               <span
-                key={i}
+                key={String(chip)}
                 className="bg-secondary text-muted-foreground rounded px-1.5 py-0.5 text-[10px]"
               >
                 {chip}
@@ -920,7 +926,9 @@ export function PurchaseOrderCreateModal({
                           <div className="text-[11px] text-muted-foreground">{line.goodSku}</div>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-right text-muted-foreground">{line.unit}</td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">
+                        {line.unitShortName || line.unit}
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
                       {isEditMode && (
                         <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">

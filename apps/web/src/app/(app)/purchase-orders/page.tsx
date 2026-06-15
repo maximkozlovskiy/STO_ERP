@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { Suspense } from 'react';
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
@@ -32,13 +32,7 @@ import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
-import {
-  PURCHASE_ORDER_PANEL_SCHEMA,
-  buildPanelFields,
-  schemaToPanelConfigFields,
-} from '@/lib/panel-schema';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
@@ -163,7 +157,6 @@ function PurchaseOrdersPageClient() {
     },
     dragProps,
     detailPanel,
-    panelConfig,
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
@@ -236,8 +229,6 @@ function PurchaseOrdersPageClient() {
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   // Modal & form state
-  const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState<PurchaseOrder | null>(null);
@@ -265,7 +256,6 @@ function PurchaseOrdersPageClient() {
     },
     dragProps: srDragProps,
     detailPanel: srDetailPanel,
-    panelConfig: srPanelConfig,
     savedFilters: { saved: srSavedFilters, save: saveSrFilter, remove: removeSrFilter },
     features: srFeatures,
     limit: srLimit,
@@ -405,7 +395,6 @@ function PurchaseOrdersPageClient() {
       return;
     try {
       await apiFetch(`/purchase-orders/${po.id}`, { method: 'DELETE' });
-      if (selectedPO?.id === po.id) setSelectedPO(null);
       queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
       toast.success('Замовлення позначено на видалення');
     } catch (e: unknown) {
@@ -413,20 +402,32 @@ function PurchaseOrdersPageClient() {
     }
   };
 
+  // Per-row in-flight tracking — gates Pencil button (loading prop) and prevents
+  // duplicate clicks (Bug #497). loadDetail lazy-fetches lines (omitted from list
+  // response). On fetch failure, surfaces error via setError so the user sees a
+  // banner instead of an empty modal (Bug #414 patern — read-only panel must not
+  // swallow errors).
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
   const loadDetail = async (po: PurchaseOrder, mode: 'detail' | 'receive') => {
     // Lines are not included in list response — fetch full PO on demand
     if (po.lines.length > 0 || po.linesCount === 0) {
-      mode === 'detail' ? setShowDetail(po) : openReceiveWithLines(po);
+      if (mode === 'detail') setShowDetail(po);
+      else openReceiveWithLines(po);
       return;
     }
-    setDetailLoading(true);
+    setDetailLoadingId(po.id);
     try {
       const full = await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}`);
-      mode === 'detail' ? setShowDetail(full) : openReceiveWithLines(full);
-    } catch {
-      /* show partial data */ mode === 'detail' ? setShowDetail(po) : openReceiveWithLines(po);
+      if (mode === 'detail') setShowDetail(full);
+      else openReceiveWithLines(full);
+    } catch (e: unknown) {
+      // Show partial data + surface error (Bug #414 — never silently map fetch
+      // failure to empty state in panels gating decisions).
+      if (mode === 'detail') setShowDetail(po);
+      else openReceiveWithLines(po);
+      setError(e instanceof Error ? e.message : 'Не вдалось завантажити позиції');
     } finally {
-      setDetailLoading(false);
+      setDetailLoadingId(null);
     }
   };
 
@@ -494,98 +495,6 @@ function PurchaseOrdersPageClient() {
 
   const statuses = ['', 'DRAFT', 'ORDERED', 'PARTIAL', 'RECEIVED', 'CANCELLED'];
 
-  const buildPOTabs = (po: PurchaseOrder): DetailPanelTab[] => [
-    {
-      key: 'info',
-      label: 'Основне',
-      content: (
-        <div className="space-y-3">
-          {buildPanelFields(po, PURCHASE_ORDER_PANEL_SCHEMA, panelConfig.config, {
-            status: v => (
-              <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'}>
-                {STATUS_LABELS[String(v)]}
-              </Badge>
-            ),
-          }).map(f => (
-            <PanelField
-              key={f.key}
-              fieldKey={f.key}
-              label={f.label}
-              value={f.value}
-              hidden={f.hidden}
-            />
-          ))}
-          {(po.status === 'RECEIVED' || po.status === 'PARTIAL') && (
-            <div className="pt-1 space-y-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="w-full"
-                loading={applyingPricingId === po.id}
-                onClick={() => void applyPricing(po)}
-              >
-                Розцінити товари
-              </Button>
-              {pricingResult[po.id] && (
-                <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
-                  <p className="text-[12px] text-muted-foreground">
-                    Оновлено:{' '}
-                    <span className="font-medium text-foreground">
-                      {pricingResult[po.id].updated}
-                    </span>{' '}
-                    товарів
-                  </p>
-                  {pricingResult[po.id].details.length > 0 && (
-                    <div className="space-y-1.5">
-                      {pricingResult[po.id].details.map(d => (
-                        <div key={d.goodId} className="text-[12px]">
-                          <p className="font-medium text-foreground truncate">{d.goodName}</p>
-                          <p className="text-muted-foreground">
-                            {fmtMoney(d.costPrice)} ₴ →{' '}
-                            <span className="line-through">{fmtMoney(d.oldSalePrice)}</span>{' '}
-                            <span className="text-success-text font-medium">
-                              {fmtMoney(d.newSalePrice)} ₴
-                            </span>
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: 'lines',
-      label: 'Позиції',
-      content:
-        !po.lines || po.lines.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">Немає позицій</p>
-        ) : (
-          <div className="space-y-2">
-            {po.lines.map((line, i) => (
-              <div
-                key={line.id ?? i}
-                className="rounded-lg border border-border px-3 py-2 text-[13px]"
-              >
-                <p className="font-medium text-foreground">{line.goodName ?? line.goodId}</p>
-                {line.goodSku && (
-                  <p className="text-muted-foreground text-[12px]">{line.goodSku}</p>
-                )}
-                <p className="text-muted-foreground text-[12px] mt-0.5">
-                  {line.quantity} {line.unitShortName ?? line.unit ?? ''} × {fmtMoney(line.price)} ₴
-                </p>
-              </div>
-            ))}
-          </div>
-        ),
-    },
-  ];
-
   return (
     <div className="page-fill p-4 md:p-6">
       {(error || queryError) && (
@@ -609,6 +518,7 @@ function PurchaseOrdersPageClient() {
         ).map(tab => (
           <button
             key={tab.key}
+            type="button"
             onClick={() => setActiveTab(tab.key)}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm',
@@ -649,6 +559,7 @@ function PurchaseOrdersPageClient() {
             {(['', 'DRAFT', 'CONFIRMED', 'CANCELLED'] as const).map(s => (
               <button
                 key={s}
+                type="button"
                 onClick={() => {
                   setSrStatus(s);
                   resetSrPage();
@@ -860,8 +771,10 @@ function PurchaseOrdersPageClient() {
                         <TableCell className="w-16" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
                             <button
+                              type="button"
                               className="rounded p-1 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
                               title="Відкрити"
+                              aria-label={`Відкрити повернення ${sr.number}`}
                               onClick={() => {
                                 setSrEditId(sr.id);
                                 setSrCreateOpen(true);
@@ -871,11 +784,26 @@ function PurchaseOrdersPageClient() {
                             </button>
                             {sr.status === 'DRAFT' && (
                               <button
-                                className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                type="button"
+                                className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
                                 title="Видалити"
-                                onClick={async () => {
-                                  await deleteSupplierReturn.mutateAsync(sr.id);
-                                  if (features.toastEnabled) toast.success('Повернення видалено');
+                                aria-label={`Видалити повернення ${sr.number}`}
+                                disabled={
+                                  deleteSupplierReturn.isPending &&
+                                  deleteSupplierReturn.variables === sr.id
+                                }
+                                onClick={async e => {
+                                  e.stopPropagation();
+                                  // Bug #499: без try/catch throw з mutateAsync → silent failure
+                                  // (TanStack Query не має глобального MutationCache.onError у проекті).
+                                  try {
+                                    await deleteSupplierReturn.mutateAsync(sr.id);
+                                    if (features.toastEnabled) toast.success('Повернення видалено');
+                                  } catch (err: unknown) {
+                                    toast.error(
+                                      err instanceof Error ? err.message : 'Не вдалось видалити',
+                                    );
+                                  }
                                 }}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -911,6 +839,7 @@ function PurchaseOrdersPageClient() {
             {statuses.map(s => (
               <button
                 key={s}
+                type="button"
                 onClick={() => {
                   setStatus(s);
                   resetPage();
@@ -1182,6 +1111,8 @@ function PurchaseOrdersPageClient() {
                               variant="ghost"
                               size="icon-sm"
                               title="Відкрити деталі"
+                              loading={detailLoadingId === po.id}
+                              disabled={detailLoadingId === po.id}
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                               onClick={() => void loadDetail(po, 'detail')}
                             >
@@ -1206,21 +1137,8 @@ function PurchaseOrdersPageClient() {
               </Table>
             </div>
 
-            {/* Detail panel */}
-            <DetailPanel
-              open={!!selectedPO && detailPanel.enabled}
-              onClose={() => setSelectedPO(null)}
-              title={selectedPO?.number ?? ''}
-              subtitle={selectedPO?.supplierName}
-              tabs={selectedPO ? buildPOTabs(selectedPO) : undefined}
-              configFields={schemaToPanelConfigFields(
-                PURCHASE_ORDER_PANEL_SCHEMA,
-                panelConfig.config,
-              )}
-              onToggleField={panelConfig.toggleField}
-              onReorderFields={panelConfig.reorderFields}
-              onReset={panelConfig.reset}
-            />
+            {/* DetailPanel removed — selection-state was never wired (Bug #496);
+               row click opens Edit modal via setEditingPOId. */}
           </div>
 
           {/* Pagination */}
@@ -1300,7 +1218,7 @@ function PurchaseOrdersPageClient() {
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {showDetail.lines.map((l, i) => (
-                    <tr key={i}>
+                    <tr key={l.id ?? i}>
                       <td className="px-3 py-2 text-foreground">{l.goodName}</td>
                       <td className="px-3 py-2 text-right">
                         {l.quantity} {l.unitShortName ?? l.unit}
@@ -1366,7 +1284,10 @@ function PurchaseOrdersPageClient() {
             </p>
             <div className="space-y-3">
               {showReceive.lines.map((line, i) => (
-                <div key={i} className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
+                <div
+                  key={line.id ?? i}
+                  className="flex items-center gap-3 p-3 bg-secondary rounded-lg"
+                >
                   <div className="flex-1">
                     <div className="text-sm font-medium text-foreground">{line.goodName}</div>
                     <div className="text-xs text-muted-foreground">

@@ -486,7 +486,13 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                   )}
                   {s.notes && <span className="ml-2 text-xs text-muted-foreground">{s.notes}</span>}
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => removeSlot(s.id)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeSlot(s.id)}
+                  title="Видалити слот"
+                  aria-label={`Видалити слот ${fmtTime(s.startAt)}–${fmtTime(s.endAt)}`}
+                >
                   <Trash2 className="h-3.5 w-3.5 text-destructive" />
                 </Button>
               </div>
