@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useMemo } from 'react';
 import {
   Plus,
   ChevronLeft,
@@ -37,6 +37,14 @@ function CalendarPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
 
   const cs = useCalendarState();
+
+  // sto-optimize: пара дублює `new Date(cs.nowMs)` + `toDateString()` двічі у render path
+  // (один раз для className tinting, другий — для текст-suffix "минулий день").
+  // Memoize → один Intl.format() виклик на render.
+  const isPastDay = useMemo(
+    () => !!cs.nowMs && cs.date < toDateString(new Date(cs.nowMs)),
+    [cs.nowMs, cs.date],
+  );
 
   return (
     <div className="page-fill p-4 md:p-6">
@@ -140,12 +148,10 @@ function CalendarPageClient() {
                     className="w-48"
                   />
                   <span
-                    className={`text-sm capitalize ${cs.nowMs && cs.date < toDateString(new Date(cs.nowMs)) ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}
+                    className={`text-sm capitalize ${isPastDay ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}
                   >
                     {formatKyivDate(cs.date)}
-                    {cs.nowMs && cs.date < toDateString(new Date(cs.nowMs))
-                      ? ' — минулий день'
-                      : ''}
+                    {isPastDay ? ' — минулий день' : ''}
                   </span>
                 </div>
                 <Button variant="outline" size="sm" onClick={cs.nextDay}>

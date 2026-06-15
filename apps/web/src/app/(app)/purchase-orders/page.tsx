@@ -362,45 +362,51 @@ function PurchaseOrdersPageClient() {
     [bulkDeleteSelected],
   );
 
-  const handleTransition = async (po: PurchaseOrder, newStatus: string) => {
-    if (
-      !(await confirm({
-        title: `Перевести замовлення ${po.number} → ${STATUS_LABELS[newStatus]}?`,
-      }))
-    )
-      return;
-    setSaving(true);
-    setError('');
-    try {
-      await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}/transition`, {
-        method: 'POST',
-        body: JSON.stringify({ status: newStatus }),
-      });
-      setShowDetail(null);
-      queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const handleTransition = useCallback(
+    async (po: PurchaseOrder, newStatus: string) => {
+      if (
+        !(await confirm({
+          title: `Перевести замовлення ${po.number} → ${STATUS_LABELS[newStatus]}?`,
+        }))
+      )
+        return;
+      setSaving(true);
+      setError('');
+      try {
+        await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}/transition`, {
+          method: 'POST',
+          body: JSON.stringify({ status: newStatus }),
+        });
+        setShowDetail(null);
+        queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [confirm, queryClient],
+  );
 
-  const markDeleted = async (po: PurchaseOrder) => {
-    if (
-      !(await confirm({
-        title: `Позначити замовлення ${po.number} на видалення?`,
-        variant: 'destructive',
-      }))
-    )
-      return;
-    try {
-      await apiFetch(`/purchase-orders/${po.id}`, { method: 'DELETE' });
-      queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-      toast.success('Замовлення позначено на видалення');
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
-    }
-  };
+  const markDeleted = useCallback(
+    async (po: PurchaseOrder) => {
+      if (
+        !(await confirm({
+          title: `Позначити замовлення ${po.number} на видалення?`,
+          variant: 'destructive',
+        }))
+      )
+        return;
+      try {
+        await apiFetch(`/purchase-orders/${po.id}`, { method: 'DELETE' });
+        queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+        toast.success('Замовлення позначено на видалення');
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+      }
+    },
+    [confirm, queryClient],
+  );
 
   // Per-row in-flight tracking — gates Pencil button (loading prop) and prevents
   // duplicate clicks (Bug #497). loadDetail lazy-fetches lines (omitted from list
@@ -408,61 +414,71 @@ function PurchaseOrdersPageClient() {
   // banner instead of an empty modal (Bug #414 patern — read-only panel must not
   // swallow errors).
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
-  const loadDetail = async (po: PurchaseOrder, mode: 'detail' | 'receive') => {
-    // Lines are not included in list response — fetch full PO on demand
-    if (po.lines.length > 0 || po.linesCount === 0) {
-      if (mode === 'detail') setShowDetail(po);
-      else openReceiveWithLines(po);
-      return;
-    }
-    setDetailLoadingId(po.id);
-    try {
-      const full = await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}`);
-      if (mode === 'detail') setShowDetail(full);
-      else openReceiveWithLines(full);
-    } catch (e: unknown) {
-      // Show partial data + surface error (Bug #414 — never silently map fetch
-      // failure to empty state in panels gating decisions).
-      if (mode === 'detail') setShowDetail(po);
-      else openReceiveWithLines(po);
-      setError(e instanceof Error ? e.message : 'Не вдалось завантажити позиції');
-    } finally {
-      setDetailLoadingId(null);
-    }
-  };
 
-  const openReceiveWithLines = (po: PurchaseOrder) => {
+  const openReceiveWithLines = useCallback((po: PurchaseOrder) => {
     setReceiveLines(po.lines.map(l => ({ lineId: l.id!, receivedQty: '' })));
     setShowReceive(po);
-  };
+  }, []);
 
-  const openReceive = (po: PurchaseOrder) => {
-    void loadDetail(po, 'receive');
-  };
-
-  const applyPricing = async (po: PurchaseOrder) => {
-    setApplyingPricingId(po.id);
-    setError('');
-    try {
-      const result = await apiFetch<PricingResult>(`/purchase-orders/${po.id}/apply-pricing`, {
-        method: 'POST',
-      });
-      setPricingResult(prev => ({ ...prev, [po.id]: result }));
-      // Bug #211: apply-pricing змінює Good.salePrice → StockItem.salePrice у findStockItems →
-      // inventory cache треба інвалідувати, інакше grid показує старі ціни до 30s staleTime
-      if (result.updated > 0) {
-        queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+  const loadDetail = useCallback(
+    async (po: PurchaseOrder, mode: 'detail' | 'receive') => {
+      // Lines are not included in list response — fetch full PO on demand
+      if (po.lines.length > 0 || po.linesCount === 0) {
+        if (mode === 'detail') setShowDetail(po);
+        else openReceiveWithLines(po);
+        return;
       }
-      if (features.toastEnabled) toast.success(`Розцінено ${result.updated} товарів`);
-    } catch (e: unknown) {
-      // Bug #199: помилка має бути видимою навіть з toastEnabled=false. Toast — додаток, не заміна setError.
-      const msg = e instanceof Error ? e.message : 'Помилка розцінки';
-      setError(msg);
-      if (features.toastEnabled) toast.error(msg);
-    } finally {
-      setApplyingPricingId(null);
-    }
-  };
+      setDetailLoadingId(po.id);
+      try {
+        const full = await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}`);
+        if (mode === 'detail') setShowDetail(full);
+        else openReceiveWithLines(full);
+      } catch (e: unknown) {
+        // Show partial data + surface error (Bug #414 — never silently map fetch
+        // failure to empty state in panels gating decisions).
+        if (mode === 'detail') setShowDetail(po);
+        else openReceiveWithLines(po);
+        setError(e instanceof Error ? e.message : 'Не вдалось завантажити позиції');
+      } finally {
+        setDetailLoadingId(null);
+      }
+    },
+    [openReceiveWithLines],
+  );
+
+  const openReceive = useCallback(
+    (po: PurchaseOrder) => {
+      void loadDetail(po, 'receive');
+    },
+    [loadDetail],
+  );
+
+  const applyPricing = useCallback(
+    async (po: PurchaseOrder) => {
+      setApplyingPricingId(po.id);
+      setError('');
+      try {
+        const result = await apiFetch<PricingResult>(`/purchase-orders/${po.id}/apply-pricing`, {
+          method: 'POST',
+        });
+        setPricingResult(prev => ({ ...prev, [po.id]: result }));
+        // Bug #211: apply-pricing змінює Good.salePrice → StockItem.salePrice у findStockItems →
+        // inventory cache треба інвалідувати, інакше grid показує старі ціни до 30s staleTime
+        if (result.updated > 0) {
+          queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+        }
+        if (features.toastEnabled) toast.success(`Розцінено ${result.updated} товарів`);
+      } catch (e: unknown) {
+        // Bug #199: помилка має бути видимою навіть з toastEnabled=false. Toast — додаток, не заміна setError.
+        const msg = e instanceof Error ? e.message : 'Помилка розцінки';
+        setError(msg);
+        if (features.toastEnabled) toast.error(msg);
+      } finally {
+        setApplyingPricingId(null);
+      }
+    },
+    [features.toastEnabled, queryClient],
+  );
 
   const handleReceive = async () => {
     if (!showReceive) return;

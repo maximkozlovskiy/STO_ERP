@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -210,39 +210,45 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     setLines(prev => prev.filter(l => l._key !== key));
   }, []);
 
-  const buildPayload = () => ({
-    supplierId,
-    warehouseId,
-    notes: notes || undefined,
-    documentDate,
-    lines: lines.map(l => ({
-      goodId: l.goodId,
-      quantity: parseFloat(l.quantity) || 0,
-      price: parseFloat(l.price) || 0,
-    })),
-  });
-
-  const validate = () => {
-    if (!supplierId) return 'Оберіть постачальника';
-    if (!warehouseId) return 'Оберіть склад';
-    if (lines.length === 0) return 'Додайте хоча б один товар';
-    for (const l of lines) {
-      if ((parseFloat(l.quantity) || 0) <= 0) return `Кількість має бути > 0 (${l.goodName})`;
-      if ((parseFloat(l.price) || 0) < 0) return `Ціна не може бути від'ємною (${l.goodName})`;
-    }
-    return null;
-  };
-
-  const handleSave = async () => {
-    const err = validate();
-    if (err) {
-      setError(err);
+  const handleSave = useCallback(async () => {
+    // Validate inline — `validate` and `buildPayload` use current state captured at
+    // call-time через closure (callback recreated on lines/supplier/warehouse changes).
+    if (!supplierId) {
+      setError('Оберіть постачальника');
       return;
+    }
+    if (!warehouseId) {
+      setError('Оберіть склад');
+      return;
+    }
+    if (lines.length === 0) {
+      setError('Додайте хоча б один товар');
+      return;
+    }
+    for (const l of lines) {
+      if ((parseFloat(l.quantity) || 0) <= 0) {
+        setError(`Кількість має бути > 0 (${l.goodName})`);
+        return;
+      }
+      if ((parseFloat(l.price) || 0) < 0) {
+        setError(`Ціна не може бути від'ємною (${l.goodName})`);
+        return;
+      }
     }
     setError('');
     setSaving(true);
     try {
-      const payload = buildPayload();
+      const payload = {
+        supplierId,
+        warehouseId,
+        notes: notes || undefined,
+        documentDate,
+        lines: lines.map(l => ({
+          goodId: l.goodId,
+          quantity: parseFloat(l.quantity) || 0,
+          price: parseFloat(l.price) || 0,
+        })),
+      };
       if (isEdit) {
         await apiFetch(`/supplier-returns/${editId}`, {
           method: 'PATCH',
@@ -262,9 +268,20 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     } finally {
       setSaving(false);
     }
-  };
+  }, [
+    supplierId,
+    warehouseId,
+    notes,
+    documentDate,
+    lines,
+    isEdit,
+    editId,
+    features.toastEnabled,
+    onSaved,
+    onClose,
+  ]);
 
-  const handleConfirm = async () => {
+  const handleConfirm = useCallback(async () => {
     if (!editId) return;
     setConfirming(true);
     try {
@@ -279,9 +296,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     } finally {
       setConfirming(false);
     }
-  };
+  }, [editId, features.toastEnabled, onSaved, onClose]);
 
-  const handleCancel = async () => {
+  const handleCancel = useCallback(async () => {
     if (!editId) return;
     setCancelling(true);
     try {
@@ -296,10 +313,31 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     } finally {
       setCancelling(false);
     }
-  };
+  }, [editId, features.toastEnabled, onSaved, onClose]);
 
-  const total = totalFromLines(lines);
+  // sto-optimize: total — O(N) reduce, було computed на кожен render (typing → state →
+  // render → total recompute). Memoize → лише при зміні lines.
+  const total = useMemo(() => totalFromLines(lines), [lines]);
   const isReadOnly = status !== 'DRAFT';
+
+  // sto-optimize: warehouse lookup → Map (стабільна identity для onChange handler);
+  // дозволяє замінити inline `warehouses.find()` на `O(1)` get.
+  const warehouseById = useMemo(() => {
+    const m = new Map<string, Warehouse>();
+    for (const w of warehouses) m.set(w.id, w);
+    return m;
+  }, [warehouses]);
+
+  // sto-optimize: stable onChange — інакше recreated на кожен render навіть коли
+  // warehouseById identity не змінювалась.
+  const handleWarehouseChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const w = warehouseById.get(e.target.value);
+      setWarehouseId(e.target.value);
+      setWarehouseName(w?.name ?? '');
+    },
+    [warehouseById],
+  );
   const title = isEdit
     ? isReadOnly
       ? 'Повернення постачальнику'
@@ -392,11 +430,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               </label>
               <select
                 value={warehouseId}
-                onChange={e => {
-                  const w = warehouses.find(x => x.id === e.target.value);
-                  setWarehouseId(e.target.value);
-                  setWarehouseName(w?.name ?? '');
-                }}
+                onChange={handleWarehouseChange}
                 disabled={isReadOnly}
                 className={cn(
                   'w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none',

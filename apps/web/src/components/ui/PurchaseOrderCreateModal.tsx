@@ -367,23 +367,26 @@ export function PurchaseOrderCreateModal({
     return { statusPrevStep, statusNextStep };
   }, [currentStatus, allowedTransitions]);
 
-  const doTransition = async (newStatus: string) => {
-    if (!purchaseOrderId) return;
-    setTransitioningBoth(true);
-    setError('');
-    try {
-      await apiFetch(`/purchase-orders/${purchaseOrderId}/transition`, {
-        method: 'POST',
-        body: JSON.stringify({ status: newStatus }),
-      });
-      setCurrentStatus(newStatus);
-      onSaved?.();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
-    } finally {
-      setTransitioningBoth(false);
-    }
-  };
+  const doTransition = useCallback(
+    async (newStatus: string) => {
+      if (!purchaseOrderId) return;
+      setTransitioningBoth(true);
+      setError('');
+      try {
+        await apiFetch(`/purchase-orders/${purchaseOrderId}/transition`, {
+          method: 'POST',
+          body: JSON.stringify({ status: newStatus }),
+        });
+        setCurrentStatus(newStatus);
+        onSaved?.();
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
+      } finally {
+        setTransitioningBoth(false);
+      }
+    },
+    [purchaseOrderId, onSaved],
+  );
 
   // ── Lines ─────────────────────────────────────────────────────────────────
 
@@ -496,13 +499,28 @@ export function PurchaseOrderCreateModal({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const headerChips = headerCollapsed
-    ? [
-        supplierDisplay || null,
-        form.warehouseId ? (warehouses.find(w => w.id === form.warehouseId)?.name ?? null) : null,
-        contractNumber ? `Дог. ${contractNumber}` : null,
-      ].filter(Boolean)
-    : [];
+  // sto-optimize: warehouse lookup → Map (O(1) замість O(N) на кожен render).
+  // На малих списках виграш мізерний, але стабілізує identity при подальшому memo.
+  const warehouseById = useMemo(() => {
+    const m = new Map<string, Warehouse>();
+    for (const w of warehouses) m.set(w.id, w);
+    return m;
+  }, [warehouses]);
+
+  // sto-optimize: memoize array of chips — раніше recompute + .filter() на кожен
+  // typing keystroke у Input полях форми (notes тощо), навіть коли header згорнуто
+  // у false.
+  const headerChips = useMemo(
+    () =>
+      headerCollapsed
+        ? [
+            supplierDisplay || null,
+            form.warehouseId ? (warehouseById.get(form.warehouseId)?.name ?? null) : null,
+            contractNumber ? `Дог. ${contractNumber}` : null,
+          ].filter(Boolean)
+        : [],
+    [headerCollapsed, supplierDisplay, form.warehouseId, warehouseById, contractNumber],
+  );
 
   return (
     <>

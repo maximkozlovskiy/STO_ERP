@@ -296,41 +296,52 @@ function StockDocumentsPageClient() {
 
   const totalPages = Math.ceil(total / limit) || 1;
 
-  const handleTransition = async (doc: StockDoc, newStatus: string) => {
-    const label = newStatus === 'CONFIRMED' ? 'підтвердити' : 'скасувати';
-    if (!(await confirm({ title: `Бажаєте ${label} документ ${doc.number}?` }))) return;
-    setSaving(true);
-    setError('');
-    try {
-      await apiFetch<StockDoc>(`/stock-documents/${doc.id}/transition`, {
-        method: 'POST',
-        body: JSON.stringify({ status: newStatus }),
-      });
-      setShowDetail(null);
-      load();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка зміни статусу');
-    } finally {
-      setSaving(false);
-    }
-  };
+  // sto-optimize: stable refs — handlers used у inline row onClick wrappers; useCallback
+  // дозволяє в майбутньому пройти React.memo на TableRow без identity-thrashing.
+  // `load` ref recreates on each invalidation, але семантика та сама — deps eslint-disable.
+  const handleTransition = useCallback(
+    async (doc: StockDoc, newStatus: string) => {
+      const label = newStatus === 'CONFIRMED' ? 'підтвердити' : 'скасувати';
+      if (!(await confirm({ title: `Бажаєте ${label} документ ${doc.number}?` }))) return;
+      setSaving(true);
+      setError('');
+      try {
+        await apiFetch<StockDoc>(`/stock-documents/${doc.id}/transition`, {
+          method: 'POST',
+          body: JSON.stringify({ status: newStatus }),
+        });
+        setShowDetail(null);
+        load();
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Помилка зміни статусу');
+      } finally {
+        setSaving(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [confirm],
+  );
 
-  const markDeleted = async (doc: StockDoc) => {
-    if (
-      !(await confirm({
-        title: `Позначити документ ${doc.number} на видалення?`,
-        variant: 'destructive',
-      }))
-    )
-      return;
-    try {
-      await apiFetch(`/stock-documents/${doc.id}`, { method: 'DELETE' });
-      load();
-      toast.success('Документ позначено на видалення');
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
-    }
-  };
+  const markDeleted = useCallback(
+    async (doc: StockDoc) => {
+      if (
+        !(await confirm({
+          title: `Позначити документ ${doc.number} на видалення?`,
+          variant: 'destructive',
+        }))
+      )
+        return;
+      try {
+        await apiFetch(`/stock-documents/${doc.id}`, { method: 'DELETE' });
+        load();
+        toast.success('Документ позначено на видалення');
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [confirm],
+  );
 
   // Bug #504: buildDocTabs видалено — використовувалось виключно у dead DetailPanel.
   // Перегляд позицій документа доступний через edit modal (openDetailModal/setEditingDocId).
