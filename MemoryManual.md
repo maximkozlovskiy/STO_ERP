@@ -20,13 +20,16 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 ## Останній commit
 
 ```
+9e656cd4  fix(supplier-returns): review fixes — WRITEOFF qty sign, REFUND vs PAYMENT,
+          /goods + /warehouses endpoints, DocumentType convention, DocumentNumberConfig backfill
+28edc08c  feat(supplier-returns): full backend + frontend for supplier returns
 f321d07d  docs: restructure MemoryManual — object dossiers + spec template + B1-B7 patterns
 e64bca47  docs: restructure MemoryManual into layered docs (ARCHITECTURE/PATTERNS/BUSINESS-RULES/CHANGELOG)
 cc2cd2e1  fix(tester): Bugs #487-#490 — post-cycle3 spec gaps + BALANCE_SIGN exhaustiveness
 93473ad7  refactor(simplify): deduplicateBy<T> utility + BALANCE_SIGN lookup table
-c24014ed  refactor(simplify): readonly FSM arrays, toIdMap/calcVatTotals helpers
-f23abfd3  perf(optimize): tier-merger contract Promise.all + settlements parallel + RA covering index
 ```
+
+Latest review: 2026-06-15 (auto, HEAD 9e656cd4) — supplier-returns critical/important fixes
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
 
