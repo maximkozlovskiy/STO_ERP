@@ -37,7 +37,7 @@ export class SupplierReturnsService {
     orgId: string,
     page = 1,
     limit = 20,
-    status?: string,
+    status?: SRStatus,
     q?: string,
     showDeleted = false,
     dateFrom?: string,
@@ -47,7 +47,7 @@ export class SupplierReturnsService {
       orgId,
       ...(showDeleted ? {} : { deletedAt: null }),
     };
-    if (status) where.status = status as SRStatus;
+    if (status) where.status = status;
     if (q) {
       const like = q.trim();
       if (like.length > 0) {
@@ -212,71 +212,103 @@ export class SupplierReturnsService {
       if (!warehouse) throw new NotFoundException('Склад не знайдено');
     }
 
-    await this.prisma.$transaction(async tx => {
-      if (dto.lines !== undefined) {
-        await tx.supplierReturnLine.updateMany({
-          where: { supplierReturnId: id, orgId },
-          data: { deletedAt: new Date() },
-        });
-        const dedupedLines = deduplicateBy(dto.lines, l => l.goodId);
-        if (dedupedLines.length > 0) {
-          await tx.supplierReturnLine.createMany({
-            data: dedupedLines.map(l => ({
-              orgId,
-              supplierReturnId: id,
-              goodId: l.goodId,
-              quantity: l.quantity,
-              price: l.price,
-              unitOfMeasureId: l.unitOfMeasureId ?? null,
-            })),
+    await this.prisma.$transaction(
+      async tx => {
+        if (dto.lines !== undefined) {
+          await tx.supplierReturnLine.updateMany({
+            where: { supplierReturnId: id, orgId },
+            data: { deletedAt: new Date() },
           });
+          const dedupedLines = deduplicateBy(dto.lines, l => l.goodId);
+          if (dedupedLines.length > 0) {
+            await tx.supplierReturnLine.createMany({
+              data: dedupedLines.map(l => ({
+                orgId,
+                supplierReturnId: id,
+                goodId: l.goodId,
+                quantity: l.quantity,
+                price: l.price,
+                unitOfMeasureId: l.unitOfMeasureId ?? null,
+              })),
+            });
+          }
         }
-      }
 
-      const lines = await tx.supplierReturnLine.findMany({
-        where: { supplierReturnId: id, orgId, deletedAt: null },
-        select: { quantity: true, price: true },
-        take: MAX_QUERY_LIMIT,
-      });
-      const totalAmount = lines.reduce((sum, l) => sum + l.quantity * Number(l.price), 0);
+        const lines = await tx.supplierReturnLine.findMany({
+          where: { supplierReturnId: id, orgId, deletedAt: null },
+          select: { quantity: true, price: true },
+          take: MAX_QUERY_LIMIT,
+        });
+        const totalAmount = lines.reduce((sum, l) => sum + l.quantity * Number(l.price), 0);
 
-      await tx.supplierReturn.update({
-        where: { id, orgId },
-        data: {
-          ...(dto.supplierId ? { supplierId: dto.supplierId } : {}),
-          ...(dto.warehouseId ? { warehouseId: dto.warehouseId } : {}),
-          ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
-          ...(dto.documentDate ? { documentDate: new Date(dto.documentDate) } : {}),
-          totalAmount,
-        },
-      });
-    });
+        await tx.supplierReturn.update({
+          where: { id, orgId },
+          data: {
+            ...(dto.supplierId ? { supplierId: dto.supplierId } : {}),
+            ...(dto.warehouseId ? { warehouseId: dto.warehouseId } : {}),
+            ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+            ...(dto.documentDate ? { documentDate: new Date(dto.documentDate) } : {}),
+            totalAmount,
+          },
+        });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     return this.findOne(orgId, id);
   }
 
   async confirm(orgId: string, id: string, userId: string): Promise<SupplierReturnResponseDto> {
-    const sr = await this.prisma.supplierReturn.findFirst({
+    // Pre-check (cheap) — повертає 404 без відкриття транзакції,
+    // якщо повернення не існує або відсутні рядки.
+    const pre = await this.prisma.supplierReturn.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: {
-        lines: {
-          where: { deletedAt: null },
-          take: MAX_QUERY_LIMIT,
-        },
+      select: {
+        status: true,
+        _count: { select: { lines: { where: { deletedAt: null } } } },
       },
     });
-    if (!sr) throw new NotFoundException('Повернення не знайдено');
+    if (!pre) throw new NotFoundException('Повернення не знайдено');
 
-    const allowed = SR_TRANSITIONS[sr.status];
+    const allowed = SR_TRANSITIONS[pre.status];
     if (!allowed.includes(SupplierReturnStatus.CONFIRMED)) {
-      throw new BadRequestException(`Неможливо підтвердити повернення зі статусу "${sr.status}"`);
+      throw new BadRequestException(`Неможливо підтвердити повернення зі статусу "${pre.status}"`);
     }
-    if (sr.lines.length === 0) {
+    if (pre._count.lines === 0) {
       throw new BadRequestException('Повернення не може бути підтверджено без рядків');
     }
 
     await this.prisma.$transaction(
       async tx => {
+        // §4 sto-review: FSM auto-transition у tx → re-read entity всередині tx +
+        // перевірка `status === expected`. Без цього два concurrent confirm()
+        // дадуть подвійний WRITEOFF + PAYMENT.
+        const sr = await tx.supplierReturn.findFirst({
+          where: { id, orgId, deletedAt: null },
+          select: {
+            status: true,
+            supplierId: true,
+            warehouseId: true,
+            totalAmount: true,
+            lines: {
+              where: { deletedAt: null },
+              select: {
+                goodId: true,
+                quantity: true,
+                price: true,
+                unitOfMeasureId: true,
+              },
+              take: MAX_QUERY_LIMIT,
+            },
+          },
+        });
+        if (!sr) throw new NotFoundException('Повернення не знайдено');
+        if (sr.status !== SupplierReturnStatus.DRAFT) {
+          throw new BadRequestException(
+            `Неможливо підтвердити повернення зі статусу "${sr.status}"`,
+          );
+        }
+
         await Promise.all(
           sr.lines.map(line =>
             this.inventory.createMovement(
@@ -285,9 +317,12 @@ export class SupplierReturnsService {
                 goodId: line.goodId,
                 warehouseId: sr.warehouseId,
                 type: 'WRITEOFF',
-                quantity: line.quantity,
+                // WRITEOFF потребує від'ємну кількість — InventoryService виконує
+                // `quantity: { increment: quantityDelta }` (work-orders + stock-documents
+                // мають таку саму конвенцію).
+                quantity: -line.quantity,
                 price: Number(line.price),
-                documentType: 'SUPPLIER_RETURN',
+                documentType: 'SupplierReturn',
                 documentId: id,
                 createdBy: userId,
                 unitOfMeasureId: line.unitOfMeasureId ?? null,
@@ -299,13 +334,17 @@ export class SupplierReturnsService {
 
         const returnAmount = Number(sr.totalAmount);
         if (returnAmount > 0) {
+          // Повернення товару постачальнику: ми відправили йому товар назад, він
+          // повертає нам кошти / зменшує наш борг. Семантика — REFUND
+          // (gross знижує заборгованість, як і PAYMENT, але без помилкового
+          // запису "ми надіслали гроші постачальнику").
           await this.settlements.createTransaction(
             orgId,
             {
               counterpartyId: sr.supplierId,
-              type: 'PAYMENT',
+              type: 'REFUND',
               amount: returnAmount,
-              documentType: 'SUPPLIER_RETURN',
+              documentType: 'SupplierReturn',
               documentId: id,
               createdBy: userId,
             },

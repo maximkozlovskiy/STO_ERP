@@ -60,7 +60,11 @@ import {
   useDeleteSupplierReturn,
   type SupplierReturn,
 } from '@/hooks/api/useSupplierReturns';
-import { SUPPLIER_RETURN_STATUS_LABELS, SUPPLIER_RETURN_STATUS_BADGE } from '@sto/shared';
+import {
+  SUPPLIER_RETURN_STATUS_LABELS,
+  SUPPLIER_RETURN_STATUS_BADGE,
+  type BadgeVariant,
+} from '@sto/shared';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
@@ -614,13 +618,7 @@ export default function PurchaseOrdersPage() {
                       <td className="px-3 py-2">{sr.supplierName ?? '—'}</td>
                       <td className="px-3 py-2 text-muted-foreground">{sr.warehouseName ?? '—'}</td>
                       <td className="px-3 py-2">
-                        <Badge
-                          variant={
-                            SUPPLIER_RETURN_STATUS_BADGE[
-                              sr.status
-                            ] as import('@sto/shared').BadgeVariant
-                          }
-                        >
+                        <Badge variant={SUPPLIER_RETURN_STATUS_BADGE[sr.status] as BadgeVariant}>
                           {SUPPLIER_RETURN_STATUS_LABELS[sr.status] ?? sr.status}
                         </Badge>
                       </td>

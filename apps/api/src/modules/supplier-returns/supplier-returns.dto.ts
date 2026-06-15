@@ -9,6 +9,8 @@ import {
   ArrayMaxSize,
   IsDateString,
   IsBooleanString,
+  IsEnum,
+  IsNumberString,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -133,7 +135,8 @@ export class SupplierReturnQueryDto {
   @ApiPropertyOptional({ enum: SupplierReturnStatus })
   @IsOptional()
   @Transform(emptyToUndefined)
-  status?: string;
+  @IsEnum(SupplierReturnStatus)
+  status?: SupplierReturnStatus;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -162,10 +165,12 @@ export class SupplierReturnQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
+  @IsNumberString()
   page?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
+  @IsNumberString()
   limit?: string;
 }

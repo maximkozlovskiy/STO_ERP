@@ -135,10 +135,10 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       setWarehouses(cached.filter(w => !w.deletedAt));
       return;
     }
-    apiFetch<{ items: Warehouse[] }>('/infrastructure/warehouses?limit=100')
+    apiFetch<Warehouse[]>('/warehouses')
       .then(data => {
         if (!mountedRef.current) return;
-        const active = data.items.filter(w => !w.deletedAt);
+        const active = data.filter(w => !w.deletedAt);
         setCache('cache:warehouses', active);
         setWarehouses(active);
       })
@@ -549,7 +549,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                   <tfoot className="border-t border-border bg-surface-hover">
                     <tr>
                       <td
-                        colSpan={isReadOnly ? 3 : 3}
+                        colSpan={3}
                         className="px-3 py-2 text-right text-sm font-medium text-muted-foreground"
                       >
                         Разом:
@@ -582,7 +582,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         title="Оберіть постачальника"
         fetchItems={q =>
           apiFetch<{ items: Supplier[] }>(
-            `/counterparties?q=${encodeURIComponent(q)}&limit=30`,
+            `/counterparties?q=${encodeURIComponent(q)}&types=SUPPLIER&types=BOTH&limit=30`,
           ).then(d => d.items.map(c => ({ id: c.id, primary: displayCounterpartyName(c) })))
         }
       />
@@ -594,16 +594,15 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         onSelect={handleAddGood}
         title="Оберіть товар"
         fetchItems={q =>
-          apiFetch<{ items: Good[] }>(`/catalog/goods?q=${encodeURIComponent(q)}&limit=30`).then(
-            d =>
-              d.items.map(g => ({
-                id: g.id,
-                primary: g.name,
-                secondary: g.sku ?? undefined,
-                _sku: g.sku,
-                _unit: g.unit ?? '',
-                _price: g.purchasePrice ?? 0,
-              })),
+          apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=30`).then(d =>
+            d.items.map(g => ({
+              id: g.id,
+              primary: g.name,
+              secondary: g.sku ?? undefined,
+              _sku: g.sku,
+              _unit: g.unit ?? '',
+              _price: g.purchasePrice ?? 0,
+            })),
           )
         }
       />
