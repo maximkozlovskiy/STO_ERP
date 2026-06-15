@@ -1,4 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Injectable } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { LoyaltyService } from './loyalty.service';
 
@@ -11,6 +12,7 @@ interface EarnJob {
 
 // concurrency: 3 — loyalty earn jobs are lightweight DB writes; parallelising reduces
 // latency when multiple payments arrive simultaneously (e.g. bulk settlement batch).
+@Injectable()
 @Processor('loyalty', { concurrency: 3 })
 export class LoyaltyProcessor extends WorkerHost {
   constructor(private readonly loyaltyService: LoyaltyService) {

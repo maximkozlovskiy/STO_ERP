@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -331,7 +331,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   // sto-optimize: stable onChange — інакше recreated на кожен render навіть коли
   // warehouseById identity не змінювалась.
   const handleWarehouseChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
+    (e: ChangeEvent<HTMLSelectElement>) => {
       const w = warehouseById.get(e.target.value);
       setWarehouseId(e.target.value);
       setWarehouseName(w?.name ?? '');

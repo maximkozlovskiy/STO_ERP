@@ -1,6 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 interface SendSmsJob {
   orgId: string;
@@ -14,6 +14,7 @@ interface SendSmsJob {
 // Concurrency=3: кожна SMS — окремий зовнішній HTTP виклик (10s timeout).
 // Без concurrency черга з 30 SMS виконувалась би ~300s серійно.
 // 3 паралельних виклики до TurboSMS — безпечно (провайдер не має rate-limit per key).
+@Injectable()
 @Processor('sms', { concurrency: 3 })
 export class SmsProcessor extends WorkerHost {
   private readonly logger = new Logger(SmsProcessor.name);

@@ -1,7 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { createHmac } from 'crypto';
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { validatePublicUrl } from '../../common/utils/url-guard';
@@ -10,6 +10,7 @@ import { validatePublicUrl } from '../../common/utils/url-guard';
 // За замовчуванням bull обробляє 1 job за раз на processor → черга з 20 webhook
 // виконувалась би 200+ секунд серійно. З concurrency=5 — до 5 паралельних HTTP
 // calls, burst-latency знижується в 5× (20 jobs → ~40s замість ~200s).
+@Injectable()
 @Processor('outbound-webhook', { concurrency: 5 })
 export class OutboundWebhookProcessor extends WorkerHost {
   private readonly logger = new Logger(OutboundWebhookProcessor.name);

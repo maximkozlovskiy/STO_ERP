@@ -1,6 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { validatePublicUrl } from '../../common/utils/url-guard';
 
@@ -16,6 +16,7 @@ interface FiscalReceiptJob {
 // Without concurrency the single-threaded Bull worker serializes jobs: 100 receipts ≈ 1500s.
 // concurrency: 3 caps parallelism to respect Checkbox's per-licence rate limits while
 // still draining the queue ~3× faster. Paired with AbortController timeout (15s) above.
+@Injectable()
 @Processor('checkbox', { concurrency: 3 })
 export class CheckboxProcessor extends WorkerHost {
   private readonly logger = new Logger(CheckboxProcessor.name);
