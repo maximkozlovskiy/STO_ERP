@@ -111,20 +111,6 @@ function CalendarPageClient() {
                 >
                   Цей місяць
                 </Button>
-                <Button
-                  className="ml-auto"
-                  onClick={() => {
-                    cs.setPendingSlot(null);
-                    cs.setEditingSlotId(null);
-                    cs.setError('');
-                    cs.setCpDisplay('');
-                    cs.setForm(EMPTY_FORM);
-                    cs.setShowAdd(v => !v);
-                  }}
-                >
-                  <Plus className="h-4 w-4" />
-                  Слот
-                </Button>
               </>
             ) : (
               <>
@@ -158,20 +144,6 @@ function CalendarPageClient() {
                   onClick={() => cs.setDate(toDateString(new Date()))}
                 >
                   Сьогодні
-                </Button>
-                <Button
-                  className="ml-auto"
-                  onClick={() => {
-                    cs.setPendingSlot(null);
-                    cs.setEditingSlotId(null);
-                    cs.setError('');
-                    cs.setCpDisplay('');
-                    cs.setForm(EMPTY_FORM);
-                    cs.setShowAdd(v => !v);
-                  }}
-                >
-                  <Plus className="h-4 w-4" />
-                  Слот
                 </Button>
               </>
             )}

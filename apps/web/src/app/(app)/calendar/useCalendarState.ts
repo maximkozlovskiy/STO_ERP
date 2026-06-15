@@ -954,5 +954,15 @@ export function useCalendarState() {
     // Modal callbacks
     handleModalClose,
     handleModalSaved,
+
+    // Toolbar
+    handleAddSlot: () => {
+      setPendingSlot(null);
+      setEditingSlotId(null);
+      setError('');
+      setCpDisplay('');
+      setForm(EMPTY_FORM);
+      setShowAdd(v => !v);
+    },
   };
 }

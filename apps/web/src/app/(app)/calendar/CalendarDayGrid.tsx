@@ -354,16 +354,22 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
     openFormFromPending,
     cancelPending,
     handlePendingResizeStart,
+    handleAddSlot,
   } = state;
 
   return (
     <>
       {/* ── Hint ───────────────────────────────────────────────────────────── */}
       {!loading && lifts.length > 0 && !pendingSlot && !showAdd && (
-        <p className="text-xs text-muted-foreground mb-2">
-          Затисніть і перетягніть по рядку підйомника щоб створити слот. Тягніть краї для зміни
-          тривалості. Натисніть на проміжок щоб зберегти.
-        </p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-muted-foreground">
+            Затисніть і перетягніть по рядку підйомника щоб створити слот. Тягніть краї для зміни
+            тривалості. Натисніть на проміжок щоб зберегти.
+          </p>
+          <Button size="sm" onClick={handleAddSlot} leftIcon={<Plus className="h-4 w-4" />}>
+            Слот
+          </Button>
+        </div>
       )}
       {pendingSlot && !showAdd && (
         <p className="text-xs text-primary mb-2 font-medium">
