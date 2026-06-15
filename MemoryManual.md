@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+705e25e7 refactor(simplify): cleanup after /simplify review
+147cd3fe test(e2e): add coverage for RECEIPT tab and purchase-orders edit-mode
+de6913dc docs(skills): add cross-table helper + N-FK guard patterns to sto-optimize
 46b5df7f perf(optimize): parallel FK guards + per-line writes in PO/SD services
 eb5faa60 docs(memory): update MemoryManual after review 5c38dcd4 — BOM strip + lint deps verified
 5c38dcd4 fix(review): strip UTF-8 BOM from stock-documents/page.tsx
@@ -68,8 +71,12 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-optimize — parallel FK guards + per-line Promise.all writes у PO/SD)
+Дата: 2026-06-15 (post sto-sync — перевірка після refactor/simplify + RECEIPT + PO edit-mode)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest sync (2026-06-15, 705e25e7): /sto-sync аудит після refactor(simplify) + feat(RECEIPT) + feat(PO edit-mode). Розбіжностей не знайдено — 0 виправлень потрібно.
+  - Direction 1 (API→UI): всі backend модулі мають відповідний UI. RECEIPT тип підтримується у STOCK_DOC_TYPE_LABELS + dropdown рендерить через Object.entries(). brands/warranties/loyalty/pricing-rules мають UI у catalog/pricing-rules.
+  - Direction 2 (URL): всі apiFetch виклики відповідають контролерам. POST /stock-documents/:id/transition, PATCH /purchase-orders/:id з supplierId/warehouseId/contractId — всі URL коректні.
+  - Direction 3 (Types): StockDocumentCreateModal.form.type: string → передає рядок у body; @IsEnum(StockDocumentType) на бекенді коректно валідує строки з Prisma enum. StockDoc/PurchaseOrder інтерфейси на фронтенді відповідають ResponseDto.
 Latest optimize (2026-06-15, 46b5df7f, after 5c38dcd4): /sto-optimize аудит на recent RECEIPT type + PO contract clear + tab bar + FSM coverage комітах. 4 знахідки виправлені одним коммітом.
   - purchase-orders.service.ts update() — три послідовні findFirst (supplierId, warehouseId, contractId) переписані на Promise.all. Раніше editing post-feature 115fea9e (всі поля editable у DRAFT) міг робити 3 sequential RTT. Збережена логіка: stale-contract auto-clear, effectiveSupplierId computed once, помилки 404 у тому ж порядку.
   - stock-documents.service.ts transition() — у per-line $transaction loop: inventory.createMovement + stockDocumentLine.update(UoM) → Promise.all. Для TRANSFER додатково parallelizes writeoff (source warehouse) + receipt (target warehouse) — disjoint StockItem rows race-safe. Економія: ~1-2 RTT × N ліній.
