@@ -595,7 +595,7 @@ function PurchaseOrdersPageClient() {
       </div>
 
       {/* Section tabs */}
-      <div className="flex items-center border-b border-border -mx-4 md:-mx-6 px-4 md:px-6 shrink-0">
+      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
         {(
           [
             { key: 'orders', label: 'Замовлення постачальникам' },
@@ -606,10 +606,10 @@ function PurchaseOrdersPageClient() {
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap focus:outline-none',
+              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none',
               activeTab === tab.key
                 ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
+                : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             {tab.label}
