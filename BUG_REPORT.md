@@ -14575,3 +14575,71 @@ dialog "Нове замовлення постачальнику" [ref=e460]:  #
 - Unit (Web): 423 passed (39 files).
 - Contract тести для PATCH з supplierId/warehouseId/contractId: ✅ покрито Bugs #475-#477 (попередня сесія) + Bug #482 для POST transition.
 - Тести для FSM transition: ✅ покрито Bug #481 (14 service + 9 contract = 23 нові кейси).
+
+---
+
+## Session 2026-06-15 — E2E Playwright coverage (stock-documents RECEIPT tab + purchase-orders edit-mode + FSM)
+
+### Контекст
+
+Запуск `/sto-e2e` після додавання вкладки "Оприбуткування" (RECEIPT) на сторінці stock-documents і click-row-to-edit для purchase-orders. Завдання — переконатись що E2E покриває нові поведінки, виявити test-coverage gaps.
+
+### Загальний результат E2E suite
+
+- Pre-fix: 223 passed, 3 flaky, 15 skipped (5.4m).
+- 3 flaky (всі пройшли на retry) — НЕ реальні баги:
+  - `/work-orders — немає console.error` → 6× `ERR_CONNECTION_REFUSED` від API під час cold-compile race з паралельним throttler-навантаженням (dev rate limit + Next.js HMR). Уже задокументовано у MemoryManual / Bug #134/#343. Тест має retry, виправлення не потрібне.
+  - `crm.spec.ts — фільтр по типу контрагента / кнопка "Контрагент"` → timeout 20s на чекання add-button. Проходить на retry. Той самий cold-compile patern.
+
+### Bug #483 — [MEDIUM] test-coverage / E2E — stock-documents вкладка «Оприбуткування» (RECEIPT) не покрита
+
+- **Файл:** `apps/web/e2e/stock-documents.spec.ts` — describe «Складські документи — навігація»
+- **Сигнал:** додано `RECEIPT` тип у `TYPE_FILTERS` (`apps/web/src/app/(app)/stock-documents/page.tsx:127`) з лейблом «Оприбуткування» у `STOCK_DOC_TYPE_LABELS` (`packages/shared/src/constants/statuses.ts:194`), але існуючі тести шукали тільки «Списання»/«Переміщення». Якщо вкладку приберуть або змінять label — нічого не зловить.
+- **Severity:** MEDIUM (test-coverage gap для свіжо доданої UI-фічі).
+- **Статус:** [x] виправлено — додано 2 нові тести:
+  - `вкладка «Оприбуткування» (RECEIPT) присутня у фільтрах типу` — перевіряє що `button:has-text("Оприбуткування")` видимий.
+  - `клік на вкладку «Оприбуткування» — фільтрує таблицю по RECEIPT` — клік на tab → перевірка class `text-primary|border-primary` (active state).
+
+### Bug #484 — [HIGH] test-coverage / E2E — purchase-orders edit-mode через row click не покритий
+
+- **Файл:** `apps/web/e2e/crud-purchase-order.spec.ts`
+- **Сигнал:** `apps/web/src/app/(app)/purchase-orders/page.tsx:680-682` має `<TableRow onClick={() => setEditingPOId(po.id)}>` що відкриває `<PurchaseOrderCreateModal purchaseOrderId={...}>` у edit-mode. Існуючий FSM-тест використовує тільки API + Detail Modal, edit-mode через row click не перевіряється. Якщо `onClick` пропаде з рядка або edit-modal перестане відкриватись — тести залишаться зеленими.
+- **Severity:** HIGH (центральна UI-взаємодія для роботи з PO без E2E coverage).
+- **Статус:** [x] виправлено — додано тест `клік на рядок таблиці → відкриває edit-mode модалку з номером PO у заголовку`:
+  - Створює DRAFT PO через API.
+  - Шукає рядок у таблиці після clearDateFilter + search.
+  - Клікає на `td:has-text("${po.number}")` (перший td з checkbox має `stopPropagation` якщо bulk enabled — потрібно клікнути на data-cell, не на bulk checkbox).
+  - Очікує `[role="dialog"]` з `h2:has-text("${po.number}")` у title (edit-mode показує `poNumber` як title).
+  - Cleanup: Escape + leave-dialog handler + DELETE через API.
+
+### Bug #485 — [HIGH] test-coverage / E2E — FSM-кнопки у PurchaseOrderCreateModal edit-mode не покриті
+
+- **Файл:** `apps/web/e2e/crud-purchase-order.spec.ts`
+- **Сигнал:** `apps/web/src/components/ui/PurchaseOrderCreateModal.tsx:694-753` рендерить status pill з prev/next chevrons + dropdown menu `allowedTransitions.map(...)` що показує FSM-actions (DRAFT → "Підтвердити замовлення"/ORDERED + "Скасувати"/CANCELLED). Footer також містить destructive «Скасувати» (line 533-543). Якщо FSM dropdown зламається або не отримає transitions — тести існуючі лише через API/Detail Modal не зловлять.
+- **Severity:** HIGH — користувач натискає FSM-кнопки безпосередньо у edit-mode modal, не у Detail Modal.
+- **Статус:** [x] виправлено — додано тест `edit-mode модалка DRAFT PO — FSM-кнопка «Підтвердити замовлення» (ORDERED) присутня`:
+  - Відкриває edit-mode modal через row click.
+  - Клікає на status pill (`button:has-text("Чернетка")` — DRAFT label).
+  - Очікує dropdown menu з `button:has-text("Підтвердити замовлення")` (PO_STATUS_ACTION_LABELS['ORDERED']) і `button:has-text("Скасувати")` (PO_STATUS_ACTION_LABELS['CANCELLED']).
+  - **Технічна знахідка:** FSM-кнопки у footer відсутні для DRAFT — тільки destructive Cancel + shortcut «Оприбуткувати» (для ORDERED статусу). Generic transition робиться через status pill dropdown або через ChevronRight на next-step. Це **не баг** — навмисна UX-рішення, але мала бути задокументована у MemoryManual.
+
+### Перевірено і чисто
+
+- ✅ Всі 33 тести у `stock-documents.spec.ts` + `crud-purchase-order.spec.ts` після правок — passed (1.7m, 2 conditional skips: XLSX import + bulk actions під feature-flag).
+- ✅ FSM-маршрути узгоджені: `PO_STATUS_TRANSITIONS.DRAFT = ['ORDERED', 'CANCELLED']` (single source у `packages/shared/src/constants/statuses.ts:154`); відображається у dropdown за рахунок `allowedTransitions.map`.
+- ✅ Stock-documents `RECEIPT` тип повністю інтегрований: `TYPE_FILTERS` (page.tsx) + `STOCK_DOC_TYPE_LABELS` (shared) + `STOCK_DOC_TYPE_BADGE` (shared) + backend POST/GET coverage (Bugs #478-#480).
+
+### Файли змінено
+
+- `apps/web/e2e/stock-documents.spec.ts` — +2 нові тести у describe «Складські документи — навігація» (вкладка Оприбуткування + клік на неї).
+- `apps/web/e2e/crud-purchase-order.spec.ts` — +2 нові тести (row click → edit modal + FSM dropdown у edit modal).
+
+### Підсумок сесії
+
+- Знайдено багів: 3 (всі MEDIUM/HIGH — test-coverage gaps для нових UI-фіч і FSM-взаємодії).
+- Виправлено: 3.
+- Залишилось: 0.
+- TypeScript: ✅ unchanged (no source changes).
+- E2E (новi tests): 4 додано, всі passed.
+- E2E (modified files): 33 passed, 2 skipped (feature-flag conditional), 0 failed.
+- Flaky tests з повного runу (3) — environmental cold-compile race, не реальні баги, retry політика покриває.

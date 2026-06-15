@@ -232,4 +232,190 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       page.locator('button:has-text("Всі"), button:has-text("Чернетка")').first(),
     ).toBeVisible({ timeout: 15_000 });
   });
+
+  test('клік на рядок таблиці → відкриває edit-mode модалку з номером PO у заголовку', async ({
+    page,
+  }) => {
+    // page.tsx: <TableRow onClick={() => setEditingPOId(po.id)}> → PurchaseOrderCreateModal
+    // у edit-mode показує `poNumber` як title (не "Нове замовлення").
+    await page.goto('/purchase-orders');
+    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await clearDateFilter(page);
+
+    // Створити PO через API, щоб мати гарантований рядок.
+    const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
+    const data = await page.evaluate(
+      async ({ token }) => {
+        const [cpRes, wRes] = await Promise.all([
+          fetch('http://localhost:3000/api/counterparties?types=SUPPLIER,BOTH&limit=1', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch('http://localhost:3000/api/warehouses?limit=1', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+        const [cpData, wData] = await Promise.all([cpRes.json(), wRes.json()]);
+        return { supplierId: cpData.items?.[0]?.id, warehouseId: wData[0]?.id };
+      },
+      { token },
+    );
+    if (!data.supplierId || !data.warehouseId) {
+      test.skip(true, 'Немає постачальника або складу');
+      return;
+    }
+
+    const po = await page.evaluate(
+      async ({ token, supplierId, warehouseId }) => {
+        const r = await fetch('http://localhost:3000/api/purchase-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ supplierId, warehouseId }),
+        });
+        const text = await r.text();
+        return text ? JSON.parse(text) : null;
+      },
+      { token, ...data },
+    );
+    if (!po) {
+      test.skip(true, 'Не вдалось створити PO');
+      return;
+    }
+
+    // Перевідкрити сторінку щоб список оновився
+    await page.goto('/purchase-orders');
+    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await clearDateFilter(page);
+    const searchInput = page
+      .locator('input[placeholder*="Пошук"], input[placeholder*="пошук"]')
+      .first();
+    if (await searchInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await searchInput.fill(po.number);
+      await page.waitForTimeout(400);
+    }
+
+    const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+
+    // Клік на комірку з номером PO (перша td з checkbox має stopPropagation якщо bulk enabled,
+    // комірки з кнопками дій теж мають stopPropagation — а number cell завжди propagate)
+    await row.locator(`td:has-text("${po.number}")`).first().click();
+
+    // Edit modal має відкритись з номером PO у заголовку
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
+    await expect(modal.locator(`h2:has-text("${po.number}")`).first()).toBeVisible({
+      timeout: 5_000,
+    });
+
+    // Cleanup
+    await page.keyboard.press('Escape');
+    const leaveBtn = page.locator('button:has-text("Покинути"), button:has-text("Так")').first();
+    if (await leaveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await leaveBtn.click();
+    await page.evaluate(
+      async ({ token, id }) => {
+        await fetch(`http://localhost:3000/api/purchase-orders/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      },
+      { token, id: po.id },
+    );
+  });
+
+  test('edit-mode модалка DRAFT PO — FSM-кнопка «Підтвердити замовлення» (ORDERED) присутня', async ({
+    page,
+  }) => {
+    // PurchaseOrderCreateModal у edit-mode для DRAFT показує allowedTransitions з PO_STATUS_TRANSITIONS.
+    // DRAFT → [ORDERED, CANCELLED] → footer повинен містити «Підтвердити замовлення».
+    await page.goto('/purchase-orders');
+    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await clearDateFilter(page);
+
+    const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
+    const data = await page.evaluate(
+      async ({ token }) => {
+        const [cpRes, wRes] = await Promise.all([
+          fetch('http://localhost:3000/api/counterparties?types=SUPPLIER,BOTH&limit=1', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch('http://localhost:3000/api/warehouses?limit=1', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+        const [cpData, wData] = await Promise.all([cpRes.json(), wRes.json()]);
+        return { supplierId: cpData.items?.[0]?.id, warehouseId: wData[0]?.id };
+      },
+      { token },
+    );
+    if (!data.supplierId || !data.warehouseId) {
+      test.skip(true, 'Немає постачальника або складу');
+      return;
+    }
+
+    const po = await page.evaluate(
+      async ({ token, supplierId, warehouseId }) => {
+        const r = await fetch('http://localhost:3000/api/purchase-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ supplierId, warehouseId }),
+        });
+        const text = await r.text();
+        return text ? JSON.parse(text) : null;
+      },
+      { token, ...data },
+    );
+    if (!po) {
+      test.skip(true, 'Не вдалось створити PO');
+      return;
+    }
+
+    await page.goto('/purchase-orders');
+    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await clearDateFilter(page);
+    const searchInput = page
+      .locator('input[placeholder*="Пошук"], input[placeholder*="пошук"]')
+      .first();
+    if (await searchInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await searchInput.fill(po.number);
+      await page.waitForTimeout(400);
+    }
+
+    const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.locator(`td:has-text("${po.number}")`).first().click();
+
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
+
+    // FSM-перехід DRAFT → ORDERED у edit-mode реалізовано через status pill у формі:
+    // 1. Status pill кнопка "Чернетка" → клік → відкриває dropdown з allowedTransitions
+    // 2. У dropdown — "Підтвердити замовлення" (ORDERED) та "Скасувати" (CANCELLED)
+    // 3. Footer також містить кнопку "Скасувати" (destructive)
+    const statusPill = modal.locator('button:has-text("Чернетка")').first();
+    await expect(statusPill).toBeVisible({ timeout: 8_000 });
+    await statusPill.click();
+
+    // Dropdown menu з FSM-діями
+    await expect(modal.locator('button:has-text("Підтвердити замовлення")').first()).toBeVisible({
+      timeout: 8_000,
+    });
+    // Двa CANCELLED button: один у footer (destructive), один у dropdown
+    await expect(modal.locator('button:has-text("Скасувати")').first()).toBeVisible({
+      timeout: 8_000,
+    });
+
+    // Cleanup
+    await page.keyboard.press('Escape');
+    const leaveBtn = page.locator('button:has-text("Покинути"), button:has-text("Так")').first();
+    if (await leaveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await leaveBtn.click();
+    await page.evaluate(
+      async ({ token, id }) => {
+        await fetch(`http://localhost:3000/api/purchase-orders/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      },
+      { token, id: po.id },
+    );
+  });
 });

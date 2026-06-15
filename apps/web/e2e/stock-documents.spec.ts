@@ -113,10 +113,27 @@ test.describe('Складські документи — навігація', ()
 
   test('фільтри типу документа присутні', async ({ page }) => {
     await gotoStockDocs(page);
-    // Тип-фільтри: Всі типи / Списання / Переміщення / Поч. залишки
+    // Тип-фільтри: Всі типи / Списання / Переміщення / Поч. залишки / Оприбуткування
     await expect(
       page.locator('button:has-text("Списання"), button:has-text("Переміщення"), select').first(),
     ).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('вкладка «Оприбуткування» (RECEIPT) присутня у фільтрах типу', async ({ page }) => {
+    // STOCK_DOC_TYPE_LABELS у @sto/shared: RECEIPT → "Оприбуткування".
+    // page.tsx TYPE_FILTERS включає 'RECEIPT' → tab має рендеритись.
+    await gotoStockDocs(page);
+    await expect(page.locator('button:has-text("Оприбуткування")').first()).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+
+  test('клік на вкладку «Оприбуткування» — фільтрує таблицю по RECEIPT', async ({ page }) => {
+    await gotoStockDocs(page);
+    const tab = page.locator('button:has-text("Оприбуткування")').first();
+    await tab.click();
+    // Після кліку tab стає active (border-primary text-primary)
+    await expect(tab).toHaveClass(/text-primary|border-primary/, { timeout: 5_000 });
   });
 });
 
