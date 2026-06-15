@@ -55,18 +55,17 @@ f23abfd3  perf(optimize): tier-merger contract Promise.all + settlements paralle
 
 ## Довідники (читати за потреби)
 
-| Файл                                                     | Коли читати                                                      |
-| -------------------------------------------------------- | ---------------------------------------------------------------- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)             | API модулі (28), Prisma моделі (41), утиліти, sync               |
-| [docs/PATTERNS.md](docs/PATTERNS.md)                     | UI компоненти, hooks, B1-B7, EntityPickerField                   |
-| [docs/BUSINESS-RULES.md](docs/BUSINESS-RULES.md)         | FSM, інвентар, розрахунки, тенант-ізоляція                       |
-| [docs/GOTCHAS.md](docs/GOTCHAS.md)                       | Відомі пастки — читати перед новою фічею                         |
-| [CHANGELOG.md](CHANGELOG.md)                             | Журнал комітів по фічах                                          |
-| [docs/PHASES.md](docs/PHASES.md)                         | Поточна фаза і задачі                                            |
-| [docs/objects/work-order.md](docs/objects/work-order.md) | WorkOrder FSM + endpoints + UI — повний дос'є                    |
-| [docs/objects/](docs/objects/)                           | Дос'є агрегатів (counterparty, inventory, settlements, calendar) |
-| [docs/specs/\_TEMPLATE.md](docs/specs/_TEMPLATE.md)      | Шаблон специфікації нової фічі                                   |
-| [.claude/memory/MEMORY.md](.claude/memory/MEMORY.md)     | User preferences                                                 |
+| Файл                                                 | Коли читати                                                                    |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | API модулі (28), Prisma моделі (41), утиліти, sync                             |
+| [docs/PATTERNS.md](docs/PATTERNS.md)                 | UI компоненти, hooks, B1-B7, EntityPickerField                                 |
+| [docs/BUSINESS-RULES.md](docs/BUSINESS-RULES.md)     | FSM, інвентар, розрахунки, тенант-ізоляція                                     |
+| [docs/GOTCHAS.md](docs/GOTCHAS.md)                   | Відомі пастки — читати перед новою фічею                                       |
+| [CHANGELOG.md](CHANGELOG.md)                         | Журнал комітів по фічах                                                        |
+| [docs/PHASES.md](docs/PHASES.md)                     | Поточна фаза і задачі                                                          |
+| [docs/objects/](docs/objects/)                       | Дос'є агрегатів: WO, Invoice, PO, StockDoc, Counterparty, Good, Work, Calendar |
+| [docs/specs/\_TEMPLATE.md](docs/specs/_TEMPLATE.md)  | Шаблон специфікації нової фічі                                                 |
+| [.claude/memory/MEMORY.md](.claude/memory/MEMORY.md) | User preferences                                                               |
 
 ---
 
