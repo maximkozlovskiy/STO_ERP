@@ -732,97 +732,149 @@ export default function PurchaseOrdersPage() {
           </div>
 
           {/* Returns table */}
-          {srLoading ? (
-            <div className="flex flex-1 items-center justify-center py-12">
-              <Spinner />
-            </div>
-          ) : srItems.length === 0 ? (
-            <EmptyState
-              icon={ShoppingCart}
-              title="Повернень не знайдено"
-              description="Створіть перше повернення постачальнику"
-              action={
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setSrEditId(null);
-                    setSrCreateOpen(true);
-                  }}
-                >
-                  <Plus className="mr-1 h-4 w-4" />
-                  Повернення
-                </Button>
-              }
-            />
-          ) : (
-            <div className="overflow-x-auto rounded-md border border-border">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border bg-surface-hover">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Номер</th>
-                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">
-                      Постачальник
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Склад</th>
-                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">
-                      Статус
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">
-                      Сума, ₴
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Дата</th>
-                    <th className="w-20" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {srItems.map(sr => (
-                    <tr key={sr.id} className="hover:bg-surface-hover/50">
-                      <td className="px-3 py-2 font-mono text-xs">{sr.number}</td>
-                      <td className="px-3 py-2">{sr.supplierName ?? '—'}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{sr.warehouseName ?? '—'}</td>
-                      <td className="px-3 py-2">
-                        <Badge variant={SUPPLIER_RETURN_STATUS_BADGE[sr.status] as BadgeVariant}>
-                          {SUPPLIER_RETURN_STATUS_LABELS[sr.status] ?? sr.status}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {fmtMoney(sr.totalAmount)}
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {sr.documentDate ? fmtDate(sr.documentDate) : '—'}
-                      </td>
-                      <td className="px-2 py-2">
-                        <div className="flex items-center gap-1 justify-end">
-                          <button
-                            className="rounded p-1 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
-                            title="Відкрити"
-                            onClick={() => {
-                              setSrEditId(sr.id);
-                              setSrCreateOpen(true);
-                            }}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          {sr.status === 'DRAFT' && (
-                            <button
-                              className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                              title="Видалити"
-                              onClick={async () => {
-                                await deleteSupplierReturn.mutateAsync(sr.id);
-                                if (features.toastEnabled) toast.success('Повернення видалено');
+          <div className="flex flex-1 min-h-0 mt-2">
+            <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {srVisibleColumns.map(col => (
+                      <TableHead
+                        key={col.key}
+                        className={col.key === 'amount' ? 'text-right' : undefined}
+                        {...srDragProps(col.key)}
+                      >
+                        {col.label}
+                      </TableHead>
+                    ))}
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {srLoading && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={srVisibleColumns.length + 1}
+                        className="py-10 text-center"
+                      >
+                        <div className="flex justify-center">
+                          <Spinner size="md" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!srLoading && srItems.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={srVisibleColumns.length + 1} className="p-0">
+                        <EmptyState
+                          icon={ShoppingCart}
+                          title="Повернень не знайдено"
+                          action={
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setSrEditId(null);
+                                setSrCreateOpen(true);
                               }}
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Plus className="mr-1 h-4 w-4" />
+                              Повернення
+                            </Button>
+                          }
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!srLoading &&
+                    srItems.map(sr => (
+                      <TableRow
+                        key={sr.id}
+                        className="group transition-colors cursor-pointer"
+                        onClick={() => {
+                          setSrEditId(sr.id);
+                          setSrCreateOpen(true);
+                        }}
+                      >
+                        {srVisibleColumns.map(col => {
+                          if (col.key === 'number')
+                            return (
+                              <TableCell key="number" className="font-medium text-[13px]">
+                                {sr.number}
+                              </TableCell>
+                            );
+                          if (col.key === 'supplier')
+                            return (
+                              <TableCell key="supplier" className="text-[13px]">
+                                {sr.supplierName ?? '—'}
+                              </TableCell>
+                            );
+                          if (col.key === 'warehouse')
+                            return (
+                              <TableCell
+                                key="warehouse"
+                                className="text-[13px] text-muted-foreground"
+                              >
+                                {sr.warehouseName ?? '—'}
+                              </TableCell>
+                            );
+                          if (col.key === 'status')
+                            return (
+                              <TableCell key="status">
+                                <Badge
+                                  variant={SUPPLIER_RETURN_STATUS_BADGE[sr.status] as BadgeVariant}
+                                >
+                                  {SUPPLIER_RETURN_STATUS_LABELS[sr.status] ?? sr.status}
+                                </Badge>
+                              </TableCell>
+                            );
+                          if (col.key === 'amount')
+                            return (
+                              <TableCell
+                                key="amount"
+                                className="text-right tabular-nums text-[13px]"
+                              >
+                                {fmtMoney(sr.totalAmount)}
+                              </TableCell>
+                            );
+                          if (col.key === 'date')
+                            return (
+                              <TableCell key="date" className="text-[13px] text-muted-foreground">
+                                {sr.documentDate ? fmtDate(sr.documentDate) : '—'}
+                              </TableCell>
+                            );
+                          return null;
+                        })}
+                        <TableCell className="w-16" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100">
+                            <button
+                              className="rounded p-1 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
+                              title="Відкрити"
+                              onClick={() => {
+                                setSrEditId(sr.id);
+                                setSrCreateOpen(true);
+                              }}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                            {sr.status === 'DRAFT' && (
+                              <button
+                                className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                title="Видалити"
+                                onClick={async () => {
+                                  await deleteSupplierReturn.mutateAsync(sr.id);
+                                  if (features.toastEnabled) toast.success('Повернення видалено');
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -947,7 +999,7 @@ export default function PurchaseOrdersPage() {
           )}
 
           {/* Table + DetailPanel */}
-          <div className="flex flex-1 min-h-0">
+          <div className="flex flex-1 min-h-0 mt-2">
             <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
               <Table>
                 <TableHeader>
