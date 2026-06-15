@@ -66,8 +66,8 @@ function CalendarPageClient() {
         </div>
       </div>
 
-      {/* Scrollable content area */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* Fixed: nav + form (shrink-0), then scrollable grid */}
+      <div className="flex-1 min-h-0 flex flex-col">
         {/* Date / month navigation — hidden in stats view */}
         {cs.calView !== 'stats' && (
           <div className="flex items-center gap-4 mb-3">
@@ -206,45 +206,48 @@ function CalendarPageClient() {
           setCpDisplay={cs.setCpDisplay}
         />
 
-        {/* ── View routing ─────────────────────────────────────────────────── */}
-        {cs.calView === 'month' && (
-          <CalendarMonthView
-            yearMonth={cs.yearMonth}
-            monthSlots={cs.monthSlots}
-            monthLoading={cs.monthLoading}
-            monthError={cs.monthError}
-            nowMs={cs.nowMs}
-            onDayClick={dayStr => {
-              cs.setDate(dayStr);
-              cs.setCalView('day');
-            }}
-          />
-        )}
+        {/* ── View routing — scrollable ────────────────────────────────────── */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {cs.calView === 'month' && (
+            <CalendarMonthView
+              yearMonth={cs.yearMonth}
+              monthSlots={cs.monthSlots}
+              monthLoading={cs.monthLoading}
+              monthError={cs.monthError}
+              nowMs={cs.nowMs}
+              onDayClick={dayStr => {
+                cs.setDate(dayStr);
+                cs.setCalView('day');
+              }}
+            />
+          )}
 
-        {cs.calView === 'stats' && (
-          <CalendarStatsTab
-            lifts={cs.lifts}
-            statsSlots={cs.statsSlots}
-            statsLoading={cs.statsLoading}
-            statsError={cs.statsError}
-            statsPeriod={cs.statsPeriod}
-            setStatsPeriod={cs.setStatsPeriod}
-            statsFrom={cs.statsFrom}
-            setStatsFrom={cs.setStatsFrom}
-            statsTo={cs.statsTo}
-            setStatsTo={cs.setStatsTo}
-            statsRangeTooLong={cs.statsRangeTooLong}
-            date={cs.date}
-            setDate={cs.setDate}
-            statsRange={cs.statsRange}
-          />
-        )}
+          {cs.calView === 'stats' && (
+            <CalendarStatsTab
+              lifts={cs.lifts}
+              statsSlots={cs.statsSlots}
+              statsLoading={cs.statsLoading}
+              statsError={cs.statsError}
+              statsPeriod={cs.statsPeriod}
+              setStatsPeriod={cs.setStatsPeriod}
+              statsFrom={cs.statsFrom}
+              setStatsFrom={cs.setStatsFrom}
+              statsTo={cs.statsTo}
+              setStatsTo={cs.setStatsTo}
+              statsRangeTooLong={cs.statsRangeTooLong}
+              date={cs.date}
+              setDate={cs.setDate}
+              statsRange={cs.statsRange}
+            />
+          )}
 
-        {cs.calView === 'day' && <CalendarDayGrid state={cs} />}
+          {cs.calView === 'day' && <CalendarDayGrid state={cs} />}
 
-        <ConfirmDialog {...cs.dialogProps} />
+          <ConfirmDialog {...cs.dialogProps} />
+        </div>
+        {/* end scrollable grid */}
       </div>
-      {/* end scrollable content */}
+      {/* end content col */}
     </div>
   );
 }
