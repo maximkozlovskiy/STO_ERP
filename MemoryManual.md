@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+a26cd68a fix(review): purchase-orders dedup lineId guard + drop redundant StockDocumentType casts
 705e25e7 refactor(simplify): cleanup after /simplify review
 147cd3fe test(e2e): add coverage for RECEIPT tab and purchase-orders edit-mode
 de6913dc docs(skills): add cross-table helper + N-FK guard patterns to sto-optimize
@@ -71,8 +72,19 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-sync — перевірка після refactor/simplify + RECEIPT + PO edit-mode)
+Дата: 2026-06-15 (post sto-review — Bug #483 dedup lineId + drop redundant StockDocumentType casts)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest review (2026-06-15, a26cd68a, after 705e25e7): /sto-review full deep-dive на 4 файли з simplify-commit 705e25e7 (PO/SD service + dto + page). 1 IMPORTANT + 3 SUGGESTION виправлені.
+  - IMPORTANT: purchase-orders.service.ts receive() — без dedup-guard клієнт міг відправити дві recv-записи з тим самим lineId і Promise.all виконав би два tx.purchaseOrderLine.update({ increment }) → подвоєний receivedQty. Це latent bug (існував і у старому for-loop), не регрес 705e25e7. Додано pre-$transaction перевірку: throws BadRequestException ще до DB-роботи. Регресія-тест Bug #483 (84 tests pass).
+  - SUGGESTION: stock-documents.service.ts мав три зайві `as StockDocumentType` касти (line 177 `dto.type`, line 316 `doc.type`) — простежено: після simplify @IsEnum(StockDocumentType) у DTO `dto.type` уже типізовано як enum; Prisma `doc.type` також типізовано через schema. Касти видалено.
+  - SUGGESTION: stock-documents.service.ts line 325-327 — `(line as typeof line & { good?: ... })` каст ослаблював правильний Prisma include-тип. Видалено — `line.good?.unitId ?? null` працює напряму.
+  - SUGGESTION: додані коментарі що Prisma всередині $transaction(async tx => ...) серіалізує DB-операції на pinned connection, тож Promise.all дає JS-overhead-economy, не паралелізм. Race-safety StockItem upsert збережено (Postgres ON CONFLICT serialize під одним connection).
+  - Concerns from prompt — verified:
+    · `shouldValidateContract = !!dto.contractId` — edge cases OK (`null`/`undefined`/`""` → false; `null` гілка ловиться у наступній тернарці; `''` уже трансформований у `undefined` через @Transform(emptyToUndefined) перед сервісом).
+    · Promise.all rejection — у $transaction(async tx) fail-fast Promise.all → rollback всієї tx → atomicity preserved. ✅
+    · @IsEnum(StockDocumentType) type-safety — `dto.type` стало enum, всі касти зайві (виправлено).
+    · receive activeLines filter predicate — typed correctly: `(x): x is { recv: ReceiveLineDto; line: NonNullable<...> }` працює.
+  - Pre-commit hook (lint-staged + prettier) запустився чисто. Тести: API PO 37 + SD 6 + PO contract 26 + SD contract 15 = 84/84 ✅. tsc: api/web/shared 0 errors. Frontend не торкався.
 Latest sync (2026-06-15, 705e25e7): /sto-sync аудит після refactor(simplify) + feat(RECEIPT) + feat(PO edit-mode). Розбіжностей не знайдено — 0 виправлень потрібно.
   - Direction 1 (API→UI): всі backend модулі мають відповідний UI. RECEIPT тип підтримується у STOCK_DOC_TYPE_LABELS + dropdown рендерить через Object.entries(). brands/warranties/loyalty/pricing-rules мають UI у catalog/pricing-rules.
   - Direction 2 (URL): всі apiFetch виклики відповідають контролерам. POST /stock-documents/:id/transition, PATCH /purchase-orders/:id з supplierId/warehouseId/contractId — всі URL коректні.
