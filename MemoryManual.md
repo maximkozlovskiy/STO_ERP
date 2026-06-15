@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+e33a5b58 docs(skills): add chunked bulk-update + dedup pattern to sto-optimize
+8fff4289 perf(optimize): parallelize chunked good.update loops with dedup safety
+f1b6a8cd docs(memory): update MemoryManual after review a26cd68a — Bug #483 dedup + cast cleanup
 a26cd68a fix(review): purchase-orders dedup lineId guard + drop redundant StockDocumentType casts
 705e25e7 refactor(simplify): cleanup after /simplify review
 147cd3fe test(e2e): add coverage for RECEIPT tab and purchase-orders edit-mode
@@ -72,8 +75,18 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-review — Bug #483 dedup lineId + drop redundant StockDocumentType casts)
+Дата: 2026-06-15 (post sto-optimize 8fff4289 — chunked bulk-update parallelization з dedup safety)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest optimize (2026-06-15, 8fff4289 + e33a5b58, after a26cd68a): /sto-optimize-agent аудит на cleanup-commit 705e25e7 + simplify (TYPE_FILTERS/STATUS_FILTERS, @IsEnum types). 3 знахідки виправлені одним комітом (8fff4289), 1 skill update (e33a5b58).
+  - apps/api/src/modules/inventory/pricing.service.ts line 164 — applyRuleToGoods: `for (const u of chunk) await tx.good.update(...)` всередині $transaction → `Promise.all(chunk.map(...))`. Plan accumulator походить з goods.findMany result — кожен goodId унікальний по PK, дублі неможливі, dedup не потрібен.
+  - apps/api/src/modules/purchase-orders/purchase-orders.service.ts line 672 — applyPricing: `for (const u of chunk) await tx.good.updateMany(...)` → `Promise.all(chunk.map(...))`. ОДНАК: PO може мати кілька ліній з тим самим goodId за різну ціну → plan може мати дублі. Додано `dedupedPlan = Array.from(new Map(plan.map(u => [u.goodId, u])).values())` ДО Promise.all щоб зберегти last-write-wins старого sequential code. priceHistory.createMany тепер пише unique-per-good (raніше дублював).
+  - apps/api/src/modules/xlsx/xlsx.service.ts line 918 — applyPricingFromList: те саме — xlsx import може мати кілька rows з різним SKU/barcode на той самий good → dedup перед Promise.all.
+  - Concerns from prompt — verified:
+    · Чи є serial for-await loops у інших service-файлах (не PO/SD)? — Так, 3 chunked update loops (pricing/PO/xlsx) — всі виправлені. work-orders.service.ts reserveParts/releasePartReservations/writeOffPartsAndCharge мають for-loop з sequential createMovement — НЕ виправлено бо різні parts можуть ділити (goodId, warehouseId) StockItem composite key, race-unsafe. RELEASE→WRITEOFF order критичний (logic-bug comment вище).
+    · TYPE_FILTERS/STATUS_FILTERS — module-level Object.keys(STOCK_DOC_TYPE_LABELS). Плейн object literal, рядкові ключі → ES2015+ гарантує insertion order. Stable. ✅
+    · Чи є новий N+1 після рефакторингу? — Ні. PO update/receive Promise.all FK guards добре оптимізовані. SD update/transition теж. Жодного нового sequential findFirst pattern.
+  - Skill update (e33a5b58): додано новий патерн "Chunked bulk-update + Map-dedup last-wins" — наголошує на необхідності verify-source-uniqueness ДО Promise.all bulk pattern.
+  - Tests: 128 affected pass — pricing 32 + PO 37 + PO contract 26 + pricing-rules contract 17 + xlsx 12 + xlsx contract 4. TypeScript api+web 0 errors.
 Latest review (2026-06-15, a26cd68a, after 705e25e7): /sto-review full deep-dive на 4 файли з simplify-commit 705e25e7 (PO/SD service + dto + page). 1 IMPORTANT + 3 SUGGESTION виправлені.
   - IMPORTANT: purchase-orders.service.ts receive() — без dedup-guard клієнт міг відправити дві recv-записи з тим самим lineId і Promise.all виконав би два tx.purchaseOrderLine.update({ increment }) → подвоєний receivedQty. Це latent bug (існував і у старому for-loop), не регрес 705e25e7. Додано pre-$transaction перевірку: throws BadRequestException ще до DB-роботи. Регресія-тест Bug #483 (84 tests pass).
   - SUGGESTION: stock-documents.service.ts мав три зайві `as StockDocumentType` касти (line 177 `dto.type`, line 316 `doc.type`) — простежено: після simplify @IsEnum(StockDocumentType) у DTO `dto.type` уже типізовано як enum; Prisma `doc.type` також типізовано через schema. Касти видалено.
