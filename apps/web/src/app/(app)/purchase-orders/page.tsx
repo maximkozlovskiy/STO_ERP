@@ -54,6 +54,13 @@ import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { useListPage } from '@/hooks/useListPage';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { PurchaseOrderCreateModal } from '@/components/ui/PurchaseOrderCreateModal';
+import { SupplierReturnCreateModal } from '@/components/ui/SupplierReturnCreateModal';
+import {
+  useSupplierReturns,
+  useDeleteSupplierReturn,
+  type SupplierReturn,
+} from '@/hooks/api/useSupplierReturns';
+import { SUPPLIER_RETURN_STATUS_LABELS, SUPPLIER_RETURN_STATUS_BADGE } from '@sto/shared';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
@@ -199,6 +206,20 @@ export default function PurchaseOrdersPage() {
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState<PurchaseOrder | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
+
+  // Supplier returns state
+  const [srSearch, setSrSearch] = useState('');
+  const debouncedSrSearch = useDebounce(srSearch);
+  const [srStatus, setSrStatus] = useState('');
+  const [srCreateOpen, setSrCreateOpen] = useState(false);
+  const [srEditId, setSrEditId] = useState<string | null>(null);
+  const { data: srData, isLoading: srLoading } = useSupplierReturns({
+    q: debouncedSrSearch,
+    status: srStatus,
+    limit: 50,
+  });
+  const srItems = srData?.items ?? ([] as SupplierReturn[]);
+  const deleteSupplierReturn = useDeleteSupplierReturn();
 
   const [saving, setSaving] = useState(false);
 
@@ -507,8 +528,140 @@ export default function PurchaseOrdersPage() {
       </div>
 
       {activeTab === 'returns' && (
-        <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
-          Повернення постачальнику — буде доступно найближчим часом
+        <div className="flex flex-col gap-3 flex-1">
+          {/* Returns toolbar */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-48">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={srSearch}
+                onChange={e => setSrSearch(e.target.value)}
+                placeholder="Пошук повернень..."
+                className="pl-9"
+              />
+            </div>
+            <select
+              value={srStatus}
+              onChange={e => setSrStatus(e.target.value)}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">Всі статуси</option>
+              {Object.entries(SUPPLIER_RETURN_STATUS_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <Button
+              size="sm"
+              onClick={() => {
+                setSrEditId(null);
+                setSrCreateOpen(true);
+              }}
+            >
+              <Plus className="mr-1 h-4 w-4" />
+              Нове повернення
+            </Button>
+          </div>
+
+          {/* Returns table */}
+          {srLoading ? (
+            <div className="flex flex-1 items-center justify-center py-12">
+              <Spinner />
+            </div>
+          ) : srItems.length === 0 ? (
+            <EmptyState
+              icon={ShoppingCart}
+              title="Повернень не знайдено"
+              description="Створіть перше повернення постачальнику"
+              action={
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setSrEditId(null);
+                    setSrCreateOpen(true);
+                  }}
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  Нове повернення
+                </Button>
+              }
+            />
+          ) : (
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border bg-surface-hover">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Номер</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                      Постачальник
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Склад</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                      Статус
+                    </th>
+                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">
+                      Сума, ₴
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Дата</th>
+                    <th className="w-20" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {srItems.map(sr => (
+                    <tr key={sr.id} className="hover:bg-surface-hover/50">
+                      <td className="px-3 py-2 font-mono text-xs">{sr.number}</td>
+                      <td className="px-3 py-2">{sr.supplierName ?? '—'}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{sr.warehouseName ?? '—'}</td>
+                      <td className="px-3 py-2">
+                        <Badge
+                          variant={
+                            SUPPLIER_RETURN_STATUS_BADGE[
+                              sr.status
+                            ] as import('@sto/shared').BadgeVariant
+                          }
+                        >
+                          {SUPPLIER_RETURN_STATUS_LABELS[sr.status] ?? sr.status}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {fmtMoney(sr.totalAmount)}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {sr.documentDate ? fmtDate(sr.documentDate) : '—'}
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-1 justify-end">
+                          <button
+                            className="rounded p-1 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
+                            title="Відкрити"
+                            onClick={() => {
+                              setSrEditId(sr.id);
+                              setSrCreateOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          {sr.status === 'DRAFT' && (
+                            <button
+                              className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                              title="Видалити"
+                              onClick={async () => {
+                                await deleteSupplierReturn.mutateAsync(sr.id);
+                                if (features.toastEnabled) toast.success('Повернення видалено');
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -1020,6 +1173,20 @@ export default function PurchaseOrdersPage() {
       </Modal>
       <DirtyConfirmDialog {...dirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
+
+      {/* Supplier returns modal */}
+      <SupplierReturnCreateModal
+        open={srCreateOpen}
+        onClose={() => {
+          setSrCreateOpen(false);
+          setSrEditId(null);
+        }}
+        onSaved={() => {
+          setSrCreateOpen(false);
+          setSrEditId(null);
+        }}
+        editId={srEditId}
+      />
     </div>
   );
 }

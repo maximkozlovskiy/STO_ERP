@@ -148,6 +148,7 @@ async function main() {
     { documentType: DocumentType.WORK_ORDER, prefix: 'НРД' },
     { documentType: DocumentType.INVOICE, prefix: 'РАХ' },
     { documentType: DocumentType.PURCHASE_ORDER, prefix: 'ЗАМ' },
+    { documentType: DocumentType.SUPPLIER_RETURN, prefix: 'ПВП' },
     { documentType: DocumentType.STOCK_RECEIPT, prefix: 'ПРХ' },
     { documentType: DocumentType.STOCK_WRITEOFF, prefix: 'СПС' },
     { documentType: DocumentType.STOCK_TRANSFER, prefix: 'ПРМ' },

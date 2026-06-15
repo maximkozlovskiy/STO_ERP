@@ -165,6 +165,20 @@ export const PO_STATUS_ACTION_LABELS: Record<string, string> = {
   PARTIAL: 'Часткове отримання',
 };
 
+// ─── Supplier Returns ─────────────────────────────────────────────────────────
+
+export const SUPPLIER_RETURN_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Чернетка',
+  CONFIRMED: 'Підтверджено',
+  CANCELLED: 'Скасовано',
+};
+
+export const SUPPLIER_RETURN_STATUS_BADGE: Record<string, BadgeVariant> = {
+  DRAFT: 'secondary',
+  CONFIRMED: 'success',
+  CANCELLED: 'destructive',
+};
+
 // ─── Stock Documents ──────────────────────────────────────────────────────────
 
 export const STOCK_DOC_STATUS_LABELS: Record<string, string> = {
