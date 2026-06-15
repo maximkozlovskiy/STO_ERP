@@ -316,12 +316,29 @@ syncVersion BigInt    @default(0)
 
 ## Key Files to Read Before Any Task
 
-1. `MemoryManual.md` — **першим завжди**: поточний стан, gotchas, що вже зроблено
-2. `packages/database/prisma/schema.prisma` — моделі БД
-3. `packages/shared/src/types/index.ts` — shared типи
-4. `docs/architecture/` — ADR файли
-5. Відповідний `*.service.ts` та `*.page.tsx` — конкретний модуль
-6. `apps/web/src/app/work-orders/page.tsx` — **еталон списку** (перед будь-якою новою сторінкою)
+**Завжди (перший крок):**
+
+1. `MemoryManual.md` — поточний стан, gotchas, що вже зроблено
+
+**За типом задачі (читати після MemoryManual):**
+
+| Тип задачі                                  | Що читати                                                             |
+| ------------------------------------------- | --------------------------------------------------------------------- |
+| Торкаєшся агрегату                          | `docs/objects/<entity>.md` — FSM, endpoints, бізнес-правила, UI файли |
+| Нова сторінка / компонент                   | `docs/GOTCHAS.md` — SSR пастки, auth патерни, UI антипатерни          |
+| Зміна сервісу / FSM / інвентар / розрахунки | `docs/BUSINESS-RULES.md` — інваріанти, singleton-сервіси              |
+| Нова Prisma модель / міграція               | `packages/database/prisma/schema.prisma`                              |
+| Еталон для нової сторінки-списку            | `apps/web/src/app/work-orders/page.tsx`                               |
+
+**Aggregate → dossier lookup:**
+`WorkOrder→docs/objects/work-order.md` | `Invoice→invoice.md` | `PurchaseOrder→purchase-order.md` | `StockDocument→stock-document.md` | `Counterparty→counterparty.md` | `Good→good.md` | `Work/WorkCategory→work.md` | `CalendarSlot→calendar.md` | `StockItem/StockMovement→inventory.md` | `SettlementAccount/Transaction→settlements.md`
+
+**За запитом (не щоразу):**
+
+- `packages/shared/src/types/index.ts` — shared типи
+- `docs/architecture/` — ADR файли
+- `docs/PATTERNS.md` — B1-B7 universal patterns, EntityPickerField
+- `docs/ARCHITECTURE.md` — всі 41 модель, 28 модулів, singleton сервіси
 
 ---
 
