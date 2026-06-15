@@ -100,6 +100,24 @@ const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> =
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
 
+const COLUMNS_SR: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
+  { key: 'number', label: 'Номер', defaultVisible: true },
+  { key: 'supplier', label: 'Постачальник', defaultVisible: true },
+  { key: 'warehouse', label: 'Склад', defaultVisible: true },
+  { key: 'status', label: 'Статус', defaultVisible: true },
+  { key: 'amount', label: 'Сума', defaultVisible: true },
+  { key: 'date', label: 'Дата документа', defaultVisible: true },
+];
+const COLUMNS_SR_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS_SR.map(c => c.key));
+
+interface SrFilters extends Record<string, unknown> {
+  status: string;
+  q: string;
+  showDeleted: boolean;
+  dateFrom: string;
+  dateTo: string;
+}
+
 type PurchaseTab = 'orders' | 'returns';
 
 export default function PurchaseOrdersPage() {
@@ -211,16 +229,75 @@ export default function PurchaseOrdersPage() {
   const [showDetail, setShowDetail] = useState<PurchaseOrder | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
 
-  // Supplier returns state
+  // Supplier returns — useListPage (columns, detail-panel, saved-filters)
+  const {
+    page: srPage,
+    setPage: setSrPage,
+    resetPage: resetSrPage,
+    showDeleted: srShowDeleted,
+    setShowDeleted: setSrShowDeleted,
+    activeSavedFilterId: srActiveSavedFilterId,
+    setActiveSavedFilterId: setSrActiveSavedFilterId,
+    tableColumns: {
+      visibleKeys: srColVisible,
+      visibleColumns: srVisibleColumns,
+      orderedColumns: srOrderedColumns,
+      order: srOrder,
+      customLabels: srCustomLabels,
+      toggle: toggleSrCol,
+      reorder: reorderSr,
+      renameColumn: renameSrColumn,
+      resetConfig: resetSrConfig,
+    },
+    dragProps: srDragProps,
+    detailPanel: srDetailPanel,
+    panelConfig: srPanelConfig,
+    savedFilters: { saved: srSavedFilters, save: saveSrFilter, remove: removeSrFilter },
+    features: srFeatures,
+    limit: srLimit,
+  } = useListPage<SrFilters>('supplier-returns', COLUMNS_SR, { defaultLimit: 50 });
+
+  // Supplier returns filter state
   const [srSearch, setSrSearch] = useState('');
   const debouncedSrSearch = useDebounce(srSearch);
   const [srStatus, setSrStatus] = useState('');
+  const [srDateFrom, setSrDateFrom] = useState(() => kyivToday());
+  const [srDateTo, setSrDateTo] = useState(() => kyivToday());
   const [srCreateOpen, setSrCreateOpen] = useState(false);
   const [srEditId, setSrEditId] = useState<string | null>(null);
+
+  const handleSaveSrFilter = useCallback(
+    (name: string) => {
+      const preset = saveSrFilter(name, {
+        status: srStatus,
+        q: srSearch,
+        showDeleted: srShowDeleted,
+        dateFrom: srDateFrom,
+        dateTo: srDateTo,
+      });
+      setSrActiveSavedFilterId(preset.id);
+      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+    },
+    [
+      saveSrFilter,
+      srStatus,
+      srSearch,
+      srShowDeleted,
+      srDateFrom,
+      srDateTo,
+      features.toastEnabled,
+      setSrActiveSavedFilterId,
+    ],
+  );
+
   const { data: srData, isLoading: srLoading } = useSupplierReturns({
     q: debouncedSrSearch,
     status: srStatus,
-    limit: 50,
+    showDeleted: srShowDeleted,
+    dateFrom: srDateFrom || undefined,
+    dateTo: srDateTo || undefined,
+    page: srPage,
+    limit: srLimit,
   });
   const srItems = srData?.items ?? ([] as SupplierReturn[]);
   const deleteSupplierReturn = useDeleteSupplierReturn();
@@ -533,39 +610,125 @@ export default function PurchaseOrdersPage() {
 
       {activeTab === 'returns' && (
         <div className="flex flex-col gap-3 flex-1">
+          {/* Saved filters */}
+          {srFeatures.savedFiltersEnabled && (
+            <SavedFiltersBar<SrFilters>
+              saved={srSavedFilters}
+              activeId={srActiveSavedFilterId}
+              onApply={preset => {
+                setSrStatus(preset.filters.status ?? '');
+                setSrSearch(preset.filters.q ?? '');
+                setSrShowDeleted(preset.filters.showDeleted ?? false);
+                setSrDateFrom(preset.filters.dateFrom ?? '');
+                setSrDateTo(preset.filters.dateTo ?? '');
+                resetSrPage();
+                setSrActiveSavedFilterId(preset.id);
+              }}
+              onSave={handleSaveSrFilter}
+              onRemove={removeSrFilter}
+              hideSaveButton
+            />
+          )}
+
+          {/* Status filter chips */}
+          <div className="flex flex-wrap gap-1.5 shrink-0">
+            {(['', 'DRAFT', 'CONFIRMED', 'CANCELLED'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => {
+                  setSrStatus(s);
+                  resetSrPage();
+                  setSrActiveSavedFilterId(null);
+                }}
+                className={cn(
+                  'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
+                  srStatus === s
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
+                )}
+              >
+                {s ? SUPPLIER_RETURN_STATUS_LABELS[s] : 'Всі'}
+              </button>
+            ))}
+          </div>
+
           {/* Returns toolbar */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-48">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={srSearch}
-                onChange={e => setSrSearch(e.target.value)}
-                placeholder="Пошук повернень..."
-                className="pl-9"
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <Input
+              value={srSearch}
+              onChange={e => {
+                setSrSearch(e.target.value);
+                resetSrPage();
+                setSrActiveSavedFilterId(null);
+              }}
+              placeholder="Пошук за номером, постачальником..."
+              leftElement={<Search />}
+              className="w-64 h-8 text-[13px]"
+            />
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] text-muted-foreground shrink-0">З</span>
+              <DatePickerInput
+                value={srDateFrom}
+                onChange={v => {
+                  setSrDateFrom(v);
+                  resetSrPage();
+                  setSrActiveSavedFilterId(null);
+                }}
+                max={srDateTo || undefined}
+                className="w-36"
               />
             </div>
-            <select
-              value={srStatus}
-              onChange={e => setSrStatus(e.target.value)}
-              className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">Всі статуси</option>
-              {Object.entries(SUPPLIER_RETURN_STATUS_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </select>
-            <Button
-              size="sm"
-              onClick={() => {
-                setSrEditId(null);
-                setSrCreateOpen(true);
-              }}
-            >
-              <Plus className="mr-1 h-4 w-4" />
-              Нове повернення
-            </Button>
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] text-muted-foreground shrink-0">По</span>
+              <DatePickerInput
+                value={srDateTo}
+                onChange={v => {
+                  setSrDateTo(v);
+                  resetSrPage();
+                  setSrActiveSavedFilterId(null);
+                }}
+                min={srDateFrom || undefined}
+                className="w-36"
+              />
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                title={srShowDeleted ? 'Сховати видалені' : 'Показати видалені'}
+                onClick={() => {
+                  setSrShowDeleted(v => !v);
+                  resetSrPage();
+                  setSrActiveSavedFilterId(null);
+                }}
+                className={cn(srShowDeleted && 'border-primary text-primary')}
+              >
+                {srShowDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+              </Button>
+              {srFeatures.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveSrFilter} />}
+              <ColumnsDropdown
+                columns={srOrderedColumns}
+                visibleKeys={srColVisible}
+                onToggle={toggleSrCol}
+                onReorder={reorderSr}
+                onRename={renameSrColumn}
+                onReset={resetSrConfig}
+                hasCustomization={
+                  JSON.stringify(srOrder) !== COLUMNS_SR_DEFAULT_KEYS_JSON ||
+                  Object.keys(srCustomLabels).length > 0
+                }
+              />
+              <DetailPanelToggle enabled={srDetailPanel.enabled} onToggle={srDetailPanel.toggle} />
+              <Button
+                onClick={() => {
+                  setSrEditId(null);
+                  setSrCreateOpen(true);
+                }}
+                leftIcon={<Plus className="h-4 w-4" />}
+              >
+                Нове повернення
+              </Button>
+            </div>
           </div>
 
           {/* Returns table */}
