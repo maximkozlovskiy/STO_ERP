@@ -85,7 +85,7 @@ function CalendarPageClient() {
       <div className="flex-1 min-h-0 overflow-y-auto">
         {/* Date / month navigation — hidden in stats view */}
         {cs.calView !== 'stats' && (
-          <div className="flex items-center gap-4 mb-6">
+          <div className="flex items-center gap-4 mb-3">
             {cs.calView === 'month' ? (
               <>
                 <Button

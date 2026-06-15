@@ -690,7 +690,7 @@ export function CalendarSlotModal({
         className="overflow-hidden"
         style={{
           height: formVisible ? undefined : '0px',
-          marginBottom: formVisible ? '1.5rem' : '0px',
+          marginBottom: formVisible ? '0.75rem' : '0px',
           transition: formVisible
             ? 'height 480ms cubic-bezier(0.22,1,0.36,1), margin-bottom 480ms cubic-bezier(0.22,1,0.36,1)'
             : undefined,
@@ -698,7 +698,7 @@ export function CalendarSlotModal({
       >
         <div
           ref={formInnerRef}
-          className="bg-surface border border-border rounded-xl p-5 space-y-3"
+          className="bg-surface border border-border rounded-xl p-4 space-y-2"
           style={{
             opacity: formVisible ? 1 : 0,
             transform: formVisible ? 'translateY(0)' : 'translateY(-8px)',
