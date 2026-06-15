@@ -207,7 +207,10 @@ function CalendarPageClient() {
         />
 
         {/* ── View routing — scrollable ────────────────────────────────────── */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* day view scrolls internally inside CalendarDayGrid; month/stats scroll here */}
+        <div
+          className={`flex-1 min-h-0 ${cs.calView === 'day' ? 'overflow-y-hidden flex flex-col' : 'overflow-y-auto'}`}
+        >
           {cs.calView === 'month' && (
             <CalendarMonthView
               yearMonth={cs.yearMonth}

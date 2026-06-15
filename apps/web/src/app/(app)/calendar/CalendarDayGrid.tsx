@@ -357,7 +357,7 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
   } = state;
 
   return (
-    <>
+    <div className="flex-1 min-h-0 flex flex-col">
       {/* ── Hint ───────────────────────────────────────────────────────────── */}
       {!loading && lifts.length > 0 && !pendingSlot && !showAdd && (
         <p className="text-xs text-muted-foreground mb-2">
@@ -396,64 +396,71 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
             void handleDragEnd(e);
           }}
         >
-          <div ref={timelineRef} className="bg-surface border border-border rounded-xl">
-            {/* Sticky header — outside overflow-x-auto so sticky top-0 works */}
+          {/* flex-1 wrapper so DndContext (which renders no DOM) doesn't break flex chain */}
+          <div className="flex-1 min-h-0 flex flex-col">
             <div
-              className="grid border-b border-border sticky top-0 z-10 rounded-t-xl overflow-hidden"
-              style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
+              ref={timelineRef}
+              className="bg-surface border border-border rounded-xl flex flex-col flex-1 min-h-0 overflow-hidden"
             >
-              <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">
-                Підйомник
-              </div>
-              {HOURS.map(h => (
-                <div
-                  key={h}
-                  className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0"
-                >
-                  {pad(h)}:00
+              {/* Sticky header — fixed inside the rounded container, z-20 above draggable slots (z-10/z-50) */}
+              <div
+                className="grid border-b border-border shrink-0 z-20 relative"
+                style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
+              >
+                <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">
+                  Підйомник
                 </div>
-              ))}
-            </div>
-            {/* Scrollable rows */}
-            <div className="overflow-x-auto">
-              {lifts.map((lift: Lift) => (
-                <div
-                  key={lift.id}
-                  className="grid border-b border-border last:border-b-0"
-                  style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
-                >
-                  <div className="px-3 py-3 min-h-20 bg-secondary border-r border-border flex flex-col justify-center gap-0.5">
-                    <span className="text-sm font-medium text-foreground leading-tight">
-                      {lift.name}
-                    </span>
-                    {nextSlotByLift.get(lift.id) === 'now' ? (
-                      <span className="text-[10px] font-medium text-success-text leading-none">
-                        ● зараз
-                      </span>
-                    ) : nextSlotByLift.has(lift.id) ? (
-                      <span className="text-[10px] text-muted-foreground leading-none">
-                        ↓ {fmtTime(nextSlotByLift.get(lift.id)!)}
-                      </span>
-                    ) : null}
+                {HOURS.map(h => (
+                  <div
+                    key={h}
+                    className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0"
+                  >
+                    {pad(h)}:00
                   </div>
-                  <DroppableLiftRow
-                    liftId={lift.id}
-                    liftSlots={slotsByLift.get(lift.id) ?? EMPTY_SLOTS}
-                    ghost={ghost}
-                    pending={pendingSlot}
-                    editingSlotId={editingSlotId}
-                    blockedWidth={blockedWidth}
-                    onEdit={handleEditSlot}
-                    onResizeStart={handleResizeStart}
-                    onPendingOpen={openFormFromPending}
-                    onPendingCancel={cancelPending}
-                    onPendingResizeStart={handlePendingResizeStart}
-                  />
-                </div>
-              ))}
+                ))}
+              </div>
+              {/* Scrollable rows — flex-1 so rows fill remaining height; scrollbar stays below header */}
+              <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+                {lifts.map((lift: Lift) => (
+                  <div
+                    key={lift.id}
+                    className="grid border-b border-border last:border-b-0"
+                    style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
+                  >
+                    <div className="px-3 py-3 min-h-20 bg-secondary border-r border-border flex flex-col justify-center gap-0.5">
+                      <span className="text-sm font-medium text-foreground leading-tight">
+                        {lift.name}
+                      </span>
+                      {nextSlotByLift.get(lift.id) === 'now' ? (
+                        <span className="text-[10px] font-medium text-success-text leading-none">
+                          ● зараз
+                        </span>
+                      ) : nextSlotByLift.has(lift.id) ? (
+                        <span className="text-[10px] text-muted-foreground leading-none">
+                          ↓ {fmtTime(nextSlotByLift.get(lift.id)!)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <DroppableLiftRow
+                      liftId={lift.id}
+                      liftSlots={slotsByLift.get(lift.id) ?? EMPTY_SLOTS}
+                      ghost={ghost}
+                      pending={pendingSlot}
+                      editingSlotId={editingSlotId}
+                      blockedWidth={blockedWidth}
+                      onEdit={handleEditSlot}
+                      onResizeStart={handleResizeStart}
+                      onPendingOpen={openFormFromPending}
+                      onPendingCancel={cancelPending}
+                      onPendingResizeStart={handlePendingResizeStart}
+                    />
+                  </div>
+                ))}
+              </div>
+              {/* end overflow-x-auto rows */}
             </div>
-            {/* end overflow-x-auto rows */}
           </div>
+          {/* end flex-1 DndContext wrapper */}
         </DndContext>
       )}
 
@@ -487,6 +494,6 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
