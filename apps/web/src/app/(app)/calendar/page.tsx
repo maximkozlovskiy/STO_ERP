@@ -111,6 +111,20 @@ function CalendarPageClient() {
                 >
                   Цей місяць
                 </Button>
+                <Button
+                  className="ml-auto"
+                  onClick={() => {
+                    cs.setPendingSlot(null);
+                    cs.setEditingSlotId(null);
+                    cs.setError('');
+                    cs.setCpDisplay('');
+                    cs.setForm(EMPTY_FORM);
+                    cs.setShowAdd(v => !v);
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                  Слот
+                </Button>
               </>
             ) : (
               <>
@@ -145,27 +159,22 @@ function CalendarPageClient() {
                 >
                   Сьогодні
                 </Button>
+                <Button
+                  className="ml-auto"
+                  onClick={() => {
+                    cs.setPendingSlot(null);
+                    cs.setEditingSlotId(null);
+                    cs.setError('');
+                    cs.setCpDisplay('');
+                    cs.setForm(EMPTY_FORM);
+                    cs.setShowAdd(v => !v);
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                  Слот
+                </Button>
               </>
             )}
-          </div>
-        )}
-
-        {/* ── + Слот button row ─────────────────────────────────────────────── */}
-        {cs.calView !== 'stats' && (
-          <div className="flex justify-end mb-3">
-            <Button
-              onClick={() => {
-                cs.setPendingSlot(null);
-                cs.setEditingSlotId(null);
-                cs.setError('');
-                cs.setCpDisplay('');
-                cs.setForm(EMPTY_FORM);
-                cs.setShowAdd(v => !v);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              Слот
-            </Button>
           </div>
         )}
 
