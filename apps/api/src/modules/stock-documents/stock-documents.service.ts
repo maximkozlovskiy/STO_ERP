@@ -174,7 +174,7 @@ export class StockDocumentsService {
             branchId: dto.branchId,
             warehouseId: dto.warehouseId,
             targetWarehouseId: dto.targetWarehouseId ?? null,
-            type: dto.type as StockDocumentType,
+            type: dto.type,
             number,
             notes: dto.notes,
             documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
@@ -313,18 +313,20 @@ export class StockDocumentsService {
 
       await this.prisma.$transaction(
         async tx => {
-          const movType = MOVEMENT_TYPES[doc.type as StockDocumentType];
+          const movType = MOVEMENT_TYPES[doc.type];
           if (doc.type !== 'TRANSFER' && !movType)
             throw new BadRequestException(`Непідтримуваний тип документу: ${doc.type}`);
 
           // sto-optimize: всі лінії незалежні (різні goodId/warehouseId rows) — паралелимо.
           // Всередині кожної лінії: createMovement і UoM-update пишуть у різні таблиці — теж
           // паралельно. Для TRANSFER: writeoff+receipt мають різні warehouseId → race-safe.
+          // NB: усередині одного $transaction Prisma виконує DB-операції послідовно над
+          // прикріпленим connection, тож Promise.all дає лише JS-рівневий overhead-economy
+          // (не справжній паралелізм) — але це безпечно для race-конкуренції stockItem upsert
+          // (Postgres serialize ON CONFLICT під тим самим connection).
           await Promise.all(
             doc.lines.map(line => {
-              const lineUnitId =
-                (line as typeof line & { good?: { unitId: string | null } | null }).good?.unitId ??
-                null;
+              const lineUnitId = line.good?.unitId ?? null;
               // Bug #236: persist resolved UoM — extracted to avoid duplication in both branches.
               const maybeUpdateUom = lineUnitId
                 ? tx.stockDocumentLine.update({

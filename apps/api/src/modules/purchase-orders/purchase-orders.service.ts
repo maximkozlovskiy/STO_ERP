@@ -453,9 +453,22 @@ export class PurchaseOrdersService {
       }
     }
 
+    // Bug review: dedupe protection on lineId — без цього клієнт міг би відправити дві
+    // recv-записи з тим самим lineId і отримати подвійний `increment` (Promise.all виконує
+    // обидва update — навіть якщо у одній tx, обидва зростають).
+    const seen = new Set<string>();
+    for (const recv of dto.lines) {
+      if (seen.has(recv.lineId)) {
+        throw new BadRequestException('Кожен рядок прийому має бути унікальним');
+      }
+      seen.add(recv.lineId);
+    }
+
     // sto-optimize: всі лінії незалежні (різні lineId/goodId rows) — паралелимо.
     // Всередині лінії: createMovement і lineUpdate пишуть у різні таблиці → теж паралельно.
-    // receivedAmount акумулюємо через map → reduce (уникаємо shared mutable у async callbacks).
+    // NB: Prisma всередині $transaction виконує DB-операції послідовно (один pinned connection),
+    // тож Promise.all дає лише JS-overhead-economy. receivedAmount акумулюємо через map → reduce
+    // (уникаємо shared mutable у async callbacks).
     const activeLines = dto.lines
       .map(recv => ({ recv, line: po.lines.find(l => l.id === recv.lineId) }))
       .filter(

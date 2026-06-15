@@ -656,6 +656,28 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
       data: { receivedQty: { increment: 7 }, unitOfMeasureId: OWN_UOM_ID },
     });
   });
+
+  it('Bug #483 (review): duplicate lineId у dto.lines → BadRequestException (без подвійного increment)', async () => {
+    // Без dedup-guard Promise.all виконав би два update.increment для того самого lineId,
+    // що подвоїло б receivedQty. Service кидає ще ДО $transaction.
+    await expect(
+      service.receive(
+        ORG,
+        PO_ID,
+        {
+          lines: [
+            { lineId: LINE_ID, receivedQty: 5 },
+            { lineId: LINE_ID, receivedQty: 3 }, // duplicate!
+          ],
+        },
+        USER_ID,
+      ),
+    ).rejects.toThrow('Кожен рядок прийому має бути унікальним');
+    // Захист спрацьовує перед $transaction → жодного запису у БД.
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrderLine.update).not.toHaveBeenCalled();
+    expect(inventory.createMovement).not.toHaveBeenCalled();
+  });
 });
 
 // Bug #473-#476: regression guards для update() — contract resolution + tenant guards
