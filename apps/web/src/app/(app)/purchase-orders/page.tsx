@@ -32,7 +32,7 @@ import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
+// Bug #505: DetailPanelToggle import видалено разом з 2 dead toggle render points.
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
@@ -156,7 +156,7 @@ function PurchaseOrdersPageClient() {
       resetConfig,
     },
     dragProps,
-    detailPanel,
+    // Bug #505: detailPanel видалено (DetailPanel зник у Bug #496 fix, toggle нічого не контролював).
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
@@ -255,7 +255,7 @@ function PurchaseOrdersPageClient() {
       resetConfig: resetSrConfig,
     },
     dragProps: srDragProps,
-    detailPanel: srDetailPanel,
+    // Bug #505: srDetailPanel видалено — DetailPanel ніколи не існував для returns tab.
     savedFilters: { saved: srSavedFilters, save: saveSrFilter, remove: removeSrFilter },
     features: srFeatures,
     limit: srLimit,
@@ -643,7 +643,7 @@ function PurchaseOrdersPageClient() {
                   Object.keys(srCustomLabels).length > 0
                 }
               />
-              <DetailPanelToggle enabled={srDetailPanel.enabled} onToggle={srDetailPanel.toggle} />
+              {/* Bug #505: DetailPanelToggle видалено — для returns tab ніколи не існувало DetailPanel. */}
               <Button
                 onClick={() => {
                   setSrEditId(null);
@@ -924,7 +924,7 @@ function PurchaseOrdersPageClient() {
                   Object.keys(customLabels).length > 0
                 }
               />
-              <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+              {/* Bug #505: DetailPanelToggle видалено — DetailPanel було видалено у Bug #496 fix, toggle лишився без consumer-а. */}
               <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
                 Замовлення
               </Button>

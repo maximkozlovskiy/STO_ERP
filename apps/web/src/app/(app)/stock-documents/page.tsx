@@ -24,13 +24,9 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { StockDocumentCreateModal } from '@/components/ui/StockDocumentCreateModal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
-import {
-  STOCK_DOC_PANEL_SCHEMA,
-  buildPanelFields,
-  schemaToPanelConfigFields,
-} from '@/lib/panel-schema';
-import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
+// Bug #504: DetailPanel було повністю dead (selectedDoc state ніколи не set non-null).
+// Видалено разом з useDetailPanel/useDetailPanelConfig destructure та STOCK_DOC_PANEL_SCHEMA helpers.
+// Row click веде в edit modal через setEditingDocId — це реальний flow для перегляду документа.
 import {
   Table,
   TableHeader,
@@ -148,8 +144,7 @@ function StockDocumentsPageClient() {
       resetConfig,
     },
     dragProps,
-    detailPanel,
-    panelConfig,
+    // Bug #504/#505: detailPanel + panelConfig видалено (DetailPanel мертвий, toggle нічого не контролював).
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
@@ -197,7 +192,7 @@ function StockDocumentsPageClient() {
   const load = invalidate;
   const [error, setError] = useState('');
 
-  const [selectedDoc, setSelectedDoc] = useState<StockDoc | null>(null);
+  // Bug #504: selectedDoc state removed — DetailPanel was dead (state ніколи не set non-null).
   const [showCreate, setShowCreate] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState<StockDoc | null>(null);
@@ -330,7 +325,6 @@ function StockDocumentsPageClient() {
       return;
     try {
       await apiFetch(`/stock-documents/${doc.id}`, { method: 'DELETE' });
-      if (selectedDoc?.id === doc.id) setSelectedDoc(null);
       load();
       toast.success('Документ позначено на видалення');
     } catch (e: unknown) {
@@ -338,67 +332,8 @@ function StockDocumentsPageClient() {
     }
   };
 
-  const buildDocTabs = (doc: StockDoc): DetailPanelTab[] => [
-    {
-      key: 'info',
-      label: 'Основне',
-      content: (
-        <div className="space-y-3">
-          {buildPanelFields(doc as any, STOCK_DOC_PANEL_SCHEMA as any, panelConfig.config, {
-            type: v => (
-              <Badge variant={STOCK_DOC_TYPE_BADGE[String(v)] ?? 'secondary'}>
-                {STOCK_DOC_TYPE_LABELS[String(v)]}
-              </Badge>
-            ),
-            status: v => (
-              <Badge variant={STOCK_DOC_STATUS_BADGE[String(v)] ?? 'secondary'}>
-                {STOCK_DOC_STATUS_LABELS[String(v)]}
-              </Badge>
-            ),
-          }).map(f => (
-            <PanelField
-              key={f.key}
-              fieldKey={f.key}
-              label={f.label}
-              value={f.value}
-              hidden={f.hidden}
-            />
-          ))}
-        </div>
-      ),
-    },
-    {
-      key: 'lines',
-      label: 'Позиції',
-      content:
-        // List endpoint omits `lines` (perf: 20 docs × 1000 line rows). Lines load
-        // lazily via openDetailModal() → GET /stock-documents/:id when the user opens the panel.
-        // While the detail fetch is in flight, show a loading hint; otherwise render the list.
-        doc.lines === undefined ? (
-          <p className="text-[13px] text-muted-foreground">Завантаження позицій…</p>
-        ) : doc.lines.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">Немає позицій</p>
-        ) : (
-          <div className="space-y-2">
-            {doc.lines.map((line, i) => (
-              <div
-                key={line.id ?? i}
-                className="rounded-lg border border-border px-3 py-2 text-[13px]"
-              >
-                <p className="font-medium text-foreground">{line.goodName ?? line.goodId}</p>
-                {line.goodSku && (
-                  <p className="text-muted-foreground text-[12px]">{line.goodSku}</p>
-                )}
-                <p className="text-muted-foreground text-[12px] mt-0.5">
-                  К-сть: <span className="text-foreground">{line.quantity}</span>
-                  {line.price != null && <> · {fmtMoney(line.price)} ₴</>}
-                </p>
-              </div>
-            ))}
-          </div>
-        ),
-    },
-  ];
+  // Bug #504: buildDocTabs видалено — використовувалось виключно у dead DetailPanel.
+  // Перегляд позицій документа доступний через edit modal (openDetailModal/setEditingDocId).
 
   return (
     <div className="page-fill p-4 md:p-6">
@@ -528,7 +463,7 @@ function StockDocumentsPageClient() {
               Object.keys(customLabels).length > 0
             }
           />
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          {/* Bug #505: DetailPanelToggle видалено — toggle нічого не контролював (DetailPanel мертвий, Bug #504). */}
           <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
             {typeFilter ? STOCK_DOC_TYPE_LABELS[typeFilter] : 'Документ'}
           </Button>
@@ -619,7 +554,6 @@ function StockDocumentsPageClient() {
                     key={doc.id}
                     className={cn(
                       'group transition-colors cursor-pointer',
-                      selectedDoc?.id === doc.id && detailPanel.enabled && 'bg-secondary',
                       bulkSelect.isSelected(doc.id) && 'bg-primary/5',
                       doc.deletedAt && 'opacity-60',
                     )}
@@ -719,21 +653,7 @@ function StockDocumentsPageClient() {
           </Table>
         </div>
 
-        {/* Detail panel */}
-        <DetailPanel
-          open={!!selectedDoc && detailPanel.enabled}
-          onClose={() => setSelectedDoc(null)}
-          title={selectedDoc?.number ?? ''}
-          subtitle={selectedDoc ? STOCK_DOC_TYPE_LABELS[selectedDoc.type] : undefined}
-          tabs={selectedDoc ? buildDocTabs(selectedDoc) : undefined}
-          configFields={schemaToPanelConfigFields(
-            STOCK_DOC_PANEL_SCHEMA as any,
-            panelConfig.config,
-          )}
-          onToggleField={panelConfig.toggleField}
-          onReorderFields={panelConfig.reorderFields}
-          onReset={panelConfig.reset}
-        />
+        {/* Bug #504: DetailPanel видалено — selectedDoc state ніколи не set non-null (Bug #496 paired-file pattern). */}
       </div>
 
       {/* Pagination */}

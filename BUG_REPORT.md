@@ -15112,3 +15112,82 @@ DetailPanel рендериться з open набором selectedPO && detailPa
 **Статус:** [x] виправлено — додано aria-label і title.
 
 ---
+
+## Session 2026-06-15 — AUTO tester: verification + new bugs after c83f8e29 review-fix series (HEAD c83f8e29 + b5fd7129)
+
+Scope: re-audit usaving target files від попереднього cycle:
+
+- `apps/web/src/app/(app)/purchase-orders/page.tsx`
+- `apps/web/src/app/(app)/stock-documents/page.tsx`
+- `apps/web/src/app/(app)/calendar/CalendarDayGrid.tsx`
+- `apps/web/src/app/(app)/calendar/page.tsx`
+- `apps/web/src/components/ui/PurchaseOrderCreateModal.tsx`
+
+### Baseline (Крок 0)
+
+- TypeScript shared — ✅ 0 errors
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 849/849 passed (63 файли)
+- Web components — ✅ 423/423 passed (39 файлів)
+- E2E — пропущено (Docker DOWN у цій сесії)
+
+### Перевірка `[x]` маркерів #496–#503
+
+| Bug                                 | Файл / точка                                                                                                 | Виправлено у коді?                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | --- | ---------- |
+| #496 selectedPO dead state у PO     | `purchase-orders/page.tsx`                                                                                   | ✅ підтверджено — state видалено, DetailPanel block видалено                                 |
+| #497 detailLoading dead             | `purchase-orders/page.tsx:410`                                                                               | ✅ рename → `detailLoadingId` з реальним `loading={detailLoadingId === po.id}` на рядку 1114 |
+| #498 unitShortName у POLine         | `PurchaseOrderCreateModal.tsx:83,89,95,282,930`                                                              | ✅ додано до обох interface; render використовує `line.unitShortName                         |     | line.unit` |
+| #499 mutateAsync try/catch          | `purchase-orders/page.tsx:799-806`                                                                           | ✅ inline try/catch з toast.error                                                            |
+| #500 useEffect/useRef dead          | `purchase-orders/page.tsx:4`                                                                                 | ✅ видалено                                                                                  |
+| #501 key={l.id ?? i}                | `purchase-orders/page.tsx:1221,1288`, `stock-documents/page.tsx:385,825`, `PurchaseOrderCreateModal.tsx:858` | ✅ підтверджено усі точки                                                                    |
+| #502 type="button"                  | `purchase-orders/page.tsx` 7 точок, `stock-documents/page.tsx` 2 точки                                       | ✅                                                                                           |
+| #503 aria-label Calendar removeSlot | `CalendarDayGrid.tsx:494`                                                                                    | ✅ aria-label + title + dynamic time                                                         |
+
+Усі 8 попередніх багів дійсно виправлені у коді (не лише `[x]` маркер).
+
+---
+
+## Bug #504 — [HIGH] frontend / dead-state — selectedDoc DetailPanel мертвий у stock-documents (paired-file pattern #496)
+
+**Файл:** `apps/web/src/app/(app)/stock-documents/page.tsx:200, 333, 724`
+**Severity:** HIGH (feature мертва, Bug #341 review-fix completeness gap)
+**Категорія:** frontend / dead state / Bug #496 paired-file / Bug #341 review-fix incompleteness
+
+**Опис:** Той самий патерн, що review-fix `24dc273d` виявив і виправив для `purchase-orders/page.tsx` (видалені dead `selectedPO`/DetailPanel), залишився не виправлений у paired list-page `stock-documents/page.tsx`. `setSelectedDoc(value)` з не-null значенням ніколи не викликається у файлі: тільки `setSelectedDoc(null)` на рядках 333 (після soft-delete) і 725 (DetailPanel.onClose).
+
+`DetailPanel` рендериться з `open={!!selectedDoc && detailPanel.enabled}` (рядок 724), але `selectedDoc` завжди `null` → панель ніколи не відкривається. `buildDocTabs`, `STOCK_DOC_PANEL_SCHEMA`, `buildPanelFields`, `schemaToPanelConfigFields`, `panelConfig` — невидимий dead code, який блокує bundle і вводить в оману майбутніх розробників.
+
+Row click → `setEditingDocId(doc.id)` → відкривається StockDocumentCreateModal edit modal — це реальний flow перегляду. DetailPanel block — реліктовий код після rework UX.
+
+**Очікувана поведінка:** аналогічно `purchase-orders/page.tsx` (Bug #496 fix) — видалити dead `selectedDoc` state + DetailPanel block + `buildDocTabs` + всі залежні імпорти (`DetailPanel`, `PanelField`, `DetailPanelTab`, `STOCK_DOC_PANEL_SCHEMA`, `buildPanelFields`, `schemaToPanelConfigFields`, `panelConfig`) + умовний клас `bg-secondary` що читає `selectedDoc?.id === doc.id`.
+
+**Фактична поведінка:** state, dispatcher тільки до null, panel недосяжна, ~120 рядків dead code у бандлі.
+
+**Статус:** [x] виправлено — видалено `selectedDoc` state, `DetailPanel` render block, `buildDocTabs`, dead класи у row, dead imports.
+
+---
+
+## Bug #505 — [MEDIUM] frontend / dead-state — DetailPanelToggle без відповідного DetailPanel у 3 контекстах (paired with #504 + #496)
+
+**Файли:**
+
+- `apps/web/src/app/(app)/purchase-orders/page.tsx:927` (orders tab — після #496 fix DetailPanel видалено, toggle лишився)
+- `apps/web/src/app/(app)/purchase-orders/page.tsx:646` (returns tab — DetailPanel ніколи не існував для returns)
+- `apps/web/src/app/(app)/stock-documents/page.tsx:531` (DetailPanel мертвий — Bug #504)
+
+**Severity:** MEDIUM (UX confusion + dead state in localStorage via useDetailPanel)
+**Категорія:** frontend / dead UI / Bug #341 review-fix completeness
+
+**Опис:** `<DetailPanelToggle enabled={X.enabled} onToggle={X.toggle} />` рендериться у 3 контекстах, але жоден з них не має реально працюючого `<DetailPanel>` що читав би `X.enabled`. Користувач клікає toggle → `localStorage` оновлюється → нічого не змінюється у UI → UX confusion.
+
+`useDetailPanel(pageKey)` записує preference у localStorage (`detail-panel-<pageKey>`) — мертвий localStorage slot на кожен mount toggled.
+
+**Очікувана поведінка:** видалити `DetailPanelToggle` з усіх 3 точок + видалити `detailPanel` / `srDetailPanel` destructure з useListPage у відповідних файлах (LOW-priority: можна окремий PR видалити `useDetailPanel` хук, якщо ніде більше не використовується).
+
+**Фактична поведінка:** toggle UI кнопки live + dead localStorage writes.
+
+**Статус:** [x] виправлено — видалено 3 точки DetailPanelToggle + відповідні destructure / імпорти.
+
+---
