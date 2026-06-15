@@ -15,6 +15,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   WorkOrder: 'Наряд',
   StockDocument: 'Документ',
   Invoice: 'Рахунок',
+  SupplierReturn: 'Повернення постачальнику',
 };
 
 export interface CreateMovementDto {

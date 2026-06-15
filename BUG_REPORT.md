@@ -14818,3 +14818,147 @@ Severity: LOW (профілактичний — реальний регрес у
 ### Висновок
 
 Знайдено 4 баги після post-cycle3 аудиту. Baseline зелений (821 API + 423 web + 150 targeted). Всі 4 — це **gaps у регресія-guard після simplify/optimize/review циклів**. Бек-логіка вже коректна; нема runtime/data corruption у поточному стані. Загроза — silent regression від наступних refactor-ів без regresion-guard.
+
+---
+
+## Session 2026-06-15 — Supplier Returns FULL tester (commits 28edc08c..9e656cd4)
+
+Scope (2 commits):
+
+- `28edc08c` feat(supplier-returns): full backend + frontend — DB моделі (SupplierReturn + SupplierReturnLine + SupplierReturnStatus + DocumentType.SUPPLIER_RETURN + MovementDocumentType.SUPPLIER_RETURN), NestJS модуль (CRUD + confirm + cancel), Next.js page tab "Повернення постачальнику" з list + SupplierReturnCreateModal, shared status labels.
+- `9e656cd4` fix(supplier-returns): review fixes — confirm() WRITEOFF з негативною quantity (раніше було позитивне → інкремент стоку); re-read у tx + status guard для concurrent confirm(); modal використовує /goods і /warehouses; додано окрему migration для DocumentNumberConfig SUPPLIER_RETURN backfill; documentType → 'SupplierReturn' (PascalCase); settlement type PAYMENT → REFUND; explicit timeout; @IsEnum + @IsNumberString у query DTO.
+
+### Baseline (Крок 0)
+
+- TypeScript shared — clean
+- TypeScript API — clean
+- TypeScript web — clean
+- Unit + contract (API) — 834/834 passed (62 файли)
+- Web components — 423/423 passed (39 файлів)
+- Migrations: 2 нові (`20260615120000_supplier_returns` + `20260615120100_seed_supplier_return_doc_numbers`) парні до schema.prisma
+
+### Перевірка специфічна Supplier Returns
+
+- confirm() WRITEOFF: `quantity: -line.quantity` (рядок 323) — декремент стоку.
+- confirm() REFUND, не PAYMENT/CHARGE: `type: 'REFUND'` (рядок 345). BALANCE_SIGN[REFUND]=-1 → зменшення нашого боргу постачальнику.
+- 0 lines → BadRequestException (pre-check рядок 277).
+- FSM transition map: DRAFT → {CONFIRMED, CANCELLED}; з CONFIRMED/CANCELLED не виходить.
+- Concurrent double-confirm guard: re-read у $tx + status guard (рядок 286-310) ловить race window.
+- documentType convention: 'SupplierReturn' (PascalCase) — узгоджено з PurchaseOrder/WorkOrder/StockDocument.
+- Deduplication: `deduplicateBy(lines, l => l.goodId)` у create() і update() (last-write-wins).
+- Soft-delete: findFirst має `deletedAt: null`; remove() робить soft-delete тільки на DRAFT.
+- Tenant isolation: кожен find/update має `orgId` у where.
+- $transaction timeout: обидва транзакційні блоки мають `{ timeout: TRANSACTION_TIMEOUT_MS }`.
+
+### Знайдені баги (5)
+
+### Bug #491 — [MEDIUM] business logic / backend / inventory — DOC_TYPE_LABELS не має запису для 'SupplierReturn'
+
+**Знайдено:** `apps/api/src/modules/inventory/inventory.service.ts:13-18`. Map містить лише PurchaseOrder/WorkOrder/StockDocument/Invoice. Новий documentType 'SupplierReturn' (передається з supplier-returns.service.ts:325) не відображено.
+
+**Наслідок:** `docLabel(documentType, documentId)` робить fallback `DOC_TYPE_LABELS[documentType] ?? documentType` → для повернень показує літерал 'SupplierReturn' замість 'Повернення постачальнику'. UI inconsistency: гібрид українського/англійського тексту у stock movement history. SKILL §1.3 (UI українською) порушено.
+
+**Виявлено через:** Grep `DOC_TYPE_LABELS` + порівняння зі списком documentType literals у решті services.
+
+**Фікс:** Додати запис `SupplierReturn: 'Повернення постачальнику'`. Severity MEDIUM.
+
+**Файл:** `apps/api/src/modules/inventory/inventory.service.ts:13-19`.
+
+Severity: MEDIUM. Status: [x] виправлено.
+
+### Bug #492 — [LOW] docs / backend / controller — Stale Swagger summary згадує PAYMENT хоча settlement type REFUND
+
+**Знайдено:** `apps/api/src/modules/supplier-returns/supplier-returns.controller.ts:62`. `@ApiOperation({ summary: 'Підтвердити повернення (WRITEOFF + PAYMENT)' })` — застаріле після фіксу 9e656cd4.
+
+**Наслідок:** API documentation drift — frontend/mobile devs читають Swagger очікують PAYMENT side-effect.
+
+**Виявлено через:** Grep PAYMENT у supplier-returns module.
+
+**Фікс:** замінити PAYMENT → REFUND.
+
+**Файл:** `apps/api/src/modules/supplier-returns/supplier-returns.controller.ts:62`.
+
+Severity: LOW. Status: [x] виправлено.
+
+### Bug #493 — [LOW] docs / backend / service — Stale comment "WRITEOFF + PAYMENT"
+
+**Знайдено:** `apps/api/src/modules/supplier-returns/supplier-returns.service.ts:285`. Коментар: "Без цього два concurrent confirm() дадуть подвійний WRITEOFF + PAYMENT". Після review fix settlement type REFUND.
+
+**Наслідок:** Дезорієнтує майбутнього мейнтейнера.
+
+**Виявлено через:** Grep PAYMENT у service.
+
+**Фікс:** PAYMENT → REFUND у коменті.
+
+**Файл:** `apps/api/src/modules/supplier-returns/supplier-returns.service.ts:285`.
+
+Severity: LOW. Status: [x] виправлено.
+
+### Bug #494 — [LOW] seed / database — Stale console.warn "9 записів" коли DocumentNumberConfigs тепер 10
+
+**Знайдено:** `packages/database/prisma/seed.ts:176`. `console.warn('  DocumentNumberConfigs: 9 записів')` — hardcoded "9", але після додавання SUPPLIER_RETURN у docConfigs фактичних записів 10.
+
+**Наслідок:** Cosmetic — лог `pnpm prisma db seed` показує stale count.
+
+**Виявлено через:** Зіставлення довжини docConfigs array (10) з літералом у console.warn (9).
+
+**Фікс:** замінити на template literal з `${docConfigs.length}` — самооновлюється при додаванні нових записів.
+
+**Файл:** `packages/database/prisma/seed.ts:176`.
+
+Severity: LOW. Status: [x] виправлено.
+
+### Bug #495 — [HIGH] business logic / backend / tenant isolation — goodId/unitOfMeasureId у lines пишуться без cross-tenant FK guard
+
+**Знайдено:** `apps/api/src/modules/supplier-returns/supplier-returns.service.ts` — `create()` і `update()` приймають `dto.lines[].goodId` і `dto.lines[].unitOfMeasureId` і пишуть прямо у `supplierReturnLine.createMany` без org-scoped `findFirst({ id, orgId })` валідації.
+
+**Наслідок:** Атакуючий ADMIN з валідним JWT може створити SupplierReturn з goodId/unitOfMeasureId з ЧУЖОЇ організації — Prisma FK constraint валідує лише глобальне існування, не orgId. Порушує CLAUDE.md правило #6 ("Кожен запит фільтрується по orgId"). Defense-in-depth gap. SKILL §1.1 Bug #161 pattern.
+
+**Виявлено через:** SKILL §1.1 Optional FK у create/update spread без guard checklist.
+
+**Фікс:** додано приватний метод `validateLineRefs(orgId, lines)` що робить batch `prisma.good.findMany({ where: { id: { in: [...] }, orgId, deletedAt: null } })` + analogous для UoM — 1-2 RTT замість N. Викликається ПЕРЕД `$transaction` у create() і update(). Якщо count returned != count provided → `NotFoundException` з конкретним missing ID.
+
+**Файли:**
+
+- `apps/api/src/modules/supplier-returns/supplier-returns.service.ts:139-143` (create — додано виклик validateLineRefs)
+- `apps/api/src/modules/supplier-returns/supplier-returns.service.ts:214-219` (update — додано виклик validateLineRefs)
+- `apps/api/src/modules/supplier-returns/supplier-returns.service.ts:407-446` (новий метод validateLineRefs)
+
+Регресія-guards додані у `supplier-returns.service.spec.ts`:
+
+- `create(): cross-tenant goodId → NotFoundException (Bug #495 guard)` — мокає `good.findMany` що повертає лише 1 з 2 → очікує throw.
+- `create(): cross-tenant unitOfMeasureId → NotFoundException` — uom.findMany повертає 0 → throw.
+
+Severity: HIGH. Status: [x] виправлено.
+
+### Додано test file (заповнює test gap)
+
+`apps/api/src/modules/supplier-returns/supplier-returns.service.spec.ts` — НОВИЙ файл, 15 тестів-guards:
+
+1. confirm(): WRITEOFF з НЕГАТИВНОЮ quantity + documentType='SupplierReturn' (PascalCase)
+2. confirm(): settlement з type=REFUND (НЕ PAYMENT, НЕ CHARGE)
+3. confirm() без рядків → BadRequestException; жодних side-effects
+4. confirm() зі статусу CONFIRMED → BadRequestException; не запускає $tx
+5. confirm() зі статусу CANCELLED → BadRequestException
+6. confirm() не існує → NotFoundException
+7. confirm() з totalAmount=0 → НЕ створює settlement (guard рядок 336)
+8. confirm() concurrent-double-call: re-read у $tx ловить зміну → BadRequestException
+9. cancel() з DRAFT → CANCELLED
+10. cancel() з CONFIRMED → BadRequestException (FSM правило)
+11. create() з дублікатним goodId → дедуплікація (1 рядок, last-write-wins)
+12. create(): cross-tenant goodId → NotFoundException (Bug #495 guard)
+13. create(): cross-tenant unitOfMeasureId → NotFoundException
+14. create() з неіснуючим supplierId → NotFoundException
+15. create() з неіснуючим warehouseId → NotFoundException
+
+### Підсумок
+
+- Знайдено багів: 5 (HIGH: 1, MEDIUM: 1, LOW: 3)
+- Виправлено: 5/5
+- Створено новий test file: supplier-returns.service.spec.ts (15 regression-guards)
+- TypeScript API: clean
+- TypeScript web: clean
+- Unit + contract (API): 849/849 passed (63 файли — +1 файл +15 тестів)
+- Web components: 423/423 passed
+
+Бек-логіка фічі коректна після review-fixes 9e656cd4 (WRITEOFF з негативною quantity + REFUND settlement). Bug #495 — defense-in-depth gap що міг дозволити cross-tenant FK linkage; фікс додає org-scoped validation у create() і update(). Інші 4 баги — UX/документація/cosmetic.

@@ -173,7 +173,7 @@ async function main() {
       },
     });
   }
-  console.warn('  DocumentNumberConfigs: 9 записів');
+  console.warn(`  DocumentNumberConfigs: ${docConfigs.length} записів`);
 
   // ─── NotificationTemplates ───────────────────────────────
   const templates = [

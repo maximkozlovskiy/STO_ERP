@@ -59,7 +59,7 @@ export class SupplierReturnsController {
   @Post(':id/confirm')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Підтвердити повернення (WRITEOFF + PAYMENT)' })
+  @ApiOperation({ summary: 'Підтвердити повернення (WRITEOFF + REFUND)' })
   confirm(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,

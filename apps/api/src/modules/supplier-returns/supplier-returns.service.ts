@@ -139,6 +139,11 @@ export class SupplierReturnsService {
     const lines = dto.lines ?? [];
     const dedupedLines = deduplicateBy(lines, l => l.goodId);
 
+    // Bug #495: cross-tenant FK guard — кожен goodId/unitOfMeasureId з DTO має існувати
+    // у цій організації. Сирий Prisma write валідує лише глобальне існування FK,
+    // НЕ orgId → FK з чужої org проходить → cross-tenant linkage (Bug #161 pattern).
+    await this.validateLineRefs(orgId, dedupedLines);
+
     const number = await this.docNumbers.next(orgId, 'SUPPLIER_RETURN');
     const totalAmount = dedupedLines.reduce((sum, l) => sum + l.quantity * l.price, 0);
 
@@ -212,6 +217,13 @@ export class SupplierReturnsService {
       if (!warehouse) throw new NotFoundException('Склад не знайдено');
     }
 
+    // Bug #495: cross-tenant FK guard для update() — кожен новий goodId/unitOfMeasureId
+    // має існувати у цій організації. Валідація ПЕРЕД $transaction (read-only).
+    if (dto.lines !== undefined && dto.lines.length > 0) {
+      const dedupedForCheck = deduplicateBy(dto.lines, l => l.goodId);
+      await this.validateLineRefs(orgId, dedupedForCheck);
+    }
+
     await this.prisma.$transaction(
       async tx => {
         if (dto.lines !== undefined) {
@@ -282,7 +294,7 @@ export class SupplierReturnsService {
       async tx => {
         // §4 sto-review: FSM auto-transition у tx → re-read entity всередині tx +
         // перевірка `status === expected`. Без цього два concurrent confirm()
-        // дадуть подвійний WRITEOFF + PAYMENT.
+        // дадуть подвійний WRITEOFF + REFUND.
         const sr = await tx.supplierReturn.findFirst({
           where: { id, orgId, deletedAt: null },
           select: {
@@ -397,6 +409,47 @@ export class SupplierReturnsService {
       where: { id, orgId },
       data: { deletedAt: new Date() },
     });
+  }
+
+  /**
+   * Cross-tenant FK guard для рядків повернення (Bug #495).
+   * Сирий Prisma write валідує лише глобальне існування FK, НЕ orgId — тому
+   * відсутність цього guard дозволяє linkage товарів/одиниць виміру з чужої org.
+   * Паралельно перевіряємо batch through Promise.all → 1–2 RTT замість N послідовних.
+   */
+  private async validateLineRefs(
+    orgId: string,
+    lines: Array<{ goodId: string; unitOfMeasureId?: string }>,
+  ): Promise<void> {
+    if (lines.length === 0) return;
+    const goodIds = Array.from(new Set(lines.map(l => l.goodId)));
+    const uomIds = Array.from(
+      new Set(lines.map(l => l.unitOfMeasureId).filter((v): v is string => !!v)),
+    );
+
+    const [goods, uoms] = await Promise.all([
+      this.prisma.good.findMany({
+        where: { id: { in: goodIds }, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      uomIds.length > 0
+        ? this.prisma.unitOfMeasure.findMany({
+            where: { id: { in: uomIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    if (goods.length !== goodIds.length) {
+      const found = new Set(goods.map(g => g.id));
+      const missing = goodIds.filter(id => !found.has(id));
+      throw new NotFoundException(`Товар не знайдено: ${missing[0]}`);
+    }
+    if (uoms.length !== uomIds.length) {
+      const found = new Set(uoms.map(u => u.id));
+      const missing = uomIds.filter(id => !found.has(id));
+      throw new NotFoundException(`Одиницю виміру не знайдено: ${missing[0]}`);
+    }
   }
 
   private toDto(sr: {
