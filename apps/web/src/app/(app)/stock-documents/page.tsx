@@ -345,10 +345,6 @@ export default function StockDocumentsPage() {
     }
   };
 
-  // sto-optimize: TYPE_FILTERS/STATUS_FILTERS — module-level frozen, не re-alloc на render.
-  const types = TYPE_FILTERS;
-  const statuses = STATUS_FILTERS;
-
   const buildDocTabs = (doc: StockDoc): DetailPanelTab[] => [
     {
       key: 'info',
@@ -438,7 +434,7 @@ export default function StockDocumentsPage() {
 
       {/* Type tabs */}
       <div className="flex items-center border-b border-border -mx-4 md:-mx-6 px-4 md:px-6 shrink-0">
-        {types.map(t => (
+        {TYPE_FILTERS.map(t => (
           <button
             key={t}
             onClick={() => {
@@ -465,7 +461,7 @@ export default function StockDocumentsPage() {
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">
             Статус
           </span>
-          {statuses.map(s => (
+          {STATUS_FILTERS.map(s => (
             <button
               key={s}
               onClick={() => {
