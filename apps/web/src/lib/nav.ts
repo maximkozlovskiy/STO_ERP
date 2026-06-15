@@ -65,7 +65,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   // ─── Документи ────────────────────────────────────────────────────
   { href: '/work-orders', label: 'Наряди', icon: Wrench, section: 'documents' },
   { href: '/invoices', label: 'Рахунки', icon: Receipt, section: 'documents' },
-  { href: '/purchase-orders', label: 'Замовлення', icon: ShoppingCart, section: 'documents' },
+  { href: '/purchase-orders', label: 'Купівля', icon: ShoppingCart, section: 'documents' },
   { href: '/stock-documents', label: 'Документи складу', icon: FileText, section: 'documents' },
 
   // ─── Звіти ────────────────────────────────────────────────────────

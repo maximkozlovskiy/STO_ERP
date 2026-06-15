@@ -89,8 +89,12 @@ const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> =
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
 
+type PurchaseTab = 'orders' | 'returns';
+
 export default function PurchaseOrdersPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
+
+  const [activeTab, setActiveTab] = useState<PurchaseTab>('orders');
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
@@ -475,329 +479,374 @@ export default function PurchaseOrdersPage() {
       )}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Замовлення постачальникам</h1>
+          <h1 className="page-title">Купівля</h1>
         </div>
       </div>
 
-      {/* Saved filters */}
-      {features.savedFiltersEnabled && (
-        <SavedFiltersBar<PoFilters>
-          saved={savedFilters}
-          activeId={activeSavedFilterId}
-          onApply={applyFilter}
-          onSave={handleSaveFilter}
-          onRemove={removeFilter}
-          hideSaveButton
-        />
-      )}
-
-      {/* Status filters */}
-      <div className="flex flex-wrap gap-1.5 shrink-0">
-        {statuses.map(s => (
+      {/* Section tabs */}
+      <div className="flex items-center border-b border-border -mx-4 md:-mx-6 px-4 md:px-6 shrink-0">
+        {(
+          [
+            { key: 'orders', label: 'Замовлення постачальникам' },
+            { key: 'returns', label: 'Повернення постачальнику' },
+          ] as const
+        ).map(tab => (
           <button
-            key={s}
-            onClick={() => {
-              setStatus(s);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-              status === s
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
+              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
+              activeTab === tab.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
             )}
           >
-            {s ? STATUS_LABELS[s] : 'Всі'}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Filters row */}
-      <div className="flex flex-wrap items-center gap-3 shrink-0">
-        <Input
-          value={q}
-          onChange={e => {
-            setQ(e.target.value);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          placeholder="Пошук за номером, постачальником..."
-          leftElement={<Search />}
-          className="w-64 h-8 text-[13px]"
-        />
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">З</span>
-          <DatePickerInput
-            value={dateFrom}
-            onChange={v => {
-              setDateFrom(v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            max={dateTo || undefined}
-            className="w-36"
-          />
+      {activeTab === 'returns' && (
+        <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
+          Повернення постачальнику — буде доступно найближчим часом
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">По</span>
-          <DatePickerInput
-            value={dateTo}
-            onChange={v => {
-              setDateTo(v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            min={dateFrom || undefined}
-            className="w-36"
-          />
-        </div>
-
-        <div className="flex items-center gap-2 ml-auto">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
-            onClick={() => {
-              setShowDeleted(v => !v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            className={cn(showDeleted && 'border-primary text-primary')}
-          >
-            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          </Button>
-          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-          <ColumnsDropdown
-            columns={orderedColumns}
-            visibleKeys={colVisible}
-            onToggle={toggleCol}
-            onReorder={reorder}
-            onRename={renameColumn}
-            onReset={resetConfig}
-            hasCustomization={
-              JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
-              Object.keys(customLabels).length > 0
-            }
-          />
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            Замовлення
-          </Button>
-        </div>
-      </div>
-
-      {/* Bulk actions */}
-      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
-        <BulkActionsBar
-          count={bulkSelect.count}
-          selectedIds={Array.from(bulkSelect.selected)}
-          actions={bulkActions}
-          onClear={bulkSelect.clear}
-        />
       )}
 
-      {/* Table + DetailPanel */}
-      <div className="flex flex-1 min-h-0">
-        <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {features.bulkActionsEnabled && (
-                  <TableHead className="w-9 pr-0">
-                    <input
-                      type="checkbox"
-                      checked={bulkSelect.allSelected}
-                      ref={selectAllRef}
-                      onChange={bulkSelect.toggleAll}
-                      className="h-3.5 w-3.5 rounded border-border"
-                      aria-label="Вибрати всі"
-                    />
-                  </TableHead>
+      {activeTab === 'orders' && (
+        <>
+          {/* Saved filters */}
+          {features.savedFiltersEnabled && (
+            <SavedFiltersBar<PoFilters>
+              saved={savedFilters}
+              activeId={activeSavedFilterId}
+              onApply={applyFilter}
+              onSave={handleSaveFilter}
+              onRemove={removeFilter}
+              hideSaveButton
+            />
+          )}
+
+          {/* Status filters */}
+          <div className="flex flex-wrap gap-1.5 shrink-0">
+            {statuses.map(s => (
+              <button
+                key={s}
+                onClick={() => {
+                  setStatus(s);
+                  resetPage();
+                  setActiveSavedFilterId(null);
+                }}
+                className={cn(
+                  'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
+                  status === s
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
                 )}
-                {visibleColumns.map(col => {
-                  const sortable = ['date', 'amount'].includes(col.key);
-                  const sortKey =
-                    col.key === 'date'
-                      ? 'documentDate'
-                      : col.key === 'amount'
-                        ? 'totalAmount'
-                        : col.key;
-                  if (sortable)
-                    return (
-                      <SortableHead
-                        key={col.key}
-                        sortKey={sortKey}
-                        currentSort={poSort}
-                        onSort={togglePoSort}
-                        className={col.key === 'amount' ? 'text-right' : undefined}
-                        {...dragProps(col.key)}
-                      >
-                        {col.label}
-                      </SortableHead>
-                    );
-                  return (
-                    <TableHead key={col.key} {...dragProps(col.key)}>
-                      {col.label}
-                    </TableHead>
-                  );
-                })}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="py-10 text-center"
-                  >
-                    <div className="flex justify-center">
-                      <Spinner size="md" />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && orders.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="p-0"
-                  >
-                    <EmptyState icon={ShoppingCart} title="Замовлень не знайдено" />
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading &&
-                orders.map(po => (
-                  <TableRow
-                    key={po.id}
-                    className={cn(
-                      'group transition-colors cursor-pointer',
-                      bulkSelect.isSelected(po.id) && 'bg-primary/5',
-                      po.deletedAt && 'opacity-60',
-                    )}
-                    onClick={() => {
-                      setEditingPOId(po.id);
-                    }}
-                  >
+              >
+                {s ? STATUS_LABELS[s] : 'Всі'}
+              </button>
+            ))}
+          </div>
+
+          {/* Filters row */}
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <Input
+              value={q}
+              onChange={e => {
+                setQ(e.target.value);
+                resetPage();
+                setActiveSavedFilterId(null);
+              }}
+              placeholder="Пошук за номером, постачальником..."
+              leftElement={<Search />}
+              className="w-64 h-8 text-[13px]"
+            />
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] text-muted-foreground shrink-0">З</span>
+              <DatePickerInput
+                value={dateFrom}
+                onChange={v => {
+                  setDateFrom(v);
+                  resetPage();
+                  setActiveSavedFilterId(null);
+                }}
+                max={dateTo || undefined}
+                className="w-36"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] text-muted-foreground shrink-0">По</span>
+              <DatePickerInput
+                value={dateTo}
+                onChange={v => {
+                  setDateTo(v);
+                  resetPage();
+                  setActiveSavedFilterId(null);
+                }}
+                min={dateFrom || undefined}
+                className="w-36"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+                onClick={() => {
+                  setShowDeleted(v => !v);
+                  resetPage();
+                  setActiveSavedFilterId(null);
+                }}
+                className={cn(showDeleted && 'border-primary text-primary')}
+              >
+                {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+              </Button>
+              {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+              <ColumnsDropdown
+                columns={orderedColumns}
+                visibleKeys={colVisible}
+                onToggle={toggleCol}
+                onReorder={reorder}
+                onRename={renameColumn}
+                onReset={resetConfig}
+                hasCustomization={
+                  JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
+                  Object.keys(customLabels).length > 0
+                }
+              />
+              <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+              <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
+                Замовлення
+              </Button>
+            </div>
+          </div>
+
+          {/* Bulk actions */}
+          {features.bulkActionsEnabled && bulkSelect.count > 0 && (
+            <BulkActionsBar
+              count={bulkSelect.count}
+              selectedIds={Array.from(bulkSelect.selected)}
+              actions={bulkActions}
+              onClear={bulkSelect.clear}
+            />
+          )}
+
+          {/* Table + DetailPanel */}
+          <div className="flex flex-1 min-h-0">
+            <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+              <Table>
+                <TableHeader>
+                  <TableRow>
                     {features.bulkActionsEnabled && (
-                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <TableHead className="w-9 pr-0">
                         <input
                           type="checkbox"
-                          checked={bulkSelect.isSelected(po.id)}
-                          onChange={() => bulkSelect.toggle(po.id)}
+                          checked={bulkSelect.allSelected}
+                          ref={selectAllRef}
+                          onChange={bulkSelect.toggleAll}
                           className="h-3.5 w-3.5 rounded border-border"
-                          aria-label={`Вибрати замовлення ${po.number}`}
+                          aria-label="Вибрати всі"
                         />
-                      </TableCell>
+                      </TableHead>
                     )}
                     {visibleColumns.map(col => {
-                      if (col.key === 'number')
+                      const sortable = ['date', 'amount'].includes(col.key);
+                      const sortKey =
+                        col.key === 'date'
+                          ? 'documentDate'
+                          : col.key === 'amount'
+                            ? 'totalAmount'
+                            : col.key;
+                      if (sortable)
                         return (
-                          <TableCell key="number" className="font-medium text-[13px]">
-                            {po.number}
-                            {po.deletedAt && (
-                              <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
-                                видалено
-                              </Badge>
-                            )}
-                          </TableCell>
+                          <SortableHead
+                            key={col.key}
+                            sortKey={sortKey}
+                            currentSort={poSort}
+                            onSort={togglePoSort}
+                            className={col.key === 'amount' ? 'text-right' : undefined}
+                            {...dragProps(col.key)}
+                          >
+                            {col.label}
+                          </SortableHead>
                         );
-                      if (col.key === 'supplier')
-                        return (
-                          <TableCell key="supplier" className="text-[13px]">
-                            {po.supplierName ?? '—'}
-                          </TableCell>
-                        );
-                      if (col.key === 'warehouse')
-                        return (
-                          <TableCell key="warehouse" className="text-[13px] text-muted-foreground">
-                            {po.warehouseName ?? '—'}
-                          </TableCell>
-                        );
-                      if (col.key === 'status')
-                        return (
-                          <TableCell key="status">
-                            <Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>
-                              {STATUS_LABELS[po.status]}
-                            </Badge>
-                          </TableCell>
-                        );
-                      if (col.key === 'amount')
-                        return (
-                          <TableCell key="amount" className="text-right font-semibold text-[13px]">
-                            {fmtMoney(po.totalAmount)} ₴
-                          </TableCell>
-                        );
-                      if (col.key === 'date')
-                        return (
-                          <TableCell key="date" className="text-[13px] text-muted-foreground">
-                            {po.documentDate ? fmtDate(po.documentDate) : fmtDate(po.createdAt)}
-                          </TableCell>
-                        );
-                      return null;
+                      return (
+                        <TableHead key={col.key} {...dragProps(col.key)}>
+                          {col.label}
+                        </TableHead>
+                      );
                     })}
-                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        {(po.status === 'RECEIVED' || po.status === 'PARTIAL') && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            loading={applyingPricingId === po.id}
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            onClick={() => void applyPricing(po)}
-                            title="Розцінити товари за правилами"
-                          >
-                            <Zap className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          title="Відкрити деталі"
-                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                          onClick={() => void loadDetail(po, 'detail')}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        {!po.deletedAt && (
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            title="Позначити на видалення"
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => void markDeleted(po)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
+                    <TableHead />
                   </TableRow>
-                ))}
-            </TableBody>
-          </Table>
-        </div>
+                </TableHeader>
+                <TableBody>
+                  {loading && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                        className="py-10 text-center"
+                      >
+                        <div className="flex justify-center">
+                          <Spinner size="md" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!loading && orders.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                        className="p-0"
+                      >
+                        <EmptyState icon={ShoppingCart} title="Замовлень не знайдено" />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!loading &&
+                    orders.map(po => (
+                      <TableRow
+                        key={po.id}
+                        className={cn(
+                          'group transition-colors cursor-pointer',
+                          bulkSelect.isSelected(po.id) && 'bg-primary/5',
+                          po.deletedAt && 'opacity-60',
+                        )}
+                        onClick={() => {
+                          setEditingPOId(po.id);
+                        }}
+                      >
+                        {features.bulkActionsEnabled && (
+                          <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={bulkSelect.isSelected(po.id)}
+                              onChange={() => bulkSelect.toggle(po.id)}
+                              className="h-3.5 w-3.5 rounded border-border"
+                              aria-label={`Вибрати замовлення ${po.number}`}
+                            />
+                          </TableCell>
+                        )}
+                        {visibleColumns.map(col => {
+                          if (col.key === 'number')
+                            return (
+                              <TableCell key="number" className="font-medium text-[13px]">
+                                {po.number}
+                                {po.deletedAt && (
+                                  <Badge
+                                    variant="destructive"
+                                    className="ml-2 text-[10px] px-1 py-0"
+                                  >
+                                    видалено
+                                  </Badge>
+                                )}
+                              </TableCell>
+                            );
+                          if (col.key === 'supplier')
+                            return (
+                              <TableCell key="supplier" className="text-[13px]">
+                                {po.supplierName ?? '—'}
+                              </TableCell>
+                            );
+                          if (col.key === 'warehouse')
+                            return (
+                              <TableCell
+                                key="warehouse"
+                                className="text-[13px] text-muted-foreground"
+                              >
+                                {po.warehouseName ?? '—'}
+                              </TableCell>
+                            );
+                          if (col.key === 'status')
+                            return (
+                              <TableCell key="status">
+                                <Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>
+                                  {STATUS_LABELS[po.status]}
+                                </Badge>
+                              </TableCell>
+                            );
+                          if (col.key === 'amount')
+                            return (
+                              <TableCell
+                                key="amount"
+                                className="text-right font-semibold text-[13px]"
+                              >
+                                {fmtMoney(po.totalAmount)} ₴
+                              </TableCell>
+                            );
+                          if (col.key === 'date')
+                            return (
+                              <TableCell key="date" className="text-[13px] text-muted-foreground">
+                                {po.documentDate ? fmtDate(po.documentDate) : fmtDate(po.createdAt)}
+                              </TableCell>
+                            );
+                          return null;
+                        })}
+                        <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
+                            {(po.status === 'RECEIVED' || po.status === 'PARTIAL') && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                loading={applyingPricingId === po.id}
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                                onClick={() => void applyPricing(po)}
+                                title="Розцінити товари за правилами"
+                              >
+                                <Zap className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              title="Відкрити деталі"
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                              onClick={() => void loadDetail(po, 'detail')}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            {!po.deletedAt && (
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                title="Позначити на видалення"
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => void markDeleted(po)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
 
-        {/* Detail panel */}
-        <DetailPanel
-          open={!!selectedPO && detailPanel.enabled}
-          onClose={() => setSelectedPO(null)}
-          title={selectedPO?.number ?? ''}
-          subtitle={selectedPO?.supplierName}
-          tabs={selectedPO ? buildPOTabs(selectedPO) : undefined}
-          configFields={schemaToPanelConfigFields(PURCHASE_ORDER_PANEL_SCHEMA, panelConfig.config)}
-          onToggleField={panelConfig.toggleField}
-          onReorderFields={panelConfig.reorderFields}
-          onReset={panelConfig.reset}
-        />
-      </div>
+            {/* Detail panel */}
+            <DetailPanel
+              open={!!selectedPO && detailPanel.enabled}
+              onClose={() => setSelectedPO(null)}
+              title={selectedPO?.number ?? ''}
+              subtitle={selectedPO?.supplierName}
+              tabs={selectedPO ? buildPOTabs(selectedPO) : undefined}
+              configFields={schemaToPanelConfigFields(
+                PURCHASE_ORDER_PANEL_SCHEMA,
+                panelConfig.config,
+              )}
+              onToggleField={panelConfig.toggleField}
+              onReorderFields={panelConfig.reorderFields}
+              onReset={panelConfig.reset}
+            />
+          </div>
 
-      {/* Pagination */}
-      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+          {/* Pagination */}
+          <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+        </>
+      )}
 
       {/* Create modal */}
       <PurchaseOrderCreateModal

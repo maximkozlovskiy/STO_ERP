@@ -61,7 +61,7 @@ const NAV_COMMANDS: CommandDef[] = [
   },
   {
     id: 'nav:purchase-orders',
-    label: 'Замовлення',
+    label: 'Купівля',
     group: 'navigation',
     href: '/purchase-orders',
     keywords: ['закупівля', 'постачальник'],
