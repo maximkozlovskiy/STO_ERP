@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+231b0be2 test(e2e): Bug #486 — estimate-share self-seeds ESTIMATE WO (3 skips → real coverage)
 e33a5b58 docs(skills): add chunked bulk-update + dedup pattern to sto-optimize
 8fff4289 perf(optimize): parallelize chunked good.update loops with dedup safety
 f1b6a8cd docs(memory): update MemoryManual after review a26cd68a — Bug #483 dedup + cast cleanup
@@ -75,8 +76,15 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-optimize 8fff4289 — chunked bulk-update parallelization з dedup safety)
+Дата: 2026-06-15 (post sto-e2e 231b0be2 — estimate-share self-seeding ESTIMATE WO)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest e2e (2026-06-15, 231b0be2, after e33a5b58): /sto-e2e повний suite — 236 passed (+6), 9 skipped (-6), 0 failed, 5.8m. Виявлено 1 HIGH coverage gap і виправлено через self-seeding pattern.
+  - **Bug #486**: estimate-share.spec.ts мав 3 тести з `test.skip(list.items.length === 0)` що тихо пропускали Estimate Share + SMS фічу коли в БД немає ESTIMATE work-order (seed.ts має DRAFT/APPROVED, не ESTIMATE). Suite звітував success без реальної перевірки.
+  - **Виправлення**: refactor на self-seeding — `beforeAll` клонує DRAFT WO через `POST /work-orders/:id/clone`, транзитить до ESTIMATE через `POST /work-orders/:id/transition`; `afterAll` cleanup через `ESTIMATE → CANCELLED → DELETE` (per FSM `WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED']`). 0 leaked records. Module-scoped `seededEstimateWoId` + `accessToken: string | null`, fail-fast `expect(...).toBeTruthy()` якщо seed впав.
+  - **Throttle-safe**: токен читається з `e2e/.auth/admin.json` (globalSetup його туди кладе), не через нові `/api/auth/login` виклики — уникає 429 ThrottlerException при 4 workers × 4 tests.
+  - **Залишкові 9 skipped** — всі legitimate data-precondition guards (calendar slot без lift, stock-doc без DRAFT seed, "seed дані" describe-блоки, XLSX feature-flag, **work-orders-features.spec.ts:202 "COMPLETED/INVOICED"** — НЕ self-seed-imo бо FSM не дозволяє delete з COMPLETED, leakнув би permanent ARCHIVED record). Задокументовано в BUG_REPORT.md.
+  - **Перевірено isolation**: `npx playwright test e2e/estimate-share.spec.ts` → 4/4 passed (10.4s); post-run `GET /work-orders?status=ESTIMATE` → total: 0 — cleanup чистий.
+  - **Підхід задокументувати**: "self-seeding spec via clone+transition + FSM-aware cleanup" — повторюваний pattern для будь-якого feature що залежить від non-default WO статусу (ESTIMATE/INVOICED), якщо cleanup-шлях існує у FSM.
 Latest optimize (2026-06-15, 8fff4289 + e33a5b58, after a26cd68a): /sto-optimize-agent аудит на cleanup-commit 705e25e7 + simplify (TYPE_FILTERS/STATUS_FILTERS, @IsEnum types). 3 знахідки виправлені одним комітом (8fff4289), 1 skill update (e33a5b58).
   - apps/api/src/modules/inventory/pricing.service.ts line 164 — applyRuleToGoods: `for (const u of chunk) await tx.good.update(...)` всередині $transaction → `Promise.all(chunk.map(...))`. Plan accumulator походить з goods.findMany result — кожен goodId унікальний по PK, дублі неможливі, dedup не потрібен.
   - apps/api/src/modules/purchase-orders/purchase-orders.service.ts line 672 — applyPricing: `for (const u of chunk) await tx.good.updateMany(...)` → `Promise.all(chunk.map(...))`. ОДНАК: PO може мати кілька ліній з тим самим goodId за різну ціну → plan може мати дублі. Додано `dedupedPlan = Array.from(new Map(plan.map(u => [u.goodId, u])).values())` ДО Promise.all щоб зберегти last-write-wins старого sequential code. priceHistory.createMany тепер пише unique-per-good (raніше дублював).
