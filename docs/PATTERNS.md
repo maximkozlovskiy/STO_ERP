@@ -289,3 +289,77 @@ features.notificationCenterEnabled;
 5. all (null scope) — загальне правило
 
 COST_TIER: знайти тір де `costMin <= costPrice < costMax`; `costMax IS NULL` = останній тір.
+
+---
+
+## Universal Patterns (B1-B7 + C)
+
+**B1 — SharedStatusConstants** (`packages/shared/src/constants/statuses.ts`):
+
+- `WO_STATUS_LABELS/BADGE/TRANSITIONS`, `WO_PRIORITY_*`, `WO_CATEGORY_LABELS`
+- `INVOICE_STATUS_*`, `INVOICE_TYPE_LABELS`
+- `PO_STATUS_*`, `PO_STATUS_ACTION_LABELS`
+- `STOCK_DOC_STATUS_*`, `STOCK_DOC_TYPE_*`
+- `EMPLOYEE_STATUS_*`, `EMPLOYEE_ROLE_*`
+- Re-exported від `@sto/shared`. Всі 7 сторінок мігровані.
+
+**B2 — usePaginatedList** (`apps/web/src/hooks/api/usePaginatedList.ts`):
+
+- `buildParams` пропускає `null/undefined/''/false` значення, без trailing `?` для пустих params
+- Всі 5 list hooks делегують findAll до `usePaginatedList`
+
+**B3 — useListPage** (`apps/web/src/hooks/useListPage.ts`): composable для list сторінок — pagination + bulkSelect + tableColumns + detailPanel + panelConfig + savedFilters
+
+**B4 — FSMButtons** (`apps/web/src/components/ui/fsm-buttons.tsx`): shared FSM transition кнопки, `size: 'sm' | 'md'` (НЕ 'default' — Button uses xs/sm/md/lg/icon)
+
+**B5 — useApiMutation** (`apps/web/src/hooks/useApiMutation.ts`): unified mutation wrapper з toast+error+saving state
+
+**B6 — Shared Zod validators** (`packages/shared/src/schemas/validators.ts`): `phoneUaSchema`, `emailSchema`, `ibanUaSchema`, `uuidFieldSchema`, `positiveNumberSchema`, `nonNegativeNumberSchema`. Увага: не конфліктувати з `uuidSchema` у `schemas.ts`
+
+**B7 — useApiError** (`apps/web/src/hooks/useApiError.ts`): `useApiError(initial?)` + `parseApiError(e: unknown): string`
+
+**C — Schema-driven audit** (`apps/web/src/lib/panel-schema.ts`):
+
+- `COUNTERPARTY_PANEL_SCHEMA`, `EMPLOYEE_PANEL_SCHEMA`
+- `schemaToPanelConfigFields(schema)` → `buildPanelFields(item, config)` з renderOverrides
+- Поля НІКОЛИ не хардкодяться: схема → авторендер
+
+---
+
+## Патерн: EntityPickerField
+
+Будь-яке поле форми що посилається на інший об'єкт — через `EntityPickerField`:
+
+```tsx
+// Layout: [ display text    × 🔍 … ]  (кнопки всередині поля)
+<EntityPickerField
+  display={form.counterpartyDisplay}
+  placeholder="Обрати контрагента..."
+  onOpenDetail={form.counterpartyId ? openCpDetail : undefined} // undefined = disabled
+  onPick={() => setCpPickerOpen(true)}
+  onClear={() => setForm(f => ({ ...f, counterpartyId: '', counterpartyDisplay: '' }))}
+/>
+// + SearchPickerModal для вибору зі списку
+// + *EditModal відкривається через лупу (lazy fetch перед відкриттям)
+```
+
+### Правила EntityPickerField
+
+- `onOpenDetail = undefined` → кнопка 🔍 disabled (об'єкт не обраний)
+- lazy fetch у `openDetail()` — НЕ у useEffect при mount
+- `onSaved` оновлює `display` у батьківській формі
+- Кнопка "Створити новий" — ЗОВНІ поля, праворуч
+- Paired-state reset: якщо picker змінює supplier → скидати залежні поля (contractId тощо)
+
+### Реєстр \*EditModal компонентів
+
+| Компонент                  | Для об'єкта                                            |
+| -------------------------- | ------------------------------------------------------ |
+| `CounterpartyEditModal`    | контрагент (tabs: main/vehicles/contracts/work-orders) |
+| `GoodEditModal`            | товар (tabs: info/barcodes/batches)                    |
+| `EmployeeEditModal`        | співробітник (tabs: main/zones/lifts/categories)       |
+| `WorkOrderAddLineModal`    | додавання роботи до наряду                             |
+| `WorkOrderAddPartModal`    | додавання запчастини до наряду                         |
+| `PurchaseOrderCreateModal` | замовлення постачальнику                               |
+| `InvoiceCreateModal`       | рахунок                                                |
+| `StockDocumentCreateModal` | документ складу                                        |

@@ -25,6 +25,17 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → ON_HOLD → COMPLETED → IN
 
 **FE↔BE symmetry:** `WO_*_STATUSES` у `@sto/shared` МАЮТЬ МАТЧИТИ backend constants. Верифікується у `work-orders.fsm.invariants.spec.ts` (Bug #439).
 
+### Side-effects FSM transitions
+
+| Перехід                     | Side-effects (у `$transaction`)                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------ |
+| → `IN_PROGRESS`             | `createMovement(RESERVATION)` для кожної запчастини                                              |
+| → `COMPLETED`               | `createMovement(RESERVATION_RELEASE)` + `createMovement(WRITEOFF)` + `createTransaction(CHARGE)` |
+| → `CANCELLED` з IN_PROGRESS | `createMovement(RESERVATION_RELEASE)` для кожної запчастини                                      |
+| → `CANCELLED` з ON_HOLD     | `createMovement(RESERVATION_RELEASE)` для кожної запчастини                                      |
+
+**Порядок у COMPLETED:** RESERVATION_RELEASE **перед** WRITEOFF (щоб `available >= qty` guard пройшов).
+
 ---
 
 ## FSM — Stock Documents
@@ -100,6 +111,15 @@ OVERDUE → PAID / CANCELLED
 ---
 
 ## Інвентар — обов'язковий порядок операцій
+
+### 0. Guards у `inventory.service.ts`
+
+| Умова                                | Результат             |
+| ------------------------------------ | --------------------- |
+| `qty = 0`                            | `BadRequestException` |
+| `RESERVATION_RELEASE` з `qty > 0`    | `BadRequestException` |
+| `RESERVATION` якщо `available < qty` | `BadRequestException` |
+| `WRITEOFF` якщо `quantity < \|qty\|` | `BadRequestException` |
 
 ### 1. Завжди через InventoryService.createMovement()
 
