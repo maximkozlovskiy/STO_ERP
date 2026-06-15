@@ -328,9 +328,11 @@ export class StockDocumentsService {
             doc.lines.map(line => {
               const lineUnitId = line.good?.unitId ?? null;
               // Bug #236: persist resolved UoM — extracted to avoid duplication in both branches.
+              // sto-review §2.2: defense-in-depth — include orgId у where (узгоджено з PO.receive
+              // де line update теж компаундний where: { id, orgId }).
               const maybeUpdateUom = lineUnitId
                 ? tx.stockDocumentLine.update({
-                    where: { id: line.id },
+                    where: { id: line.id, orgId },
                     data: { unitOfMeasureId: lineUnitId },
                   })
                 : Promise.resolve();

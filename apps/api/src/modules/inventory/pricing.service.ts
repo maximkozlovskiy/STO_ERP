@@ -165,9 +165,14 @@ export class PricingService {
           // → disjoint PK writes, race-safe. Promise.all дає JS-overhead-economy у $transaction
           // (Prisma serializes на pinned connection — рядкові writes йдуть послідовно у SQL,
           // але без JS await між ними скорочується кількість мікрозадач event-loop).
+          // sto-review §2.2: defense-in-depth tenant guard — updateMany з orgId/deletedAt:null
+          // (узгоджено з purchase-orders.applyPricing і xlsx.applyPricingFromList).
           await Promise.all(
             chunk.map(u =>
-              tx.good.update({ where: { id: u.goodId }, data: { salePrice: u.newPrice } }),
+              tx.good.updateMany({
+                where: { id: u.goodId, orgId, deletedAt: null },
+                data: { salePrice: u.newPrice },
+              }),
             ),
           );
           await tx.priceHistory.createMany({
