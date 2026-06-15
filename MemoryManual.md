@@ -9,6 +9,8 @@
 ## Останній commit
 
 ```
+852d5fa4 fix(review): defense-in-depth orgId tenant guard on tx.X.update writes (pricing+SD)
+493c46ad docs(memory+skills): record self-seeding pattern after Bug #486
 231b0be2 test(e2e): Bug #486 — estimate-share self-seeds ESTIMATE WO (3 skips → real coverage)
 e33a5b58 docs(skills): add chunked bulk-update + dedup pattern to sto-optimize
 8fff4289 perf(optimize): parallelize chunked good.update loops with dedup safety
@@ -76,8 +78,19 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-e2e 231b0be2 — estimate-share self-seeding ESTIMATE WO)
+Дата: 2026-06-15 (post sto-review 852d5fa4 — defense-in-depth tenant guard)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest review (2026-06-15, 852d5fa4, after 493c46ad): /sto-review-agent повний скан last-10-commits range. 1 IMPORTANT виправлений у 2 файли (один коміт).
+  - IMPORTANT §2.2: tx.X.update без orgId у where — asymmetric з sibling pattern.
+    · apps/api/src/modules/inventory/pricing.service.ts L168-172 — `tx.good.update({ where: { id: u.goodId } })` всередині chunked $transaction. Сусідні `purchase-orders.applyPricing` (L681-687) і `xlsx.applyPricingFromList` (L926-934) обидва вже використовують `updateMany({ where: { id, orgId, deletedAt: null } })`. Виправлено: switch на updateMany з compound where.
+    · apps/api/src/modules/stock-documents/stock-documents.service.ts L332-335 — `tx.stockDocumentLine.update({ where: { id: line.id } })` всередині FSM transition. Сусідній `purchase-orders.receive` L516-522 уже використовує `{ where: { id, orgId } }` (extendedWhereUnique). Виправлено: додано `orgId` у compound where.
+  - Обидва writes були tenant-safe by construction (line/goodId походили з parent doc/findMany що вже фільтрувались по orgId), але asymmetry ослаблювала §2.2 invariant: кожен write має орієнтуватися на orgId на query-рівні (defense-in-depth якщо future refactor мутує source array).
+  - Перевірки виконано: §1 TypeScript (api+web 0 errors), §2 Security (no missing orgId after fix, no leaked PII), §3 Memory (page.tsx clean), §4 Architecture (controllers→services proper), §5 Business Rules (PO/SD FSM intact, dedup guards у applyPricing), §6 DB (всі findMany мають take), §7 Perf (Promise.all chunks безпечні), §13 API Contract (DTOs match toResponseDto).
+  - Concerns verified:
+    · pricing.applyRuleToGoods — `updates` походить з `goods.findMany({ where: { orgId, ... } })` → goodId унікальний per-tenant. Безпечно і до фіксу, але defense-in-depth тепер консистентне.
+    · stock-documents.transition — `doc.lines` filter включає `orgId` через outer findFirst; line.id з тенант-scoped doc. Same safety analysis.
+    · Bug #486 self-seeding pattern у estimate-share.spec.ts — не вимагає коду-фіксу. Test code.
+  - Tests: api+web tsc 0 errors. Існуючі testpack-и pricing/PO/SD не зачеплені (compound where однаковий за семантикою).
 Latest e2e (2026-06-15, 231b0be2, after e33a5b58): /sto-e2e повний suite — 236 passed (+6), 9 skipped (-6), 0 failed, 5.8m. Виявлено 1 HIGH coverage gap і виправлено через self-seeding pattern.
   - **Bug #486**: estimate-share.spec.ts мав 3 тести з `test.skip(list.items.length === 0)` що тихо пропускали Estimate Share + SMS фічу коли в БД немає ESTIMATE work-order (seed.ts має DRAFT/APPROVED, не ESTIMATE). Suite звітував success без реальної перевірки.
   - **Виправлення**: refactor на self-seeding — `beforeAll` клонує DRAFT WO через `POST /work-orders/:id/clone`, транзитить до ESTIMATE через `POST /work-orders/:id/transition`; `afterAll` cleanup через `ESTIMATE → CANCELLED → DELETE` (per FSM `WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED']`). 0 leaked records. Module-scoped `seededEstimateWoId` + `accessToken: string | null`, fail-fast `expect(...).toBeTruthy()` якщо seed впав.
