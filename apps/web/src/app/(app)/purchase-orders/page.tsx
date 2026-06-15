@@ -732,7 +732,7 @@ export default function PurchaseOrdersPage() {
           </div>
 
           {/* Returns table */}
-          <div className="flex flex-1 min-h-0 mt-2">
+          <div className="flex flex-1 min-h-0">
             <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
               <Table>
                 <TableHeader>
@@ -879,7 +879,7 @@ export default function PurchaseOrdersPage() {
       )}
 
       {activeTab === 'orders' && (
-        <>
+        <div className="flex flex-col gap-3 flex-1">
           {/* Saved filters */}
           {features.savedFiltersEnabled && (
             <SavedFiltersBar<PoFilters>
@@ -999,7 +999,7 @@ export default function PurchaseOrdersPage() {
           )}
 
           {/* Table + DetailPanel */}
-          <div className="flex flex-1 min-h-0 mt-2">
+          <div className="flex flex-1 min-h-0">
             <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
               <Table>
                 <TableHeader>
@@ -1211,7 +1211,7 @@ export default function PurchaseOrdersPage() {
 
           {/* Pagination */}
           <Pagination page={page} totalPages={totalPages} onChange={setPage} />
-        </>
+        </div>
       )}
 
       {/* Create modal */}
