@@ -626,7 +626,8 @@ export function CalendarSlotModal({
       ? (() => {
           // Send real wall-clock end on the same day so the backend split computes correctly:
           // slot2 duration = endAt - 20:00 (WORK_DAY_END_H). E.g. 2h from 20:00 → endAt=22:00.
-          const totalMinRaw = startMin2 + Math.round(nh2 * 60);
+          // Cap at 23:59 — kyivDateTimeToISO rejects hours ≥ 24 (produces Invalid Date).
+          const totalMinRaw = Math.min(startMin2 + Math.round(nh2 * 60), 23 * 60 + 59);
           return `${pad(Math.floor(totalMinRaw / 60))}:${pad(totalMinRaw % 60)}`;
         })()
       : form.endAt;
@@ -826,8 +827,11 @@ export function CalendarSlotModal({
                 const [h, m] = form.startAt.split(':').map(Number);
                 const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(nh * 60);
                 const workEndMin = WINDOW_END * 60; // 20:00 = 1200 min
-                if (totalMin <= workEndMin) return null;
-                const overflowMin = totalMin - workEndMin;
+                // Use the same 15-min snap as calcEndAt() so the warning fires iff the
+                // Кінець field actually shows a next-day time (prevents contradictory UI).
+                const snappedTotal = Math.round(totalMin / 15) * 15;
+                if (snappedTotal <= workEndMin) return null;
+                const overflowMin = snappedTotal - workEndMin;
                 const day2EndMin = 8 * 60 + overflowMin; // starts at 08:00
                 const day2H = Math.floor(day2EndMin / 60);
                 const day2M = day2EndMin % 60;

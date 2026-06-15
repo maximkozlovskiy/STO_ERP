@@ -74,7 +74,14 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const url = config.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
-        const parsed = new URL(url);
+        let parsed: URL;
+        try {
+          parsed = new URL(url);
+        } catch {
+          throw new Error(
+            `Invalid REDIS_URL: "${url}". Expected format: redis://[:password@]host[:port][/db]`,
+          );
+        }
         return {
           connection: {
             host: parsed.hostname,
