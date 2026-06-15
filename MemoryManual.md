@@ -20,12 +20,12 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 ## Останній commit
 
 ```
+f321d07d  docs: restructure MemoryManual — object dossiers + spec template + B1-B7 patterns
+e64bca47  docs: restructure MemoryManual into layered docs (ARCHITECTURE/PATTERNS/BUSINESS-RULES/CHANGELOG)
 cc2cd2e1  fix(tester): Bugs #487-#490 — post-cycle3 spec gaps + BALANCE_SIGN exhaustiveness
 93473ad7  refactor(simplify): deduplicateBy<T> utility + BALANCE_SIGN lookup table
 c24014ed  refactor(simplify): readonly FSM arrays, toIdMap/calcVatTotals helpers
 f23abfd3  perf(optimize): tier-merger contract Promise.all + settlements parallel + RA covering index
-852d5fa4  fix(review): orgId tenant guard on tx.X.update (pricing + SD)
-d059b9a9  feat(stock-documents): add RECEIPT type (Оприбуткування)
 ```
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
@@ -55,15 +55,18 @@ d059b9a9  feat(stock-documents): add RECEIPT type (Оприбуткування)
 
 ## Довідники (читати за потреби)
 
-| Файл                                                 | Коли читати                                |
-| ---------------------------------------------------- | ------------------------------------------ |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | API модулі, Prisma моделі, утиліти         |
-| [docs/PATTERNS.md](docs/PATTERNS.md)                 | UI компоненти, hooks, list page pattern    |
-| [docs/BUSINESS-RULES.md](docs/BUSINESS-RULES.md)     | FSM, інвентар, розрахунки, тенант-ізоляція |
-| [docs/GOTCHAS.md](docs/GOTCHAS.md)                   | Відомі пастки — читати перед новою фічею   |
-| [CHANGELOG.md](CHANGELOG.md)                         | Журнал комітів по фічах                    |
-| [docs/PHASES.md](docs/PHASES.md)                     | Поточна фаза і задачі                      |
-| [.claude/memory/MEMORY.md](.claude/memory/MEMORY.md) | User preferences                           |
+| Файл                                                     | Коли читати                                                      |
+| -------------------------------------------------------- | ---------------------------------------------------------------- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)             | API модулі (28), Prisma моделі (41), утиліти, sync               |
+| [docs/PATTERNS.md](docs/PATTERNS.md)                     | UI компоненти, hooks, B1-B7, EntityPickerField                   |
+| [docs/BUSINESS-RULES.md](docs/BUSINESS-RULES.md)         | FSM, інвентар, розрахунки, тенант-ізоляція                       |
+| [docs/GOTCHAS.md](docs/GOTCHAS.md)                       | Відомі пастки — читати перед новою фічею                         |
+| [CHANGELOG.md](CHANGELOG.md)                             | Журнал комітів по фічах                                          |
+| [docs/PHASES.md](docs/PHASES.md)                         | Поточна фаза і задачі                                            |
+| [docs/objects/work-order.md](docs/objects/work-order.md) | WorkOrder FSM + endpoints + UI — повний дос'є                    |
+| [docs/objects/](docs/objects/)                           | Дос'є агрегатів (counterparty, inventory, settlements, calendar) |
+| [docs/specs/\_TEMPLATE.md](docs/specs/_TEMPLATE.md)      | Шаблон специфікації нової фічі                                   |
+| [.claude/memory/MEMORY.md](.claude/memory/MEMORY.md)     | User preferences                                                 |
 
 ---
 
