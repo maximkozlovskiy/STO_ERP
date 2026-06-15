@@ -605,6 +605,9 @@ done
 - [ ] **Hardcoded `0`/`false`/`null` у side-channel mutation що дублює canonical create (Bug #406):** будь-який `tx.<Model>.create({ data: { vatRate: 0, ... } })` або similar copy-from-source mutation де canonical create-метод (`addLine`/`addX`/`createX`) використовує `dto.vatRate ?? <DEFAULT>` АБО читає `<DEFAULT>` з OrganisationSettings — копія повинна використати ТЕ САМЕ дефолтне значення. Сценарій (Bug #406): `addLine` дефолтить `vatRate=20`; `refreshFromWorkOrder` (alternate endpoint) hardcode-ить `vatRate: 0` → totalVat завжди 0 → ПДВ-облік ламається. Інші risk-spots: `discountPercent: 0`, `currencyCode: 'UAH'`, `paymentDays: 14`, `warrantyDays: 0`. Grep для виявлення: спочатку знайти canonical defaults (`grep -rnE "vatRate:\s*dto\.vatRate\s*\?\?\s*\d+" apps/api/src/modules --include="*.service.ts"`), потім alternate mutations у тому ж модулі (`grep -rnE "vatRate:\s*0\b|currencyCode:\s*'UAH'" apps/api/src/modules --include="*.service.ts"`) → mismatch = bug. Pattern fix: extract `const DEFAULT_VAT = 20` constant у service (або читати з OrganisationSettings), використати у обох. Severity HIGH для фінансових полів (ПДВ/discount/currency). Парне з Bug #360 (auto-create child ignores parent settings inheritance).
 - [ ] **`useState` guard у async handler з pending `await` між set і guard-read (Bug #430):** будь-який `handleClose`/`handleCancel`/`handleDismiss`/`handleEscape` що читає React state (`saving`, `loading`, `transitioning`, `submitting`) у тілі — race-prone якщо парний async handler робить `setX(true)` → `await externalCall()`. React batching: state-flush НЕ відбувається до завершення event handler; pending `await` тримає handler open → handleClose v1 з closure `state=false` живий → guard обходиться → modal закривається на pending POST → orphan data. Grep: `grep -rnE "if \((saving|loading|transitioning|submitting)\)\s*return" apps/web/src/components --include="*.tsx" | grep -v "Ref\.current"` — кожен match читає state замість ref. Cross-check: `grep -rnE "set(Saving|Loading|Transitioning|Submitting)\(true\)" apps/web/src/components --include="*.tsx" -A 3` → знайти парний `await apiFetch\|await fetch` — якщо є, race-window CONFIRMED. Фікс-pattern: двошарова state — `useState` для render (disabled-props/spinners) + `useRef` для guard-read у async paths. Wrapper-сетер `setXBoth(v)` оновлює обидва. Guard у handleClose читає **виключно** з ref. Регресія-guard vitest: pending Promise mock (`new Promise(resolve => { resolveFn = resolve; })`) → click submit → keyboard Escape → assert onClose NOT called. Severity: HIGH (data-integrity: orphan rows, silent failed POSTs)
 - [ ] **`vi.mock(...)` зі shared lib НЕ оновлений після refactor-extract (Bug #429):** будь-який `refactor(simplify|extract)` commit що додає нові exports у shared lib (`apps/web/src/lib/*.ts`, `@/hooks/*`, `@sto/shared`) і модифікує компонент щоб імпортувати їх — ОБОВ'ЯЗКОВО перевірити кожний test що мокає той же модуль. Grep: `git diff HEAD~N HEAD -- "apps/web/src/lib/*.ts" "apps/web/src/hooks/*.ts" | grep "^+export"` → для кожного нового export `<X>`: `grep -rln "vi.mock\(['\"]@/lib/<libName>['\"]" apps/web/src --include="*.test.tsx"` → для кожного матчу перевірити чи містить `<X>:` у returned object → якщо ні → stale mock. **Симптом runtime:** тест fail'ить за НЕ ПОВ'ЯЗАНИМ assert (наприклад спостережувана state assertion), а не за "missing export" — бо exception ловиться у `try/catch` у компоненті, `finally` нормалізує state. DEBUG-перевірка: тимчасові `console.log` у компоненті `try/catch/finally` блоки → у логах `[catch] Error: No "X" export is defined on the "@/lib/Y" mock`. Фікс: додати pass-through stub для нового export (identity-mapping `(v) => v` достатньо якщо тест не залежить від DST/Intl-поведінки). Альтернатива (preferable): `vi.mock(..., async () => { const actual = await vi.importActual(...); return { ...actual, override: stub }; })` — only override what test controls. Severity: HIGH (release-blocker, ховає інші регресії). Парний шаблон з Bug #430: stale mock ховав race-window 10+ commit-ів — після фіксу mock, real bug випливає назовні.
+- [ ] **`setX(value)` викликається, але `x` не читається у JSX (Bug #497, sub-patern Bug #160):** на відміну від класичного dead-state (setter не викликається І value не читається — обидві сторони мертві), цей варіант **гірший**: setter ВИКЛИКАЄТЬСЯ під час async-операцій (`apiFetch`/`mutateAsync`), state перерендерить компонент, але value НІКОЛИ не зчитується у JSX → user не бачить loading-spinner/disabled-state/error-banner під час operation. На відміну від dead state — тут є performance impact (extra renders) + UX gap. Grep: `grep -rnE "useState[<(](bool|number|null|string)" apps/web/src/app --include="*.tsx" -A 5` → для кожного state-name взяти grep по файлу: `grep -nE "\b<name>\b" $file` — якщо є тільки декларація + setter calls але **немає** читання `{<name> && ...}`/`disabled={<name>}`/`loading={<name>}` у JSX → bug. Найчастіше: `detailLoading`/`loadingId`/`saving` після refactor що видалив conditional render. Severity MEDIUM (silent UX). Фікс: ЛИБО видалити state (якщо feature не потрібна), ЛИБО додати render-time consumption (loading-button, spinner, disabled-row). Особливо ризиковано коли state описує per-row tracking — `detailLoadingId: string | null` дозволяє per-row loading-state на action-кнопках.
+- [ ] **`mutateAsync()` у inline click-handler без try/catch — silent failure (Bug #499):** TanStack Query mutation hook без `useMutation({onError})` АБО без global `MutationCache.onError` у `QueryClientProvider` config → `await mutateAsync` throw перериває handler. Якщо handler має `toast.success` ПІСЛЯ await — success тост не показується, але також НЕ показується error тост. Користувач клікнув "Видалити" → нічого не відбулось → бачить що рядок все ще там → плутанина. Grep: `grep -rnE "await\s+\w+\.mutateAsync\(" apps/web/src/app --include="*.tsx" -B 1 -A 2` — для кожного match перевірити: (а) `try/catch` обгортка; АБО (б) hook має `useMutation({onError: ...})`; АБО (в) `MutationCache.onError` глобально. Якщо жодного з трьох — bug. Cross-check: `grep -rn "MutationCache\|mutationCache:" apps/web/src` — якщо взагалі немає global onError, КОЖЕН inline mutateAsync без try/catch = bug. Severity MEDIUM (silent failure, user confusion). Фікс-pattern inline: `try { await mut.mutateAsync(); toast.success } catch (e) { toast.error(e.message) }`. Альтернативний фікс (preferable): додати `onError` у сам hook — спрацює для ВСІХ callers. Регресія-guard: vitest mock mutation з `mockRejectedValue` → click button → assert `toast.error` called.
+- [ ] **Dead state cleanup у paired файлах після review (Bug #496, paired with Bug #341):** коли review-fix commit ВИДАЛЯЄ dead state з одного файлу (наприклад `selectDoc`/`toggleSelectDoc` у stock-documents), часто паралельний файл (`purchase-orders/page.tsx`, `invoices/page.tsx`) має **той самий патерн** — `useState<X | null>(null)` + setter тільки до `null` + ніколи non-null. Grep: для кожного `useState<\w+\s*\|\s*null>` у `apps/web/src/app/(app)/**/page.tsx`: підрахувати кількість `setName(<value>)` де value НЕ `null` → якщо 0 → dead state. Pair-check: якщо review-fix щойно видалив dead state з одного `<entity>/page.tsx` → пройти ВСІ інші list-pages (`grep -rln "DetailPanel\|<entity-name>Panel" apps/web/src/app/(app)`) і перевірити. Severity HIGH якщо state годує панель/модал що рендериться у JSX (feature мертва). Регресія-guard: vitest snapshot тест на JSX → щоб видалення DetailPanel не пройшло як silent regression.
 - [ ] **Review-fix completeness audit для крос-файлових патернів (Bug #341):** будь-який review-fix commit `fix(review): replace X with Y` що чіпає **N файлів** (наприклад заміна `.catch(() => {})` на `console.warn`) — після кожного такого commit пройти **ВЕСЬ codebase** на той самий патерн і переконатись що review знайшов УСІ файли. Grep-команда має бути така ж яка вживалась у review, але БЕЗ filter по changed-files. Типові пропуски: (а) сторінки `[id]/PageClient.tsx` коли review працював зі сторінкою у root (`/X/page.tsx`); (б) tabbed-content (`*Tab.tsx`) поза основним route файлом; (в) sub-components всередині той самий сторінки; (г) shared hooks/utilities у `apps/web/src/hooks` чи `lib`. Парний сигнал у git log: `git log --oneline | grep "fix(review)" | head -3` — для останнього review-fix-commit взяти grep-паттерн з нього (наприклад `\.catch(() => {})`) і виконати `grep -rn "<pattern>" apps/web/src --include="*.tsx" --include="*.ts" | grep -v <вже-виправлені>` → нові match = upskipped review (BUG нової tester-сесії). Виключення з cleanup: легітимні випадки документуються у самому місці (toast-double-protection, optional PWA SW, fire-and-forget telemetry) — тестер відрізняє за наявністю парного user-feedback каналу (toast/setError/console.warn вище у фукнції). Severity: успадковує severity оригінального review-fix bug-у. Grep шаблон: `git show --stat <last-review-commit> -- '*.tsx' '*.ts' | awk '/^ /{print $1}'` — список файлів review-fix; для кожного знайденого згодом match → перевірити чи серед них. Якщо ні → bug.
 
 ---
@@ -1010,6 +1013,78 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-15 — `setX(value)` викликається у async-операції, але `x` не читається у JSX (Bug #497) — frontend / dead-state / UX feedback
+
+**Сигнал:** `const [loading, setLoading] = useState(false)` (або `loadingId`, `saving`, `processingId`) → setter викликається ВСЕРЕДИНІ async-handler (`setLoading(true)` перед `await apiFetch`, `setLoading(false)` у finally), state перевертає React render, але `loading` НІКОЛИ не читається у JSX — немає `{loading && <Spinner/>}`, немає `disabled={loading}` на кнопці, немає `loading={loading}` prop. Класичний Bug #160 — обидві сторони (setter + reader) мертві. Тут гірше: setter викликається → extra renders + memory churn + закидаються mutation queue events, але user НЕ бачить жодної реакції UI на запит. UX silent: користувач клікає Pencil → 1-3s нічого не відбувається → бачить що з'явився Modal → не розуміє чому затримка.
+
+**Причина виникнення:** refactor видалив JSX-блок що читав state (наприклад, видалив всю Detail Modal стару секцію та переписав на React Query hook), але забув видалити setLoading/loading state. Альтернативно: розробник збирається додати feedback пізніше, але забуває (TODO без stamp).
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти потенційні mute-loading state
+grep -rnE "useState[<(]boolean|useState\(false\)|useState<string \| null>\(null\)|useState<number \| null>\(null\)" apps/web/src/app --include="*.tsx" -A 1 | grep "const \[" | head -30
+
+# Для кожного state-name перевірити usage у тому ж файлі
+state_names=("loading" "saving" "processing" "loadingId" "savingId" "applyingPricingId" "transitioning" "submitting" "deletingIds")
+for name in "${state_names[@]}"; do
+  for f in apps/web/src/app/**/*.tsx; do
+    [ -f "$f" ] || continue
+    has_decl=$(grep -c "const \[$name," "$f")
+    [ "$has_decl" -eq 0 ] && continue
+    # Кількість read у JSX (виключаємо declaration і setter calls)
+    has_read=$(grep -cE "\{$name|$name &&|$name\?|disabled=\{$name|loading=\{$name|if \($name" "$f")
+    if [ "$has_decl" -gt 0 ] && [ "$has_read" -eq 0 ]; then
+      echo "MUTE STATE: $f → $name (setter called but value never read in JSX)"
+    fi
+  done
+done
+```
+
+**Підхід до фіксу:** два варіанти, оба валідні:
+
+1. **Видалити state**, якщо feature feedback справді не потрібна (наприклад, операція займає <100ms — користувач не помітить). Видалити setter calls і useState declaration.
+2. **Додати render-time consumption**: для **single-row** state (`saving`, `transitioning`, `loading`) — `disabled={saving}` + `loading={saving}` prop на пов'язану кнопку АБО `{saving && <Spinner/>}`. Для **per-row tracking** (`detailLoadingId: string | null`) — `loading={detailLoadingId === row.id}` + `disabled={detailLoadingId === row.id}` на per-row action button. Per-row pattern уникає накладного `disabled` для ВСІХ рядків коли тільки один in-flight.
+
+**Severity:** MEDIUM (silent UX gap — користувач не розуміє чому затримка/чи кнопка спрацювала). LOW якщо async-operation < 100ms (немає сприйнятого затримки). Парне з Bug #303 (in-flight guard без overlay-блокування) — дублікат click ризикує race + silent failure якщо немає disabled feedback.
+
+**Де шукати ще:** будь-який `loadDetail`/`fetchFull`/`fetchOne`/`loadOptions` що робить async fetch — потенційний кандидат на per-row loading-state у row action buttons. Також search input з debounced fetch + loading-spinner. Також inline-edit save button + savingIds set.
+
+---
+
+### 2026-06-15 — `mutateAsync()` у inline click-handler без try/catch — silent failure при mutation error (Bug #499) — frontend / error-handling / silent UX failure
+
+**Сигнал:** Inline `onClick={async () => { await someMutation.mutateAsync(arg); toast.success('...') }}` — без `try/catch` і без `useMutation({onError: ...})` у hook і без глобального `MutationCache.onError` у `QueryClientProvider`. `mutateAsync` rejects → throw перериває handler → `toast.success` НЕ виконується, але `toast.error` теж НЕ показується → користувач клікнув "Видалити" → нічого не відбулось → бачить що рядок все ще там → плутанина.
+
+**Причина виникнення:** розробник вважає що TanStack Query автоматично показує помилки. Це НЕ так — `useMutation` має `onError` callback що треба явно конфігурувати. Якщо проект не має `MutationCache.onError` (типово не має), то КОЖЕН mutateAsync без обгортки = silent failure point.
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Перевірити чи є глобальний MutationCache.onError
+grep -rn "MutationCache\|mutationCache:" apps/web/src
+# Якщо результат пустий → ВСІ inline mutateAsync без try/catch = bug
+
+# 2. Знайти inline mutateAsync calls
+grep -rnE "await\s+\w+\.mutateAsync\(" apps/web/src/app --include="*.tsx" -B 2 -A 3 | grep -B 5 "mutateAsync"
+
+# 3. Для кожного match — перевірити чи є try/ catch
+# pattern: спочатку try, потім await, потім catch — або відсутня обгортка
+```
+
+**Підхід до фіксу:** два варіанти, в порядку preference:
+
+1. **Per-hook `onError`** (preferable): у `useDeleteX()` додати `useMutation({ mutationFn, onError: (e) => toast.error(e.message), onSuccess: () => qc.invalidate(...) })`. Спрацює для ВСІХ callers без обгортки кожного інлайн handler. Це SSOT для error handling specific mutation.
+2. **Inline try/catch** у конкретному handler: `try { await mut.mutateAsync(); toast.success } catch (e) { toast.error(e.message) }`. Менш ergonomic, але корисно коли error message contextual до callsite (наприклад, "Не вдалось видалити повернення X" замість generic).
+
+Альтернатива (highest leverage): **глобальний MutationCache.onError** у `QueryClientProvider`. Захищає від ВСІХ майбутніх mutateAsync calls без додаткової роботи. Не покриває success-toast (контекстуальний), але покриває силенце-throw scenarios.
+
+**Severity:** MEDIUM (silent failure, user confusion). HIGH якщо mutation видаляє/змінює важливий ресурс (Invoice, Payment, WorkOrder transition) — користувач не знає чи операція пройшла → робить duplicate-click → потенційна data inconsistency.
+
+**Де шукати ще:** будь-який inline `onClick={async () =>` що робить single-step mutation. Особливо: ICON-button у row-actions (Trash2/Pencil/Zap), inline-confirm dialogs, bulk-actions handlers. Також `useEffect(() => { mutation.mutateAsync() }, [])` — той самий ризик через unhandled promise rejection.
+
+---
 
 ### 2026-06-15 — `Partial<Record<Enum, V>>` lookup з runtime fallthrough ховає TS-exhaustiveness (Bug #488) — backend / business logic / type-safety
 
