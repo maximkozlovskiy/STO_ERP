@@ -9,6 +9,7 @@
 ## Останній commit
 
 ```
+cc2cd2e1 fix(tester): Bugs #487-#490 — post-cycle3 spec gaps + BALANCE_SIGN exhaustiveness
 93473ad7 refactor(simplify): Cycle 3 — deduplicateBy<T> shared utility + BALANCE_SIGN lookup table
 4648446b docs(memory): update MemoryManual after Cycle 3 simplify — new utils + FSM gotcha
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
@@ -83,8 +84,16 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post simplify Cycle 3 93473ad7 — deduplicateBy utility + BALANCE_SIGN lookup)
+Дата: 2026-06-15 (post tester cc2cd2e1 — Bugs #487-#490 fixed)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Тести: API unit+contract ✅ 834/834 passed (62 файлів, +13 від baseline 821); Web components ✅ 423/423 passed (39 файлів, unchanged); Property-based invariants ✅ 15/15 passed (inventory + settlements).
+Latest tester (2026-06-15, cc2cd2e1, FULL post-cycle3 audit): /sto-tester-agent після 3 циклів review+optimize+simplify по RECEIPT stock-document type. 4 баги знайдено, всі виправлені, +13 regression-guard тестів.
+  - Bug #487 [MEDIUM]: apps/api/src/common/utils/array.ts (new deduplicateBy<T>) без парного spec — інші файли common/utils/ (fsm/math/pagination/url-guard) всі мають *.spec.ts. Створено array.spec.ts з 9 кейсами: empty, single, duplicates last-wins (документує critical invariant applyPricing), all-unique, all-duplicates, numeric keys (Map insertion-order preserved on key-update), null/undefined keys (separate Map buckets), immutability of input.
+  - Bug #488 [MEDIUM]: settlements.service.ts BALANCE_SIGN використовував `Partial<Record<SettlementTransactionType, 1 | -1>>` з runtime fallthrough `throw new Error(...)`. Partial<> ховав TS-exhaustiveness: новий enum value (WRITEOFF/ADJUSTMENT/INTEREST) пройшов би compile. Виправлено: drop Partial<> → плоский Record<>, видалено runtime guard (unreachable з exhaustive). Adding new enum value → compile-time error.
+  - Bug #489 [MEDIUM]: applyPricing (PO), applyPricingFromList (xlsx), applyRuleToGoods (pricing) — без regression-guard для deduplicateBy(plan, u => u.goodId). Refactor що дропне deduplicateBy → 2 parallel writes на той самий PK у Promise.all → race-deterministic Good.salePrice на production даних з duplicated goodId. Додано: (PO) 2-line same-goodId test → expect(updateMany).toHaveBeenCalledTimes(1) з last-wins price; (xlsx) 2-row same-SKU test → same; (pricing) fixed stale $transaction mock який повертав callback без виклику → INNER логіка (updateMany з orgId, defense-in-depth) НЕ виконувалась. Тепер мок execute-ить callback з self як tx, додано regression-guard для tx.good.updateMany compound where.
+  - Bug #490 [LOW]: stock-documents.service.spec.ts без assertion для defense-in-depth orgId на tx.stockDocumentLine.update (commit 852d5fa4). Паралельно purchase-orders.service.spec.ts:604 уже асертить `where: { id: LINE_ID, orgId: ORG }`. Додано symmetric assert у transition(RECEIPT → CONFIRMED).
+  - Висновки: post-cycle3 спостереження — simplify/optimize/review додають інваріанти у code, але часто без парного regression-guard у spec. Тестер ловить цей gap, бо refactor без guard може мовчки повернути попередню небезпечну поведінку.
+
 Latest simplify (2026-06-15, 93473ad7, Cycle 3 final): /simplify аудит на останніх 20 комітах (settlements/PO/pricing/xlsx/SD/page). 2 реальні знахідки виправлені, 3 правильно відхилені.
   - apps/api/src/common/utils/array.ts NEW — `deduplicateBy<T>(arr, key: (item: T) => string)` helper. Вербатим `Array.from(new Map(arr.map(u => [key(u), u])).values())` був скопійований у purchase-orders.service.ts:670 і xlsx.service.ts:915. Обидва call-sites тепер: `deduplicateBy(plan, u => u.goodId)`.
   - apps/api/src/modules/settlements/settlements.service.ts — `balanceDelta` sign: 5-branch if/else (4 однакові `-dto.amount`, 1 `+dto.amount`) → `BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1>` lookup. Unknown type все ще throws.
