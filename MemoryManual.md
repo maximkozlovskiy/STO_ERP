@@ -9,6 +9,9 @@
 ## Останній commit
 
 ```
+93473ad7 refactor(simplify): Cycle 3 — deduplicateBy<T> shared utility + BALANCE_SIGN lookup table
+4648446b docs(memory): update MemoryManual after Cycle 3 simplify — new utils + FSM gotcha
+c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 4400dfb7 docs(skills): add branching ternary inside Promise.all + tenant-guard create-update parallel patterns to sto-optimize
 f23abfd3 perf(optimize): tier-merger contract Promise.all + settlements parallel write + reconciliation acts covering index
 852d5fa4 fix(review): defense-in-depth orgId tenant guard on tx.X.update writes (pricing+SD)
@@ -80,8 +83,13 @@ f1d3f805 docs(skills): optimize skill files — reduce total size by 46% (14.5k 
 c24014ed refactor(simplify): Cycle 3 — readonly FSM arrays, toIdMap/calcVatTotals helpers, dep fix
 51c22418 test(e2e): add plannedHours/actualHours E2E specs (Cycle 3)
 2a8da05a perf(optimize): CreateWorkOrderModal twin-scan reduce + N×M finds → useMemo Maps
-Дата: 2026-06-15 (post sto-optimize 4400dfb7 — tier-merger contract + parallel write + RA covering index)
+Дата: 2026-06-15 (post simplify Cycle 3 93473ad7 — deduplicateBy utility + BALANCE_SIGN lookup)
 TypeScript: api ✅ 0 errors, web ✅ 0 errors, shared ✅ 0 errors
+Latest simplify (2026-06-15, 93473ad7, Cycle 3 final): /simplify аудит на останніх 20 комітах (settlements/PO/pricing/xlsx/SD/page). 2 реальні знахідки виправлені, 3 правильно відхилені.
+  - apps/api/src/common/utils/array.ts NEW — `deduplicateBy<T>(arr, key: (item: T) => string)` helper. Вербатим `Array.from(new Map(arr.map(u => [key(u), u])).values())` був скопійований у purchase-orders.service.ts:670 і xlsx.service.ts:915. Обидва call-sites тепер: `deduplicateBy(plan, u => u.goodId)`.
+  - apps/api/src/modules/settlements/settlements.service.ts — `balanceDelta` sign: 5-branch if/else (4 однакові `-dto.amount`, 1 `+dto.amount`) → `BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1>` lookup. Unknown type все ще throws.
+  - Skipped: auto-pick contract RTT (навмисна бізнес-логіка); dual findFirst branches (ternary readable); pricing Set dedup (різний pattern від Map, no overlap).
+  - TypeScript: 0 errors.
 Latest optimize (2026-06-15, f23abfd3 + 4400dfb7, after 852d5fa4): /sto-optimize-agent повний аудит (backend N+1 / FK guards / DB indexes + frontend debounce/waterfall/bundle). 3 знахідки виправлені одним коммітом, 1 skill update.
   - apps/api/src/modules/purchase-orders/purchase-orders.service.ts L150-193 — create() contract resolution sequential після Promise.all (auto-pick АБО validate). Лite-up: тернарка `hasContractId ? validate-by-id-findFirst : auto-pick-with-orderBy-findFirst` як третій слот Promise.all з supplier/warehouse FK guards. Throw order збережено (post-Promise.all guard блоки). Економія: 1 RTT на кожен PO create (33% time-save).
   - apps/api/src/modules/settlements/settlements.service.ts L20-70 — createTransaction sequential `findFirst → create + update`. SettlementTransaction.create та SettlementAccount.update пишуть у різні таблиці, обидва читають account.id зі scope → Promise.all всередині $transaction. balanceDelta lifted ДО tx для fail-fast на unknown enum. select: {id} замість full-row findFirst.
