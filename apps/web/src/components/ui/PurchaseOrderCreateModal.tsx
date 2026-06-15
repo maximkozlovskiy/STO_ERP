@@ -859,168 +859,179 @@ export function PurchaseOrderCreateModal({
 
           {/* ── Lines table ──────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
-            <table className="w-full table-fixed text-[12px]">
-              <colgroup>
-                {isEditMode ? (
-                  <>
-                    <col className="w-[36%]" />
-                    <col className="w-[9%]" />
-                    <col className="w-[11%]" />
-                    <col className="w-[11%]" />
-                    <col className="w-[14%]" />
-                    <col className="w-[14%]" />
-                    <col className="w-[5%]" />
-                  </>
-                ) : (
-                  <>
-                    <col className="w-[40%]" />
-                    <col className="w-[10%]" />
-                    <col className="w-[13%]" />
-                    <col className="w-[16%]" />
-                    <col className="w-[16%]" />
-                    <col className="w-[5%]" />
-                  </>
-                )}
-              </colgroup>
-              <thead>
-                <tr className="border-b border-border bg-secondary/40">
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">ТОВАР</th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">ОВ</th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">К-СТЬ</th>
-                  {isEditMode && (
-                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                      ОТРИМАНО
-                    </th>
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full table-fixed text-[12px]">
+                <colgroup>
+                  {isEditMode ? (
+                    <>
+                      <col className="w-[36%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[11%]" />
+                      <col className="w-[11%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[5%]" />
+                    </>
+                  ) : (
+                    <>
+                      <col className="w-[40%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[16%]" />
+                      <col className="w-[16%]" />
+                      <col className="w-[5%]" />
+                    </>
                   )}
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    ЦІНА, ₴
-                  </th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    СУМА, ₴
-                  </th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {lines.map(line => (
-                  <tr key={line._key} className="hover:bg-secondary/20 group">
-                    <td className="px-3 py-2">
-                      <div>{line.goodName}</div>
-                      {line.goodSku && (
-                        <div className="text-[11px] text-muted-foreground">{line.goodSku}</div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right text-muted-foreground">{line.unit}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-border bg-secondary/40">
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      Товар
+                    </th>
+                    <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      ОВ
+                    </th>
+                    <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      К-сть
+                    </th>
                     {isEditMode && (
-                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                        {line.receivedQty != null ? line.receivedQty : '—'}
-                      </td>
+                      <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                        Отримано
+                      </th>
                     )}
-                    <td className="px-3 py-2 text-right tabular-nums">{line.price}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {((parseFloat(line.quantity) || 0) * (parseFloat(line.price) || 0)).toFixed(
-                        2,
-                      )}
-                    </td>
-                    <td className="px-2 py-2">
-                      {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => removeLine(line._key)}
-                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </td>
+                    <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      Ціна, ₴
+                    </th>
+                    <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      Сума, ₴
+                    </th>
+                    <th />
                   </tr>
-                ))}
-
-                {/* Add line input row */}
-                {canEdit && showLineInput && (
-                  <tr className="bg-primary/5">
-                    <td className="px-2 py-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setGoodSearchOpen(true)}
-                        className="w-full text-left rounded border border-input bg-background px-2 py-1 text-[12px] hover:border-primary transition-colors"
-                      >
-                        {newLine.goodName || (
-                          <span className="text-muted-foreground">Оберіть товар…</span>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {lines.map(line => (
+                    <tr
+                      key={line._key}
+                      className="bg-surface hover:bg-secondary/30 transition-colors group"
+                    >
+                      <td className="px-3 py-2">
+                        <div>{line.goodName}</div>
+                        {line.goodSku && (
+                          <div className="text-[11px] text-muted-foreground">{line.goodSku}</div>
                         )}
-                      </button>
-                    </td>
-                    <td className="px-2 py-1.5 text-right text-[11px] text-muted-foreground">
-                      {newLine.unit}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="number"
-                        min="0.001"
-                        step="1"
-                        value={newLine.quantity}
-                        onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
-                        className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
-                    </td>
-                    {isEditMode && <td />}
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={newLine.price}
-                        onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
-                        placeholder="0.00"
-                        className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
-                      {(
-                        (parseFloat(newLine.quantity) || 0) * (parseFloat(newLine.price) || 0)
-                      ).toFixed(2)}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <div className="flex gap-1">
+                      </td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">{line.unit}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
+                      {isEditMode && (
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                          {line.receivedQty != null ? line.receivedQty : '—'}
+                        </td>
+                      )}
+                      <td className="px-3 py-2 text-right tabular-nums">{line.price}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {((parseFloat(line.quantity) || 0) * (parseFloat(line.price) || 0)).toFixed(
+                          2,
+                        )}
+                      </td>
+                      <td className="px-2 py-2">
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => removeLine(line._key)}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Add line input row */}
+                  {canEdit && showLineInput && (
+                    <tr className="bg-primary/5">
+                      <td className="px-2 py-1.5">
                         <button
                           type="button"
-                          onClick={addLine}
-                          disabled={!newLine.goodId}
-                          className="text-primary hover:text-primary/80 disabled:opacity-30"
+                          onClick={() => setGoodSearchOpen(true)}
+                          className="w-full text-left rounded border border-input bg-background px-2 py-1 text-[12px] hover:border-primary transition-colors"
                         >
-                          <Plus className="h-3.5 w-3.5" />
+                          {newLine.goodName || (
+                            <span className="text-muted-foreground">Оберіть товар…</span>
+                          )}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowLineInput(false);
-                            setNewLine(EMPTY_LINE);
-                          }}
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      </td>
+                      <td className="px-2 py-1.5 text-right text-[11px] text-muted-foreground">
+                        {newLine.unit}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0.001"
+                          step="1"
+                          value={newLine.quantity}
+                          onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
+                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </td>
+                      {isEditMode && <td />}
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={newLine.price}
+                          onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
+                          placeholder="0.00"
+                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
+                        {(
+                          (parseFloat(newLine.quantity) || 0) * (parseFloat(newLine.price) || 0)
+                        ).toFixed(2)}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={addLine}
+                            disabled={!newLine.goodId}
+                            className="text-primary hover:text-primary/80 disabled:opacity-30"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowLineInput(false);
+                              setNewLine(EMPTY_LINE);
+                            }}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-secondary/20">
+                    <td
+                      colSpan={isEditMode ? 5 : 4}
+                      className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
+                    >
+                      Разом:
                     </td>
+                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
+                      {total.toFixed(2)} ₴
+                    </td>
+                    <td />
                   </tr>
-                )}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-border bg-secondary/20">
-                  <td
-                    colSpan={isEditMode ? 5 : 4}
-                    className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
-                  >
-                    Разом:
-                  </td>
-                  <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
-                    {total.toFixed(2)} ₴
-                  </td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
+                </tfoot>
+              </table>
+            </div>
 
             {canEdit && !showLineInput && (
               <button
