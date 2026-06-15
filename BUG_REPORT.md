@@ -14729,3 +14729,92 @@ soft-delete invariant; (b) leave as conditional skip — обрано (b). За�
 - Залишилось: 0 (9 inherent data-precondition skips задокументовано).
 - TypeScript: ✅ web 0 errors.
 - E2E (повний suite): 236 passed (+6), 9 skipped (-6), 0 failed, 5.8m.
+
+## Session 2026-06-15 — FULL tester: post-cycle3 audit (RECEIPT + deduplicateBy + BALANCE_SIGN + defense-in-depth orgId) (HEAD d3ef9469)
+
+Scope (3 cycles, 5 commits, since c1 ~ 6 commits back):
+
+- `f23abfd3` perf(optimize): tier-merger Promise.all + settlements parallel write + RA covering index
+- `852d5fa4` fix(review): defense-in-depth orgId tenant guard on tx.X.update writes (pricing.applyRuleToGoods → updateMany; stock-documents.transition → compound where)
+- `93473ad7` refactor(simplify): extract deduplicateBy util + collapse balanceDelta sign map (settlements BALANCE_SIGN, PO+xlsx use deduplicateBy)
+- `4400dfb7`, `50e92830`, `d3ef9469` — docs/skills updates
+
+Files modified across cycles:
+
+- `apps/api/src/common/utils/array.ts` (NEW — deduplicateBy<T>)
+- `apps/api/src/modules/settlements/settlements.service.ts` (BALANCE_SIGN lookup; parallel write inside $transaction)
+- `apps/api/src/modules/purchase-orders/purchase-orders.service.ts` (uses deduplicateBy; tier-merger Promise.all)
+- `apps/api/src/modules/xlsx/xlsx.service.ts` (uses deduplicateBy)
+- `apps/api/src/modules/inventory/pricing.service.ts` (tx.good.updateMany з orgId/deletedAt:null)
+- `apps/api/src/modules/stock-documents/stock-documents.service.ts` (compound where: { id, orgId })
+
+### Baseline (Крок 0)
+
+- TypeScript API — ✅ 0 errors
+- TypeScript shared — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 821/821 passed (61 файлів)
+- Web components — ✅ 423/423 passed (39 файлів)
+- Targeted (settlements / PO / xlsx / pricing / stock-documents) — ✅ 150/150 passed (9 файлів)
+
+### Bug #487 — [MEDIUM] test-coverage / backend / utility — `deduplicateBy` utility без парного spec
+
+**Файл:** `apps/api/src/common/utils/array.ts` (новий) — інші файли `common/utils/` (`fsm.ts`, `math.ts`, `pagination.ts`, `url-guard.ts`) мають парні spec (`*.spec.ts`).
+
+**Сигнал:** новий utility-файл закомічено без парного `array.spec.ts` — інша convention `common/utils/` порушена. SKILL §1.5 «Нові `*.service.ts` → парний `*.spec.ts`» розширений на `common/utils/` (емпіричний патерн репозиторію).
+
+**Ризик регресії:** без unit-тесту майбутній refactor `deduplicateBy` (наприклад, перехід на reduce + Set для memory-економії на великих масивах) силенто змінить семантику last-wins на first-wins → `purchase-orders.applyPricing` і `xlsx.applyPricingFromList` отримають неправильну `salePrice` коли plan має дублікати по `goodId` (різні lot-ціни на той самий товар). Виявиться тільки на production-даних → silent data corruption у `Good.salePrice`.
+
+**Фікс:** створити `apps/api/src/common/utils/array.spec.ts` з кейсами: empty array → `[]`; single → preserved; duplicates → last-wins; key function що повертає `null`/`undefined`/`number`/`string` — всі групуються коректно; великий array — performance smoke.
+
+Severity: MEDIUM (бо помилка проявиться лише на production-даних). Status: [x] виправлено.
+
+### Bug #488 — [MEDIUM] business logic / backend / settlements — `Partial<Record<>>` ховає enum-exhaustiveness
+
+**Файл:** `apps/api/src/modules/settlements/settlements.service.ts:30`
+
+```ts
+const BALANCE_SIGN: Partial<Record<SettlementTransactionType, 1 | -1>> = { ... };
+```
+
+**Сигнал:** `Partial<Record<Enum, V>>` гасить TS-exhaustiveness гарантію. Зараз всі 5 значень enum (`CHARGE`/`PAYMENT`/`REFUND`/`PREPAYMENT`/`CREDIT_NOTE`) присутні у мапі, runtime guard `if (sign === undefined) throw new Error(...)` ловить пропуск. Але майбутнє додавання нового enum value (наприклад, `WRITEOFF`/`ADJUSTMENT`/`INTEREST` — реальні теми для ERP) **не зламає TS compilation** — фіча мовчки пропускає його через `sign === undefined → throw new Error`. На відміну від §1.1 Bug #478-#480 паттерну "Нове enum value без regression-guard" — там static analysis ловить через `MOVEMENT_TYPES[NEW]` map, тут `Partial<>` навмисно знімає цю безпеку.
+
+**Ризик:** додавання нового `SettlementTransactionType` без оновлення BALANCE_SIGN → runtime exception ловить, але це HIGH-severity surprise у проді (CHARGE для нового типу втрачає transaction). Compile-time error краще.
+
+**Фікс:** замінити `Partial<Record<...>>` на плоский `Record<SettlementTransactionType, 1 | -1>` + видалити безпідставний runtime guard (TS-exhaustive). У випадку справжнього зростання enum — refactor у `as const` map + helper зі type-narrow `never`.
+
+Severity: MEDIUM. Status: [x] виправлено.
+
+### Bug #489 — [MEDIUM] test-coverage / backend / spec — `deduplicateBy(plan)` без regression-guard у applyPricing/applyPricingFromList/applyRuleToGoods spec
+
+**Файли:**
+
+- `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts` (applyPricing)
+- `apps/api/src/modules/xlsx/xlsx.service.spec.ts` (applyPricingFromList)
+- `apps/api/src/modules/inventory/pricing.service.spec.ts` (applyRuleToGoods — `$transaction` мок не виконує callback, тому INNER логіка не покрита взагалі)
+
+**Сигнал:** `deduplicateBy(plan, u => u.goodId)` додано (commit `93473ad7`) для збереження last-write-wins семантики після переходу sequential→Promise.all. Без regression-guard refactor що дропне `deduplicateBy` пройде CI зеленим, а в проді `Promise.all` гонитиме два write на той самий goodId → нондетерміністичний `salePrice` (race winner залежить від Postgres scheduler).
+
+Grep `dedupedPlan|deduplicate` у всіх трьох spec → 0 matches.
+
+**Окремо для `pricing.service.spec.ts`:** `$transaction` мок `vi.fn(async (ops: unknown[]) => ops)` ОЧІКУЄ array-форму $transaction, але `applyRuleToGoods` використовує **callback-форму** `$transaction(async tx => {...}, {timeout})`. Мок отримує callback як `ops`, повертає його напряму НЕ викликаючи → INNER логіка (`updateMany`з orgId, dedup, defense-in-depth) НЕ виконується у тесті. Тест проходить тому що повертає`result`обчислений ПЕРЕД`$transaction`. Це широка spec-сліпа зона.
+
+**Фікс:** у `pricing.service.spec.ts` оновити мок `$transaction` щоб виконував callback (`if (typeof arg === 'function') return arg(prisma)`). Додати test що асертить `tx.good.updateMany` викликаний з `where: { id, orgId, deletedAt: null }` (Bug #491 регресія-захист — defense-in-depth orgId). Додати test з `plan` що має duplicate `goodId` → `tx.good.updateMany` викликаний РАЗ для unique goodId (last-wins). Аналогічно для PO i xlsx.
+
+Severity: MEDIUM (silent data corruption + sliding regression window). Status: [x] виправлено.
+
+### Bug #490 — [LOW] test-coverage / backend / spec — `tx.stockDocumentLine.update({ where: { id, orgId } })` без regression-guard
+
+**Файл:** `apps/api/src/modules/stock-documents/stock-documents.service.spec.ts`
+
+**Сигнал:** commit `852d5fa4` додав defense-in-depth `orgId` у compound where `tx.stockDocumentLine.update({ where: { id: line.id, orgId } })` (рядок 335 service). У spec нема асерт `expect(prisma.stockDocumentLine.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id, orgId } }))`. Паралельно у `purchase-orders.service.spec.ts:604` такий assert ВЖЕ є (`expect(prisma.purchaseOrderLine.update).toHaveBeenCalledWith({ where: { id: LINE_ID, orgId: ORG }, ... })`).
+
+**Ризик:** refactor що відкине `orgId` з compound where поверне tenant-safety до "by-construction-only" — баг непомітний доки не відбудеться cross-tenant data leak у проді через помилку у parent fetch.
+
+**Фікс:** у `stock-documents.service.spec.ts` додати regression-guard test у блок `transition(RECEIPT → CONFIRMED)`: коли `doc.lines[0].good.unitId` встановлений → `expect(prisma.stockDocumentLine.update).toHaveBeenCalledWith({ where: { id: LINE_ID, orgId: ORG }, data: { unitOfMeasureId: UNIT_ID } })`.
+
+Severity: LOW (профілактичний — реальний регрес у refactor рідкий, але cheap to test). Status: [x] виправлено.
+
+### Висновок
+
+Знайдено 4 баги після post-cycle3 аудиту. Baseline зелений (821 API + 423 web + 150 targeted). Всі 4 — це **gaps у регресія-guard після simplify/optimize/review циклів**. Бек-логіка вже коректна; нема runtime/data corruption у поточному стані. Загроза — silent regression від наступних refactor-ів без regresion-guard.

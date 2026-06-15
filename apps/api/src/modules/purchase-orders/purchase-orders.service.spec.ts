@@ -264,6 +264,62 @@ describe('PurchaseOrdersService.applyPricing', () => {
     expect(pricingService.computePriceFromRules).not.toHaveBeenCalled();
     expect(prisma.good.updateMany).not.toHaveBeenCalled();
   });
+
+  // Bug #489: regression-guard для deduplicateBy(plan, u => u.goodId).
+  // PO може мати кілька рядків з ОДНИМ goodId (різні lots з різною ціною/UoM на той самий товар).
+  // Sequential for-loop мав last-write-wins. Promise.all без dedup → race → нондетерміністичний
+  // salePrice у БД. dedupedPlan робить last-wins ДО Promise.all. Цей тест ловить refactor що
+  // дропне deduplicateBy(): без нього updateMany викликався б ДВІЧІ для одного PK.
+  it('Bug #489: дублікати по goodId у lines → updateMany викликається ОДИН раз (last-wins у БД)', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-DUP',
+      status: PurchaseOrderStatus.RECEIVED,
+      lines: [
+        {
+          goodId: 'good-dup',
+          price: 100, // перший lot
+          good: {
+            name: 'Multi-lot',
+            salePrice: 110,
+            category: null,
+            goodType: 'SPARE_PART',
+            brandId: null,
+          },
+        },
+        {
+          goodId: 'good-dup',
+          price: 200, // другий lot — last-wins
+          good: {
+            name: 'Multi-lot',
+            salePrice: 110,
+            category: null,
+            goodType: 'SPARE_PART',
+            brandId: null,
+          },
+        },
+      ],
+    });
+    // computePriceFromRules викликається для кожного line (двічі) — різні cost-prices
+    pricingService.computePriceFromRules
+      .mockReturnValueOnce(150) // для першого lot (cost=100)
+      .mockReturnValueOnce(250); // для другого lot (cost=200) — last-wins у БД
+
+    const result = await service.applyPricing(ORG, PO_ID);
+
+    // result.updated = 2 (плановий plan.length — інформаційно для UI "оброблено 2 рядки PO")
+    expect(result.updated).toBe(2);
+    expect(result.details).toHaveLength(2);
+    // КРИТИЧНИЙ assert: updateMany викликається РІВНО РАЗ для дубльованого goodId
+    // (без deduplicateBy → 2 writes на той самий PK → Promise.all race → nondeterminism).
+    expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
+    // last-wins: остання обчислена ціна (250) перемагає у БД (Map.set другий раз перезаписує)
+    expect(prisma.good.updateMany).toHaveBeenCalledWith({
+      where: { id: 'good-dup', orgId: ORG, deletedAt: null },
+      data: { salePrice: 250 },
+    });
+  });
 });
 
 // Bug #239: regression-захист для UoM override tenant validation у receive().

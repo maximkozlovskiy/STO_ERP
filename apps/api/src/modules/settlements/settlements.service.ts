@@ -27,17 +27,16 @@ export class SettlementsService {
     }
     // Pre-compute balance delta — pure sync check, fail-fast before any DB work.
     // CHARGE increases balance (client owes us); all other types decrease it.
-    const BALANCE_SIGN: Partial<Record<SettlementTransactionType, 1 | -1>> = {
+    // Bug #488: Record (без Partial) — TS-exhaustive: новий SettlementTransactionType enum
+    // value стає compile-time error, а не runtime surprise. Жодного fallback throw не треба.
+    const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
       CHARGE: 1,
       PAYMENT: -1,
       PREPAYMENT: -1,
       REFUND: -1,
       CREDIT_NOTE: -1,
     };
-    const sign = BALANCE_SIGN[dto.type];
-    if (sign === undefined)
-      throw new Error(`Unknown SettlementTransactionType: ${dto.type as string}`);
-    const balanceDelta = sign * dto.amount;
+    const balanceDelta = BALANCE_SIGN[dto.type] * dto.amount;
 
     const run = async (db: Prisma.TransactionClient | PrismaService) => {
       // SettlementAccount has no deletedAt — it's a singleton per counterparty, never soft-deleted

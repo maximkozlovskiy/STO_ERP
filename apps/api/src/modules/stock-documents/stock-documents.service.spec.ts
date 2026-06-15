@@ -339,4 +339,66 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
     // type стабільно RECEIPT (без TRANSFER-flip).
     expect(dtoArg.type).toBe(StockMovementType.RECEIPT);
   });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Bug #490: defense-in-depth orgId guard on tx.stockDocumentLine.update
+  // ──────────────────────────────────────────────────────────────────────
+
+  // commit 852d5fa4 додав `where: { id: line.id, orgId }` у tx.stockDocumentLine.update
+  // у transition() (рядок 335 service). Це defense-in-depth: line.id отримана з parent
+  // doc що вже філтрований по orgId — безпечно "by construction", але compound where
+  // зменшує blast-radius майбутнього refactor (наприклад, якщо хтось забере orgId з
+  // parent fetch). Паралельно `purchase-orders.service.spec.ts:604` вже асертить
+  // `where: { id: LINE_ID, orgId: ORG }` — узгоджуємо patten для stock-documents.
+  it('Bug #490: transition(RECEIPT) персистить unitOfMeasureId через update з compound where { id, orgId }', async () => {
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПТ-2026-0001',
+      type: StockDocumentType.RECEIPT,
+      status: 'DRAFT',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: null,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 5,
+          price: null,
+          // good.unitId встановлений → персистенція unitOfMeasureId спрацьовує
+          good: { unitId: UNIT_ID },
+        },
+      ],
+    });
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПТ-2026-0001',
+      type: StockDocumentType.RECEIPT,
+      status: 'CONFIRMED',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: null,
+      notes: null,
+      documentDate: new Date(),
+      confirmedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      branch: { name: 'Філія 1' },
+      warehouse: { name: 'Склад 1' },
+      targetWarehouse: null,
+      lines: [],
+    });
+
+    await service.transition(ORG, DOC_ID, 'CONFIRMED');
+
+    // КРИТИЧНИЙ assert: compound where включає orgId — defense-in-depth tenant guard.
+    // Refactor що відкине orgId з where поверне tenant-safety до "by construction only"
+    // → silent regression. Цей тест ловить таку зміну.
+    expect(prisma.stockDocumentLine.update).toHaveBeenCalledWith({
+      where: { id: LINE_ID, orgId: ORG },
+      data: { unitOfMeasureId: UNIT_ID },
+    });
+  });
 });

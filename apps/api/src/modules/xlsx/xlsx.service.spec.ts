@@ -281,6 +281,50 @@ describe('XlsxService', () => {
       expect(prisma.good.updateMany).not.toHaveBeenCalled();
     });
 
+    // Bug #489: regression-guard для deduplicateBy(plan, u => u.goodId) у applyPricingFromList.
+    // CSV може мати ДУБЛЬОВАНИЙ SKU (користувач випадково або з різними barcode-ами для одного
+    // SKU). goodBySku.get() повертає той самий good для обох рядків → plan має 2 entries з тим
+    // же goodId але різними newSalePrice (бо computePriceFromRules може вернути різні значення
+    // якщо є кілька правил). Без dedup Promise.all зробив би 2 writes на той самий PK → race.
+    // dedupedPlan робить last-wins → updateMany викликається РІВНО РАЗ.
+    it('Bug #489: дублікати SKU у CSV → updateMany викликається ОДИН раз для одного goodId (last-wins)', async () => {
+      // Дві рядки з тим же SKU у CSV
+      const csv = 'sku,barcode,name\nDUP-SKU,,X\nDUP-SKU,,X\n';
+      const buffer = Buffer.from(csv, 'utf-8');
+
+      prisma.good.findMany.mockResolvedValueOnce([
+        {
+          id: 'good-dup',
+          name: 'Multi-row',
+          sku: 'DUP-SKU',
+          purchasePrice: 100,
+          salePrice: 130,
+          category: null,
+          goodType: null,
+          brandId: null,
+          barcodes: [],
+        },
+      ]);
+      // computePriceFromRules викликається ДВІЧІ — повертає різні значення (last-wins у БД)
+      pricingService.computePriceFromRules
+        .mockReturnValueOnce(150) // перша ітерація
+        .mockReturnValueOnce(180); // друга ітерація — last-wins у БД через deduplicateBy
+
+      const result = await service.applyPricingFromList(ORG, buffer, 'csv');
+
+      // result.found/updated підраховуються з details (не deduped) — інформаційно для UI
+      expect(result.found).toBe(2);
+      expect(result.updated).toBe(2);
+      // КРИТИЧНИЙ assert: updateMany викликається РІВНО РАЗ для дубльованого goodId
+      // (без deduplicateBy → 2 writes на той самий PK → Promise.all race).
+      expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
+      // last-wins: остання обчислена ціна (180) перемагає у БД
+      expect(prisma.good.updateMany).toHaveBeenCalledWith({
+        where: { id: 'good-dup', orgId: ORG, deletedAt: null },
+        data: { salePrice: 180 },
+      });
+    });
+
     it('updated лічильник правильний при mixed змінах (1 змінилась, 1 ні)', async () => {
       const csv = 'sku,barcode,name\nA-SKU,,A\nB-SKU,,B\n';
       const buffer = Buffer.from(csv, 'utf-8');

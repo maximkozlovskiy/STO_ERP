@@ -226,7 +226,11 @@ describe('PricingService.applyRuleToGoods', () => {
   let service: PricingService;
   let prisma: {
     pricingRule: { findMany: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> };
-    good: { findMany: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    good: {
+      findMany: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
     priceHistory: { create: ReturnType<typeof vi.fn>; createMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
@@ -234,12 +238,26 @@ describe('PricingService.applyRuleToGoods', () => {
   beforeEach(async () => {
     prisma = {
       pricingRule: { findMany: vi.fn(), findFirst: vi.fn() },
-      good: { findMany: vi.fn(), update: vi.fn().mockResolvedValue({}) },
+      good: {
+        findMany: vi.fn(),
+        update: vi.fn().mockResolvedValue({}),
+        // Bug #489: applyRuleToGoods використовує tx.good.updateMany (з orgId guard, не update)
+        // — попередній мок не мав updateMany, тому inner $transaction callback не міг його викликати.
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       priceHistory: {
         create: vi.fn().mockResolvedValue({}),
         createMany: vi.fn().mockResolvedValue({}),
       },
-      $transaction: vi.fn(async (ops: unknown[]) => ops),
+      // Bug #489: applyRuleToGoods використовує callback-форму $transaction.
+      // Попередній мок `async (ops: unknown[]) => ops` повертав callback напряму без виклику
+      // → inner логіка (updateMany з orgId, defense-in-depth) НЕ виконувалась у тестах.
+      // Тепер обходимо ОБИДВІ форми: array (Promise.all) і callback (виклик з self як tx).
+      $transaction: vi.fn().mockImplementation((arg: unknown) => {
+        if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
+        if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+        return Promise.resolve(arg);
+      }),
     };
     const module = await Test.createTestingModule({
       providers: [PricingService, { provide: PrismaService, useValue: prisma }],
@@ -298,6 +316,60 @@ describe('PricingService.applyRuleToGoods', () => {
     ]);
     const result = await service.applyRuleToGoods('org', 'r1');
     expect(result).toBe(1); // only g2 changed
+  });
+
+  // Bug #489 + Bug #491 regression-guard: defense-in-depth tenant isolation
+  // commit 852d5fa4 додав `where: { id, orgId, deletedAt: null }` у tx.good.updateMany.
+  // Раніше використовувався `tx.good.update({ where: { id } })` без orgId — outlier vs.
+  // purchase-orders.applyPricing і xlsx.applyPricingFromList. Цей тест ловить refactor
+  // що відкине orgId з where (Bug #191 регресія).
+  it('Bug #489: applyRuleToGoods використовує updateMany з orgId/deletedAt:null (defense-in-depth)', async () => {
+    prisma.pricingRule.findFirst.mockResolvedValue({
+      id: 'r1',
+      orgId: 'org',
+      name: 'PERCENT 35',
+      type: 'PERCENT',
+      percentValue: 35,
+      goodId: null,
+      goodCategory: null,
+      goodType: null,
+    });
+    prisma.pricingRule.findMany.mockResolvedValue([
+      {
+        goodId: null,
+        goodCategory: null,
+        goodType: null,
+        brandId: null,
+        type: 'PERCENT',
+        percentValue: 35,
+        fixedAmount: null,
+        fixedPrice: null,
+        roundTo: null,
+        tiers: [],
+      },
+    ]);
+    prisma.good.findMany.mockResolvedValue([
+      {
+        id: 'g-target',
+        purchasePrice: 100,
+        salePrice: 100, // ціна зміниться на 135
+        category: null,
+        goodType: null,
+        brandId: null,
+      },
+    ]);
+
+    const result = await service.applyRuleToGoods('org', 'r1');
+
+    expect(result).toBe(1);
+    // КРИТИЧНИЙ assert: updateMany (НЕ update) + повний 3-field where guard
+    expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.good.updateMany).toHaveBeenCalledWith({
+      where: { id: 'g-target', orgId: 'org', deletedAt: null },
+      data: { salePrice: 135 },
+    });
+    // priceHistory.createMany викликається після updateMany у тому ж $transaction
+    expect(prisma.priceHistory.createMany).toHaveBeenCalledTimes(1);
   });
 });
 
