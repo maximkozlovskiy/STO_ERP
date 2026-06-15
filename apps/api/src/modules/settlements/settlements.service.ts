@@ -26,14 +26,18 @@ export class SettlementsService {
       throw new BadRequestException('Сума транзакції повинна бути більшою за нуль');
     }
     // Pre-compute balance delta — pure sync check, fail-fast before any DB work.
-    // Positive types increase balance (client owes us), negative types decrease it.
-    let balanceDelta: number;
-    if (dto.type === 'CHARGE') balanceDelta = dto.amount;
-    else if (dto.type === 'PAYMENT') balanceDelta = -dto.amount;
-    else if (dto.type === 'PREPAYMENT') balanceDelta = -dto.amount;
-    else if (dto.type === 'REFUND') balanceDelta = -dto.amount;
-    else if (dto.type === 'CREDIT_NOTE') balanceDelta = -dto.amount;
-    else throw new Error(`Unknown SettlementTransactionType: ${dto.type as string}`);
+    // CHARGE increases balance (client owes us); all other types decrease it.
+    const BALANCE_SIGN: Partial<Record<SettlementTransactionType, 1 | -1>> = {
+      CHARGE: 1,
+      PAYMENT: -1,
+      PREPAYMENT: -1,
+      REFUND: -1,
+      CREDIT_NOTE: -1,
+    };
+    const sign = BALANCE_SIGN[dto.type];
+    if (sign === undefined)
+      throw new Error(`Unknown SettlementTransactionType: ${dto.type as string}`);
+    const balanceDelta = sign * dto.amount;
 
     const run = async (db: Prisma.TransactionClient | PrismaService) => {
       // SettlementAccount has no deletedAt — it's a singleton per counterparty, never soft-deleted

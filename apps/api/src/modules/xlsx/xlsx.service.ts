@@ -10,6 +10,7 @@ import { TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../inventory/pricing.service';
+import { deduplicateBy } from '../../common/utils/array';
 
 export interface GoodRow {
   sku?: string;
@@ -912,7 +913,7 @@ export class XlsxService {
     // самий товар). Старий for-loop sequential мав last-write-wins семантику — зберігаємо
     // через dedup по goodId (Map last-wins) ДО Promise.all, щоб два write на той самий
     // PK не гонилися всередині chunk.
-    const dedupedPlan = Array.from(new Map(plan.map(u => [u.goodId, u])).values());
+    const dedupedPlan = deduplicateBy(plan, u => u.goodId);
 
     // Batch у chunks по 100 — короткі транзакції, менше lock contention.
     // Bug #191: updateMany з orgId — defense-in-depth tenant guard.

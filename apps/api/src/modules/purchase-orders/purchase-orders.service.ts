@@ -5,6 +5,7 @@ import { kyivToday } from '../../common/utils/kyiv-date';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
 import { calculatePagination } from '../../common/utils/pagination';
+import { deduplicateBy } from '../../common/utils/array';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -667,7 +668,7 @@ export class PurchaseOrdersService {
     // Старий sequential for-loop мав last-write-wins семантику — зберігаємо її через
     // dedup по goodId (Map last-wins) ДО Promise.all, щоб два write на той самий PK
     // не гонилися всередині chunk.
-    const dedupedPlan = Array.from(new Map(plan.map(u => [u.goodId, u])).values());
+    const dedupedPlan = deduplicateBy(plan, u => u.goodId);
 
     // Batch у chunks по 100 щоб не лочити велику кількість рядків у одній tx;
     // explicit { timeout: 10_000 } — array-form $transaction default 5s не вистачає на 100 рядків.
