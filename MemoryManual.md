@@ -12,7 +12,7 @@
 Дата:       2026-06-15
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 834/834 | Web 423/423 | E2E 236 passed / 9 skipped / 0 failed
+Тести:      API 849/849 | Web 423/423 | E2E пропущено (Docker DOWN у цій сесії)
 ```
 
 ---
@@ -20,17 +20,18 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 ## Останній commit
 
 ```
+c83f8e29  fix(tester): UI-polish follow-up bugs #496-#503 (HIGH+MEDIUM+LOW)
+          — dead DetailPanel в PO; detailLoadingId per-row; POLine unitShortName
+          у CreateModal; try/catch навколо mutateAsync supplier-return delete;
+          type=button, aria-label, key=l.id для list rows
 24dc273d  fix(review): a11y + dead code after UI-polish series
-          — tabs focus-visible ring, router.replace({scroll:false}), VALID_TYPES Set hoist,
-          remove dead selectDoc/toggleSelectDoc, focus-within reveal, aria-label на trash
 8ec394c7  fix(purchase-order-modal): unify lines table style with work order modal
 f215dbbb  fix(tabs): unify tab bar style with catalog (stock-documents, purchase-orders)
 3297ea22  feat(nav): sync tab/type filter with URL via searchParams
 5e58ee28  fix(calendar): contain scrollbar inside grid, fix slot z-index above header
-9e656cd4  fix(supplier-returns): review fixes — WRITEOFF qty sign, REFUND vs PAYMENT
 ```
 
-Latest review: 2026-06-15 (auto, HEAD 24dc273d) — UI-polish a11y/dead-code fixes
+Latest tester: 2026-06-15 (auto, HEAD c83f8e29) — UI-polish follow-up bugs #496-#503
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
 
