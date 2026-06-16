@@ -82,12 +82,9 @@ export class BookingService {
     const dayStart = new Date(`${date}T00:00:00.000${offset}`);
     const dayEnd = new Date(`${date}T23:59:59.999${offset}`);
 
-    // Parallel: all three reads (lifts in branch, busy slots, optional work durations)
-    // are independent — collapses 2-3 sequential RTT into one.
-    const [lifts, busySlots, works] = await Promise.all([
+    // Parallel: lifts, busy slots, branch settings, booked requests, optional work durations.
+    const [lifts, busyCalendarSlots, branchSettings, bookedSlots, works] = await Promise.all([
       this.prisma.lift.findMany({
-        // Narrow projection — лише id/name використовуються в slots loop.
-        // Раніше тягнуло status/serialNumber/purchaseDate/warrantyUntil/maxWeightKg/...
         where: { orgId, deletedAt: null, zone: { branchId } },
         select: { id: true, name: true },
         take: 50,
@@ -96,6 +93,27 @@ export class BookingService {
         where: { orgId, startAt: { gte: dayStart, lte: dayEnd }, deletedAt: null },
         select: { liftId: true, startAt: true, endAt: true },
         take: 500,
+      }),
+      this.prisma.branchSettings.findUnique({
+        where: { branchId },
+        select: {
+          workStartTime: true,
+          workEndTime: true,
+          slotDurationMinutes: true,
+          workDays: true,
+        },
+      }),
+      // Also block slots already taken by confirmed booking requests on this day.
+      this.prisma.bookingRequest.findMany({
+        where: {
+          orgId,
+          branchId,
+          status: 'CONFIRMED',
+          requestedDate: { gte: dayStart, lte: dayEnd },
+          deletedAt: null,
+        },
+        select: { requestedDate: true },
+        take: 200,
       }),
       serviceIds?.length
         ? this.prisma.work.findMany({
@@ -106,45 +124,85 @@ export class BookingService {
         : Promise.resolve([] as Array<{ normoHours: number | null }>),
     ]);
 
-    // Calculate duration from requested services
-    let totalMinutes = 60; // default 1 hour
+    // Read working hours from BranchSettings (or fall back to defaults).
+    const workStart = branchSettings?.workStartTime ?? '09:00';
+    const workEnd = branchSettings?.workEndTime ?? '18:00';
+    const [startH, startM] = workStart.split(':').map(Number);
+    const [endH, endM] = workEnd.split(':').map(Number);
+    const startLimitMinutes = startH * 60 + startM;
+    const endLimitMinutes = endH * 60 + endM;
+
+    // slotDurationMinutes from settings (default 30 for booking widget step size).
+    const stepMinutes = branchSettings?.slotDurationMinutes ?? 30;
+
+    // Check if the requested date is a working day (1=Mon … 7=Sun, ISO weekday).
+    const workDaysRaw = branchSettings?.workDays;
+    const workDays: number[] = Array.isArray(workDaysRaw)
+      ? (workDaysRaw as number[])
+      : [1, 2, 3, 4, 5];
+    const requestedDayOfWeek = new Date(`${date}T12:00:00.000${offset}`).getDay();
+    // JS getDay(): 0=Sun,1=Mon,...,6=Sat → convert to ISO weekday (1=Mon,7=Sun)
+    const isoDay = requestedDayOfWeek === 0 ? 7 : requestedDayOfWeek;
+    if (!workDays.includes(isoDay)) return [];
+
+    // Calculate duration from requested services (falls back to stepMinutes).
+    let totalMinutes = stepMinutes;
     if (works.length) {
       const totalHours = works.reduce((sum, w) => sum + Number(w.normoHours ?? 1), 0);
       totalMinutes = Math.ceil(totalHours * 60);
     }
 
-    // Working hours 09:00–18:00 LOCAL (Europe/Kyiv), 30-min steps.
-    // We construct timestamps in Kyiv local with explicit ISO offset.
-    const endLimitMinutes = 18 * 60; // 18:00 Kyiv local
-    const slots: AvailabilitySlotDto[] = [];
-    for (const lift of lifts) {
-      for (let hour = 9; hour < 18; hour++) {
-        for (const min of [0, 30]) {
-          const startKyiv = `${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00.000${offset}`;
-          const slotStart = new Date(startKyiv);
-          const slotEnd = new Date(slotStart.getTime() + totalMinutes * 60_000);
-          // Reject slots that would end after 18:00 Kyiv local.
-          const endMinutes = hour * 60 + min + totalMinutes;
-          if (endMinutes > endLimitMinutes) continue;
+    // Build set of times already taken by confirmed booking requests (HH:MM strings).
+    // BookingRequest doesn't track liftId — block all lifts for that time.
+    const bookedTimes = new Set(
+      bookedSlots.map(b => {
+        const d = new Date(b.requestedDate);
+        const h = String(d.getUTCHours()).padStart(2, '0');
+        const m = String(d.getUTCMinutes()).padStart(2, '0');
+        return `${h}:${m}`;
+      }),
+    );
 
-          const isBusy = busySlots.some(
-            b =>
-              b.liftId === lift.id &&
-              new Date(b.startAt) < slotEnd &&
-              new Date(b.endAt) > slotStart,
-          );
+    // Generate unique time slots across all lifts.
+    // UI shows times — user doesn't pick a specific lift; system assigns on confirm.
+    // Slot is available if AT LEAST ONE lift is free at that time.
+    const timeSlots: Map<string, AvailabilitySlotDto> = new Map();
 
-          slots.push({
-            startAt: slotStart.toISOString(),
-            endAt: slotEnd.toISOString(),
-            liftId: lift.id,
-            liftName: lift.name,
-            available: !isBusy,
-          });
-        }
+    for (
+      let minutes = startLimitMinutes;
+      minutes + totalMinutes <= endLimitMinutes;
+      minutes += stepMinutes
+    ) {
+      const hour = Math.floor(minutes / 60);
+      const min = minutes % 60;
+      const startKyiv = `${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00.000${offset}`;
+      const slotStart = new Date(startKyiv);
+      const slotEnd = new Date(slotStart.getTime() + totalMinutes * 60_000);
+      const timeKey = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+
+      // Skip times already booked via BookingRequest.
+      if (bookedTimes.has(timeKey)) continue;
+
+      // Find any free lift for this time window.
+      const freeLift = lifts.find(lift => {
+        return !busyCalendarSlots.some(
+          b =>
+            b.liftId === lift.id && new Date(b.startAt) < slotEnd && new Date(b.endAt) > slotStart,
+        );
+      });
+
+      if (freeLift) {
+        timeSlots.set(timeKey, {
+          startAt: slotStart.toISOString(),
+          endAt: slotEnd.toISOString(),
+          liftId: freeLift.id,
+          liftName: freeLift.name,
+          available: true,
+        });
       }
     }
-    return slots;
+
+    return Array.from(timeSlots.values());
   }
 
   async create(orgId: string, dto: CreateBookingRequestDto): Promise<BookingRequestResponseDto> {
