@@ -104,6 +104,7 @@ interface LocalLine {
   workName: string;
   employeeId: string;
   normoHours: string;
+  actualHours: string;
   price: string;
 }
 interface LocalPart {
@@ -145,6 +146,7 @@ interface WorkOrderDetail {
     employeeId: string;
     employeeName?: string;
     normoHours: number;
+    actualHours?: number | null;
     price: number;
   }[];
   parts: {
@@ -203,6 +205,7 @@ const EMPTY_LINE: Omit<LocalLine, '_key'> = {
   workName: '',
   employeeId: '',
   normoHours: '',
+  actualHours: '',
   price: '',
 };
 const EMPTY_PART: Omit<LocalPart, '_key'> = {
@@ -706,6 +709,7 @@ export function CreateWorkOrderModal({
             workName: l.workName ?? '',
             employeeId: l.employeeId,
             normoHours: String(l.normoHours),
+            actualHours: l.actualHours != null ? String(l.actualHours) : '',
             price: String(l.price),
           })),
         );
@@ -1074,6 +1078,7 @@ export function CreateWorkOrderModal({
             workId: line.workId,
             employeeId: line.employeeId,
             normoHours: toNumberOrUndefined(line.normoHours),
+            actualHours: toNumberOrUndefined(line.actualHours),
             price: toNumberOrUndefined(line.price),
           }),
         });
@@ -1135,11 +1140,10 @@ export function CreateWorkOrderModal({
       await Promise.allSettled([...lineDeletes, ...partDeletes]);
       deletedLineIds.current = [];
       deletedPartIds.current = [];
-      // Sequentially POST nових ліній/деталей. Кожен addLine/addPart на бекенді
+      // Sequentially POST нових + PATCH існуючих ліній. Кожен write на бекенді
       // викликає recalcTotals (aggregate + update WO.totalLabor/Parts/Amount).
       // Паралель = race у READ COMMITTED: тх1/тх2 одна одної не бачать у
-      // SUM(amount), тому останній writer перетирає тotalAmount → втрачені суми
-      // (only count колекції видимі тому).
+      // SUM(amount), тому останній writer перетирає тotalAmount → втрачені суми.
       for (const line of lines.filter(l => !l.id)) {
         await apiFetch(`/work-orders/${workOrderId}/lines`, {
           method: 'POST',
@@ -1147,6 +1151,20 @@ export function CreateWorkOrderModal({
             workId: line.workId,
             employeeId: line.employeeId,
             normoHours: toNumberOrUndefined(line.normoHours),
+            actualHours: toNumberOrUndefined(line.actualHours),
+            price: toNumberOrUndefined(line.price),
+          }),
+        });
+      }
+      // PATCH існуючих рядків щоб зберегти actualHours (та інші inline-edit зміни).
+      for (const line of lines.filter(l => !!l.id)) {
+        await apiFetch(`/work-orders/${workOrderId}/lines/${line.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            workId: line.workId,
+            employeeId: line.employeeId,
+            normoHours: toNumberOrUndefined(line.normoHours),
+            actualHours: line.actualHours !== '' ? toNumberOrUndefined(line.actualHours) : null,
             price: toNumberOrUndefined(line.price),
           }),
         });
@@ -1279,6 +1297,25 @@ export function CreateWorkOrderModal({
   const vehiclesById = useMemo(() => toIdMap(vehicles), [vehicles]);
   const liftsById = useMemo(() => toIdMap(lifts), [lifts]);
   const branchesById = useMemo(() => toIdMap(branches), [branches]);
+
+  // Фактичні години редагуються тільки у статусах В роботі / Призупинено.
+  const canEditActual =
+    isEditMode && (currentStatus === 'IN_PROGRESS' || currentStatus === 'ON_HOLD');
+
+  // Підсумки фактичних сум: один прохід, окремо від linesTotals щоб не ламати VAT.
+  const actualTotals = useMemo(() => {
+    let total = 0;
+    let hasAny = false;
+    for (const l of lines) {
+      const h = parseFloat(l.actualHours);
+      const p = parseFloat(l.price);
+      if (!isNaN(h) && !isNaN(p)) {
+        total += h * p;
+        hasAny = true;
+      }
+    }
+    return { total, hasAny };
+  }, [lines]);
 
   // Single-pass totals: one scan over lines/parts, two accumulators (total + vat).
   const linesTotals = useMemo(
@@ -2202,8 +2239,10 @@ export function CreateWorkOrderModal({
                         <col />
                         <col className="w-44" />
                         <col className="w-20" />
+                        <col className="w-20" />
                         <col className="w-24" />
                         {vatMode !== 'NONE' && <col className="w-20" />}
+                        <col className="w-24" />
                         <col className="w-24" />
                         <col className="w-9" />
                       </colgroup>
@@ -2216,7 +2255,10 @@ export function CreateWorkOrderModal({
                             Виконавець
                           </th>
                           <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                            Год
+                            Год (план)
+                          </th>
+                          <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                            Год (факт.)
                           </th>
                           <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                             Ціна, ₴
@@ -2229,6 +2271,9 @@ export function CreateWorkOrderModal({
                           <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                             Сума, ₴
                           </th>
+                          <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                            Сума (факт.), ₴
+                          </th>
                           <th />
                         </tr>
                       </thead>
@@ -2240,7 +2285,7 @@ export function CreateWorkOrderModal({
                               // загальна кількість колонок 6 або 7. Парна таблиця "Товари"
                               // вже робить умовний colSpan; для works був хардкод 6 →
                               // visual drift коли VAT-колонка є.
-                              colSpan={vatMode !== 'NONE' ? 7 : 6}
+                              colSpan={vatMode !== 'NONE' ? 9 : 8}
                               className="px-3 py-4 text-center text-[12px] text-muted-foreground"
                             >
                               Натисніть «Додати» щоб додати роботу
@@ -2313,6 +2358,22 @@ export function CreateWorkOrderModal({
                                   </td>
                                   <td className="px-2 py-1.5">
                                     <Input
+                                      placeholder="—"
+                                      type="number"
+                                      value={editingLine.actualHours}
+                                      onChange={e =>
+                                        setEditingLine(l => ({
+                                          ...l,
+                                          actualHours: e.target.value,
+                                        }))
+                                      }
+                                      min="0"
+                                      step="0.1"
+                                      disabled={!canEditActual}
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <Input
                                       placeholder="0"
                                       type="number"
                                       value={editingLine.price}
@@ -2336,6 +2397,13 @@ export function CreateWorkOrderModal({
                                   <td className="px-2 py-1.5 text-left tabular-nums text-[12px] text-muted-foreground">
                                     {(() => {
                                       const h = toNumberOrUndefined(editingLine.normoHours);
+                                      const p = toNumberOrUndefined(editingLine.price);
+                                      return h != null && p != null ? (h * p).toFixed(2) : '—';
+                                    })()}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-left tabular-nums text-[12px] text-muted-foreground">
+                                    {(() => {
+                                      const h = toNumberOrUndefined(editingLine.actualHours);
                                       const p = toNumberOrUndefined(editingLine.price);
                                       return h != null && p != null ? (h * p).toFixed(2) : '—';
                                     })()}
@@ -2385,6 +2453,9 @@ export function CreateWorkOrderModal({
                                     {line.normoHours || '—'}
                                   </td>
                                   <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
+                                    {line.actualHours || '—'}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                                     {line.price || '—'}
                                   </td>
                                   {vatMode !== 'NONE' && (
@@ -2397,6 +2468,12 @@ export function CreateWorkOrderModal({
                                   <td className="px-2 py-1.5 text-left tabular-nums font-medium text-foreground">
                                     {sum != null ? sum.toFixed(2) : '—'}
                                   </td>
+                                  <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
+                                    {(() => {
+                                      const ah = toNumberOrUndefined(line.actualHours);
+                                      return ah != null && p != null ? (ah * p).toFixed(2) : '—';
+                                    })()}
+                                  </td>
                                   <td className="px-1.5 py-1.5 text-left">
                                     <div className="flex flex-col gap-1 items-end">
                                       <button
@@ -2408,6 +2485,7 @@ export function CreateWorkOrderModal({
                                             workName: line.workName,
                                             employeeId: line.employeeId,
                                             normoHours: line.normoHours,
+                                            actualHours: line.actualHours,
                                             price: line.price,
                                           });
                                         }}
@@ -2511,6 +2589,9 @@ export function CreateWorkOrderModal({
                                 step="0.1"
                               />
                             </td>
+                            <td className="px-2 py-1.5 text-left tabular-nums text-[12px] text-muted-foreground">
+                              —
+                            </td>
                             <td className="px-2 py-1.5">
                               <Input
                                 placeholder="0"
@@ -2537,6 +2618,9 @@ export function CreateWorkOrderModal({
                                 const p = toNumberOrUndefined(newLine.price);
                                 return h != null && p != null ? (h * p).toFixed(2) : '—';
                               })()}
+                            </td>
+                            <td className="px-2 py-1.5 text-left tabular-nums text-[12px] text-muted-foreground">
+                              —
                             </td>
                             <td className="px-1.5 py-1.5">
                               <div className="flex flex-col gap-1">
@@ -2569,7 +2653,7 @@ export function CreateWorkOrderModal({
                         <tfoot>
                           <tr className="bg-secondary/50 border-t border-border">
                             <td
-                              colSpan={4}
+                              colSpan={5}
                               className="px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
                             >
                               Разом робіт:
@@ -2583,7 +2667,22 @@ export function CreateWorkOrderModal({
                               {linesTotals.total.toFixed(2)}
                             </td>
                             <td />
+                            <td />
                           </tr>
+                          {actualTotals.hasAny && (
+                            <tr className="bg-secondary/30 border-t border-border/50">
+                              <td
+                                colSpan={vatMode !== 'NONE' ? 7 : 6}
+                                className="px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
+                              >
+                                Факт. роботи:
+                              </td>
+                              <td className="px-2 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
+                                {actualTotals.total.toFixed(2)}
+                              </td>
+                              <td />
+                            </tr>
+                          )}
                         </tfoot>
                       )}
                     </table>
