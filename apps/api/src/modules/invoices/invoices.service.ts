@@ -664,7 +664,14 @@ export class InvoicesService {
 
           const lineData = [
             ...wo.lines.map((l, i) => {
-              const priceWithoutVat = l.normoHours * Number(l.price);
+              // Bug: раніше тут було `l.normoHours * price` — не враховувало actualHours.
+              // Це викривлювало рахунок після refresh: WO.totalAmount враховує actualHours
+              // (через totalActualLabor у recalcTotals), а refreshFromWorkOrder перезаписував
+              // invoice.amount на суму NORMO рядків. Симетрично з WO PDF/recalcTotals:
+              // quantity = actualHours ?? normoHours.
+              const quantity = l.actualHours ?? l.normoHours;
+              const unitPrice = Number(l.price);
+              const priceWithoutVat = quantity * unitPrice;
               const vatAmount = priceWithoutVat * (DEFAULT_VAT / 100);
               const priceWithVat = priceWithoutVat + vatAmount;
               return {
@@ -672,8 +679,8 @@ export class InvoicesService {
                 invoiceId: existing.id,
                 workId: l.workId,
                 description: l.work?.name ?? 'Робота',
-                quantity: l.normoHours,
-                unitPrice: Number(l.price),
+                quantity,
+                unitPrice,
                 vatRate: DEFAULT_VAT,
                 priceWithoutVat,
                 vatAmount,

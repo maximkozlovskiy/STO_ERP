@@ -1371,12 +1371,20 @@ export class WorkOrdersService {
       vehicleLabel,
       number: wo.number,
       date: wo.createdAt,
-      works: wo.lines.map(l => ({
-        name: l.work?.name ?? '',
-        quantity: l.actualHours ?? l.normoHours,
-        price: Number(l.price),
-        total: Number(l.amount),
-      })),
+      works: wo.lines.map(l => {
+        // totalAmount у WorkOrder уже рахується через (actualHours ?? normoHours) × price
+        // (див. recalcTotals). Тут симетрично: quantity і total мають збігатися —
+        // інакше у PDF "5 год × 100 ₴ = 300 ₴" (де total — це planned amount), а сума
+        // рядків ≠ ЗАГАЛЬНА СУМА. Тримаємо single-source: рахуємо total з displayed quantity.
+        const quantity = l.actualHours ?? l.normoHours;
+        const price = Number(l.price);
+        return {
+          name: l.work?.name ?? '',
+          quantity,
+          price,
+          total: quantity * price,
+        };
+      }),
       parts: wo.parts.map(p => ({
         name: p.good?.name ?? '',
         quantity: p.quantity,

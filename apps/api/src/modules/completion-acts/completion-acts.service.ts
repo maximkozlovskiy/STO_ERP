@@ -75,6 +75,7 @@ export class CompletionActsService {
               take: 500,
               select: {
                 normoHours: true,
+                actualHours: true,
                 price: true,
                 amount: true,
                 workId: true,
@@ -271,6 +272,7 @@ export class CompletionActsService {
                 take: 500,
                 select: {
                   normoHours: true,
+                  actualHours: true,
                   price: true,
                   amount: true,
                   workId: true,
@@ -327,6 +329,7 @@ export class CompletionActsService {
       | {
           lines: Array<{
             normoHours: number;
+            actualHours: number | null;
             price: import('@prisma/client').Prisma.Decimal;
             amount: import('@prisma/client').Prisma.Decimal;
             workId: string;
@@ -346,11 +349,17 @@ export class CompletionActsService {
     if (!wo) return [];
     const lines: CompletionActLineDto[] = [];
     for (const l of wo.lines) {
+      // Акт виконаних робіт — це юридичний документ що ФАКТИЧНО зроблено.
+      // quantity і amount мають відображати actualHours (якщо записано), не normoHours.
+      // Симетрично з WorkOrder.totalActualLabor у recalcTotals та з WO PDF.
+      // l.amount у БД = normoHours × price — не використовуємо, рахуємо з displayed quantity.
+      const quantity = l.actualHours ?? l.normoHours;
+      const unitPrice = Number(l.price);
       lines.push({
         description: l.work?.name ?? 'Робота',
-        quantity: l.normoHours,
-        unitPrice: Number(l.price),
-        amount: Number(l.amount),
+        quantity,
+        unitPrice,
+        amount: quantity * unitPrice,
         workId: l.workId,
       });
     }
