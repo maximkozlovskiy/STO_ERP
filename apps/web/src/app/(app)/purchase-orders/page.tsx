@@ -66,6 +66,7 @@ import {
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
+import { StatusPill } from '@/components/ui/status-pill';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 
@@ -511,7 +512,14 @@ function PurchaseOrdersPageClient() {
     }
   };
 
-  const statuses = ['', 'DRAFT', 'ORDERED', 'PARTIAL', 'RECEIVED', 'CANCELLED'];
+  const statuses: Array<[string, string]> = [
+    ['', 'Всі'],
+    ['DRAFT', STATUS_LABELS['DRAFT']],
+    ['ORDERED', STATUS_LABELS['ORDERED']],
+    ['PARTIAL', STATUS_LABELS['PARTIAL']],
+    ['RECEIVED', STATUS_LABELS['RECEIVED']],
+    ['CANCELLED', STATUS_LABELS['CANCELLED']],
+  ];
 
   return (
     <div className="page-fill p-4 md:p-6">
@@ -575,23 +583,18 @@ function PurchaseOrdersPageClient() {
           {/* Status filter chips */}
           <div className="flex flex-wrap gap-1.5 shrink-0">
             {(['', 'DRAFT', 'CONFIRMED', 'CANCELLED'] as const).map(s => (
-              <button
+              <StatusPill
                 key={s}
-                type="button"
-                onClick={() => {
-                  setSrStatus(s);
+                value={s}
+                label={s ? SUPPLIER_RETURN_STATUS_LABELS[s] : 'Всі'}
+                active={srStatus === s}
+                description={s ? SUPPLIER_RETURN_STATUS_DESCRIPTIONS[s] : undefined}
+                onSelect={v => {
+                  setSrStatus(v);
                   resetSrPage();
                   setSrActiveSavedFilterId(null);
                 }}
-                className={cn(
-                  'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-                  srStatus === s
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
-                )}
-              >
-                {s ? SUPPLIER_RETURN_STATUS_LABELS[s] : 'Всі'}
-              </button>
+              />
             ))}
           </div>
 
@@ -855,24 +858,19 @@ function PurchaseOrdersPageClient() {
 
           {/* Status filters */}
           <div className="flex flex-wrap gap-1.5 shrink-0">
-            {statuses.map(s => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => {
-                  setStatus(s);
+            {statuses.map(([v, l]) => (
+              <StatusPill
+                key={v}
+                value={v}
+                label={l}
+                active={status === v}
+                description={v ? PO_STATUS_DESCRIPTIONS[v] : undefined}
+                onSelect={v => {
+                  setStatus(v);
                   resetPage();
                   setActiveSavedFilterId(null);
                 }}
-                className={cn(
-                  'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-                  status === s
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
-                )}
-              >
-                {s ? STATUS_LABELS[s] : 'Всі'}
-              </button>
+              />
             ))}
           </div>
 

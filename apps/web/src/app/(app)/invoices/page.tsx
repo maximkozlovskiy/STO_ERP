@@ -59,6 +59,7 @@ import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
+import { StatusPill } from '@/components/ui/status-pill';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 // new Date().toISOString() returns UTC, which diverges from Kyiv date between midnight and UTC+2/+3.
@@ -418,7 +419,23 @@ export default function InvoicesPage() {
     }
   };
 
-  const statuses = ['', 'DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'];
+  const statuses: Array<[string, string]> = [
+    ['', 'Всі'],
+    ['DRAFT', STATUS_LABELS['DRAFT']],
+    ['SENT', STATUS_LABELS['SENT']],
+    ['PAID', STATUS_LABELS['PAID']],
+    ['OVERDUE', STATUS_LABELS['OVERDUE']],
+    ['CANCELLED', STATUS_LABELS['CANCELLED']],
+  ];
+
+  const handleSelectStatus = useCallback(
+    (s: string) => {
+      setStatus(s);
+      resetPage();
+      setActiveSavedFilterId(null);
+    },
+    [resetPage, setActiveSavedFilterId],
+  );
 
   const buildInvoiceTabs = (inv: InvoiceWithOptionals): DetailPanelTab[] => [
     {
@@ -554,23 +571,15 @@ export default function InvoicesPage() {
 
       {/* Status filters */}
       <div className="flex flex-wrap gap-1.5 shrink-0">
-        {statuses.map(s => (
-          <button
-            key={s}
-            onClick={() => {
-              setStatus(s);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            className={cn(
-              'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-              status === s
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
-            )}
-          >
-            {s ? STATUS_LABELS[s] : 'Всі'}
-          </button>
+        {statuses.map(([v, l]) => (
+          <StatusPill
+            key={v}
+            value={v}
+            label={l}
+            active={status === v}
+            description={v ? INVOICE_STATUS_DESCRIPTIONS[v] : undefined}
+            onSelect={handleSelectStatus}
+          />
         ))}
       </div>
 

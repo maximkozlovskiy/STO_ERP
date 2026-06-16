@@ -57,6 +57,7 @@ import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/de
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { TableContainer } from '@/components/ui/table-container';
 import { Tooltip } from '@/components/ui/tooltip';
+import { StatusPill } from '@/components/ui/status-pill';
 import {
   WORK_ORDER_PANEL_SCHEMA,
   buildPanelFields,
@@ -163,40 +164,6 @@ const WO_COLUMNS: Array<{ key: string; label: string }> = [
   { key: 'linkedDocs', label: 'Документи' },
 ];
 const WO_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(WO_COLUMNS.map(c => c.key));
-
-// sto-optimize: Memoized pill для 11 статус-кнопок. Раніше — inline JSX-block
-// у map() створював 11 нових onClick-замикань на кожне перерендеривание сторінки
-// (typing у search-input → setSearch → re-render → 11 нових closures + 11 Tooltip
-// children-reconcile). Тепер pure props + memo skip коли `active`+`onSelect` стабільні.
-interface StatusPillProps {
-  value: string;
-  label: string;
-  active: boolean;
-  description: string | undefined;
-  onSelect: (v: string) => void;
-}
-const StatusPill = memo(function StatusPill({
-  value,
-  label,
-  active,
-  description,
-  onSelect,
-}: StatusPillProps) {
-  const btn = (
-    <button
-      onClick={() => onSelect(value)}
-      className={cn(
-        'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-        active
-          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-          : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
-      )}
-    >
-      {label}
-    </button>
-  );
-  return description ? <Tooltip content={description}>{btn}</Tooltip> : btn;
-});
 
 // Bug #354: Suspense обгортка для useSearchParams (Next.js static-export вимога).
 // Inner-функція тримає всю логіку, default-export лише wrapper.

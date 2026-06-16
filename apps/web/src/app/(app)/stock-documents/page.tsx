@@ -47,6 +47,7 @@ import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtDateTime, kyivToday } from '@/lib/format';
+import { StatusPill } from '@/components/ui/status-pill';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 
@@ -404,23 +405,18 @@ function StockDocumentsPageClient() {
             Статус
           </span>
           {STATUS_FILTERS.map(s => (
-            <button
+            <StatusPill
               key={s}
-              type="button"
-              onClick={() => {
-                setStatusFilter(s);
+              value={s}
+              label={s ? STOCK_DOC_STATUS_LABELS[s] : 'Всі'}
+              active={statusFilter === s}
+              description={s ? STOCK_DOC_STATUS_DESCRIPTIONS[s] : undefined}
+              onSelect={v => {
+                setStatusFilter(v);
                 resetPage();
                 setActiveSavedFilterId(null);
               }}
-              className={cn(
-                'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-                statusFilter === s
-                  ? 'bg-foreground text-primary-foreground border-foreground'
-                  : 'border-border text-muted-foreground bg-surface hover:bg-secondary',
-              )}
-            >
-              {s ? STOCK_DOC_STATUS_LABELS[s] : 'Всі'}
-            </button>
+            />
           ))}
         </div>
         <div className="flex items-center gap-2">
