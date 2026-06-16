@@ -1383,6 +1383,19 @@ export function CreateWorkOrderModal({
     return { total, hasAny: hasAnyActual };
   }, [lines]);
 
+  // Live sum of (actualHours ?? normoHours) across lines — shown in "Фактичні показники → Нормогодин"
+  // when recalcActualHoursEnabled so the user sees the computed value before saving.
+  const liveActualHours = useMemo(() => {
+    if (!recalcActualHoursEnabled || lines.length === 0) return null;
+    let sum = 0;
+    for (const l of lines) {
+      const ah = toNumberOrUndefined(l.actualHours);
+      const nh = toNumberOrUndefined(l.normoHours);
+      sum += ah ?? nh ?? 0;
+    }
+    return sum;
+  }, [lines, recalcActualHoursEnabled]);
+
   // Single-pass totals: one scan over lines/parts, two accumulators (total + vat).
   const linesTotals = useMemo(
     () =>
@@ -2081,9 +2094,9 @@ export function CreateWorkOrderModal({
                               type="number"
                               min="0"
                               step="0.5"
-                              value={form.actualHours}
+                              value={liveActualHours != null ? liveActualHours : form.actualHours}
                               onChange={handleActualHoursChange}
-                              disabled={!canEdit}
+                              disabled={!canEdit || liveActualHours != null}
                               placeholder="0"
                               className="h-8 w-full rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-ring"
                             />
