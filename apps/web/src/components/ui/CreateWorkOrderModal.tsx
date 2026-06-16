@@ -219,6 +219,8 @@ const EMPTY_TRANSITIONS: readonly string[] = Object.freeze([]);
 // Status order = keys of label map; module-level → uses const map once instead of
 // `Object.keys()` per render у IIFE-status-picker (recomputed на КОЖНИЙ keystroke у формі).
 const WO_STATUS_ORDER: readonly string[] = Object.freeze(Object.keys(WO_STATUS_LABELS));
+// Статуси що виключаються зі стрілок ← / → (доступні тільки через dropdown).
+const ARROW_SKIP_STATUSES = new Set(['ON_HOLD', 'ARCHIVED', 'CANCELLED']);
 
 export interface CreateWOPrefill {
   counterpartyId?: string;
@@ -1257,15 +1259,16 @@ export function CreateWorkOrderModal({
 
   const { prevStatus: statusPrevStep, nextStatus: statusNextStep } = useMemo(() => {
     const curIdx = WO_STATUS_ORDER.indexOf(currentStatus);
+    const arrowTransitions = allowedTransitions.filter(s => !ARROW_SKIP_STATUSES.has(s));
     let prevStatus: string | undefined;
-    for (let i = allowedTransitions.length - 1; i >= 0; i--) {
-      const s = allowedTransitions[i];
+    for (let i = arrowTransitions.length - 1; i >= 0; i--) {
+      const s = arrowTransitions[i];
       if (s && WO_STATUS_ORDER.indexOf(s) < curIdx) {
         prevStatus = s;
         break;
       }
     }
-    const nextStatus = allowedTransitions.find((s: string) => WO_STATUS_ORDER.indexOf(s) > curIdx);
+    const nextStatus = arrowTransitions.find((s: string) => WO_STATUS_ORDER.indexOf(s) > curIdx);
     return { prevStatus, nextStatus };
   }, [currentStatus, isEditMode]);
 
