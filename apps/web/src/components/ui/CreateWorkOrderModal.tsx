@@ -1320,15 +1320,18 @@ export function CreateWorkOrderModal({
 
   // Підсумки фактичних сум: actualHours ?? normoHours для кожного рядка.
   // hasAny=true якщо хоча б один рядок має actualHours або normoHours.
+  // Використовуємо toNumberOrUndefined (а не parseFloat) щоб коректно обробити
+  // ukr-коми (1,5 → 1.5); save() теж використовує toNumberOrUndefined → totals
+  // у tfoot збігаються з тим, що піде у PATCH backend.
   const actualTotals = useMemo(() => {
     let total = 0;
     let hasAny = false;
     for (const l of lines) {
-      const ah = parseFloat(l.actualHours);
-      const nh = parseFloat(l.normoHours);
-      const h = !isNaN(ah) ? ah : !isNaN(nh) ? nh : NaN;
-      const p = parseFloat(l.price);
-      if (!isNaN(h) && !isNaN(p)) {
+      const ah = toNumberOrUndefined(l.actualHours);
+      const nh = toNumberOrUndefined(l.normoHours);
+      const h = ah ?? nh;
+      const p = toNumberOrUndefined(l.price);
+      if (h != null && p != null) {
         total += h * p;
         hasAny = true;
       }

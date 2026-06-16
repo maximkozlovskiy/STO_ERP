@@ -32,6 +32,10 @@ let orgRow: {
   // Bug #446: нові boolean-поля додані у DTO + service mapping (commit 307d1e39).
   // Мають бути у моку — інакше mapOrgSettings повертає undefined → contract test fail.
   recalcPlannedHoursFromLines: boolean;
+  // commit 5d526ba9: recalcActualHoursFromLines додано у DTO + service mapping.
+  // Той самий патерн що й Bug #446 — без нього contract test silently повертає
+  // undefined у GET /settings/organisation для нового поля.
+  recalcActualHoursFromLines: boolean;
   syncCalendarSlotWithPlannedHours: boolean;
   updatedAt: Date;
 };
@@ -53,6 +57,7 @@ function freshOrgRow() {
     followUpDays: 90,
     uiFeatures: { ...UI_FEATURES_DEFAULTS },
     recalcPlannedHoursFromLines: true,
+    recalcActualHoursFromLines: true,
     syncCalendarSlotWithPlannedHours: true,
     updatedAt: new Date('2026-01-01T00:00:00Z'),
   };
