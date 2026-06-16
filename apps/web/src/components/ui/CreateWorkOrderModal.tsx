@@ -1122,15 +1122,25 @@ export function CreateWorkOrderModal({
     if (!workOrderId) return;
     setSavingBoth(true);
     setError('');
+    // Commit any open inline-edit row synchronously so save() reads the latest actualHours.
+    // setLines is async (React batched), so compute the merged snapshot here and use it
+    // directly in the rest of save() via committedLines instead of the stale `lines` closure.
+    const committedLines = editingLineKey
+      ? lines.map(l => (l._key === editingLineKey ? { ...editingLine, _key: l._key } : l))
+      : lines;
+    if (editingLineKey) {
+      setLines(committedLines);
+      setEditingLineKey(null);
+    }
     try {
       // Bug #525: computedActualHours має бути `undefined` коли користувач
       // не вказував явно і recalc не може порахувати (lines.length=0). Інакше
       // PATCH з null перетирав збережене значення WO.actualHours у БД.
       let computedActualHours: number | null | undefined;
       if (recalcActualHoursEnabled) {
-        if (lines.length > 0) {
+        if (committedLines.length > 0) {
           let sum = 0;
-          for (const l of lines) {
+          for (const l of committedLines) {
             const ah = toNumberOrUndefined(l.actualHours);
             const nh = toNumberOrUndefined(l.normoHours);
             sum += ah ?? nh ?? 0;
@@ -1191,7 +1201,7 @@ export function CreateWorkOrderModal({
         // викликає recalcTotals (aggregate + update WO.totalLabor/Parts/Amount).
         // Паралель = race у READ COMMITTED: тх1/тх2 одна одної не бачать у
         // SUM(amount), тому останній writer перетирає тotalAmount → втрачені суми.
-        for (const line of lines.filter(l => !l.id)) {
+        for (const line of committedLines.filter(l => !l.id)) {
           await apiFetch(`/work-orders/${workOrderId}/lines`, {
             method: 'POST',
             body: JSON.stringify({
@@ -1204,7 +1214,7 @@ export function CreateWorkOrderModal({
           });
         }
         // PATCH існуючих рядків щоб зберегти actualHours (та інші inline-edit зміни).
-        for (const line of lines.filter(l => !!l.id)) {
+        for (const line of committedLines.filter(l => !!l.id)) {
           await apiFetch(`/work-orders/${workOrderId}/lines/${line.id}`, {
             method: 'PATCH',
             body: JSON.stringify({
@@ -1231,7 +1241,7 @@ export function CreateWorkOrderModal({
       } else if (canEditActual) {
         // Bug #522: у IN_PROGRESS/ON_HOLD PATCH лише actualHours для існуючих рядків.
         // Жодних DELETE/POST/PATCH інших полів — бекенд відхилить як non-actual-only.
-        for (const line of lines.filter(l => !!l.id)) {
+        for (const line of committedLines.filter(l => !!l.id)) {
           await apiFetch(`/work-orders/${workOrderId}/lines/${line.id}`, {
             method: 'PATCH',
             body: JSON.stringify({
