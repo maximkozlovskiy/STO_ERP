@@ -1354,6 +1354,24 @@ export function CreateWorkOrderModal({
 
   const doTransition = async (newStatus: string) => {
     if (!workOrderId) return;
+    // При переході COMPLETED→INVOICED пропонуємо створити рахунок якщо його ще немає.
+    if (
+      newStatus === 'INVOICED' &&
+      currentStatus === 'COMPLETED' &&
+      linkedDocsCounts?.invoices === 0
+    ) {
+      const ok = await confirm({
+        title: 'Створити рахунок?',
+        message: 'Рахунок для цього наряду відсутній. Створити рахунок зараз?',
+        confirmLabel: 'Створити рахунок',
+        cancelLabel: 'Тільки перевести статус',
+      });
+      if (ok) {
+        void handleInvoice();
+        return;
+      }
+      // ok=false → продовжуємо переводити статус без рахунку
+    }
     if (newStatus === 'IN_PROGRESS' && calConflict?.anyConflict) {
       const ok = await confirm({
         title: 'Перевести наряд в "В роботі"?',
