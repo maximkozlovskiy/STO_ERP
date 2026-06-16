@@ -16,6 +16,9 @@ import {
   Share2,
   MessageSquare,
   Receipt,
+  CreditCard,
+  Calendar,
+  Shield,
   Minus,
   Download,
 } from 'lucide-react';
@@ -49,7 +52,10 @@ import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search
 import { WorkPickerModal, type WorkPickerItem } from '@/components/ui/WorkPickerModal';
 import { GoodPickerModal, type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 import { Tooltip } from '@/components/ui/tooltip';
-import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
+import {
+  LinkedDocumentsPanel,
+  type LinkedDocumentsCounts,
+} from '@/components/ui/LinkedDocumentsPanel';
 
 interface Branch {
   id: string;
@@ -419,6 +425,7 @@ export function CreateWorkOrderModal({
   // Bug #409: інкрементуємо після успішного invoice create/refresh →
   // LinkedDocumentsPanel ререфетчить без потреби unmount/remount tab.
   const [linkedDocsRefreshKey, setLinkedDocsRefreshKey] = useState(0);
+  const [linkedDocsCounts, setLinkedDocsCounts] = useState<LinkedDocumentsCounts | null>(null);
   const [activeTab, setActiveTab] = useState<'main' | 'documents'>('main');
   const features = useUiFeatures();
   const {
@@ -619,6 +626,7 @@ export function CreateWorkOrderModal({
     if (!open) return;
     setError('');
     setStatusMenuOpen(false);
+    setLinkedDocsCounts(null);
     setVehicles([]);
     setContracts([]);
     setLines([]);
@@ -754,6 +762,32 @@ export function CreateWorkOrderModal({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, workOrderId]);
+
+  // Fetch linked-documents counts for tab badge — runs on open and after refresh.
+  // Separate from the main WO fetch so the badge updates even when Документи tab not visited.
+  useEffect(() => {
+    if (!open || !isEditMode || !workOrderId) return;
+    let cancelled = false;
+    apiFetch<{
+      invoices: unknown[];
+      payments: unknown[];
+      calendarSlots: unknown[];
+      warranties: unknown[];
+    }>(`/work-orders/${workOrderId}/linked-documents`)
+      .then(d => {
+        if (!cancelled)
+          setLinkedDocsCounts({
+            invoices: d.invoices.length,
+            payments: d.payments.length,
+            calendarSlots: d.calendarSlots.length,
+            warranties: d.warranties.length,
+          });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isEditMode, workOrderId, linkedDocsRefreshKey]);
 
   // After branches load (or on open), auto-select if single branch.
   // Covers two cases: (1) branches arrive async after modal opens,
@@ -1850,7 +1884,7 @@ export function CreateWorkOrderModal({
             </button>
             <button
               className={cn(
-                'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+                'px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2',
                 activeTab === 'documents'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -1858,13 +1892,45 @@ export function CreateWorkOrderModal({
               onClick={() => setActiveTab('documents')}
             >
               Документи
+              {linkedDocsCounts && (
+                <span className="flex items-center gap-1.5">
+                  {linkedDocsCounts.invoices > 0 && (
+                    <span className="flex items-center gap-0.5 text-[11px] font-normal">
+                      <Receipt size={11} />
+                      {linkedDocsCounts.invoices}
+                    </span>
+                  )}
+                  {linkedDocsCounts.payments > 0 && (
+                    <span className="flex items-center gap-0.5 text-[11px] font-normal">
+                      <CreditCard size={11} />
+                      {linkedDocsCounts.payments}
+                    </span>
+                  )}
+                  {linkedDocsCounts.calendarSlots > 0 && (
+                    <span className="flex items-center gap-0.5 text-[11px] font-normal">
+                      <Calendar size={11} />
+                      {linkedDocsCounts.calendarSlots}
+                    </span>
+                  )}
+                  {linkedDocsCounts.warranties > 0 && (
+                    <span className="flex items-center gap-0.5 text-[11px] font-normal">
+                      <Shield size={11} />
+                      {linkedDocsCounts.warranties}
+                    </span>
+                  )}
+                </span>
+              )}
             </button>
           </div>
         )}
 
         {/* Вкладка "Документи" */}
         {activeTab === 'documents' && workOrderId && (
-          <LinkedDocumentsPanel workOrderId={workOrderId} refreshKey={linkedDocsRefreshKey} />
+          <LinkedDocumentsPanel
+            workOrderId={workOrderId}
+            refreshKey={linkedDocsRefreshKey}
+            onLoad={setLinkedDocsCounts}
+          />
         )}
 
         {/* Вкладка "Основне" */}

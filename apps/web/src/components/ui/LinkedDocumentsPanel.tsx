@@ -321,14 +321,23 @@ function SectionRow({
 
 // ─── Main Component ────────────────────────────────────────
 
+export interface LinkedDocumentsCounts {
+  invoices: number;
+  payments: number;
+  calendarSlots: number;
+  warranties: number;
+}
+
 export function LinkedDocumentsPanel({
   workOrderId,
   refreshKey,
+  onLoad,
 }: {
   workOrderId: string;
   // Bug #409: parent інкрементує key після створення/refresh пов'язаного документу
   // → useEffect deps тригерять fetch без unmount/remount, стале UI не показується.
   refreshKey?: number;
+  onLoad?: (counts: LinkedDocumentsCounts) => void;
 }) {
   const [data, setData] = useState<LinkedDocuments | null>(null);
   const [loading, setLoading] = useState(true);
@@ -355,6 +364,12 @@ export function LinkedDocumentsPanel({
         if (!cancelled) {
           setData(d);
           setError(null);
+          onLoad?.({
+            invoices: d.invoices.length,
+            payments: d.payments.length,
+            calendarSlots: d.calendarSlots.length,
+            warranties: d.warranties.length,
+          });
         }
       })
       .catch((e: unknown) => {
