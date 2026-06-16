@@ -89,7 +89,7 @@ export class InvoicesController {
 
   @Get('from-work-order/:workOrderId/find')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Знайти рахунок за нарядом (id + number)' })
+  @ApiOperation({ summary: 'Знайти рахунок за нарядом (id, number, status, amount, documentDate)' })
   findByWorkOrder(
     @OrgContext() orgId: string,
     @Param('workOrderId', ParseUUIDPipe) workOrderId: string,

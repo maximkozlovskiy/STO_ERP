@@ -82,11 +82,12 @@ interface LocalLine {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+// Must stay in sync with INVOICE_STATUS_BADGE in @sto/shared.
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-secondary text-muted-foreground',
-  SENT: 'bg-primary-subtle text-primary',
+  SENT: 'bg-info-subtle text-info-text',
   PAID: 'bg-success-subtle text-success',
-  OVERDUE: 'bg-warning-subtle text-warning',
+  OVERDUE: 'bg-warning-subtle text-warning-text',
   CANCELLED: 'bg-destructive-subtle text-destructive',
 };
 

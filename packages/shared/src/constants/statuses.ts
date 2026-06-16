@@ -55,6 +55,15 @@ export const WO_SHAREABLE_STATUSES: readonly string[] = Object.freeze([
   'APPROVED',
 ]);
 export const WO_INVOICEABLE_STATUSES: readonly string[] = Object.freeze(['COMPLETED', 'INVOICED']);
+// Statuses where the Invoice slot should be VISIBLE in the work-order card.
+// Superset of WO_INVOICEABLE_STATUSES: PAID and ARCHIVED work orders already have an
+// invoice and it should remain accessible (view / download PDF) even after the WO is closed.
+export const WO_INVOICE_VISIBLE_STATUSES: readonly string[] = Object.freeze([
+  'COMPLETED',
+  'INVOICED',
+  'PAID',
+  'ARCHIVED',
+]);
 
 // Single source of truth: must mirror backend `WORK_ORDER_TRANSITIONS`
 // in apps/api/src/modules/work-orders/work-orders.fsm.ts. Backend is authoritative —

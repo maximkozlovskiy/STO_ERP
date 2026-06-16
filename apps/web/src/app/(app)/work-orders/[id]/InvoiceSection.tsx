@@ -15,6 +15,7 @@ import {
   INVOICE_STATUS_LABELS,
   INVOICE_STATUS_BADGE,
   WO_INVOICEABLE_STATUSES,
+  WO_INVOICE_VISIBLE_STATUSES,
   type InvoiceStatus,
 } from '@sto/shared';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
@@ -68,17 +69,19 @@ export function InvoiceSection({
   const [refreshingInvoice, setRefreshingInvoice] = useState(false);
   const [downloadingInvoicePdf, setDownloadingInvoicePdf] = useState(false);
 
-  // Гейт: показуємо секцію тільки на invoiceable статусах і ТІЛЬКИ після того
-  // як apiFetch завершився (invoiceRef !== undefined). Це уникає миготіння
-  // empty-state перед першим завантаженням.
-  if (!WO_INVOICEABLE_STATUSES.includes(workOrderStatus) || invoiceRef === undefined) {
+  // Гейт: показуємо секцію якщо статус входить до WO_INVOICE_VISIBLE_STATUSES
+  // (COMPLETED, INVOICED, PAID, ARCHIVED) і ТІЛЬКИ після того як apiFetch завершився
+  // (invoiceRef !== undefined). Це уникає миготіння empty-state перед першим завантаженням.
+  // WO_INVOICEABLE_STATUSES (COMPLETED, INVOICED) — використовується тільки для гейту
+  // кнопки "Виставити рахунок" (create action), бо PAID/ARCHIVED вже мають рахунок.
+  if (!WO_INVOICE_VISIBLE_STATUSES.includes(workOrderStatus) || invoiceRef === undefined) {
     return null;
   }
 
   const createInvoice = async () => {
     setCreatingInvoice(true);
     try {
-      const inv = await apiFetch<InvoicePayload>(`/invoices/from-work-order/${workOrderId}`, {
+      const inv = await apiFetch<InvoiceApiShape>(`/invoices/from-work-order/${workOrderId}`, {
         method: 'POST',
       });
       onChange(toInvoiceRef(inv));
@@ -94,7 +97,7 @@ export function InvoiceSection({
   const refreshInvoice = async () => {
     setRefreshingInvoice(true);
     try {
-      const inv = await apiFetch<InvoicePayload>(
+      const inv = await apiFetch<InvoiceApiShape>(
         `/invoices/from-work-order/${workOrderId}/refresh`,
         { method: 'POST' },
       );
