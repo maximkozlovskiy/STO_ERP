@@ -15569,3 +15569,244 @@ curl -X POST /booking/request -d '{"branchId":"...","clientName":"x","clientPhon
 **Статус:** [x] виправлено — create() тепер валідує requestedDate проти BranchSettings.workStartTime/workEndTime/workDays.
 
 ---
+
+## Session 2026-06-16 — Dynamic Work Hours + Cache-Control (commits 46b64596, a0301b36, 831c7d36)
+
+Контекст змін:
+
+1. GET /settings/work-hours — новий ендпоінт повертає workStartHour/workEndHour
+2. CalendarDayGrid — dynHours/windowStart/windowEnd через props замість констант
+3. CalendarSlotModal — SPLIT_DAY_START_H=8/END_H=20 константи для overflow, dynamic window лише для picker bounds
+4. useCalendarState — pxToHours замінено inline calculation з dynTotalHoursRef
+5. Cache-Control: no-cache на branches/zones/warehouses GET
+
+Фокус: getWorkHours edge cases, dynHours edge cases, pxToDecimalHours при window != 12h, warehouses DELETE soft delete.
+
+---
+
+### Bug #515 — [HIGH] backend / settings / validation — workStartTime/workEndTime у BranchSettings без формату + без cross-field guard → backend може повернути workEndHour < workStartHour → frontend dynHours=[] → NaN у CSS
+
+**Файл:** `apps/api/src/modules/settings/settings.dto.ts:186-195`, `apps/api/src/modules/settings/settings.service.ts:149-166`
+
+**Severity:** HIGH (data corruption + frontend broken render).
+**Категорія:** missing validation / cross-field guard (SKILL §1.2 validation).
+
+**Сигнал:**
+
+```
+grep -B1 -A3 "workStartTime?: string" apps/api/src/modules/settings/settings.dto.ts
+```
+
+показує тільки `@IsOptional() @IsString()` — НЕМАЄ `@Matches(/^([01]\d|2[0-3]):[0-5]\d$/)`, НЕМАЄ перевірки що workEndTime > workStartTime.
+
+**Очікувана поведінка:** PATCH `/settings/branch/:id` з `workStartTime='25:99'` → 400; `workStartTime='20:00', workEndTime='09:00'` → 400 з message про порядок.
+
+**Фактична поведінка:** Будь-який рядок проходить:
+
+```
+PATCH /settings/branch/abc → { workStartTime: 'foo', workEndTime: 'bar' }
+→ 200, БД отримує сміття
+GET /settings/branch/abc → { workStartTime: 'foo', workEndTime: 'bar', ... } — frontend форма settings показує сміття
+GET /settings/work-hours → { workStartHour: 9, workEndHour: 18 } (fallback від parseHour)
+```
+
+Гірший сценарій:
+
+```
+PATCH /settings/branch/abc → { workStartTime: '20:00', workEndTime: '09:00' }
+→ 200
+GET /settings/work-hours → { workStartHour: 20, workEndHour: 9 }
+Frontend useCalendarState:
+  dynHours = Array.from({ length: 9 - 20 }) → Array.from({ length: -11 }) → []
+  dynTotalHours = 0
+  blockedWidth: (blockedHours / 0) * 100 → NaN
+  DraggableSlot.left: ((startH - windowStart) / 0) * 100 → Infinity або NaN
+  CSS отримує `left: NaN%` → DOM crash чи невидимі слоти
+```
+
+**Корінь:** DTO декларує workStartTime/workEndTime як вільні рядки без regex; service не перевіряє work-window consistency.
+
+**Фікс:**
+
+1. У `UpdateBranchSettingsDto`: додати `@Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Формат "ГГ:ХХ" (00:00–23:59)' })`.
+2. У `SettingsService.updateBranchSettings`: після `branch` guard, перед `upsert` — fetch current settings, обчислити `effectiveStart/End` (DTO ?? current ?? default), якщо `effectiveEnd <= effectiveStart` → `throw new BadRequestException('Час кінця роботи повинен бути після часу початку')`.
+3. У `getWorkHours()`: defense-in-depth — якщо `workEndHour <= workStartHour`, повертати fallback (9, 18) замість невалідного діапазону.
+
+**Регресія-guard:** новий `settings.contract.spec.ts` test:
+
+- `PATCH /settings/branch/:id` з `workStartTime: '25:99'` → 400 + укр. message.
+- `PATCH /settings/branch/:id` з `workStartTime: '18:00', workEndTime: '09:00'` → 400 + message «після».
+- `GET /settings/work-hours` коли БД містить інвертовані часи → response має `workEndHour > workStartHour` (fallback захист).
+
+**Статус:** [x] виправлено — додано `@Matches(HH_MM_RE)` на workStartTime/workEndTime у `UpdateBranchSettingsDto`, cross-field guard у `updateBranchSettings()`, defense-in-depth fallback у `getWorkHours()`. Regression spec — 13 нових кейсів у Bug #515-#516 describe block (35/35 passed).
+
+---
+
+### Bug #516 — [HIGH] backend / settings / tests — GET /settings/work-hours та getWorkHours() без contract/service spec → silent регресія при майбутньому refactor
+
+**Файл:** `apps/api/src/modules/settings/settings.contract.spec.ts` (відсутні test cases)
+
+**Severity:** HIGH (regression-guard для нової фічі).
+**Категорія:** test coverage gap (SKILL §1.5 regression guard).
+
+**Сигнал:**
+
+```
+grep -rln "work-hours\|getWorkHours\|workStartHour" apps/api/src --include="*.spec.ts"
+```
+
+0 matches.
+
+**Очікувана поведінка:** Кожен новий endpoint має ≥1 contract spec кейс + service spec для edge-кейсів.
+
+**Фактична поведінка:** Без spec наступний refactor що змінює `parseHour` логіку або сігнатуру response (наприклад додасть `breakStartHour`) пройде CI green, але runtime ламається бо frontend очікує `workStartHour`/`workEndHour`.
+
+**Корінь:** Sprint що додав /settings/work-hours не включав regression-guard test (SKILL §1.2 «Mass DTO migration» — нова фіча без spec).
+
+**Фікс:** Додати у `settings.contract.spec.ts`:
+
+- `GET /settings/work-hours` без BranchSettings → 200 + `{ workStartHour: 9, workEndHour: 18 }` (default).
+- `GET /settings/work-hours` коли settings має `workStartTime: '08:00', workEndTime: '20:00'` → 200 + `{ workStartHour: 8, workEndHour: 20 }`.
+- `GET /settings/work-hours` коли settings має `workStartTime: '00:00'` → 200 + `workStartHour: 0` (parseInt('00') === 0; не fallback).
+- `GET /settings/work-hours` коли settings має невалідний рядок `'foo'` → 200 + fallback `9, 18`.
+- `GET /settings/work-hours` як RECEPTIONIST/MECHANIC/STOREKEEPER/ACCOUNTANT → 200 (новий endpoint доступний усім ролям).
+
+**Статус:** [x] виправлено — 6 нових regression-guard тестів у `settings.contract.spec.ts` `Bug #515-#516: GET /settings/work-hours regression guards` describe block; покривають default fallback, валідні часи, 00:00 edge case, інвертовані часи (defense-in-depth), невалідний рядок, RECEPTIONIST доступ.
+
+---
+
+### Bug #517 — [MEDIUM] frontend / web / calendar — dead exports HOURS/TOTAL_HOURS/WINDOW_START/WINDOW_END/pxToHours у calendar.utils.ts після рефактору на dynamic hours
+
+**Файл:** `apps/web/src/app/(app)/calendar/calendar.utils.ts:8-12, 107-109`
+
+**Severity:** MEDIUM (dead code; misleads readers + майбутній імпорт у новому компоненті відтворить стару статичну поведінку, що збиватиме нові динамічні constraints).
+**Категорія:** dead code post-refactor (SKILL §1.3 «Мертвий стан/handler після inline→shared-component рефактору»).
+
+**Сигнал:**
+
+```
+grep -rn "\b\(HOURS\|TOTAL_HOURS\|WINDOW_START\|WINDOW_END\|pxToHours\)\b" apps/web/src/app/\(app\)/calendar
+```
+
+Жоден з символів не імпортується у активний код — лише декларації самих exports + 2 коментарі-маркери у useCalendarState (рядки 672, 695).
+
+**Очікувана поведінка:** Після рефактору на dynamic workStartHour/workEndHour ці константи мають бути ВИДАЛЕНІ — їх відсутність унеможливить регресію типу "хтось імпортує WINDOW_START=8 у новий компонент і він не оновиться під час змін BranchSettings".
+
+**Фактична поведінка:** Експорти живі. Майбутній розробник почне новий компонент типу «CalendarHeatmap» з `import { HOURS, WINDOW_START } from './calendar.utils'` → отримає hardcoded 8-19 → відображення розсинхронізоване з основним grid. tsc green, тести green, але UI buggy.
+
+**Корінь:** Sprint 46b64596 додав dynamic версії у `useCalendarState`, але не видалив статичні exports.
+
+**Фікс:**
+
+1. Видалити `HOURS, TOTAL_HOURS, WINDOW_START, WINDOW_END, pxToHours` з `calendar.utils.ts`.
+2. У `useCalendarState.ts` — прибрати застарілі коментарі «Bug: pxToHours() uses static TOTAL_HOURS=12».
+3. Verify tsc green.
+
+**Статус:** [x] виправлено — видалено dead exports з `calendar.utils.ts`, очищено dead imports `PICK_MINUTES`/`buildHHMM` у CalendarSlotModal, оновлено коментарі у useCalendarState. tsc green.
+
+---
+
+### Bug #518 — [MEDIUM] frontend / web / test setup — jsdom без stub для URL.createObjectURL/revokeObjectURL → InvoiceSection.test.tsx генерує Unhandled Exception (baseline shadow error)
+
+**Файл:** `apps/web/src/__tests__/setup.ts` (missing stub)
+
+**Severity:** MEDIUM (baseline shadow error приховує реальні регресії; exit code 1 при усіх green tests).
+**Категорія:** jsdom missing stub (SKILL §1.3 Bug #177 шаблон).
+
+**Сигнал:**
+
+```
+pnpm --filter @sto/web exec vitest run
+→ Test Files 40 passed (40)
+→ Tests 434 passed (434)
+→ Errors 1 error
+→ Uncaught Exception: TypeError: URL.revokeObjectURL is not a function
+→ at Timeout._onTimeout src/app/(app)/work-orders/[id]/InvoiceSection.tsx:130:28
+→ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL exit code 1
+```
+
+`grep -n "revokeObjectURL\|createObjectURL" apps/web/src/__tests__/setup.ts` → 0 matches.
+
+**Очікувана поведінка:** Vitest exit code 0 коли всі тести passed.
+
+**Фактична поведінка:** InvoiceSection PDF-download path:
+
+```ts
+const url = URL.createObjectURL(blob);
+setTimeout(() => URL.revokeObjectURL(url), 100);
+```
+
+`createObjectURL` jsdom має, але `revokeObjectURL` — undefined. setTimeout захоплює closure → через 100ms throws у global scope → vitest caught Unhandled Error → exit code 1.
+
+**Корінь:** jsdom не має `URL.createObjectURL`/`URL.revokeObjectURL` polyfill (відомо з 2019). setup.ts вже містить stubs для `scrollIntoView`/`ResizeObserver`/`IntersectionObserver`, але пропустив URL.
+
+**Фікс:** У `apps/web/src/__tests__/setup.ts` додати:
+
+```ts
+if (typeof URL.createObjectURL === 'undefined') {
+  (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = () => 'blob:mock';
+}
+if (typeof URL.revokeObjectURL === 'undefined') {
+  (URL as unknown as { revokeObjectURL: (u: string) => void }).revokeObjectURL = () => {};
+}
+```
+
+**Регресія-guard:** Цей фікс сам є regression-guard — будь-який новий тест, що рендерить компонент з PDF/blob download, перестане падати.
+
+**Статус:** [x] виправлено — додано typeof-guard stubs для `URL.createObjectURL`/`URL.revokeObjectURL` у `apps/web/src/__tests__/setup.ts`.
+
+---
+
+### Bug #519 — [MEDIUM] frontend / web / calendar — bookingSlots assignment hardcoded slotDurationMs=1h ігнорує BranchSettings.slotDurationMinutes → невідповідність pen-and-paper ширини бронювання
+
+**Файл:** `apps/web/src/app/(app)/calendar/useCalendarState.ts:430` (`const slotDurationMs = 60 * 60 * 1000`)
+
+**Severity:** MEDIUM (UX невідповідність; не data corruption бо тільки візуальне).
+**Категорія:** missing dynamic config read (SKILL §1.3 «hardcoded constant after sprint adds dynamic source»).
+
+**Сигнал:**
+
+```
+grep -n "slotDurationMs\|slotDurationMinutes" apps/web/src/app/\(app\)/calendar/useCalendarState.ts
+```
+
+показує hardcoded `60 * 60 * 1000`. Backend `BranchSettings.slotDurationMinutes` (default 30) — справжнє значення.
+
+**Очікувана поведінка:** `bookingSlots[i].endAt = startMs + branchSettings.slotDurationMinutes * 60_000`. Bookings рендеряться з правильною тривалістю.
+
+**Фактична поведінка:** PENDING booking створене з реальним slotDurationMinutes=30 → відображається на calendar як 1h блок → конфлікт-detection між bookings і CalendarSlots використовує НЕправильну тривалість → можливе помилкове "конфлікту немає" якщо існуючий слот починається о +30 хв після booking.
+
+**Корінь:** Sprint що додав dynamic work-hours забув про dynamic slot duration.
+
+**Фікс:** Розширити `GET /settings/work-hours` → `WorkHoursDto` додати `slotDurationMinutes: number`; frontend useCalendarState читає це у state і використовує у `slotDurationMs`.
+
+**Статус:** [ ] не виправлено
+
+---
+
+### Bug #520 — [LOW] backend / settings / cache — GET /settings/work-hours без Redis cache → DB hit на кожен calendar mount
+
+**Файл:** `apps/api/src/modules/settings/settings.service.ts:149-166`
+
+**Severity:** LOW (performance only, fallback на defaults).
+**Категорія:** missing cache for new high-frequency endpoint (SKILL §1.1 deploy/perf).
+
+**Сигнал:**
+
+```
+grep -B2 -A5 "getWorkHours" apps/api/src/modules/settings/settings.service.ts
+```
+
+показує `findFirst` без обгортки у Redis-cache get/set, на відміну від `getOrganisationSettings`/`getBranchSettings` що мають 300s TTL.
+
+**Очікувана поведінка:** Cache key `settings:work-hours:${orgId}`, TTL 300s, invalidation при `updateBranchSettings`.
+
+**Фактична поведінка:** Кожна навігація на `/calendar` тригерить `GET /settings/work-hours` → `prisma.branchSettings.findFirst` → DB roundtrip. Для STO з 10 механіками + 5 нaviganиях на день = 50 непотрібних DB-запитів.
+
+**Фікс:** У `getWorkHours()` додати cache-aside pattern як у `getOrganisationSettings`. У `updateBranchSettings()` після `invalidateBranchCache()` додати `redis.del("settings:work-hours:${orgId}")`.
+
+Альтернатива простіша: `@Header('Cache-Control', 'private, max-age=300')` на endpoint → browser кешує client-side. Менш гнучко, але не зачіпає Redis шлях.
+
+**Статус:** [ ] не виправлено
+
+---

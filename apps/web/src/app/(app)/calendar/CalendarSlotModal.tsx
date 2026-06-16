@@ -33,11 +33,9 @@ import type {
   SlotForm,
 } from './calendar.types';
 import {
-  PICK_MINUTES,
   UUID_RE,
   decimalHoursToHHMM,
   parseHHMM,
-  buildHHMM,
   pad,
   displayCounterparty,
   fmtTime,

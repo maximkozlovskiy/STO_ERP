@@ -669,7 +669,8 @@ export function useCalendarState() {
       if (pr) {
         const rect = timelineRef.current?.getBoundingClientRect();
         if (!rect) return;
-        // Bug: pxToHours() uses static TOTAL_HOURS=12. Use dynamic totalHoursRef instead.
+        // Inline px→decimal-hours conversion з dynTotalHoursRef (Bug #517: pxToHours
+        // helper видалено бо використовував hardcoded TOTAL_HOURS=12).
         const deltaH =
           ((e.clientX - pr.pointerStartX) / (rect.width - SIDEBAR_W)) * dynTotalHoursRef.current;
         const todayKyiv2 = toDateString(new Date());
@@ -692,7 +693,7 @@ export function useCalendarState() {
       if (res) {
         const rect = timelineRef.current?.getBoundingClientRect();
         if (!rect) return;
-        // Bug: pxToHours() uses static TOTAL_HOURS=12. Use dynamic totalHoursRef instead.
+        // Inline px→decimal-hours з dynTotalHoursRef (Bug #517 див. вище).
         const deltaH =
           ((e.clientX - res.pointerStartX) / (rect.width - SIDEBAR_W)) * dynTotalHoursRef.current;
         if (res.edge === 'start') {

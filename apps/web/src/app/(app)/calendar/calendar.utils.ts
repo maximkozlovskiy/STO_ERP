@@ -5,13 +5,15 @@ import type { CounterpartyOption } from './calendar.types';
 
 export const KYIV_TZ = 'Europe/Kyiv';
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const HOURS = Array.from({ length: 12 }, (_, i) => i + 8);
-export const TOTAL_HOURS = HOURS.length;
 export const SIDEBAR_W = 160;
-export const WINDOW_START = HOURS[0]!;
-export const WINDOW_END = HOURS[HOURS.length - 1]! + 1;
 
-// Time picker: 15-min step within working hours window. Hours = `HOURS`.
+// Bug #517: HOURS/TOTAL_HOURS/WINDOW_START/WINDOW_END/pxToHours видалені після
+// рефактору на dynamic workStartHour/workEndHour (commits 46b64596, a0301b36).
+// Імпорт цих констант у новому компоненті відтворить hardcoded 08-19, що
+// розсинхронізує grid з реальним BranchSettings. Використовуй state.hours /
+// state.windowStart / state.windowEnd з useCalendarState().
+
+// Time picker: 15-min step within working hours window.
 export const PICK_MINUTES = [0, 15, 30, 45];
 
 // Max days a custom stats range may span
@@ -104,15 +106,12 @@ export function snapTo15(h: number): number {
   return Math.round(h * 4) / 4;
 }
 
-export function pxToHours(px: number, timelineW: number): number {
-  return (px / timelineW) * TOTAL_HOURS;
-}
-
 /** Parse "HH:mm" → { h, m } snapped to nearest 15min */
 export function parseHHMM(s: string): { h: number; m: number } {
   const [hh, mm] = s.split(':').map(Number);
   const snapped = Math.round((mm ?? 0) / 15) * 15;
-  return { h: hh ?? HOURS[0]!, m: snapped >= 60 ? 0 : snapped };
+  // Bug #517: fallback 9 (BranchSettings Prisma default workStartTime='09:00').
+  return { h: hh ?? 9, m: snapped >= 60 ? 0 : snapped };
 }
 
 export function buildHHMM(h: number, m: number): string {

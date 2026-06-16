@@ -159,10 +159,18 @@ export class SettingsService {
       const h = parseInt(t.split(':')[0]!, 10);
       return Number.isFinite(h) && h >= 0 && h <= 23 ? h : fallback;
     };
-    return {
-      workStartHour: parseHour(settings?.workStartTime, 9),
-      workEndHour: parseHour(settings?.workEndTime, 18),
-    };
+    const workStartHour = parseHour(settings?.workStartTime, 9);
+    const workEndHour = parseHour(settings?.workEndTime, 18);
+    // Bug #515 defense-in-depth: defensive guard проти інвертованих часів у БД
+    // (legacy/corrupt data до додавання Matches regex у DTO). Інакше frontend
+    // dynHours = Array.from({ length: workEndHour - workStartHour }) дасть [] для
+    // негативної довжини → дільник 0 → NaN у CSS → DOM crash. Повертаємо fallback
+    // діапазон щоб calendar лишався працездатним; адмін бачить grid 09-18 поки
+    // не виправить settings.
+    if (workEndHour <= workStartHour) {
+      return { workStartHour: 9, workEndHour: 18 };
+    }
+    return { workStartHour, workEndHour };
   }
 
   async updateBranchSettings(
@@ -176,6 +184,25 @@ export class SettingsService {
       select: { id: true },
     });
     if (!branch) throw new NotFoundException('Філію не знайдено');
+
+    // Bug #515 cross-field guard: workEndTime повинен бути після workStartTime.
+    // Reading current settings (якщо лише одне поле у PATCH) — merge з incoming.
+    if (dto.workStartTime !== undefined || dto.workEndTime !== undefined) {
+      const current = await this.prisma.branchSettings.findUnique({
+        where: { branchId },
+        select: { workStartTime: true, workEndTime: true },
+      });
+      const effStart = dto.workStartTime ?? current?.workStartTime ?? '09:00';
+      const effEnd = dto.workEndTime ?? current?.workEndTime ?? '18:00';
+      // Compare as minutes-since-midnight; safe бо @Matches regex прибив невалідний format.
+      const toMin = (t: string) => {
+        const [h, m] = t.split(':').map(Number);
+        return (h ?? 0) * 60 + (m ?? 0);
+      };
+      if (toMin(effEnd) <= toMin(effStart)) {
+        throw new BadRequestException('Час кінця роботи повинен бути після часу початку');
+      }
+    }
 
     const settings = await this.prisma.branchSettings.upsert({
       where: { branchId },

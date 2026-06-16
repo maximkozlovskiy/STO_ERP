@@ -50,3 +50,18 @@ if (typeof globalThis.IntersectionObserver === 'undefined') {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).IntersectionObserver = IntersectionObserverStub;
 }
+
+// Bug #518: jsdom не має URL.createObjectURL/revokeObjectURL. Без stubs PDF-/blob-
+// download path у InvoiceSection (URL.createObjectURL + setTimeout(revokeObjectURL))
+// throw-ить через 100ms у global scope → vitest caught Unhandled Error → exit
+// code 1 при ВСІХ green tests → маскує справжні майбутні регресії.
+if (typeof URL.createObjectURL === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (URL as any).createObjectURL = () => 'blob:mock';
+}
+if (typeof URL.revokeObjectURL === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (URL as any).revokeObjectURL = () => {
+    /* no-op */
+  };
+}

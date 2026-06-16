@@ -10,6 +10,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -183,15 +184,24 @@ export class UpdateOrganisationSettingsDto {
   syncCalendarSlotWithPlannedHours?: boolean;
 }
 
+// Bug #515: HH:MM regex (00:00–23:59). Без regex backend приймає 'foo'/'25:99' →
+// БД корумпована → getBranchSettings повертає сміття → frontend settings form
+// показує невалідні значення; gorshe — workStartTime='20:00' + workEndTime='09:00'
+// проходить (обидва валідні строки) → getWorkHours повертає інвертовані години →
+// frontend dynHours=[] → NaN у CSS → DOM crash.
+const HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 export class UpdateBranchSettingsDto {
   @ApiPropertyOptional({ example: '09:00' })
   @IsOptional()
   @IsString()
+  @Matches(HH_MM_RE, { message: 'Формат "ГГ:ХХ" (00:00–23:59)' })
   workStartTime?: string;
 
   @ApiPropertyOptional({ example: '18:00' })
   @IsOptional()
   @IsString()
+  @Matches(HH_MM_RE, { message: 'Формат "ГГ:ХХ" (00:00–23:59)' })
   workEndTime?: string;
 
   @ApiPropertyOptional({ minimum: 15, maximum: 240 })

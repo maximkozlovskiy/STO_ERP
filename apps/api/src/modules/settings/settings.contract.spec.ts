@@ -458,4 +458,146 @@ describe('Settings — HTTP Contract', () => {
       expect(typeof body.syncCalendarSlotWithPlannedHours).toBe('boolean');
     });
   });
+
+  describe('Bug #515-#516: GET /settings/work-hours regression guards', () => {
+    it('повертає 200 + default {9, 18} коли BranchSettings відсутній', async () => {
+      prismaMock.branchSettings.findFirst = vi.fn().mockResolvedValue(null);
+      const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { workStartHour: number; workEndHour: number };
+      expect(body).toEqual({ workStartHour: 9, workEndHour: 18 });
+    });
+
+    it('повертає {8, 20} коли settings має workStartTime="08:00", workEndTime="20:00"', async () => {
+      prismaMock.branchSettings.findFirst = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: '08:00', workEndTime: '20:00' });
+      const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ workStartHour: 8, workEndHour: 20 });
+    });
+
+    it('повертає workStartHour=0 коли workStartTime="00:00" (parseInt edge case)', async () => {
+      prismaMock.branchSettings.findFirst = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: '00:00', workEndTime: '12:00' });
+      const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ workStartHour: 0, workEndHour: 12 });
+    });
+
+    it('Bug #515 defense-in-depth: повертає fallback {9, 18} коли БД має інвертовані часи', async () => {
+      // Legacy/corrupt data — до додавання @Matches regex міг бути workStart=20, workEnd=9.
+      prismaMock.branchSettings.findFirst = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: '20:00', workEndTime: '09:00' });
+      const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
+      expect(res.statusCode).toBe(200);
+      // workEndHour <= workStartHour → service повертає fallback щоб уникнути NaN на frontend.
+      expect(res.json()).toEqual({ workStartHour: 9, workEndHour: 18 });
+    });
+
+    it('повертає fallback коли workStartTime — невалідний рядок (legacy data до Bug #515 regex)', async () => {
+      prismaMock.branchSettings.findFirst = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: 'foo', workEndTime: 'bar' });
+      const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ workStartHour: 9, workEndHour: 18 });
+    });
+
+    it('доступний для RECEPTIONIST/MECHANIC ролей (не лише OWNER/ADMIN)', async () => {
+      // mockRolesGuard повертає true для усіх — перевіряємо що handler не падає бо
+      // ролі MECHANIC/RECEPTIONIST явно у @Roles() списку нового endpoint.
+      userRole = 'RECEPTIONIST';
+      prismaMock.branchSettings.findFirst = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: '09:00', workEndTime: '18:00' });
+      const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
+      expect(res.statusCode).toBe(200);
+    });
+  });
+
+  describe('Bug #515: PATCH /settings/branch/:id workStartTime/workEndTime validation', () => {
+    const branchId = '11111111-1111-4111-8111-111111111111';
+
+    it('PATCH з workStartTime="25:99" → 400 (Matches HH:MM regex)', async () => {
+      prismaMock.garageBranch.findFirst.mockResolvedValue({ id: branchId });
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/settings/branch/${branchId}`,
+        payload: { workStartTime: '25:99' },
+      });
+      expect(res.statusCode).toBe(400);
+      const body = res.json() as { message: string | string[] };
+      const msg = Array.isArray(body.message) ? body.message.join('; ') : body.message;
+      expect(msg).toMatch(/ГГ:ХХ/);
+    });
+
+    it('PATCH з workStartTime="foo" → 400', async () => {
+      prismaMock.garageBranch.findFirst.mockResolvedValue({ id: branchId });
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/settings/branch/${branchId}`,
+        payload: { workStartTime: 'foo' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('PATCH з валідним "09:00"/"18:00" → 200 cross-field check passes', async () => {
+      prismaMock.garageBranch.findFirst.mockResolvedValue({ id: branchId });
+      prismaMock.branchSettings.findUnique = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: '08:00', workEndTime: '20:00' });
+      prismaMock.branchSettings.upsert = vi.fn().mockResolvedValue({
+        branchId,
+        orgId: 'org-1',
+        workStartTime: '09:00',
+        workEndTime: '18:00',
+        workDays: [1, 2, 3, 4, 5],
+        slotDurationMinutes: 60,
+        fiscalEnabled: false,
+        checkboxApiUrl: null,
+        checkboxCashRegisterId: null,
+        smsEnabled: false,
+        smsProvider: null,
+        smsSenderName: null,
+        updatedAt: new Date(),
+      });
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/settings/branch/${branchId}`,
+        payload: { workStartTime: '09:00', workEndTime: '18:00' },
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('PATCH з workStartTime="20:00", workEndTime="09:00" → 400 (cross-field: end <= start)', async () => {
+      prismaMock.garageBranch.findFirst.mockResolvedValue({ id: branchId });
+      prismaMock.branchSettings.findUnique = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: '08:00', workEndTime: '20:00' });
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/settings/branch/${branchId}`,
+        payload: { workStartTime: '20:00', workEndTime: '09:00' },
+      });
+      expect(res.statusCode).toBe(400);
+      const body = res.json() as { message: string };
+      expect(body.message).toMatch(/після часу початку/);
+    });
+
+    it('PATCH тільки workEndTime="08:00" коли current workStartTime="09:00" → 400 (merged compare)', async () => {
+      prismaMock.garageBranch.findFirst.mockResolvedValue({ id: branchId });
+      prismaMock.branchSettings.findUnique = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: '09:00', workEndTime: '18:00' });
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/settings/branch/${branchId}`,
+        payload: { workEndTime: '08:00' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
 });
