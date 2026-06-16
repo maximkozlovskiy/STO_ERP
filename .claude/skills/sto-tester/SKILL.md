@@ -723,6 +723,8 @@ done
 
 - [ ] **Dedup invariant додано після simplify-to-Promise.all БЕЗ regression-guard (Bug #489):** simplify/optimize-цикл що замінив sequential `for-loop { await tx.X.update(...) }` на `await Promise.all(plan.map(u => tx.X.update(...)))` І додав `const dedupedPlan = deduplicateBy(plan, u => u.pk)` ПЕРЕД Promise.all → ПОТРЕБУЄ regression-guard у парному `*.service.spec.ts`. Без нього refactor що дропне `deduplicateBy` (наприклад «бачу dead code на унікальному масиві») пройде CI зеленим, а production-дані з duplicate-PK (PO multi-lot lines на той самий goodId, xlsx-import з повтором SKU) → race-deterministic ОДНОГО winner серед N writes на той самий PK → silent data corruption. Grep: `grep -rn "deduplicateBy\|new Map(.*\.map.*=> \[" apps/api/src/modules --include="*.service.ts" -l` → для кожного service знайти парний spec → `grep -cE "deduplicate|duplicate.*(goodId|lineId|id)" $spec` = 0 → bug. Regression-guard test: 2 entries з ОДНИМ PK + різні compute results → `expect(prisma.<model>.updateMany).toHaveBeenCalledTimes(1)` (НЕ 2!) + `data: { <field>: <last-value> }` (last-wins). Severity MEDIUM.
 
+- [ ] **Widened return-type service method + stale 2-field mock/assert у paired spec (Bug #508-#509):** будь-який commit що розширює сигнатуру service-методу (`Promise<{ id, number }>` → `Promise<{ id, number, status, amount, documentDate }>`) АБО розширює `select`-clause у Prisma read І додає mapping (Number(decimal), date.toISOString()) ОБОВ'ЯЗКОВО оновлює: (а) `*.service.spec.ts` mock щоб `mockResolvedValue` повертав ВСІ нові поля з реалістичними значеннями (Decimal/Date типи якщо service map їх перетворює); (б) `*.service.spec.ts` assert через `expect(result).toEqual({...5-полевий-shape...})` (НЕ `expect.objectContaining` що дозволяє регресію видалення полів); (в) `*.contract.spec.ts` `serviceMock.X.mockResolvedValueOnce({ all-fields })` + `expect(res.json()).toEqual({...})` (НЕ `toMatchObject({ id, number })` — підмножина не блокує регресію). Без оновлення: service mock повертає 2 поля → service map дає `NaN` для `Number(undefined)`, `null` для `(undefined).toISOString()`, `undefined` для нових полів → unit test червоний з cryptic message `expected { …(5) } to deeply equal { …(2) }` — release-blocker baseline. Парне для contract spec: `toMatchObject({ id, number })` пропускає `undefined`/`null` у нових полях → contract spec проходить АЛЕ silently не покриває нові wire fields → refactor що видалить status/amount/documentDate з `select` пройде CI green → FE отримує undefined → status badge сирий код. Sprint-pattern: тестова симуляція оновлюється з 1-2 commit'ам лагом vs implementation. Grep для виявлення: `git diff HEAD~3 HEAD -- "*.service.ts" | grep -E "^\+\s+(status|amount|documentDate|[a-z]+At):\s*(true|inv\.|Number|\.toISOString)"` → для кожного match у select/mapping → перевірити mock у `*.service.spec.ts` + asserts у contract+service spec на повний shape. Парне з Bug #390 (stale regression-guard після URL/payload-format fix). Severity HIGH (baseline-blocker якщо unit; MEDIUM regression-guard gap якщо contract).
+
 - [ ] **Stale `$transaction` callback mock (Bug #489 sub-pattern):** spec мок `$transaction: vi.fn(async (ops: unknown[]) => ops)` (повертає arg напряму) НЕ виконує callback-форму `$transaction(async tx => { ... })` — INNER логіка $transaction body МОВЧКИ пропускається. ВСІ assert-и на `tx.X.updateMany`/`tx.priceHistory.createMany`/`tx.<model>.X` у тестах **проходять як зелені без виклику** → defense-in-depth orgId guards, dedup invariants, FSM side-effects не покриті. Шаблон правильного моку: розпізнавати ОБИДВІ форми + виконувати callback з `prisma` як `tx`:
 
 ```ts
@@ -1053,6 +1055,74 @@ grep -rnE "@Processor\(['\"]([^'\"]+)['\"]" apps/api/src --include="*.processor.
 **Severity:** HIGH (фіча розрекламована користувачу = "ми надішлемо SMS" АЛЕ SMS ніколи не приходить — silent UX/business gap; payments аналог був би CRITICAL). MEDIUM якщо побічний ефект не критичний (loyalty earn — клієнт не бачить що бал не нараховано). Підвищується до CRITICAL якщо queue ставить ФІНАНСОВУ операцію (ПРРО фіскальний чек, settlement transaction).
 
 **Де шукати ще:** будь-який `@InjectQueue(name)` поза canonical service. Особливо public/widget endpoints (booking, public form, lead capture) які з'явилися ПЕРЕД centralized service consolidation. Регулярно: після кожного `bull → bullmq` (або major queue-library) migration — повний audit `queue.add` shape vs processor `process` interface для всіх черг. Парне з Bug #267 / #268 (dead-feature integration audit) — там canonical service injected але викликається з мертвого path; тут canonical service не injected взагалі.
+
+---
+
+### 2026-06-16 — Widened service return-type + stale paired spec (Bugs #508-#509) — backend / contract / tests symmetry
+
+**Сигнал:** Service-method сигнатура у одному commit (`523190f2`) розширюється з `Promise<{ id, number }>` до `Promise<{ id, number, status: InvoiceStatus, amount: number, documentDate: string | null }>`. Парний `select` clause розширений (`{ id: true, number: true, status: true, amount: true, documentDate: true }`). Парний mapping додає transformi: `Number(inv.amount)` (Prisma Decimal → JS number), `inv.documentDate?.toISOString() ?? null` (Date → ISO string|null). Backend tsc green, FE tsc green, FE component компілюється проти нового типу. **Baseline unit-spec падає** з cryptic message:
+
+```
+AssertionError: expected { …(5) } to deeply equal { …(2) }
+- Expected: { id, number }
++ Received: { id, number, status: undefined, amount: NaN, documentDate: null }
+```
+
+Mock у `*.service.spec.ts` повертав лише `{ id, number }`; service mapping робить `Number(undefined) → NaN`, `(undefined).toISOString() → null branch`, `inv.status → undefined`. Це release-blocker baseline → блокує всі майбутні tester-сесії. Парне у `*.contract.spec.ts` тихіше: assert `toMatchObject({ id: expect.any(String), number: expect.any(String) })` пропускає undefined нові поля → spec залишається зеленим АЛЕ silently не гейтить регресію — refactor що видалить `status/amount/documentDate` з `select` пройде CI green, FE отримає undefined, status badge відображе сирий код / NaN сума / Invalid Date.
+
+**Причина виникнення:** sprint-pattern де backend implementation + FE consumer оновлюються в одному PR, але regression-guard tests залишаються з лагом 1-2 commits (typical sprint cadence: implementation, type fixes, FE wiring, потім «треба ще оновити тести» — і часто остання частина забувається). Конкретний шлях для цього кейса:
+
+1. Sprint-1 (`feat:`): `findByWorkOrder` повертав 2 поля для запиту "чи є рахунок" → unit/contract spec фіксували 2-полевий shape.
+2. Sprint-2 (`feat: invoice section`): FE потребує badge/суму/дату → backend розширює shape до 5 полів.
+3. PR оновлює implementation + FE narrow-type, АЛЕ regression-guard tests залишаються 2-полеві.
+4. Unit-test падає → release blocker; contract-test проходить → silent regression-guard gap.
+
+Альтернативна траєкторія: review-commit (`aa3b03c5`) звужує/розширює лише частину shape (наприклад додає `status` без `amount`) — тоді тести можуть пройти випадково на половинному mock.
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Diff service.ts на розширення return-type + select + mapping. Класичний signal:
+git diff HEAD~3 HEAD -- "apps/api/src/modules/*/*.service.ts" | \
+  grep -E "^\+\s+(status|amount|documentDate|totalAmount|fiscalCode|[a-z]+At|[a-z]+Count):\s*(true|inv\.|Number|\.toISOString|\?\?\s*null)"
+
+# 2) Для кожного service-method з розширеним return-type:
+#    (а) знайти парний *.service.spec.ts → перевірити кожен `findFirst.mockResolvedValue(...)` чи покриває всі НОВІ поля
+#    (б) знайти парний *.contract.spec.ts → перевірити `serviceMock.X.mockResolvedValueOnce(...)` чи покриває всі НОВІ поля
+#    (в) перевірити assert: `toEqual({ ..full shape.. })` — НЕ `toMatchObject({ id, number })`/`expect.objectContaining({ id })`
+
+grep -rn "mockResolvedValue\|mockResolvedValueOnce" apps/api/src/modules/<scope>/ --include="*.spec.ts" -A 5
+
+# 3) Перевірка assert-style: підмножина-assert (`toMatchObject` без negation) = регресія-guard gap.
+grep -rn "toMatchObject({" apps/api/src --include="*.contract.spec.ts" | head -20
+```
+
+**Підхід до фіксу:**
+
+1. **Unit-spec mock** — повернути всі нові поля з реалістичними Prisma-shape (Decimal/Date якщо service map їх трансформує; `null` для nullable). Окремий test case для null-branch у nullable полях.
+2. **Unit-spec assert** — `expect(result).toEqual({ ..все 5 полів.. })` з конкретними значеннями (не `expect.any` для нових полів — це знижує силу regression-guard).
+3. **Contract-spec mock** — той самий 5-полевий shape (контракт мокає service direct, тому Decimal/Date не потрібен — pre-mapped values OK).
+4. **Contract-spec assert** — `expect(res.json()).toEqual({ ..все 5 полів.. })` — повна форма wire shape. `toMatchObject` тут НЕ підходить: refactor що видалить поле з `select` поверне `undefined` → JSON-serialize не включить ключ → wire JSON стане 4-полевим → `toMatchObject` (підмножина) усе ще проходить → regression silenced.
+5. **Null branch** — окремий test case для кожного nullable поля у новому shape (`documentDate: null` → result містить `documentDate: null`).
+6. **Component-test (якщо є FE consumer)** — extract компонент з PageClient у окремий файл (якщо ще не) → component test покриває рендер всіх нових полів (badge label, fmtMoney, fmtDate, fallback null). Bug #510 family.
+
+**Severity:**
+
+- **HIGH** якщо unit-spec падає (release-blocker baseline → ховає реальні регресії шумом).
+- **MEDIUM** якщо лише contract-spec gap (silent regression-guard gap — refactor що звужує shape проходить CI).
+- **LOW** якщо нове поле косметичне (icon, sortOrder) і FE має fallback.
+
+**Де шукати ще:**
+
+- Кожен `*.service.ts` що чіпається review-commit після feature (типово `aa3b03c5` після `523190f2`).
+- Будь-який lightweight-read endpoint що використовується FE для "це існує?" check і пізніше отримує fields для inline-render (counterparty `findActive`, payment `findLast`, contract `findPrimary`).
+- Pattern-detection bash для commit-hook: будь-який diff що додає `select` поле + має `select: { id: true, number: true }` стиль → авто-перевірка парних specs.
+
+Парне з:
+
+- **Bug #390** (stale regression-guard після URL/payload-format fix — той самий «після implementation-change оновити парний spec», але для frontend URL).
+- **Bug #478-#480** (regression-guard для нового enum value — той самий принцип coverage gap).
+- **Bug #432-#433** (audit-track field symmetry — той самий принцип "data list ⊇ audit list").
 
 ---
 

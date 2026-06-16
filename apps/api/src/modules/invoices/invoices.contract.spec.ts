@@ -302,17 +302,51 @@ describe('Invoices — HTTP Contract', () => {
       expect(res.json()).toBeNull();
     });
 
-    it('повертає 200 з { id, number } коли рахунок існує', async () => {
+    it('повертає 200 з { id, number, status, amount, documentDate } коли рахунок існує (Bug #509)', async () => {
+      // Bug #509: контракт розширено у 523190f2 — wire shape тепер 5 полів для invoice
+      // slot у картці наряду. Regression-guard: refactor що видалить status/amount/
+      // documentDate з `select` clause service-у або з мапінгу → contract spec падає.
       serviceMock.findByWorkOrder.mockResolvedValueOnce({
         id: VALID_UUID,
         number: 'INV-2026-0001',
+        status: 'DRAFT',
+        amount: 200,
+        documentDate: '2026-01-15T00:00:00.000Z',
       });
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
         url: `/invoices/from-work-order/${VALID_UUID}/find`,
       });
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toMatchObject({ id: expect.any(String), number: expect.any(String) });
+      expect(res.json()).toEqual({
+        id: VALID_UUID,
+        number: 'INV-2026-0001',
+        status: 'DRAFT',
+        amount: 200,
+        documentDate: '2026-01-15T00:00:00.000Z',
+      });
+    });
+
+    it('повертає documentDate=null коли інвойс без дати документа (Bug #509 null branch)', async () => {
+      serviceMock.findByWorkOrder.mockResolvedValueOnce({
+        id: VALID_UUID,
+        number: 'INV-2026-0001',
+        status: 'DRAFT',
+        amount: 200,
+        documentDate: null,
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/invoices/from-work-order/${VALID_UUID}/find`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        id: VALID_UUID,
+        number: 'INV-2026-0001',
+        status: 'DRAFT',
+        amount: 200,
+        documentDate: null,
+      });
     });
 
     it('повертає 400 для не-UUID workOrderId', async () => {

@@ -12,8 +12,8 @@
 Дата:       2026-06-16
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 850/850 | Web 423/423 | E2E пропущено (Docker DOWN у цій сесії)
-Останній tester: 2026-06-15 — Bug #506-#507 — booking SMS shape mismatch після bull→bullmq audit
+Тести:      API 852/852 | Web 434/434 | E2E пропущено (Docker DOWN у цій сесії)
+Останній tester: 2026-06-16 — Bug #508-#510 — invoice section: stale findByWorkOrder shape unit-test (release-blocker) + contract spec gap + missing component test (extracted InvoiceSection)
 Останній review: 2026-06-16 (AUTO, HEAD aa3b03c5) — invoice section на WO card: deferred revokeObjectURL + shared INVOICE_STATUS_LABELS + InvoiceRef + InvoiceStatus literal union (4 findings, 0 critical)
 ```
 

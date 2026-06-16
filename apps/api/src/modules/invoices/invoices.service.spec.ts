@@ -357,10 +357,46 @@ describe('InvoicesService — business logic guards', () => {
       expect(result).toBeNull();
     });
 
-    it('повертає { id, number } коли invoice існує', async () => {
-      prisma.invoice.findFirst.mockResolvedValue({ id: INV_ID, number: 'INV-1' });
+    it('повертає { id, number, status, amount, documentDate } коли invoice існує (Bug #508)', async () => {
+      // Сервіс розширено у commit 523190f2: findByWorkOrder() віддає 5 полів для
+      // invoice slot у картці наряду — status badge, сума, дата документу. Mock
+      // ОБОВ'ЯЗКОВО повертає shape що Prisma реально віддасть (Decimal для amount,
+      // Date для documentDate), щоб мapping `Number()` + `.toISOString()` працював.
+      prisma.invoice.findFirst.mockResolvedValue({
+        id: INV_ID,
+        number: 'INV-1',
+        status: 'DRAFT',
+        amount: 200,
+        documentDate: new Date('2026-01-15T00:00:00.000Z'),
+      });
       const result = await service.findByWorkOrder(ORG, WO_ID);
-      expect(result).toEqual({ id: INV_ID, number: 'INV-1' });
+      expect(result).toEqual({
+        id: INV_ID,
+        number: 'INV-1',
+        status: 'DRAFT',
+        amount: 200,
+        documentDate: '2026-01-15T00:00:00.000Z',
+      });
+    });
+
+    it('повертає documentDate=null коли інвойс без дати документа (Bug #508 null branch)', async () => {
+      // documentDate у Prisma nullable. Якщо null → service map повертає null, не
+      // namespace error. Окремий case — інакше null branch без regression-guard.
+      prisma.invoice.findFirst.mockResolvedValue({
+        id: INV_ID,
+        number: 'INV-1',
+        status: 'DRAFT',
+        amount: 200,
+        documentDate: null,
+      });
+      const result = await service.findByWorkOrder(ORG, WO_ID);
+      expect(result).toEqual({
+        id: INV_ID,
+        number: 'INV-1',
+        status: 'DRAFT',
+        amount: 200,
+        documentDate: null,
+      });
     });
 
     it('виключає CANCELLED invoices з пошуку', async () => {

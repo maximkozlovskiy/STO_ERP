@@ -15305,3 +15305,130 @@ Spec не перевіряє `mock.calls[0][1]` (job.data) — тому будь
 **Статус:** [x] виправлено разом з #506 — spec тестує `notifications.send` з повним payload contract.
 
 ---
+
+## Session 2026-06-16 — Invoice section у картці наряду (post-commit aa3b03c5)
+
+Scope: `523190f2` (feat: invoice section in work order card) + `aa3b03c5` (fix: review findings — deferred revokeObjectURL, shared labels, narrow types) — `apps/api/src/modules/invoices/invoices.service.ts` + `apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx`. Запуск `/sto-tester` для перевірки що нова форма `findByWorkOrder()` `{ id, number, status, amount, documentDate }` повністю покрита тестами (contract + service + FE component).
+
+---
+
+### Bug #508 — [HIGH] tests / backend / invoices — стале unit-assert `findByWorkOrder` пише старий 2-полеву форму `{ id, number }` замість нової 5-полевої
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.spec.ts:360-364`
+
+**Severity:** HIGH (release-blocker — baseline red).
+**Категорія:** stale test vs new contract (Bug #478-#480 family).
+
+**Сигнал:** Baseline `pnpm --filter @sto/api test` → `1 failed`:
+
+```
+FAIL src/modules/invoices/invoices.service.spec.ts >
+  InvoicesService — business logic guards > findByWorkOrder — Bug #405 >
+    повертає { id, number } коли invoice існує
+
+AssertionError: expected { …(5) } to deeply equal { …(2) }
+- Expected: { id, number }
++ Received: { id, number, status: undefined, amount: NaN, documentDate: null }
+```
+
+Commit `523190f2` розширив `findByWorkOrder()` до 5 полів (`{ id, number, status, amount, documentDate }`) — потрібно для FE invoice slot у картці наряду — АЛЕ парний unit spec залишився з оригінальною `{ id, number }` assert + 2-field mock. Mock не повертає `status`/`amount`/`documentDate` → service mapping `Number(inv.amount)` дає `NaN`, `inv.documentDate?.toISOString()` дає `null`, `inv.status` дає `undefined`.
+
+**Очікувана поведінка:** test мокає всі 5 полів реалістично (`status: 'DRAFT'`, `amount: Decimal/number, documentDate: Date`) і асертить return shape `{ id, number, status, amount, documentDate }` повністю.
+
+**Фактична поведінка:** baseline червоний — будь-який commit після `523190f2` блокується. CI не зеленіє.
+
+**Корінь:** review-фікси у `aa3b03c5` оновили implementation + FE, але service-level regression-guard не оновився синхронно. Класичний sprint-pattern де unit spec оновлюється з затримкою vs implementation. Парне з Bug #509 (contract spec gap).
+
+**Фікс:**
+
+1. У `apps/api/src/modules/invoices/invoices.service.spec.ts:361` mock має повернути всі 5 полів (`id, number, status: 'DRAFT', amount: new Prisma.Decimal(200) | 200, documentDate: new Date('2026-01-15')`).
+2. Assert на `expect(result).toEqual({ id, number, status: 'DRAFT', amount: 200, documentDate: '2026-01-15T00:00:00.000Z' })` — конкретні значення, не `expect.any`.
+3. Додати окремий test case: `documentDate: null` → результат містить `documentDate: null` (null branch у service mapping).
+
+**Перевірка:** `pnpm --filter @sto/api test --run -- invoices.service.spec` → green; `result.amount` тип `number`; `result.documentDate` тип `string | null`.
+
+**Статус:** [x] виправлено — mock розширений на 5 полів, додано null-date case, baseline зелений.
+
+---
+
+### Bug #509 — [MEDIUM] tests / backend / invoices — contract spec для `GET /invoices/from-work-order/:id/find` не покриває нові поля (regression-guard gap)
+
+**Файл:** `apps/api/src/modules/invoices/invoices.contract.spec.ts:305-316`
+
+**Severity:** MEDIUM (regression-guard gap — refactor що видалить нові поля з wire shape пройде CI green; стандартний Bug #478-#480 family principle).
+**Категорія:** contract spec coverage gap (новий shape без парного assert).
+
+**Сигнал:** Contract spec для нового `GET /invoices/from-work-order/:workOrderId/find` мокає лише старі поля:
+
+```ts
+serviceMock.findByWorkOrder.mockResolvedValueOnce({
+  id: VALID_UUID,
+  number: 'INV-2026-0001',
+}); // ← нема status/amount/documentDate
+const res = ...
+expect(res.json()).toMatchObject({ id: expect.any(String), number: expect.any(String) });
+// ← не асертить status/amount/documentDate
+```
+
+Backend service contract (`findByWorkOrder` typescript signature + docs/objects/invoice.md:75 endpoint table) ОБОВ'ЯЗКОВО повертає 5 полів. FE narrow-type `InvoiceRef` (PageClient.tsx:189-195) залежить від наявності кожного. Якщо refactor видалить `status` (`select: { id: true, number: true }`) — TS зелений (PR що видаляє поля з тільки backend select без TS-сигнатури type-update), contract spec зелений → FE silently отримує `undefined` для status badge.
+
+**Очікувана поведінка:** contract spec мокає всі 5 полів з конкретними значеннями + асертить кожне поле через `toEqual` / `toMatchObject({ status: 'DRAFT', amount: 200, documentDate: expect.any(String) | null })`.
+
+**Фактична поведінка:** Bug #478-#480 family — новий contract без парного regression-guard. Refactor що звужує shape проходить CI.
+
+**Корінь:** `aa3b03c5` додав нові поля у return type сигнатури сервісу + select clause + mapping, але контрактний spec не оновився щоб mock симулював повний real-shape. Same sprint-pattern як #508.
+
+**Фікс:**
+
+1. У `apps/api/src/modules/invoices/invoices.contract.spec.ts:306-309` mock має містити всі 5 полів реалістично (`status: 'DRAFT'`, `amount: 200`, `documentDate: '2026-01-15T00:00:00.000Z'`).
+2. У `apps/api/src/modules/invoices/invoices.contract.spec.ts:315` assert змінити з `toMatchObject({ id, number })` на `toEqual({ id, number, status, amount, documentDate })` з конкретними значеннями.
+3. Додати окремий test case з `documentDate: null` → response містить `documentDate: null` (null branch).
+
+**Перевірка:** `pnpm --filter @sto/api test --run -- invoices.contract.spec` → green; видалення будь-якого поля з `select`-clause у `findByWorkOrder()` ламає тест.
+
+**Статус:** [x] виправлено — contract spec мокає 5-полеву форму + assert на повний shape + null-date case.
+
+---
+
+### Bug #510 — [MEDIUM] tests / frontend / work-orders — нема component test для invoice section у картці наряду
+
+**Файл:** `apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx:1059-1125` (invoice section JSX)
+
+**Severity:** MEDIUM (нова UI секція без regression-guard; FE gating logic + action wires легко зламати без візуального QA).
+**Категорія:** missing component test for new UI section (SKILL §1.6).
+
+**Сигнал:** `find apps/web -name "*.test.tsx" -path "*work-orders*"` → 0 файлів. Нова invoice section містить кілька conditional-render-логіко-блоків:
+
+- `WO_INVOICEABLE_STATUSES.includes(wo.status) && invoiceRef !== undefined` — gating cards (тільки COMPLETED/INVOICED).
+- `{!invoiceRef && <Button>Виставити рахунок</Button>}` — empty state.
+- `invoiceRef.status === 'DRAFT' && <Button>Оновити з наряду</Button>` — refresh лише для DRAFT.
+- `INVOICE_STATUS_LABELS[invoiceRef.status]` — український label.
+- PDF download wire (apiBlobFetch + DOM anchor + deferred revoke).
+
+Будь-яка з цих умов може зламатися рефактором (наприклад зміна `WO_INVOICEABLE_STATUSES` в shared → секція ховається; зміна enum-value backend → fallback raw string у label; видалення `documentDate` з InvoiceRef → undefined rendering). Component test зафіксує contract.
+
+**Очікувана поведінка:** новий `PageClient.invoice-section.test.tsx` що рендерить мінімальну версію секції з mocked apiFetch і перевіряє:
+
+- COMPLETED + invoiceRef=null → видно кнопку "Виставити рахунок".
+- COMPLETED + invoiceRef={DRAFT, amount, documentDate} → видно badge "Чернетка", суму, дату, кнопку "Оновити з наряду".
+- COMPLETED + invoiceRef={PAID} → видно badge "Оплачено", БЕЗ кнопки "Оновити з наряду".
+- IN_PROGRESS → секція не рендериться (WO_INVOICEABLE_STATUSES guard).
+- Click "Виставити рахунок" → POST /invoices/from-work-order/:id, setInvoiceRef з повним shape.
+- Click "Оновити з наряду" → POST /invoices/from-work-order/:id/refresh.
+- Click "PDF рахунку" → apiBlobFetch /invoices/:id/pdf.
+
+**Фактична поведінка:** Bug #401 family (FE↔BE status whitelist symmetry) без regression-guard. Тиха втрата UI capability між sprints.
+
+**Корінь:** PageClient.tsx занадто великий (>1400 рядків) для component-test full-mount. Прагматичний підхід: винести invoice section у дочірній компонент `InvoiceSection.tsx` (extract refactor) + component test. Зменшує тестову поверхню до 100-150 рядків.
+
+**Фікс:**
+
+1. Створити `apps/web/src/app/(app)/work-orders/[id]/InvoiceSection.tsx` що приймає `props: { workOrderId, workOrderStatus, invoiceRef, onChange }` і рендерить ту саму JSX (винесену з PageClient.tsx:1059-1125).
+2. PageClient.tsx замінити inline JSX на `<InvoiceSection workOrderId={id} workOrderStatus={wo.status} invoiceRef={invoiceRef} onChange={setInvoiceRef} />`.
+3. Створити `apps/web/src/app/(app)/work-orders/[id]/__tests__/InvoiceSection.test.tsx` з 6+ test cases (вище).
+
+**Перевірка:** `pnpm --filter @sto/web exec vitest run InvoiceSection` → 6 passed; всі gating-логіки явно asserted; майбутні рефактори знают що ламають.
+
+**Статус:** [x] виправлено — InvoiceSection extracted в окремий компонент + component test з 6 кейсами (gating, empty state, DRAFT actions, PAID badge, status labels).
+
+---
