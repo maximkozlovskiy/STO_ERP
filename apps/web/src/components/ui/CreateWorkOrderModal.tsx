@@ -755,12 +755,13 @@ export function CreateWorkOrderModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, workOrderId]);
 
-  // After branches load, auto-select if single
+  // After branches load (or on open), auto-select if single branch.
+  // Covers two cases: (1) branches arrive async after modal opens,
+  // (2) modal reopens when branches are already cached (branches dep unchanged).
   useEffect(() => {
-    if (branches.length === 1) {
-      setForm(f => (f.branchId ? f : { ...f, branchId: branches[0].id }));
-    }
-  }, [branches]);
+    if (!open || isEditMode || branches.length !== 1) return;
+    setForm(f => (f.branchId ? f : { ...f, branchId: branches[0].id }));
+  }, [branches, open, isEditMode]);
 
   // Auto-select first warehouse for new parts when warehouses load
   useEffect(() => {
@@ -1976,10 +1977,10 @@ export function CreateWorkOrderModal({
                         required
                         value={form.branchId}
                         onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-                        disabled={!canEdit || isEditMode}
+                        disabled={!canEdit || isEditMode || branches.length === 1}
                         className="h-8 text-[13px] py-0.5 px-2 pr-7"
                       >
-                        <option value="">— Оберіть —</option>
+                        {branches.length !== 1 && <option value="">— Оберіть —</option>}
                         {branches.map(b => (
                           <option key={b.id} value={b.id}>
                             {b.name}
