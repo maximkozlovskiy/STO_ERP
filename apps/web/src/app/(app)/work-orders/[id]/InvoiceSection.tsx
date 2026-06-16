@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import {
   INVOICE_STATUS_LABELS,
   INVOICE_STATUS_BADGE,
+  INVOICE_STATUS_DESCRIPTIONS,
   WO_INVOICEABLE_STATUSES,
   WO_INVOICE_VISIBLE_STATUSES,
   type InvoiceStatus,
@@ -154,7 +155,10 @@ export function InvoiceSection({
       {invoiceRef ? (
         <div className="flex items-center gap-4 flex-wrap">
           <p className="text-sm font-medium text-foreground">Рахунок № {invoiceRef.number}</p>
-          <Badge variant={INVOICE_STATUS_BADGE[invoiceRef.status] ?? 'secondary'}>
+          <Badge
+            variant={INVOICE_STATUS_BADGE[invoiceRef.status] ?? 'secondary'}
+            tooltip={INVOICE_STATUS_DESCRIPTIONS[invoiceRef.status]}
+          >
             {INVOICE_STATUS_LABELS[invoiceRef.status] ?? invoiceRef.status}
           </Badge>
           <p className="text-sm font-semibold text-foreground tabular-nums">

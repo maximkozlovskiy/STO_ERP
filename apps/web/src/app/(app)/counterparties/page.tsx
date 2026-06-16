@@ -13,7 +13,11 @@ import {
   type CounterpartyForModal,
 } from '@/components/ui/CounterpartyEditModal';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
-import { COUNTERPARTY_TYPE_LABELS, COUNTERPARTY_TYPE_BADGE } from '@sto/shared';
+import {
+  COUNTERPARTY_TYPE_LABELS,
+  COUNTERPARTY_TYPE_BADGE,
+  COUNTERPARTY_TYPE_DESCRIPTIONS,
+} from '@sto/shared';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -282,7 +286,10 @@ function CrmPageInner() {
           {buildPanelFields(cp, COUNTERPARTY_PANEL_SCHEMA, panelConfig.config, {
             type: v => (
               <div className="flex flex-wrap gap-1.5">
-                <Badge variant={TYPE_BADGE[String(v)] ?? 'secondary'}>
+                <Badge
+                  variant={TYPE_BADGE[String(v)] ?? 'secondary'}
+                  tooltip={COUNTERPARTY_TYPE_DESCRIPTIONS[String(v)]}
+                >
                   {TYPE_LABELS[String(v)]}
                 </Badge>
                 {cp.vatPayer && <Badge variant="warning">ПДВ</Badge>}
@@ -564,7 +571,10 @@ function CrmPageInner() {
                         if (col.key === 'type')
                           return (
                             <TableCell key="type">
-                              <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
+                              <Badge
+                                variant={TYPE_BADGE[cp.type] ?? 'secondary'}
+                                tooltip={COUNTERPARTY_TYPE_DESCRIPTIONS[cp.type]}
+                              >
                                 {TYPE_LABELS[cp.type]}
                               </Badge>
                             </TableCell>

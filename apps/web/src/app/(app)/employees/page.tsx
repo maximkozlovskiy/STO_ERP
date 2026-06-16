@@ -14,8 +14,10 @@ import { Badge } from '@/components/ui/badge';
 import {
   EMPLOYEE_STATUS_LABELS,
   EMPLOYEE_STATUS_BADGE,
+  EMPLOYEE_STATUS_DESCRIPTIONS,
   EMPLOYEE_ROLE_LABELS,
   EMPLOYEE_ROLE_BADGE,
+  EMPLOYEE_ROLE_DESCRIPTIONS,
 } from '@sto/shared';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -368,11 +370,21 @@ export default function EmployeesPage() {
         <div className="space-y-3">
           {buildPanelFields(emp, EMPLOYEE_PANEL_SCHEMA, panelConfig.config, {
             status: v => (
-              <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'}>
+              <Badge
+                variant={STATUS_BADGE[String(v)] ?? 'secondary'}
+                tooltip={EMPLOYEE_STATUS_DESCRIPTIONS[String(v)]}
+              >
                 {STATUS_LABELS[String(v)] ?? String(v)}
               </Badge>
             ),
-            role: v => ROLE_LABELS[String(v)] ?? String(v),
+            role: v => (
+              <Badge
+                variant={ROLE_BADGE[String(v)] ?? 'secondary'}
+                tooltip={EMPLOYEE_ROLE_DESCRIPTIONS[String(v)]}
+              >
+                {ROLE_LABELS[String(v)] ?? String(v)}
+              </Badge>
+            ),
             dateOfHire: v => (v ? fmtDate(String(v)) : undefined),
             dateOfFire: v => (emp.status === 'FIRED' && v ? fmtDate(String(v)) : undefined),
           }).map(f => (
@@ -638,7 +650,10 @@ export default function EmployeesPage() {
                         if (col.key === 'role')
                           return (
                             <TableCell key="role">
-                              <Badge variant={ROLE_BADGE[emp.role] ?? 'secondary'}>
+                              <Badge
+                                variant={ROLE_BADGE[emp.role] ?? 'secondary'}
+                                tooltip={EMPLOYEE_ROLE_DESCRIPTIONS[emp.role]}
+                              >
                                 {ROLE_LABELS[emp.role] ?? emp.role}
                               </Badge>
                             </TableCell>
@@ -646,7 +661,10 @@ export default function EmployeesPage() {
                         if (col.key === 'status')
                           return (
                             <TableCell key="status">
-                              <Badge variant={STATUS_BADGE[emp.status] ?? 'secondary'}>
+                              <Badge
+                                variant={STATUS_BADGE[emp.status] ?? 'secondary'}
+                                tooltip={EMPLOYEE_STATUS_DESCRIPTIONS[emp.status]}
+                              >
                                 {STATUS_LABELS[emp.status] ?? emp.status}
                               </Badge>
                             </TableCell>

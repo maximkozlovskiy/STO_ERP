@@ -19,6 +19,7 @@ import { fmtMoney, fmtInt, fmtDate, kyivToday } from '@/lib/format';
 import {
   COUNTERPARTY_TYPE_LABELS,
   COUNTERPARTY_TYPE_BADGE,
+  COUNTERPARTY_TYPE_DESCRIPTIONS,
   CONTRACT_TYPE_LABELS,
 } from '@sto/shared';
 
@@ -587,7 +588,10 @@ export default function CounterpartyCardPage() {
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">{displayName(cp)}</h1>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant={TYPE_BADGE[cp.type] ?? 'secondary'}>
+            <Badge
+              variant={TYPE_BADGE[cp.type] ?? 'secondary'}
+              tooltip={COUNTERPARTY_TYPE_DESCRIPTIONS[cp.type]}
+            >
               {TYPE_LABELS[cp.type] ?? cp.type}
             </Badge>
             {cp.vatPayer && <Badge variant="secondary">Платник ПДВ</Badge>}

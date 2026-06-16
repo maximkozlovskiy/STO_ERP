@@ -532,7 +532,11 @@ function WorkOrdersPageInner() {
           <div className="space-y-3">
             {buildPanelFields(wo, WORK_ORDER_PANEL_SCHEMA, panelConfig.config, {
               status: v => (
-                <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'} dot>
+                <Badge
+                  variant={STATUS_BADGE[String(v)] ?? 'secondary'}
+                  dot
+                  tooltip={STATUS_DESCRIPTIONS[String(v)]}
+                >
                   {STATUS_LABELS[String(v)] ?? String(v)}
                 </Badge>
               ),

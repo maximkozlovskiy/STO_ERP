@@ -59,7 +59,7 @@ import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 import { fmtMoney } from '@/lib/format';
 import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
-import { GOOD_TYPE_LABELS, GOOD_TYPE_BADGE } from '@sto/shared';
+import { GOOD_TYPE_LABELS, GOOD_TYPE_BADGE, GOOD_TYPE_DESCRIPTIONS } from '@sto/shared';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -685,7 +685,10 @@ export default function GoodsTab() {
                       })}
                       <TableCell>
                         {g.goodType ? (
-                          <Badge variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}>
+                          <Badge
+                            variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}
+                            tooltip={GOOD_TYPE_DESCRIPTIONS[g.goodType]}
+                          >
                             {GOOD_TYPE_LABELS[g.goodType] ?? g.goodType}
                           </Badge>
                         ) : (
@@ -795,7 +798,10 @@ export default function GoodsTab() {
                     hidden={panelConfig.isFieldHidden('type')}
                     value={
                       selectedGood.goodType ? (
-                        <Badge variant={GOOD_TYPE_BADGE[selectedGood.goodType] ?? 'secondary'}>
+                        <Badge
+                          variant={GOOD_TYPE_BADGE[selectedGood.goodType] ?? 'secondary'}
+                          tooltip={GOOD_TYPE_DESCRIPTIONS[selectedGood.goodType]}
+                        >
                           {GOOD_TYPE_LABELS[selectedGood.goodType] ?? selectedGood.goodType}
                         </Badge>
                       ) : undefined

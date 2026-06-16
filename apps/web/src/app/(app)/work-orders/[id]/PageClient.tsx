@@ -22,6 +22,7 @@ import {
   WO_STATUS_TRANSITIONS,
   WO_PRIORITY_LABELS,
   WO_PRIORITY_BADGE,
+  WO_PRIORITY_DESCRIPTIONS,
   WO_CATEGORY_LABELS,
   WO_EDITABLE_STATUSES,
   WO_INVOICEABLE_STATUSES,
@@ -788,7 +789,11 @@ export default function WorkOrderCardPage() {
           {wo.priority && (
             <div>
               <p className="text-xs text-muted-foreground">Пріоритет</p>
-              <Badge variant={WO_PRIORITY_BADGE[wo.priority] ?? 'secondary'} className="mt-0.5">
+              <Badge
+                variant={WO_PRIORITY_BADGE[wo.priority] ?? 'secondary'}
+                className="mt-0.5"
+                tooltip={WO_PRIORITY_DESCRIPTIONS[wo.priority]}
+              >
                 {WO_PRIORITY_LABELS[wo.priority] ?? wo.priority}
               </Badge>
             </div>

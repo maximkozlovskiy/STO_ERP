@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/table';
 import { cn, daysUntil } from '@/lib/utils';
 import { fmtDate } from '@/lib/format';
+import { LIFT_STATUS_DESCRIPTIONS } from '@sto/shared';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -1076,7 +1077,11 @@ function LiftRow({
           {LIFT_TYPE_LABELS[lift.type] ?? lift.type}
         </TableCell>
         <TableCell>
-          <Badge variant={LIFT_STATUS_BADGE[lift.status] ?? 'secondary'} dot>
+          <Badge
+            variant={LIFT_STATUS_BADGE[lift.status] ?? 'secondary'}
+            dot
+            tooltip={LIFT_STATUS_DESCRIPTIONS[lift.status]}
+          >
             {LIFT_STATUS_LABELS[lift.status] ?? lift.status}
           </Badge>
         </TableCell>

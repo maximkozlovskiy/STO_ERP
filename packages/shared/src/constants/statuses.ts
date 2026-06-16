@@ -108,6 +108,13 @@ export const WO_PRIORITY_BADGE: Record<string, BadgeVariant> = {
   URGENT: 'destructive',
 };
 
+export const WO_PRIORITY_DESCRIPTIONS: Record<string, string> = {
+  LOW: 'Низький пріоритет — виконати за наявності вільного часу',
+  NORMAL: 'Звичайний пріоритет — стандартна черга',
+  HIGH: 'Високий пріоритет — виконати раніше стандартної черги',
+  URGENT: 'Терміново — виконати якнайшвидше, клієнт чекає',
+};
+
 export const WO_CATEGORY_LABELS: Record<string, string> = {
   MAINTENANCE: 'ТО',
   CURRENT_REPAIR: 'Поточний ремонт',
@@ -286,6 +293,12 @@ export const EMPLOYEE_STATUS_BADGE: Record<string, BadgeVariant> = {
   FIRED: 'secondary',
 };
 
+export const EMPLOYEE_STATUS_DESCRIPTIONS: Record<string, string> = {
+  ACTIVE: 'Активний — співробітник працює, доступний для призначення на наряди',
+  ON_LEAVE: 'У відпустці — тимчасово недоступний',
+  FIRED: 'Звільнений — більше не є співробітником підприємства',
+};
+
 export const EMPLOYEE_ROLE_LABELS: Record<string, string> = {
   OWNER: 'Власник',
   ADMIN: 'Адміністратор',
@@ -295,6 +308,17 @@ export const EMPLOYEE_ROLE_LABELS: Record<string, string> = {
   ACCOUNTANT: 'Бухгалтер',
   CLIENT: 'Клієнт',
   XLSX_MANAGER: 'Менеджер імпорту',
+};
+
+export const EMPLOYEE_ROLE_DESCRIPTIONS: Record<string, string> = {
+  OWNER: 'Власник — повний доступ до всіх функцій системи',
+  ADMIN: 'Адміністратор — управління налаштуваннями, довідниками, персоналом',
+  RECEPTIONIST: 'Приймальник — створення нарядів, робота з клієнтами та рахунками',
+  MECHANIC: 'Механік — виконання робіт по нарядах, перегляд своїх задач',
+  STOREKEEPER: 'Комірник — управління складом, прийом і списання товарів',
+  ACCOUNTANT: 'Бухгалтер — фінансові звіти, рахунки, взаєморозрахунки',
+  CLIENT: 'Клієнт — обмежений доступ для перегляду власних нарядів',
+  XLSX_MANAGER: 'Менеджер імпорту — завантаження товарів і довідників через XLSX',
 };
 
 export const EMPLOYEE_ROLE_BADGE: Record<string, BadgeVariant> = {
@@ -322,6 +346,12 @@ export const COUNTERPARTY_TYPE_BADGE: Record<string, BadgeVariant> = {
   BOTH: 'warning',
 };
 
+export const COUNTERPARTY_TYPE_DESCRIPTIONS: Record<string, string> = {
+  CLIENT: 'Клієнт — фізична або юридична особа, якій надаються послуги',
+  SUPPLIER: 'Постачальник — організація або ФОП, у якої закуповуються товари',
+  BOTH: 'Клієнт і постачальник одночасно',
+};
+
 export const CONTRACT_TYPE_LABELS: Record<string, string> = {
   PURCHASE: 'Купівля',
   SALE: 'Продаж',
@@ -341,4 +371,20 @@ export const GOOD_TYPE_BADGE: Record<string, BadgeVariant> = {
   CONSUMABLE: 'secondary',
   MATERIAL: 'warning',
   TOOL: 'success',
+};
+
+export const GOOD_TYPE_DESCRIPTIONS: Record<string, string> = {
+  SPARE_PART: 'Запчастина — замінюваний компонент автомобіля',
+  CONSUMABLE: 'Витратний матеріал — масло, фільтри, антифриз тощо',
+  MATERIAL: 'Матеріал — сировина для ремонтних робіт',
+  TOOL: 'Інструмент — обладнання та засоби виробництва',
+};
+
+// ─── Lift ─────────────────────────────────────────────────────────────────────
+
+export const LIFT_STATUS_DESCRIPTIONS: Record<string, string> = {
+  ACTIVE: 'Активний — підйомник справний і доступний для використання',
+  MAINTENANCE: 'ТО — підйомник проходить технічне обслуговування',
+  BROKEN: 'Несправний — потребує ремонту, недоступний для використання',
+  DECOMMISSIONED: 'Списаний — виведений з експлуатації',
 };
