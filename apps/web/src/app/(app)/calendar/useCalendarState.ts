@@ -245,41 +245,45 @@ export function useCalendarState() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // sto-optimize: об'єднано mount-only fetches /lifts + /settings/work-hours
+  // у один useEffect з Promise.all → 1 мережева хвиля замість 2-х. Кожен fetch
+  // незалежний (різні endpoint-и) → race-safe. /lifts ще читає sessionStorage
+  // cache синхронно для миттєвого first-paint.
   useEffect(() => {
     const cached = getCached<Lift[]>('cache:lifts');
     if (cached && mountedRef.current) {
       setLifts(cached);
       liftsRef.current = cached;
     }
-    apiFetch<Lift[]>('/lifts')
-      .then(data => {
-        setCache('cache:lifts', data);
-        if (mountedRef.current) {
-          setLifts(data);
-          liftsRef.current = data;
-        }
-      })
-      .catch((e: unknown) => {
-        if (mountedRef.current && !cached)
-          setError(e instanceof Error ? e.message : 'Помилка завантаження');
-      });
-  }, []);
-
-  useEffect(() => {
-    apiFetch<{ workStartHour: number; workEndHour: number }>('/settings/work-hours')
-      .then(data => {
-        if (mountedRef.current) {
-          setWorkStartHour(data.workStartHour);
-          setWorkEndHour(data.workEndHour);
-        }
-      })
-      .catch(err => {
+    void Promise.all([
+      apiFetch<Lift[]>('/lifts').then(
+        data => ({ ok: true as const, data }),
+        (e: unknown) => ({ ok: false as const, error: e }),
+      ),
+      apiFetch<{ workStartHour: number; workEndHour: number }>('/settings/work-hours').then(
+        data => ({ ok: true as const, data }),
+        (e: unknown) => ({ ok: false as const, error: e }),
+      ),
+    ]).then(([liftsRes, hoursRes]) => {
+      if (!mountedRef.current) return;
+      if (liftsRes.ok) {
+        setCache('cache:lifts', liftsRes.data);
+        setLifts(liftsRes.data);
+        liftsRef.current = liftsRes.data;
+      } else if (!cached) {
+        setError(liftsRes.error instanceof Error ? liftsRes.error.message : 'Помилка завантаження');
+      }
+      if (hoursRes.ok) {
+        setWorkStartHour(hoursRes.data.workStartHour);
+        setWorkEndHour(hoursRes.data.workEndHour);
+      } else if (process.env.NODE_ENV !== 'production') {
         // Fallback to defaults (8-18) on error — calendar still works.
-        // Log to Sentry/devtools so missed settings don't fail silently.
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn('[calendar] /settings/work-hours fetch failed; using defaults', err);
-        }
-      });
+        console.warn(
+          '[calendar] /settings/work-hours fetch failed; using defaults',
+          hoursRes.error,
+        );
+      }
+    });
   }, []);
 
   const monthAbortRef = useRef<AbortController | null>(null);

@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
@@ -54,36 +55,63 @@ export function CalendarStatsTab({
   windowEnd,
 }: CalendarStatsTabProps) {
   const WINDOW_H = windowEnd - windowStart;
-  // Clamp to STATS_MAX_DAYS so the load% denominator matches the actually loaded slot set
-  const days = statsRange
-    ? (() => {
-        const d: string[] = [];
-        const cur = new Date(statsRange.from + 'T12:00:00');
-        const end = new Date(statsRange.to + 'T12:00:00');
-        while (cur <= end && d.length < STATS_MAX_DAYS) {
-          d.push(toDateString(cur));
-          cur.setDate(cur.getDate() + 1);
-        }
-        return d.length;
-      })()
-    : 1;
 
-  const liftStats = lifts.map(lift => {
-    const ls = statsSlots.filter(s => s.liftId === lift.id);
-    const totalMinutes = ls.reduce(
-      (acc, s) => acc + (new Date(s.endAt).getTime() - new Date(s.startAt).getTime()) / 60000,
-      0,
-    );
-    const loadPct = days > 0 ? Math.round((totalMinutes / 60 / (WINDOW_H * days)) * 100) : 0;
-    return { lift, count: ls.length, totalMinutes, loadPct };
-  });
-  const totalMinAll = liftStats.reduce((a, x) => a + x.totalMinutes, 0);
+  // sto-optimize: всі derived metrics через useMemo щоб typing у parent date-inputs
+  // не тригерив повний recompute (3 derived passes по statsSlots/lifts кожен render).
+  // Clamp to STATS_MAX_DAYS so the load% denominator matches the actually loaded slot set.
+  const days = useMemo(() => {
+    if (!statsRange) return 1;
+    let count = 0;
+    const cur = new Date(statsRange.from + 'T12:00:00');
+    const end = new Date(statsRange.to + 'T12:00:00');
+    while (cur <= end && count < STATS_MAX_DAYS) {
+      count++;
+      cur.setDate(cur.getDate() + 1);
+    }
+    return count;
+  }, [statsRange]);
 
-  const periodLabel = statsRange
-    ? statsRange.from === statsRange.to
-      ? formatKyivDate(statsRange.from)
-      : `${statsRange.from.split('-').reverse().join('.')} — ${statsRange.to.split('-').reverse().join('.')}`
-    : '—';
+  // sto-optimize: bucket statsSlots by liftId один раз + pre-parse Date→Ms у числа
+  // → O(N+M) замість O(N×M) `filter+reduce(new Date()×2)` per lift. На 30 днів × 5
+  // ліфтів × 100 slots було 30_000 Date allocs; стає 60. Single-pass також рахує
+  // totalMinAll + avgLoadPct (для summary cards) щоб уникнути окремих reduce у JSX.
+  const { liftStats, totalMinAll, avgLoadPct } = useMemo(() => {
+    const byLift = new Map<string, { count: number; totalMinutes: number }>();
+    for (const s of statsSlots) {
+      if (!s.liftId) continue;
+      const minutes = (new Date(s.endAt).getTime() - new Date(s.startAt).getTime()) / 60000;
+      const acc = byLift.get(s.liftId);
+      if (acc) {
+        acc.count++;
+        acc.totalMinutes += minutes;
+      } else {
+        byLift.set(s.liftId, { count: 1, totalMinutes: minutes });
+      }
+    }
+    const denom = WINDOW_H * days;
+    let totalAll = 0;
+    let sumLoad = 0;
+    const stats = lifts.map(lift => {
+      const agg = byLift.get(lift.id);
+      const count = agg?.count ?? 0;
+      const totalMinutes = agg?.totalMinutes ?? 0;
+      const loadPct = denom > 0 ? Math.round((totalMinutes / 60 / denom) * 100) : 0;
+      totalAll += totalMinutes;
+      sumLoad += loadPct;
+      return { lift, count, totalMinutes, loadPct };
+    });
+    return {
+      liftStats: stats,
+      totalMinAll: totalAll,
+      avgLoadPct: stats.length ? Math.round(sumLoad / stats.length) : null,
+    };
+  }, [statsSlots, lifts, WINDOW_H, days]);
+
+  const periodLabel = useMemo(() => {
+    if (!statsRange) return '—';
+    if (statsRange.from === statsRange.to) return formatKyivDate(statsRange.from);
+    return `${statsRange.from.split('-').reverse().join('.')} — ${statsRange.to.split('-').reverse().join('.')}`;
+  }, [statsRange]);
 
   return (
     <div className="space-y-4">
@@ -206,9 +234,7 @@ export function CalendarStatsTab({
           },
           {
             label: 'Середнє завант.',
-            value: liftStats.length
-              ? `${Math.round(liftStats.reduce((a, x) => a + x.loadPct, 0) / liftStats.length)}%`
-              : '—',
+            value: avgLoadPct !== null ? `${avgLoadPct}%` : '—',
           },
         ].map(({ label, value }) => (
           <div key={label} className="bg-surface border border-border rounded-xl p-4">

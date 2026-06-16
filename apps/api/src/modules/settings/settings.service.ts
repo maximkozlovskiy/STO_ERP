@@ -16,6 +16,10 @@ import {
 } from './settings.dto';
 
 const TTL_SECONDS = 300; // 5 minutes
+// Bug #520: getWorkHours викликається на КОЖЕН mount CalendarDayGrid (cold cache на нову сесію).
+// Окремий TTL=60s бо work-hours можуть бути швидко змінені адміном у settings;
+// інвалідація все одно є у updateBranchSettings — TTL це другий рівень захисту.
+const WORK_HOURS_TTL_SECONDS = 60;
 
 @Injectable()
 export class SettingsService {
@@ -147,6 +151,17 @@ export class SettingsService {
   }
 
   async getWorkHours(orgId: string): Promise<{ workStartHour: number; workEndHour: number }> {
+    // Bug #520: викликається на КОЖЕН mount CalendarDayGrid. До кешу — DB hit
+    // (findFirst по orgId з orderBy за nested relation `branch.createdAt`).
+    // Cache 60s + invalidation у updateBranchSettings → 1 DB hit / 60s / orgId.
+    const cacheKey = `settings:work-hours:${orgId}`;
+    try {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) return JSON.parse(cached) as { workStartHour: number; workEndHour: number };
+    } catch {
+      // Redis unavailable — continue without cache (offline-first)
+    }
+
     const settings = await this.prisma.branchSettings.findFirst({
       where: { orgId, branch: { deletedAt: null } },
       select: { workStartTime: true, workEndTime: true },
@@ -167,10 +182,26 @@ export class SettingsService {
     // негативної довжини → дільник 0 → NaN у CSS → DOM crash. Повертаємо fallback
     // діапазон щоб calendar лишався працездатним; адмін бачить grid 09-18 поки
     // не виправить settings.
-    if (workEndHour <= workStartHour) {
-      return { workStartHour: 9, workEndHour: 18 };
+    const result =
+      workEndHour <= workStartHour
+        ? { workStartHour: 9, workEndHour: 18 }
+        : { workStartHour, workEndHour };
+
+    try {
+      await this.redis.set(cacheKey, JSON.stringify(result), 'EX', WORK_HOURS_TTL_SECONDS);
+    } catch {
+      // ignore
     }
-    return { workStartHour, workEndHour };
+
+    return result;
+  }
+
+  async invalidateWorkHoursCache(orgId: string): Promise<void> {
+    try {
+      await this.redis.del(`settings:work-hours:${orgId}`);
+    } catch {
+      // ignore
+    }
   }
 
   async updateBranchSettings(
@@ -211,6 +242,12 @@ export class SettingsService {
     });
 
     await this.invalidateBranchCache(orgId, branchId);
+    // Bug #520: work-hours кеш orgId-scope (один на org незалежно від branch),
+    // інвалідуємо тільки коли workStartTime/workEndTime реально змінилися щоб
+    // не плодити cache misses при PATCH-ах інших полів (smsEnabled, fiscalEnabled).
+    if (dto.workStartTime !== undefined || dto.workEndTime !== undefined) {
+      await this.invalidateWorkHoursCache(orgId);
+    }
 
     return this.mapBranchSettings(settings);
   }
