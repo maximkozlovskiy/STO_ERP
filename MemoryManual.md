@@ -16,7 +16,7 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 Останній optimize: 2026-06-16 — Bug #520 Redis cache work-hours + statsTab O(N×M)→O(N+M)
 Останній tester: 2026-06-17 (AUTO, HEAD 527011c9) — Bug #521-#525 (actualHours FSM+DTO+UX)
-Останній review: 2026-06-17 (AUTO, HEAD ac2ced81) — recalcActualHoursFromLines contract mock + actualTotals toNumberOrUndefined
+Останній review: 2026-06-17 (AUTO, HEAD ca5aef48) — actualHours-aware: WO PDF line totals + invoice refreshFromWorkOrder + completion act buildLines
 Останній sync:   2026-06-16 — BranchSettings/WorkHours+CalendarSlot+BookingRequest+Warehouse/Branch/Zone+GoodPickerModal — 0 розбіжностей
 ```
 
@@ -25,11 +25,11 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+ca5aef48  fix(review): line totals + invoice refresh + completion act on actualHours
+0665024c  feat(work-orders): invoice/totalAmount on actual labor (actualHours ?? normoHours × price)
 527011c9  fix(tester): Bugs #521-#525 — actualHours feature critical bugs
 def17066  docs(memory): post-review state — recalcActualHoursFromLines contract + actualTotals fix
 ac2ced81  fix(review): recalcActualHoursFromLines contract mock + actualTotals toNumberOrUndefined
-5d526ba9  feat(work-orders): recalcActualHoursFromLines setting + actual sum fallback to normoHours
-62785537  feat(work-orders): actual hours column in lines table
 ```
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
