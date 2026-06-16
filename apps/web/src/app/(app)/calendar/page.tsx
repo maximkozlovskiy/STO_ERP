@@ -203,6 +203,8 @@ function CalendarPageClient() {
           formCollapseRef={cs.formCollapseRef}
           formInnerRef={cs.formInnerRef}
           minHour={cs.minHour}
+          windowStart={cs.windowStart}
+          windowEnd={cs.windowEnd}
           nowMs={cs.nowMs}
           error={cs.error}
           setError={cs.setError}
@@ -247,6 +249,8 @@ function CalendarPageClient() {
               date={cs.date}
               setDate={cs.setDate}
               statsRange={cs.statsRange}
+              windowStart={cs.windowStart}
+              windowEnd={cs.windowEnd}
             />
           )}
 

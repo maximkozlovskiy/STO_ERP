@@ -146,6 +146,20 @@ export class SettingsService {
     return result;
   }
 
+  async getWorkHours(orgId: string): Promise<{ workStartHour: number; workEndHour: number }> {
+    const settings = await this.prisma.branchSettings.findFirst({
+      where: { orgId, branch: { deletedAt: null } },
+      select: { workStartTime: true, workEndTime: true },
+      orderBy: { branch: { createdAt: 'asc' } },
+    });
+    const parseHour = (t: string | undefined, fallback: number) =>
+      t ? parseInt(t.split(':')[0]!, 10) || fallback : fallback;
+    return {
+      workStartHour: parseHour(settings?.workStartTime, 8),
+      workEndHour: parseHour(settings?.workEndTime, 18),
+    };
+  }
+
   async updateBranchSettings(
     orgId: string,
     branchId: string,

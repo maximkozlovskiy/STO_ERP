@@ -5,13 +5,7 @@ import { Button } from '@/components/ui/button';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import type { CalendarSlot, Lift, StatsPeriod } from './calendar.types';
-import {
-  toDateString,
-  STATS_MAX_DAYS,
-  WINDOW_END,
-  WINDOW_START,
-  fmtKyivMonthYear,
-} from './calendar.utils';
+import { toDateString, STATS_MAX_DAYS, fmtKyivMonthYear } from './calendar.utils';
 import { formatKyivDate } from './calendar.utils';
 
 interface CalendarStatsTabProps {
@@ -30,9 +24,9 @@ interface CalendarStatsTabProps {
   date: string;
   setDate: (d: string) => void;
   statsRange: { from: string; to: string } | null;
+  windowStart: number;
+  windowEnd: number;
 }
-
-const WINDOW_H = WINDOW_END - WINDOW_START; // 11 h
 
 // Static period switcher tuples — module-level, не пересоздається на кожен render.
 const PERIOD_OPTIONS: ReadonlyArray<readonly [StatsPeriod, string]> = [
@@ -56,7 +50,10 @@ export function CalendarStatsTab({
   date,
   setDate,
   statsRange,
+  windowStart,
+  windowEnd,
 }: CalendarStatsTabProps) {
+  const WINDOW_H = windowEnd - windowStart;
   // Clamp to STATS_MAX_DAYS so the load% denominator matches the actually loaded slot set
   const days = statsRange
     ? (() => {

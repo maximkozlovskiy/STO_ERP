@@ -10,15 +10,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { WO_STATUS_LABELS } from '@sto/shared';
 
 import type { BookingSlot, CalendarSlot, GhostSlot, Lift, PendingSlot } from './calendar.types';
-import {
-  HOURS,
-  SIDEBAR_W,
-  TOTAL_HOURS,
-  decimalHoursToHHMM,
-  fmtTime,
-  kyivHours,
-  pad,
-} from './calendar.utils';
+import { SIDEBAR_W, decimalHoursToHHMM, fmtTime, kyivHours, pad } from './calendar.utils';
 import { PENDING_DRAG_ID, type CalendarState } from './useCalendarState';
 
 // Module-level stable refs — `useMemo<[]>(() => [], [])` всередині компонента
@@ -31,6 +23,8 @@ const EMPTY_BOOKINGS: BookingSlot[] = [];
 interface DraggableSlotProps {
   slot: CalendarSlot;
   isEditing: boolean;
+  windowStart: number;
+  totalHours: number;
   onEdit: (slot: CalendarSlot) => void;
   onResizeStart: (
     e: ReactPointerEvent<HTMLDivElement>,
@@ -42,13 +36,15 @@ interface DraggableSlotProps {
 const DraggableSlot = memo(function DraggableSlot({
   slot,
   isEditing,
+  windowStart,
+  totalHours,
   onEdit,
   onResizeStart,
 }: DraggableSlotProps) {
   const startH = kyivHours(slot.startAt);
   const endH = kyivHours(slot.endAt);
-  const left = ((startH - HOURS[0]!) / TOTAL_HOURS) * 100;
-  const width = ((endH - startH) / TOTAL_HOURS) * 100;
+  const left = ((startH - windowStart) / totalHours) * 100;
+  const width = ((endH - startH) / totalHours) * 100;
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: slot.id,
@@ -148,6 +144,8 @@ const DraggableSlot = memo(function DraggableSlot({
 
 interface PendingSlotBlockProps {
   pending: PendingSlot;
+  windowStart: number;
+  totalHours: number;
   onOpen: () => void;
   onCancel: () => void;
   onPendingResizeStart: (e: ReactPointerEvent<HTMLDivElement>, edge: 'start' | 'end') => void;
@@ -155,12 +153,14 @@ interface PendingSlotBlockProps {
 
 const PendingSlotBlock = memo(function PendingSlotBlock({
   pending,
+  windowStart,
+  totalHours,
   onOpen,
   onCancel,
   onPendingResizeStart,
 }: PendingSlotBlockProps) {
-  const left = ((pending.startH - HOURS[0]!) / TOTAL_HOURS) * 100;
-  const width = ((pending.endH - pending.startH) / TOTAL_HOURS) * 100;
+  const left = ((pending.startH - windowStart) / totalHours) * 100;
+  const width = ((pending.endH - pending.startH) / totalHours) * 100;
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: PENDING_DRAG_ID,
@@ -232,21 +232,24 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
 
 // ─── BookingSlotBlock ────────────────────────────────────────────────────────
 
-const BookingSlotBlock = memo(function BookingSlotBlock({ slot }: { slot: BookingSlot }) {
+const BookingSlotBlock = memo(function BookingSlotBlock({
+  slot,
+  windowStart,
+  windowEnd,
+  totalHours,
+}: {
+  slot: BookingSlot;
+  windowStart: number;
+  windowEnd: number;
+  totalHours: number;
+}) {
   const startH = kyivHours(slot.startAt);
   const endH = kyivHours(slot.endAt);
-  // Bug #513: clamp до меж timeline. POST /booking/request раніше не валідував
-  // requestedDate проти BranchSettings.workStartTime/workEndTime → у PENDING могли
-  // потрапити бронювання з startH < HOURS[0] (наприклад 07:00 Kyiv) → left=-X% →
-  // блок невидимий за лівою межею. Після Bug #514 фіксу таких бронювань створювати
-  // не можна, але існуючі legacy-записи + майбутні зміни BranchSettings
-  // (звуження робочих годин) → defensive clamp.
-  const WINDOW_END_LOCAL = HOURS[HOURS.length - 1]! + 1; // 20:00
-  if (endH <= HOURS[0]! || startH >= WINDOW_END_LOCAL) return null;
-  const clampedStart = Math.max(startH, HOURS[0]!);
-  const clampedEnd = Math.min(endH, WINDOW_END_LOCAL);
-  const left = ((clampedStart - HOURS[0]!) / TOTAL_HOURS) * 100;
-  const width = ((clampedEnd - clampedStart) / TOTAL_HOURS) * 100;
+  if (endH <= windowStart || startH >= windowEnd) return null;
+  const clampedStart = Math.max(startH, windowStart);
+  const clampedEnd = Math.min(endH, windowEnd);
+  const left = ((clampedStart - windowStart) / totalHours) * 100;
+  const width = ((clampedEnd - clampedStart) / totalHours) * 100;
   const timeLabel = `${fmtTime(slot.startAt)}–${fmtTime(slot.endAt)}`;
 
   return (
@@ -273,6 +276,10 @@ interface DroppableLiftRowProps {
   pending: PendingSlot | null;
   editingSlotId: string | null;
   blockedWidth: number;
+  hours: number[];
+  windowStart: number;
+  windowEnd: number;
+  totalHours: number;
   onEdit: (slot: CalendarSlot) => void;
   onResizeStart: (
     e: ReactPointerEvent<HTMLDivElement>,
@@ -292,6 +299,10 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
   pending,
   editingSlotId,
   blockedWidth,
+  hours,
+  windowStart,
+  windowEnd,
+  totalHours,
   onEdit,
   onResizeStart,
   onPendingOpen,
@@ -301,19 +312,19 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
   const { setNodeRef, isOver } = useDroppable({ id: `lift-${liftId}`, data: { liftId } });
 
   const showGhost = ghost?.liftId === liftId && ghost.endH > ghost.startH;
-  const ghostLeft = showGhost ? ((ghost!.startH - HOURS[0]!) / TOTAL_HOURS) * 100 : 0;
-  const ghostWidth = showGhost ? ((ghost!.endH - ghost!.startH) / TOTAL_HOURS) * 100 : 0;
+  const ghostLeft = showGhost ? ((ghost!.startH - windowStart) / totalHours) * 100 : 0;
+  const ghostWidth = showGhost ? ((ghost!.endH - ghost!.startH) / totalHours) * 100 : 0;
   const showPending = pending?.liftId === liftId;
 
   return (
     <div
       ref={setNodeRef}
       className={`col-span-12 relative min-h-28 transition-colors ${isOver ? 'bg-primary/5' : ''}`}
-      style={{ gridColumn: `2 / span ${TOTAL_HOURS}` }}
+      style={{ gridColumn: `2 / span ${totalHours}` }}
       data-lift-id={liftId}
     >
       <div className="flex h-full pointer-events-none">
-        {HOURS.map(h => (
+        {hours.map(h => (
           <div key={h} className="flex-1 border-r last:border-r-0 border-border min-h-28" />
         ))}
       </div>
@@ -349,6 +360,8 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
       {showPending && (
         <PendingSlotBlock
           pending={pending!}
+          windowStart={windowStart}
+          totalHours={totalHours}
           onOpen={onPendingOpen}
           onCancel={onPendingCancel}
           onPendingResizeStart={onPendingResizeStart}
@@ -360,13 +373,21 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
           key={s.id}
           slot={s}
           isEditing={s.id === editingSlotId}
+          windowStart={windowStart}
+          totalHours={totalHours}
           onEdit={onEdit}
           onResizeStart={onResizeStart}
         />
       ))}
 
       {liftBookings.map(b => (
-        <BookingSlotBlock key={b.id} slot={b} />
+        <BookingSlotBlock
+          key={b.id}
+          slot={b}
+          windowStart={windowStart}
+          windowEnd={windowEnd}
+          totalHours={totalHours}
+        />
       ))}
     </div>
   );
@@ -406,6 +427,10 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
     openFormFromPending,
     cancelPending,
     handlePendingResizeStart,
+    hours,
+    windowStart,
+    windowEnd,
+    totalHours,
   } = state;
 
   // Group booking slots by their assigned liftId
@@ -468,12 +493,12 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
               {/* Sticky header — fixed inside the rounded container, z-20 above draggable slots (z-10/z-50) */}
               <div
                 className="grid border-b border-border shrink-0 z-20 relative"
-                style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
+                style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${totalHours}, 1fr)` }}
               >
                 <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">
                   Підйомник
                 </div>
-                {HOURS.map(h => (
+                {hours.map(h => (
                   <div
                     key={h}
                     className="px-1 py-2 text-xs text-center text-muted-foreground bg-secondary border-r border-border last:border-r-0"
@@ -488,7 +513,7 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                   <div
                     key={lift.id}
                     className="grid border-b border-border last:border-b-0"
-                    style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${HOURS.length}, 1fr)` }}
+                    style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${totalHours}, 1fr)` }}
                   >
                     <div className="px-3 py-3 min-h-20 bg-secondary border-r border-border flex flex-col justify-center gap-0.5">
                       <span className="text-sm font-medium text-foreground leading-tight">
@@ -512,6 +537,10 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                       pending={pendingSlot}
                       editingSlotId={editingSlotId}
                       blockedWidth={blockedWidth}
+                      hours={hours}
+                      windowStart={windowStart}
+                      windowEnd={windowEnd}
+                      totalHours={totalHours}
                       onEdit={handleEditSlot}
                       onResizeStart={handleResizeStart}
                       onPendingOpen={openFormFromPending}

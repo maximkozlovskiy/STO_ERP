@@ -33,11 +33,8 @@ import type {
   SlotForm,
 } from './calendar.types';
 import {
-  HOURS,
   PICK_MINUTES,
   UUID_RE,
-  WINDOW_START,
-  WINDOW_END,
   decimalHoursToHHMM,
   parseHHMM,
   buildHHMM,
@@ -54,8 +51,8 @@ import {
  *   08:00 + overflowMin (matching what the backend split produces).
  * When within the same day, returns the direct HH:mm.
  */
-function calcEndAt(totalMin: number): string {
-  const WORK_END_MIN = WINDOW_END * 60; // 20:00 — matches backend WORK_DAY_END_H
+function calcEndAt(totalMin: number, workEndHour: number): string {
+  const WORK_END_MIN = workEndHour * 60;
   const raw = Math.round(totalMin / 15) * 15; // snap to 15-min grid
   if (raw > WORK_END_MIN) {
     const overflowMin = raw - WORK_END_MIN;
@@ -225,6 +222,8 @@ interface CalendarSlotModalProps {
   formInnerRef: React.RefObject<HTMLDivElement | null>;
 
   minHour: number;
+  windowStart: number;
+  windowEnd: number;
   nowMs: number;
 
   error: string;
@@ -256,6 +255,8 @@ export function CalendarSlotModal({
   formCollapseRef,
   formInnerRef,
   minHour,
+  windowStart,
+  windowEnd,
   nowMs,
   error,
   setError,
@@ -578,7 +579,7 @@ export function CalendarSlotModal({
     const nh2 = parseFloat(String(form.normoHours).replace(',', '.'));
     // Backend splits at WINDOW_END (20:00 = last visible hour + 1).
     const isOverflowSlot =
-      !isNaN(nh2) && nh2 > 0 && startMin2 + Math.round(nh2 * 60) > WINDOW_END * 60;
+      !isNaN(nh2) && nh2 > 0 && startMin2 + Math.round(nh2 * 60) > windowEnd * 60;
     if (!isOverflowSlot && form.endAt <= form.startAt) {
       setError('Час завершення повинен бути після часу початку');
       return;
@@ -768,8 +769,8 @@ export function CalendarSlotModal({
               <DateTimePickerInput
                 label="Початок"
                 value={date && form.startAt ? `${date}T${form.startAt}` : ''}
-                minHour={editingSlotId ? WINDOW_START : minHour}
-                maxHour={WINDOW_END - 1}
+                minHour={editingSlotId ? windowStart : minHour}
+                maxHour={windowEnd - 1}
                 disabled={isEditingPast}
                 inputClassName="h-8 text-[13px]"
                 onChange={val => {
@@ -780,7 +781,7 @@ export function CalendarSlotModal({
                       const [h, m] = start.split(':').map(Number);
                       const totalMin =
                         (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(f.normoHours) * 60);
-                      const endAt = calcEndAt(totalMin);
+                      const endAt = calcEndAt(totalMin, windowEnd);
                       next = { ...next, endAt };
                     }
                     if (pendingSlot) {
@@ -812,7 +813,7 @@ export function CalendarSlotModal({
                     if (f.startAt && nh && Number(nh) > 0) {
                       const [h, m] = f.startAt.split(':').map(Number);
                       const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(nh) * 60);
-                      const endAt = calcEndAt(totalMin);
+                      const endAt = calcEndAt(totalMin, windowEnd);
                       if (pendingSlot) {
                         const { h: eh, m: em2 } = parseHHMM(endAt);
                         setPendingSlot(p => (p ? { ...p, endH: eh + em2 / 60 } : p));
@@ -830,7 +831,7 @@ export function CalendarSlotModal({
                 if (!form.startAt || !nh || nh <= 0) return null;
                 const [h, m] = form.startAt.split(':').map(Number);
                 const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(nh * 60);
-                const workEndMin = WINDOW_END * 60; // 20:00 = 1200 min
+                const workEndMin = windowEnd * 60;
                 // Use the same 15-min snap as calcEndAt() so the warning fires iff the
                 // Кінець field actually shows a next-day time (prevents contradictory UI).
                 const snappedTotal = Math.round(totalMin / 15) * 15;
@@ -850,7 +851,7 @@ export function CalendarSlotModal({
                 })();
                 return (
                   <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
-                    ⚠ Буде розбито: {form.startAt}–{pad(WINDOW_END)}:00 + {nextDayIso} 08:00–
+                    ⚠ Буде розбито: {form.startAt}–{pad(windowEnd)}:00 + {nextDayIso} 08:00–
                     {pad(day2H)}:{pad(day2M)}
                   </p>
                 );
@@ -862,7 +863,7 @@ export function CalendarSlotModal({
                 const nh = Number(form.normoHours);
                 const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
                 const totalMin = (sh ?? 0) * 60 + (sm ?? 0) + Math.round((nh > 0 ? nh : 0) * 60);
-                const isOverflow = form.startAt && nh > 0 && totalMin > WINDOW_END * 60;
+                const isOverflow = form.startAt && nh > 0 && totalMin > windowEnd * 60;
                 const endDate = (() => {
                   if (!isOverflow || !date) return date;
                   try {
@@ -877,7 +878,7 @@ export function CalendarSlotModal({
                   <DateTimePickerInput
                     label="Кінець"
                     value={endDate && form.endAt ? `${endDate}T${form.endAt}` : ''}
-                    minHour={WINDOW_START}
+                    minHour={windowStart}
                     maxHour={23}
                     disabled={isEditingPast}
                     inputClassName="h-8 text-[13px]"
@@ -1468,8 +1469,7 @@ export function CalendarSlotModal({
           const nh = Number(form.normoHours);
           const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
           const totalMin = (sh ?? 0) * 60 + (sm ?? 0) + Math.round((nh > 0 ? nh : 0) * 60);
-          // Use WINDOW_END (20), not hardcoded 19 — slot 17:00+3h=20:00 is NOT overflow
-          const isOverflow = form.startAt && nh > 0 && totalMin > WINDOW_END * 60;
+          const isOverflow = form.startAt && nh > 0 && totalMin > windowEnd * 60;
           const endDate = (() => {
             if (!isOverflow || !date) return date;
             try {

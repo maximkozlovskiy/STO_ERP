@@ -30,13 +30,9 @@ import type {
   StatsPeriod,
 } from './calendar.types';
 import {
-  HOURS,
   KYIV_HOUR_FMT,
   SIDEBAR_W,
   STATS_MAX_DAYS,
-  TOTAL_HOURS,
-  WINDOW_END,
-  WINDOW_START,
   decimalHoursToHHMM,
   decimalHoursToISO,
   kyivHours,
@@ -104,6 +100,8 @@ export function useCalendarState() {
   const [bookingSlots, setBookingSlots] = useState<BookingSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
+  const [workStartHour, setWorkStartHour] = useState(8);
+  const [workEndHour, setWorkEndHour] = useState(18);
   // Ref so `load` useCallback can read current lifts without adding them as dependency
   const liftsRef = useRef<Lift[]>([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -138,12 +136,20 @@ export function useCalendarState() {
   }, []);
 
   const minHour = useMemo(() => {
-    if (!date || !nowMs) return HOURS[0]!;
+    if (!date || !nowMs) return workStartHour;
     const todayKyiv = toDateString(new Date(nowMs));
-    if (date !== todayKyiv) return HOURS[0]!;
+    if (date !== todayKyiv) return workStartHour;
     const parts = KYIV_HOUR_FMT.formatToParts(new Date(nowMs));
-    return parseInt(parts.find(p => p.type === 'hour')?.value ?? '8', 10);
-  }, [date, nowMs]);
+    return parseInt(parts.find(p => p.type === 'hour')?.value ?? String(workStartHour), 10);
+  }, [date, nowMs, workStartHour]);
+
+  const dynHours = useMemo(
+    () => Array.from({ length: workEndHour - workStartHour }, (_, i) => i + workStartHour),
+    [workStartHour, workEndHour],
+  );
+  const dynWindowStart = workStartHour;
+  const dynWindowEnd = workEndHour;
+  const dynTotalHours = dynHours.length;
 
   const [ghost, setGhost] = useState<GhostSlot | null>(null);
   const drawingRef = useRef<{ liftId: string; startH: number } | null>(null);
@@ -257,6 +263,19 @@ export function useCalendarState() {
       .catch((e: unknown) => {
         if (mountedRef.current && !cached)
           setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      });
+  }, []);
+
+  useEffect(() => {
+    apiFetch<{ workStartHour: number; workEndHour: number }>('/settings/work-hours')
+      .then(data => {
+        if (mountedRef.current) {
+          setWorkStartHour(data.workStartHour);
+          setWorkEndHour(data.workEndHour);
+        }
+      })
+      .catch(() => {
+        // fallback to defaults (8-18) on error — calendar still works
       });
   }, []);
 
@@ -481,13 +500,22 @@ export function useCalendarState() {
     setDate(toDateString(d));
   }, [date, setDate]);
 
+  const workStartHourRef = useRef(workStartHour);
+  workStartHourRef.current = workStartHour;
+  const dynTotalHoursRef = useRef(dynTotalHours);
+  dynTotalHoursRef.current = dynTotalHours;
+  const dynWindowEndRef = useRef(dynWindowEnd);
+  dynWindowEndRef.current = dynWindowEnd;
+  const dynWindowStartRef = useRef(dynWindowStart);
+  dynWindowStartRef.current = dynWindowStart;
+
   const pxToDecimalHours = useCallback((clientX: number): number => {
     const rect = timelineRef.current?.getBoundingClientRect();
-    if (!rect) return HOURS[0]!;
+    if (!rect) return workStartHourRef.current;
     const timelineX = clientX - rect.left - SIDEBAR_W;
     const timelineW = rect.width - SIDEBAR_W;
-    const raw = HOURS[0]! + (timelineX / timelineW) * TOTAL_HOURS;
-    return Math.max(HOURS[0]!, Math.min(HOURS[HOURS.length - 1]!, raw));
+    const raw = workStartHourRef.current + (timelineX / timelineW) * dynTotalHoursRef.current;
+    return Math.max(workStartHourRef.current, Math.min(dynWindowEndRef.current - 1, raw));
   }, []);
 
   const showAddRef = useRef(showAdd);
@@ -619,7 +647,8 @@ export function useCalendarState() {
       setPendingSlot(null);
       const todayKyiv = toDateString(new Date());
       if (dateRef.current < todayKyiv) return;
-      const pastClamp = dateRef.current === todayKyiv ? minHourRef.current : HOURS[0]!;
+      const pastClamp =
+        dateRef.current === todayKyiv ? minHourRef.current : dynWindowStartRef.current;
       const startH = Math.max(snapTo15(pxToDecimalHours(e.clientX)), pastClamp);
       drawingRef.current = { liftId, startH };
       setGhost({ liftId, startH, endH: startH + 1 });
@@ -639,7 +668,8 @@ export function useCalendarState() {
         if (!rect) return;
         const deltaH = pxToHours(e.clientX - pr.pointerStartX, rect.width - SIDEBAR_W);
         const todayKyiv2 = toDateString(new Date());
-        const pastFloor = dateRef.current === todayKyiv2 ? minHourRef.current : WINDOW_START;
+        const pastFloor =
+          dateRef.current === todayKyiv2 ? minHourRef.current : dynWindowStartRef.current;
         if (pr.edge === 'start') {
           const newStartH = snapTo15(
             Math.max(pastFloor, Math.min(pr.origStartH + deltaH, pr.origEndH - 0.25)),
@@ -647,7 +677,7 @@ export function useCalendarState() {
           setPendingSlot(p => (p ? { ...p, startH: newStartH } : null));
         } else {
           const newEndH = snapTo15(
-            Math.min(WINDOW_END, Math.max(pr.origEndH + deltaH, pr.origStartH + 0.25)),
+            Math.min(dynWindowEndRef.current, Math.max(pr.origEndH + deltaH, pr.origStartH + 0.25)),
           );
           setPendingSlot(p => (p ? { ...p, endH: newEndH } : null));
         }
@@ -660,12 +690,18 @@ export function useCalendarState() {
         const deltaH = pxToHours(e.clientX - res.pointerStartX, rect.width - SIDEBAR_W);
         if (res.edge === 'start') {
           const newStartH = snapTo15(
-            Math.max(WINDOW_START, Math.min(res.origStartH + deltaH, res.origEndH - 0.25)),
+            Math.max(
+              dynWindowStartRef.current,
+              Math.min(res.origStartH + deltaH, res.origEndH - 0.25),
+            ),
           );
           setResizePreview(p => (p ? { ...p, startH: newStartH } : null));
         } else {
           const newEndH = snapTo15(
-            Math.min(WINDOW_END, Math.max(res.origEndH + deltaH, res.origStartH + 0.25)),
+            Math.min(
+              dynWindowEndRef.current,
+              Math.max(res.origEndH + deltaH, res.origStartH + 0.25),
+            ),
           );
           setResizePreview(p => (p ? { ...p, endH: newEndH } : null));
         }
@@ -677,7 +713,7 @@ export function useCalendarState() {
         const { liftId, startH } = drawingRef.current;
         const rawEndH = pxToDecimalHours(e.clientX);
         const endH = rawEndH - startH >= 0.25 ? snapTo15(rawEndH) : startH + 1;
-        const clampedEnd = Math.min(endH, WINDOW_END);
+        const clampedEnd = Math.min(endH, dynWindowEndRef.current);
         drawingRef.current = null;
         setGhost(null);
         setPendingSlot({ liftId, startH, endH: clampedEnd });
@@ -783,11 +819,11 @@ export function useCalendarState() {
         const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
         if (!containerWidth) return;
         const timelineWidth = containerWidth - SIDEBAR_W;
-        const shiftH = snapTo15((delta.x / timelineWidth) * TOTAL_HOURS);
+        const shiftH = snapTo15((delta.x / timelineWidth) * dynTotalHoursRef.current);
         const newLiftId = over?.data?.current?.liftId ?? p.liftId;
         const newStartH = Math.max(
-          WINDOW_START,
-          Math.min(p.startH + shiftH, WINDOW_END - (p.endH - p.startH)),
+          dynWindowStartRef.current,
+          Math.min(p.startH + shiftH, dynWindowEndRef.current - (p.endH - p.startH)),
         );
         const newEndH = newStartH + (p.endH - p.startH);
         setPendingSlot({ liftId: newLiftId, startH: newStartH, endH: newEndH });
@@ -807,7 +843,7 @@ export function useCalendarState() {
       const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
       if (!containerWidth) return;
       const timelineWidth = containerWidth - SIDEBAR_W;
-      const shiftHours = (delta.x / timelineWidth) * TOTAL_HOURS;
+      const shiftHours = (delta.x / timelineWidth) * dynTotalHoursRef.current;
       if (Math.abs(shiftHours) < 0.08 && newLiftId === slot.liftId) return;
       const origStart = new Date(slot.startAt);
       const origEnd = new Date(slot.endAt);
@@ -921,9 +957,9 @@ export function useCalendarState() {
     const todayKyiv = toDateString(new Date(nowMs));
     if (date < todayKyiv) return 100;
     if (date > todayKyiv) return 0;
-    const blockedHours = Math.max(0, minHour - WINDOW_START);
-    return (blockedHours / TOTAL_HOURS) * 100;
-  }, [nowMs, date, minHour]);
+    const blockedHours = Math.max(0, minHour - dynWindowStart);
+    return (blockedHours / dynTotalHours) * 100;
+  }, [nowMs, date, minHour, dynWindowStart, dynTotalHours]);
 
   const isEditingPast = useMemo(() => {
     if (!editingSlotId || !nowMs) return false;
@@ -980,6 +1016,12 @@ export function useCalendarState() {
     blockedWidth,
     nowMs,
     minHour,
+
+    // Dynamic work hours (from BranchSettings)
+    hours: dynHours,
+    windowStart: dynWindowStart,
+    windowEnd: dynWindowEnd,
+    totalHours: dynTotalHours,
 
     // Month / stats
     monthSlots,

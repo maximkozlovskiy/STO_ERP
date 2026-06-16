@@ -33,6 +33,7 @@ import {
   UpdateBranchSettingsDto,
   UpdateOrganisationDto,
   UpdateOrganisationSettingsDto,
+  WorkHoursDto,
 } from './settings.dto';
 import { SettingsService } from './settings.service';
 
@@ -102,6 +103,14 @@ export class SettingsController {
   @ApiResponse({ status: 200, type: BranchSettingsResponseDto })
   getBranch(@OrgContext() orgId: string, @Param('branchId', ParseUUIDPipe) branchId: string) {
     return this.service.getBranchSettings(orgId, branchId);
+  }
+
+  @Get('work-hours')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Робочі години основної філії (для побудови сітки календаря)' })
+  @ApiResponse({ status: 200, type: WorkHoursDto })
+  getWorkHours(@OrgContext() orgId: string) {
+    return this.service.getWorkHours(orgId);
   }
 
   @Patch('branch/:branchId')

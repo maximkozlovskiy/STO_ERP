@@ -299,6 +299,11 @@ export class BranchSettingsResponseDto {
   @ApiProperty() updatedAt!: Date;
 }
 
+export class WorkHoursDto {
+  @ApiProperty({ example: 8, description: 'Година початку роботи (0-23)' }) workStartHour!: number;
+  @ApiProperty({ example: 18, description: 'Година кінця роботи (0-23)' }) workEndHour!: number;
+}
+
 export class UpdateOrganisationDto {
   @ApiPropertyOptional()
   @IsOptional()
