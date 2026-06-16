@@ -2379,7 +2379,7 @@ export function CreateWorkOrderModal({
                                       display={editingLine.workName}
                                       placeholder="Пошук роботи..."
                                       ariaLabel="Робота"
-                                      onPick={() => setEditWorkPickerOpen(true)}
+                                      onPick={() => canEdit && setEditWorkPickerOpen(true)}
                                       onSearch={fetchWorks}
                                       onSearchSelect={w =>
                                         setEditingLine(l => ({
@@ -2393,6 +2393,7 @@ export function CreateWorkOrderModal({
                                       onClear={() =>
                                         setEditingLine(l => ({ ...l, workId: '', workName: '' }))
                                       }
+                                      disabled={!canEdit}
                                     />
                                   </td>
                                   <td className="px-2 py-1.5">
@@ -2401,6 +2402,7 @@ export function CreateWorkOrderModal({
                                       onChange={e =>
                                         setEditingLine(l => ({ ...l, employeeId: e.target.value }))
                                       }
+                                      disabled={!canEdit}
                                     >
                                       <option value="">— Механік —</option>
                                       {employees.map(e => (
@@ -2420,6 +2422,7 @@ export function CreateWorkOrderModal({
                                       }
                                       min="0"
                                       step="0.1"
+                                      disabled={!canEdit}
                                     />
                                   </td>
                                   <td className="px-2 py-1.5">
@@ -2447,6 +2450,7 @@ export function CreateWorkOrderModal({
                                         setEditingLine(l => ({ ...l, price: e.target.value }))
                                       }
                                       min="0"
+                                      disabled={!canEdit}
                                     />
                                   </td>
                                   {vatMode !== 'NONE' && (
@@ -2559,9 +2563,13 @@ export function CreateWorkOrderModal({
                                             price: line.price,
                                           });
                                         }}
-                                        disabled={saving || !canEdit}
+                                        disabled={saving || (!canEdit && !canEditActual)}
                                         aria-label="Редагувати роботу"
-                                        title="Редагувати"
+                                        title={
+                                          canEditActual && !canEdit
+                                            ? 'Ввести год (факт.)'
+                                            : 'Редагувати'
+                                        }
                                         className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
                                       >
                                         <Pencil className="h-3 w-3" />
