@@ -192,6 +192,27 @@ export class BookingService {
       bookedSlots.map(b => KYIV_HM_FMT.format(new Date(b.requestedDate))),
     );
 
+    // sto-optimize: pre-bucket busy slots by liftId + pre-parse Date once per slot.
+    // Раніше внутрішній цикл був O(timeSlots × lifts × busySlots) — для 20 timeslots
+    // × 50 lifts × 500 busy slots = 500_000 операцій на запит. Тепер:
+    // (1) Map<liftId, ParsedSlot[]> будуємо ОДИН раз → O(B) startup
+    // (2) `new Date(b.startAt)` парситься ОДИН раз у startMs (number), не на кожній
+    //     ітерації outer-loop (без cache це було N × B `new Date()` allocations).
+    // Outer loop стає O(timeSlots × lifts × avg(B/L)).
+    const busyByLift = new Map<string, { startMs: number; endMs: number }[]>();
+    for (const b of busyCalendarSlots) {
+      // CalendarSlot.liftId nullable (unassigned slots). Пропускаємо — вони не
+      // блокують конкретний lift, лише захаращують список.
+      if (!b.liftId) continue;
+      const parsed = {
+        startMs: new Date(b.startAt).getTime(),
+        endMs: new Date(b.endAt).getTime(),
+      };
+      const arr = busyByLift.get(b.liftId);
+      if (arr) arr.push(parsed);
+      else busyByLift.set(b.liftId, [parsed]);
+    }
+
     // Generate unique time slots across all lifts.
     // UI shows times — user doesn't pick a specific lift; system assigns on confirm.
     // Slot is available if AT LEAST ONE lift is free at that time.
@@ -206,24 +227,29 @@ export class BookingService {
       const min = minutes % 60;
       const startKyiv = `${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00.000${offset}`;
       const slotStart = new Date(startKyiv);
-      const slotEnd = new Date(slotStart.getTime() + totalMinutes * 60_000);
+      const slotStartMs = slotStart.getTime();
+      const slotEndMs = slotStartMs + totalMinutes * 60_000;
       const timeKey = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 
       // Skip times already booked via BookingRequest.
       if (bookedTimes.has(timeKey)) continue;
 
-      // Find any free lift for this time window.
+      // Find any free lift for this time window — O(1) bucket lookup + linear scan
+      // лише за слотами цього lift (не всіх 500). Числове порівняння (Ms) — без
+      // `new Date()` allocations усередині гарячого циклу.
       const freeLift = lifts.find(lift => {
-        return !busyCalendarSlots.some(
-          b =>
-            b.liftId === lift.id && new Date(b.startAt) < slotEnd && new Date(b.endAt) > slotStart,
-        );
+        const busy = busyByLift.get(lift.id);
+        if (!busy) return true;
+        for (const p of busy) {
+          if (p.startMs < slotEndMs && p.endMs > slotStartMs) return false;
+        }
+        return true;
       });
 
       if (freeLift) {
         timeSlots.set(timeKey, {
           startAt: slotStart.toISOString(),
-          endAt: slotEnd.toISOString(),
+          endAt: new Date(slotEndMs).toISOString(),
           liftId: freeLift.id,
           liftName: freeLift.name,
           available: true,

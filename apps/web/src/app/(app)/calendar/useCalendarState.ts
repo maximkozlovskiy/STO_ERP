@@ -406,27 +406,44 @@ export function useCalendarState() {
         // lifts state may not be populated yet on first load — read from the ref captured below.
         const currentLifts = liftsRef.current;
         const slotDurationMs = 60 * 60 * 1000; // 1h default slot
+
+        // sto-optimize: pre-bucket calSlots by liftId + pre-parse Date once.
+        // Раніше: O(bookings × lifts × calSlots) з `new Date()` allocation на кожній
+        // ітерації; для 10 booking × 5 lifts × 50 slots = 2500 allocations. Тепер:
+        // (1) Map<liftId, ParsedSlot[]> будуємо один раз → O(C) startup
+        // (2) Числове порівняння замість Date object construction.
+        const slotsByLiftLocal = new Map<string, { startMs: number; endMs: number }[]>();
+        for (const s of calSlots) {
+          if (!s.liftId) continue;
+          const parsed = {
+            startMs: new Date(s.startAt).getTime(),
+            endMs: new Date(s.endAt).getTime(),
+          };
+          const arr = slotsByLiftLocal.get(s.liftId);
+          if (arr) arr.push(parsed);
+          else slotsByLiftLocal.set(s.liftId, [parsed]);
+        }
+
         const assigned: BookingSlot[] = [];
         for (const b of bookingRes.items) {
-          const startAt = new Date(b.requestedDate);
-          const endAt = new Date(startAt.getTime() + slotDurationMs);
-          const freeLift = currentLifts.find(
-            lift =>
-              !calSlots.some(
-                s =>
-                  s.liftId === lift.id &&
-                  new Date(s.startAt) < endAt &&
-                  new Date(s.endAt) > startAt,
-              ),
-          );
+          const startMs = new Date(b.requestedDate).getTime();
+          const endMs = startMs + slotDurationMs;
+          const freeLift = currentLifts.find(lift => {
+            const busy = slotsByLiftLocal.get(lift.id);
+            if (!busy) return true;
+            for (const p of busy) {
+              if (p.startMs < endMs && p.endMs > startMs) return false;
+            }
+            return true;
+          });
           if (freeLift) {
             assigned.push({
               id: b.id,
               liftId: freeLift.id,
               clientName: b.clientName,
               clientPhone: b.clientPhone,
-              startAt: startAt.toISOString(),
-              endAt: endAt.toISOString(),
+              startAt: new Date(startMs).toISOString(),
+              endAt: new Date(endMs).toISOString(),
             });
           }
         }

@@ -21,6 +21,11 @@ import {
 } from './calendar.utils';
 import { PENDING_DRAG_ID, type CalendarState } from './useCalendarState';
 
+// Module-level stable refs — `useMemo<[]>(() => [], [])` всередині компонента
+// створює новий [] на КОЖНОМУ mount, але reference стабільна між render-ами.
+// Перенесення на module-level зберігає ту саму семантику + 0 alloc per mount.
+const EMPTY_BOOKINGS: BookingSlot[] = [];
+
 // ─── DraggableSlot ───────────────────────────────────────────────────────────
 
 interface DraggableSlotProps {
@@ -402,8 +407,6 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
     cancelPending,
     handlePendingResizeStart,
   } = state;
-
-  const EMPTY_BOOKINGS = useMemo<BookingSlot[]>(() => [], []);
 
   // Group booking slots by their assigned liftId
   const bookingsByLift = useMemo(() => {

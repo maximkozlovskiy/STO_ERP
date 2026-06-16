@@ -26,6 +26,10 @@ interface StockTotal {
   totalQuantity: number;
 }
 
+// sto-optimize: module-level stable refs — `new Map()` всередині `setStockMap(new Map())`
+// alloc-ився на кожному close-/no-results- виклику. Тепер shared empty ref.
+const EMPTY_STOCK_MAP: Map<string, number> = new Map();
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -38,7 +42,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryNode[]>([]);
   const [items, setItems] = useState<GoodPickerItem[]>([]);
-  const [stockMap, setStockMap] = useState<Map<string, number>>(new Map());
+  const [stockMap, setStockMap] = useState<Map<string, number>>(EMPTY_STOCK_MAP);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,10 +87,13 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
             const ids = collectDescendantIds(categories, catId);
             ids.forEach(id => params.append('goodCategoryIds', id));
           }
+          // /goods і /goods/stock-totals sequential — stock-totals потребує ids з
+          // response /goods. sto-optimize: shared EMPTY_STOCK_MAP замість `new Map()`
+          // на кожному 0-results call → стабільна reference (re-render skip downstream).
           apiFetch<{
             items: (Omit<GoodPickerItem, 'unitShortName'> & { unit?: string | null })[];
           }>(`/goods?${params}`)
-            .then(async r => {
+            .then(r => {
               if (reqId !== reqRef.current) return;
               const goods = (Array.isArray(r.items) ? r.items : []).map(g => ({
                 ...g,
@@ -106,7 +113,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                     /* non-critical — залишки не показуємо якщо помилка */
                   });
               } else {
-                setStockMap(new Map());
+                setStockMap(EMPTY_STOCK_MAP);
               }
             })
             .catch((e: unknown) => {
@@ -133,7 +140,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
       setQuery('');
       setSelectedCatId(null);
       setItems([]);
-      setStockMap(new Map());
+      setStockMap(EMPTY_STOCK_MAP);
       setError('');
       setLoading(false);
       return;
@@ -182,6 +189,10 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
               <div className="space-y-1">
                 {items.map(item => {
                   const selected = item.id === selectedId;
+                  // sto-optimize: підняти qty lookup з IIFE у тілі JSX — раніше
+                  // `(() => { const qty = stockMap.get(item.id) ?? 0; return <span>... })()`
+                  // створював нову arrow на кожен render для КОЖНОГО row.
+                  const qty = stockMap.get(item.id) ?? 0;
                   return (
                     <button
                       key={item.id}
@@ -207,14 +218,9 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                       <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
                         {item.sku && <span>{item.sku}</span>}
                         <span>{item.salePrice} ₴</span>
-                        {(() => {
-                          const qty = stockMap.get(item.id) ?? 0;
-                          return (
-                            <span className={qty > 0 ? 'text-success' : 'text-destructive-text'}>
-                              {qty > 0 ? `${qty} на складі` : 'немає на складі'}
-                            </span>
-                          );
-                        })()}
+                        <span className={qty > 0 ? 'text-success' : 'text-destructive-text'}>
+                          {qty > 0 ? `${qty} на складі` : 'немає на складі'}
+                        </span>
                       </div>
                     </button>
                   );
