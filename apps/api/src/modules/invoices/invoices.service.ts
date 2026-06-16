@@ -571,7 +571,7 @@ export class InvoicesService {
   ): Promise<{
     id: string;
     number: string;
-    status: string;
+    status: InvoiceStatus;
     amount: number;
     documentDate: string | null;
   } | null> {

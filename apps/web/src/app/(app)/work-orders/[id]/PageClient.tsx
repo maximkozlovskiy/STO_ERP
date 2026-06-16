@@ -25,7 +25,9 @@ import {
   WO_CATEGORY_LABELS,
   WO_EDITABLE_STATUSES,
   WO_INVOICEABLE_STATUSES,
+  INVOICE_STATUS_LABELS,
 } from '@sto/shared';
+import type { InvoiceStatus } from '@sto/shared';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
 import { WorkOrderLinesSection } from './WorkOrderLinesSection';
@@ -182,6 +184,16 @@ interface InspectionReport {
   autoCreatedLines?: number;
 }
 
+// Lightweight invoice reference for the work-order card. Mirrors
+// `findByWorkOrder()` in apps/api/src/modules/invoices/invoices.service.ts.
+interface InvoiceRef {
+  id: string;
+  number: string;
+  status: InvoiceStatus;
+  amount: number;
+  documentDate: string | null;
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 // Status labels imported from @sto/shared
@@ -243,17 +255,8 @@ export default function WorkOrderCardPage() {
   const [cancellingAct, setCancellingAct] = useState(false);
   const [downloadingActPdf, setDownloadingActPdf] = useState(false);
 
-  const [invoiceRef, setInvoiceRef] = useState<
-    | {
-        id: string;
-        number: string;
-        status: string;
-        amount: number;
-        documentDate: string | null;
-      }
-    | null
-    | undefined
-  >(undefined);
+  // undefined = not yet loaded; null = loaded but no invoice; InvoiceRef = present.
+  const [invoiceRef, setInvoiceRef] = useState<InvoiceRef | null | undefined>(undefined);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [refreshingInvoice, setRefreshingInvoice] = useState(false);
   const [downloadingInvoicePdf, setDownloadingInvoicePdf] = useState(false);
@@ -311,13 +314,7 @@ export default function WorkOrderCardPage() {
         },
       ),
       apiFetch<InspectionReport | null>(`/work-orders/${id}/inspection`).catch(() => null),
-      apiFetch<{
-        id: string;
-        number: string;
-        status: string;
-        amount: number;
-        documentDate: string | null;
-      } | null>(`/invoices/from-work-order/${id}/find`).catch(() => null),
+      apiFetch<InvoiceRef | null>(`/invoices/from-work-order/${id}/find`).catch(() => null),
     ]).then(([woResult, acts, inspectionData, invoiceData]) => {
       if (!mountedRef.current) return;
       setWoLoading(false);
@@ -411,21 +408,17 @@ export default function WorkOrderCardPage() {
     }
   };
 
-  type InvoiceRef = {
+  // Backend `createFromWorkOrder` / `refreshFromWorkOrder` return the full
+  // InvoiceResponseDto; we narrow it down to InvoiceRef for the card slot.
+  type InvoicePayload = {
     id: string;
     number: string;
-    status: string;
-    amount: number;
-    documentDate: string | null;
-  };
-
-  const toInvoiceRef = (inv: {
-    id: string;
-    number: string;
-    status: string;
+    status: InvoiceStatus;
     amount: number;
     documentDate?: string | null;
-  }): InvoiceRef => ({
+  };
+
+  const toInvoiceRef = (inv: InvoicePayload): InvoiceRef => ({
     id: inv.id,
     number: inv.number,
     status: inv.status,
@@ -436,13 +429,9 @@ export default function WorkOrderCardPage() {
   const createInvoice = async () => {
     setCreatingInvoice(true);
     try {
-      const inv = await apiFetch<{
-        id: string;
-        number: string;
-        status: string;
-        amount: number;
-        documentDate?: string | null;
-      }>(`/invoices/from-work-order/${id}`, { method: 'POST' });
+      const inv = await apiFetch<InvoicePayload>(`/invoices/from-work-order/${id}`, {
+        method: 'POST',
+      });
       setInvoiceRef(toInvoiceRef(inv));
       if (features.toastEnabled) toast.success(`Рахунок № ${inv.number} створено`);
     } catch (e: unknown) {
@@ -456,13 +445,9 @@ export default function WorkOrderCardPage() {
   const refreshInvoice = async () => {
     setRefreshingInvoice(true);
     try {
-      const inv = await apiFetch<{
-        id: string;
-        number: string;
-        status: string;
-        amount: number;
-        documentDate?: string | null;
-      }>(`/invoices/from-work-order/${id}/refresh`, { method: 'POST' });
+      const inv = await apiFetch<InvoicePayload>(`/invoices/from-work-order/${id}/refresh`, {
+        method: 'POST',
+      });
       setInvoiceRef(toInvoiceRef(inv));
       if (features.toastEnabled) toast.success('Рядки рахунку оновлено з наряду');
     } catch (e: unknown) {
@@ -473,16 +458,21 @@ export default function WorkOrderCardPage() {
     }
   };
 
-  const downloadInvoicePdf = async (invoiceId: string) => {
+  const downloadInvoicePdf = async (invoiceId: string, invoiceNumber: string) => {
     setDownloadingInvoicePdf(true);
     try {
       const blob = await apiBlobFetch(`/invoices/${invoiceId}/pdf`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `invoice-${invoiceId}.pdf`;
+      // Bug #77 + Bug #341 pattern: filename uses human-readable number;
+      // anchor must be in the DOM for Firefox to dispatch the download.
+      a.download = `invoice-${invoiceNumber}.pdf`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      // Defer revoke — Chromium can drop the download if revoke fires before the browser starts reading.
+      setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка завантаження PDF';
       if (features.toastEnabled) toast.error(msg);
@@ -1096,15 +1086,7 @@ export default function WorkOrderCardPage() {
                   invoiceRef.status === 'CANCELLED' && 'bg-destructive-subtle text-destructive',
                 )}
               >
-                {invoiceRef.status === 'DRAFT'
-                  ? 'Чернетка'
-                  : invoiceRef.status === 'SENT'
-                    ? 'Відправлено'
-                    : invoiceRef.status === 'PAID'
-                      ? 'Оплачено'
-                      : invoiceRef.status === 'OVERDUE'
-                        ? 'Прострочено'
-                        : 'Скасовано'}
+                {INVOICE_STATUS_LABELS[invoiceRef.status] ?? invoiceRef.status}
               </span>
               <p className="text-sm font-semibold text-foreground tabular-nums">
                 {fmtMoney(invoiceRef.amount)} ₴
@@ -1126,7 +1108,7 @@ export default function WorkOrderCardPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => void downloadInvoicePdf(invoiceRef.id)}
+                onClick={() => void downloadInvoicePdf(invoiceRef.id, invoiceRef.number)}
                 loading={downloadingInvoicePdf}
                 disabled={downloadingInvoicePdf}
               >
