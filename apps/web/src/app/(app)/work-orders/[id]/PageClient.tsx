@@ -183,10 +183,6 @@ interface InspectionReport {
   autoCreatedLines?: number;
 }
 
-// InvoiceRef type imported from `./InvoiceSection` to keep it co-located with
-// the only consumer (the invoice slot extracted у окремий компонент для component-test —
-// Bug #510).
-
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 // Status labels imported from @sto/shared

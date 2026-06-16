@@ -11,10 +11,15 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { INVOICE_STATUS_LABELS, WO_INVOICEABLE_STATUSES, type InvoiceStatus } from '@sto/shared';
+import {
+  INVOICE_STATUS_LABELS,
+  INVOICE_STATUS_BADGE,
+  WO_INVOICEABLE_STATUSES,
+  type InvoiceStatus,
+} from '@sto/shared';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { toast } from '@/lib/toast';
@@ -28,20 +33,13 @@ export interface InvoiceRef {
 }
 
 // Backend `createFromWorkOrder` / `refreshFromWorkOrder` повертають повний
-// InvoiceResponseDto; звужуємо до InvoiceRef для slot у картці.
-type InvoicePayload = {
-  id: string;
-  number: string;
-  status: InvoiceStatus;
-  amount: number;
-  documentDate?: string | null;
-};
+// InvoiceResponseDto; `documentDate` там може бути `undefined` (не в select) →
+// нормалізуємо до `null` для InvoiceRef. `amount` вже `number` — сервіс робить
+// Number() перед серіалізацією.
+type InvoiceApiShape = Omit<InvoiceRef, 'documentDate'> & { documentDate?: string | null };
 
-const toInvoiceRef = (inv: InvoicePayload): InvoiceRef => ({
-  id: inv.id,
-  number: inv.number,
-  status: inv.status,
-  amount: Number(inv.amount),
+const toInvoiceRef = (inv: InvoiceApiShape): InvoiceRef => ({
+  ...inv,
   documentDate: inv.documentDate ?? null,
 });
 
@@ -153,18 +151,9 @@ export function InvoiceSection({
       {invoiceRef ? (
         <div className="flex items-center gap-4 flex-wrap">
           <p className="text-sm font-medium text-foreground">Рахунок № {invoiceRef.number}</p>
-          <span
-            className={cn(
-              'text-xs font-medium px-2 py-0.5 rounded-full',
-              invoiceRef.status === 'PAID' && 'bg-success-subtle text-success',
-              invoiceRef.status === 'SENT' && 'bg-info-subtle text-info-text',
-              invoiceRef.status === 'DRAFT' && 'bg-secondary text-muted-foreground',
-              invoiceRef.status === 'OVERDUE' && 'bg-warning-subtle text-warning',
-              invoiceRef.status === 'CANCELLED' && 'bg-destructive-subtle text-destructive',
-            )}
-          >
+          <Badge variant={INVOICE_STATUS_BADGE[invoiceRef.status] ?? 'secondary'}>
             {INVOICE_STATUS_LABELS[invoiceRef.status] ?? invoiceRef.status}
-          </span>
+          </Badge>
           <p className="text-sm font-semibold text-foreground tabular-nums">
             {fmtMoney(invoiceRef.amount)} ₴
           </p>
