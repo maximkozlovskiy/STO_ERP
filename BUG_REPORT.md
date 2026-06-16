@@ -15432,3 +15432,140 @@ Backend service contract (`findByWorkOrder` typescript signature + docs/objects/
 **Статус:** [x] виправлено — InvoiceSection extracted в окремий компонент + component test з 6 кейсами (gating, empty state, DRAFT actions, PAID badge, status labels).
 
 ---
+
+## Session 2026-06-16 — Booking ↔ Calendar інтеграція (booking.service + useCalendarState + GoodPickerModal)
+
+Скоп: останні 7 комітів — booking.service.getAvailability(BranchSettings + bookedTimes Set), booking.controller findAll, CalendarDayGrid.BookingSlotBlock, useCalendarState (parallel /booking + /calendar/slots + liftsRef), GoodPickerModal (паралельний /goods/stock-totals), calendar.service workOrderStatus у select/toDto, status-pill shared component.
+
+Фокус ревʼю: edge-cases у getAvailability, DST-safe порівняння bookedTimes Set, race liftsRef у useCalendarState.load(), race goods↔stock-totals у GoodPickerModal, рендер BookingSlotBlock за межами HOURS, межі getAvailability (порожні ліфти, відсутній BranchSettings, вихідний день).
+
+---
+
+### Bug #511 — [CRITICAL] business logic / backend / booking — bookedTimes Set збирає UTC години замість Kyiv-локальних → блокування підтверджених бронювань не працює
+
+**Файл:** `apps/api/src/modules/booking/booking.service.ts:158-165`
+
+**Severity:** CRITICAL (DST-aware зміст; в літо 09:00 Kyiv = 06:00 UTC → bookedTimes має `06:00` а slot keys `09:00` → never matches → подвійне бронювання одного слоту через публічний widget).
+**Категорія:** time-zone semantics (SKILL §1.1 «DST-aware Kyiv timezone»).
+
+**Сигнал:** `grep -n "getUTCHours\|getUTCMinutes" apps/api/src/modules/booking/booking.service.ts` повертає рядки 161-162 де ключі формуються через `d.getUTCHours()` / `d.getUTCMinutes()`, а нижче (177-182) ключі slot-ів формуються з Kyiv-локальних годин (`hour = Math.floor(minutes / 60)` де `minutes` починається з `startLimitMinutes = startH * 60` що відповідає `BranchSettings.workStartTime` (Kyiv).
+
+**Очікувана поведінка:** Якщо клієнт уже підтвердив `BookingRequest` з `requestedDate = 2026-06-01T09:00:00+03:00`, виклик `GET /booking/availability?date=2026-06-01&branchId=...` НЕ повинен повертати слот 09:00 для цього branch. Захист працює для будь-якого сезону (DST вкл/викл).
+
+**Фактична поведінка:** У літо (DST +03:00) requestedDate=09:00+03:00 зберігається як 06:00Z → `getUTCHours()=6` → bookedTimes має '06:00'. Slot generation емітить ключ '09:00' для 09:00 Kyiv. `bookedTimes.has('09:00') === false` → слот не блокується → 2 клієнти можуть забронювати один і той же 09:00 через widget. У зиму (+02:00) зміщення на 2 години. Працює коректно лише коли Kyiv-offset == 0 (ніколи в реальному часі).
+
+**Корінь:** Pattern порушує «DST-aware Kyiv timezone» (`MEMORY.md` → `feedback_dst_kyiv.md`): забороняється використовувати `getUTCHours()` для порівняння з Kyiv-локальними значеннями. Треба формувати ключ через `Intl.DateTimeFormat` з `timeZone: 'Europe/Kyiv'`.
+
+**Фікс:** Module-level singleton `KYIV_HM_FMT = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit', hour12: false })` → `bookedTimes = new Set(bookedSlots.map(b => KYIV_HM_FMT.format(new Date(b.requestedDate))))`. en-GB локаль дає "HH:MM" (24-год, padded). Гарантовано Kyiv-local незалежно від DST.
+
+**Регресія-guard:** test у `booking.service.spec.ts` де `bookingRequest.findMany` повертає `[{ requestedDate: new Date('2026-06-01T06:00:00.000Z') }]` (= 09:00+03:00 літо) → `service.getAvailability(orgId, branchId, '2026-06-01')` НЕ повинен містити слот зі startAt що починається з `2026-06-01T06:00`.
+
+**Перевірка:** `pnpm --filter @sto/api test --run -- booking.service.spec` → green; повернення `getUTCHours()` → fail.
+
+**Статус:** [x] виправлено — bookedTimes Set тепер формує ключі через KYIV_HM_FMT (DST-aware Intl singleton).
+
+---
+
+### Bug #512 — [HIGH] frontend / web / calendar — useCalendarState.load() запускається ДО завершення /lifts fetch → bookingSlots порожній на першому рендері day-view
+
+**Файл:** `apps/web/src/app/(app)/calendar/useCalendarState.ts:243-261, 381-447`
+
+**Severity:** HIGH (видима фіча мовчки не працює — користувач відкриває календар і не бачить PENDING бронювань поки не перейде на інший день і назад).
+**Категорія:** race condition / state staleness (SKILL §1.3 frontend states).
+
+**Сигнал:** Два незалежні useEffect на mount: Effect A (243-261) fetch /lifts → setLifts + liftsRef.current = data; Effect B (445-447) викликає load() що паралельно fetch-ить /calendar/slots + /booking. У .then() load() читає `const currentLifts = liftsRef.current`. `load` useCallback має deps `[date]` — НЕ перевикликається коли lifts state оновлюється.
+
+**Очікувана поведінка:** На першому відкритті day-view коли є PENDING бронювання і є хоча б один lift — користувач має побачити зелену пунктирну плашку без F5/навігації.
+
+**Фактична поведінка:** Першим типово закінчується /calendar/slots або /booking бо без cache /lifts може мати ту ж latency але йде паралельно. Якщо Promise.all`[`...`]`.then() виконається ДО завершення /lifts, то `liftsRef.current === []` → `freeLift = undefined` для КОЖНОГО бронювання → `assigned = []` → `setBookingSlots([])`. Симптом плаваючий (залежить від network speed): з getCached('cache:lifts') пастка приховується, бо синхронний setLifts(cached) + liftsRef.current = cached виконується ДО кінця render-у. Але якщо cache порожній (cleared, new device, incognito) → race активний.
+
+**Корінь:** Класична пастка `useRef` для уникнення зайвих ре-рендерів стає stale-window коли ініціалізація async і ref читається у проміжному стані.
+
+**Фікс:** Додати `lifts.length` у deps useEffect що викликає load():
+
+```ts
+useEffect(() => {
+  if (calView === 'day') load();
+}, [load, calView, lifts.length]); // ← було [load, calView]
+```
+
+Коли `lifts.length` змінюється з 0 на N — load() перевикликається з вже заповненим liftsRef.
+
+**Регресія-guard:** unit test у `__tests__/useCalendarState.test.ts` що мокає /lifts ПОВЕРТАЄ Promise з затримкою більшою ніж /booking; expect: bookingSlots.length > 0 ПІСЛЯ обох resolve. Альтернативно — Playwright E2E кейс з incognito.
+
+**Перевірка:** ручний QA: clear localStorage → відкрити /calendar на день з PENDING booking → зелений блок видно одразу, без F5.
+
+**Статус:** [x] виправлено — додано lifts.length у deps useEffect що викликає load().
+
+---
+
+### Bug #513 — [MEDIUM] frontend / web / calendar — BookingSlotBlock не клампує позицію коли booking виходить за межі HOURS (08:00–20:00) → негативний left / переповнення timeline
+
+**Файл:** `apps/web/src/app/(app)/calendar/CalendarDayGrid.tsx:230-249`
+
+**Severity:** MEDIUM (UI corruption: блок рендериться за лівою/правою межею timeline; не падає JS, але користувач не бачить бронювання → пропускає його).
+**Категорія:** unclamped UI math (SKILL §1.3 frontend states).
+
+**Сигнал:** `HOURS[0] = 8`, `TOTAL_HOURS = 12`. Якщо `startH < 8` → `left = ((startH - 8) / 12) * 100 < 0` (наприклад 07:00 → `left = -8.33%`). Якщо `endH > 20` → `left + width > 100%`. CSS не клампує — блок просто рендериться поза visible area. Контракт public `POST /booking/request` не валідує `requestedDate` проти `BranchSettings.workStartTime/workEndTime` (див. Bug #514) → нерозумний/злий клієнт може надіслати `requestedDate=07:30 Kyiv`.
+
+**Очікувана поведінка:** Якщо `startH < HOURS[0]` АБО `endH > WINDOW_END` — або клампати до меж (із візуальним маркером), або скіпати render з показом у unassigned-list, або clip всередині timeline.
+
+**Фактична поведінка:** Блок рендериться з `left = -X%` → невидимий за лівою межею (overflow: hidden у parent). Користувач не побачить такий запис.
+
+**Корінь:** Свіжий feature `feat(calendar): show PENDING online bookings on day grid` (af93dfea) скопіював математику з DraggableSlot, який працює тільки з CalendarSlot створеними через `createSlot()` що clamp-ить до `kyivEndOfWorkDay` (back-end guard). BookingSlot приходить безпосередньо з BookingRequest.requestedDate без жодного clamp.
+
+**Фікс:** клампати позицію всередині BookingSlotBlock + скіпати рендер коли booking повністю за межами:
+
+```tsx
+const BookingSlotBlock = memo(function BookingSlotBlock({ slot }: { slot: BookingSlot }) {
+  const startH = kyivHours(slot.startAt);
+  const endH = kyivHours(slot.endAt);
+  const WINDOW_END_LOCAL = HOURS[HOURS.length - 1]! + 1; // 20
+  if (endH <= HOURS[0]! || startH >= WINDOW_END_LOCAL) return null;
+  const clampedStart = Math.max(startH, HOURS[0]!);
+  const clampedEnd = Math.min(endH, WINDOW_END_LOCAL);
+  const left = ((clampedStart - HOURS[0]!) / TOTAL_HOURS) * 100;
+  const width = ((clampedEnd - clampedStart) / TOTAL_HOURS) * 100;
+  // ... решта рендера без змін
+});
+```
+
+**Регресія-guard:** vitest test що рендерить BookingSlotBlock з `slot.startAt = '2026-06-01T04:00:00.000Z'` (07:00 Kyiv літо) → expected `container.firstChild` має style `left: 0%`, не `left: -8.33%`. І окремий test для slot повністю за межами → `container.firstChild === null`.
+
+**Перевірка:** unit test проходить; ручний QA: створити PENDING booking з `requestedDate=07:30 Kyiv` → /calendar → плашка не зникає за лівою межею.
+
+**Статус:** [x] виправлено — додано clamp + skip render у BookingSlotBlock.
+
+---
+
+### Bug #514 — [MEDIUM] business logic / backend / booking — POST /booking/request без server-side валідації working hours → можна створити booking з requestedDate поза BranchSettings.workStartTime/workEndTime/workDays
+
+**Файл:** `apps/api/src/modules/booking/booking.controller.ts:74-82`, `apps/api/src/modules/booking/booking.service.ts:209-263`
+
+**Severity:** MEDIUM (порушує business invariant; парне з Bug #513 UI рендер за межами; дозволяє ботам захламити PENDING лист бронюваннями на 03:00 неділі).
+**Категорія:** missing validation guard (SKILL §1.2 validation; §1.1 business rules).
+
+**Сигнал:** `grep -n "workStartTime\|workEndTime\|workDays" apps/api/src/modules/booking/booking.service.ts` — згадки лише у getAvailability (рядки 100-105), у create() жодних. Публічний endpoint `POST /booking/request` приймає `requestedDate: IsDateString` без додаткової валідації. Сервіс зберігає його як є.
+
+**Очікувана поведінка:** `requestedDate` має бути у вікні `[workStartTime, workEndTime)` Kyiv-local і ISO-weekday має бути у `workDays`. Інакше → `BadRequestException('Час поза робочими годинами')`.
+
+**Фактична поведінка:** Будь-який ISO timestamp проходить:
+
+```
+curl -X POST /booking/request -d '{"branchId":"...","clientName":"x","clientPhone":"+380501234567","requestedDate":"2026-06-07T03:00:00Z"}'
+→ 201 Created
+```
+
+Навіть якщо неділя і 03:00 поза робочим вікном. Defense-in-depth інваріант порушений: backend не може довіряти що frontend завжди читає availability перед submit.
+
+**Корінь:** `getAvailability()` правильно фільтрує по working hours, але `create()` довіряє клієнту.
+
+**Фікс:** У `create()` додати paralleled fetch `branchSettings` (workStartTime/workEndTime/workDays) → після перевірки branch+services → конвертувати `requestedDate` у Kyiv-local HH:MM + ISO weekday (1=Mon..7=Sun) через `Intl.DateTimeFormat`. Якщо weekday не у workDays → BadRequestException. Якщо HH:MM `<workStart` або `>=workEnd` → BadRequestException з повідомленням про дозволений діапазон.
+
+**Регресія-guard:** test у `booking.service.spec.ts` — `branchSettings.findUnique` повертає `{ workStartTime:'09:00', workEndTime:'18:00', workDays:[1,2,3,4,5] }`; `service.create(..., { requestedDate:'2026-06-07T03:00:00Z' })` → `rejects.toBeInstanceOf(BadRequestException)`; повторно з валідним 12:00 будня → ok.
+
+**Перевірка:** `pnpm --filter @sto/api test --run -- booking.service.spec` → green; ручний curl з поза-робочим часом → 400.
+
+**Статус:** [x] виправлено — create() тепер валідує requestedDate проти BranchSettings.workStartTime/workEndTime/workDays.
+
+---

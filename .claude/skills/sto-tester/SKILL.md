@@ -1016,6 +1016,105 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-16 — Set key з `getUTCHours()` для порівняння з Kyiv-локальними слотами (Bug #511) — backend / time-zone semantics
+
+**Сигнал:** `new Set(rows.map(r => { const d = new Date(r.dateField); const h = String(d.getUTCHours()).padStart(2, '0'); ... return \`${h}:${m}\`; }))`або взагалі будь-який ключ Map/Set що формується через`getUTC\*()`з`DateTime`поля. В тому ж файлі — інший масив ключів формується з Kyiv-локальних`BranchSettings.workStartTime/workEndTime`(або з UI часового пікера) як plain`HH:MM`рядки. Result: ключі НЕ перетинаються у будь-який сезон де`Europe/Kyiv`≠ UTC (тобто ВЕСЬ календарний рік: +02:00 зимою, +03:00 літом).`Set.has(...)`always returns false → security/business guard silently не спрацьовує. grep:`getUTCHours\|getUTCMinutes`у будь-якому файлі що згадує`BranchSettings\|workStartTime\|kyiv\|requestedDate\|slot` — кожен match підозрілий.
+
+**Причина виникнення:** розробник думав «зберігаємо як UTC у БД → отже усі похідні значення мають витягати UTC». Логіка правильна для самого instant comparison, АЛЕ ламається коли інша сторона (slot generation, BranchSettings working hours, UI пікер) живе у Kyiv-локальному наративному просторі ("робочі години 09:00–18:00" — це Kyiv-local, не UTC). Pattern особливо часто з'являється коли feature додається інкрементально (`bookedTimes` block — пізніше додавання до існуючого `getAvailability` що вже використовував Kyiv-локальні `startLimitMinutes` для slot generation).
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Знайти всі use sites getUTCHours/getUTCMinutes у backend services що працюють з BranchSettings
+grep -rn "getUTCHours\|getUTCMinutes" apps/api/src/modules --include="*.ts" | grep -v spec
+
+# 2) Для кожного match — перевірити чи в тому ж файлі формується parallel array of "HH:MM" ключів з НЕ-UTC джерела
+grep -B2 -A2 "getUTCHours" <file> | grep -E "workStart|workEnd|BranchSettings|slot.*minutes|kyiv"
+# Якщо так → bug.
+
+# 3) Альтернативний find — ЛЮБА конструкція HH:MM рядка через getUTC* у файлі що десь читає BranchSettings:
+grep -l "BranchSettings\|workStartTime" apps/api/src/modules --include="*.ts" -r | while read f; do
+  grep -l "getUTCHours\|getUTCMinutes" "$f"
+done
+
+# 4) Frontend mirror — використання `.toISOString().slice(11,16)` (= UTC HH:MM) для порівняння з фронтовим часовим піктером (Kyiv).
+grep -rn "toISOString().slice(11" apps/web/src --include="*.ts*" | grep -v test
+```
+
+**Підхід до фіксу:** Module-level `Intl.DateTimeFormat` singleton з explicit `timeZone: 'Europe/Kyiv'` + `hour12: false` + `hour/minute: '2-digit'`. Локаль `'en-GB'` дає padded "HH:MM" формат природно. Використовувати `.format(date)` замість manual `getUTC*` + padStart. Перевага: Intl.DateTimeFormat авто-обробляє DST переходи (включно з 03:00→04:00 моментом останньої неділі березня).
+
+**Регресія-guard:** обов'язковий unit-spec кейс з date що **переходить через UTC midnight у Kyiv** (наприклад `2026-06-01T22:30:00Z` → 01:30 Kyiv NEXT day). Без TZ-aware ключа цей кейс провалиться. Без цього specific кейсу — і без `getUTCHours` теж все працює (наївне поле здається працює для timestamp без TZ-крос-полуночного зсуву).
+
+**Severity:** CRITICAL коли guard блокує бронювання/payment/inventory. HIGH коли тільки UI display. MEDIUM коли log/analytics.
+
+**Де шукати ще:** будь-який модуль що порівнює `BookingRequest.requestedDate`, `CalendarSlot.startAt`, `WorkOrder.scheduledAt`, `Payment.paidAt`, `Invoice.documentDate`, `StockMovement.movedAt` з користувацько-введеними плановими часами; також **frontend**: `useCalendarState`, `CreateWorkOrderModal` form datetime fields, будь-який `<TimeInput>` що persistuє у UTC але порівнюється з Kyiv-локальним business window.
+
+---
+
+### 2026-06-16 — `useRef` для уникнення ре-рендерів стає stale коли його ініціалізація async (Bug #512) — frontend / race condition
+
+**Сигнал:** дві паралельні `useEffect` на mount: один fetch-ить дані A (`/lifts`) і пише у `useRef`, інший викликає `useCallback` що **читає той же ref** у своєму `.then()`. `useCallback` має deps `[date]` (НЕ `[lifts]` бо тоді була б подвійна fetch). Якщо B-callback резолвиться **до** того як A-fetch завершився → ref читає initial `[]` → derived state (`bookingSlots`) лишається порожнім назавжди (до зміни `date`). Тест проходить (моки повертають усе одразу — race не симулюється). Cache hit приховує баг у local dev (`getCached` синхронно заповнює ref до rendering effect).
+
+**Причина виникнення:** оптимізація proti re-renders — розробник свідомо обрав ref щоб уникнути перезапуску `load()` на кожну зміну `lifts`. Не врахував що **перший виклик** `load()` теж читає ref і він порожній. Pattern особливо коваурний бо у dev console показує `liftsRef.current` як заповнений (devtools читає current value AFTER all effects done).
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Знайти useRef що ініціалізується у async useEffect-і
+grep -rnE "useRef\(\[?\]?\)" apps/web/src --include="*.ts*" | grep -v test
+# Для кожного результату — подивитись де `Ref.current = X` стоїть у `.then()` async-у
+
+# 2) Для кожного знайденого ref — пошукати читання `Ref.current` у callback що НЕ депендиться на цьому ref
+grep -B3 -A10 "useRef" apps/web/src/<file>.ts | grep -E "useCallback|useEffect"
+# Деп масиви треба перевірити вручну: якщо `[date]` без `lifts.length` АЛЕ читає `liftsRef.current` → bug
+
+# 3) Frontend race test: переписати moc API щоб /lifts резолвилось останнім (delay).
+# expect: bookingSlots.length > 0 після обох resolve.
+```
+
+**Підхід до фіксу:** найдешевший — додати proxy-value `.length` у deps масив того callback що читає ref. `lifts.length` змінюється з 0 → N коли ref заповнено → callback перевикликається з вже-готовим ref. Альтернатива (дорожча) — об'єднати fetch у Promise.all([lifts, bookings]) і зберегти результат у єдиному effect. Trade-off: дублікат fetch (+1 round-trip на mount), але гарантована коректність.
+
+**Регресія-guard:** vitest test з `vi.fn().mockResolvedValueOnce(new Promise(r => setTimeout(() => r(<data>), 100)))` для повільного /lifts vs швидке /booking; expect derived state коректно після обох resolve. Альтернатива — Playwright з incognito context (no localStorage cache).
+
+**Severity:** HIGH коли feature видимо ламається (показ читaчu) перед користувачем. MEDIUM коли тільки приховані індикатори. LOW коли purely cosmetic.
+
+**Де шукати ще:** будь-який hook що поєднує `useRef([])` з async-init + `useCallback` deps без проксі-сигналу (`useChatState` для message threads, `useDashboardState` для KPI cards, `useTimelineState` для логи). Також паттерн виходить за межі ref-ів: будь-яка `useCallback([dateOnly])` що читає `someState` через closure → stale.
+
+---
+
+### 2026-06-16 — Unclamped UI math для нових feature-блоків копіюється з existing блоку але втрачає back-end guard (Bug #513) — frontend / UI overflow
+
+**Сигнал:** новий React component (наприклад `BookingSlotBlock`) копіює math (`left = ((startH - HOURS[0]) / TOTAL_HOURS) * 100`) з existing component (`DraggableSlot`). Existing працює тому що його дані створюються через service-метод що clamp-ить значення (`createSlot()` → `kyivEndOfWorkDay`). Новий компонент отримує дані з **іншого** джерела (`BookingRequest.requestedDate`) що НЕ проходить через той же clamp-guard. Result: `left < 0` або `width > 100%` → блок частково/повністю невидимий за межами parent box. `overflow: hidden` приховує проблему — JS не падає, але UI loss capability.
+
+**Причина виникнення:** copy-paste між схожими візуальними компонентами без re-audit передумов даних. Розробник побачив що math у `DraggableSlot` працює стабільно і скопіював, не помітивши що existing полагалась на server-side invariant який НЕ діє для нового джерела даних.
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Для КОЖНОГО нового компонента що рендерить positioning math — знайти existing з тією ж формулою
+grep -rn "((startH - HOURS\[0\])\|left = .* % \|kyivHours(slot" apps/web/src --include="*.tsx"
+
+# 2) Для кожного match — перевірити чи source даних має server-side clamp:
+# - CalendarSlot: createSlot() → kyivEndOfWorkDay ✓
+# - BookingRequest: ✗ (Bug #513 + #514)
+# - WorkOrder.scheduledAt: ? (audit)
+# - Invoice.documentDate: ? (audit)
+
+# 3) Прагматичний defensive guard — кожен такий компонент має skip-render умову для out-of-bounds:
+#    `if (endH <= MIN || startH >= MAX) return null;`
+#    і clamp: `Math.max(MIN, startH)`, `Math.min(MAX, endH)`.
+```
+
+**Підхід до фіксу:** двоступеневий — (1) defensive clamp у component (cheap, не вимагає back-end change); (2) парний back-end guard для джерела даних (server-side invariant — Bug #514 family).
+
+**Регресія-guard:** vitest test з out-of-bounds startH (`'2026-06-01T04:00:00.000Z'` = 07:00 Kyiv літо, HOURS[0]=8) → expected `container.firstChild` має `left: '0%'` або `null` (відповідно до policy).
+
+**Severity:** MEDIUM коли invisible block hides existing data але не блокує business logic. HIGH коли invisible block — це CTA яку користувач має натиснути.
+
+**Де шукати ще:** Gantt-style timelines, schedule grids, sparkline graphs, progress bars з `width %` обчислюваним з user input, charts axis labels, drag-and-drop position calc.
+
+---
+
 ### 2026-06-15 — Queue.add(name, data) shape не співпадає з processor `process(job)` interface (Bug #506) — backend / queue / contract drift
 
 **Сигнал:** `someQueue.add('job-name', { fieldA, fieldB, fieldC })` у service-A, але `@Processor('queue') WorkerHost.process(job)` у processor-B робить `const { fieldX, fieldY } = job.data` — **жодне поле не співпадає**. tsc green (queue payload типується як `any`/JSON у BullMQ — не валідується). Unit-spec service-A проходить (mock на queue.add асертить лише `attempts` у options, не shape data). Unit-spec processor-B проходить (тестується з власним коректним shape). Кінцевий runtime-результат: processor читає `undefined` для всіх потрібних полів → branch `if (provider === 'X')` false → fall through до `else { logger.warn(...) }` АБО fetch з `undefined` headers → **silent skip** замість throw → BullMQ НЕ retry → side-effect не відбувається → користувач бачить успіх (booking створено) але SMS не приходить.

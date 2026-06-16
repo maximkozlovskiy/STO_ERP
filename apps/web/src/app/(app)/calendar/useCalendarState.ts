@@ -442,9 +442,15 @@ export function useCalendarState() {
 
   // Skip day-view fetch when user is in stats/month view — saves N round-trips
   // on date changes that affect only the other view's data.
+  // Bug #512: `lifts.length` має бути у deps бо `load()` читає `liftsRef.current`
+  // у .then() для матчингу PENDING бронювань до вільного підйомника. Якщо /lifts
+  // повернувся ПІСЛЯ /booking + /calendar/slots (cold cache, slow network),
+  // `liftsRef.current === []` → `freeLift = undefined` для всіх бронювань →
+  // `bookingSlots` порожній до явної ре-навігації. Додавання `lifts.length` гарантує
+  // що ефект перевикличе load() коли lifts стейт вперше населений.
   useEffect(() => {
     if (calView === 'day') load();
-  }, [load, calView]);
+  }, [load, calView, lifts.length]);
 
   const prevDay = useCallback(() => {
     const d = new Date(date);

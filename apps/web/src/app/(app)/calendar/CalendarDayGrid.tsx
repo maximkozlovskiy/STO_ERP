@@ -230,8 +230,18 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
 const BookingSlotBlock = memo(function BookingSlotBlock({ slot }: { slot: BookingSlot }) {
   const startH = kyivHours(slot.startAt);
   const endH = kyivHours(slot.endAt);
-  const left = ((startH - HOURS[0]!) / TOTAL_HOURS) * 100;
-  const width = ((endH - startH) / TOTAL_HOURS) * 100;
+  // Bug #513: clamp до меж timeline. POST /booking/request раніше не валідував
+  // requestedDate проти BranchSettings.workStartTime/workEndTime → у PENDING могли
+  // потрапити бронювання з startH < HOURS[0] (наприклад 07:00 Kyiv) → left=-X% →
+  // блок невидимий за лівою межею. Після Bug #514 фіксу таких бронювань створювати
+  // не можна, але існуючі legacy-записи + майбутні зміни BranchSettings
+  // (звуження робочих годин) → defensive clamp.
+  const WINDOW_END_LOCAL = HOURS[HOURS.length - 1]! + 1; // 20:00
+  if (endH <= HOURS[0]! || startH >= WINDOW_END_LOCAL) return null;
+  const clampedStart = Math.max(startH, HOURS[0]!);
+  const clampedEnd = Math.min(endH, WINDOW_END_LOCAL);
+  const left = ((clampedStart - HOURS[0]!) / TOTAL_HOURS) * 100;
+  const width = ((clampedEnd - clampedStart) / TOTAL_HOURS) * 100;
   const timeLabel = `${fmtTime(slot.startAt)}–${fmtTime(slot.endAt)}`;
 
   return (

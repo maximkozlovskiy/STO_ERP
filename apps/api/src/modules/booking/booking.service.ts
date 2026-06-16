@@ -12,6 +12,35 @@ import {
 // per call. Booking create runs on every public widget submit → hoist.
 const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA');
 
+// Bug #511: DST-safe formatter to produce Kyiv-local "HH:MM" key from any Date.
+// Previously bookedTimes used `getUTCHours()` — у літо 09:00 Kyiv (06:00Z) давав ключ
+// '06:00' замість '09:00' → блокування підтверджених бронювань ніколи не спрацьовувало
+// (slot keys будуються з BranchSettings.workStartTime у Kyiv-локальному часі).
+// en-GB локаль гарантовано emits "HH:MM" 24-годинний padded формат.
+const KYIV_HM_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Kyiv',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+// Bug #514: ISO weekday у Kyiv TZ (1=Mon..7=Sun) — для перевірки workDays при create().
+// 'en-GB' з weekday: 'short' дає "Mon"/"Tue"/.../"Sun".
+const KYIV_WEEKDAY_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Kyiv',
+  weekday: 'short',
+});
+
+const WEEKDAY_TO_ISO: Record<string, number> = {
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+  Sun: 7,
+};
+
 @Injectable()
 export class BookingService {
   private readonly logger = new Logger(BookingService.name);
@@ -155,13 +184,12 @@ export class BookingService {
 
     // Build set of times already taken by confirmed booking requests (HH:MM strings).
     // BookingRequest doesn't track liftId — block all lifts for that time.
+    // Bug #511: ключ ОБОВ'ЯЗКОВО Kyiv-local (DST-aware). Раніше `getUTCHours()` давав
+    // зміщений ключ ('06:00' замість '09:00' у літо) → blocking ніколи не спрацьовував.
+    // Slot generation нижче формує `timeKey` з Kyiv-локальних `startLimitMinutes`
+    // (на основі `BranchSettings.workStartTime`), тому ключі повинні бути в одній TZ.
     const bookedTimes = new Set(
-      bookedSlots.map(b => {
-        const d = new Date(b.requestedDate);
-        const h = String(d.getUTCHours()).padStart(2, '0');
-        const m = String(d.getUTCMinutes()).padStart(2, '0');
-        return `${h}:${m}`;
-      }),
+      bookedSlots.map(b => KYIV_HM_FMT.format(new Date(b.requestedDate))),
     );
 
     // Generate unique time slots across all lifts.
@@ -211,7 +239,11 @@ export class BookingService {
     // public endpoint /booking/request can store work-IDs з ЧУЖОЇ org (Postgres
     // text[] не FK, Prisma не валідує) → cross-tenant linkage у заявці. Parallel
     // з branch-guard бо обидва незалежні (різні таблиці).
-    const [branch, serviceCount] = await Promise.all([
+    // Bug #514: додано BranchSettings fetch у Promise.all — для server-side
+    // валідації working hours (workStartTime/workEndTime/workDays). Захист
+    // defense-in-depth: backend не може довіряти, що public widget завжди
+    // викликав /availability перед submit (curl-обхід, modified клієнт).
+    const [branch, serviceCount, branchSettings] = await Promise.all([
       // sto-optimize: only branch.name used for SMS template — narrow projection.
       this.prisma.garageBranch.findFirst({
         where: { id: dto.branchId, orgId, deletedAt: null },
@@ -222,10 +254,35 @@ export class BookingService {
             where: { id: { in: dto.serviceIds }, orgId, deletedAt: null },
           })
         : Promise.resolve(0),
+      this.prisma.branchSettings.findUnique({
+        where: { branchId: dto.branchId },
+        select: { workStartTime: true, workEndTime: true, workDays: true },
+      }),
     ]);
     if (!branch) throw new NotFoundException('Філію не знайдено');
     if (dto.serviceIds?.length && serviceCount !== dto.serviceIds.length) {
       throw new BadRequestException('Деякі послуги не знайдено');
+    }
+
+    // Bug #514: Server-side guard для working hours. У Kyiv-локальній TZ.
+    const requestedAt = new Date(dto.requestedDate);
+    if (Number.isNaN(requestedAt.getTime())) {
+      throw new BadRequestException('Невірний формат дати');
+    }
+    const workStart = branchSettings?.workStartTime ?? '09:00';
+    const workEnd = branchSettings?.workEndTime ?? '18:00';
+    const workDaysRaw = branchSettings?.workDays;
+    const workDays: number[] = Array.isArray(workDaysRaw)
+      ? (workDaysRaw as number[])
+      : [1, 2, 3, 4, 5];
+    const weekdayShort = KYIV_WEEKDAY_FMT.format(requestedAt);
+    const isoWeekday = WEEKDAY_TO_ISO[weekdayShort] ?? 0;
+    if (!workDays.includes(isoWeekday)) {
+      throw new BadRequestException('Запит на неробочий день');
+    }
+    const requestedHHMM = KYIV_HM_FMT.format(requestedAt);
+    if (requestedHHMM < workStart || requestedHHMM >= workEnd) {
+      throw new BadRequestException(`Час поза робочими годинами (${workStart}–${workEnd})`);
     }
 
     const req = await this.prisma.bookingRequest.create({

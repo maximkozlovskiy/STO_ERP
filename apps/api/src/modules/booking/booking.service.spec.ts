@@ -44,8 +44,12 @@ describe('BookingService', () => {
         updateMany: vi.fn(),
         update: vi.fn(),
         findFirstOrThrow: vi.fn(),
+        findMany: vi.fn(),
       },
-      work: { count: vi.fn() },
+      work: { count: vi.fn(), findMany: vi.fn() },
+      branchSettings: { findUnique: vi.fn() },
+      lift: { findMany: vi.fn() },
+      calendarSlot: { findMany: vi.fn() },
     };
     notifications = { send: vi.fn().mockResolvedValue(undefined) };
     const module = await Test.createTestingModule({
@@ -59,22 +63,35 @@ describe('BookingService', () => {
   });
 
   describe('create', () => {
+    // Bug #514: requestedDate має потрапляти у робоче вікно (09:00..18:00 Kyiv,
+    // workDays default [1..5]). 2026-06-01 — понеділок; 12:00+03:00 (літо DST)
+    // зберігається як 09:00Z → 12:00 Kyiv. Дефолтний BranchSettings = workStart 09:00,
+    // workEnd 18:00, workDays [1..5] — 12:00 потрапляє у вікно.
     const validDto = {
       branchId,
       clientName: 'Іван Тестовий',
       clientPhone: '+380501234567',
-      requestedDate: '2026-06-01',
+      requestedDate: '2026-06-01T12:00:00+03:00',
     };
+
+    // Helper — mock branchSettings.findUnique з дефолтними робочими годинами.
+    const mockDefaultWorkingHours = () =>
+      prisma.branchSettings.findUnique.mockResolvedValueOnce({
+        workStartTime: '09:00',
+        workEndTime: '18:00',
+        workDays: [1, 2, 3, 4, 5],
+      });
 
     it('Bug #506: happy path — booking створюється + notifications.send викликано з правильним event+payload', async () => {
       prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
       prisma.work.count.mockResolvedValueOnce(0);
+      mockDefaultWorkingHours();
       prisma.bookingRequest.create.mockResolvedValueOnce({
         id: bookingId,
         status: 'PENDING',
         clientName: validDto.clientName,
         clientPhone: validDto.clientPhone,
-        requestedDate: new Date('2026-06-01'),
+        requestedDate: new Date(validDto.requestedDate),
         branchId,
         notes: null,
         createdAt: new Date(),
@@ -111,12 +128,13 @@ describe('BookingService', () => {
     it('Bug #506: notifications.send падає → booking не блокується (.catch warn)', async () => {
       prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
       prisma.work.count.mockResolvedValueOnce(0);
+      mockDefaultWorkingHours();
       prisma.bookingRequest.create.mockResolvedValueOnce({
         id: bookingId,
         status: 'PENDING',
         clientName: validDto.clientName,
         clientPhone: validDto.clientPhone,
-        requestedDate: new Date('2026-06-01'),
+        requestedDate: new Date(validDto.requestedDate),
         branchId,
         notes: null,
         createdAt: new Date(),
@@ -134,6 +152,7 @@ describe('BookingService', () => {
       prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
       // Запитали 2 UUID, в org існує лише 1 — означає що один з чужої org.
       prisma.work.count.mockResolvedValueOnce(1);
+      mockDefaultWorkingHours();
 
       await expect(
         service.create(orgId, {
@@ -159,11 +178,147 @@ describe('BookingService', () => {
     it('branch не знайдено (cross-tenant or soft-deleted) → NotFoundException', async () => {
       prisma.garageBranch.findFirst.mockResolvedValueOnce(null);
       prisma.work.count.mockResolvedValueOnce(0);
+      mockDefaultWorkingHours();
 
       await expect(service.create(orgId, validDto)).rejects.toBeInstanceOf(NotFoundException);
 
       expect(prisma.bookingRequest.create).not.toHaveBeenCalled();
       expect(notifications.send).not.toHaveBeenCalled();
+    });
+
+    // Bug #514: server-side guard для working hours.
+    it('Bug #514: requestedDate у неробочий день (неділя) → BadRequestException; booking НЕ створюється', async () => {
+      prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
+      prisma.work.count.mockResolvedValueOnce(0);
+      mockDefaultWorkingHours();
+
+      // 2026-06-07 — неділя; workDays default [1..5] не включає 7.
+      await expect(
+        service.create(orgId, { ...validDto, requestedDate: '2026-06-07T12:00:00+03:00' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(prisma.bookingRequest.create).not.toHaveBeenCalled();
+      expect(notifications.send).not.toHaveBeenCalled();
+    });
+
+    it('Bug #514: requestedDate до workStartTime → BadRequestException', async () => {
+      prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
+      prisma.work.count.mockResolvedValueOnce(0);
+      mockDefaultWorkingHours();
+
+      // 06:00+03:00 = 06:00 Kyiv — поза [09:00, 18:00)
+      await expect(
+        service.create(orgId, { ...validDto, requestedDate: '2026-06-01T06:00:00+03:00' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(prisma.bookingRequest.create).not.toHaveBeenCalled();
+    });
+
+    it('Bug #514: requestedDate після workEndTime → BadRequestException', async () => {
+      prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
+      prisma.work.count.mockResolvedValueOnce(0);
+      mockDefaultWorkingHours();
+
+      // 19:00 Kyiv — поза [09:00, 18:00)
+      await expect(
+        service.create(orgId, { ...validDto, requestedDate: '2026-06-01T19:00:00+03:00' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(prisma.bookingRequest.create).not.toHaveBeenCalled();
+    });
+
+    it('Bug #514: fallback workDays [1..5] коли BranchSettings.workDays=null', async () => {
+      prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
+      prisma.work.count.mockResolvedValueOnce(0);
+      // No BranchSettings row — Mon-Fri default treated as working.
+      prisma.branchSettings.findUnique.mockResolvedValueOnce(null);
+
+      prisma.bookingRequest.create.mockResolvedValueOnce({
+        id: bookingId,
+        status: 'PENDING',
+        clientName: validDto.clientName,
+        clientPhone: validDto.clientPhone,
+        requestedDate: new Date(validDto.requestedDate),
+        branchId,
+        notes: null,
+        createdAt: new Date(),
+      });
+
+      // Monday 12:00 Kyiv — within default 09:00-18:00 + Mon-Fri.
+      await expect(service.create(orgId, validDto)).resolves.toBeDefined();
+    });
+  });
+
+  // Bug #511: DST-safe bookedTimes — слот блокується по Kyiv-локальному ключу, не UTC.
+  describe('getAvailability — Bug #511', () => {
+    it('блокує підтверджене бронювання на 09:00 Kyiv (= 06:00Z у літо) — ключ Kyiv-local', async () => {
+      prisma.lift.findMany.mockResolvedValueOnce([{ id: 'lift-1', name: 'Підйомник 1' }]);
+      prisma.calendarSlot.findMany.mockResolvedValueOnce([]);
+      prisma.branchSettings.findUnique.mockResolvedValueOnce({
+        workStartTime: '09:00',
+        workEndTime: '18:00',
+        slotDurationMinutes: 30,
+        workDays: [1, 2, 3, 4, 5],
+      });
+      // CONFIRMED booking на 2026-06-01 09:00 Kyiv (= 06:00Z в літній DST)
+      prisma.bookingRequest.findMany.mockResolvedValueOnce([
+        { requestedDate: new Date('2026-06-01T06:00:00.000Z') },
+      ]);
+      prisma.work.findMany.mockResolvedValueOnce([]);
+
+      const slots = await service.getAvailability(orgId, branchId, '2026-06-01');
+
+      // Слоти не мають включати 09:00 (08:00Z після фіксу не існує бо це поза workStartTime;
+      // 09:00 Kyiv = 06:00Z і саме він заблокований).
+      const blockedSlot = slots.find(s => s.startAt.startsWith('2026-06-01T06:00'));
+      expect(blockedSlot).toBeUndefined();
+    });
+
+    it('повертає [] для вихідного дня (workDays не включає неділю)', async () => {
+      prisma.lift.findMany.mockResolvedValueOnce([{ id: 'lift-1', name: 'Підйомник 1' }]);
+      prisma.calendarSlot.findMany.mockResolvedValueOnce([]);
+      prisma.branchSettings.findUnique.mockResolvedValueOnce({
+        workStartTime: '09:00',
+        workEndTime: '18:00',
+        slotDurationMinutes: 30,
+        workDays: [1, 2, 3, 4, 5],
+      });
+      prisma.bookingRequest.findMany.mockResolvedValueOnce([]);
+      prisma.work.findMany.mockResolvedValueOnce([]);
+
+      // 2026-06-07 — неділя
+      const slots = await service.getAvailability(orgId, branchId, '2026-06-07');
+      expect(slots).toEqual([]);
+    });
+
+    it('повертає [] якщо немає ліфтів (порожня філія)', async () => {
+      prisma.lift.findMany.mockResolvedValueOnce([]);
+      prisma.calendarSlot.findMany.mockResolvedValueOnce([]);
+      prisma.branchSettings.findUnique.mockResolvedValueOnce({
+        workStartTime: '09:00',
+        workEndTime: '18:00',
+        slotDurationMinutes: 30,
+        workDays: [1, 2, 3, 4, 5],
+      });
+      prisma.bookingRequest.findMany.mockResolvedValueOnce([]);
+      prisma.work.findMany.mockResolvedValueOnce([]);
+
+      const slots = await service.getAvailability(orgId, branchId, '2026-06-01');
+      expect(slots).toEqual([]);
+    });
+
+    it('використовує дефолти 09:00-18:00 + Mon-Fri коли BranchSettings відсутній', async () => {
+      prisma.lift.findMany.mockResolvedValueOnce([{ id: 'lift-1', name: 'Підйомник 1' }]);
+      prisma.calendarSlot.findMany.mockResolvedValueOnce([]);
+      prisma.branchSettings.findUnique.mockResolvedValueOnce(null);
+      prisma.bookingRequest.findMany.mockResolvedValueOnce([]);
+      prisma.work.findMany.mockResolvedValueOnce([]);
+
+      // 2026-06-01 — понеділок
+      const slots = await service.getAvailability(orgId, branchId, '2026-06-01');
+      expect(slots.length).toBeGreaterThan(0);
+      // Перший слот має бути 09:00 Kyiv (= 06:00Z літо)
+      expect(slots[0]!.startAt).toBe('2026-06-01T06:00:00.000Z');
     });
   });
 
