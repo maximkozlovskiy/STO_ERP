@@ -16,8 +16,8 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 Останній optimize: 2026-06-16 — bucket busy slots by liftId у getAvailability + load()
 Останній tester: 2026-06-16 — Bug #511-#514 — booking DST + race + clamp + workhours guard
-Останній review: 2026-06-16 — invoice section review + simplify cycle
-Останній sync:   2026-06-16 — Booking+Calendar+StockTotals — 0 розбіжностей
+Останній review: 2026-06-16 (AUTO, HEAD a0301b36) — calendar split + pxToHours + parseHour(00:00)
+Останній sync:   2026-06-16 — BranchSettings/WorkHours+CalendarSlot+BookingRequest+Warehouse/Branch/Zone+GoodPickerModal — 0 розбіжностей
 ```
 
 ---
@@ -25,15 +25,16 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+a0301b36  fix(review): align calendar split with backend + fix pxToHours static TOTAL_HOURS
+          SPLIT_DAY_START_H/END_H constants у CalendarSlotModal для overflow detection
+          (matches backend calendar.service.ts WORK_DAY_START_H=8/END_H=20); resize
+          deltaH тепер dynTotalHoursRef замість pxToHours(static 12); parseHour 00:00 fix.
+46b64596  feat(calendar): dynamic work hours from BranchSettings
+          GET /settings/work-hours endpoint; useCalendarState reads workStartHour/workEndHour;
+          CalendarDayGrid/Modal/StatsTab receive windows as props.
+831c7d36  fix(infra): Cache-Control no-cache on branches/zones/warehouses GET
 50cd6434  perf(optimize): bucket busy slots by liftId in availability + booking assign
-          O(T×L×B) → O(T×L×avg(B/L)) + 0 Date allocs у hot-path; GoodPickerModal
-          EMPTY_STOCK_MAP module-level + qty IIFE lifted з .map() rows
 f337e4e9  revert(api): use nest tsc builder instead of swc for dev
-19657510  fix(api): remove paths alias — SWC emits literal relative path on Windows
-0e2d4f15  fix(api): add baseUrl '.' for SWC Windows UNC path canonicalization
-8f79d17f  chore(api): install @swc/cli @swc/core
-63a951e4  fix(review): invoice section visible for PAID/ARCHIVED + OVERDUE + InvoicePayload
-eed8b809  fix(tester): Bug #508-#510 — sync invoice section specs
 ```
 
 Latest tester: 2026-06-16 (AUTO) — Bug #508-510 — invoice section test coverage
