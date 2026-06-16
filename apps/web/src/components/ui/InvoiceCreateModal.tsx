@@ -22,6 +22,7 @@ import { displayCounterpartyName, cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
 import {
   INVOICE_STATUS_LABELS,
+  INVOICE_STATUS_DESCRIPTIONS,
   INVOICE_STATUS_TRANSITIONS,
   INVOICE_TYPE_LABELS,
 } from '@sto/shared';
@@ -89,14 +90,6 @@ const STATUS_COLORS: Record<string, string> = {
   PAID: 'bg-success-subtle text-success',
   OVERDUE: 'bg-warning-subtle text-warning-text',
   CANCELLED: 'bg-destructive-subtle text-destructive',
-};
-
-const STATUS_DESCRIPTIONS: Record<string, string> = {
-  DRAFT: 'Чернетка — рахунок підготовлено, ще не надіслано',
-  SENT: 'Надіслано — рахунок передано клієнту, очікується оплата',
-  PAID: 'Оплачено — оплата отримана',
-  OVERDUE: 'Прострочено — термін оплати минув',
-  CANCELLED: 'Скасовано — рахунок скасовано',
 };
 
 const TRANSITION_LABELS: Record<string, string> = {
@@ -668,7 +661,7 @@ export function InvoiceCreateModal({
                         type="button"
                         disabled={transitioning || !isEditMode}
                         onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
-                        title={STATUS_DESCRIPTIONS[currentStatus]}
+                        title={INVOICE_STATUS_DESCRIPTIONS[currentStatus]}
                         className={cn(
                           'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
                           STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',

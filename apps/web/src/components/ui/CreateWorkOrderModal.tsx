@@ -30,6 +30,7 @@ import { kyivToday, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/for
 import { cn, displayCounterpartyName, toIdMap, calcVatTotals } from '@/lib/utils';
 import {
   WO_STATUS_LABELS,
+  WO_STATUS_DESCRIPTIONS,
   WO_STATUS_TRANSITIONS,
   WO_PRIORITY_LABELS,
   WO_CATEGORY_LABELS,
@@ -49,19 +50,6 @@ import { WorkPickerModal, type WorkPickerItem } from '@/components/ui/WorkPicker
 import { GoodPickerModal, type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 import { Tooltip } from '@/components/ui/tooltip';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
-
-const WO_STATUS_DESCRIPTIONS: Record<string, string> = {
-  DRAFT: 'Чернетка — наряд створено, ще не передано клієнту для погодження',
-  ESTIMATE: 'Кошторис — підготовлено перелік робіт і запчастин, очікує затвердження',
-  APPROVED: 'Затверджено — клієнт погодив, готово до початку робіт',
-  IN_PROGRESS: 'В роботі — механік виконує ремонт',
-  ON_HOLD: 'Призупинено — роботи тимчасово зупинені (очікування запчастин тощо)',
-  COMPLETED: 'Виконано — всі роботи завершено, можна виставляти рахунок',
-  INVOICED: 'Виставлено рахунок — рахунок передано клієнту, очікується оплата',
-  PAID: 'Оплачено — клієнт оплатив, можна архівувати',
-  ARCHIVED: 'Архів — закрито і перенесено в архів',
-  CANCELLED: 'Скасовано — наряд скасовано',
-};
 
 interface Branch {
   id: string;

@@ -29,6 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   WO_STATUS_LABELS,
   WO_STATUS_BADGE,
+  WO_STATUS_DESCRIPTIONS,
   WO_PRIORITY_LABELS,
   WO_PRIORITY_BADGE,
   WO_CATEGORY_LABELS,
@@ -96,18 +97,7 @@ interface WOFilters extends Record<string, unknown> {
 const STATUS_LABELS = WO_STATUS_LABELS;
 const STATUS_BADGE = WO_STATUS_BADGE;
 
-const STATUS_DESCRIPTIONS: Record<string, string> = {
-  DRAFT: 'Чернетка — наряд створено, ще не передано клієнту для погодження',
-  ESTIMATE: 'Кошторис — підготовлено перелік робіт і запчастин, очікує затвердження',
-  APPROVED: 'Затверджено — клієнт погодив, готово до початку робіт',
-  IN_PROGRESS: 'В роботі — механік виконує ремонт',
-  ON_HOLD: 'Призупинено — роботи тимчасово зупинені (очікування запчастин тощо)',
-  COMPLETED: 'Виконано — всі роботи завершено, можна виставляти рахунок',
-  INVOICED: 'Виставлено рахунок — рахунок передано клієнту, очікується оплата',
-  PAID: 'Оплачено — клієнт оплатив, можна архівувати',
-  ARCHIVED: 'Архів — закрито і перенесено в архів',
-  CANCELLED: 'Скасовано — наряд скасовано',
-};
+const STATUS_DESCRIPTIONS = WO_STATUS_DESCRIPTIONS;
 const PRIORITY_LABELS = WO_PRIORITY_LABELS;
 const PRIORITY_BADGE = WO_PRIORITY_BADGE;
 const CATEGORY_LABELS = WO_CATEGORY_LABELS;

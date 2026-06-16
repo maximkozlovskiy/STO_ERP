@@ -42,6 +42,19 @@ export const WO_STATUS_BADGE: Record<string, BadgeVariant> = {
   CANCELLED: 'destructive',
 };
 
+export const WO_STATUS_DESCRIPTIONS: Record<string, string> = {
+  DRAFT: 'Чернетка — наряд створено, ще не передано клієнту для погодження',
+  ESTIMATE: 'Кошторис — підготовлено перелік робіт і запчастин, очікує затвердження',
+  APPROVED: 'Затверджено — клієнт погодив, готово до початку робіт',
+  IN_PROGRESS: 'В роботі — механік виконує ремонт',
+  ON_HOLD: 'Призупинено — роботи тимчасово зупинені (очікування запчастин тощо)',
+  COMPLETED: 'Виконано — всі роботи завершено, можна виставляти рахунок',
+  INVOICED: 'Виставлено — рахунок передано клієнту, очікується оплата',
+  PAID: 'Оплачено — клієнт оплатив, можна архівувати',
+  ARCHIVED: 'Архів — закрито і перенесено в архів',
+  CANCELLED: 'Скасовано — наряд скасовано',
+};
+
 // Status sets for business-rule gates. Must mirror backend work-orders.fsm.ts constants.
 // Frontend reads these instead of hardcoding inline status arrays.
 export const WO_EDITABLE_STATUSES: readonly string[] = Object.freeze([
@@ -225,9 +238,9 @@ export const STOCK_DOC_STATUS_DESCRIPTIONS: Record<string, string> = {
 };
 
 export const STOCK_DOC_TYPE_DESCRIPTIONS: Record<string, string> = {
-  RECEIPT: 'Оприбуткування — отримання товарів від постачальника',
-  WRITEOFF: 'Списання — вилучення товарів з обліку (брак, втрата тощо)',
   TRANSFER: 'Переміщення — передача товарів між складами',
+  WRITEOFF: 'Списання — вилучення товарів з обліку (брак, втрата тощо)',
+  RECEIPT: 'Оприбуткування — отримання товарів від постачальника',
   OPENING_BALANCE: 'Початкові залишки — введення залишків при старті обліку',
 };
 
