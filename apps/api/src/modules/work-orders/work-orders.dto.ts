@@ -291,6 +291,7 @@ export class WorkOrderResponseDto {
   @ApiPropertyOptional() completedAt?: Date | null;
   @ApiProperty() clientApproval!: boolean;
   @ApiProperty() totalLabor!: number;
+  @ApiProperty() totalActualLabor!: number;
   @ApiProperty() totalParts!: number;
   @ApiProperty() totalAmount!: number;
   @ApiProperty() paidAmount!: number;

@@ -1001,9 +1001,10 @@ model WorkOrder {
   completedAt    DateTime?
   warrantyUntil  DateTime?
   clientApproval Boolean           @default(false)
-  totalLabor     Decimal           @default(0) @db.Decimal(12, 2)
-  totalParts     Decimal           @default(0) @db.Decimal(12, 2)
-  totalAmount    Decimal           @default(0) @db.Decimal(12, 2)
+  totalLabor       Decimal           @default(0) @db.Decimal(12, 2)
+  totalActualLabor Decimal           @default(0) @db.Decimal(12, 2)
+  totalParts       Decimal           @default(0) @db.Decimal(12, 2)
+  totalAmount      Decimal           @default(0) @db.Decimal(12, 2)
   paidAmount     Decimal           @default(0) @db.Decimal(12, 2)
   documentDate   DateTime          @default(now()) @db.Date
   shareToken     String?           @unique

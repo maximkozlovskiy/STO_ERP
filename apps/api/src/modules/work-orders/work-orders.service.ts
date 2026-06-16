@@ -577,6 +577,7 @@ export class WorkOrdersService {
         // ще не існують (симетрично з actualHours: null у lines.create нижче).
         plannedHours: original.plannedHours,
         totalLabor,
+        totalActualLabor: totalLabor,
         totalParts,
         totalAmount: totalLabor + totalParts,
         lines: {
@@ -1283,25 +1284,33 @@ export class WorkOrdersService {
     tx: Prisma.TransactionClient,
     orgId: string,
   ): Promise<void> {
-    // SQL-aggregation via Prisma `aggregate({_sum})` — раніше findMany take:1000 двох колекцій
-    // тягнув до 2000 рядків з amount у Node, потім reduce. Тепер SUM рахується у Postgres,
-    // повертається 2 числа. Index (orgId, workOrderId, deletedAt) на обох таблицях покриває
-    // WHERE — index-only scan або bitmap scan без читання heap для непотрібних колонок.
-    const [linesAgg, partsAgg] = await Promise.all([
-      tx.workOrderLine.aggregate({
+    const [lines, partsAgg] = await Promise.all([
+      tx.workOrderLine.findMany({
         where: { workOrderId, orgId, deletedAt: null },
-        _sum: { amount: true },
+        select: { amount: true, actualHours: true, normoHours: true, price: true },
       }),
       tx.workOrderPart.aggregate({
         where: { workOrderId, orgId, deletedAt: null },
         _sum: { amount: true },
       }),
     ]);
-    const totalLabor = Number(linesAgg._sum.amount ?? 0);
+
+    const totalLabor = lines.reduce((s, l) => s + Number(l.amount ?? 0), 0);
+    // totalActualLabor = SUM((actualHours ?? normoHours) × price)
+    const totalActualLabor = lines.reduce((s, l) => {
+      const h = l.actualHours != null ? Number(l.actualHours) : Number(l.normoHours ?? 0);
+      return s + h * Number(l.price ?? 0);
+    }, 0);
     const totalParts = Number(partsAgg._sum.amount ?? 0);
+
     await tx.workOrder.update({
       where: { id: workOrderId, orgId },
-      data: { totalLabor, totalParts, totalAmount: totalLabor + totalParts },
+      data: {
+        totalLabor,
+        totalActualLabor,
+        totalParts,
+        totalAmount: totalActualLabor + totalParts,
+      },
     });
   }
 
@@ -1400,6 +1409,7 @@ export class WorkOrdersService {
     completedAt: Date | null;
     clientApproval: boolean;
     totalLabor: Prisma.Decimal;
+    totalActualLabor?: Prisma.Decimal | null;
     totalParts: Prisma.Decimal;
     totalAmount: Prisma.Decimal;
     paidAmount: Prisma.Decimal | null;
@@ -1450,6 +1460,7 @@ export class WorkOrdersService {
       completedAt: wo.completedAt ?? null,
       clientApproval: wo.clientApproval,
       totalLabor: Number(wo.totalLabor),
+      totalActualLabor: Number(wo.totalActualLabor ?? 0),
       totalParts: Number(wo.totalParts),
       totalAmount: Number(wo.totalAmount),
       paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,

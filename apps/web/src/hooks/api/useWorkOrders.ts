@@ -10,6 +10,7 @@ export interface WorkOrder {
   priority: string;
   repairCategory?: string | null;
   totalLabor: number;
+  totalActualLabor: number;
   totalParts: number;
   totalAmount: number;
   paidAmount: number;
