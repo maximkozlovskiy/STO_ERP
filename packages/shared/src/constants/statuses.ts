@@ -125,6 +125,14 @@ export const INVOICE_STATUS_BADGE: Record<string, BadgeVariant> = {
 
 // Single source of truth: must mirror backend `INV_TRANSITIONS` in
 // apps/api/src/modules/invoices/invoices.service.ts.
+export const INVOICE_STATUS_DESCRIPTIONS: Record<string, string> = {
+  DRAFT: 'Чернетка — рахунок створено, ще не надіслано клієнту',
+  SENT: 'Надіслано — рахунок передано клієнту, очікується оплата',
+  PAID: 'Оплачено — кошти отримано, розрахунок закрито',
+  OVERDUE: 'Прострочено — термін оплати минув, потрібне нагадування',
+  CANCELLED: 'Скасовано — рахунок анульовано',
+};
+
 export const INVOICE_STATUS_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['SENT', 'CANCELLED'],
   SENT: ['PAID', 'CANCELLED'],
@@ -167,6 +175,14 @@ export const PO_STATUS_TRANSITIONS: Record<string, string[]> = {
   CANCELLED: [],
 };
 
+export const PO_STATUS_DESCRIPTIONS: Record<string, string> = {
+  DRAFT: 'Чернетка — замовлення складено, ще не відправлено постачальнику',
+  ORDERED: 'Замовлено — заявку відправлено постачальнику, очікується доставка',
+  PARTIAL: 'Частково — частину товарів отримано, решта в дорозі',
+  RECEIVED: 'Отримано — всі товари прийнято на склад',
+  CANCELLED: 'Скасовано — замовлення анульовано',
+};
+
 export const PO_STATUS_ACTION_LABELS: Record<string, string> = {
   ORDERED: 'Підтвердити замовлення',
   RECEIVED: 'Позначити отриманим',
@@ -182,6 +198,12 @@ export const SUPPLIER_RETURN_STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Скасовано',
 };
 
+export const SUPPLIER_RETURN_STATUS_DESCRIPTIONS: Record<string, string> = {
+  DRAFT: 'Чернетка — повернення оформлено, ще не підтверджено',
+  CONFIRMED: 'Підтверджено — товари повернуто постачальнику, залишок скориговано',
+  CANCELLED: 'Скасовано — повернення анульовано',
+};
+
 export const SUPPLIER_RETURN_STATUS_BADGE: Record<string, BadgeVariant> = {
   DRAFT: 'secondary',
   CONFIRMED: 'success',
@@ -194,6 +216,19 @@ export const STOCK_DOC_STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Чернетка',
   CONFIRMED: 'Підтверджено',
   CANCELLED: 'Скасовано',
+};
+
+export const STOCK_DOC_STATUS_DESCRIPTIONS: Record<string, string> = {
+  DRAFT: 'Чернетка — документ створено, залишки ще не змінено',
+  CONFIRMED: 'Підтверджено — документ проведено, залишки оновлено',
+  CANCELLED: 'Скасовано — документ анульовано, залишки не змінено',
+};
+
+export const STOCK_DOC_TYPE_DESCRIPTIONS: Record<string, string> = {
+  RECEIPT: 'Оприбуткування — отримання товарів від постачальника',
+  WRITEOFF: 'Списання — вилучення товарів з обліку (брак, втрата тощо)',
+  TRANSFER: 'Переміщення — передача товарів між складами',
+  OPENING_BALANCE: 'Початкові залишки — введення залишків при старті обліку',
 };
 
 export const STOCK_DOC_STATUS_BADGE: Record<string, BadgeVariant> = {

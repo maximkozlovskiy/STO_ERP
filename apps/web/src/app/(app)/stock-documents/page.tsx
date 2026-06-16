@@ -13,8 +13,10 @@ import { Badge } from '@/components/ui/badge';
 import {
   STOCK_DOC_TYPE_LABELS,
   STOCK_DOC_TYPE_BADGE,
+  STOCK_DOC_TYPE_DESCRIPTIONS,
   STOCK_DOC_STATUS_LABELS,
   STOCK_DOC_STATUS_BADGE,
+  STOCK_DOC_STATUS_DESCRIPTIONS,
 } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -598,7 +600,10 @@ function StockDocumentsPageClient() {
                       if (col.key === 'type')
                         return (
                           <TableCell key="type">
-                            <Badge variant={STOCK_DOC_TYPE_BADGE[doc.type] ?? 'secondary'}>
+                            <Badge
+                              variant={STOCK_DOC_TYPE_BADGE[doc.type] ?? 'secondary'}
+                              tooltip={STOCK_DOC_TYPE_DESCRIPTIONS[doc.type]}
+                            >
                               {STOCK_DOC_TYPE_LABELS[doc.type]}
                             </Badge>
                           </TableCell>
@@ -612,7 +617,10 @@ function StockDocumentsPageClient() {
                       if (col.key === 'status')
                         return (
                           <TableCell key="status">
-                            <Badge variant={STOCK_DOC_STATUS_BADGE[doc.status] ?? 'secondary'}>
+                            <Badge
+                              variant={STOCK_DOC_STATUS_BADGE[doc.status] ?? 'secondary'}
+                              tooltip={STOCK_DOC_STATUS_DESCRIPTIONS[doc.status]}
+                            >
                               {STOCK_DOC_STATUS_LABELS[doc.status]}
                             </Badge>
                           </TableCell>
@@ -720,10 +728,16 @@ function StockDocumentsPageClient() {
         {showDetail && (
           <div className="space-y-4">
             <div className="flex items-center gap-3 flex-wrap">
-              <Badge variant={STOCK_DOC_TYPE_BADGE[showDetail.type] ?? 'secondary'}>
+              <Badge
+                variant={STOCK_DOC_TYPE_BADGE[showDetail.type] ?? 'secondary'}
+                tooltip={STOCK_DOC_TYPE_DESCRIPTIONS[showDetail.type]}
+              >
                 {STOCK_DOC_TYPE_LABELS[showDetail.type]}
               </Badge>
-              <Badge variant={STOCK_DOC_STATUS_BADGE[showDetail.status] ?? 'secondary'}>
+              <Badge
+                variant={STOCK_DOC_STATUS_BADGE[showDetail.status] ?? 'secondary'}
+                tooltip={STOCK_DOC_STATUS_DESCRIPTIONS[showDetail.status]}
+              >
                 {STOCK_DOC_STATUS_LABELS[showDetail.status]}
               </Badge>
               <span className="text-muted-foreground text-sm">{showDetail.warehouseName}</span>

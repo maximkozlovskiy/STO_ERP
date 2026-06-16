@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   INVOICE_STATUS_LABELS,
   INVOICE_STATUS_BADGE,
+  INVOICE_STATUS_DESCRIPTIONS,
   INVOICE_STATUS_TRANSITIONS,
   INVOICE_TYPE_LABELS,
 } from '@sto/shared';
@@ -428,7 +429,10 @@ export default function InvoicesPage() {
           {/* Schema-driven fields — order + visibility from useDetailPanelConfig */}
           {buildPanelFields(inv, INVOICE_PANEL_SCHEMA, panelConfig.config, {
             status: v => (
-              <Badge variant={STATUS_BADGE[String(v)] ?? 'secondary'}>
+              <Badge
+                variant={STATUS_BADGE[String(v)] ?? 'secondary'}
+                tooltip={INVOICE_STATUS_DESCRIPTIONS[String(v)]}
+              >
                 {STATUS_LABELS[String(v)]}
               </Badge>
             ),
@@ -765,7 +769,10 @@ export default function InvoicesPage() {
                       if (col.key === 'status')
                         return (
                           <TableCell key="status">
-                            <Badge variant={STATUS_BADGE[inv.status] ?? 'secondary'}>
+                            <Badge
+                              variant={STATUS_BADGE[inv.status] ?? 'secondary'}
+                              tooltip={INVOICE_STATUS_DESCRIPTIONS[inv.status]}
+                            >
                               {STATUS_LABELS[inv.status]}
                             </Badge>
                           </TableCell>

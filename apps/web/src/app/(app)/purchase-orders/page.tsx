@@ -20,8 +20,10 @@ import { Badge } from '@/components/ui/badge';
 import {
   PO_STATUS_LABELS,
   PO_STATUS_BADGE,
+  PO_STATUS_DESCRIPTIONS,
   PO_STATUS_TRANSITIONS,
   PO_STATUS_ACTION_LABELS,
+  SUPPLIER_RETURN_STATUS_DESCRIPTIONS,
 } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -762,6 +764,7 @@ function PurchaseOrdersPageClient() {
                               <TableCell key="status">
                                 <Badge
                                   variant={SUPPLIER_RETURN_STATUS_BADGE[sr.status] as BadgeVariant}
+                                  tooltip={SUPPLIER_RETURN_STATUS_DESCRIPTIONS[sr.status]}
                                 >
                                   {SUPPLIER_RETURN_STATUS_LABELS[sr.status] ?? sr.status}
                                 </Badge>
@@ -1085,7 +1088,10 @@ function PurchaseOrdersPageClient() {
                           if (col.key === 'status')
                             return (
                               <TableCell key="status">
-                                <Badge variant={STATUS_BADGE[po.status] ?? 'secondary'}>
+                                <Badge
+                                  variant={STATUS_BADGE[po.status] ?? 'secondary'}
+                                  tooltip={PO_STATUS_DESCRIPTIONS[po.status]}
+                                >
                                   {STATUS_LABELS[po.status]}
                                 </Badge>
                               </TableCell>
@@ -1213,7 +1219,10 @@ function PurchaseOrdersPageClient() {
         {showDetail && (
           <div className="space-y-4">
             <div className="flex items-center gap-3 flex-wrap">
-              <Badge variant={STATUS_BADGE[showDetail.status] ?? 'secondary'}>
+              <Badge
+                variant={STATUS_BADGE[showDetail.status] ?? 'secondary'}
+                tooltip={PO_STATUS_DESCRIPTIONS[showDetail.status]}
+              >
                 {STATUS_LABELS[showDetail.status]}
               </Badge>
               <span className="text-muted-foreground text-sm">{showDetail.supplierName}</span>
