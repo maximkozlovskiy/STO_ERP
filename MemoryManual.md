@@ -14,6 +14,7 @@
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 860/860 | Web 434/434 | E2E пропущено (Docker DOWN у цій сесії)
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
+Останній optimize: 2026-06-16 — bucket busy slots by liftId у getAvailability + load()
 Останній tester: 2026-06-16 — Bug #511-#514 — booking DST + race + clamp + workhours guard
 Останній review: 2026-06-16 — invoice section review + simplify cycle
 Останній sync:   2026-06-16 — Booking+Calendar+StockTotals — 0 розбіжностей
@@ -24,14 +25,15 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+50cd6434  perf(optimize): bucket busy slots by liftId in availability + booking assign
+          O(T×L×B) → O(T×L×avg(B/L)) + 0 Date allocs у hot-path; GoodPickerModal
+          EMPTY_STOCK_MAP module-level + qty IIFE lifted з .map() rows
 f337e4e9  revert(api): use nest tsc builder instead of swc for dev
-          @sto/shared тепер компілюється як CJS → dist/cjs/; rootDir=src у api tsconfig
 19657510  fix(api): remove paths alias — SWC emits literal relative path on Windows
 0e2d4f15  fix(api): add baseUrl '.' for SWC Windows UNC path canonicalization
 8f79d17f  chore(api): install @swc/cli @swc/core
 63a951e4  fix(review): invoice section visible for PAID/ARCHIVED + OVERDUE + InvoicePayload
 eed8b809  fix(tester): Bug #508-#510 — sync invoice section specs
-30788780  docs(memory): post-review state + sto-review skill patterns
 ```
 
 Latest tester: 2026-06-16 (AUTO) — Bug #508-510 — invoice section test coverage
