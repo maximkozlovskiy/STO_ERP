@@ -568,12 +568,25 @@ export class InvoicesService {
   async findByWorkOrder(
     orgId: string,
     workOrderId: string,
-  ): Promise<{ id: string; number: string } | null> {
+  ): Promise<{
+    id: string;
+    number: string;
+    status: string;
+    amount: number;
+    documentDate: string | null;
+  } | null> {
     const inv = await this.prisma.invoice.findFirst({
       where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
-      select: { id: true, number: true },
+      select: { id: true, number: true, status: true, amount: true, documentDate: true },
     });
-    return inv ?? null;
+    if (!inv) return null;
+    return {
+      id: inv.id,
+      number: inv.number,
+      status: inv.status,
+      amount: Number(inv.amount),
+      documentDate: inv.documentDate ? inv.documentDate.toISOString() : null,
+    };
   }
 
   async refreshFromWorkOrder(orgId: string, workOrderId: string): Promise<InvoiceResponseDto> {

@@ -243,6 +243,21 @@ export default function WorkOrderCardPage() {
   const [cancellingAct, setCancellingAct] = useState(false);
   const [downloadingActPdf, setDownloadingActPdf] = useState(false);
 
+  const [invoiceRef, setInvoiceRef] = useState<
+    | {
+        id: string;
+        number: string;
+        status: string;
+        amount: number;
+        documentDate: string | null;
+      }
+    | null
+    | undefined
+  >(undefined);
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [refreshingInvoice, setRefreshingInvoice] = useState(false);
+  const [downloadingInvoicePdf, setDownloadingInvoicePdf] = useState(false);
+
   const [transitioning, setTransitioning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -296,7 +311,14 @@ export default function WorkOrderCardPage() {
         },
       ),
       apiFetch<InspectionReport | null>(`/work-orders/${id}/inspection`).catch(() => null),
-    ]).then(([woResult, acts, inspectionData]) => {
+      apiFetch<{
+        id: string;
+        number: string;
+        status: string;
+        amount: number;
+        documentDate: string | null;
+      } | null>(`/invoices/from-work-order/${id}/find`).catch(() => null),
+    ]).then(([woResult, acts, inspectionData, invoiceData]) => {
       if (!mountedRef.current) return;
       setWoLoading(false);
       if (woResult.kind === 'wo') {
@@ -308,6 +330,7 @@ export default function WorkOrderCardPage() {
       }
       if (acts.items.length > 0) setCompletionAct(acts.items[0]);
       setInspection(inspectionData);
+      setInvoiceRef(invoiceData);
     });
   }, [id]);
 
@@ -385,6 +408,86 @@ export default function WorkOrderCardPage() {
       if (features.toastEnabled) toast.error(msg);
     } finally {
       setSavingTemplate(false);
+    }
+  };
+
+  type InvoiceRef = {
+    id: string;
+    number: string;
+    status: string;
+    amount: number;
+    documentDate: string | null;
+  };
+
+  const toInvoiceRef = (inv: {
+    id: string;
+    number: string;
+    status: string;
+    amount: number;
+    documentDate?: string | null;
+  }): InvoiceRef => ({
+    id: inv.id,
+    number: inv.number,
+    status: inv.status,
+    amount: Number(inv.amount),
+    documentDate: inv.documentDate ?? null,
+  });
+
+  const createInvoice = async () => {
+    setCreatingInvoice(true);
+    try {
+      const inv = await apiFetch<{
+        id: string;
+        number: string;
+        status: string;
+        amount: number;
+        documentDate?: string | null;
+      }>(`/invoices/from-work-order/${id}`, { method: 'POST' });
+      setInvoiceRef(toInvoiceRef(inv));
+      if (features.toastEnabled) toast.success(`Рахунок № ${inv.number} створено`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка створення рахунку';
+      if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setCreatingInvoice(false);
+    }
+  };
+
+  const refreshInvoice = async () => {
+    setRefreshingInvoice(true);
+    try {
+      const inv = await apiFetch<{
+        id: string;
+        number: string;
+        status: string;
+        amount: number;
+        documentDate?: string | null;
+      }>(`/invoices/from-work-order/${id}/refresh`, { method: 'POST' });
+      setInvoiceRef(toInvoiceRef(inv));
+      if (features.toastEnabled) toast.success('Рядки рахунку оновлено з наряду');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка оновлення рахунку';
+      if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setRefreshingInvoice(false);
+    }
+  };
+
+  const downloadInvoicePdf = async (invoiceId: string) => {
+    setDownloadingInvoicePdf(true);
+    try {
+      const blob = await apiBlobFetch(`/invoices/${invoiceId}/pdf`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${invoiceId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка завантаження PDF';
+      if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setDownloadingInvoicePdf(false);
     }
   };
 
@@ -959,6 +1062,82 @@ export default function WorkOrderCardPage() {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Акт не сформовано</p>
+          )}
+        </div>
+      )}
+
+      {/* Invoice */}
+      {WO_INVOICEABLE_STATUSES.includes(wo.status) && invoiceRef !== undefined && (
+        <div className="bg-surface rounded-xl border border-border p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-foreground">Рахунок</h2>
+            {!invoiceRef && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void createInvoice()}
+                loading={creatingInvoice}
+                disabled={creatingInvoice}
+              >
+                Виставити рахунок
+              </Button>
+            )}
+          </div>
+          {invoiceRef ? (
+            <div className="flex items-center gap-4 flex-wrap">
+              <p className="text-sm font-medium text-foreground">Рахунок № {invoiceRef.number}</p>
+              <span
+                className={cn(
+                  'text-xs font-medium px-2 py-0.5 rounded-full',
+                  invoiceRef.status === 'PAID' && 'bg-success-subtle text-success',
+                  invoiceRef.status === 'SENT' && 'bg-info-subtle text-info-text',
+                  invoiceRef.status === 'DRAFT' && 'bg-secondary text-muted-foreground',
+                  invoiceRef.status === 'OVERDUE' && 'bg-warning-subtle text-warning',
+                  invoiceRef.status === 'CANCELLED' && 'bg-destructive-subtle text-destructive',
+                )}
+              >
+                {invoiceRef.status === 'DRAFT'
+                  ? 'Чернетка'
+                  : invoiceRef.status === 'SENT'
+                    ? 'Відправлено'
+                    : invoiceRef.status === 'PAID'
+                      ? 'Оплачено'
+                      : invoiceRef.status === 'OVERDUE'
+                        ? 'Прострочено'
+                        : 'Скасовано'}
+              </span>
+              <p className="text-sm font-semibold text-foreground tabular-nums">
+                {fmtMoney(invoiceRef.amount)} ₴
+              </p>
+              {invoiceRef.documentDate && (
+                <p className="text-xs text-muted-foreground">{fmtDate(invoiceRef.documentDate)}</p>
+              )}
+              {invoiceRef.status === 'DRAFT' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void refreshInvoice()}
+                  loading={refreshingInvoice}
+                  disabled={refreshingInvoice}
+                >
+                  Оновити з наряду
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void downloadInvoicePdf(invoiceRef.id)}
+                loading={downloadingInvoicePdf}
+                disabled={downloadingInvoicePdf}
+              >
+                PDF рахунку
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => router.push('/invoices')}>
+                Відкрити рахунки ↗
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Рахунок не виставлено</p>
           )}
         </div>
       )}
