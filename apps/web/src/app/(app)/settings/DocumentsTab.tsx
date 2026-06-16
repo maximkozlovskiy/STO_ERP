@@ -48,6 +48,7 @@ export default function DocumentsTab() {
   // toggle change still sends both flags, masking server-side merge bugs.
   const initialRef = useRef<{
     recalcPlannedHoursFromLines: boolean;
+    recalcActualHoursFromLines: boolean;
     syncCalendarSlotWithPlannedHours: boolean;
   } | null>(null);
 
@@ -57,6 +58,7 @@ export default function DocumentsTab() {
         setOrgSettings(s);
         initialRef.current = {
           recalcPlannedHoursFromLines: s.recalcPlannedHoursFromLines ?? true,
+          recalcActualHoursFromLines: s.recalcActualHoursFromLines ?? true,
           syncCalendarSlotWithPlannedHours: s.syncCalendarSlotWithPlannedHours ?? true,
         };
       })
@@ -72,13 +74,18 @@ export default function DocumentsTab() {
     try {
       const initial = initialRef.current;
       const recalcNow = orgSettings.recalcPlannedHoursFromLines ?? true;
+      const recalcActualNow = orgSettings.recalcActualHoursFromLines ?? true;
       const syncNow = orgSettings.syncCalendarSlotWithPlannedHours ?? true;
       const patch: {
         recalcPlannedHoursFromLines?: boolean;
+        recalcActualHoursFromLines?: boolean;
         syncCalendarSlotWithPlannedHours?: boolean;
       } = {};
       if (!initial || initial.recalcPlannedHoursFromLines !== recalcNow) {
         patch.recalcPlannedHoursFromLines = recalcNow;
+      }
+      if (!initial || initial.recalcActualHoursFromLines !== recalcActualNow) {
+        patch.recalcActualHoursFromLines = recalcActualNow;
       }
       if (!initial || initial.syncCalendarSlotWithPlannedHours !== syncNow) {
         patch.syncCalendarSlotWithPlannedHours = syncNow;
@@ -95,6 +102,7 @@ export default function DocumentsTab() {
       setOrgSettings(updated);
       initialRef.current = {
         recalcPlannedHoursFromLines: updated.recalcPlannedHoursFromLines ?? true,
+        recalcActualHoursFromLines: updated.recalcActualHoursFromLines ?? true,
         syncCalendarSlotWithPlannedHours: updated.syncCalendarSlotWithPlannedHours ?? true,
       };
       if (features.toastEnabled) toast.success('Збережено');
@@ -137,6 +145,26 @@ export default function DocumentsTab() {
           <Toggle
             checked={orgSettings.recalcPlannedHoursFromLines ?? true}
             onChange={v => setOrgSettings({ ...orgSettings, recalcPlannedHoursFromLines: v })}
+          />
+        </div>
+
+        <div
+          className="flex items-center justify-between gap-4 py-2 border-b border-border"
+          title="Якщо увімкнено, при збереженні наряду поле «Фактичні нормогодини» автоматично розраховується як сума по рядках: якщо рядок має «Год (факт.)» — береться він, інакше «Год (план)»."
+        >
+          <div>
+            <p className="text-sm font-medium text-foreground">
+              Перераховувати фактичні нормогодини по роботах
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              При збереженні наряду поле «Фактичні нормогодини» автоматично розраховується як сума
+              по рядках робіт. Для кожного рядка береться «Год (факт.)», якщо заповнено, або «Год
+              (план)» інакше.
+            </p>
+          </div>
+          <Toggle
+            checked={orgSettings.recalcActualHoursFromLines ?? true}
+            onChange={v => setOrgSettings({ ...orgSettings, recalcActualHoursFromLines: v })}
           />
         </div>
 

@@ -1505,6 +1505,7 @@ model OrganisationSettings {
   loyaltyEarnPoints                Decimal         @default(1) @db.Decimal(10, 2)
   loyaltyRedeemRate                Decimal         @default(1) @db.Decimal(10, 2)
   recalcPlannedHoursFromLines      Boolean         @default(true)
+  recalcActualHoursFromLines       Boolean         @default(true)
   syncCalendarSlotWithPlannedHours Boolean         @default(true)
   syncVersion                      BigInt          @default(0)
   updatedAt                        DateTime        @updatedAt

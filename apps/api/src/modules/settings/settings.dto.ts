@@ -176,6 +176,11 @@ export class UpdateOrganisationSettingsDto {
   @IsBoolean()
   recalcPlannedHoursFromLines?: boolean;
 
+  @ApiPropertyOptional({ description: 'Перераховувати фактичні нормогодини по сумі рядків робіт' })
+  @IsOptional()
+  @IsBoolean()
+  recalcActualHoursFromLines?: boolean;
+
   @ApiPropertyOptional({
     description: 'Синхронізувати слот календаря при зміні планових годин наряду',
   })
@@ -288,6 +293,8 @@ export class OrganisationSettingsResponseDto {
   @ApiProperty() loyaltyRedeemRate!: number;
   @ApiProperty({ description: 'Перераховувати планові нормогодини по сумі рядків робіт' })
   recalcPlannedHoursFromLines!: boolean;
+  @ApiProperty({ description: 'Перераховувати фактичні нормогодини по сумі рядків робіт' })
+  recalcActualHoursFromLines!: boolean;
   @ApiProperty({ description: 'Синхронізувати слот календаря при зміні планових годин наряду' })
   syncCalendarSlotWithPlannedHours!: boolean;
   @ApiProperty() updatedAt!: Date;

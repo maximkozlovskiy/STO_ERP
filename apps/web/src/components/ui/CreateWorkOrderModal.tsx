@@ -403,6 +403,7 @@ export function CreateWorkOrderModal({
   const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
   const [vatRate, setVatRate] = useState(0);
   const [recalcPlannedHoursEnabled, setRecalcPlannedHoursEnabled] = useState(false);
+  const [recalcActualHoursEnabled, setRecalcActualHoursEnabled] = useState(true);
   const [syncCalendarEnabled, setSyncCalendarEnabled] = useState(true);
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
@@ -586,6 +587,7 @@ export function CreateWorkOrderModal({
         vatMode: string;
         defaultVatRateId?: string | null;
         recalcPlannedHoursFromLines?: boolean;
+        recalcActualHoursFromLines?: boolean;
         syncCalendarSlotWithPlannedHours?: boolean;
       }>('/settings/organisation'),
       apiFetch<{ id: string; rate: number; isDefault: boolean }[]>('/settings/tax-rates'),
@@ -593,6 +595,7 @@ export function CreateWorkOrderModal({
       .then(([org, rates]) => {
         setVatMode((org.vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE') ?? 'NONE');
         setRecalcPlannedHoursEnabled(org.recalcPlannedHoursFromLines ?? false);
+        setRecalcActualHoursEnabled(org.recalcActualHoursFromLines ?? true);
         setSyncCalendarEnabled(org.syncCalendarSlotWithPlannedHours ?? true);
         const def = (Array.isArray(rates) ? rates : []).find(r => r.isDefault);
         if (def) setVatRate(Number(def.rate));
@@ -1114,6 +1117,19 @@ export function CreateWorkOrderModal({
     setSavingBoth(true);
     setError('');
     try {
+      // Якщо recalcActualHoursEnabled — обчислюємо фактичні нормогодини по рядках
+      // (actualHours ?? normoHours для кожного рядка).
+      let computedActualHours: number | null =
+        form.actualHours !== '' ? (toNumberOrUndefined(form.actualHours) ?? null) : null;
+      if (recalcActualHoursEnabled && lines.length > 0) {
+        let sum = 0;
+        for (const l of lines) {
+          const ah = toNumberOrUndefined(l.actualHours);
+          const nh = toNumberOrUndefined(l.normoHours);
+          sum += ah ?? nh ?? 0;
+        }
+        computedActualHours = sum;
+      }
       await apiFetch(`/work-orders/${workOrderId}`, {
         method: 'PATCH',
         body: JSON.stringify({
@@ -1125,7 +1141,7 @@ export function CreateWorkOrderModal({
           plannedAt: localDateTimeToISO(form.plannedStartAt),
           dueDate: localDateTimeToISO(form.plannedEndAt),
           plannedHours: form.plannedHours !== '' ? toNumberOrUndefined(form.plannedHours) : null,
-          actualHours: form.actualHours !== '' ? toNumberOrUndefined(form.actualHours) : null,
+          actualHours: computedActualHours,
         }),
       });
       // sto-optimize: DELETEs are independent (each row by id) — fire in parallel
@@ -1302,12 +1318,15 @@ export function CreateWorkOrderModal({
   const canEditActual =
     isEditMode && (currentStatus === 'IN_PROGRESS' || currentStatus === 'ON_HOLD');
 
-  // Підсумки фактичних сум: один прохід, окремо від linesTotals щоб не ламати VAT.
+  // Підсумки фактичних сум: actualHours ?? normoHours для кожного рядка.
+  // hasAny=true якщо хоча б один рядок має actualHours або normoHours.
   const actualTotals = useMemo(() => {
     let total = 0;
     let hasAny = false;
     for (const l of lines) {
-      const h = parseFloat(l.actualHours);
+      const ah = parseFloat(l.actualHours);
+      const nh = parseFloat(l.normoHours);
+      const h = !isNaN(ah) ? ah : !isNaN(nh) ? nh : NaN;
       const p = parseFloat(l.price);
       if (!isNaN(h) && !isNaN(p)) {
         total += h * p;
@@ -2403,7 +2422,9 @@ export function CreateWorkOrderModal({
                                   </td>
                                   <td className="px-2 py-1.5 text-left tabular-nums text-[12px] text-muted-foreground">
                                     {(() => {
-                                      const h = toNumberOrUndefined(editingLine.actualHours);
+                                      const ah = toNumberOrUndefined(editingLine.actualHours);
+                                      const nh = toNumberOrUndefined(editingLine.normoHours);
+                                      const h = ah ?? nh;
                                       const p = toNumberOrUndefined(editingLine.price);
                                       return h != null && p != null ? (h * p).toFixed(2) : '—';
                                     })()}
@@ -2471,7 +2492,9 @@ export function CreateWorkOrderModal({
                                   <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                                     {(() => {
                                       const ah = toNumberOrUndefined(line.actualHours);
-                                      return ah != null && p != null ? (ah * p).toFixed(2) : '—';
+                                      const nh = toNumberOrUndefined(line.normoHours);
+                                      const h = ah ?? nh;
+                                      return h != null && p != null ? (h * p).toFixed(2) : '—';
                                     })()}
                                   </td>
                                   <td className="px-1.5 py-1.5 text-left">
