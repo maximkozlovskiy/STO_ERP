@@ -1016,6 +1016,55 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-16 — Time-of-day string DTO field без regex + cross-field guard (Bug #515) — backend / validation
+
+**Сигнал:** `@IsString()` для поля `*Time` або `*Hour` у DTO БЕЗ `@Matches(/^\d{2}:\d{2}$/)`. Сервіс не валідує `workEnd > workStart` → `dynHours=[]` → division by zero → NaN у CSS. Де ще шукати: `BranchSettings`, `OperatingHours`, `EmployeeShift`, `EventSchedule`.
+
+**Підхід:** Додати `@Matches(HH_MM_RE)` до DTO + cross-field guard у сервісі (`if (startH >= endH) throw BadRequest`). Defense-in-depth fallback у `getWorkHours()` щоб ніколи не повернути `start >= end` навіть якщо стара БД містить невалідні дані.
+
+**Grep:**
+
+```bash
+grep -rn "@IsString()" apps/api/src --include="*.dto.ts" | grep -i "time\|hour\|start\|end" | grep -v "@Matches"
+```
+
+---
+
+### 2026-06-16 — jsdom missing URL.createObjectURL/revokeObjectURL stub (Bug #518) — frontend / test-infrastructure
+
+**Сигнал:** `vitest exit 1` при всіх green tests + `Uncaught Exception: TypeError: URL.createObjectURL is not a function`. Shadow error — видно тільки по exit code, не по test report.
+
+**Fix:** У `apps/web/src/__tests__/setup.ts` додати:
+
+```typescript
+if (typeof URL.createObjectURL === 'undefined') {
+  URL.createObjectURL = () => '';
+  URL.revokeObjectURL = () => {};
+}
+```
+
+**Grep:**
+
+```bash
+grep -n "createObjectURL\|revokeObjectURL" apps/web/src --include="*.tsx" --include="*.ts" -r
+# якщо є → перевірити apps/web/src/__tests__/setup.ts на наявність stub
+```
+
+---
+
+### 2026-06-16 — Dead exports у \*.utils.ts після refactor на dynamic config (Bug #517) — frontend / dead-code
+
+**Сигнал:** `const` exported у `calendar.utils.ts` або подібному файлі має 0 usages після того як компонент перейшов на `useState(fetched)`. TypeScript не видає error на unused exports.
+
+**Підхід:** Після будь-якого refactor що переводить module-level constants → dynamic fetch: перевірити всі exports модуля на 0 references.
+
+```bash
+grep -rn "HOURS\|TOTAL_HOURS\|WINDOW_START\|WINDOW_END\|pxToHours" apps/web/src --include="*.ts" --include="*.tsx" | grep -v "\.utils\.ts"
+# якщо 0 matches → dead export → видалити
+```
+
+---
+
 ### 2026-06-16 — Set key з `getUTCHours()` для порівняння з Kyiv-локальними слотами (Bug #511) — backend / time-zone semantics
 
 **Сигнал:** `new Set(rows.map(r => { const d = new Date(r.dateField); const h = String(d.getUTCHours()).padStart(2, '0'); ... return \`${h}:${m}\`; }))`або взагалі будь-який ключ Map/Set що формується через`getUTC\*()`з`DateTime`поля. В тому ж файлі — інший масив ключів формується з Kyiv-локальних`BranchSettings.workStartTime/workEndTime`(або з UI часового пікера) як plain`HH:MM`рядки. Result: ключі НЕ перетинаються у будь-який сезон де`Europe/Kyiv`≠ UTC (тобто ВЕСЬ календарний рік: +02:00 зимою, +03:00 літом).`Set.has(...)`always returns false → security/business guard silently не спрацьовує. grep:`getUTCHours\|getUTCMinutes`у будь-якому файлі що згадує`BranchSettings\|workStartTime\|kyiv\|requestedDate\|slot` — кожен match підозрілий.
