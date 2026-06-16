@@ -587,7 +587,11 @@ export function CalendarSlotModal({
       setError('Оберіть клієнта');
       return;
     }
-    if (form.liftId && !UUID_RE.test(form.liftId)) {
+    if (!form.liftId) {
+      setError('Оберіть підйомник');
+      return;
+    }
+    if (!UUID_RE.test(form.liftId)) {
       setError('Некоректний підйомник — оберіть зі списку');
       return;
     }
@@ -744,7 +748,7 @@ export function CalendarSlotModal({
           <div className="grid grid-cols-4 gap-3 items-start">
             <div>
               <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-                Підйомник
+                Підйомник <span className="text-destructive">*</span>
               </label>
               <Select
                 value={form.liftId}
