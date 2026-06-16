@@ -46,17 +46,25 @@ import {
 } from './calendar.utils';
 
 /**
+ * Backend split boundaries — MUST match `apps/api/src/modules/calendar/calendar.service.ts`
+ * `WORK_DAY_START_H` / `WORK_DAY_END_H`. Until the backend reads BranchSettings, the frontend
+ * uses these constants for overflow split detection (visual grid uses dynamic windowStart/End).
+ * Mismatch with backend → frontend says "split at 18:00", backend keeps single slot 17–20.
+ */
+const SPLIT_DAY_START_H = 8;
+const SPLIT_DAY_END_H = 20;
+
+/**
  * Given totalMin (start + normoHours in minutes), returns the display HH:mm for the "Кінець" field.
- * When totalMin overflows WINDOW_END (20:00 = 1200 min), the end time is day-2:
- *   08:00 + overflowMin (matching what the backend split produces).
+ * When totalMin overflows SPLIT_DAY_END_H (20:00), the end time is day-2 SPLIT_DAY_START_H + overflowMin.
  * When within the same day, returns the direct HH:mm.
  */
-function calcEndAt(totalMin: number, workEndHour: number): string {
-  const WORK_END_MIN = workEndHour * 60;
+function calcEndAt(totalMin: number): string {
+  const WORK_END_MIN = SPLIT_DAY_END_H * 60;
   const raw = Math.round(totalMin / 15) * 15; // snap to 15-min grid
   if (raw > WORK_END_MIN) {
     const overflowMin = raw - WORK_END_MIN;
-    const day2Min = 8 * 60 + overflowMin;
+    const day2Min = SPLIT_DAY_START_H * 60 + overflowMin;
     return `${pad(Math.floor(day2Min / 60))}:${pad(day2Min % 60)}`;
   }
   const clamped = Math.min(raw, 23 * 60 + 59);
@@ -577,9 +585,11 @@ export function CalendarSlotModal({
     const [sh2, sm2] = form.startAt.split(':').map(Number);
     const startMin2 = (sh2 ?? 0) * 60 + (sm2 ?? 0);
     const nh2 = parseFloat(String(form.normoHours).replace(',', '.'));
-    // Backend splits at WINDOW_END (20:00 = last visible hour + 1).
+    // Backend splits at SPLIT_DAY_END_H (20:00) — NOT the dynamic windowEnd, which
+    // is only used for the visual grid. Mismatch would send an "overflow" payload that
+    // the backend keeps as a single slot.
     const isOverflowSlot =
-      !isNaN(nh2) && nh2 > 0 && startMin2 + Math.round(nh2 * 60) > windowEnd * 60;
+      !isNaN(nh2) && nh2 > 0 && startMin2 + Math.round(nh2 * 60) > SPLIT_DAY_END_H * 60;
     if (!isOverflowSlot && form.endAt <= form.startAt) {
       setError('Час завершення повинен бути після часу початку');
       return;
@@ -781,7 +791,7 @@ export function CalendarSlotModal({
                       const [h, m] = start.split(':').map(Number);
                       const totalMin =
                         (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(f.normoHours) * 60);
-                      const endAt = calcEndAt(totalMin, windowEnd);
+                      const endAt = calcEndAt(totalMin);
                       next = { ...next, endAt };
                     }
                     if (pendingSlot) {
@@ -813,7 +823,7 @@ export function CalendarSlotModal({
                     if (f.startAt && nh && Number(nh) > 0) {
                       const [h, m] = f.startAt.split(':').map(Number);
                       const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(nh) * 60);
-                      const endAt = calcEndAt(totalMin, windowEnd);
+                      const endAt = calcEndAt(totalMin);
                       if (pendingSlot) {
                         const { h: eh, m: em2 } = parseHHMM(endAt);
                         setPendingSlot(p => (p ? { ...p, endH: eh + em2 / 60 } : p));
@@ -825,19 +835,21 @@ export function CalendarSlotModal({
                 }}
                 placeholder="1.5"
               />
-              {/* Overflow preview */}
+              {/* Overflow preview — uses backend split constants (SPLIT_DAY_END_H=20),
+                  NOT the dynamic windowEnd, so the warning matches what the backend
+                  will actually split. */}
               {(() => {
                 const nh = Number(form.normoHours);
                 if (!form.startAt || !nh || nh <= 0) return null;
                 const [h, m] = form.startAt.split(':').map(Number);
                 const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(nh * 60);
-                const workEndMin = windowEnd * 60;
+                const workEndMin = SPLIT_DAY_END_H * 60;
                 // Use the same 15-min snap as calcEndAt() so the warning fires iff the
                 // Кінець field actually shows a next-day time (prevents contradictory UI).
                 const snappedTotal = Math.round(totalMin / 15) * 15;
                 if (snappedTotal <= workEndMin) return null;
                 const overflowMin = snappedTotal - workEndMin;
-                const day2EndMin = 8 * 60 + overflowMin; // starts at 08:00
+                const day2EndMin = SPLIT_DAY_START_H * 60 + overflowMin;
                 const day2H = Math.floor(day2EndMin / 60);
                 const day2M = day2EndMin % 60;
                 const nextDayIso = (() => {
@@ -851,19 +863,19 @@ export function CalendarSlotModal({
                 })();
                 return (
                   <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
-                    ⚠ Буде розбито: {form.startAt}–{pad(windowEnd)}:00 + {nextDayIso} 08:00–
-                    {pad(day2H)}:{pad(day2M)}
+                    ⚠ Буде розбито: {form.startAt}–{pad(SPLIT_DAY_END_H)}:00 + {nextDayIso}{' '}
+                    {pad(SPLIT_DAY_START_H)}:00–{pad(day2H)}:{pad(day2M)}
                   </p>
                 );
               })()}
             </div>
             <div>
-              {/* Compute end date: next calendar day when totalMin overflows WINDOW_END */}
+              {/* Compute end date: next calendar day when totalMin overflows SPLIT_DAY_END_H */}
               {(() => {
                 const nh = Number(form.normoHours);
                 const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
                 const totalMin = (sh ?? 0) * 60 + (sm ?? 0) + Math.round((nh > 0 ? nh : 0) * 60);
-                const isOverflow = form.startAt && nh > 0 && totalMin > windowEnd * 60;
+                const isOverflow = form.startAt && nh > 0 && totalMin > SPLIT_DAY_END_H * 60;
                 const endDate = (() => {
                   if (!isOverflow || !date) return date;
                   try {
@@ -1469,7 +1481,7 @@ export function CalendarSlotModal({
           const nh = Number(form.normoHours);
           const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
           const totalMin = (sh ?? 0) * 60 + (sm ?? 0) + Math.round((nh > 0 ? nh : 0) * 60);
-          const isOverflow = form.startAt && nh > 0 && totalMin > windowEnd * 60;
+          const isOverflow = form.startAt && nh > 0 && totalMin > SPLIT_DAY_END_H * 60;
           const endDate = (() => {
             if (!isOverflow || !date) return date;
             try {

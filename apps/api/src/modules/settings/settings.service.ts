@@ -152,10 +152,15 @@ export class SettingsService {
       select: { workStartTime: true, workEndTime: true },
       orderBy: { branch: { createdAt: 'asc' } },
     });
-    const parseHour = (t: string | undefined, fallback: number) =>
-      t ? parseInt(t.split(':')[0]!, 10) || fallback : fallback;
+    // parseInt('00', 10) === 0 → use Number.isFinite() check (0 is valid 24/7 start hour).
+    // Fallbacks aligned with BranchSettings Prisma defaults (09:00 / 18:00) to match booking.service.ts.
+    const parseHour = (t: string | undefined, fallback: number) => {
+      if (!t) return fallback;
+      const h = parseInt(t.split(':')[0]!, 10);
+      return Number.isFinite(h) && h >= 0 && h <= 23 ? h : fallback;
+    };
     return {
-      workStartHour: parseHour(settings?.workStartTime, 8),
+      workStartHour: parseHour(settings?.workStartTime, 9),
       workEndHour: parseHour(settings?.workEndTime, 18),
     };
   }

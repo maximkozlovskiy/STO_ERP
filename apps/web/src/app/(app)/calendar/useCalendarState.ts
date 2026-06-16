@@ -36,7 +36,6 @@ import {
   decimalHoursToHHMM,
   decimalHoursToISO,
   kyivHours,
-  pxToHours,
   snapTo15,
   toDateString,
 } from './calendar.utils';
@@ -274,8 +273,12 @@ export function useCalendarState() {
           setWorkEndHour(data.workEndHour);
         }
       })
-      .catch(() => {
-        // fallback to defaults (8-18) on error — calendar still works
+      .catch(err => {
+        // Fallback to defaults (8-18) on error — calendar still works.
+        // Log to Sentry/devtools so missed settings don't fail silently.
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[calendar] /settings/work-hours fetch failed; using defaults', err);
+        }
       });
   }, []);
 
@@ -666,7 +669,9 @@ export function useCalendarState() {
       if (pr) {
         const rect = timelineRef.current?.getBoundingClientRect();
         if (!rect) return;
-        const deltaH = pxToHours(e.clientX - pr.pointerStartX, rect.width - SIDEBAR_W);
+        // Bug: pxToHours() uses static TOTAL_HOURS=12. Use dynamic totalHoursRef instead.
+        const deltaH =
+          ((e.clientX - pr.pointerStartX) / (rect.width - SIDEBAR_W)) * dynTotalHoursRef.current;
         const todayKyiv2 = toDateString(new Date());
         const pastFloor =
           dateRef.current === todayKyiv2 ? minHourRef.current : dynWindowStartRef.current;
@@ -687,7 +692,9 @@ export function useCalendarState() {
       if (res) {
         const rect = timelineRef.current?.getBoundingClientRect();
         if (!rect) return;
-        const deltaH = pxToHours(e.clientX - res.pointerStartX, rect.width - SIDEBAR_W);
+        // Bug: pxToHours() uses static TOTAL_HOURS=12. Use dynamic totalHoursRef instead.
+        const deltaH =
+          ((e.clientX - res.pointerStartX) / (rect.width - SIDEBAR_W)) * dynTotalHoursRef.current;
         if (res.edge === 'start') {
           const newStartH = snapTo15(
             Math.max(
