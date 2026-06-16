@@ -16011,3 +16011,79 @@ if (recalcActualHoursEnabled) {
 **Статус:** [x] виправлено — `computedActualHours: number | null | undefined` з трьома гілками: (a) recalc on + lines>0 → sum; (b) recalc on + lines=0 → undefined (не зачіпаємо); (c) recalc off + form.actualHours=число → це число; (d) recalc off + form.actualHours='' → null (явне очищення). `JSON.stringify` drops `undefined` keys → бекенд service.update залишає поле без змін.
 
 ---
+
+## Session 2026-06-17 — Manual Playwright tester: line-level actualHours not persisted in IN_PROGRESS (HEAD 9e0f5977)
+
+Інтерактивне тестування через Playwright MCP. Сценарій: WO у статусі IN_PROGRESS → редагувати рядок → ввести «Год (факт.)» = 1.5 → натиснути ✓ (зберегти рядок) → натиснути «Зберегти зміни» → переоткрити WO → перевірити persistence.
+
+### Bug #526 — [CRITICAL] frontend / CreateWorkOrderModal — inline-edit commit втрачає `line.id` → save() filter `!!l.id` пропускає рядок → PATCH /work-orders/:id/lines/:lineId НЕ надсилається → actualHours по лінії не зберігається в БД
+
+**Файли:**
+
+- `apps/web/src/components/ui/CreateWorkOrderModal.tsx:2519` (inline-edit ✓ button onClick: `{ ...editingLine, _key: l._key }`)
+- `apps/web/src/components/ui/CreateWorkOrderModal.tsx:1129` (save() committedLines merge: `{ ...editingLine, _key: l._key }`)
+- `apps/web/src/components/ui/CreateWorkOrderModal.tsx:508` (`editingLine` state ніколи не має `id` поля)
+- `apps/web/src/components/ui/CreateWorkOrderModal.tsx:1247` (save() filter `!!l.id && l.actualHours !== ''`)
+
+**Severity:** CRITICAL — фундаментальний regression Bug #522 (фіча «Год (факт.) у IN_PROGRESS/ON_HOLD»): механік вводить факт. години → бачить «1.5» у UI → натискає Зберегти → нічого не зберігається у БД. Спостерігається 100% repro: WO actualHours=1.5 (WO-рівень save проходить), але `lines[0].actualHours = null` (line-рівень save мовчки пропущено).
+**Категорія:** state merge drops critical field (SKILL §1.3 React state immutable merge gotcha).
+
+**Сигнал:** Playwright network log показав:
+
+- PATCH /work-orders/:id body `{"actualHours":1.5}` → 200
+- ❌ НЕМАЄ PATCH /work-orders/:id/lines/:lineId
+
+Verify через API:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" /api/work-orders/$ID | jq '.actualHours, .lines[0].actualHours'
+# 1.5
+# null   ← БУГ
+```
+
+**Очікувана поведінка:** Після save() рядок `lines[0].actualHours = 1.5` зберігається у БД. UI після reopen показує «1.5» у колонці «Год (факт.)».
+
+**Фактична поведінка:** UI показує «1.5» одразу після save (з локального state), але після закриття + переоткриття модалки колонка показує «—», бо БД актуальне значення = null.
+
+**Корінь:**
+
+```ts
+// inline-edit ✓ commit (line 2519):
+setLines(prev =>
+  prev.map(l =>
+    l._key === line._key
+      ? { ...editingLine, _key: l._key } // ← editingLine не має `id`!
+      : l,
+  ),
+);
+```
+
+`editingLine` state ініціалізується лише полями `{ workId, workName, employeeId, normoHours, actualHours, price }` — без `id`. Після merge новий line object перетирає `l.id` на undefined. Потім save() робить:
+
+```ts
+for (const line of committedLines.filter(l => !!l.id && l.actualHours !== '')) {
+  await apiFetch(`/work-orders/${workOrderId}/lines/${line.id}`, { method: 'PATCH', ... });
+}
+```
+
+`!!l.id` = false → filter excludes line → PATCH ніколи не виконується. WO-рівень `actualHours` зберігається бо footing sums рахуються з `committedLines` (де actualHours='1.5'), і computedActualHours=1.5 потрапляє у WO PATCH. Це маскувало баг: на WO рівні поле виглядало збереженим, тому здавалося «все працює», поки не подивитися конкретно lines[].actualHours у БД.
+
+**Фікс:**
+
+1. `CreateWorkOrderModal.tsx:2519` — поміняти на `{ ...l, ...editingLine, _key: l._key }`. Spread `l` ПЕРШИМ зберігає всі поля що не у editingLine (включаючи `id`); потім editingLine overrides editable fields.
+2. `CreateWorkOrderModal.tsx:1129` — те саме у save() committedLines merge.
+3. `CreateWorkOrderModal.tsx:3029` — паралельний фікс для editingPart (симетрична проблема для запчастин у DRAFT).
+
+**Регресія-guard:** Component-test (RTL):
+
+1. Mount CreateWorkOrderModal з workOrderId, статус=IN_PROGRESS, lines=[{ id: 'L1', actualHours: null, ... }].
+2. Click pencil → fill actualHours=1.5 → click ✓.
+3. Assert `lines[0].id === 'L1'` у component state (через React DevTools-like inspection або шляхом перевірки що save() надсилає PATCH `/lines/L1`).
+4. Click «Зберегти зміни».
+5. Assert apiFetch був викликаний з url `/work-orders/:id/lines/L1` method=PATCH body=`{actualHours: 1.5}`.
+
+Альтернатива (smoke): E2E Playwright — повний сценарій save→reopen→assert UI shows «1.5».
+
+**Статус:** [x] виправлено — spread base object first у всіх трьох merge points (`{ ...l, ...editingLine, _key: l._key }` і `{ ...pt, ...editingPart, _key: pt._key }`). Pattern універсальний: для будь-якого React state merge де target object містить server-only/DB-only fields (id, createdAt, ...), base spread зберігає ці поля.
+
+---

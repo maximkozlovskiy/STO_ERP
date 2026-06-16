@@ -1016,6 +1016,63 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-17 — React inline-edit merge втрачає DB-only fields (`id`, `createdAt`) → save() filter мовчки пропускає рядок (Bug #526) — frontend / state-merge
+
+**Сигнал:** У компонентах з inline-row-edit pattern (CreateWorkOrderModal, BudgetTab, InvoicePage, будь-який list-with-edit) state виглядає так:
+
+```ts
+const [items, setItems] = useState<Item[]>([]); // server-loaded, з `id`
+const [editing, setEditing] = useState<Omit<Item, 'id'>>(EMPTY); // editable subset
+```
+
+На commit ✓ button:
+
+```ts
+setItems(prev =>
+  prev.map(it =>
+    it._key === target._key
+      ? { ...editing, _key: it._key } // ← `id` загублено
+      : it,
+  ),
+);
+```
+
+Далі save() робить `items.filter(i => !!i.id)` → відредагований row пропадає → PATCH не надсилається → DB не оновлюється → UI показує локально новий value, але після reload returnить попередній. Бо у save() WO-level fields рахуються з committed state (sum/total), а line-level PATCH повністю пропускається, **WO-рівень виглядає збереженим**, що маскує bug як "інший інше зламано".
+
+**Причина виникнення:** TypeScript helper типи (`Omit<LocalLine, '_key'>` для `editingLine`) роблять `id` опціональним → spread valid → нема компіляційної помилки. Розробник пише `{ ...editing, _key: l._key }` як best-practice "shallow copy editable fields", забуваючи що merge replaces entire object, не lifts onto base. `editing` state ніколи не виставляється з `id`, бо handler що entering edit mode копіює тільки editable subset. Pattern масштабується: тих самих 3-5 рядків достатньо щоб тихо ламати persistence у будь-якій inline-edit UI.
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Знайти всі inline-edit commit patterns у components/
+grep -rn "\.\.\.editing.*_key" apps/web/src --include="*.tsx" --include="*.ts"
+# Будь-який match → перевірити: чи editing state містить id? Чи base item має id?
+
+# 2) Знайти всі save()/submit() filters з `!!id`/`l.id` що потім роблять PATCH:
+grep -rn "filter.*!!.*\.id\|filter.*l\.id" apps/web/src --include="*.tsx" --include="*.ts"
+# Перетин (1) і (2) у одному файлі = high-risk
+
+# 3) State типи `Omit<X, '_key'>` де X має `id?: string`:
+grep -rn "Omit<.*'_key'>" apps/web/src --include="*.ts*"
+# Кожен match — підозра на втрату id при merge.
+```
+
+**Підхід до фіксу:** spread base object FIRST, потім editable fields:
+
+```ts
+{ ...l, ...editing, _key: l._key }   // ← `l` first preserves `id`/`createdAt`/etc
+```
+
+Універсально для будь-якого React state merge де target має server-only fields. Альтернатива (gorzhe): додати `id: l.id` в setEditingLine, але це duplicates сурс правди і ламається при додаванні нового server-only field.
+
+**Регресія-guard:** Component-test (RTL) — після click ✓ ассертити що `lines[0].id === <original-id>` через react-test-renderer state inspection, або spy на apiFetch і assert PATCH `/lines/<originalId>` був викликаний.
+
+**Severity для подібних bugs:** CRITICAL — silent data-loss що маскується миттєвим UI feedback. Користувач бачить "збережено", закриває модалку, повертається → значення зникло. Найгірший UX trust violation.
+
+**Де шукати ще:** CreateInvoiceModal, CreatePurchaseOrderModal, CreateStockDocumentModal, BudgetTab inline-edit, будь-яка двофазна editing UI з server-loaded list + local edit buffer.
+
+---
+
 ### 2026-06-16 — Time-of-day string DTO field без regex + cross-field guard (Bug #515) — backend / validation
 
 **Сигнал:** `@IsString()` для поля `*Time` або `*Hour` у DTO БЕЗ `@Matches(/^\d{2}:\d{2}$/)`. Сервіс не валідує `workEnd > workStart` → `dynHours=[]` → division by zero → NaN у CSS. Де ще шукати: `BranchSettings`, `OperatingHours`, `EmployeeShift`, `EventSchedule`.

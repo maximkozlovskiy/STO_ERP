@@ -1125,8 +1125,12 @@ export function CreateWorkOrderModal({
     // Commit any open inline-edit row synchronously so save() reads the latest actualHours.
     // setLines is async (React batched), so compute the merged snapshot here and use it
     // directly in the rest of save() via committedLines instead of the stale `lines` closure.
+    // Bug #526: spread `l` FIRST so `id` (and other DB-only fields) survive the merge.
+    // editingLine state never carries `id` → раніше merge скидав `id` у undefined →
+    // save() filter `!!l.id && l.actualHours !== ''` пропускав рядок → PATCH lines
+    // не надсилався → actualHours на line-рівні ніколи не зберігалось у IN_PROGRESS/ON_HOLD.
     const committedLines = editingLineKey
-      ? lines.map(l => (l._key === editingLineKey ? { ...editingLine, _key: l._key } : l))
+      ? lines.map(l => (l._key === editingLineKey ? { ...l, ...editingLine, _key: l._key } : l))
       : lines;
     if (editingLineKey) {
       setLines(committedLines);
@@ -2513,10 +2517,16 @@ export function CreateWorkOrderModal({
                                         onClick={() => {
                                           if (!editingLine.workId || !editingLine.employeeId)
                                             return;
+                                          // Bug #526: spread `l` first to preserve `id` (DB-only).
+                                          // editingLine ніколи не містить `id` (виставляється лише
+                                          // workId/workName/employeeId/normoHours/actualHours/price);
+                                          // без `...l` merge зкидав `id` → save() filter `!!l.id` пропускав
+                                          // рядок → PATCH /work-orders/:id/lines/:lineId не надсилався
+                                          // → actualHours = null у БД попри «1.5» у UI.
                                           setLines(prev =>
                                             prev.map(l =>
                                               l._key === line._key
-                                                ? { ...editingLine, _key: l._key }
+                                                ? { ...l, ...editingLine, _key: l._key }
                                                 : l,
                                             ),
                                           );
@@ -3013,10 +3023,14 @@ export function CreateWorkOrderModal({
                                         onClick={() => {
                                           if (!editingPart.goodId || !editingPart.warehouseId)
                                             return;
+                                          // Bug #526 (parallel fix): spread `pt` first to preserve `id`.
+                                          // Same merge bug as for lines — editingPart never carries `id`,
+                                          // тому без `...pt` save() filter не побачив би existing part
+                                          // → POST дублікат + duplicate-key fail.
                                           setParts(prev =>
                                             prev.map(pt =>
                                               pt._key === part._key
-                                                ? { ...editingPart, _key: pt._key }
+                                                ? { ...pt, ...editingPart, _key: pt._key }
                                                 : pt,
                                             ),
                                           );
