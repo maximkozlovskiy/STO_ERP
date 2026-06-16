@@ -7,6 +7,64 @@
 
 ## 2026-06-16
 
+### 7ec6dead docs(skills): add 3 new patterns to sto-tester (Bugs #515, #517, #518)
+
+- Time-of-day DTO без @Matches regex + cross-field guard (Bug #515)
+- jsdom URL.createObjectURL stub missing → vitest exit 1 shadow error (Bug #518)
+- Dead exports у \*.utils.ts після refactor на dynamic config (Bug #517)
+
+### 27854f05 perf(calendar): merge mount effects + statsTab useMemo
+
+- useCalendarState: 2 окремих mount useEffect → 1 Promise.all (1 мережева хвиля)
+- CalendarStatsTab: days, periodLabel, liftStats, totalMinAll — усе у useMemo
+
+### e3a044df docs(skills): add settings/config endpoint cache pattern to sto-optimize
+
+- Новий патерн у sto-optimize SKILL.md: read-endpoint без Redis при high-mount-frequency
+
+### 3d8f4ad5 perf(calendar): Redis cache work-hours + statsTab single-pass aggregation (Bug #520)
+
+- getWorkHours(): Redis TTL 60s (key=settings:work-hours:{orgId}) + conditional invalidation у updateBranchSettings
+- CalendarStatsTab: liftStats bucket-by-liftId Map, O(N×M) → O(N+M), 30k Date allocs/render → 0
+
+### add05f53 fix(tester): DTO regex, dead exports, jsdom stubs, spec coverage (Bugs #515-#518)
+
+- settings.dto.ts: @Matches(HH_MM_RE) на workStartTime/workEndTime + cross-field guard
+- calendar.utils.ts: видалено dead exports HOURS/TOTAL_HOURS/WINDOW_START/WINDOW_END/pxToHours
+- setup.ts: typeof-guard stubs для URL.createObjectURL/revokeObjectURL
+- settings.contract.spec.ts: +13 тестів для GET /settings/work-hours + PATCH validation
+
+### b7bbd0d3 perf(optimize): EMPTY_BOOKINGS module-level + skill improvement
+
+- CalendarDayGrid: `useMemo<BookingSlot[]>(() => [], [])` → module-level `EMPTY_BOOKINGS` (0 hook slot, 0 alloc per mount)
+- optimize SKILL.md: додано 2 патерни — bucket-by-FK для date-overlap loops, module-level empty collection
+
+### c4f6ab06 perf(optimize): GoodPickerModal stable refs + lift qty IIFE
+
+- `setStockMap(new Map())` → module-level `EMPTY_STOCK_MAP` stable reference
+- qty IIFE у `.map()` row → `const qty = stockMap.get(item.id) ?? 0` (1 alloc/row замість 1/render)
+
+### 50cd6434 perf(optimize): bucket busy slots by liftId in getAvailability + useCalendarState
+
+- `getAvailability()`: O(T×L×B) → O(T×L×avg(B/L)) + pre-parsed `startMs/endMs` (0 Date allocs у hot-path)
+- `useCalendarState.load()` booking→lift assignment: Map pre-bucketed, 0 Date allocs для PENDING bookings
+
+### 6987c7fa fix(tester): Bug #511-#514 — booking DST-safe bookedTimes + calendar race + clamp + workhours guard
+
+- Bug #511 [CRITICAL]: bookedTimes використовував getUTCHours() → KYIV_HM_FMT.format() (DST-safe)
+- Bug #512 [HIGH]: lifts.length додано до load() useEffect deps (race condition fix)
+- Bug #513 [MEDIUM]: BookingSlotBlock left/width clamped (Math.max/min)
+- Bug #514 [MEDIUM]: create() валідує requestedDate проти workDays + [workStart,workEnd)
+
+### feat(session): booking widget + calendar bookings display + WO status on slots
+
+- /booking: дедуплікація слотів (Map<timeKey>), телефон normalize перед POST, BranchSettings інтеграція
+- /bookings admin: fmtDateTime для requestedDate (час + дата)
+- CalendarSlotModal: підйомник обов'язковий (required validation + \*)
+- GoodPickerModal: GET /goods/stock-totals → "N на складі" / "немає на складі" per item
+- CalendarDayGrid: BookingSlotBlock (PENDING bookings, green dashed, read-only)
+- CalendarSlot: workOrderStatus через всі шари (DB select → DTO → frontend → рендер)
+
 ### f337e4e9 revert(api): nest tsc builder + @sto/shared CJS build fix
 
 - Reverted `nest start --builder swc` → `nest start --watch` (tsc builder): SWC on Windows emits `tsconfig paths` aliases as literal strings in dist JS, breaking monorepo resolution

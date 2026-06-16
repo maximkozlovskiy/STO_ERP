@@ -12,10 +12,10 @@
 Дата:       2026-06-16
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 860/860 | Web 434/434 | E2E пропущено (Docker DOWN у цій сесії)
+Тести:      API 871/871 | Web 434/434 | E2E пропущено (Docker DOWN у цій сесії)
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній optimize: 2026-06-16 — Bug #520 work-hours Redis cache + statsTab single-pass
-Останній tester: 2026-06-16 — Bug #511-#514 — booking DST + race + clamp + workhours guard
+Останній optimize: 2026-06-16 — Bug #520 Redis cache work-hours + statsTab O(N×M)→O(N+M) + Promise.all mount
+Останній tester: 2026-06-16 — Bug #515-#520 (6 багів: DTO regex, dead exports, jsdom stubs, Redis cache)
 Останній review: 2026-06-16 (AUTO, HEAD a0301b36) — calendar split + pxToHours + parseHour(00:00)
 Останній sync:   2026-06-16 — BranchSettings/WorkHours+CalendarSlot+BookingRequest+Warehouse/Branch/Zone+GoodPickerModal — 0 розбіжностей
 ```
@@ -25,17 +25,11 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+7ec6dead  docs(skills): add 3 new patterns to sto-tester (Bugs #515, #517, #518)
+27854f05  perf(calendar): merge mount effects + statsTab useMemo
 e3a044df  docs(skills): add settings/config endpoint cache pattern to sto-optimize
 3d8f4ad5  perf(calendar): Redis cache work-hours + statsTab single-pass aggregation
-          Bug #520: GET /settings/work-hours тепер кешується у Redis (TTL 60s,
-          key=settings:work-hours:{orgId}) з invalidation у updateBranchSettings
-          тільки коли workStartTime/workEndTime реально змінилися.
-          useCalendarState: 2 mount-only useEffect → 1 Promise.all.
-          CalendarStatsTab: liftStats useMemo з bucket-by-liftId Map; totalMinAll,
-          avgLoadPct, periodLabel, days — теж memo. O(N×M) → O(N+M).
-a0301b36  fix(review): align calendar split with backend + fix pxToHours static TOTAL_HOURS
-46b64596  feat(calendar): dynamic work hours from BranchSettings
-831c7d36  fix(infra): Cache-Control no-cache on branches/zones/warehouses GET
+add05f53  fix(tester): DTO regex @Matches, dead exports, jsdom URL stubs (Bugs #515-#518)
 ```
 
 Latest tester: 2026-06-16 (AUTO) — Bug #508-510 — invoice section test coverage
