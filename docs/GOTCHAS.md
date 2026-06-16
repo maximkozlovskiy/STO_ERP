@@ -4,6 +4,25 @@
 
 ---
 
+## [2026-06-16] NestJS + SWC builder на Windows: paths aliases не резолвяться
+
+**SWC не виконує `tsconfig paths` transform при emit** — копіює alias literal (`@sto/shared`) як є у dist JS. Node не знаходить модуль → `Cannot find module '@sto/shared'`.
+
+**Симптом:** API стартує, але runtime помилка `Cannot find module` при першому import.
+
+**Рішення:**
+
+1. `nest-cli.json` — НЕ використовувати `builder: "swc"` у dev на Windows monorepo
+2. `apps/api/package.json` — `"dev": "nest start --watch"` (tsc builder за замовчуванням)
+3. Якщо є `paths` у `tsconfig.json` — видалити (tsc резолвить через node_modules symlink)
+4. `baseUrl: "."` залишити — SWC потребує непустий baseUrl навіть коли не builder
+
+**Окремо: `@sto/shared` package.json `main` не має вказувати на raw `.ts`** — Node/CJS не може виконати TypeScript. Рішення: `tsconfig.cjs.json` + `build:cjs` → `dist/cjs/index.js`.
+
+**Окремо: `rootDir` у api tsconfig** — має бути `"src"` не `"../.."`; інакше dist стає `dist/apps/api/src/main.js` і `node dist/main` падає.
+
+---
+
 ## [2026-06-15] Новий enum-value: hunt for hardcoded arrays на фронті
 
 При додаванні нового значення до enum (`StockDocumentType.RECEIPT`, `WorkOrderStatus.X`, etc.) — grep по фронту на наявність **жорстко-закодованих масивів старих значень**, які не імпортують з `@sto/shared`.

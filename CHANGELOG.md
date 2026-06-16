@@ -7,6 +7,16 @@
 
 ## 2026-06-16
 
+### f337e4e9 revert(api): nest tsc builder + @sto/shared CJS build fix
+
+- Reverted `nest start --builder swc` → `nest start --watch` (tsc builder): SWC on Windows emits `tsconfig paths` aliases as literal strings in dist JS, breaking monorepo resolution
+- `packages/shared/tsconfig.cjs.json` (new): builds `@sto/shared` as CommonJS to `dist/cjs/`
+- `packages/shared/package.json`: `main` → `./dist/cjs/index.js` (was raw `.ts`)
+- `apps/api/tsconfig.json`: `rootDir: "src"` (was `"../.."`), removed `paths`, `baseUrl: "."` kept
+- `apps/api/nest-cli.json`: removed `builder: "swc"`, reverted to default tsc
+
+---
+
 ### aa3b03c5 fix(review): invoice section — deferred revokeObjectURL + shared labels + narrow types
 
 - WO card `downloadInvoicePdf`: `setTimeout(() => URL.revokeObjectURL(url), 100)` + `appendChild(a)` / `removeChild(a)` — mirrors `downloadPdf` / `downloadActPdf` pattern (Bug #77 hardening).

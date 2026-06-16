@@ -13,8 +13,9 @@
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 852/852 | Web 434/434 | E2E пропущено (Docker DOWN у цій сесії)
-Останній tester: 2026-06-16 — Bug #508-#510 — invoice section: stale findByWorkOrder shape unit-test (release-blocker) + contract spec gap + missing component test (extracted InvoiceSection)
-Останній review: 2026-06-16 (AUTO, HEAD aa3b03c5) — invoice section на WO card: deferred revokeObjectURL + shared INVOICE_STATUS_LABELS + InvoiceRef + InvoiceStatus literal union (4 findings, 0 critical)
+Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
+Останній tester: 2026-06-16 — Bug #508-#510 — invoice section specs synced
+Останній review: 2026-06-16 — invoice section review + simplify cycle
 ```
 
 ---
@@ -22,25 +23,17 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 ## Останній commit
 
 ```
-aa3b03c5  fix(review): invoice section — deferred revokeObjectURL + shared
-          INVOICE_STATUS_LABELS + InvoiceRef interface + InvoiceStatus literal
-          union у findByWorkOrder (WO card invoice block)
-523190f2  feat(work-orders): add invoice section to work order card
-4ed163b5  fix(review): @Injectable для 4 BullMQ processors (loyalty/sms/checkbox/
-          webhooks) — SWC builder consistency; React.ChangeEvent → named import
-<pending>  fix(tester): Bug #506-#507 — booking SMS через NotificationsService.send()
-          + BOOKING_CONFIRMATION enum + migration + seed; spec full-shape assert
-f84132a1  perf(tech): font local (geist), turbopack, swc builder, Promise.all
-          для read queries, bull→bullmq міграція (6 processors)
-09617df5  perf(optimize): UI-polish files — useMemo/useCallback row & modal
-          handlers; PO modal headerChips (filter + warehouses.find на typing);
-          SR modal total reduce; calendar isPastDay; 5 файлів, +275/-190
-1788dd0a  fix(tester): Bug #504-#505 — dead DetailPanel/Toggle paired-files
-c83f8e29  fix(tester): UI-polish follow-up bugs #496-#503 (HIGH+MEDIUM+LOW)
-24dc273d  fix(review): a11y + dead code after UI-polish series
+f337e4e9  revert(api): use nest tsc builder instead of swc for dev
+          @sto/shared тепер компілюється як CJS → dist/cjs/; rootDir=src у api tsconfig
+19657510  fix(api): remove paths alias — SWC emits literal relative path on Windows
+0e2d4f15  fix(api): add baseUrl '.' for SWC Windows UNC path canonicalization
+8f79d17f  chore(api): install @swc/cli @swc/core
+63a951e4  fix(review): invoice section visible for PAID/ARCHIVED + OVERDUE + InvoicePayload
+eed8b809  fix(tester): Bug #508-#510 — sync invoice section specs
+30788780  docs(memory): post-review state + sto-review skill patterns
 ```
 
-Latest tester: 2026-06-15 (FULL, post-bullmq) — booking SMS shape mismatch (HIGH) + weak spec (LOW)
+Latest tester: 2026-06-16 (AUTO) — Bug #508-510 — invoice section test coverage
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
 
@@ -48,11 +41,13 @@ Latest tester: 2026-06-15 (FULL, post-bullmq) — booking SMS shape mismatch (HI
 
 ## Нові файли/утиліти (з останніх сесій)
 
-| Файл                                        | Що                                                 |
-| ------------------------------------------- | -------------------------------------------------- |
-| `apps/api/src/common/utils/array.ts`        | `deduplicateBy<T>(arr, key)` — Map last-wins dedup |
-| `apps/web/src/lib/utils.ts`                 | `toIdMap<T extends {id}>`, `calcVatTotals`         |
-| `packages/shared/src/constants/statuses.ts` | RECEIPT у STOCK_DOC_TYPE_LABELS/BADGE              |
+| Файл                                                         | Що                                                 |
+| ------------------------------------------------------------ | -------------------------------------------------- |
+| `apps/api/src/common/utils/array.ts`                         | `deduplicateBy<T>(arr, key)` — Map last-wins dedup |
+| `apps/web/src/lib/utils.ts`                                  | `toIdMap<T extends {id}>`, `calcVatTotals`         |
+| `packages/shared/src/constants/statuses.ts`                  | RECEIPT у STOCK_DOC_TYPE_LABELS/BADGE              |
+| `apps/web/src/app/(app)/work-orders/[id]/InvoiceSection.tsx` | Extracted invoice block компонент з PageClient.tsx |
+| `packages/shared/tsconfig.cjs.json`                          | CJS build config (module: commonjs → dist/cjs/)    |
 
 ---
 
@@ -69,6 +64,9 @@ Latest tester: 2026-06-15 (FULL, post-bullmq) — booking SMS shape mismatch (HI
 - `RepeatOptions` — `pattern: '0 9 * * *', tz: 'Europe/Kyiv'` (НЕ `cron:`)
 - SMS-канал через `NotificationsService.send(orgId, eventType, payload)` — НЕ прямий `smsQueue.add()`. payload має `branchId` + `phone` + template placeholders. service резолвить branchSettings provider/apiKey + NotificationTemplate.body.
 - `NotificationEventType` enum: WO_CREATED/WO_ESTIMATE_READY/WO_APPROVED/WO_IN_PROGRESS/WO_COMPLETED/WO_READY_FOR_PICKUP/PAYMENT_RECEIVED/INVOICE_SENT/LOW_STOCK_ALERT/FOLLOWUP_REMINDER/**BOOKING_CONFIRMATION** (новий)
+- **`@sto/shared` CJS build**: `packages/shared/package.json` main=`./dist/cjs/index.js`. Запускати `pnpm --filter @sto/shared build:cjs` якщо shared змінювався і API не стартує
+- **NestJS SWC на Windows**: SWC не резолвить `tsconfig paths` — вставляє alias як literal string у dist JS. **Рішення: залишити tsc builder** (`nest start --watch` без `--builder swc`). `baseUrl: "."` залишити для SWC compatibility але builder = tsc
+- **`rootDir: "src"` у api tsconfig** — обов'язково! Без нього tsc дзеркалить monorepo дерево → `dist/apps/api/src/main.js` замість `dist/main.js` і `node dist/main` падає з MODULE_NOT_FOUND
 
 ---
 
