@@ -13,10 +13,7 @@
     "resolveJsonModule": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "baseUrl": ".",
-    "paths": {
-      "@sto/shared": ["../../packages/shared/src"]
-    }
+    "baseUrl": "."
   },
   "include": ["src/**/*"],
   "exclude": ["src/**/*.spec.ts", "node_modules", "dist"]
