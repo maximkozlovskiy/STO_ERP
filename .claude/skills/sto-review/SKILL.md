@@ -1387,6 +1387,34 @@ grep -rnE "const (select|toggle)[A-Z][A-Za-z]+ = useCallback" apps/web/src/app/ 
 
 ---
 
+### 2026-06-17 — Aggregate-level field змінено (recalcTotals) але per-line displayed values not propagated downstream — §5 Business Rules / §13 API Contract
+
+**Сигнал:** новий поле-агрегат у parent-моделі (`WorkOrder.totalActualLabor`, `Invoice.totalWithVat`) рахується через **нову формулу** у `recalcTotals` (`SUM((actualHours ?? normoHours) × price)`). Aggregate тепер записаний у БД, але стара `line.amount` колонка зберігає **планові** значення (`normoHours × price`). Будь-який downstream document що пайпить `line.amount` напряму у вивід (PDF, Excel, DOCX, completion-act, invoice refresh-from-WO) показує:
+
+- line: `quantity = actualHours` (нове) × `price`, але `total = l.amount` (старе) → "5 год × 100 ₴ = 300 ₴" — арифметика не сходиться
+- `SUM(line.total) ≠ parent.totalAmount` (бо parent рахує actualHours, line.amount — normoHours)
+- `refreshFromWorkOrder` мовчки перезаписує `invoice.amount` сумою `normoHours × price`, тоді як `createFromWorkOrder` поставив `wo.totalAmount` (actualHours × price)
+
+**Grep:**
+
+```bash
+# Знайти всі місця де line/part .amount читається напряму у вивід
+grep -rn "l\.amount\|line\.amount\|Number(l\.amount)\|Number(line\.amount)" apps/api/src/modules --include="*.ts" | grep -v spec | head
+# Кожне таке місце — порівняти що quantity у тому ж об'єкті рахується з actualHours, а total — з amount
+# refreshFromWorkOrder-стилі (re-build invoice/act lines з WO lines) — особливо ризиковано
+grep -rn "wo\.lines\.map\|workOrder\.lines\.map\|buildLines" apps/api/src/modules --include="*.ts" | grep -v spec | head
+```
+
+**Фікс:**
+
+1. Замість `total: Number(l.amount)` рахувати з displayed quantity: `const quantity = l.actualHours ?? l.normoHours; const total = quantity * Number(l.price);` (single-source: одна формула на parent + child).
+2. У `refreshFromWorkOrder`/`buildLines`-стилі обов'язково додавати `actualHours: true` у `lines.select` (бо вузький `select` без actualHours = silent fallback на normoHours).
+3. Перевірити всі downstream "act of completed work": completion-act, invoice refresh, PDF/Excel/DOCX, public estimate share — мають дзеркалити нову формулу parent-агрегату.
+
+**Severity:** CRITICAL — користувач бачить документ з арифметикою що не сходиться ("5 × 100 = 300"); сума рядків ≠ ЗАГАЛЬНА; invoice після refresh мовчки змінює суму. tsc мовчить, runtime працює, але документ юридично неправильний.
+
+---
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
