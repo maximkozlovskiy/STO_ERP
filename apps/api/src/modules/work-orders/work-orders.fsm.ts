@@ -30,6 +30,16 @@ export const EDITABLE_STATUSES: readonly WorkOrderStatus[] = Object.freeze([
   'ESTIMATE',
   'APPROVED',
 ]);
+// Bug #522: для line-level операцій що зачіпають ТІЛЬКИ фактичні години (actualHours)
+// дозволяємо ще IN_PROGRESS/ON_HOLD — це сенс FSM "В роботі": механік закриває рядок
+// з фактичним часом виконання. Інші лінійні поля (workId/employeeId/normoHours/price)
+// заборонені поза EDITABLE_STATUSES, бо вони змінюють кошторис після затвердження.
+// Frontend canEditActual = (IN_PROGRESS || ON_HOLD) → нова Save button у тих статусах.
+export const LINE_ACTUAL_EDITABLE_STATUSES: readonly WorkOrderStatus[] = Object.freeze([
+  ...EDITABLE_STATUSES,
+  'IN_PROGRESS',
+  'ON_HOLD',
+]);
 // Single source for invoice/completion-act gate. Mirrors WO_INVOICEABLE_STATUSES in @sto/shared.
 export const INVOICEABLE_STATUSES: readonly WorkOrderStatus[] = Object.freeze([
   'COMPLETED',

@@ -368,6 +368,71 @@ describe('WorkOrders — HTTP Contract', () => {
     });
   });
 
+  // Bug #521 regression-guard: PATCH /work-orders/:id/lines/:lineId з actualHours=null
+  // повинен повертати 200 (clear semantics). Раніше DTO був @IsNumber без nullable →
+  // 400 на будь-якому save() з порожнім «Год (факт.)».
+  describe('Bug #521: PATCH /work-orders/:id/lines/:lineId — actualHours nullable', () => {
+    const WO_ID = '11111111-1111-4111-8111-100000000001';
+    const LINE_ID = '11111111-1111-4111-8111-200000000001';
+
+    it('приймає PATCH з actualHours=null (clear semantics) → 200', async () => {
+      jwtAllow = true;
+      serviceMock.updateLine.mockResolvedValueOnce({
+        id: LINE_ID,
+        workOrderId: WO_ID,
+        workId: '11111111-1111-4111-8111-300000000001',
+        employeeId: '11111111-1111-4111-8111-400000000001',
+        normoHours: 2,
+        actualHours: null,
+        price: 100,
+        amount: 200,
+        createdAt: new Date().toISOString(),
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/work-orders/${WO_ID}/lines/${LINE_ID}`,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ actualHours: null }),
+      });
+      expect(res.statusCode).toBe(200);
+      const dtoArg = serviceMock.updateLine.mock.calls[0]![3] as Record<string, unknown>;
+      expect(dtoArg.actualHours).toBeNull();
+    });
+
+    it('приймає PATCH з actualHours=2.5 → 200', async () => {
+      jwtAllow = true;
+      serviceMock.updateLine.mockResolvedValueOnce({
+        id: LINE_ID,
+        workOrderId: WO_ID,
+        workId: '11111111-1111-4111-8111-300000000001',
+        employeeId: '11111111-1111-4111-8111-400000000001',
+        normoHours: 2,
+        actualHours: 2.5,
+        price: 100,
+        amount: 200,
+        createdAt: new Date().toISOString(),
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/work-orders/${WO_ID}/lines/${LINE_ID}`,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ actualHours: 2.5 }),
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('відхиляє actualHours=-1 (@Min guard зберігається з ValidateIf пропуском null)', async () => {
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/work-orders/${WO_ID}/lines/${LINE_ID}`,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ actualHours: -1 }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
   describe('GET /work-orders/:id', () => {
     it('повертає 200 з детальним DTO', async () => {
       jwtAllow = true;

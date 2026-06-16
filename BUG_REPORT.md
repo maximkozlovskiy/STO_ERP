@@ -15810,3 +15810,204 @@ grep -B2 -A5 "getWorkHours" apps/api/src/modules/settings/settings.service.ts
 **Статус:** [ ] не виправлено
 
 ---
+
+## Session 2026-06-17 — AUTO tester: actualHours feature (HEAD ac2ced81)
+
+Серія коммітів: `feat(work-orders) actualHours column` → `feat(work-orders) recalcActualHoursFromLines setting` → `fix(review) actualTotals toNumberOrUndefined + contract mock`.
+
+Фокус: `CreateWorkOrderModal.tsx` (нові колонки + save() PATCH existing lines + actualTotals useMemo), `DocumentsTab.tsx` (новий toggle), `settings.contract.spec.ts`.
+
+### Bug #521 — [CRITICAL] frontend ↔ backend contract — save() PATCH existing lines надсилає `actualHours: null`, але `UpdateWorkOrderLineDto.actualHours` тип `number` (не `number | null`) → 400 на КОЖНОМУ save для існуючих рядків з порожнім «Год (факт.)»
+
+**Файли:**
+
+- `apps/web/src/components/ui/CreateWorkOrderModal.tsx:1176-1187` (save() → loop existing lines з `actualHours: ... : null`)
+- `apps/api/src/modules/work-orders/work-orders.dto.ts:336-342` (`UpdateWorkOrderLineDto.actualHours?: number`)
+
+**Severity:** CRITICAL (save() для будь-якого WO з існуючими лініями і хоча б одним порожнім actualHours падає з 400 → користувач втрачає всі зміни).
+**Категорія:** type drift between FE save payload and BE DTO (SKILL §1.4 contract sync).
+
+**Сигнал:** `grep -n "actualHours.*null" apps/web/src/components/ui/CreateWorkOrderModal.tsx` показує `actualHours: line.actualHours !== '' ? toNumberOrUndefined(line.actualHours) : null` на рядку 1183. Backend DTO має `@IsNumber()` без nullable handling.
+
+**Очікувана поведінка:** Якщо рядок мав `actualHours=2.5`, а користувач очистив поле inline-edit'ом, save() повинен зберегти `actualHours=null` у БД (симетрія з PATCH /work-orders/:id де `UpdateWorkOrderDto.actualHours?: number | null` працює — див. Bug #426).
+
+**Фактична поведінка:** save() надсилає `{ actualHours: null }` → ValidationPipe → 400 «actualHours must be a number». Решта PATCH могла частково пройти → partial save.
+
+**Корінь:** `PartialType(CreateWorkOrderLineDto)` копіює `@IsNumber()` як optional, але null не дозволено. Sprint що додав колонку `actualHours` пропустив nullable-handling для line endpoint.
+
+**Фікс:**
+
+1. `work-orders.dto.ts:336-342` — `UpdateWorkOrderLineDto.actualHours: number | null` + `@ValidateIf(o => o.actualHours !== null)` (як `UpdateOrganisationDto.bankAccountId`).
+2. `work-orders.service.ts:1019` — `actualHours: dto.actualHours === undefined ? undefined : dto.actualHours ?? null` (clear semantics).
+
+**Регресія-guard:** Тест PATCH /work-orders/:id/lines/:lineId з `actualHours: null` → 200 у `work-orders.contract.spec.ts`.
+
+**Статус:** [x] виправлено — `UpdateWorkOrderLineDto` тепер `extends PartialType(OmitType(CreateWorkOrderLineDto, ['actualHours']))` + явний `actualHours?: number | null` з `@ValidateIf(o => o.actualHours !== null)`. Service `updateLine()` змінено на `actualHours: dto.actualHours === undefined ? undefined : dto.actualHours ?? null`. Додано 3 regression-guard тести у `work-orders.contract.spec.ts` (PATCH null/2.5/-1).
+
+---
+
+### Bug #522 — [CRITICAL] business logic / frontend ↔ backend FSM — save() PATCH lines працює тільки коли canEdit=true (DRAFT/ESTIMATE/APPROVED), але actualHours editable тільки коли canEditActual=true (IN_PROGRESS/ON_HOLD) → actualHours по рядках НЕ ЗБЕРЕГТИ НІКОЛИ
+
+**Файли:**
+
+- `apps/web/src/components/ui/CreateWorkOrderModal.tsx:1318-1319` (`canEditActual = IN_PROGRESS || ON_HOLD`)
+- `apps/web/src/components/ui/CreateWorkOrderModal.tsx:1365` (`canEdit = WO_EDITABLE_STATUSES.includes(...)` — DRAFT/ESTIMATE/APPROVED)
+- `apps/web/src/components/ui/CreateWorkOrderModal.tsx:1735-1745` (footer Save: `{canEdit && (<Button onClick={save}>...)`)
+- `apps/api/src/modules/work-orders/work-orders.fsm.ts:28-32` (`EDITABLE_STATUSES = ['DRAFT','ESTIMATE','APPROVED']`)
+- `apps/api/src/modules/work-orders/work-orders.service.ts:1000-1002` (`updateLine` gate)
+
+**Severity:** CRITICAL (фундаментальна fsm-неузгодженість — фіча "Год (факт.)" по суті недоступна; recalcActualHoursFromLines теж марний бо sum по lines.actualHours які ніколи не зберігаються).
+**Категорія:** FSM/permission inconsistency (SKILL §1.1 business invariant violation).
+
+**Сигнал:** Перетин `canEdit` і `canEditActual` = ∅. У IN_PROGRESS Save button немає. У DRAFT actualHours input disabled.
+
+**Очікувана поведінка:** у IN_PROGRESS/ON_HOLD механік повинен заповнювати фактичні години по рядках і зберігати (сенс статусу «В роботі»). Описано у DocumentsTab toggle tooltip.
+
+**Фактична поведінка:**
+
+- DRAFT/ESTIMATE/APPROVED: Save button є, actualHours-колонка disabled → нема що зберігати.
+- IN_PROGRESS/ON_HOLD: actualHours-колонка enabled, Save button відсутня → редагування пропадає.
+- Якщо викликати save() у IN_PROGRESS → backend updateLine() поверне 400.
+
+**Корінь:** Sprint додав actualHours editing у IN_PROGRESS/ON_HOLD без оновлення (a) FSM EDITABLE_STATUSES для PATCH lines endpoint, (b) frontend canEdit gate для Save button.
+
+**Фікс (варіант A — рекомендований):**
+
+1. `work-orders.fsm.ts` — додати `LINE_EDITABLE_STATUSES = [...EDITABLE_STATUSES, 'IN_PROGRESS', 'ON_HOLD']`.
+2. `work-orders.service.ts:1000-1002` — у `updateLine()` використовувати `LINE_EDITABLE_STATUSES`. Бекенд у IN_PROGRESS/ON_HOLD повинен дозволяти ТІЛЬКИ actualHours-поле, інші field'и DTO відкинути (захист від case коли РЕЦ випадково шле зміну `workId` поза EDITABLE_STATUSES).
+3. Frontend `CreateWorkOrderModal.tsx` — додати `canSaveActual = canEdit || canEditActual` для footer button.
+4. save() розгалуження: якщо `canEditActual && !canEdit` → надсилати тільки `actualHours` patch (на WO + на лініях).
+5. `WO_EDITABLE_STATUSES` у shared — додати парне `WO_LINE_EDITABLE_STATUSES`.
+
+**Регресія-guard:** Property-based тест: пара `(IN_PROGRESS, actualHours-only)` → 200; `(IN_PROGRESS, normoHours)` → 400.
+
+**Статус:** [x] виправлено — додано `LINE_ACTUAL_EDITABLE_STATUSES = [...EDITABLE_STATUSES, 'IN_PROGRESS', 'ON_HOLD']` у `work-orders.fsm.ts`. `updateLine()` гейт: `inEditable || (inActualOnly && isLineActualOnlyPatch)`. Frontend footer Save button — `{(canEdit || canEditActual) && ...}`. `save()` розгалуження: у IN_PROGRESS/ON_HOLD PATCH тільки `actualHours` на WO рівні + line-level `actualHours` для існуючих рядків. Додано 2 property-based regression-guard тести у `work-orders.fsm.invariants.spec.ts`.
+
+---
+
+### Bug #523 — [HIGH] frontend — defaults divergence: DocumentsTab initialRef використовує `?? true`, але CreateWorkOrderModal useEffect — `?? false` для recalcPlannedHoursFromLines → settings toggle on, але WO behaves як off
+
+**Файли:**
+
+- `apps/web/src/app/(app)/settings/DocumentsTab.tsx:60` (`recalcPlannedHoursFromLines: s.recalcPlannedHoursFromLines ?? true`)
+- `apps/web/src/components/ui/CreateWorkOrderModal.tsx:405,597` (`useState(false)` + `?? false`)
+
+**Severity:** HIGH (silent default drift — toggle у Settings показує on, але у новій модалці WO опція ефективно off → ілюзія "toggle поламаний").
+**Категорія:** default value drift between UI surfaces (SKILL §1.3 «one config, two defaults»).
+
+**Сигнал:** `grep -rn "recalcPlannedHoursFromLines\b" apps/web/src` → два дефолти. Prisma schema: `@default(true)`.
+
+**Очікувана поведінка:** Якщо settings DTO не повертає поле (DTO regression / legacy), обидва місця повинні мати ОДНАКОВИЙ дефолт = Prisma schema default = `true`.
+
+**Фактична поведінка:** На новій орг — обидва читають `true` з backend (OK). На legacy DTO без поля — DocumentsTab=true, WO=false → розбіжність.
+
+**Корінь:** Sprint що додав `recalcActualHoursFromLines` правильно встановив `?? true` (рядок 598). Але рядок 597 з `recalcPlannedHoursFromLines` залишився `?? false` (legacy). useState теж `false`.
+
+**Фікс:** `CreateWorkOrderModal.tsx`:
+
+- `useState(false)` → `useState(true)` для `recalcPlannedHoursEnabled` (рядок 405).
+- `?? false` → `?? true` (рядок 597).
+
+**Регресія-guard:** Property-based unit тест: для кожного boolean prefs-поля у settings response — DTO_missing → frontend_uses_prisma_default.
+
+**Статус:** [x] виправлено — `useState(true)` для `recalcPlannedHoursEnabled` (рядок 405); fetch fallback змінено на `?? true` (рядок 597-598). Тепер обидва місця (DocumentsTab + CreateWorkOrderModal) збігаються з Prisma schema default = `true`.
+
+---
+
+### Bug #524 — [MEDIUM] frontend / CreateWorkOrderModal — actualTotals hasAny=true коли всі actualHours порожні → tfoot row "Факт. роботи" дублює "Разом робіт" → користувач думає що актуальні = планові
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:1326-1340`
+
+**Severity:** MEDIUM (misleading UX, не data corruption).
+**Категорія:** UX-fallback збігається з тестом наявності (SKILL §1.3).
+
+**Сигнал:** У `actualTotals`:
+
+```ts
+const h = ah ?? nh;
+if (h != null && p != null) {
+  total += h * p;
+  hasAny = true;
+}
+```
+
+hasAny стає true навіть коли всі `ah` undefined.
+
+**Очікувана поведінка:** `hasAny=true` тільки якщо є хоча б один рядок з ЯВНО введеним actualHours. Якщо всі порожні — tfoot row "Факт. роботи" не показуємо.
+
+**Фактична поведінка:** 3 lines normoHours+price без actualHours → tfoot:
+
+- Разом робіт: 1200.00
+- Факт. роботи: 1200.00 ← дублює, плутає.
+
+**Фікс:**
+
+```ts
+let hasAnyActual = false;
+for (const l of lines) {
+  const ah = toNumberOrUndefined(l.actualHours);
+  const nh = toNumberOrUndefined(l.normoHours);
+  const h = ah ?? nh;
+  const p = toNumberOrUndefined(l.price);
+  if (h != null && p != null) total += h * p;
+  if (ah != null) hasAnyActual = true;
+}
+return { total, hasAny: hasAnyActual };
+```
+
+**Регресія-guard:** Component-test (RTL) — рендер з lines normoHours+price без actualHours → assert tfoot НЕ містить "Факт. роботи".
+
+**Статус:** [x] виправлено — `actualTotals` useMemo: змінна `hasAnyActual` стає true ТІЛЬКИ коли `ah != null` (а не fallback `h != null`). Total продовжуємо рахувати з fallback, але індикатор у tfoot тепер чесний.
+
+---
+
+### Bug #525 — [HIGH] frontend / CreateWorkOrderModal — save() надсилає computedActualHours=null коли recalcActualHoursEnabled=true АЛЕ lines.length=0 → стирає вже введене у БД form.actualHours значення
+
+**Файл:** `apps/web/src/components/ui/CreateWorkOrderModal.tsx:1120-1132`
+
+**Severity:** HIGH (data loss: відкриваєш WO з actualHours=5, видаляєш одну лінію поки lines.length=0, save → actualHours=null у БД).
+**Категорія:** Conditional override semantics (SKILL §1.3 PATCH semantics).
+
+**Сигнал:**
+
+```ts
+let computedActualHours: number | null =
+  form.actualHours !== '' ? (toNumberOrUndefined(form.actualHours) ?? null) : null;
+if (recalcActualHoursEnabled && lines.length > 0) {
+  // ... sum
+  computedActualHours = sum;
+}
+```
+
+Коли `recalcActualHoursEnabled=true` і `lines.length=0`, гілка не спрацьовує, але `computedActualHours` уже = null (бо form.actualHours='' зазвичай після recalc-toggle). PATCH перезаписує БД.
+
+**Очікувана поведінка:** Якщо `recalcActualHoursEnabled=true` і `lines.length=0` — взагалі не надсилати actualHours (undefined → service skip).
+
+**Фікс:**
+
+```ts
+let computedActualHours: number | null | undefined;
+if (recalcActualHoursEnabled) {
+  if (lines.length > 0) {
+    let sum = 0;
+    for (const l of lines) {
+      const ah = toNumberOrUndefined(l.actualHours);
+      const nh = toNumberOrUndefined(l.normoHours);
+      sum += ah ?? nh ?? 0;
+    }
+    computedActualHours = sum;
+  }
+  // lines.length === 0 → leave undefined (don't touch)
+} else if (form.actualHours !== '') {
+  computedActualHours = toNumberOrUndefined(form.actualHours) ?? null;
+} else {
+  computedActualHours = null; // user explicitly cleared
+}
+// JSON.stringify drops undefined keys
+```
+
+**Регресія-guard:** Test save() payload для (toggle=on, lines=[], DB actualHours=5) → payload НЕ містить ключа actualHours.
+
+**Статус:** [x] виправлено — `computedActualHours: number | null | undefined` з трьома гілками: (a) recalc on + lines>0 → sum; (b) recalc on + lines=0 → undefined (не зачіпаємо); (c) recalc off + form.actualHours=число → це число; (d) recalc off + form.actualHours='' → null (явне очищення). `JSON.stringify` drops `undefined` keys → бекенд service.update залишає поле без змін.
+
+---

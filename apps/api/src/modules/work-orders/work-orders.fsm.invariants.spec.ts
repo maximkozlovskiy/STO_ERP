@@ -6,6 +6,7 @@ import {
   WORK_ORDER_TRANSITIONS,
   EDITABLE_STATUSES,
   INVOICEABLE_STATUSES,
+  LINE_ACTUAL_EDITABLE_STATUSES,
   SHAREABLE_STATUSES,
 } from './work-orders.fsm';
 
@@ -134,5 +135,19 @@ describe('FE↔BE status sets symmetry — Bug #432/#439 regression-guard', () =
 
   it('SHAREABLE_STATUSES (BE) == WO_SHAREABLE_STATUSES (FE)', () => {
     expect([...SHAREABLE_STATUSES].sort()).toEqual([...WO_SHAREABLE_STATUSES].sort());
+  });
+
+  // Bug #522: LINE_ACTUAL_EDITABLE_STATUSES — стани де PATCH /lines/:lineId з
+  // ТІЛЬКИ actualHours дозволений (механік закриває факт. години у "В роботі").
+  it('LINE_ACTUAL_EDITABLE_STATUSES — superset EDITABLE_STATUSES + {IN_PROGRESS, ON_HOLD}', () => {
+    const expected = new Set([...EDITABLE_STATUSES, 'IN_PROGRESS', 'ON_HOLD']);
+    const actual = new Set(LINE_ACTUAL_EDITABLE_STATUSES);
+    expect(actual).toEqual(expected);
+  });
+
+  it('LINE_ACTUAL_EDITABLE_STATUSES не містить термінальних статусів (COMPLETED+)', () => {
+    for (const closed of ['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED', 'CANCELLED'] as const) {
+      expect(LINE_ACTUAL_EDITABLE_STATUSES).not.toContain(closed);
+    }
   });
 });

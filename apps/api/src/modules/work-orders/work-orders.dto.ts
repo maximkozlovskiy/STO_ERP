@@ -15,9 +15,10 @@ import {
   IsArray,
   ArrayMinSize,
   ArrayMaxSize,
+  ValidateIf,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
@@ -333,12 +334,23 @@ export class CreateWorkOrderLineDto {
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 
-export class UpdateWorkOrderLineDto extends PartialType(CreateWorkOrderLineDto) {
-  @ApiPropertyOptional({ description: 'Фактично витрачені години' })
+// Bug #521: actualHours виключаємо з PartialType бо нам потрібен ширший тип
+// `number | null` (а CreateWorkOrderLineDto.actualHours = `number`). Після Omit
+// додаємо явну версію з nullable handling.
+export class UpdateWorkOrderLineDto extends PartialType(
+  OmitType(CreateWorkOrderLineDto, ['actualHours'] as const),
+) {
+  // Bug #521: nullable handling — frontend save() надсилає `null` коли користувач
+  // очистив inline "Год (факт.)" → без `ValidateIf(o => o.actualHours !== null)`
+  // class-validator кидав 400 і будь-який save() з порожнім actualHours лагав
+  // partial-PATCH (work-order рівень пройшов, line PATCH — fail → corrupted state).
+  // Симетрія з UpdateWorkOrderDto.actualHours (work-orders.dto.ts:148) та Bug #426.
+  @ApiPropertyOptional({ description: 'Фактично витрачені години', type: Number, nullable: true })
   @IsOptional()
+  @ValidateIf((o: { actualHours?: number | null }) => o.actualHours !== null)
   @IsNumber()
   @Min(0)
-  actualHours?: number;
+  actualHours?: number | null;
 }
 
 export class WorkOrderLineResponseDto {

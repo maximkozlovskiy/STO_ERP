@@ -22,6 +22,7 @@ import {
   DELETABLE_STATUSES,
   RESERVATION_ACTIVE_STATUSES,
   EDITABLE_STATUSES,
+  LINE_ACTUAL_EDITABLE_STATUSES,
   SHAREABLE_STATUSES,
 } from './work-orders.fsm';
 import { AuditService } from '../audit/audit.service';
@@ -997,7 +998,20 @@ export class WorkOrdersService {
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-    if (!EDITABLE_STATUSES.includes(wo.status)) {
+    // Bug #522: дозволяємо у IN_PROGRESS/ON_HOLD ТІЛЬКИ patch'i що зачіпають
+    // винятково actualHours (механік закриває фактичні години). Інші поля у тих
+    // статусах = 400 («Не можна редагувати позиції наряду в поточному статусі»).
+    // У EDITABLE_STATUSES (DRAFT/ESTIMATE/APPROVED) — всі поля як раніше.
+    const isLineActualOnlyPatch =
+      dto.workId === undefined &&
+      dto.employeeId === undefined &&
+      dto.liftId === undefined &&
+      dto.normoHours === undefined &&
+      dto.price === undefined &&
+      dto.notes === undefined;
+    const inEditable = EDITABLE_STATUSES.includes(wo.status);
+    const inActualOnly = LINE_ACTUAL_EDITABLE_STATUSES.includes(wo.status) && isLineActualOnlyPatch;
+    if (!inEditable && !inActualOnly) {
       throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
     }
     if (!line) throw new NotFoundException('Позицію не знайдено');
@@ -1016,7 +1030,13 @@ export class WorkOrdersService {
             amount,
             liftId: dto.liftId,
             notes: dto.notes,
-            ...(dto.actualHours !== undefined && { actualHours: dto.actualHours }),
+            // Bug #521: distinguish "field omitted" (undefined → skip) від
+            // "field cleared" (null → SET NULL). Симетрія з UpdateWorkOrderDto
+            // logic у `update()` (рядок 431). Без цього inline-edit що очищає
+            // actualHours лагав 400 на DTO рівні; навіть якщо DTO прийняв null,
+            // `dto.actualHours !== undefined && { actualHours: dto.actualHours }`
+            // писало `actualHours: null` правильно — але DTO відхиляв ще до цього.
+            actualHours: dto.actualHours === undefined ? undefined : (dto.actualHours ?? null),
           },
           include: {
             work: { select: { name: true } },

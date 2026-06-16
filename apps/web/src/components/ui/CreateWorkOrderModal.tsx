@@ -402,7 +402,10 @@ export function CreateWorkOrderModal({
   const [error, setError] = useState('');
   const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
   const [vatRate, setVatRate] = useState(0);
-  const [recalcPlannedHoursEnabled, setRecalcPlannedHoursEnabled] = useState(false);
+  // Bug #523: default = true (Prisma schema default + DocumentsTab `?? true`).
+  // Раніше `useState(false)` + `?? false` → silent drift: settings toggle on,
+  // WO модалка ефективно off коли GET /settings/organisation lag-ить чи не повертає поле.
+  const [recalcPlannedHoursEnabled, setRecalcPlannedHoursEnabled] = useState(true);
   const [recalcActualHoursEnabled, setRecalcActualHoursEnabled] = useState(true);
   const [syncCalendarEnabled, setSyncCalendarEnabled] = useState(true);
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
@@ -594,7 +597,9 @@ export function CreateWorkOrderModal({
     ])
       .then(([org, rates]) => {
         setVatMode((org.vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE') ?? 'NONE');
-        setRecalcPlannedHoursEnabled(org.recalcPlannedHoursFromLines ?? false);
+        // Bug #523: дефолт = true (Prisma schema default). Без цього при legacy DTO
+        // response, що не містить поля, settings/DocumentsTab показує on, а тут off.
+        setRecalcPlannedHoursEnabled(org.recalcPlannedHoursFromLines ?? true);
         setRecalcActualHoursEnabled(org.recalcActualHoursFromLines ?? true);
         setSyncCalendarEnabled(org.syncCalendarSlotWithPlannedHours ?? true);
         const def = (Array.isArray(rates) ? rates : []).find(r => r.isDefault);
@@ -1117,85 +1122,122 @@ export function CreateWorkOrderModal({
     setSavingBoth(true);
     setError('');
     try {
-      // Якщо recalcActualHoursEnabled — обчислюємо фактичні нормогодини по рядках
-      // (actualHours ?? normoHours для кожного рядка).
-      let computedActualHours: number | null =
-        form.actualHours !== '' ? (toNumberOrUndefined(form.actualHours) ?? null) : null;
-      if (recalcActualHoursEnabled && lines.length > 0) {
-        let sum = 0;
-        for (const l of lines) {
-          const ah = toNumberOrUndefined(l.actualHours);
-          const nh = toNumberOrUndefined(l.normoHours);
-          sum += ah ?? nh ?? 0;
+      // Bug #525: computedActualHours має бути `undefined` коли користувач
+      // не вказував явно і recalc не може порахувати (lines.length=0). Інакше
+      // PATCH з null перетирав збережене значення WO.actualHours у БД.
+      let computedActualHours: number | null | undefined;
+      if (recalcActualHoursEnabled) {
+        if (lines.length > 0) {
+          let sum = 0;
+          for (const l of lines) {
+            const ah = toNumberOrUndefined(l.actualHours);
+            const nh = toNumberOrUndefined(l.normoHours);
+            sum += ah ?? nh ?? 0;
+          }
+          computedActualHours = sum;
         }
-        computedActualHours = sum;
+        // lines.length === 0 → undefined (не торкаємось WO.actualHours).
+      } else if (form.actualHours !== '') {
+        computedActualHours = toNumberOrUndefined(form.actualHours) ?? null;
+      } else {
+        // User explicitly cleared the field → null (clear semantics).
+        computedActualHours = null;
       }
-      await apiFetch(`/work-orders/${workOrderId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          documentDate: form.documentDate || undefined,
-          priority: form.priority || undefined,
-          repairCategory: form.repairCategory || undefined,
-          description: form.description || undefined,
-          liftId: form.liftId || undefined,
-          plannedAt: localDateTimeToISO(form.plannedStartAt),
-          dueDate: localDateTimeToISO(form.plannedEndAt),
-          plannedHours: form.plannedHours !== '' ? toNumberOrUndefined(form.plannedHours) : null,
-          actualHours: computedActualHours,
-        }),
-      });
-      // sto-optimize: DELETEs are independent (each row by id) — fire in parallel
-      // instead of N × sequential RTT. Promise.allSettled isolates per-row failures;
-      // the next save() retry will still target the rows that didn't drop.
-      const lineDeletes = deletedLineIds.current.map(lineId =>
-        apiFetch(`/work-orders/${workOrderId}/lines/${lineId}`, { method: 'DELETE' }),
-      );
-      const partDeletes = deletedPartIds.current.map(partId =>
-        apiFetch(`/work-orders/${workOrderId}/parts/${partId}`, { method: 'DELETE' }),
-      );
-      await Promise.allSettled([...lineDeletes, ...partDeletes]);
-      deletedLineIds.current = [];
-      deletedPartIds.current = [];
-      // Sequentially POST нових + PATCH існуючих ліній. Кожен write на бекенді
-      // викликає recalcTotals (aggregate + update WO.totalLabor/Parts/Amount).
-      // Паралель = race у READ COMMITTED: тх1/тх2 одна одної не бачать у
-      // SUM(amount), тому останній writer перетирає тotalAmount → втрачені суми.
-      for (const line of lines.filter(l => !l.id)) {
-        await apiFetch(`/work-orders/${workOrderId}/lines`, {
-          method: 'POST',
-          body: JSON.stringify({
-            workId: line.workId,
-            employeeId: line.employeeId,
-            normoHours: toNumberOrUndefined(line.normoHours),
-            actualHours: toNumberOrUndefined(line.actualHours),
-            price: toNumberOrUndefined(line.price),
-          }),
-        });
-      }
-      // PATCH існуючих рядків щоб зберегти actualHours (та інші inline-edit зміни).
-      for (const line of lines.filter(l => !!l.id)) {
-        await apiFetch(`/work-orders/${workOrderId}/lines/${line.id}`, {
+
+      // Bug #522: у IN_PROGRESS/ON_HOLD дозволяємо тільки patch actualHours
+      // (на WO + на лініях). Інші поля (description, priority, dates...) сервер
+      // відкине бо WO у тих статусах не у EDITABLE_STATUSES для full update.
+      // У DRAFT/ESTIMATE/APPROVED → повний PATCH як було.
+      if (canEdit) {
+        await apiFetch(`/work-orders/${workOrderId}`, {
           method: 'PATCH',
           body: JSON.stringify({
-            workId: line.workId,
-            employeeId: line.employeeId,
-            normoHours: toNumberOrUndefined(line.normoHours),
-            actualHours: line.actualHours !== '' ? toNumberOrUndefined(line.actualHours) : null,
-            price: toNumberOrUndefined(line.price),
+            documentDate: form.documentDate || undefined,
+            priority: form.priority || undefined,
+            repairCategory: form.repairCategory || undefined,
+            description: form.description || undefined,
+            liftId: form.liftId || undefined,
+            plannedAt: localDateTimeToISO(form.plannedStartAt),
+            dueDate: localDateTimeToISO(form.plannedEndAt),
+            plannedHours: form.plannedHours !== '' ? toNumberOrUndefined(form.plannedHours) : null,
+            actualHours: computedActualHours,
+          }),
+        });
+      } else if (canEditActual) {
+        // У IN_PROGRESS/ON_HOLD: лише actualHours на WO рівні. Бекенд update()
+        // дозволяє це бо CLOSED_STATUSES.includes(IN_PROGRESS)=false.
+        await apiFetch(`/work-orders/${workOrderId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            actualHours: computedActualHours,
           }),
         });
       }
-      for (const part of parts.filter(p => !p.id)) {
-        await apiFetch(`/work-orders/${workOrderId}/parts`, {
-          method: 'POST',
-          body: JSON.stringify({
-            goodId: part.goodId,
-            warehouseId: part.warehouseId,
-            quantity: toNumberOrUndefined(part.quantity) ?? 1,
-            price: toNumberOrUndefined(part.price),
-            unitOfMeasureId: part.unitOfMeasureId || undefined,
-          }),
-        });
+      if (canEdit) {
+        // sto-optimize: DELETEs are independent (each row by id) — fire in parallel
+        // instead of N × sequential RTT. Promise.allSettled isolates per-row failures;
+        // the next save() retry will still target the rows that didn't drop.
+        const lineDeletes = deletedLineIds.current.map(lineId =>
+          apiFetch(`/work-orders/${workOrderId}/lines/${lineId}`, { method: 'DELETE' }),
+        );
+        const partDeletes = deletedPartIds.current.map(partId =>
+          apiFetch(`/work-orders/${workOrderId}/parts/${partId}`, { method: 'DELETE' }),
+        );
+        await Promise.allSettled([...lineDeletes, ...partDeletes]);
+        deletedLineIds.current = [];
+        deletedPartIds.current = [];
+        // Sequentially POST нових + PATCH існуючих ліній. Кожен write на бекенді
+        // викликає recalcTotals (aggregate + update WO.totalLabor/Parts/Amount).
+        // Паралель = race у READ COMMITTED: тх1/тх2 одна одної не бачать у
+        // SUM(amount), тому останній writer перетирає тotalAmount → втрачені суми.
+        for (const line of lines.filter(l => !l.id)) {
+          await apiFetch(`/work-orders/${workOrderId}/lines`, {
+            method: 'POST',
+            body: JSON.stringify({
+              workId: line.workId,
+              employeeId: line.employeeId,
+              normoHours: toNumberOrUndefined(line.normoHours),
+              actualHours: toNumberOrUndefined(line.actualHours),
+              price: toNumberOrUndefined(line.price),
+            }),
+          });
+        }
+        // PATCH існуючих рядків щоб зберегти actualHours (та інші inline-edit зміни).
+        for (const line of lines.filter(l => !!l.id)) {
+          await apiFetch(`/work-orders/${workOrderId}/lines/${line.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              workId: line.workId,
+              employeeId: line.employeeId,
+              normoHours: toNumberOrUndefined(line.normoHours),
+              actualHours: line.actualHours !== '' ? toNumberOrUndefined(line.actualHours) : null,
+              price: toNumberOrUndefined(line.price),
+            }),
+          });
+        }
+        for (const part of parts.filter(p => !p.id)) {
+          await apiFetch(`/work-orders/${workOrderId}/parts`, {
+            method: 'POST',
+            body: JSON.stringify({
+              goodId: part.goodId,
+              warehouseId: part.warehouseId,
+              quantity: toNumberOrUndefined(part.quantity) ?? 1,
+              price: toNumberOrUndefined(part.price),
+              unitOfMeasureId: part.unitOfMeasureId || undefined,
+            }),
+          });
+        }
+      } else if (canEditActual) {
+        // Bug #522: у IN_PROGRESS/ON_HOLD PATCH лише actualHours для існуючих рядків.
+        // Жодних DELETE/POST/PATCH інших полів — бекенд відхилить як non-actual-only.
+        for (const line of lines.filter(l => !!l.id)) {
+          await apiFetch(`/work-orders/${workOrderId}/lines/${line.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              actualHours: line.actualHours !== '' ? toNumberOrUndefined(line.actualHours) : null,
+            }),
+          });
+        }
       }
       // Bug #440: show calendar-sync dialog ONLY when planned dates actually
       // changed compared to the values loaded from the WO. Otherwise every save
@@ -1318,25 +1360,26 @@ export function CreateWorkOrderModal({
   const canEditActual =
     isEditMode && (currentStatus === 'IN_PROGRESS' || currentStatus === 'ON_HOLD');
 
-  // Підсумки фактичних сум: actualHours ?? normoHours для кожного рядка.
-  // hasAny=true якщо хоча б один рядок має actualHours або normoHours.
+  // Підсумки фактичних сум: actualHours ?? normoHours для кожного рядка (бо save()
+  // надсилає на бекенд саме такий фолбек коли recalcActualHoursFromLines=true).
+  // Bug #524: hasAny=true лише коли є ХОЧА Б ОДИН рядок з ЯВНО введеним
+  // actualHours — інакше "Факт. роботи" tfoot дублював "Разом робіт" і вводив
+  // користувача в оману (виглядало ніби факт. години = плановим).
   // Використовуємо toNumberOrUndefined (а не parseFloat) щоб коректно обробити
   // ukr-коми (1,5 → 1.5); save() теж використовує toNumberOrUndefined → totals
   // у tfoot збігаються з тим, що піде у PATCH backend.
   const actualTotals = useMemo(() => {
     let total = 0;
-    let hasAny = false;
+    let hasAnyActual = false;
     for (const l of lines) {
       const ah = toNumberOrUndefined(l.actualHours);
       const nh = toNumberOrUndefined(l.normoHours);
       const h = ah ?? nh;
       const p = toNumberOrUndefined(l.price);
-      if (h != null && p != null) {
-        total += h * p;
-        hasAny = true;
-      }
+      if (h != null && p != null) total += h * p;
+      if (ah != null) hasAnyActual = true;
     }
-    return { total, hasAny };
+    return { total, hasAny: hasAnyActual };
   }, [lines]);
 
   // Single-pass totals: one scan over lines/parts, two accumulators (total + vat).
@@ -1732,7 +1775,7 @@ export function CreateWorkOrderModal({
                     Виставити рахунок
                   </Button>
                 )}
-                {canEdit && (
+                {(canEdit || canEditActual) && (
                   <Button
                     onClick={save}
                     loading={saving}
