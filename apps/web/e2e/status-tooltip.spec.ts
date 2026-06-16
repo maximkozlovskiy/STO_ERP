@@ -6,10 +6,12 @@ test('status badge tooltip appears on hover in work-orders list', async ({ page 
   await page.goto('/work-orders');
   await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
 
-  // Wait for table rows with real data (skeleton rows have no status badge text)
+  // Wait for real data rows (not skeleton): a row with a non-empty status badge text.
+  // Skeleton rows render span.inline-flex.rounded-full but with no text content.
   // Real status badge contains one of: Чернетка, Кошторис, В роботі, Виконано, etc.
   const realStatusBadge = page
     .locator('table tbody tr')
+    .filter({ has: page.locator('span.inline-flex.rounded-full:not(:empty)') })
     .first()
     .locator('span.inline-flex.rounded-full')
     .first();

@@ -65,7 +65,7 @@ async function readyPage(page: Page) {
     localStorage.setItem('sto_detail_panel_purchase-orders', 'true');
   });
   await page.goto('/purchase-orders');
-  await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
 }
 
 // ─── Прийом товарів (PARTIAL / RECEIVED) ─────────────────────────────────────

@@ -7,7 +7,7 @@ test.describe.configure({ mode: 'serial' });
 test.describe('Замовлення постачальнику — CRUD', () => {
   test('сторінка завантажується', async ({ page }) => {
     await page.goto('/purchase-orders');
-    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     await expect(
       page
         .locator('table')
@@ -19,7 +19,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
   test('кнопка "Замовлення" (додати) присутня', async ({ page }) => {
     // Add-button renamed from "Нове замовлення" to "Замовлення" (commit 3785721/c3cd333).
     await page.goto('/purchase-orders');
-    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole('button', { name: /^Замовлення$/ }).first()).toBeVisible({
       timeout: 15_000,
     });
@@ -27,7 +27,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
 
   test('створити замовлення DRAFT → перевірити → видалити', async ({ page }) => {
     await page.goto('/purchase-orders');
-    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     // Add-button renamed to single noun "Замовлення".
     await page
       .getByRole('button', { name: /^Замовлення$/ })
@@ -121,7 +121,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
 
   test('FSM: DRAFT → Підтвердити замовлення → ORDERED', async ({ page }) => {
     await page.goto('/purchase-orders');
-    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
 
     // Знайти постачальника і склад через API
@@ -199,7 +199,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
 
     // Bug #345: purchase-orders page has kyivToday() date filter — clear it + search by number
     await page.goto('/purchase-orders');
-    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     await clearDateFilter(page);
     const searchInput = page
       .locator('input[placeholder*="Пошук"], input[placeholder*="пошук"]')
@@ -227,7 +227,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
 
   test('статусні фільтри присутні', async ({ page }) => {
     await page.goto('/purchase-orders');
-    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     await expect(
       page.locator('button:has-text("Всі"), button:has-text("Чернетка")').first(),
     ).toBeVisible({ timeout: 15_000 });
@@ -239,7 +239,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     // page.tsx: <TableRow onClick={() => setEditingPOId(po.id)}> → PurchaseOrderCreateModal
     // у edit-mode показує `poNumber` як title (не "Нове замовлення").
     await page.goto('/purchase-orders');
-    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     await clearDateFilter(page);
 
     // Створити PO через API, щоб мати гарантований рядок.
@@ -283,7 +283,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
 
     // Перевідкрити сторінку щоб список оновився
     await page.goto('/purchase-orders');
-    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     await clearDateFilter(page);
     const searchInput = page
       .locator('input[placeholder*="Пошук"], input[placeholder*="пошук"]')
@@ -328,7 +328,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     // PurchaseOrderCreateModal у edit-mode для DRAFT показує allowedTransitions з PO_STATUS_TRANSITIONS.
     // DRAFT → [ORDERED, CANCELLED] → footer повинен містити «Підтвердити замовлення».
     await page.goto('/purchase-orders');
-    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     await clearDateFilter(page);
 
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
@@ -370,7 +370,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     }
 
     await page.goto('/purchase-orders');
-    await expect(page.locator('h1:has-text("Замовлення")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     await clearDateFilter(page);
     const searchInput = page
       .locator('input[placeholder*="Пошук"], input[placeholder*="пошук"]')
