@@ -12,6 +12,7 @@ export interface CalendarSlot {
   endAt: string;
   notes?: string | null;
   workOrderNumber?: string;
+  workOrderStatus?: string | null;
   counterpartyName?: string;
   cpPhone?: string | null;
   vehicleSummary?: string | null;

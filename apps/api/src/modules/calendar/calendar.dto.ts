@@ -110,6 +110,7 @@ export class CalendarSlotResponseDto {
   @ApiProperty() endAt!: Date;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() workOrderNumber?: string;
+  @ApiPropertyOptional() workOrderStatus?: string | null;
   @ApiPropertyOptional() counterpartyId?: string | null;
   @ApiPropertyOptional() counterpartyName?: string;
   @ApiPropertyOptional() cpPhone?: string | null;

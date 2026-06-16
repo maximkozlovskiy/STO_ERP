@@ -112,7 +112,7 @@ export class CalendarService {
           parentSlotId: true,
           status: true,
           type: true,
-          workOrder: { select: { number: true } },
+          workOrder: { select: { number: true, status: true } },
         },
         take: 500,
       });
@@ -130,6 +130,7 @@ export class CalendarService {
         workOrder: {
           select: {
             number: true,
+            status: true,
             counterpartyId: true,
             counterparty: {
               select: { firstName: true, lastName: true, companyName: true, phone: true },
@@ -211,6 +212,7 @@ export class CalendarService {
       workOrder: {
         select: {
           number: true,
+          status: true,
           counterpartyId: true,
           counterparty: {
             select: { firstName: true, lastName: true, companyName: true, phone: true } as const,
@@ -438,6 +440,7 @@ export class CalendarService {
             workOrder: {
               select: {
                 number: true,
+                status: true,
                 counterpartyId: true,
                 counterparty: {
                   select: { firstName: true, lastName: true, companyName: true, phone: true },
@@ -492,7 +495,7 @@ export class CalendarService {
       status: true,
       type: true,
       workOrder: {
-        select: { number: true },
+        select: { number: true, status: true },
       },
     } as const;
 
@@ -664,7 +667,7 @@ export class CalendarService {
     endAt: Date;
     status: CalendarSlotStatus;
     type: CalendarSlotType;
-    workOrder: { number: string } | null;
+    workOrder: { number: string; status: string } | null;
   }): CalendarSlotResponseDto {
     return {
       id: slot.id,
@@ -679,6 +682,7 @@ export class CalendarService {
       status: slot.status,
       type: slot.type,
       workOrderNumber: slot.workOrder?.number,
+      workOrderStatus: slot.workOrder?.status ?? null,
       counterpartyId: null,
       counterpartyName: undefined,
       cpPhone: null,
@@ -703,6 +707,7 @@ export class CalendarService {
     vehicle?: { make: string; model: string; licensePlate: string | null } | null;
     workOrder: {
       number: string;
+      status: string;
       counterpartyId: string;
       counterparty: {
         firstName: string | null;
@@ -747,6 +752,7 @@ export class CalendarService {
       status: slot.status,
       type: slot.type,
       workOrderNumber: slot.workOrder?.number,
+      workOrderStatus: slot.workOrder?.status ?? null,
       counterpartyId,
       counterpartyName,
       cpPhone,
