@@ -108,13 +108,16 @@ export default function BookingPage() {
     if (!selectedBranch || !selectedSlot) return;
     setSaving(true);
     setError('');
+    // PhoneInput formats as "+38 (096) 566-59-33" but API validates /^\+380\d{9}$/.
+    // Strip all non-digit/non-plus characters before sending.
+    const normalizedPhone = form.clientPhone.replace(/[^\d+]/g, '');
     try {
       await publicFetch('/booking/request', {
         method: 'POST',
         body: JSON.stringify({
           branchId: selectedBranch.id,
           clientName: form.clientName,
-          clientPhone: form.clientPhone,
+          clientPhone: normalizedPhone,
           requestedDate: selectedSlot.startAt,
         }),
       });
