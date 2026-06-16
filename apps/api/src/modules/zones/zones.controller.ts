@@ -35,7 +35,7 @@ import { ZonesService } from './zones.service';
 export class ZonesController {
   constructor(private readonly service: ZonesService) {}
 
-  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
+  @Header('Cache-Control', 'private, no-cache')
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Список зон' })

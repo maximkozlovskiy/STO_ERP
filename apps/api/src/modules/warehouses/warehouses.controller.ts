@@ -28,7 +28,7 @@ import { WarehousesService } from './warehouses.service';
 export class WarehousesController {
   constructor(private readonly service: WarehousesService) {}
 
-  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
+  @Header('Cache-Control', 'private, no-cache')
   @Get()
   // MECHANIC needs read-only access — work order /parts modal renders a
   // warehouse <Select> and MECHANIC is permitted to add parts via

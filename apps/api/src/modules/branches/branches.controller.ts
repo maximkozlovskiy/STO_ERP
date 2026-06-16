@@ -28,7 +28,7 @@ import { BranchesService } from './branches.service';
 export class BranchesController {
   constructor(private readonly service: BranchesService) {}
 
-  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
+  @Header('Cache-Control', 'private, no-cache')
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список філій' })
