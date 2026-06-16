@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-06-17
+
+### 527011c9 fix(tester): Bugs #521-#525 — actualHours feature critical bugs
+
+- Bug #521 (CRITICAL): UpdateWorkOrderLineDto відхиляв null actualHours → 400 при save() з порожнім Год (факт.)
+- Bug #522 (CRITICAL): canEdit ∩ canEditActual = ∅ — Год (факт.) ніколи не можна було зберегти через FSM-конфлікт
+- Bug #523 (HIGH): default drift recalcPlannedHoursFromLines між DocumentsTab (true) і WO Modal (false)
+- Bug #524 (MEDIUM): actualTotals.hasAny=true при порожніх actualHours (fallback на normoHours) — tfoot дублював рядок
+- Bug #525 (HIGH): computedActualHours=null при lines.length=0 коли recalcEnabled → data loss (overwrote existing value)
+
+### ac2ced81 fix(review): recalcActualHoursFromLines contract mock + actualTotals toNumberOrUndefined
+
+- settings.contract.spec.ts: додано recalcActualHoursFromLines у freshOrgRow() мок
+- actualTotals useMemo: parseFloat → toNumberOrUndefined (узгодженість з save())
+
+### 5d526ba9 feat(work-orders): recalcActualHoursFromLines setting + actual sum fallback to normoHours
+
+- Нове поле recalcActualHoursFromLines в OrganisationSettings (Prisma + міграція + DTO + service)
+- DocumentsTab: toggle "Перераховувати фактичні нормогодини по роботах"
+- CreateWorkOrderModal: колонка "Год (факт.)", "Сума (факт.) = (ah ?? nh) × price", PATCH existing lines, computedActualHours
+
+### 62785537 feat(work-orders): actual hours column in lines table
+
+- Колонка "Год (факт.)" — editable в IN_PROGRESS/ON_HOLD, read-only інакше
+- ARROW_SKIP_STATUSES: ON_HOLD/ARCHIVED/CANCELLED виключені зі стрілкової навігації
+
 ## 2026-06-16
 
 ### 7ec6dead docs(skills): add 3 new patterns to sto-tester (Bugs #515, #517, #518)
