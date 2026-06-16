@@ -80,6 +80,16 @@ export interface PendingResizeState {
   pointerStartX: number;
 }
 
+/** Pending online booking displayed on the calendar grid (read-only) */
+export interface BookingSlot {
+  id: string;
+  liftId: string; // first free lift assigned client-side
+  clientName: string;
+  clientPhone: string;
+  startAt: string;
+  endAt: string;
+}
+
 export type CalView = 'day' | 'month' | 'stats';
 export type StatsPeriod = 'day' | 'month' | 'custom';
 export type MonthSlots = Record<string, { total: number; byLift: Record<string, number> }>;

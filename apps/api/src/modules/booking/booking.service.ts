@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -261,15 +262,30 @@ export class BookingService {
     return this.toDto(req);
   }
 
-  async findAll(orgId: string): Promise<{ items: BookingRequestResponseDto[]; total: number }> {
+  async findAll(
+    orgId: string,
+    filters?: { date?: string; status?: string },
+  ): Promise<{ items: BookingRequestResponseDto[]; total: number }> {
+    const where: Prisma.BookingRequestWhereInput = {
+      orgId,
+      deletedAt: null,
+    };
+    if (filters?.status) where.status = filters.status;
+    if (filters?.date) {
+      const offset = this.kyivOffsetForDate(filters.date);
+      where.requestedDate = {
+        gte: new Date(`${filters.date}T00:00:00.000${offset}`),
+        lte: new Date(`${filters.date}T23:59:59.999${offset}`),
+      };
+    }
     const [items, total] = await Promise.all([
       this.prisma.bookingRequest.findMany({
-        where: { orgId, deletedAt: null },
+        where,
         orderBy: { createdAt: 'desc' },
         take: 100,
         include: { branch: { select: { name: true } } },
       }),
-      this.prisma.bookingRequest.count({ where: { orgId, deletedAt: null } }),
+      this.prisma.bookingRequest.count({ where }),
     ]);
     return { items: items.map(r => this.toDto(r)), total };
   }

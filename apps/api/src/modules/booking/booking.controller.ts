@@ -86,10 +86,14 @@ export class BookingController {
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Список заявок на запис' })
-  findAll(@CurrentUser() user: { orgId: string }) {
-    return this.service.findAll(user.orgId);
+  findAll(
+    @CurrentUser() user: { orgId: string },
+    @Query('date') date?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.service.findAll(user.orgId, { date, status });
   }
 
   @Patch(':id/confirm')

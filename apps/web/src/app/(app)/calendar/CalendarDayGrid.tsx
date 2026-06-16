@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { memo, useMemo, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { Trash2, Plus } from 'lucide-react';
 import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -8,7 +8,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
-import type { CalendarSlot, GhostSlot, Lift, PendingSlot } from './calendar.types';
+import type { BookingSlot, CalendarSlot, GhostSlot, Lift, PendingSlot } from './calendar.types';
 import {
   HOURS,
   SIDEBAR_W,
@@ -218,11 +218,35 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
   );
 });
 
+// ─── BookingSlotBlock ────────────────────────────────────────────────────────
+
+const BookingSlotBlock = memo(function BookingSlotBlock({ slot }: { slot: BookingSlot }) {
+  const startH = kyivHours(slot.startAt);
+  const endH = kyivHours(slot.endAt);
+  const left = ((startH - HOURS[0]!) / TOTAL_HOURS) * 100;
+  const width = ((endH - startH) / TOTAL_HOURS) * 100;
+  const timeLabel = `${fmtTime(slot.startAt)}–${fmtTime(slot.endAt)}`;
+
+  return (
+    <a
+      href="/bookings"
+      title={`Онлайн-запис: ${slot.clientName} ${slot.clientPhone}\n${timeLabel}`}
+      className="absolute top-1 bottom-1 rounded border-2 border-dashed border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-xs overflow-hidden flex flex-col px-2 py-1 z-10 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+      style={{ left: `${left}%`, width: `${width}%` }}
+    >
+      <span className="text-[10px] leading-none opacity-75 mb-0.5">{timeLabel}</span>
+      <span className="font-medium truncate leading-tight">{slot.clientName}</span>
+      <span className="truncate leading-tight opacity-75">{slot.clientPhone}</span>
+    </a>
+  );
+});
+
 // ─── DroppableLiftRow ────────────────────────────────────────────────────────
 
 interface DroppableLiftRowProps {
   liftId: string;
   liftSlots: CalendarSlot[];
+  liftBookings: BookingSlot[];
   ghost: GhostSlot | null;
   pending: PendingSlot | null;
   editingSlotId: string | null;
@@ -241,6 +265,7 @@ interface DroppableLiftRowProps {
 const DroppableLiftRow = memo(function DroppableLiftRow({
   liftId,
   liftSlots,
+  liftBookings,
   ghost,
   pending,
   editingSlotId,
@@ -317,6 +342,10 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
           onResizeStart={onResizeStart}
         />
       ))}
+
+      {liftBookings.map(b => (
+        <BookingSlotBlock key={b.id} slot={b} />
+      ))}
     </div>
   );
 });
@@ -336,6 +365,7 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
   const {
     loading,
     lifts,
+    bookingSlots,
     slotsByLift,
     unassignedSlots,
     nextSlotByLift,
@@ -355,6 +385,19 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
     cancelPending,
     handlePendingResizeStart,
   } = state;
+
+  const EMPTY_BOOKINGS = useMemo<BookingSlot[]>(() => [], []);
+
+  // Group booking slots by their assigned liftId
+  const bookingsByLift = useMemo(() => {
+    const map = new Map<string, BookingSlot[]>();
+    for (const b of bookingSlots) {
+      const arr = map.get(b.liftId) ?? [];
+      arr.push(b);
+      map.set(b.liftId, arr);
+    }
+    return map;
+  }, [bookingSlots]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -444,6 +487,7 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                     <DroppableLiftRow
                       liftId={lift.id}
                       liftSlots={slotsByLift.get(lift.id) ?? EMPTY_SLOTS}
+                      liftBookings={bookingsByLift.get(lift.id) ?? EMPTY_BOOKINGS}
                       ghost={ghost}
                       pending={pendingSlot}
                       editingSlotId={editingSlotId}

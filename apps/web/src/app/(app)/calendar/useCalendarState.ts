@@ -17,6 +17,7 @@ import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 
 import type {
+  BookingSlot,
   CalView,
   CalendarSlot,
   GhostSlot,
@@ -100,8 +101,11 @@ export function useCalendarState() {
   );
 
   const [slots, setSlots] = useState<CalendarSlot[]>([]);
+  const [bookingSlots, setBookingSlots] = useState<BookingSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
+  // Ref so `load` useCallback can read current lifts without adding them as dependency
+  const liftsRef = useRef<Lift[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [formMounted, setFormMounted] = useState(false);
   const [formVisible, setFormVisible] = useState(false);
@@ -238,11 +242,17 @@ export function useCalendarState() {
 
   useEffect(() => {
     const cached = getCached<Lift[]>('cache:lifts');
-    if (cached && mountedRef.current) setLifts(cached);
+    if (cached && mountedRef.current) {
+      setLifts(cached);
+      liftsRef.current = cached;
+    }
     apiFetch<Lift[]>('/lifts')
       .then(data => {
         setCache('cache:lifts', data);
-        if (mountedRef.current) setLifts(data);
+        if (mountedRef.current) {
+          setLifts(data);
+          liftsRef.current = data;
+        }
       })
       .catch((e: unknown) => {
         if (mountedRef.current && !cached)
@@ -371,9 +381,56 @@ export function useCalendarState() {
   const load = useCallback(() => {
     if (!date) return;
     setLoading(true);
-    apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`)
-      .then(data => {
-        if (mountedRef.current) setSlots(data);
+    Promise.all([
+      apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`),
+      apiFetch<{
+        items: Array<{
+          id: string;
+          clientName: string;
+          clientPhone: string;
+          requestedDate: string;
+        }>;
+      }>(`/booking?date=${date}&status=PENDING`).catch(() => ({
+        items: [] as Array<{
+          id: string;
+          clientName: string;
+          clientPhone: string;
+          requestedDate: string;
+        }>,
+      })),
+    ])
+      .then(([calSlots, bookingRes]) => {
+        if (!mountedRef.current) return;
+        setSlots(calSlots);
+        // Assign each PENDING booking to the first lift that has no CalendarSlot conflict.
+        // lifts state may not be populated yet on first load — read from the ref captured below.
+        const currentLifts = liftsRef.current;
+        const slotDurationMs = 60 * 60 * 1000; // 1h default slot
+        const assigned: BookingSlot[] = [];
+        for (const b of bookingRes.items) {
+          const startAt = new Date(b.requestedDate);
+          const endAt = new Date(startAt.getTime() + slotDurationMs);
+          const freeLift = currentLifts.find(
+            lift =>
+              !calSlots.some(
+                s =>
+                  s.liftId === lift.id &&
+                  new Date(s.startAt) < endAt &&
+                  new Date(s.endAt) > startAt,
+              ),
+          );
+          if (freeLift) {
+            assigned.push({
+              id: b.id,
+              liftId: freeLift.id,
+              clientName: b.clientName,
+              clientPhone: b.clientPhone,
+              startAt: startAt.toISOString(),
+              endAt: endAt.toISOString(),
+            });
+          }
+        }
+        setBookingSlots(assigned);
       })
       .catch((e: unknown) => {
         if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження');
@@ -890,6 +947,7 @@ export function useCalendarState() {
 
     // Day view data
     slots,
+    bookingSlots,
     loading,
     lifts,
     slotsByLift,
