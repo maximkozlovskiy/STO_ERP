@@ -1241,11 +1241,14 @@ export function CreateWorkOrderModal({
       } else if (canEditActual) {
         // Bug #522: у IN_PROGRESS/ON_HOLD PATCH лише actualHours для існуючих рядків.
         // Жодних DELETE/POST/PATCH інших полів — бекенд відхилить як non-actual-only.
-        for (const line of committedLines.filter(l => !!l.id)) {
+        // Only PATCH lines where actualHours was explicitly set (non-empty string).
+        // Sending null for lines the user never touched overwrites previously saved
+        // values — so skip lines where actualHours is still '' (unmodified).
+        for (const line of committedLines.filter(l => !!l.id && l.actualHours !== '')) {
           await apiFetch(`/work-orders/${workOrderId}/lines/${line.id}`, {
             method: 'PATCH',
             body: JSON.stringify({
-              actualHours: line.actualHours !== '' ? toNumberOrUndefined(line.actualHours) : null,
+              actualHours: toNumberOrUndefined(line.actualHours) ?? null,
             }),
           });
         }
