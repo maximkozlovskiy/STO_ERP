@@ -65,22 +65,22 @@ OVERDUE → PAID / CANCELLED
 
 ## API Endpoints (`/api/invoices`)
 
-| Метод  | URL                                                  | Дія                                                        |
-| ------ | ---------------------------------------------------- | ---------------------------------------------------------- |
-| GET    | `/api/invoices`                                      | Список (фільтри: status, counterpartyId, dateFrom, dateTo) |
-| GET    | `/api/invoices/:id`                                  | Деталь з lines                                             |
-| POST   | `/api/invoices`                                      | Створити рахунок (lines у body)                            |
-| POST   | `/api/invoices/from-work-order/:workOrderId`         | Створити з наряду (auto-fill lines)                        |
-| POST   | `/api/invoices/from-work-order/:workOrderId/refresh` | Оновити рядки з наряду                                     |
-| GET    | `/api/invoices/from-work-order/:workOrderId/find`    | Знайти існуючий рахунок по наряду                          |
-| PATCH  | `/api/invoices/:id`                                  | Оновити (тільки DRAFT)                                     |
-| POST   | `/api/invoices/:id/transition`                       | FSM перехід                                                |
-| POST   | `/api/invoices/:id/clone`                            | Клонувати рахунок                                          |
-| GET    | `/api/invoices/:id/pdf`                              | Завантажити PDF                                            |
-| DELETE | `/api/invoices/:id`                                  | Soft-delete                                                |
-| POST   | `/api/invoices/:id/lines`                            | Додати рядок                                               |
-| PATCH  | `/api/invoices/:id/lines/:lineId`                    | Оновити рядок                                              |
-| DELETE | `/api/invoices/:id/lines/:lineId`                    | Видалити рядок                                             |
+| Метод  | URL                                                  | Дія                                                                                                                                                             |
+| ------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/invoices`                                      | Список (фільтри: status, counterpartyId, dateFrom, dateTo)                                                                                                      |
+| GET    | `/api/invoices/:id`                                  | Деталь з lines                                                                                                                                                  |
+| POST   | `/api/invoices`                                      | Створити рахунок (lines у body)                                                                                                                                 |
+| POST   | `/api/invoices/from-work-order/:workOrderId`         | Створити з наряду (auto-fill lines)                                                                                                                             |
+| POST   | `/api/invoices/from-work-order/:workOrderId/refresh` | Оновити рядки з наряду                                                                                                                                          |
+| GET    | `/api/invoices/from-work-order/:workOrderId/find`    | Знайти існуючий рахунок по наряду (lightweight: `{ id, number, status: InvoiceStatus, amount, documentDate: string \| null }` або `null`); виключає `CANCELLED` |
+| PATCH  | `/api/invoices/:id`                                  | Оновити (тільки DRAFT)                                                                                                                                          |
+| POST   | `/api/invoices/:id/transition`                       | FSM перехід                                                                                                                                                     |
+| POST   | `/api/invoices/:id/clone`                            | Клонувати рахунок                                                                                                                                               |
+| GET    | `/api/invoices/:id/pdf`                              | Завантажити PDF                                                                                                                                                 |
+| DELETE | `/api/invoices/:id`                                  | Soft-delete                                                                                                                                                     |
+| POST   | `/api/invoices/:id/lines`                            | Додати рядок                                                                                                                                                    |
+| PATCH  | `/api/invoices/:id/lines/:lineId`                    | Оновити рядок                                                                                                                                                   |
+| DELETE | `/api/invoices/:id/lines/:lineId`                    | Видалити рядок                                                                                                                                                  |
 
 ---
 

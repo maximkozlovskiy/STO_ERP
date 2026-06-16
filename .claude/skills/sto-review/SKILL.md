@@ -1284,6 +1284,90 @@ grep -rnE "router\.(replace|push)\(" apps/web/src/app --include="*.tsx" | grep -
 
 ---
 
+### 2026-06-16 — Новий blob-download handler без `appendChild`/`removeChild` + immediate `URL.revokeObjectURL` — §1 TypeScript / §8 Web Frontend
+
+**Сигнал:** свіжий feat-commit додає кнопку завантаження PDF (`downloadInvoicePdf`, `downloadXlsx`, …) яка робить `URL.createObjectURL(blob)` → `a.click()` → одразу `URL.revokeObjectURL(url)` без `setTimeout` і без `document.body.appendChild(a)/removeChild(a)`. У тому ж файлі вже є робочі hand­лери (`downloadPdf`, `downloadActPdf`) з паттерном `appendChild → click → removeChild → setTimeout(revoke, 100)`. Без appendChild Firefox/Safari не диспатчать `click` на detached anchor; без `setTimeout` Chromium може дропнути download (revoke до того, як browser почав читати blob). Bug #77/#341 покривав це для перших двох handler-ів — третій додано окремо й паттерн пропустили.
+
+**Grep:**
+
+```bash
+# Кожен виклик URL.revokeObjectURL у фронті — впевнитись, що setTimeout або у unmount-effect
+grep -rnE "URL\.revokeObjectURL" apps/web/src/ --include="*.tsx" --include="*.ts" -B5 \
+  | grep -E "revokeObjectURL|click\(\)" | head -20
+# Якщо `a.click()` і `URL.revokeObjectURL(url)` стоять у сусідніх рядках без `setTimeout` — bug.
+# Окремо: для кожного `document.createElement('a')` має бути `document.body.appendChild(a)` і `removeChild(a)`.
+grep -rnE "document\.createElement\(['\"]a['\"]\)" apps/web/src/ --include="*.tsx" --include="*.ts" -A8 \
+  | grep -v "appendChild\|removeChild" | head
+```
+
+**Фікс:** уніфікувати з існуючим патерном файлу — `document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 100);`. Filename — використовувати human-readable identifier (number, name), не UUID (`invoice-${invoiceNumber}.pdf`, не `invoice-${invoiceId}.pdf`) — UUID непридатний для archive/grep.
+
+**Severity:** CRITICAL/IMPORTANT — Firefox/Safari не починають download (тиха відмова без помилки); Chromium під load — race-window коли revoke перед read; UUID-filename ускладнює архівацію клієнтом.
+
+---
+
+### 2026-06-16 — Hardcoded status labels у новій секції, поряд із готовим shared `*_STATUS_LABELS` — §8 Web Frontend / §1 DRY
+
+**Сигнал:** свіжа секція картки наряду/контрагента/SD рендерить status badge через 5-гілковий ternary з рядковими літералами:
+
+```tsx
+{
+  invoiceRef.status === 'DRAFT'
+    ? 'Чернетка'
+    : invoiceRef.status === 'SENT'
+      ? 'Відправлено'
+      : invoiceRef.status === 'PAID'
+        ? 'Оплачено'
+        : ...;
+}
+```
+
+АЛЕ `@sto/shared` уже експортує `INVOICE_STATUS_LABELS` / `WO_STATUS_LABELS` / `STOCK_DOC_TYPE_LABELS` тощо як `Record<string, string>` (повний UA-labels mapping). Risk: divergence у точному формулюванні — наприклад, локально `'Відправлено'` vs shared `'Надіслано'` для `SENT` → один і той самий статус має різну UA-назву у різних місцях UI (badge на WO card vs invoice list page).
+
+**Grep:**
+
+```bash
+# Inline ternary з status labels у нових секціях
+grep -rnE "status === ['\"]DRAFT['\"]\s*\?\s*['\"][А-ЯҐЄІЇа-яґєії]" apps/web/src/app --include="*.tsx" | head
+# Звірити з shared
+grep -n "_STATUS_LABELS\b" packages/shared/src/constants/statuses.ts
+# Для кожного match — у тому ж файлі імпортується відповідний *_STATUS_LABELS?
+```
+
+**Фікс:** імпортувати `INVOICE_STATUS_LABELS` (або відповідний) з `@sto/shared`, замінити ternary на `{LABELS[status] ?? status}`. Якщо потрібен color-mapping — використати `_STATUS_BADGE` (теж у shared). Кожен новий status-аware UI блок мусить first-check shared constants.
+
+**Severity:** IMPORTANT — divergence між сторінками для одного й того ж статусу (degradation UX без crash); порушує SSOT-інваріант `@sto/shared`.
+
+---
+
+### 2026-06-16 — Backend response type декларує `status: string` замість `InvoiceStatus`/`WorkOrderStatus` literal union — §13 API Contract / §1 TypeScript
+
+**Сигнал:** новий lightweight endpoint (`findByWorkOrder`, `getActiveByX`, summary endpoint) повертає об'єкт зі `status: string` у Promise return type:
+
+```ts
+async findByWorkOrder(...): Promise<{
+  id: string; number: string; status: string;  // ❌ bare string
+  amount: number; documentDate: string | null;
+} | null> { ... }
+```
+
+Prisma `select` повертає prisma-enum (`InvoiceStatus`/`WorkOrderStatus`), і TS-вивід вдало звужує — але explicit return type губить literal union. Frontend дзеркалить ту ж саму помилку (`status: string` у `useState<…>`), і UI порівняння (`status === 'DRAFT'`) перестає захищати від typo (`'DRAF'`) — TypeScript уже не ловить.
+
+**Grep:**
+
+```bash
+# Backend service return types з status: string
+grep -rnE "status:\s*string" apps/api/src/modules --include="*.service.ts" | head
+# Frontend lightweight ref types з тим же gap
+grep -rnE "status:\s*string" apps/web/src/app --include="*.tsx" | grep -v "completionAct.status" | head
+```
+
+**Фікс:** `import { InvoiceStatus } from '@prisma/client'` (backend) → `status: InvoiceStatus` у return type. Frontend → `import type { InvoiceStatus } from '@sto/shared'` (literal union вже існує) → `status: InvoiceStatus`. Перевірити що `'DRAFT' | 'SENT' | ...` exhaustive проти всіх case-ів у UI.
+
+**Severity:** IMPORTANT — typo-magnet, lost type-safety на UI guards (один з найчастіших джерел тихих UI bugs).
+
+---
+
 ### 2026-06-15 — Dead code після onClick refactor: orphan `selectX/toggleSelectX` після redirect на edit modal — §8 Web Frontend / §1 TS
 
 **Сигнал:** list-сторінка має пару функцій `const selectDoc = useCallback(...)` + `const toggleSelectDoc = useCallback(() => { setSelectedDoc; void selectDoc; }, [selectDoc])` для DetailPanel selection. Розробник міняє onClick рядка з `() => toggleSelectDoc(doc)` на `() => setEditingDocId(doc.id)` (відкриває edit modal замість DetailPanel selection). АЛЕ `toggleSelectDoc` і `selectDoc` лишаються в файлі і ніхто на них не посилається — TS green (функції оголошені), runtime ніколи не виконує. Результат: DetailPanel ніколи не показує дані бо `selectedDoc` залишається `null` — `setSelectedDoc` викликається тільки з `toggleSelectDoc` що мертвий. Toggle button у toolbar є, але `selectedDoc` ніколи не присвоюється → panel порожній.

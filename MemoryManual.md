@@ -9,12 +9,12 @@
 ## Поточний стан
 
 ```
-Дата:       2026-06-15
+Дата:       2026-06-16
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 850/850 | Web 423/423 | E2E пропущено (Docker DOWN у цій сесії)
 Останній tester: 2026-06-15 — Bug #506-#507 — booking SMS shape mismatch після bull→bullmq audit
-Останній review: 2026-06-15 (HEAD 4ed163b5) — bullmq міграція OK; +@Injectable 4 processors; React.ChangeEvent → named import
+Останній review: 2026-06-16 (AUTO, HEAD aa3b03c5) — invoice section на WO card: deferred revokeObjectURL + shared INVOICE_STATUS_LABELS + InvoiceRef + InvoiceStatus literal union (4 findings, 0 critical)
 ```
 
 ---
@@ -22,6 +22,10 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 ## Останній commit
 
 ```
+aa3b03c5  fix(review): invoice section — deferred revokeObjectURL + shared
+          INVOICE_STATUS_LABELS + InvoiceRef interface + InvoiceStatus literal
+          union у findByWorkOrder (WO card invoice block)
+523190f2  feat(work-orders): add invoice section to work order card
 4ed163b5  fix(review): @Injectable для 4 BullMQ processors (loyalty/sms/checkbox/
           webhooks) — SWC builder consistency; React.ChangeEvent → named import
 <pending>  fix(tester): Bug #506-#507 — booking SMS через NotificationsService.send()

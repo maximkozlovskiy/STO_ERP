@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-06-16
+
+### aa3b03c5 fix(review): invoice section — deferred revokeObjectURL + shared labels + narrow types
+
+- WO card `downloadInvoicePdf`: `setTimeout(() => URL.revokeObjectURL(url), 100)` + `appendChild(a)` / `removeChild(a)` — mirrors `downloadPdf` / `downloadActPdf` pattern (Bug #77 hardening).
+- Filename now uses invoice number (`invoice-${number}.pdf`) instead of UUID.
+- Status badge: replaced 5-branch hardcoded ternary with `INVOICE_STATUS_LABELS[invoiceRef.status]` (`@sto/shared`). Eliminates divergent local "Відправлено" vs shared "Надіслано" for SENT.
+- 5 inline duplicates of `{ id, number, status, amount, documentDate }` → single `InvoiceRef` interface + `InvoicePayload` helper type.
+- `findByWorkOrder()` return type: `status: string` → `status: InvoiceStatus` literal union.
+
+---
+
 ## 2026-06-15
 
 ### cc2cd2e1 fix(tester): Bugs #487-#490 — post-cycle3 spec gaps + BALANCE_SIGN exhaustiveness
@@ -135,7 +147,7 @@
 
 ### 94de0b34 fix(calendar): correct WO prefill from calendar slot (Bug #448)
 
-- WINDOW_END _ 60 замість hardcoded `19 _ 60`
+- WINDOW*END * 60 замість hardcoded `19 _ 60`
 - plannedHours у CreateWOPrefill interface
 
 ### af09a681 fix(tester): Bugs #449, #451 — regression tests + date='' guard

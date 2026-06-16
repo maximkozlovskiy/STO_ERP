@@ -108,6 +108,20 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 | Detail Panel schema           | `lib/panel-schema.ts` → `WO_PANEL_SCHEMA`        |
 | FSM кнопки                    | `components/ui/fsm-buttons.tsx` → `<FSMButtons>` |
 
+**Картка наряду — секції (PageClient.tsx, у порядку рендеру):**
+
+1. Заголовок + статус-бейдж + FSM кнопки
+2. Метадані (клієнт, авто, склад, відповідальний)
+3. Підсумки (плановані/фактичні години, сума, оплачено)
+4. **Акт виконаних робіт** (`WO_INVOICEABLE_STATUSES` гейт)
+5. **Рахунок** (`WO_INVOICEABLE_STATUSES` гейт + `invoiceRef !== undefined`) — використовує `INVOICE_STATUS_LABELS` з `@sto/shared`; `InvoiceRef` interface = `{ id, number, status: InvoiceStatus, amount, documentDate }`. Endpoint `/invoices/from-work-order/:id/find` для preload + `POST /invoices/from-work-order/:id` (create) + `/refresh` (DRAFT only) + `/pdf` (download)
+6. Роботи (`WorkOrderLinesSection`)
+7. Запчастини (`WorkOrderPartsSection`)
+8. Огляд авто
+9. Медіа
+10. Audit log
+11. Коментарі
+
 ---
 
 ## Бізнес-правила
