@@ -103,7 +103,7 @@ export default function BookingsPage() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {r.clientPhone} · {fmtDate(r.requestedDate)}
+                      {r.clientPhone} · {fmtDateTime(r.requestedDate)}
                       {r.branchName && ` · ${r.branchName}`}
                     </p>
                     {r.notes && (
