@@ -14,7 +14,7 @@
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 860/860 | Web 434/434 | E2E пропущено (Docker DOWN у цій сесії)
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній optimize: 2026-06-16 — bucket busy slots by liftId у getAvailability + load()
+Останній optimize: 2026-06-16 — Bug #520 work-hours Redis cache + statsTab single-pass
 Останній tester: 2026-06-16 — Bug #511-#514 — booking DST + race + clamp + workhours guard
 Останній review: 2026-06-16 (AUTO, HEAD a0301b36) — calendar split + pxToHours + parseHour(00:00)
 Останній sync:   2026-06-16 — BranchSettings/WorkHours+CalendarSlot+BookingRequest+Warehouse/Branch/Zone+GoodPickerModal — 0 розбіжностей
@@ -25,16 +25,17 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+e3a044df  docs(skills): add settings/config endpoint cache pattern to sto-optimize
+3d8f4ad5  perf(calendar): Redis cache work-hours + statsTab single-pass aggregation
+          Bug #520: GET /settings/work-hours тепер кешується у Redis (TTL 60s,
+          key=settings:work-hours:{orgId}) з invalidation у updateBranchSettings
+          тільки коли workStartTime/workEndTime реально змінилися.
+          useCalendarState: 2 mount-only useEffect → 1 Promise.all.
+          CalendarStatsTab: liftStats useMemo з bucket-by-liftId Map; totalMinAll,
+          avgLoadPct, periodLabel, days — теж memo. O(N×M) → O(N+M).
 a0301b36  fix(review): align calendar split with backend + fix pxToHours static TOTAL_HOURS
-          SPLIT_DAY_START_H/END_H constants у CalendarSlotModal для overflow detection
-          (matches backend calendar.service.ts WORK_DAY_START_H=8/END_H=20); resize
-          deltaH тепер dynTotalHoursRef замість pxToHours(static 12); parseHour 00:00 fix.
 46b64596  feat(calendar): dynamic work hours from BranchSettings
-          GET /settings/work-hours endpoint; useCalendarState reads workStartHour/workEndHour;
-          CalendarDayGrid/Modal/StatsTab receive windows as props.
 831c7d36  fix(infra): Cache-Control no-cache on branches/zones/warehouses GET
-50cd6434  perf(optimize): bucket busy slots by liftId in availability + booking assign
-f337e4e9  revert(api): use nest tsc builder instead of swc for dev
 ```
 
 Latest tester: 2026-06-16 (AUTO) — Bug #508-510 — invoice section test coverage
