@@ -21,6 +21,11 @@ export interface GoodPickerItem {
   unitShortName?: string | null;
 }
 
+interface StockTotal {
+  goodId: string;
+  totalQuantity: number;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -33,6 +38,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryNode[]>([]);
   const [items, setItems] = useState<GoodPickerItem[]>([]);
+  const [stockMap, setStockMap] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -80,15 +86,28 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
           apiFetch<{
             items: (Omit<GoodPickerItem, 'unitShortName'> & { unit?: string | null })[];
           }>(`/goods?${params}`)
-            .then(r => {
+            .then(async r => {
               if (reqId !== reqRef.current) return;
-              setItems(
-                (Array.isArray(r.items) ? r.items : []).map(g => ({
-                  ...g,
-                  unitShortName: g.unit ?? null,
-                })),
-              );
+              const goods = (Array.isArray(r.items) ? r.items : []).map(g => ({
+                ...g,
+                unitShortName: g.unit ?? null,
+              }));
+              setItems(goods);
               setLoading(false);
+              // Fetch stock totals for the loaded goods batch
+              if (goods.length > 0) {
+                const ids = goods.map(g => g.id).join(',');
+                apiFetch<StockTotal[]>(`/goods/stock-totals?ids=${ids}`)
+                  .then(totals => {
+                    if (reqId !== reqRef.current) return;
+                    setStockMap(new Map(totals.map(t => [t.goodId, t.totalQuantity])));
+                  })
+                  .catch(() => {
+                    /* non-critical — залишки не показуємо якщо помилка */
+                  });
+              } else {
+                setStockMap(new Map());
+              }
             })
             .catch((e: unknown) => {
               if (reqId !== reqRef.current) return;
@@ -114,6 +133,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
       setQuery('');
       setSelectedCatId(null);
       setItems([]);
+      setStockMap(new Map());
       setError('');
       setLoading(false);
       return;
@@ -187,6 +207,14 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                       <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
                         {item.sku && <span>{item.sku}</span>}
                         <span>{item.salePrice} ₴</span>
+                        {(() => {
+                          const qty = stockMap.get(item.id) ?? 0;
+                          return (
+                            <span className={qty > 0 ? 'text-success' : 'text-destructive-text'}>
+                              {qty > 0 ? `${qty} на складі` : 'немає на складі'}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </button>
                   );
