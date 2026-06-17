@@ -174,6 +174,8 @@ export function PurchaseOrderCreateModal({
   const [goodSearchOpen, setGoodSearchOpen] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
+  const [vatRate, setVatRate] = useState(0);
   const [saving, setSaving] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -206,14 +208,14 @@ export function PurchaseOrderCreateModal({
     return () => document.removeEventListener('mousedown', handler);
   }, [statusMenuOpen]);
 
-  // Load warehouses
+  // Load warehouses + org VAT settings
   useEffect(() => {
     if (!open) return;
     const cached = getCached<Warehouse[]>('cache:warehouses');
     if (cached) {
       setWarehouses(cached.filter(w => !w.deletedAt));
     }
-    apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses')
+    void apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses')
       .then(r => {
         const all = Array.isArray(r) ? r : (r.items ?? []);
         const list = all.filter(w => !w.deletedAt);
@@ -221,6 +223,12 @@ export function PurchaseOrderCreateModal({
         setCache('cache:warehouses', list);
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження складів'));
+    void apiFetch<{ vatMode?: string; defaultVatRate?: number | null }>('/organisations/my')
+      .then(org => {
+        setVatMode((org.vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE') ?? 'NONE');
+        setVatRate(org.defaultVatRate ?? 0);
+      })
+      .catch(() => {});
   }, [open]);
 
   // Auto-select single warehouse (runs both on cache hit and after fetch resolves)
@@ -338,6 +346,18 @@ export function PurchaseOrderCreateModal({
       purchasePrice: g.purchasePrice,
       sku: g.sku,
     }));
+  }, []);
+
+  const handleGoodSelect = useCallback((item: GoodItem) => {
+    setNewLine(l => ({
+      ...l,
+      goodId: item.id,
+      goodName: item.primary,
+      goodSku: item.sku ?? null,
+      unit: item.unit ?? 'шт',
+      price: String(item.purchasePrice ?? ''),
+    }));
+    setGoodSearchOpen(false);
   }, []);
 
   // ── FSM ───────────────────────────────────────────────────────────────────
@@ -893,26 +913,14 @@ export function PurchaseOrderCreateModal({
             <div className="rounded-lg border border-border overflow-hidden">
               <table className="w-full table-fixed text-[12px]">
                 <colgroup>
-                  {isEditMode ? (
-                    <>
-                      <col className="w-[36%]" />
-                      <col className="w-[9%]" />
-                      <col className="w-[11%]" />
-                      <col className="w-[11%]" />
-                      <col className="w-[14%]" />
-                      <col className="w-[14%]" />
-                      <col className="w-[5%]" />
-                    </>
-                  ) : (
-                    <>
-                      <col className="w-[40%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[13%]" />
-                      <col className="w-[16%]" />
-                      <col className="w-[16%]" />
-                      <col className="w-[5%]" />
-                    </>
-                  )}
+                  <col />
+                  <col className="w-[11%]" />
+                  <col className="w-[9%]" />
+                  {isEditMode && <col className="w-[10%]" />}
+                  <col className="w-[12%]" />
+                  {vatMode !== 'NONE' && <col className="w-[10%]" />}
+                  <col className="w-[12%]" />
+                  <col className="w-8" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-border bg-secondary/40">
@@ -920,10 +928,10 @@ export function PurchaseOrderCreateModal({
                       Товар
                     </th>
                     <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      ОВ
+                      К-сть
                     </th>
                     <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      К-сть
+                      ОВ
                     </th>
                     {isEditMode && (
                       <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
@@ -933,6 +941,11 @@ export function PurchaseOrderCreateModal({
                     <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Ціна, ₴
                     </th>
+                    {vatMode !== 'NONE' && (
+                      <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                        ПДВ, ₴
+                      </th>
+                    )}
                     <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Сума, ₴
                     </th>
@@ -951,16 +964,28 @@ export function PurchaseOrderCreateModal({
                           <div className="text-[11px] text-muted-foreground">{line.goodSku}</div>
                         )}
                       </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
                       <td className="px-3 py-2 text-right text-muted-foreground">
                         {line.unitShortName || line.unit}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
                       {isEditMode && (
                         <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                           {line.receivedQty != null ? line.receivedQty : '—'}
                         </td>
                       )}
                       <td className="px-3 py-2 text-right tabular-nums">{line.price}</td>
+                      {vatMode !== 'NONE' && (
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                          {vatRate > 0
+                            ? (
+                                ((parseFloat(line.quantity) || 0) *
+                                  (parseFloat(line.price) || 0) *
+                                  vatRate) /
+                                100
+                              ).toFixed(2)
+                            : '—'}
+                        </td>
+                      )}
                       <td className="px-3 py-2 text-right tabular-nums">
                         {((parseFloat(line.quantity) || 0) * (parseFloat(line.price) || 0)).toFixed(
                           2,
@@ -983,20 +1008,26 @@ export function PurchaseOrderCreateModal({
 
                   {/* Add line input row */}
                   {canEdit && showLineInput && (
-                    <tr className="bg-primary/5">
+                    <tr className="bg-primary/5 border-t-2 border-primary/20">
                       <td className="px-2 py-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setGoodSearchOpen(true)}
-                          className="w-full text-left rounded border border-input bg-background px-2 py-1 text-[12px] hover:border-primary transition-colors"
-                        >
-                          {newLine.goodName || (
-                            <span className="text-muted-foreground">Оберіть товар…</span>
-                          )}
-                        </button>
-                      </td>
-                      <td className="px-2 py-1.5 text-right text-[11px] text-muted-foreground">
-                        {newLine.unit}
+                        <EntityPickerField<GoodItem>
+                          display={newLine.goodName}
+                          placeholder="Пошук товару…"
+                          ariaLabel="Товар"
+                          onPick={() => setGoodSearchOpen(true)}
+                          onSearch={fetchGoodItems}
+                          onSearchSelect={g => {
+                            setNewLine(l => ({
+                              ...l,
+                              goodId: g.id,
+                              goodName: g.primary,
+                              goodSku: g.sku ?? null,
+                              unit: g.unit ?? 'шт',
+                              price: String(g.purchasePrice ?? ''),
+                            }));
+                          }}
+                          onClear={() => setNewLine(EMPTY_LINE)}
+                        />
                       </td>
                       <td className="px-2 py-1.5">
                         <input
@@ -1007,6 +1038,9 @@ export function PurchaseOrderCreateModal({
                           onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
                           className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
                         />
+                      </td>
+                      <td className="px-2 py-1.5 text-right text-[11px] text-muted-foreground">
+                        {newLine.unit}
                       </td>
                       {isEditMode && <td />}
                       <td className="px-2 py-1.5">
@@ -1020,18 +1054,31 @@ export function PurchaseOrderCreateModal({
                           className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
                         />
                       </td>
+                      {vatMode !== 'NONE' && (
+                        <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
+                          {vatRate > 0
+                            ? (
+                                ((parseFloat(newLine.quantity) || 0) *
+                                  (parseFloat(newLine.price) || 0) *
+                                  vatRate) /
+                                100
+                              ).toFixed(2)
+                            : '—'}
+                        </td>
+                      )}
                       <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
                         {(
                           (parseFloat(newLine.quantity) || 0) * (parseFloat(newLine.price) || 0)
                         ).toFixed(2)}
                       </td>
                       <td className="px-2 py-1.5">
-                        <div className="flex gap-1">
+                        <div className="flex flex-row gap-2 items-center">
                           <button
                             type="button"
                             onClick={addLine}
                             disabled={!newLine.goodId}
-                            className="text-primary hover:text-primary/80 disabled:opacity-30"
+                            title="Зберегти рядок"
+                            className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                           >
                             <Plus className="h-3.5 w-3.5" />
                           </button>
@@ -1041,7 +1088,8 @@ export function PurchaseOrderCreateModal({
                               setShowLineInput(false);
                               setNewLine(EMPTY_LINE);
                             }}
-                            className="text-muted-foreground hover:text-foreground"
+                            title="Скасувати"
+                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -1053,7 +1101,7 @@ export function PurchaseOrderCreateModal({
                 <tfoot>
                   <tr className="border-t-2 border-border bg-secondary/20">
                     <td
-                      colSpan={isEditMode ? 5 : 4}
+                      colSpan={4 + (isEditMode ? 1 : 0) + (vatMode !== 'NONE' ? 1 : 0)}
                       className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
                     >
                       Разом:
