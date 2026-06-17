@@ -16,6 +16,8 @@ export interface WorkOrder {
   paidAmount: number;
   counterpartyId: string;
   counterpartyName?: string;
+  contractId?: string | null;
+  contractNumber?: string | null;
   vehicleId?: string | null;
   vehicleSummary?: string | null;
   branchId: string;
