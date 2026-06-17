@@ -72,10 +72,23 @@ export class EstimateExportService {
     });
     if (!wo) throw new NotFoundException('Посилання не дійсне або термін дії минув');
 
-    const org = await this.prisma.organisation.findFirst({
-      where: { id: wo.orgId },
-      select: { name: true, logoUrl: true },
-    });
+    // sto-optimize 2026-06-17: tier merger — org та uoms обидва залежать лише
+    // від wo (orgId + parts.unitOfMeasureId). Раніше: 2 RTT sequential. Тепер
+    // 1 RTT паралельно. Викликається з 3 export-endpoint (PDF/XLSX/DOCX) —
+    // кожен export ділиться TTFB save рівномірно. Symmetric з findByShareToken.
+    const uomIds = wo.parts.map(p => p.unitOfMeasureId).filter((x): x is string => !!x);
+    const [org, uoms] = await Promise.all([
+      this.prisma.organisation.findFirst({
+        where: { id: wo.orgId },
+        select: { name: true, logoUrl: true },
+      }),
+      uomIds.length > 0
+        ? this.prisma.goodUoM.findMany({
+            where: { id: { in: uomIds } },
+            select: { id: true, unitOfMeasure: { select: { shortName: true } } },
+          })
+        : Promise.resolve([] as { id: string; unitOfMeasure: { shortName: string } }[]),
+    ]);
 
     const cp = wo.counterparty;
     const counterpartyName = cp
@@ -85,16 +98,8 @@ export class EstimateExportService {
       ? `${wo.vehicle.make} ${wo.vehicle.model}${wo.vehicle.licensePlate ? ` (${wo.vehicle.licensePlate})` : ''}`
       : '—';
 
-    // Resolve UoM shortNames
-    const uomIds = wo.parts.map(p => p.unitOfMeasureId).filter((x): x is string => !!x);
     const uomMap: Record<string, string> = {};
-    if (uomIds.length > 0) {
-      const uoms = await this.prisma.goodUoM.findMany({
-        where: { id: { in: uomIds } },
-        select: { id: true, unitOfMeasure: { select: { shortName: true } } },
-      });
-      for (const u of uoms) uomMap[u.id] = u.unitOfMeasure.shortName;
-    }
+    for (const u of uoms) uomMap[u.id] = u.unitOfMeasure.shortName;
 
     return {
       number: wo.number,

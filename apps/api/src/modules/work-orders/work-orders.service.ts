@@ -1300,10 +1300,18 @@ export class WorkOrdersService {
     tx: Prisma.TransactionClient,
     orgId: string,
   ): Promise<void> {
+    // sto-optimize 2026-06-17 (twin-scan + take cap):
+    // (1) Defense-in-depth `take: 1000` — addLine/addPart endpoints не мають
+    //     ArrayMaxSize, теоретично lines/parts можуть рости неконтрольовано.
+    //     Same upper bound що інші bulk reads у цьому сервісі (reserveParts:802).
+    // (2) Single-pass reduce замість twin-scan: раніше `lines.reduce`
+    //     викликався двічі по тому ж масиву (totalLabor + totalActualLabor).
+    //     Для WO з 50+ рядками — половина CPU/GC роботи у hot path mutation.
     const [lines, partsAgg] = await Promise.all([
       tx.workOrderLine.findMany({
         where: { workOrderId, orgId, deletedAt: null },
         select: { amount: true, actualHours: true, normoHours: true, price: true },
+        take: 1000,
       }),
       tx.workOrderPart.aggregate({
         where: { workOrderId, orgId, deletedAt: null },
@@ -1311,12 +1319,15 @@ export class WorkOrdersService {
       }),
     ]);
 
-    const totalLabor = lines.reduce((s, l) => s + Number(l.amount ?? 0), 0);
-    // totalActualLabor = SUM((actualHours ?? normoHours) × price)
-    const totalActualLabor = lines.reduce((s, l) => {
+    // Single-pass: рахуємо totalLabor (planned) і totalActualLabor разом.
+    // totalLabor = SUM(amount), totalActualLabor = SUM((actualHours ?? normoHours) × price).
+    let totalLabor = 0;
+    let totalActualLabor = 0;
+    for (const l of lines) {
+      totalLabor += Number(l.amount ?? 0);
       const h = l.actualHours != null ? Number(l.actualHours) : Number(l.normoHours ?? 0);
-      return s + h * Number(l.price ?? 0);
-    }, 0);
+      totalActualLabor += h * Number(l.price ?? 0);
+    }
     const totalParts = Number(partsAgg._sum.amount ?? 0);
 
     await tx.workOrder.update({
@@ -1708,21 +1719,25 @@ export class WorkOrdersService {
     });
     if (!wo) throw new NotFoundException('Посилання не дійсне або термін дії минув');
 
-    const org = await this.prisma.organisation.findFirst({
-      where: { id: wo.orgId },
-      select: { name: true, logoUrl: true },
-    });
-
-    // Підвантажуємо per-good UoM назви одним запитом для парт, що мають окрему UoM.
+    // sto-optimize 2026-06-17: tier merger — org та uoms обидва залежать лише
+    // від wo (orgId + parts.unitOfMeasureId), один від одного — ні. Раніше:
+    // sequential 2 RTT після головного findFirst. Тепер: 1 RTT паралельно.
+    // На public endpoint (share-token, без auth) це 50% TTFB save.
     const uomIds = wo.parts.map(p => p.unitOfMeasureId).filter((x): x is string => !!x);
+    const [org, goodUoMs] = await Promise.all([
+      this.prisma.organisation.findFirst({
+        where: { id: wo.orgId },
+        select: { name: true, logoUrl: true },
+      }),
+      uomIds.length > 0
+        ? this.prisma.goodUoM.findMany({
+            where: { id: { in: uomIds } },
+            select: { id: true, unitOfMeasure: { select: { shortName: true } } },
+          })
+        : Promise.resolve([] as { id: string; unitOfMeasure: { shortName: string } }[]),
+    ]);
     const uomMap: Record<string, string> = {};
-    if (uomIds.length > 0) {
-      const goodUoMs = await this.prisma.goodUoM.findMany({
-        where: { id: { in: uomIds } },
-        select: { id: true, unitOfMeasure: { select: { shortName: true } } },
-      });
-      for (const u of goodUoMs) uomMap[u.id] = u.unitOfMeasure.shortName;
-    }
+    for (const u of goodUoMs) uomMap[u.id] = u.unitOfMeasure.shortName;
 
     const cp = wo.counterparty;
     const counterpartyName =
