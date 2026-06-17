@@ -16,7 +16,7 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 Останній optimize: 2026-06-16 — Bug #520 Redis cache work-hours + statsTab O(N×M)→O(N+M)
 Останній tester: 2026-06-17 (AUTO, HEAD 99f0e406) — Bug #506-#510 (totalActualLabor UI+tests+public estimate)
-Останній review: 2026-06-17 (AUTO, HEAD ca5aef48) — actualHours-aware: WO PDF line totals + invoice refreshFromWorkOrder + completion act buildLines
+Останній review: 2026-06-17 (AUTO, HEAD 6d35157a) — §2.1 CRITICAL: role-gate part.costPrice (MECHANIC/RECEPTIONIST exposure) + UI mode alignment
 Останній sync:   2026-06-16 — BranchSettings/WorkHours+CalendarSlot+BookingRequest+Warehouse/Branch/Zone+GoodPickerModal — 0 розбіжностей
 ```
 
@@ -25,11 +25,11 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
-99f0e406  fix(tester): Bugs #506-#510 — totalActualLabor regression-guard + UI sync
-6b299853  docs(skills): add type-duplication + denormalized-semantic-drift patterns
-ca5aef48  fix(review): line totals + invoice refresh + completion act on actualHours
-0665024c  feat(work-orders): invoice/totalAmount on actual labor (actualHours ?? normoHours × price)
-527011c9  fix(tester): Bugs #521-#525 — actualHours feature critical bugs
+6d35157a  fix(review): role-gate part.costPrice + UI cleanups
+9d806c45  feat(work-orders): show part cost price (batchCostPrice) in WO parts table
+a6221dbe  fix(migration): backfill totalActualLabor + totalAmount for existing work orders
+7ade9e72  feat(work-orders): show actual vs planned amount in list column
+e8b8efdb  fix(sync): add contractId & contractNumber to WorkOrder list interface
 ```
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)

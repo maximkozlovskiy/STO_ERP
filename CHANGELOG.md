@@ -7,6 +7,17 @@
 
 ## 2026-06-17
 
+### 6d35157a fix(review): role-gate part.costPrice + UI cleanups
+
+- §2.1 CRITICAL: GET /work-orders/:id повертав WorkOrderPartResponseDto.costPrice (batchCostPrice)
+  для MECHANIC/RECEPTIONIST — порушував field-visibility інваріант goods/price-history
+- service: COST_PRICE_VISIBLE_ROLES (OWNER/ADMIN/STOREKEEPER/ACCOUNTANT) + canSeeCostPrice() guard
+- toPartDto(part, userRole?) — emit costPrice лише для дозволених ролей; fail-closed default
+- controller: findOne(@CurrentUser() user: {role}) → передається у service
+- WO list page: simplify hasActual = abs(totalActualLabor - totalLabor) ≥ 0.01 (totalParts cancels)
+- CreateWorkOrderModal: align new-input cost cell з view/edit (text-left tabular-nums)
+- skills: новий шаблон sto-review для nested-DTO role-gated полів + UI mode alignment
+
 ### 99f0e406 fix(tester): Bugs #506-#510 — totalActualLabor regression-guard + UI sync
 
 - Bug #506/#510 (MEDIUM): PageClient.tsx не відображав різницю план/факт + дублював interface без totalActualLabor
