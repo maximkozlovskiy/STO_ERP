@@ -7,6 +7,29 @@
 
 ## 2026-06-17
 
+### fe9c741c fix(review): VAT report filters + broken endpoint + VatMode typing
+
+- CRITICAL (UI dead code): `PurchaseOrderCreateModal` викликав `/organisations/my` —
+  endpoint НЕ існує (backend має `/settings/organisation`). Silent `.catch(() => {})`
+  ховав факт що `vatMode`/`vatRate` ніколи не сетяться → ПДВ-колонка/рядок ніколи не
+  показувались. Замінено на `/settings/organisation` + `/settings/tax-rates` (resolve
+  rate by `defaultVatRateId` або `isDefault`); error → `console.error`. Симетрія з
+  `CreateWorkOrderModal.tsx:597`
+- CRITICAL (звітність): `ReportsService.vatReport()` агрегував ВСІ Invoice (включно з
+  DRAFT/CANCELLED) і ВСІ PurchaseOrder крім CANCELLED (включно з DRAFT/ORDERED). За
+  податковим обліком (1) sales VAT — лише виставлені рахунки (SENT/PAID/OVERDUE);
+  DRAFT не є податковою подією, CANCELLED анульовано; (2) purchase VAT credit виникає
+  лише після фактичної поставки (PARTIAL/RECEIVED), бо DRAFT/ORDERED не отримано.
+  Додано `status: { in: [...] }` фільтри
+- IMPORTANT (TS contract): `SettingsService.getDefaultVatRate()` повертав
+  `{ vatMode: string; vatRate: number }` (bare string) → консумери писали
+  `as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'` каст. Тепер `vatMode: VatMode` (Prisma enum),
+  drops 2 cast sites у purchase-orders.service.ts
+- IMPORTANT (DRY): `vat.ts` мав local `type VatMode = 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'`
+  замість Prisma `VatMode`. Імпорт з `@prisma/client` робить DRY single-source
+- IMPORTANT (TS): `reports.service.ts` мав ugly `(invoicedAgg._sum as { totalVat?: unknown }).totalVat`
+  cast. Prisma `_sum.totalVat: Decimal | null` доступний directly без касту
+
 ### test(tester): Bugs #530-#532 — Cycle 2 final regression-guards (14 нових тестів)
 
 - Bug #530 (HIGH): public DTO leak guard для findByShareToken — costPrice/batchCostPrice/orgId/sensitive поля ВІДСУТНІ

@@ -15,11 +15,11 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 908/908 (+26: 22 role-gate + 4 estimate-export) | Web 434/434
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 E2E smoke (2026-06-17): WO list "Сума, ₴" → 1 230,00 (NBSP) ✅; OWNER /api/work-orders/:id → costPrice key present ✅; CreateWorkOrderModal "Собів., ₴" + colSpans 9/10 (vatMode) consistent ✅
+Останній review: 2026-06-17 (POST-VAT, HEAD fe9c741c) — CRITICAL: PurchaseOrderCreateModal викликав неіснуючий /organisations/my → VAT-рядок ніколи не рендерився; замінено на /settings/organisation + /settings/tax-rates. CRITICAL: reports.vatReport() агрегував ВСІ invoices/POs включаючи DRAFT/CANCELLED → невірний звіт ПДВ; додано status-фільтри (SENT/PAID/OVERDUE для sales, PARTIAL/RECEIVED для purchases). IMPORTANT: SettingsService.getDefaultVatRate() return VatMode enum (не bare string) → drops 2 casts; vat.ts imports VatMode з @prisma/client; reports.service прибрав ugly `(_sum as { totalVat?: unknown })` cast
 Останній simplify: 2026-06-17 — recalcTotals: nullish-chain `Number(actualHours ?? normoHours ?? 0)` замість тернарки (semantically identical, 78/78 WO тестів green)
 Останній optimize: 2026-06-17 (HEAD 80f02888) — recalcTotals twin-scan→single-pass + tier merger org+uoms у findByShareToken / EstimateExportService.getEstimateData
 Останній tester: 2026-06-17 (FULL, HEAD 538ca6e4) — Bug #527-#529 (role-gate regression-guard + estimate-export Bug #508 leak + addPart/updatePart symmetry)
-Останній review: 2026-06-17 (Cycle 2, HEAD d3771b77) — 0 problems found; cycle 2 повторна перевірка: role-gate threading через addPart/updatePart симетричний з findOne, recalcTotals take:1000 defense-in-depth, single-pass reduce semantically identical to twin-scan, findByShareToken/EstimateExportService tier merger коректний, 26/26 нових spec passed, tsc green
-Перший review: 2026-06-17 (AUTO, HEAD 6d35157a) — §2.1 CRITICAL: role-gate part.costPrice (MECHANIC/RECEPTIONIST exposure) + UI mode alignment
+Перший review (today): 2026-06-17 (AUTO, HEAD 6d35157a) — §2.1 CRITICAL: role-gate part.costPrice (MECHANIC/RECEPTIONIST exposure) + UI mode alignment
 Останній sync:   2026-06-17 (Cycle 2, HEAD 31ec6313) — WorkOrderPartResponseDto.costPrice optional ✅ | WorkOrder.contractId/contractNumber ✅ | EstimatePublicDto fields ✅ | apiFetch URLs ✅ | tsc 0 errors — 0 розбіжностей
 ```
 
@@ -36,12 +36,12 @@ E2E smoke (2026-06-17): WO list "Сума, ₴" → 1 230,00 (NBSP) ✅; OWNER /
 ## Останній commit
 
 ```
+fe9c741c  fix(review): VAT report filters + broken endpoint + VatMode typing
+60b25347  feat(vat): add VAT accounting to PO, WO, Invoice + VAT report
 1e03b509  docs(skills): add twin-scan reduce + post-token sequential lookups to sto-optimize
 80f02888  perf(optimize): twin-scan reduce + sequential org/uoms in WO recalc & export
 0325a37c  docs(skills): add role-gated DTO field regression-guard pattern to sto-tester
 538ca6e4  fix(tester): Bugs #527-#529 — regression-guards for costPrice role-gating + Bug #508 export leak
-b3814d44  docs(memory): post-review state — costPrice role gate
-6d35157a  fix(review): role-gate part.costPrice + UI cleanups
 ```
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)

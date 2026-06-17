@@ -1455,6 +1455,104 @@ grep -rnE "px-2 py-1.5 text-(left|center|right)" apps/web/src/components/ui --in
 
 ---
 
+### 2026-06-17 — Frontend modal apiFetch до неіснуючого endpoint + silent .catch(()=>{}) — §8.1 / §8.2
+
+**Сигнал:** новий feat-commit додає UI секцію (VAT row, optional sub-counter) що залежить від сетингів через `apiFetch<{...}>('/X/Y')` де `/X/Y` — endpoint якого НЕМАЄ у backend. У тому ж файлі / сусідньому модалі вже є робочий патерн з ТИМ САМИМ призначенням (читання org settings) через інший URL (`/settings/organisation`). Silent `.catch(() => {})` приховує що setVatMode/setVatRate ніколи не викликаються, і UI-блок (умовна VAT-колонка/рядок) тихо лишається невідрендеренним. Frontend-тести проходять (DTO accepts undefined), e2e не помічає (фіча не активна). У PROD виходить feature-flag drift: backend готовий, frontend "має кнопку" але вона не реагує.
+
+**Grep:**
+
+```bash
+# Endpoint що не існує у backend
+for url in $(grep -rnE "apiFetch<[^>]*>\(['\"]/[a-z]" apps/web/src --include="*.tsx" -o | grep -oE "['\"]/[^'\"]+['\"]" | sort -u); do
+  path=$(echo "$url" | tr -d "'\"" | cut -d'?' -f1 | sed -E 's|/:[a-zA-Z]+|/X|g')
+  base=$(echo "$path" | cut -d'/' -f2)
+  grep -rqn "@Controller\(['\"]$base['\"]" apps/api/src/modules/ --include="*.controller.ts" || echo "MISSING: $url"
+done
+
+# .catch(()=>{}) у fetch handler — приховує що state ніколи не сетиться
+grep -rnE "\.catch\(\(\) => \{\}\)" apps/web/src/ --include="*.tsx" --include="*.ts"
+```
+
+**Фікс:**
+
+1. Звірити з робочим патерном того ж призначення (нерідко це інший modal у тому ж теці) — реюзнути URL і поле.
+2. Замінити `.catch(() => {})` на `.catch(err => console.error('[ComponentName] X failed', err))` щоб майбутній regression миттєво потрапив у browser console + Sentry.
+3. Якщо response shape різниться (наприклад `defaultVatRate` (число) vs `defaultVatRateId` (uuid)) — додати explicit resolve step через додатковий endpoint (`/settings/tax-rates`).
+
+**Severity:** CRITICAL — silent UI dead code. Feature-flag drift: фіча "написана" але не показана; merging без user-testing цикл пропустить.
+
+---
+
+### 2026-06-17 — Aggregation report без status-фільтра → юридично неправильний звіт ПДВ/виручки — §5 Business Rules / §13
+
+**Сигнал:** новий tax-aware aggregation endpoint (`vatReport`, `revenueReport`, `payablesReport`) робить `prisma.X.aggregate({ where: { orgId, deletedAt: null, documentDate: { gte, lte } }, _sum: { totalVat: true } })` БЕЗ `status: { in: [...] }` фільтра. Включаються DRAFT (ще не виставлені/не отримані), CANCELLED (анульовані) → звіт показує більший ПДВ-зобов'язання ніж юридично винний; інкримінує організацію перед ДПС. Симетрично для PurchaseOrder: VAT credit з DRAFT/ORDERED ще не реалізований (не отримано постачання) → завищена сторона "ПДВ сплачено".
+
+**Grep:**
+
+```bash
+# aggregate без status у where
+grep -rnE "\.aggregate\(\{" apps/api/src/modules/reports apps/api/src/modules/*/reports* --include="*.service.ts" -A10 \
+  | grep -B5 "_sum\|_count" | grep -v "status:" | head -20
+
+# Альтернатива: aggregate на моделі що має status enum
+for model in Invoice PurchaseOrder WorkOrder StockDocument SupplierReturn; do
+  grep -rn "${model,,}.aggregate\|prisma\.${model,,}\.aggregate" apps/api/src/modules \
+    --include="*.service.ts" -A5 | grep -B1 "status:" || echo "MISSING status filter: $model"
+done
+```
+
+**Фікс:** додати `status: { in: [VALID_STATUSES] }` згідно бізнес-правил:
+
+- **Sales VAT (Invoice):** `SENT`, `PAID`, `OVERDUE` (виставлені — податкова подія сталась). DRAFT/CANCELLED — ні.
+- **Purchase VAT credit (PurchaseOrder):** `PARTIAL`, `RECEIVED` (отримано постачання). DRAFT/ORDERED/CANCELLED — ні.
+- **Revenue (WorkOrder):** `COMPLETED`, `INVOICED`, `PAID`, `ARCHIVED` (закриті завершенням).
+- **Inventory (StockDocument):** `CONFIRMED` (DRAFT може бути неточним).
+
+Документувати inline коментарем _чому саме ці статуси_ — інакше наступний розробник додасть DRAFT "для повноти" і поверне баг.
+
+**Severity:** CRITICAL — financial/regulatory compliance bug. tsc мовчить, runtime працює, користувач довіряє звіту; виявляється лише при перевірці ДПС або реальному квартальному звіті.
+
+---
+
+### 2026-06-17 — `vatMode: string` у service return → cast `as 'NONE' | ...` у консумерах — §1 TypeScript / §13 API Contract
+
+**Сигнал:** service-метод (`getDefaultVatRate`, `getStatus`, `getCurrentMode`) повертає `Promise<{ vatMode: string; ... }>` — bare `string`, а не Prisma enum (`VatMode`). Кожен консумер змушений робити `as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'` каст перед використанням у utility (`calcLineVat(...)` чекає `VatMode`). Типовий патерн при поспіху: автор написав return type перед тим як думати про union, або тестуючи. tsc приймає (bare string subtype literal), але cognitive overhead + DRY-загроза (одна зміна enum value — оновлювати всі касти).
+
+**Grep:**
+
+```bash
+# Service return type з bare-string на полі що є enum у Prisma
+grep -rnE "Promise<\{[^}]*: string[;,]" apps/api/src/modules --include="*.service.ts" | head
+# Для кожного — переконатися що поле НЕ enum: grep "<field>" packages/database/prisma/schema.prisma
+# Якщо enum → return type має містити Prisma's enum
+
+# Каст `as 'X' | 'Y'` у callers — сигнал що service return type невірний
+grep -rnE "as ['\"][A-Z_]+['\"] \| ['\"][A-Z_]+['\"]" apps/api/src --include="*.ts" | head
+```
+
+**Фікс:** `import { VatMode } from '@prisma/client'` у service → `Promise<{ vatMode: VatMode; ... }>` → видалити всі `as` касти у callers. Якщо utility має локальний дубль типу (`type VatMode = 'NONE' | ...`) — замінити на `import type { VatMode } from '@prisma/client'`. Single-source-of-truth.
+
+**Severity:** IMPORTANT — degradation TS contract; не runtime bug, але порушує DRY + кросс-cutting через всі callers; будь-яка зміна enum (`+ MIXED`) ламає тихо.
+
+---
+
+### 2026-06-17 — Prisma `_sum.X` з ugly `(agg._sum as { X?: unknown })` cast → автор зайвий обернувся — §1 TypeScript
+
+**Сигнал:** `prisma.X.aggregate({ _sum: { totalVat: true } })` → callers витягують значення через `(agg._sum as { totalVat?: unknown }).totalVat ?? 0`. Prisma вже генерує precise type `XSumAggregateOutputType = { totalVat: Decimal | null }` — direct `agg._sum.totalVat` працює без касту. Зайвий cast = (1) показник що автор копіював без розуміння, (2) ламається при rename поля у schema (як 1) cast виживає silently бо `unknown`).
+
+**Grep:**
+
+```bash
+grep -rnE "_sum as \{" apps/api/src --include="*.ts"
+grep -rnE "_count as \{|_avg as \{|_min as \{|_max as \{" apps/api/src --include="*.ts"
+```
+
+**Фікс:** прибрати cast, користуватися згенерованим типом напряму. Якщо TS чомусь не виводить — повторно генерувати Prisma client (`pnpm prisma generate`) і повторити; cast — ніколи не рішення.
+
+**Severity:** SUGGESTION — не баг, але cleanup: TS guard слабшає, runtime ідентичний; нагромадження касту у codebase призводить до "так і потрібно" cargo cult.
+
+---
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
