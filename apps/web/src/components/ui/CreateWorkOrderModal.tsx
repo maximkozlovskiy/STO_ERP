@@ -2672,7 +2672,7 @@ export function CreateWorkOrderModal({
                                     })()}
                                   </td>
                                   <td className="px-1.5 py-1.5 text-left">
-                                    <div className="flex flex-col gap-1 items-end">
+                                    <div className="flex flex-row gap-2 items-center">
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -3196,7 +3196,7 @@ export function CreateWorkOrderModal({
                                     {sum != null ? sum.toFixed(2) : '—'}
                                   </td>
                                   <td className="px-1.5 py-1.5 text-left">
-                                    <div className="flex flex-col gap-1 items-end">
+                                    <div className="flex flex-row gap-2 items-center">
                                       <button
                                         type="button"
                                         onClick={() => {
