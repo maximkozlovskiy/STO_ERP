@@ -18,7 +18,8 @@ E2E smoke (2026-06-17): WO list "Сума, ₴" → 1 230,00 (NBSP) ✅; OWNER /
 Останній simplify: 2026-06-17 — recalcTotals: nullish-chain `Number(actualHours ?? normoHours ?? 0)` замість тернарки (semantically identical, 78/78 WO тестів green)
 Останній optimize: 2026-06-17 (HEAD 80f02888) — recalcTotals twin-scan→single-pass + tier merger org+uoms у findByShareToken / EstimateExportService.getEstimateData
 Останній tester: 2026-06-17 (FULL, HEAD 538ca6e4) — Bug #527-#529 (role-gate regression-guard + estimate-export Bug #508 leak + addPart/updatePart symmetry)
-Останній review: 2026-06-17 (AUTO, HEAD 6d35157a) — §2.1 CRITICAL: role-gate part.costPrice (MECHANIC/RECEPTIONIST exposure) + UI mode alignment
+Останній review: 2026-06-17 (Cycle 2, HEAD d3771b77) — 0 problems found; cycle 2 повторна перевірка: role-gate threading через addPart/updatePart симетричний з findOne, recalcTotals take:1000 defense-in-depth, single-pass reduce semantically identical to twin-scan, findByShareToken/EstimateExportService tier merger коректний, 26/26 нових spec passed, tsc green
+Перший review: 2026-06-17 (AUTO, HEAD 6d35157a) — §2.1 CRITICAL: role-gate part.costPrice (MECHANIC/RECEPTIONIST exposure) + UI mode alignment
 Останній sync:   2026-06-17 (Cycle 2, HEAD 31ec6313) — WorkOrderPartResponseDto.costPrice optional ✅ | WorkOrder.contractId/contractNumber ✅ | EstimatePublicDto fields ✅ | apiFetch URLs ✅ | tsc 0 errors — 0 розбіжностей
 ```
 
