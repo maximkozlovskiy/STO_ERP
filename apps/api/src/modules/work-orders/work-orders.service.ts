@@ -1099,6 +1099,10 @@ export class WorkOrdersService {
     orgId: string,
     workOrderId: string,
     dto: CreateWorkOrderPartDto,
+    // Bug #529: приймаємо userRole для consistency з findOne — controller передає
+    // @CurrentUser().role. Без параметра OWNER/ADMIN отримує DTO без costPrice
+    // після додавання → довод��ться refresh detail page щоб побачити батч-собівартість.
+    userRole?: string,
   ): Promise<WorkOrderPartResponseDto> {
     // Tiered parallelization — wo + good + warehouse + optional goodUoM у єдиний Promise.all.
     // sto-optimize: narrow projections — wo {status}, good {salePrice} (для price default),
@@ -1173,7 +1177,7 @@ export class WorkOrdersService {
       { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — create + recalcTotals
 
-    return this.toPartDto(part);
+    return this.toPartDto(part, userRole);
   }
 
   async updatePart(
@@ -1181,6 +1185,8 @@ export class WorkOrdersService {
     workOrderId: string,
     partId: string,
     dto: UpdateWorkOrderPartDto,
+    // Bug #529: симетрично з addPart — приймаємо userRole для role-gated costPrice.
+    userRole?: string,
   ): Promise<WorkOrderPartResponseDto> {
     // Parallel parent (editable WO) + child part fetch — same-aggregate same-tenant guard.
     // sto-optimize: wo narrow {status}, part narrow {quantity, price, goodId, unitOfMeasureId}
@@ -1254,7 +1260,7 @@ export class WorkOrdersService {
       { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Bug #138: explicit timeout — update + recalcTotals
 
-    return this.toPartDto(updated);
+    return this.toPartDto(updated, userRole);
   }
 
   async removePart(orgId: string, workOrderId: string, partId: string): Promise<void> {
@@ -1575,8 +1581,10 @@ export class WorkOrdersService {
       goodUoM?: { id: string; coefficient: number; unitOfMeasure: { shortName: string } } | null;
     },
     // §2.1 Auth: костПрайс маскується для ролей не в COST_PRICE_VISIBLE_ROLES.
-    // Default = undefined → не показувати (fail-closed). Прямі write-endpoints
-    // (addPart/updatePart) повертають DTO без costPrice — FE їх не використовує.
+    // Default = undefined → не показувати (fail-closed). Усі mutation-endpoints
+    // (findOne / addPart / updatePart) приймають userRole і передають сюди —
+    // консистентна поведінка: OWNER/ADMIN/STOREKEEPER/ACCOUNTANT бачать costPrice
+    // після додавання/редагування запчастини; MECHANIC/RECEPTIONIST/CLIENT — ні.
     userRole?: string,
   ): WorkOrderPartResponseDto {
     // If a specific GoodUoM was selected — use its shortName/coefficient.

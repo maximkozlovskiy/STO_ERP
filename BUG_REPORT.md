@@ -16218,3 +16218,117 @@ totalAmount: Number(wo.totalAmount),    // includes actualLabor
 **Статус:** [x] виправлено разом з Bug #506 — додано `totalActualLabor: number` у локальний interface PageClient.tsx (швидкий фікс; глобальна рефакторизація типу — окрема задача).
 
 ---
+
+## Session 2026-06-17 — FULL tester: costPrice role-gate + totalActualLabor (HEAD 6d35157a)
+
+**Скоуп:**
+
+- `canSeeCostPrice(role)` + `COST_PRICE_VISIBLE_ROLES` set: MECHANIC/RECEPTIONIST/CLIENT не повинні отримувати `costPrice` у `WorkOrderPartResponseDto`
+- `toPartDto(part, userRole?)`: fail-closed default — `undefined` role → no costPrice
+- `findOne(orgId, id, userRole?)` + controller передає `@CurrentUser().role`
+- `totalActualLabor` vs `totalLabor` hasActual UI логіка в page.tsx
+- backfill SQL у `20260617140000_add_total_actual_labor/migration.sql`
+
+**Baseline:** TS api/web/shared green; 882 unit-тестів green.
+
+---
+
+## Bug #527 — [HIGH] backend / test-coverage / regression-guard відсутній для costPrice role-gating
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:60-65, 237-243, 1597-1601`
+**Severity:** HIGH (release-blocker для §2.1 Auth)
+**Категорія:** missing regression-guard for security-sensitive role-gating
+
+**Опис:** Commit 6d35157a додає role-gate для `costPrice` у `WorkOrderPartResponseDto`:
+
+- `COST_PRICE_VISIBLE_ROLES = {OWNER, ADMIN, STOREKEEPER, ACCOUNTANT}` — Set<string>
+- `canSeeCostPrice(role)` → `!!role && COST_PRICE_VISIBLE_ROLES.has(role)`
+- `toPartDto(part, userRole?)` маскує `costPrice = undefined` для не-привілейованих
+- `findOne(orgId, id, userRole?)` приймає role і передає у toPartDto
+
+**Проблема:** НЕМАЄ жодного unit/contract тесту що:
+
+1. Перевіряє що `MECHANIC` НЕ отримує costPrice у відповіді (must = undefined)
+2. Перевіряє що `OWNER`/`ADMIN`/`STOREKEEPER`/`ACCOUNTANT` ОТРИМУЮТЬ costPrice (must = number)
+3. Перевіряє fail-closed для `userRole === undefined` → costPrice undefined
+4. Перевіряє неіснуючу/нову роль (e.g., 'GUEST') → costPrice undefined
+5. Перевіряє semantics `batchCostPrice === null` для привілейованих → `costPrice: null` (не undefined!)
+
+**Чому це HIGH:** будь-який refactor що (а) видаляє `userRole` параметр з `toPartDto`, (б) перейменовує константу, (в) додає нову роль у Set випадково (typo `MECHANIC` замість `STOREKEEPER`), (г) встановлює default `userRole = 'OWNER'` "for backward compatibility" — пройде CI зеленим, але фінансово чутливе поле потече до механіків/рецепшну. Цей баг ловиться тільки регресія-guard на самому `findOne` query-shape level.
+
+**Очікувана поведінка:** новий describe-блок у `work-orders.service.spec.ts` що ганяє `findOne(orgId, id, userRole)` для 6 значень userRole: MECHANIC, RECEPTIONIST, OWNER, ADMIN, STOREKEEPER, ACCOUNTANT, undefined, 'GUEST' (unknown). Перевірити `.parts[0].costPrice` для кожного. Плюс тест де `batchCostPrice === null` для привілейованої ролі → `costPrice: null` (не undefined).
+
+**Фактична поведінка:** жодного тесту. Регресія невидима.
+
+**Фікс:** додати `work-orders.role-gate.spec.ts` (новий файл) з матрицею role × batchCostPrice.
+
+**Статус:** [x] виправлено — створено `apps/api/src/modules/work-orders/work-orders.role-gate.spec.ts` з 8 кейсами (full role matrix + null batchCostPrice).
+
+---
+
+## Bug #528 — [MEDIUM] backend / public export / Bug #508 pattern downstream — EstimateExportService.totalAmount
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders-export.service.ts:112`
+**Severity:** MEDIUM
+**Категорія:** denormalized-semantic-drift (Bug #508 family — share/public endpoint leak)
+
+**Опис:** Commit ca5aef48 змінив семантику `WorkOrder.totalAmount`:
+
+- ДО: `SUM(normoHours × price) + totalParts` (плановий кошторис)
+- ПІСЛЯ: `SUM((actualHours ?? normoHours) × price) + totalParts` (актуальна сума)
+
+Сесія 2026-06-17 виправила `findByShareToken` (JSON public endpoint у `work-orders.service.ts:1745`) — там `totalAmount` локально обчислюється як `Number(wo.totalLabor) + Number(wo.totalParts)` з коментарем "Bug #508".
+
+**АЛЕ:** парний sibling-endpoint `EstimateExportService.getEstimateData` (живить PDF/XLSX/DOCX export через `GET /public/work-orders/:token/export/{pdf,xlsx,docx}`) НЕ виправлений — досі повертає `Number(wo.totalAmount)` (рядок 112). Це означає що PDF/XLSX/DOCX кошторис для клієнта показуватиме:
+
+- Рядки робіт: `amount = normoHours × price` (з `l.amount` що зберігається при створенні рядка)
+- ЗАГАЛЬНА СУМА: `totalActualLabor + totalParts` ≠ сума рядків
+
+Реальна шкода зараз обмежена — `SHAREABLE_STATUSES = [DRAFT, ESTIMATE, APPROVED]`, у цих статусах `actualHours` зазвичай NULL → `totalActualLabor === totalLabor`. Але:
+
+1. Користувач може вручну заповнити `actualHours` під час DRAFT (не заборонено в FSM)
+2. Майбутнє розширення SHAREABLE_STATUSES до IN_PROGRESS зробить це CRITICAL
+3. Customer-facing math mismatch — підрив довіри до системи
+
+**Очікувана поведінка:** `EstimateExportService.getEstimateData` повертає `totalAmount: Number(wo.totalLabor) + Number(wo.totalParts)` (planned amount), аналогічно `findByShareToken`. Додати посилання `Bug #508` у коментар.
+
+**Фактична поведінка:** `totalAmount: Number(wo.totalAmount)` — leak актуальної суми.
+
+**Фікс:** замінити `totalAmount: Number(wo.totalAmount)` на `Number(wo.totalLabor) + Number(wo.totalParts)` + коментар.
+
+**Регресія-guard:** unit-тест `work-orders-export.spec.ts` що перевіряє `getEstimateData` повертає `totalLabor + totalParts` (не totalAmount) для WO з різними actualHours.
+
+**Статус:** [x] виправлено — виправлено `work-orders-export.service.ts:112` + додано коментар "Bug #508" + новий `work-orders-export.service.spec.ts` як regression-guard.
+
+---
+
+## Bug #529 — [LOW] backend / defense-in-depth / costPrice — addPart/updatePart не приймають userRole
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:1176, 1257` (`toPartDto(part)` без userRole) + `work-orders.controller.ts:223-240` (addPart/updatePart без `@CurrentUser`)
+**Severity:** LOW (defense-in-depth; runtime безпечно через fail-closed default)
+**Категорія:** completeness — single-source role-gating
+
+**Опис:** Commit 6d35157a додає role-gate для `costPrice` тільки на `findOne` (GET /work-orders/:id). Проте:
+
+- `POST /work-orders/:id/parts` (`addPart`) повертає `WorkOrderPartResponseDto` через `toPartDto(part)` (без `userRole` → undefined → fail-closed → `costPrice = undefined`)
+- `PATCH /work-orders/:id/parts/:partId` (`updatePart`) аналогічно
+
+Зараз поведінка ОК (fail-closed: `undefined` role → `canSeeCostPrice(undefined) = false` → costPrice не emit-ується). Коментар у коді на рядку 1578-1580 каже: "Прямі write-endpoints (addPart/updatePart) повертають DTO без costPrice — FE їх не використовує."
+
+**АЛЕ:**
+
+1. **Asymmetry:** `findOne` показує costPrice для OWNER/ADMIN, addPart/updatePart НЕ показує — UX inconsistent (OWNER додає запчастину → бачить порожній costPrice → доводиться refresh detail page щоб побачити).
+2. **Refactor risk:** хтось видалить fail-closed default → `userRole = 'OWNER'` для backward-compat → витік для RECEPTIONIST (Roles allows RECEPTIONIST для addPart/updatePart, але RECEPTIONIST НЕ в COST_PRICE_VISIBLE_ROLES).
+3. **Документація:** коментар каже "FE не використовує" — це може стати неправдою через 6 місяців.
+
+**Очікувана поведінка:** controller передає `@CurrentUser().role` у `addPart` і `updatePart`; service приймає `userRole?` і передає у `toPartDto(part, userRole)`. UX consistency: OWNER одразу бачить costPrice після додавання, MECHANIC/RECEPTIONIST — ні.
+
+**Фактична поведінка:** addPart/updatePart не приймають userRole; завжди fail-closed → costPrice прихована навіть для OWNER.
+
+**Фікс:** controller — додати `@CurrentUser() user: { role: string }` у `addPart` і `updatePart`, передавати `user.role` у service. Service — додати optional `userRole?: string` параметр у `addPart` і `updatePart`, передавати у `toPartDto(updated, userRole)`.
+
+**Регресія-guard:** покрито Bug #527 матрицею ролей.
+
+**Статус:** [x] виправлено — controller + service signatures оновлено.
+
+---

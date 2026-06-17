@@ -224,8 +224,12 @@ export class WorkOrdersController {
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateWorkOrderPartDto,
+    // Bug #529: симетрично з findOne — service маскує costPrice для не-привілейованих
+    // ролей. Без role-передачі OWNER/ADMIN не побачив би costPrice одразу після
+    // додавання (fail-closed default → undefined → refresh потрібен).
+    @CurrentUser() user: { role: string },
   ) {
-    return this.service.addPart(orgId, id, dto);
+    return this.service.addPart(orgId, id, dto, user.role);
   }
 
   @Patch(':id/parts/:partId')
@@ -236,8 +240,9 @@ export class WorkOrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('partId', ParseUUIDPipe) partId: string,
     @Body() dto: UpdateWorkOrderPartDto,
+    @CurrentUser() user: { role: string },
   ) {
-    return this.service.updatePart(orgId, id, partId, dto);
+    return this.service.updatePart(orgId, id, partId, dto, user.role);
   }
 
   @Delete(':id/parts/:partId')
