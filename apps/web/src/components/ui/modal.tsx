@@ -30,6 +30,8 @@ interface ModalProps {
   hideClose?: boolean;
   /** Extra action buttons rendered to the left of the × close button */
   extraHeaderActions?: ReactNode;
+  /** Extra content rendered below the title row, inside the header border */
+  headerContent?: ReactNode;
 }
 
 // Pixel max-width per size — used for smooth CSS transition via inline style
@@ -139,6 +141,7 @@ export function Modal({
   className,
   hideClose,
   extraHeaderActions,
+  headerContent,
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
   const { visible, state } = useAnimatedPresence(open);
@@ -203,38 +206,41 @@ export function Modal({
         }}
       >
         {/* Header */}
-        {(title || !hideClose) && (
-          <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-border shrink-0">
-            <div className="flex flex-col gap-1">
-              {title && (
-                <h2
-                  id={titleId}
-                  className="text-[16px] font-semibold text-foreground leading-tight tracking-[-0.01em]"
-                >
-                  {title}
-                </h2>
-              )}
-              {description && <p className="text-[13px] text-muted-foreground">{description}</p>}
-            </div>
-            {(!hideClose || extraHeaderActions) && (
-              <div className="flex items-center gap-1 shrink-0 -mr-1 -mt-0.5">
-                {extraHeaderActions}
-                {!hideClose && (
-                  <button
-                    onClick={onClose}
-                    className={cn(
-                      'rounded p-1.5',
-                      'text-muted-foreground',
-                      'hover:bg-secondary hover:text-foreground',
-                      'transition-colors duration-150',
-                    )}
-                    aria-label="Закрити"
+        {(title || !hideClose || headerContent) && (
+          <div className="px-6 pt-5 pb-4 border-b border-border shrink-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                {title && (
+                  <h2
+                    id={titleId}
+                    className="text-[16px] font-semibold text-foreground leading-tight tracking-[-0.01em]"
                   >
-                    <X className="h-4 w-4" />
-                  </button>
+                    {title}
+                  </h2>
                 )}
+                {description && <p className="text-[13px] text-muted-foreground">{description}</p>}
               </div>
-            )}
+              {(!hideClose || extraHeaderActions) && (
+                <div className="flex items-center gap-1 shrink-0 -mr-1 -mt-0.5">
+                  {extraHeaderActions}
+                  {!hideClose && (
+                    <button
+                      onClick={onClose}
+                      className={cn(
+                        'rounded p-1.5',
+                        'text-muted-foreground',
+                        'hover:bg-secondary hover:text-foreground',
+                        'transition-colors duration-150',
+                      )}
+                      aria-label="Закрити"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            {headerContent && <div className="mt-3">{headerContent}</div>}
           </div>
         )}
 
