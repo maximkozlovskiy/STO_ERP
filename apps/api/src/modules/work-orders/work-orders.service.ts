@@ -1321,12 +1321,14 @@ export class WorkOrdersService {
 
     // Single-pass: рахуємо totalLabor (planned) і totalActualLabor разом.
     // totalLabor = SUM(amount), totalActualLabor = SUM((actualHours ?? normoHours) × price).
+    // sto-simplify: `Number(actualHours ?? normoHours ?? 0)` рівносильно verbose тернаркі
+    // бо Prisma Decimal `?? null`-fallback працює на null/undefined (а 0-години у normoHours
+    // зустрічається лише при ручному вводі і не змінює sum — 0 × price = 0).
     let totalLabor = 0;
     let totalActualLabor = 0;
     for (const l of lines) {
       totalLabor += Number(l.amount ?? 0);
-      const h = l.actualHours != null ? Number(l.actualHours) : Number(l.normoHours ?? 0);
-      totalActualLabor += h * Number(l.price ?? 0);
+      totalActualLabor += Number(l.actualHours ?? l.normoHours ?? 0) * Number(l.price ?? 0);
     }
     const totalParts = Number(partsAgg._sum.amount ?? 0);
 

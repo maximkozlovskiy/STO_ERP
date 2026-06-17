@@ -14,11 +14,21 @@
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 908/908 (+26: 22 role-gate + 4 estimate-export) | Web 434/434
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
+E2E smoke (2026-06-17): WO list "Сума, ₴" → 1 230,00 (NBSP) ✅; OWNER /api/work-orders/:id → costPrice key present ✅; CreateWorkOrderModal "Собів., ₴" + colSpans 9/10 (vatMode) consistent ✅
+Останній simplify: 2026-06-17 — recalcTotals: nullish-chain `Number(actualHours ?? normoHours ?? 0)` замість тернарки (semantically identical, 78/78 WO тестів green)
 Останній optimize: 2026-06-17 (HEAD 80f02888) — recalcTotals twin-scan→single-pass + tier merger org+uoms у findByShareToken / EstimateExportService.getEstimateData
 Останній tester: 2026-06-17 (FULL, HEAD 538ca6e4) — Bug #527-#529 (role-gate regression-guard + estimate-export Bug #508 leak + addPart/updatePart symmetry)
 Останній review: 2026-06-17 (AUTO, HEAD 6d35157a) — §2.1 CRITICAL: role-gate part.costPrice (MECHANIC/RECEPTIONIST exposure) + UI mode alignment
 Останній sync:   2026-06-16 — BranchSettings/WorkHours+CalendarSlot+BookingRequest+Warehouse/Branch/Zone+GoodPickerModal — 0 розбіжностей
 ```
+
+### Аудит-висновки (2026-06-17 simplify session)
+
+- `COST_PRICE_VISIBLE_ROLES` Set + `canSeeCostPrice()` — дублювання НЕМАЄ. `GOODS_PRICE_VISIBLE_ROLES` не існує; список ролей повторюється у `@Roles('OWNER','ADMIN','STOREKEEPER','ACCOUNTANT')` на `getPriceHistory` (endpoint-level RBAC), але це різні рівні (endpoint vs DTO field mask) — extraction коштує більше ніж економить
+- `toPartDto(part, userRole?)` — параметр threaded в усі 3 callsites: `findOne` (line 243), `addPart` (1180), `updatePart` (1263). `duplicate` не повертає parts DTO; `generatePdf` + `findByShareToken` (public share) — навмисно без costPrice
+- `recalcTotals()` — спрощено: `Number(actualHours ?? normoHours ?? 0)` замість `actualHours != null ? Number(...) : Number(... ?? 0)`. Semantically identical (Float vs Decimal — для null/0 result same)
+- `hasActual` у `work-orders/page.tsx:917` — `Math.abs(totalActualLabor - totalLabor) >= 0.01` мінімально, без зайвих обчислень. Не чіпати
+- `CreateWorkOrderModal` colSpans — узгоджені: parts table 9/10 (NONE/VAT), lines table 8/9, tfoot "Разом товарів" 7/6, "Разом робіт" 5, "Факт. роботи" 6/7 — всі парні з колонками colgroup ✓
 
 ---
 
