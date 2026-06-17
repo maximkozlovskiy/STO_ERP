@@ -153,6 +153,7 @@ grep -rn "WRITEOFF\|CHARGE\|prisma\.\$transaction" apps/api/src/modules/work-ord
 - [ ] `COMPLETED` → `WRITEOFF` + `RESERVATION_RELEASE` + `SettlementsService.createTransaction(CHARGE)` у `prisma.$transaction`
 - [ ] `CANCELLED` зі статусу з резервом → `RESERVATION_RELEASE`
 - [ ] Недозволений перехід → `BadRequestException` українською
+- [ ] **Bug #508**: при зміні семантики denormalized поля (`totalAmount`, `amount`, `balance`, `currentMileage`) перевірити кожен share/public endpoint — чи нова формула не «протікає» туди де очікується planned/snapshot значення. Локальне обчислення з первинних компонентів у share-handler коли семантика розходиться.
 
 #### Інвентар
 
@@ -484,6 +485,11 @@ done
 ### §1.3 — Frontend (Next.js)
 
 ```bash
+# Bug #506/#510 — Дублюючі interface declarations (hook vs PageClient inline)
+# Кожен дубльований тип = ризик дрейфу при додаванні нового поля у бекенді.
+grep -rEn "^interface (WorkOrder|Invoice|Counterparty|Vehicle|Good|Warehouse|Employee) " apps/web/src --include="*.ts*"
+# Якщо >1 match для одного імені — перевірити що локальний дублікат містить всі поля з hook.
+
 # .catch(() => {}) на fetch — ховає помилки
 grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx"
 
@@ -1015,6 +1021,98 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-06-17 — Local interface дрейфує від hook/DTO коли додається нове поле (Bug #506 / #510) — frontend / type-duplication
+
+**Сигнал:** Те саме ім'я типу `WorkOrder` / `Invoice` / `Counterparty` дублюється:
+
+- `apps/web/src/hooks/api/use<Entity>.ts` — авторитетний інтерфейс
+- `apps/web/src/app/(app)/<entity>/page.tsx` або `[id]/PageClient.tsx` — локальний inline-дублікат
+
+Backend додає нове поле у `<Entity>ResponseDto` → hook інтерфейс оновлюється (бо це найбільш помітний consumer на TanStack Query layer) → локальний interface на детальній сторінці забутий. На сторінці тип компілюється (TypeScript не бачить що hook повертає більше), нове поле невидиме для UI коду, наявні розрахунки/відображення розходяться з новою семантикою бекенду.
+
+**Причина виникнення:** Перший автор сторінки скопіював `interface WorkOrder { ... }` inline бо швидше за import. Згодом hook став джерелом правди (типи переїхали туди), але старі сторінки не зрефакторені. Pattern непомітний поки feature не вводить семантичну зміну у поле що використовувалось у UI обчисленнях. Найгірше — коли feature міняє формулу для `totalAmount` (бекенд) і UI продовжує сумувати старі компоненти (`totalLabor + totalParts`) які тепер не складаються у `totalAmount`. Користувач бачить математично некоректну суму.
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Знайти дублюючі interface declarations з однаковою назвою:
+grep -rn "^interface WorkOrder " apps/web/src --include="*.ts*"
+grep -rn "^interface Invoice " apps/web/src --include="*.ts*"
+# >1 match → один з них застарілий
+
+# 2) Порівняти поля з hook джерела правди:
+diff <(grep -A 50 "^export interface WorkOrder " apps/web/src/hooks/api/useWorkOrders.ts) \
+     <(grep -A 50 "^interface WorkOrderDetail " apps/web/src/app/\(app\)/work-orders/\[id\]/PageClient.tsx)
+
+# 3) Перевірити кожне нове поле у бекенді — чи присутнє у локальному interface:
+grep -rn "totalActualLabor\|<newField>" apps/web/src --include="*.ts*"
+# Має бути присутнє у ВСІХ типах що описують той самий aggregate
+```
+
+**Підхід до фіксу:** Швидкий — додати нове поле у локальний interface. Правильний — `import { WorkOrder } from '@/hooks/api/useWorkOrders'` і використати або `WorkOrder` напряму, або `interface WorkOrderDetail extends WorkOrder { lines: WorkOrderLine[]; parts: WorkOrderPart[]; }`. Pattern працює для будь-якого aggregate з detail view розширенням.
+
+**Регресія-guard:** ESLint правило `@typescript-eslint/no-duplicate-imports` не ловить це (різні imports). Альтернатива — наш custom check у `/sto-review`: grep duplicate `interface <Name> {` у `apps/web/src`. Або один TypeScript-level guard через `satisfies`:
+
+```ts
+// На рівні local interface:
+const _check: WorkOrderDetail = {} as Awaited<ReturnType<typeof fetchWorkOrder>>;
+// → tsc errors якщо детальний тип розходиться з реальним hook response
+```
+
+**Severity для подібних bugs:** MEDIUM — не silent data loss, але UI довіра порушена (математично некоректні суми). У комбінації з grosses-сумами це може досягти HIGH (помилка у виставленні рахунку, плутанина у звітах).
+
+**Де шукати ще:** Кожен `apps/web/src/app/(app)/<entity>/[id]/PageClient.tsx` + `apps/web/src/components/ui/Create<Entity>Modal.tsx` + `apps/web/src/hooks/api/use<Entity>.ts` — тріада з найбільшим ризиком дрейфу. Особливо ризик у aggregate-полях (`totalAmount`, `paidAmount`, `balanceAmount`).
+
+---
+
+### 2026-06-17 — Семантична зміна загального поля без оновлення downstream consumers (Bug #508) — backend / consistency
+
+**Сигнал:** Feature що змінює формулу обчислення вже існуючого denormalized полу (наприклад `totalAmount`, `paidAmount`, `balance`, `cost`). Поле читається у багатьох місцях:
+
+- Service-to-service flows (invoice.createFromWorkOrder → wo.totalAmount)
+- Public/share endpoints (estimate, public invoice)
+- PDF generators
+- Frontend Detail views, list tables, dashboard widgets
+- Reports, exports (xlsx, csv)
+- Sync layer (Outbox events)
+
+Автор feature правильно оновив головний flow і одне-два очевидних місця, але пропустив semantic mismatch у спеціалізованих consumers. Класичний приклад: estimate-share показує `wo.totalAmount` що тепер семантично "actual amount" (включає `actualHours`), хоча контекст естімейту = PLAN.
+
+**Причина виникнення:** Denormalized поля приваблюють тим що "вже обчислене, можна читати скрізь". Feature міняє формулу → один зміна у `recalcTotals` поширюється всюди — у тому числі куди семантично не повинна. Розробник не сприймає це як риск, бо синтаксично нічого не зламалось і type signatures стабільні.
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Знайти всі читачі denormalized поля що змінилося:
+grep -rn "\.totalAmount\|totalAmount:" apps/api/src --include="*.ts" | grep -v "spec\|test"
+
+# 2) Категоризувати кожне використання за семантикою:
+#    - "actual" контекст (after-work, completion, invoice, settlement) → нова формула OK
+#    - "planned" контекст (estimate, share, draft, preview) → нова формула WRONG
+#    - "neutral" список / dashboard → залежить від UX наміру
+
+# 3) Перевірити кожен share/public endpoint окремо — він зазвичай має інший
+#    semantic contract з клієнтом і не повинен наслідувати backend internal change.
+```
+
+**Підхід до фіксу:** У share/public consumer обчислити суму ЛОКАЛЬНО з компонентів planning (не використовувати загальне поле):
+
+```ts
+// Bug #508 fix у findByShareToken:
+totalAmount: Number(wo.totalLabor) + Number(wo.totalParts),
+// замість Number(wo.totalAmount)
+```
+
+Альтернатива — додати окреме поле `totalPlannedAmount` у схему. Дорого для одного use case; локальне обчислення ефективніше.
+
+**Регресія-guard:** Property-based test "estimate-share total = totalLabor + totalParts (no actualHours leak)" або просто snapshot-тест share response для WO з ненульовими `actualHours`. Якщо хтось у майбутньому повернеться до `wo.totalAmount`, тест зловить.
+
+**Severity для подібних bugs:** LOW-MEDIUM — баг у крайових випадках (estimate з вже встановленими actualHours — нетипово), але семантично некоректна публічна сторінка може заплутати клієнта і викликати дзвінок у СТО.
+
+**Де шукати ще:** Будь-яка пара (denormalized field, share/public endpoint). У STO ERP кандидати: `wo.totalAmount` ↔ estimate share, `invoice.amount` ↔ payment receipt, `counterparty.balance` ↔ self-service portal, `vehicle.currentMileage` ↔ public service-history. Кожна пара — потенційний source of semantic drift.
+
+---
 
 ### 2026-06-17 — React inline-edit merge втрачає DB-only fields (`id`, `createdAt`) → save() filter мовчки пропускає рядок (Bug #526) — frontend / state-merge
 
