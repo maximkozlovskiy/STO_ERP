@@ -19,7 +19,7 @@ E2E smoke (2026-06-17): WO list "Сума, ₴" → 1 230,00 (NBSP) ✅; OWNER /
 Останній optimize: 2026-06-17 (HEAD 80f02888) — recalcTotals twin-scan→single-pass + tier merger org+uoms у findByShareToken / EstimateExportService.getEstimateData
 Останній tester: 2026-06-17 (FULL, HEAD 538ca6e4) — Bug #527-#529 (role-gate regression-guard + estimate-export Bug #508 leak + addPart/updatePart symmetry)
 Останній review: 2026-06-17 (AUTO, HEAD 6d35157a) — §2.1 CRITICAL: role-gate part.costPrice (MECHANIC/RECEPTIONIST exposure) + UI mode alignment
-Останній sync:   2026-06-16 — BranchSettings/WorkHours+CalendarSlot+BookingRequest+Warehouse/Branch/Zone+GoodPickerModal — 0 розбіжностей
+Останній sync:   2026-06-17 (Cycle 2, HEAD 31ec6313) — WorkOrderPartResponseDto.costPrice optional ✅ | WorkOrder.contractId/contractNumber ✅ | EstimatePublicDto fields ✅ | apiFetch URLs ✅ | tsc 0 errors — 0 розбіжностей
 ```
 
 ### Аудит-висновки (2026-06-17 simplify session)
