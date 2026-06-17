@@ -401,6 +401,7 @@ export class WorkOrderPartResponseDto {
   @ApiPropertyOptional() coefficient?: number;
   @ApiProperty() warehouseId!: string;
   @ApiProperty() quantity!: number;
+  @ApiPropertyOptional() costPrice?: number | null;
   @ApiProperty() price!: number;
   @ApiProperty() amount!: number;
   @ApiProperty() createdAt!: Date;

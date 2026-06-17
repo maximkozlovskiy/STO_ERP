@@ -120,6 +120,7 @@ interface LocalPart {
   goodName: string;
   warehouseId: string;
   quantity: string;
+  costPrice?: number | null;
   price: string;
   unitOfMeasureId: string;
   unitShortName: string;
@@ -161,6 +162,7 @@ interface WorkOrderDetail {
     goodName?: string;
     warehouseId: string;
     quantity: number;
+    costPrice?: number | null;
     price: number;
     // Bug #434: backend `toPartDto` повертає unitOfMeasureId (work-orders.service.ts:1529),
     // але локальний interface його пропускав → load mapper хардкодив '' → inline-edit
@@ -737,6 +739,7 @@ export function CreateWorkOrderModal({
             goodName: p.goodName ?? '',
             warehouseId: p.warehouseId,
             quantity: String(p.quantity),
+            costPrice: p.costPrice ?? null,
             price: String(p.price),
             // Bug #434: зберігаємо UoM що повернув backend, інакше inline-edit dropdown
             // скине вибір до дефолту "шт" навіть якщо реально товар у "кг".
@@ -2915,6 +2918,7 @@ export function CreateWorkOrderModal({
                         <col className="w-20" />
                         <col className="w-28" />
                         <col className="w-24" />
+                        <col className="w-24" />
                         {vatMode !== 'NONE' && <col className="w-20" />}
                         <col className="w-24" />
                         <col className="w-9" />
@@ -2937,6 +2941,9 @@ export function CreateWorkOrderModal({
                             ОВ
                           </th>
                           <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                            Собів., ₴
+                          </th>
+                          <th className="px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                             Ціна, ₴
                           </th>
                           {vatMode !== 'NONE' && (
@@ -2954,7 +2961,7 @@ export function CreateWorkOrderModal({
                         {parts.length === 0 && !showPartInput && (
                           <tr>
                             <td
-                              colSpan={vatMode !== 'NONE' ? 9 : 8}
+                              colSpan={vatMode !== 'NONE' ? 10 : 9}
                               className="px-3 py-4 text-center text-[12px] text-muted-foreground"
                             >
                               Натисніть «Додати» щоб додати товар
@@ -3071,6 +3078,10 @@ export function CreateWorkOrderModal({
                                       ))}
                                     </Select>
                                   </td>
+                                  {/* Собівартість — read-only у edit mode (фіксується при надходженні) */}
+                                  <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground text-[12px]">
+                                    —
+                                  </td>
                                   <td className="px-2 py-1.5">
                                     <Input
                                       placeholder="0"
@@ -3167,6 +3178,9 @@ export function CreateWorkOrderModal({
                                   </td>
                                   <td className="px-2 py-1.5 text-left text-muted-foreground text-[12px]">
                                     {part.unitShortName || 'шт'}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
+                                    {part.costPrice != null ? part.costPrice.toFixed(2) : '—'}
                                   </td>
                                   <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                                     {part.price || '—'}
@@ -3318,6 +3332,10 @@ export function CreateWorkOrderModal({
                                 ))}
                               </Select>
                             </td>
+                            {/* Собівартість нового товару невідома до надходження — read-only */}
+                            <td className="px-2 py-1.5 text-center text-muted-foreground text-[12px]">
+                              —
+                            </td>
                             <td className="px-2 py-1.5">
                               <Input
                                 placeholder="0"
@@ -3376,7 +3394,7 @@ export function CreateWorkOrderModal({
                         <tfoot>
                           <tr className="bg-secondary/50 border-t border-border">
                             <td
-                              colSpan={vatMode !== 'NONE' ? 5 : 6}
+                              colSpan={vatMode !== 'NONE' ? 6 : 7}
                               className="px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
                             >
                               Разом товарів:

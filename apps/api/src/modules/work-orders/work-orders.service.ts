@@ -1552,6 +1552,7 @@ export class WorkOrdersService {
     quantity: number;
     price: Prisma.Decimal;
     amount: Prisma.Decimal;
+    batchCostPrice?: Prisma.Decimal | null;
     unitOfMeasureId?: string | null;
     createdAt: Date;
     good?: {
@@ -1577,6 +1578,7 @@ export class WorkOrdersService {
       coefficient: safeCoeff(selectedUoM?.coefficient ?? baseUoM?.coefficient),
       warehouseId: part.warehouseId,
       quantity: part.quantity,
+      costPrice: part.batchCostPrice != null ? Number(part.batchCostPrice) : null,
       price: Number(part.price),
       amount: Number(part.amount),
       createdAt: part.createdAt,
