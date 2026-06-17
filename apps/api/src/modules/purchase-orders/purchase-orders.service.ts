@@ -202,12 +202,7 @@ export class PurchaseOrdersService {
     const lines = dto.lines ?? [];
     const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
     const computedLines = lines.map(l => {
-      const { vatAmount } = calcLineVat(
-        l.price,
-        l.quantity,
-        vatRate,
-        vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE',
-      );
+      const { vatAmount } = calcLineVat(l.price, l.quantity, vatRate, vatMode);
       return { ...l, vatRate, vatAmount };
     });
     const totalAmount = computedLines.reduce((s, l) => s + l.quantity * l.price, 0);
@@ -342,12 +337,7 @@ export class PurchaseOrdersService {
     const lines = dto.lines;
     const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
     const computedLines = lines?.map(l => {
-      const { vatAmount } = calcLineVat(
-        l.price,
-        l.quantity,
-        vatRate,
-        vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE',
-      );
+      const { vatAmount } = calcLineVat(l.price, l.quantity, vatRate, vatMode);
       return { ...l, vatRate, vatAmount };
     });
     const totalAmount = computedLines

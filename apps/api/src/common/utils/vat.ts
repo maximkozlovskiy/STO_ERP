@@ -1,4 +1,7 @@
-type VatMode = 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE';
+// sto-review §13: import Prisma's VatMode enum so consumers don't need
+// `as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'` casts. Prisma enum at runtime is a
+// string literal union that matches this local type.
+import type { VatMode } from '@prisma/client';
 
 interface LineVatResult {
   vatAmount: number;

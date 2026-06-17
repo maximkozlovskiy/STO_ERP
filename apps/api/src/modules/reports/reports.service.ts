@@ -397,11 +397,17 @@ export class ReportsService {
   async vatReport(orgId: string, from: string, to: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
+    // sto-review §5 Business Rules:
+    // (1) Invoices: DRAFT не створює податкове зобов'язання (не виставлений клієнту),
+    //     CANCELLED — анульований. До звіту входять SENT/PAID/OVERDUE.
+    // (2) PurchaseOrders: VAT credit виникає лише після фактичної поставки
+    //     (RECEIVED/PARTIAL). DRAFT/ORDERED — ще не отримано → немає податкового кредиту.
     const [invoicedAgg, purchasedAgg] = await Promise.all([
       this.prisma.invoice.aggregate({
         where: {
           orgId,
           deletedAt: null,
+          status: { in: ['SENT', 'PAID', 'OVERDUE'] },
           documentDate: { gte: fromDate, lte: toDate },
         },
         _sum: { totalVat: true },
@@ -410,15 +416,17 @@ export class ReportsService {
         where: {
           orgId,
           deletedAt: null,
-          status: { notIn: ['CANCELLED'] },
+          status: { in: ['PARTIAL', 'RECEIVED'] },
           documentDate: { gte: fromDate, lte: toDate },
         },
         _sum: { totalVat: true },
       }),
     ]);
 
-    const invoiced = Number((invoicedAgg._sum as { totalVat?: unknown }).totalVat ?? 0);
-    const purchases = Number((purchasedAgg._sum as { totalVat?: unknown }).totalVat ?? 0);
+    // Prisma _sum.totalVat → `Decimal | null` (per generated client). Direct access без
+    // `as { totalVat?: unknown }` cast — типи виводяться коректно.
+    const invoiced = Number(invoicedAgg._sum.totalVat ?? 0);
+    const purchases = Number(purchasedAgg._sum.totalVat ?? 0);
 
     return { invoiced, purchases, net: invoiced - purchases, from, to };
   }

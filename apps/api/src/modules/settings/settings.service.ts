@@ -450,9 +450,13 @@ export class SettingsService {
     return { message: 'Лічильник скинуто' };
   }
 
-  async getDefaultVatRate(orgId: string): Promise<{ vatMode: string; vatRate: number }> {
+  // sto-review §13: explicit VatMode literal union у return type — інакше консумери
+  // (purchase-orders.service.ts, work-orders.service.ts) змушені робити
+  // `as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'` каст на кожному виклику. Прямий enum
+  // повертається з Prisma → передаємо як є.
+  async getDefaultVatRate(orgId: string): Promise<{ vatMode: VatMode; vatRate: number }> {
     const settings = await this.getOrganisationSettings(orgId);
-    if (settings.vatMode === 'NONE') return { vatMode: 'NONE', vatRate: 0 };
+    if (settings.vatMode === VatMode.NONE) return { vatMode: VatMode.NONE, vatRate: 0 };
     const taxRate = settings.defaultVatRateId
       ? await this.prisma.taxRate.findFirst({
           where: { id: settings.defaultVatRateId, orgId },

@@ -223,12 +223,25 @@ export function PurchaseOrderCreateModal({
         setCache('cache:warehouses', list);
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження складів'));
-    void apiFetch<{ vatMode?: string; defaultVatRate?: number | null }>('/organisations/my')
-      .then(org => {
+    // sto-review: `/organisations/my` НЕ існує — раніше silent fail приховував що
+    // VAT-рядок ніколи не показується. Правильний шлях — `/settings/organisation`
+    // (vatMode + defaultVatRateId) + `/settings/tax-rates` (resolve rate by id).
+    // Симетрія з CreateWorkOrderModal.tsx:597.
+    void Promise.all([
+      apiFetch<{ vatMode: string; defaultVatRateId?: string | null }>('/settings/organisation'),
+      apiFetch<{ id: string; rate: number; isDefault: boolean }[]>('/settings/tax-rates'),
+    ])
+      .then(([org, rates]) => {
         setVatMode((org.vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE') ?? 'NONE');
-        setVatRate(org.defaultVatRate ?? 0);
+        const list = Array.isArray(rates) ? rates : [];
+        const selected = org.defaultVatRateId
+          ? list.find(r => r.id === org.defaultVatRateId)
+          : list.find(r => r.isDefault);
+        if (selected) setVatRate(Number(selected.rate));
       })
-      .catch(() => {});
+      .catch(err => {
+        console.error('[PurchaseOrderCreateModal] VAT settings fetch failed', err);
+      });
   }, [open]);
 
   // Auto-select single warehouse (runs both on cache hit and after fetch resolves)
