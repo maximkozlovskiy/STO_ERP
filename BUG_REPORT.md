@@ -16332,3 +16332,121 @@ totalAmount: Number(wo.totalAmount),    // includes actualLabor
 **Статус:** [x] виправлено — controller + service signatures оновлено.
 
 ---
+
+## Session 2026-06-17 — AUTO tester Cycle 2: final regression-guards (HEAD 01e4abbe)
+
+Scope (post Cycle 1: sync+review+tester+optimize+e2e+simplify і Cycle 2 sync+review). Усі попередні відомі баги виправлені; цей цикл шукає **gap-и у regression coverage** для змін Cycle 1.
+
+### Baseline (Крок 0)
+
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ✅ 908/908 passed (66 файлів)
+- Web components — ✅ 434/434 passed (40 файлів)
+- HEAD = 01e4abbe — попередня сесія `docs(memory): post-review cycle 2`
+- Перевірка хибно-зеленого `[x]`: пройдено — попередні `[x]`-баги (#527-#529) покриті реальним кодом у `work-orders.service.ts` + role-gate.spec.ts.
+
+### Знайдені gap-и (test-coverage без runtime bugs)
+
+Цикл 1 додав три критичні зміни без точних regression specs:
+
+1. `findByShareToken` Promise.all([org, uoms]) tier merger (commit 80f02888)
+2. `recalcTotals` `take: 1000` defensive cap (commit 80f02888)
+3. EstimatePublicDto — `costPrice` ВІДСУТНІЙ (зміна commit 6d35157a)
+
+Кожне з цих рішень може мовчазно регресувати при майбутньому рефакторингу. Додано три set-и regression-guards.
+
+---
+
+## Bug #530 — [HIGH] backend / test-coverage — public DTO leak guards для findByShareToken
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:1680-1791` (findByShareToken)
+**Severity:** HIGH (захист від витоку фінансово чутливого `costPrice`/`batchCostPrice` у public endpoint без auth)
+**Категорія:** test-coverage / regression-guard / public-DTO
+
+**Опис:** Public endpoint `/work-orders/share/:token` повертає `EstimatePublicDto` — мінімальний public DTO, доступний клієнтам через SMS-link БЕЗ auth. Поле `costPrice` (батч-собівартість) ВЖЕ відсутнє у DTO (work-orders.dto.ts:441-457 — EstimatePublicDto / EstimatePublicPartDto не оголошують його) і у handler `parts.map()` (line 1779-1789 — explicit whitelist `{id, goodName, quantity, unitShortName, price, amount}`). Проте:
+
+- Жоден spec не фіксує цей контракт як **explicit регресія-guard**.
+- Refactor `parts: wo.parts.map(p => ({ ...p }))` (наприклад при spread-shortcut оптимізації) → витік `batchCostPrice` без TypeScript warning (Prisma row type ширший за DTO).
+- Refactor `include: { parts: { include: { ... } } }` замість зараз narrow `select` → теж витік.
+- Aspect-oriented serializer (class-transformer @Expose) міг би автоматизувати whitelist, але зараз його немає → захист тримається на manual narrow `select` + manual `parts.map()`.
+
+**Очікувана поведінка:** unit-spec що для EstimatePublicDto:
+
+- `parts[i].costPrice` ключ НЕ існує (Object.hasOwnProperty === false, не undefined-key)
+- `parts[i].batchCostPrice/warehouseId/goodId/orgId/workOrderId` ключі НЕ існують
+- top-level orgId/paidAmount/syncVersion/contractId/shareToken/createdAt/updatedAt відсутні
+- Object.keys(parts[i]).sort() === ['amount','goodName','id','price','quantity','unitShortName']
+
+**Фактична поведінка:** Захист ОК (структурно), але БЕЗ regression spec — refactor може мовчазно витекти.
+
+**Фікс:** новий spec `work-orders.share-public.spec.ts` — 9 тестів:
+
+1. costPrice відсутній (hasOwnProperty false)
+2. batchCostPrice/warehouseId/goodId/orgId/workOrderId відсутні
+3. top-level sensitive поля відсутні
+4. точний whitelist parts[i] keys
+5. totalAmount = totalLabor + totalParts (Bug #508 sibling-guard)
+6. Promise.all parallel test (org та uoms незалежні)
+7. skip goodUoM.findMany якщо uomIds.length === 0
+8. рівно один виклик goodUoM.findMany при наявних uomIds
+9. NotFoundException на bad token
+
+**Статус:** [x] виправлено — створено `work-orders.share-public.spec.ts` (9 тестів, всі passed).
+
+---
+
+## Bug #531 — [MEDIUM] backend / test-coverage — recalcTotals take:1000 defensive cap
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:1298-1344` (recalcTotals)
+**Severity:** MEDIUM (захист від unbounded findMany у hot path — кожна mutation lines/parts викликає recalcTotals)
+**Категорія:** test-coverage / regression-guard / defense-in-depth
+
+**Опис:** commit 80f02888 (sto-optimize) додав `take: 1000` у `tx.workOrderLine.findMany` всередині `recalcTotals` — defense-in-depth проти unbounded зростання `lines` (addLine/updateLine endpoints НЕ мають ArrayMaxSize валідації; legacy import/скриптові операції теоретично можуть створити тисячі рядків). Проте:
+
+- Жоден spec не фіксує що cap = **рівно 1000** (не 100, не undefined).
+- Якщо хтось випадково видалить `take: 1000` → unbounded findMany → потенційно OOM/timeout для WO з 10k+ рядків.
+- Якщо хтось понизить до `take: 100` → silent truncation реальних даних → `totalActualLabor` буде заниженим без сигналу.
+- `select` narrow (`amount/actualHours/normoHours/price`) — якщо рефакторинг змінить на `include: true` → знижка perf без warning.
+
+**Очікувана поведінка:** unit-spec що `tx.workOrderLine.findMany` викликається з:
+
+- `take: 1000` (не undefined, не інше число)
+- `select: { amount: true, actualHours: true, normoHours: true, price: true }`
+- `where: { orgId, workOrderId, deletedAt: null }`
+
+Bonus: тест на boundary 1000 рядків (точна межа) + great list 500 рядків (single-pass reduce коректність).
+
+**Фактична поведінка:** Захист ОК, але БЕЗ regression spec — рефакторинг може мовчазно деградувати.
+
+**Фікс:** новий spec `work-orders.recalc-cap.spec.ts` — 5 тестів:
+
+1. take: 1000 у findMany call
+2. select narrow з правильними полями
+3. boundary — рівно 1000 рядків processed
+4. 500 рядків — mixed actualHours/null коректно
+5. addPart запускає recalcTotals → cap присутній (sanity для cross-entry point)
+
+**Статус:** [x] виправлено — створено `work-orders.recalc-cap.spec.ts` (5 тестів, всі passed).
+
+---
+
+## Bug #532 — [LOW] meta — Cycle 2 simplify findings: чисто
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts`
+**Severity:** LOW (cleanup audit)
+**Категорія:** simplification audit
+
+**Опис:** Аудит Cycle 2 simplify знайшов:
+
+- `canSeeCostPrice` вже використовує `Set.has()` — O(1) lookup ✅
+- `COST_PRICE_VISIBLE_ROLES` — module-private const, єдине runtime використання у `toPartDto` ✅ (нема value у виносі у shared зараз — додатковий import overhead без runtime benefit)
+- `Number()` cast у recalcTotals — НЕ дублікат: кожен Decimal field окремо (amount, actualHours, normoHours, price, partsAgg.\_sum.amount) ✅
+- Promise.all([org, uoms]) — обидва запити дійсно незалежні (org залежить лише від wo.orgId, uoms — лише від wo.parts[].unitOfMeasureId) ✅
+- `take: 1000` у `addLine/updateLine/removeLine` — всі вони викликають **той самий** private `recalcTotals` helper → cap единий для всіх mutation paths ✅
+
+**Очікувана поведінка:** Cycle 2 finalised без cleanup-debt.
+**Фактична поведінка:** Без cleanup-debt — все consistent.
+**Статус:** [x] виправлено — нема що виправляти, аудит фіксує clean state.
+
+---

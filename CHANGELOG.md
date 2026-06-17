@@ -7,6 +7,16 @@
 
 ## 2026-06-17
 
+### test(tester): Bugs #530-#532 — Cycle 2 final regression-guards (14 нових тестів)
+
+- Bug #530 (HIGH): public DTO leak guard для findByShareToken — costPrice/batchCostPrice/orgId/sensitive поля ВІДСУТНІ
+- Bug #531 (MEDIUM): recalcTotals defensive `take: 1000` cap — regression-guard від видалення/зниження
+- Bug #532 (LOW): Cycle 2 simplify audit — clean, без cleanup-debt
+- 9 тестів у work-orders.share-public.spec.ts: hasOwnProperty whitelist, Promise.all parallel, skip empty uomIds
+- 5 тестів у work-orders.recalc-cap.spec.ts: exact take:1000, narrow select, boundary 1000 рядків
+- SKILL.md: 2 нові накопичені підходи — public DTO leak whitelist + defensive cap regression-guard
+- API tests: 908 → 922 (+14, 100% green)
+
 ### 6d35157a fix(review): role-gate part.costPrice + UI cleanups
 
 - §2.1 CRITICAL: GET /work-orders/:id повертав WorkOrderPartResponseDto.costPrice (batchCostPrice)

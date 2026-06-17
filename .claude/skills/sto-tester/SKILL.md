@@ -2750,6 +2750,117 @@ grep -n "parentChanged\|supplierChanged" apps/api/src/modules/<resource>/<resour
 
 ---
 
+### 2026-06-17 — Public DTO leak whitelist test (Bug #530) — backend / security / regression-guard
+
+**Сигнал:** Public endpoint (без auth, share-token чи magic-link based) повертає DTO зібраний через manual `parts.map(p => ({...whitelist}))`. Захист від витоку чутливих полів (`costPrice`, `batchCostPrice`, `paidAmount`, `orgId`, FK-и, `syncVersion`) тримається на тому, що автор НЕ написав `{...p}` spread. Жоден TypeScript guard цього не ловить — Prisma row тип ширший за DTO, і refactor може мовчки витекти sensitive поле.
+
+**Причина виникнення:** Шортчат `parts.map(p => ({ ...p, computed: x }))` виглядає чище ніж 6-рядковий explicit whitelist — особливо коли DTO має 5+ полів. Або хтось додає `include: { parts: { include: { warehouse: true } } }` замість зараз narrow `select` → у `wo.parts[i]` з'являється `warehouseId`, `batchCostPrice` тощо → автоматичний spread у map їх витікає.
+
+Контракт-дрейф також непомітний: `class EstimatePublicDto { ... }` оголошує `parts!: EstimatePublicPartDto[]` — TS не валідує що runtime об'єкт МАЄ лише ці поля; зайвий ключ просто проходить через JSON.stringify.
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Знайти public endpoints без auth/auth-guard:
+grep -rn "@Public\|@Get.*share\|@Get.*public" apps/api/src/modules --include="*.controller.ts"
+
+# 2) Для кожного — знайти service-метод що повертає DTO:
+# (наприклад findByShareToken, getPublicInvoice, getEstimateData)
+
+# 3) Перевірити що в handler НЕМАЄ:
+#    - `parts: wo.parts.map(p => ({ ...p, ... }))` — spread шортчат
+#    - `include: true` чи widely-include що тягне sensitive поля
+
+# 4) Перевірити що EXIST spec файл `<endpoint>.share-public.spec.ts` чи аналог:
+ls apps/api/src/modules/*/work-orders.share-public.spec.ts 2>/dev/null
+ls apps/api/src/modules/*/invoices.share-public.spec.ts 2>/dev/null
+```
+
+**Підхід до фіксу:** Створити `<resource>.share-public.spec.ts` з трьома типами assertions:
+
+```ts
+// 1) Sensitive поля ВІДСУТНІ (key, не undefined-value):
+expect(Object.prototype.hasOwnProperty.call(part, 'costPrice')).toBe(false);
+// hasOwnProperty не реагує на ключ зі значенням undefined; це сильніше за `.costPrice === undefined`.
+
+// 2) Точний whitelist keys:
+expect(Object.keys(part).sort()).toEqual(
+  ['amount', 'goodName', 'id', 'price', 'quantity', 'unitShortName'].sort(),
+);
+// Якщо хтось додасть зайве поле → spec падає.
+
+// 3) Top-level public DTO теж whitelist:
+expect(Object.prototype.hasOwnProperty.call(dto, 'orgId')).toBe(false);
+expect(Object.prototype.hasOwnProperty.call(dto, 'paidAmount')).toBe(false);
+expect(Object.prototype.hasOwnProperty.call(dto, 'syncVersion')).toBe(false);
+```
+
+Цей подхід комплементарний до `class-transformer @Expose`/serialization (бо у проєкті він не використовується для public endpoints) і не вимагає рефакторингу handler.
+
+**Severity:** HIGH для public endpoints (без auth — будь-який витік = реальна leak). MEDIUM для authenticated endpoints (RBAC-protected — leak обмежена ролями).
+
+**Де шукати ще:** Кожен public endpoint у `apps/api/src/modules/*/`\*.controller.ts`:
+
+- WorkOrder estimate share (`/work-orders/share/:token`) — покрито Bug #530
+- Invoice public viewer (якщо буде)
+- Counterparty public profile (якщо буде)
+- Будь-який `@Public()` endpoint що повертає aggregate з вкладеними рядками
+
+---
+
+### 2026-06-17 — Defensive take/limit cap regression-guard (Bug #531) — backend / perf / regression-guard
+
+**Сигнал:** Service method виконує `findMany` чи `findFirst` з вкладеними рядками (`take: N` cap) як defense-in-depth проти unbounded зростання даних. Cap не випливає з business requirement, а з captured-by-design risk (legacy import, missing ArrayMaxSize на endpoint, scripted operations). Без regression-guard рефакторинг може:
+
+1. Видалити `take` → unbounded findMany → OOM/timeout для великих агрегатів
+2. Знизити `take` → silent truncation реальних даних → дезінформація у totals/звітах
+3. Замінити `select` narrow на `include: true` → знижка perf без warning
+
+**Причина виникнення:** "Це defensive — ніколи в реальності не спрацює" → автор не пише spec. Через 6 місяців хтось видаляє "зайвий" `take` під час cleanup рефакторингу. Defense не спрацював — sentry alerts після першого WO з 5000 рядків.
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Знайти всі захисні take: N у services (не paginated):
+grep -rnE "take: (100|500|1000)\b" apps/api/src/modules --include="*.service.ts" | grep -v "spec\|page"
+
+# 2) Для кожного — перевірити чи є spec що assertss кон��ретне значення take:
+# (не просто `findMany.toHaveBeenCalled()` — потрібно `expect(callArgs.take).toBe(1000)`)
+grep -rn "callArgs.take\|take: 1000" apps/api/src/modules --include="*.spec.ts"
+
+# 3) Якщо немає — створити <method>.cap.spec.ts з:
+#    - assertion take = exact value
+#    - assertion select narrow keys
+#    - boundary test (exactly N rows processed)
+```
+
+**Підхід до фіксу:** Create dedicated `*-cap.spec.ts` файл (не міксувати з business-logic specs). 3-4 тести:
+
+```ts
+it('передає take: 1000 у findMany (defense-in-depth)', async () => {
+  // ...
+  expect(callArgs.take).toBe(1000); // КРИТИЧНО — exact, не >=
+  expect(callArgs.where.deletedAt).toBeNull();
+});
+
+it('правильні select поля — без full row', async () => {
+  expect(callArgs.select).toEqual({
+    /* narrow */
+  });
+});
+
+it('обробляє рівно N рядків без truncation (boundary)', async () => {
+  // Симулюємо findMany що повертає рівно N рядків.
+  // Перевіряємо аґреговані суми коректні.
+});
+```
+
+**Severity:** MEDIUM (defense-in-depth — runtime ОК зараз, але деградує тихо). HIGH якщо cap захищає hot path (per-request, наприклад recalcTotals в transaction).
+
+**Де шукати ще:** `apps/api/src/modules/work-orders/work-orders.service.ts` (recalcTotals — покрито), `inventory.service.ts` (reserveParts — `take: 1000` теж), `purchase-orders.service.ts` (receive — bulk read рядків), `invoices.service.ts` (createFromWorkOrder — копіювання рядків).
+
+---
+
 ## Що вже перевірено (не дублювати)
 
 **Backend:**
