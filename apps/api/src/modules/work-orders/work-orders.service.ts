@@ -1713,7 +1713,13 @@ export class WorkOrdersService {
       inMileage: wo.inMileage ?? null,
       totalLabor: Number(wo.totalLabor),
       totalParts: Number(wo.totalParts),
-      totalAmount: Number(wo.totalAmount),
+      // Bug #508: публічний кошторис показує ПЛАНОВУ суму. wo.totalAmount
+      // обчислюється у бекенді як totalActualLabor + totalParts (включає
+      // фактичні години якщо вони введені) — у SHAREABLE_STATUSES (DRAFT/
+      // ESTIMATE/APPROVED) це семантично некоректно: клієнт бачить кошторис,
+      // а не акт виконаних робіт. Обчислюємо локально як totalLabor + totalParts
+      // щоб математика рядків (по normoHours) збігалася з totalAmount.
+      totalAmount: Number(wo.totalLabor) + Number(wo.totalParts),
       lines: wo.lines.map(l => ({
         id: l.id,
         workName: l.work?.name,

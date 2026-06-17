@@ -16087,3 +16087,134 @@ for (const line of committedLines.filter(l => !!l.id && l.actualHours !== '')) {
 **Статус:** [x] виправлено — spread base object first у всіх трьох merge points (`{ ...l, ...editingLine, _key: l._key }` і `{ ...pt, ...editingPart, _key: pt._key }`). Pattern універсальний: для будь-якого React state merge де target object містить server-only/DB-only fields (id, createdAt, ...), base spread зберігає ці поля.
 
 ---
+
+## Session 2026-06-17 — Tester: totalActualLabor feature (commits 0665024c, ca5aef48)
+
+Scope (2 commits):
+
+- `0665024c` feat(work-orders): invoice/totalAmount on actual labor (actualHours ?? normoHours × price)
+- `ca5aef48` fix(review): line totals + invoice refresh + completion act on actualHours
+
+### Baseline (Крок 0)
+
+- TypeScript API — ✅ 0 errors
+- Unit + contract (API) — ✅ 876/876 passed (63 files)
+- Schema: `WorkOrder.totalActualLabor Decimal(12,2) @default(0)` — NOT NULL, безпечне додавання поля
+- Migration: `20260617140000_add_total_actual_labor` — ADD COLUMN NOT NULL DEFAULT 0 (без блокування існуючих рядків)
+
+### Verification points (з ТЗ)
+
+1. `recalcTotals()` — ✅ коректно обчислює `totalActualLabor` через `l.actualHours != null ? actualHours : (normoHours ?? 0)`; mix null/numeric працює коректно (рядок 1298-1303)
+2. `totalAmount = totalActualLabor + totalParts` — ✅ рядок 1312
+3. `invoice.amount = wo.totalAmount` у `createFromWorkOrder` — ✅ рядок 189 invoices.service.ts
+4. `refreshFromWorkOrder` використовує `actualHours ?? normoHours` — ✅ рядок 672 invoices.service.ts
+5. clone() — `totalActualLabor: totalLabor` (бо actualHours=null у нових lines) — ✅ рядок 580 work-orders.service.ts
+6. PDF: WO PDF, Completion Act PDF — ✅ обидва використовують `actualHours ?? normoHours`
+
+---
+
+## Bug #506 — MEDIUM frontend / consistency
+
+**Файл:** `apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx:115-117, 887-908`
+**Severity:** MEDIUM
+**Категорія:** frontend / data-integrity / UI inconsistency
+
+**Опис:** На детальній сторінці наряду блок Totals показує:
+
+- Роботи → `fmtMoney(wo.totalLabor)` (PLANNED — sum(normoHours × price))
+- Запчастини → `fmtMoney(wo.totalParts)`
+- Оплачено → `fmtMoney(wo.paidAmount)`
+
+Загальну суму (`totalAmount`) показано окремо у header (рядок 749). Після введення `totalActualLabor`, бекенд обчислює `totalAmount = totalActualLabor + totalParts` (а не `totalLabor + totalParts`). У ситуації коли механік ввів `actualHours` що відрізняються від `normoHours`, маємо:
+
+- Роботи: 800₴ (планові 8год × 100₴) + Запчастини: 500₴ = 1300₴ візуально
+- але Сума: 1500₴ (бо actualHours = 10год × 100₴ + 500₴)
+
+Користувач бачить математично некоректну суму у блоці Totals. Локальний interface `WorkOrder` у PageClient.tsx не містить поля `totalActualLabor` — навіть якщо розробник хотів би показати фактичну суму робіт, типи не дозволяють.
+
+**Очікувана поведінка:** Блок Totals або (1) додає рядок Роботи (факт.) з `totalActualLabor` коли воно ≠ `totalLabor`, або (2) показує `totalActualLabor` замість `totalLabor`. Локальний interface включає `totalActualLabor: number`.
+**Фактична поведінка:** Показано `totalLabor` (planned), що візуально не складається з показаним `totalAmount`. Поле `totalActualLabor` не оголошене у локальному типі.
+
+**Статус:** [x] виправлено — додано `totalActualLabor` до локального interface, блок Totals тепер показує Роботи (план) + опціональний рядок Роботи (факт.) коли `totalActualLabor !== totalLabor`.
+
+---
+
+## Bug #507 — HIGH test-coverage / backend
+
+**Файл:** `apps/api/src/modules/work-orders/` (новий spec відсутній)
+**Severity:** HIGH
+**Категорія:** test-coverage / business-logic
+
+**Опис:** Нова бізнес-логіка `totalActualLabor = SUM((actualHours ?? normoHours) × price)` повністю без regression-тестів. Існуючий `work-orders.service.spec.ts` має 4 тести для `findAll`/`update`, але НЕ покриває:
+
+1. `recalcTotals()` для змішаних рядків (actualHours=null + actualHours=2.5)
+2. `recalcTotals()` для порожнього наряду (totalActualLabor=0)
+3. `recalcTotals()` коли всі actualHours=null (totalActualLabor === totalLabor)
+4. `recalcTotals()` коли всі actualHours встановлені (totalActualLabor зазвичай ≠ totalLabor)
+5. `totalAmount` формула тепер `= totalActualLabor + totalParts`, не `totalLabor + totalParts`
+
+Без regression-тестів будь-який майбутній рефакторинг (наприклад, повернення `?? l.normoHours ?? 0` до `?? 0` або зміна `??` на `||`) НЕ дасть сигналу.
+
+**Очікувана поведінка:** unit-spec `work-orders.recalc-totals.spec.ts` покриває 5+ кейсів recalc.
+**Фактична поведінка:** 0 тестів для нової формули.
+
+**Статус:** [x] виправлено — створено `work-orders.recalc-totals.spec.ts` (5 unit-тестів: empty WO, all-null actualHours, mixed, all-set, totalAmount формула).
+
+---
+
+## Bug #508 — LOW frontend / public estimate
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:1714-1716` (findByShareToken)
+**Severity:** LOW
+**Категорія:** consistency / public-display
+
+**Опис:** Публічний DTO `EstimatePublicDto` повертає:
+
+```
+totalLabor: Number(wo.totalLabor),     // planned
+totalParts: Number(wo.totalParts),
+totalAmount: Number(wo.totalAmount),    // includes actualLabor
+```
+
+`SHAREABLE_STATUSES` = DRAFT/ESTIMATE/APPROVED — pre-work-статуси, де `actualHours` зазвичай null → totalActualLabor === totalLabor → проблеми немає. Але якщо менеджер вручну вписав `actualHours` на DRAFT, `totalAmount` ≠ `totalLabor + totalParts` → клієнт бачить математичну нестикову у публічному кошторисі.
+
+Додатково: estimate за визначенням це ПЛАН — показувати у публічному документі actualHours-based сума семантично неправильно (клієнт не повинен бачити внутрішнє розширення нормогодин до моменту акту виконаних робіт).
+
+**Очікувана поведінка:** для публічного кошторису `totalAmount = totalLabor + totalParts` (planned-сума).
+**Фактична поведінка:** `totalAmount = totalActualLabor + totalParts` навіть у публічному estimate.
+
+**Статус:** [x] виправлено — `findByShareToken` тепер обчислює `totalAmount = Number(wo.totalLabor) + Number(wo.totalParts)` локально, не використовуючи поле `wo.totalAmount`.
+
+---
+
+## Bug #509 — INFO not a bug / verification
+
+**Файл:** `apps/api/src/modules/work-orders/work-orders.service.ts:898` (writeOffPartsAndCharge)
+**Severity:** INFO
+**Категорія:** verification
+
+**Опис:** Перевірка `chargeAmount <= 0` блокує COMPLETED для наряду з нульовою сумою. Після введення `totalAmount = totalActualLabor + totalParts`, поведінка зберігається коректно: WO зі всіма actualHours=0 і без запчастин не може бути завершений (семантично — нічого не зроблено).
+
+**Статус:** Не баг — перевірена окремо. Перевірка коректна.
+
+---
+
+## Bug #510 — MEDIUM frontend / type-safety
+
+**Файл:** `apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx:90-126`
+**Severity:** MEDIUM
+**Категорія:** typescript / type-duplication
+
+**Опис:** Локальний interface `WorkOrder` у PageClient.tsx визначений inline зі своїм набором полів і НЕ синхронізований з:
+
+- `apps/web/src/hooks/api/useWorkOrders.ts` interface (тепер з `totalActualLabor`)
+- `WorkOrderResponseDto` з бекенду
+
+Це створює потенціал для divergence: feature `totalActualLabor` додано в один тип і пропущено в інший. Кожне нове поле треба синхронізувати у трьох місцях вручну.
+
+**Очікувана поведінка:** import `WorkOrder` з `@/hooks/api/useWorkOrders` як єдине джерело правди (або з `@sto/shared`).
+**Фактична поведінка:** Inline-дублікат. У цьому випадку — пропущено поле `totalActualLabor`.
+
+**Статус:** [x] виправлено разом з Bug #506 — додано `totalActualLabor: number` у локальний interface PageClient.tsx (швидкий фікс; глобальна рефакторизація типу — окрема задача).
+
+---

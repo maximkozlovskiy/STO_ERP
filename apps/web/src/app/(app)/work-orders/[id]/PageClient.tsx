@@ -113,6 +113,7 @@ interface WorkOrderDetail {
   clientApproval?: boolean;
   documentDate?: string | null;
   totalLabor: number;
+  totalActualLabor: number;
   totalParts: number;
   totalAmount: number;
   paidAmount: number;
@@ -885,10 +886,21 @@ export default function WorkOrderCardPage() {
       </div>
 
       {/* Totals */}
+      {/* Bug #506: коли totalActualLabor !== totalLabor (механік ввів фактичні години),
+          показуємо обидва значення щоб математика сходилась з totalAmount у header.
+          totalAmount = totalActualLabor + totalParts (бекенд recalcTotals). */}
       <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-3 gap-4 text-sm">
         <div>
-          <p className="text-xs text-muted-foreground">Роботи</p>
+          <p className="text-xs text-muted-foreground">
+            {wo.totalActualLabor !== wo.totalLabor ? 'Роботи (план)' : 'Роботи'}
+          </p>
           <p className="text-lg font-semibold text-foreground">{fmtMoney(wo.totalLabor)} ₴</p>
+          {wo.totalActualLabor !== wo.totalLabor && (
+            <p className="text-xs text-muted-foreground mt-1">
+              факт.:{' '}
+              <span className="font-medium text-foreground">{fmtMoney(wo.totalActualLabor)} ₴</span>
+            </p>
+          )}
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Запчастини</p>
