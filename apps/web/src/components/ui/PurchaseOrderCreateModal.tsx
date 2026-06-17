@@ -877,6 +877,19 @@ export function PurchaseOrderCreateModal({
 
           {/* ── Lines table ──────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-muted-foreground">Товари</p>
+              {canEdit && !showLineInput && (
+                <button
+                  type="button"
+                  onClick={() => setShowLineInput(true)}
+                  className="flex items-center gap-1 text-[12px] text-primary hover:text-primary/80 transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Додати
+                </button>
+              )}
+            </div>
             <div className="rounded-lg border border-border overflow-hidden">
               <table className="w-full table-fixed text-[12px]">
                 <colgroup>
@@ -1053,17 +1066,6 @@ export function PurchaseOrderCreateModal({
                 </tfoot>
               </table>
             </div>
-
-            {canEdit && !showLineInput && (
-              <button
-                type="button"
-                onClick={() => setShowLineInput(true)}
-                className="flex items-center gap-1.5 mt-2 ml-3 text-[12px] text-primary hover:text-primary/80 transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Додати товар
-              </button>
-            )}
           </div>
         </div>
       </Modal>
