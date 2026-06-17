@@ -911,15 +911,24 @@ function WorkOrdersPageInner() {
                             )}
                           </TableCell>
                         );
-                      if (col.key === 'amount')
+                      if (col.key === 'amount') {
+                        const plannedAmount = wo.totalLabor + wo.totalParts;
+                        const hasActual =
+                          wo.totalActualLabor !== undefined &&
+                          Math.abs(wo.totalActualLabor + wo.totalParts - plannedAmount) >= 0.01;
                         return (
-                          <TableCell
-                            key="amount"
-                            className="font-medium text-foreground tabular-nums text-right"
-                          >
-                            {fmtMoney(wo.totalAmount)}
+                          <TableCell key="amount" className="tabular-nums text-right">
+                            <div className="font-medium text-foreground">
+                              {fmtMoney(wo.totalAmount)}
+                            </div>
+                            {hasActual && (
+                              <div className="text-[11px] text-muted-foreground line-through">
+                                {fmtMoney(plannedAmount)}
+                              </div>
+                            )}
                           </TableCell>
                         );
+                      }
                       if (col.key === 'documentDate')
                         return (
                           <TableCell
