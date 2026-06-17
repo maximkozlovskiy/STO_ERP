@@ -2427,7 +2427,7 @@ export function CreateWorkOrderModal({
                         {vatMode !== 'NONE' && <col className="w-20" />}
                         <col className="w-24" />
                         <col className="w-24" />
-                        <col className="w-9" />
+                        <col className="w-16" />
                       </colgroup>
                       <thead>
                         <tr className="border-b border-border bg-secondary/40">
@@ -2921,7 +2921,7 @@ export function CreateWorkOrderModal({
                         <col className="w-24" />
                         {vatMode !== 'NONE' && <col className="w-20" />}
                         <col className="w-24" />
-                        <col className="w-9" />
+                        <col className="w-16" />
                       </colgroup>
                       <thead>
                         <tr className="border-b border-border bg-secondary/40">
