@@ -14,7 +14,7 @@
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 908/908 (+26: 22 role-gate + 4 estimate-export) | Web 434/434
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній optimize: 2026-06-16 — Bug #520 Redis cache work-hours + statsTab O(N×M)→O(N+M)
+Останній optimize: 2026-06-17 (HEAD 80f02888) — recalcTotals twin-scan→single-pass + tier merger org+uoms у findByShareToken / EstimateExportService.getEstimateData
 Останній tester: 2026-06-17 (FULL, HEAD 538ca6e4) — Bug #527-#529 (role-gate regression-guard + estimate-export Bug #508 leak + addPart/updatePart symmetry)
 Останній review: 2026-06-17 (AUTO, HEAD 6d35157a) — §2.1 CRITICAL: role-gate part.costPrice (MECHANIC/RECEPTIONIST exposure) + UI mode alignment
 Останній sync:   2026-06-16 — BranchSettings/WorkHours+CalendarSlot+BookingRequest+Warehouse/Branch/Zone+GoodPickerModal — 0 розбіжностей
@@ -25,11 +25,12 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+1e03b509  docs(skills): add twin-scan reduce + post-token sequential lookups to sto-optimize
+80f02888  perf(optimize): twin-scan reduce + sequential org/uoms in WO recalc & export
 0325a37c  docs(skills): add role-gated DTO field regression-guard pattern to sto-tester
 538ca6e4  fix(tester): Bugs #527-#529 — regression-guards for costPrice role-gating + Bug #508 export leak
 b3814d44  docs(memory): post-review state — costPrice role gate
 6d35157a  fix(review): role-gate part.costPrice + UI cleanups
-9d806c45  feat(work-orders): show part cost price (batchCostPrice) in WO parts table
 ```
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
