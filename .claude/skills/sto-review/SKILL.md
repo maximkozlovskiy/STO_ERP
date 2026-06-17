@@ -1415,6 +1415,46 @@ grep -rn "wo\.lines\.map\|workOrder\.lines\.map\|buildLines" apps/api/src/module
 
 ---
 
+### 2026-06-17 — Нове `costPrice`/`purchasePrice` поле у nested DTO без role gate — §2.1 Auth & Guards
+
+**Сигнал:** feat-commit додає чутливе цінове поле (`costPrice`, `purchasePrice`, `margin`, `batchCostPrice`) у nested sub-DTO (`WorkOrderPartResponseDto`, `InvoiceLineResponseDto`, `StockDocumentLineResponseDto`), а parent endpoint (`GET /work-orders/:id`, `GET /invoices/:id`) дозволяє ширший Roles-список (`MECHANIC`, `RECEPTIONIST`, `CLIENT`-сюжетно). `toPartDto` мапить поле безумовно — без врахування ролі поточного користувача. RolesGuard на ENDPOINT-рівні пропускає виклик (бо `MECHANIC` дозволено читати наряд), але field-level visibility інваріант з `goods.controller.ts` (`/price-history` лише OWNER/ADMIN/STOREKEEPER/ACCOUNTANT) порушений.
+
+**Grep:**
+
+```bash
+# Нове чутливе поле у nested DTO
+grep -rnE "(costPrice|purchasePrice|margin|batchCostPrice)\??:" apps/api/src/modules --include="*.dto.ts" | head
+# Для кожного match — endpoint що повертає цей DTO + перевірити @Roles
+# Якщо endpoint дозволяє MECHANIC/RECEPTIONIST → шукати role-based маскування у toDto
+grep -rn "canSeeCostPrice\|COST_PRICE_VISIBLE_ROLES\|userRole.*toPartDto\|role.*toLineDto" apps/api/src/modules --include="*.service.ts"
+# Зразок маскування у goods/price-history (§2.1 reference pattern)
+grep -n "@Roles.*STOREKEEPER" apps/api/src/modules/goods/goods.controller.ts
+```
+
+**Фікс:** module-level `const COST_PRICE_VISIBLE_ROLES = new Set(['OWNER','ADMIN','STOREKEEPER','ACCOUNTANT']); const canSeeCostPrice = (r?: string) => !!r && COST_PRICE_VISIBLE_ROLES.has(r);` → `toPartDto` приймає `userRole?: string` другим параметром → `costPrice: canSeeCostPrice(userRole) ? Number(...) : undefined`. Controller передає `@CurrentUser() user: { role: string }` у `findOne(orgId, id, user.role)`. Internal callers (без role-контексту) автоматично fail-closed.
+
+**Severity:** CRITICAL — financial data leak до MECHANIC/RECEPTIONIST. tsc мовчить (`?: number | null` приймає undefined); ручний тест mechanic-сесії не показує (FE не рендерить undefined); виявляється лише через DTO inspection або проникаючий тест. Захист defence-in-depth — RolesGuard на endpoint не покриває field-level.
+
+---
+
+### 2026-06-17 — Inline column alignment inconsistency: новий `<td>` має `text-center` при `text-left` у братів — §8.6 Модульність UI
+
+**Сигнал:** нова колонка таблиці додана у три "modes" (view, edit, new-input) одного компоненту. View та edit мають `text-left tabular-nums text-muted-foreground`, а new-input — `text-center` (звичайно `text-center` для самотнього `—` через "візуальну гарність"). Header `<th>` — `text-left`. Результат: при додаванні товару колонка показує `—` по центру, при перегляді — справа від `:`. Inconsistency помітна тільки коли користувач переключається між modes.
+
+**Grep:**
+
+```bash
+# Знайти triple-mode column (view/edit/new-input) у крупних модалках
+grep -rnE "px-2 py-1.5 text-(left|center|right)" apps/web/src/components/ui --include="*.tsx" | head
+# Для кожної нової колонки: переконатись що всі три mode-комірки мають однаковий alignment (узгоджений з header)
+```
+
+**Фікс:** уніфікувати з view-mode — той самий `text-left tabular-nums text-muted-foreground`. Header задає істину alignment-а; усі body-комірки повинні дзеркалити.
+
+**Severity:** SUGGESTION — degradation UX без функційної помилки; запахом inconsistency reviewer-fatigue.
+
+---
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |

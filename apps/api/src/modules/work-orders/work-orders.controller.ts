@@ -69,8 +69,13 @@ export class WorkOrdersController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Деталі наряду' })
-  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOne(orgId, id);
+  findOne(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { role: string },
+  ) {
+    // §2.1 Auth: pass role → service маскує part.costPrice для MECHANIC/RECEPTIONIST
+    return this.service.findOne(orgId, id, user.role);
   }
 
   @Post()

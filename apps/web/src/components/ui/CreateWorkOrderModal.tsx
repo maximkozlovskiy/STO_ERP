@@ -3333,7 +3333,7 @@ export function CreateWorkOrderModal({
                               </Select>
                             </td>
                             {/* Собівартість нового товару невідома до надходження — read-only */}
-                            <td className="px-2 py-1.5 text-center text-muted-foreground text-[12px]">
+                            <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground text-[12px]">
                               —
                             </td>
                             <td className="px-2 py-1.5">

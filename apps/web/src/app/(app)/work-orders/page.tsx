@@ -912,10 +912,10 @@ function WorkOrdersPageInner() {
                           </TableCell>
                         );
                       if (col.key === 'amount') {
+                        // Plannedness check: actualHours рівні normoHours → suma нічого не «прокинула».
+                        // totalParts однакові для actual та planned, тож порівнюємо лише labor-частку.
+                        const hasActual = Math.abs(wo.totalActualLabor - wo.totalLabor) >= 0.01;
                         const plannedAmount = wo.totalLabor + wo.totalParts;
-                        const hasActual =
-                          wo.totalActualLabor !== undefined &&
-                          Math.abs(wo.totalActualLabor + wo.totalParts - plannedAmount) >= 0.01;
                         return (
                           <TableCell key="amount" className="tabular-nums text-right">
                             <div className="font-medium text-foreground">

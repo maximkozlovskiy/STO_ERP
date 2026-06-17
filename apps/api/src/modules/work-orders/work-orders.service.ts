@@ -56,6 +56,13 @@ const GOOD_UOM_SELECT = {
 
 type UomJunction = Prisma.GoodUoMGetPayload<{ select: typeof GOOD_UOM_SELECT }>;
 
+// §2.1 Auth: costPrice (батч-собівартість) — фінансово чутливе поле.
+// MECHANIC/RECEPTIONIST/CLIENT не повинні бачити закупівельну ціну запчастин у WO.
+// Дозволено лише ролям що бачать вартість у каталозі/прайс-історії (goods.controller.ts:242).
+const COST_PRICE_VISIBLE_ROLES = new Set<string>(['OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT']);
+const canSeeCostPrice = (role?: string | null): boolean =>
+  !!role && COST_PRICE_VISIBLE_ROLES.has(role);
+
 @Injectable()
 export class WorkOrdersService {
   private readonly logger = new Logger(WorkOrdersService.name);
@@ -165,7 +172,7 @@ export class WorkOrdersService {
     };
   }
 
-  async findOne(orgId: string, id: string): Promise<WorkOrderDetailDto> {
+  async findOne(orgId: string, id: string, userRole?: string): Promise<WorkOrderDetailDto> {
     const wo = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },
       // Bug #350: include contract so detail shows contractNumber (toDto maps it).
@@ -227,11 +234,14 @@ export class WorkOrdersService {
       lines: wo.lines.map(l => this.toLineDto(l)),
       parts: wo.parts.map(p => {
         const uomId = (p as { unitOfMeasureId?: string | null }).unitOfMeasureId;
-        return this.toPartDto({
-          ...p,
-          unitOfMeasureId: uomId,
-          goodUoM: uomId ? (goodUoMMap[uomId] ?? null) : null,
-        });
+        return this.toPartDto(
+          {
+            ...p,
+            unitOfMeasureId: uomId,
+            goodUoM: uomId ? (goodUoMMap[uomId] ?? null) : null,
+          },
+          userRole,
+        );
       }),
     };
   }
@@ -1544,25 +1554,31 @@ export class WorkOrdersService {
     return result;
   }
 
-  private toPartDto(part: {
-    id: string;
-    workOrderId: string;
-    goodId: string;
-    warehouseId: string;
-    quantity: number;
-    price: Prisma.Decimal;
-    amount: Prisma.Decimal;
-    batchCostPrice?: Prisma.Decimal | null;
-    unitOfMeasureId?: string | null;
-    createdAt: Date;
-    good?: {
-      name: string;
-      unit: string;
-      unitOfMeasure: { shortName: string; coefficient: number } | null;
-    } | null;
-    // Populated when unitOfMeasureId is set — per-good GoodUoM record
-    goodUoM?: { id: string; coefficient: number; unitOfMeasure: { shortName: string } } | null;
-  }): WorkOrderPartResponseDto {
+  private toPartDto(
+    part: {
+      id: string;
+      workOrderId: string;
+      goodId: string;
+      warehouseId: string;
+      quantity: number;
+      price: Prisma.Decimal;
+      amount: Prisma.Decimal;
+      batchCostPrice?: Prisma.Decimal | null;
+      unitOfMeasureId?: string | null;
+      createdAt: Date;
+      good?: {
+        name: string;
+        unit: string;
+        unitOfMeasure: { shortName: string; coefficient: number } | null;
+      } | null;
+      // Populated when unitOfMeasureId is set — per-good GoodUoM record
+      goodUoM?: { id: string; coefficient: number; unitOfMeasure: { shortName: string } } | null;
+    },
+    // §2.1 Auth: костПрайс маскується для ролей не в COST_PRICE_VISIBLE_ROLES.
+    // Default = undefined → не показувати (fail-closed). Прямі write-endpoints
+    // (addPart/updatePart) повертають DTO без costPrice — FE їх не використовує.
+    userRole?: string,
+  ): WorkOrderPartResponseDto {
     // If a specific GoodUoM was selected — use its shortName/coefficient.
     // Fallback to the good's base unit.
     const selectedUoM = part.goodUoM;
@@ -1578,7 +1594,12 @@ export class WorkOrdersService {
       coefficient: safeCoeff(selectedUoM?.coefficient ?? baseUoM?.coefficient),
       warehouseId: part.warehouseId,
       quantity: part.quantity,
-      costPrice: part.batchCostPrice != null ? Number(part.batchCostPrice) : null,
+      // §2.1 Auth: маскуємо costPrice для MECHANIC/RECEPTIONIST/etc.
+      costPrice: canSeeCostPrice(userRole)
+        ? part.batchCostPrice != null
+          ? Number(part.batchCostPrice)
+          : null
+        : undefined,
       price: Number(part.price),
       amount: Number(part.amount),
       createdAt: part.createdAt,
