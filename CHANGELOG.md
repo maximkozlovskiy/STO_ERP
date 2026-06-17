@@ -7,6 +7,26 @@
 
 ## 2026-06-17
 
+### 99f0e406 fix(tester): Bugs #506-#510 — totalActualLabor regression-guard + UI sync
+
+- Bug #506/#510 (MEDIUM): PageClient.tsx не відображав різницю план/факт + дублював interface без totalActualLabor
+- Bug #507 (HIGH): відсутні regression-тести для нової формули → додано work-orders.recalc-totals.spec.ts (6 тестів)
+- Bug #508 (MEDIUM): публічний estimate показував totalActualLabor+totalParts замість totalLabor+totalParts (кошторис = план)
+
+### ca5aef48 fix(review): line totals + invoice refresh + completion act on actualHours
+
+- WO PDF рядків: `total = actualHours ?? normoHours × price` (не l.amount = normoHours × price)
+- invoices.refreshFromWorkOrder: SUM з `actualHours ?? normoHours` симетрично з createFromWorkOrder
+- completion-acts.buildLines: акт виконаних робіт тепер показує actualHours і фактичну суму
+- EstimatePublicDto — без змін (SHAREABLE статуси де actualHours=null → totalAmount незмінний)
+
+### 0665024c feat(work-orders): invoice/totalAmount on actual labor (actualHours ?? normoHours × price)
+
+- WorkOrder.totalActualLabor (новий Decimal 12,2) = SUM((actualHours ?? normoHours) × price)
+- totalAmount = totalActualLabor + totalParts (не totalLabor + totalParts)
+- Migration: 20260617140000_add_total_actual_labor
+- Invoice.createFromWorkOrder автоматично отримує правильну суму через wo.totalAmount
+
 ### 527011c9 fix(tester): Bugs #521-#525 — actualHours feature critical bugs
 
 - Bug #521 (CRITICAL): UpdateWorkOrderLineDto відхиляв null actualHours → 400 при save() з порожнім Год (факт.)
