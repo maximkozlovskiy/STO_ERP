@@ -222,6 +222,8 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 
 - [ ] **Alternate-mutation endpoint обходить canonical guards (Bug #403):** будь-який backend service-метод що **мутує той самий resource** що і `update()`/`addLine()`/`removeLine()` АЛЕ зі своєю окремою сигнатурою (`refreshFromWorkOrder`/`syncFromX`/`importFromY`/`recalculateZ`/`refreshFromExternalSource`...) — ПОВИНЕН повторити ВСІ business-guards канонічного `update()`. Типові guards що пропускаються: (а) `if (X.status !== 'DRAFT') throw BadRequestException` (FSM-readonly для submitted/paid/sent статусів); (б) `if (existing.isLocked) throw ...` (manually locked records); (в) `if (existing.isSystem) throw ...` (seed-керовані); (г) prep-check unique-constraint конфлікту. Сценарій: оригінальний `update()` має FSM-guard `!DRAFT → throw`; альтернативний endpoint забуває цей guard → перезаписує дані SENT/PAID/locked record-у без error → silently corrupts data. Grep: `grep -rnE "async (refresh|sync|import|recalculate|regenerate|rebuild)[A-Z]" apps/api/src/modules --include="*.service.ts"` — для кожного знайденого метода: знайти canonical `update()`/`updateLine()`/`updateX()` у тому ж файлі, скопіювати ВСІ `if (...) throw` guards (особливо `inv.status !== 'DRAFT'`, `existing.status !== ...`), перевірити що alternate-метод їх має. Парний підхід: будь-який mutation що приймає workOrderId/parentId і робить `deleteMany + createMany` на child resource (full overwrite) — обов'язково prep-check status батьківського resource через `if (parent.status !== <ALLOWED>) throw`. Severity CRITICAL (фінансовий ризик для invoice/payment/settlement resources). Регресія-guard: contract spec для alternate endpoint що мокає existing.status=non-DRAFT → 400.
 
+- [ ] **Role-gated sensitive DTO field без regression-guard spec (Bug #527, #529):** будь-який commit вигляду `fix/feat: role-gate <Field>` що додає (а) `<X>_VISIBLE_ROLES = new Set<string>(['OWNER', ...])`, (б) helper `canSeeX(role)`, (в) `userRole?: string` параметр у service-метод(и) — ОБОВ'ЯЗКОВО має парний `*.role-gate.spec.ts` (новий або існуючий) з матрицею: (1) кожна привілейована роль × значення поля → візібл, (2) кожна непривілейована роль (включно з `MECHANIC`, `RECEPTIONIST`, `CLIENT`) → undefined, (3) edge `userRole === undefined` → fail-closed, (4) edge `userRole === ''` → fail-closed, (5) невідома роль (`'GUEST'`/`'PARTNER'`) → fail-closed, (6) lowercase (`'owner'`) → fail-closed (case-sensitive Set lookup), (7) `<Field> === null` для привілейованої → `null` (не `undefined`!) — semantic distinction "доступ є, але value not set" vs "нема доступу". Плюс: ВСІ mutation endpoint що повертають DTO (`addX`, `updateX`, не тільки `findOne`) приймають userRole і передають у toDto — інакше OWNER не побачить поле одразу після створення (refresh потрібен) АБО refactor що видалить fail-closed default витече для не-привілейованих write-ролей (`RECEPTIONIST` у write-allow для add/updatePart, але НЕ в COST_PRICE_VISIBLE_ROLES). Grep: `grep -rnE "(VISIBLE_ROLES|canSee[A-Z])" apps/api/src --include="*.ts" | grep -v "spec\|test"` → для кожного matched: `grep -rn "<sameName>" apps/api/src --include="*.spec.ts"` → нуль matches = HIGH (release-blocker для §2.1 Auth). Парне з Bug #478-#480 (enum coverage). Where else: будь-яке поле з prefix `cost*`/`purchase*`/`internal*`/`audit*`/`private*`/`secret*`/`bankAccount`/`taxId`/`salary`/`margin` у DTO.
+
 #### Prisma schema ↔ migration parity (release-blocker)
 
 ```bash
@@ -1111,6 +1113,66 @@ totalAmount: Number(wo.totalLabor) + Number(wo.totalParts),
 **Severity для подібних bugs:** LOW-MEDIUM — баг у крайових випадках (estimate з вже встановленими actualHours — нетипово), але семантично некоректна публічна сторінка може заплутати клієнта і викликати дзвінок у СТО.
 
 **Де шукати ще:** Будь-яка пара (denormalized field, share/public endpoint). У STO ERP кандидати: `wo.totalAmount` ↔ estimate share, `invoice.amount` ↔ payment receipt, `counterparty.balance` ↔ self-service portal, `vehicle.currentMileage` ↔ public service-history. Кожна пара — потенційний source of semantic drift.
+
+---
+
+### 2026-06-17 — Role-gated sensitive field у DTO без regression-guard у service spec (Bug #527, #529) — backend / security / test-coverage
+
+**Сигнал:** Commit вигляду `fix/feat: role-gate <Field> for <ContextDto>` що додає набір whитлист-ролей (`<X>_VISIBLE_ROLES = new Set<string>([...])`), helper-функцію (`canSeeX(role)`), і optional `userRole?: string` параметр у service-метод(и) що повертають DTO. Поле зазвичай — фінансово/безпечно чутливе (`costPrice`, `purchasePrice`, `margin`, `internalNotes`, `auditTrail`, `bankAccount`).
+
+**Перевірка:** одразу — `grep -rn "<Field>\|canSee<Field>\|<X>_VISIBLE_ROLES" apps/api/src --include="*.spec.ts"`. Нуль matches = bug.
+
+**Причина виникнення:** Role-gating пишеться як "невелика defensive фіча" — code review зосереджений на whitelist correctness, не на повноті test coverage. Розробник додає коментар "FE не використовує DTO у write-endpoints", але не пише тест, бо "поведінка очевидна". Через 6 місяців:
+
+- Refactor видаляє `userRole` параметр з service (мовляв "нечитаний параметр")
+- Default `userRole = 'OWNER'` додано для backward-compat → leak для всіх ролей
+- Typo у Set (`'MECHANIK'` замість `'STOREKEEPER'`) → витік для механіка
+- Нова роль `PARTNER` додана у schema, забута у whitelist → leak або несподіваний deny
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Знайти кожен commit з role-gating паттерном:
+git log --all --oneline --grep="role-gate\|role gate\|VISIBLE_ROLES\|canSee" -- apps/api/src
+
+# 2) Для кожного знайденого: чи є регресія-guard?
+grep -rn "VISIBLE_ROLES\|canSee\(" apps/api/src --include="*.spec.ts"
+
+# 3) Для кожного role-gated DTO field — переконатись що ВСІ endpoint що повертають DTO передають userRole:
+#    - GET /:id (findOne) — найочевидніший
+#    - POST mutations (create, add*) — повертають DTO, теж потребують role
+#    - PATCH mutations (update, update*) — теж
+#    - Bulk endpoints (list with details=true) — теж
+grep -rn "to<DtoName>\(" apps/api/src --include="*.service.ts" | grep -v spec
+# Кожен callsite має передавати userRole АБО fail-closed default зберігається.
+
+# 4) Перевірити що Set лookup case-sensitive відповідає JWT role claim format:
+grep -rn "Set<string>" apps/api/src --include="*.service.ts" | grep -i "role"
+```
+
+**Підхід до фіксу:** новий dedicated spec файл `<module>.role-gate.spec.ts` що покриває матрицю:
+
+- **Привілейовані ролі × значення поля** — `it.each([['OWNER'], ['ADMIN'], ...])('%s бачить <Field> = number')`
+- **Непривілейовані ролі × значення поля** — `it.each([['MECHANIC'], ...])('%s НЕ бачить <Field> (undefined)')`
+- **Edge: `userRole === undefined`** → fail-closed
+- **Edge: `userRole === ''`** → fail-closed (auth broken)
+- **Edge: невідома роль `'GUEST'`** → fail-closed (whitelist semantic)
+- **Edge: lowercase `'owner'`** → fail-closed (case-sensitive guard)
+- **Semantic: `<Field> === null` для привілейованої ролі** → DTO має `<Field>: null` (доступ є, але value not set) — відмінно від `undefined` (нема доступу)
+- **Симетрія для кожного mutation-endpoint** (`addX`, `updateX`) — окремий describe, перевірити response DTO
+
+Defense-in-depth: всі endpoint що повертають DTO мають приймати userRole і передавати у toDto-mapper. Тоді refactor що видаляє fail-closed default залишається безпечним.
+
+**Регресія-guard:** Самй spec файл = guard. Будь-який refactor що:
+
+- Видаляє userRole параметр → describe-block-and-after отримає TS error або runtime fail.
+- Перейменовує константу → відсутня константа compile error → grep знаходить.
+- Додає роль у whitelist без оновлення Set → `it.each([['NEW_ROLE']])` падає.
+- Встановлює `userRole = 'OWNER'` default → тести для undefined/'' падають.
+
+**Severity для подібних bugs:** HIGH (release-blocker для §2.1 Auth) коли поле фінансово чутливе або PII. MEDIUM коли поле тільки informational/audit. Завжди вимагати regression-guard для security-sensitive fields — gap у тесті = security gap.
+
+**Де шукати ще:** будь-яке поле у DTO з prefix `cost*`, `purchase*`, `internal*`, `audit*`, `private*`, `secret*`, `bankAccount`, `taxId`, `phone`/`email` (якщо є publish-mode для public counterparty), `salary`/`wage`, `margin`. Кожне таке поле — потенційний role-gating gap.
 
 ---
 
