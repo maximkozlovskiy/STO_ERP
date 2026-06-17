@@ -3,9 +3,10 @@ import { PurchaseOrdersService } from './purchase-orders.service';
 import { PurchaseOrdersController } from './purchase-orders.controller';
 import { InventoryModule } from '../inventory/inventory.module';
 import { SettlementsModule } from '../settlements/settlements.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [InventoryModule, SettlementsModule],
+  imports: [InventoryModule, SettlementsModule, SettingsModule],
   controllers: [PurchaseOrdersController],
   providers: [PurchaseOrdersService],
 })

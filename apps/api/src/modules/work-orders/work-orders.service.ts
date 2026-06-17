@@ -1331,6 +1331,15 @@ export class WorkOrdersService {
       totalActualLabor += Number(l.actualHours ?? l.normoHours ?? 0) * Number(l.price ?? 0);
     }
     const totalParts = Number(partsAgg._sum.amount ?? 0);
+    const totalBase = totalActualLabor + totalParts;
+
+    const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
+    const totalVat =
+      vatMode !== 'NONE' && vatRate > 0
+        ? vatMode === 'INCLUSIVE'
+          ? totalBase - totalBase / (1 + vatRate / 100)
+          : (totalBase * vatRate) / 100
+        : 0;
 
     await tx.workOrder.update({
       where: { id: workOrderId, orgId },
@@ -1338,7 +1347,8 @@ export class WorkOrdersService {
         totalLabor,
         totalActualLabor,
         totalParts,
-        totalAmount: totalActualLabor + totalParts,
+        totalAmount: totalBase,
+        totalVat,
       },
     });
   }
@@ -1449,6 +1459,7 @@ export class WorkOrdersService {
     totalActualLabor?: Prisma.Decimal | null;
     totalParts: Prisma.Decimal;
     totalAmount: Prisma.Decimal;
+    totalVat?: Prisma.Decimal | null;
     paidAmount: Prisma.Decimal | null;
     documentDate?: Date | null;
     createdAt: Date;
@@ -1500,6 +1511,7 @@ export class WorkOrdersService {
       totalActualLabor: Number(wo.totalActualLabor ?? 0),
       totalParts: Number(wo.totalParts),
       totalAmount: Number(wo.totalAmount),
+      totalVat: Number(wo.totalVat ?? 0),
       paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,
       documentDate: wo.documentDate ? wo.documentDate.toISOString().slice(0, 10) : null,
       createdAt: wo.createdAt,

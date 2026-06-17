@@ -139,6 +139,8 @@ export class PurchaseOrderLineResponseDto {
   @ApiProperty() quantity!: number;
   @ApiProperty() price!: number;
   @ApiProperty() amount!: number;
+  @ApiProperty() vatRate!: number;
+  @ApiProperty() vatAmount!: number;
   @ApiProperty() receivedQty!: number;
   @ApiPropertyOptional() unitOfMeasureId?: string | null;
 }
@@ -155,6 +157,7 @@ export class PurchaseOrderResponseDto {
   @ApiPropertyOptional({ description: 'Договір постачальника' }) contractId?: string | null;
   @ApiPropertyOptional() contractNumber?: string | null;
   @ApiProperty() totalAmount!: number;
+  @ApiProperty() totalVat!: number;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiProperty() linesCount!: number;

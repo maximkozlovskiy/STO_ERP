@@ -92,4 +92,13 @@ export class ReportsController {
   ) {
     return this.service.load(orgId, from, to, branchId);
   }
+
+  @Get('vat')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Звіт по ПДВ' })
+  @ApiQuery({ name: 'from', required: true, example: '2026-01-01' })
+  @ApiQuery({ name: 'to', required: true, example: '2026-12-31' })
+  vat(@OrgContext() orgId: string, @Query('from') from: string, @Query('to') to: string) {
+    return this.service.vatReport(orgId, from, to);
+  }
 }

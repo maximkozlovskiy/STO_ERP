@@ -420,6 +420,12 @@ export function PurchaseOrderCreateModal({
     [lines],
   );
 
+  const vatTotal = useMemo(() => {
+    if (vatMode === 'NONE' || vatRate === 0) return 0;
+    if (vatMode === 'EXCLUSIVE') return (total * vatRate) / 100;
+    return total - total / (1 + vatRate / 100);
+  }, [total, vatMode, vatRate]);
+
   const removeLine = (key: string) => setLines(prev => prev.filter(l => l._key !== key));
 
   const addLine = () => {
@@ -1111,6 +1117,20 @@ export function PurchaseOrderCreateModal({
                     </td>
                     <td />
                   </tr>
+                  {vatMode !== 'NONE' && (
+                    <tr className="border-t border-border bg-secondary/10">
+                      <td
+                        colSpan={4 + (isEditMode ? 1 : 0) + 1}
+                        className="px-3 py-1.5 text-right text-[12px] font-medium text-muted-foreground"
+                      >
+                        ПДВ {vatRate}%:
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-muted-foreground">
+                        {vatTotal.toFixed(2)} ₴
+                      </td>
+                      <td />
+                    </tr>
+                  )}
                 </tfoot>
               </table>
             </div>

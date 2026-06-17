@@ -84,7 +84,8 @@ type ReportData =
   | { _tab: 'stock'; totalValue: number; stockItems: StockItem[] }
   | { _tab: 'settlements'; totalDebit: number; totalCredit: number; rows: SettlementRow[] }
   | { _tab: 'load'; rows: LoadRow[] }
-  | ({ _tab: 'profitability' } & ProfitabilityData);
+  | ({ _tab: 'profitability' } & ProfitabilityData)
+  | { _tab: 'vat'; invoiced: number; purchases: number; net: number; from: string; to: string };
 
 // Thin proxy to lib/format singleton (Intl.NumberFormat module-level). Replaces
 // per-render `n.toLocaleString('uk-UA', {...})` × every cell у table-heavy reports.
@@ -140,9 +141,12 @@ function ReportsPageClient() {
     { id: 'settlements-detail', label: 'Розрахунки' },
     { id: 'load', label: 'Завантаженість' },
     { id: 'profitability', label: 'Рентабельність' },
+    { id: 'vat', label: 'ПДВ' },
   ];
 
-  const needsDates = ['revenue', 'work-orders', 'load', 'stock', 'profitability'].includes(tab);
+  const needsDates = ['revenue', 'work-orders', 'load', 'stock', 'profitability', 'vat'].includes(
+    tab,
+  );
   const isSettlementsDetail = tab === 'settlements-detail';
 
   return (
@@ -510,6 +514,28 @@ function ReportsPageClient() {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          </div>
+        )}
+        {/* VAT report */}
+        {data && data._tab === 'vat' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <StatCard
+                label="ПДВ нараховано (з рахунків)"
+                value={fmt(data.invoiced)}
+                sub="Виставлені рахунки покупцям"
+              />
+              <StatCard
+                label="ПДВ сплачено (закупівлі)"
+                value={fmt(data.purchases)}
+                sub="Замовлення купівлі постачальникам"
+              />
+              <StatCard
+                label="Чисте зобов'язання перед ДПС"
+                value={fmt(data.net)}
+                sub={data.net >= 0 ? 'До сплати' : 'Відшкодування'}
+              />
             </div>
           </div>
         )}

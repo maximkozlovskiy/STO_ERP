@@ -393,4 +393,33 @@ export class ReportsService {
       totalDays,
     };
   }
+
+  async vatReport(orgId: string, from: string, to: string) {
+    const { fromDate, toDate } = normalizeDateRange(from, to);
+
+    const [invoicedAgg, purchasedAgg] = await Promise.all([
+      this.prisma.invoice.aggregate({
+        where: {
+          orgId,
+          deletedAt: null,
+          documentDate: { gte: fromDate, lte: toDate },
+        },
+        _sum: { totalVat: true },
+      }),
+      this.prisma.purchaseOrder.aggregate({
+        where: {
+          orgId,
+          deletedAt: null,
+          status: { notIn: ['CANCELLED'] },
+          documentDate: { gte: fromDate, lte: toDate },
+        },
+        _sum: { totalVat: true },
+      }),
+    ]);
+
+    const invoiced = Number((invoicedAgg._sum as { totalVat?: unknown }).totalVat ?? 0);
+    const purchases = Number((purchasedAgg._sum as { totalVat?: unknown }).totalVat ?? 0);
+
+    return { invoiced, purchases, net: invoiced - purchases, from, to };
+  }
 }

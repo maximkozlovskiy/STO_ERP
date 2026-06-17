@@ -9,7 +9,8 @@ export type ReportTab =
   | 'settlements'
   | 'settlements-detail'
   | 'load'
-  | 'profitability';
+  | 'profitability'
+  | 'vat';
 
 export const reportsKeys = {
   all: ['reports'] as const,

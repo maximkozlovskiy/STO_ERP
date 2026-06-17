@@ -294,6 +294,7 @@ export class WorkOrderResponseDto {
   @ApiProperty() totalActualLabor!: number;
   @ApiProperty() totalParts!: number;
   @ApiProperty() totalAmount!: number;
+  @ApiProperty() totalVat!: number;
   @ApiProperty() paidAmount!: number;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiProperty() createdAt!: Date;

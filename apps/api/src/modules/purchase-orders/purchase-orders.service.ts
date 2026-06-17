@@ -12,6 +12,8 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { PricingService } from '../inventory/pricing.service';
+import { SettingsService } from '../settings/settings.service';
+import { calcLineVat } from '../../common/utils/vat';
 import {
   CreatePurchaseOrderDto,
   UpdatePurchaseOrderDto,
@@ -42,6 +44,7 @@ export class PurchaseOrdersService {
     private readonly settlements: SettlementsService,
     private readonly docNumbers: DocumentNumberService,
     private readonly pricingService: PricingService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   async findAll(
@@ -197,7 +200,18 @@ export class PurchaseOrdersService {
     const number = await this.docNumbers.next(orgId, 'PURCHASE_ORDER');
 
     const lines = dto.lines ?? [];
-    const totalAmount = lines.reduce((s, l) => s + l.quantity * l.price, 0);
+    const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
+    const computedLines = lines.map(l => {
+      const { vatAmount } = calcLineVat(
+        l.price,
+        l.quantity,
+        vatRate,
+        vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE',
+      );
+      return { ...l, vatRate, vatAmount };
+    });
+    const totalAmount = computedLines.reduce((s, l) => s + l.quantity * l.price, 0);
+    const totalVat = computedLines.reduce((s, l) => s + l.vatAmount, 0);
 
     const po = await this.prisma.$transaction(
       async tx => {
@@ -210,17 +224,20 @@ export class PurchaseOrdersService {
             number,
             notes: dto.notes,
             totalAmount,
+            totalVat,
             documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
           },
         });
-        if (lines.length) {
+        if (computedLines.length) {
           await tx.purchaseOrderLine.createMany({
-            data: lines.map(l => ({
+            data: computedLines.map(l => ({
               orgId,
               purchaseOrderId: created.id,
               goodId: l.goodId,
               quantity: l.quantity,
               price: l.price,
+              vatRate: l.vatRate,
+              vatAmount: l.vatAmount,
             })),
           });
         }
@@ -323,25 +340,38 @@ export class PurchaseOrdersService {
           : undefined;
 
     const lines = dto.lines;
-    const totalAmount = lines
-      ? lines.reduce((s, l) => s + l.quantity * l.price, 0)
+    const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
+    const computedLines = lines?.map(l => {
+      const { vatAmount } = calcLineVat(
+        l.price,
+        l.quantity,
+        vatRate,
+        vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE',
+      );
+      return { ...l, vatRate, vatAmount };
+    });
+    const totalAmount = computedLines
+      ? computedLines.reduce((s, l) => s + l.quantity * l.price, 0)
       : Number(po.totalAmount);
+    const totalVat = computedLines ? computedLines.reduce((s, l) => s + l.vatAmount, 0) : undefined;
 
     const updated = await this.prisma.$transaction(
       async tx => {
-        if (lines !== undefined) {
+        if (computedLines !== undefined) {
           await tx.purchaseOrderLine.updateMany({
             where: { purchaseOrderId: id, orgId },
             data: { deletedAt: new Date() },
           });
-          if (lines.length) {
+          if (computedLines.length) {
             await tx.purchaseOrderLine.createMany({
-              data: lines.map(l => ({
+              data: computedLines.map(l => ({
                 orgId,
                 purchaseOrderId: id,
                 goodId: l.goodId,
                 quantity: l.quantity,
                 price: l.price,
+                vatRate: l.vatRate,
+                vatAmount: l.vatAmount,
               })),
             });
           }
@@ -354,6 +384,7 @@ export class PurchaseOrdersService {
             contractId: newContractId,
             notes: dto.notes,
             totalAmount,
+            ...(totalVat !== undefined ? { totalVat } : {}),
             documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
           },
           include: {
@@ -715,6 +746,7 @@ export class PurchaseOrdersService {
     warehouseId: string;
     contractId?: string | null;
     totalAmount: import('@prisma/client').Prisma.Decimal;
+    totalVat?: import('@prisma/client').Prisma.Decimal | null;
     notes: string | null;
     documentDate?: Date | null;
     createdAt: Date;
@@ -732,6 +764,8 @@ export class PurchaseOrdersService {
       goodId: string;
       quantity: number;
       price: import('@prisma/client').Prisma.Decimal;
+      vatRate?: import('@prisma/client').Prisma.Decimal | null;
+      vatAmount?: import('@prisma/client').Prisma.Decimal | null;
       receivedQty: number;
       unitOfMeasureId?: string | null;
       good: {
@@ -758,6 +792,7 @@ export class PurchaseOrdersService {
       contractId: po.contractId ?? null,
       contractNumber: po.contract?.number ?? null,
       totalAmount: Number(po.totalAmount),
+      totalVat: Number(po.totalVat ?? 0),
       notes: po.notes ?? null,
       documentDate: po.documentDate ? po.documentDate.toISOString().slice(0, 10) : null,
       linesCount: po._count?.lines ?? po.lines?.length ?? 0,
@@ -775,6 +810,8 @@ export class PurchaseOrdersService {
         quantity: l.quantity,
         price: Number(l.price),
         amount: l.quantity * Number(l.price),
+        vatRate: Number(l.vatRate ?? 0),
+        vatAmount: Number(l.vatAmount ?? 0),
         receivedQty: l.receivedQty,
         unitOfMeasureId: l.unitOfMeasureId ?? null,
       })),

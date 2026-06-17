@@ -450,6 +450,21 @@ export class SettingsService {
     return { message: 'Лічильник скинуто' };
   }
 
+  async getDefaultVatRate(orgId: string): Promise<{ vatMode: string; vatRate: number }> {
+    const settings = await this.getOrganisationSettings(orgId);
+    if (settings.vatMode === 'NONE') return { vatMode: 'NONE', vatRate: 0 };
+    const taxRate = settings.defaultVatRateId
+      ? await this.prisma.taxRate.findFirst({
+          where: { id: settings.defaultVatRateId, orgId },
+          select: { rate: true },
+        })
+      : await this.prisma.taxRate.findFirst({
+          where: { orgId, isDefault: true, isActive: true },
+          select: { rate: true },
+        });
+    return { vatMode: settings.vatMode, vatRate: Number(taxRate?.rate ?? 0) };
+  }
+
   async getTaxRates(orgId: string) {
     const rates = await this.prisma.taxRate.findMany({
       where: { orgId },

@@ -13,6 +13,7 @@ export interface WorkOrder {
   totalActualLabor: number;
   totalParts: number;
   totalAmount: number;
+  totalVat: number;
   paidAmount: number;
   counterpartyId: string;
   counterpartyName?: string;
