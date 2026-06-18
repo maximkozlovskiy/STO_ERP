@@ -14,6 +14,7 @@ import {
   Trash2,
   Pencil,
   Check,
+  X,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -35,6 +36,8 @@ import {
   CounterpartyEditModal,
   type CounterpartyForModal,
 } from '@/components/ui/CounterpartyEditModal';
+import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
+import type { CategoryNode } from '@/components/ui/category-tree';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -190,6 +193,25 @@ export function PurchaseOrderCreateModal({
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
   const [supplierDetailData, setSupplierDetailData] = useState<CounterpartyForModal | null>(null);
+  const [goodDetailOpen, setGoodDetailOpen] = useState(false);
+  const [goodDetailData, setGoodDetailData] = useState<GoodForModal | null>(null);
+  const [goodRefData, setGoodRefData] = useState<{
+    brands: { id: string; name: string }[];
+    units: {
+      id: string;
+      name: string;
+      shortName: string;
+      isSystem: boolean;
+      coefficient: number;
+    }[];
+    suppliers: {
+      id: string;
+      firstName: string | null;
+      lastName: string | null;
+      companyName: string | null;
+    }[];
+    goodCatTree: CategoryNode[];
+  }>({ brands: [], units: [], suppliers: [], goodCatTree: [] });
   const [units, setUnits] = useState<{ id: string; name: string; shortName: string }[]>([]);
 
   const savingRef = useRef(false);
@@ -372,6 +394,59 @@ export function PurchaseOrderCreateModal({
       /* ignore */
     }
   }, [form.supplierId]);
+
+  const openGoodDetail = useCallback(async (goodId: string) => {
+    if (!goodId) return;
+    type Brand = { id: string; name: string };
+    type UnitRef = {
+      id: string;
+      name: string;
+      shortName: string;
+      isSystem: boolean;
+      coefficient: number;
+    };
+    type SupplierRef = {
+      id: string;
+      firstName: string | null;
+      lastName: string | null;
+      companyName: string | null;
+    };
+    try {
+      const [good, brandsRes, unitsRes, suppliersRes, goodCatsRes] = await Promise.all([
+        apiFetch<GoodForModal>(`/goods/${goodId}`),
+        Promise.resolve(getCached<Brand[]>('cache:brands')).then(
+          c =>
+            c ??
+            apiFetch<{ items: Brand[] }>('/brands?limit=200')
+              .then(r => r.items)
+              .catch(() => [] as Brand[]),
+        ),
+        Promise.resolve(getCached<UnitRef[]>('cache:units')).then(
+          c => c ?? apiFetch<UnitRef[]>('/units').catch(() => [] as UnitRef[]),
+        ),
+        Promise.resolve(getCached<SupplierRef[]>('cache:suppliers')).then(
+          c =>
+            c ??
+            apiFetch<{ items: SupplierRef[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200')
+              .then(r => r.items)
+              .catch(() => [] as SupplierRef[]),
+        ),
+        Promise.resolve(getCached<CategoryNode[]>('cache:good-categories')).then(
+          c => c ?? apiFetch<CategoryNode[]>('/good-categories').catch(() => [] as CategoryNode[]),
+        ),
+      ]);
+      setGoodDetailData(good);
+      setGoodRefData({
+        brands: brandsRes,
+        units: unitsRes,
+        suppliers: suppliersRes,
+        goodCatTree: goodCatsRes,
+      });
+      setGoodDetailOpen(true);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // ── Good picker ───────────────────────────────────────────────────────────
 
@@ -1043,7 +1118,7 @@ export function PurchaseOrderCreateModal({
                         <td className="px-1 py-1.5">
                           <input
                             type="number"
-                            min="0.001"
+                            min="0"
                             step="1"
                             value={editingLine.quantity}
                             onChange={e =>
@@ -1121,7 +1196,7 @@ export function PurchaseOrderCreateModal({
                               title="Скасувати"
                               className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <X className="h-3.5 w-3.5" />
                             </button>
                           </div>
                         </td>
@@ -1165,13 +1240,14 @@ export function PurchaseOrderCreateModal({
                             (parseFloat(line.quantity) || 0) * (parseFloat(line.price) || 0)
                           ).toFixed(2)}
                         </td>
-                        <td className="px-2 py-2">
+                        <td className="px-1.5 py-2">
                           {canEdit && (
-                            <div className="flex flex-row gap-1 items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-all">
+                            <div className="flex flex-row gap-2 items-center">
                               <button
                                 type="button"
                                 onClick={() => startEdit(line)}
                                 aria-label="Редагувати позицію"
+                                title="Редагувати"
                                 className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                               >
                                 <Pencil className="h-3 w-3" />
@@ -1180,6 +1256,7 @@ export function PurchaseOrderCreateModal({
                                 type="button"
                                 onClick={() => removeLine(line._key)}
                                 aria-label="Видалити позицію"
+                                title="Видалити"
                                 className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                               >
                                 <Trash2 className="h-3 w-3" />
@@ -1201,6 +1278,9 @@ export function PurchaseOrderCreateModal({
                           ariaLabel="Товар"
                           onPick={() => setGoodSearchOpen(true)}
                           onSearch={fetchGoodItems}
+                          onOpenDetail={
+                            newLine.goodId ? () => openGoodDetail(newLine.goodId) : undefined
+                          }
                           onSearchSelect={g => {
                             setNewLine(l => ({
                               ...l,
@@ -1217,7 +1297,7 @@ export function PurchaseOrderCreateModal({
                       <td className="px-1 py-1.5">
                         <input
                           type="number"
-                          min="0.001"
+                          min="0"
                           step="1"
                           value={newLine.quantity}
                           onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
@@ -1365,6 +1445,18 @@ export function PurchaseOrderCreateModal({
               supplierDisplay,
           );
         }}
+      />
+
+      {/* Good detail modal */}
+      <GoodEditModal
+        open={goodDetailOpen}
+        good={goodDetailData}
+        onClose={() => setGoodDetailOpen(false)}
+        onSaved={updated => setGoodDetailData(updated)}
+        brands={goodRefData.brands}
+        units={goodRefData.units}
+        suppliers={goodRefData.suppliers}
+        goodCatTree={goodRefData.goodCatTree}
       />
 
       {/* Good picker for new line */}
