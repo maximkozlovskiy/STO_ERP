@@ -2078,48 +2078,65 @@ export function CreateWorkOrderModal({
                   <div className="space-y-4 pb-1">
                     {/* Рядок 2: Філія | Підйомник | Пріоритет */}
                     <div className="grid grid-cols-3 gap-4">
-                      <Select
-                        label="Філія"
-                        required
-                        value={form.branchId}
-                        onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-                        disabled={!canEdit || isEditMode || branches.length === 1}
-                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                      >
-                        {branches.length !== 1 && <option value="">— Оберіть —</option>}
-                        {branches.map(b => (
-                          <option key={b.id} value={b.id}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </Select>
-                      <Select
-                        label="Підйомник"
-                        value={form.liftId}
-                        onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
-                        disabled={!canEdit}
-                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                      >
-                        <option value="">— Без підйомника —</option>
-                        {lifts.map(l => (
-                          <option key={l.id} value={l.id}>
-                            {l.name}
-                          </option>
-                        ))}
-                      </Select>
-                      <Select
-                        label="Пріоритет"
-                        value={form.priority}
-                        onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
-                        disabled={!canEdit}
-                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                      >
-                        {Object.entries(WO_PRIORITY_LABELS).map(([k, v]) => (
-                          <option key={k} value={k}>
-                            {v}
-                          </option>
-                        ))}
-                      </Select>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                          Філія <span className="text-destructive">*</span>
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={form.branchId}
+                            onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+                            disabled={!canEdit || isEditMode || branches.length === 1}
+                            className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                          >
+                            {branches.length !== 1 && <option value="">— Оберіть —</option>}
+                            {branches.map(b => (
+                              <option key={b.id} value={b.id}>
+                                {b.name}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                          Підйомник
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={form.liftId}
+                            onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+                            disabled={!canEdit}
+                            className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                          >
+                            <option value="">— Без підйомника —</option>
+                            {lifts.map(l => (
+                              <option key={l.id} value={l.id}>
+                                {l.name}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                          Пріоритет
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={form.priority}
+                            onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
+                            disabled={!canEdit}
+                            className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                          >
+                            {Object.entries(WO_PRIORITY_LABELS).map(([k, v]) => (
+                              <option key={k} value={k}>
+                                {v}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Планові та фактичні показники */}
@@ -2210,11 +2227,11 @@ export function CreateWorkOrderModal({
 
                     {/* Клієнт | Договір / Автомобіль | Категорія */}
                     <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[13px] font-medium text-foreground mb-1">
-                            Клієнт <span className="text-destructive">*</span>
-                          </label>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                          Клієнт <span className="text-destructive">*</span>
+                        </span>
+                        <div className="flex-1 min-w-0">
                           <EntityPickerField<HeaderCpItem>
                             display={counterpartyDisplayName}
                             className="h-8 text-[13px]"
@@ -2251,66 +2268,85 @@ export function CreateWorkOrderModal({
                             hidePick={false}
                           />
                         </div>
-                        <Select
-                          label="Договір"
-                          value={form.contractId}
-                          onChange={e => setForm(f => ({ ...f, contractId: e.target.value }))}
-                          disabled={!canEdit || !form.counterpartyId || contracts.length === 0}
-                          className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                        >
-                          <option value="">— Без договору —</option>
-                          {contracts.map(c => (
-                            <option key={c.id} value={c.id}>
-                              {c.number ? `${c.number} — ` : ''}
-                              {c.title}
-                            </option>
-                          ))}
-                        </Select>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <Select
-                          label="Автомобіль"
-                          required
-                          value={form.vehicleId}
-                          onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-                          disabled={!canEdit || !form.counterpartyId}
-                          className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                        >
-                          <option value="">— Оберіть —</option>
-                          {vehicles.map(v => (
-                            <option key={v.id} value={v.id}>
-                              {v.make} {v.model}
-                              {v.licensePlate ? ` (${v.licensePlate})` : ''}
-                            </option>
-                          ))}
-                        </Select>
-                        <Select
-                          label="Категорія ремонту"
-                          value={form.repairCategory}
-                          onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
-                          disabled={!canEdit}
-                          className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                        >
-                          <option value="">— Не вказано —</option>
-                          {Object.entries(WO_CATEGORY_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>
-                              {v}
-                            </option>
-                          ))}
-                        </Select>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                          Договір
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={form.contractId}
+                            onChange={e => setForm(f => ({ ...f, contractId: e.target.value }))}
+                            disabled={!canEdit || !form.counterpartyId || contracts.length === 0}
+                            className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                          >
+                            <option value="">— Без договору —</option>
+                            {contracts.map(c => (
+                              <option key={c.id} value={c.id}>
+                                {c.number ? `${c.number} — ` : ''}
+                                {c.title}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                          Автомобіль <span className="text-destructive">*</span>
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={form.vehicleId}
+                            onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+                            disabled={!canEdit || !form.counterpartyId}
+                            className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                          >
+                            <option value="">— Оберіть —</option>
+                            {vehicles.map(v => (
+                              <option key={v.id} value={v.id}>
+                                {v.make} {v.model}
+                                {v.licensePlate ? ` (${v.licensePlate})` : ''}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                          Категорія ремонту
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={form.repairCategory}
+                            onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
+                            disabled={!canEdit}
+                            className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                          >
+                            <option value="">— Не вказано —</option>
+                            {Object.entries(WO_CATEGORY_LABELS).map(([k, v]) => (
+                              <option key={k} value={k}>
+                                {v}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
                       </div>
                     </div>
 
                     {/* Секція: Опис */}
-                    <div>
-                      <Input
-                        label="Опис"
-                        value={form.description}
-                        onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                        disabled={!canEdit}
-                        placeholder="Заміна масла, колодок..."
-                        className="h-8 text-[13px]"
-                      />
+                    <div className="flex items-center gap-3">
+                      <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                        Опис
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <Input
+                          value={form.description}
+                          onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                          disabled={!canEdit}
+                          placeholder="Заміна масла, колодок..."
+                          className="h-8 text-[13px]"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

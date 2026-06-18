@@ -965,12 +965,12 @@ export function PurchaseOrderCreateModal({
                   </div>
                 )}
 
-                {/* Рядок 2: Постачальник | Склад */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[13px] font-medium text-foreground mb-1">
-                      Постачальник <span className="text-destructive">*</span>
-                    </label>
+                {/* Рядок 2: Постачальник */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Постачальник <span className="text-destructive">*</span>
+                  </span>
+                  <div className="flex-1 min-w-0">
                     <EntityPickerField<SupplierItem>
                       display={supplierDisplay}
                       placeholder="Пошук постачальника…"
@@ -994,44 +994,61 @@ export function PurchaseOrderCreateModal({
                       }}
                     />
                   </div>
-                  <Select
-                    label="Склад"
-                    required
-                    value={form.warehouseId}
-                    onChange={e => setForm(f => ({ ...f, warehouseId: e.target.value }))}
-                    disabled={!canEdit}
-                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                  >
-                    <option value="">— Оберіть —</option>
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </Select>
                 </div>
 
-                {/* Рядок 3: Договір */}
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Договір"
-                    value={contractNumber ?? ''}
-                    disabled
-                    readOnly
-                    placeholder="— автоматично —"
-                    className="h-8 text-[13px]"
-                  />
+                {/* Рядок 3: Склад */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Склад <span className="text-destructive">*</span>
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <Select
+                      value={form.warehouseId}
+                      onChange={e => setForm(f => ({ ...f, warehouseId: e.target.value }))}
+                      disabled={!canEdit}
+                      className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                    >
+                      <option value="">— Оберіть —</option>
+                      {warehouses.map(w => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
                 </div>
 
-                {/* Рядок 4: Опис */}
-                <Input
-                  label="Опис"
-                  value={form.notes}
-                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                  disabled={!canEdit}
-                  placeholder="Додаткова інформація…"
-                  className="h-8 text-[13px]"
-                />
+                {/* Рядок 4: Договір */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Договір
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <Input
+                      value={contractNumber ?? ''}
+                      disabled
+                      readOnly
+                      placeholder="— автоматично —"
+                      className="h-8 text-[13px]"
+                    />
+                  </div>
+                </div>
+
+                {/* Рядок 5: Опис */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Опис
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <Input
+                      value={form.notes}
+                      onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                      disabled={!canEdit}
+                      placeholder="Додаткова інформація…"
+                      className="h-8 text-[13px]"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

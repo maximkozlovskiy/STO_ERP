@@ -719,12 +719,12 @@ export function InvoiceCreateModal({
                   </div>
                 )}
 
-                {/* Рядок 2: Контрагент | Тип */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[13px] font-medium text-foreground mb-1">
-                      Контрагент {!isEditMode && <span className="text-destructive">*</span>}
-                    </label>
+                {/* Рядок 2: Контрагент */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Контрагент {!isEditMode && <span className="text-destructive">*</span>}
+                  </span>
+                  <div className="flex-1 min-w-0">
                     <EntityPickerField<CpItem>
                       display={counterpartyDisplay}
                       placeholder="Пошук контрагента…"
@@ -742,49 +742,73 @@ export function InvoiceCreateModal({
                       }}
                     />
                   </div>
-                  <Select
-                    label="Тип рахунку"
-                    value={form.invoiceType}
-                    onChange={e => setForm(f => ({ ...f, invoiceType: e.target.value }))}
-                    disabled={!canEdit}
-                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                  >
-                    {Object.entries(INVOICE_TYPE_LABELS).map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    ))}
-                  </Select>
                 </div>
 
-                {/* Рядок 3: Термін оплати | Примітки */}
-                <div className="grid grid-cols-2 gap-4">
-                  <DatePickerInput
-                    label="Термін оплати"
-                    value={form.dueDate}
-                    onChange={v => setForm(f => ({ ...f, dueDate: v }))}
-                    disabled={!canEdit}
-                  />
-                  <Input
-                    label="Примітки"
-                    value={form.notes}
-                    onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                    disabled={!canEdit}
-                    placeholder="Додаткова інформація…"
-                    className="h-8 text-[13px]"
-                  />
+                {/* Рядок 3: Тип рахунку */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Тип рахунку
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <Select
+                      value={form.invoiceType}
+                      onChange={e => setForm(f => ({ ...f, invoiceType: e.target.value }))}
+                      disabled={!canEdit}
+                      className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                    >
+                      {Object.entries(INVOICE_TYPE_LABELS).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
                 </div>
 
-                {/* Рядок 4: Наряд (тільки в edit mode якщо прив'язаний) */}
-                {isEditMode && workOrderNumber && (
-                  <div className="grid grid-cols-2 gap-4">
+                {/* Рядок 4: Термін оплати */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Термін оплати
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <DatePickerInput
+                      value={form.dueDate}
+                      onChange={v => setForm(f => ({ ...f, dueDate: v }))}
+                      disabled={!canEdit}
+                    />
+                  </div>
+                </div>
+
+                {/* Рядок 5: Примітки */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Примітки
+                  </span>
+                  <div className="flex-1 min-w-0">
                     <Input
-                      label="Наряд"
-                      value={workOrderNumber}
-                      disabled
-                      readOnly
+                      value={form.notes}
+                      onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                      disabled={!canEdit}
+                      placeholder="Додаткова інформація…"
                       className="h-8 text-[13px]"
                     />
+                  </div>
+                </div>
+
+                {/* Рядок 6: Наряд (тільки в edit mode якщо прив'язаний) */}
+                {isEditMode && workOrderNumber && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                      Наряд
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <Input
+                        value={workOrderNumber}
+                        disabled
+                        readOnly
+                        className="h-8 text-[13px]"
+                      />
+                    </div>
                   </div>
                 )}
               </div>

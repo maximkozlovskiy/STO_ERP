@@ -406,148 +406,216 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             {error}
           </div>
         )}
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Ім'я"
-              required
-              value={form.firstName}
-              onChange={e => {
-                setForm(f => ({ ...f, firstName: e.target.value }));
-                dirty.markDirty();
-              }}
-              placeholder="Іван"
-            />
-            <Input
-              label="Прізвище"
-              required
-              value={form.lastName}
-              onChange={e => {
-                setForm(f => ({ ...f, lastName: e.target.value }));
-                dirty.markDirty();
-              }}
-              placeholder="Коваль"
-            />
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                Ім'я <span className="text-destructive">*</span>
+              </span>
+              <div className="flex-1 min-w-0">
+                <Input
+                  value={form.firstName}
+                  onChange={e => {
+                    setForm(f => ({ ...f, firstName: e.target.value }));
+                    dirty.markDirty();
+                  }}
+                  placeholder="Іван"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                Прізвище <span className="text-destructive">*</span>
+              </span>
+              <div className="flex-1 min-w-0">
+                <Input
+                  value={form.lastName}
+                  onChange={e => {
+                    setForm(f => ({ ...f, lastName: e.target.value }));
+                    dirty.markDirty();
+                  }}
+                  placeholder="Коваль"
+                />
+              </div>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Посада"
-              required
-              value={form.role}
-              onChange={e => {
-                setForm(f => ({ ...f, role: e.target.value }));
-                dirty.markDirty();
-              }}
-            >
-              {Object.entries(ROLE_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Статус"
-              value={form.status}
-              onChange={e => {
-                setForm(f => ({ ...f, status: e.target.value }));
-                dirty.markDirty();
-              }}
-            >
-              {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </Select>
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                Посада <span className="text-destructive">*</span>
+              </span>
+              <div className="flex-1 min-w-0">
+                <Select
+                  value={form.role}
+                  onChange={e => {
+                    setForm(f => ({ ...f, role: e.target.value }));
+                    dirty.markDirty();
+                  }}
+                >
+                  {Object.entries(ROLE_LABELS).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                Статус
+              </span>
+              <div className="flex-1 min-w-0">
+                <Select
+                  value={form.status}
+                  onChange={e => {
+                    setForm(f => ({ ...f, status: e.target.value }));
+                    dirty.markDirty();
+                  }}
+                >
+                  {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <PhoneInput
-              label="Телефон"
-              value={form.phone}
-              onChange={e => {
-                setForm(f => ({ ...f, phone: e.target.value }));
-                dirty.markDirty();
-              }}
-            />
-            <Input
-              label="Email"
-              value={form.email}
-              onChange={e => {
-                setForm(f => ({ ...f, email: e.target.value }));
-                dirty.markDirty();
-              }}
-              placeholder="ivan@example.com"
-            />
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                Телефон
+              </span>
+              <div className="flex-1 min-w-0">
+                <PhoneInput
+                  value={form.phone}
+                  onChange={e => {
+                    setForm(f => ({ ...f, phone: e.target.value }));
+                    dirty.markDirty();
+                  }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                Email
+              </span>
+              <div className="flex-1 min-w-0">
+                <Input
+                  value={form.email}
+                  onChange={e => {
+                    setForm(f => ({ ...f, email: e.target.value }));
+                    dirty.markDirty();
+                  }}
+                  placeholder="ivan@example.com"
+                />
+              </div>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <DatePickerInput
-              label="Дата прийому"
-              value={form.dateOfHire}
-              onChange={v => {
-                setForm(f => ({ ...f, dateOfHire: v }));
-                dirty.markDirty();
-              }}
-            />
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                Дата прийому
+              </span>
+              <div className="flex-1 min-w-0">
+                <DatePickerInput
+                  value={form.dateOfHire}
+                  onChange={v => {
+                    setForm(f => ({ ...f, dateOfHire: v }));
+                    dirty.markDirty();
+                  }}
+                />
+              </div>
+            </div>
             {isEdit && (
-              <DatePickerInput
-                label="Дата звільнення"
-                value={form.dateOfFire}
-                onChange={v => {
-                  setForm(f => ({ ...f, dateOfFire: v }));
-                  dirty.markDirty();
-                }}
-              />
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                  Дата звільнення
+                </span>
+                <div className="flex-1 min-w-0">
+                  <DatePickerInput
+                    value={form.dateOfFire}
+                    onChange={v => {
+                      setForm(f => ({ ...f, dateOfFire: v }));
+                      dirty.markDirty();
+                    }}
+                  />
+                </div>
+              </div>
             )}
           </div>
-          <Select
-            label="Схема нарахування"
-            required
-            value={form.rateType}
-            onChange={e => {
-              setForm(f => ({ ...f, rateType: e.target.value }));
-              dirty.markDirty();
-            }}
-          >
-            {Object.entries(RATE_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </Select>
+          <div className="flex items-center gap-3">
+            <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+              Схема нарахування <span className="text-destructive">*</span>
+            </span>
+            <div className="flex-1 min-w-0">
+              <Select
+                value={form.rateType}
+                onChange={e => {
+                  setForm(f => ({ ...f, rateType: e.target.value }));
+                  dirty.markDirty();
+                }}
+              >
+                {Object.entries(RATE_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
           {form.rateType === 'percent_normo' && (
-            <Input
-              label="Відсоток, %"
-              type="number"
-              min="0"
-              value={form.percent}
-              onChange={e => {
-                setForm(f => ({ ...f, percent: e.target.value }));
-                dirty.markDirty();
-              }}
-            />
+            <div className="flex items-center gap-3">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                Відсоток, %
+              </span>
+              <div className="flex-1 min-w-0">
+                <Input
+                  type="number"
+                  min="0"
+                  value={form.percent}
+                  onChange={e => {
+                    setForm(f => ({ ...f, percent: e.target.value }));
+                    dirty.markDirty();
+                  }}
+                />
+              </div>
+            </div>
           )}
           {form.rateType === 'fixed_plus_bonus' && (
             <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Ставка, грн/міс"
-                type="number"
-                min="0"
-                value={form.fixedMonthly}
-                onChange={e => {
-                  setForm(f => ({ ...f, fixedMonthly: e.target.value }));
-                  dirty.markDirty();
-                }}
-              />
-              <Input
-                label="Бонус, %"
-                type="number"
-                min="0"
-                value={form.bonusPercent}
-                onChange={e => {
-                  setForm(f => ({ ...f, bonusPercent: e.target.value }));
-                  dirty.markDirty();
-                }}
-              />
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                  Ставка, грн/міс
+                </span>
+                <div className="flex-1 min-w-0">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.fixedMonthly}
+                    onChange={e => {
+                      setForm(f => ({ ...f, fixedMonthly: e.target.value }));
+                      dirty.markDirty();
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                  Бонус, %
+                </span>
+                <div className="flex-1 min-w-0">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.bonusPercent}
+                    onChange={e => {
+                      setForm(f => ({ ...f, bonusPercent: e.target.value }));
+                      dirty.markDirty();
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -570,29 +638,39 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
               </span>
             </label>
             {form.grantAccess && (
-              <div className="grid grid-cols-2 gap-3 px-4 pb-4 border-t border-border pt-3">
-                <Input
-                  label="Email для входу (логін)"
-                  required
-                  type="email"
-                  value={form.loginEmail}
-                  onChange={e => {
-                    setForm(f => ({ ...f, loginEmail: e.target.value }));
-                    dirty.markDirty();
-                  }}
-                  placeholder="ivan@sto.local"
-                />
-                <Input
-                  label="Пароль"
-                  required
-                  type="password"
-                  value={form.password}
-                  onChange={e => {
-                    setForm(f => ({ ...f, password: e.target.value }));
-                    dirty.markDirty();
-                  }}
-                  placeholder="Мін. 6 символів"
-                />
+              <div className="space-y-3 px-4 pb-4 border-t border-border pt-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Email (логін) <span className="text-destructive">*</span>
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <Input
+                      type="email"
+                      value={form.loginEmail}
+                      onChange={e => {
+                        setForm(f => ({ ...f, loginEmail: e.target.value }));
+                        dirty.markDirty();
+                      }}
+                      placeholder="ivan@sto.local"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Пароль <span className="text-destructive">*</span>
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <Input
+                      type="password"
+                      value={form.password}
+                      onChange={e => {
+                        setForm(f => ({ ...f, password: e.target.value }));
+                        dirty.markDirty();
+                      }}
+                      placeholder="Мін. 6 символів"
+                    />
+                  </div>
+                </div>
               </div>
             )}
           </div>

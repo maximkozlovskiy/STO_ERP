@@ -760,88 +760,112 @@ export function StockDocumentCreateModal({
                   </div>
                 )}
 
-                {/* Рядок 2: Тип документа | Філія */}
-                <div className="grid grid-cols-2 gap-4">
-                  <Select
-                    label="Тип документа"
-                    required
-                    value={form.type}
-                    onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-                    disabled={!canEdit || isEditMode}
-                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                  >
-                    {Object.entries(STOCK_DOC_TYPE_LABELS).map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    ))}
-                  </Select>
-                  <Select
-                    label="Філія"
-                    required
-                    value={form.branchId}
-                    onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-                    disabled={!canEdit || isEditMode}
-                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                  >
-                    <option value="">— Оберіть —</option>
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </Select>
+                {/* Рядок 2: Тип документа */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Тип документа <span className="text-destructive">*</span>
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <Select
+                      value={form.type}
+                      onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+                      disabled={!canEdit || isEditMode}
+                      className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                    >
+                      {Object.entries(STOCK_DOC_TYPE_LABELS).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
                 </div>
 
-                {/* Рядок 3: Склад | Склад призначення (тільки для TRANSFER) */}
-                <div className={cn('grid gap-4', isTransfer ? 'grid-cols-2' : 'grid-cols-2')}>
-                  <Select
-                    label={warehouseLabel}
-                    required
-                    value={form.warehouseId}
-                    onChange={e => setForm(f => ({ ...f, warehouseId: e.target.value }))}
-                    disabled={!canEdit || isEditMode}
-                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                  >
-                    <option value="">— Оберіть —</option>
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </Select>
-                  {isTransfer ? (
+                {/* Рядок 3: Філія */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Філія <span className="text-destructive">*</span>
+                  </span>
+                  <div className="flex-1 min-w-0">
                     <Select
-                      label="Склад призначення"
-                      required
-                      value={form.targetWarehouseId}
-                      onChange={e => setForm(f => ({ ...f, targetWarehouseId: e.target.value }))}
+                      value={form.branchId}
+                      onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
                       disabled={!canEdit || isEditMode}
                       className="h-8 text-[13px] py-0.5 px-2 pr-7"
                     >
                       <option value="">— Оберіть —</option>
-                      {warehouses
-                        .filter(w => w.id !== form.warehouseId)
-                        .map(w => (
-                          <option key={w.id} value={w.id}>
-                            {w.name}
-                          </option>
-                        ))}
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
                     </Select>
-                  ) : (
-                    <div />
-                  )}
+                  </div>
                 </div>
 
-                {/* Рядок 4: Примітки */}
-                <Input
-                  label="Примітки"
-                  value={form.notes}
-                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                  disabled={!canEdit}
-                  placeholder="Додаткова інформація…"
-                  className="h-8 text-[13px]"
-                />
+                {/* Рядок 4: Склад */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    {warehouseLabel} <span className="text-destructive">*</span>
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <Select
+                      value={form.warehouseId}
+                      onChange={e => setForm(f => ({ ...f, warehouseId: e.target.value }))}
+                      disabled={!canEdit || isEditMode}
+                      className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                    >
+                      <option value="">— Оберіть —</option>
+                      {warehouses.map(w => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Рядок 5: Склад призначення (тільки для TRANSFER) */}
+                {isTransfer && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                      Склад призначення <span className="text-destructive">*</span>
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <Select
+                        value={form.targetWarehouseId}
+                        onChange={e => setForm(f => ({ ...f, targetWarehouseId: e.target.value }))}
+                        disabled={!canEdit || isEditMode}
+                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                      >
+                        <option value="">— Оберіть —</option>
+                        {warehouses
+                          .filter(w => w.id !== form.warehouseId)
+                          .map(w => (
+                            <option key={w.id} value={w.id}>
+                              {w.name}
+                            </option>
+                          ))}
+                      </Select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Рядок 6: Примітки */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                    Примітки
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <Input
+                      value={form.notes}
+                      onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                      disabled={!canEdit}
+                      placeholder="Додаткова інформація…"
+                      className="h-8 text-[13px]"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -528,98 +528,151 @@ export function CounterpartyEditModal({
                 {error}
               </div>
             )}
-            <div className="space-y-4">
-              <Select
-                label="Тип"
-                required
-                value={form.type}
-                onChange={e => {
-                  setForm(f => ({ ...f, type: e.target.value }));
-                  dirty.markDirty();
-                }}
-              >
-                {Object.entries(TYPE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </Select>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                  Тип <span className="text-destructive">*</span>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <Select
+                    value={form.type}
+                    onChange={e => {
+                      setForm(f => ({ ...f, type: e.target.value }));
+                      dirty.markDirty();
+                    }}
+                  >
+                    {Object.entries(TYPE_LABELS).map(([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
 
               {form.type !== 'SUPPLIER' && (
                 <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Ім'я"
-                    value={form.firstName}
-                    onChange={e => {
-                      setForm(f => ({ ...f, firstName: e.target.value }));
-                      dirty.markDirty();
-                    }}
-                    placeholder="Іван"
-                  />
-                  <Input
-                    label="Прізвище"
-                    value={form.lastName}
-                    onChange={e => {
-                      setForm(f => ({ ...f, lastName: e.target.value }));
-                      dirty.markDirty();
-                    }}
-                    placeholder="Коваль"
-                  />
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                      Ім'я
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <Input
+                        value={form.firstName}
+                        onChange={e => {
+                          setForm(f => ({ ...f, firstName: e.target.value }));
+                          dirty.markDirty();
+                        }}
+                        placeholder="Іван"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                      Прізвище
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <Input
+                        value={form.lastName}
+                        onChange={e => {
+                          setForm(f => ({ ...f, lastName: e.target.value }));
+                          dirty.markDirty();
+                        }}
+                        placeholder="Коваль"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 
-              <Input
-                label="Назва компанії"
-                value={form.companyName}
-                onChange={e => {
-                  setForm(f => ({ ...f, companyName: e.target.value }));
-                  dirty.markDirty();
-                }}
-                placeholder="ТОВ «Авто»"
-              />
-              <PhoneInput
-                label="Телефон"
-                value={form.phone}
-                onChange={e => {
-                  setForm(f => ({ ...f, phone: e.target.value }));
-                  dirty.markDirty();
-                }}
-              />
-              <Input
-                label="Email"
-                type="email"
-                value={form.email}
-                onChange={e => {
-                  setForm(f => ({ ...f, email: e.target.value }));
-                  dirty.markDirty();
-                }}
-              />
-              <Input
-                label="ЄДРПОУ"
-                value={form.edrpou}
-                onChange={e => {
-                  setForm(f => ({ ...f, edrpou: e.target.value }));
-                  dirty.markDirty();
-                }}
-                placeholder="12345678"
-              />
-              <Input
-                label="Контактна особа"
-                value={form.contactPerson}
-                onChange={e => {
-                  setForm(f => ({ ...f, contactPerson: e.target.value }));
-                  dirty.markDirty();
-                }}
-                placeholder="Петро Іваненко"
-              />
-              <Input
-                label="Нотатки"
-                value={form.notes}
-                onChange={e => {
-                  setForm(f => ({ ...f, notes: e.target.value }));
-                  dirty.markDirty();
-                }}
-              />
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                  Назва компанії
+                </span>
+                <div className="flex-1 min-w-0">
+                  <Input
+                    value={form.companyName}
+                    onChange={e => {
+                      setForm(f => ({ ...f, companyName: e.target.value }));
+                      dirty.markDirty();
+                    }}
+                    placeholder="ТОВ «Авто»"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                  Телефон
+                </span>
+                <div className="flex-1 min-w-0">
+                  <PhoneInput
+                    value={form.phone}
+                    onChange={e => {
+                      setForm(f => ({ ...f, phone: e.target.value }));
+                      dirty.markDirty();
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                  Email
+                </span>
+                <div className="flex-1 min-w-0">
+                  <Input
+                    type="email"
+                    value={form.email}
+                    onChange={e => {
+                      setForm(f => ({ ...f, email: e.target.value }));
+                      dirty.markDirty();
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                  ЄДРПОУ
+                </span>
+                <div className="flex-1 min-w-0">
+                  <Input
+                    value={form.edrpou}
+                    onChange={e => {
+                      setForm(f => ({ ...f, edrpou: e.target.value }));
+                      dirty.markDirty();
+                    }}
+                    placeholder="12345678"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                  Контактна особа
+                </span>
+                <div className="flex-1 min-w-0">
+                  <Input
+                    value={form.contactPerson}
+                    onChange={e => {
+                      setForm(f => ({ ...f, contactPerson: e.target.value }));
+                      dirty.markDirty();
+                    }}
+                    placeholder="Петро Іваненко"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
+                  Нотатки
+                </span>
+                <div className="flex-1 min-w-0">
+                  <Input
+                    value={form.notes}
+                    onChange={e => {
+                      setForm(f => ({ ...f, notes: e.target.value }));
+                      dirty.markDirty();
+                    }}
+                  />
+                </div>
+              </div>
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -673,43 +726,73 @@ export function CounterpartyEditModal({
                 {showAddVehicle && (
                   <AnimatedBody className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
                     <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        label="Марка"
-                        required
-                        value={addVehicleForm.make}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, make: e.target.value }))}
-                        placeholder="Toyota"
-                      />
-                      <Input
-                        label="Модель"
-                        required
-                        value={addVehicleForm.model}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, model: e.target.value }))}
-                        placeholder="Camry"
-                      />
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                          Марка <span className="text-destructive">*</span>
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <Input
+                            value={addVehicleForm.make}
+                            onChange={e => setAddVehicleForm(f => ({ ...f, make: e.target.value }))}
+                            placeholder="Toyota"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                          Модель <span className="text-destructive">*</span>
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <Input
+                            value={addVehicleForm.model}
+                            onChange={e =>
+                              setAddVehicleForm(f => ({ ...f, model: e.target.value }))
+                            }
+                            placeholder="Camry"
+                          />
+                        </div>
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
-                      <Input
-                        label="Рік"
-                        type="number"
-                        value={addVehicleForm.year}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, year: e.target.value }))}
-                        placeholder="2020"
-                      />
-                      <Input
-                        label="Держномер"
-                        value={addVehicleForm.licensePlate}
-                        onChange={e =>
-                          setAddVehicleForm(f => ({ ...f, licensePlate: e.target.value }))
-                        }
-                        placeholder="АА 1234 ВС"
-                      />
-                      <Input
-                        label="VIN"
-                        value={addVehicleForm.vin}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, vin: e.target.value }))}
-                        placeholder="WVWZZZ1JZXW000001"
-                      />
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                          Рік
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <Input
+                            type="number"
+                            value={addVehicleForm.year}
+                            onChange={e => setAddVehicleForm(f => ({ ...f, year: e.target.value }))}
+                            placeholder="2020"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                          Держномер
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <Input
+                            value={addVehicleForm.licensePlate}
+                            onChange={e =>
+                              setAddVehicleForm(f => ({ ...f, licensePlate: e.target.value }))
+                            }
+                            placeholder="АА 1234 ВС"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
+                          VIN
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <Input
+                            value={addVehicleForm.vin}
+                            onChange={e => setAddVehicleForm(f => ({ ...f, vin: e.target.value }))}
+                            placeholder="WVWZZZ1JZXW000001"
+                          />
+                        </div>
+                      </div>
                     </div>
                     <div className="flex gap-2 justify-end">
                       <Button

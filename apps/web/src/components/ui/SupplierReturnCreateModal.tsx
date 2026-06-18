@@ -408,64 +408,72 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           )}
 
           {/* Header fields */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
                 Постачальник <span className="text-destructive">*</span>
-              </label>
-              <EntityPickerField
-                display={supplierName}
-                placeholder="Оберіть постачальника..."
-                onClear={() => {
-                  setSupplierId('');
-                  setSupplierName('');
-                }}
-                onPick={() => setSupplierPickerOpen(true)}
-                disabled={isReadOnly}
-              />
+              </span>
+              <div className="flex-1 min-w-0">
+                <EntityPickerField
+                  display={supplierName}
+                  placeholder="Оберіть постачальника..."
+                  onClear={() => {
+                    setSupplierId('');
+                    setSupplierName('');
+                  }}
+                  onPick={() => setSupplierPickerOpen(true)}
+                  disabled={isReadOnly}
+                />
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+            <div className="flex items-center gap-3">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
                 Склад <span className="text-destructive">*</span>
-              </label>
-              <select
-                value={warehouseId}
-                onChange={handleWarehouseChange}
-                disabled={isReadOnly}
-                className={cn(
-                  'w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none',
-                  'focus:ring-2 focus:ring-ring focus:ring-offset-1',
-                  'disabled:cursor-not-allowed disabled:opacity-50',
-                )}
-              >
-                <option value="">Оберіть склад...</option>
-                {warehouses.map(w => (
-                  <option key={w.id} value={w.id}>
-                    {w.name}
-                  </option>
-                ))}
-              </select>
+              </span>
+              <div className="flex-1 min-w-0">
+                <select
+                  value={warehouseId}
+                  onChange={handleWarehouseChange}
+                  disabled={isReadOnly}
+                  className={cn(
+                    'w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none',
+                    'focus:ring-2 focus:ring-ring focus:ring-offset-1',
+                    'disabled:cursor-not-allowed disabled:opacity-50',
+                  )}
+                >
+                  <option value="">Оберіть склад...</option>
+                  {warehouses.map(w => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+            <div className="flex items-center gap-3">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
                 Дата документа
-              </label>
-              <DatePickerInput
-                value={documentDate}
-                onChange={setDocumentDate}
-                disabled={isReadOnly}
-              />
+              </span>
+              <div className="flex-1 min-w-0">
+                <DatePickerInput
+                  value={documentDate}
+                  onChange={setDocumentDate}
+                  disabled={isReadOnly}
+                />
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+            <div className="flex items-center gap-3">
+              <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
                 Примітки
-              </label>
-              <Input
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Необов'язково"
-                disabled={isReadOnly}
-              />
+              </span>
+              <div className="flex-1 min-w-0">
+                <Input
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  placeholder="Необов'язково"
+                  disabled={isReadOnly}
+                />
+              </div>
             </div>
           </div>
 
