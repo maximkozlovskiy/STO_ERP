@@ -188,6 +188,7 @@ export function PurchaseOrderCreateModal({
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
   const [supplierDetailData, setSupplierDetailData] = useState<CounterpartyForModal | null>(null);
+  const [units, setUnits] = useState<{ id: string; name: string; shortName: string }[]>([]);
 
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
@@ -214,7 +215,7 @@ export function PurchaseOrderCreateModal({
     return () => document.removeEventListener('mousedown', handler);
   }, [statusMenuOpen]);
 
-  // Load warehouses + org VAT settings
+  // Load warehouses + org VAT settings + units of measure
   useEffect(() => {
     if (!open) return;
     const cached = getCached<Warehouse[]>('cache:warehouses');
@@ -229,6 +230,18 @@ export function PurchaseOrderCreateModal({
         setCache('cache:warehouses', list);
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження складів'));
+    const cachedUnits = getCached<{ id: string; name: string; shortName: string }[]>('cache:units');
+    if (cachedUnits) setUnits(cachedUnits);
+    void apiFetch<
+      | { id: string; name: string; shortName: string }[]
+      | { items: { id: string; name: string; shortName: string }[] }
+    >('/units')
+      .then(r => {
+        const list = Array.isArray(r) ? r : (r.items ?? []);
+        setUnits(list);
+        setCache('cache:units', list);
+      })
+      .catch(() => {});
     // sto-review: `/organisations/my` НЕ існує — раніше silent fail приховував що
     // VAT-рядок ніколи не показується. Правильний шлях — `/settings/organisation`
     // (vatMode + defaultVatRateId) + `/settings/tax-rates` (resolve rate by id).
@@ -946,12 +959,12 @@ export function PurchaseOrderCreateModal({
               <table className="w-full table-fixed text-[12px]">
                 <colgroup>
                   <col />
-                  <col className="w-[11%]" />
-                  <col className="w-[9%]" />
-                  {isEditMode && <col className="w-[10%]" />}
-                  <col className="w-[12%]" />
-                  {vatMode !== 'NONE' && <col className="w-[10%]" />}
-                  <col className="w-[12%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[10%]" />
+                  {isEditMode && <col className="w-[9%]" />}
+                  <col className="w-[10%]" />
+                  {vatMode !== 'NONE' && <col className="w-[9%]" />}
+                  <col className="w-[10%]" />
                   <col className="w-8" />
                 </colgroup>
                 <thead>
@@ -1061,29 +1074,43 @@ export function PurchaseOrderCreateModal({
                           onClear={() => setNewLine(EMPTY_LINE)}
                         />
                       </td>
-                      <td className="px-2 py-1.5">
+                      <td className="px-1 py-1.5">
                         <input
                           type="number"
                           min="0.001"
                           step="1"
                           value={newLine.quantity}
                           onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
-                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                          className="w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
                         />
                       </td>
-                      <td className="px-2 py-1.5 text-[11px] text-muted-foreground">
-                        {newLine.unit}
+                      <td className="px-1 py-1.5">
+                        {units.length > 0 ? (
+                          <select
+                            value={newLine.unit}
+                            onChange={e => setNewLine(l => ({ ...l, unit: e.target.value }))}
+                            className="w-full rounded border border-input bg-background px-1.5 py-1 text-[11px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                          >
+                            {units.map(u => (
+                              <option key={u.id} value={u.shortName}>
+                                {u.shortName}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">{newLine.unit}</span>
+                        )}
                       </td>
                       {isEditMode && <td />}
-                      <td className="px-2 py-1.5">
+                      <td className="px-1 py-1.5">
                         <input
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="1"
                           value={newLine.price}
                           onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
-                          placeholder="0.00"
-                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                          placeholder="0"
+                          className="w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
                         />
                       </td>
                       {vatMode !== 'NONE' && (
