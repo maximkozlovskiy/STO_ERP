@@ -975,45 +975,6 @@ export function PurchaseOrderCreateModal({
                   Розцінити
                 </Button>
               )}
-              {/* Оприбуткувати — inline receive mode */}
-              {isEditMode &&
-                (currentStatus === 'ORDERED' || currentStatus === 'PARTIAL') &&
-                (receiveMode ? (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setReceiveMode(false);
-                        setReceiveQtys({});
-                        setError('');
-                      }}
-                      disabled={receiving}
-                    >
-                      Скасувати
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => void handleReceive()}
-                      loading={receiving}
-                      disabled={receiving}
-                    >
-                      <PackageCheck size={14} className="mr-1" />
-                      Підтвердити прийом
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={() => setReceiveMode(true)}
-                    disabled={saving || transitioning}
-                  >
-                    <PackageCheck size={14} className="mr-1" />
-                    Оприбуткувати
-                  </Button>
-                ))}
               {isEditMode ? (
                 canEdit && (
                   <Button
@@ -1159,16 +1120,55 @@ export function PurchaseOrderCreateModal({
           <div className="flex-1 overflow-auto">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground">Товари</p>
-              {canEdit && !showLineInput && (
-                <button
-                  type="button"
-                  onClick={() => setShowLineInput(true)}
-                  className="flex items-center gap-1 text-[12px] text-primary hover:text-primary/80 transition-colors"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Додати
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {isEditMode &&
+                  (currentStatus === 'ORDERED' || currentStatus === 'PARTIAL') &&
+                  (receiveMode ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReceiveMode(false);
+                          setReceiveQtys({});
+                          setError('');
+                        }}
+                        disabled={receiving}
+                        className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Скасувати
+                      </button>
+                      <Button
+                        size="sm"
+                        onClick={() => void handleReceive()}
+                        loading={receiving}
+                        disabled={receiving}
+                      >
+                        <PackageCheck size={13} className="mr-1" />
+                        Підтвердити прийом
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setReceiveMode(true)}
+                      disabled={saving || transitioning}
+                    >
+                      <PackageCheck size={13} className="mr-1" />
+                      Оприбуткувати
+                    </Button>
+                  ))}
+                {canEdit && !showLineInput && !receiveMode && (
+                  <button
+                    type="button"
+                    onClick={() => setShowLineInput(true)}
+                    className="flex items-center gap-1 text-[12px] text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Додати
+                  </button>
+                )}
+              </div>
             </div>
             <div className="rounded-lg border border-border overflow-hidden">
               <table className="w-full table-fixed text-[12px]">
