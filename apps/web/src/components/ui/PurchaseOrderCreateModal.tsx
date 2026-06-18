@@ -1011,7 +1011,7 @@ export function PurchaseOrderCreateModal({
                   </Select>
                 </div>
 
-                {/* Рядок 3: Договір | Примітки */}
+                {/* Рядок 3: Договір */}
                 <div className="grid grid-cols-2 gap-4">
                   <Input
                     label="Договір"
@@ -1021,15 +1021,17 @@ export function PurchaseOrderCreateModal({
                     placeholder="— автоматично —"
                     className="h-8 text-[13px]"
                   />
-                  <Input
-                    label="Примітки"
-                    value={form.notes}
-                    onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                    disabled={!canEdit}
-                    placeholder="Додаткова інформація…"
-                    className="h-8 text-[13px]"
-                  />
                 </div>
+
+                {/* Рядок 4: Опис */}
+                <Input
+                  label="Опис"
+                  value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  disabled={!canEdit}
+                  placeholder="Додаткова інформація…"
+                  className="h-8 text-[13px]"
+                />
               </div>
             </div>
           </div>
