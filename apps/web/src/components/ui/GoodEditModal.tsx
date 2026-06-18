@@ -272,279 +272,200 @@ export function GoodEditModal({
           </div>
         )}
 
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
-              Назва <span className="text-destructive">*</span>
-            </span>
-            <div className="flex-1 min-w-0">
-              <Input
-                value={form.name}
-                onChange={e => {
-                  setForm(f => ({ ...f, name: e.target.value }));
-                  dirty.markDirty();
-                }}
-                placeholder="Масло моторне 5W-40"
-              />
-            </div>
-          </div>
+        <div className="space-y-4">
+          <Input
+            label="Назва"
+            required
+            value={form.name}
+            onChange={e => {
+              setForm(f => ({ ...f, name: e.target.value }));
+              dirty.markDirty();
+            }}
+            placeholder="Масло моторне 5W-40"
+          />
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
-                Артикул (SKU)
-              </span>
-              <div className="flex-1 min-w-0">
-                <Input
-                  value={form.sku}
-                  onChange={e => {
-                    setForm(f => ({ ...f, sku: e.target.value }));
-                    dirty.markDirty();
-                  }}
-                  placeholder="OIL-5W40"
-                />
-              </div>
-            </div>
+            <Input
+              label="Артикул (SKU)"
+              value={form.sku}
+              onChange={e => {
+                setForm(f => ({ ...f, sku: e.target.value }));
+                dirty.markDirty();
+              }}
+              placeholder="OIL-5W40"
+            />
             {units.length > 0 ? (
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
-                  Одиниця виміру
-                </span>
-                <div className="flex-1 min-w-0">
-                  <Select
-                    value={form.unitId}
-                    onChange={e => {
-                      const unit = units.find(u => u.id === e.target.value);
-                      setForm(f => ({
-                        ...f,
-                        unitId: e.target.value,
-                        unit: unit?.shortName ?? f.unit,
-                      }));
-                      dirty.markDirty();
-                    }}
-                  >
-                    <option value="">— вписати вручну</option>
-                    {units.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.shortName} ({u.name})
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
-                  Одиниця
-                </span>
-                <div className="flex-1 min-w-0">
-                  <Input
-                    value={form.unit}
-                    onChange={e => {
-                      setForm(f => ({ ...f, unit: e.target.value }));
-                      dirty.markDirty();
-                    }}
-                    placeholder="шт"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-          {units.length > 0 && !form.unitId && (
-            <div className="flex items-center gap-3">
-              <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
-                Одиниця (вручну)
-              </span>
-              <div className="flex-1 min-w-0">
-                <Input
-                  value={form.unit}
-                  onChange={e => {
-                    setForm(f => ({ ...f, unit: e.target.value }));
-                    dirty.markDirty();
-                  }}
-                  placeholder="шт"
-                />
-              </div>
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
-                Ціна закупки, ₴
-              </span>
-              <div className="flex-1 min-w-0">
-                <Input
-                  type="number"
-                  min="0"
-                  value={form.purchasePrice}
-                  onChange={e => {
-                    setForm(f => ({ ...f, purchasePrice: e.target.value }));
-                    dirty.markDirty();
-                  }}
-                  placeholder="350"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
-                Ціна продажу, ₴
-              </span>
-              <div className="flex-1 min-w-0">
-                <Input
-                  type="number"
-                  min="0"
-                  value={form.salePrice}
-                  onChange={e => {
-                    setForm(f => ({ ...f, salePrice: e.target.value }));
-                    dirty.markDirty();
-                  }}
-                  placeholder="500"
-                />
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
-                Бренд
-              </span>
-              <div className="flex-1 min-w-0">
-                <Select
-                  value={form.brandId}
-                  onChange={e => {
-                    setForm(f => ({ ...f, brandId: e.target.value }));
-                    dirty.markDirty();
-                  }}
-                >
-                  <option value="">—</option>
-                  {brands.map(b => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-            {goodCatTree.length > 0 ? (
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
-                  Категорія
-                </span>
-                <div className="flex-1 min-w-0">
-                  <Select
-                    value={form.goodCategoryId}
-                    onChange={e => {
-                      setForm(f => ({ ...f, goodCategoryId: e.target.value }));
-                      dirty.markDirty();
-                    }}
-                  >
-                    <option value="">— Не вказано —</option>
-                    {flatCategories(goodCatTree).map(c => (
-                      <option key={c.id} value={c.id}>
-                        {' '.repeat(c.depth * 2)}
-                        {c.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] font-medium text-muted-foreground shrink-0 text-right whitespace-nowrap">
-                  Категорія
-                </span>
-                <div className="flex-1 min-w-0">
-                  <Input
-                    value={form.category}
-                    onChange={e => {
-                      setForm(f => ({ ...f, category: e.target.value }));
-                      dirty.markDirty();
-                    }}
-                    placeholder="Мастила"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
-              Тип товару
-            </span>
-            <div className="flex-1 min-w-0">
               <Select
-                value={form.goodType}
+                label="Одиниця виміру"
+                value={form.unitId}
                 onChange={e => {
-                  setForm(f => ({ ...f, goodType: e.target.value }));
+                  const unit = units.find(u => u.id === e.target.value);
+                  setForm(f => ({
+                    ...f,
+                    unitId: e.target.value,
+                    unit: unit?.shortName ?? f.unit,
+                  }));
                   dirty.markDirty();
                 }}
               >
-                <option value="">Не вказано</option>
-                <option value="SPARE_PART">Запчастина</option>
-                <option value="CONSUMABLE">Витратний матеріал</option>
-                <option value="MATERIAL">Матеріал</option>
-                <option value="TOOL">Інструмент</option>
+                <option value="">— вписати вручну</option>
+                {units.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.shortName} ({u.name})
+                  </option>
+                ))}
               </Select>
-            </div>
+            ) : (
+              <Input
+                label="Одиниця"
+                value={form.unit}
+                onChange={e => {
+                  setForm(f => ({ ...f, unit: e.target.value }));
+                  dirty.markDirty();
+                }}
+                placeholder="шт"
+              />
+            )}
           </div>
+          {units.length > 0 && !form.unitId && (
+            <Input
+              label="Одиниця (вручну)"
+              value={form.unit}
+              onChange={e => {
+                setForm(f => ({ ...f, unit: e.target.value }));
+                dirty.markDirty();
+              }}
+              placeholder="шт"
+            />
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Ціна закупки, ₴"
+              type="number"
+              min="0"
+              value={form.purchasePrice}
+              onChange={e => {
+                setForm(f => ({ ...f, purchasePrice: e.target.value }));
+                dirty.markDirty();
+              }}
+              placeholder="350"
+            />
+            <Input
+              label="Ціна продажу, ₴"
+              type="number"
+              min="0"
+              value={form.salePrice}
+              onChange={e => {
+                setForm(f => ({ ...f, salePrice: e.target.value }));
+                dirty.markDirty();
+              }}
+              placeholder="500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Бренд"
+              value={form.brandId}
+              onChange={e => {
+                setForm(f => ({ ...f, brandId: e.target.value }));
+                dirty.markDirty();
+              }}
+            >
+              <option value="">—</option>
+              {brands.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </Select>
+            {goodCatTree.length > 0 ? (
+              <Select
+                label="Категорія товарів"
+                value={form.goodCategoryId}
+                onChange={e => {
+                  setForm(f => ({ ...f, goodCategoryId: e.target.value }));
+                  dirty.markDirty();
+                }}
+              >
+                <option value="">— Не вказано —</option>
+                {flatCategories(goodCatTree).map(c => (
+                  <option key={c.id} value={c.id}>
+                    {' '.repeat(c.depth * 2)}
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Input
+                label="Категорія"
+                value={form.category}
+                onChange={e => {
+                  setForm(f => ({ ...f, category: e.target.value }));
+                  dirty.markDirty();
+                }}
+                placeholder="Мастила"
+              />
+            )}
+          </div>
+          <Select
+            label="Тип товару"
+            value={form.goodType}
+            onChange={e => {
+              setForm(f => ({ ...f, goodType: e.target.value }));
+              dirty.markDirty();
+            }}
+          >
+            <option value="">Не вказано</option>
+            <option value="SPARE_PART">Запчастина</option>
+            <option value="CONSUMABLE">Витратний матеріал</option>
+            <option value="MATERIAL">Матеріал</option>
+            <option value="TOOL">Інструмент</option>
+          </Select>
 
           {/* Supplier — EntityPickerField */}
-          <div className="flex items-center gap-3">
-            <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
-              Постачальник
-            </span>
-            <div className="flex-1 min-w-0">
-              <EntityPickerField
-                display={supplierDisplay}
-                placeholder="Пошук постачальника…"
-                ariaLabel="Основний постачальник"
-                onOpenDetail={form.preferredSupplierId ? openSupplierDetail : undefined}
-                onPick={() => {}}
-                onSearch={searchSuppliers}
-                onSearchSelect={item => {
-                  setSupplierDisplay(item.primary);
-                  setForm(f => ({ ...f, preferredSupplierId: item.id }));
-                  dirty.markDirty();
-                }}
-                onClear={() => {
-                  setSupplierDisplay('');
-                  setForm(f => ({ ...f, preferredSupplierId: '' }));
-                  dirty.markDirty();
-                }}
-                hidePick
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Основний постачальник
+            </label>
+            <EntityPickerField
+              display={supplierDisplay}
+              placeholder="Пошук постачальника…"
+              ariaLabel="Основний постачальник"
+              onOpenDetail={form.preferredSupplierId ? openSupplierDetail : undefined}
+              onPick={() => {}}
+              onSearch={searchSuppliers}
+              onSearchSelect={item => {
+                setSupplierDisplay(item.primary);
+                setForm(f => ({ ...f, preferredSupplierId: item.id }));
+                dirty.markDirty();
+              }}
+              onClear={() => {
+                setSupplierDisplay('');
+                setForm(f => ({ ...f, preferredSupplierId: '' }));
+                dirty.markDirty();
+              }}
+              hidePick
+            />
           </div>
 
           {!isEdit && (
-            <div className="flex items-center gap-3">
-              <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
-                Штрихкод
-              </span>
-              <div className="flex-1 min-w-0">
-                <Input
-                  value={form.barcode}
-                  onChange={e => {
-                    setForm(f => ({ ...f, barcode: e.target.value }));
-                    dirty.markDirty();
-                  }}
-                  placeholder="4820000000000"
-                />
-              </div>
-            </div>
+            <Input
+              label="Штрихкод"
+              value={form.barcode}
+              onChange={e => {
+                setForm(f => ({ ...f, barcode: e.target.value }));
+                dirty.markDirty();
+              }}
+              placeholder="4820000000000"
+            />
           )}
-          <div className="flex items-center gap-3">
-            <span className="text-[13px] font-medium text-muted-foreground shrink-0 w-36 text-right">
-              Нотатки
-            </span>
-            <div className="flex-1 min-w-0">
-              <Input
-                value={form.notes}
-                onChange={e => {
-                  setForm(f => ({ ...f, notes: e.target.value }));
-                  dirty.markDirty();
-                }}
-              />
-            </div>
-          </div>
+          <Input
+            label="Нотатки"
+            value={form.notes}
+            onChange={e => {
+              setForm(f => ({ ...f, notes: e.target.value }));
+              dirty.markDirty();
+            }}
+          />
         </div>
 
         {/* Tabs — only in edit mode */}
