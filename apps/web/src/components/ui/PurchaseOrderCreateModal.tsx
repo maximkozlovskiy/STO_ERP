@@ -1070,7 +1070,7 @@ export function PurchaseOrderCreateModal({
                   <col className="w-[10%]" />
                   {vatMode !== 'NONE' && <col className="w-[9%]" />}
                   <col className="w-[10%]" />
-                  <col className="w-8" />
+                  <col className="w-16" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-border bg-secondary/40">
