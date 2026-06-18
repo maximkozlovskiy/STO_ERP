@@ -21,8 +21,6 @@ import {
   PO_STATUS_LABELS,
   PO_STATUS_BADGE,
   PO_STATUS_DESCRIPTIONS,
-  PO_STATUS_TRANSITIONS,
-  PO_STATUS_ACTION_LABELS,
   SUPPLIER_RETURN_STATUS_DESCRIPTIONS,
 } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
@@ -78,11 +76,8 @@ interface PoFilters extends Record<string, unknown> {
   dateTo: string;
 }
 
-// Status/badge/transition/action constants imported from @sto/shared
 const STATUS_LABELS = PO_STATUS_LABELS;
 const STATUS_BADGE = PO_STATUS_BADGE;
-const STATUS_TRANSITIONS = PO_STATUS_TRANSITIONS;
-const STATUS_ACTION_LABELS = PO_STATUS_ACTION_LABELS;
 
 function fmt(n: number) {
   return fmtMoney(n) + ' ₴';
@@ -234,7 +229,6 @@ function PurchaseOrdersPageClient() {
   // Modal & form state
   const [showCreate, setShowCreate] = useState(false);
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
-  const [showDetail, setShowDetail] = useState<PurchaseOrder | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
 
   // Supplier returns — useListPage (columns, detail-panel, saved-filters)
@@ -365,32 +359,6 @@ function PurchaseOrdersPageClient() {
     [bulkDeleteSelected],
   );
 
-  const handleTransition = useCallback(
-    async (po: PurchaseOrder, newStatus: string) => {
-      if (
-        !(await confirm({
-          title: `Перевести замовлення ${po.number} → ${STATUS_LABELS[newStatus]}?`,
-        }))
-      )
-        return;
-      setSaving(true);
-      setError('');
-      try {
-        await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}/transition`, {
-          method: 'POST',
-          body: JSON.stringify({ status: newStatus }),
-        });
-        setShowDetail(null);
-        queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
-      } finally {
-        setSaving(false);
-      }
-    },
-    [confirm, queryClient],
-  );
-
   const markDeleted = useCallback(
     async (po: PurchaseOrder) => {
       if (
@@ -411,49 +379,27 @@ function PurchaseOrdersPageClient() {
     [confirm, queryClient],
   );
 
-  // Per-row in-flight tracking — gates Pencil button (loading prop) and prevents
-  // duplicate clicks (Bug #497). loadDetail lazy-fetches lines (omitted from list
-  // response). On fetch failure, surfaces error via setError so the user sees a
-  // banner instead of an empty modal (Bug #414 patern — read-only panel must not
-  // swallow errors).
-  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
-
   const openReceiveWithLines = useCallback((po: PurchaseOrder) => {
     setReceiveLines(po.lines.map(l => ({ lineId: l.id!, receivedQty: '' })));
     setShowReceive(po);
   }, []);
 
-  const loadDetail = useCallback(
-    async (po: PurchaseOrder, mode: 'detail' | 'receive') => {
+  const openReceive = useCallback(
+    async (po: PurchaseOrder) => {
       // Lines are not included in list response — fetch full PO on demand
       if (po.lines.length > 0 || po.linesCount === 0) {
-        if (mode === 'detail') setShowDetail(po);
-        else openReceiveWithLines(po);
+        openReceiveWithLines(po);
         return;
       }
-      setDetailLoadingId(po.id);
       try {
         const full = await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}`);
-        if (mode === 'detail') setShowDetail(full);
-        else openReceiveWithLines(full);
+        openReceiveWithLines(full);
       } catch (e: unknown) {
-        // Show partial data + surface error (Bug #414 — never silently map fetch
-        // failure to empty state in panels gating decisions).
-        if (mode === 'detail') setShowDetail(po);
-        else openReceiveWithLines(po);
+        openReceiveWithLines(po);
         setError(e instanceof Error ? e.message : 'Не вдалось завантажити позиції');
-      } finally {
-        setDetailLoadingId(null);
       }
     },
     [openReceiveWithLines],
-  );
-
-  const openReceive = useCallback(
-    (po: PurchaseOrder) => {
-      void loadDetail(po, 'receive');
-    },
-    [loadDetail],
   );
 
   const applyPricing = useCallback(
@@ -1130,11 +1076,9 @@ function PurchaseOrdersPageClient() {
                               type="button"
                               variant="ghost"
                               size="icon-sm"
-                              title="Відкрити деталі"
-                              loading={detailLoadingId === po.id}
-                              disabled={detailLoadingId === po.id}
+                              title="Редагувати"
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                              onClick={() => void loadDetail(po, 'detail')}
+                              onClick={() => setEditingPOId(po.id)}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -1185,138 +1129,6 @@ function PurchaseOrdersPageClient() {
           queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
         }}
       />
-
-      {/* Detail modal */}
-      <Modal
-        open={!!showDetail}
-        onClose={() => setShowDetail(null)}
-        title={showDetail ? `Замовлення ${showDetail.number}` : ''}
-        size="lg"
-        footer={
-          showDetail && STATUS_TRANSITIONS[showDetail.status]?.length > 0 ? (
-            <div className="flex flex-wrap gap-2 w-full">
-              {STATUS_TRANSITIONS[showDetail.status]?.map(s => (
-                <Button
-                  key={s}
-                  variant={s === 'CANCELLED' ? 'destructive' : 'default'}
-                  size="sm"
-                  onClick={() =>
-                    s === 'RECEIVED' && ['ORDERED', 'PARTIAL'].includes(showDetail.status)
-                      ? openReceive(showDetail)
-                      : handleTransition(showDetail, s)
-                  }
-                  loading={saving}
-                >
-                  {STATUS_ACTION_LABELS[s] ?? STATUS_LABELS[s]}
-                </Button>
-              ))}
-            </div>
-          ) : undefined
-        }
-      >
-        {showDetail && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              <Badge
-                variant={STATUS_BADGE[showDetail.status] ?? 'secondary'}
-                tooltip={PO_STATUS_DESCRIPTIONS[showDetail.status]}
-              >
-                {STATUS_LABELS[showDetail.status]}
-              </Badge>
-              <span className="text-muted-foreground text-sm">{showDetail.supplierName}</span>
-              <span className="text-foreground-faint text-sm">→ {showDetail.warehouseName}</span>
-            </div>
-
-            {/* Lines table */}
-            <div className="overflow-hidden rounded-lg border border-border">
-              <table className="w-full text-xs">
-                <thead className="bg-secondary/40">
-                  <tr className="border-b border-border">
-                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                      Товар
-                    </th>
-                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                      Замовлено
-                    </th>
-                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                      Отримано
-                    </th>
-                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                      Ціна, ₴
-                    </th>
-                    {showDetail.totalVat > 0 && (
-                      <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                        ПДВ, ₴
-                      </th>
-                    )}
-                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                      Сума, ₴
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {showDetail.lines.map((l, i) => (
-                    <tr
-                      key={l.id ?? i}
-                      className="bg-surface hover:bg-secondary/30 transition-colors"
-                    >
-                      <td className="px-3 py-2 text-foreground">
-                        <div>{l.goodName}</div>
-                        {l.goodSku && (
-                          <div className="text-[11px] text-muted-foreground">{l.goodSku}</div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 tabular-nums">
-                        {l.quantity} {l.unitShortName ?? l.unit}
-                      </td>
-                      <td
-                        className={cn(
-                          'px-3 py-2 tabular-nums font-medium',
-                          (l.receivedQty ?? 0) >= l.quantity ? 'text-success' : 'text-warning',
-                        )}
-                      >
-                        {l.receivedQty ?? 0}
-                      </td>
-                      <td className="px-3 py-2 tabular-nums">{fmt(l.price)}</td>
-                      {showDetail.totalVat > 0 && (
-                        <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                          {fmt(l.vatAmount ?? 0)}
-                        </td>
-                      )}
-                      <td className="px-3 py-2 tabular-nums font-medium">
-                        {fmt(l.amount ?? l.quantity * l.price)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="bg-secondary/50 border-t border-border">
-                    <td
-                      colSpan={3}
-                      className="px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
-                    >
-                      Разом:
-                    </td>
-                    <td />
-                    {showDetail.totalVat > 0 && (
-                      <td className="px-3 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
-                        {fmt(showDetail.totalVat)}
-                      </td>
-                    )}
-                    <td className="px-3 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
-                      {fmt(showDetail.totalAmount)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-
-            {showDetail.notes && (
-              <p className="text-sm text-muted-foreground italic">{showDetail.notes}</p>
-            )}
-          </div>
-        )}
-      </Modal>
 
       {/* Receive modal */}
       <Modal
