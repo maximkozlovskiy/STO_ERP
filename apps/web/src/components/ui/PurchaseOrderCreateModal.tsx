@@ -790,25 +790,35 @@ export function PurchaseOrderCreateModal({
           </div>
         }
         extraHeaderActions={
-          isEditMode ? (
+          <div className="flex items-center gap-1">
+            {isEditMode && (
+              <button
+                onClick={() => {
+                  minimizeModal({
+                    kind: 'modal',
+                    label: poNumber || 'Замовлення',
+                    modalKey: 'purchase-order',
+                    restoreProps: { purchaseOrderId },
+                  });
+                  onMinimize?.();
+                  onClose();
+                }}
+                className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
+                title="Згорнути у вкладку"
+                disabled={saving || transitioning}
+              >
+                <Minus className="h-4 w-4" />
+              </button>
+            )}
             <button
-              onClick={() => {
-                minimizeModal({
-                  kind: 'modal',
-                  label: poNumber || 'Замовлення',
-                  modalKey: 'purchase-order',
-                  restoreProps: { purchaseOrderId },
-                });
-                onMinimize?.();
-                onClose();
-              }}
+              onClick={handleModalClose}
               className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-              title="Згорнути у вкладку"
+              title="Закрити"
               disabled={saving || transitioning}
             >
-              <Minus className="h-4 w-4" />
+              <X className="h-4 w-4" />
             </button>
-          ) : undefined
+          </div>
         }
         footer={
           <div className="flex items-center justify-between w-full gap-2">
