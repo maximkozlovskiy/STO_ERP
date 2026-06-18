@@ -395,7 +395,6 @@ function PurchaseOrdersPageClient() {
         const full = await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}`);
         openReceiveWithLines(full);
       } catch (e: unknown) {
-        openReceiveWithLines(po);
         setError(e instanceof Error ? e.message : 'Не вдалось завантажити позиції');
       }
     },

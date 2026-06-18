@@ -25,7 +25,7 @@ interface EntityPickerFieldProps<T extends SearchItem = SearchItem> {
    * Undefined = button is disabled (no entity selected yet).
    */
   onOpenDetail?: () => void;
-  onPick: () => void;
+  onPick?: () => void;
   onClear: () => void;
   /**
    * Optional fulltext search. When provided, the display area becomes a text
@@ -265,7 +265,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
       </button>
 
       {/* Open picker */}
-      {!hidePick && (
+      {!hidePick && onPick && (
         <button
           type="button"
           onClick={onPick}

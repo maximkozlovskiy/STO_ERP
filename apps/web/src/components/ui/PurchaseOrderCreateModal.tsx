@@ -546,6 +546,12 @@ export function PurchaseOrderCreateModal({
     return total - total / (1 + vatRate / 100);
   }, [total, vatMode, vatRate]);
 
+  const lineSubtotal = (qty: string, price: string) =>
+    (parseFloat(qty) || 0) * (parseFloat(price) || 0);
+
+  const numericInputCls =
+    'w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring';
+
   const removeLine = (key: string) => setLines(prev => prev.filter(l => l._key !== key));
 
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -1112,7 +1118,6 @@ export function PurchaseOrderCreateModal({
                             display={editingLine.goodName}
                             placeholder="Пошук товару…"
                             ariaLabel="Товар"
-                            onPick={() => setGoodSearchOpen(true)}
                             onSearch={fetchGoodItems}
                             onOpenDetail={
                               editingLine.goodId
@@ -1148,7 +1153,7 @@ export function PurchaseOrderCreateModal({
                             onChange={e =>
                               setEditingLine(l => ({ ...l, quantity: e.target.value }))
                             }
-                            className="w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                            className={numericInputCls}
                           />
                         </td>
                         <td className="px-1 py-1.5">
@@ -1183,15 +1188,14 @@ export function PurchaseOrderCreateModal({
                             value={editingLine.price}
                             onChange={e => setEditingLine(l => ({ ...l, price: e.target.value }))}
                             placeholder="0"
-                            className="w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                            className={numericInputCls}
                           />
                         </td>
                         {vatMode !== 'NONE' && (
                           <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                             {vatRate > 0
                               ? (
-                                  ((parseFloat(editingLine.quantity) || 0) *
-                                    (parseFloat(editingLine.price) || 0) *
+                                  (lineSubtotal(editingLine.quantity, editingLine.price) *
                                     vatRate) /
                                   100
                                 ).toFixed(2)
@@ -1199,10 +1203,7 @@ export function PurchaseOrderCreateModal({
                           </td>
                         )}
                         <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
-                          {(
-                            (parseFloat(editingLine.quantity) || 0) *
-                            (parseFloat(editingLine.price) || 0)
-                          ).toFixed(2)}
+                          {lineSubtotal(editingLine.quantity, editingLine.price).toFixed(2)}
                         </td>
                         <td className="px-2 py-1.5">
                           <div className="flex flex-row gap-2 items-center">
@@ -1251,19 +1252,14 @@ export function PurchaseOrderCreateModal({
                         {vatMode !== 'NONE' && (
                           <td className="px-3 py-2 tabular-nums text-muted-foreground">
                             {vatRate > 0
-                              ? (
-                                  ((parseFloat(line.quantity) || 0) *
-                                    (parseFloat(line.price) || 0) *
-                                    vatRate) /
-                                  100
-                                ).toFixed(2)
+                              ? ((lineSubtotal(line.quantity, line.price) * vatRate) / 100).toFixed(
+                                  2,
+                                )
                               : '—'}
                           </td>
                         )}
                         <td className="px-3 py-2 tabular-nums">
-                          {(
-                            (parseFloat(line.quantity) || 0) * (parseFloat(line.price) || 0)
-                          ).toFixed(2)}
+                          {lineSubtotal(line.quantity, line.price).toFixed(2)}
                         </td>
                         <td className="px-1.5 py-2">
                           {canEdit && (
@@ -1326,7 +1322,7 @@ export function PurchaseOrderCreateModal({
                           step="1"
                           value={newLine.quantity}
                           onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
-                          className="w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                          className={numericInputCls}
                         />
                       </td>
                       <td className="px-1 py-1.5">
@@ -1355,25 +1351,21 @@ export function PurchaseOrderCreateModal({
                           value={newLine.price}
                           onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
                           placeholder="0"
-                          className="w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                          className={numericInputCls}
                         />
                       </td>
                       {vatMode !== 'NONE' && (
                         <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {vatRate > 0
                             ? (
-                                ((parseFloat(newLine.quantity) || 0) *
-                                  (parseFloat(newLine.price) || 0) *
-                                  vatRate) /
+                                (lineSubtotal(newLine.quantity, newLine.price) * vatRate) /
                                 100
                               ).toFixed(2)
                             : '—'}
                         </td>
                       )}
                       <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
-                        {(
-                          (parseFloat(newLine.quantity) || 0) * (parseFloat(newLine.price) || 0)
-                        ).toFixed(2)}
+                        {lineSubtotal(newLine.quantity, newLine.price).toFixed(2)}
                       </td>
                       <td className="px-2 py-1.5">
                         <div className="flex flex-row gap-2 items-center">
