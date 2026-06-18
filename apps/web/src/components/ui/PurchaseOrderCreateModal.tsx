@@ -29,6 +29,10 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { CollapsibleHeader } from '@/components/ui/collapsible-header';
+import {
+  CounterpartyEditModal,
+  type CounterpartyForModal,
+} from '@/components/ui/CounterpartyEditModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -182,6 +186,8 @@ export function PurchaseOrderCreateModal({
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [error, setError] = useState('');
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
+  const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
+  const [supplierDetailData, setSupplierDetailData] = useState<CounterpartyForModal | null>(null);
 
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
@@ -340,6 +346,17 @@ export function PurchaseOrderCreateModal({
       secondary: c.phone ?? undefined,
     }));
   }, []);
+
+  const openSupplierDetail = useCallback(async () => {
+    if (!form.supplierId) return;
+    try {
+      const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${form.supplierId}`);
+      setSupplierDetailData(cp);
+      setSupplierDetailOpen(true);
+    } catch {
+      /* ignore */
+    }
+  }, [form.supplierId]);
 
   // ── Good picker ───────────────────────────────────────────────────────────
 
@@ -826,6 +843,7 @@ export function PurchaseOrderCreateModal({
                       className="h-8 text-[13px]"
                       disabled={!canEdit}
                       onPick={() => setSupplierPickerOpen(true)}
+                      onOpenDetail={form.supplierId ? openSupplierDetail : undefined}
                       onSearch={fetchSupplierItems}
                       onSearchSelect={item => {
                         setSupplierDisplay(item.primary);
@@ -941,26 +959,26 @@ export function PurchaseOrderCreateModal({
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Товар
                     </th>
-                    <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       К-сть
                     </th>
-                    <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       ОВ
                     </th>
                     {isEditMode && (
-                      <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                         Отримано
                       </th>
                     )}
-                    <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Ціна, ₴
                     </th>
                     {vatMode !== 'NONE' && (
-                      <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                         ПДВ, ₴
                       </th>
                     )}
-                    <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Сума, ₴
                     </th>
                     <th />
@@ -978,18 +996,18 @@ export function PurchaseOrderCreateModal({
                           <div className="text-[11px] text-muted-foreground">{line.goodSku}</div>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
-                      <td className="px-3 py-2 text-right text-muted-foreground">
+                      <td className="px-3 py-2 tabular-nums">{line.quantity}</td>
+                      <td className="px-3 py-2 text-muted-foreground">
                         {line.unitShortName || line.unit}
                       </td>
                       {isEditMode && (
-                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                        <td className="px-3 py-2 tabular-nums text-muted-foreground">
                           {line.receivedQty != null ? line.receivedQty : '—'}
                         </td>
                       )}
-                      <td className="px-3 py-2 text-right tabular-nums">{line.price}</td>
+                      <td className="px-3 py-2 tabular-nums">{line.price}</td>
                       {vatMode !== 'NONE' && (
-                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                        <td className="px-3 py-2 tabular-nums text-muted-foreground">
                           {vatRate > 0
                             ? (
                                 ((parseFloat(line.quantity) || 0) *
@@ -1000,7 +1018,7 @@ export function PurchaseOrderCreateModal({
                             : '—'}
                         </td>
                       )}
-                      <td className="px-3 py-2 text-right tabular-nums">
+                      <td className="px-3 py-2 tabular-nums">
                         {((parseFloat(line.quantity) || 0) * (parseFloat(line.price) || 0)).toFixed(
                           2,
                         )}
@@ -1050,10 +1068,10 @@ export function PurchaseOrderCreateModal({
                           step="1"
                           value={newLine.quantity}
                           onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
-                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
                         />
                       </td>
-                      <td className="px-2 py-1.5 text-right text-[11px] text-muted-foreground">
+                      <td className="px-2 py-1.5 text-[11px] text-muted-foreground">
                         {newLine.unit}
                       </td>
                       {isEditMode && <td />}
@@ -1065,11 +1083,11 @@ export function PurchaseOrderCreateModal({
                           value={newLine.price}
                           onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
                           placeholder="0.00"
-                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
                         />
                       </td>
                       {vatMode !== 'NONE' && (
-                        <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
+                        <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {vatRate > 0
                             ? (
                                 ((parseFloat(newLine.quantity) || 0) *
@@ -1080,7 +1098,7 @@ export function PurchaseOrderCreateModal({
                             : '—'}
                         </td>
                       )}
-                      <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
+                      <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                         {(
                           (parseFloat(newLine.quantity) || 0) * (parseFloat(newLine.price) || 0)
                         ).toFixed(2)}
@@ -1116,11 +1134,11 @@ export function PurchaseOrderCreateModal({
                   <tr className="border-t-2 border-border bg-secondary/20">
                     <td
                       colSpan={4 + (isEditMode ? 1 : 0) + (vatMode !== 'NONE' ? 1 : 0)}
-                      className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
+                      className="px-3 py-2 text-left text-[12px] font-medium text-muted-foreground"
                     >
                       Разом:
                     </td>
-                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
+                    <td className="px-3 py-2 text-left text-[13px] font-semibold tabular-nums">
                       {total.toFixed(2)} ₴
                     </td>
                     <td />
@@ -1129,11 +1147,11 @@ export function PurchaseOrderCreateModal({
                     <tr className="border-t border-border bg-secondary/10">
                       <td
                         colSpan={4 + (isEditMode ? 1 : 0) + 1}
-                        className="px-3 py-1.5 text-right text-[12px] font-medium text-muted-foreground"
+                        className="px-3 py-1.5 text-left text-[12px] font-medium text-muted-foreground"
                       >
                         ПДВ {vatRate}%:
                       </td>
-                      <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-muted-foreground">
+                      <td className="px-3 py-1.5 text-left text-[13px] font-semibold tabular-nums text-muted-foreground">
                         {vatTotal.toFixed(2)} ₴
                       </td>
                       <td />
@@ -1164,6 +1182,21 @@ export function PurchaseOrderCreateModal({
           setContractId(null);
           setContractNumber(null);
           setSupplierPickerOpen(false);
+        }}
+      />
+
+      {/* Supplier detail modal */}
+      <CounterpartyEditModal
+        open={supplierDetailOpen}
+        counterparty={supplierDetailData}
+        onClose={() => setSupplierDetailOpen(false)}
+        onSaved={updated => {
+          setSupplierDetailData(updated);
+          setSupplierDisplay(
+            [updated.lastName, updated.firstName].filter(Boolean).join(' ') ||
+              updated.companyName ||
+              supplierDisplay,
+          );
         }}
       />
 
