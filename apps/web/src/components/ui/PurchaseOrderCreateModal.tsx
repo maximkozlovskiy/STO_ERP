@@ -1378,32 +1378,25 @@ export function PurchaseOrderCreateModal({
                   )}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t-2 border-border bg-secondary/20">
+                  <tr className="bg-secondary/50 border-t border-border">
                     <td
-                      colSpan={4 + (isEditMode ? 1 : 0) + (vatMode !== 'NONE' ? 1 : 0)}
-                      className="px-3 py-2 text-left text-[12px] font-medium text-muted-foreground"
+                      colSpan={3 + (isEditMode ? 1 : 0)}
+                      className="px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
                     >
                       Разом:
                     </td>
-                    <td className="px-3 py-2 text-left text-[13px] font-semibold tabular-nums">
-                      {total.toFixed(2)} ₴
+                    {/* Ціна — порожня */}
+                    <td />
+                    {vatMode !== 'NONE' && (
+                      <td className="px-3 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
+                        {vatTotal.toFixed(2)}
+                      </td>
+                    )}
+                    <td className="px-3 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
+                      {total.toFixed(2)}
                     </td>
                     <td />
                   </tr>
-                  {vatMode !== 'NONE' && (
-                    <tr className="border-t border-border bg-secondary/10">
-                      <td
-                        colSpan={4 + (isEditMode ? 1 : 0) + 1}
-                        className="px-3 py-1.5 text-left text-[12px] font-medium text-muted-foreground"
-                      >
-                        ПДВ {vatRate}%:
-                      </td>
-                      <td className="px-3 py-1.5 text-left text-[13px] font-semibold tabular-nums text-muted-foreground">
-                        {vatTotal.toFixed(2)} ₴
-                      </td>
-                      <td />
-                    </tr>
-                  )}
                 </tfoot>
               </table>
             </div>
