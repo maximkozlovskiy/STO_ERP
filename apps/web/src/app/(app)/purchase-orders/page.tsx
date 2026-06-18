@@ -1230,46 +1230,80 @@ function PurchaseOrdersPageClient() {
             {/* Lines table */}
             <div className="overflow-hidden rounded-lg border border-border">
               <table className="w-full text-xs">
-                <thead className="bg-secondary">
-                  <tr>
-                    <th className="text-left px-3 py-2 text-muted-foreground">Товар</th>
-                    <th className="text-right px-3 py-2 text-muted-foreground">Замовлено</th>
-                    <th className="text-right px-3 py-2 text-muted-foreground">Отримано</th>
-                    <th className="text-right px-3 py-2 text-muted-foreground">Ціна</th>
-                    <th className="text-right px-3 py-2 text-muted-foreground">Сума</th>
+                <thead className="bg-secondary/40">
+                  <tr className="border-b border-border">
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      Товар
+                    </th>
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      Замовлено
+                    </th>
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      Отримано
+                    </th>
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      Ціна, ₴
+                    </th>
+                    {showDetail.totalVat > 0 && (
+                      <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                        ПДВ, ₴
+                      </th>
+                    )}
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      Сума, ₴
+                    </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/50">
+                <tbody className="divide-y divide-border">
                   {showDetail.lines.map((l, i) => (
-                    <tr key={l.id ?? i}>
-                      <td className="px-3 py-2 text-foreground">{l.goodName}</td>
-                      <td className="px-3 py-2 text-right">
+                    <tr
+                      key={l.id ?? i}
+                      className="bg-surface hover:bg-secondary/30 transition-colors"
+                    >
+                      <td className="px-3 py-2 text-foreground">
+                        <div>{l.goodName}</div>
+                        {l.goodSku && (
+                          <div className="text-[11px] text-muted-foreground">{l.goodSku}</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 tabular-nums">
                         {l.quantity} {l.unitShortName ?? l.unit}
                       </td>
                       <td
                         className={cn(
-                          'px-3 py-2 text-right font-medium',
+                          'px-3 py-2 tabular-nums font-medium',
                           (l.receivedQty ?? 0) >= l.quantity ? 'text-success' : 'text-warning',
                         )}
                       >
                         {l.receivedQty ?? 0}
                       </td>
-                      <td className="px-3 py-2 text-right">{fmt(l.price)}</td>
-                      <td className="px-3 py-2 text-right font-medium">
+                      <td className="px-3 py-2 tabular-nums">{fmt(l.price)}</td>
+                      {showDetail.totalVat > 0 && (
+                        <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                          {fmt(l.vatAmount ?? 0)}
+                        </td>
+                      )}
+                      <td className="px-3 py-2 tabular-nums font-medium">
                         {fmt(l.amount ?? l.quantity * l.price)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="bg-secondary">
-                  <tr>
+                <tfoot>
+                  <tr className="bg-secondary/50 border-t border-border">
                     <td
-                      colSpan={4}
-                      className="px-3 py-2 text-right font-medium text-foreground-muted"
+                      colSpan={3}
+                      className="px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
                     >
                       Разом:
                     </td>
-                    <td className="px-3 py-2 text-right font-bold text-foreground">
+                    <td />
+                    {showDetail.totalVat > 0 && (
+                      <td className="px-3 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
+                        {fmt(showDetail.totalVat)}
+                      </td>
+                    )}
+                    <td className="px-3 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
                       {fmt(showDetail.totalAmount)}
                     </td>
                   </tr>

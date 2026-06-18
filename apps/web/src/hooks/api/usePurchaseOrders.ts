@@ -13,6 +13,7 @@ export interface POLine {
   quantity: number;
   price: number;
   amount?: number;
+  vatAmount?: number;
   receivedQty?: number;
 }
 
@@ -28,6 +29,7 @@ export interface PurchaseOrder {
   contractId?: string | null;
   contractNumber?: string | null;
   totalAmount: number;
+  totalVat: number;
   notes: string | null;
   linesCount: number;
   lines: POLine[];
