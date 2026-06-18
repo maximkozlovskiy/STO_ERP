@@ -45,6 +45,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
@@ -1729,29 +1730,122 @@ export function CreateWorkOrderModal({
       <Modal
         open={open}
         onClose={handleModalClose}
-        title={isEditMode ? woNumber || 'Наряд' : 'Новий наряд'}
+        title={isEditMode ? 'Наряд на роботу' : 'Новий наряд'}
         size="content"
+        hideClose
+        headerContent={
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
+              <span className="font-medium">Номер:</span>
+              <span className="text-foreground">
+                {isEditMode && woNumber ? woNumber : '— присвоюється автоматично —'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
+              <div className="w-36">
+                <DatePickerInput
+                  value={form.documentDate}
+                  onChange={v => setForm(f => ({ ...f, documentDate: v }))}
+                  disabled={!canEdit}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[13px] font-medium text-muted-foreground">Статус:</span>
+              <div ref={statusMenuRef} className="relative flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={transitioning || !statusPrevStep || !isEditMode}
+                  onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
+                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+                  <span className="max-w-[80px] truncate">
+                    {statusPrevStep ? (WO_STATUS_LABELS[statusPrevStep] ?? statusPrevStep) : '—'}
+                  </span>
+                </button>
+                <Tooltip content={WO_STATUS_DESCRIPTIONS[currentStatus] ?? currentStatus}>
+                  <button
+                    type="button"
+                    disabled={transitioning || !isEditMode}
+                    onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
+                    className={cn(
+                      'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
+                      STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
+                      isEditMode && !transitioning && 'cursor-pointer hover:opacity-80',
+                      !isEditMode && 'cursor-default',
+                    )}
+                  >
+                    {isEditMode
+                      ? (WO_STATUS_LABELS[currentStatus] ?? currentStatus)
+                      : (WO_STATUS_LABELS['DRAFT'] ?? 'Чернетка')}
+                  </button>
+                </Tooltip>
+                <button
+                  type="button"
+                  disabled={transitioning || !statusNextStep || !isEditMode}
+                  onClick={() => statusNextStep && void doTransition(statusNextStep)}
+                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <span className="max-w-[80px] truncate">
+                    {statusNextStep ? (WO_STATUS_LABELS[statusNextStep] ?? statusNextStep) : '—'}
+                  </span>
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                </button>
+                {statusMenuOpen && allowedTransitions.length > 0 && (
+                  <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] rounded-lg border border-border bg-surface shadow-lg py-1">
+                    {allowedTransitions.map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        disabled={transitioning}
+                        onClick={() => {
+                          setStatusMenuOpen(false);
+                          void doTransition(s);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
+                      >
+                        {TRANSITION_LABELS[s] ?? s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        }
         extraHeaderActions={
-          isEditMode && workOrderId ? (
+          <div className="flex items-center gap-1">
+            {isEditMode && workOrderId && (
+              <button
+                onClick={() => {
+                  minimizeModal({
+                    kind: 'modal',
+                    label: woNumber || 'Наряд',
+                    modalKey: 'work-order',
+                    restoreProps: { workOrderId },
+                  });
+                  onMinimize?.();
+                  setActiveTab('main');
+                  onClose();
+                }}
+                className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
+                title="Згорнути у вкладку"
+                disabled={saving || transitioning}
+              >
+                <Minus className="h-4 w-4" />
+              </button>
+            )}
             <button
-              onClick={() => {
-                minimizeModal({
-                  kind: 'modal',
-                  label: woNumber || 'Наряд',
-                  modalKey: 'work-order',
-                  restoreProps: { workOrderId },
-                });
-                onMinimize?.(); // signal caller to skip closeTab
-                setActiveTab('main');
-                onClose();
-              }}
+              onClick={handleModalClose}
               className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-              title="Згорнути у вкладку"
+              title="Закрити"
               disabled={saving || transitioning}
             >
-              <Minus className="h-4 w-4" />
+              <X className="h-4 w-4" />
             </button>
-          ) : undefined
+          </div>
         }
         footer={
           isEditMode ? (
@@ -1982,111 +2076,6 @@ export function CreateWorkOrderModal({
               >
                 <div className="overflow-hidden">
                   <div className="space-y-4 pb-1">
-                    {/* Рядок 1: Номер | Дата документа | Статус */}
-                    <div className="grid grid-cols-3 gap-4">
-                      <Input
-                        label="Номер"
-                        value={isEditMode && woNumber ? woNumber : '— присвоюється автоматично —'}
-                        disabled
-                        readOnly
-                        className="h-8 text-[13px]"
-                      />
-                      <Input
-                        label="Дата документа"
-                        type="date"
-                        value={form.documentDate}
-                        onChange={e => setForm(f => ({ ...f, documentDate: e.target.value }))}
-                        disabled={!canEdit}
-                        className="h-8 text-[13px]"
-                      />
-                      {isEditMode ? (
-                        <div>
-                          <label className="block text-[13px] font-medium text-foreground mb-1">
-                            Статус
-                          </label>
-                          <div ref={statusMenuRef} className="relative flex items-center gap-1">
-                            <button
-                              type="button"
-                              disabled={transitioning || !statusPrevStep}
-                              onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
-                              className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                            >
-                              <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-                              <span className="max-w-[80px] truncate">
-                                {statusPrevStep
-                                  ? (WO_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
-                                  : '—'}
-                              </span>
-                            </button>
-                            <Tooltip
-                              content={WO_STATUS_DESCRIPTIONS[currentStatus] ?? currentStatus}
-                            >
-                              <button
-                                type="button"
-                                disabled={transitioning}
-                                onClick={() => setStatusMenuOpen(o => !o)}
-                                className={cn(
-                                  'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
-                                  STATUS_COLORS[currentStatus] ??
-                                    'bg-secondary text-muted-foreground',
-                                  !transitioning && 'cursor-pointer hover:opacity-80',
-                                )}
-                              >
-                                {WO_STATUS_LABELS[currentStatus] ?? currentStatus}
-                              </button>
-                            </Tooltip>
-                            <button
-                              type="button"
-                              disabled={transitioning || !statusNextStep}
-                              onClick={() => statusNextStep && void doTransition(statusNextStep)}
-                              className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                            >
-                              <span className="max-w-[80px] truncate">
-                                {statusNextStep
-                                  ? (WO_STATUS_LABELS[statusNextStep] ?? statusNextStep)
-                                  : '—'}
-                              </span>
-                              <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                            </button>
-                            {statusMenuOpen && allowedTransitions.length > 0 && (
-                              <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] rounded-lg border border-border bg-surface shadow-lg py-1">
-                                {allowedTransitions.map(s => (
-                                  <button
-                                    key={s}
-                                    type="button"
-                                    disabled={transitioning}
-                                    onClick={() => {
-                                      setStatusMenuOpen(false);
-                                      void doTransition(s);
-                                    }}
-                                    className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
-                                  >
-                                    {TRANSITION_LABELS[s] ?? s}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <label className="block text-[13px] font-medium text-foreground mb-1">
-                            Статус
-                          </label>
-                          <Tooltip content={WO_STATUS_DESCRIPTIONS['DRAFT']}>
-                            <span
-                              className={cn(
-                                'inline-block text-sm font-medium px-2.5 py-1 rounded-full cursor-default',
-                                STATUS_COLORS['DRAFT'] ?? 'bg-secondary text-muted-foreground',
-                              )}
-                            >
-                              {WO_STATUS_LABELS['DRAFT'] ?? 'Чернетка'}
-                            </span>
-                          </Tooltip>
-                        </div>
-                      )}
-                    </div>
-
                     {/* Рядок 2: Філія | Підйомник | Пріоритет */}
                     <div className="grid grid-cols-3 gap-4">
                       <Select
