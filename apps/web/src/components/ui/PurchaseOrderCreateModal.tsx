@@ -12,6 +12,8 @@ import {
   MessageSquare,
   Plus,
   Trash2,
+  Pencil,
+  Check,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -470,6 +472,34 @@ export function PurchaseOrderCreateModal({
   }, [total, vatMode, vatRate]);
 
   const removeLine = (key: string) => setLines(prev => prev.filter(l => l._key !== key));
+
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editingLine, setEditingLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
+
+  const startEdit = (line: LocalLine) => {
+    setEditingKey(line._key);
+    setEditingLine({
+      id: line.id,
+      goodId: line.goodId,
+      goodName: line.goodName,
+      goodSku: line.goodSku,
+      unit: line.unit,
+      unitShortName: line.unitShortName,
+      quantity: line.quantity,
+      price: line.price,
+      receivedQty: line.receivedQty,
+    });
+  };
+
+  const commitEdit = () => {
+    if (!editingKey) return;
+    setLines(prev =>
+      prev.map(l => (l._key === editingKey ? { ...editingLine, _key: editingKey } : l)),
+    );
+    setEditingKey(null);
+  };
+
+  const cancelEdit = () => setEditingKey(null);
 
   const addLine = () => {
     if (!newLine.goodId) return;
@@ -998,58 +1028,168 @@ export function PurchaseOrderCreateModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {lines.map(line => (
-                    <tr
-                      key={line._key}
-                      className="bg-surface hover:bg-secondary/30 transition-colors group"
-                    >
-                      <td className="px-3 py-2">
-                        <div>{line.goodName}</div>
-                        {line.goodSku && (
-                          <div className="text-[11px] text-muted-foreground">{line.goodSku}</div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 tabular-nums">{line.quantity}</td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {line.unitShortName || line.unit}
-                      </td>
-                      {isEditMode && (
-                        <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                          {line.receivedQty != null ? line.receivedQty : '—'}
+                  {lines.map(line =>
+                    editingKey === line._key ? (
+                      // ── Inline edit row ──────────────────────────────────
+                      <tr key={line._key} className="bg-primary/5 border-t-2 border-primary/20">
+                        <td className="px-3 py-1.5 text-[12px] text-muted-foreground">
+                          <div>{line.goodName}</div>
+                          {line.goodSku && (
+                            <div className="text-[11px] text-muted-foreground/70">
+                              {line.goodSku}
+                            </div>
+                          )}
                         </td>
-                      )}
-                      <td className="px-3 py-2 tabular-nums">{line.price}</td>
-                      {vatMode !== 'NONE' && (
-                        <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                          {vatRate > 0
-                            ? (
-                                ((parseFloat(line.quantity) || 0) *
-                                  (parseFloat(line.price) || 0) *
-                                  vatRate) /
-                                100
-                              ).toFixed(2)
-                            : '—'}
+                        <td className="px-1 py-1.5">
+                          <input
+                            type="number"
+                            min="0.001"
+                            step="1"
+                            value={editingLine.quantity}
+                            onChange={e =>
+                              setEditingLine(l => ({ ...l, quantity: e.target.value }))
+                            }
+                            className="w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
                         </td>
-                      )}
-                      <td className="px-3 py-2 tabular-nums">
-                        {((parseFloat(line.quantity) || 0) * (parseFloat(line.price) || 0)).toFixed(
-                          2,
+                        <td className="px-1 py-1.5">
+                          {units.length > 0 ? (
+                            <select
+                              value={editingLine.unit}
+                              onChange={e => setEditingLine(l => ({ ...l, unit: e.target.value }))}
+                              className="w-full rounded border border-input bg-background px-1.5 py-1 text-[11px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                            >
+                              {units.map(u => (
+                                <option key={u.id} value={u.shortName}>
+                                  {u.shortName}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">
+                              {editingLine.unit}
+                            </span>
+                          )}
+                        </td>
+                        {isEditMode && (
+                          <td className="px-3 py-1.5 text-[11px] text-muted-foreground">
+                            {line.receivedQty != null ? line.receivedQty : '—'}
+                          </td>
                         )}
-                      </td>
-                      <td className="px-2 py-2">
-                        {canEdit && (
-                          <button
-                            type="button"
-                            onClick={() => removeLine(line._key)}
-                            aria-label="Видалити позицію"
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-destructive transition-all"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                        <td className="px-1 py-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={editingLine.price}
+                            onChange={e => setEditingLine(l => ({ ...l, price: e.target.value }))}
+                            placeholder="0"
+                            className="w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
+                        </td>
+                        {vatMode !== 'NONE' && (
+                          <td className="px-3 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                            {vatRate > 0
+                              ? (
+                                  ((parseFloat(editingLine.quantity) || 0) *
+                                    (parseFloat(editingLine.price) || 0) *
+                                    vatRate) /
+                                  100
+                                ).toFixed(2)
+                              : '—'}
+                          </td>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="px-3 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                          {(
+                            (parseFloat(editingLine.quantity) || 0) *
+                            (parseFloat(editingLine.price) || 0)
+                          ).toFixed(2)}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <div className="flex flex-row gap-1 items-center">
+                            <button
+                              type="button"
+                              onClick={commitEdit}
+                              title="Зберегти"
+                              className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEdit}
+                              title="Скасувати"
+                              className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      // ── Display row ──────────────────────────────────────
+                      <tr
+                        key={line._key}
+                        className="bg-surface hover:bg-secondary/30 transition-colors group"
+                      >
+                        <td className="px-3 py-2">
+                          <div>{line.goodName}</div>
+                          {line.goodSku && (
+                            <div className="text-[11px] text-muted-foreground">{line.goodSku}</div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 tabular-nums">{line.quantity}</td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {line.unitShortName || line.unit}
+                        </td>
+                        {isEditMode && (
+                          <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                            {line.receivedQty != null ? line.receivedQty : '—'}
+                          </td>
+                        )}
+                        <td className="px-3 py-2 tabular-nums">{line.price}</td>
+                        {vatMode !== 'NONE' && (
+                          <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                            {vatRate > 0
+                              ? (
+                                  ((parseFloat(line.quantity) || 0) *
+                                    (parseFloat(line.price) || 0) *
+                                    vatRate) /
+                                  100
+                                ).toFixed(2)
+                              : '—'}
+                          </td>
+                        )}
+                        <td className="px-3 py-2 tabular-nums">
+                          {(
+                            (parseFloat(line.quantity) || 0) * (parseFloat(line.price) || 0)
+                          ).toFixed(2)}
+                        </td>
+                        <td className="px-2 py-2">
+                          {canEdit && (
+                            <div className="flex flex-row gap-1 items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-all">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(line)}
+                                aria-label="Редагувати позицію"
+                                className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeLine(line._key)}
+                                aria-label="Видалити позицію"
+                                className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ),
+                  )}
 
                   {/* Add line input row */}
                   {canEdit && showLineInput && (
