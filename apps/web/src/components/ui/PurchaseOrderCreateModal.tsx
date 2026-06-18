@@ -719,7 +719,7 @@ export function PurchaseOrderCreateModal({
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Дата:</span>
+              <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
               <div className="w-36">
                 <DatePickerInput
                   value={form.documentDate}
@@ -1011,8 +1011,8 @@ export function PurchaseOrderCreateModal({
                   </Select>
                 </div>
 
-                {/* Рядок 3: Договір | Примітки | Дата створення (edit) */}
-                <div className={cn('gap-4', isEditMode ? 'grid grid-cols-3' : 'grid grid-cols-2')}>
+                {/* Рядок 3: Договір | Примітки */}
+                <div className="grid grid-cols-2 gap-4">
                   <Input
                     label="Договір"
                     value={contractNumber ?? ''}
@@ -1029,15 +1029,6 @@ export function PurchaseOrderCreateModal({
                     placeholder="Додаткова інформація…"
                     className="h-8 text-[13px]"
                   />
-                  {isEditMode && (
-                    <Input
-                      label="Дата створення"
-                      value={createdAt ?? '—'}
-                      disabled
-                      readOnly
-                      className="h-8 text-[13px]"
-                    />
-                  )}
                 </div>
               </div>
             </div>
