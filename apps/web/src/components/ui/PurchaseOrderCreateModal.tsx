@@ -712,22 +712,6 @@ export function PurchaseOrderCreateModal({
         hideClose
         headerContent={
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
-              <span className="font-medium">Номер:</span>
-              <span className="text-foreground">
-                {isEditMode && poNumber ? poNumber : '— присвоюється автоматично —'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
-              <div className="w-36">
-                <DatePickerInput
-                  value={form.documentDate}
-                  onChange={v => setForm(f => ({ ...f, documentDate: v }))}
-                  disabled={!canEdit}
-                />
-              </div>
-            </div>
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-[13px] font-medium text-muted-foreground">Статус:</span>
               <div ref={statusMenuRef} className="relative flex items-center gap-1">
@@ -964,6 +948,25 @@ export function PurchaseOrderCreateModal({
                     {error}
                   </div>
                 )}
+
+                {/* Рядок 1: Номер | Дата документа */}
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="Номер"
+                    value={isEditMode && poNumber ? poNumber : '— присвоюється автоматично —'}
+                    disabled
+                    readOnly
+                    className="h-8 text-[13px]"
+                  />
+                  <Input
+                    label="Дата документа"
+                    type="date"
+                    value={form.documentDate}
+                    onChange={e => setForm(f => ({ ...f, documentDate: e.target.value }))}
+                    disabled={!canEdit}
+                    className="h-8 text-[13px]"
+                  />
+                </div>
 
                 {/* Рядок 2: Постачальник | Склад */}
                 <div className="grid grid-cols-2 gap-4">
