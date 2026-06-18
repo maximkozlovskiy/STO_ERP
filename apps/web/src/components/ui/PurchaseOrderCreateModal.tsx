@@ -15,6 +15,8 @@ import {
   Pencil,
   Check,
   X,
+  Zap,
+  PackageCheck,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -189,6 +191,10 @@ export function PurchaseOrderCreateModal({
   const [transitioning, setTransitioning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
+  const [receiveMode, setReceiveMode] = useState(false);
+  const [receiveQtys, setReceiveQtys] = useState<Record<string, string>>({});
+  const [receiving, setReceiving] = useState(false);
+  const [applyingPricing, setApplyingPricing] = useState(false);
   const [error, setError] = useState('');
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
@@ -308,6 +314,8 @@ export function PurchaseOrderCreateModal({
     setContractId(null);
     setContractNumber(null);
     setCreatedAt(null);
+    setReceiveMode(false);
+    setReceiveQtys({});
     if (!isEditMode) {
       setForm({ supplierId: '', warehouseId: '', notes: '', documentDate: kyivToday() });
       setSupplierDisplay('');
@@ -687,6 +695,58 @@ export function PurchaseOrderCreateModal({
     return m;
   }, [warehouses]);
 
+  const handleReceive = async () => {
+    if (!purchaseOrderId) return;
+    const receivedLines = lines
+      .map(l => ({ lineId: l.id!, receivedQty: parseFloat(receiveQtys[l.id ?? ''] ?? '') }))
+      .filter(l => l.lineId && !isNaN(l.receivedQty) && l.receivedQty > 0);
+    if (!receivedLines.length) {
+      setError('Вкажіть кількість для хоча б однієї позиції');
+      return;
+    }
+    setReceiving(true);
+    setError('');
+    try {
+      await apiFetch(`/purchase-orders/${purchaseOrderId}/receive`, {
+        method: 'POST',
+        body: JSON.stringify({ lines: receivedLines }),
+      });
+      setReceiveMode(false);
+      setReceiveQtys({});
+      // Reload PO to get updated receivedQty and status
+      const updated = await apiFetch<{ status: string; number: string; lines?: typeof lines }>(
+        `/purchase-orders/${purchaseOrderId}`,
+      );
+      setCurrentStatus(updated.status);
+      onSaved?.();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Помилка оприбуткування');
+    } finally {
+      setReceiving(false);
+    }
+  };
+
+  const handleApplyPricing = async () => {
+    if (!purchaseOrderId) return;
+    setApplyingPricing(true);
+    setError('');
+    try {
+      const result = await apiFetch<{ updated: number }>(
+        `/purchase-orders/${purchaseOrderId}/apply-pricing`,
+        {
+          method: 'POST',
+        },
+      );
+      if (features.toastEnabled) toast.success(`Розцінено ${result.updated} товарів`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка розцінки';
+      setError(msg);
+      if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setApplyingPricing(false);
+    }
+  };
+
   // sto-optimize: memoize array of chips — раніше recompute + .filter() на кожен
   // typing keystroke у Input полях форми (notes тощо), навіть коли header згорнуто
   // у false.
@@ -901,18 +961,59 @@ export function PurchaseOrderCreateModal({
                   </Button>
                 </>
               )}
-              {/* FSM "Оприбуткувати" shortcut */}
-              {isEditMode && currentStatus === 'ORDERED' && (
+              {/* Розцінити — після отримання товару */}
+              {isEditMode && (currentStatus === 'RECEIVED' || currentStatus === 'PARTIAL') && (
                 <Button
-                  variant="default"
+                  variant="outline"
                   size="sm"
-                  onClick={() => doTransition('RECEIVED')}
-                  loading={transitioning}
-                  disabled={transitioning || saving}
+                  onClick={() => void handleApplyPricing()}
+                  loading={applyingPricing}
+                  disabled={applyingPricing || saving || transitioning}
+                  title="Розцінити товари за правилами"
                 >
-                  {PO_STATUS_ACTION_LABELS['RECEIVED'] ?? 'Оприбуткувати'}
+                  <Zap size={14} className="mr-1" />
+                  Розцінити
                 </Button>
               )}
+              {/* Оприбуткувати — inline receive mode */}
+              {isEditMode &&
+                (currentStatus === 'ORDERED' || currentStatus === 'PARTIAL') &&
+                (receiveMode ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setReceiveMode(false);
+                        setReceiveQtys({});
+                        setError('');
+                      }}
+                      disabled={receiving}
+                    >
+                      Скасувати
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => void handleReceive()}
+                      loading={receiving}
+                      disabled={receiving}
+                    >
+                      <PackageCheck size={14} className="mr-1" />
+                      Підтвердити прийом
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => setReceiveMode(true)}
+                    disabled={saving || transitioning}
+                  >
+                    <PackageCheck size={14} className="mr-1" />
+                    Оприбуткувати
+                  </Button>
+                ))}
               {isEditMode ? (
                 canEdit && (
                   <Button
@@ -1097,6 +1198,11 @@ export function PurchaseOrderCreateModal({
                         Отримано
                       </th>
                     )}
+                    {receiveMode && (
+                      <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-primary whitespace-nowrap">
+                        До отримання
+                      </th>
+                    )}
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
                       Ціна, ₴
                     </th>
@@ -1183,6 +1289,7 @@ export function PurchaseOrderCreateModal({
                             {line.receivedQty != null ? line.receivedQty : '—'}
                           </td>
                         )}
+                        {receiveMode && <td />}
                         <td className="px-1 py-1.5">
                           <input
                             type="number"
@@ -1249,6 +1356,30 @@ export function PurchaseOrderCreateModal({
                         {isEditMode && (
                           <td className="px-3 py-2 tabular-nums text-muted-foreground">
                             {line.receivedQty != null ? line.receivedQty : '—'}
+                          </td>
+                        )}
+                        {receiveMode && (
+                          <td className="px-2 py-1.5">
+                            {(() => {
+                              const maxQty =
+                                (parseFloat(String(line.quantity)) || 0) - (line.receivedQty ?? 0);
+                              return maxQty > 0 ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={maxQty}
+                                  step="0.001"
+                                  value={receiveQtys[line.id ?? ''] ?? ''}
+                                  onChange={e =>
+                                    setReceiveQtys(q => ({ ...q, [line.id ?? '']: e.target.value }))
+                                  }
+                                  placeholder={`макс. ${maxQty}`}
+                                  className="w-24 rounded border border-primary/50 bg-primary/5 px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              ) : (
+                                <span className="text-[11px] text-success px-2">✓ повністю</span>
+                              );
+                            })()}
                           </td>
                         )}
                         <td className="px-3 py-2 tabular-nums">{line.price}</td>
@@ -1400,7 +1531,7 @@ export function PurchaseOrderCreateModal({
                 <tfoot>
                   <tr className="bg-secondary/50 border-t border-border">
                     <td
-                      colSpan={3 + (isEditMode ? 1 : 0)}
+                      colSpan={3 + (isEditMode ? 1 : 0) + (receiveMode ? 1 : 0)}
                       className="px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
                     >
                       Разом:
