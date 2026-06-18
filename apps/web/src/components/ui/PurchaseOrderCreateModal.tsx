@@ -1105,15 +1105,39 @@ export function PurchaseOrderCreateModal({
                 <tbody className="divide-y divide-border">
                   {lines.map(line =>
                     editingKey === line._key ? (
-                      // ── Inline edit row ──────────────────────────────────
+                      // ── Inline edit row (same layout as add-line row) ────
                       <tr key={line._key} className="bg-primary/5 border-t-2 border-primary/20">
-                        <td className="px-3 py-1.5 text-[12px] text-muted-foreground">
-                          <div>{line.goodName}</div>
-                          {line.goodSku && (
-                            <div className="text-[11px] text-muted-foreground/70">
-                              {line.goodSku}
-                            </div>
-                          )}
+                        <td className="px-2 py-1.5">
+                          <EntityPickerField<GoodItem>
+                            display={editingLine.goodName}
+                            placeholder="Пошук товару…"
+                            ariaLabel="Товар"
+                            onPick={() => setGoodSearchOpen(true)}
+                            onSearch={fetchGoodItems}
+                            onOpenDetail={
+                              editingLine.goodId
+                                ? () => openGoodDetail(editingLine.goodId)
+                                : undefined
+                            }
+                            onSearchSelect={g => {
+                              setEditingLine(l => ({
+                                ...l,
+                                goodId: g.id,
+                                goodName: g.primary,
+                                goodSku: g.sku ?? null,
+                                unit: g.unit ?? l.unit,
+                                price: String(g.purchasePrice ?? l.price),
+                              }));
+                            }}
+                            onClear={() =>
+                              setEditingLine(l => ({
+                                ...l,
+                                goodId: '',
+                                goodName: '',
+                                goodSku: null,
+                              }))
+                            }
+                          />
                         </td>
                         <td className="px-1 py-1.5">
                           <input
@@ -1163,7 +1187,7 @@ export function PurchaseOrderCreateModal({
                           />
                         </td>
                         {vatMode !== 'NONE' && (
-                          <td className="px-3 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                          <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                             {vatRate > 0
                               ? (
                                   ((parseFloat(editingLine.quantity) || 0) *
@@ -1174,19 +1198,20 @@ export function PurchaseOrderCreateModal({
                               : '—'}
                           </td>
                         )}
-                        <td className="px-3 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {(
                             (parseFloat(editingLine.quantity) || 0) *
                             (parseFloat(editingLine.price) || 0)
                           ).toFixed(2)}
                         </td>
                         <td className="px-2 py-1.5">
-                          <div className="flex flex-row gap-1 items-center">
+                          <div className="flex flex-row gap-2 items-center">
                             <button
                               type="button"
                               onClick={commitEdit}
+                              disabled={!editingLine.goodId}
                               title="Зберегти"
-                              className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
+                              className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                             >
                               <Check className="h-3.5 w-3.5" />
                             </button>
