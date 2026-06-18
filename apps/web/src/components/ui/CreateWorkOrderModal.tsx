@@ -8,7 +8,6 @@ import {
   Pencil,
   Check,
   X,
-  ChevronUp,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -49,6 +48,7 @@ import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
+import { CollapsibleHeader } from '@/components/ui/collapsible-header';
 import { WorkPickerModal, type WorkPickerItem } from '@/components/ui/WorkPickerModal';
 import { GoodPickerModal, type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -2330,70 +2330,32 @@ export function CreateWorkOrderModal({
               {/* /grid collapsible */}
 
               {/* ── Header toggle strip ───────────────────────────────────── */}
-              <button
-                type="button"
-                onClick={() => setHeaderCollapsed(c => !c)}
-                className={[
-                  'flex items-center gap-2 w-full py-1.5 px-2 text-[11px]',
-                  'hover:bg-secondary/60 transition-colors select-none shrink-0',
-                  'border-t border-border',
-                ].join(' ')}
-              >
-                {/* Summary chips — visible only when collapsed */}
-                <span className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
-                  {headerCollapsed ? (
-                    <>
-                      {counterpartyDisplayName && (
-                        <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-50">
-                          {counterpartyDisplayName}
-                        </span>
-                      )}
-                      {cpPhone && (
-                        <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-35">
-                          {cpPhone}
-                        </span>
-                      )}
-                      {(() => {
-                        const v = form.vehicleId ? vehiclesById.get(form.vehicleId) : null;
-                        return v ? (
-                          <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium truncate max-w-45">
-                            {v.make} {v.model}
-                            {v.licensePlate ? ` · ${v.licensePlate}` : ''}
-                          </span>
-                        ) : null;
-                      })()}
-                      {(() => {
-                        const l = form.liftId ? liftsById.get(form.liftId) : null;
-                        return l ? (
-                          <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-30">
-                            {l.name}
-                          </span>
-                        ) : null;
-                      })()}
-                      {(() => {
-                        const b = form.branchId ? branchesById.get(form.branchId) : null;
-                        return b ? (
-                          <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground truncate max-w-35">
-                            {b.name}
-                          </span>
-                        ) : null;
-                      })()}
-                      {!counterpartyDisplayName && !form.vehicleId && (
-                        <span className="text-muted-foreground">Розгорнути шапку</span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">Шапка документа</span>
-                  )}
-                </span>
-                <span className="flex items-center gap-1 text-muted-foreground shrink-0">
-                  {headerCollapsed ? 'Розгорнути' : 'Згорнути'}
-                  <ChevronUp
-                    className="h-3 w-3 transition-transform duration-300"
-                    style={{ transform: headerCollapsed ? 'rotate(180deg)' : 'rotate(0deg)' }}
-                  />
-                </span>
-              </button>
+              <CollapsibleHeader
+                collapsed={headerCollapsed}
+                onToggle={() => setHeaderCollapsed(c => !c)}
+                chips={[
+                  { label: counterpartyDisplayName, primary: true, maxWidth: 'max-w-50' },
+                  { label: cpPhone, maxWidth: 'max-w-35' },
+                  {
+                    label: (() => {
+                      const v = form.vehicleId ? vehiclesById.get(form.vehicleId) : null;
+                      return v
+                        ? `${v.make} ${v.model}${v.licensePlate ? ` · ${v.licensePlate}` : ''}`
+                        : null;
+                    })(),
+                    primary: true,
+                    maxWidth: 'max-w-45',
+                  },
+                  {
+                    label: form.liftId ? (liftsById.get(form.liftId)?.name ?? null) : null,
+                    maxWidth: 'max-w-30',
+                  },
+                  {
+                    label: form.branchId ? (branchesById.get(form.branchId)?.name ?? null) : null,
+                    maxWidth: 'max-w-35',
+                  },
+                ]}
+              />
 
               {/* ── Tables area — takes remaining space ──────────────────── */}
               <div className="flex-1 min-h-0 overflow-y-auto">

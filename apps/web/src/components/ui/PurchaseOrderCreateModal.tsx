@@ -5,7 +5,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  ChevronUp,
   Minus,
   Printer,
   Download,
@@ -29,6 +28,7 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
+import { CollapsibleHeader } from '@/components/ui/collapsible-header';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -570,22 +570,25 @@ export function PurchaseOrderCreateModal({
         size="content"
         hideClose
         headerContent={
-          <div className="grid grid-cols-3 gap-4">
-            <Input
-              label="Номер"
-              value={isEditMode && poNumber ? poNumber : '— присвоюється автоматично —'}
-              disabled
-              readOnly
-              className="h-8 text-[13px]"
-            />
-            <DatePickerInput
-              label="Дата документа"
-              value={form.documentDate}
-              onChange={v => setForm(f => ({ ...f, documentDate: v }))}
-              disabled={!canEdit}
-            />
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1">Статус</label>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
+              <span className="font-medium">Номер:</span>
+              <span className="text-foreground">
+                {isEditMode && poNumber ? poNumber : '— присвоюється автоматично —'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[13px] font-medium text-muted-foreground">Дата:</span>
+              <div className="w-36">
+                <DatePickerInput
+                  value={form.documentDate}
+                  onChange={v => setForm(f => ({ ...f, documentDate: v }))}
+                  disabled={!canEdit}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[13px] font-medium text-muted-foreground">Статус:</span>
               <div ref={statusMenuRef} className="relative flex items-center gap-1">
                 <button
                   type="button"
@@ -889,30 +892,22 @@ export function PurchaseOrderCreateModal({
           </div>
 
           {/* ── Header toggle strip ──────────────────────────────────────── */}
-          <button
-            type="button"
-            onClick={() => setHeaderCollapsed(c => !c)}
-            className={[
-              'flex items-center gap-2 w-full py-1.5 px-2 text-[11px]',
-              'hover:bg-secondary/60 transition-colors select-none shrink-0',
-              'border-t border-border',
-            ].join(' ')}
-          >
-            {headerCollapsed ? (
-              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            )}
-            <span className="text-muted-foreground">Шапка документа</span>
-            {headerChips.map(chip => (
-              <span
-                key={String(chip)}
-                className="bg-secondary text-muted-foreground rounded px-1.5 py-0.5 text-[10px]"
-              >
-                {chip}
-              </span>
-            ))}
-          </button>
+          <CollapsibleHeader
+            collapsed={headerCollapsed}
+            onToggle={() => setHeaderCollapsed(c => !c)}
+            chips={[
+              { label: supplierDisplay || '— постачальник —', primary: true, maxWidth: 'max-w-50' },
+              {
+                label: form.warehouseId
+                  ? (warehouseById.get(form.warehouseId)?.name ?? '— склад —')
+                  : '— склад —',
+                maxWidth: 'max-w-40',
+              },
+              ...(contractNumber
+                ? [{ label: `Дог. ${contractNumber}`, maxWidth: 'max-w-35' }]
+                : []),
+            ]}
+          />
 
           {/* ── Lines table ──────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
