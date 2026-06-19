@@ -6,6 +6,8 @@ import { BrandResponseDto, CreateBrandDto, UpdateBrandDto } from './brands.dto';
 const TTL = 300;
 const cacheKey = (orgId: string) => `ref:brands:${orgId}`;
 
+const SYNONYMS_INCLUDE = { synonyms: { where: { deletedAt: null }, select: { synonym: true } } };
+
 @Injectable()
 export class BrandsService {
   constructor(
@@ -28,6 +30,7 @@ export class BrandsService {
     const [items, total] = await Promise.all([
       this.prisma.brand.findMany({
         where,
+        include: SYNONYMS_INCLUDE,
         // Bug #306: explicit `nulls: 'first'` для deletedAt — Postgres за замовчуванням
         // ставить NULL у кінець ASC → активні (deletedAt=NULL) йшли б ПОСЛЕ видалених
         // у списку showDeleted=true. Парний паттерн до units.service.ts (Bug #296).
@@ -50,18 +53,26 @@ export class BrandsService {
       data: { deletedAt: null },
     });
     if (result.count === 0) throw new NotFoundException('Видалений бренд не знайдено');
-    const item = await this.prisma.brand.findFirstOrThrow({ where: { id, orgId } });
+    const item = await this.prisma.brand.findFirstOrThrow({
+      where: { id, orgId },
+      include: SYNONYMS_INCLUDE,
+    });
     await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
   }
 
   async findOne(orgId: string, id: string): Promise<BrandResponseDto> {
-    const item = await this.prisma.brand.findFirst({ where: { id, orgId, deletedAt: null } });
+    const item = await this.prisma.brand.findFirst({
+      where: { id, orgId, deletedAt: null },
+      include: SYNONYMS_INCLUDE,
+    });
     if (!item) throw new NotFoundException('Бренд не знайдено');
     return this.toDto(item);
   }
 
   async create(orgId: string, dto: CreateBrandDto): Promise<BrandResponseDto> {
+    const synonyms = this.cleanSynonyms(dto.synonyms);
+
     // sto-optimize: only id + deletedAt consumed (resurrect-vs-conflict branch).
     const anyExisting = await this.prisma.brand.findFirst({
       where: { orgId, name: dto.name },
@@ -71,17 +82,40 @@ export class BrandsService {
       if (!anyExisting.deletedAt) throw new ConflictException('Бренд з такою назвою вже існує');
       const restored = await this.prisma.brand.update({
         where: { id: anyExisting.id },
-        data: { ...dto, deletedAt: null },
+        data: { name: dto.name, deletedAt: null },
+        include: SYNONYMS_INCLUDE,
+      });
+      await this.syncSynonyms(orgId, anyExisting.id, synonyms);
+      const item = await this.prisma.brand.findFirstOrThrow({
+        where: { id: anyExisting.id },
+        include: SYNONYMS_INCLUDE,
       });
       await this.cache.del(cacheKey(orgId));
-      return this.toDto(restored);
+      return this.toDto(item);
     }
-    const item = await this.prisma.brand.create({ data: { ...dto, orgId } });
+
+    const item = await this.prisma.brand.create({
+      data: {
+        name: dto.name,
+        orgId,
+        synonyms: synonyms.length
+          ? {
+              createMany: {
+                data: synonyms.map(s => ({ orgId, synonym: s })),
+                skipDuplicates: true,
+              },
+            }
+          : undefined,
+      },
+      include: SYNONYMS_INCLUDE,
+    });
     await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
   }
 
   async update(orgId: string, id: string, dto: UpdateBrandDto): Promise<BrandResponseDto> {
+    const synonyms = this.cleanSynonyms(dto.synonyms);
+
     // Perf: tenant guard + duplicate-name check паралелизуються — обидва тенант-ізольовані,
     // duplicate-check читає по dto.name (не по existing) → немає залежності.
     const [existing, duplicate] = await Promise.all([
@@ -96,7 +130,14 @@ export class BrandsService {
     ]);
     if (!existing) throw new NotFoundException('Бренд не знайдено');
     if (duplicate) throw new ConflictException('Бренд з такою назвою вже існує');
-    const item = await this.prisma.brand.update({ where: { id, orgId }, data: dto });
+
+    await this.prisma.brand.update({ where: { id, orgId }, data: { name: dto.name } });
+    await this.syncSynonyms(orgId, id, synonyms);
+
+    const item = await this.prisma.brand.findFirstOrThrow({
+      where: { id, orgId },
+      include: SYNONYMS_INCLUDE,
+    });
     await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
   }
@@ -110,7 +151,45 @@ export class BrandsService {
       data: { deletedAt: new Date() },
     });
     if (result.count === 0) throw new NotFoundException('Бренд не знайдено');
+    // Soft-delete synonyms too
+    await this.prisma.brandSynonym.updateMany({
+      where: { brandId: id, orgId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
     await this.cache.del(cacheKey(orgId));
+  }
+
+  // Diff synonyms: soft-delete removed, create new
+  private async syncSynonyms(orgId: string, brandId: string, incoming: string[]): Promise<void> {
+    const existing = await this.prisma.brandSynonym.findMany({
+      where: { brandId, orgId, deletedAt: null },
+      select: { id: true, synonym: true },
+    });
+    const existingSet = new Set(existing.map(s => s.synonym));
+    const incomingSet = new Set(incoming);
+
+    const toRemove = existing.filter(s => !incomingSet.has(s.synonym)).map(s => s.id);
+    const toAdd = incoming.filter(s => !existingSet.has(s));
+
+    await Promise.all([
+      toRemove.length
+        ? this.prisma.brandSynonym.updateMany({
+            where: { id: { in: toRemove } },
+            data: { deletedAt: new Date() },
+          })
+        : Promise.resolve(),
+      toAdd.length
+        ? this.prisma.brandSynonym.createMany({
+            data: toAdd.map(s => ({ orgId, brandId, synonym: s })),
+            skipDuplicates: true,
+          })
+        : Promise.resolve(),
+    ]);
+  }
+
+  private cleanSynonyms(raw?: string[]): string[] {
+    if (!raw) return [];
+    return [...new Set(raw.map(s => s.trim()).filter(s => s.length > 0))];
   }
 
   private toDto(item: {
@@ -120,11 +199,13 @@ export class BrandsService {
     deletedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
+    synonyms?: { synonym: string }[];
   }): BrandResponseDto {
     return {
       id: item.id,
       orgId: item.orgId,
       name: item.name,
+      synonyms: (item.synonyms ?? []).map(s => s.synonym),
       deletedAt: item.deletedAt ?? null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,

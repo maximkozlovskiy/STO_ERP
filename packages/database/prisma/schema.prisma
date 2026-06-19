@@ -814,10 +814,28 @@ model Brand {
 
   goods        Good[]
   pricingRules PricingRule[]
+  synonyms     BrandSynonym[]
 
   @@unique([orgId, name])
   @@index([orgId, deletedAt])
   @@map("brands")
+}
+
+model BrandSynonym {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  brandId     String    @db.Uuid
+  synonym     String
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  brand Brand @relation(fields: [brandId], references: [id])
+
+  @@unique([orgId, synonym])
+  @@index([orgId, brandId, deletedAt])
+  @@map("brand_synonyms")
 }
 
 model Good {

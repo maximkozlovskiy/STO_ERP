@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Pencil, Trash2, Tag, Eye, EyeOff, RotateCcw } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Eye, EyeOff, RotateCcw, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,7 @@ import {
 interface Brand {
   id: string;
   name: string;
+  synonyms: string[];
   deletedAt?: string | null;
 }
 
@@ -40,7 +41,8 @@ export default function BrandsTab() {
   const [showDeleted, setShowDeleted] = useState(false);
   const [modal, setModal] = useState(false);
   const [editBrand, setEditBrand] = useState<Brand | null>(null);
-  const [form, setForm] = useState({ name: '' });
+  const [form, setForm] = useState({ name: '', synonyms: [] as string[] });
+  const [synonymInput, setSynonymInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
@@ -61,7 +63,7 @@ export default function BrandsTab() {
       const reqId = ++loadReqRef.current;
       apiFetch<{ items: Brand[]; total: number }>(url)
         .then(r => {
-          if (loadReqRef.current !== reqId) return; // stale — newer fetch in flight
+          if (loadReqRef.current !== reqId) return;
           setBrands(r.items);
           if (!withDeleted) setCache('cache:brands', r.items);
         })
@@ -82,15 +84,33 @@ export default function BrandsTab() {
 
   const openCreate = () => {
     setEditBrand(null);
-    setForm({ name: '' });
+    setForm({ name: '', synonyms: [] });
+    setSynonymInput('');
     setError('');
     setModal(true);
   };
   const openEdit = (b: Brand) => {
     setEditBrand(b);
-    setForm({ name: b.name });
+    setForm({ name: b.name, synonyms: b.synonyms ?? [] });
+    setSynonymInput('');
     setError('');
     setModal(true);
+  };
+
+  const addSynonym = () => {
+    const val = synonymInput.trim();
+    if (!val) return;
+    const lower = val.toLowerCase();
+    if (form.synonyms.some(s => s.toLowerCase() === lower)) {
+      setSynonymInput('');
+      return;
+    }
+    setForm(f => ({ ...f, synonyms: [...f.synonyms, val] }));
+    setSynonymInput('');
+  };
+
+  const removeSynonym = (s: string) => {
+    setForm(f => ({ ...f, synonyms: f.synonyms.filter(x => x !== s) }));
   };
 
   const save = async () => {
@@ -101,15 +121,16 @@ export default function BrandsTab() {
     setSaving(true);
     setError('');
     try {
+      const payload = { name: form.name.trim(), synonyms: form.synonyms };
       if (editBrand) {
         await apiFetch<Brand>(`/brands/${editBrand.id}`, {
           method: 'PATCH',
-          body: JSON.stringify({ name: form.name.trim() }),
+          body: JSON.stringify(payload),
         });
       } else {
         await apiFetch<Brand>('/brands', {
           method: 'POST',
-          body: JSON.stringify({ name: form.name.trim() }),
+          body: JSON.stringify(payload),
         });
       }
       setModal(false);
@@ -196,6 +217,7 @@ export default function BrandsTab() {
           <TableHeader>
             <TableRow>
               <TableHead>Назва бренду</TableHead>
+              <TableHead>Синоніми</TableHead>
               <TableHead className="text-right">
                 {activeCount > 0 && (
                   <span className="text-[12px] text-muted-foreground font-normal">
@@ -209,7 +231,7 @@ export default function BrandsTab() {
           <TableBody>
             {loading && (
               <TableRow>
-                <TableCell colSpan={2} className="py-10 text-center">
+                <TableCell colSpan={3} className="py-10 text-center">
                   <div className="flex justify-center">
                     <Spinner size="md" />
                   </div>
@@ -218,7 +240,7 @@ export default function BrandsTab() {
             )}
             {!loading && brands.length === 0 && (
               <TableRow>
-                <TableCell colSpan={2} className="p-0">
+                <TableCell colSpan={3} className="p-0">
                   <EmptyState
                     icon={Tag}
                     title="Бренди відсутні"
@@ -230,6 +252,9 @@ export default function BrandsTab() {
             {!loading &&
               brands.map(b => {
                 const isDeleted = !!b.deletedAt;
+                const synonyms = b.synonyms ?? [];
+                const visibleSynonyms = synonyms.slice(0, 3);
+                const extraCount = synonyms.length - visibleSynonyms.length;
                 return (
                   <TableRow
                     key={b.id}
@@ -246,6 +271,23 @@ export default function BrandsTab() {
                           {b.name}
                         </span>
                         {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {visibleSynonyms.map(s => (
+                          <Badge key={s} variant="secondary" className="text-[11px]">
+                            {s}
+                          </Badge>
+                        ))}
+                        {extraCount > 0 && (
+                          <Badge variant="secondary" className="text-[11px] text-muted-foreground">
+                            +{extraCount}
+                          </Badge>
+                        )}
+                        {synonyms.length === 0 && (
+                          <span className="text-[12px] text-muted-foreground">—</span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
@@ -308,15 +350,75 @@ export default function BrandsTab() {
             {error}
           </div>
         )}
-        <Input
-          label="Назва бренду"
-          required
-          value={form.name}
-          onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-          placeholder="наприклад: Bosch, NGK, Brembo"
-          autoFocus
-          className="h-8 text-[13px]"
-        />
+        <div className="space-y-4">
+          <Input
+            label="Назва бренду"
+            required
+            value={form.name}
+            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            placeholder="наприклад: Bosch, NGK, Brembo"
+            autoFocus
+            className="h-8 text-[13px]"
+          />
+
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">
+              Синоніми <span className="text-muted-foreground font-normal">(необов'язково)</span>
+            </label>
+            <p className="text-[12px] text-muted-foreground mb-2">
+              Альтернативні написання бренду від різних постачальників (Bosh, БОШ, BOSCH)
+            </p>
+
+            {/* Existing synonym chips */}
+            {form.synonyms.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {form.synonyms.map(s => (
+                  <span
+                    key={s}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-[12px] text-foreground"
+                  >
+                    {s}
+                    <button
+                      type="button"
+                      onClick={() => removeSynonym(s)}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                      aria-label={`Видалити синонім ${s}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Add synonym input */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={synonymInput}
+                onChange={e => setSynonymInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addSynonym();
+                  }
+                }}
+                placeholder="Введіть синонім і натисніть Enter або +"
+                className="flex-1 h-8 rounded-lg border border-border bg-transparent px-3 text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addSynonym}
+                disabled={!synonymInput.trim()}
+                className="shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </div>
       </Modal>
       <ConfirmDialog {...dialogProps} />
     </div>
