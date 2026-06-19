@@ -7,6 +7,13 @@
 
 ## 2026-06-19
 
+### a257dc8c fix(tester): bugs #541-#543 — regression-guards for include drift + dead-code cleanup
+
+- #541 LOW backend regression-coverage: PO_LINE_GOOD_INCLUDE / PART_GOOD_INCLUDE drift would not fail any test → extended mock fixtures у `work-orders.role-gate.spec.ts` (findOne+addPart) і `purchase-orders.service.spec.ts` (transition→findOne) з повним shape (internalCode/sku/brand) + асерції що поля потрапляють у DTO
+- #542 LOW frontend regression-coverage: новий `WorkOrderPartsSection.test.tsx` (4 кейси) guards sub-line render — all 3, lone brand, all null no-render, empty parts empty-state
+- #543 MEDIUM frontend dead-code: видалено onShowBatches prop + Layers import + button з WorkOrderPartsSection (PageClient ніколи не передавав callback з extraction commit e880a2f3 2026-06-05, silent UX no-op ~14 days)
+- Тести: API 928/928 → 931/931 (+3); Web 434/434 → 438/438 (+4); TS green
+
 ### 9ea58b9e feat(goods): add internalCode (sequential internal good code)
 
 - GOOD_INTERNAL_CODE в DocumentType enum + seed config (prefix T, NEVER reset)
