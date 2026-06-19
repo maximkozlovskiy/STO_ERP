@@ -38,8 +38,6 @@ interface Warehouse {
 interface WorkOrderPartsSectionProps {
   woId: string;
   parts: WorkOrderPart[];
-  /** Reserved for future tenant-scoped endpoints. */
-  orgId?: string;
   /** Reference data — passed down to AddPartModal. */
   warehouses: Warehouse[];
   /** Pre-fills the warehouse selector for sequential adds. */

@@ -1015,7 +1015,6 @@ export default function WorkOrderCardPage() {
 
       <WorkOrderPartsSection
         woId={id}
-        orgId={wo.orgId}
         parts={wo.parts}
         warehouses={warehouses}
         initialWarehouseId={initialPartWarehouseId}
