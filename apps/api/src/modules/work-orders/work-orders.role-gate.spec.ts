@@ -77,10 +77,16 @@ function makePrismaWithPart(batchCostPrice: number | null) {
         batchCostPrice,
         unitOfMeasureId: null,
         createdAt: new Date('2026-06-17'),
+        // Bug #541: mock відображає весь shape `PART_GOOD_INCLUDE` — internalCode/sku/brand
+        // потрапляють у toPartDto і назад у DTO. Якщо хтось видалить один із полів із
+        // const shape — асерції нижче зловлять регресію.
         good: {
           name: 'Масло',
+          internalCode: 'INT-001',
+          sku: 'SKU-1',
           unit: 'л',
           unitOfMeasure: null,
+          brand: { name: 'Toyota' },
         },
       },
     ],
@@ -218,6 +224,24 @@ describe('WorkOrdersService.findOne — costPrice role-gating (Bug #527)', () =>
     expect(wo.parts[0].costPrice).toBeUndefined();
   });
 
+  // ─── 6. Bug #541: regression-guard для PART_GOOD_INCLUDE drift ───────────────
+  // Refactor у commit a50e1484 витяг shared PART_GOOD_INCLUDE const з 3 ідентичних
+  // include shape-ів. Якщо хтось видалить internalCode/sku/brand із const —
+  // toPartDto продовжує мапити (`good?.internalCode ?? null`), TS green, а на
+  // runtime фронт отримує null навіть якщо у БД є значення (silent UX regression).
+  it('Bug #541: WorkOrderPart DTO містить goodInternalCode / goodSku / goodBrandName', async () => {
+    const prisma = makePrismaWithPart(42.5);
+    const service = makeService(prisma);
+
+    const wo = await service.findOne(ORG, WO_ID, 'OWNER');
+    expect(wo.parts[0]).toMatchObject({
+      goodName: 'Масло',
+      goodInternalCode: 'INT-001',
+      goodSku: 'SKU-1',
+      goodBrandName: 'Toyota',
+    });
+  });
+
   // ─── 5. Case-sensitivity (security-critical) ──────────────────────────────
 
   it('lowercase "owner" → fail-closed (case-sensitive Set lookup)', async () => {
@@ -245,6 +269,8 @@ function makePrismaForAddPart(batchCostPrice: number | null) {
   const warehouseFindFirst = vi.fn().mockResolvedValue({ id: 'wh-1' });
   const goodUoMFindFirst = vi.fn().mockResolvedValue(null);
   // Створений part з batchCostPrice — це поле role-gate-иться.
+  // Bug #541: shape `good` дзеркалить PART_GOOD_INCLUDE — включає internalCode/sku/brand
+  // щоб addPart-флоу був також guarded від drift-у const-include shape.
   const partCreate = vi.fn().mockResolvedValue({
     id: PART_ID,
     workOrderId: WO_ID,
@@ -256,7 +282,14 @@ function makePrismaForAddPart(batchCostPrice: number | null) {
     batchCostPrice,
     unitOfMeasureId: null,
     createdAt: new Date('2026-06-17'),
-    good: { name: 'Масло', unit: 'л', unitOfMeasure: null },
+    good: {
+      name: 'Масло',
+      internalCode: 'INT-001',
+      sku: 'SKU-1',
+      unit: 'л',
+      unitOfMeasure: null,
+      brand: { name: 'Toyota' },
+    },
   });
   const lineFindMany = vi.fn().mockResolvedValue([]);
   const partAggregate = vi.fn().mockResolvedValue({ _sum: { amount: 100 } });
@@ -325,6 +358,31 @@ describe('WorkOrdersService.addPart — costPrice role-gating (Bug #529)', () =>
       quantity: 1,
     });
     expect(part.costPrice).toBeUndefined();
+  });
+
+  // Bug #541: addPart-флоу також має включати goodInternalCode / goodSku / goodBrandName.
+  // Дублює guard у findOne (вище), щоб refactor `PART_GOOD_INCLUDE` ловився на трьох
+  // call-site-ах (findOne / addPart / updatePart) — а не лише там де costPrice ловиться.
+  it('Bug #541: addPart DTO містить goodInternalCode / goodSku / goodBrandName', async () => {
+    const prisma = makePrismaForAddPart(42.5);
+    const service = makeService(prisma);
+
+    const part = await service.addPart(
+      ORG,
+      WO_ID,
+      {
+        goodId: '99999999-9999-4999-8999-999999999999',
+        warehouseId: '88888888-8888-4888-8888-888888888888',
+        quantity: 1,
+      },
+      'OWNER',
+    );
+    expect(part).toMatchObject({
+      goodName: 'Масло',
+      goodInternalCode: 'INT-001',
+      goodSku: 'SKU-1',
+      goodBrandName: 'Toyota',
+    });
   });
 });
 

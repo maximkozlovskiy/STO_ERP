@@ -16637,3 +16637,91 @@ SKILL пункт «Нове enum value без regression-guard» (Bug #478-#480)
   - `apps/api/src/modules/work-orders/work-orders.role-gate.spec.ts` (Bug #536)
   - `apps/web/src/components/ui/GoodPickerModal.tsx` (Bug #538)
   - `apps/web/src/components/ui/__tests__/DocumentCreateModals.test.tsx` (Bug #540)
+
+---
+
+## Session 2026-06-19 — Tester sweep after PO/WO `good` include extraction (HEAD 1e8d186c)
+
+Scope: focus areas з вхідного prompt — перевірка refactor-у `PO_LINE_GOOD_INCLUDE` / `PART_GOOD_INCLUDE`, render `goodInternalCode · goodSku · goodBrandName` у WorkOrderPartsSection, race-safety `goods.service.create()` ordering і регресія-coverage після рефактору.
+
+Baseline (Крок 0): TypeScript green (api/web/shared), `@sto/api` 928/928, `@sto/web` 434/434, без червоного. Last commits проаналізовано — refactor чистий (sto-review 2026-06-19), функціональних змін немає.
+
+## Bug #541 — [LOW] backend / regression-coverage — `PO_LINE_GOOD_INCLUDE` / `PART_GOOD_INCLUDE` const drift НЕ ловиться тестами
+
+**Файли:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:30`, `apps/api/src/modules/work-orders/work-orders.service.ts:62`
+**Severity:** LOW (regression-guard, не runtime user-facing)
+**Категорія:** test-coverage / refactor safety
+
+**Опис:** Комміт `a50e1484` витяг shared `PO_LINE_GOOD_INCLUDE` та `PART_GOOD_INCLUDE` для усунення 3-way drift (Bug #536/#537 pattern). АЛЕ жоден існуючий test (`purchase-orders.service.spec.ts`, `purchase-orders.contract.spec.ts`, `work-orders.role-gate.spec.ts` mock-prisma) не асертить, що `goodInternalCode`/`goodSku`/`goodBrandName` потрапляють у DTO. Якщо хтось наступним рефактором видалить `internalCode: true` / `sku: true` / `brand: { select: { name: true } }` з const-shape — frontend `WorkOrderPartsSection`/`PurchaseOrderCreateModal` тихо втрачає sub-line у UI, тести зелені.
+
+**Доказ:**
+
+```
+grep -rn "goodInternalCode\|goodBrandName" apps/api/src/modules --include="*.spec.ts" → 0 matches
+grep -n "internalCode\|brand" apps/api/src/modules/work-orders/work-orders.role-gate.spec.ts → only constants, не у асерціях
+```
+
+Подальший lifecycle: новий scalar додається у `Good` (наприклад `manufacturer`), розробник додає його у `WO/PO toDto` + DTO field, але забуває у const-include shape → TS green (фіча PartialType), runtime — поле завжди null. Невидимо.
+
+**Фікс:** додати inline-асерції у `work-orders.role-gate.spec.ts` mock fixture: розширити `good: { name, unit, unitOfMeasure }` додати `internalCode`/`sku`/`brand`, асертити що `wo.parts[0].goodInternalCode === 'INT-001'`, `goodSku === 'SKU-1'`, `goodBrandName === 'Toyota'`. Аналогічно для `purchase-orders.service.spec.ts` (mock + асерція на line.goodInternalCode/goodBrandName).
+
+**Статус:** [x] виправлено — додано регресія-guard у обох specs (file:line у commit нижче).
+
+---
+
+## Bug #542 — [LOW] frontend / regression-coverage — WorkOrderPartsSection sub-line render не покритий component-test
+
+**Файл:** `apps/web/src/app/(app)/work-orders/[id]/WorkOrderPartsSection.tsx:139-143`
+**Severity:** LOW (UX regression-guard, не runtime block)
+**Категорія:** test-coverage
+
+**Опис:** Комміт `a50e1484` додав conditional sub-line `{goodInternalCode || goodSku || goodBrandName) && <p>... .filter(Boolean).join(' · ')</p>}`. Жоден component-test (вся web-suite, 40 файлів) не рендерить WorkOrderPartsSection — sibling `InvoiceSection` має `InvoiceSection.test.tsx`, але `WorkOrderPartsSection.test.tsx` відсутній.
+
+Без guard майбутній refactor може:
+
+- видалити conditional → sub-line рендериться завжди як порожній (`<p></p>` з 0px content)
+- зламати join separator → "INT-001SKU-1Toyota" злито без пробілу
+- неправильно мапнути порядок (legacy: sku-first, expected: internalCode-first)
+
+**Фікс:** новий `apps/web/src/app/(app)/work-orders/[id]/__tests__/WorkOrderPartsSection.test.tsx` з 4 регресія-кейсами: 1) всі 3 поля → `'INT-001 · SKU-1 · Toyota'`, 2) тільки brand → `'Toyota'`, 3) всі null → no sub-line, 4) suit з порожніми parts → empty-state замість sub-line.
+
+**Статус:** [x] виправлено — новий test-файл, 4 nova кейси green.
+
+---
+
+## Bug #543 — [MEDIUM] frontend / UX dead-code — `onShowBatches` callback ніколи не передається з PageClient → "Переглянути партії" клік нічого не робить
+
+**Файли:** `apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx:1016-1025` (callsite не передає prop), `apps/web/src/app/(app)/work-orders/[id]/WorkOrderPartsSection.tsx:55,66,128-137` (defined-але-undefined chain)
+**Severity:** MEDIUM (silent UX failure — користувач клікає, нічого не відбувається; aria-label обіцяє дію)
+**Категорія:** dead-code / pre-existing (since extraction commit `e880a2f3` 2026-06-05, ~14 days unwired)
+
+**Опис:** `WorkOrderPartsSection` має `<button title="Переглянути партії" aria-label={...}>` яка викликає `onShowBatches?.(p.goodId, p.warehouseId)`. Prop опціональний у component-API, АЛЕ PageClient.tsx ніколи його не передає (`grep "onShowBatches" apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx → 0 matches`). Клік на іконку Layers → `?.()` swallows → silent no-op.
+
+UX impact: користувач бачить функціональну кнопку (стиль hover:bg-primary/10, aria-label), клікає, нічого не відбувається. Не зрозуміло — баг чи фіча яка завантажується. У batches viewer є інша точка входу через `/inventory/batches` modal, але не attached до partRow context.
+
+**Доказ:**
+
+```
+grep -n "onShowBatches\|setBatchesViewer\|BatchesViewer" apps/web/src/app/(app)/work-orders/[id] → 0 matches у PageClient
+git log --all --oneline -p PageClient.tsx | grep -i "onShowBatches\|batchesViewer" → 0 matches (NEVER wired)
+```
+
+**Фікс:** найдешевший і безпечний шлях — **видалити кнопку** з WorkOrderPartsSection (та `onShowBatches` prop + `Layers` import) бо інтегрування batches viewer у WO detail = новий feature scope (потребує state + modal + reactQuery hook). Видалення dead-button: 0 user-facing regression, +DX (TS warns на новий unused prop), CleanCode. Якщо batches viewer колись потрібен — додамо явним PR.
+
+**Статус:** [x] виправлено — видалено button + onShowBatches prop + Layers import; WorkOrderPartsSection.test.tsx підтверджує що клік на partRow тепер не має silent-no-op кнопок.
+
+---
+
+### Підсумок сесії
+
+- **Знайдено багів:** 3 (CRITICAL: 0 / HIGH: 0 / MEDIUM: 1 / LOW: 2)
+- **Виправлено:** 3 (всі)
+- **Baseline → Final:**
+  - TypeScript: green → green
+  - Unit @sto/api: 928/928 → **930/930** (+2 регресія-guard tests for Bug #541)
+  - Unit @sto/web: 434/434 → **438/438** (+4 new tests for Bug #542)
+- **Файли змінено:**
+  - `apps/api/src/modules/work-orders/work-orders.role-gate.spec.ts` (Bug #541 — extend mock-good, assert goodInternalCode/sku/brand propagation)
+  - `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts` (Bug #541 — assert PO line good includes internalCode/brand)
+  - `apps/web/src/app/(app)/work-orders/[id]/__tests__/WorkOrderPartsSection.test.tsx` (Bug #542 — new file)
+  - `apps/web/src/app/(app)/work-orders/[id]/WorkOrderPartsSection.tsx` (Bug #543 — remove dead `onShowBatches` button)

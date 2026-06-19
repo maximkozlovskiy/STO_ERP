@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { Layers } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -51,8 +50,6 @@ interface WorkOrderPartsSectionProps {
   disabled?: boolean;
   /** Surface delete errors at the page level (preserves original UX). */
   onError?: (msg: string) => void;
-  /** Opens batches viewer for a specific (good, warehouse) pair. */
-  onShowBatches?: (goodId: string, warehouseId: string) => void;
 }
 
 export function WorkOrderPartsSection({
@@ -63,7 +60,6 @@ export function WorkOrderPartsSection({
   onChanged,
   disabled,
   onError,
-  onShowBatches,
 }: WorkOrderPartsSectionProps) {
   const features = useUiFeatures();
   const { confirm, dialogProps } = useConfirm();
@@ -121,21 +117,7 @@ export function WorkOrderPartsSection({
             {parts.map(p => (
               <div key={p.id} className="flex items-center justify-between px-4 py-3">
                 <div className="flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-medium text-foreground">{p.goodName}</p>
-                    <button
-                      type="button"
-                      onClick={e => {
-                        e.stopPropagation();
-                        onShowBatches?.(p.goodId, p.warehouseId);
-                      }}
-                      title="Переглянути партії"
-                      aria-label={`Переглянути партії товару ${p.goodName}`}
-                      className="p-0.5 rounded text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-colors"
-                    >
-                      <Layers className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
-                  </div>
+                  <p className="text-sm font-medium text-foreground">{p.goodName}</p>
                   {(p.goodInternalCode || p.goodSku || p.goodBrandName) && (
                     <p className="text-[11px] text-muted-foreground">
                       {[p.goodInternalCode, p.goodSku, p.goodBrandName].filter(Boolean).join(' · ')}

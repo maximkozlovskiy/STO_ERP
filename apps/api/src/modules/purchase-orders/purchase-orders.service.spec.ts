@@ -1251,4 +1251,54 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
       expect.objectContaining({ timeout: expect.any(Number) }),
     );
   });
+
+  // ─── Bug #541: regression-guard для PO_LINE_GOOD_INCLUDE drift ───────────────
+  //
+  // Refactor commit a50e1484 витяг shared `PO_LINE_GOOD_INCLUDE` const з 3 ідентичних
+  // include shape-ів (findOne / create / update). toDto мапить кожне з полів через
+  // `?? null`, тому видалення `internalCode: true` / `brand: { select: { name } }` з
+  // const-shape залишає TS зеленим — frontend отримує null для існуючих DB-значень.
+  // Цей тест ловить регресію: transition() кличе findOne() у return-path, тому ми
+  // підставляємо `lines[0].good` з повним PART_GOOD_INCLUDE shape і асертимо що
+  // `line.goodInternalCode / goodSku / goodBrandName` потрапляють у DTO.
+  it('Bug #541: PO line DTO містить goodInternalCode / goodSku / goodBrandName', async () => {
+    const fullLineFindOneResult = {
+      ...findOneResult,
+      lines: [
+        {
+          id: 'line-1',
+          goodId: 'g-1',
+          quantity: 2,
+          price: 100,
+          vatRate: 0,
+          vatAmount: 0,
+          receivedQty: 0,
+          pricedSalePrice: null,
+          pricingRuleName: null,
+          unitOfMeasureId: null,
+          good: {
+            name: 'Filter',
+            internalCode: 'INT-001',
+            sku: 'SKU-1',
+            unit: 'шт',
+            unitOfMeasure: null,
+            brand: { name: 'Toyota' },
+          },
+        },
+      ],
+    };
+    prisma.purchaseOrder.findFirst
+      .mockResolvedValueOnce({ status: PurchaseOrderStatus.DRAFT })
+      .mockResolvedValueOnce(fullLineFindOneResult);
+
+    const dto = await service.transition(ORG, PO_ID, PurchaseOrderStatus.ORDERED);
+
+    expect(dto.lines).toHaveLength(1);
+    expect(dto.lines[0]).toMatchObject({
+      goodName: 'Filter',
+      goodInternalCode: 'INT-001',
+      goodSku: 'SKU-1',
+      goodBrandName: 'Toyota',
+    });
+  });
 });
