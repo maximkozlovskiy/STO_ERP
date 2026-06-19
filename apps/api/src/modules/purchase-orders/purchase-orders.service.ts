@@ -362,6 +362,7 @@ export class PurchaseOrdersService {
                 price: l.price,
                 vatRate: l.vatRate,
                 vatAmount: l.vatAmount,
+                ...(l.pricedSalePrice != null ? { pricedSalePrice: l.pricedSalePrice } : {}),
               })),
             });
           }
@@ -623,6 +624,7 @@ export class PurchaseOrdersService {
         lines: {
           where: { deletedAt: null },
           select: {
+            id: true,
             goodId: true,
             price: true,
             good: {
@@ -654,11 +656,13 @@ export class PurchaseOrdersService {
     const rules = await this.pricingService.getActiveRulesForOrg(orgId);
 
     type Plan = {
+      lineId: string;
       goodId: string;
       goodName: string;
       costPrice: number;
       oldSalePrice: number;
       newSalePrice: number;
+      ruleName: string | null;
     };
     const plan: Plan[] = [];
 
@@ -666,7 +670,7 @@ export class PurchaseOrdersService {
       if (!line.good) continue;
       const costPrice = Number(line.price);
       const oldSalePrice = Number(line.good.salePrice);
-      const newSalePrice = this.pricingService.computePriceFromRules(
+      const { price: newSalePrice, ruleName } = this.pricingService.resolveRule(
         rules,
         line.goodId,
         line.good.category ?? undefined,
@@ -675,65 +679,81 @@ export class PurchaseOrdersService {
         costPrice,
         po.supplierId ?? undefined,
       );
-      if (Math.abs(newSalePrice - oldSalePrice) < 0.001) continue;
       plan.push({
+        lineId: line.id,
         goodId: line.goodId,
         goodName: line.good.name,
         costPrice,
         oldSalePrice,
         newSalePrice,
+        ruleName,
       });
     }
 
     if (plan.length === 0) return { updated: 0, details: [] };
 
-    // sto-optimize: PO може мати кілька ліній з однаковим goodId (різна ціна за лот).
-    // Старий sequential for-loop мав last-write-wins семантику — зберігаємо її через
-    // dedup по goodId (Map last-wins) ДО Promise.all, щоб два write на той самий PK
-    // не гонилися всередині chunk.
-    const dedupedPlan = deduplicateBy(plan, u => u.goodId);
+    // Дедуп по goodId для Good.salePrice update (last-write-wins для однакових goodId).
+    const dedupedPlan = deduplicateBy(
+      plan.filter(u => Math.abs(u.newSalePrice - u.oldSalePrice) >= 0.001),
+      u => u.goodId,
+    );
 
-    // Batch у chunks по 100 щоб не лочити велику кількість рядків у одній tx;
-    // explicit { timeout: 10_000 } — array-form $transaction default 5s не вистачає на 100 рядків.
     const CHUNK = 100;
-    for (let i = 0; i < dedupedPlan.length; i += CHUNK) {
-      const chunk = dedupedPlan.slice(i, i + CHUNK);
+
+    // 1. Оновити Good.salePrice + PriceHistory лише для змінених цін
+    if (dedupedPlan.length > 0) {
+      for (let i = 0; i < dedupedPlan.length; i += CHUNK) {
+        const chunk = dedupedPlan.slice(i, i + CHUNK);
+        await this.prisma.$transaction(
+          async tx => {
+            await Promise.all(
+              chunk.map(u =>
+                tx.good.updateMany({
+                  where: { id: u.goodId, orgId, deletedAt: null },
+                  data: { salePrice: u.newSalePrice },
+                }),
+              ),
+            );
+            await tx.priceHistory.createMany({
+              data: chunk.map(u => ({
+                orgId,
+                goodId: u.goodId,
+                oldPrice: u.oldSalePrice,
+                newPrice: u.newSalePrice,
+                costPrice: u.costPrice,
+                reason: `PO pricing: ${po.number}`,
+              })),
+            });
+          },
+          { timeout: 10_000 },
+        );
+      }
+    }
+
+    // 2. Оновити pricedSalePrice + pricingRuleName на кожній лінії (для всіх ліній)
+    for (let i = 0; i < plan.length; i += CHUNK) {
+      const chunk = plan.slice(i, i + CHUNK);
       await this.prisma.$transaction(
         async tx => {
-          // sto-optimize: chunk вже дедуплікований по goodId → disjoint PK writes, race-safe.
-          // У $transaction Prisma serializes на pinned connection, тож Promise.all дає
-          // JS-overhead-economy без втрати safety. Bug #191 tenant guard збережений.
           await Promise.all(
             chunk.map(u =>
-              tx.good.updateMany({
-                where: { id: u.goodId, orgId, deletedAt: null },
-                data: { salePrice: u.newSalePrice },
+              tx.purchaseOrderLine.update({
+                where: { id: u.lineId },
+                data: { pricedSalePrice: u.newSalePrice, pricingRuleName: u.ruleName },
               }),
             ),
           );
-          await tx.priceHistory.createMany({
-            data: chunk.map(u => ({
-              orgId,
-              goodId: u.goodId,
-              oldPrice: u.oldSalePrice,
-              newPrice: u.newSalePrice,
-              costPrice: u.costPrice,
-              reason: `PO pricing: ${po.number}`,
-            })),
-          });
         },
         { timeout: 10_000 },
       );
     }
 
-    if (plan.length > 0) {
-      await this.prisma.purchaseOrder.updateMany({
-        where: { id: poId, orgId },
-        data: { pricedAt: new Date() },
-      });
-    }
+    await this.prisma.purchaseOrder.updateMany({
+      where: { id: poId, orgId },
+      data: { pricedAt: new Date() },
+    });
 
-    return { updated: plan.length, details: plan };
+    return { updated: dedupedPlan.length, details: plan };
   }
 
   private toDto(po: {
@@ -767,6 +787,8 @@ export class PurchaseOrdersService {
       vatRate?: import('@prisma/client').Prisma.Decimal | null;
       vatAmount?: import('@prisma/client').Prisma.Decimal | null;
       receivedQty: number;
+      pricedSalePrice?: import('@prisma/client').Prisma.Decimal | null;
+      pricingRuleName?: string | null;
       unitOfMeasureId?: string | null;
       good: {
         name: string;
@@ -814,6 +836,8 @@ export class PurchaseOrdersService {
         vatRate: Number(l.vatRate ?? 0),
         vatAmount: Number(l.vatAmount ?? 0),
         receivedQty: l.receivedQty,
+        pricedSalePrice: l.pricedSalePrice != null ? Number(l.pricedSalePrice) : null,
+        pricingRuleName: l.pricingRuleName ?? null,
         unitOfMeasureId: l.unitOfMeasureId ?? null,
       })),
       createdAt: po.createdAt,

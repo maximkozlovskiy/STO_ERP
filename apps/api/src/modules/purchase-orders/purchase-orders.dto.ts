@@ -31,6 +31,7 @@ export class PurchaseOrderLineDto {
   goodId!: string;
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiProperty() @IsNumber() @Min(0) price!: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) pricedSalePrice?: number;
 }
 
 export class CreatePurchaseOrderDto {
@@ -142,6 +143,8 @@ export class PurchaseOrderLineResponseDto {
   @ApiProperty() vatRate!: number;
   @ApiProperty() vatAmount!: number;
   @ApiProperty() receivedQty!: number;
+  @ApiPropertyOptional() pricedSalePrice?: number | null;
+  @ApiPropertyOptional() pricingRuleName?: string | null;
   @ApiPropertyOptional() unitOfMeasureId?: string | null;
 }
 

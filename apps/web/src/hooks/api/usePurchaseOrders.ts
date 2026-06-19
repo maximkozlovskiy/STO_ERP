@@ -15,6 +15,8 @@ export interface POLine {
   amount?: number;
   vatAmount?: number;
   receivedQty?: number;
+  pricedSalePrice?: number | null;
+  pricingRuleName?: string | null;
 }
 
 export interface PurchaseOrder {

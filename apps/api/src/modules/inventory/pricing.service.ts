@@ -2,6 +2,26 @@ import { Injectable } from '@nestjs/common';
 import { GoodType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
+type RuleEntry = {
+  name: string;
+  goodId: string | null;
+  goodCategory: string | null;
+  goodType: string | null;
+  brandId: string | null;
+  supplierId: string | null;
+  type: string;
+  percentValue: unknown;
+  fixedAmount: unknown;
+  fixedPrice: unknown;
+  roundTo: unknown;
+  tiers: Array<{
+    costMin: unknown;
+    costMax: unknown | null;
+    percentValue: unknown;
+    sortOrder: number;
+  }>;
+};
+
 @Injectable()
 export class PricingService {
   constructor(private readonly prisma: PrismaService) {}
@@ -204,46 +224,25 @@ export class PricingService {
     });
   }
 
-  // Pure in-memory rule resolution (no DB calls) — used in tight loops like applyRuleToGoods
-  // Public so PO apply-pricing та інші bulk-операції можуть переиспользовать без re-fetch правил.
-  // supplierId: якщо вказано — спочатку шукаємо правило цього постачальника (найвищий пріоритет).
-  // Якщо правило постачальника не знайдено — fallback на стандартну ієрархію без фільтра по supplier.
-  computePriceFromRules(
-    rules: Array<{
-      goodId: string | null;
-      goodCategory: string | null;
-      goodType: string | null;
-      brandId: string | null;
-      supplierId: string | null;
-      type: string;
-      percentValue: unknown;
-      fixedAmount: unknown;
-      fixedPrice: unknown;
-      roundTo: unknown;
-      tiers: Array<{
-        costMin: unknown;
-        costMax: unknown | null;
-        percentValue: unknown;
-        sortOrder: number;
-      }>;
-    }>,
+  // resolveRule: повертає розраховану ціну + назву правила що її утворило.
+  // Використовується в applyPricing щоб зберегти pricedSalePrice + pricingRuleName на лінії.
+  resolveRule(
+    rules: RuleEntry[],
     goodId: string,
     goodCategory: string | undefined,
     goodType: string | undefined,
     brandId: string | undefined,
     costPrice: number,
     supplierId?: string,
-  ): number {
-    // Supplier-specific rule has highest priority — try it first.
+  ): { price: number; ruleName: string | null } {
     if (supplierId) {
       const supplierRules = rules.filter(r => r.supplierId === supplierId);
       if (supplierRules.length > 0) {
-        // Pick the first by priority (rules are pre-sorted by priority asc).
-        return this._applyRule(supplierRules[0]!, costPrice);
+        const rule = supplierRules[0]!;
+        return { price: this._applyRule(rule, costPrice), ruleName: rule.name };
       }
     }
 
-    // Standard hierarchy: goodId > brandId > goodCategory > goodType > all
     const candidates = rules.filter(
       r =>
         !r.supplierId &&
@@ -253,7 +252,7 @@ export class PricingService {
           (!r.goodId && !r.brandId && !r.goodCategory && r.goodType === (goodType ?? null)) ||
           (!r.goodId && !r.brandId && !r.goodCategory && !r.goodType)),
     );
-    if (!candidates.length) return costPrice;
+    if (!candidates.length) return { price: costPrice, ruleName: null };
 
     const rule =
       candidates.find(r => r.goodId === goodId) ??
@@ -261,9 +260,24 @@ export class PricingService {
       candidates.find(r => !r.goodId && !r.brandId && r.goodCategory === goodCategory) ??
       candidates.find(r => !r.goodId && !r.brandId && !r.goodCategory && r.goodType === goodType) ??
       candidates.find(r => !r.goodId && !r.brandId && !r.goodCategory && !r.goodType) ??
-      candidates[0];
+      candidates[0]!;
 
-    return this._applyRule(rule, costPrice);
+    return { price: this._applyRule(rule, costPrice), ruleName: rule.name };
+  }
+
+  // Pure in-memory rule resolution (no DB calls) — used in tight loops like applyRuleToGoods
+  // supplierId: якщо вказано — спочатку шукаємо правило цього постачальника (найвищий пріоритет).
+  computePriceFromRules(
+    rules: RuleEntry[],
+    goodId: string,
+    goodCategory: string | undefined,
+    goodType: string | undefined,
+    brandId: string | undefined,
+    costPrice: number,
+    supplierId?: string,
+  ): number {
+    return this.resolveRule(rules, goodId, goodCategory, goodType, brandId, costPrice, supplierId)
+      .price;
   }
 
   private _applyRule(

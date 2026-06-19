@@ -8,6 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
+import {
+  CounterpartyEditModal,
+  type CounterpartyForModal,
+} from '@/components/ui/CounterpartyEditModal';
 import { apiFetch } from '@/lib/api-client';
 import { displayCounterpartyName } from '@/lib/utils';
 import type { Good, Brand, PricingRule, PricingRuleTier, RuleForm } from './types';
@@ -32,6 +36,19 @@ export default function RuleFormModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
+  const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
+  const [supplierDetailData, setSupplierDetailData] = useState<CounterpartyForModal | null>(null);
+
+  const openSupplierDetail = useCallback(async () => {
+    if (!form.supplierId) return;
+    try {
+      const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${form.supplierId}`);
+      setSupplierDetailData(cp);
+      setSupplierDetailOpen(true);
+    } catch {
+      /* ignore */
+    }
+  }, [form.supplierId]);
 
   useEffect(() => {
     if (open) {
@@ -353,6 +370,7 @@ export default function RuleFormModal({
                 display={form.supplierName}
                 placeholder="Пошук постачальника…"
                 onPick={() => setSupplierPickerOpen(true)}
+                onOpenDetail={form.supplierId ? openSupplierDetail : undefined}
                 onSearch={searchSuppliers}
                 onSearchSelect={item => set({ supplierId: item.id, supplierName: item.primary })}
                 onClear={() => set({ supplierId: '', supplierName: '' })}
@@ -437,6 +455,20 @@ export default function RuleFormModal({
         onSelect={item => {
           set({ supplierId: item.id, supplierName: item.primary });
           setSupplierPickerOpen(false);
+        }}
+      />
+      <CounterpartyEditModal
+        open={supplierDetailOpen}
+        counterparty={supplierDetailData}
+        onClose={() => setSupplierDetailOpen(false)}
+        onSaved={updated => {
+          setSupplierDetailData(updated);
+          set({
+            supplierName:
+              [updated.lastName, updated.firstName].filter(Boolean).join(' ') ||
+              updated.companyName ||
+              form.supplierName,
+          });
         }}
       />
     </>
