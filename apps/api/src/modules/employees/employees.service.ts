@@ -441,7 +441,8 @@ export class EmployeesService {
       createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
       updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
       // Surface deletedAt so the UI can render the «видалено» badge when showDeleted=true is on.
-      deletedAt: item.deletedAt ?? null,
+      deletedAt:
+        item.deletedAt instanceof Date ? item.deletedAt.toISOString() : (item.deletedAt ?? null),
     };
   }
 }

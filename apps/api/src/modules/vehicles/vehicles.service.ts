@@ -168,15 +168,11 @@ export class VehiclesService {
       bodyType: v.bodyType,
       engineCode: v.engineCode,
       insuranceExpiry:
-        item.insuranceExpiry instanceof Date
-          ? item.insuranceExpiry.toISOString()
-          : item.insuranceExpiry,
+        v.insuranceExpiry instanceof Date ? v.insuranceExpiry.toISOString() : v.insuranceExpiry,
       inspectionExpiry:
-        item.inspectionExpiry instanceof Date
-          ? item.inspectionExpiry.toISOString()
-          : item.inspectionExpiry,
-      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
-      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
+        v.inspectionExpiry instanceof Date ? v.inspectionExpiry.toISOString() : v.inspectionExpiry,
+      createdAt: v.createdAt instanceof Date ? v.createdAt.toISOString() : v.createdAt,
+      updatedAt: v.updatedAt instanceof Date ? v.updatedAt.toISOString() : v.updatedAt,
     };
   }
 
@@ -196,7 +192,7 @@ export class VehiclesService {
       name: n.name,
       mileageAtInstall: n.mileageAtInstall,
       notes: n.notes,
-      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      createdAt: n.createdAt instanceof Date ? n.createdAt.toISOString() : n.createdAt,
     };
   }
 }

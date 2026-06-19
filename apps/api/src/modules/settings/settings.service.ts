@@ -345,7 +345,7 @@ export class SettingsService {
       recalcPlannedHoursFromLines: s.recalcPlannedHoursFromLines,
       recalcActualHoursFromLines: s.recalcActualHoursFromLines,
       syncCalendarSlotWithPlannedHours: s.syncCalendarSlotWithPlannedHours,
-      updatedAt: s.updatedAt,
+      updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
     };
   }
 
@@ -377,7 +377,7 @@ export class SettingsService {
       smsEnabled: s.smsEnabled,
       smsProvider: s.smsProvider,
       smsSenderName: s.smsSenderName,
-      updatedAt: s.updatedAt,
+      updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
     };
   }
 
@@ -659,7 +659,7 @@ export class SettingsService {
       legalAddress: org.legalAddress ?? null,
       actualAddress: org.actualAddress ?? null,
       bankAccountId: org.bankAccountId ?? null,
-      updatedAt: org.updatedAt,
+      updatedAt: org.updatedAt instanceof Date ? org.updatedAt.toISOString() : org.updatedAt,
     };
   }
 }

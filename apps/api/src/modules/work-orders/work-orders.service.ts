@@ -1638,7 +1638,7 @@ export class WorkOrdersService {
         : undefined,
       price: Number(part.price),
       amount: Number(part.amount),
-      createdAt: part.createdAt,
+      createdAt: part.createdAt instanceof Date ? part.createdAt.toISOString() : part.createdAt,
     };
   }
 

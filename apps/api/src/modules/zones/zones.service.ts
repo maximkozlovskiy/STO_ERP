@@ -189,9 +189,9 @@ export class ZonesService {
       branchId: z.branchId,
       name: z.name,
       type: z.type as ZoneType,
-      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
-      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
-      deletedAt: item.deletedAt instanceof Date ? item.deletedAt.toISOString() : item.deletedAt,
+      createdAt: z.createdAt instanceof Date ? z.createdAt.toISOString() : z.createdAt,
+      updatedAt: z.updatedAt instanceof Date ? z.updatedAt.toISOString() : z.updatedAt,
+      deletedAt: z.deletedAt instanceof Date ? z.deletedAt.toISOString() : z.deletedAt,
     };
   }
 
@@ -222,22 +222,21 @@ export class ZonesService {
       maxWeightKg: l.maxWeightKg,
       status: l.status,
       serialNumber: l.serialNumber,
-      purchaseDate:
-        item.purchaseDate instanceof Date ? item.purchaseDate.toISOString() : item.purchaseDate,
+      purchaseDate: l.purchaseDate instanceof Date ? l.purchaseDate.toISOString() : l.purchaseDate,
       warrantyUntil:
-        item.warrantyUntil instanceof Date ? item.warrantyUntil.toISOString() : item.warrantyUntil,
+        l.warrantyUntil instanceof Date ? l.warrantyUntil.toISOString() : l.warrantyUntil,
       maintenanceIntervalDays: l.maintenanceIntervalDays,
       lastMaintenanceDate:
-        item.lastMaintenanceDate instanceof Date
-          ? item.lastMaintenanceDate.toISOString()
-          : item.lastMaintenanceDate,
+        l.lastMaintenanceDate instanceof Date
+          ? l.lastMaintenanceDate.toISOString()
+          : l.lastMaintenanceDate,
       nextMaintenanceDate:
-        item.nextMaintenanceDate instanceof Date
-          ? item.nextMaintenanceDate.toISOString()
-          : item.nextMaintenanceDate,
-      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
-      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
-      deletedAt: item.deletedAt instanceof Date ? item.deletedAt.toISOString() : item.deletedAt,
+        l.nextMaintenanceDate instanceof Date
+          ? l.nextMaintenanceDate.toISOString()
+          : l.nextMaintenanceDate,
+      createdAt: l.createdAt instanceof Date ? l.createdAt.toISOString() : l.createdAt,
+      updatedAt: l.updatedAt instanceof Date ? l.updatedAt.toISOString() : l.updatedAt,
+      deletedAt: l.deletedAt instanceof Date ? l.deletedAt.toISOString() : l.deletedAt,
     };
   }
 }

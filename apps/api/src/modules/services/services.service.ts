@@ -290,7 +290,8 @@ export class ServicesService {
       name: item.name,
       description: item.description ?? null,
       price: item.price != null ? Number(item.price) : null,
-      deletedAt: item.deletedAt ?? null,
+      deletedAt:
+        item.deletedAt instanceof Date ? item.deletedAt.toISOString() : (item.deletedAt ?? null),
       works: item.serviceWorks.map(sw => ({
         workId: sw.workId,
         workName: sw.work.name,
