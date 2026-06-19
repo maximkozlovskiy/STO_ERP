@@ -278,7 +278,7 @@ export function GoodEditModal({
 
         <div className="space-y-4">
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/50 text-[13px]">
-            <span className="text-muted-foreground">Внутрішній код:</span>
+            <span className="text-muted-foreground">Код:</span>
             {good?.internalCode ? (
               <span className="font-mono font-medium text-foreground">{good.internalCode}</span>
             ) : (
