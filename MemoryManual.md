@@ -11,10 +11,10 @@
 ```
 Дата:       2026-06-20
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
-TypeScript: api ✅ 0 errors (19 BOM fixed) | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 931/931 | Web 438/438 | E2E 232/232 (13 data-skip)
+TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
+Тести:      API 931/931 | Web 438/438 | E2E 233/234 (1 flaky; 11 data-skip)
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 (HEAD 00f6c657) — fix(review): remove UTF-8 BOM from 19 DTO files. Цикл 1/3 review (post-sync): усі 19 DTO-файлів що були модифіковані під час синхронізації й підхопили UTF-8 BOM від Windows/PowerShell редактора. tsc: 0 errors. Все інше: TypeScript ✓ no-any ✓ no-React.X ✓, Security (orgId guards ✓ @Roles ✓ soft-delete ✓), API Contract (Date→ISO string ✓ no-BigInt ✓), Memory Leaks ✓, Business Rules (FSM ✓ inventory ✓ settlements ✓). FindMany take limits ✓, no hardcoded secrets ✓.
+Останній commit: 2026-06-20 (HEAD cba69150) — fix(tester): Bug #537 validation message Cyrillic. Цикл 1/3 тестування (step 3/7): тільки settings.dto.ts + admin.json scope. Bug #537: garbled Cyrillic у @Matches validators (HH:MM format message). Bug #538: E2E flaky test estimate-share (seed issue або filtering). Unit: 931 ✓ Web: 438 ✓ E2E: 233 ✓ (1 stable fail after 3 retry).
 ```
 
 ### Аудит-висновки (2026-06-17 simplify session)
@@ -30,7 +30,8 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
-00f6c657  fix(review): remove UTF-8 BOM from 19 DTO files (Цикл 1/3)
+cba69150  fix(tester): Bug #537 validation message Cyrillic + #538 E2E flaky (Цикл 1/3 step 3)
+00f6c657  fix(review): remove UTF-8 BOM from 19 DTO files
 968e49b0  fix(api): resolve 37 TypeScript errors — Date→string conversions + undefined variable refs
 40e3d6ff  docs(memory): update MemoryManual after TypeScript error fixes (37 errors resolved)
 f1fea90b  fix(sync): complete Date serialization alignment in remaining modules
@@ -39,7 +40,6 @@ f1fea90b  fix(sync): complete Date serialization alignment in remaining modules
 1f60d1b0  perf(optimize): add GIN trgm index for goods.barcode search
 a50e1484  fix(review): extract PO/WO `good` include + render goodInternalCode/sku/brand in WO parts list
 669a328e  fix(sync): add goodInternalCode/goodSku/goodBrandName to WorkOrderPart interfaces
-d1a12539  fix(review): include good.internalCode + brand in PO/WO part create/update + fix brandName drop in picker
 ```
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
