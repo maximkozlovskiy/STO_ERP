@@ -430,6 +430,8 @@ export default function PricingRulesClient() {
             <TableRow>
               <TableHead>Назва</TableHead>
               <TableHead>Тип</TableHead>
+              <TableHead>Постачальник</TableHead>
+              <TableHead>Бренд</TableHead>
               <TableHead>Область</TableHead>
               <TableHead>Значення</TableHead>
               <TableHead>Пріоритет</TableHead>
@@ -440,7 +442,7 @@ export default function PricingRulesClient() {
           <TableBody>
             {loading && (
               <TableRow>
-                <TableCell colSpan={7} className="py-12 text-center">
+                <TableCell colSpan={9} className="py-12 text-center">
                   <div className="flex justify-center">
                     <Spinner size="md" />
                   </div>
@@ -449,7 +451,7 @@ export default function PricingRulesClient() {
             )}
             {!loading && rules.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="p-0">
+                <TableCell colSpan={9} className="p-0">
                   <EmptyState
                     icon={Tag}
                     title="Правил немає"

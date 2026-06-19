@@ -219,23 +219,6 @@ export default function RuleFormModal({
             ))}
           </Select>
 
-          {/* Brand selector — shown when no specific good is selected */}
-          {!form.goodId && (
-            <Select
-              label="Бренд (для правила по бренду)"
-              value={form.brandId}
-              onChange={e => set({ brandId: e.target.value })}
-              className="h-8 text-[13px] py-0.5 px-2 pr-7"
-            >
-              <option value="">— Будь-який бренд —</option>
-              {brands.map(b => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </Select>
-          )}
-
           {/* Dynamic value fields */}
           {(form.type === 'PERCENT' || form.type === 'COMPETITOR_PLUS') && (
             <Input
@@ -396,6 +379,22 @@ export default function RuleFormModal({
                 </option>
               ))}
             </Select>
+
+            {!form.goodId && (
+              <Select
+                label="Бренд (необов'язково)"
+                value={form.brandId}
+                onChange={e => set({ brandId: e.target.value })}
+                className="h-8 text-[13px] py-0.5 px-2 pr-7"
+              >
+                <option value="">— Будь-який бренд —</option>
+                {brands.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </Select>
+            )}
 
             <Select
               label="Тип товару (необов'язково)"
