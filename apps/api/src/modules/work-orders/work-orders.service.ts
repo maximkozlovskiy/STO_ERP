@@ -56,6 +56,20 @@ const GOOD_UOM_SELECT = {
 
 type UomJunction = Prisma.GoodUoMGetPayload<{ select: typeof GOOD_UOM_SELECT }>;
 
+// Shared shape для всіх parts read paths (findOne/addPart/updatePart) — попереджає drift
+// (sto-review 2026-06-19): кожен новий scalar тут автоматично потрапляє у всі три
+// response-и + у toPartDto без ручного дублювання у трьох include shape-ах.
+const PART_GOOD_INCLUDE = {
+  select: {
+    name: true,
+    internalCode: true,
+    sku: true,
+    unit: true,
+    unitOfMeasure: { select: { shortName: true, coefficient: true } },
+    brand: { select: { name: true } },
+  },
+} as const satisfies Prisma.GoodDefaultArgs;
+
 // §2.1 Auth: costPrice (батч-собівартість) — фінансово чутливе поле.
 // MECHANIC/RECEPTIONIST/CLIENT не повинні бачити закупівельну ціну запчастин у WO.
 // Дозволено лише ролям що бачать вартість у каталозі/прайс-історії (goods.controller.ts:242).
@@ -199,18 +213,7 @@ export class WorkOrdersService {
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },
           take: 500,
-          include: {
-            good: {
-              select: {
-                name: true,
-                internalCode: true,
-                sku: true,
-                unit: true,
-                unitOfMeasure: { select: { shortName: true, coefficient: true } },
-                brand: { select: { name: true } },
-              },
-            },
-          },
+          include: { good: PART_GOOD_INCLUDE },
         },
       },
     });
@@ -1164,18 +1167,7 @@ export class WorkOrdersService {
             // uomJunction.unitOfMeasureId is the FK; uomJunction.id is the GoodUoM PK.
             unitOfMeasureId: uomJunction?.unitOfMeasureId ?? null,
           },
-          include: {
-            good: {
-              select: {
-                name: true,
-                internalCode: true,
-                sku: true,
-                unit: true,
-                unitOfMeasure: { select: { shortName: true, coefficient: true } },
-                brand: { select: { name: true } },
-              },
-            },
-          },
+          include: { good: PART_GOOD_INCLUDE },
         });
         await this.recalcTotals(workOrderId, tx, orgId);
         return { ...created, goodUoM: uomJunction };
@@ -1250,18 +1242,7 @@ export class WorkOrdersService {
                 ? part.unitOfMeasureId
                 : (uomJunction?.unitOfMeasureId ?? null),
           },
-          include: {
-            good: {
-              select: {
-                name: true,
-                internalCode: true,
-                sku: true,
-                unit: true,
-                unitOfMeasure: { select: { shortName: true, coefficient: true } },
-                brand: { select: { name: true } },
-              },
-            },
-          },
+          include: { good: PART_GOOD_INCLUDE },
         });
         await this.recalcTotals(workOrderId, tx, orgId);
         return { ...result, goodUoM: uomJunction };

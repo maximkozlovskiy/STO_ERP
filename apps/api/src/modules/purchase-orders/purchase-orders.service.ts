@@ -24,6 +24,20 @@ import {
 
 type POStatus = PurchaseOrderStatus;
 
+// Shared shape для всіх PO read paths (findOne/create/update) — попереджає drift
+// (sto-review 2026-06-19): кожен новий scalar тут автоматично потрапляє у всі три
+// response-и, без ручного дублювання у findOne/create/update include shapes.
+const PO_LINE_GOOD_INCLUDE = {
+  select: {
+    name: true,
+    internalCode: true,
+    sku: true,
+    unit: true,
+    unitOfMeasure: { select: { shortName: true, coefficient: true } },
+    brand: { select: { name: true } },
+  },
+} as const satisfies Prisma.GoodDefaultArgs;
+
 const PO_TRANSITIONS: Record<POStatus, POStatus[]> = {
   DRAFT: [PurchaseOrderStatus.ORDERED, PurchaseOrderStatus.CANCELLED],
   ORDERED: [
@@ -133,18 +147,7 @@ export class PurchaseOrdersService {
         contract: { select: { id: true, number: true } },
         lines: {
           where: { deletedAt: null },
-          include: {
-            good: {
-              select: {
-                name: true,
-                internalCode: true,
-                sku: true,
-                unit: true,
-                unitOfMeasure: { select: { shortName: true, coefficient: true } },
-                brand: { select: { name: true } },
-              },
-            },
-          },
+          include: { good: PO_LINE_GOOD_INCLUDE },
           take: 1000,
         },
       },
@@ -247,18 +250,7 @@ export class PurchaseOrdersService {
             lines: {
               where: { deletedAt: null },
               take: 1000,
-              include: {
-                good: {
-                  select: {
-                    name: true,
-                    internalCode: true,
-                    sku: true,
-                    unit: true,
-                    unitOfMeasure: { select: { shortName: true, coefficient: true } },
-                    brand: { select: { name: true } },
-                  },
-                },
-              },
+              include: { good: PO_LINE_GOOD_INCLUDE },
             },
           },
         });
@@ -389,18 +381,7 @@ export class PurchaseOrdersService {
             lines: {
               where: { deletedAt: null },
               take: 1000,
-              include: {
-                good: {
-                  select: {
-                    name: true,
-                    internalCode: true,
-                    sku: true,
-                    unit: true,
-                    unitOfMeasure: { select: { shortName: true, coefficient: true } },
-                    brand: { select: { name: true } },
-                  },
-                },
-              },
+              include: { good: PO_LINE_GOOD_INCLUDE },
             },
           },
         });

@@ -136,6 +136,11 @@ export function WorkOrderPartsSection({
                       <Layers className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
                   </div>
+                  {(p.goodInternalCode || p.goodSku || p.goodBrandName) && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {[p.goodInternalCode, p.goodSku, p.goodBrandName].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     {p.quantity} {p.unitShortName ?? 'шт'} × {fmtMoney(p.price)} ₴
                   </p>
