@@ -23,7 +23,9 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, fmtDate } from '@/lib/format';
+import { Input } from '@/components/ui/input';
+import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
@@ -85,6 +87,8 @@ export default function PricingRulesClient() {
     placeholderData: keepPreviousData,
   });
   const invalidateRules = () => qc.invalidateQueries({ queryKey: pricingRulesKeys.all });
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
   const [goods, setGoods] = useState<Good[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [error, setError] = useState('');
@@ -121,6 +125,19 @@ export default function PricingRulesClient() {
   }, []);
 
   const load = invalidateRules;
+
+  const filteredRules = debouncedSearch
+    ? rules.filter(r => {
+        const q = debouncedSearch.toLowerCase();
+        return (
+          r.name.toLowerCase().includes(q) ||
+          (r.supplierName ?? '').toLowerCase().includes(q) ||
+          (r.brandName ?? '').toLowerCase().includes(q) ||
+          (r.goodCategory ?? '').toLowerCase().includes(q) ||
+          (r.good?.name ?? '').toLowerCase().includes(q)
+        );
+      })
+    : rules;
 
   useEffect(() => {
     let cancelled = false;
@@ -242,6 +259,12 @@ export default function PricingRulesClient() {
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap shrink-0">
+        <Input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Пошук по назві, постачальнику, бренду…"
+          className="w-72 h-8 text-[13px]"
+        />
         <div className="flex items-center gap-2 ml-auto">
           <Button
             type="button"
@@ -428,6 +451,7 @@ export default function PricingRulesClient() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Дата</TableHead>
               <TableHead>Назва</TableHead>
               <TableHead>Тип</TableHead>
               <TableHead>Постачальник</TableHead>
@@ -442,7 +466,7 @@ export default function PricingRulesClient() {
           <TableBody>
             {loading && (
               <TableRow>
-                <TableCell colSpan={9} className="py-12 text-center">
+                <TableCell colSpan={10} className="py-12 text-center">
                   <div className="flex justify-center">
                     <Spinner size="md" />
                   </div>
@@ -451,7 +475,7 @@ export default function PricingRulesClient() {
             )}
             {!loading && rules.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="p-0">
+                <TableCell colSpan={10} className="p-0">
                   <EmptyState
                     icon={Tag}
                     title="Правил немає"
@@ -461,11 +485,14 @@ export default function PricingRulesClient() {
               </TableRow>
             )}
             {!loading &&
-              rules.map(rule => (
+              filteredRules.map(rule => (
                 <TableRow
                   key={rule.id}
                   className={cn('group transition-colors', !rule.isActive && 'opacity-60')}
                 >
+                  <TableCell className="text-[13px] text-muted-foreground whitespace-nowrap">
+                    {fmtDate(rule.createdAt)}
+                  </TableCell>
                   <TableCell>
                     <p className="text-[13px] font-medium text-foreground">{rule.name}</p>
                     {rule.roundTo != null && (
@@ -563,6 +590,7 @@ export default function PricingRulesClient() {
         onClose={() => setEditRule(null)}
         onSave={updateRule}
         initial={editFormInitial}
+        initialCreatedAt={editRule?.createdAt ?? null}
         goods={goods}
         brands={brands}
       />

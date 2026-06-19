@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/CounterpartyEditModal';
 import { apiFetch } from '@/lib/api-client';
 import { displayCounterpartyName } from '@/lib/utils';
+import { fmtDate, kyivToday } from '@/lib/format';
 import type { Good, Brand, PricingRule, PricingRuleTier, RuleForm } from './types';
 import { TYPE_LABELS, GOOD_TYPE_OPTIONS } from './types';
 
@@ -22,6 +23,7 @@ export default function RuleFormModal({
   onClose,
   onSave,
   initial,
+  initialCreatedAt,
   goods,
   brands,
 }: {
@@ -29,6 +31,7 @@ export default function RuleFormModal({
   onClose: () => void;
   onSave: (form: RuleForm) => Promise<void>;
   initial: RuleForm;
+  initialCreatedAt?: string | null;
   goods: Good[];
   brands: Brand[];
 }) {
@@ -187,6 +190,14 @@ export default function RuleFormModal({
               {error}
             </div>
           )}
+
+          <Input
+            label="Дата створення"
+            value={initialCreatedAt ? fmtDate(initialCreatedAt) : fmtDate(kyivToday())}
+            readOnly
+            disabled
+            className="h-8 text-[13px] w-40"
+          />
 
           <Input
             label="Назва правила"
