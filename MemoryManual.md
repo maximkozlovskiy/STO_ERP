@@ -9,13 +9,13 @@
 ## Поточний стан
 
 ```
-Дата:       2026-06-19
+Дата:       2026-06-20
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 931/931 | Web 438/438 | E2E 232/232 (13 data-skip)
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 Останній sync:   2026-06-19 (HEAD 669a328e) — WorkOrderPart: +goodInternalCode/goodSku/goodBrandName у PageClient + WorkOrderPartsSection (type drift vs toPartDto після internalCode feature) — 6 полів додано | tsc 0 errors
-Останній review: 2026-06-19 (FULL post-sync, HEAD a50e1484) — (1) extract `PO_LINE_GOOD_INCLUDE`/`PART_GOOD_INCLUDE` shared consts у PO та WO service (3 дублювання в кожному → 1 const, попереджає drift зафіксований у sto-review 2026-06-19); (2) WorkOrderPartsSection: рендер goodInternalCode/goodSku/goodBrandName (синхронізовані типи з 669a328e були dead weight — тепер видимі як secondary muted line, як у CreateWorkOrderModal). Auth/tenant/Soft delete/Zod/Magic numbers/Race condition (DocumentNumberService SELECT FOR UPDATE з timeout) — всі чисті. API 928/928 ✓.
+Останній review: 2026-06-20 (focused post-redesign, HEAD 0b60970c) — SupplierReturnCreateModal після PO-style редизайну (0bcc7365): frontend STATUS_TRANSITIONS розходився з backend SR_TRANSITIONS — `DRAFT:[CONFIRMED]` (втрачено CANCELLED) + `CONFIRMED:[CANCELLED]` (CONFIRMED — terminal у бекенді) + хардкод `statusPrevStep = status==='CONFIRMED' ? 'DRAFT' : null` (back-transition не існує). UI пропонувала недопустимі переходи, бекенд відкидав 400. Фікс: вирівняно з SR_TRANSITIONS (DRAFT→[CONFIRMED,CANCELLED]; обидва terminal), prev-step завжди null, next-step prefer не-CANCELLED forward. TS/no-React.X/no-any/no-console/no-BOM ✓.
 Останній tester: 2026-06-19 (sweep post-review a50e1484) — 3 баги: #541 LOW backend regression-coverage gap — `PO_LINE_GOOD_INCLUDE`/`PART_GOOD_INCLUDE` drift не ловиться тестами; додано guards у `work-orders.role-gate.spec.ts` (findOne + addPart) і `purchase-orders.service.spec.ts` (transition → findOne) що асертять goodInternalCode/goodSku/goodBrandName потрапляють у DTO. #542 LOW frontend regression-coverage — sub-line рендер у `WorkOrderPartsSection.tsx:121-125` не покритий; новий `WorkOrderPartsSection.test.tsx` (4 кейси: all 3, lone brand, all null no-render, empty parts). #543 MEDIUM frontend dead-code — `onShowBatches` prop у WorkOrderPartsSection ніколи не передавався з PageClient (silent UX click no-op since extraction 2026-06-05); додано: API 928/928 → 931/931 (+3); Web: 434/434 → 438/438 (+4).
 Останній optimize: 2026-06-19 (post-internalCode sweep, HEAD 1f60d1b0) — 1 фікс: GIN trgm index `idx_goods_barcode_trgm` для покриття третьої OR-гілки у GoodsService.findAll() search (`name`/`sku` мали trgm з 20260526060945, `barcode` — ні). Verified non-issues: (a) `goods.findAll().include.brand` — Prisma робить batched `IN(brandIds)` по brands.id (PK), не N+1; (b) `PO_LINE_GOOD_INCLUDE`/`PART_GOOD_INCLUDE` `brand: { select: { name } }` — той самий PK-keyed join, безпечно у PO 1000 lines / WO 500 parts; (c) `goods(orgId, internalCode)` `@@unique` створює B-tree, окремий `@@index` зайвий; (d) `goods.brandId` без індексу — використовується лише у `pricing.service.applyPricingRule` (rare admin op, take:5000), додавання індексу не виправдане write-amp tradeoff-ом.
 Останній E2E: 2026-06-19 (sto-e2e sonnet auto) — 4 баги: #544 invoices.spec.ts edit-modal title locator stale (Modal title тепер "Рахунок-фактура" замість invNumber після редизайну a14931b0; номер у headerContent); #545 purchase-orders-receive.spec.ts три тести з застарілими селекторами — `button[title="Відкрити деталі"]` → `Редагувати`, `Позначити отриманим`/`Часткове отримання` → `Оприбуткувати` (PO receive тепер inline `receiveMode` у PO-модалці, без окремого `Прийом по замовленню` dialog); #546 status-tooltip.spec.ts дефолтний date-фільтр /work-orders = today → empty state у дні без свіжих WO; тест очищає "З" датою до 01.01.2020; #547 LOW `WorkOrderPartsSection.orgId` dead prop — видалено з інтерфейсу та з PageClient. E2E: 232 passed / 13 skipped / 0 failed (3.4 хв).
@@ -34,6 +34,7 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+0b60970c  fix(review): align SupplierReturn modal FSM with backend SR_TRANSITIONS
 1f60d1b0  perf(optimize): add GIN trgm index for goods.barcode search
 a50e1484  fix(review): extract PO/WO `good` include + render goodInternalCode/sku/brand in WO parts list
 669a328e  fix(sync): add goodInternalCode/goodSku/goodBrandName to WorkOrderPart interfaces
