@@ -647,6 +647,11 @@ export default function GoodsTab() {
                         if (col.key === 'name')
                           return (
                             <TableCell key="name">
+                              {(g.internalCode || g.sku || g.brandName) && (
+                                <p className="text-muted-foreground text-[11px] mb-0.5">
+                                  {[g.internalCode, g.sku, g.brandName].filter(Boolean).join(' · ')}
+                                </p>
+                              )}
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p
                                   className={`font-medium ${isDeleted ? 'line-through text-muted-foreground' : ''}`}
@@ -655,11 +660,6 @@ export default function GoodsTab() {
                                 </p>
                                 {isDeleted && <Badge variant="secondary">видалено</Badge>}
                               </div>
-                              {(g.internalCode || g.sku || g.brandName) && (
-                                <p className="text-muted-foreground text-[12px]">
-                                  {[g.internalCode, g.sku, g.brandName].filter(Boolean).join(' · ')}
-                                </p>
-                              )}
                             </TableCell>
                           );
                         if (col.key === 'category')
