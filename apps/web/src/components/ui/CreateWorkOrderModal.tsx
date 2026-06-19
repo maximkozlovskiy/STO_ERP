@@ -51,6 +51,7 @@ import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { CollapsibleHeader } from '@/components/ui/collapsible-header';
 import { WorkPickerModal, type WorkPickerItem } from '@/components/ui/WorkPickerModal';
+import { ServicePickerModal, type ServicePickerItem } from '@/components/ui/ServicePickerModal';
 import { GoodPickerModal, type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 import { Tooltip } from '@/components/ui/tooltip';
 import {
@@ -852,6 +853,7 @@ export function CreateWorkOrderModal({
   const [workPickerOpen, setWorkPickerOpen] = useState(false);
   const [editWorkPickerOpen, setEditWorkPickerOpen] = useState(false);
   const [goodPickerOpen, setGoodPickerOpen] = useState(false);
+  const [servicePickerOpen, setServicePickerOpen] = useState(false);
   const [editGoodPickerOpen, setEditGoodPickerOpen] = useState(false);
 
   const fetchWorks = useCallback(
@@ -1032,6 +1034,45 @@ export function CreateWorkOrderModal({
     });
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
+  };
+
+  const applyService = (service: ServicePickerItem) => {
+    setError('');
+    // Додаємо роботи з послуги (пропускаємо дублікати workId без employeeId)
+    if (service.works.length > 0) {
+      setLines(prev => {
+        const toAdd = service.works
+          .filter(w => !prev.some(l => l.workId === w.workId && !l.employeeId))
+          .map(w => ({
+            _key: nextKey(),
+            workId: w.workId,
+            workName: w.workName,
+            employeeId: '',
+            normoHours: String(w.normoHours * w.quantity),
+            actualHours: '',
+            price: String(w.price),
+          }));
+        return [...prev, ...toAdd];
+      });
+    }
+    // Додаємо товари з послуги (пропускаємо дублікати goodId)
+    if (service.goods.length > 0) {
+      setParts(prev => {
+        const toAdd = service.goods
+          .filter(g => !prev.some(p => p.goodId === g.goodId))
+          .map(g => ({
+            _key: nextKey(),
+            goodId: g.goodId,
+            goodName: g.goodName,
+            warehouseId: '',
+            quantity: String(g.quantity),
+            price: String(g.salePrice),
+            unitOfMeasureId: '',
+            unitShortName: g.unit,
+          }));
+        return [...prev, ...toAdd];
+      });
+    }
   };
 
   const addPart = () => {
@@ -2362,17 +2403,27 @@ export function CreateWorkOrderModal({
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium text-muted-foreground">Роботи</p>
                     {canEdit && !showLineInput && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewLine(EMPTY_LINE);
-                          setShowLineInput(true);
-                        }}
-                        className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        Додати
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setServicePickerOpen(true)}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground font-medium transition-colors"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Послуга
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewLine(EMPTY_LINE);
+                            setShowLineInput(true);
+                          }}
+                          className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Додати
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -3434,6 +3485,12 @@ export function CreateWorkOrderModal({
             price: String(w.price),
           }))
         }
+      />
+
+      <ServicePickerModal
+        open={servicePickerOpen}
+        onClose={() => setServicePickerOpen(false)}
+        onSelect={applyService}
       />
 
       {/* Work picker for inline edit row */}
