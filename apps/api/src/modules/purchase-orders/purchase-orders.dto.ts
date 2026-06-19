@@ -134,6 +134,8 @@ export class PurchaseOrderLineResponseDto {
   @ApiProperty() goodId!: string;
   @ApiPropertyOptional() goodName?: string;
   @ApiPropertyOptional() goodSku?: string | null;
+  @ApiPropertyOptional() goodInternalCode?: string | null;
+  @ApiPropertyOptional() goodBrandName?: string | null;
   @ApiPropertyOptional() unit?: string;
   @ApiPropertyOptional() unitShortName?: string;
   @ApiPropertyOptional() coefficient?: number;

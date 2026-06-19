@@ -137,9 +137,11 @@ export class PurchaseOrdersService {
             good: {
               select: {
                 name: true,
+                internalCode: true,
                 sku: true,
                 unit: true,
                 unitOfMeasure: { select: { shortName: true, coefficient: true } },
+                brand: { select: { name: true } },
               },
             },
           },
@@ -793,9 +795,11 @@ export class PurchaseOrdersService {
       unitOfMeasureId?: string | null;
       good: {
         name: string;
+        internalCode?: string | null;
         sku: string | null;
         unit: string;
         unitOfMeasure: { shortName: string; coefficient: number } | null;
+        brand?: { name: string } | null;
       } | null;
     }>;
     _count?: { lines: number };
@@ -826,6 +830,8 @@ export class PurchaseOrdersService {
         goodId: l.goodId,
         goodName: l.good?.name,
         goodSku: l.good?.sku ?? null,
+        goodInternalCode: l.good?.internalCode ?? null,
+        goodBrandName: l.good?.brand?.name ?? null,
         unit: l.good?.unit,
         unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
         // Bug #316: safeCoeff() ловить legacy/seed coefficient=0/NaN/негативні —

@@ -397,6 +397,9 @@ export class WorkOrderPartResponseDto {
   @ApiProperty() workOrderId!: string;
   @ApiProperty() goodId!: string;
   @ApiPropertyOptional() goodName?: string;
+  @ApiPropertyOptional() goodInternalCode?: string | null;
+  @ApiPropertyOptional() goodSku?: string | null;
+  @ApiPropertyOptional() goodBrandName?: string | null;
   @ApiPropertyOptional() unitOfMeasureId?: string | null;
   @ApiPropertyOptional() unitShortName?: string;
   @ApiPropertyOptional() coefficient?: number;

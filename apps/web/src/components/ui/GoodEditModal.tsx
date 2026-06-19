@@ -27,6 +27,7 @@ import { GoodPriceHistoryTab } from '@/components/ui/GoodPriceHistoryTab';
 
 export interface GoodForModal {
   id: string;
+  internalCode?: string | null;
   sku: string | null;
   name: string;
   unit: string;
@@ -286,6 +287,12 @@ export function GoodEditModal({
             }}
             placeholder="Масло моторне 5W-40"
           />
+          {good?.internalCode && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/50 text-[13px]">
+              <span className="text-muted-foreground">Внутрішній код:</span>
+              <span className="font-mono font-medium text-foreground">{good.internalCode}</span>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Артикул (SKU)"

@@ -100,6 +100,7 @@ enum DocumentType {
   RECONCILIATION_ACT
   COMPLETION_ACT
   COUNTERPARTY_AGREEMENT
+  GOOD_INTERNAL_CODE
 }
 
 enum ContractType {
@@ -844,6 +845,7 @@ model Good {
   brandId        String?   @db.Uuid
   unitId         String?   @db.Uuid
   goodCategoryId String?   @db.Uuid
+  internalCode   String?
   sku            String?
   name           String
   unit           String    @default("шт")
@@ -878,6 +880,7 @@ model Good {
   pricingRules        PricingRule[]
   priceHistory        PriceHistory[]
 
+  @@unique([orgId, internalCode])
   @@index([orgId, deletedAt])
   @@index([orgId, sku])
   @@index([orgId, goodType, deletedAt])

@@ -119,6 +119,9 @@ interface LocalPart {
   id?: string; // present for rows already persisted in DB (edit mode)
   goodId: string;
   goodName: string;
+  goodInternalCode?: string | null;
+  goodSku?: string | null;
+  goodBrandName?: string | null;
   warehouseId: string;
   quantity: string;
   costPrice?: number | null;
@@ -161,6 +164,9 @@ interface WorkOrderDetail {
     id: string;
     goodId: string;
     goodName?: string;
+    goodInternalCode?: string | null;
+    goodSku?: string | null;
+    goodBrandName?: string | null;
     warehouseId: string;
     quantity: number;
     costPrice?: number | null;
@@ -738,6 +744,9 @@ export function CreateWorkOrderModal({
             id: p.id,
             goodId: p.goodId,
             goodName: p.goodName ?? '',
+            goodInternalCode: p.goodInternalCode ?? null,
+            goodSku: p.goodSku ?? null,
+            goodBrandName: p.goodBrandName ?? null,
             warehouseId: p.warehouseId,
             quantity: String(p.quantity),
             costPrice: p.costPrice ?? null,
@@ -2947,6 +2956,9 @@ export function CreateWorkOrderModal({
                                           ...p,
                                           goodId: g.id,
                                           goodName: g.name,
+                                          goodInternalCode: g.internalCode ?? null,
+                                          goodSku: g.sku ?? null,
+                                          goodBrandName: g.brandName ?? null,
                                           price: String(g.salePrice),
                                           unitOfMeasureId: g.unitId ?? '',
                                           unitShortName: g.unitShortName ?? '',
@@ -2957,6 +2969,9 @@ export function CreateWorkOrderModal({
                                           ...p,
                                           goodId: '',
                                           goodName: '',
+                                          goodInternalCode: null,
+                                          goodSku: null,
+                                          goodBrandName: null,
                                           unitOfMeasureId: '',
                                           unitShortName: '',
                                         }))
@@ -3101,8 +3116,17 @@ export function CreateWorkOrderModal({
                                 </>
                               ) : (
                                 <>
-                                  <td className="px-3 py-1.5 text-foreground truncate">
-                                    {part.goodName}
+                                  <td className="px-3 py-1.5 text-foreground">
+                                    <div className="truncate">{part.goodName}</div>
+                                    {(part.goodInternalCode ||
+                                      part.goodSku ||
+                                      part.goodBrandName) && (
+                                      <div className="text-[11px] text-muted-foreground truncate">
+                                        {[part.goodInternalCode, part.goodSku, part.goodBrandName]
+                                          .filter(Boolean)
+                                          .join(' · ')}
+                                      </div>
+                                    )}
                                   </td>
                                   <td className="px-2 py-1.5 text-muted-foreground truncate">
                                     {wh?.name ?? '—'}
@@ -3438,6 +3462,9 @@ export function CreateWorkOrderModal({
             ...p,
             goodId: g.id,
             goodName: g.name,
+            goodInternalCode: g.internalCode ?? null,
+            goodSku: g.sku ?? null,
+            goodBrandName: g.brandName ?? null,
             price: String(g.salePrice),
             unitOfMeasureId: g.unitId ?? '',
             unitShortName: g.unitShortName ?? '',
@@ -3455,6 +3482,9 @@ export function CreateWorkOrderModal({
             ...p,
             goodId: g.id,
             goodName: g.name,
+            goodInternalCode: g.internalCode ?? null,
+            goodSku: g.sku ?? null,
+            goodBrandName: g.brandName ?? null,
             price: String(g.salePrice),
             unitOfMeasureId: g.unitId ?? '',
             unitShortName: g.unitShortName ?? '',

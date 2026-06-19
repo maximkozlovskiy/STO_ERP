@@ -14,7 +14,9 @@ export interface GoodPickerItem {
   primary: string;
   secondary?: string;
   name: string;
+  internalCode?: string | null;
   sku?: string | null;
+  brandName?: string | null;
   salePrice: number;
   category?: string | null;
   unitId?: string | null;
@@ -91,13 +93,17 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
           // response /goods. sto-optimize: shared EMPTY_STOCK_MAP замість `new Map()`
           // на кожному 0-results call → стабільна reference (re-render skip downstream).
           apiFetch<{
-            items: (Omit<GoodPickerItem, 'unitShortName'> & { unit?: string | null })[];
+            items: (Omit<GoodPickerItem, 'unitShortName'> & {
+              unit?: string | null;
+              brand?: { name: string } | null;
+            })[];
           }>(`/goods?${params}`)
             .then(r => {
               if (reqId !== reqRef.current) return;
               const goods = (Array.isArray(r.items) ? r.items : []).map(g => ({
                 ...g,
                 unitShortName: g.unit ?? null,
+                brandName: g.brand?.name ?? null,
               }));
               setItems(goods);
               setLoading(false);
@@ -216,7 +222,13 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                     >
                       <div className="text-sm font-medium text-foreground">{item.name}</div>
                       <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
-                        {item.sku && <span>{item.sku}</span>}
+                        {(item.internalCode || item.sku || item.brandName) && (
+                          <span className="text-[11px] text-muted-foreground/80">
+                            {[item.internalCode, item.sku, item.brandName]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        )}
                         <span>{item.salePrice} ₴</span>
                         <span className={qty > 0 ? 'text-success' : 'text-destructive-text'}>
                           {qty > 0 ? `${qty} на складі` : 'немає на складі'}

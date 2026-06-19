@@ -203,8 +203,11 @@ export class WorkOrdersService {
             good: {
               select: {
                 name: true,
+                internalCode: true,
+                sku: true,
                 unit: true,
                 unitOfMeasure: { select: { shortName: true, coefficient: true } },
+                brand: { select: { name: true } },
               },
             },
           },
@@ -1599,8 +1602,11 @@ export class WorkOrdersService {
       createdAt: Date;
       good?: {
         name: string;
+        internalCode?: string | null;
+        sku?: string | null;
         unit: string;
         unitOfMeasure: { shortName: string; coefficient: number } | null;
+        brand?: { name: string } | null;
       } | null;
       // Populated when unitOfMeasureId is set — per-good GoodUoM record
       goodUoM?: { id: string; coefficient: number; unitOfMeasure: { shortName: string } } | null;
@@ -1621,6 +1627,9 @@ export class WorkOrdersService {
       workOrderId: part.workOrderId,
       goodId: part.goodId,
       goodName: part.good?.name,
+      goodInternalCode: part.good?.internalCode ?? null,
+      goodSku: part.good?.sku ?? null,
+      goodBrandName: part.good?.brand?.name ?? null,
       unitOfMeasureId: part.unitOfMeasureId ?? null,
       unitShortName: selectedUoM?.unitOfMeasure.shortName ?? baseUoM?.shortName ?? part.good?.unit,
       // Bug #316: safeCoeff() для legacy/seed 0 — фронт використовує coefficient як дільник для display↔base conversion.

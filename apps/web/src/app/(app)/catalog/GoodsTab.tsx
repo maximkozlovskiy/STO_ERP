@@ -81,7 +81,9 @@ interface Unit {
 }
 interface Good {
   id: string;
+  internalCode?: string | null;
   sku: string | null;
+  brandName?: string | null;
   name: string;
   unit: string;
   unitId: string | null;
@@ -127,6 +129,7 @@ import { Pagination } from '@/components/ui/pagination';
 // ─── Goods Tab ────────────────────────────────────────────────────────────────
 
 const GOODS_PANEL_FIELDS = [
+  { key: 'internal_code', label: 'Внутрішній код' },
   { key: 'sku', label: 'Артикул' },
   { key: 'type', label: 'Тип' },
   { key: 'unit', label: 'Одиниця' },
@@ -652,8 +655,10 @@ export default function GoodsTab() {
                                 </p>
                                 {isDeleted && <Badge variant="secondary">видалено</Badge>}
                               </div>
-                              {g.sku && (
-                                <p className="text-muted-foreground text-[12px]">{g.sku}</p>
+                              {(g.internalCode || g.sku || g.brandName) && (
+                                <p className="text-muted-foreground text-[12px]">
+                                  {[g.internalCode, g.sku, g.brandName].filter(Boolean).join(' · ')}
+                                </p>
                               )}
                             </TableCell>
                           );
@@ -786,6 +791,12 @@ export default function GoodsTab() {
               {/* Info tab */}
               {goodDetailTab === 'info' && (
                 <div className="space-y-3">
+                  <PanelField
+                    fieldKey="internal_code"
+                    label="Внутрішній код"
+                    value={selectedGood.internalCode}
+                    hidden={panelConfig.isFieldHidden('internal_code')}
+                  />
                   <PanelField
                     fieldKey="sku"
                     label="Артикул"

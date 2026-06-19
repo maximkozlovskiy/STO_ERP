@@ -60,7 +60,9 @@ interface Supplier {
 interface Good {
   id: string;
   name: string;
+  internalCode?: string | null;
   sku: string | null;
+  brandName?: string | null;
   unit: string | null;
   purchasePrice: number | null;
 }
@@ -87,6 +89,8 @@ interface LocalLine {
   goodId: string;
   goodName: string;
   goodSku?: string | null;
+  goodInternalCode?: string | null;
+  goodBrandName?: string | null;
   unit: string;
   // Bug #498: backend повертає unitShortName з UoM relation (purchase-orders.service.ts:771).
   // Parent page.tsx рендерить line.unitShortName ?? line.unit; цей modal раніше показував
@@ -104,6 +108,8 @@ interface POLine {
   goodId: string;
   goodName?: string | null;
   goodSku?: string | null;
+  goodInternalCode?: string | null;
+  goodBrandName?: string | null;
   unit?: string | null;
   unitShortName?: string | null;
   quantity: number;
@@ -355,6 +361,8 @@ export function PurchaseOrderCreateModal({
               goodId: l.goodId,
               goodName: l.goodName ?? '',
               goodSku: l.goodSku,
+              goodInternalCode: l.goodInternalCode,
+              goodBrandName: l.goodBrandName,
               unit: l.unit ?? 'шт',
               unitShortName: l.unitShortName,
               quantity: String(l.quantity),
@@ -478,6 +486,8 @@ export function PurchaseOrderCreateModal({
     unit?: string | null;
     purchasePrice?: number | null;
     sku?: string | null;
+    internalCode?: string | null;
+    brandName?: string | null;
   };
 
   const fetchGoodItems = useCallback(async (q: string): Promise<GoodItem[]> => {
@@ -489,6 +499,8 @@ export function PurchaseOrderCreateModal({
       unit: g.unit,
       purchasePrice: g.purchasePrice,
       sku: g.sku,
+      internalCode: g.internalCode ?? null,
+      brandName: g.brandName ?? null,
     }));
   }, []);
 
@@ -498,6 +510,8 @@ export function PurchaseOrderCreateModal({
       goodId: item.id,
       goodName: item.primary,
       goodSku: item.sku ?? null,
+      goodInternalCode: item.internalCode ?? null,
+      goodBrandName: item.brandName ?? null,
       unit: item.unit ?? 'шт',
       price: String(item.purchasePrice ?? ''),
     }));
@@ -588,6 +602,8 @@ export function PurchaseOrderCreateModal({
       goodId: line.goodId,
       goodName: line.goodName,
       goodSku: line.goodSku,
+      goodInternalCode: line.goodInternalCode,
+      goodBrandName: line.goodBrandName,
       unit: line.unit,
       unitShortName: line.unitShortName,
       quantity: line.quantity,
@@ -1285,6 +1301,8 @@ export function PurchaseOrderCreateModal({
                                 goodId: g.id,
                                 goodName: g.primary,
                                 goodSku: g.sku ?? null,
+                                goodInternalCode: g.internalCode ?? null,
+                                goodBrandName: g.brandName ?? null,
                                 unit: g.unit ?? l.unit,
                                 price: String(g.purchasePrice ?? l.price),
                               }));
@@ -1391,8 +1409,12 @@ export function PurchaseOrderCreateModal({
                       >
                         <td className="px-3 py-2">
                           <div>{line.goodName}</div>
-                          {line.goodSku && (
-                            <div className="text-[11px] text-muted-foreground">{line.goodSku}</div>
+                          {(line.goodInternalCode || line.goodSku || line.goodBrandName) && (
+                            <div className="text-[11px] text-muted-foreground">
+                              {[line.goodInternalCode, line.goodSku, line.goodBrandName]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </div>
                           )}
                         </td>
                         <td className="px-3 py-2 tabular-nums">{line.quantity}</td>
@@ -1442,7 +1464,16 @@ export function PurchaseOrderCreateModal({
                           {lineSubtotal(line.quantity, line.price).toFixed(2)}
                         </td>
                         {canPrice && (
-                          <td className="px-2 py-1.5">
+                          <td
+                            className="px-3 py-2 text-[12px] tabular-nums cursor-text hover:bg-primary/5 transition-colors"
+                            title="Клікніть щоб редагувати"
+                            onClick={e => {
+                              const input = (e.currentTarget as HTMLTableCellElement).querySelector(
+                                'input',
+                              );
+                              input?.focus();
+                            }}
+                          >
                             <input
                               type="number"
                               min="0"
@@ -1457,7 +1488,10 @@ export function PurchaseOrderCreateModal({
                                   ),
                                 );
                               }}
-                              className="w-full rounded border border-border bg-transparent px-2 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
+                              }}
+                              className="w-full bg-transparent text-[12px] tabular-nums outline-none border-b border-transparent focus:border-primary caret-primary placeholder:text-muted-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               placeholder="—"
                             />
                           </td>
@@ -1516,6 +1550,8 @@ export function PurchaseOrderCreateModal({
                               goodId: g.id,
                               goodName: g.primary,
                               goodSku: g.sku ?? null,
+                              goodInternalCode: g.internalCode ?? null,
+                              goodBrandName: g.brandName ?? null,
                               unit: g.unit ?? 'шт',
                               price: String(g.purchasePrice ?? ''),
                             }));
@@ -1693,6 +1729,8 @@ export function PurchaseOrderCreateModal({
             goodId: item.id,
             goodName: item.primary,
             goodSku: (item as GoodItem).sku ?? null,
+            goodInternalCode: (item as GoodItem).internalCode ?? null,
+            goodBrandName: (item as GoodItem).brandName ?? null,
             unit: (item as GoodItem).unit ?? 'шт',
             price: String((item as GoodItem).purchasePrice ?? ''),
           }));

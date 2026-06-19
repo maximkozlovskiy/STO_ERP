@@ -107,8 +107,10 @@ export class GoodQueryDto {
 export class GoodResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orgId!: string;
+  @ApiPropertyOptional() internalCode!: string | null;
   @ApiPropertyOptional() sku!: string | null;
   @ApiProperty() name!: string;
+  @ApiPropertyOptional() brandName?: string | null;
   @ApiProperty() unit!: string;
   @ApiPropertyOptional() unitId?: string | null;
   @ApiPropertyOptional() brandId?: string | null;

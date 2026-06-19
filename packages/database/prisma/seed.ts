@@ -144,7 +144,12 @@ async function main() {
   console.warn('  PaymentMethods: 5 записів');
 
   // ─── DocumentNumberConfig ────────────────────────────────
-  const docConfigs: { documentType: DocumentType; prefix: string }[] = [
+  const docConfigs: {
+    documentType: DocumentType;
+    prefix: string;
+    includeDate?: boolean;
+    resetPeriod?: ResetPeriod;
+  }[] = [
     { documentType: DocumentType.WORK_ORDER, prefix: 'НРД' },
     { documentType: DocumentType.INVOICE, prefix: 'РАХ' },
     { documentType: DocumentType.PURCHASE_ORDER, prefix: 'ЗАМ' },
@@ -155,6 +160,12 @@ async function main() {
     { documentType: DocumentType.STOCK_OPENING, prefix: 'ВЗЛ' },
     { documentType: DocumentType.RECONCILIATION_ACT, prefix: 'АКТ' },
     { documentType: DocumentType.COUNTERPARTY_AGREEMENT, prefix: 'ДГ' },
+    {
+      documentType: DocumentType.GOOD_INTERNAL_CODE,
+      prefix: 'T',
+      includeDate: false,
+      resetPeriod: ResetPeriod.NEVER,
+    },
   ];
   for (const dc of docConfigs) {
     await prisma.documentNumberConfig.upsert({
@@ -164,12 +175,12 @@ async function main() {
         orgId: ORG_ID,
         documentType: dc.documentType,
         prefix: dc.prefix,
-        includeDate: true,
+        includeDate: dc.includeDate ?? true,
         dateFormat: 'YYYYMMDD',
         separator: '-',
         padding: 6,
         currentSeq: 0,
-        resetPeriod: ResetPeriod.YEARLY,
+        resetPeriod: dc.resetPeriod ?? ResetPeriod.YEARLY,
       },
     });
   }

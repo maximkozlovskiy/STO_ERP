@@ -8,6 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DocumentNumberService } from '../document-number/document-number.service';
 import {
   CreateGoodDto,
   UpdateGoodDto,
@@ -22,7 +23,10 @@ import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 
 @Injectable()
 export class GoodsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly docNumbers: DocumentNumberService,
+  ) {}
 
   async findAll(orgId: string, query: GoodQueryDto): Promise<PaginatedGoodsDto> {
     const where: Prisma.GoodWhereInput = {
@@ -47,6 +51,7 @@ export class GoodsService {
       select: { firstName: true, lastName: true, companyName: true },
     } as const;
     const goodCategorySelect = { select: { id: true, name: true } } as const;
+    const brandSelect = { select: { name: true } } as const;
     const [items, total] = await Promise.all([
       this.prisma.good.findMany({
         where,
@@ -55,7 +60,11 @@ export class GoodsService {
         orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
         skip,
         take,
-        include: { preferredSupplier: supplierSelect, goodCategory: goodCategorySelect },
+        include: {
+          preferredSupplier: supplierSelect,
+          goodCategory: goodCategorySelect,
+          brand: brandSelect,
+        },
       }),
       this.prisma.good.count({ where }),
     ]);
@@ -74,6 +83,7 @@ export class GoodsService {
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
         goodCategory: { select: { id: true, name: true } },
+        brand: { select: { name: true } },
       },
     });
     if (!item) throw new NotFoundException('Товар не знайдено');
@@ -93,10 +103,12 @@ export class GoodsService {
     ]);
     if (dto.sku && existing)
       throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
+    const internalCode = await this.docNumbers.next(orgId, 'GOOD_INTERNAL_CODE');
     const item = await this.prisma.good.create({
-      data: { ...dto, orgId, unit: dto.unit ?? 'шт', salePrice: dto.salePrice ?? 0 },
+      data: { ...dto, orgId, unit: dto.unit ?? 'шт', salePrice: dto.salePrice ?? 0, internalCode },
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
+        brand: { select: { name: true } },
       },
     });
     return this.toDto(item);
@@ -128,6 +140,7 @@ export class GoodsService {
       data: dto,
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
+        brand: { select: { name: true } },
       },
     });
     return this.toDto(item);
@@ -158,6 +171,7 @@ export class GoodsService {
       where: { id, orgId },
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
+        brand: { select: { name: true } },
       },
     });
     return this.toDto(item);
@@ -612,8 +626,10 @@ export class GoodsService {
   private toDto(item: {
     id: string;
     orgId: string;
+    internalCode?: string | null;
     sku: string | null;
     name: string;
+    brand?: { name: string } | null;
     unit: string;
     unitId?: string | null;
     brandId?: string | null;
@@ -638,8 +654,10 @@ export class GoodsService {
     return {
       id: item.id,
       orgId: item.orgId,
+      internalCode: item.internalCode ?? null,
       sku: item.sku ?? null,
       name: item.name,
+      brandName: item.brand?.name ?? null,
       unit: item.unit,
       unitId: item.unitId ?? null,
       brandId: item.brandId ?? null,
