@@ -27,6 +27,7 @@ import { displayCounterpartyName, cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
 import { PO_STATUS_LABELS, PO_STATUS_TRANSITIONS, PO_STATUS_ACTION_LABELS } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -206,6 +207,11 @@ export function PurchaseOrderCreateModal({
   const [receiveQtys, setReceiveQtys] = useState<Record<string, string>>({});
   const [receiving, setReceiving] = useState(false);
   const [applyingPricing, setApplyingPricing] = useState(false);
+  const [rulePricerOpen, setRulePricerOpen] = useState(false);
+  const [pricingRules, setPricingRules] = useState<
+    Array<{ id: string; name: string; description: string | null }>
+  >([]);
+  const [pricingRulesLoading, setPricingRulesLoading] = useState(false);
   const [error, setError] = useState('');
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
@@ -782,6 +788,42 @@ export function PurchaseOrderCreateModal({
     }
   };
 
+  const openRulePricer = async () => {
+    setPricingRulesLoading(true);
+    setRulePricerOpen(true);
+    try {
+      const data = await apiFetch<{
+        items: Array<{ id: string; name: string; description: string | null }>;
+      }>('/pricing-rules?limit=100');
+      setPricingRules(Array.isArray(data.items) ? data.items : []);
+    } catch {
+      setPricingRules([]);
+    } finally {
+      setPricingRulesLoading(false);
+    }
+  };
+
+  const handleApplyPricingByRule = async (ruleId: string) => {
+    if (!purchaseOrderId) return;
+    setRulePricerOpen(false);
+    setApplyingPricing(true);
+    setError('');
+    try {
+      const result = await apiFetch<{ updated: number }>(
+        `/purchase-orders/${purchaseOrderId}/apply-pricing`,
+        { method: 'POST', body: JSON.stringify({ ruleId }) },
+      );
+      if (features.toastEnabled) toast.success(`Розцінено ${result.updated} товарів`);
+      if (purchaseOrderId) await loadPo(purchaseOrderId, true);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка розцінки';
+      setError(msg);
+      if (features.toastEnabled) toast.error(msg);
+    } finally {
+      setApplyingPricing(false);
+    }
+  };
+
   // sto-optimize: memoize array of chips — раніше recompute + .filter() на кожен
   // typing keystroke у Input полях форми (notes тощо), навіть коли header згорнуто
   // у false.
@@ -1143,17 +1185,30 @@ export function PurchaseOrderCreateModal({
               <p className="text-xs font-medium text-muted-foreground">Товари</p>
               <div className="flex items-center gap-2">
                 {isEditMode && (currentStatus === 'RECEIVED' || currentStatus === 'PARTIAL') && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void handleApplyPricing()}
-                    loading={applyingPricing}
-                    disabled={applyingPricing || saving || transitioning}
-                    title="Розцінити товари за правилами"
-                  >
-                    <Zap size={13} className="mr-1" />
-                    Розцінити
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void openRulePricer()}
+                      loading={applyingPricing}
+                      disabled={applyingPricing || saving || transitioning}
+                      title="Розцінити за обраним правилом"
+                    >
+                      <Zap size={13} className="mr-1" />
+                      За правилом
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleApplyPricing()}
+                      loading={applyingPricing}
+                      disabled={applyingPricing || saving || transitioning}
+                      title="Розцінити товари за правилами автоматично"
+                    >
+                      <Zap size={13} className="mr-1" />
+                      Розцінити
+                    </Button>
+                  </>
                 )}
                 {isEditMode &&
                   (currentStatus === 'ORDERED' || currentStatus === 'PARTIAL') &&
@@ -1737,6 +1792,42 @@ export function PurchaseOrderCreateModal({
           setGoodSearchOpen(false);
         }}
       />
+
+      {/* Пікер правила ціноутворення */}
+      <Modal
+        open={rulePricerOpen}
+        onClose={() => setRulePricerOpen(false)}
+        title="Оберіть правило розцінки"
+        size="md"
+      >
+        <div className="flex flex-col gap-2" style={{ minHeight: '200px' }}>
+          {pricingRulesLoading ? (
+            <div className="flex justify-center py-10">
+              <Spinner size="sm" />
+            </div>
+          ) : pricingRules.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-10 text-center">
+              Немає активних правил ціноутворення
+            </p>
+          ) : (
+            <div className="space-y-1">
+              {pricingRules.map(rule => (
+                <button
+                  key={rule.id}
+                  type="button"
+                  onClick={() => void handleApplyPricingByRule(rule.id)}
+                  className="w-full text-left px-3 py-2.5 rounded-lg border border-border bg-surface hover:border-primary hover:bg-primary/5 transition-colors"
+                >
+                  <div className="text-sm font-medium text-foreground">{rule.name}</div>
+                  {rule.description && (
+                    <div className="text-xs text-muted-foreground mt-0.5">{rule.description}</div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
     </>
   );
 }

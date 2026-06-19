@@ -112,7 +112,11 @@ export class PurchaseOrdersController {
   @Post(':id/apply-pricing')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Розцінити товари замовлення за правилами ціноутворення' })
-  applyPricing(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.applyPricing(orgId, id);
+  applyPricing(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { ruleId?: string },
+  ) {
+    return this.service.applyPricing(orgId, id, body?.ruleId);
   }
 }

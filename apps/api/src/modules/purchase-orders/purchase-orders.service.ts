@@ -589,6 +589,7 @@ export class PurchaseOrdersService {
   async applyPricing(
     orgId: string,
     poId: string,
+    ruleId?: string,
   ): Promise<{
     updated: number;
     details: {
@@ -640,7 +641,11 @@ export class PurchaseOrdersService {
     // Bug #194: prefetch active rules once — раніше calculateSalePrice fetch-ив правила
     // у циклі (N+1), та кожна лінія викликала окремий $transaction без timeout.
     // Тепер: 1 query на правила + 1 транзакція з chunked updates + explicit timeout.
-    const rules = await this.pricingService.getActiveRulesForOrg(orgId);
+    const rules = ruleId
+      ? await this.pricingService
+          .getActiveRulesForOrg(orgId)
+          .then(all => all.filter(r => r.id === ruleId))
+      : await this.pricingService.getActiveRulesForOrg(orgId);
 
     type Plan = {
       lineId: string;
