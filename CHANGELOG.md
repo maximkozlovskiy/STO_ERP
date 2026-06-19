@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-06-20
+
+### 0b60970c fix(review): align SupplierReturn modal FSM with backend SR_TRANSITIONS
+
+- Post-redesign (0bcc7365 PO-style copy) drift: frontend STATUS_TRANSITIONS не відповідав backend SR_TRANSITIONS у supplier-returns.service.ts — `DRAFT:[CONFIRMED]` губив CANCELLED; `CONFIRMED:[CANCELLED]` додавав неіснуючий перехід (бек: `CONFIRMED:[]`)
+- `statusPrevStep` був хардкодом `status==='CONFIRMED' ? 'DRAFT' : null` — у SR немає back-transition
+- Фікс: `STATUS_TRANSITIONS = { DRAFT:[CONFIRMED,CANCELLED], CONFIRMED:[], CANCELLED:[] }`, `statusPrevStep: null`, next-step віддає перевагу не-CANCELLED forward (CONFIRMED) із fallback
+- TS green (web 0 errors)
+
+---
+
 ## 2026-06-19
 
 ### a257dc8c fix(tester): bugs #541-#543 — regression-guards for include drift + dead-code cleanup
