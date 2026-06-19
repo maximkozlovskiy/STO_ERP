@@ -458,7 +458,8 @@ export class StockDocumentsService {
       targetWarehouseId: doc.targetWarehouseId ?? null,
       targetWarehouseName: doc.targetWarehouse?.name ?? null,
       notes: doc.notes ?? null,
-      confirmedAt: doc.confirmedAt ?? null,
+      confirmedAt:
+        doc.confirmedAt instanceof Date ? doc.confirmedAt.toISOString() : (doc.confirmedAt ?? null),
       documentDate: doc.documentDate ? doc.documentDate.toISOString().slice(0, 10) : null,
       lines: (doc.lines ?? []).map(l => ({
         id: l.id,
@@ -476,9 +477,10 @@ export class StockDocumentsService {
       })),
       // findAll: lines opted-out, beredemo з `_count`; findOne: lines присутні → fallback.
       linesCount: doc._count?.lines ?? doc.lines?.length ?? 0,
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
-      deletedAt: doc.deletedAt ?? null,
+      createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : doc.createdAt,
+      updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : doc.updatedAt,
+      deletedAt:
+        doc.deletedAt instanceof Date ? doc.deletedAt.toISOString() : (doc.deletedAt ?? null),
     };
   }
 }

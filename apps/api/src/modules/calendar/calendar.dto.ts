@@ -106,8 +106,8 @@ export class CalendarSlotResponseDto {
   @ApiPropertyOptional() workOrderId?: string | null;
   @ApiPropertyOptional() vehicleId?: string | null;
   @ApiPropertyOptional() parentSlotId?: string | null;
-  @ApiProperty() startAt!: Date;
-  @ApiProperty() endAt!: Date;
+  @ApiProperty() startAt!: string;
+  @ApiProperty() endAt!: string;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() workOrderNumber?: string;
   @ApiPropertyOptional() workOrderStatus?: string | null;

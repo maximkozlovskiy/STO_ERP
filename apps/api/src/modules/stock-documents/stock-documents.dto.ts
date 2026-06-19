@@ -115,17 +115,17 @@ export class StockDocumentResponseDto {
   @ApiPropertyOptional() targetWarehouseId?: string | null;
   @ApiPropertyOptional() targetWarehouseName?: string | null;
   @ApiPropertyOptional() notes?: string | null;
-  @ApiPropertyOptional() confirmedAt?: Date | null;
+  @ApiPropertyOptional() confirmedAt?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiProperty({ type: [StockDocumentLineResponseDto] }) lines!: StockDocumentLineResponseDto[];
   @ApiPropertyOptional({
     description: 'Кількість позицій (для списку — заповнено замість lines.length)',
   })
   linesCount?: number;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional({ description: 'Set when the document is soft-deleted' })
-  deletedAt?: Date | null;
+  deletedAt?: string | null;
 }
 
 export class PaginatedStockDocumentsDto {
