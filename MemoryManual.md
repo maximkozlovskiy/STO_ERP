@@ -14,7 +14,7 @@
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 931/931 | Web 438/438 | E2E 233/234 (1 flaky; 11 data-skip)
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 (HEAD cba69150) — fix(tester): Bug #537 validation message Cyrillic. Цикл 1/3 тестування (step 3/7): тільки settings.dto.ts + admin.json scope. Bug #537: garbled Cyrillic у @Matches validators (HH:MM format message). Bug #538: E2E flaky test estimate-share (seed issue або filtering). Unit: 931 ✓ Web: 438 ✓ E2E: 233 ✓ (1 stable fail after 3 retry).
+Останній commit: 2026-06-20 (HEAD cce4130a) — perf(optimize): parallelize supplier + warehouse validation in SupplierReturn.update(). Цикл оптимізації 1/3 (Крок 1-5): (1) N+1 перевірка: нема класичних async.map(), for-await, include:true у new modules; (2) Sequential запити: знайдено у supplier-returns.update() лін 205-217 → паралелізовано Promise.all(); (3) DB індекси: SupplierReturn + PricingRule + Counterparty (firstName/lastName/companyName) — все вже мають GIN trgm; (4) Bundle: фронтенд без нових компонентів (pricing-rules вже з dynamic lazy-load); (5) React memo: pricing-rules.controller + pricing.service — вже оптимізовані. TypeScript: ✅ 0 errors.
 ```
 
 ### Аудит-висновки (2026-06-17 simplify session)
@@ -30,6 +30,7 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+cce4130a  perf(optimize): parallelize supplier + warehouse validation in SupplierReturn.update()
 cba69150  fix(tester): Bug #537 validation message Cyrillic + #538 E2E flaky (Цикл 1/3 step 3)
 00f6c657  fix(review): remove UTF-8 BOM from 19 DTO files
 968e49b0  fix(api): resolve 37 TypeScript errors — Date→string conversions + undefined variable refs
@@ -39,7 +40,6 @@ f1fea90b  fix(sync): complete Date serialization alignment in remaining modules
 0b60970c  fix(review): align SupplierReturn modal FSM with backend SR_TRANSITIONS
 1f60d1b0  perf(optimize): add GIN trgm index for goods.barcode search
 a50e1484  fix(review): extract PO/WO `good` include + render goodInternalCode/sku/brand in WO parts list
-669a328e  fix(sync): add goodInternalCode/goodSku/goodBrandName to WorkOrderPart interfaces
 ```
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
