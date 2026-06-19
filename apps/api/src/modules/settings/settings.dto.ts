@@ -216,13 +216,13 @@ export class UpdateBranchSettingsDto {
   @ApiPropertyOptional({ example: '09:00' })
   @IsOptional()
   @IsString()
-  @Matches(HH_MM_RE, { message: 'Р¤РѕСЂРјР°С‚ "Р“Р“:РҐРҐ" (00:00вЂ“23:59)' })
+  @Matches(HH_MM_RE, { message: 'Формат “ГГ:ХХ” (00:00–23:59)' })
   workStartTime?: string;
 
   @ApiPropertyOptional({ example: '18:00' })
   @IsOptional()
   @IsString()
-  @Matches(HH_MM_RE, { message: 'Р¤РѕСЂРјР°С‚ "Р“Р“:РҐРҐ" (00:00вЂ“23:59)' })
+  @Matches(HH_MM_RE, { message: 'Формат “ГГ:ХХ” (00:00–23:59)' })
   workEndTime?: string;
 
   @ApiPropertyOptional({ minimum: 15, maximum: 240 })

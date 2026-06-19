@@ -17014,3 +17014,34 @@ JSON.stringify() конвертує Date → ISO string у runtime, але TypeS
 Sed-based bulk replacements assumed generic variable names (item, e, s) but services use specific names (employee, service, zone, etc.). Manual fixes per-service needed.
 
 **Token Usage:** ~150k of 200k budget consumed. Continuing in next session recommended.
+
+## Session 2026-06-20 — sto-tester Cycle 1/3, Step 3
+
+### Bug #538 — MEDIUM frontend / E2E / flaky
+
+**Файл:** `apps/web/e2e/estimate-share.spec.ts:213`
+**Severity:** MEDIUM
+**Категорія:** E2E / flaky / test-infrastructure
+
+**Опис:** E2E тест `work-order modal in ESTIMATE status shows Друк / Поділитись / SMS buttons` не дочекується 30 сек, щоб рядок таблиці з текстом "Кошторис" з'явився, навіть через 3 retry.
+
+Тест запускає seedEstimateWorkOrder() що:
+
+1. Шукає DRAFT нарядо у БД
+2. Клонує його
+3. Транзишнює DRAFT → ESTIMATE
+
+Потім перейшов на /work-orders і натиснув Кошторис tab (status=ESTIMATE фільтр), але таблиця не показує рядок.
+
+**Сигнал:** Element not found (30s timeout) × 3 retries → stable failure. Локаторо виглядає коректно.
+
+**Причина виникнення:** Можливо:
+
+- (A) Донор DRAFT не знайдено → seed повернув null → test.skip не впійшов
+- (B) Clone endpoint вернув error 500/400 → cleanup видалив clone, seed=null
+- (C) Transition endpoint падає → clone залишився у DRAFT (не ESTIMATE)
+- (D) Frontend фільтр по status=ESTIMATE не працює (backend может верну, UI не показує)
+
+**Статус:** ⏭ skip (дозволено 3 retry; stable failure може вказувати на налаштування БД seed — клон може не мати прав; потребує debug)
+
+---
