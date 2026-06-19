@@ -1368,7 +1368,7 @@ export function PurchaseOrderCreateModal({
                                   type="number"
                                   min="0"
                                   max={maxQty}
-                                  step="0.001"
+                                  step="1"
                                   value={receiveQtys[line.id ?? ''] ?? ''}
                                   onChange={e =>
                                     setReceiveQtys(q => ({ ...q, [line.id ?? '']: e.target.value }))
