@@ -782,22 +782,45 @@ export default function ServicesTab() {
                         {w.normoHours} нормо-год · {fmtMoney(w.price)} ₴
                       </p>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-muted-foreground text-[12px]">К-сть:</span>
+                    <div className="flex items-center gap-0 shrink-0 border border-border rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => {
+                          setEditWorks(prev =>
+                            prev.map((x, j) =>
+                              j === i ? { ...x, quantity: Math.max(1, x.quantity - 1) } : x,
+                            ),
+                          );
+                          servicesFormDirty.markDirty();
+                        }}
+                        className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:bg-secondary transition-colors text-base leading-none"
+                      >
+                        −
+                      </button>
                       <input
                         type="number"
-                        min="0.01"
-                        step="0.01"
+                        min="1"
+                        step="1"
                         value={w.quantity}
                         onChange={e => {
-                          const quantity = Math.max(0.01, Number(e.target.value) || 1);
+                          const quantity = Math.max(1, Math.round(Number(e.target.value)) || 1);
                           setEditWorks(prev =>
                             prev.map((x, j) => (j === i ? { ...x, quantity } : x)),
                           );
                           servicesFormDirty.markDirty();
                         }}
-                        className="w-14 h-6 text-[12px] text-center border border-border rounded px-1 bg-background"
+                        className="w-10 h-7 text-[12px] text-center border-x border-border bg-background focus:outline-none"
                       />
+                      <button
+                        onClick={() => {
+                          setEditWorks(prev =>
+                            prev.map((x, j) => (j === i ? { ...x, quantity: x.quantity + 1 } : x)),
+                          );
+                          servicesFormDirty.markDirty();
+                        }}
+                        className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:bg-secondary transition-colors text-base leading-none"
+                      >
+                        +
+                      </button>
                     </div>
                     <button
                       onClick={() => {
@@ -848,22 +871,45 @@ export default function ServicesTab() {
                         {g.unit} · {fmtMoney(g.salePrice)} ₴
                       </p>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-muted-foreground text-[12px]">К-сть:</span>
+                    <div className="flex items-center gap-0 shrink-0 border border-border rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => {
+                          setEditGoods(prev =>
+                            prev.map((x, j) =>
+                              j === i ? { ...x, quantity: Math.max(1, x.quantity - 1) } : x,
+                            ),
+                          );
+                          servicesFormDirty.markDirty();
+                        }}
+                        className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:bg-secondary transition-colors text-base leading-none"
+                      >
+                        −
+                      </button>
                       <input
                         type="number"
-                        min="0.01"
-                        step="0.01"
+                        min="1"
+                        step="1"
                         value={g.quantity}
                         onChange={e => {
-                          const quantity = Math.max(0.01, Number(e.target.value) || 1);
+                          const quantity = Math.max(1, Math.round(Number(e.target.value)) || 1);
                           setEditGoods(prev =>
                             prev.map((x, j) => (j === i ? { ...x, quantity } : x)),
                           );
                           servicesFormDirty.markDirty();
                         }}
-                        className="w-14 h-6 text-[12px] text-center border border-border rounded px-1 bg-background"
+                        className="w-10 h-7 text-[12px] text-center border-x border-border bg-background focus:outline-none"
                       />
+                      <button
+                        onClick={() => {
+                          setEditGoods(prev =>
+                            prev.map((x, j) => (j === i ? { ...x, quantity: x.quantity + 1 } : x)),
+                          );
+                          servicesFormDirty.markDirty();
+                        }}
+                        className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:bg-secondary transition-colors text-base leading-none"
+                      >
+                        +
+                      </button>
                     </div>
                     <button
                       onClick={() => {
