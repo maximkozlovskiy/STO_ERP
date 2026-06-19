@@ -251,9 +251,11 @@ export class PurchaseOrdersService {
                 good: {
                   select: {
                     name: true,
+                    internalCode: true,
                     sku: true,
                     unit: true,
                     unitOfMeasure: { select: { shortName: true, coefficient: true } },
+                    brand: { select: { name: true } },
                   },
                 },
               },
@@ -391,9 +393,11 @@ export class PurchaseOrdersService {
                 good: {
                   select: {
                     name: true,
+                    internalCode: true,
                     sku: true,
                     unit: true,
                     unitOfMeasure: { select: { shortName: true, coefficient: true } },
+                    brand: { select: { name: true } },
                   },
                 },
               },

@@ -95,15 +95,15 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
           apiFetch<{
             items: (Omit<GoodPickerItem, 'unitShortName'> & {
               unit?: string | null;
-              brand?: { name: string } | null;
             })[];
           }>(`/goods?${params}`)
             .then(r => {
               if (reqId !== reqRef.current) return;
+              // Backend (GoodResponseDto) returns `brandName` directly — spread preserves it.
+              // `unitShortName` derives from `unit` (DTO has no separate short-name field).
               const goods = (Array.isArray(r.items) ? r.items : []).map(g => ({
                 ...g,
                 unitShortName: g.unit ?? null,
-                brandName: g.brand?.name ?? null,
               }));
               setItems(goods);
               setLoading(false);
