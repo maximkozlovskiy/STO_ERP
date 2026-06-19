@@ -16,6 +16,9 @@ interface WorkOrderPart {
   workOrderId?: string;
   goodId: string;
   goodName?: string;
+  goodInternalCode?: string | null;
+  goodSku?: string | null;
+  goodBrandName?: string | null;
   unitOfMeasureId?: string | null;
   unitShortName?: string;
   coefficient?: number;
