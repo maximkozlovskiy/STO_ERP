@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Barcode, Package } from 'lucide-react';
+import { Barcode, Package, TrendingUp } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { Modal } from '@/components/ui/modal';
@@ -21,6 +21,7 @@ import type { CategoryNode } from '@/components/ui/category-tree';
 import { GoodBarcodeTab } from '@/components/ui/GoodBarcodeTab';
 import { GoodBatchesTab } from '@/components/ui/GoodBatchesTab';
 import { GoodUoMTab } from '@/components/ui/GoodUoMTab';
+import { GoodPriceHistoryTab } from '@/components/ui/GoodPriceHistoryTab';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,6 +134,7 @@ export function GoodEditModal({
   const [barcodeCount, setBarcodeCount] = useState(0);
   const [batchesActiveCount, setBatchesActiveCount] = useState(0);
   const [uomCount, setUomCount] = useState(0);
+  const [priceHistoryCount, setPriceHistoryCount] = useState(0);
 
   // ── Sync form when good changes ───────────────────────────────────────────
   useEffect(() => {
@@ -165,6 +167,7 @@ export function GoodEditModal({
     setBarcodeCount(0);
     setBatchesActiveCount(0);
     setUomCount(0);
+    setPriceHistoryCount(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, good?.id]);
 
@@ -492,6 +495,15 @@ export function GoodEditModal({
                 icon: <Package className="h-3.5 w-3.5" />,
                 count: uomCount,
                 content: <GoodUoMTab goodId={good.id} units={units} onCountChange={setUomCount} />,
+              },
+              {
+                key: 'price-history',
+                label: 'Ціни',
+                icon: <TrendingUp className="h-3.5 w-3.5" />,
+                count: priceHistoryCount,
+                content: (
+                  <GoodPriceHistoryTab goodId={good.id} onCountChange={setPriceHistoryCount} />
+                ),
               },
             ]}
           />
