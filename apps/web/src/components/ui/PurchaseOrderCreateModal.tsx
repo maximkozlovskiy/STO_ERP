@@ -212,6 +212,7 @@ export function PurchaseOrderCreateModal({
     Array<{ id: string; name: string; description: string | null }>
   >([]);
   const [pricingRulesLoading, setPricingRulesLoading] = useState(false);
+  const [ruleFilterBySupplier, setRuleFilterBySupplier] = useState(true);
   const [error, setError] = useState('');
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
@@ -788,19 +789,31 @@ export function PurchaseOrderCreateModal({
     }
   };
 
-  const openRulePricer = async () => {
+  const fetchPricingRules = async (bySupplier: boolean) => {
     setPricingRulesLoading(true);
-    setRulePricerOpen(true);
     try {
+      const params = new URLSearchParams({ limit: '100' });
+      if (bySupplier && form.supplierId) params.set('supplierId', form.supplierId);
       const data = await apiFetch<{
         items: Array<{ id: string; name: string; description: string | null }>;
-      }>('/pricing-rules?limit=100');
+      }>(`/pricing-rules?${params}`);
       setPricingRules(Array.isArray(data.items) ? data.items : []);
     } catch {
       setPricingRules([]);
     } finally {
       setPricingRulesLoading(false);
     }
+  };
+
+  const openRulePricer = async () => {
+    setRuleFilterBySupplier(true);
+    setRulePricerOpen(true);
+    await fetchPricingRules(true);
+  };
+
+  const toggleRuleSupplierFilter = async (bySupplier: boolean) => {
+    setRuleFilterBySupplier(bySupplier);
+    await fetchPricingRules(bySupplier);
   };
 
   const handleApplyPricingByRule = async (ruleId: string) => {
@@ -1800,17 +1813,48 @@ export function PurchaseOrderCreateModal({
         title="Оберіть правило розцінки"
         size="md"
       >
-        <div className="flex flex-col gap-2" style={{ minHeight: '200px' }}>
+        <div className="flex flex-col gap-3" style={{ minHeight: '200px' }}>
+          {/* Фільтр по постачальнику */}
+          {form.supplierId && (
+            <div className="flex items-center gap-2 text-[13px]">
+              <button
+                type="button"
+                onClick={() => void toggleRuleSupplierFilter(true)}
+                className={cn(
+                  'px-3 py-1 rounded-full border text-xs font-medium transition-colors',
+                  ruleFilterBySupplier
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/50',
+                )}
+              >
+                {supplierDisplay || 'Постачальник'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void toggleRuleSupplierFilter(false)}
+                className={cn(
+                  'px-3 py-1 rounded-full border text-xs font-medium transition-colors',
+                  !ruleFilterBySupplier
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/50',
+                )}
+              >
+                Всі правила
+              </button>
+            </div>
+          )}
           {pricingRulesLoading ? (
             <div className="flex justify-center py-10">
               <Spinner size="sm" />
             </div>
           ) : pricingRules.length === 0 ? (
             <p className="text-sm text-muted-foreground py-10 text-center">
-              Немає активних правил ціноутворення
+              {ruleFilterBySupplier && form.supplierId
+                ? 'Немає правил для цього постачальника'
+                : 'Немає активних правил ціноутворення'}
             </p>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-1 overflow-y-auto" style={{ maxHeight: '380px' }}>
               {pricingRules.map(rule => (
                 <button
                   key={rule.id}

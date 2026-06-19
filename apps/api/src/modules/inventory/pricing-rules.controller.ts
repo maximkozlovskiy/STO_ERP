@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   ParseUUIDPipe,
   UseGuards,
   HttpCode,
@@ -46,13 +47,14 @@ export class PricingRulesController {
   @Get()
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.STOREKEEPER)
   @ApiOperation({ summary: 'Список правил ціноутворення' })
-  async findAll(@OrgContext() orgId: string) {
+  async findAll(@OrgContext() orgId: string, @Query('supplierId') supplierId?: string) {
     // Bug #17: правила, прив'язані до soft-deleted Good — приховуємо.
     // Bug #18: повертаємо paginated shape { items, total, page, limit } для відповідності API-контракту.
     const where: Prisma.PricingRuleWhereInput = {
       orgId,
       deletedAt: null,
       OR: [{ goodId: null }, { good: { deletedAt: null } }],
+      ...(supplierId ? { supplierId } : {}),
     };
     const [rules, total] = await this.prisma.$transaction([
       this.prisma.pricingRule.findMany({
