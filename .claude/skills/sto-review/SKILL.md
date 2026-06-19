@@ -807,6 +807,39 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-19 — relation-include drift: findOne vs create/update — §13 API Contract
+
+**Сигнал:** новий scalar/relation з'являється у `findOne()` include + `toDto()` мапінг, але `create()`/`update()`/`addPart()`/`updatePart()` include шейп старий → поле = null у POST/PATCH response. Frontend який rendering з create/update payload одразу (без подальшого findOne) показує `null`. Зустрілось у purchase-orders.service (lines.good без `internalCode`/`brand`) і work-orders.service (parts.good без `internalCode`/`sku`/`brand`) у тому ж комі.
+**Grep:**
+
+```bash
+# Знайди всі include що тягнуть `good:` у service-файлах і звір кожен з findOne shape
+grep -nE "good:\s*\{\s*select:" apps/api/src/modules/{purchase-orders,work-orders,invoices,stock-documents,completion-acts}/*.service.ts
+# Або шукай у тому ж файлі різні shape-и одного relation
+grep -nE "(good|supplier|vehicle|counterparty|warehouse):\s*\{\s*select:" apps/api/src/modules/X/X.service.ts | sort -t: -k3
+```
+
+**Фікс:** один shared `const GOOD_INCLUDE_SELECT = { name, internalCode, sku, unit, unitOfMeasure: {...}, brand: {...} } satisfies Prisma.GoodSelect` у service file + reuse у findOne/create/update/addPart/updatePart. Це гарантує що drift не повторюється.
+**Severity:** IMPORTANT — degradation без TS-помилки (toDto signature маркує optional `?`); фронт показує null після POST/PATCH, користувач думає що дані не збереглись поки не зробить refresh.
+
+---
+
+### 2026-06-19 — frontend мапер читає неіснуюче поле з DTO — §13 API Contract
+
+**Сигнал:** frontend type assertion для API response вигадує relation (`brand: { name: string }`) і мапер читає його (`g.brand?.name ?? null`), а реальний backend DTO повертає flat scalar (`brandName: string`). Спред `...g` спочатку записує правильний `brandName` з DTO, потім bogus мапер перетирає на `null`. Помилка німа — TS не може перевірити assertion проти runtime DTO. Знайдено у GoodPickerModal (brandName завжди null).
+**Grep:**
+
+```bash
+# Знайди frontend ApiResponse-каст з відомими relation іменами які backend насправді flatten-нув
+grep -rnE "apiFetch<\{[^}]*brand:\s*\{|apiFetch<\{[^}]*supplier:\s*\{|apiFetch<\{[^}]*good:\s*\{" apps/web/src --include="*.tsx" --include="*.ts"
+# Для кожного — звірити з backend toDto() / toResponseDto() shape у відповідному service.ts
+```
+
+**Фікс:** прибрати фейковий relation з типу-каста; покладатись на spread `...g` що приносить вже маповані flat поля з DTO; залишити лише поля які потребують перетворення (наприклад unit → unitShortName).
+**Severity:** IMPORTANT — degradation без TS/runtime помилки; UI показує null/empty стан для поля яке backend насправді віддає.
+
+---
+
 ### 2026-05-28 — @@unique без deletedAt + create без resurrection — §6 Database
 
 **Сигнал:** `@@unique([orgId, X])` де X не `deletedAt`; `create()` має `findFirst({ deletedAt: null })` але не resurrection
