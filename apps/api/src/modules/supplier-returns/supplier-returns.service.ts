@@ -202,20 +202,23 @@ export class SupplierReturnsService {
       throw new BadRequestException('Редагування дозволено лише у статусі "Чернетка"');
     }
 
-    if (dto.supplierId) {
-      const supplier = await this.prisma.counterparty.findFirst({
-        where: { id: dto.supplierId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!supplier) throw new NotFoundException('Постачальника не знайдено');
-    }
-    if (dto.warehouseId) {
-      const warehouse = await this.prisma.warehouse.findFirst({
-        where: { id: dto.warehouseId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!warehouse) throw new NotFoundException('Склад не знайдено');
-    }
+    // Parallel validation: supplier + warehouse (independent queries)
+    const [supplier, warehouse] = await Promise.all([
+      dto.supplierId
+        ? this.prisma.counterparty.findFirst({
+            where: { id: dto.supplierId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      dto.warehouseId
+        ? this.prisma.warehouse.findFirst({
+            where: { id: dto.warehouseId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    if (dto.supplierId && !supplier) throw new NotFoundException('Постачальника не знайдено');
+    if (dto.warehouseId && !warehouse) throw new NotFoundException('Склад не знайдено');
 
     // Bug #495: cross-tenant FK guard для update() — кожен новий goodId/unitOfMeasureId
     // має існувати у цій організації. Валідація ПЕРЕД $transaction (read-only).
