@@ -247,6 +247,8 @@ done
 ```
 
 - [ ] **Schema↔migration parity (Bug #220)** — будь-який commit що модифікує `packages/database/prisma/schema.prisma` має закомітити **парний** SQL-файл у `packages/database/prisma/migrations/<timestamp>_<feature>/migration.sql`. Це CRITICAL release-blocker (фіча мертва у runtime з `P2021 table does not exist`). tsc green бо Prisma client типи генеруються з декларативної schema. Unit tests green бо vi.fn() mocks не торкаються DB. Ловиться ТІЛЬКИ статичним аудитом `git diff schema.prisma` ↔ `migrations/`. Перевіряти для: (а) нової `model X` → `CREATE TABLE`; (б) додавання field → `ALTER TABLE ADD COLUMN`; (в) нового `@@index` → `CREATE INDEX` (silent perf regression замість CRITICAL crash); (г) `@@unique` → `CREATE UNIQUE INDEX`. Не покладатись на `prisma migrate dev` (потребує live DB + interactive prompt); писати migration SQL вручну за шаблоном з найближчого попереднього migration з аналогічним relation pattern.
+- [ ] **DocumentType enum + INSERT backfill парність (Bug #533)** — будь-який commit що додає нове значення у Prisma enum `DocumentType` (`'GOOD_INTERNAL_CODE'`, `'COMPLETION_ACT'`, `'STOCK_TRANSFER'` etc.) + має парний `documentNumberService.next(orgId, '<NEW_VALUE>')` виклик у service — ОБОВ'ЯЗКОВО мусить мати парну backfill-міграцію з `INSERT INTO document_number_configs SELECT ... FROM organisations o WHERE NOT EXISTS (...)`. Інакше: `seed.ts:docConfigs[]` оновлюється (свіжі orgs OK), але **існуючі orgs** не отримують конфіг → `POST /<resource>` падає з `NotFoundException('Конфігурацію нумерації для "<NEW_VALUE>" не знайдено')` → CRITICAL release-blocker (фіча мертва у проді). Pattern: окрема migration з timestamp на 1 секунду пізніше (бо Postgres забороняє INSERT з новим enum value у тій самій транзакції що `ALTER TYPE`). Прецеденти: `20260615120100_seed_supplier_return_doc_numbers`, `20260619140001_seed_good_internal_code_doc_numbers`. Grep: `git diff schema.prisma | grep -E "^\+\s+[A-Z_]+$" | wc -l` (нові enum values) → перевірити кожне у `packages/database/prisma/migrations/*/migration.sql` `INSERT INTO document_number_configs`. Severity CRITICAL.
+- [ ] **Constructor DI drift у \*.service.spec.ts (Bug #534, #536)** — будь-який commit що додає `private readonly newDep: NewService` у `@Injectable()` сервіс constructor → ОБОВ'ЯЗКОВО оновити ВСІ `*.service.spec.ts` файли цього модуля: (а) для `Test.createTestingModule` specs — додати `{ provide: NewService, useValue: mockObj }` у providers (mockObj повинен мокати методи що сервіс реально викликає — `vi.fn().mockResolvedValue(safeDefault)` для side-effects, не порожній `{}` що дасть `null.method` runtime); (б) для **positional-arg** specs (`new XService(prisma, null as never, ...)`) — найти позицію new dep, замінити відповідний `null as never` на mock obj, додати named comment до кожного arg `null as never, // inventory`. Без цього 100% тестів модуля падає у baseline (DI throw на compile()) → release-blocker. Pre-existing test rot накопичується якщо це проґавити (у нашій сесії — 55 тестів падали з 5 червня). Grep: `for f in $(git diff HEAD~5 HEAD --name-only -- 'apps/api/src/modules/**/*.service.ts' | grep -v spec); do git diff HEAD~5 HEAD -- "$f" | grep "^+.*private readonly.*Service$" && echo "$f changed constructor — verify $f.spec.ts"; done`. Pre-commit hook: `pnpm --filter @sto/api test --run | grep "Tests.*failed"` — будь-який failure = release-blocker. Severity CRITICAL для нових feature, HIGH для pre-existing test rot.
 
 #### Soft Delete
 
@@ -2858,6 +2860,120 @@ it('обробляє рівно N рядків без truncation (boundary)', as
 **Severity:** MEDIUM (defense-in-depth — runtime ОК зараз, але деградує тихо). HIGH якщо cap захищає hot path (per-request, наприклад recalcTotals в transaction).
 
 **Де шукати ще:** `apps/api/src/modules/work-orders/work-orders.service.ts` (recalcTotals — покрито), `inventory.service.ts` (reserveParts — `take: 1000` теж), `purchase-orders.service.ts` (receive — bulk read рядків), `invoices.service.ts` (createFromWorkOrder — копіювання рядків).
+
+---
+
+### 2026-06-19 — Constructor DI drift breaks ALL specs of service (Bug #534, #536) — backend / test-infra
+
+**Сигнал:** Feature commit що додає **новий dependency у constructor** існуючого `@Injectable()` сервісу (`private readonly newDep: NewService`) без парного оновлення усіх `*.service.spec.ts` файлів того ж модуля. Симптом у baseline: 100% тестів модуля (включно з тестами що не торкаються new dep) падають з `Nest can't resolve dependencies of the XService (..., ?). Please make sure that the argument NewService at index [N] is available in the RootTestModule context`. Це CRITICAL release-blocker — спрямований baseline-таблиця інших sessions ховає реальну регресію за шумом, а наступні tester-cycles не можуть розрізнити "новий баг" vs "test-infra drift".
+
+Окремий вид drift у positional-arg специфікаціях (`new WorkOrdersService(prisma, null as never, null as never, ...)`): додавання нового arg у constructor зсуває порядок, але `null as never` всі однакові → TS не ловить, runtime падає коли тест викликає метод що читає поле з зсунутим індексом (e.g., recalcTotals читає `this.settingsService.getDefaultVatRate(orgId)` коли settingsService насправді = ConfigService у новому порядку).
+
+**Причина виникнення:** Розробники свідомо не запускають повний test-suite перед commit (вузький fast-path: лише змінені файли). NestJS DI errors trapped у beforeEach compile() → у IDE/CI це покажеться як "30 failed" з однаковим повідомленням → swept under the rug. Pre-existing test rot накопичується (у нашій сесії — 55 тестів падали з 5 червня, не позначено).
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Constructor diff check у scope-коммітах:
+for f in $(git diff HEAD~5 HEAD --name-only -- 'apps/api/src/modules/**/*.service.ts' | grep -v spec); do
+  # Чи у поточному файлі додано новий dep у constructor?
+  added_deps=$(git diff HEAD~5 HEAD -- "$f" | grep "^+.*private readonly.*Service$" | wc -l)
+  if [ "$added_deps" -gt 0 ]; then
+    spec="${f%.ts}.spec.ts"
+    if [ -f "$spec" ]; then
+      # Чи у spec оновлено? Має містити нові type imports чи нові provide-блоки.
+      grep -q "$(git diff HEAD~5 HEAD -- "$f" | grep "^+.*private readonly" | head -1 | grep -oE '[A-Z][a-zA-Z]+Service')" "$spec" && echo "OK $spec" || echo "DRIFT $spec MISSING mock"
+    fi
+  fi
+done
+
+# 2) Baseline-run всього test-suite ДО будь-яких змін — фіксуй кількість failed/passed.
+#    Якщо new fails з'являються лише після scope commits → що feature їх ввела.
+#    Якщо baseline вже червоний → pre-existing test rot, теж блокує (#536 family).
+pnpm --filter @sto/api test --run 2>&1 | tail -5
+
+# 3) Positional-arg specs з `null as never` — підрахувати кількість args і порівняти з
+#    constructor signature. Якщо ВСІ services у спеці використовують `new XService(prisma, null as never, ...)`
+#    → ці спеки крихкі при будь-якому додаванні dep у constructor.
+grep -rn "new [A-Z][a-zA-Z]*Service(" apps/api/src --include="*.spec.ts" | head -10
+```
+
+**Підхід до фіксу:**
+
+1. Для **NestJS Test.createTestingModule specs**: додати `{ provide: NewService, useValue: stubObj }` у providers. Stub-обʼєкт повинен мокати методи що сервіс реально викликає (не порожній `{}` — це дасть `null.method` runtime error). Стандартний шаблон для services з side-effects: `vi.fn().mockResolvedValue(safeDefault)`.
+2. Для **positional-arg specs** (`new XService(...)`): найти позицію new dep у constructor signature, замінити відповідний `null as never` на mock obj. Додати named comment до кожного arg: `null as never, // inventory` — щоб майбутні refactor-и не ламали порядок silent-но.
+3. **MANDATORY**: запустити ПОВНИЙ test-suite (не лише змінений файл) ПЕРЕД commit. Будь-яке збільшення failed-count = release-blocker.
+
+**Регресія-guard для майбутнього:**
+
+- ESLint custom rule або pre-commit hook: для кожного `*.service.ts` що змінив constructor → перевірити що `*.service.spec.ts` теж торкнуло providers list.
+- Tester baseline-check Krok 0 ВЖЕ запускає `pnpm test --run` для @sto/api **І** @sto/web. Якщо одне з них червоне → release-blocker (SKILL 76-79).
+
+**Severity:** CRITICAL для feature-introduced (новий dep + 30+ failed тестів модуля — фіча мертва у CI). MEDIUM для pre-existing test rot (старий dep, але session виявила що 55 тестів давно червоні — треба фіксити цикли назад).
+
+**Де шукати ще:** Кожен новий dep у будь-якому `@Injectable()` (services, processors, controllers). Особливо ризиковано: cross-module dep (`SettingsService` у `PurchaseOrdersService`, `DocumentNumberService` у `GoodsService` як у цій сесії). Список positional-arg specs (sniff-test): `grep -rn "new.*Service(.*null as never" apps/api/src --include="*.spec.ts"`.
+
+---
+
+### 2026-06-19 — Migration ADD VALUE без парного INSERT backfill для DocumentNumberConfig (Bug #533) — database / migration
+
+**Сигнал:** Commit що додає нове значення у Prisma enum `DocumentType` (e.g. `'GOOD_INTERNAL_CODE'`, `'COMPLETION_ACT'`, `'STOCK_TRANSFER'`) + service-метод що викликає `documentNumberService.next(orgId, '<NEW_VALUE>')`. У `seed.ts` додано новий запис у `docConfigs[]`, АЛЕ міграція `migration.sql` містить ЛИШЕ `ALTER TYPE "DocumentType" ADD VALUE 'NEW_VALUE'` (та опціонально `ALTER TABLE ADD COLUMN`) — БЕЗ парного `INSERT INTO document_number_configs` для існуючих org-ів.
+
+Результат: у production (де існуючі org-и не запускають `seed.ts` повторно), `DocumentNumberService.next(orgId, 'NEW_VALUE')` кидає `NotFoundException('Конфігурацію нумерації для "<NEW_VALUE>" не знайдено')` → весь mutation-flow (POST /goods, POST /work-orders) blocked. Фіча мертва у проді — НЕ ловиться tsc/unit tests/contract specs (бо моки prisma) — лише integration або runtime у проді.
+
+**Причина виникнення:** Розробник правильно оновив schema.prisma + seed.ts, припустив що "seed.ts покриває все". Не врахував що migration runtime має дві відповідальності: (1) DDL зміни схеми, (2) data backfill для існуючих рядків. `seed.ts` запускається ТІЛЬКИ при initial-setup (`pnpm seed` під час installer setup), не при `prisma migrate deploy` у проді.
+
+**Підхід до виявлення:**
+
+```bash
+# 1) Знайти commit що додає нове enum value у DocumentType:
+git log --all --oneline -S "GOOD_INTERNAL_CODE" -- packages/database/prisma/schema.prisma | head -3
+
+# 2) Перевірити що міграція додає лише ALTER TYPE без INSERT:
+grep -l "ADD VALUE.*'GOOD_INTERNAL_CODE'" packages/database/prisma/migrations/*/migration.sql
+# Для кожного знайденого файлу:
+grep -l "INSERT INTO document_number_configs" packages/database/prisma/migrations/*/migration.sql
+# Якщо у тому ж sprint нема INSERT-міграції з тимстампом ПІСЛЯ ALTER TYPE → bug.
+
+# 3) Перевірити що service.create() викликає DocumentNumberService.next з новим enum:
+grep -rn "docNumbers.next.*'GOOD_INTERNAL_CODE'" apps/api/src/modules --include="*.ts"
+
+# Pattern: парна міграція з суфіксом _seed_X_doc_numbers, timestamp >= ALTER TYPE міграції:
+ls packages/database/prisma/migrations/ | grep -i "_seed.*doc_numbers"
+# Прецедент: 20260615120100_seed_supplier_return_doc_numbers, 20260619140001_seed_good_internal_code_doc_numbers.
+```
+
+**Підхід до фіксу:** Створити окрему migration з timestamp на 1 секунду пізніше ALTER TYPE міграції:
+
+```sql
+-- Postgres забороняє INSERT з новим enum-значенням у тій самій транзакції що ALTER TYPE.
+-- Окрема міграція з пізнішим timestamp обов'язкова.
+
+INSERT INTO document_number_configs (
+    "id", "orgId", "documentType", "prefix", "includeDate", "dateFormat",
+    "separator", "padding", "currentSeq", "resetPeriod", "updatedAt"
+)
+SELECT gen_random_uuid(), o.id, '<NEW_VALUE>'::"DocumentType",
+       '<prefix>', <includeDate>, 'YYYYMMDD', '-', <padding>, 0,
+       '<resetPeriod>'::"ResetPeriod", NOW()
+FROM organisations o
+WHERE NOT EXISTS (
+    SELECT 1 FROM document_number_configs c
+    WHERE c."orgId" = o.id AND c."documentType" = '<NEW_VALUE>'::"DocumentType"
+);
+```
+
+Конфігурація має 1:1 відповідати `seed.ts:docConfigs[]` запису (prefix, padding, includeDate, resetPeriod) — інакше existing-org поведінка розійдеться з new-org.
+
+**Регресія-guard для майбутнього:**
+
+- Pre-commit hook що блокує commit якщо у `packages/database/prisma/migrations/*/migration.sql` додано `ADD VALUE.*'GOOD'` або інший новий enum-value у `DocumentType` БЕЗ парного `INSERT INTO document_number_configs` у тій же або наступній міграції.
+- Static check у tester Krok 0: для кожного `git diff schema.prisma` що додає DocumentType enum value → автоматично виявити missing backfill migration.
+- Інтеграційний тест у `*.integration.spec.ts` що використовує реальну тестову БД після `prisma migrate deploy` — runtime DocumentNumberService.next з новим enum → відловлює gap.
+
+**Severity:** CRITICAL (release-blocker — фіча мертва у проді для всіх існуючих orgs).
+
+**Де шукати ще:** Всі майбутні commits з `enum DocumentType { ... NEW_VALUE }` у `schema.prisma`. Подібний паттерн для інших seed-керованих enum'ів з config-таблицями: `PaymentMethodConfig.code`, `NotificationTemplate.eventType`, `TaxRate.rate`, `CurrencyCode.code`. Кожен потенційно потребує парного backfill INSERT для нових values.
 
 ---
 
