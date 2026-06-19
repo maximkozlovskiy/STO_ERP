@@ -3038,6 +3038,78 @@ WHERE NOT EXISTS (
 
 **Де шукати ще:** Всі майбутні commits з `enum DocumentType { ... NEW_VALUE }` у `schema.prisma`. Подібний паттерн для інших seed-керованих enum'ів з config-таблицями: `PaymentMethodConfig.code`, `NotificationTemplate.eventType`, `TaxRate.rate`, `CurrencyCode.code`. Кожен потенційно потребує парного backfill INSERT для нових values.
 
+### 2026-06-20 — Validation message Cyrillic encoding in Zod/class-validator (Bug #537) — frontend / validation / i18n
+
+**Сигнал:** @Matches validator у DTO з `message` string що містить кирилицю, введеної у коді як UTF-8 але потім обробленої інструментом що змінює encoding (UTF-8 BOM removal, Windows PowerShell редактор, git diff --binary). Результат: рядок типу `'Р¤РѕСЂРјР°С‚ "Р"Р":РҐРҐ"'` замість `'Формат "ГГ:ХХ"'` → 400 response має garbled текст → користувач не розуміє що пішло не так.
+
+**Причина виникнення:** Windows text editor (зокрема PowerShell ISE / VSCode з неправильними налаштуваннями) іноді додаватиме BOM або змінюватиме encoding на UTF-16. Коли файл перезаписується через sed/PowerShell `Set-Content` без явного `-Encoding utf8`, результат може мати мішану encoding або BOM. Наступний commit з BOM removal може залишити текст поламаним.
+
+**Підхід до виявлення:**
+
+```bash
+# Step 1: знайти усі @Matches / @MinLength / @MaxLength validators з message
+grep -rn "@Matches.*message:\|@MinLength.*message:\|@MaxLength.*message:" apps/api/src/modules --include="*.dto.ts"
+
+# Step 2: перевірити чи message містить non-ASCII (запустити на кожному .dto.ts що мав BOM removal)
+for f in $(git diff HEAD~2 HEAD --name-only -- "*.dto.ts"); do
+  if grep -q "@Matches.*message:" "$f"; then
+    # Перевіри кожен message: наявність ^Р^ або іншого non-standard char
+    grep -n "message:" "$f" | head -10
+  fi
+done
+
+# Step 3: простий regex-test у contract.spec.ts — передай невалідне значення, перевір що error message не містить Р/вЂ/и/ѐ/ѓ/нетиповий Unicode
+# Приклад: expect(res.json().message).toMatch(/^[А-Яа-яІіЇїЄє0-9\s"():.–—-]*$/)
+```
+
+**Підхід до фіксу:**
+
+1. Відкрити файл у VSCode (або іншому редакторі) з явним UTF-8 БЕЗ BOM
+2. Виділити message string
+3. Переписати кирилицю вручну (копіювати з правильного джерела, наприклад з UI)
+4. Завантажити файл як UTF-8 БЕЗ BOM (для VSCode: `"files.encoding": "utf8"` без BOM)
+5. Перевірити у contract.spec.ts що message відновлена
+6. Commit: `fix(tester): Bug #5NN — validation message encoding`
+
+**Severity:** LOW (UX confusion; error message не помилки виконання, а помилки валідації на input). MEDIUM якщо validation message ключовий для workflow (наприклад, дата-picker з HH:MM format requirement).
+
+**Де шукати ще:** усі `@Matches` / `@IsString` / `@MinLength` validators у всіх DTO-файлах що:
+
+- Недавно прошли через sed/BOM-removal commit (перевіри `git log --oneline -20 -- "*.dto.ts"`)
+- Мають украї текст у message (кирилиця, дефіс, лапки)
+
+---
+
+### 2026-06-20 — E2E test seed race condition за 30s timeout (Bug #538) — E2E / test-infrastructure / flaky
+
+**Сигнал:** Playwright spec повторює тест 3 рази (retries=3), але всіх 3 спроби містять `expect(...).toBeVisible({ timeout: 30_000 })` що не дочекається — `element(s) not found`. Один і той же тест в окремому запуску може пройти (flaky). Seed-функція у `beforeAll()` використовує API для creation.
+
+**Причина виникнення:** Seed-логіка (наприклад, `seedEstimateWorkOrder()`) залежить від наявності DRAFT donor у БД. Якщо DB пустий або seed з попередньої сесії не спрацював → clone = null → тест пропускається молча (return null у beforeAll, але тест не має `expect(seededId).toBeTruthy()` гард). Або: clone endpoint успішно створює DRAFT, але transition DRAFT→ESTIMATE дає 500/400 → clone залишається у DRAFT → фронтенд фільтрує status=ESTIMATE → рядок не виявляється.
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Перевірити усі .spec.ts файли що мають beforeAll з seed API calls
+grep -rn "beforeAll.*async\|seedEstimateWorkOrder\|seedXWorkOrder" apps/web/e2e --include="*.spec.ts"
+
+# 2. Для кожного seed-spec: перевірити що test має гард
+grep -A 5 "beforeAll" "$spec" | grep -E "expect.*toBeTruthy|expect.*not.toBeNull" || echo "MISSING GUARD"
+
+# 3. Перевірити API seed-функцію на error handling — чи вона логує failure
+# (у тесті seed видно якщо є "console.log" або "logger" вивід)
+```
+
+**Підхід до фіксу:**
+
+1. У `beforeAll()` додати explicit гард: `expect(seededEstimateWoId, 'beforeAll must seed ESTIMATE WO').toBeTruthy()` вверху першого тесту
+2. У seed-функції: якщо transition дає error → логувати весь error detail (не просто `return null`)
+3. Опціонально: retry-loop у seed функції (`max 3 attempts` з exponential backoff) для транзиторних 500 errors
+4. Перевірити що test DB має seed-donor (DRAFT WO) на старті → інакше skip spec із дружнім `test.skip(...)`
+
+**Severity:** LOW за FLAKINESS (може пройти в наступної спроби, не блокує CI). MEDIUM якщо seed гарантує детерміністичність (test.only у локальній розробці).
+
+**Де шукати ще:** будь-яка .spec.ts що має `beforeAll()` з API seeding (не просто DB direct insert, а POST endpoint). Особливо: estimate-share, public pages, auth flows, complex-state setups (multi-org, cross-org relations).
+
 ---
 
 ## Що вже перевірено (не дублювати)
