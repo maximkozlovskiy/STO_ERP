@@ -8,6 +8,17 @@ import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { type DocNumberConfig } from './shared';
 
+const DOC_TYPE_LABELS: Record<string, string> = {
+  WORK_ORDER: 'Наряд-замовлення',
+  INVOICE: 'Рахунок-фактура',
+  PURCHASE_ORDER: 'Замовлення постачальнику',
+  STOCK_RECEIPT: 'Прихід на склад',
+  STOCK_WRITEOFF: 'Списання зі складу',
+  STOCK_TRANSFER: 'Переміщення між складами',
+  COMPLETION_ACT: 'Акт виконаних робіт',
+  GOOD_INTERNAL_CODE: 'Внутрішній код товару',
+};
+
 export default function NumbersTab() {
   const { confirm, dialogProps } = useConfirm();
   const [docNumbers, setDocNumbers] = useState<DocNumberConfig[]>([]);
@@ -51,7 +62,9 @@ export default function NumbersTab() {
       {docNumbers.map(cfg => (
         <div key={cfg.id} className="bg-surface rounded-xl border border-border p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-foreground">{cfg.documentType}</span>
+            <span className="text-sm font-medium text-foreground">
+              {DOC_TYPE_LABELS[cfg.documentType] ?? cfg.documentType}
+            </span>
             <span className="text-xs text-muted-foreground font-mono">#{cfg.currentSeq}</span>
           </div>
           <div className="grid grid-cols-2 gap-3 text-[13px]">
@@ -110,14 +123,16 @@ export default function NumbersTab() {
                   ? 'Щороку'
                   : 'Щомісяця'}
             </span>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => void resetDocNumber(cfg.documentType)}
-              className="h-7 text-xs"
-            >
-              Скинути лічильник
-            </Button>
+            {cfg.resetPeriod !== 'NEVER' && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => void resetDocNumber(cfg.documentType)}
+                className="h-7 text-xs"
+              >
+                Скинути лічильник
+              </Button>
+            )}
           </div>
         </div>
       ))}
