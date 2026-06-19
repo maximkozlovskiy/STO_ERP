@@ -358,7 +358,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         open={open}
         onClose={onClose}
         title={title}
-        size="xl"
+        size="content"
         footer={
           <div className="flex items-center justify-between gap-2 w-full">
             <div className="flex gap-2">
