@@ -113,8 +113,16 @@ export default function ServicesTab() {
   const [editGoods, setEditGoods] = useState<
     Array<{ goodId: string; goodName: string; unit: string; salePrice: number; quantity: number }>
   >([]);
+  const EMPTY_WORK_ROW = { workId: '', workName: '', normoHours: 1, price: 0, quantity: 1 };
+  const EMPTY_GOOD_ROW = { goodId: '', goodName: '', unit: '', salePrice: 0, quantity: 1 };
+  const [showWorkInput, setShowWorkInput] = useState(false);
+  const [newWorkRow, setNewWorkRow] = useState(EMPTY_WORK_ROW);
+  const [showGoodInput, setShowGoodInput] = useState(false);
+  const [newGoodRow, setNewGoodRow] = useState(EMPTY_GOOD_ROW);
   const [workPickerOpen, setWorkPickerOpen] = useState(false);
   const [goodPickerOpen, setGoodPickerOpen] = useState(false);
+  const [inlineWorkPickerOpen, setInlineWorkPickerOpen] = useState(false);
+  const [inlineGoodPickerOpen, setInlineGoodPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -242,6 +250,10 @@ export default function ServicesTab() {
     setForm({ name: '', description: '', price: '' });
     setEditWorks([]);
     setEditGoods([]);
+    setShowWorkInput(false);
+    setNewWorkRow(EMPTY_WORK_ROW);
+    setShowGoodInput(false);
+    setNewGoodRow(EMPTY_GOOD_ROW);
     servicesFormDirty.resetDirty();
     setError('');
     setModal(true);
@@ -256,6 +268,10 @@ export default function ServicesTab() {
     });
     setEditWorks(s.works.map(w => ({ ...w })));
     setEditGoods(s.goods.map(g => ({ ...g })));
+    setShowWorkInput(false);
+    setNewWorkRow(EMPTY_WORK_ROW);
+    setShowGoodInput(false);
+    setNewGoodRow(EMPTY_GOOD_ROW);
     servicesFormDirty.resetDirty();
     setError('');
     setModal(true);
@@ -749,135 +765,366 @@ export default function ServicesTab() {
           />
 
           {/* Роботи */}
-          <div>
+          <div className="pt-1">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[13px] font-medium text-foreground">
-                Роботи{' '}
-                {editWorks.length > 0 && (
-                  <span className="text-muted-foreground font-normal">({editWorks.length})</span>
-                )}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                leftIcon={<Plus className="h-3.5 w-3.5" />}
-                onClick={() => setWorkPickerOpen(true)}
-                className="h-7 text-xs"
-              >
-                Додати роботу
-              </Button>
+              <p className="text-xs font-medium text-muted-foreground">Роботи</p>
+              {!showWorkInput && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewWorkRow(EMPTY_WORK_ROW);
+                    setShowWorkInput(true);
+                  }}
+                  className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Додати
+                </button>
+              )}
             </div>
-            {editWorks.length === 0 ? (
-              <p className="text-[12px] text-muted-foreground py-2">Немає робіт</p>
-            ) : (
-              <div className="space-y-1.5">
-                {editWorks.map((w, i) => (
-                  <div
-                    key={w.workId}
-                    className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px]"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{w.workName}</p>
-                      <p className="text-muted-foreground text-[11px]">
-                        {w.normoHours} нормо-год · {fmtMoney(w.price)} ₴
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-muted-foreground text-[12px]">К-сть:</span>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={w.quantity}
-                        onChange={e => {
-                          const quantity = Math.max(0.01, Number(e.target.value) || 1);
-                          setEditWorks(prev =>
-                            prev.map((x, j) => (j === i ? { ...x, quantity } : x)),
-                          );
-                          servicesFormDirty.markDirty();
-                        }}
-                        className="w-14 h-6 text-[12px] text-center border border-border rounded px-1 bg-background"
-                      />
-                    </div>
-                    <button
-                      onClick={() => {
-                        setEditWorks(prev => prev.filter((_, j) => j !== i));
-                        servicesFormDirty.markDirty();
-                      }}
-                      className="text-muted-foreground hover:text-destructive transition-colors"
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full table-fixed text-[12px]">
+                <colgroup>
+                  <col />
+                  <col className="w-20" />
+                  <col className="w-24" />
+                  <col className="w-16" />
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-border bg-secondary/40">
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      Назва роботи
+                    </th>
+                    <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      Год
+                    </th>
+                    <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      Ціна, ₴
+                    </th>
+                    <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      К-сть
+                    </th>
+                    <th className="w-14" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {editWorks.length === 0 && !showWorkInput && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="px-3 py-4 text-center text-[12px] text-muted-foreground"
+                      >
+                        Натисніть «Додати» щоб додати роботу
+                      </td>
+                    </tr>
+                  )}
+                  {editWorks.map((w, i) => (
+                    <tr
+                      key={w.workId}
+                      className="bg-surface hover:bg-secondary/30 transition-colors"
                     >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+                      <td className="px-3 py-2 font-medium truncate max-w-0">
+                        <span className="block truncate">{w.workName}</span>
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
+                        {w.normoHours}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
+                        {fmtMoney(w.price)}
+                      </td>
+                      <td className="px-2 py-2 text-right">
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={w.quantity}
+                          onChange={e => {
+                            const quantity = Math.max(0.01, Number(e.target.value) || 1);
+                            setEditWorks(prev =>
+                              prev.map((x, j) => (j === i ? { ...x, quantity } : x)),
+                            );
+                            servicesFormDirty.markDirty();
+                          }}
+                          className="w-14 h-6 text-[12px] text-center border border-border rounded px-1 bg-background"
+                        />
+                      </td>
+                      <td className="px-2 py-2 text-right">
+                        <button
+                          onClick={() => {
+                            setEditWorks(prev => prev.filter((_, j) => j !== i));
+                            servicesFormDirty.markDirty();
+                          }}
+                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {showWorkInput && (
+                    <tr className="bg-primary/5 border-t-2 border-primary/20">
+                      <td className="px-2 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setInlineWorkPickerOpen(true)}
+                          className={cn(
+                            'w-full h-7 px-2 text-left text-[12px] rounded border border-border bg-background hover:border-primary/50 transition-colors truncate',
+                            !newWorkRow.workName && 'text-muted-foreground',
+                          )}
+                        >
+                          {newWorkRow.workName || 'Оберіть роботу…'}
+                        </button>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={newWorkRow.normoHours}
+                          onChange={e =>
+                            setNewWorkRow(r => ({ ...r, normoHours: Number(e.target.value) }))
+                          }
+                          className="w-full h-7 text-[12px] text-right border border-border rounded px-1 bg-background"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          value={newWorkRow.price}
+                          onChange={e =>
+                            setNewWorkRow(r => ({ ...r, price: Number(e.target.value) }))
+                          }
+                          className="w-full h-7 text-[12px] text-right border border-border rounded px-1 bg-background"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={newWorkRow.quantity}
+                          onChange={e =>
+                            setNewWorkRow(r => ({
+                              ...r,
+                              quantity: Math.max(0.01, Number(e.target.value) || 1),
+                            }))
+                          }
+                          className="w-full h-7 text-[12px] text-right border border-border rounded px-1 bg-background"
+                        />
+                      </td>
+                      <td className="px-1.5 py-1.5">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={!newWorkRow.workId}
+                            onClick={() => {
+                              if (!newWorkRow.workId) return;
+                              setEditWorks(prev => [...prev, { ...newWorkRow }]);
+                              setNewWorkRow(EMPTY_WORK_ROW);
+                              setShowWorkInput(false);
+                              servicesFormDirty.markDirty();
+                            }}
+                            title="Додати"
+                            className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewWorkRow(EMPTY_WORK_ROW);
+                              setShowWorkInput(false);
+                            }}
+                            title="Скасувати"
+                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Товари */}
-          <div>
+          <div className="pt-1">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[13px] font-medium text-foreground">
-                Товари{' '}
-                {editGoods.length > 0 && (
-                  <span className="text-muted-foreground font-normal">({editGoods.length})</span>
-                )}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                leftIcon={<Plus className="h-3.5 w-3.5" />}
-                onClick={() => setGoodPickerOpen(true)}
-                className="h-7 text-xs"
-              >
-                Додати товар
-              </Button>
+              <p className="text-xs font-medium text-muted-foreground">Товари</p>
+              {!showGoodInput && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewGoodRow(EMPTY_GOOD_ROW);
+                    setShowGoodInput(true);
+                  }}
+                  className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Додати
+                </button>
+              )}
             </div>
-            {editGoods.length === 0 ? (
-              <p className="text-[12px] text-muted-foreground py-2">Немає товарів</p>
-            ) : (
-              <div className="space-y-1.5">
-                {editGoods.map((g, i) => (
-                  <div
-                    key={g.goodId}
-                    className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px]"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{g.goodName}</p>
-                      <p className="text-muted-foreground text-[11px]">
-                        {g.unit} · {fmtMoney(g.salePrice)} ₴
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-muted-foreground text-[12px]">К-сть:</span>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={g.quantity}
-                        onChange={e => {
-                          const quantity = Math.max(0.01, Number(e.target.value) || 1);
-                          setEditGoods(prev =>
-                            prev.map((x, j) => (j === i ? { ...x, quantity } : x)),
-                          );
-                          servicesFormDirty.markDirty();
-                        }}
-                        className="w-14 h-6 text-[12px] text-center border border-border rounded px-1 bg-background"
-                      />
-                    </div>
-                    <button
-                      onClick={() => {
-                        setEditGoods(prev => prev.filter((_, j) => j !== i));
-                        servicesFormDirty.markDirty();
-                      }}
-                      className="text-muted-foreground hover:text-destructive transition-colors"
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full table-fixed text-[12px]">
+                <colgroup>
+                  <col />
+                  <col className="w-16" />
+                  <col className="w-24" />
+                  <col className="w-16" />
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-border bg-secondary/40">
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      Назва товару
+                    </th>
+                    <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      Од.
+                    </th>
+                    <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      Ціна, ₴
+                    </th>
+                    <th className="px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                      К-сть
+                    </th>
+                    <th className="w-14" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {editGoods.length === 0 && !showGoodInput && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="px-3 py-4 text-center text-[12px] text-muted-foreground"
+                      >
+                        Натисніть «Додати» щоб додати товар
+                      </td>
+                    </tr>
+                  )}
+                  {editGoods.map((g, i) => (
+                    <tr
+                      key={g.goodId}
+                      className="bg-surface hover:bg-secondary/30 transition-colors"
                     >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+                      <td className="px-3 py-2 font-medium truncate max-w-0">
+                        <span className="block truncate">{g.goodName}</span>
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
+                        {g.unit}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
+                        {fmtMoney(g.salePrice)}
+                      </td>
+                      <td className="px-2 py-2 text-right">
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={g.quantity}
+                          onChange={e => {
+                            const quantity = Math.max(0.01, Number(e.target.value) || 1);
+                            setEditGoods(prev =>
+                              prev.map((x, j) => (j === i ? { ...x, quantity } : x)),
+                            );
+                            servicesFormDirty.markDirty();
+                          }}
+                          className="w-14 h-6 text-[12px] text-center border border-border rounded px-1 bg-background"
+                        />
+                      </td>
+                      <td className="px-2 py-2 text-right">
+                        <button
+                          onClick={() => {
+                            setEditGoods(prev => prev.filter((_, j) => j !== i));
+                            servicesFormDirty.markDirty();
+                          }}
+                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {showGoodInput && (
+                    <tr className="bg-primary/5 border-t-2 border-primary/20">
+                      <td className="px-2 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setInlineGoodPickerOpen(true)}
+                          className={cn(
+                            'w-full h-7 px-2 text-left text-[12px] rounded border border-border bg-background hover:border-primary/50 transition-colors truncate',
+                            !newGoodRow.goodName && 'text-muted-foreground',
+                          )}
+                        >
+                          {newGoodRow.goodName || 'Оберіть товар…'}
+                        </button>
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-[12px] text-muted-foreground">
+                        {newGoodRow.unit || '—'}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          value={newGoodRow.salePrice}
+                          onChange={e =>
+                            setNewGoodRow(r => ({ ...r, salePrice: Number(e.target.value) }))
+                          }
+                          className="w-full h-7 text-[12px] text-right border border-border rounded px-1 bg-background"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={newGoodRow.quantity}
+                          onChange={e =>
+                            setNewGoodRow(r => ({
+                              ...r,
+                              quantity: Math.max(0.01, Number(e.target.value) || 1),
+                            }))
+                          }
+                          className="w-full h-7 text-[12px] text-right border border-border rounded px-1 bg-background"
+                        />
+                      </td>
+                      <td className="px-1.5 py-1.5">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={!newGoodRow.goodId}
+                            onClick={() => {
+                              if (!newGoodRow.goodId) return;
+                              setEditGoods(prev => [...prev, { ...newGoodRow }]);
+                              setNewGoodRow(EMPTY_GOOD_ROW);
+                              setShowGoodInput(false);
+                              servicesFormDirty.markDirty();
+                            }}
+                            title="Додати"
+                            className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewGoodRow(EMPTY_GOOD_ROW);
+                              setShowGoodInput(false);
+                            }}
+                            title="Скасувати"
+                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </Modal>
@@ -891,6 +1138,35 @@ export default function ServicesTab() {
         open={goodPickerOpen}
         onClose={() => setGoodPickerOpen(false)}
         onSelect={handleGoodSelect}
+      />
+      {/* Inline row pickers */}
+      <WorkPickerModal
+        open={inlineWorkPickerOpen}
+        onClose={() => setInlineWorkPickerOpen(false)}
+        onSelect={item => {
+          setNewWorkRow(r => ({
+            ...r,
+            workId: item.id,
+            workName: item.name,
+            normoHours: item.normoHours,
+            price: item.price,
+          }));
+          setInlineWorkPickerOpen(false);
+        }}
+      />
+      <GoodPickerModal
+        open={inlineGoodPickerOpen}
+        onClose={() => setInlineGoodPickerOpen(false)}
+        onSelect={item => {
+          setNewGoodRow(r => ({
+            ...r,
+            goodId: item.id,
+            goodName: item.name,
+            unit: item.unitShortName ?? '',
+            salePrice: item.salePrice ?? 0,
+          }));
+          setInlineGoodPickerOpen(false);
+        }}
       />
       <DirtyConfirmDialog {...servicesFormDirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
