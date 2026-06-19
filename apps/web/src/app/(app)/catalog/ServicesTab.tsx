@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Plus, Pencil, Search, Trash2, Layers, Eye, EyeOff, RotateCcw } from 'lucide-react';
+import { Plus, Pencil, Search, Trash2, Layers, Eye, EyeOff, RotateCcw, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
@@ -43,6 +43,8 @@ import {
   buildPanelFields,
   schemaToPanelConfigFields,
 } from '@/lib/panel-schema';
+import { WorkPickerModal, type WorkPickerItem } from '@/components/ui/WorkPickerModal';
+import { GoodPickerModal, type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,6 +107,14 @@ export default function ServicesTab() {
   const [modal, setModal] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [form, setForm] = useState({ name: '', description: '', price: '' });
+  const [editWorks, setEditWorks] = useState<
+    Array<{ workId: string; workName: string; normoHours: number; price: number; quantity: number }>
+  >([]);
+  const [editGoods, setEditGoods] = useState<
+    Array<{ goodId: string; goodName: string; unit: string; salePrice: number; quantity: number }>
+  >([]);
+  const [workPickerOpen, setWorkPickerOpen] = useState(false);
+  const [goodPickerOpen, setGoodPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -230,6 +240,8 @@ export default function ServicesTab() {
   const openCreate = () => {
     setEditingService(null);
     setForm({ name: '', description: '', price: '' });
+    setEditWorks([]);
+    setEditGoods([]);
     servicesFormDirty.resetDirty();
     setError('');
     setModal(true);
@@ -242,9 +254,47 @@ export default function ServicesTab() {
       description: s.description ?? '',
       price: s.price != null ? String(s.price) : '',
     });
+    setEditWorks(s.works.map(w => ({ ...w })));
+    setEditGoods(s.goods.map(g => ({ ...g })));
     servicesFormDirty.resetDirty();
     setError('');
     setModal(true);
+  };
+
+  const handleWorkSelect = (item: WorkPickerItem) => {
+    setEditWorks(prev => {
+      if (prev.some(w => w.workId === item.id)) return prev;
+      return [
+        ...prev,
+        {
+          workId: item.id,
+          workName: item.name,
+          normoHours: item.normoHours,
+          price: item.price,
+          quantity: 1,
+        },
+      ];
+    });
+    servicesFormDirty.markDirty();
+    setWorkPickerOpen(false);
+  };
+
+  const handleGoodSelect = (item: GoodPickerItem) => {
+    setEditGoods(prev => {
+      if (prev.some(g => g.goodId === item.id)) return prev;
+      return [
+        ...prev,
+        {
+          goodId: item.id,
+          goodName: item.name,
+          unit: item.unitShortName ?? '',
+          salePrice: item.salePrice,
+          quantity: 1,
+        },
+      ];
+    });
+    servicesFormDirty.markDirty();
+    setGoodPickerOpen(false);
   };
 
   const save = async () => {
@@ -255,19 +305,27 @@ export default function ServicesTab() {
         name: form.name,
         description: form.description || undefined,
         price: form.price ? Number(form.price) : undefined,
+        works: editWorks.map(w => ({ workId: w.workId, quantity: w.quantity })),
+        goods: editGoods.map(g => ({ goodId: g.goodId, quantity: g.quantity })),
       };
       if (editingService) {
-        await apiFetch(`/services/${editingService.id}`, {
+        const updated = await apiFetch<Service>(`/services/${editingService.id}`, {
           method: 'PATCH',
           body: JSON.stringify(body),
         });
+        setEditingService(updated);
         toast.success('Послугу оновлено');
       } else {
-        await apiFetch<Service>('/services', { method: 'POST', body: JSON.stringify(body) });
+        const created = await apiFetch<Service>('/services', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        // Одразу відкрити для редагування щоб можна було додавати роботи/товари
+        setEditingService(created);
+        setEditWorks(created.works.map(w => ({ ...w })));
+        setEditGoods(created.goods.map(g => ({ ...g })));
         toast.success('Послугу створено');
       }
-      setModal(false);
-      setForm({ name: '', description: '', price: '' });
       servicesFormDirty.resetDirty();
       load();
     } catch (e: unknown) {
@@ -647,7 +705,7 @@ export default function ServicesTab() {
         size="lg"
         footer={
           <Button onClick={save} loading={saving} disabled={!form.name} className="w-full">
-            {editingService ? 'Оновити' : 'Зберегти'}
+            {editingService ? 'Зберегти' : 'Створити'}
           </Button>
         }
       >
@@ -678,7 +736,7 @@ export default function ServicesTab() {
             className="h-8 text-[13px]"
           />
           <Input
-            label="Фіксована ціна, ₴ (не заповнювати = авто)"
+            label="Фіксована ціна, ₴ (не заповнювати = авторозрахунок)"
             type="number"
             min="0"
             value={form.price}
@@ -689,11 +747,151 @@ export default function ServicesTab() {
             placeholder="2500"
             className="h-8 text-[13px]"
           />
-          <p className="text-[12px] text-muted-foreground">
-            Роботи та товари можна додати після створення
-          </p>
+
+          {/* Роботи */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[13px] font-medium text-foreground">
+                Роботи{' '}
+                {editWorks.length > 0 && (
+                  <span className="text-muted-foreground font-normal">({editWorks.length})</span>
+                )}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                leftIcon={<Plus className="h-3.5 w-3.5" />}
+                onClick={() => setWorkPickerOpen(true)}
+                className="h-7 text-xs"
+              >
+                Додати роботу
+              </Button>
+            </div>
+            {editWorks.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground py-2">Немає робіт</p>
+            ) : (
+              <div className="space-y-1.5">
+                {editWorks.map((w, i) => (
+                  <div
+                    key={w.workId}
+                    className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px]"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{w.workName}</p>
+                      <p className="text-muted-foreground text-[11px]">
+                        {w.normoHours} нормо-год · {fmtMoney(w.price)} ₴
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-muted-foreground text-[12px]">К-сть:</span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={w.quantity}
+                        onChange={e => {
+                          const quantity = Math.max(0.01, Number(e.target.value) || 1);
+                          setEditWorks(prev =>
+                            prev.map((x, j) => (j === i ? { ...x, quantity } : x)),
+                          );
+                          servicesFormDirty.markDirty();
+                        }}
+                        className="w-14 h-6 text-[12px] text-center border border-border rounded px-1 bg-background"
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        setEditWorks(prev => prev.filter((_, j) => j !== i));
+                        servicesFormDirty.markDirty();
+                      }}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Товари */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[13px] font-medium text-foreground">
+                Товари{' '}
+                {editGoods.length > 0 && (
+                  <span className="text-muted-foreground font-normal">({editGoods.length})</span>
+                )}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                leftIcon={<Plus className="h-3.5 w-3.5" />}
+                onClick={() => setGoodPickerOpen(true)}
+                className="h-7 text-xs"
+              >
+                Додати товар
+              </Button>
+            </div>
+            {editGoods.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground py-2">Немає товарів</p>
+            ) : (
+              <div className="space-y-1.5">
+                {editGoods.map((g, i) => (
+                  <div
+                    key={g.goodId}
+                    className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px]"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{g.goodName}</p>
+                      <p className="text-muted-foreground text-[11px]">
+                        {g.unit} · {fmtMoney(g.salePrice)} ₴
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-muted-foreground text-[12px]">К-сть:</span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={g.quantity}
+                        onChange={e => {
+                          const quantity = Math.max(0.01, Number(e.target.value) || 1);
+                          setEditGoods(prev =>
+                            prev.map((x, j) => (j === i ? { ...x, quantity } : x)),
+                          );
+                          servicesFormDirty.markDirty();
+                        }}
+                        className="w-14 h-6 text-[12px] text-center border border-border rounded px-1 bg-background"
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        setEditGoods(prev => prev.filter((_, j) => j !== i));
+                        servicesFormDirty.markDirty();
+                      }}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
+
+      <WorkPickerModal
+        open={workPickerOpen}
+        onClose={() => setWorkPickerOpen(false)}
+        onSelect={handleWorkSelect}
+      />
+      <GoodPickerModal
+        open={goodPickerOpen}
+        onClose={() => setGoodPickerOpen(false)}
+        onSelect={handleGoodSelect}
+      />
       <DirtyConfirmDialog {...servicesFormDirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
     </div>
