@@ -1138,6 +1138,22 @@ export function PurchaseOrderCreateModal({
                         Скасувати
                       </button>
                       <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={receiving}
+                        onClick={() => {
+                          const all: Record<string, string> = {};
+                          lines.forEach(l => {
+                            const max =
+                              (parseFloat(String(l.quantity)) || 0) - (l.receivedQty ?? 0);
+                            if (max > 0) all[l.id ?? ''] = String(max);
+                          });
+                          setReceiveQtys(all);
+                        }}
+                      >
+                        Оприбуткувати все
+                      </Button>
+                      <Button
                         size="sm"
                         onClick={() => void handleReceive()}
                         loading={receiving}
