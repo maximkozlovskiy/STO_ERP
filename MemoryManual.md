@@ -9,18 +9,14 @@
 ## Поточний стан
 
 ```
-Дата:       2026-06-17
+Дата:       2026-06-19
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 908/908 (+26: 22 role-gate + 4 estimate-export) | Web 434/434
+Тести:      API 908/908 | Web 434/434
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-E2E smoke (2026-06-17): WO list "Сума, ₴" → 1 230,00 (NBSP) ✅; OWNER /api/work-orders/:id → costPrice key present ✅; CreateWorkOrderModal "Собів., ₴" + colSpans 9/10 (vatMode) consistent ✅
-Останній review: 2026-06-17 (POST-VAT, HEAD fe9c741c) — CRITICAL: PurchaseOrderCreateModal викликав неіснуючий /organisations/my → VAT-рядок ніколи не рендерився; замінено на /settings/organisation + /settings/tax-rates. CRITICAL: reports.vatReport() агрегував ВСІ invoices/POs включаючи DRAFT/CANCELLED → невірний звіт ПДВ; додано status-фільтри (SENT/PAID/OVERDUE для sales, PARTIAL/RECEIVED для purchases). IMPORTANT: SettingsService.getDefaultVatRate() return VatMode enum (не bare string) → drops 2 casts; vat.ts imports VatMode з @prisma/client; reports.service прибрав ugly `(_sum as { totalVat?: unknown })` cast
-Останній simplify: 2026-06-17 — recalcTotals: nullish-chain `Number(actualHours ?? normoHours ?? 0)` замість тернарки (semantically identical, 78/78 WO тестів green)
-Останній optimize: 2026-06-17 (HEAD 80f02888) — recalcTotals twin-scan→single-pass + tier merger org+uoms у findByShareToken / EstimateExportService.getEstimateData
-Останній tester: 2026-06-17 (FULL, HEAD 538ca6e4) — Bug #527-#529 (role-gate regression-guard + estimate-export Bug #508 leak + addPart/updatePart symmetry)
-Перший review (today): 2026-06-17 (AUTO, HEAD 6d35157a) — §2.1 CRITICAL: role-gate part.costPrice (MECHANIC/RECEPTIONIST exposure) + UI mode alignment
-Останній sync:   2026-06-17 (Cycle 2, HEAD 31ec6313) — WorkOrderPartResponseDto.costPrice optional ✅ | WorkOrder.contractId/contractNumber ✅ | EstimatePublicDto fields ✅ | apiFetch URLs ✅ | tsc 0 errors — 0 розбіжностей
+Останній sync:   2026-06-19 (HEAD 270de6ab) — WorkOrderPart: +costPrice, +unitOfMeasureId у PageClient + WorkOrderPartsSection; WorkOrderDetail: +totalVat — 3 поля виправлено | tsc 0 errors
+Останній review: 2026-06-19 (POST internalCode, HEAD d1a12539) — PO create/update + WO addPart/updatePart `good` include був без internalCode/brand (sku у WO теж); GoodPickerModal зчитував g.brand?.name але DTO повертає brandName — 4 фікси
+Останній tester: 2026-06-17 (FULL, HEAD 538ca6e4)
 ```
 
 ### Аудит-висновки (2026-06-17 simplify session)
@@ -36,12 +32,14 @@ E2E smoke (2026-06-17): WO list "Сума, ₴" → 1 230,00 (NBSP) ✅; OWNER /
 ## Останній commit
 
 ```
+d1a12539  fix(review): include good.internalCode + brand in PO/WO part create/update + fix brandName drop in picker
+9ea58b9e  feat(goods): add internalCode (sequential internal good code)
+270de6ab  fix(sync): align WorkOrderPart frontend interfaces with backend DTO
+90101494  feat(po): add pricedAt field and Розцінено column in PO list
+49f8cd75  feat(goods): add price history tab to GoodEditModal
+6c89fb5f  feat(pricing): add supplier field to pricing rules with highest priority
+c4149f4c  feat(ui): apply inline label layout to all document forms
 fe9c741c  fix(review): VAT report filters + broken endpoint + VatMode typing
-60b25347  feat(vat): add VAT accounting to PO, WO, Invoice + VAT report
-1e03b509  docs(skills): add twin-scan reduce + post-token sequential lookups to sto-optimize
-80f02888  perf(optimize): twin-scan reduce + sequential org/uoms in WO recalc & export
-0325a37c  docs(skills): add role-gated DTO field regression-guard pattern to sto-tester
-538ca6e4  fix(tester): Bugs #527-#529 — regression-guards for costPrice role-gating + Bug #508 export leak
 ```
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
