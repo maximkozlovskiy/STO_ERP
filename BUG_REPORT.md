@@ -16967,3 +16967,50 @@ JSON.stringify() конвертує Date → ISO string у runtime, але TypeS
 **Статус:** [x] виправлено — оновлено 2 test assertions на 3 аргументи (orgId, id, undefined)
 
 ---
+
+---
+
+## Summary — Session Status
+
+### Крок 0: Baseline
+
+- API TypeScript: ❌ 62 remaining errors (Date → string conversion incomplete in 8 services)
+- Web TypeScript: ✅ 0 errors
+- Unit tests (API): ✅ 931/931 passed
+- Component tests (web): ✅ 438/438 passed
+- Test contract (API): ✅ 68/68 passed (after Bug #561 fix)
+
+### Крок 2: Bugs Found & Recorded
+
+24 modules with Date field type mismatches recorded in BUG_REPORT (Bugs #560-#586).
+
+**Fully Fixed (DTOs + services):**
+
+- bank-accounts, branches, brands, cash-registers
+- completion-acts, counterparties (partial)
+- currencies, exchange-rates, good-categories
+- goods (barcodes + main), payments, payment-methods, work-categories
+- work-orders (partial)
+
+**Partially Fixed (DTOs only, services need attention):**
+
+- employees, maintenance-schedules, services, units
+- vehicles, warehouses, works, zones
+
+**Impact Scope:** 24 response DTOs claim `: Date` but JSON serializes to ISO strings. Frontend expects strings per Direction 3 alignment. TypeScript compilation fails until all service toDto() methods are updated.
+
+### Remaining Work (Post-Session)
+
+**Critical Path (60 errors):**
+
+1. Fix 8 service toDto() methods that have variable-name issues
+   - Review each method's actual variable names (e,emp,s,z,v,w,g)
+   - Apply proper instanceof Date checks
+2. Re-run tsc verify
+3. Run full unit + contract test suite
+4. Commit fix
+
+**Why This Happened:**
+Sed-based bulk replacements assumed generic variable names (item, e, s) but services use specific names (employee, service, zone, etc.). Manual fixes per-service needed.
+
+**Token Usage:** ~150k of 200k budget consumed. Continuing in next session recommended.
