@@ -71,7 +71,7 @@ async function readyPage(page: Page) {
 // ─── Прийом товарів (PARTIAL / RECEIVED) ─────────────────────────────────────
 
 test.describe('Замовлення постачальнику — прийом товарів', () => {
-  test('кнопка "Позначити отриманим" присутня для ORDERED PO', async ({ page }) => {
+  test('кнопка "Оприбуткувати" присутня для ORDERED PO', async ({ page }) => {
     await readyPage(page);
     const po = await createPO(page);
     if (!po) {
@@ -91,22 +91,19 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    // Відкрити деталі через кнопку "Деталі" (клік на рядок відкриває Detail Panel без FSM кнопок)
-    // Row-action button "Деталі" was replaced with a hover-only Pencil icon
-    // (title="Відкрити деталі") in commit a5cf804. Use the hover icon directly —
-    // hover on the row makes the opacity-0 button focusable & clickable.
+    // Відкрити PO edit modal через кнопку "Редагувати" (hover-only Pencil icon, title="Редагувати").
+    // У редагованій моделі (PurchaseOrderCreateModal) кнопка прийому "Оприбуткувати" знаходиться
+    // у заголовку таблиці позицій для статусів ORDERED і PARTIAL.
     await row.hover();
-    await row.locator('button[title="Відкрити деталі"]').first().click();
-    await expect(
-      page
-        .locator('button:has-text("Позначити отриманим"), button:has-text("Часткове отримання")')
-        .first(),
-    ).toBeVisible({ timeout: 8_000 });
+    await row.locator('button[title="Редагувати"]').first().click();
+    await expect(page.locator('button:has-text("Оприбуткувати")').first()).toBeVisible({
+      timeout: 8_000,
+    });
 
     await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
   });
 
-  test('кнопка "Позначити отриманим" → відкриває модалку прийому з позиціями', async ({ page }) => {
+  test('кнопка "Оприбуткувати" → відкриває inline receive mode з позиціями', async ({ page }) => {
     await readyPage(page);
     const po = await createPO(page);
     if (!po) {
@@ -126,30 +123,25 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    // Row-action button "Деталі" was replaced with a hover-only Pencil icon
-    // (title="Відкрити деталі") in commit a5cf804. Use the hover icon directly —
-    // hover on the row makes the opacity-0 button focusable & clickable.
+    // Open PO edit modal via Pencil (title="Редагувати").
     await row.hover();
-    await row.locator('button[title="Відкрити деталі"]').first().click();
-    const receiveBtn = page.locator('button:has-text("Позначити отриманим")').first();
+    await row.locator('button[title="Редагувати"]').first().click();
+    const receiveBtn = page.locator('button:has-text("Оприбуткувати")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
-      test.skip(true, 'Кнопка "Позначити отриманим" не знайдена');
+      test.skip(true, 'Кнопка "Оприбуткувати" не знайдена');
       return;
     }
 
     await receiveBtn.click();
-    // Модалка прийому — шукаємо по заголовку (може бути другий dialog якщо деталі вже відкриті)
-    const receiveModal = page
-      .locator('[role="dialog"]')
-      .filter({ hasText: /Прийом по замовленню/i })
-      .first();
-    await expect(receiveModal).toBeVisible({ timeout: 8_000 });
+    // Інлайн receive mode — у тій самій PO-модалці з'являється кнопка "Підтвердити прийом".
+    const poModal = page.locator('[role="dialog"]').first();
+    await expect(poModal.locator('button:has-text("Підтвердити прийом")')).toBeVisible({
+      timeout: 8_000,
+    });
 
-    // Є кнопка "Підтвердити прийом"
-    await expect(receiveModal.locator('button:has-text("Підтвердити прийом")')).toBeVisible();
-
-    // Закрити без збереження
+    // Закрити без збереження — кнопка "Скасувати" повертає у нормальний режим.
+    await poModal.locator('button:has-text("Скасувати")').first().click();
     await page.keyboard.press('Escape');
     const leaveBtn = page.locator('button:has-text("Покинути")').first();
     if (await leaveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await leaveBtn.click();
@@ -185,12 +177,10 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    // Row-action button "Деталі" was replaced with a hover-only Pencil icon
-    // (title="Відкрити деталі") in commit a5cf804. Use the hover icon directly —
-    // hover on the row makes the opacity-0 button focusable & clickable.
+    // Open PO edit modal via Pencil (title="Редагувати").
     await row.hover();
-    await row.locator('button[title="Відкрити деталі"]').first().click();
-    const receiveBtn = page.locator('button:has-text("Позначити отриманим")').first();
+    await row.locator('button[title="Редагувати"]').first().click();
+    const receiveBtn = page.locator('button:has-text("Оприбуткувати")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
       test.skip(true, 'Кнопка прийому недоступна');
@@ -198,26 +188,23 @@ test.describe('Замовлення постачальнику — прийом 
     }
 
     await receiveBtn.click();
-    const modal = page
-      .locator('[role="dialog"]')
-      .filter({ hasText: /Прийом по замовленню/i })
-      .first();
-    await expect(modal).toBeVisible({ timeout: 8_000 });
+    // Інлайн receive mode у тій самій PO-модалці.
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal.locator('button:has-text("Підтвердити прийом")')).toBeVisible({
+      timeout: 8_000,
+    });
 
-    // Заповнити кількість для першої позиції (повний прийом)
-    const qtyInputs = modal.locator('input[type="number"]');
-    const firstInput = qtyInputs.first();
-    await expect(firstInput).toBeVisible({ timeout: 5_000 });
-    // Взяти max value з placeholder
-    const ph = await firstInput.getAttribute('placeholder');
-    const maxQty = ph?.replace('макс. ', '') ?? String(lines[0].quantity);
-    await firstInput.fill(maxQty);
+    // Заповнити кількість для першої позиції — використати "Оприбуткувати все".
+    await modal.locator('button:has-text("Оприбуткувати все")').click();
 
     // Підтвердити прийом
     await modal.locator('button:has-text("Підтвердити прийом")').click();
-    await expect(modal).not.toBeVisible({ timeout: 10_000 });
+    // Чекаємо вихід з receive mode (зникнення кнопки "Підтвердити прийом" у модалці).
+    await expect(modal.locator('button:has-text("Підтвердити прийом")')).not.toBeVisible({
+      timeout: 10_000,
+    });
 
-    // Закрити модалку деталей PO (залишилась відкритою)
+    // Закрити PO-модалку
     await page.keyboard.press('Escape');
     await page.waitForTimeout(400);
 
@@ -261,12 +248,10 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    // Row-action button "Деталі" was replaced with a hover-only Pencil icon
-    // (title="Відкрити деталі") in commit a5cf804. Use the hover icon directly —
-    // hover on the row makes the opacity-0 button focusable & clickable.
+    // Open PO edit modal via Pencil (title="Редагувати").
     await row.hover();
-    await row.locator('button[title="Відкрити деталі"]').first().click();
-    const receiveBtn = page.locator('button:has-text("Позначити отриманим")').first();
+    await row.locator('button[title="Редагувати"]').first().click();
+    const receiveBtn = page.locator('button:has-text("Оприбуткувати")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
       test.skip(true, 'Кнопка прийому недоступна');
@@ -274,21 +259,24 @@ test.describe('Замовлення постачальнику — прийом 
     }
 
     await receiveBtn.click();
-    const modal = page
-      .locator('[role="dialog"]')
-      .filter({ hasText: /Прийом по замовленню/i })
-      .first();
-    await expect(modal).toBeVisible({ timeout: 8_000 });
+    // Інлайн receive mode — заповнити qty=1 у першу позицію (частковий прийом 1 з 5)
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal.locator('button:has-text("Підтвердити прийом")')).toBeVisible({
+      timeout: 8_000,
+    });
 
-    // Прийняти менше ніж замовлено (1 з 5)
-    const firstInput = modal.locator('input[type="number"]').first();
-    await expect(firstInput).toBeVisible({ timeout: 5_000 });
-    await firstInput.fill('1'); // частковий прийом
+    // У receive mode з'являється колонка "До отримання" з input для qty.
+    // Знайти перший input типу number у рядку позицій (placeholder містить "макс.").
+    const qtyInput = modal.locator('input[placeholder*="макс."]').first();
+    await expect(qtyInput).toBeVisible({ timeout: 5_000 });
+    await qtyInput.fill('1');
 
     await modal.locator('button:has-text("Підтвердити прийом")').click();
-    await expect(modal).not.toBeVisible({ timeout: 10_000 });
+    await expect(modal.locator('button:has-text("Підтвердити прийом")')).not.toBeVisible({
+      timeout: 10_000,
+    });
 
-    // Закрити модалку деталей PO
+    // Закрити PO-модалку
     await page.keyboard.press('Escape');
     await page.waitForTimeout(400);
 

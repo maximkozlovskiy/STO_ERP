@@ -6,6 +6,14 @@ test('status badge tooltip appears on hover in work-orders list', async ({ page 
   await page.goto('/work-orders');
   await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
 
+  // Default date filter is "today" — recently seeded WOs may not be from today.
+  // Clear the "from" date so all WOs are visible regardless of documentDate.
+  const dateFromInput = page.locator('input[placeholder*="ДД.ММ"]').first();
+  if (await dateFromInput.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await dateFromInput.fill('01.01.2020');
+    await dateFromInput.press('Enter');
+  }
+
   // Wait for real data rows (not skeleton): a row with a non-empty status badge text.
   // Skeleton rows render span.inline-flex.rounded-full but with no text content.
   // Real status badge contains one of: Чернетка, Кошторис, В роботі, Виконано, etc.

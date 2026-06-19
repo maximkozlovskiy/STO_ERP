@@ -253,11 +253,12 @@ test.describe('Рахунки — Detail Panel', () => {
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
-    // Modal redesign (commit e6d2e148): клік на рядок відкриває edit modal (InvoiceCreateModal у edit-режимі).
+    // Modal redesign (a14931b0): клік на рядок відкриває edit modal у форматі WO/StockDoc — title="Рахунок-фактура",
+    // номер у headerContent поряд із "Номер:".
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
-    // Заголовок модалки = номер рахунку
-    await expect(modal.locator(`h2:has-text("${invNumber}")`)).toBeVisible({ timeout: 5_000 });
+    await expect(modal.locator('h2:has-text("Рахунок-фактура")')).toBeVisible({ timeout: 5_000 });
+    await expect(modal.getByText(invNumber, { exact: false })).toBeVisible({ timeout: 5_000 });
   });
 
   test('Edit Modal — статус Чернетка показується у steper-і', async ({ page }) => {

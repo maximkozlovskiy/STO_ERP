@@ -16725,3 +16725,65 @@ git log --all --oneline -p PageClient.tsx | grep -i "onShowBatches\|batchesViewe
   - `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts` (Bug #541 — assert PO line good includes internalCode/brand)
   - `apps/web/src/app/(app)/work-orders/[id]/__tests__/WorkOrderPartsSection.test.tsx` (Bug #542 — new file)
   - `apps/web/src/app/(app)/work-orders/[id]/WorkOrderPartsSection.tsx` (Bug #543 — remove dead `onShowBatches` button)
+
+## Session 2026-06-19 — sto-e2e suite run (sonnet auto)
+
+### Bug #544 — invoices.spec.ts: Edit Modal title locator stale [MEDIUM, тест] [x] виправлено
+
+- **Severity:** MEDIUM (test bug — не виявляє реальної помилки)
+- **Файл:** `apps/web/e2e/invoices.spec.ts:260`
+- **Симптом:** `expect(modal.locator(\`h2:has-text("${invNumber}")\`)).toBeVisible` падало з timeout 5s.
+- **Причина:** Редизайн `InvoiceCreateModal` (commit a14931b0) переніс номер рахунку з заголовка модалки у `headerContent`. Заголовок тепер `Рахунок-фактура`, а номер відображається у форматі `Номер: РАХ-XXXX-XXXXXX` у спеціальній смузі під заголовком — як у `WO` / `StockDoc` модалках. Тест очікував старий формат (номер == title).
+- **Виправлення:** Тест оновлено: перевіряємо `h2:has-text("Рахунок-фактура")` + `getByText(invNumber)` як окремі assertion. Семантично еквівалентно — модалка показує і тип документа, і номер.
+
+### Bug #545 — purchase-orders-receive.spec.ts: stale row-action title and receive button text [MEDIUM, тест] [x] виправлено
+
+- **Severity:** MEDIUM (test bug)
+- **Файл:** `apps/web/e2e/purchase-orders-receive.spec.ts:99,133,192,268`
+- **Симптом:** Три тести скіпали або падали по таймауту на `button[title="Відкрити деталі"]`.
+- **Причина:** На сторінці `/purchase-orders` rоw-action кнопка має `title="Редагувати"` (не "Відкрити деталі"). А кнопка прийому в edit-modal — `Оприбуткувати` (не `Позначити отриманим` / `Часткове отримання`). Receive відбувається inline у тій самій PO-модалці (toggle `receiveMode`), без окремого модального вікна `Прийом по замовленню`.
+- **Виправлення:**
+  - Замінено `button[title="Відкрити деталі"]` → `button[title="Редагувати"]` в усіх 3 тестах.
+  - Замінено `button:has-text("Позначити отриманим"|"Часткове отримання")` → `button:has-text("Оприбуткувати")`.
+  - Прибрано пошук окремої receive-модалки — після кліку "Оприбуткувати" з'являється `button:has-text("Підтвердити прийом")` у тій же модалці.
+  - Для часткового прийому qty-input знаходиться через `input[placeholder*="макс."]` (плейсхолдер містить максимальну дозволену кількість).
+
+### Bug #546 — status-tooltip.spec.ts: empty table when default date filter = today [MEDIUM, тест] [x] виправлено
+
+- **Severity:** MEDIUM (test bug, але виявляє реальну UX-проблему)
+- **Файл:** `apps/web/e2e/status-tooltip.spec.ts:18`
+- **Симптом:** `realStatusBadge.waitFor` timeout 20s; на скріншоті — empty state "Нарядів не знайдено".
+- **Причина:** Сторінка `/work-orders` має дефолтний фільтр дати на сьогодні (з: сьогодні, по: сьогодні). Тестовий runtime потрапляє на день коли немає нарядів з `documentDate` саме за сьогодні (всі seed-WO старіші). Тест не очищав фільтр.
+- **Виправлення:** На початку тесту заповнюємо "З" датою `01.01.2020` і натискаємо Enter — фільтр розширюється на всю історію, нариди з'являються.
+
+### Bug #547 — `WorkOrderPartsSection`: dead `orgId` prop [LOW, simplify] [x] виправлено
+
+- **Severity:** LOW (dead code)
+- **Файл:** `apps/web/src/app/(app)/work-orders/[id]/WorkOrderPartsSection.tsx:42`
+- **Симптом:** Інтерфейс `WorkOrderPartsSectionProps` оголошував `orgId?: string` з коментарем "Reserved for future tenant-scoped endpoints", але prop ніколи не читався у компоненті.
+- **Причина:** Spec'd для майбутнього multi-tenant endpoint, який так і не з'явився.
+- **Виправлення:** Видалено `orgId` з інтерфейсу + з виклику в `PageClient.tsx:1018`. tenant isolation і так робиться на бекенді через JWT (`req.user.orgId`).
+
+---
+
+## Підсумок сесії 2026-06-19 (sto-e2e)
+
+### Тести
+
+- **Playwright E2E (повний suite):** 232 passed / 13 skipped / 0 failed (3.4 хв)
+- **Web unit (тільки WorkOrders):** 15 passed
+- **TSC `apps/web`:** 0 errors
+- **TSC `apps/api`:** 0 errors
+
+### Виправлено
+
+- 3 stale E2E spec файли (Bug #544, #545, #546) — синхронізовано з редизайном Invoice/PO модалок
+- 1 dead prop в React component (Bug #547)
+
+### Файли змінено
+
+- `apps/web/e2e/invoices.spec.ts` (Bug #544)
+- `apps/web/e2e/purchase-orders-receive.spec.ts` (Bug #545)
+- `apps/web/e2e/status-tooltip.spec.ts` (Bug #546)
+- `apps/web/src/app/(app)/work-orders/[id]/WorkOrderPartsSection.tsx` (Bug #547)
+- `apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx` (Bug #547 — caller)
