@@ -1,0 +1,240 @@
+- generic [active] [ref=e1]:
+    - alert [ref=e42]
+    - button "Open Next.js Dev Tools" [ref=e48] [cursor=pointer]:
+        - img [ref=e49]
+    - generic [ref=e151]:
+        - complementary [ref=e152]:
+            - generic [ref=e153]:
+                - generic [ref=e154]:
+                    - link "STO ERP Автосервіс" [ref=e155] [cursor=pointer]:
+                        - /url: /dashboard/
+                        - img [ref=e157]
+                        - generic [ref=e159]:
+                            - generic [ref=e160]: STO ERP
+                            - generic [ref=e161]: Автосервіс
+                    - button "Згорнути" [ref=e162]:
+                        - img [ref=e163]
+                - button "Пошук... Ctrl K" [ref=e166]:
+                    - img [ref=e167]
+                    - generic [ref=e170]: Пошук...
+                    - generic [ref=e171]: Ctrl K
+                - navigation [ref=e172]:
+                    - link "Дашборд" [ref=e174] [cursor=pointer]:
+                        - /url: /dashboard/
+                        - img [ref=e175]
+                        - generic [ref=e180]: Дашборд
+                        - button "Додати закладку" [ref=e181]:
+                            - img [ref=e182]
+                    - generic [ref=e184]:
+                        - paragraph [ref=e185]: Документи
+                        - link "Наряди" [ref=e186] [cursor=pointer]:
+                            - /url: /work-orders/
+                            - img [ref=e187]
+                            - generic [ref=e189]: Наряди
+                            - button "Додати закладку" [ref=e190]:
+                                - img [ref=e191]
+                        - link "Рахунки" [ref=e193] [cursor=pointer]:
+                            - /url: /invoices/
+                            - img [ref=e194]
+                            - generic [ref=e197]: Рахунки
+                            - button "Додати закладку" [ref=e198]:
+                                - img [ref=e199]
+                        - link "Замовлення" [ref=e201] [cursor=pointer]:
+                            - /url: /purchase-orders/
+                            - img [ref=e202]
+                            - generic [ref=e206]: Замовлення
+                            - button "Додати закладку" [ref=e207]:
+                                - img [ref=e208]
+                        - link "Документи склад" [ref=e210] [cursor=pointer]:
+                            - /url: /stock-documents/
+                            - img [ref=e211]
+                            - generic [ref=e214]: Документи склад
+                            - button "Додати закладку" [ref=e215]:
+                                - img [ref=e216]
+                    - generic [ref=e218]:
+                        - paragraph [ref=e219]: Звіти
+                        - link "Календар" [ref=e220] [cursor=pointer]:
+                            - /url: /calendar/
+                            - img [ref=e221]
+                            - generic [ref=e223]: Календар
+                            - button "Додати закладку" [ref=e224]:
+                                - img [ref=e225]
+                        - link "Онлайн-запис" [ref=e227] [cursor=pointer]:
+                            - /url: /bookings/
+                            - img [ref=e228]
+                            - generic [ref=e231]: Онлайн-запис
+                            - button "Додати закладку" [ref=e232]:
+                                - img [ref=e233]
+                        - link "Розрахунки" [ref=e235] [cursor=pointer]:
+                            - /url: /settlements/
+                            - img [ref=e236]
+                            - generic [ref=e239]: Розрахунки
+                            - button "Додати закладку" [ref=e240]:
+                                - img [ref=e241]
+                        - link "Звіти" [ref=e243] [cursor=pointer]:
+                            - /url: /reports/
+                            - img [ref=e244]
+                            - generic [ref=e245]: Звіти
+                            - button "Додати закладку" [ref=e246]:
+                                - img [ref=e247]
+                    - generic [ref=e249]:
+                        - paragraph [ref=e250]: Довідники
+                        - link "Контрагенти" [ref=e251] [cursor=pointer]:
+                            - /url: /crm/
+                            - img [ref=e252]
+                            - generic [ref=e257]: Контрагенти
+                            - button "Додати закладку" [ref=e258]:
+                                - img [ref=e259]
+                        - link "Склад" [ref=e261] [cursor=pointer]:
+                            - /url: /inventory/
+                            - img [ref=e262]
+                            - generic [ref=e266]: Склад
+                            - button "Додати закладку" [ref=e267]:
+                                - img [ref=e268]
+                        - link "Каталог" [ref=e270] [cursor=pointer]:
+                            - /url: /catalog/
+                            - img [ref=e271]
+                            - generic [ref=e273]: Каталог
+                            - button "Додати закладку" [ref=e274]:
+                                - img [ref=e275]
+                        - link "Ціноутворення" [ref=e277] [cursor=pointer]:
+                            - /url: /pricing-rules/
+                            - img [ref=e278]
+                            - generic [ref=e280]: Ціноутворення
+                            - button "Додати закладку" [ref=e281]:
+                                - img [ref=e282]
+                        - link "Персонал" [ref=e284] [cursor=pointer]:
+                            - /url: /employees/
+                            - img [ref=e285]
+                            - generic [ref=e297]: Персонал
+                            - button "Додати закладку" [ref=e298]:
+                                - img [ref=e299]
+                        - link "Підрозділи" [ref=e301] [cursor=pointer]:
+                            - /url: /infrastructure/
+                            - img [ref=e302]
+                            - generic [ref=e306]: Підрозділи
+                            - button "Додати закладку" [ref=e307]:
+                                - img [ref=e308]
+                        - link "Налаштування" [ref=e310] [cursor=pointer]:
+                            - /url: /settings/
+                            - img [ref=e311]
+                            - generic [ref=e314]: Налаштування
+                            - button "Додати закладку" [ref=e315]:
+                                - img [ref=e316]
+                        - link "Cloud Sync" [ref=e318] [cursor=pointer]:
+                            - /url: /settings/sync/
+                            - img [ref=e319]
+                            - generic [ref=e322]: Cloud Sync
+                            - button "Додати закладку" [ref=e323]:
+                                - img [ref=e324]
+                - generic [ref=e328]:
+                    - generic [ref=e329]: АС
+                    - generic [ref=e330]:
+                        - generic [ref=e331]: Адмін СТО
+                        - generic [ref=e332]: Адміністратор
+                    - button "Сповіщення" [ref=e334]:
+                        - img [ref=e335]
+                    - button "Вийти" [ref=e338]:
+                        - img [ref=e339]
+        - main [ref=e343]:
+            - generic [ref=e344]:
+                - generic [ref=e346]:
+                    - heading "Доброго дня, Адмін!" [level=1] [ref=e347]
+                    - paragraph [ref=e348]: середа, 3 червня 2026 р.
+                - generic [ref=e349]: live sync
+                - generic [ref=e353]:
+                    - link "В роботі 12 ↑ 1 завершено сьогодні" [ref=e354] [cursor=pointer]:
+                        - /url: /work-orders/
+                        - generic [ref=e355]:
+                            - generic [ref=e356]:
+                                - generic [ref=e357]: В роботі
+                                - generic [ref=e358]: '12'
+                                - generic [ref=e359]: ↑ 1 завершено сьогодні
+                            - img [ref=e361]
+                    - link "Очікують 18" [ref=e363] [cursor=pointer]:
+                        - /url: /work-orders/
+                        - generic [ref=e364]:
+                            - generic [ref=e365]:
+                                - generic [ref=e366]: Очікують
+                                - generic [ref=e367]: '18'
+                            - img [ref=e369]
+                    - link "Виручка сьогодні 400 ₴" [ref=e372] [cursor=pointer]:
+                        - /url: /reports/
+                        - generic [ref=e373]:
+                            - generic [ref=e374]:
+                                - generic [ref=e375]: Виручка сьогодні
+                                - generic [ref=e376]: 400 ₴
+                            - img [ref=e378]
+                    - link "Виручка за місяць 1 600 ₴" [ref=e381] [cursor=pointer]:
+                        - /url: /reports/
+                        - generic [ref=e382]:
+                            - generic [ref=e383]:
+                                - generic [ref=e384]: Виручка за місяць
+                                - generic [ref=e385]: 1 600 ₴
+                            - img [ref=e387]
+                - generic [ref=e388]:
+                    - link "Несплачені рахунки 18 ↓ 5 130 ₴" [ref=e389] [cursor=pointer]:
+                        - /url: /invoices/
+                        - generic [ref=e390]:
+                            - generic [ref=e391]:
+                                - generic [ref=e392]: Несплачені рахунки
+                                - generic [ref=e393]: '18'
+                                - generic [ref=e394]: ↓ 5 130 ₴
+                            - img [ref=e396]
+                    - link "Низький залишок 0" [ref=e401] [cursor=pointer]:
+                        - /url: /inventory/
+                        - generic [ref=e402]:
+                            - generic [ref=e403]:
+                                - generic [ref=e404]: Низький залишок
+                                - generic [ref=e405]: '0'
+                            - img [ref=e407]
+                - generic [ref=e409]:
+                    - generic [ref=e411]:
+                        - heading "Виручка за 7 днів" [level=3] [ref=e412]
+                        - link "Всі звіти →" [ref=e413] [cursor=pointer]:
+                            - /url: /reports/
+                    - generic [ref=e416]:
+                        - generic:
+                            - status:
+                                - paragraph: 02.06.2026
+                                - list:
+                                    - listitem: 'Виручка : 300,00 грн'
+                        - application [ref=e417]:
+                            - generic [ref=e435]:
+                                - generic [ref=e436]:
+                                    - generic [ref=e438]: 1 черв.
+                                    - generic [ref=e440]: 2 черв.
+                                    - generic [ref=e442]: 3 черв.
+                                - generic [ref=e443]:
+                                    - generic [ref=e445]: 0к
+                                    - generic [ref=e447]: 0к
+                                    - generic [ref=e449]: 1к
+                                    - generic [ref=e451]: 1к
+                                    - generic [ref=e453]: 1к
+                - generic [ref=e454]:
+                    - generic [ref=e456]:
+                        - heading "Швидкі дії" [level=3] [ref=e457]
+                        - button "Налаштувати" [ref=e458]:
+                            - img [ref=e459]
+                    - generic [ref=e463]:
+                        - link "Новий наряд" [ref=e464] [cursor=pointer]:
+                            - /url: /work-orders/
+                            - img [ref=e465]
+                            - text: Новий наряд
+                        - link "Новий клієнт" [ref=e466] [cursor=pointer]:
+                            - /url: /crm/
+                            - img [ref=e467]
+                            - text: Новий клієнт
+                        - link "Замовлення" [ref=e468] [cursor=pointer]:
+                            - /url: /purchase-orders/
+                            - img [ref=e469]
+                            - text: Замовлення
+                        - link "Рахунок" [ref=e470] [cursor=pointer]:
+                            - /url: /invoices/
+                            - img [ref=e471]
+                            - text: Рахунок
+    - generic [ref=e52]:
+        - img [ref=e54]
+        - button "Open Tanstack query devtools" [ref=e102] [cursor=pointer]:
+            - img [ref=e103]
+    - generic [ref=e472]: 0к

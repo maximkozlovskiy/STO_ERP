@@ -624,7 +624,7 @@ export class GoodsService {
       barcode: b.barcode,
       type: b.type,
       isPrimary: b.isPrimary,
-      createdAt: b.createdAt,
+      createdAt: b.createdAt instanceof Date ? b.createdAt.toISOString() : b.createdAt,
     };
   }
 
@@ -680,9 +680,10 @@ export class GoodsService {
           (`${item.preferredSupplier.lastName ?? ''} ${item.preferredSupplier.firstName ?? ''}`.trim() ||
             null))
         : null,
-      deletedAt: item.deletedAt ?? null,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      deletedAt:
+        item.deletedAt instanceof Date ? item.deletedAt.toISOString() : (item.deletedAt ?? null),
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };
   }
 

@@ -129,8 +129,8 @@ export class CurrenciesService {
       symbol: item.symbol,
       nbuFetchEnabled: item.nbuFetchEnabled,
       nbuMarkupPercent: item.nbuMarkupPercent != null ? Number(item.nbuMarkupPercent) : null,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };
   }
 }

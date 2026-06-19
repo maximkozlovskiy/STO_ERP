@@ -410,7 +410,7 @@ export class CompletionActsService {
       workOrderId: act.workOrderId,
       number: act.number,
       status: act.status,
-      signedAt: act.signedAt,
+      signedAt: act.signedAt instanceof Date ? act.signedAt.toISOString() : act.signedAt,
       signedBy: act.signedBy,
       clientPhone: act.clientPhone,
       notes: act.notes,
@@ -418,8 +418,8 @@ export class CompletionActsService {
       counterpartyName,
       vehicleLabel,
       ...(lines !== undefined ? { lines } : {}),
-      createdAt: act.createdAt,
-      updatedAt: act.updatedAt,
+      createdAt: act.createdAt instanceof Date ? act.createdAt.toISOString() : act.createdAt,
+      updatedAt: act.updatedAt instanceof Date ? act.updatedAt.toISOString() : act.updatedAt,
     };
   }
 }

@@ -23,7 +23,7 @@ export class CompletionActResponseDto {
   @ApiProperty() workOrderId!: string;
   @ApiProperty() number!: string;
   @ApiProperty({ enum: CompletionActStatus }) status!: CompletionActStatus;
-  @ApiPropertyOptional() signedAt?: Date | null;
+  @ApiPropertyOptional() signedAt?: string | null;
   @ApiPropertyOptional() signedBy?: string | null;
   @ApiPropertyOptional() clientPhone?: string | null;
   @ApiPropertyOptional() notes?: string | null;
@@ -31,8 +31,8 @@ export class CompletionActResponseDto {
   @ApiPropertyOptional() counterpartyName?: string;
   @ApiPropertyOptional() vehicleLabel?: string;
   @ApiPropertyOptional({ type: [CompletionActLineDto] }) lines?: CompletionActLineDto[];
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
 }
 
 export class PaginatedCompletionActsDto {

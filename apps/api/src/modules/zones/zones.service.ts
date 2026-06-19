@@ -189,9 +189,9 @@ export class ZonesService {
       branchId: z.branchId,
       name: z.name,
       type: z.type as ZoneType,
-      createdAt: z.createdAt,
-      updatedAt: z.updatedAt,
-      deletedAt: z.deletedAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
+      deletedAt: item.deletedAt instanceof Date ? item.deletedAt.toISOString() : item.deletedAt,
     };
   }
 
@@ -222,14 +222,22 @@ export class ZonesService {
       maxWeightKg: l.maxWeightKg,
       status: l.status,
       serialNumber: l.serialNumber,
-      purchaseDate: l.purchaseDate,
-      warrantyUntil: l.warrantyUntil,
+      purchaseDate:
+        item.purchaseDate instanceof Date ? item.purchaseDate.toISOString() : item.purchaseDate,
+      warrantyUntil:
+        item.warrantyUntil instanceof Date ? item.warrantyUntil.toISOString() : item.warrantyUntil,
       maintenanceIntervalDays: l.maintenanceIntervalDays,
-      lastMaintenanceDate: l.lastMaintenanceDate,
-      nextMaintenanceDate: l.nextMaintenanceDate,
-      createdAt: l.createdAt,
-      updatedAt: l.updatedAt,
-      deletedAt: l.deletedAt,
+      lastMaintenanceDate:
+        item.lastMaintenanceDate instanceof Date
+          ? item.lastMaintenanceDate.toISOString()
+          : item.lastMaintenanceDate,
+      nextMaintenanceDate:
+        item.nextMaintenanceDate instanceof Date
+          ? item.nextMaintenanceDate.toISOString()
+          : item.nextMaintenanceDate,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
+      deletedAt: item.deletedAt instanceof Date ? item.deletedAt.toISOString() : item.deletedAt,
     };
   }
 }

@@ -16882,3 +16882,88 @@ disabled={!newLine.goodId || (parseFloat(newLine.quantity) || 0) <= 0}
 
 - `pnpm --filter @sto/web tsc --noEmit --incremental false` → 0 errors (baseline ✅ перед і після фіксів)
 - `pnpm --filter @sto/api tsc --noEmit --incremental false` → 0 errors (бекенд не торкався)
+
+---
+
+## Session 2026-06-20 — Direction 3 Complete: Date Serialization Alignment Verification
+
+Scope: Verification run for commits 7d940576 (4 modules) + f1fea90b (2 modules) — Date serialization fix.
+Task: Verify Direction 3 complete + find remaining Date field mismatches in response DTOs.
+
+### Baseline (Крок 0)
+
+- TypeScript API — ✅ 0 errors
+- TypeScript web — ✅ 0 errors
+- Unit + contract (API) — ❌ 2 failures (purchase-orders.contract.spec.ts test parameter mismatch)
+- Web components — ✅ 438 passed
+
+### Скоп (Крок 1): Статичний аналіз Date field mismatches
+
+**Перевірено:** 35 \*.dto.ts файлів, grep на `: Date` (без type annotations за `string`)
+
+**Знайдено 24 модулі з Date field mismatch у response DTOs:**
+
+1. Bug #563 — bank-accounts.dto.ts: `createdAt: Date`, `updatedAt: Date`
+2. Bug #564 — branches.dto.ts: `createdAt: Date`, `updatedAt: Date`, `deletedAt?: Date`
+3. Bug #565 — brands.dto.ts: `createdAt: Date`, `updatedAt: Date`, `deletedAt?: Date`
+4. Bug #566 — cash-registers.dto.ts: `createdAt: Date`, `updatedAt: Date`
+5. Bug #567 — completion-acts.dto.ts: `signedAt?: Date`, `createdAt: Date`, `updatedAt: Date`
+6. Bug #568 — counterparties.dto.ts: `createdAt: Date`, `updatedAt: Date`, `deletedAt?: Date` (3 DTOs)
+7. Bug #569 — currencies.dto.ts: `createdAt: Date`, `updatedAt: Date`
+8. Bug #570 — employees.dto.ts: `dateOfHire?: Date`, `dateOfFire?: Date`, `createdAt: Date`, `updatedAt: Date`, `deletedAt?: Date`
+9. Bug #571 — exchange-rates.dto.ts: `createdAt: Date`, `updatedAt: Date`
+10. Bug #572 — good-categories.dto.ts: `createdAt: Date`, `updatedAt: Date`
+11. Bug #573 — goods/barcodes.dto.ts: `createdAt: Date`
+12. Bug #574 — goods/goods.dto.ts: `createdAt: Date`, `updatedAt: Date`, `deletedAt?: Date`
+13. Bug #575 — maintenance-schedules.dto.ts: `lastMaintenanceDate?: Date`, `nextMaintenanceDate?: Date`, `createdAt: Date`, `updatedAt: Date`
+14. Bug #576 — payment-methods.dto.ts: `updatedAt: Date`
+15. Bug #577 — payments.dto.ts: `createdAt: Date`
+16. Bug #578 — services.dto.ts: `createdAt: Date`, `updatedAt: Date`, `deletedAt?: Date`
+17. Bug #579 — settings.dto.ts: 3x `updatedAt: Date` (3 DTOs)
+18. Bug #580 — units.dto.ts: `createdAt: Date`, `updatedAt: Date`, `deletedAt?: Date`
+19. Bug #581 — vehicles.dto.ts: `insuranceExpiry?: Date`, `inspectionExpiry?: Date`, `createdAt: Date`, `updatedAt: Date`
+20. Bug #582 — warehouses.dto.ts: `createdAt: Date`, `updatedAt: Date`, `deletedAt?: Date`
+21. Bug #583 — work-categories.dto.ts: `createdAt: Date`, `updatedAt: Date`
+22. Bug #584 — work-orders.dto.ts: `createdAt: Date` (incomplete fix from 7d940576)
+23. Bug #585 — works.dto.ts: `createdAt: Date`, `updatedAt: Date`, `deletedAt?: Date`
+24. Bug #586 — zones.dto.ts: `createdAt: Date`, `updatedAt: Date`, `deletedAt?: Date`, `purchaseDate?: Date`, `warrantyUntil?: Date`, `lastMaintenanceDate?: Date`, `nextMaintenanceDate?: Date`
+
+**Impact:** All response DTOs claim `Date` type but JSON.stringify converts to ISO strings. Frontend expects strings per Direction 3; backend claims Date. Result: TypeScript contract mismatch on HTTP response level — no compilation error (JSON coercion hides it), but runtime type mismatch when frontend parses.
+
+**Test coverage issue:** purchase-orders.contract.spec.ts passes 2 tests but applyPricing signature was changed (added optional `ruleId` parameter) — tests weren't updated.
+
+---
+
+## Bug #560 — CRITICAL contract / api
+
+**Файл:** `apps/api/src/modules/*/\*.dto.ts` (24 модулів)
+**Severity:** CRITICAL
+**Категорія:** contract / type-mismatch / all-response-dtos
+
+**Опис:** Response DTOs по всьому бекенду визначають Date-поля як `: Date` замість `: string`.
+JSON.stringify() конвертує Date → ISO string у runtime, але TypeScript контракт стверджує Date.
+Результат: frontend отримує string у HTTP response, але DTO заявляє Date → type error при парсингу.
+
+Обумовлено неповною фіксацією Direction 3 у commits 7d940576 + f1fea90b — фіксили лише 6 модулів (invoices, work-orders, purchase-orders, stock-documents, calendar, supplier-returns), решта 24 модулі залишились.
+
+**Очікувана поведінка:** Всі Date-поля у response DTOs повинні бути `: string` + у toDto() методи обов'язкова конверсія Date → .toISOString().
+
+**Статус:** [ ] очищення/выправлення
+
+---
+
+## Bug #561 — MEDIUM test / contract / api
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.contract.spec.ts:93,150`
+**Severity:** MEDIUM
+**Категорія:** test / regression-guard
+
+**Опис:** applyPricing service method має сигнатуру (orgId, poId, ruleId?: string) але тести очікують 2 аргументи.
+При оновленні сигнатури (commit c1dc5dd) тести не оновили.
+
+**Очікувана поведінка:** expect().toHaveBeenCalledWith('org-1', VALID_UUID, undefined)
+**Фактична поведінка:** expect().toHaveBeenCalledWith('org-1', VALID_UUID) → test fails з "received 3 args, expected 2"
+
+**Статус:** [x] виправлено — оновлено 2 test assertions на 3 аргументи (orgId, id, undefined)
+
+---

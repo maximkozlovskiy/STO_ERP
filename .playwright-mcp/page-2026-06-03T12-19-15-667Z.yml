@@ -1,0 +1,33 @@
+- generic [ref=e2]:
+    - generic [ref=e3]:
+        - generic [ref=e4]:
+            - img [ref=e6]
+            - generic [ref=e8]: STO ERP
+        - generic [ref=e9]:
+            - generic [ref=e10]:
+                - heading "Система управління автосервісом" [level=1] [ref=e11]:
+                    - text: Система управління
+                    - text: автосервісом
+                - paragraph [ref=e12]: Наряди, склад, фінанси, CRM — все в одному місці. Працює повністю офлайн.
+            - generic [ref=e13]:
+                - generic [ref=e14]: Наряди та облік робіт
+                - generic [ref=e16]: Склад та запчастини
+                - generic [ref=e18]: Фінанси та розрахунки
+                - generic [ref=e20]: CRM та клієнтська база
+        - generic [ref=e22]:
+            - img [ref=e23]
+            - text: Офлайн-система — не потребує інтернету
+    - generic [ref=e28]:
+        - generic [ref=e29]:
+            - heading "Вхід до системи" [level=2] [ref=e30]
+            - paragraph [ref=e31]: Введіть ваші облікові дані
+        - generic [ref=e32]:
+            - generic [ref=e33]:
+                - generic [ref=e34]: Email*
+                - textbox "Email*" [ref=e36]:
+                    - /placeholder: admin@sto.local
+            - generic [ref=e37]:
+                - generic [ref=e38]: Пароль*
+                - textbox "Пароль*" [ref=e40]:
+                    - /placeholder: ••••••••
+            - button "Увійти" [ref=e41]

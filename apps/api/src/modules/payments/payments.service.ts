@@ -247,7 +247,7 @@ export class PaymentsService {
       method: p.method,
       notes: p.notes ?? null,
       fiscalReceiptId: p.fiscalReceiptId ?? null,
-      createdAt: p.createdAt,
+      createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
     };
   }
 }

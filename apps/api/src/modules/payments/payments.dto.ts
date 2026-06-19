@@ -33,7 +33,7 @@ export class PaymentResponseDto {
   @ApiProperty() method!: string;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() fiscalReceiptId?: string | null;
-  @ApiProperty() createdAt!: Date;
+  @ApiProperty() createdAt!: string;
 }
 
 export class PaginatedPaymentsDto {

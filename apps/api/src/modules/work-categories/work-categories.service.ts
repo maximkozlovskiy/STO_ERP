@@ -212,8 +212,8 @@ export class WorkCategoriesService {
       sortOrder: item.sortOrder,
       isSystem: item.isSystem,
       isActive: item.isActive,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };
   }
 }

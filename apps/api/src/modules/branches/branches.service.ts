@@ -86,9 +86,9 @@ export class BranchesService {
       name: item.name,
       address: item.address,
       timezone: item.timezone,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-      deletedAt: item.deletedAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
+      deletedAt: item.deletedAt instanceof Date ? item.deletedAt.toISOString() : item.deletedAt,
     };
   }
 }

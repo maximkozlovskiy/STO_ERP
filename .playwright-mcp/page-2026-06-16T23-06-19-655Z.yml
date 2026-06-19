@@ -1,0 +1,151 @@
+- generic [active] [ref=e1]:
+    - alert [ref=e4]
+    - button "Open Next.js Dev Tools" [ref=e10] [cursor=pointer]:
+        - img [ref=e11]
+    - generic [ref=e153]:
+        - complementary [ref=e154]:
+            - generic [ref=e155]:
+                - generic [ref=e156]:
+                    - link "STO ERP Автосервіс" [ref=e157] [cursor=pointer]:
+                        - /url: /dashboard/
+                        - img [ref=e159]
+                        - generic [ref=e161]:
+                            - generic [ref=e162]: STO ERP
+                            - generic [ref=e163]: Автосервіс
+                    - button "Згорнути" [ref=e164]:
+                        - img [ref=e165]
+                - button "Пошук... Ctrl K" [ref=e168]:
+                    - img [ref=e169]
+                    - generic [ref=e172]: Пошук...
+                    - generic [ref=e173]: Ctrl K
+                - navigation [ref=e174]:
+                    - generic [ref=e175]:
+                        - link "Дашборд" [ref=e176] [cursor=pointer]:
+                            - /url: /dashboard/
+                            - img [ref=e177]
+                            - generic [ref=e182]: Дашборд
+                            - button "Додати закладку" [ref=e183]:
+                                - img [ref=e184]
+                        - link "Календар" [ref=e186] [cursor=pointer]:
+                            - /url: /calendar/
+                            - img [ref=e187]
+                            - generic [ref=e189]: Календар
+                            - button "Додати закладку" [ref=e190]:
+                                - img [ref=e191]
+                    - generic [ref=e193]:
+                        - paragraph [ref=e194]: Документи
+                        - link "Наряди" [ref=e195] [cursor=pointer]:
+                            - /url: /work-orders/
+                            - img [ref=e196]
+                            - generic [ref=e198]: Наряди
+                            - button "Додати закладку" [ref=e199]:
+                                - img [ref=e200]
+                        - link "Рахунки" [ref=e202] [cursor=pointer]:
+                            - /url: /invoices/
+                            - img [ref=e203]
+                            - generic [ref=e206]: Рахунки
+                            - button "Додати закладку" [ref=e207]:
+                                - img [ref=e208]
+                        - link "Купівля" [ref=e210] [cursor=pointer]:
+                            - /url: /purchase-orders/
+                            - img [ref=e211]
+                            - generic [ref=e215]: Купівля
+                            - button "Додати закладку" [ref=e216]:
+                                - img [ref=e217]
+                        - link "Документи складу" [ref=e219] [cursor=pointer]:
+                            - /url: /stock-documents/
+                            - img [ref=e220]
+                            - generic [ref=e223]: Документи складу
+                            - button "Додати закладку" [ref=e224]:
+                                - img [ref=e225]
+                    - generic [ref=e227]:
+                        - paragraph [ref=e228]: Звіти
+                        - link "Онлайн-запис" [ref=e229] [cursor=pointer]:
+                            - /url: /bookings/
+                            - img [ref=e230]
+                            - generic [ref=e233]: Онлайн-запис
+                            - button "Додати закладку" [ref=e234]:
+                                - img [ref=e235]
+                        - link "Звіти" [ref=e237] [cursor=pointer]:
+                            - /url: /reports/
+                            - img [ref=e238]
+                            - generic [ref=e239]: Звіти
+                            - button "Додати закладку" [ref=e240]:
+                                - img [ref=e241]
+                    - generic [ref=e243]:
+                        - paragraph [ref=e244]: Довідники
+                        - link "Контрагенти" [ref=e245] [cursor=pointer]:
+                            - /url: /counterparties/
+                            - img [ref=e246]
+                            - generic [ref=e251]: Контрагенти
+                            - button "Додати закладку" [ref=e252]:
+                                - img [ref=e253]
+                        - link "Склад" [ref=e255] [cursor=pointer]:
+                            - /url: /inventory/
+                            - img [ref=e256]
+                            - generic [ref=e260]: Склад
+                            - button "Додати закладку" [ref=e261]:
+                                - img [ref=e262]
+                        - link "Каталог" [ref=e264] [cursor=pointer]:
+                            - /url: /catalog/
+                            - img [ref=e265]
+                            - generic [ref=e267]: Каталог
+                            - button "Додати закладку" [ref=e268]:
+                                - img [ref=e269]
+                        - link "Ціноутворення" [ref=e271] [cursor=pointer]:
+                            - /url: /pricing-rules/
+                            - img [ref=e272]
+                            - generic [ref=e274]: Ціноутворення
+                            - button "Додати закладку" [ref=e275]:
+                                - img [ref=e276]
+                        - link "НДІ" [ref=e278] [cursor=pointer]:
+                            - /url: /ndi/
+                            - img [ref=e279]
+                            - generic [ref=e282]: НДІ
+                            - button "Додати закладку" [ref=e283]:
+                                - img [ref=e284]
+                        - link "Співробітники" [ref=e286] [cursor=pointer]:
+                            - /url: /employees/
+                            - img [ref=e287]
+                            - generic [ref=e299]: Співробітники
+                            - button "Додати закладку" [ref=e300]:
+                                - img [ref=e301]
+                        - link "Інфраструктура" [ref=e303] [cursor=pointer]:
+                            - /url: /infrastructure/
+                            - img [ref=e304]
+                            - generic [ref=e308]: Інфраструктура
+                            - button "Додати закладку" [ref=e309]:
+                                - img [ref=e310]
+                    - generic [ref=e312]:
+                        - paragraph [ref=e313]: Налаштування
+                        - link "Система" [ref=e314] [cursor=pointer]:
+                            - /url: /settings/
+                            - img [ref=e315]
+                            - generic [ref=e318]: Система
+                            - button "Додати закладку" [ref=e319]:
+                                - img [ref=e320]
+                        - link "Cloud Sync" [ref=e322] [cursor=pointer]:
+                            - /url: /settings/sync/
+                            - img [ref=e323]
+                            - generic [ref=e326]: Cloud Sync
+                            - button "Додати закладку" [ref=e327]:
+                                - img [ref=e328]
+                - generic [ref=e332]:
+                    - generic [ref=e333]: АС
+                    - generic [ref=e334]:
+                        - generic [ref=e335]: Адмін СТО
+                        - generic [ref=e336]: Власник
+                    - button "Сповіщення" [ref=e338]:
+                        - img [ref=e339]
+                    - button "Вийти" [ref=e342]:
+                        - img [ref=e343]
+        - main [ref=e347]:
+            - generic [ref=e348]:
+                - generic [ref=e350]:
+                    - heading "Доброго ранку, Адмін!" [level=1] [ref=e351]
+                    - paragraph [ref=e352]: середа, 17 червня 2026 р.
+                - status "Завантаження" [ref=e354]
+    - generic [ref=e54]:
+        - img [ref=e56]
+        - button "Open Tanstack query devtools" [ref=e104] [cursor=pointer]:
+            - img [ref=e105]

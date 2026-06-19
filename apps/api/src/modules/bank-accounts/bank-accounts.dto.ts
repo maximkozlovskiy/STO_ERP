@@ -111,6 +111,6 @@ export class BankAccountResponseDto {
   @ApiPropertyOptional() mfo?: string | null;
   @ApiPropertyOptional() edrpou?: string | null;
   @ApiPropertyOptional() bankAddress?: string | null;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
 }

@@ -182,8 +182,8 @@ export class ExchangeRatesService {
       date: item.date.toISOString().split('T')[0],
       rate: Number(item.rate),
       coefficient: Number(item.coefficient),
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };
   }
 }

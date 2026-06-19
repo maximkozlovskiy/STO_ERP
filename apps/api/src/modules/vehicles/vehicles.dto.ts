@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
   IsInt,
@@ -10,7 +10,7 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
-// ─── Vehicle ─────────────────────────────────────────────
+// в”Ђв”Ђв”Ђ Vehicle в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateVehicleDto {
   @ApiProperty()
@@ -87,17 +87,17 @@ export class VehicleResponseDto {
   @ApiPropertyOptional() driveType?: string | null;
   @ApiPropertyOptional() bodyType?: string | null;
   @ApiPropertyOptional() engineCode?: string | null;
-  @ApiPropertyOptional() insuranceExpiry?: Date | null;
-  @ApiPropertyOptional() inspectionExpiry?: Date | null;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional() insuranceExpiry?: string | null;
+  @ApiPropertyOptional() inspectionExpiry?: string | null;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
 }
 
-// ─── VehicleNode ─────────────────────────────────────────
+// в”Ђв”Ђв”Ђ VehicleNode в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateVehicleNodeDto {
   @ApiProperty({ example: 'engine' }) @IsString() @IsNotEmpty() category!: string;
-  @ApiProperty({ example: 'Двигун 2.0 TSI' }) @IsString() @IsNotEmpty() name!: string;
+  @ApiProperty({ example: 'Р”РІРёРіСѓРЅ 2.0 TSI' }) @IsString() @IsNotEmpty() name!: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) mileageAtInstall?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
@@ -109,5 +109,5 @@ export class VehicleNodeResponseDto {
   @ApiProperty() name!: string;
   @ApiPropertyOptional() mileageAtInstall?: number | null;
   @ApiPropertyOptional() notes?: string | null;
-  @ApiProperty() createdAt!: Date;
+  @ApiProperty() createdAt!: string;
 }

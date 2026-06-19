@@ -170,10 +170,12 @@ export function PurchaseOrderCreateModal({
   open,
   onClose,
   onSaved,
-  purchaseOrderId,
+  purchaseOrderId: purchaseOrderIdProp,
   onMinimize,
 }: PurchaseOrderCreateModalProps) {
-  const isEditMode = !!purchaseOrderId;
+  const [activePOId, setActivePOId] = useState<string | undefined>(purchaseOrderIdProp);
+  const purchaseOrderId = activePOId;
+  const isEditMode = !!activePOId;
   const features = useUiFeatures();
   const { minimizeModal } = useTabBarContext();
 
@@ -321,6 +323,7 @@ export function PurchaseOrderCreateModal({
   // Reset on open
   useEffect(() => {
     if (!open) return;
+    setActivePOId(purchaseOrderIdProp);
     setError('');
     setStatusMenuOpen(false);
     setHeaderCollapsed(false);
@@ -338,7 +341,7 @@ export function PurchaseOrderCreateModal({
       setForm({ supplierId: '', warehouseId: '', notes: '', documentDate: kyivToday() });
       setSupplierDisplay('');
     }
-  }, [open, purchaseOrderId, isEditMode]);
+  }, [open, purchaseOrderIdProp, isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load PO data in edit mode
   const loadPo = useCallback(
@@ -672,7 +675,9 @@ export function PurchaseOrderCreateModal({
 
       if (features.toastEnabled) toast.success(`Замовлення ${po.number} створено`);
       onSaved?.();
-      onClose();
+      // Не закриваємо — переходимо в edit mode щоб можна було одразу додавати товари
+      setActivePOId(po.id);
+      await loadPo(po.id);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка створення замовлення');
     } finally {

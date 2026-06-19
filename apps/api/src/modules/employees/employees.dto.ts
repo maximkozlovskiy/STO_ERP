@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
   IsBoolean,
@@ -23,7 +23,7 @@ import { EmployeeStatus, UserRole } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { z } from 'zod';
 
-// ─── rateScheme Zod validation ────────────────────────────
+// в”Ђв”Ђв”Ђ rateScheme Zod validation в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export const rateSchemeSchema = z.discriminatedUnion('type', [
   z.object({
@@ -38,16 +38,16 @@ export const rateSchemeSchema = z.discriminatedUnion('type', [
 
 export type RateScheme = z.infer<typeof rateSchemeSchema>;
 
-// ─── DTOs ────────────────────────────────────────────────
+// в”Ђв”Ђв”Ђ DTOs в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateEmployeeDto {
-  @ApiProperty({ example: 'Іван' })
+  @ApiProperty({ example: 'Р†РІР°РЅ' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
   firstName!: string;
 
-  @ApiProperty({ example: 'Коваль' })
+  @ApiProperty({ example: 'РљРѕРІР°Р»СЊ' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
@@ -95,20 +95,26 @@ export class CreateEmployeeDto {
   dateOfFire?: string;
 
   @ApiPropertyOptional({
-    description: 'Email для входу в систему (логін). Якщо вказано — створює AuthAccount',
+    description:
+      'Email РґР»СЏ РІС…РѕРґСѓ РІ СЃРёСЃС‚РµРјСѓ (Р»РѕРіС–РЅ). РЇРєС‰Рѕ РІРєР°Р·Р°РЅРѕ вЂ” СЃС‚РІРѕСЂСЋС” AuthAccount',
   })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsEmail({}, { message: 'Невірний формат email для логіну' })
+  @IsEmail({}, { message: 'РќРµРІС–СЂРЅРёР№ С„РѕСЂРјР°С‚ email РґР»СЏ Р»РѕРіС–РЅСѓ' })
   @MaxLength(254)
   loginEmail?: string;
 
-  @ApiPropertyOptional({ description: "Пароль для входу. Обов'язковий якщо вказано loginEmail" })
+  @ApiPropertyOptional({
+    description:
+      "РџР°СЂРѕР»СЊ РґР»СЏ РІС…РѕРґСѓ. РћР±РѕРІ'СЏР·РєРѕРІРёР№ СЏРєС‰Рѕ РІРєР°Р·Р°РЅРѕ loginEmail",
+  })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsString()
-  @MinLength(6, { message: 'Пароль має бути не менше 6 символів' })
-  @MaxLength(128, { message: 'Пароль занадто довгий (максимум 128 символів)' })
+  @MinLength(6, { message: 'РџР°СЂРѕР»СЊ РјР°С” Р±СѓС‚Рё РЅРµ РјРµРЅС€Рµ 6 СЃРёРјРІРѕР»С–РІ' })
+  @MaxLength(128, {
+    message: 'РџР°СЂРѕР»СЊ Р·Р°РЅР°РґС‚Рѕ РґРѕРІРіРёР№ (РјР°РєСЃРёРјСѓРј 128 СЃРёРјРІРѕР»С–РІ)',
+  })
   password?: string;
 }
 
@@ -167,21 +173,23 @@ export class UpdateEmployeeDto {
   dateOfFire?: string;
 }
 
-// Query DTO for `GET /employees` — without it the controller silently dropped q/role/showDeleted
+// Query DTO for `GET /employees` вЂ” without it the controller silently dropped q/role/showDeleted
 // (NestJS @Query without DTO has no whitelisting, so the params arrived but were never read).
 export class EmployeesQueryDto {
-  @ApiPropertyOptional({ description: "Пошук за ім'ям, прізвищем або телефоном" })
+  @ApiPropertyOptional({
+    description: "РџРѕС€СѓРє Р·Р° С–Рј'СЏРј, РїСЂС–Р·РІРёС‰РµРј Р°Р±Рѕ С‚РµР»РµС„РѕРЅРѕРј",
+  })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   q?: string;
 
-  @ApiPropertyOptional({ enum: UserRole, description: 'Фільтр за посадою' })
+  @ApiPropertyOptional({ enum: UserRole, description: 'Р¤С–Р»СЊС‚СЂ Р·Р° РїРѕСЃР°РґРѕСЋ' })
   @IsOptional()
   @IsEnum(UserRole)
   role?: UserRole;
 
-  @ApiPropertyOptional({ description: 'Показати soft-deleted' })
+  @ApiPropertyOptional({ description: 'РџРѕРєР°Р·Р°С‚Рё soft-deleted' })
   @IsOptional()
   @IsBooleanString()
   showDeleted?: string;
@@ -194,12 +202,15 @@ export class EmployeesQueryDto {
   @Max(200)
   limit?: number;
 
-  @ApiPropertyOptional({ description: 'Поле сортування', enum: ['lastName', 'createdAt'] })
+  @ApiPropertyOptional({
+    description: 'РџРѕР»Рµ СЃРѕСЂС‚СѓРІР°РЅРЅСЏ',
+    enum: ['lastName', 'createdAt'],
+  })
   @IsOptional()
   @IsIn(['lastName', 'createdAt'])
   sortBy?: string;
 
-  @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })
+  @ApiPropertyOptional({ description: 'РќР°РїСЂСЏРј СЃРѕСЂС‚СѓРІР°РЅРЅСЏ', enum: ['asc', 'desc'] })
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortDir?: 'asc' | 'desc';
@@ -213,35 +224,39 @@ export class EmployeesQueryDto {
 }
 
 export class AssignBranchesDto {
-  @ApiProperty({ type: [String], description: 'Масив UUID філій' })
+  @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID С„С–Р»С–Р№' })
   @IsUUID(undefined, { each: true })
-  @ArrayMaxSize(50, { message: 'Максимум 50 філій на співробітника' })
+  @ArrayMaxSize(50, { message: 'РњР°РєСЃРёРјСѓРј 50 С„С–Р»С–Р№ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°' })
   branchIds!: string[];
 
-  @ApiPropertyOptional({ description: 'Доступ до всіх філій (OWNER/ADMIN)' })
+  @ApiPropertyOptional({ description: 'Р”РѕСЃС‚СѓРї РґРѕ РІСЃС–С… С„С–Р»С–Р№ (OWNER/ADMIN)' })
   @IsOptional()
   @IsBoolean()
   allBranches?: boolean;
 }
 
 export class AssignZonesDto {
-  @ApiProperty({ type: [String], description: 'Масив UUID зон' })
+  @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID Р·РѕРЅ' })
   @IsUUID(undefined, { each: true })
-  @ArrayMaxSize(30, { message: 'Максимум 30 зон на співробітника' })
+  @ArrayMaxSize(30, { message: 'РњР°РєСЃРёРјСѓРј 30 Р·РѕРЅ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°' })
   zoneIds!: string[];
 }
 
 export class AssignLiftsDto {
-  @ApiProperty({ type: [String], description: 'Масив UUID підйомників' })
+  @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID РїС–РґР№РѕРјРЅРёРєС–РІ' })
   @IsUUID(undefined, { each: true })
-  @ArrayMaxSize(30, { message: 'Максимум 30 підйомників на співробітника' })
+  @ArrayMaxSize(30, {
+    message: 'РњР°РєСЃРёРјСѓРј 30 РїС–РґР№РѕРјРЅРёРєС–РІ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°',
+  })
   liftIds!: string[];
 }
 
 export class AssignWorkCategoriesDto {
-  @ApiProperty({ type: [String], description: 'Масив UUID категорій робіт' })
+  @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID РєР°С‚РµРіРѕСЂС–Р№ СЂРѕР±С–С‚' })
   @IsUUID(undefined, { each: true })
-  @ArrayMaxSize(50, { message: 'Максимум 50 категорій робіт на співробітника' })
+  @ArrayMaxSize(50, {
+    message: 'РњР°РєСЃРёРјСѓРј 50 РєР°С‚РµРіРѕСЂС–Р№ СЂРѕР±С–С‚ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°',
+  })
   workCategoryIds!: string[];
 }
 
@@ -255,19 +270,20 @@ export class EmployeeResponseDto {
   @ApiProperty({ enum: EmployeeStatus }) status!: EmployeeStatus;
   @ApiPropertyOptional() phone?: string | null;
   @ApiPropertyOptional() email?: string | null;
-  @ApiPropertyOptional() dateOfHire?: Date | null;
-  @ApiPropertyOptional() dateOfFire?: Date | null;
+  @ApiPropertyOptional() dateOfHire?: string | null;
+  @ApiPropertyOptional() dateOfFire?: string | null;
   @ApiProperty({ type: [String] }) zoneIds!: string[];
   @ApiProperty({ type: [String] }) liftIds!: string[];
   @ApiProperty({ type: [String] }) workCategoryIds!: string[];
   @ApiProperty({ type: [String] }) branchIds!: string[];
   @ApiProperty() allBranches!: boolean;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional({ description: 'Set when the employee is soft-deleted' })
-  deletedAt?: Date | null;
+  deletedAt?: string | null;
 }
 
 export class EmployeeDetailDto extends EmployeeResponseDto {
-  @ApiProperty({ description: 'Схема нарахування (тільки OWNER/ADMIN)' }) rateScheme!: RateScheme;
+  @ApiProperty({ description: 'РЎС…РµРјР° РЅР°СЂР°С…СѓРІР°РЅРЅСЏ (С‚С–Р»СЊРєРё OWNER/ADMIN)' })
+  rateScheme!: RateScheme;
 }

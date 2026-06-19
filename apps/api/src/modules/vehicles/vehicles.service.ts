@@ -167,10 +167,16 @@ export class VehiclesService {
       driveType: v.driveType,
       bodyType: v.bodyType,
       engineCode: v.engineCode,
-      insuranceExpiry: v.insuranceExpiry,
-      inspectionExpiry: v.inspectionExpiry,
-      createdAt: v.createdAt,
-      updatedAt: v.updatedAt,
+      insuranceExpiry:
+        item.insuranceExpiry instanceof Date
+          ? item.insuranceExpiry.toISOString()
+          : item.insuranceExpiry,
+      inspectionExpiry:
+        item.inspectionExpiry instanceof Date
+          ? item.inspectionExpiry.toISOString()
+          : item.inspectionExpiry,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };
   }
 
@@ -190,7 +196,7 @@ export class VehiclesService {
       name: n.name,
       mileageAtInstall: n.mileageAtInstall,
       notes: n.notes,
-      createdAt: n.createdAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
     };
   }
 }

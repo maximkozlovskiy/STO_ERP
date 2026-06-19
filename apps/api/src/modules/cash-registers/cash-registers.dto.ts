@@ -1,10 +1,10 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateCashRegisterDto {
-  @ApiProperty({ example: 'Каса №1 Головний офіс' })
+  @ApiProperty({ example: 'РљР°СЃР° в„–1 Р“РѕР»РѕРІРЅРёР№ РѕС„С–СЃ' })
   @IsString()
   @IsNotEmpty()
   name!: string;
@@ -49,6 +49,6 @@ export class CashRegisterResponseDto {
   @ApiPropertyOptional() currencySymbol?: string | null;
   @ApiProperty() branchId!: string;
   @ApiProperty() branchName!: string;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
 }

@@ -263,14 +263,20 @@ export class MaintenanceSchedulesService {
       maintenanceType: item.maintenanceType,
       intervalDays: item.intervalDays,
       intervalMileage: item.intervalMileage,
-      lastMaintenanceDate: item.lastMaintenanceDate,
+      lastMaintenanceDate:
+        item.lastMaintenanceDate instanceof Date
+          ? item.lastMaintenanceDate.toISOString()
+          : item.lastMaintenanceDate,
       lastMaintenanceMileage: item.lastMaintenanceMileage,
-      nextMaintenanceDate: item.nextMaintenanceDate,
+      nextMaintenanceDate:
+        item.nextMaintenanceDate instanceof Date
+          ? item.nextMaintenanceDate.toISOString()
+          : item.nextMaintenanceDate,
       nextMaintenanceMileage: item.nextMaintenanceMileage,
       isActive: item.isActive,
       notes: item.notes,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };
   }
 }

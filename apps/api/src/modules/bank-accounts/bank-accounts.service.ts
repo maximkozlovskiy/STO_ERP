@@ -167,8 +167,8 @@ export class BankAccountsService {
       mfo: item.mfo,
       edrpou: item.edrpou,
       bankAddress: item.bankAddress,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };
   }
 }

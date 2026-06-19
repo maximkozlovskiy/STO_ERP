@@ -206,9 +206,10 @@ export class BrandsService {
       orgId: item.orgId,
       name: item.name,
       synonyms: (item.synonyms ?? []).map(s => s.synonym),
-      deletedAt: item.deletedAt ?? null,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      deletedAt:
+        item.deletedAt instanceof Date ? item.deletedAt.toISOString() : (item.deletedAt ?? null),
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };
   }
 }

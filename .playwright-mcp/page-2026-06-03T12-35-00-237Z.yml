@@ -1,0 +1,260 @@
+- generic [ref=e86]:
+    - alert [ref=e87]
+    - button "Open Next.js Dev Tools" [ref=e93] [cursor=pointer]:
+        - img [ref=e94]
+    - generic [ref=e97]:
+        - complementary [ref=e98]:
+            - generic [ref=e99]:
+                - generic [ref=e100]:
+                    - link "STO ERP Автосервіс" [ref=e101] [cursor=pointer]:
+                        - /url: /dashboard/
+                        - img [ref=e103]
+                        - generic [ref=e105]:
+                            - generic [ref=e106]: STO ERP
+                            - generic [ref=e107]: Автосервіс
+                    - button "Згорнути" [ref=e108]:
+                        - img [ref=e109]
+                - button "Пошук... Ctrl K" [ref=e112]:
+                    - img [ref=e113]
+                    - generic [ref=e116]: Пошук...
+                    - generic [ref=e117]: Ctrl K
+                - navigation [ref=e118]:
+                    - link "Дашборд" [ref=e120] [cursor=pointer]:
+                        - /url: /dashboard/
+                        - img [ref=e121]
+                        - generic [ref=e126]: Дашборд
+                        - button "Додати закладку" [ref=e127]:
+                            - img [ref=e128]
+                    - generic [ref=e130]:
+                        - paragraph [ref=e131]: Документи
+                        - link "Наряди" [ref=e132] [cursor=pointer]:
+                            - /url: /work-orders/
+                            - img [ref=e133]
+                            - generic [ref=e135]: Наряди
+                            - button "Додати закладку" [ref=e136]:
+                                - img [ref=e137]
+                        - link "Рахунки" [ref=e139] [cursor=pointer]:
+                            - /url: /invoices/
+                            - img [ref=e140]
+                            - generic [ref=e143]: Рахунки
+                            - button "Додати закладку" [ref=e144]:
+                                - img [ref=e145]
+                        - link "Замовлення" [ref=e147] [cursor=pointer]:
+                            - /url: /purchase-orders/
+                            - img [ref=e148]
+                            - generic [ref=e152]: Замовлення
+                            - button "Додати закладку" [ref=e153]:
+                                - img [ref=e154]
+                        - link "Документи склад" [ref=e156] [cursor=pointer]:
+                            - /url: /stock-documents/
+                            - img [ref=e157]
+                            - generic [ref=e160]: Документи склад
+                            - button "Додати закладку" [ref=e161]:
+                                - img [ref=e162]
+                    - generic [ref=e164]:
+                        - paragraph [ref=e165]: Звіти
+                        - link "Календар" [ref=e166] [cursor=pointer]:
+                            - /url: /calendar/
+                            - img [ref=e167]
+                            - generic [ref=e169]: Календар
+                            - button "Додати закладку" [ref=e170]:
+                                - img [ref=e171]
+                        - link "Онлайн-запис" [ref=e173] [cursor=pointer]:
+                            - /url: /bookings/
+                            - img [ref=e174]
+                            - generic [ref=e177]: Онлайн-запис
+                            - button "Додати закладку" [ref=e178]:
+                                - img [ref=e179]
+                        - link "Розрахунки" [ref=e181] [cursor=pointer]:
+                            - /url: /settlements/
+                            - img [ref=e182]
+                            - generic [ref=e185]: Розрахунки
+                            - button "Додати закладку" [ref=e186]:
+                                - img [ref=e187]
+                        - link "Звіти" [ref=e189] [cursor=pointer]:
+                            - /url: /reports/
+                            - img [ref=e190]
+                            - generic [ref=e191]: Звіти
+                            - button "Додати закладку" [ref=e192]:
+                                - img [ref=e193]
+                    - generic [ref=e195]:
+                        - paragraph [ref=e196]: Довідники
+                        - link "Контрагенти" [ref=e197] [cursor=pointer]:
+                            - /url: /crm/
+                            - img [ref=e198]
+                            - generic [ref=e203]: Контрагенти
+                            - button "Додати закладку" [ref=e204]:
+                                - img [ref=e205]
+                        - link "Склад" [ref=e207] [cursor=pointer]:
+                            - /url: /inventory/
+                            - img [ref=e208]
+                            - generic [ref=e212]: Склад
+                            - button "Додати закладку" [ref=e213]:
+                                - img [ref=e214]
+                        - link "Каталог" [ref=e216] [cursor=pointer]:
+                            - /url: /catalog/
+                            - img [ref=e217]
+                            - generic [ref=e219]: Каталог
+                            - button "Додати закладку" [ref=e220]:
+                                - img [ref=e221]
+                        - link "Ціноутворення" [ref=e223] [cursor=pointer]:
+                            - /url: /pricing-rules/
+                            - img [ref=e224]
+                            - generic [ref=e226]: Ціноутворення
+                            - button "Додати закладку" [ref=e227]:
+                                - img [ref=e228]
+                        - link "Персонал" [ref=e230] [cursor=pointer]:
+                            - /url: /employees/
+                            - img [ref=e231]
+                            - generic [ref=e243]: Персонал
+                            - button "Додати закладку" [ref=e244]:
+                                - img [ref=e245]
+                        - link "Підрозділи" [ref=e247] [cursor=pointer]:
+                            - /url: /infrastructure/
+                            - img [ref=e248]
+                            - generic [ref=e252]: Підрозділи
+                            - button "Додати закладку" [ref=e253]:
+                                - img [ref=e254]
+                        - link "Налаштування" [ref=e256] [cursor=pointer]:
+                            - /url: /settings/
+                            - img [ref=e257]
+                            - generic [ref=e260]: Налаштування
+                            - button "Додати закладку" [ref=e261]:
+                                - img [ref=e262]
+                        - link "Cloud Sync" [ref=e264] [cursor=pointer]:
+                            - /url: /settings/sync/
+                            - img [ref=e265]
+                            - generic [ref=e268]: Cloud Sync
+                            - button "Додати закладку" [ref=e269]:
+                                - img [ref=e270]
+                - generic [ref=e274]:
+                    - generic [ref=e275]: АС
+                    - generic [ref=e276]:
+                        - generic [ref=e277]: Адмін СТО
+                        - generic [ref=e278]: Адміністратор
+                    - button "Сповіщення" [ref=e280]:
+                        - img [ref=e281]
+                    - button "Вийти" [ref=e284]:
+                        - img [ref=e285]
+        - main [ref=e1]:
+            - generic [ref=e2]:
+                - generic [ref=e4]:
+                    - heading "Складські документи" [level=1] [ref=e5]
+                    - paragraph [ref=e6]: 1 документів
+                - generic [ref=e7]:
+                    - generic [ref=e8]:
+                        - generic [ref=e9]: Тип
+                        - button "Всі" [ref=e10]
+                        - button "Списання" [ref=e11]
+                        - button "Переміщення" [ref=e12]
+                        - button "Поч. залишки" [ref=e13]
+                    - generic [ref=e15]:
+                        - generic [ref=e16]: Статус
+                        - button "Всі" [ref=e17]
+                        - button "Чернетка" [ref=e18]
+                        - button "Підтверджено" [ref=e19]
+                        - button "Скасовано" [ref=e20]
+                    - generic [ref=e21]:
+                        - button "Показати видалені" [ref=e22]:
+                            - img [ref=e23]
+                        - button "Зберегти фільтр" [ref=e28]:
+                            - img [ref=e29]
+                        - button "Налаштувати колонки" [ref=e32]:
+                            - img [ref=e33]
+                            - text: Колонки
+                        - button "Сховати бокову панель" [ref=e35]:
+                            - img [ref=e36]
+                        - button "Документ" [active] [ref=e38]:
+                            - img [ref=e40]
+                            - text: Документ
+                - generic [ref=e41]:
+                    - table [ref=e44]:
+                        - rowgroup [ref=e45]:
+                            - row "Вибрати всі Номер Тип Склад Статус Позицій Дата" [ref=e46]:
+                                - columnheader "Вибрати всі" [ref=e47]:
+                                    - checkbox "Вибрати всі" [ref=e48]
+                                - columnheader "Номер" [ref=e49]
+                                - columnheader "Тип" [ref=e50]
+                                - columnheader "Склад" [ref=e51]
+                                - columnheader "Статус" [ref=e52]
+                                - columnheader "Позицій" [ref=e53]
+                                - columnheader "Дата" [ref=e54]
+                                - columnheader [ref=e55]
+                        - rowgroup [ref=e56]:
+                            - row "Вибрати документ СПС-2026-000116 СПС-2026-000116 Списання E2E-Склад-331113 Чернетка 0 02.06.2026" [ref=e57] [cursor=pointer]:
+                                - cell "Вибрати документ СПС-2026-000116" [ref=e58]:
+                                    - checkbox "Вибрати документ СПС-2026-000116" [ref=e59]
+                                - cell "СПС-2026-000116" [ref=e60]
+                                - cell "Списання" [ref=e61]:
+                                    - generic [ref=e62]: Списання
+                                - cell "E2E-Склад-331113" [ref=e63]
+                                - cell "Чернетка" [ref=e64]:
+                                    - generic [ref=e65]: Чернетка
+                                - cell "0" [ref=e66]
+                                - cell "02.06.2026" [ref=e67]
+                                - cell [ref=e68]:
+                                    - generic [ref=e69]:
+                                        - button "Відкрити деталі" [ref=e70]:
+                                            - img [ref=e71]
+                                        - button "Позначити на видалення" [ref=e74]:
+                                            - img [ref=e75]
+                    - generic [ref=e79]:
+                        - generic:
+                            - heading [level=2]
+                        - button "Закрити" [ref=e81]:
+                            - img [ref=e82]
+    - generic [ref=e289]:
+        - img [ref=e291]
+        - button "Open Tanstack query devtools" [ref=e339] [cursor=pointer]:
+            - img [ref=e340]
+    - dialog "Новий складський документ" [ref=e388]:
+        - generic [ref=e390]:
+            - generic [ref=e391]:
+                - heading "Новий складський документ" [level=2] [ref=e393]
+                - button "Закрити" [ref=e394]:
+                    - img [ref=e395]
+            - generic [ref=e400]:
+                - generic [ref=e401]:
+                    - generic [ref=e402]: Тип документа*
+                    - generic [ref=e403]:
+                        - combobox "Тип документа*" [ref=e404]:
+                            - option "Списання" [selected]
+                            - option "Переміщення між складами"
+                            - option "Початкові залишки"
+                        - img
+                - generic [ref=e405]:
+                    - generic [ref=e406]: Філія*
+                    - generic [ref=e407]:
+                        - combobox "Філія*" [ref=e408]:
+                            - option "Оберіть філію" [disabled] [selected]
+                            - option "Головна філія"
+                            - option "Філія (тестова)"
+                        - img
+                - generic [ref=e409]:
+                    - generic [ref=e410]: Склад*
+                    - generic [ref=e411]:
+                        - combobox "Склад*" [ref=e412]:
+                            - option "Оберіть склад" [disabled] [selected]
+                            - option "E2E-Склад-238174"
+                            - option "E2E-Склад-331113"
+                            - option "E2E-Склад-352338"
+                            - option "E2E-Склад-405188"
+                            - option "E2E-Склад-535803"
+                            - option "E2E-Склад-726439"
+                            - option "E2E-Склад-762197"
+                            - option "E2E-Склад-859453"
+                            - option "E2E-Склад-874566"
+                            - option "E2E-Склад-918831"
+                            - option "E2E-Склад-972984"
+                            - option "Головний склад"
+                            - option "Цех (майстерня)"
+                        - img
+                - generic [ref=e413]:
+                    - generic [ref=e414]: Примітки
+                    - textbox "Примітки" [ref=e416]:
+                        - /placeholder: Необов'язково
+                - generic [ref=e418]:
+                    - generic [ref=e419]: Позиції
+                    - button "+ Додати" [ref=e420]
+            - generic [ref=e421]:
+                - button "Створити документ" [disabled]

@@ -569,9 +569,9 @@ export class CounterpartiesService {
       creditLimit: c.creditLimit ? Number(c.creditLimit) : null,
       currencyCode: c.currencyCode,
       paymentDeferDays: c.paymentDeferDays,
-      createdAt: c.createdAt,
-      updatedAt: c.updatedAt,
-      deletedAt: c.deletedAt,
+      createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt,
+      updatedAt: c.updatedAt instanceof Date ? c.updatedAt.toISOString() : c.updatedAt,
+      deletedAt: c.deletedAt instanceof Date ? c.deletedAt.toISOString() : c.deletedAt,
     };
   }
 
@@ -623,9 +623,9 @@ export class CounterpartiesService {
       contactPerson: item.contactPerson,
       taxNumber: item.taxNumber,
       balance: item.settlementAccount ? Number(item.settlementAccount.balance) : 0,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-      deletedAt: item.deletedAt ?? null,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
+      deletedAt: item.deletedAt instanceof Date ? item.deletedAt.toISOString() : item.deletedAt,
     };
   }
 
@@ -645,7 +645,7 @@ export class CounterpartiesService {
       address: g.address,
       notes: g.notes,
       isDefault: g.isDefault,
-      createdAt: g.createdAt,
+      createdAt: g.createdAt instanceof Date ? g.createdAt.toISOString() : g.createdAt,
     };
   }
 }

@@ -1,4 +1,4 @@
-import {
+﻿import {
   IsString,
   IsNotEmpty,
   IsNumber,
@@ -44,7 +44,9 @@ export class CreateServiceDto {
 
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
 
-  @ApiPropertyOptional({ description: 'Фіксована ціна (null = авто-підрахунок)' })
+  @ApiPropertyOptional({
+    description: 'Р¤С–РєСЃРѕРІР°РЅР° С†С–РЅР° (null = Р°РІС‚Рѕ-РїС–РґСЂР°С…СѓРЅРѕРє)',
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -53,8 +55,8 @@ export class CreateServiceDto {
   @ApiPropertyOptional({ type: [ServiceWorkItemDto] })
   @IsOptional()
   @IsArray()
-  // Bug #248: anti-DoS cap; реалістичний максимум robotic-операцій у послузі.
-  @ArrayMaxSize(100, { message: 'Не більше 100 робіт у послузі' })
+  // Bug #248: anti-DoS cap; СЂРµР°Р»С–СЃС‚РёС‡РЅРёР№ РјР°РєСЃРёРјСѓРј robotic-РѕРїРµСЂР°С†С–Р№ Сѓ РїРѕСЃР»СѓР·С–.
+  @ArrayMaxSize(100, { message: 'РќРµ Р±С–Р»СЊС€Рµ 100 СЂРѕР±С–С‚ Сѓ РїРѕСЃР»СѓР·С–' })
   @ValidateNested({ each: true })
   @Type(() => ServiceWorkItemDto)
   works?: ServiceWorkItemDto[];
@@ -62,7 +64,7 @@ export class CreateServiceDto {
   @ApiPropertyOptional({ type: [ServiceGoodItemDto] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(100, { message: 'Не більше 100 запчастин у послузі' })
+  @ArrayMaxSize(100, { message: 'РќРµ Р±С–Р»СЊС€Рµ 100 Р·Р°РїС‡Р°СЃС‚РёРЅ Сѓ РїРѕСЃР»СѓР·С–' })
   @ValidateNested({ each: true })
   @Type(() => ServiceGoodItemDto)
   goods?: ServiceGoodItemDto[];
@@ -91,7 +93,7 @@ export class ServiceQueryDto {
   @Max(200)
   limit: number = 50;
 
-  @ApiPropertyOptional({ description: 'Показати видалені' })
+  @ApiPropertyOptional({ description: 'РџРѕРєР°Р·Р°С‚Рё РІРёРґР°Р»РµРЅС–' })
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
@@ -104,7 +106,7 @@ export class ServiceResponseDto {
   @ApiProperty() name!: string;
   @ApiPropertyOptional() description!: string | null;
   @ApiPropertyOptional() price!: number | null;
-  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: Date | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: string | null;
   @ApiProperty() works!: Array<{
     workId: string;
     workName: string;
@@ -119,8 +121,8 @@ export class ServiceResponseDto {
     salePrice: number;
     quantity: number;
   }>;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
 }
 
 export class PaginatedServicesDto {

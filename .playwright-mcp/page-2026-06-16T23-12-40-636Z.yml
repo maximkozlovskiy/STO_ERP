@@ -1,0 +1,272 @@
+- generic [active] [ref=e2]:
+    - alert [ref=e1]
+    - button "Open Next.js Dev Tools" [ref=e8] [cursor=pointer]:
+        - img [ref=e9]
+    - generic [ref=e12]:
+        - complementary [ref=e13]:
+            - generic [ref=e14]:
+                - generic [ref=e15]:
+                    - link "STO ERP Автосервіс" [ref=e16] [cursor=pointer]:
+                        - /url: /dashboard/
+                        - img [ref=e18]
+                        - generic [ref=e20]:
+                            - generic [ref=e21]: STO ERP
+                            - generic [ref=e22]: Автосервіс
+                    - button "Згорнути" [ref=e23]:
+                        - img [ref=e24]
+                - button "Пошук... Ctrl K" [ref=e27]:
+                    - img [ref=e28]
+                    - generic [ref=e31]: Пошук...
+                    - generic [ref=e32]: Ctrl K
+                - navigation [ref=e33]:
+                    - generic [ref=e34]:
+                        - link "Дашборд" [ref=e35] [cursor=pointer]:
+                            - /url: /dashboard/
+                            - img [ref=e36]
+                            - generic [ref=e41]: Дашборд
+                            - button "Додати закладку" [ref=e42]:
+                                - img [ref=e43]
+                        - link "Календар" [ref=e45] [cursor=pointer]:
+                            - /url: /calendar/
+                            - img [ref=e46]
+                            - generic [ref=e48]: Календар
+                            - button "Додати закладку" [ref=e49]:
+                                - img [ref=e50]
+                    - generic [ref=e52]:
+                        - paragraph [ref=e53]: Документи
+                        - link "Наряди" [ref=e54] [cursor=pointer]:
+                            - /url: /work-orders/
+                            - img [ref=e55]
+                            - generic [ref=e57]: Наряди
+                            - button "Додати закладку" [ref=e58]:
+                                - img [ref=e59]
+                        - link "Рахунки" [ref=e61] [cursor=pointer]:
+                            - /url: /invoices/
+                            - img [ref=e62]
+                            - generic [ref=e65]: Рахунки
+                            - button "Додати закладку" [ref=e66]:
+                                - img [ref=e67]
+                        - link "Купівля" [ref=e69] [cursor=pointer]:
+                            - /url: /purchase-orders/
+                            - img [ref=e70]
+                            - generic [ref=e74]: Купівля
+                            - button "Додати закладку" [ref=e75]:
+                                - img [ref=e76]
+                        - link "Документи складу" [ref=e78] [cursor=pointer]:
+                            - /url: /stock-documents/
+                            - img [ref=e79]
+                            - generic [ref=e82]: Документи складу
+                            - button "Додати закладку" [ref=e83]:
+                                - img [ref=e84]
+                    - generic [ref=e86]:
+                        - paragraph [ref=e87]: Звіти
+                        - link "Онлайн-запис" [ref=e88] [cursor=pointer]:
+                            - /url: /bookings/
+                            - img [ref=e89]
+                            - generic [ref=e92]: Онлайн-запис
+                            - button "Додати закладку" [ref=e93]:
+                                - img [ref=e94]
+                        - link "Звіти" [ref=e96] [cursor=pointer]:
+                            - /url: /reports/
+                            - img [ref=e97]
+                            - generic [ref=e98]: Звіти
+                            - button "Додати закладку" [ref=e99]:
+                                - img [ref=e100]
+                    - generic [ref=e102]:
+                        - paragraph [ref=e103]: Довідники
+                        - link "Контрагенти" [ref=e104] [cursor=pointer]:
+                            - /url: /counterparties/
+                            - img [ref=e105]
+                            - generic [ref=e110]: Контрагенти
+                            - button "Додати закладку" [ref=e111]:
+                                - img [ref=e112]
+                        - link "Склад" [ref=e114] [cursor=pointer]:
+                            - /url: /inventory/
+                            - img [ref=e115]
+                            - generic [ref=e119]: Склад
+                            - button "Додати закладку" [ref=e120]:
+                                - img [ref=e121]
+                        - link "Каталог" [ref=e123] [cursor=pointer]:
+                            - /url: /catalog/
+                            - img [ref=e124]
+                            - generic [ref=e126]: Каталог
+                            - button "Додати закладку" [ref=e127]:
+                                - img [ref=e128]
+                        - link "Ціноутворення" [ref=e130] [cursor=pointer]:
+                            - /url: /pricing-rules/
+                            - img [ref=e131]
+                            - generic [ref=e133]: Ціноутворення
+                            - button "Додати закладку" [ref=e134]:
+                                - img [ref=e135]
+                        - link "НДІ" [ref=e137] [cursor=pointer]:
+                            - /url: /ndi/
+                            - img [ref=e138]
+                            - generic [ref=e141]: НДІ
+                            - button "Додати закладку" [ref=e142]:
+                                - img [ref=e143]
+                        - link "Співробітники" [ref=e145] [cursor=pointer]:
+                            - /url: /employees/
+                            - img [ref=e146]
+                            - generic [ref=e158]: Співробітники
+                            - button "Додати закладку" [ref=e159]:
+                                - img [ref=e160]
+                        - link "Інфраструктура" [ref=e162] [cursor=pointer]:
+                            - /url: /infrastructure/
+                            - img [ref=e163]
+                            - generic [ref=e167]: Інфраструктура
+                            - button "Додати закладку" [ref=e168]:
+                                - img [ref=e169]
+                    - generic [ref=e171]:
+                        - paragraph [ref=e172]: Налаштування
+                        - link "Система" [ref=e173] [cursor=pointer]:
+                            - /url: /settings/
+                            - img [ref=e174]
+                            - generic [ref=e177]: Система
+                            - button "Додати закладку" [ref=e178]:
+                                - img [ref=e179]
+                        - link "Cloud Sync" [ref=e181] [cursor=pointer]:
+                            - /url: /settings/sync/
+                            - img [ref=e182]
+                            - generic [ref=e185]: Cloud Sync
+                            - button "Додати закладку" [ref=e186]:
+                                - img [ref=e187]
+                - generic [ref=e191]:
+                    - generic [ref=e192]: АС
+                    - generic [ref=e193]:
+                        - generic [ref=e194]: Адмін СТО
+                        - generic [ref=e195]: Власник
+                    - button "Сповіщення" [ref=e197]:
+                        - img [ref=e198]
+                    - button "Вийти" [ref=e201]:
+                        - img [ref=e202]
+        - main [ref=e206]:
+            - generic [ref=e207]:
+                - heading "Наряди" [level=1] [ref=e210]
+                - generic [ref=e211]:
+                    - generic [ref=e212]:
+                        - button "Всі" [ref=e213]
+                        - button "Чернетка" [ref=e215]
+                        - button "Кошторис" [ref=e217]
+                        - button "Затверджено" [ref=e219]
+                        - button "В роботі" [ref=e221]
+                        - button "Призупинено" [ref=e223]
+                        - button "Виконано" [ref=e225]
+                        - button "Виставлено" [ref=e227]
+                        - button "Оплачено" [ref=e229]
+                        - button "Архів" [ref=e231]
+                        - button "Скасовано" [ref=e233]
+                    - button "Мої наряди" [ref=e234]:
+                        - img [ref=e235]
+                        - text: Мої наряди
+                - generic [ref=e238]:
+                    - generic [ref=e240]:
+                        - generic:
+                            - img
+                        - textbox "Пошук за номером або клієнтом..." [ref=e241]
+                    - generic [ref=e242]:
+                        - generic [ref=e243]: З
+                        - generic [ref=e245]:
+                            - textbox "ДД.ММ.РРРР" [ref=e246]: 17.06.2026
+                            - button [ref=e247]:
+                                - img [ref=e248]
+                    - generic [ref=e250]:
+                        - generic [ref=e251]: По
+                        - generic [ref=e253]:
+                            - textbox "ДД.ММ.РРРР" [ref=e254]: 17.06.2026
+                            - button [ref=e255]:
+                                - img [ref=e256]
+                    - generic [ref=e259]:
+                        - combobox [ref=e260]:
+                            - option "Всі категорії" [selected]
+                            - option "ТО"
+                            - option "Поточний ремонт"
+                            - option "Кап. ремонт"
+                            - option "Кузовний"
+                            - option "Діагностика"
+                            - option "Гарантійний"
+                            - option "Сезонне"
+                        - img
+                    - generic [ref=e261]:
+                        - button "Показати видалені" [ref=e262]:
+                            - img [ref=e263]
+                        - button "Зберегти фільтр" [ref=e268]:
+                            - img [ref=e269]
+                        - button "Налаштувати колонки" [ref=e272]:
+                            - img [ref=e273]
+                            - text: Колонки
+                        - button "Сховати бокову панель" [ref=e275]:
+                            - img [ref=e276]
+                        - button "Наряд" [ref=e278]:
+                            - img [ref=e280]
+                            - text: Наряд
+                - generic [ref=e281]:
+                    - table [ref=e283]:
+                        - rowgroup [ref=e284]:
+                            - row "Вибрати всі Номер Клієнт / Авто Статус Підйомник Пріоритет Сума, ₴ Дата документа Заплановано Дедлайн Документи" [ref=e285]:
+                                - columnheader "Вибрати всі" [ref=e286]:
+                                    - checkbox "Вибрати всі" [ref=e287]
+                                - columnheader "Номер" [ref=e288]
+                                - columnheader "Клієнт / Авто" [ref=e289]
+                                - columnheader "Статус" [ref=e290]
+                                - columnheader "Підйомник" [ref=e291]
+                                - columnheader "Пріоритет" [ref=e292]
+                                - columnheader "Сума, ₴" [ref=e293]:
+                                    - generic [ref=e294]:
+                                        - text: Сума, ₴
+                                        - img [ref=e295]
+                                - columnheader "Дата документа" [ref=e298]:
+                                    - generic [ref=e299]:
+                                        - text: Дата документа
+                                        - img [ref=e300]
+                                - columnheader "Заплановано" [ref=e303]:
+                                    - generic [ref=e304]:
+                                        - text: Заплановано
+                                        - img [ref=e305]
+                                - columnheader "Дедлайн" [ref=e308]:
+                                    - generic [ref=e309]:
+                                        - text: Дедлайн
+                                        - img [ref=e310]
+                                - columnheader "Документи" [ref=e313]
+                                - columnheader [ref=e314]
+                        - rowgroup [ref=e315]:
+                            - 'row "Вибрати наряд НРД-2026-000150 НРД-2026-000150 ТО Клієнт Іван Toyota Camry (AA1234BB) В роботі E2E-Пост-035850 Редагувати: NORMAL 1 080,00 17.06.2026 — Редагувати" [ref=e316] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000150" [ref=e317]:
+                                    - checkbox "Вибрати наряд НРД-2026-000150" [ref=e318]
+                                - cell "НРД-2026-000150 ТО" [ref=e319]:
+                                    - generic [ref=e320]:
+                                        - generic [ref=e322]: НРД-2026-000150
+                                        - paragraph [ref=e323]: ТО
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e324]:
+                                    - paragraph [ref=e325]: Клієнт Іван
+                                    - paragraph [ref=e326]: Toyota Camry (AA1234BB)
+                                - cell "В роботі" [ref=e327]:
+                                    - generic [ref=e329]: В роботі
+                                - cell "E2E-Пост-035850" [ref=e331]
+                                - 'cell "Редагувати: NORMAL" [ref=e332]':
+                                    - 'button "Редагувати: NORMAL" [ref=e333]':
+                                        - generic [ref=e334]: Звичайний
+                                - cell "1 080,00" [ref=e335]
+                                - cell "17.06.2026" [ref=e336]
+                                - cell "—" [ref=e337]
+                                - cell "Редагувати" [ref=e338]:
+                                    - button "Редагувати" [ref=e339]: —
+                                - cell [ref=e340]
+                                - cell [ref=e341]:
+                                    - generic [ref=e342]:
+                                        - button "Відкрити наряд" [ref=e343]:
+                                            - img [ref=e344]
+                                        - button "Позначити на видалення" [ref=e347]:
+                                            - img [ref=e348]
+                    - generic [ref=e352]:
+                        - generic:
+                            - generic:
+                                - heading [level=2]
+                        - generic [ref=e353]:
+                            - button "Налаштування панелі" [ref=e354]:
+                                - img [ref=e355]
+                            - button "Закрити" [ref=e358]:
+                                - img [ref=e359]
+    - generic [ref=e363]:
+        - img [ref=e365]
+        - button "Open Tanstack query devtools" [ref=e413] [cursor=pointer]:
+            - img [ref=e414]

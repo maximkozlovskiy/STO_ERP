@@ -1,4 +1,4 @@
-import {
+﻿import {
   IsString,
   IsNotEmpty,
   IsNumber,
@@ -23,15 +23,18 @@ export class CreateWorkDto {
   @Matches(UUID_RE, { message: 'categoryId must be a UUID' })
   categoryId!: string;
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
-  @ApiProperty({ description: 'Нормо-годин' }) @IsNumber() @Min(0) normoHours!: number;
-  @ApiProperty({ description: 'Ціна, ₴' }) @IsNumber() @Min(0) price!: number;
+  @ApiProperty({ description: 'РќРѕСЂРјРѕ-РіРѕРґРёРЅ' }) @IsNumber() @Min(0) normoHours!: number;
+  @ApiProperty({ description: 'Р¦С–РЅР°, в‚ґ' }) @IsNumber() @Min(0) price!: number;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ description: 'Гарантійна робота (виконується безкоштовно)' })
+  @ApiPropertyOptional({
+    description:
+      'Р“Р°СЂР°РЅС‚С–Р№РЅР° СЂРѕР±РѕС‚Р° (РІРёРєРѕРЅСѓС”С‚СЊСЃСЏ Р±РµР·РєРѕС€С‚РѕРІРЅРѕ)',
+  })
   @IsOptional()
   @IsBoolean()
   isWarranty?: boolean;
@@ -46,7 +49,7 @@ export class WorkQueryDto {
   @Matches(UUID_RE, { message: 'categoryId must be a UUID' })
   categoryId?: string;
 
-  // Масив ID категорій (батько + всі нащадки) — для фільтрації по піддереву
+  // РњР°СЃРёРІ ID РєР°С‚РµРіРѕСЂС–Р№ (Р±Р°С‚СЊРєРѕ + РІСЃС– РЅР°С‰Р°РґРєРё) вЂ” РґР»СЏ С„С–Р»СЊС‚СЂР°С†С–С— РїРѕ РїС–РґРґРµСЂРµРІСѓ
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
@@ -74,7 +77,7 @@ export class WorkQueryDto {
   @Max(200)
   limit: number = 50;
 
-  @ApiPropertyOptional({ description: 'Показати видалені' })
+  @ApiPropertyOptional({ description: 'РџРѕРєР°Р·Р°С‚Рё РІРёРґР°Р»РµРЅС–' })
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
@@ -91,9 +94,9 @@ export class WorkResponseDto {
   @ApiProperty() price!: number;
   @ApiPropertyOptional() description!: string | null;
   @ApiProperty() isWarranty!: boolean;
-  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: Date | null;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: string | null;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
 }
 
 export class PaginatedWorksDto {

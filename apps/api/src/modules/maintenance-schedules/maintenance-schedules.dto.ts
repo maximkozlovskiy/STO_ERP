@@ -1,4 +1,4 @@
-import { IsUUID, IsString, IsOptional, IsBoolean, IsInt, IsDateString, Min } from 'class-validator';
+﻿import { IsUUID, IsString, IsOptional, IsBoolean, IsInt, IsDateString, Min } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
@@ -42,14 +42,14 @@ export class MaintenanceScheduleResponseDto {
   @ApiProperty() maintenanceType!: string;
   @ApiPropertyOptional() intervalDays?: number | null;
   @ApiPropertyOptional() intervalMileage?: number | null;
-  @ApiPropertyOptional() lastMaintenanceDate?: Date | null;
+  @ApiPropertyOptional() lastMaintenanceDate?: string | null;
   @ApiPropertyOptional() lastMaintenanceMileage?: number | null;
-  @ApiPropertyOptional() nextMaintenanceDate?: Date | null;
+  @ApiPropertyOptional() nextMaintenanceDate?: string | null;
   @ApiPropertyOptional() nextMaintenanceMileage?: number | null;
   @ApiProperty() isActive!: boolean;
   @ApiPropertyOptional() notes?: string | null;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
 }
 
 export class UpcomingMaintenanceQueryDto {

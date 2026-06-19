@@ -1,0 +1,799 @@
+- generic [ref=e1]:
+    - alert [ref=e2]
+    - button "Open Next.js Dev Tools" [ref=e8] [cursor=pointer]:
+        - img [ref=e9]
+    - generic [ref=e12]:
+        - complementary [ref=e13]:
+            - generic [ref=e14]:
+                - generic [ref=e15]:
+                    - link "STO ERP Автосервіс" [ref=e16] [cursor=pointer]:
+                        - /url: /dashboard/
+                        - img [ref=e18]
+                        - generic [ref=e20]:
+                            - generic [ref=e21]: STO ERP
+                            - generic [ref=e22]: Автосервіс
+                    - button "Згорнути" [ref=e23]:
+                        - img [ref=e24]
+                - button "Пошук... Ctrl K" [ref=e27]:
+                    - img [ref=e28]
+                    - generic [ref=e31]: Пошук...
+                    - generic [ref=e32]: Ctrl K
+                - navigation [ref=e33]:
+                    - link "Дашборд" [ref=e35] [cursor=pointer]:
+                        - /url: /dashboard/
+                        - img [ref=e36]
+                        - generic [ref=e41]: Дашборд
+                        - button "Додати закладку" [ref=e42]:
+                            - img [ref=e43]
+                    - generic [ref=e45]:
+                        - paragraph [ref=e46]: Документи
+                        - link "Наряди" [ref=e47] [cursor=pointer]:
+                            - /url: /work-orders/
+                            - img [ref=e48]
+                            - generic [ref=e50]: Наряди
+                            - button "Додати закладку" [ref=e51]:
+                                - img [ref=e52]
+                        - link "Рахунки" [ref=e54] [cursor=pointer]:
+                            - /url: /invoices/
+                            - img [ref=e55]
+                            - generic [ref=e58]: Рахунки
+                            - button "Додати закладку" [ref=e59]:
+                                - img [ref=e60]
+                        - link "Замовлення" [ref=e62] [cursor=pointer]:
+                            - /url: /purchase-orders/
+                            - img [ref=e63]
+                            - generic [ref=e67]: Замовлення
+                            - button "Додати закладку" [ref=e68]:
+                                - img [ref=e69]
+                        - link "Документи склад" [ref=e71] [cursor=pointer]:
+                            - /url: /stock-documents/
+                            - img [ref=e72]
+                            - generic [ref=e75]: Документи склад
+                            - button "Додати закладку" [ref=e76]:
+                                - img [ref=e77]
+                    - generic [ref=e79]:
+                        - paragraph [ref=e80]: Звіти
+                        - link "Календар" [ref=e81] [cursor=pointer]:
+                            - /url: /calendar/
+                            - img [ref=e82]
+                            - generic [ref=e84]: Календар
+                            - button "Додати закладку" [ref=e85]:
+                                - img [ref=e86]
+                        - link "Онлайн-запис" [ref=e88] [cursor=pointer]:
+                            - /url: /bookings/
+                            - img [ref=e89]
+                            - generic [ref=e92]: Онлайн-запис
+                            - button "Додати закладку" [ref=e93]:
+                                - img [ref=e94]
+                        - link "Розрахунки" [ref=e96] [cursor=pointer]:
+                            - /url: /settlements/
+                            - img [ref=e97]
+                            - generic [ref=e100]: Розрахунки
+                            - button "Додати закладку" [ref=e101]:
+                                - img [ref=e102]
+                        - link "Звіти" [ref=e104] [cursor=pointer]:
+                            - /url: /reports/
+                            - img [ref=e105]
+                            - generic [ref=e106]: Звіти
+                            - button "Додати закладку" [ref=e107]:
+                                - img [ref=e108]
+                    - generic [ref=e110]:
+                        - paragraph [ref=e111]: Довідники
+                        - link "Контрагенти" [ref=e112] [cursor=pointer]:
+                            - /url: /crm/
+                            - img [ref=e113]
+                            - generic [ref=e118]: Контрагенти
+                            - button "Додати закладку" [ref=e119]:
+                                - img [ref=e120]
+                        - link "Склад" [ref=e122] [cursor=pointer]:
+                            - /url: /inventory/
+                            - img [ref=e123]
+                            - generic [ref=e127]: Склад
+                            - button "Додати закладку" [ref=e128]:
+                                - img [ref=e129]
+                        - link "Каталог" [ref=e131] [cursor=pointer]:
+                            - /url: /catalog/
+                            - img [ref=e132]
+                            - generic [ref=e134]: Каталог
+                            - button "Додати закладку" [ref=e135]:
+                                - img [ref=e136]
+                        - link "Ціноутворення" [ref=e138] [cursor=pointer]:
+                            - /url: /pricing-rules/
+                            - img [ref=e139]
+                            - generic [ref=e141]: Ціноутворення
+                            - button "Додати закладку" [ref=e142]:
+                                - img [ref=e143]
+                        - link "Персонал" [ref=e145] [cursor=pointer]:
+                            - /url: /employees/
+                            - img [ref=e146]
+                            - generic [ref=e158]: Персонал
+                            - button "Додати закладку" [ref=e159]:
+                                - img [ref=e160]
+                        - link "Підрозділи" [ref=e162] [cursor=pointer]:
+                            - /url: /infrastructure/
+                            - img [ref=e163]
+                            - generic [ref=e167]: Підрозділи
+                            - button "Додати закладку" [ref=e168]:
+                                - img [ref=e169]
+                        - link "Налаштування" [ref=e171] [cursor=pointer]:
+                            - /url: /settings/
+                            - img [ref=e172]
+                            - generic [ref=e175]: Налаштування
+                            - button "Додати закладку" [ref=e176]:
+                                - img [ref=e177]
+                        - link "Cloud Sync" [ref=e179] [cursor=pointer]:
+                            - /url: /settings/sync/
+                            - img [ref=e180]
+                            - generic [ref=e183]: Cloud Sync
+                            - button "Додати закладку" [ref=e184]:
+                                - img [ref=e185]
+                - generic [ref=e189]:
+                    - generic [ref=e190]: АС
+                    - generic [ref=e191]:
+                        - generic [ref=e192]: Адмін СТО
+                        - generic [ref=e193]: Адміністратор
+                    - button "Сповіщення" [ref=e195]:
+                        - img [ref=e196]
+                    - button "Вийти" [ref=e199]:
+                        - img [ref=e200]
+        - main [ref=e204]:
+            - generic [ref=e205]:
+                - generic [ref=e207]:
+                    - heading "Наряди" [level=1] [ref=e208]
+                    - paragraph [ref=e209]: 46 записів
+                - generic [ref=e210]:
+                    - generic [ref=e211]:
+                        - button "Всі" [ref=e212]
+                        - button "В роботі" [ref=e213]
+                        - button "Затверджено" [ref=e214]
+                        - button "Кошторис" [ref=e215]
+                        - button "Чернетка" [ref=e216]
+                        - button "Виконано" [ref=e217]
+                        - button "Виставлено" [ref=e218]
+                        - button "Оплачено" [ref=e219]
+                        - button "Призупинено" [ref=e220]
+                        - button "Скасовано" [ref=e221]
+                        - button "Архів" [ref=e222]
+                    - button "Мої наряди" [ref=e223]:
+                        - img [ref=e224]
+                        - text: Мої наряди
+                - generic [ref=e227]:
+                    - generic [ref=e229]:
+                        - generic:
+                            - img
+                        - textbox "Пошук за номером або клієнтом..." [ref=e230]
+                    - generic [ref=e232]:
+                        - textbox "Від" [ref=e233]: 03.06.2026
+                        - button [ref=e234]:
+                            - img [ref=e235]
+                    - generic [ref=e238]:
+                        - textbox "До" [ref=e239]: 03.06.2026
+                        - button [ref=e240]:
+                            - img [ref=e241]
+                    - generic [ref=e244]:
+                        - combobox [ref=e245]:
+                            - option "Всі категорії" [selected]
+                            - option "ТО"
+                            - option "Поточний ремонт"
+                            - option "Кап. ремонт"
+                            - option "Кузовний"
+                            - option "Діагностика"
+                            - option "Гарантійний"
+                            - option "Сезонне"
+                        - img
+                    - generic [ref=e246]:
+                        - button "Показати видалені" [ref=e247]:
+                            - img [ref=e248]
+                        - button "Зберегти фільтр" [ref=e253]:
+                            - img [ref=e254]
+                        - button "Налаштувати колонки" [ref=e257]:
+                            - img [ref=e258]
+                            - text: Колонки
+                        - button "Сховати бокову панель" [ref=e260]:
+                            - img [ref=e261]
+                        - button "Наряд" [active] [ref=e263]:
+                            - img [ref=e265]
+                            - text: Наряд
+                - generic [ref=e266]:
+                    - table [ref=e269]:
+                        - rowgroup [ref=e270]:
+                            - row "Вибрати всі Номер Клієнт / Авто Статус Пріоритет Сума, ₴ Дата документа Заплановано Дедлайн" [ref=e271]:
+                                - columnheader "Вибрати всі" [ref=e272]:
+                                    - checkbox "Вибрати всі" [ref=e273]
+                                - columnheader "Номер" [ref=e274]
+                                - columnheader "Клієнт / Авто" [ref=e275]
+                                - columnheader "Статус" [ref=e276]
+                                - columnheader "Пріоритет" [ref=e277]
+                                - columnheader "Сума, ₴" [ref=e278]
+                                - columnheader "Дата документа" [ref=e279]
+                                - columnheader "Заплановано" [ref=e280]
+                                - columnheader "Дедлайн" [ref=e281]
+                                - columnheader [ref=e282]
+                        - rowgroup [ref=e283]:
+                            - 'row "Вибрати наряд НРД-2026-000184 НРД-2026-000184 Поточний ремонт Клієнт Іван Toyota Camry (AA1234BB) Чернетка Редагувати: NORMAL 0,00 — — Редагувати" [ref=e284] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000184" [ref=e285]:
+                                    - checkbox "Вибрати наряд НРД-2026-000184" [ref=e286]
+                                - cell "НРД-2026-000184 Поточний ремонт" [ref=e287]:
+                                    - generic [ref=e288]:
+                                        - generic [ref=e290]: НРД-2026-000184
+                                        - paragraph [ref=e291]: Поточний ремонт
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e292]:
+                                    - paragraph [ref=e293]: Клієнт Іван
+                                    - paragraph [ref=e294]: Toyota Camry (AA1234BB)
+                                - cell "Чернетка" [ref=e295]:
+                                    - generic [ref=e296]: Чернетка
+                                - 'cell "Редагувати: NORMAL" [ref=e298]':
+                                    - 'button "Редагувати: NORMAL" [ref=e299]':
+                                        - generic [ref=e300]: Звичайний
+                                - cell "0,00" [ref=e301]
+                                - cell "—" [ref=e302]
+                                - cell "—" [ref=e303]
+                                - cell "Редагувати" [ref=e304]:
+                                    - button "Редагувати" [ref=e305]: —
+                                - cell [ref=e306]:
+                                    - generic [ref=e307]:
+                                        - button "Відкрити наряд" [ref=e308]:
+                                            - img [ref=e309]
+                                        - button "Позначити на видалення" [ref=e313]:
+                                            - img [ref=e314]
+                            - 'row "Вибрати наряд НРД-2026-000183 НРД-2026-000183 Клієнт Іван Toyota Camry (AA1234BB) Чернетка Редагувати: NORMAL 0,00 — — Редагувати" [ref=e317] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000183" [ref=e318]:
+                                    - checkbox "Вибрати наряд НРД-2026-000183" [ref=e319]
+                                - cell "НРД-2026-000183" [ref=e320]:
+                                    - generic [ref=e323]: НРД-2026-000183
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e324]:
+                                    - paragraph [ref=e325]: Клієнт Іван
+                                    - paragraph [ref=e326]: Toyota Camry (AA1234BB)
+                                - cell "Чернетка" [ref=e327]:
+                                    - generic [ref=e328]: Чернетка
+                                - 'cell "Редагувати: NORMAL" [ref=e330]':
+                                    - 'button "Редагувати: NORMAL" [ref=e331]':
+                                        - generic [ref=e332]: Звичайний
+                                - cell "0,00" [ref=e333]
+                                - cell "—" [ref=e334]
+                                - cell "—" [ref=e335]
+                                - cell "Редагувати" [ref=e336]:
+                                    - button "Редагувати" [ref=e337]: —
+                                - cell [ref=e338]:
+                                    - generic [ref=e339]:
+                                        - button "Відкрити наряд" [ref=e340]:
+                                            - img [ref=e341]
+                                        - button "Позначити на видалення" [ref=e345]:
+                                            - img [ref=e346]
+                            - 'row "Вибрати наряд НРД-2026-000182 НРД-2026-000182 Клієнт Іван Toyota Camry (AA1234BB) Чернетка Редагувати: NORMAL 0,00 — — Редагувати" [ref=e349] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000182" [ref=e350]:
+                                    - checkbox "Вибрати наряд НРД-2026-000182" [ref=e351]
+                                - cell "НРД-2026-000182" [ref=e352]:
+                                    - generic [ref=e355]: НРД-2026-000182
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e356]:
+                                    - paragraph [ref=e357]: Клієнт Іван
+                                    - paragraph [ref=e358]: Toyota Camry (AA1234BB)
+                                - cell "Чернетка" [ref=e359]:
+                                    - generic [ref=e360]: Чернетка
+                                - 'cell "Редагувати: NORMAL" [ref=e362]':
+                                    - 'button "Редагувати: NORMAL" [ref=e363]':
+                                        - generic [ref=e364]: Звичайний
+                                - cell "0,00" [ref=e365]
+                                - cell "—" [ref=e366]
+                                - cell "—" [ref=e367]
+                                - cell "Редагувати" [ref=e368]:
+                                    - button "Редагувати" [ref=e369]: —
+                                - cell [ref=e370]:
+                                    - generic [ref=e371]:
+                                        - button "Відкрити наряд" [ref=e372]:
+                                            - img [ref=e373]
+                                        - button "Позначити на видалення" [ref=e377]:
+                                            - img [ref=e378]
+                            - 'row "Вибрати наряд НРД-2026-000181 НРД-2026-000181 Клієнт Іван Toyota Camry (AA1234BB) Чернетка Редагувати: NORMAL 0,00 — — Редагувати" [ref=e381] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000181" [ref=e382]:
+                                    - checkbox "Вибрати наряд НРД-2026-000181" [ref=e383]
+                                - cell "НРД-2026-000181" [ref=e384]:
+                                    - generic [ref=e387]: НРД-2026-000181
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e388]:
+                                    - paragraph [ref=e389]: Клієнт Іван
+                                    - paragraph [ref=e390]: Toyota Camry (AA1234BB)
+                                - cell "Чернетка" [ref=e391]:
+                                    - generic [ref=e392]: Чернетка
+                                - 'cell "Редагувати: NORMAL" [ref=e394]':
+                                    - 'button "Редагувати: NORMAL" [ref=e395]':
+                                        - generic [ref=e396]: Звичайний
+                                - cell "0,00" [ref=e397]
+                                - cell "—" [ref=e398]
+                                - cell "—" [ref=e399]
+                                - cell "Редагувати" [ref=e400]:
+                                    - button "Редагувати" [ref=e401]: —
+                                - cell [ref=e402]:
+                                    - generic [ref=e403]:
+                                        - button "Відкрити наряд" [ref=e404]:
+                                            - img [ref=e405]
+                                        - button "Позначити на видалення" [ref=e409]:
+                                            - img [ref=e410]
+                            - 'row "Вибрати наряд НРД-2026-000180 НРД-2026-000180 Кап. ремонт Клієнт Іван Toyota Camry (AA1234BB) Чернетка Редагувати: NORMAL 0,00 — — Редагувати" [ref=e413] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000180" [ref=e414]:
+                                    - checkbox "Вибрати наряд НРД-2026-000180" [ref=e415]
+                                - cell "НРД-2026-000180 Кап. ремонт" [ref=e416]:
+                                    - generic [ref=e417]:
+                                        - generic [ref=e419]: НРД-2026-000180
+                                        - paragraph [ref=e420]: Кап. ремонт
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e421]:
+                                    - paragraph [ref=e422]: Клієнт Іван
+                                    - paragraph [ref=e423]: Toyota Camry (AA1234BB)
+                                - cell "Чернетка" [ref=e424]:
+                                    - generic [ref=e425]: Чернетка
+                                - 'cell "Редагувати: NORMAL" [ref=e427]':
+                                    - 'button "Редагувати: NORMAL" [ref=e428]':
+                                        - generic [ref=e429]: Звичайний
+                                - cell "0,00" [ref=e430]
+                                - cell "—" [ref=e431]
+                                - cell "—" [ref=e432]
+                                - cell "Редагувати" [ref=e433]:
+                                    - button "Редагувати" [ref=e434]: —
+                                - cell [ref=e435]:
+                                    - generic [ref=e436]:
+                                        - button "Відкрити наряд" [ref=e437]:
+                                            - img [ref=e438]
+                                        - button "Позначити на видалення" [ref=e442]:
+                                            - img [ref=e443]
+                            - 'row "Вибрати наряд НРД-2026-000179 НРД-2026-000179 Поточний ремонт Клієнт Іван Toyota Camry (AA1234BB) Чернетка Редагувати: NORMAL 0,00 — — Редагувати" [ref=e446] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000179" [ref=e447]:
+                                    - checkbox "Вибрати наряд НРД-2026-000179" [ref=e448]
+                                - cell "НРД-2026-000179 Поточний ремонт" [ref=e449]:
+                                    - generic [ref=e450]:
+                                        - generic [ref=e452]: НРД-2026-000179
+                                        - paragraph [ref=e453]: Поточний ремонт
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e454]:
+                                    - paragraph [ref=e455]: Клієнт Іван
+                                    - paragraph [ref=e456]: Toyota Camry (AA1234BB)
+                                - cell "Чернетка" [ref=e457]:
+                                    - generic [ref=e458]: Чернетка
+                                - 'cell "Редагувати: NORMAL" [ref=e460]':
+                                    - 'button "Редагувати: NORMAL" [ref=e461]':
+                                        - generic [ref=e462]: Звичайний
+                                - cell "0,00" [ref=e463]
+                                - cell "—" [ref=e464]
+                                - cell "—" [ref=e465]
+                                - cell "Редагувати" [ref=e466]:
+                                    - button "Редагувати" [ref=e467]: —
+                                - cell [ref=e468]:
+                                    - generic [ref=e469]:
+                                        - button "Відкрити наряд" [ref=e470]:
+                                            - img [ref=e471]
+                                        - button "Позначити на видалення" [ref=e475]:
+                                            - img [ref=e476]
+                            - 'row "Вибрати наряд НРД-2026-000178 НРД-2026-000178 Клієнт Іван Toyota Camry (AA1234BB) Оплачено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e479] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000178" [ref=e480]:
+                                    - checkbox "Вибрати наряд НРД-2026-000178" [ref=e481]
+                                - cell "НРД-2026-000178" [ref=e482]:
+                                    - generic [ref=e485]: НРД-2026-000178
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e486]:
+                                    - paragraph [ref=e487]: Клієнт Іван
+                                    - paragraph [ref=e488]: Toyota Camry (AA1234BB)
+                                - cell "Оплачено" [ref=e489]:
+                                    - generic [ref=e490]: Оплачено
+                                - 'cell "Редагувати: NORMAL" [ref=e492]':
+                                    - 'button "Редагувати: NORMAL" [ref=e493]':
+                                        - generic [ref=e494]: Звичайний
+                                - cell "100,00" [ref=e495]
+                                - cell "—" [ref=e496]
+                                - cell "—" [ref=e497]
+                                - cell "Редагувати" [ref=e498]:
+                                    - button "Редагувати" [ref=e499]: —
+                                - cell [ref=e500]:
+                                    - generic [ref=e501]:
+                                        - button "Відкрити наряд" [ref=e502]:
+                                            - img [ref=e503]
+                                        - button "Позначити на видалення" [ref=e507]:
+                                            - img [ref=e508]
+                            - 'row "Вибрати наряд НРД-2026-000173 НРД-2026-000173 Клієнт Іван Toyota Camry (AA1234BB) Оплачено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e511] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000173" [ref=e512]:
+                                    - checkbox "Вибрати наряд НРД-2026-000173" [ref=e513]
+                                - cell "НРД-2026-000173" [ref=e514]:
+                                    - generic [ref=e517]: НРД-2026-000173
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e518]:
+                                    - paragraph [ref=e519]: Клієнт Іван
+                                    - paragraph [ref=e520]: Toyota Camry (AA1234BB)
+                                - cell "Оплачено" [ref=e521]:
+                                    - generic [ref=e522]: Оплачено
+                                - 'cell "Редагувати: NORMAL" [ref=e524]':
+                                    - 'button "Редагувати: NORMAL" [ref=e525]':
+                                        - generic [ref=e526]: Звичайний
+                                - cell "100,00" [ref=e527]
+                                - cell "—" [ref=e528]
+                                - cell "—" [ref=e529]
+                                - cell "Редагувати" [ref=e530]:
+                                    - button "Редагувати" [ref=e531]: —
+                                - cell [ref=e532]:
+                                    - generic [ref=e533]:
+                                        - button "Відкрити наряд" [ref=e534]:
+                                            - img [ref=e535]
+                                        - button "Позначити на видалення" [ref=e539]:
+                                            - img [ref=e540]
+                            - 'row "Вибрати наряд НРД-2026-000168 НРД-2026-000168 Клієнт Іван Toyota Camry (AA1234BB) Оплачено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e543] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000168" [ref=e544]:
+                                    - checkbox "Вибрати наряд НРД-2026-000168" [ref=e545]
+                                - cell "НРД-2026-000168" [ref=e546]:
+                                    - generic [ref=e549]: НРД-2026-000168
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e550]:
+                                    - paragraph [ref=e551]: Клієнт Іван
+                                    - paragraph [ref=e552]: Toyota Camry (AA1234BB)
+                                - cell "Оплачено" [ref=e553]:
+                                    - generic [ref=e554]: Оплачено
+                                - 'cell "Редагувати: NORMAL" [ref=e556]':
+                                    - 'button "Редагувати: NORMAL" [ref=e557]':
+                                        - generic [ref=e558]: Звичайний
+                                - cell "100,00" [ref=e559]
+                                - cell "—" [ref=e560]
+                                - cell "—" [ref=e561]
+                                - cell "Редагувати" [ref=e562]:
+                                    - button "Редагувати" [ref=e563]: —
+                                - cell [ref=e564]:
+                                    - generic [ref=e565]:
+                                        - button "Відкрити наряд" [ref=e566]:
+                                            - img [ref=e567]
+                                        - button "Позначити на видалення" [ref=e571]:
+                                            - img [ref=e572]
+                            - 'row "Вибрати наряд НРД-2026-000163 НРД-2026-000163 Клієнт Іван Toyota Camry (AA1234BB) Оплачено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e575] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000163" [ref=e576]:
+                                    - checkbox "Вибрати наряд НРД-2026-000163" [ref=e577]
+                                - cell "НРД-2026-000163" [ref=e578]:
+                                    - generic [ref=e581]: НРД-2026-000163
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e582]:
+                                    - paragraph [ref=e583]: Клієнт Іван
+                                    - paragraph [ref=e584]: Toyota Camry (AA1234BB)
+                                - cell "Оплачено" [ref=e585]:
+                                    - generic [ref=e586]: Оплачено
+                                - 'cell "Редагувати: NORMAL" [ref=e588]':
+                                    - 'button "Редагувати: NORMAL" [ref=e589]':
+                                        - generic [ref=e590]: Звичайний
+                                - cell "100,00" [ref=e591]
+                                - cell "—" [ref=e592]
+                                - cell "—" [ref=e593]
+                                - cell "Редагувати" [ref=e594]:
+                                    - button "Редагувати" [ref=e595]: —
+                                - cell [ref=e596]:
+                                    - generic [ref=e597]:
+                                        - button "Відкрити наряд" [ref=e598]:
+                                            - img [ref=e599]
+                                        - button "Позначити на видалення" [ref=e603]:
+                                            - img [ref=e604]
+                            - 'row "Вибрати наряд НРД-2026-000158 НРД-2026-000158 Клієнт Іван Toyota Camry (AA1234BB) Оплачено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e607] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000158" [ref=e608]:
+                                    - checkbox "Вибрати наряд НРД-2026-000158" [ref=e609]
+                                - cell "НРД-2026-000158" [ref=e610]:
+                                    - generic [ref=e613]: НРД-2026-000158
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e614]:
+                                    - paragraph [ref=e615]: Клієнт Іван
+                                    - paragraph [ref=e616]: Toyota Camry (AA1234BB)
+                                - cell "Оплачено" [ref=e617]:
+                                    - generic [ref=e618]: Оплачено
+                                - 'cell "Редагувати: NORMAL" [ref=e620]':
+                                    - 'button "Редагувати: NORMAL" [ref=e621]':
+                                        - generic [ref=e622]: Звичайний
+                                - cell "100,00" [ref=e623]
+                                - cell "—" [ref=e624]
+                                - cell "—" [ref=e625]
+                                - cell "Редагувати" [ref=e626]:
+                                    - button "Редагувати" [ref=e627]: —
+                                - cell [ref=e628]:
+                                    - generic [ref=e629]:
+                                        - button "Відкрити наряд" [ref=e630]:
+                                            - img [ref=e631]
+                                        - button "Позначити на видалення" [ref=e635]:
+                                            - img [ref=e636]
+                            - 'row "Вибрати наряд НРД-2026-000153 НРД-2026-000153 Клієнт Іван Toyota Camry (AA1234BB) В роботі Редагувати: NORMAL 100,00 — — Редагувати" [ref=e639] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000153" [ref=e640]:
+                                    - checkbox "Вибрати наряд НРД-2026-000153" [ref=e641]
+                                - cell "НРД-2026-000153" [ref=e642]:
+                                    - generic [ref=e645]: НРД-2026-000153
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e646]:
+                                    - paragraph [ref=e647]: Клієнт Іван
+                                    - paragraph [ref=e648]: Toyota Camry (AA1234BB)
+                                - cell "В роботі" [ref=e649]:
+                                    - generic [ref=e650]: В роботі
+                                - 'cell "Редагувати: NORMAL" [ref=e652]':
+                                    - 'button "Редагувати: NORMAL" [ref=e653]':
+                                        - generic [ref=e654]: Звичайний
+                                - cell "100,00" [ref=e655]
+                                - cell "—" [ref=e656]
+                                - cell "—" [ref=e657]
+                                - cell "Редагувати" [ref=e658]:
+                                    - button "Редагувати" [ref=e659]: —
+                                - cell [ref=e660]:
+                                    - generic [ref=e661]:
+                                        - button "Відкрити наряд" [ref=e662]:
+                                            - img [ref=e663]
+                                        - button "Позначити на видалення" [ref=e667]:
+                                            - img [ref=e668]
+                            - 'row "Вибрати наряд НРД-2026-000148 НРД-2026-000148 Клієнт Іван Toyota Camry (AA1234BB) Виставлено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e671] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000148" [ref=e672]:
+                                    - checkbox "Вибрати наряд НРД-2026-000148" [ref=e673]
+                                - cell "НРД-2026-000148" [ref=e674]:
+                                    - generic [ref=e677]: НРД-2026-000148
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e678]:
+                                    - paragraph [ref=e679]: Клієнт Іван
+                                    - paragraph [ref=e680]: Toyota Camry (AA1234BB)
+                                - cell "Виставлено" [ref=e681]:
+                                    - generic [ref=e682]: Виставлено
+                                - 'cell "Редагувати: NORMAL" [ref=e684]':
+                                    - 'button "Редагувати: NORMAL" [ref=e685]':
+                                        - generic [ref=e686]: Звичайний
+                                - cell "100,00" [ref=e687]
+                                - cell "—" [ref=e688]
+                                - cell "—" [ref=e689]
+                                - cell "Редагувати" [ref=e690]:
+                                    - button "Редагувати" [ref=e691]: —
+                                - cell [ref=e692]:
+                                    - generic [ref=e693]:
+                                        - button "Відкрити наряд" [ref=e694]:
+                                            - img [ref=e695]
+                                        - button "Позначити на видалення" [ref=e699]:
+                                            - img [ref=e700]
+                            - 'row "Вибрати наряд НРД-2026-000143 НРД-2026-000143 Клієнт Іван Toyota Camry (AA1234BB) Оплачено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e703] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000143" [ref=e704]:
+                                    - checkbox "Вибрати наряд НРД-2026-000143" [ref=e705]
+                                - cell "НРД-2026-000143" [ref=e706]:
+                                    - generic [ref=e709]: НРД-2026-000143
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e710]:
+                                    - paragraph [ref=e711]: Клієнт Іван
+                                    - paragraph [ref=e712]: Toyota Camry (AA1234BB)
+                                - cell "Оплачено" [ref=e713]:
+                                    - generic [ref=e714]: Оплачено
+                                - 'cell "Редагувати: NORMAL" [ref=e716]':
+                                    - 'button "Редагувати: NORMAL" [ref=e717]':
+                                        - generic [ref=e718]: Звичайний
+                                - cell "100,00" [ref=e719]
+                                - cell "—" [ref=e720]
+                                - cell "—" [ref=e721]
+                                - cell "Редагувати" [ref=e722]:
+                                    - button "Редагувати" [ref=e723]: —
+                                - cell [ref=e724]:
+                                    - generic [ref=e725]:
+                                        - button "Відкрити наряд" [ref=e726]:
+                                            - img [ref=e727]
+                                        - button "Позначити на видалення" [ref=e731]:
+                                            - img [ref=e732]
+                            - 'row "Вибрати наряд НРД-2026-000138 НРД-2026-000138 Клієнт Іван Toyota Camry (AA1234BB) В роботі Редагувати: NORMAL 100,00 — — Редагувати" [ref=e735] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000138" [ref=e736]:
+                                    - checkbox "Вибрати наряд НРД-2026-000138" [ref=e737]
+                                - cell "НРД-2026-000138" [ref=e738]:
+                                    - generic [ref=e741]: НРД-2026-000138
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e742]:
+                                    - paragraph [ref=e743]: Клієнт Іван
+                                    - paragraph [ref=e744]: Toyota Camry (AA1234BB)
+                                - cell "В роботі" [ref=e745]:
+                                    - generic [ref=e746]: В роботі
+                                - 'cell "Редагувати: NORMAL" [ref=e748]':
+                                    - 'button "Редагувати: NORMAL" [ref=e749]':
+                                        - generic [ref=e750]: Звичайний
+                                - cell "100,00" [ref=e751]
+                                - cell "—" [ref=e752]
+                                - cell "—" [ref=e753]
+                                - cell "Редагувати" [ref=e754]:
+                                    - button "Редагувати" [ref=e755]: —
+                                - cell [ref=e756]:
+                                    - generic [ref=e757]:
+                                        - button "Відкрити наряд" [ref=e758]:
+                                            - img [ref=e759]
+                                        - button "Позначити на видалення" [ref=e763]:
+                                            - img [ref=e764]
+                            - 'row "Вибрати наряд НРД-2026-000133 НРД-2026-000133 Клієнт Іван Toyota Camry (AA1234BB) Оплачено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e767] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000133" [ref=e768]:
+                                    - checkbox "Вибрати наряд НРД-2026-000133" [ref=e769]
+                                - cell "НРД-2026-000133" [ref=e770]:
+                                    - generic [ref=e773]: НРД-2026-000133
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e774]:
+                                    - paragraph [ref=e775]: Клієнт Іван
+                                    - paragraph [ref=e776]: Toyota Camry (AA1234BB)
+                                - cell "Оплачено" [ref=e777]:
+                                    - generic [ref=e778]: Оплачено
+                                - 'cell "Редагувати: NORMAL" [ref=e780]':
+                                    - 'button "Редагувати: NORMAL" [ref=e781]':
+                                        - generic [ref=e782]: Звичайний
+                                - cell "100,00" [ref=e783]
+                                - cell "—" [ref=e784]
+                                - cell "—" [ref=e785]
+                                - cell "Редагувати" [ref=e786]:
+                                    - button "Редагувати" [ref=e787]: —
+                                - cell [ref=e788]:
+                                    - generic [ref=e789]:
+                                        - button "Відкрити наряд" [ref=e790]:
+                                            - img [ref=e791]
+                                        - button "Позначити на видалення" [ref=e795]:
+                                            - img [ref=e796]
+                            - 'row "Вибрати наряд НРД-2026-000128 НРД-2026-000128 Клієнт Іван Toyota Camry (AA1234BB) Оплачено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e799] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000128" [ref=e800]:
+                                    - checkbox "Вибрати наряд НРД-2026-000128" [ref=e801]
+                                - cell "НРД-2026-000128" [ref=e802]:
+                                    - generic [ref=e805]: НРД-2026-000128
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e806]:
+                                    - paragraph [ref=e807]: Клієнт Іван
+                                    - paragraph [ref=e808]: Toyota Camry (AA1234BB)
+                                - cell "Оплачено" [ref=e809]:
+                                    - generic [ref=e810]: Оплачено
+                                - 'cell "Редагувати: NORMAL" [ref=e812]':
+                                    - 'button "Редагувати: NORMAL" [ref=e813]':
+                                        - generic [ref=e814]: Звичайний
+                                - cell "100,00" [ref=e815]
+                                - cell "—" [ref=e816]
+                                - cell "—" [ref=e817]
+                                - cell "Редагувати" [ref=e818]:
+                                    - button "Редагувати" [ref=e819]: —
+                                - cell [ref=e820]:
+                                    - generic [ref=e821]:
+                                        - button "Відкрити наряд" [ref=e822]:
+                                            - img [ref=e823]
+                                        - button "Позначити на видалення" [ref=e827]:
+                                            - img [ref=e828]
+                            - 'row "Вибрати наряд НРД-2026-000123 НРД-2026-000123 Клієнт Іван Toyota Camry (AA1234BB) Оплачено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e831] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000123" [ref=e832]:
+                                    - checkbox "Вибрати наряд НРД-2026-000123" [ref=e833]
+                                - cell "НРД-2026-000123" [ref=e834]:
+                                    - generic [ref=e837]: НРД-2026-000123
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e838]:
+                                    - paragraph [ref=e839]: Клієнт Іван
+                                    - paragraph [ref=e840]: Toyota Camry (AA1234BB)
+                                - cell "Оплачено" [ref=e841]:
+                                    - generic [ref=e842]: Оплачено
+                                - 'cell "Редагувати: NORMAL" [ref=e844]':
+                                    - 'button "Редагувати: NORMAL" [ref=e845]':
+                                        - generic [ref=e846]: Звичайний
+                                - cell "100,00" [ref=e847]
+                                - cell "—" [ref=e848]
+                                - cell "—" [ref=e849]
+                                - cell "Редагувати" [ref=e850]:
+                                    - button "Редагувати" [ref=e851]: —
+                                - cell [ref=e852]:
+                                    - generic [ref=e853]:
+                                        - button "Відкрити наряд" [ref=e854]:
+                                            - img [ref=e855]
+                                        - button "Позначити на видалення" [ref=e859]:
+                                            - img [ref=e860]
+                            - 'row "Вибрати наряд НРД-2026-000118 НРД-2026-000118 Клієнт Іван Toyota Camry (AA1234BB) Оплачено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e863] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000118" [ref=e864]:
+                                    - checkbox "Вибрати наряд НРД-2026-000118" [ref=e865]
+                                - cell "НРД-2026-000118" [ref=e866]:
+                                    - generic [ref=e869]: НРД-2026-000118
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e870]:
+                                    - paragraph [ref=e871]: Клієнт Іван
+                                    - paragraph [ref=e872]: Toyota Camry (AA1234BB)
+                                - cell "Оплачено" [ref=e873]:
+                                    - generic [ref=e874]: Оплачено
+                                - 'cell "Редагувати: NORMAL" [ref=e876]':
+                                    - 'button "Редагувати: NORMAL" [ref=e877]':
+                                        - generic [ref=e878]: Звичайний
+                                - cell "100,00" [ref=e879]
+                                - cell "—" [ref=e880]
+                                - cell "—" [ref=e881]
+                                - cell "Редагувати" [ref=e882]:
+                                    - button "Редагувати" [ref=e883]: —
+                                - cell [ref=e884]:
+                                    - generic [ref=e885]:
+                                        - button "Відкрити наряд" [ref=e886]:
+                                            - img [ref=e887]
+                                        - button "Позначити на видалення" [ref=e891]:
+                                            - img [ref=e892]
+                            - 'row "Вибрати наряд НРД-2026-000113 НРД-2026-000113 Клієнт Іван Toyota Camry (AA1234BB) Оплачено Редагувати: NORMAL 100,00 — — Редагувати" [ref=e895] [cursor=pointer]':
+                                - cell "Вибрати наряд НРД-2026-000113" [ref=e896]:
+                                    - checkbox "Вибрати наряд НРД-2026-000113" [ref=e897]
+                                - cell "НРД-2026-000113" [ref=e898]:
+                                    - generic [ref=e901]: НРД-2026-000113
+                                - cell "Клієнт Іван Toyota Camry (AA1234BB)" [ref=e902]:
+                                    - paragraph [ref=e903]: Клієнт Іван
+                                    - paragraph [ref=e904]: Toyota Camry (AA1234BB)
+                                - cell "Оплачено" [ref=e905]:
+                                    - generic [ref=e906]: Оплачено
+                                - 'cell "Редагувати: NORMAL" [ref=e908]':
+                                    - 'button "Редагувати: NORMAL" [ref=e909]':
+                                        - generic [ref=e910]: Звичайний
+                                - cell "100,00" [ref=e911]
+                                - cell "—" [ref=e912]
+                                - cell "—" [ref=e913]
+                                - cell "Редагувати" [ref=e914]:
+                                    - button "Редагувати" [ref=e915]: —
+                                - cell [ref=e916]:
+                                    - generic [ref=e917]:
+                                        - button "Відкрити наряд" [ref=e918]:
+                                            - img [ref=e919]
+                                        - button "Позначити на видалення" [ref=e923]:
+                                            - img [ref=e924]
+                    - generic [ref=e928]:
+                        - generic:
+                            - generic:
+                                - heading [level=2]
+                        - generic [ref=e929]:
+                            - button "Налаштування панелі" [ref=e930]:
+                                - img [ref=e931]
+                            - button "Закрити" [ref=e934]:
+                                - img [ref=e935]
+                - generic [ref=e939]:
+                    - button "Перша сторінка" [disabled]:
+                        - img
+                    - button "Попередня сторінка" [disabled]:
+                        - img
+                    - button "1" [ref=e940]
+                    - button "2" [ref=e941]
+                    - button "3" [ref=e942]
+                    - button "Наступна сторінка" [ref=e943]:
+                        - img [ref=e944]
+                    - button "Остання сторінка" [ref=e946]:
+                        - img [ref=e947]
+    - generic [ref=e950]:
+        - img [ref=e952]
+        - button "Open Tanstack query devtools" [ref=e1000] [cursor=pointer]:
+            - img [ref=e1001]
+    - dialog "Новий наряд" [ref=e1049]:
+        - generic [ref=e1051]:
+            - generic [ref=e1052]:
+                - generic [ref=e1053]:
+                    - heading "Новий наряд" [level=2] [ref=e1054]
+                    - paragraph [ref=e1055]: Заповніть дані для створення наряду
+                - button "Закрити" [ref=e1056]:
+                    - img [ref=e1057]
+            - generic [ref=e1062]:
+                - generic [ref=e1063]:
+                    - generic [ref=e1064]: Клієнт*
+                    - generic [ref=e1065]:
+                        - img
+                        - combobox "Ім'я, телефон, держ. номер авто..." [ref=e1066]
+                - generic [ref=e1067]:
+                    - generic [ref=e1068]: Автомобіль*
+                    - generic [ref=e1069]:
+                        - combobox "Автомобіль*" [disabled] [ref=e1070]:
+                            - option "— Оберіть —" [selected]
+                        - img
+                - generic [ref=e1071]:
+                    - generic [ref=e1072]: Філія*
+                    - generic [ref=e1073]:
+                        - combobox "Філія*" [ref=e1074]:
+                            - option "— Оберіть —" [selected]
+                            - option "Головна філія"
+                            - option "Філія (тестова)"
+                        - img
+                - generic [ref=e1075]:
+                    - generic [ref=e1076]: Опис
+                    - textbox "Опис" [ref=e1078]:
+                        - /placeholder: Заміна масла, колодок...
+                - generic [ref=e1079]:
+                    - generic [ref=e1080]:
+                        - generic [ref=e1081]: Пріоритет
+                        - generic [ref=e1082]:
+                            - combobox "Пріоритет" [ref=e1083]:
+                                - option "Низький"
+                                - option "Звичайний" [selected]
+                                - option "Високий"
+                                - option "Терміново"
+                            - img
+                    - generic [ref=e1084]:
+                        - generic [ref=e1085]: Категорія ремонту
+                        - generic [ref=e1086]:
+                            - combobox "Категорія ремонту" [ref=e1087]:
+                                - option "— Не вказано —" [selected]
+                                - option "ТО"
+                                - option "Поточний ремонт"
+                                - option "Кап. ремонт"
+                                - option "Кузовний"
+                                - option "Діагностика"
+                                - option "Гарантійний"
+                                - option "Сезонне"
+                            - img
+                - generic [ref=e1088]:
+                    - generic [ref=e1089]:
+                        - generic [ref=e1090]: Пробіг (вхід), км
+                        - spinbutton "Пробіг (вхід), км" [ref=e1092]
+                    - generic [ref=e1093]:
+                        - generic [ref=e1094]: Заплановано
+                        - textbox "Заплановано" [ref=e1096]
+                - generic [ref=e1097]:
+                    - generic [ref=e1098]: Дедлайн
+                    - generic [ref=e1099]:
+                        - textbox "ДД.ММ.РРРР" [ref=e1100]
+                        - button [ref=e1101]:
+                            - img [ref=e1102]
+                - generic [ref=e1104]:
+                    - generic [ref=e1105]: Дата документа
+                    - generic [ref=e1106]:
+                        - textbox "ДД.ММ.РРРР" [ref=e1107]: 03.06.2026
+                        - button [ref=e1108]:
+                            - img [ref=e1109]
+            - generic [ref=e1111]:
+                - button "Створити наряд" [disabled]

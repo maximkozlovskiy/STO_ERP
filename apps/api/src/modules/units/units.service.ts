@@ -188,8 +188,8 @@ export class UnitsService {
       volume: item.volume,
       weight: item.weight,
       deletedAt: item.deletedAt ?? null,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };
   }
 }

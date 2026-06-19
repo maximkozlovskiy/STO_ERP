@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
   IsBoolean,
@@ -48,20 +48,22 @@ export const UI_FEATURES_DEFAULTS: UiFeatures = {
 };
 
 export class UpdateOrganisationSettingsDto {
-  // ISO 4217 валюта обліку — посилається на Currency.code (3-10 символів).
-  // Bug review (currency feature): без поля у DTO `forbidNonWhitelisted: true`
-  // глобально відхиляв PATCH з `currency` → save валюти у Settings → Org мовчки
-  // фейлився 400-кою для користувача.
-  // Bug #359: toUpperCurrencyCode нормалізує `uah` → `UAH` + trim + @MaxLength(10)
-  // anti-DoS. Currency.code @db.VarChar(10) у схемі — поза 10 символів не пройде.
-  @ApiPropertyOptional({ description: 'ISO код валюти обліку (UAH, USD, EUR)' })
+  // ISO 4217 РІР°Р»СЋС‚Р° РѕР±Р»С–РєСѓ вЂ” РїРѕСЃРёР»Р°С”С‚СЊСЃСЏ РЅР° Currency.code (3-10 СЃРёРјРІРѕР»С–РІ).
+  // Bug review (currency feature): Р±РµР· РїРѕР»СЏ Сѓ DTO `forbidNonWhitelisted: true`
+  // РіР»РѕР±Р°Р»СЊРЅРѕ РІС–РґС…РёР»СЏРІ PATCH Р· `currency` в†’ save РІР°Р»СЋС‚Рё Сѓ Settings в†’ Org РјРѕРІС‡РєРё
+  // С„РµР№Р»РёРІСЃСЏ 400-РєРѕСЋ РґР»СЏ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°.
+  // Bug #359: toUpperCurrencyCode РЅРѕСЂРјР°Р»С–Р·СѓС” `uah` в†’ `UAH` + trim + @MaxLength(10)
+  // anti-DoS. Currency.code @db.VarChar(10) Сѓ СЃС…РµРјС– вЂ” РїРѕР·Р° 10 СЃРёРјРІРѕР»С–РІ РЅРµ РїСЂРѕР№РґРµ.
+  @ApiPropertyOptional({ description: 'ISO РєРѕРґ РІР°Р»СЋС‚Рё РѕР±Р»С–РєСѓ (UAH, USD, EUR)' })
   @IsOptional()
   @Transform(toUpperCurrencyCode)
   @IsString()
-  @MaxLength(10, { message: 'Код валюти не може перевищувати 10 символів' })
+  @MaxLength(10, {
+    message: 'РљРѕРґ РІР°Р»СЋС‚Рё РЅРµ РјРѕР¶Рµ РїРµСЂРµРІРёС‰СѓРІР°С‚Рё 10 СЃРёРјРІРѕР»С–РІ',
+  })
   currency?: string;
 
-  // Bug #263: emptyToUndefined gap — settings selects з default `''` → 400.
+  // Bug #263: emptyToUndefined gap вЂ” settings selects Р· default `''` в†’ 400.
   @ApiPropertyOptional({ enum: VatMode })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -117,14 +119,18 @@ export class UpdateOrganisationSettingsDto {
   @IsEnum(BatchCostMethod)
   costMethod?: BatchCostMethod;
 
-  // B8: follow-up reminder settings. Bug #84 — Schema/DB had these fields, but
+  // B8: follow-up reminder settings. Bug #84 вЂ” Schema/DB had these fields, but
   // DTO/whitelist silently dropped them on PATCH and they never came back on GET.
-  @ApiPropertyOptional({ description: 'Активувати follow-up нагадування' })
+  @ApiPropertyOptional({ description: 'РђРєС‚РёРІСѓРІР°С‚Рё follow-up РЅР°РіР°РґСѓРІР°РЅРЅСЏ' })
   @IsOptional()
   @IsBoolean()
   followUpActive?: boolean;
 
-  @ApiPropertyOptional({ minimum: 30, maximum: 365, description: 'Поріг днів без візиту' })
+  @ApiPropertyOptional({
+    minimum: 30,
+    maximum: 365,
+    description: 'РџРѕСЂС–Рі РґРЅС–РІ Р±РµР· РІС–Р·РёС‚Сѓ',
+  })
   @IsOptional()
   @IsInt()
   @Min(30)
@@ -132,7 +138,7 @@ export class UpdateOrganisationSettingsDto {
   followUpDays?: number;
 
   @ApiPropertyOptional({
-    description: 'Година автозавантаження курсів НБУ (0–23)',
+    description: 'Р“РѕРґРёРЅР° Р°РІС‚РѕР·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РєСѓСЂСЃС–РІ РќР‘РЈ (0вЂ“23)',
     minimum: 0,
     maximum: 23,
   })
@@ -148,65 +154,75 @@ export class UpdateOrganisationSettingsDto {
   uiFeatures?: Partial<UiFeatures>;
 
   // B4: Loyalty program
-  @ApiPropertyOptional({ description: 'Увімкнути програму лояльності' })
+  @ApiPropertyOptional({ description: 'РЈРІС–РјРєРЅСѓС‚Рё РїСЂРѕРіСЂР°РјСѓ Р»РѕСЏР»СЊРЅРѕСЃС‚С–' })
   @IsOptional()
   @IsBoolean()
   loyaltyEnabled?: boolean;
 
-  @ApiPropertyOptional({ description: 'Нараховувати бали за кожні N грн', minimum: 1 })
+  @ApiPropertyOptional({
+    description: 'РќР°СЂР°С…РѕРІСѓРІР°С‚Рё Р±Р°Р»Рё Р·Р° РєРѕР¶РЅС– N РіСЂРЅ',
+    minimum: 1,
+  })
   @IsOptional()
   @IsNumber()
   @Min(1)
   loyaltyEarnPer?: number;
 
-  @ApiPropertyOptional({ description: 'Кількість балів за N грн', minimum: 0 })
+  @ApiPropertyOptional({ description: 'РљС–Р»СЊРєС–СЃС‚СЊ Р±Р°Р»С–РІ Р·Р° N РіСЂРЅ', minimum: 0 })
   @IsOptional()
   @IsNumber()
   @Min(0)
   loyaltyEarnPoints?: number;
 
-  @ApiPropertyOptional({ description: '1 бал = N грн знижки', minimum: 0 })
+  @ApiPropertyOptional({ description: '1 Р±Р°Р» = N РіСЂРЅ Р·РЅРёР¶РєРё', minimum: 0 })
   @IsOptional()
   @IsNumber()
   @Min(0)
   loyaltyRedeemRate?: number;
 
-  @ApiPropertyOptional({ description: 'Перераховувати планові нормогодини по сумі рядків робіт' })
+  @ApiPropertyOptional({
+    description:
+      'РџРµСЂРµСЂР°С…РѕРІСѓРІР°С‚Рё РїР»Р°РЅРѕРІС– РЅРѕСЂРјРѕРіРѕРґРёРЅРё РїРѕ СЃСѓРјС– СЂСЏРґРєС–РІ СЂРѕР±С–С‚',
+  })
   @IsOptional()
   @IsBoolean()
   recalcPlannedHoursFromLines?: boolean;
 
-  @ApiPropertyOptional({ description: 'Перераховувати фактичні нормогодини по сумі рядків робіт' })
+  @ApiPropertyOptional({
+    description:
+      'РџРµСЂРµСЂР°С…РѕРІСѓРІР°С‚Рё С„Р°РєС‚РёС‡РЅС– РЅРѕСЂРјРѕРіРѕРґРёРЅРё РїРѕ СЃСѓРјС– СЂСЏРґРєС–РІ СЂРѕР±С–С‚',
+  })
   @IsOptional()
   @IsBoolean()
   recalcActualHoursFromLines?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Синхронізувати слот календаря при зміні планових годин наряду',
+    description:
+      'РЎРёРЅС…СЂРѕРЅС–Р·СѓРІР°С‚Рё СЃР»РѕС‚ РєР°Р»РµРЅРґР°СЂСЏ РїСЂРё Р·РјС–РЅС– РїР»Р°РЅРѕРІРёС… РіРѕРґРёРЅ РЅР°СЂСЏРґСѓ',
   })
   @IsOptional()
   @IsBoolean()
   syncCalendarSlotWithPlannedHours?: boolean;
 }
 
-// Bug #515: HH:MM regex (00:00–23:59). Без regex backend приймає 'foo'/'25:99' →
-// БД корумпована → getBranchSettings повертає сміття → frontend settings form
-// показує невалідні значення; gorshe — workStartTime='20:00' + workEndTime='09:00'
-// проходить (обидва валідні строки) → getWorkHours повертає інвертовані години →
-// frontend dynHours=[] → NaN у CSS → DOM crash.
+// Bug #515: HH:MM regex (00:00вЂ“23:59). Р‘РµР· regex backend РїСЂРёР№РјР°С” 'foo'/'25:99' в†’
+// Р‘Р” РєРѕСЂСѓРјРїРѕРІР°РЅР° в†’ getBranchSettings РїРѕРІРµСЂС‚Р°С” СЃРјС–С‚С‚СЏ в†’ frontend settings form
+// РїРѕРєР°Р·СѓС” РЅРµРІР°Р»С–РґРЅС– Р·РЅР°С‡РµРЅРЅСЏ; gorshe вЂ” workStartTime='20:00' + workEndTime='09:00'
+// РїСЂРѕС…РѕРґРёС‚СЊ (РѕР±РёРґРІР° РІР°Р»С–РґРЅС– СЃС‚СЂРѕРєРё) в†’ getWorkHours РїРѕРІРµСЂС‚Р°С” С–РЅРІРµСЂС‚РѕРІР°РЅС– РіРѕРґРёРЅРё в†’
+// frontend dynHours=[] в†’ NaN Сѓ CSS в†’ DOM crash.
 const HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export class UpdateBranchSettingsDto {
   @ApiPropertyOptional({ example: '09:00' })
   @IsOptional()
   @IsString()
-  @Matches(HH_MM_RE, { message: 'Формат "ГГ:ХХ" (00:00–23:59)' })
+  @Matches(HH_MM_RE, { message: 'Р¤РѕСЂРјР°С‚ "Р“Р“:РҐРҐ" (00:00вЂ“23:59)' })
   workStartTime?: string;
 
   @ApiPropertyOptional({ example: '18:00' })
   @IsOptional()
   @IsString()
-  @Matches(HH_MM_RE, { message: 'Формат "ГГ:ХХ" (00:00–23:59)' })
+  @Matches(HH_MM_RE, { message: 'Р¤РѕСЂРјР°С‚ "Р“Р“:РҐРҐ" (00:00вЂ“23:59)' })
   workEndTime?: string;
 
   @ApiPropertyOptional({ minimum: 15, maximum: 240 })
@@ -261,7 +277,10 @@ export class UpdateBranchSettingsDto {
   @IsString()
   smsSenderName?: string;
 
-  @ApiPropertyOptional({ description: 'Робочі дні тижня (0=нд, 1=пн, ..., 6=сб)', type: [Number] })
+  @ApiPropertyOptional({
+    description: 'Р РѕР±РѕС‡С– РґРЅС– С‚РёР¶РЅСЏ (0=РЅРґ, 1=РїРЅ, ..., 6=СЃР±)',
+    type: [Number],
+  })
   @IsOptional()
   @IsArray()
   @IsInt({ each: true })
@@ -284,20 +303,32 @@ export class OrganisationSettingsResponseDto {
   @ApiProperty({ enum: BatchCostMethod }) costMethod!: BatchCostMethod;
   @ApiProperty() followUpActive!: boolean;
   @ApiProperty() followUpDays!: number;
-  @ApiProperty({ description: 'Година автозавантаження курсів НБУ (0–23)' }) nbuFetchHour!: number;
+  @ApiProperty({
+    description: 'Р“РѕРґРёРЅР° Р°РІС‚РѕР·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РєСѓСЂСЃС–РІ РќР‘РЈ (0вЂ“23)',
+  })
+  nbuFetchHour!: number;
   @ApiProperty({ description: 'UI feature flags' }) uiFeatures!: UiFeatures;
   // B4: Loyalty
   @ApiProperty() loyaltyEnabled!: boolean;
   @ApiProperty() loyaltyEarnPer!: number;
   @ApiProperty() loyaltyEarnPoints!: number;
   @ApiProperty() loyaltyRedeemRate!: number;
-  @ApiProperty({ description: 'Перераховувати планові нормогодини по сумі рядків робіт' })
+  @ApiProperty({
+    description:
+      'РџРµСЂРµСЂР°С…РѕРІСѓРІР°С‚Рё РїР»Р°РЅРѕРІС– РЅРѕСЂРјРѕРіРѕРґРёРЅРё РїРѕ СЃСѓРјС– СЂСЏРґРєС–РІ СЂРѕР±С–С‚',
+  })
   recalcPlannedHoursFromLines!: boolean;
-  @ApiProperty({ description: 'Перераховувати фактичні нормогодини по сумі рядків робіт' })
+  @ApiProperty({
+    description:
+      'РџРµСЂРµСЂР°С…РѕРІСѓРІР°С‚Рё С„Р°РєС‚РёС‡РЅС– РЅРѕСЂРјРѕРіРѕРґРёРЅРё РїРѕ СЃСѓРјС– СЂСЏРґРєС–РІ СЂРѕР±С–С‚',
+  })
   recalcActualHoursFromLines!: boolean;
-  @ApiProperty({ description: 'Синхронізувати слот календаря при зміні планових годин наряду' })
+  @ApiProperty({
+    description:
+      'РЎРёРЅС…СЂРѕРЅС–Р·СѓРІР°С‚Рё СЃР»РѕС‚ РєР°Р»РµРЅРґР°СЂСЏ РїСЂРё Р·РјС–РЅС– РїР»Р°РЅРѕРІРёС… РіРѕРґРёРЅ РЅР°СЂСЏРґСѓ',
+  })
   syncCalendarSlotWithPlannedHours!: boolean;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() updatedAt!: string;
 }
 
 export class BranchSettingsResponseDto {
@@ -313,12 +344,14 @@ export class BranchSettingsResponseDto {
   @ApiProperty() smsEnabled!: boolean;
   @ApiPropertyOptional() smsProvider?: string | null;
   @ApiPropertyOptional() smsSenderName?: string | null;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() updatedAt!: string;
 }
 
 export class WorkHoursDto {
-  @ApiProperty({ example: 8, description: 'Година початку роботи (0-23)' }) workStartHour!: number;
-  @ApiProperty({ example: 18, description: 'Година кінця роботи (0-23)' }) workEndHour!: number;
+  @ApiProperty({ example: 8, description: 'Р“РѕРґРёРЅР° РїРѕС‡Р°С‚РєСѓ СЂРѕР±РѕС‚Рё (0-23)' })
+  workStartHour!: number;
+  @ApiProperty({ example: 18, description: 'Р“РѕРґРёРЅР° РєС–РЅС†СЏ СЂРѕР±РѕС‚Рё (0-23)' })
+  workEndHour!: number;
 }
 
 export class UpdateOrganisationDto {
@@ -368,5 +401,5 @@ export class OrganisationResponseDto {
   @ApiPropertyOptional() legalAddress?: string | null;
   @ApiPropertyOptional() actualAddress?: string | null;
   @ApiPropertyOptional() bankAccountId?: string | null;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() updatedAt!: string;
 }

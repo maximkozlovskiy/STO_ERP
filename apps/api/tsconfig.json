@@ -4,7 +4,7 @@
     "target": "ES2022",
     "module": "commonjs",
     "moduleResolution": "node",
-    "rootDir": "../..",
+    "rootDir": "src",
     "outDir": "./dist",
     "lib": ["ES2022"],
     "strict": true,
@@ -12,11 +12,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "baseUrl": ".",
-    "paths": {
-      "@sto/shared": ["../../packages/shared/src"]
-    }
+    "experimentalDecorators": true
   },
   "include": ["src/**/*"],
   "exclude": ["src/**/*.spec.ts", "node_modules", "dist"]

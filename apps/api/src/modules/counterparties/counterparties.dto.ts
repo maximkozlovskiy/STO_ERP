@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
@@ -21,7 +21,7 @@ import { ContractType, CounterpartyType, LegalForm } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { toUpperCurrencyCode } from '../../common/transforms/to-upper-currency-code';
 
-// ─── Counterparty ────────────────────────────────────────
+// в”Ђв”Ђв”Ђ Counterparty в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateCounterpartyDto {
   @ApiProperty({ enum: CounterpartyType })
@@ -104,14 +104,14 @@ export class CounterpartyQueryDto {
   showDeleted?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Поле сортування',
+    description: 'РџРѕР»Рµ СЃРѕСЂС‚СѓРІР°РЅРЅСЏ',
     enum: ['lastName', 'createdAt', 'balance'],
   })
   @IsOptional()
   @IsIn(['lastName', 'createdAt', 'balance'])
   sortBy?: string;
 
-  @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })
+  @ApiPropertyOptional({ description: 'РќР°РїСЂСЏРј СЃРѕСЂС‚СѓРІР°РЅРЅСЏ', enum: ['asc', 'desc'] })
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortDir?: 'asc' | 'desc';
@@ -151,10 +151,10 @@ export class CounterpartyResponseDto {
   @ApiPropertyOptional() contactPerson?: string | null;
   @ApiPropertyOptional() taxNumber?: string | null;
   @ApiPropertyOptional() balance?: number;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional({ description: 'Set when soft-deleted (showDeleted=true)' })
-  deletedAt?: Date | null;
+  deletedAt?: string | null;
 }
 
 export class PaginatedCounterpartiesDto {
@@ -164,7 +164,7 @@ export class PaginatedCounterpartiesDto {
   @ApiProperty() limit!: number;
 }
 
-// ─── CustomerGarage ──────────────────────────────────────
+// в”Ђв”Ђв”Ђ CustomerGarage в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateGarageDto {
   @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(200) name!: string;
@@ -180,28 +180,33 @@ export class GarageResponseDto {
   @ApiPropertyOptional() address?: string | null;
   @ApiPropertyOptional() notes?: string | null;
   @ApiProperty() isDefault!: boolean;
-  @ApiProperty() createdAt!: Date;
+  @ApiProperty() createdAt!: string;
 }
 
-// ─── CounterpartyContract ─────────────────────────────────
+// в”Ђв”Ђв”Ђ CounterpartyContract в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateContractDto {
-  // Bug #353: @MaxLength anti-DoS — номер документа має реалістичний верхній ліміт.
-  @ApiPropertyOptional({ description: 'Номер договору (авто якщо не передано)' })
+  // Bug #353: @MaxLength anti-DoS вЂ” РЅРѕРјРµСЂ РґРѕРєСѓРјРµРЅС‚Р° РјР°С” СЂРµР°Р»С–СЃС‚РёС‡РЅРёР№ РІРµСЂС…РЅС–Р№ Р»С–РјС–С‚.
+  @ApiPropertyOptional({
+    description: 'РќРѕРјРµСЂ РґРѕРіРѕРІРѕСЂСѓ (Р°РІС‚Рѕ СЏРєС‰Рѕ РЅРµ РїРµСЂРµРґР°РЅРѕ)',
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(50, { message: 'Номер договору не може перевищувати 50 символів' })
+  @MaxLength(50, {
+    message:
+      'РќРѕРјРµСЂ РґРѕРіРѕРІРѕСЂСѓ РЅРµ РјРѕР¶Рµ РїРµСЂРµРІРёС‰СѓРІР°С‚Рё 50 СЃРёРјРІРѕР»С–РІ',
+  })
   number?: string;
 
   @ApiProperty({ enum: ContractType })
   @IsEnum(ContractType)
   contractType!: ContractType;
 
-  @ApiProperty({ description: 'Дата початку (YYYY-MM-DD)' })
+  @ApiProperty({ description: 'Р”Р°С‚Р° РїРѕС‡Р°С‚РєСѓ (YYYY-MM-DD)' })
   @IsDateString()
   startDate!: string;
 
-  @ApiPropertyOptional({ description: 'Дата завершення (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ description: 'Р”Р°С‚Р° Р·Р°РІРµСЂС€РµРЅРЅСЏ (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
@@ -218,10 +223,10 @@ export class CreateContractDto {
   @Min(0)
   creditLimit?: number;
 
-  // Bug #359: toUpperCurrencyCode нормалізує `uah` → `UAH` (Currency.code UPPERCASE
-  // у DB-сіді, lookup case-sensitive). Replaces emptyToUndefined — той helper лише
-  // мапить '' → undefined, не upper-cases.
-  @ApiPropertyOptional({ description: 'ISO код валюти (напр. UAH, USD, EUR)' })
+  // Bug #359: toUpperCurrencyCode РЅРѕСЂРјР°Р»С–Р·СѓС” `uah` в†’ `UAH` (Currency.code UPPERCASE
+  // Сѓ DB-СЃС–РґС–, lookup case-sensitive). Replaces emptyToUndefined вЂ” С‚РѕР№ helper Р»РёС€Рµ
+  // РјР°РїРёС‚СЊ '' в†’ undefined, РЅРµ upper-cases.
+  @ApiPropertyOptional({ description: 'ISO РєРѕРґ РІР°Р»СЋС‚Рё (РЅР°РїСЂ. UAH, USD, EUR)' })
   @IsOptional()
   @Transform(toUpperCurrencyCode)
   @IsString()
@@ -237,11 +242,14 @@ export class CreateContractDto {
 }
 
 export class UpdateContractDto {
-  // Bug #353: @MaxLength anti-DoS — номер документа має реалістичний верхній ліміт.
+  // Bug #353: @MaxLength anti-DoS вЂ” РЅРѕРјРµСЂ РґРѕРєСѓРјРµРЅС‚Р° РјР°С” СЂРµР°Р»С–СЃС‚РёС‡РЅРёР№ РІРµСЂС…РЅС–Р№ Р»С–РјС–С‚.
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @MaxLength(50, { message: 'Номер договору не може перевищувати 50 символів' })
+  @MaxLength(50, {
+    message:
+      'РќРѕРјРµСЂ РґРѕРіРѕРІРѕСЂСѓ РЅРµ РјРѕР¶Рµ РїРµСЂРµРІРёС‰СѓРІР°С‚Рё 50 СЃРёРјРІРѕР»С–РІ',
+  })
   number?: string;
 
   @ApiPropertyOptional({ enum: ContractType })
@@ -250,13 +258,13 @@ export class UpdateContractDto {
   @IsEnum(ContractType)
   contractType?: ContractType;
 
-  @ApiPropertyOptional({ description: 'Дата початку (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ description: 'Р”Р°С‚Р° РїРѕС‡Р°С‚РєСѓ (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
   startDate?: string;
 
-  @ApiPropertyOptional({ description: 'Дата завершення (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ description: 'Р”Р°С‚Р° Р·Р°РІРµСЂС€РµРЅРЅСЏ (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
@@ -273,10 +281,10 @@ export class UpdateContractDto {
   @Min(0)
   creditLimit?: number;
 
-  // Bug #359: toUpperCurrencyCode нормалізує `uah` → `UAH` (Currency.code UPPERCASE
-  // у DB-сіді, lookup case-sensitive). Replaces emptyToUndefined — той helper лише
-  // мапить '' → undefined, не upper-cases.
-  @ApiPropertyOptional({ description: 'ISO код валюти (напр. UAH, USD, EUR)' })
+  // Bug #359: toUpperCurrencyCode РЅРѕСЂРјР°Р»С–Р·СѓС” `uah` в†’ `UAH` (Currency.code UPPERCASE
+  // Сѓ DB-СЃС–РґС–, lookup case-sensitive). Replaces emptyToUndefined вЂ” С‚РѕР№ helper Р»РёС€Рµ
+  // РјР°РїРёС‚СЊ '' в†’ undefined, РЅРµ upper-cases.
+  @ApiPropertyOptional({ description: 'ISO РєРѕРґ РІР°Р»СЋС‚Рё (РЅР°РїСЂ. UAH, USD, EUR)' })
   @IsOptional()
   @Transform(toUpperCurrencyCode)
   @IsString()
@@ -303,7 +311,7 @@ export class ContractResponseDto {
   @ApiPropertyOptional() creditLimit!: number | null;
   @ApiProperty() currencyCode!: string;
   @ApiPropertyOptional() paymentDeferDays!: number | null;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
-  @ApiPropertyOptional() deletedAt!: Date | null;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
+  @ApiPropertyOptional() deletedAt!: string | null;
 }

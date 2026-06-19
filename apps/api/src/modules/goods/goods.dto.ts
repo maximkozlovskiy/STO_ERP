@@ -1,4 +1,4 @@
-import {
+﻿import {
   IsString,
   IsNotEmpty,
   IsNumber,
@@ -20,7 +20,7 @@ import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 export class CreateGoodDto {
   @ApiPropertyOptional() @IsOptional() @IsString() sku?: string;
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
-  @ApiPropertyOptional({ default: 'шт' }) @IsOptional() @IsString() unit?: string;
+  @ApiPropertyOptional({ default: 'С€С‚' }) @IsOptional() @IsString() unit?: string;
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -45,14 +45,14 @@ export class CreateGoodDto {
   salePrice?: number;
 
   @ApiPropertyOptional() @IsOptional() @IsString() category?: string;
-  @ApiPropertyOptional({ description: 'UUID категорії товарів (GoodCategory)' })
+  @ApiPropertyOptional({ description: 'UUID РєР°С‚РµРіРѕСЂС–С— С‚РѕРІР°СЂС–РІ (GoodCategory)' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsUUID()
   goodCategoryId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() barcode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
-  // Bug #262: emptyToUndefined gap — UpdateGoodDto extends PartialType успадковує цей баг.
+  // Bug #262: emptyToUndefined gap вЂ” UpdateGoodDto extends PartialType СѓСЃРїР°РґРєРѕРІСѓС” С†РµР№ Р±Р°Рі.
   @ApiPropertyOptional({ enum: GoodType })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -97,7 +97,7 @@ export class GoodQueryDto {
   @Max(200)
   limit: number = 50;
 
-  @ApiPropertyOptional({ description: 'Показати видалені' })
+  @ApiPropertyOptional({ description: 'РџРѕРєР°Р·Р°С‚Рё РІРёРґР°Р»РµРЅС–' })
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
@@ -124,9 +124,9 @@ export class GoodResponseDto {
   @ApiPropertyOptional({ enum: GoodType }) goodType?: GoodType | null;
   @ApiPropertyOptional() preferredSupplierId?: string | null;
   @ApiPropertyOptional() preferredSupplierName?: string | null;
-  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: Date | null;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: string | null;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
 }
 
 export class PaginatedGoodsDto {
@@ -136,48 +136,48 @@ export class PaginatedGoodsDto {
   @ApiProperty() limit!: number;
 }
 
-// ─── Good UoM ────────────────────────────────────────────────────────────────
+// в”Ђв”Ђв”Ђ Good UoM в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateGoodUoMDto {
-  @ApiProperty({ description: 'ID одиниці виміру' })
+  @ApiProperty({ description: 'ID РѕРґРёРЅРёС†С– РІРёРјС–СЂСѓ' })
   @IsUUID('4')
   unitOfMeasureId!: string;
 
   @ApiPropertyOptional({
     example: 1,
-    description: 'Коефіцієнт перерахунку (default: з UnitOfMeasure)',
+    description: 'РљРѕРµС„С–С†С–С”РЅС‚ РїРµСЂРµСЂР°С…СѓРЅРєСѓ (default: Р· UnitOfMeasure)',
   })
   @IsOptional()
   @IsNumber()
-  // Bug #312: coefficient=0 → divide-by-zero у qty_base. Той самий guard що Bug #302 для UnitOfMeasure DTO.
+  // Bug #312: coefficient=0 в†’ divide-by-zero Сѓ qty_base. РўРѕР№ СЃР°РјРёР№ guard С‰Рѕ Bug #302 РґР»СЏ UnitOfMeasure DTO.
   @Min(0.000001)
   coefficient?: number;
 
-  @ApiPropertyOptional({ description: 'Ширина (м)' })
+  @ApiPropertyOptional({ description: 'РЁРёСЂРёРЅР° (Рј)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   width?: number;
 
-  @ApiPropertyOptional({ description: 'Висота (м)' })
+  @ApiPropertyOptional({ description: 'Р’РёСЃРѕС‚Р° (Рј)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   height?: number;
 
-  @ApiPropertyOptional({ description: 'Глибина/довжина (м)' })
+  @ApiPropertyOptional({ description: 'Р“Р»РёР±РёРЅР°/РґРѕРІР¶РёРЅР° (Рј)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   depth?: number;
 
-  @ApiPropertyOptional({ description: "Об'єм (м³)" })
+  @ApiPropertyOptional({ description: "РћР±'С”Рј (РјВі)" })
   @IsOptional()
   @IsNumber()
   @Min(0)
   volume?: number;
 
-  @ApiPropertyOptional({ description: 'Вага (кг)' })
+  @ApiPropertyOptional({ description: 'Р’Р°РіР° (РєРі)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -185,38 +185,41 @@ export class CreateGoodUoMDto {
 }
 
 export class UpdateGoodUoMDto {
-  @ApiPropertyOptional({ example: 1, description: 'Коефіцієнт перерахунку до базової одиниці' })
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'РљРѕРµС„С–С†С–С”РЅС‚ РїРµСЂРµСЂР°С…СѓРЅРєСѓ РґРѕ Р±Р°Р·РѕРІРѕС— РѕРґРёРЅРёС†С–',
+  })
   @IsOptional()
   @IsNumber()
-  // Bug #312: coefficient=0 → divide-by-zero. Той самий guard що у CreateGoodUoMDto.
+  // Bug #312: coefficient=0 в†’ divide-by-zero. РўРѕР№ СЃР°РјРёР№ guard С‰Рѕ Сѓ CreateGoodUoMDto.
   @Min(0.000001)
   coefficient?: number;
 
-  @ApiPropertyOptional({ description: 'Ширина (м)' })
+  @ApiPropertyOptional({ description: 'РЁРёСЂРёРЅР° (Рј)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   width?: number;
 
-  @ApiPropertyOptional({ description: 'Висота (м)' })
+  @ApiPropertyOptional({ description: 'Р’РёСЃРѕС‚Р° (Рј)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   height?: number;
 
-  @ApiPropertyOptional({ description: 'Глибина/довжина (м)' })
+  @ApiPropertyOptional({ description: 'Р“Р»РёР±РёРЅР°/РґРѕРІР¶РёРЅР° (Рј)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   depth?: number;
 
-  @ApiPropertyOptional({ description: "Об'єм (м³)" })
+  @ApiPropertyOptional({ description: "РћР±'С”Рј (РјВі)" })
   @IsOptional()
   @IsNumber()
   @Min(0)
   volume?: number;
 
-  @ApiPropertyOptional({ description: 'Вага (кг)' })
+  @ApiPropertyOptional({ description: 'Р’Р°РіР° (РєРі)' })
   @IsOptional()
   @IsNumber()
   @Min(0)

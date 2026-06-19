@@ -32,7 +32,7 @@ export class BrandResponseDto {
   @ApiProperty() orgId!: string;
   @ApiProperty() name!: string;
   @ApiProperty({ type: [String] }) synonyms!: string[];
-  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: Date | null;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: string | null;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
 }

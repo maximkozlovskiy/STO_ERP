@@ -1,15 +1,17 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateGoodCategoryDto {
-  @ApiProperty({ example: 'Двигун' })
+  @ApiProperty({ example: 'Р”РІРёРіСѓРЅ' })
   @IsString()
   @IsNotEmpty()
   name!: string;
 
-  @ApiPropertyOptional({ description: 'UUID батьківської категорії (null = коренева)' })
+  @ApiPropertyOptional({
+    description: 'UUID Р±Р°С‚СЊРєС–РІСЃСЊРєРѕС— РєР°С‚РµРіРѕСЂС–С— (null = РєРѕСЂРµРЅРµРІР°)',
+  })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsUUID()
@@ -58,6 +60,6 @@ export class GoodCategoryResponseDto {
   @ApiProperty() isActive!: boolean;
   @ApiProperty() sortOrder!: number;
   @ApiProperty({ type: () => [GoodCategoryResponseDto] }) children!: GoodCategoryResponseDto[];
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
 }

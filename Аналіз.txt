@@ -1,0 +1,3124 @@
+curl 'http://localhost:3001/settings/' \
+  -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=8a5a74335d3c30ca4a1020429892d958633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/crm/' \
+  -H 'Sec-Fetch-Dest: document' \
+  -H 'Sec-Fetch-Mode: navigate' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'Sec-Fetch-User: ?1' \
+  -H 'Upgrade-Insecure-Requests: 1' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/css/app/layout.css?v=1780150713455' \
+  -H 'Accept: text/css,*/*;q=0.1' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: style' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/webpack.js?v=1780150713455' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/main-app.js?v=1780150713455' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app-pages-internals.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/layout.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/settings/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/common/local-storage.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/content_scripts/utils/util.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/content_scripts/utils/fte-utils.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/content_scripts/express/express-fte.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/content_scripts/express/express-utils.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/browser/css/fonts/AdobeClean-Regular.otf' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/resources/SidePanel/sidePanelUtil.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/browser/css/fonts/AdobeClean-Bold.otf' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/libs/readability.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://majdfhpaihoncoakbjgbdhglocklcgno/assets/main.tsx-C9HIZNRh.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://majdfhpaihoncoakbjgbdhglocklcgno/assets/main.tsx-CW22Jl6B.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://majdfhpaihoncoakbjgbdhglocklcgno/assets/client-Cb__0pbg.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://majdfhpaihoncoakbjgbdhglocklcgno/assets/index-BwDjUviV.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://majdfhpaihoncoakbjgbdhglocklcgno/assets/webcomponents-bundle-o9ApdEzp.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://majdfhpaihoncoakbjgbdhglocklcgno/assets/index-CCdA3sMZ.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://majdfhpaihoncoakbjgbdhglocklcgno/assets/index-ConNLsn8.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://majdfhpaihoncoakbjgbdhglocklcgno/assets/index-CunE50kr.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://majdfhpaihoncoakbjgbdhglocklcgno/assets/index-CVLeaNrJ.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'http://localhost:3001/_next/static/media/22a5144ee8d83bca-s.p.woff2' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/_next/static/css/app/layout.css?v=1780150713455' \
+  -H 'Sec-Fetch-Dest: font' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/favicon.ico' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/settings/ui-features' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/settings/ui-features' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDExMCwiZXhwIjoxNzgwMTUxMDEwfQ.F11J_KAXDULJLqm8wshXu-dbWsoAFgpQnV0vI2N8Exk' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/auth/refresh' \
+  -X 'POST' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Length: 0' \
+  -b 'sto_refresh=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDExMCwiZXhwIjoxNzgyNzQyMTEwfQ.ZknH9F4pFGSWKBB_74rV-xcdLVqIBxI2ggTHWJn8fBY; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'ws://localhost:3001/_next/webpack-hmr' \
+  -H 'Upgrade: websocket' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Pragma: no-cache' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'Connection: Upgrade' \
+  -H 'Sec-WebSocket-Key: a3Eh+CnHY7SMLyozAydTJQ==' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'Sec-WebSocket-Version: 13' \
+  -H 'Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits' ;
+curl 'http://localhost:3001/_next/static/chunks/_app-pages-browser_node_modules_pnpm_next_15_3_2__babel_core_7_2_fed918530a53ca36b90a58a67ca0-88d786.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/settings/organisation' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/payment-methods' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/notification-templates' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/settings/document-numbers' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/settings/tax-rates' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/branches' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/currencies' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/exchange-rates' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/bank-accounts' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/settings/organisation' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/payment-methods' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/notification-templates' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/settings/document-numbers' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/cash-registers' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/settings/tax-rates' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/branches' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/currencies' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/exchange-rates' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/bank-accounts' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/cash-registers' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/settings/org-info' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/settings/org-info' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3001/_next/static/media/9766a7e9e2e0ad5a-s.woff2' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/_next/static/css/app/layout.css?v=1780150713455' \
+  -H 'Sec-Fetch-Dest: font' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/settings/branch/00000000-0000-0000-0000-000000000002' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/settings/branch/00000000-0000-0000-0000-000000000002' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/dashboard/?_rsc=my6ws' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=cb8f6f93e290681170fa45ec34463d0b633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22settings%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fsettings%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /settings' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/dist/FloatingActionButton.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/dist/vendor.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/dist/otherVendors.js' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer;' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'DNT: 1' ;
+curl 'http://localhost:3001/_next/static/chunks/app/dashboard/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/work-orders?limit=200' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/stock-items/low' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/invoices?status=SENT&limit=200' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/reports/revenue?from=2026-05-24&to=2026-05-30' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/maintenance-schedules/upcoming?days=30' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/work-orders?limit=200' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/stock-items/low' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/invoices?status=SENT&limit=200' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/reports/revenue?from=2026-05-24&to=2026-05-30' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/maintenance-schedules/upcoming?days=30' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/dashboard/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/dashboard/stream?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Accept: text/event-stream' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/dashboard/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/media/aa016aab0e6d1295-s.woff2' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: http://localhost:3001/_next/static/css/app/layout.css?v=1780150713455' \
+  -H 'Sec-Fetch-Dest: font' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/work-orders/?_rsc=cx61b' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=3c0fe572c5e218ed55e6fb41ac1859a5633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22dashboard%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fdashboard%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /dashboard' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/dashboard/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/work-orders/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/dashboard/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/work-orders?page=1&limit=20' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/work-orders?page=1&limit=20' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/work-orders/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/work-orders/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/invoices/?_rsc=zk3tt' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22work-orders%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fwork-orders%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /work-orders' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/work-orders/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/invoices/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/work-orders/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/invoices?page=1&limit=20' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/invoices?page=1&limit=20' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/invoices/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/invoices/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/purchase-orders/?_rsc=p43wf' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=3119d691e06bb0c333bca4d021de3c84633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22invoices%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Finvoices%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /invoices' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/invoices/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/purchase-orders/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/invoices/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/purchase-orders?page=1&limit=20' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/purchase-orders?page=1&limit=20' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/purchase-orders/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/purchase-orders/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/stock-documents/?_rsc=a85o5' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=46f7f866c96a81717e813b38930f4d34633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22purchase-orders%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fpurchase-orders%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /purchase-orders' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/purchase-orders/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/stock-documents/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/purchase-orders/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/stock-documents?page=1&limit=20' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/stock-documents?page=1&limit=20' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/stock-documents/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/stock-documents/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/calendar/?_rsc=z4jug' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=07763ffd5f4385e31ccfd41fe74e6226633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22stock-documents%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fstock-documents%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /stock-documents' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/stock-documents/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/calendar/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/stock-documents/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/lifts' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/branches' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/lifts' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/branches' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/calendar/slots?date=2026-05-30' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/calendar/slots?date=2026-05-30' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/calendar/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/calendar/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/settlements/?_rsc=l6edp' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22calendar%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fcalendar%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /calendar' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/calendar/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/settlements/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/calendar/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/counterparties?limit=200' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/counterparties?limit=200' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/settlements/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/settlements/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/reports/?_rsc=1h2t7' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=b50d8aa8161045d7007cd5f1a2dcbd1c633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22settlements%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fsettlements%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /settlements' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/settlements/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/reports/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/settlements/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/reports/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/reports/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/crm/?_rsc=8aph1' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=50cb351f5b52e5a337c7c823ed7e23bd633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22reports%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Freports%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /reports' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/reports/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/crm/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/reports/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/user-preferences/detail_panel_crm' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/counterparties?page=1&limit=20' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/user-preferences/detail_panel_crm' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/counterparties?page=1&limit=20' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/crm/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/crm/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/inventory/?_rsc=hbuqs' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=acc6ad21ef55e2b9644fdc98a9752229633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22crm%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fcrm%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /crm' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/crm/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/inventory/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/crm/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/warehouses' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/stock-items?' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/warehouses' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/stock-items?' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/inventory/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/inventory/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/catalog/?_rsc=10wex' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=5e1a8627002ab4b7b533cbdf88b03b13633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22inventory%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Finventory%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /inventory' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/inventory/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/catalog/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/inventory/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/work-categories' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/works?page=1&limit=30' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/work-categories' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/works?page=1&limit=30' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/catalog/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/catalog/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/pricing-rules/?_rsc=1aes1' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22catalog%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fcatalog%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /catalog' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/catalog/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/pricing-rules/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/catalog/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/pricing-rules' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/pricing-rules' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/goods?limit=200' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/brands' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/pricing-rules/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/goods?limit=200' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/brands' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/pricing-rules/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/employees/?_rsc=itcip' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=0800d2d3a7a0d8df328c69b12afbd19d633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22pricing-rules%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fpricing-rules%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /pricing-rules' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/pricing-rules/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/employees/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/pricing-rules/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/user-preferences/detail_panel_employees' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/zones' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/lifts' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/work-categories' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/branches' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/employees' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/user-preferences/detail_panel_employees' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/zones' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/lifts' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/work-categories' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/branches' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/employees' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/employees/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/employees/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/infrastructure/?_rsc=15xlm' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=1b36a1e3dfeb76d8d42bebdca4c5fb9f633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22employees%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Femployees%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /employees' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/employees/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/infrastructure/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/employees/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/branches' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/zones' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/lifts' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/branches' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/zones' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/lifts' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/warehouses' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/warehouses' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/infrastructure/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/infrastructure/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/settings/?_rsc=8s19p' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=8a5a74335d3c30ca4a1020429892d958633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22infrastructure%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Finfrastructure%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /infrastructure' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/infrastructure/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/settings/organisation' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/payment-methods' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/notification-templates' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/settings/document-numbers' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/settings/tax-rates' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/branches' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/currencies' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/exchange-rates' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/bank-accounts' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/cash-registers' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/settings/org-info' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/settings/organisation' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/payment-methods' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/notification-templates' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/settings/document-numbers' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/settings/tax-rates' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/branches' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/currencies' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/exchange-rates' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/bank-accounts' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/cash-registers' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/settings/org-info' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/settings/branch/00000000-0000-0000-0000-000000000002' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3000/api/settings/branch/00000000-0000-0000-0000-000000000002' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/settings/sync/?_rsc=my6ws' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=0fdac5deb70f57cc8b484c489786feb9633457081244afec; __next_hmr_refresh_hash__=8a5a74335d3c30ca4a1020429892d958633457081244afec; __next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Next-Router-State-Tree: %5B%22%22%2C%7B%22children%22%3A%5B%22settings%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fsettings%2F%22%2C%22refresh%22%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D' \
+  -H 'Next-Url: /settings' \
+  -H 'RSC: 1' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/webpack/50cb351f5b52e5a3.webpack.hot-update.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/webpack/webpack.50cb351f5b52e5a3.hot-update.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/_next/static/chunks/app/settings/sync/page.js' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Referer: http://localhost:3001/settings/' \
+  -H 'Sec-Fetch-Dest: script' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/sync/status' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MDE1MDcxNCwiZXhwIjoxNzgwMTUxNjE0fQ.IbtU_K7tAV9O8Mr1hGF3DqaIRB7DblIfCTEU1CSIJAY' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3000/api/sync/status' \
+  -X 'OPTIONS' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Connection: keep-alive' \
+  -H 'Origin: http://localhost:3001' \
+  -H 'Referer: http://localhost:3001/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-site' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' ;
+curl 'http://localhost:3001/manifest.json' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Sat, 23 May 2026 04:16:18 GMT' \
+  -H 'If-None-Match: W/"279-19e530c582a"' \
+  -H 'Referer: http://localhost:3001/settings/sync/' \
+  -H 'Sec-Fetch-Dest: manifest' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' ;
+curl 'http://localhost:3001/icons/icon-192.png' \
+  -H 'Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' \
+  -H 'Accept-Language: uk,uk-UA;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b '__next_hmr_refresh_hash__=ab3cae4cac4b3f950abf0f3923ef60fa633457081244afec' \
+  -H 'DNT: 1' \
+  -H 'If-Modified-Since: Wed, 27 May 2026 06:34:19 GMT' \
+  -H 'If-None-Match: W/"223-19e68242504"' \
+  -H 'Referer: http://localhost:3001/settings/sync/' \
+  -H 'Sec-Fetch-Dest: image' \
+  -H 'Sec-Fetch-Mode: no-cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"'
+
+Оптимізуй де можливо

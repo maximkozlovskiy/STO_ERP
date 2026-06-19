@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+﻿import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, IsBoolean, IsOptional } from 'class-validator';
 
 export class CreateGoodBarcodeDto {
@@ -25,5 +25,5 @@ export class GoodBarcodeResponseDto {
   @ApiProperty() barcode!: string;
   @ApiProperty() type!: string;
   @ApiProperty() isPrimary!: boolean;
-  @ApiProperty() createdAt!: Date;
+  @ApiProperty() createdAt!: string;
 }

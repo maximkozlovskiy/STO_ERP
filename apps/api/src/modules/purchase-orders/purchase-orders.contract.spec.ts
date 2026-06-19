@@ -89,8 +89,8 @@ describe('PurchaseOrders — HTTP Contract', () => {
           expect.objectContaining({ goodId: expect.any(String), newSalePrice: expect.any(Number) }),
         ]),
       });
-      // Перевіряємо що service викликаний з (orgId, id)
-      expect(serviceMock.applyPricing).toHaveBeenCalledWith('org-1', VALID_UUID);
+      // Перевіряємо що service викликаний з (orgId, id, ruleId?)
+      expect(serviceMock.applyPricing).toHaveBeenCalledWith('org-1', VALID_UUID, undefined);
     });
 
     it('Bug #189: 400 для не-UUID id (ParseUUIDPipe)', async () => {
@@ -147,7 +147,7 @@ describe('PurchaseOrders — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(400);
       expect(res.json().message).toMatch(/RECEIVED.*PARTIAL/);
-      expect(serviceMock.applyPricing).toHaveBeenCalledWith('org-1', VALID_UUID);
+      expect(serviceMock.applyPricing).toHaveBeenCalledWith('org-1', VALID_UUID, undefined);
     });
   });
 

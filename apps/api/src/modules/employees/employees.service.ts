@@ -431,15 +431,15 @@ export class EmployeesService {
       // rateScheme intentionally omitted — exposed only via OWNER/ADMIN-scoped endpoint
       phone: item.phone,
       email: item.email,
-      dateOfHire: item.dateOfHire,
-      dateOfFire: item.dateOfFire,
+      dateOfHire: item.dateOfHire instanceof Date ? item.dateOfHire.toISOString() : item.dateOfHire,
+      dateOfFire: item.dateOfFire instanceof Date ? item.dateOfFire.toISOString() : item.dateOfFire,
       zoneIds: item.employeeZones.map(z => z.zoneId),
       liftIds: item.employeeLifts.map(l => l.liftId),
       workCategoryIds: item.employeeWorkCategories.map(c => c.workCategoryId),
       branchIds: item.employeeBranches.map(b => b.branchId),
       allBranches: item.allBranches,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
       // Surface deletedAt so the UI can render the «видалено» badge when showDeleted=true is on.
       deletedAt: item.deletedAt ?? null,
     };

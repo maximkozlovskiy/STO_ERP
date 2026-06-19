@@ -167,9 +167,9 @@ export class WarehousesService {
       name: w.name,
       type: w.type as WarehouseType,
       isMain: w.isMain,
-      createdAt: w.createdAt,
-      updatedAt: w.updatedAt,
-      deletedAt: w.deletedAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
+      deletedAt: item.deletedAt instanceof Date ? item.deletedAt.toISOString() : item.deletedAt,
     };
   }
 }

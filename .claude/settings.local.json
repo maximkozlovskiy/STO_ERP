@@ -51,7 +51,6 @@
       "Bash(node_modules/.bin/prisma validate *)",
       "Bash(node_modules/.bin/prisma migrate *)",
       "Bash(node_modules/.bin/prisma generate *)",
-      "*",
       "Bash(tail -30 /tmp/api-dev.log 2>&1)",
       "Read(//tmp/**)",
       "Bash(tail -20 /tmp/web-dev.log 2>&1)",
@@ -211,7 +210,19 @@
       "Bash(sed -i 's/className=\"mt-1 text-muted-foreground hover:text-destructive-text transition-colors disabled:opacity-40\"/className=\"mt-1 text-destructive\\\\/70 hover:text-destructive transition-colors disabled:opacity-40\"/g' \"e:/Git/STO ERP/apps/web/src/app/settings/page.tsx\")",
       "Bash(sed -i 's/ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} \\\\/>/ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} pageKey=\"purchase-orders\" \\\\/>/' \"e:/Git/STO ERP/apps/web/src/app/purchase-orders/page.tsx\")",
       "Bash(sed -i 's/ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} \\\\/>/ColumnsDropdown columns={COLUMNS} visibleKeys={colVisible} onToggle={toggleCol} pageKey=\"stock-documents\" \\\\/>/' \"e:/Git/STO ERP/apps/web/src/app/stock-documents/page.tsx\")",
-      "mcp__playwright__browser_navigate"
+      "mcp__playwright__browser_navigate",
+      "Bash(wsl -e bash -c \"cat /proc/version && lsb_release -a 2>/dev/null\")",
+      "Bash(pkill -f \"nest start\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); origins=d.get\\('origins',[]\\); [print\\(o.get\\('localStorage','{}'\\)\\) for o in origins]\")",
+      "Bash(python3 -c \"import sys,json; [print\\(json.loads\\(l\\).get\\('sto_access_token',''\\)\\) for l in sys.stdin if l.strip\\(\\)]\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); items=d if isinstance\\(d,list\\) else d.get\\('items',[]\\); [print\\(i.get\\('name',''\\),i.get\\('deletedAt',''\\)\\) for i in items[:10]]\")",
+      "Bash(Get-ChildItem \"e:\\\\Git\\\\STO ERP\\\\apps\\\\api\\\\src\\\\modules\\\\calendar\\\\\" -Recurse -Filter \"*.ts\" | Select-Object Name, FullName)",
+      "Bash(Get-ChildItem \"e:\\\\Git\\\\STO ERP\\\\apps\\\\web\\\\src\\\\hooks\\\\\" -Filter \"*.ts\" | Select-Object Name)",
+      "Bash(Remove-Item -Recurse -Force apps/web/.next)",
+      "Bash(cmd /c \"npx prisma migrate dev --name add_vat_amounts\")",
+      "Bash(New-Item -ItemType Directory -Force \"e:\\\\Git\\\\STO ERP\\\\packages\\\\database\\\\prisma\\\\migrations\\\\20260619130000_add_brand_synonyms\")",
+      "Bash(Out-Null)",
+      "Bash(Write-Output \"created\")"
     ],
     "additionalDirectories": [
       "e:\\Git\\STO ERP\\.claude",

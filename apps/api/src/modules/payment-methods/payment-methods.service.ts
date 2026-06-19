@@ -105,7 +105,7 @@ export class PaymentMethodsService {
       isActive: item.isActive,
       sortOrder: item.sortOrder,
       requiresFiscal: item.requiresFiscal,
-      updatedAt: item.updatedAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };
   }
 }

@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { WarehouseType } from '@prisma/client';
@@ -12,7 +12,7 @@ export class CreateWarehouseDto {
   @Matches(UUID_RE, { message: 'branchId must be a UUID' })
   branchId!: string;
 
-  @ApiProperty({ example: 'Основний склад' })
+  @ApiProperty({ example: 'РћСЃРЅРѕРІРЅРёР№ СЃРєР»Р°Рґ' })
   @IsString()
   @IsNotEmpty()
   name!: string;
@@ -54,7 +54,7 @@ export class WarehouseResponseDto {
   @ApiProperty() name!: string;
   @ApiProperty({ enum: WarehouseType }) type!: WarehouseType;
   @ApiProperty() isMain!: boolean;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
-  @ApiPropertyOptional() deletedAt?: Date | null;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
+  @ApiPropertyOptional() deletedAt?: string | null;
 }

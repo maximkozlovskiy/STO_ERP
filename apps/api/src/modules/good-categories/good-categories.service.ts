@@ -235,8 +235,8 @@ export class GoodCategoriesService {
       isSystem: item.isSystem,
       isActive: item.isActive,
       sortOrder: item.sortOrder,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };
   }
 }
