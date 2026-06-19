@@ -16,10 +16,12 @@ interface WorkOrderPart {
   workOrderId?: string;
   goodId: string;
   goodName?: string;
+  unitOfMeasureId?: string | null;
   unitShortName?: string;
   coefficient?: number;
   warehouseId: string;
   quantity: number;
+  costPrice?: number | null;
   price: number;
   amount: number;
   createdAt?: string;

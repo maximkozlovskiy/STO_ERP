@@ -77,10 +77,12 @@ interface WorkOrderPart {
   workOrderId?: string;
   goodId: string;
   goodName?: string;
+  unitOfMeasureId?: string | null;
   unitShortName?: string;
   coefficient?: number;
   warehouseId: string;
   quantity: number;
+  costPrice?: number | null;
   price: number;
   amount: number;
   createdAt?: string;
@@ -116,6 +118,7 @@ interface WorkOrderDetail {
   totalActualLabor: number;
   totalParts: number;
   totalAmount: number;
+  totalVat?: number;
   paidAmount: number;
   hasActiveWarranty?: boolean;
   slotStartAt?: string | null;
