@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-06-19
+
+### 9ea58b9e feat(goods): add internalCode (sequential internal good code)
+
+- GOOD_INTERNAL_CODE в DocumentType enum + seed config (prefix T, NEVER reset)
+- internalCode поле на Good + міграція 20260619140000
+- GoodsService генерує internalCode при create через DocumentNumberService
+- GoodsService: brand включений у всі відповіді (brandName в GoodResponseDto)
+- PurchaseOrderLineResponseDto: goodInternalCode, goodBrandName
+- WorkOrderPartResponseDto: goodInternalCode, goodSku, goodBrandName
+- UI: GoodPickerModal, GoodsTab, GoodEditModal, PurchaseOrderCreateModal, CreateWorkOrderModal — показ код · артикул · бренд
+
+### d1a12539 fix(review): PO/WO include drift + GoodPickerModal brandName mapping
+
+### 34259b7a fix(tester): bugs #533-#540 — internalCode session + backfill migration 20260619140001
+
+---
+
 ## 2026-06-17
 
 ### fe9c741c fix(review): VAT report filters + broken endpoint + VatMode typing
