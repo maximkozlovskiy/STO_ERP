@@ -64,6 +64,13 @@ interface LocalLine {
   goodName: string;
   goodSku?: string | null;
   unit: string;
+  // Bug #548: backend повертає unitShortName з UoM relation (supplier-returns.service.ts toDto).
+  // PO modal після Bug #498 рендерить line.unitShortName || line.unit; SR modal копіював
+  // лейаут, але не цю логіку → показував лише сирий unit.
+  unitShortName?: string | null;
+  // Bug #549: зберігаємо unitOfMeasureId, інакше при PATCH backend пересоздає рядки
+  // з NULL UoM (update() робить soft-delete + createMany з l.unitOfMeasureId ?? null).
+  unitOfMeasureId?: string | null;
   quantity: string;
   price: string;
 }
@@ -73,6 +80,8 @@ const EMPTY_LINE: Omit<LocalLine, '_key'> = {
   goodName: '',
   goodSku: null,
   unit: '',
+  unitShortName: null,
+  unitOfMeasureId: null,
   quantity: '1',
   price: '',
 };
@@ -90,6 +99,8 @@ function lineFromApi(l: SupplierReturnLine): LocalLine {
     goodName: l.goodName ?? '',
     goodSku: l.goodSku ?? null,
     unit: l.unit ?? '',
+    unitShortName: l.unitShortName ?? null,
+    unitOfMeasureId: l.unitOfMeasureId ?? null,
     quantity: String(l.quantity),
     price: String(l.price),
   };
@@ -166,12 +177,14 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       .catch(() => {});
   }, [open]);
 
-  // Auto-select single warehouse
+  // Auto-select single warehouse — Bug #550: guard with !editId, інакше race з
+  // edit-fetch робить flicker (auto-select встановлює перший склад, потім edit-data
+  // перезаписує правильним warehouseId з API).
   useEffect(() => {
-    if (warehouses.length === 1 && !warehouseId) {
+    if (warehouses.length === 1 && !warehouseId && !editId) {
       setWarehouseId(warehouses[0].id);
     }
-  }, [warehouses, warehouseId]);
+  }, [warehouses, warehouseId, editId]);
 
   // ── Load existing return ────────────────────────────────────────────────────
   useEffect(() => {
@@ -247,7 +260,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
 
   // ── Lines ──────────────────────────────────────────────────────────────────
   const addLine = useCallback(() => {
+    // Bug #551: дублюємо guard з кнопки «+» на випадок keyboard-shortcut / programmatic виклику.
     if (!newLine.goodId) return;
+    if ((parseFloat(newLine.quantity) || 0) <= 0) return;
     setLines(prev => {
       if (prev.find(l => l.goodId === newLine.goodId)) return prev;
       return [...prev, { ...newLine, _key: newKey() }];
@@ -319,6 +334,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           goodId: l.goodId,
           quantity: parseFloat(l.quantity) || 0,
           price: parseFloat(l.price) || 0,
+          // Bug #549: передаємо unitOfMeasureId, інакше backend.update() пересоздає рядки
+          // з NULL UoM (soft-delete + createMany з l.unitOfMeasureId ?? null).
+          ...(l.unitOfMeasureId ? { unitOfMeasureId: l.unitOfMeasureId } : {}),
         })),
       };
       if (isEdit) {
@@ -651,7 +669,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                           )}
                         </td>
                         <td className="px-3 py-1.5 text-[11px] text-muted-foreground">
-                          {line.unit}
+                          {/* Bug #548: показуємо UoM short name з API замість сирого Good.unit */}
+                          {line.unitShortName || line.unit}
                         </td>
                         <td className="px-1 py-1.5">
                           {isReadOnly ? (
@@ -710,7 +729,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                         />
                       </td>
                       <td className="px-3 py-1.5 text-[11px] text-muted-foreground">
-                        {newLine.unit}
+                        {/* Bug #548: новий рядок з goods picker має лише unit (не unitShortName), fallback OK */}
+                        {newLine.unitShortName || newLine.unit}
                       </td>
                       <td className="px-1 py-1.5">
                         <input
@@ -731,7 +751,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                           <button
                             type="button"
                             onClick={addLine}
-                            disabled={!newLine.goodId}
+                            // Bug #551: блокуємо «+» при порожній К-сть, щоб не плодити рядки,
+                            // які handleSave потім reject'не з помилкою «Кількість має бути > 0».
+                            disabled={!newLine.goodId || (parseFloat(newLine.quantity) || 0) <= 0}
                             title="Додати рядок"
                             className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                           >

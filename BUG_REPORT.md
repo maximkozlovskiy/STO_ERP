@@ -16787,3 +16787,98 @@ git log --all --oneline -p PageClient.tsx | grep -i "onShowBatches\|batchesViewe
 - `apps/web/e2e/status-tooltip.spec.ts` (Bug #546)
 - `apps/web/src/app/(app)/work-orders/[id]/WorkOrderPartsSection.tsx` (Bug #547)
 - `apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx` (Bug #547 — caller)
+
+---
+
+## Session 2026-06-20 — SupplierReturnCreateModal after PO-layout redesign (commits 0bcc7365, 0b60970c)
+
+Перевірка `apps/web/src/components/ui/SupplierReturnCreateModal.tsx` після:
+
+- `0bcc7365` style(supplier-return): copy PO modal layout
+- `0b60970c` fix(supplier-return): align frontend FSM with backend SR_TRANSITIONS
+
+### Bug #548 — [MEDIUM] frontend / SupplierReturnCreateModal — ігнорує `unitShortName` з API → в таблиці рядків показує сирий `Good.unit` замість UoM short name (regression Bug #498 pattern)
+
+**Симптом:** при відкритті існуючого повернення в колонці "ОВ" відображається сире значення `good.unit` (напр. порожньо або «штука»), хоча backend `supplier-returns.service.ts:toDto()` віддає `unitShortName` з `unitOfMeasure.shortName` relation. PO modal після Bug #498 показує `line.unitShortName || line.unit` — SR modal копіював лейаут, але не цю логіку.
+
+**Причина:** `LocalLine` тип не має `unitShortName`. `lineFromApi()` записує лише `unit: l.unit ?? ''`. У JSX `<td>{line.unit}</td>` — нема fallback на `unitShortName`.
+
+**Файл:** `apps/web/src/components/ui/SupplierReturnCreateModal.tsx`
+
+**Виправлення:** додати `unitShortName?: string | null` у `LocalLine`, зберегти його в `lineFromApi()`, у колонці "ОВ" рендерити `line.unitShortName || line.unit`. Те саме для `EMPTY_LINE`, `newLine` стану та `SearchPickerModal.onSelect` (хоча новий рядок з goods API повертає тільки `unit`).
+
+**Severity:** MEDIUM
+**Status:** [x] виправлено
+
+---
+
+### Bug #549 — [HIGH] frontend / SupplierReturnCreateModal — на PATCH `unitOfMeasureId` втрачається → backend пересоздає рядки з NULL UoM → втрата зв'язку з одиницею виміру
+
+**Симптом:** при редагуванні існуючого повернення з рядками, де `unitOfMeasureId` встановлено, PATCH payload містить лише `{ goodId, quantity, price }`. Backend `update()` робить soft-delete старих рядків + `createMany` нових з `unitOfMeasureId: l.unitOfMeasureId ?? null` (line 243). Оскільки фронт не передає поле — у БД пишеться `null`. Зв'язок з UoM знищується. При наступному відкритті повернення показує неправильну одиницю виміру (fallback на `Good.unit`).
+
+**Причина:** `LocalLine` не зберігає `unitOfMeasureId` з API. `lineFromApi()` пропускає це поле. `handleSave` payload (lines 318–322) теж не включає.
+
+**Файл:** `apps/web/src/components/ui/SupplierReturnCreateModal.tsx`
+
+**Виправлення:**
+
+1. Додати `unitOfMeasureId?: string | null` у `LocalLine`.
+2. У `lineFromApi()` зберегти: `unitOfMeasureId: l.unitOfMeasureId ?? null`.
+3. У `EMPTY_LINE` додати `unitOfMeasureId: null`.
+4. У payload `handleSave` передавати `unitOfMeasureId: l.unitOfMeasureId ?? undefined`.
+
+**Severity:** HIGH (data loss на UoM zv'язках)
+**Status:** [x] виправлено
+
+---
+
+### Bug #550 — [MEDIUM] frontend / SupplierReturnCreateModal — race condition: auto-select єдиного складу спрацьовує в edit mode до завантаження edit-даних → flicker склад
+
+**Симптом:** при відкритті існуючого повернення для редагування, якщо в системі один склад і його `id` ≠ `data.warehouseId` повернення, або edit-data приходить пізніше за warehouses, відбувається коротка зміна `warehouseId` на auto-selected, потім перезапис правильним з API. Викликає flicker у `<Select>` і у chip `warehouseById.get(warehouseId)?.name` в CollapsibleHeader. У граничному випадку (повільна edit-fetch + швидкий warehouses-cache + один склад) користувач бачить чужий склад до моменту перезапису.
+
+**Причина:** ефект auto-select (line 169-174) не перевіряє `!editId` — спрацьовує в edit mode завжди.
+
+**Файл:** `apps/web/src/components/ui/SupplierReturnCreateModal.tsx:170`
+
+**Виправлення:** додати guard `!editId`:
+
+```ts
+if (warehouses.length === 1 && !warehouseId && !editId) {
+  setWarehouseId(warehouses[0].id);
+}
+```
+
+Той самий guard для consistency — PO modal має той самий патерн.
+
+**Severity:** MEDIUM
+**Status:** [x] виправлено
+
+---
+
+### Bug #551 — [LOW] frontend / SupplierReturnCreateModal — `addLine` дозволяє додати рядок з порожньою кількістю → лінь UX, помилка виплигує лише на save
+
+**Симптом:** користувач у inline-add ряду вводить товар, потім очищує поле К-сть (`quantity = ''`), тисне «+». Лінія додається з `quantity = ''`. Перевірка `lineSubtotal('' , price)` = 0. У save валідація `parseFloat('') || 0 <= 0` ловить це і показує помилку «Кількість має бути > 0». Краще — disable «+» якщо `quantity` порожня або <= 0.
+
+**Причина:** `disabled={!newLine.goodId}` (line 734) перевіряє лише `goodId`.
+
+**Файл:** `apps/web/src/components/ui/SupplierReturnCreateModal.tsx:734`
+
+**Виправлення:** додати перевірку `(parseFloat(newLine.quantity) || 0) <= 0`:
+
+```tsx
+disabled={!newLine.goodId || (parseFloat(newLine.quantity) || 0) <= 0}
+```
+
+**Severity:** LOW (UX, валідація на save все одно ловить)
+**Status:** [x] виправлено
+
+---
+
+### Файли змінено
+
+- `apps/web/src/components/ui/SupplierReturnCreateModal.tsx` (Bug #548, #549, #550, #551)
+
+### TypeScript
+
+- `pnpm --filter @sto/web tsc --noEmit --incremental false` → 0 errors (baseline ✅ перед і після фіксів)
+- `pnpm --filter @sto/api tsc --noEmit --incremental false` → 0 errors (бекенд не торкався)
