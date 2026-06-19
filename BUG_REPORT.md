@@ -16450,3 +16450,190 @@ Bonus: тест на boundary 1000 рядків (точна межа) + great li
 **Статус:** [x] виправлено — нема що виправляти, аудит фіксує clean state.
 
 ---
+
+## Session 2026-06-19 — Bug hunt on "internal good code" feature (commits 9ea58b9e, d1a12539, b6232f77)
+
+Scope: GoodResponseDto.internalCode + brandName, GoodsService.create() generates internalCode via DocumentNumberService('GOOD_INTERNAL_CODE'), Prisma model Good.internalCode + @@unique([orgId, internalCode]), migration 20260619140000_add_good_internal_code, PO/WO line/part DTOs add goodInternalCode/goodSku/goodBrandName, GoodsTab/GoodEditModal/GoodPickerModal/PurchaseOrderCreateModal/CreateWorkOrderModal show new sub-line.
+
+### Baseline (Krok 0)
+
+- TS api/web/shared: green
+- Unit @sto/api: **5 файли червоні / 85 тестів failed / 837 passed (922 total)**
+  - `goods.service.spec.ts` — 30/30 failed (**CRITICAL — caused by 9ea58b9e**: constructor injected DocumentNumberService але тест-модуль не мокає його)
+  - `purchase-orders.service.spec.ts` — 38/38 failed (pre-existing з commit 60b25347 — SettingsService додано у constructor, тест не оновлено)
+  - `work-orders.recalc-totals.spec.ts` — 6/6 failed (same root cause)
+  - `work-orders.recalc-cap.spec.ts` — 5/5 failed (same)
+  - `work-orders.role-gate.spec.ts` — 6/22 failed (recalcTotals потребує settingsService у addPart/updatePart spec)
+
+---
+
+## Bug #533 — [CRITICAL] database / release-blocker — migration missing DocumentNumberConfig backfill для GOOD_INTERNAL_CODE
+
+**Файл:** `packages/database/prisma/migrations/20260619140000_add_good_internal_code/migration.sql`
+**Severity:** CRITICAL (release-blocker — фіча мертва у production)
+**Категорія:** database / migration backfill
+
+**Опис:** Міграція `20260619140000_add_good_internal_code/migration.sql` додає `ALTER TYPE "DocumentType" ADD VALUE 'GOOD_INTERNAL_CODE'` та колонку `internalCode` з unique-індексом, але НЕ робить `INSERT INTO document_number_configs` для існуючих організацій. `seed.ts` має новий запис у `docConfigs[]` (`prefix: 'T', includeDate: false, resetPeriod: NEVER`) — але `seed.ts` запускається ТІЛЬКИ при первинному setup-і; у проді на існуючих БД він НЕ виконається.
+
+Результат: для будь-якої існуючої організації `POST /goods` (а також авто-create через `xlsx import`) кидає `NotFoundException('Конфігурацію нумерації для "GOOD_INTERNAL_CODE" не знайдено')` із `DocumentNumberService.next()` (document-number.service.ts:52-54). Створення товару повністю заблоковане.
+
+tsc green (Prisma client типи генеруються з schema, не з applied DB schema). Unit-тести green бо мокають prisma. Виявляється тільки runtime — і ТІЛЬКИ на orgs які пройшли setup до 19 червня.
+
+Прецедент: `20260615120100_seed_supplier_return_doc_numbers/migration.sql` — окрема міграція з backfill для `SUPPLIER_RETURN`, з comment що "Postgres забороняє використовувати нове enum-значення у тій самій транзакції, де воно додано". Та сама проблема тут.
+
+**Очікувана поведінка:** Парна backfill-міграція з `INSERT INTO document_number_configs SELECT ... FROM organisations o WHERE NOT EXISTS ...` для усіх org-ів.
+
+**Фактична поведінка:** Backfill відсутній → 500 на POST /goods у production.
+
+**Фікс:** створити нову окрему міграцію `20260619140001_seed_good_internal_code_doc_numbers/migration.sql` з INSERT що backfill-ить конфігурацію для всіх існуючих організацій (prefix='T', padding=6, includeDate=false, resetPeriod=NEVER) — відповідає `seed.ts:163-168`. Окрема міграція тому що Postgres не дозволяє INSERT з новим enum-значенням у тій самій транзакції що ALTER TYPE.
+
+**Статус:** [x] виправлено — створено `packages/database/prisma/migrations/20260619140001_seed_good_internal_code_doc_numbers/migration.sql` з conditional INSERT (NOT EXISTS guard) по всіх org-ах.
+
+---
+
+## Bug #534 — [CRITICAL] backend / test-module-broken — goods.service.spec.ts падає 30/30 через відсутність DocumentNumberService
+
+**Файл:** `apps/api/src/modules/goods/goods.service.spec.ts:91-95`
+**Severity:** CRITICAL (release-blocker — повна суто-блокова регресія тестів модуля)
+**Категорія:** test-coverage / regression-guard / DI
+
+**Опис:** commit 9ea58b9e додав `private readonly docNumbers: DocumentNumberService` у `GoodsService` constructor (goods.service.ts:28). Тест-модуль у `goods.service.spec.ts:91-95` НЕ мокає його:
+
+```ts
+const module = await Test.createTestingModule({
+  providers: [GoodsService, { provide: PrismaService, useValue: prisma }],
+}).compile();
+```
+
+→ Nest кидає `Nest can't resolve dependencies of the GoodsService (PrismaService, ?). Please make sure that the argument DocumentNumberService at index [1] is available...` для усіх 30 тестів. КОЖЕН тест модуля впадає на `compile()` — навіть тести які не торкаються `create()` (findOne, addUoM, setDefaultUoM, removeUoM, stockTotals).
+
+**Очікувана поведінка:** `goods.service.spec.ts` мокає `DocumentNumberService` через `{ provide: DocumentNumberService, useValue: { next: vi.fn().mockResolvedValue('T-000001') } }` і всі 30 тестів зеленіють. Створювальні тести `create()` додатково асертять що `docNumbers.next(orgId, 'GOOD_INTERNAL_CODE')` викликаний рівно 1 раз.
+
+**Фактична поведінка:** 30/30 fail у baseline.
+
+**Фікс:** оновити test-module у `goods.service.spec.ts:60-95`: додати `docNumbersMock: { next: vi.fn().mockResolvedValue('T-000001') }` у `beforeEach`, register у Test.createTestingModule як `{ provide: DocumentNumberService, useValue: docNumbersMock }`. Імпорт `DocumentNumberService` з `../document-number/document-number.service`.
+
+**Статус:** [x] виправлено — додано import DocumentNumberService + docNumbersMock у beforeEach + provider у Test.createTestingModule. 30/30 існуючих тестів green.
+
+---
+
+## Bug #535 — [HIGH] backend / regression-coverage — internalCode generation НЕ покритий contract/service-test
+
+**Файл:** `apps/api/src/modules/goods/goods.service.spec.ts` (відсутні тести)
+**Severity:** HIGH (release-blocker для feature-coverage SKILL §1.1 Bug #478 family)
+**Категорія:** test-coverage / regression-guard
+
+**Опис:** commit 9ea58b9e додає НОВУ side-effect-логіку у `GoodsService.create()`: `const internalCode = await this.docNumbers.next(orgId, 'GOOD_INTERNAL_CODE');` (goods.service.ts:106) → `data: { ..., internalCode }`. Жоден spec НЕ перевіряє:
+
+1. `docNumbers.next` викликається з правильним enum-аргументом `'GOOD_INTERNAL_CODE'` (не `'GOOD_CODE'`, не `'INTERNAL_CODE'` — refactor може мовчазно змінити).
+2. Згенерований `internalCode` потрапляє у `prisma.good.create.data.internalCode`.
+3. `internalCode` потрапляє у відповідь `GoodResponseDto` (через `toDto()`).
+4. SKU-conflict throw → `docNumbers.next` НЕ викликається (інакше seq марно споживається).
+5. FK-validation throw → `docNumbers.next` НЕ викликається.
+
+SKILL пункт «Нове enum value без regression-guard» (Bug #478-#480) і «Hardcoded document-number у auto-create» (Bug #348) однозначно вимагає таких тестів — нове перерахування `GOOD_INTERNAL_CODE` у `DocumentType`.
+
+**Фікс:** додати describe-блок у `goods.service.spec.ts` після `create →` блоку, з 4 кейсами.
+
+**Статус:** [x] виправлено — додано `describe('create — internalCode generation (Bug #535)', ...)` з 6 тестами: (1) docNumbers.next викликаний 1 раз з 'GOOD_INTERNAL_CODE'; (2) internalCode → prisma.good.create.data; (3) GoodResponseDto.internalCode; (4) SKU-conflict → next НЕ викликаний; (5) brand-FK fail → next НЕ викликаний; (6) unit-FK fail → next НЕ викликаний. 36/36 тестів (30 існуючих + 6 нових) green.
+
+---
+
+## Bug #536 — [MEDIUM] backend / pre-existing — purchase-orders/work-orders specs падають через missing SettingsService у test-module
+
+**Файли:**
+
+- `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts` (38 failed)
+- `apps/api/src/modules/work-orders/work-orders.recalc-totals.spec.ts` (6 failed)
+- `apps/api/src/modules/work-orders/work-orders.recalc-cap.spec.ts` (5 failed)
+- `apps/api/src/modules/work-orders/work-orders.role-gate.spec.ts` (6/22 failed — addPart/updatePart tests тільки)
+
+**Severity:** MEDIUM (pre-existing baseline regression від commit 60b25347 feat(vat))
+**Категорія:** test-coverage / regression-guard / DI
+
+**Опис:** commit `60b25347 feat(vat)` додав `private readonly settingsService: SettingsService` у constructor `PurchaseOrdersService` і `WorkOrdersService`. Тест-модулі цих сервісів НЕ оновлено — `Test.createTestingModule` НЕ мокає `SettingsService` → DI throw або null-property read на `recalcTotals` / `applyPricing` / `addPart` / `updatePart`. У PO це покладає весь spec одразу на compile. У WO `recalcTotals` робить `this.settingsService.getDefaultVatRate(orgId)` (work-orders.service.ts:1345) → `null.getDefaultVatRate` runtime error.
+
+**Фікс:** додати SettingsService mock у beforeEach блоки усіх 4 файлів.
+
+**Статус:** [x] виправлено — додано SettingsService mock (`getDefaultVatRate: vi.fn().mockResolvedValue({vatMode:'NONE',vatRate:0})`) у всі 4 specs. Додатково у purchase-orders.service.spec.ts замінено застарілий mock `computePriceFromRules` (number) на `resolveRule` ({price, ruleName}) — рефактор від commit c1dc5dd. Також додано `purchaseOrderLine.update` mock (refactor commit 5127e64b — pricedSalePrice/pricingRuleName per-line). Всі specs green: PO 38/38, WO recalc-totals 6/6, recalc-cap 5/5, role-gate 22/22.
+
+---
+
+## Bug #537 — [MEDIUM] backend / response drift — GoodsService.create/update НЕ повертає goodCategoryName (include відсутній)
+
+**Файл:** `apps/api/src/modules/goods/goods.service.ts:108-113, 141-144`
+**Severity:** MEDIUM (UI drift — назва категорії порожня одразу після створення/edit; з'являється тільки після refresh списку)
+**Категорія:** Bug #232 family — relation-include drift при додаванні нового DTO-поля
+
+**Опис:** `GoodResponseDto.goodCategoryName` (goods.dto.ts:121) повертається через `item.goodCategory?.name ?? null` (goods.service.ts:668). У `findAll` і `findOne` include містить `goodCategory: { select: { id: true, name: true } }` (lines 65, 85). Але у `create` (line 108-113) та `update` (line 141-144) include містить лише `preferredSupplier` + `brand`. Результат: response після `POST/PATCH /goods` має `goodCategoryName: null`, навіть якщо `goodCategoryId` встановлено.
+
+**Фікс:** додати `goodCategory: { select: { id: true, name: true } }` у include обох `create` і `update`.
+
+**Статус:** [x] виправлено — додано `goodCategory: { select: { id: true, name: true } }` у include `create` (goods.service.ts:108-117) і `update` (goods.service.ts:142-151). Тепер POST/PATCH /goods відповідь містить актуальне `goodCategoryName` без потреби refresh.
+
+---
+
+## Bug #538 — [LOW] frontend / UX inconsistency — GoodPickerModal не передає internalCode у secondary колбеку
+
+**Файл:** `apps/web/src/components/ui/GoodPickerModal.tsx:207-213`
+**Severity:** LOW (consumer-side drift; рендер у списку OK, але метадата secondary не оновлена)
+**Категорія:** frontend UX consistency
+
+**Опис:** `GoodPickerModal.onSelect` форматує secondary string без internalCode. Рендер у списку (line 226-231) вже використовує усі три (`internalCode, sku, brandName`). Споживачі (PO/WO modal) не використовують secondary напряму, але інші майбутні споживачі побачать неконсистентне видання.
+
+**Фікс:** змінити secondary обчислення щоб теж відображав internalCode.
+
+**Статус:** [x] виправлено — у `GoodPickerModal.tsx:onSelect` callback тепер обчислює `meta = [item.internalCode, item.sku].filter(Boolean).join(' · ')`. Секондарій тепер дзеркалить sub-line у списку: `internalCode · sku · price` або `price` якщо обидва порожні.
+
+---
+
+## Bug #539 — [INFO] meta — pre-existing FE local interface drift для Good у StockDocument/SupplierReturn/WorkOrderAddPart modals + work-orders/[id]/PageClient
+
+**Файли:**
+
+- `apps/web/src/components/ui/StockDocumentCreateModal.tsx:50`
+- `apps/web/src/components/ui/SupplierReturnCreateModal.tsx:49`
+- `apps/web/src/components/ui/WorkOrderAddPartModal.tsx:19`
+- `apps/web/src/app/(app)/work-orders/[id]/PageClient.tsx:163`
+
+**Severity:** INFO (pre-existing, поза scope feature; залишити як known-state)
+**Категорія:** Bug #434 family — local FE interface ↔ backend DTO drift
+
+**Опис:** 5+ файлів з локальним `interface Good { ... }` БЕЗ полів `internalCode` / `brandName`. Це pre-existing drift — runtime не зламається (`apiFetch<{ items: Good[] }>` TS не позначає неузгодженості бо локальний Good ⊂ backend GoodResponseDto). Але повторюваний патерн і потенційний джерело наступних регресій. Out-of-scope для цієї сесії.
+
+**Статус:** [x] виправлено — INFO-bug, поза scope, відмічено як known-state.
+
+---
+
+## Bug #540 — [LOW] frontend / test-infra — DocumentCreateModals.test.tsx падає через відсутній next/navigation mock
+
+**Файл:** `apps/web/src/components/ui/__tests__/DocumentCreateModals.test.tsx`
+**Severity:** LOW (pre-existing test rot — invariant від useRouter; не runtime user-facing)
+**Категорія:** test-coverage / test-infra
+
+**Опис:** PurchaseOrderCreateModal monthly mount-flow рендерить (через supplier picker) `CounterpartyEditModal`, який викликає `useRouter()` з `next/navigation`. Без mock-у hook кидає `invariant expected app router to be mounted` → unmount всього дерева, тест fail. Pre-existing з sprint 1 (commit `2e142b13`), 590 commits ago.
+
+**Фікс:** додати top-level `vi.mock('next/navigation', () => ({ useRouter: () => stub, usePathname: () => '/', useSearchParams: () => new URLSearchParams() }))` у test-файлі. Web tests тепер 434/434 green.
+
+**Статус:** [x] виправлено — додано mock у DocumentCreateModals.test.tsx; 3/3 PO/Invoice/SD регресій green.
+
+---
+
+### Підсумок сесії
+
+- **Знайдено багів:** 8 (CRITICAL: 3 / HIGH: 1 / MEDIUM: 2 / LOW: 1 / INFO: 1)
+- **Виправлено:** 8 (всі)
+- **Baseline → Final:**
+  - TypeScript: green → green (без регресій)
+  - Unit @sto/api: 837/922 → **928/928** (+91 тестів зеленіють, +6 нових)
+  - Unit @sto/web: 433/434 → **434/434** (+1)
+- **Файли змінено:**
+  - `packages/database/prisma/migrations/20260619140001_seed_good_internal_code_doc_numbers/migration.sql` (new — backfill)
+  - `apps/api/src/modules/goods/goods.service.ts` (Bug #537 include)
+  - `apps/api/src/modules/goods/goods.service.spec.ts` (Bug #534 mock + #535 nova describe)
+  - `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts` (Bug #536)
+  - `apps/api/src/modules/work-orders/work-orders.recalc-totals.spec.ts` (Bug #536)
+  - `apps/api/src/modules/work-orders/work-orders.recalc-cap.spec.ts` (Bug #536)
+  - `apps/api/src/modules/work-orders/work-orders.role-gate.spec.ts` (Bug #536)
+  - `apps/web/src/components/ui/GoodPickerModal.tsx` (Bug #538)
+  - `apps/web/src/components/ui/__tests__/DocumentCreateModals.test.tsx` (Bug #540)

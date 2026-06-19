@@ -26,6 +26,22 @@ vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
+// CounterpartyEditModal (rendered transitively when PO supplier picker opens detail
+// modal) calls `useRouter()` from next/navigation. Without a router-mock the hook
+// throws `invariant expected app router to be mounted` and unmounts the whole tree.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 vi.mock('@/lib/ref-cache', () => ({
   getCached: () => null,
   setCache: vi.fn(),

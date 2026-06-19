@@ -69,18 +69,22 @@ function makePrismaSpy(
 }
 
 function makeService(prisma: PrismaService): WorkOrdersService {
+  // Bug #536: settingsService (index 9) — recalcTotals reads default VAT rate.
+  const settingsService = {
+    getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+  } as never;
   return new WorkOrdersService(
     prisma,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
+    null as never, // inventory
+    null as never, // settlements
+    null as never, // notifications
+    null as never, // docNumbers
+    null as never, // maintenanceSchedules
+    null as never, // pdf
+    null as never, // audit
+    null as never, // warranties
+    settingsService, // settingsService (Bug #536)
+    null as never, // config
   );
 }
 

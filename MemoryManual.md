@@ -12,11 +12,11 @@
 Дата:       2026-06-19
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 908/908 | Web 434/434
+Тести:      API 928/928 | Web 434/434
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 Останній sync:   2026-06-19 (HEAD 270de6ab) — WorkOrderPart: +costPrice, +unitOfMeasureId у PageClient + WorkOrderPartsSection; WorkOrderDetail: +totalVat — 3 поля виправлено | tsc 0 errors
 Останній review: 2026-06-19 (POST internalCode, HEAD d1a12539) — PO create/update + WO addPart/updatePart `good` include був без internalCode/brand (sku у WO теж); GoodPickerModal зчитував g.brand?.name але DTO повертає brandName — 4 фікси
-Останній tester: 2026-06-17 (FULL, HEAD 538ca6e4)
+Останній tester: 2026-06-19 (FULL, post-internalCode) — 8 багів знайдено/виправлено: #533 CRITICAL migration backfill для GOOD_INTERNAL_CODE (фіча мертва у проді без нього); #534 CRITICAL goods.service.spec падав 30/30 через відсутність DocumentNumberService у test-module; #535 HIGH — додано 6 regression тестів для internalCode generation; #536 MEDIUM pre-existing PO/WO specs падали 55 тестів через відсутність SettingsService у test-module (від commit 60b25347 feat(vat), 5 червня); #537 MEDIUM — GoodsService create/update не повертали goodCategoryName бо include пропускав goodCategory relation; #538 LOW — GoodPickerModal secondary не включав internalCode; #540 LOW — DocumentCreateModals.test.tsx падав через відсутній next/navigation mock. Тести API: 837/922 → 928/928. Тести Web: 433/434 → 434/434.
 ```
 
 ### Аудит-висновки (2026-06-17 simplify session)

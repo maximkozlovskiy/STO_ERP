@@ -204,12 +204,14 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                       key={item.id}
                       type="button"
                       onClick={() => {
+                        // Bug #538: secondary дзеркалить sub-line у списку — internalCode
+                        // (T-0000NN) + sku + price. Без нього майбутні споживачі що читають
+                        // лише `secondary` бачать неконсистентну метадату.
+                        const meta = [item.internalCode, item.sku].filter(Boolean).join(' · ');
                         onSelect({
                           ...item,
                           primary: item.name,
-                          secondary: item.sku
-                            ? `${item.sku} · ${item.salePrice} ₴`
-                            : `${item.salePrice} ₴`,
+                          secondary: meta ? `${meta} · ${item.salePrice} ₴` : `${item.salePrice} ₴`,
                         });
                         onClose();
                       }}

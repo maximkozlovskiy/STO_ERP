@@ -106,8 +106,11 @@ export class GoodsService {
     const internalCode = await this.docNumbers.next(orgId, 'GOOD_INTERNAL_CODE');
     const item = await this.prisma.good.create({
       data: { ...dto, orgId, unit: dto.unit ?? 'шт', salePrice: dto.salePrice ?? 0, internalCode },
+      // Bug #537: include goodCategory so create response carries goodCategoryName
+      // (mirror findAll/findOne include; otherwise UI list/detail shows null after create).
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
+        goodCategory: { select: { id: true, name: true } },
         brand: { select: { name: true } },
       },
     });
@@ -138,8 +141,10 @@ export class GoodsService {
     const item = await this.prisma.good.update({
       where: { id, orgId },
       data: dto,
+      // Bug #537: include goodCategory so update response carries goodCategoryName.
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
+        goodCategory: { select: { id: true, name: true } },
         brand: { select: { name: true } },
       },
     });

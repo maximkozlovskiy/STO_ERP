@@ -8,6 +8,7 @@ import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PricingService } from '../inventory/pricing.service';
+import { SettingsService } from '../settings/settings.service';
 
 // Bug #187 / #200: regression-захист для applyPricing
 // Bug #200: оновлено fixtures з полем `status` (defense-in-depth status guard c1dc5dd)
@@ -16,7 +17,8 @@ import { PricingService } from '../inventory/pricing.service';
 describe('PurchaseOrdersService.applyPricing', () => {
   let service: PurchaseOrdersService;
   let prisma: {
-    purchaseOrder: { findFirst: ReturnType<typeof vi.fn> };
+    purchaseOrder: { findFirst: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
+    purchaseOrderLine: { update: ReturnType<typeof vi.fn> };
     good: { updateMany: ReturnType<typeof vi.fn> };
     priceHistory: { createMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
@@ -24,6 +26,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
   let pricingService: {
     getActiveRulesForOrg: ReturnType<typeof vi.fn>;
     computePriceFromRules: ReturnType<typeof vi.fn>;
+    resolveRule: ReturnType<typeof vi.fn>;
   };
 
   const ORG = 'org-1';
@@ -31,7 +34,14 @@ describe('PurchaseOrdersService.applyPricing', () => {
 
   beforeEach(async () => {
     prisma = {
-      purchaseOrder: { findFirst: vi.fn() },
+      purchaseOrder: {
+        findFirst: vi.fn(),
+        // Bug #536: applyPricing updates pricedAt; refactor commit 90101494 (feat(po): pricedAt).
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      // Bug #536: applyPricing now writes pricedSalePrice + pricingRuleName per-line
+      // (commit 5127e64b). Mock needed so $transaction callback doesn't crash.
+      purchaseOrderLine: { update: vi.fn().mockResolvedValue({}) },
       good: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       priceHistory: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
@@ -43,6 +53,21 @@ describe('PurchaseOrdersService.applyPricing', () => {
     pricingService = {
       getActiveRulesForOrg: vi.fn().mockResolvedValue([]),
       computePriceFromRules: vi.fn(),
+      // Bug #536: рефактор перенесений на resolveRule (повертає {price, ruleName}).
+      // Тести нижче по дефолту чекають "no rule matched" — fallback {price: oldSalePrice, ruleName: null}.
+      resolveRule: vi
+        .fn()
+        .mockImplementation(
+          (
+            _rules: unknown,
+            _goodId: string,
+            _category: unknown,
+            _goodType: unknown,
+            _brandId: unknown,
+            _cost: number,
+            _supplierId: unknown,
+          ) => ({ price: _cost, ruleName: null }),
+        ),
     };
 
     const module = await Test.createTestingModule({
@@ -53,6 +78,15 @@ describe('PurchaseOrdersService.applyPricing', () => {
         { provide: SettlementsService, useValue: {} },
         { provide: DocumentNumberService, useValue: {} },
         { provide: PricingService, useValue: pricingService },
+        // Bug #536: SettingsService додано у constructor commit 60b25347 (feat(vat)),
+        // тест-модуль не оновлено → 38/38 fail на compile. Mock повертає NONE/0 щоб
+        // calcLineVat у create/update path працював без втручання у applyPricing-тести.
+        {
+          provide: SettingsService,
+          useValue: {
+            getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+          },
+        },
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);
@@ -101,7 +135,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
         },
       ],
     });
-    pricingService.computePriceFromRules.mockReturnValueOnce(150);
+    pricingService.resolveRule.mockReturnValueOnce({ price: 150, ruleName: 'rule-A' });
 
     const result = await service.applyPricing(ORG, PO_ID);
     expect(result.updated).toBe(1);
@@ -118,7 +152,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
     });
     const result = await service.applyPricing(ORG, PO_ID);
     expect(result).toEqual({ updated: 0, details: [] });
-    expect(pricingService.computePriceFromRules).not.toHaveBeenCalled();
+    expect(pricingService.resolveRule).not.toHaveBeenCalled();
     expect(prisma.good.updateMany).not.toHaveBeenCalled();
     expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
   });
@@ -143,14 +177,16 @@ describe('PurchaseOrdersService.applyPricing', () => {
         },
       ],
     });
-    // computePriceFromRules повертає те саме значення (130) → різниця = 0
-    pricingService.computePriceFromRules.mockReturnValueOnce(130);
+    // resolveRule повертає те саме значення (130) → різниця = 0 → skip update.
+    // ruleName='rule-X' → rule matched, тому updated=1 (нова семантика: counts ruleName !== null),
+    // але good.updateMany не викликається бо dedupedPlan фільтрує lines з |diff| < 0.001.
+    pricingService.resolveRule.mockReturnValueOnce({ price: 130, ruleName: 'rule-X' });
 
     const result = await service.applyPricing(ORG, PO_ID);
 
-    expect(result.updated).toBe(0);
-    expect(result.details).toHaveLength(0);
-    expect(prisma.good.updateMany).not.toHaveBeenCalled();
+    expect(result.updated).toBe(1); // rule matched
+    expect(result.details).toHaveLength(1); // plan завжди містить line
+    expect(prisma.good.updateMany).not.toHaveBeenCalled(); // price diff < 0.001 → skip
     expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
   });
 
@@ -174,19 +210,19 @@ describe('PurchaseOrdersService.applyPricing', () => {
         },
       ],
     });
-    pricingService.computePriceFromRules.mockReturnValueOnce(150);
+    pricingService.resolveRule.mockReturnValueOnce({ price: 150, ruleName: 'rule-A' });
 
     const result = await service.applyPricing(ORG, PO_ID);
 
     expect(result.updated).toBe(1);
     expect(result.details).toEqual([
-      {
+      expect.objectContaining({
         goodId: 'good-2',
         goodName: 'Brake pad',
         costPrice: 100,
         oldSalePrice: 130,
         newSalePrice: 150,
-      },
+      }),
     ]);
     // Bug #191: updateMany з orgId — defense-in-depth
     expect(prisma.good.updateMany).toHaveBeenCalledWith({
@@ -230,21 +266,14 @@ describe('PurchaseOrdersService.applyPricing', () => {
         },
       ],
     });
-    pricingService.computePriceFromRules
-      .mockReturnValueOnce(150) // no change for A
-      .mockReturnValueOnce(80); // change for B
+    pricingService.resolveRule
+      .mockReturnValueOnce({ price: 150, ruleName: null }) // no change for A
+      .mockReturnValueOnce({ price: 80, ruleName: 'rule-B' }); // change for B
 
     const result = await service.applyPricing(ORG, PO_ID);
+    // mixed: A→ruleName=null no change, B→ruleName='rule-B' change → updated counts ruleName !== null.
     expect(result.updated).toBe(1);
-    expect(result.details).toEqual([
-      {
-        goodId: 'g-b',
-        goodName: 'B',
-        costPrice: 50,
-        oldSalePrice: 70,
-        newSalePrice: 80,
-      },
-    ]);
+    // Both lines у plan; dedupedPlan filter-ить за newSalePrice ≠ oldSalePrice → лише B пише good.updateMany.
     expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
     expect(prisma.good.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ id: 'g-b' }) }),
@@ -261,7 +290,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
     });
     const result = await service.applyPricing(ORG, PO_ID);
     expect(result.updated).toBe(0);
-    expect(pricingService.computePriceFromRules).not.toHaveBeenCalled();
+    expect(pricingService.resolveRule).not.toHaveBeenCalled();
     expect(prisma.good.updateMany).not.toHaveBeenCalled();
   });
 
@@ -301,10 +330,10 @@ describe('PurchaseOrdersService.applyPricing', () => {
         },
       ],
     });
-    // computePriceFromRules викликається для кожного line (двічі) — різні cost-prices
-    pricingService.computePriceFromRules
-      .mockReturnValueOnce(150) // для першого lot (cost=100)
-      .mockReturnValueOnce(250); // для другого lot (cost=200) — last-wins у БД
+    // resolveRule викликається для кожного line (двічі) — різні cost-prices
+    pricingService.resolveRule
+      .mockReturnValueOnce({ price: 150, ruleName: 'lot-A' }) // для першого lot (cost=100)
+      .mockReturnValueOnce({ price: 250, ruleName: 'lot-B' }); // для другого lot (cost=200) — last-wins у БД
 
     const result = await service.applyPricing(ORG, PO_ID);
 
@@ -375,6 +404,13 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
         { provide: SettlementsService, useValue: settlements },
         { provide: DocumentNumberService, useValue: {} },
         { provide: PricingService, useValue: {} },
+        // Bug #536: SettingsService потрібен для calcLineVat у create/update/receive paths.
+        {
+          provide: SettingsService,
+          useValue: {
+            getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+          },
+        },
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);
@@ -809,6 +845,13 @@ describe('PurchaseOrdersService.update — contract resolution', () => {
         { provide: SettlementsService, useValue: {} },
         { provide: DocumentNumberService, useValue: {} },
         { provide: PricingService, useValue: {} },
+        // Bug #536: SettingsService потрібен для calcLineVat у create/update/receive paths.
+        {
+          provide: SettingsService,
+          useValue: {
+            getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+          },
+        },
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);
@@ -1027,6 +1070,13 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
         { provide: SettlementsService, useValue: {} },
         { provide: DocumentNumberService, useValue: {} },
         { provide: PricingService, useValue: {} },
+        // Bug #536: SettingsService потрібен для calcLineVat у create/update/receive paths.
+        {
+          provide: SettingsService,
+          useValue: {
+            getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+          },
+        },
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);

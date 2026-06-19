@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { GoodsService } from './goods.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DocumentNumberService } from '../document-number/document-number.service';
 
 /**
  * Bug #162: unit-покриття goods.service.
@@ -36,10 +37,14 @@ describe('GoodsService', () => {
     stockItem: { groupBy: any; findMany: any };
     $transaction: ReturnType<typeof vi.fn>;
   };
+  // Bug #534: docNumbers.next mock — без нього DI Nest падає на compile усіх 30 тестів.
+  // Bug #535: дозволяє асерти на виклик з 'GOOD_INTERNAL_CODE' у create-тестах.
+  let docNumbersMock: { next: ReturnType<typeof vi.fn> };
 
   const goodRow = {
     id: 'good-1',
     orgId: 'org-1',
+    internalCode: 'T-000001',
     sku: 'OIL',
     name: 'Олива',
     unit: 'шт',
@@ -87,9 +92,16 @@ describe('GoodsService', () => {
       },
       $transaction: vi.fn(),
     };
+    // Bug #534: docNumbers — нова DI у GoodsService constructor з commit 9ea58b9e.
+    // Default повертає 'T-000001' відповідно seed.ts (prefix='T', padding=6).
+    docNumbersMock = { next: vi.fn().mockResolvedValue('T-000001') };
 
     const module = await Test.createTestingModule({
-      providers: [GoodsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        GoodsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DocumentNumberService, useValue: docNumbersMock },
+      ],
     }).compile();
 
     service = module.get(GoodsService);
@@ -170,6 +182,72 @@ describe('GoodsService', () => {
         }),
       );
       expect(prisma.good.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // Bug #535 (regression-guard для feat 9ea58b9e internalCode generation):
+  // sanity для side-effect що `create()` отримує internalCode з DocumentNumberService
+  // ТА що sequence НЕ споживається даремно при precheck-throw (SKU/FK conflicts).
+  // SKILL §1.1 «Hardcoded document-number у auto-create» (Bug #348) + «нове enum
+  // value без regression-guard» (Bug #478-#480) обидва вимагають такого spec.
+  describe('create — internalCode generation (Bug #535)', () => {
+    it('Bug #535: викликає docNumbers.next(orgId, "GOOD_INTERNAL_CODE") рівно 1 раз', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(null); // no SKU conflict
+      await service.create('org-1', { name: 'Олива', salePrice: 150 });
+      expect(docNumbersMock.next).toHaveBeenCalledTimes(1);
+      expect(docNumbersMock.next).toHaveBeenCalledWith('org-1', 'GOOD_INTERNAL_CODE');
+    });
+
+    it('Bug #535: згенерований internalCode потрапляє у prisma.good.create.data', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(null);
+      docNumbersMock.next.mockResolvedValueOnce('T-000042');
+      await service.create('org-1', { name: 'Олива', salePrice: 150 });
+      expect(prisma.good.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ internalCode: 'T-000042', orgId: 'org-1' }),
+        }),
+      );
+    });
+
+    it('Bug #535: повертає internalCode у GoodResponseDto', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(null);
+      const res = await service.create('org-1', { name: 'Олива', salePrice: 150 });
+      expect(res.internalCode).toBe('T-000001');
+    });
+
+    it('Bug #535: SKU-conflict → docNumbers.next НЕ викликається (seq не споживається)', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow); // SKU exists
+      await expect(
+        service.create('org-1', { name: 'Олива', salePrice: 150, sku: 'OIL' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(docNumbersMock.next).not.toHaveBeenCalled();
+      expect(prisma.good.create).not.toHaveBeenCalled();
+    });
+
+    it('Bug #535: brand-FK fail → docNumbers.next НЕ викликається', async () => {
+      prisma.brand.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.create('org-1', {
+          name: 'Олива',
+          salePrice: 150,
+          brandId: '11111111-1111-4111-8111-111111111111',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(docNumbersMock.next).not.toHaveBeenCalled();
+      expect(prisma.good.create).not.toHaveBeenCalled();
+    });
+
+    it('Bug #535: unit-FK fail → docNumbers.next НЕ викликається', async () => {
+      prisma.unitOfMeasure.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.create('org-1', {
+          name: 'Олива',
+          salePrice: 150,
+          unitId: '22222222-2222-4222-8222-222222222222',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(docNumbersMock.next).not.toHaveBeenCalled();
+      expect(prisma.good.create).not.toHaveBeenCalled();
     });
   });
 

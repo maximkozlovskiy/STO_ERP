@@ -81,18 +81,24 @@ function makePrismaSpy(lines: LineRow[], partsSum: number) {
 
 function makeService(prisma: PrismaService): WorkOrdersService {
   // addPart only touches prisma + inventory.createMovement (not invoked here
-  // because we don't transition status). All other deps unused.
+  // because we don't transition status). All other deps unused EXCEPT
+  // settingsService — recalcTotals reads default VAT rate after summing lines/parts.
+  // Bug #536: positional constructor — settingsService at index 9, config at 10.
+  const settingsService = {
+    getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+  } as never;
   return new WorkOrdersService(
     prisma,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
+    null as never, // inventory
+    null as never, // settlements
+    null as never, // notifications
+    null as never, // docNumbers
+    null as never, // maintenanceSchedules
+    null as never, // pdf
+    null as never, // audit
+    null as never, // warranties
+    settingsService, // settingsService (Bug #536)
+    null as never, // config
   );
 }
 

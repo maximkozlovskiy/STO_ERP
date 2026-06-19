@@ -99,19 +99,26 @@ function makePrismaWithPart(batchCostPrice: number | null) {
 }
 
 function makeService(prisma: PrismaService): WorkOrdersService {
-  // findOne touches тільки prisma — інші deps unused.
+  // findOne touches тільки prisma — інші deps unused, ОКРІМ settingsService.
+  // Bug #536: addPart/updatePart викликають recalcTotals(), яка читає
+  // settingsService.getDefaultVatRate(orgId) для розрахунку totalVat.
+  // findOne НЕ викликає recalcTotals — їй settingsService не потрібен,
+  // але одна спільна factory для всіх тестів простіше підтримувати.
+  const settingsService = {
+    getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+  } as never;
   return new WorkOrdersService(
     prisma,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
+    null as never, // inventory
+    null as never, // settlements
+    null as never, // notifications
+    null as never, // docNumbers
+    null as never, // maintenanceSchedules
+    null as never, // pdf
+    null as never, // audit
+    null as never, // warranties
+    settingsService, // settingsService (Bug #536)
+    null as never, // config
   );
 }
 
