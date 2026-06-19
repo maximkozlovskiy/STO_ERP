@@ -1,4 +1,4 @@
-﻿import { IsUUID, IsString, IsOptional, IsBoolean, IsInt, IsDateString, Min } from 'class-validator';
+import { IsUUID, IsString, IsOptional, IsBoolean, IsInt, IsDateString, Min } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
