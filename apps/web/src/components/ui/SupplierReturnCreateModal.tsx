@@ -1,14 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName, cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
-import { SUPPLIER_RETURN_STATUS_LABELS, SUPPLIER_RETURN_STATUS_BADGE } from '@sto/shared';
+import { SUPPLIER_RETURN_STATUS_LABELS } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,23 +16,24 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal } from '@/components/ui/search-picker-modal';
-import { Badge } from '@/components/ui/badge';
-import type { BadgeVariant } from '@sto/shared';
+import { CollapsibleHeader } from '@/components/ui/collapsible-header';
 import type { SupplierReturn, SupplierReturnLine } from '@/hooks/api/useSupplierReturns';
 
-interface SupplierPickerItem {
-  id: string;
-  primary: string;
-}
+// ─── Status config ─────────────────────────────────────────────────────────────
 
-interface GoodPickerItem {
-  id: string;
-  primary: string;
-  secondary?: string;
-  _sku?: string | null;
-  _unit?: string;
-  _price?: number;
-}
+const STATUS_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['CONFIRMED'],
+  CONFIRMED: ['CANCELLED'],
+  CANCELLED: [],
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  DRAFT: 'bg-secondary text-muted-foreground',
+  CONFIRMED: 'bg-success/15 text-success',
+  CANCELLED: 'bg-destructive/10 text-destructive',
+};
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
 
 interface Warehouse {
   id: string;
@@ -77,7 +78,7 @@ const EMPTY_LINE: Omit<LocalLine, '_key'> = {
 
 let lineKeyCounter = 0;
 function newKey() {
-  return `line_${++lineKeyCounter}`;
+  return `sr_line_${++lineKeyCounter}`;
 }
 
 function lineFromApi(l: SupplierReturnLine): LocalLine {
@@ -93,12 +94,10 @@ function lineFromApi(l: SupplierReturnLine): LocalLine {
   };
 }
 
-function lineSubtotal(quantity: string, price: string) {
-  return (parseFloat(quantity) || 0) * (parseFloat(price) || 0);
-}
-
 const numericInputCls =
-  'w-full rounded border border-input bg-background px-2 py-1 text-[11px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring';
+  'w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring';
+
+// ─── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
   open: boolean;
@@ -107,10 +106,13 @@ interface Props {
   editId?: string | null;
 }
 
+// ─── Component ─────────────────────────────────────────────────────────────────
+
 export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Props) {
   const features = useUiFeatures();
   const isEdit = !!editId;
 
+  // ── Document state ─────────────────────────────────────────────────────────
   const [status, setStatus] = useState('DRAFT');
   const [supplierId, setSupplierId] = useState('');
   const [supplierName, setSupplierName] = useState('');
@@ -118,15 +120,16 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const [notes, setNotes] = useState('');
   const [documentDate, setDocumentDate] = useState(() => kyivToday());
   const [lines, setLines] = useState<LocalLine[]>([]);
+
+  // ── UI state ───────────────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
   const [error, setError] = useState('');
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
-
   const [showLineInput, setShowLineInput] = useState(false);
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
 
+  // ── Reference data ─────────────────────────────────────────────────────────
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [goodPickerOpen, setGoodPickerOpen] = useState(false);
@@ -139,12 +142,12 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     };
   }, []);
 
-  // Collapse header when adding a line
+  // Collapse header when adding a line — mirrors PO modal behaviour
   useEffect(() => {
     if (showLineInput) setHeaderCollapsed(true);
   }, [showLineInput]);
 
-  // Load warehouses
+  // ── Load warehouses ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return;
     const cached = getCached<Warehouse[]>('cache:warehouses');
@@ -169,7 +172,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     }
   }, [warehouses, warehouseId]);
 
-  // Load existing return when editing
+  // ── Load existing return ────────────────────────────────────────────────────
   useEffect(() => {
     if (!open || !editId) return;
     apiFetch<SupplierReturn>(`/supplier-returns/${editId}`)
@@ -186,6 +189,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       .catch(() => {});
   }, [open, editId]);
 
+  // ── Reset ──────────────────────────────────────────────────────────────────
   const resetForm = useCallback(() => {
     setStatus('DRAFT');
     setSupplierId('');
@@ -204,6 +208,40 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     if (!open) resetForm();
   }, [open, resetForm]);
 
+  // ── Status transitions ─────────────────────────────────────────────────────
+  const allowedTransitions = STATUS_TRANSITIONS[status] ?? [];
+  const statusPrevStep = status === 'CONFIRMED' ? 'DRAFT' : null;
+  const statusNextStep = allowedTransitions[0] ?? null;
+
+  const doTransition = useCallback(
+    async (targetStatus: string) => {
+      if (!editId) return;
+      setTransitioning(true);
+      setError('');
+      try {
+        const endpoint =
+          targetStatus === 'CONFIRMED'
+            ? `/supplier-returns/${editId}/confirm`
+            : `/supplier-returns/${editId}/cancel`;
+        await apiFetch(endpoint, { method: 'POST' });
+        setStatus(targetStatus);
+        onSaved();
+        if (features.toastEnabled)
+          toast.success(
+            targetStatus === 'CONFIRMED' ? 'Повернення підтверджено' : 'Повернення скасовано',
+          );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Помилка переходу статусу';
+        setError(msg);
+        if (features.toastEnabled) toast.error(msg);
+      } finally {
+        setTransitioning(false);
+      }
+    },
+    [editId, features.toastEnabled, onSaved],
+  );
+
+  // ── Lines ──────────────────────────────────────────────────────────────────
   const addLine = useCallback(() => {
     if (!newLine.goodId) return;
     setLines(prev => {
@@ -221,10 +259,31 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     [],
   );
 
-  const handleRemoveLine = useCallback((key: string) => {
+  const removeLine = useCallback((key: string) => {
     setLines(prev => prev.filter(l => l._key !== key));
   }, []);
 
+  // ── Warehouse map ──────────────────────────────────────────────────────────
+  const warehouseById = useMemo(() => {
+    const m = new Map<string, Warehouse>();
+    for (const w of warehouses) m.set(w.id, w);
+    return m;
+  }, [warehouses]);
+
+  const handleWarehouseChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
+    setWarehouseId(e.target.value);
+  }, []);
+
+  // ── Totals ─────────────────────────────────────────────────────────────────
+  const lineSubtotal = (qty: string, price: string) =>
+    (parseFloat(qty) || 0) * (parseFloat(price) || 0);
+
+  const total = useMemo(
+    () => lines.reduce((sum, l) => sum + lineSubtotal(l.quantity, l.price), 0),
+    [lines],
+  );
+
+  // ── Save ───────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     if (!supplierId) {
       setError('Оберіть постачальника');
@@ -241,10 +300,6 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     for (const l of lines) {
       if ((parseFloat(l.quantity) || 0) <= 0) {
         setError(`Кількість має бути > 0 (${l.goodName})`);
-        return;
-      }
-      if ((parseFloat(l.price) || 0) < 0) {
-        setError(`Ціна не може бути від'ємною (${l.goodName})`);
         return;
       }
     }
@@ -267,11 +322,11 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           method: 'PATCH',
           body: JSON.stringify(payload),
         });
+        if (features.toastEnabled) toast.success('Повернення оновлено');
       } else {
         await apiFetch('/supplier-returns', { method: 'POST', body: JSON.stringify(payload) });
+        if (features.toastEnabled) toast.success('Повернення створено');
       }
-      if (features.toastEnabled)
-        toast.success(isEdit ? 'Повернення оновлено' : 'Повернення створено');
       onSaved();
       onClose();
     } catch (e) {
@@ -294,55 +349,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     onClose,
   ]);
 
-  const handleConfirm = useCallback(async () => {
-    if (!editId) return;
-    setConfirming(true);
-    try {
-      await apiFetch(`/supplier-returns/${editId}/confirm`, { method: 'POST' });
-      if (features.toastEnabled) toast.success('Повернення підтверджено');
-      onSaved();
-      onClose();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Помилка підтвердження';
-      setError(msg);
-      if (features.toastEnabled) toast.error(msg);
-    } finally {
-      setConfirming(false);
-    }
-  }, [editId, features.toastEnabled, onSaved, onClose]);
-
-  const handleCancel = useCallback(async () => {
-    if (!editId) return;
-    setCancelling(true);
-    try {
-      await apiFetch(`/supplier-returns/${editId}/cancel`, { method: 'POST' });
-      if (features.toastEnabled) toast.success('Повернення скасовано');
-      onSaved();
-      onClose();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Помилка скасування';
-      setError(msg);
-      if (features.toastEnabled) toast.error(msg);
-    } finally {
-      setCancelling(false);
-    }
-  }, [editId, features.toastEnabled, onSaved, onClose]);
-
-  const total = useMemo(
-    () => lines.reduce((sum, l) => sum + lineSubtotal(l.quantity, l.price), 0),
-    [lines],
-  );
-
-  const warehouseById = useMemo(() => {
-    const m = new Map<string, Warehouse>();
-    for (const w of warehouses) m.set(w.id, w);
-    return m;
-  }, [warehouses]);
-
-  const handleWarehouseChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
-    setWarehouseId(e.target.value);
-  }, []);
-
+  // ── Derived ────────────────────────────────────────────────────────────────
   const isReadOnly = status !== 'DRAFT';
   const canEdit = !isReadOnly;
 
@@ -352,6 +359,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       : 'Редагування повернення'
     : 'Нове повернення постачальнику';
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       <Modal
@@ -359,62 +367,130 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         onClose={onClose}
         title={title}
         size="content"
-        footer={
-          <div className="flex items-center justify-between gap-2 w-full">
-            <div className="flex gap-2">
-              {isEdit && status === 'DRAFT' && (
-                <>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleCancel}
-                    loading={cancelling}
-                    disabled={saving || confirming}
-                  >
-                    Скасувати
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleConfirm}
-                    loading={confirming}
-                    disabled={saving || cancelling || lines.length === 0}
-                  >
-                    Підтвердити
-                  </Button>
-                </>
-              )}
+        hideClose
+        headerContent={
+          <div className="flex items-center gap-6">
+            {/* Date */}
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
+              <div className="w-36">
+                <DatePickerInput
+                  value={documentDate}
+                  onChange={setDocumentDate}
+                  disabled={!canEdit}
+                />
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
-                {isReadOnly ? 'Закрити' : 'Скасувати'}
-              </Button>
-              {canEdit && (
-                <Button size="sm" onClick={handleSave} loading={saving} disabled={confirming}>
-                  {isEdit ? 'Зберегти' : 'Створити повернення'}
+
+            {/* Status navigation — mirrors PO modal */}
+            {isEdit && (
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-[13px] font-medium text-muted-foreground">Статус:</span>
+                <button
+                  type="button"
+                  disabled={transitioning || !statusPrevStep}
+                  onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
+                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+                  <span className="max-w-20 truncate">
+                    {statusPrevStep
+                      ? (SUPPLIER_RETURN_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
+                      : '—'}
+                  </span>
+                </button>
+                <span
+                  className={cn(
+                    'text-sm font-medium px-2.5 py-1 rounded-full',
+                    STATUS_COLORS[status] ?? 'bg-secondary text-muted-foreground',
+                  )}
+                >
+                  {SUPPLIER_RETURN_STATUS_LABELS[status] ?? status}
+                </span>
+                <button
+                  type="button"
+                  disabled={transitioning || !statusNextStep}
+                  onClick={() => statusNextStep && void doTransition(statusNextStep)}
+                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <span className="max-w-20 truncate">
+                    {statusNextStep
+                      ? (SUPPLIER_RETURN_STATUS_LABELS[statusNextStep] ?? statusNextStep)
+                      : '—'}
+                  </span>
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                </button>
+              </div>
+            )}
+          </div>
+        }
+        extraHeaderActions={
+          <button
+            onClick={onClose}
+            className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
+            title="Закрити"
+            disabled={saving || transitioning}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        }
+        footer={
+          <div className="flex items-center justify-between w-full gap-2">
+            <div>
+              {isEdit && status === 'DRAFT' && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => void doTransition('CANCELLED')}
+                  loading={transitioning}
+                  disabled={transitioning || saving}
+                >
+                  Скасувати
                 </Button>
               )}
+            </div>
+            <div className="flex gap-2 items-center">
+              {isEdit && status === 'DRAFT' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void doTransition('CONFIRMED')}
+                  loading={transitioning}
+                  disabled={transitioning || saving || lines.length === 0}
+                >
+                  Підтвердити
+                </Button>
+              )}
+              {canEdit && (
+                <Button
+                  onClick={handleSave}
+                  loading={saving}
+                  disabled={saving || transitioning || !supplierId || !warehouseId}
+                  size="sm"
+                >
+                  {isEdit ? 'Зберегти зміни' : 'Створити повернення'}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onClose}
+                disabled={saving || transitioning}
+              >
+                Закрити
+              </Button>
             </div>
           </div>
         }
       >
-        <div className="flex flex-col min-h-[60dvh]">
-          {/* ── Collapsible header ───────────────────────────────────────── */}
+        <div className="flex flex-col min-h-[70dvh]">
+          {/* ── Collapsible header ──────────────────────────────────────────── */}
           <div
             className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"
             style={{ gridTemplateRows: headerCollapsed ? '0fr' : '1fr' }}
           >
             <div className="overflow-hidden">
-              <div className="space-y-3 pb-1">
-                {isEdit && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Статус:</span>
-                    <Badge variant={SUPPLIER_RETURN_STATUS_BADGE[status] as BadgeVariant}>
-                      {SUPPLIER_RETURN_STATUS_LABELS[status] ?? status}
-                    </Badge>
-                  </div>
-                )}
-
+              <div className="space-y-4 pb-1">
                 {error && (
                   <div className="text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2">
                     {error}
@@ -456,71 +532,50 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                   </Select>
                 </div>
 
-                {/* Дата | Примітки */}
-                <div className="grid grid-cols-2 gap-4">
-                  <DatePickerInput
-                    label="Дата документа"
-                    value={documentDate}
-                    onChange={setDocumentDate}
-                    disabled={!canEdit}
-                  />
-                  <Input
-                    label="Примітки"
-                    value={notes}
-                    onChange={e => setNotes(e.target.value)}
-                    placeholder="Необов'язково"
-                    disabled={!canEdit}
-                    className="h-8 text-[13px]"
-                  />
-                </div>
+                {/* Опис */}
+                <Input
+                  label="Опис"
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="Додаткова інформація…"
+                  className="h-8 text-[13px]"
+                />
               </div>
             </div>
           </div>
 
-          {/* ── Header toggle strip ──────────────────────────────────────── */}
-          <div
-            className={cn(
-              'flex items-center gap-2 py-1.5 border-b border-border text-[12px] text-muted-foreground cursor-pointer select-none shrink-0',
-              'hover:text-foreground transition-colors',
-            )}
-            onClick={() => setHeaderCollapsed(c => !c)}
-          >
-            <span className="font-medium text-foreground/60 text-[11px] uppercase tracking-wide">
-              Шапка документа
-            </span>
-            {headerCollapsed && (
-              <>
-                {supplierName && (
-                  <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground text-[11px] max-w-40 truncate">
-                    {supplierName}
-                  </span>
-                )}
-                {warehouseId && (
-                  <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground text-[11px] max-w-32 truncate">
-                    {warehouseById.get(warehouseId)?.name ?? ''}
-                  </span>
-                )}
-              </>
-            )}
-            <span className="ml-auto text-[11px]">
-              {headerCollapsed ? 'Розгорнути ↓' : 'Згорнути ↑'}
-            </span>
-          </div>
+          {/* ── Header toggle strip ─────────────────────────────────────────── */}
+          <CollapsibleHeader
+            collapsed={headerCollapsed}
+            onToggle={() => setHeaderCollapsed(c => !c)}
+            chips={[
+              { label: supplierName || '— постачальник —', primary: true, maxWidth: 'max-w-50' },
+              {
+                label: warehouseId
+                  ? (warehouseById.get(warehouseId)?.name ?? '— склад —')
+                  : '— склад —',
+                maxWidth: 'max-w-40',
+              },
+            ]}
+          />
 
-          {/* ── Товари ──────────────────────────────────────────────────── */}
-          <div className="flex-1 flex flex-col pt-3">
+          {/* ── Lines table ─────────────────────────────────────────────────── */}
+          <div className="flex-1 overflow-auto">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[13px] font-medium text-foreground">Товари</span>
-              {canEdit && !showLineInput && (
-                <button
-                  type="button"
-                  onClick={() => setShowLineInput(true)}
-                  className="flex items-center gap-1 text-[12px] text-primary hover:text-primary/80 transition-colors"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Додати
-                </button>
-              )}
+              <p className="text-xs font-medium text-muted-foreground">Товари</p>
+              <div className="flex items-center gap-2">
+                {canEdit && !showLineInput && (
+                  <button
+                    type="button"
+                    onClick={() => setShowLineInput(true)}
+                    className="flex items-center gap-1 text-[12px] text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Додати
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="rounded-lg border border-border overflow-hidden">
@@ -531,7 +586,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                   <col className="w-[10%]" />
                   <col className="w-[11%]" />
                   <col className="w-[11%]" />
-                  <col className="w-14" />
+                  <col className="w-16" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-border bg-secondary/40">
@@ -564,8 +619,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                       </td>
                     </tr>
                   )}
+
                   {lines.map(line => {
-                    const subtotal = lineSubtotal(line.quantity, line.price);
+                    const sub = lineSubtotal(line.quantity, line.price);
                     return (
                       <tr key={line._key} className="hover:bg-surface-hover/50">
                         <td className="px-3 py-1.5">
@@ -596,10 +652,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                         <td className="px-1 py-1.5">
                           {isReadOnly ? (
                             <span className="tabular-nums px-2">
-                              {parseFloat(line.price).toLocaleString('uk-UA', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
+                              {parseFloat(line.price).toFixed(2)}
                             </span>
                           ) : (
                             <input
@@ -613,16 +666,13 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                           )}
                         </td>
                         <td className="px-3 py-1.5 tabular-nums text-[12px] font-medium">
-                          {subtotal.toLocaleString('uk-UA', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          {sub.toFixed(2)}
                         </td>
                         <td className="px-2 py-1.5">
                           {canEdit && (
                             <button
                               type="button"
-                              onClick={() => handleRemoveLine(line._key)}
+                              onClick={() => removeLine(line._key)}
                               className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -633,7 +683,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                     );
                   })}
 
-                  {/* Inline add row */}
+                  {/* ── Inline add row — identical layout to data rows ────── */}
                   {canEdit && showLineInput && (
                     <tr className="bg-primary/5 border-t-2 border-primary/20">
                       <td className="px-2 py-1.5">
@@ -699,6 +749,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                     </tr>
                   )}
                 </tbody>
+
+                {/* ── tfoot — single row, matches PO modal standard ─────── */}
                 <tfoot>
                   <tr className="bg-secondary/50 border-t border-border">
                     <td
@@ -721,10 +773,10 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       </Modal>
 
       {/* Supplier picker */}
-      <SearchPickerModal<SupplierPickerItem>
+      <SearchPickerModal
         open={supplierPickerOpen}
         onClose={() => setSupplierPickerOpen(false)}
-        onSelect={item => {
+        onSelect={(item: { id: string; primary: string }) => {
           setSupplierId(item.id);
           setSupplierName(item.primary);
           setSupplierPickerOpen(false);
@@ -738,10 +790,17 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       />
 
       {/* Good picker */}
-      <SearchPickerModal<GoodPickerItem>
+      <SearchPickerModal
         open={goodPickerOpen}
         onClose={() => setGoodPickerOpen(false)}
-        onSelect={item => {
+        onSelect={(item: {
+          id: string;
+          primary: string;
+          secondary?: string;
+          _sku?: string | null;
+          _unit?: string;
+          _price?: number;
+        }) => {
           setNewLine(l => ({
             ...l,
             goodId: item.id,
