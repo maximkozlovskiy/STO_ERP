@@ -277,6 +277,14 @@ export function GoodEditModal({
         )}
 
         <div className="space-y-4">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/50 text-[13px]">
+            <span className="text-muted-foreground">Внутрішній код:</span>
+            {good?.internalCode ? (
+              <span className="font-mono font-medium text-foreground">{good.internalCode}</span>
+            ) : (
+              <span className="text-muted-foreground italic">присвоюється автоматично</span>
+            )}
+          </div>
           <Input
             label="Назва"
             required
@@ -287,14 +295,6 @@ export function GoodEditModal({
             }}
             placeholder="Масло моторне 5W-40"
           />
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/50 text-[13px]">
-            <span className="text-muted-foreground">Внутрішній код:</span>
-            {good?.internalCode ? (
-              <span className="font-mono font-medium text-foreground">{good.internalCode}</span>
-            ) : (
-              <span className="text-muted-foreground italic">присвоюється автоматично</span>
-            )}
-          </div>
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Артикул (SKU)"
