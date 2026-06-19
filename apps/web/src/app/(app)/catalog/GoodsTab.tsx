@@ -143,9 +143,9 @@ const GOODS_PANEL_FIELDS = [
 
 // Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
 const GOODS_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
-  { key: 'name', label: 'Назва', defaultVisible: true },
   { key: 'code', label: 'Код', defaultVisible: true },
   { key: 'sku', label: 'Артикул', defaultVisible: true },
+  { key: 'name', label: 'Назва', defaultVisible: true },
   { key: 'brand', label: 'Бренд', defaultVisible: true },
   { key: 'category', label: 'Категорія', defaultVisible: true },
   { key: 'unit', label: 'Одиниця', defaultVisible: false },
