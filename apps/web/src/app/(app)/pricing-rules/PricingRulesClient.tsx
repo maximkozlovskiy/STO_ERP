@@ -478,10 +478,24 @@ export default function PricingRulesClient() {
                     {TYPE_LABELS[rule.type] ?? rule.type}
                   </TableCell>
                   <TableCell className="text-[13px] text-muted-foreground">
-                    <div className="space-y-0.5">
-                      <div>{scopeLabel(rule)}</div>
-                      {rule.brandName && <Badge variant="secondary">{rule.brandName}</Badge>}
-                    </div>
+                    {rule.supplierId ? (rule.supplierName ?? '—') : 'Весь асортимент'}
+                  </TableCell>
+                  <TableCell className="text-[13px] text-muted-foreground">
+                    {rule.brandName ? (
+                      <Badge variant="secondary">{rule.brandName}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground/40">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-[13px] text-muted-foreground">
+                    {rule.goodId && rule.good
+                      ? `Товар: ${rule.good.name}`
+                      : rule.goodType
+                        ? (GOOD_TYPE_OPTIONS.find(o => o.value === rule.goodType)?.label ??
+                          rule.goodType)
+                        : rule.goodCategory
+                          ? `Категорія: ${rule.goodCategory}`
+                          : 'Весь асортимент'}
                   </TableCell>
                   <TableCell className="text-[13px] font-medium text-foreground">
                     {rule.type === 'COST_TIER' && rule.tiers && rule.tiers.length > 0 ? (
