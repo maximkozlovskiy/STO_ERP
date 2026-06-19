@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { keepPreviousData } from '@tanstack/react-query';
 import { pricingRulesKeys } from '@/hooks/api/usePricingRules';
-import { Plus, Pencil, Trash2, Zap, Upload } from 'lucide-react';
+import { Plus, Pencil, Trash2, Upload, Tag } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -91,8 +91,6 @@ export default function PricingRulesClient() {
   const [modal, setModal] = useState(false);
   const [editRule, setEditRule] = useState<PricingRule | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [applyingId, setApplyingId] = useState<string | null>(null);
-  const [applyResult, setApplyResult] = useState<{ ruleId: string; message: string } | null>(null);
 
   const [showPricingImport, setShowPricingImport] = useState(false);
   const [pricingFile, setPricingFile] = useState<File | null>(null);
@@ -208,29 +206,6 @@ export default function PricingRulesClient() {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка видалення');
     } finally {
       if (mountedRef.current) setDeletingId(null);
-    }
-  };
-
-  const applyAll = async (rule: PricingRule) => {
-    if (
-      !(await confirm({
-        title: `Застосувати правило "${rule.name}"?`,
-        message: 'Правило буде застосовано до всіх відповідних товарів. Ціни буде перераховано.',
-      }))
-    )
-      return;
-    setApplyingId(rule.id);
-    setApplyResult(null);
-    try {
-      const result = await apiFetch<{ updated: number; message: string }>(
-        `/pricing-rules/${rule.id}/apply-all`,
-        { method: 'POST' },
-      );
-      if (mountedRef.current) setApplyResult({ ruleId: rule.id, message: result.message });
-    } catch (e: unknown) {
-      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка застосування');
-    } finally {
-      if (mountedRef.current) setApplyingId(null);
     }
   };
 
@@ -449,19 +424,6 @@ export default function PricingRulesClient() {
         </div>
       )}
 
-      {applyResult && (
-        <div className="mb-4 text-[13px] text-success bg-success-subtle border border-success/20 rounded-lg px-4 py-2.5 flex items-center justify-between">
-          <span>{applyResult.message}</span>
-          <button
-            onClick={() => setApplyResult(null)}
-            aria-label="Закрити сповіщення"
-            className="text-muted-foreground hover:text-foreground ml-4"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
       <div className="table-scroll-container flex-1 min-h-0 overflow-auto bg-surface border border-border rounded-xl">
         <Table>
           <TableHeader>
@@ -489,7 +451,7 @@ export default function PricingRulesClient() {
               <TableRow>
                 <TableCell colSpan={7} className="p-0">
                   <EmptyState
-                    icon={Zap}
+                    icon={Tag}
                     title="Правил немає"
                     description="Створіть перше правило ціноутворення щоб автоматизувати встановлення цін при оприбуткуванні"
                   />
@@ -542,17 +504,6 @@ export default function PricingRulesClient() {
                   </TableCell>
                   <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => applyAll(rule)}
-                        disabled={applyingId === rule.id || !rule.isActive}
-                        loading={applyingId === rule.id}
-                        title="Застосувати до всіх товарів"
-                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                      >
-                        <Zap className="h-3.5 w-3.5" />
-                      </Button>
                       <Button
                         variant="ghost"
                         size="icon-sm"
