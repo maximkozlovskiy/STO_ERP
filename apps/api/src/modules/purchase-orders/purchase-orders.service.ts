@@ -753,7 +753,8 @@ export class PurchaseOrdersService {
       data: { pricedAt: new Date() },
     });
 
-    return { updated: dedupedPlan.length, details: plan };
+    // updated = кількість ліній для яких знайдено правило (незалежно від зміни ціни)
+    return { updated: plan.filter(u => u.ruleName !== null).length, details: plan };
   }
 
   private toDto(po: {

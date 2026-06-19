@@ -327,55 +327,64 @@ export function PurchaseOrderCreateModal({
   }, [open, purchaseOrderId, isEditMode]);
 
   // Load PO data in edit mode
+  const loadPo = useCallback(
+    (id: string, silent = false) => {
+      if (!silent) {
+        setLoading(true);
+        setError('');
+      }
+      return apiFetch<PODetail>(`/purchase-orders/${id}`)
+        .then(po => {
+          setPoNumber(po.number);
+          setCurrentStatus(po.status);
+          setForm({
+            supplierId: po.supplierId ?? '',
+            warehouseId: po.warehouseId ?? '',
+            notes: po.notes ?? '',
+            documentDate: po.documentDate ? po.documentDate.slice(0, 10) : kyivToday(),
+          });
+          setSupplierDisplay(po.supplierName ?? '');
+          setContractId(po.contractId ?? null);
+          setContractNumber(po.contractNumber ?? null);
+          setCreatedAt(po.createdAt ? new Date(po.createdAt).toLocaleDateString('uk-UA') : null);
+          setLines(
+            (po.lines ?? []).map(l => ({
+              _key: nextKey(),
+              id: l.id,
+              goodId: l.goodId,
+              goodName: l.goodName ?? '',
+              goodSku: l.goodSku,
+              unit: l.unit ?? 'шт',
+              unitShortName: l.unitShortName,
+              quantity: String(l.quantity),
+              price: String(l.price),
+              receivedQty: l.receivedQty,
+              pricedSalePrice: l.pricedSalePrice ?? null,
+              pricingRuleName: l.pricingRuleName ?? null,
+            })),
+          );
+        })
+        .catch(e => {
+          if (!silent) setError(e instanceof Error ? e.message : 'Помилка завантаження замовлення');
+        })
+        .finally(() => {
+          if (!silent) setLoading(false);
+        });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   useEffect(() => {
     if (!open || !isEditMode || !purchaseOrderId) return;
     let cancelled = false;
-    setLoading(true);
-    setError('');
-    apiFetch<PODetail>(`/purchase-orders/${purchaseOrderId}`)
-      .then(po => {
-        if (cancelled) return;
-        setPoNumber(po.number);
-        setCurrentStatus(po.status);
-        setForm({
-          supplierId: po.supplierId ?? '',
-          warehouseId: po.warehouseId ?? '',
-          notes: po.notes ?? '',
-          documentDate: po.documentDate ? po.documentDate.slice(0, 10) : kyivToday(),
-        });
-        setSupplierDisplay(po.supplierName ?? '');
-        setContractId(po.contractId ?? null);
-        setContractNumber(po.contractNumber ?? null);
-        setCreatedAt(po.createdAt ? new Date(po.createdAt).toLocaleDateString('uk-UA') : null);
-        setLines(
-          (po.lines ?? []).map(l => ({
-            _key: nextKey(),
-            id: l.id,
-            goodId: l.goodId,
-            goodName: l.goodName ?? '',
-            goodSku: l.goodSku,
-            unit: l.unit ?? 'шт',
-            unitShortName: l.unitShortName,
-            quantity: String(l.quantity),
-            price: String(l.price),
-            receivedQty: l.receivedQty,
-            pricedSalePrice: l.pricedSalePrice ?? null,
-            pricingRuleName: l.pricingRuleName ?? null,
-          })),
-        );
-      })
-      .catch(e => {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : 'Помилка завантаження замовлення');
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setLoading(false);
-      });
+    loadPo(purchaseOrderId).then(() => {
+      if (cancelled) return;
+    });
     return () => {
       cancelled = true;
     };
-  }, [open, purchaseOrderId, isEditMode]);
+  }, [open, purchaseOrderId, isEditMode, loadPo]);
 
   // Auto-collapse header when adding lines
   useEffect(() => {
@@ -745,6 +754,8 @@ export function PurchaseOrderCreateModal({
         },
       );
       if (features.toastEnabled) toast.success(`Розцінено ${result.updated} товарів`);
+      // Reload lines to show pricedSalePrice + pricingRuleName
+      if (purchaseOrderId) await loadPo(purchaseOrderId, true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка розцінки';
       setError(msg);
