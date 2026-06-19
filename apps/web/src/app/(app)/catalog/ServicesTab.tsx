@@ -835,11 +835,11 @@ export default function ServicesTab() {
                       <td className="px-2 py-2 text-right">
                         <input
                           type="number"
-                          min="0.01"
-                          step="0.01"
+                          min="1"
+                          step="1"
                           value={w.quantity}
                           onChange={e => {
-                            const quantity = Math.max(0.01, Number(e.target.value) || 1);
+                            const quantity = Math.max(1, Math.round(Number(e.target.value)) || 1);
                             setEditWorks(prev =>
                               prev.map((x, j) => (j === i ? { ...x, quantity } : x)),
                             );
@@ -901,13 +901,13 @@ export default function ServicesTab() {
                       <td className="px-2 py-1.5">
                         <input
                           type="number"
-                          min="0.01"
-                          step="0.01"
+                          min="1"
+                          step="1"
                           value={newWorkRow.quantity}
                           onChange={e =>
                             setNewWorkRow(r => ({
                               ...r,
-                              quantity: Math.max(0.01, Number(e.target.value) || 1),
+                              quantity: Math.max(1, Math.round(Number(e.target.value)) || 1),
                             }))
                           }
                           className="w-full h-7 text-[12px] text-right border border-border rounded px-1 bg-background"
@@ -1021,11 +1021,11 @@ export default function ServicesTab() {
                       <td className="px-2 py-2 text-right">
                         <input
                           type="number"
-                          min="0.01"
-                          step="0.01"
+                          min="1"
+                          step="1"
                           value={g.quantity}
                           onChange={e => {
-                            const quantity = Math.max(0.01, Number(e.target.value) || 1);
+                            const quantity = Math.max(1, Math.round(Number(e.target.value)) || 1);
                             setEditGoods(prev =>
                               prev.map((x, j) => (j === i ? { ...x, quantity } : x)),
                             );
@@ -1078,13 +1078,13 @@ export default function ServicesTab() {
                       <td className="px-2 py-1.5">
                         <input
                           type="number"
-                          min="0.01"
-                          step="0.01"
+                          min="1"
+                          step="1"
                           value={newGoodRow.quantity}
                           onChange={e =>
                             setNewGoodRow(r => ({
                               ...r,
-                              quantity: Math.max(0.01, Number(e.target.value) || 1),
+                              quantity: Math.max(1, Math.round(Number(e.target.value)) || 1),
                             }))
                           }
                           className="w-full h-7 text-[12px] text-right border border-border rounded px-1 bg-background"
