@@ -1118,6 +1118,69 @@ totalAmount: Number(wo.totalLabor) + Number(wo.totalParts),
 
 ---
 
+### 2026-06-19 — Shared include-shape const (3 read paths) без regression-guard на DTO field propagation (Bug #541) — backend / test-coverage / refactor safety
+
+**Сигнал:** Review-fix комміт що витягує дублюваний Prisma `include`-shape (`good: { select: { name, internalCode, sku, ... } }`) у shared const (`PART_GOOD_INCLUDE`/`PO_LINE_GOOD_INCLUDE`/`<X>_INCLUDE`) і використовує його у 3+ read paths (`findOne` / `createX` / `updateX` / FSM transition return). Refactor чистий, тести зелені, drift попереджено між трьома callsites. **АЛЕ** жоден існуючий test не асертить що поля з shared const реально потрапляють у DTO. `toDto` мапить кожне поле через `?? null` → якщо хтось наступним рефактором видалить `internalCode: true` з const-shape:
+
+1. TS green (DTO має `internalCode?: string | null`)
+2. `toDto` повертає `null` для всіх записів (silent)
+3. Frontend muted sub-line або кнопка-пошуку не показує значення
+4. Existing tests passing — баг непомітний
+
+**Причина виникнення:** review-fix зосереджується на **деуплікації** (3 ідентичні shape-и → 1 const), а не на **захисті** від майбутнього drift всередині самого const. Pattern `as const satisfies Prisma.<X>DefaultArgs` дає structural type safety **лише до моменту коли хтось видалить поле з const** — після цього TS вважає видалене поле "законно відсутнє" у return type, бо `toDto` має optional chain access (`l.good?.internalCode ?? null`).
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Знайти shared include-consts у service-файлах:
+grep -rnE "^const [A-Z_]+_INCLUDE\s*=" apps/api/src/modules --include="*.service.ts"
+
+# 2. Для кожного — звірити чи парний spec асертить поля у DTO:
+#    asserts повинні бути на 100% полів які const-shape забезпечує
+#    (не лише name, але internalCode / sku / brand.name / unit / etc.)
+for f in $(grep -rl "_INCLUDE" apps/api/src/modules --include="*.service.ts"); do
+  spec="${f/.ts/.spec.ts}"
+  alt_spec="${f/.service.ts/.role-gate.spec.ts}"
+  # асертимо що spec-mock включає всі fields з PART_GOOD_INCLUDE
+  echo "=== $spec ==="
+  grep -E "internalCode|sku|brand\.name" "$spec" "$alt_spec" 2>/dev/null | head -5
+done
+
+# 3. Якщо mock-fixture good має ТІЛЬКИ {name, unit} → bug: refactor що видалить
+#    internalCode/sku/brand з const-shape проходить CI зеленим
+```
+
+**Підхід до фіксу:** Для КОЖНОГО shared include-const **обов'язково** один з:
+
+1. **Розширити mock-fixture у paired spec** щоб включати ВСІ поля const-shape:
+   - `good: { name, internalCode, sku, unit, unitOfMeasure, brand: { name } }` (повний PART_GOOD_INCLUDE shape)
+2. **Додати regression-guard `it()` що асертить кожне поле у DTO:**
+   ```typescript
+   it('DTO містить goodInternalCode / goodSku / goodBrandName', async () => {
+     const wo = await service.findOne(ORG, WO_ID);
+     expect(wo.parts[0]).toMatchObject({
+       goodInternalCode: 'INT-001',
+       goodSku: 'SKU-1',
+       goodBrandName: 'Toyota',
+     });
+   });
+   ```
+3. Дзеркальний guard у кожному callsite (`findOne` ✗ `addPart` ✗ `updatePart`) — щоб видалення з ОДНОГО з 3 callsites теж ловилося (refactor може забути про includes у 1 з 3 mutation paths).
+
+**Severity:** LOW (silent regression-guard gap; runtime UX broken тільки коли drift реально станеться). MEDIUM коли const-shape забезпечує denormalized name для FK PII (`counterpartyName`, `vehicleLabel` — display label у share-link).
+
+**Де шукати ще:** будь-який `const <X>_INCLUDE` / `<X>_SELECT` / `<X>_DEFAULT_ARGS` у `*.service.ts` що використовується ≥2 callsites. У STO ERP кандидати:
+
+- `PART_GOOD_INCLUDE` / `PO_LINE_GOOD_INCLUDE` (Bug #541)
+- `GOOD_UOM_SELECT` у work-orders.service.ts
+- Будь-який shared `Counterparty`/`Vehicle` projection у FSM-обчислювальних flow
+
+**Регресія-guard checklist:**
+
+- [ ] **Shared include/select const без DTO-field propagation guard у paired spec (Bug #541):** будь-який `const <X>_INCLUDE = { select: {...} } as const satisfies Prisma.<Model>DefaultArgs` у `*.service.ts` що використовується ≥2 callsites (`findOne` + `addX`/`updateX` mutations) — у парному `*.service.spec.ts` / `*.role-gate.spec.ts` mock-fixture для `<relation>` має містити ВСІ scalar поля const-shape (не лише `name`), і має існувати хоча б ОДИН `it()` що `expect(dto).toMatchObject({ <denormName>: <fixture-value>, ... })` для кожного значення з mock-fixture. Без guard refactor що видалить поле з const-shape проходить CI зеленим. Grep: `grep -rnE "^const [A-Z_]+_INCLUDE\s*=" apps/api/src/modules --include="*.service.ts"` → для кожного match: `paired_spec.includes(const_name) || grep -E "(internalCode|sku|brand)" paired_spec`. Severity LOW (drift gap); MEDIUM коли const-shape ховає PII denormalization для share-link.
+
+---
+
 ### 2026-06-17 — Role-gated sensitive field у DTO без regression-guard у service spec (Bug #527, #529) — backend / security / test-coverage
 
 **Сигнал:** Commit вигляду `fix/feat: role-gate <Field> for <ContextDto>` що додає набір whитлист-ролей (`<X>_VISIBLE_ROLES = new Set<string>([...])`), helper-функцію (`canSeeX(role)`), і optional `userRole?: string` параметр у service-метод(и) що повертають DTO. Поле зазвичай — фінансово/безпечно чутливе (`costPrice`, `purchasePrice`, `margin`, `internalNotes`, `auditTrail`, `bankAccount`).
