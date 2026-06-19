@@ -11,12 +11,10 @@
 ```
 Дата:       2026-06-20
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
-TypeScript: api ✅ 0 errors (37 fixed) | web ✅ 0 errors | shared ✅ 0 errors
+TypeScript: api ✅ 0 errors (19 BOM fixed) | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 931/931 | Web 438/438 | E2E 232/232 (13 data-skip)
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 (HEAD 968e49b0) — fix(api): resolve 37 TypeScript errors Date→string conversions + undefined variable refs. 9 files: settings, units, vehicles, warehouses, zones, work-orders, works, employees, services. Усі Date fields у response DTOs перетворені на ISO string. Усі undefined variable refs (item→v, item→n, item→w, item→l) виправлені. tsc: 0 errors
-Останній review: 2026-06-20 (HEAD f1fea90b) — Direction 3 sync follow-up: додаткові модулі stock-documents + calendar мали Date fields без .toISOString() перетворення у toDto() методах. Виправлено: stock-documents (createdAt/updatedAt/deletedAt/confirmedAt → ISO string у DTO + toDto), calendar (startAt/endAt → ISO string у DTO + toDto + toConflictDto). Синхронізація Date ↔ string тепер повна у всіх 6 модулях. tsc API/Web ✅ 0 errors
-Останній review: 2026-06-20 (focused post-redesign, HEAD 0b60970c) — SupplierReturnCreateModal після PO-style редизайну (0bcc7365): frontend STATUS_TRANSITIONS розходився з backend SR_TRANSITIONS — `DRAFT:[CONFIRMED]` (втрачено CANCELLED) + `CONFIRMED:[CANCELLED]` (CONFIRMED — terminal у бекенді) + хардкод `statusPrevStep = status==='CONFIRMED' ? 'DRAFT' : null` (back-transition не існує). UI пропонувала недопустимі переходи, бекенд відкидав 400. Фікс: вирівняно з SR_TRANSITIONS (DRAFT→[CONFIRMED,CANCELLED]; обидва terminal), prev-step завжди null, next-step prefer не-CANCELLED forward. TS/no-React.X/no-any/no-console/no-BOM ✓.
+Останній commit: 2026-06-20 (HEAD 00f6c657) — fix(review): remove UTF-8 BOM from 19 DTO files. Цикл 1/3 review (post-sync): усі 19 DTO-файлів що були модифіковані під час синхронізації й підхопили UTF-8 BOM від Windows/PowerShell редактора. tsc: 0 errors. Все інше: TypeScript ✓ no-any ✓ no-React.X ✓, Security (orgId guards ✓ @Roles ✓ soft-delete ✓), API Contract (Date→ISO string ✓ no-BigInt ✓), Memory Leaks ✓, Business Rules (FSM ✓ inventory ✓ settlements ✓). FindMany take limits ✓, no hardcoded secrets ✓.
 ```
 
 ### Аудит-висновки (2026-06-17 simplify session)
@@ -32,7 +30,9 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+00f6c657  fix(review): remove UTF-8 BOM from 19 DTO files (Цикл 1/3)
 968e49b0  fix(api): resolve 37 TypeScript errors — Date→string conversions + undefined variable refs
+40e3d6ff  docs(memory): update MemoryManual after TypeScript error fixes (37 errors resolved)
 f1fea90b  fix(sync): complete Date serialization alignment in remaining modules
 7d940576  fix(sync): align Date field serialization in API response DTOs
 0b60970c  fix(review): align SupplierReturn modal FSM with backend SR_TRANSITIONS
@@ -40,8 +40,6 @@ f1fea90b  fix(sync): complete Date serialization alignment in remaining modules
 a50e1484  fix(review): extract PO/WO `good` include + render goodInternalCode/sku/brand in WO parts list
 669a328e  fix(sync): add goodInternalCode/goodSku/goodBrandName to WorkOrderPart interfaces
 d1a12539  fix(review): include good.internalCode + brand in PO/WO part create/update + fix brandName drop in picker
-9ea58b9e  feat(goods): add internalCode (sequential internal good code)
-270de6ab  fix(sync): align WorkOrderPart frontend interfaces with backend DTO
 ```
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
