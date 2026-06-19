@@ -13,7 +13,7 @@ const NumbersTab = dynamic(() => import('./NumbersTab'), { ssr: false });
 const WorkdaysTab = dynamic(() => import('./WorkdaysTab'), { ssr: false });
 const FollowupTab = dynamic(() => import('./FollowupTab'), { ssr: false });
 const IntegrationsTab = dynamic(() => import('./IntegrationsTab'), { ssr: false });
-const DocumentsTab = dynamic(() => import('./DocumentsTab'), { ssr: false });
+const DocumentsTab = dynamic(() => import('./DocumentsTab'), { ssr: false, loading: () => null });
 
 type Tab =
   | 'notifications'

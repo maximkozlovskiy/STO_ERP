@@ -36,7 +36,7 @@ async function globalSetup() {
 
   // Перехопити refresh cookie через відвідування /login (API ставить httpOnly cookie).
   // Краще: повторно зробити login через browser-side fetch — щоб cookie був у browser context.
-  await page.goto(`${baseURL}/login`);
+  await page.goto(`${baseURL}/login/`);
   const loginResult = await page.evaluate(
     async ({ email, password, apiBase }) => {
       const r = await fetch(`${apiBase}/api/auth/login`, {

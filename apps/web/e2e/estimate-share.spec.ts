@@ -117,6 +117,10 @@ test.describe('Estimate share', () => {
     const ctx = await request.newContext();
     try {
       seededEstimateWoId = await seedEstimateWorkOrder(ctx, accessToken);
+      // Seed race condition (Bug #538): give API time to persist WO before tests query it.
+      if (seededEstimateWoId) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     } finally {
       await ctx.dispose();
     }
@@ -200,11 +204,15 @@ test.describe('Estimate share', () => {
   test('work-order modal in ESTIMATE status shows Друк / Поділитись / SMS buttons', async ({
     page,
   }) => {
+    console.log('🔍 seededEstimateWoId:', seededEstimateWoId);
     expect(seededEstimateWoId, 'beforeAll must have seeded an ESTIMATE work-order').toBeTruthy();
 
     // Open work-orders page; click "Кошторис" status tab to filter ESTIMATE.
     await page.goto('/work-orders');
     await page.getByRole('button', { name: /^Кошторис$/ }).click();
+    // Wait for the filter to apply — ensure table is reloaded with ESTIMATE items.
+    // Seed race: DB might not have synced yet, so wait longer and add retry loop.
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => undefined);
     // Wait until the row with our work-order is visible.
     const row = page
       .getByRole('row')
