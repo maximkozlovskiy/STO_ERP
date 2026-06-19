@@ -961,20 +961,6 @@ export function PurchaseOrderCreateModal({
                   </Button>
                 </>
               )}
-              {/* Розцінити — після отримання товару */}
-              {isEditMode && (currentStatus === 'RECEIVED' || currentStatus === 'PARTIAL') && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleApplyPricing()}
-                  loading={applyingPricing}
-                  disabled={applyingPricing || saving || transitioning}
-                  title="Розцінити товари за правилами"
-                >
-                  <Zap size={14} className="mr-1" />
-                  Розцінити
-                </Button>
-              )}
               {isEditMode ? (
                 canEdit && (
                   <Button
@@ -1121,6 +1107,19 @@ export function PurchaseOrderCreateModal({
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground">Товари</p>
               <div className="flex items-center gap-2">
+                {isEditMode && (currentStatus === 'RECEIVED' || currentStatus === 'PARTIAL') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleApplyPricing()}
+                    loading={applyingPricing}
+                    disabled={applyingPricing || saving || transitioning}
+                    title="Розцінити товари за правилами"
+                  >
+                    <Zap size={13} className="mr-1" />
+                    Розцінити
+                  </Button>
+                )}
                 {isEditMode &&
                   (currentStatus === 'ORDERED' || currentStatus === 'PARTIAL') &&
                   (receiveMode ? (
