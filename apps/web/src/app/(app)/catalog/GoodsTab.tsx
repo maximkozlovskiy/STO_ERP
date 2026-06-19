@@ -143,7 +143,10 @@ const GOODS_PANEL_FIELDS = [
 
 // Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
 const GOODS_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
-  { key: 'name', label: 'Назва / Артикул', defaultVisible: true },
+  { key: 'name', label: 'Назва', defaultVisible: true },
+  { key: 'code', label: 'Код', defaultVisible: true },
+  { key: 'sku', label: 'Артикул', defaultVisible: true },
+  { key: 'brand', label: 'Бренд', defaultVisible: true },
   { key: 'category', label: 'Категорія', defaultVisible: true },
   { key: 'unit', label: 'Одиниця', defaultVisible: false },
   { key: 'purchase', label: 'Закупівля, ₴', defaultVisible: true },
@@ -647,11 +650,6 @@ export default function GoodsTab() {
                         if (col.key === 'name')
                           return (
                             <TableCell key="name">
-                              {(g.internalCode || g.sku || g.brandName) && (
-                                <p className="text-muted-foreground text-[11px] mb-0.5">
-                                  {[g.internalCode, g.sku, g.brandName].filter(Boolean).join(' · ')}
-                                </p>
-                              )}
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p
                                   className={`font-medium ${isDeleted ? 'line-through text-muted-foreground' : ''}`}
@@ -660,6 +658,27 @@ export default function GoodsTab() {
                                 </p>
                                 {isDeleted && <Badge variant="secondary">видалено</Badge>}
                               </div>
+                            </TableCell>
+                          );
+                        if (col.key === 'code')
+                          return (
+                            <TableCell
+                              key="code"
+                              className="text-[13px] font-mono text-muted-foreground"
+                            >
+                              {g.internalCode ?? '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'sku')
+                          return (
+                            <TableCell key="sku" className="text-[13px] text-muted-foreground">
+                              {g.sku ?? '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'brand')
+                          return (
+                            <TableCell key="brand" className="text-[13px] text-muted-foreground">
+                              {g.brandName ?? '—'}
                             </TableCell>
                           );
                         if (col.key === 'category')
