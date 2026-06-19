@@ -20,10 +20,11 @@ import { CollapsibleHeader } from '@/components/ui/collapsible-header';
 import type { SupplierReturn, SupplierReturnLine } from '@/hooks/api/useSupplierReturns';
 
 // ─── Status config ─────────────────────────────────────────────────────────────
+// Mirrors backend SR_TRANSITIONS in apps/api/src/modules/supplier-returns/supplier-returns.service.ts
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ['CONFIRMED'],
-  CONFIRMED: ['CANCELLED'],
+  DRAFT: ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED: [],
   CANCELLED: [],
 };
 
@@ -209,9 +210,12 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   }, [open, resetForm]);
 
   // ── Status transitions ─────────────────────────────────────────────────────
+  // Backend FSM is linear-forward: DRAFT → CONFIRMED or DRAFT → CANCELLED; both terminal.
+  // No back-transition exists, so prev-step is always disabled — chevron stays for visual symmetry with PO modal.
   const allowedTransitions = STATUS_TRANSITIONS[status] ?? [];
-  const statusPrevStep = status === 'CONFIRMED' ? 'DRAFT' : null;
-  const statusNextStep = allowedTransitions[0] ?? null;
+  const statusPrevStep: string | null = null;
+  const statusNextStep =
+    allowedTransitions.find(s => s !== 'CANCELLED') ?? allowedTransitions[0] ?? null;
 
   const doTransition = useCallback(
     async (targetStatus: string) => {
