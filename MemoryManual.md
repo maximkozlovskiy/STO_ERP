@@ -15,7 +15,7 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 928/928 | Web 434/434
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 Останній sync:   2026-06-19 (HEAD 669a328e) — WorkOrderPart: +goodInternalCode/goodSku/goodBrandName у PageClient + WorkOrderPartsSection (type drift vs toPartDto після internalCode feature) — 6 полів додано | tsc 0 errors
-Останній review: 2026-06-19 (POST internalCode, HEAD d1a12539) — PO create/update + WO addPart/updatePart `good` include був без internalCode/brand (sku у WO теж); GoodPickerModal зчитував g.brand?.name але DTO повертає brandName — 4 фікси
+Останній review: 2026-06-19 (FULL post-sync, HEAD a50e1484) — (1) extract `PO_LINE_GOOD_INCLUDE`/`PART_GOOD_INCLUDE` shared consts у PO та WO service (3 дублювання в кожному → 1 const, попереджає drift зафіксований у sto-review 2026-06-19); (2) WorkOrderPartsSection: рендер goodInternalCode/goodSku/goodBrandName (синхронізовані типи з 669a328e були dead weight — тепер видимі як secondary muted line, як у CreateWorkOrderModal). Auth/tenant/Soft delete/Zod/Magic numbers/Race condition (DocumentNumberService SELECT FOR UPDATE з timeout) — всі чисті. API 928/928 ✓.
 Останній tester: 2026-06-19 (FULL, post-internalCode) — 8 багів знайдено/виправлено: #533 CRITICAL migration backfill для GOOD_INTERNAL_CODE (фіча мертва у проді без нього); #534 CRITICAL goods.service.spec падав 30/30 через відсутність DocumentNumberService у test-module; #535 HIGH — додано 6 regression тестів для internalCode generation; #536 MEDIUM pre-existing PO/WO specs падали 55 тестів через відсутність SettingsService у test-module (від commit 60b25347 feat(vat), 5 червня); #537 MEDIUM — GoodsService create/update не повертали goodCategoryName бо include пропускав goodCategory relation; #538 LOW — GoodPickerModal secondary не включав internalCode; #540 LOW — DocumentCreateModals.test.tsx падав через відсутній next/navigation mock. Тести API: 837/922 → 928/928. Тести Web: 433/434 → 434/434.
 ```
 
@@ -32,6 +32,7 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+a50e1484  fix(review): extract PO/WO `good` include + render goodInternalCode/sku/brand in WO parts list
 669a328e  fix(sync): add goodInternalCode/goodSku/goodBrandName to WorkOrderPart interfaces
 d1a12539  fix(review): include good.internalCode + brand in PO/WO part create/update + fix brandName drop in picker
 9ea58b9e  feat(goods): add internalCode (sequential internal good code)
@@ -39,7 +40,6 @@ d1a12539  fix(review): include good.internalCode + brand in PO/WO part create/up
 90101494  feat(po): add pricedAt field and Розцінено column in PO list
 49f8cd75  feat(goods): add price history tab to GoodEditModal
 c4149f4c  feat(ui): apply inline label layout to all document forms
-fe9c741c  fix(review): VAT report filters + broken endpoint + VatMode typing
 ```
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
