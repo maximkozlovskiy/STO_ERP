@@ -98,6 +98,12 @@ export class CreatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  supplierId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsArray()
   // Bug #248: anti-DoS cap. COST_TIER з 50 рівнями — і так абсурд для реальної ціноутворення.
   @ArrayMaxSize(50, { message: 'Не більше 50 рівнів у правилі ціноутворення' })
@@ -179,6 +185,12 @@ export class UpdatePricingRuleDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   brandId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  supplierId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

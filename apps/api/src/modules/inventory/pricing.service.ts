@@ -206,12 +206,15 @@ export class PricingService {
 
   // Pure in-memory rule resolution (no DB calls) — used in tight loops like applyRuleToGoods
   // Public so PO apply-pricing та інші bulk-операції можуть переиспользовать без re-fetch правил.
+  // supplierId: якщо вказано — спочатку шукаємо правило цього постачальника (найвищий пріоритет).
+  // Якщо правило постачальника не знайдено — fallback на стандартну ієрархію без фільтра по supplier.
   computePriceFromRules(
     rules: Array<{
       goodId: string | null;
       goodCategory: string | null;
       goodType: string | null;
       brandId: string | null;
+      supplierId: string | null;
       type: string;
       percentValue: unknown;
       fixedAmount: unknown;
@@ -229,14 +232,26 @@ export class PricingService {
     goodType: string | undefined,
     brandId: string | undefined,
     costPrice: number,
+    supplierId?: string,
   ): number {
+    // Supplier-specific rule has highest priority — try it first.
+    if (supplierId) {
+      const supplierRules = rules.filter(r => r.supplierId === supplierId);
+      if (supplierRules.length > 0) {
+        // Pick the first by priority (rules are pre-sorted by priority asc).
+        return this._applyRule(supplierRules[0]!, costPrice);
+      }
+    }
+
+    // Standard hierarchy: goodId > brandId > goodCategory > goodType > all
     const candidates = rules.filter(
       r =>
-        r.goodId === goodId ||
-        (!r.goodId && r.brandId === (brandId ?? null)) ||
-        (!r.goodId && !r.brandId && r.goodCategory === (goodCategory ?? null)) ||
-        (!r.goodId && !r.brandId && !r.goodCategory && r.goodType === (goodType ?? null)) ||
-        (!r.goodId && !r.brandId && !r.goodCategory && !r.goodType),
+        !r.supplierId &&
+        (r.goodId === goodId ||
+          (!r.goodId && r.brandId === (brandId ?? null)) ||
+          (!r.goodId && !r.brandId && r.goodCategory === (goodCategory ?? null)) ||
+          (!r.goodId && !r.brandId && !r.goodCategory && r.goodType === (goodType ?? null)) ||
+          (!r.goodId && !r.brandId && !r.goodCategory && !r.goodType)),
     );
     if (!candidates.length) return costPrice;
 
@@ -248,6 +263,25 @@ export class PricingService {
       candidates.find(r => !r.goodId && !r.brandId && !r.goodCategory && !r.goodType) ??
       candidates[0];
 
+    return this._applyRule(rule, costPrice);
+  }
+
+  private _applyRule(
+    rule: {
+      type: string;
+      percentValue: unknown;
+      fixedAmount: unknown;
+      fixedPrice: unknown;
+      roundTo: unknown;
+      tiers: Array<{
+        costMin: unknown;
+        costMax: unknown | null;
+        percentValue: unknown;
+        sortOrder: number;
+      }>;
+    },
+    costPrice: number,
+  ): number {
     let result: number;
     switch (rule.type) {
       case 'PERCENT':

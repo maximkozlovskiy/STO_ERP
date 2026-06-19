@@ -42,10 +42,12 @@ import {
 const RuleFormModal = dynamic(() => import('./RuleFormModal'), { ssr: false });
 
 function scopeLabel(rule: PricingRule): string {
-  if (rule.goodId && rule.good) return `Товар: ${rule.good.name}`;
+  const supplier = rule.supplierId ? `[${rule.supplierName ?? 'Постачальник'}] ` : '';
+  if (rule.goodId && rule.good) return `${supplier}Товар: ${rule.good.name}`;
   if (rule.goodType)
-    return `Тип: ${GOOD_TYPE_OPTIONS.find(o => o.value === rule.goodType)?.label ?? rule.goodType}`;
-  if (rule.goodCategory) return `Категорія: ${rule.goodCategory}`;
+    return `${supplier}Тип: ${GOOD_TYPE_OPTIONS.find(o => o.value === rule.goodType)?.label ?? rule.goodType}`;
+  if (rule.goodCategory) return `${supplier}Категорія: ${rule.goodCategory}`;
+  if (rule.supplierId) return `Постачальник: ${rule.supplierName ?? '—'}`;
   return 'Весь асортимент';
 }
 
@@ -168,6 +170,7 @@ export default function PricingRulesClient() {
       goodCategory: form.goodId ? undefined : form.goodCategory || undefined,
       goodType: form.goodId || form.goodCategory ? undefined : form.goodType || undefined,
       brandId: form.brandId || undefined,
+      supplierId: form.supplierId || undefined,
       percentValue: isPercent && form.percentValue ? Number(form.percentValue) : undefined,
       fixedAmount: isFixedAmount && form.fixedAmount ? Number(form.fixedAmount) : undefined,
       fixedPrice: isFixedPrice && form.fixedPrice ? Number(form.fixedPrice) : undefined,
@@ -245,6 +248,8 @@ export default function PricingRulesClient() {
         roundTo: editRule.roundTo != null ? String(editRule.roundTo) : '',
         isActive: editRule.isActive,
         brandId: editRule.brandId ?? '',
+        supplierId: editRule.supplierId ?? '',
+        supplierName: editRule.supplierName ?? '',
         tiers: editRule.tiers ?? [],
       }
     : EMPTY_FORM;

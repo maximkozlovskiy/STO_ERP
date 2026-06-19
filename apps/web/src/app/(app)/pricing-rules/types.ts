@@ -36,6 +36,8 @@ export interface PricingRule {
   createdAt: string;
   brandId?: string | null;
   brandName?: string | null;
+  supplierId?: string | null;
+  supplierName?: string | null;
   tiers?: PricingRuleTier[];
 }
 
@@ -52,6 +54,8 @@ export type RuleForm = {
   roundTo: string;
   isActive: boolean;
   brandId: string;
+  supplierId: string;
+  supplierName: string;
   tiers: PricingRuleTier[];
 };
 
@@ -68,6 +72,8 @@ export const EMPTY_FORM: RuleForm = {
   roundTo: '',
   isActive: true,
   brandId: '',
+  supplierId: '',
+  supplierName: '',
   tiers: [],
 };
 

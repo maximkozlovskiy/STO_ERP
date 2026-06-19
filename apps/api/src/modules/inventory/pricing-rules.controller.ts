@@ -24,6 +24,12 @@ import { UserRole, PricingRule, PricingRuleTier, Prisma } from '@prisma/client';
 type PricingRuleWithRelations = PricingRule & {
   good: { id: string; name: string; sku: string | null } | null;
   brand: { id: string; name: string } | null;
+  supplier: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    companyName: string | null;
+  } | null;
   tiers: PricingRuleTier[];
 };
 
@@ -54,6 +60,7 @@ export class PricingRulesController {
         include: {
           good: { select: { id: true, name: true, sku: true } },
           brand: { select: { id: true, name: true } },
+          supplier: { select: { id: true, firstName: true, lastName: true, companyName: true } },
           tiers: { orderBy: { sortOrder: 'asc' } },
         },
         orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
@@ -73,8 +80,8 @@ export class PricingRulesController {
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Створити правило ціноутворення' })
   async create(@OrgContext() orgId: string, @Body() dto: CreatePricingRuleDto) {
-    // Parallel FK validation: goodId + brandId — обидва незалежні, можуть бути перевірені одночасно.
-    const [good, brand] = await Promise.all([
+    // Parallel FK validation: goodId + brandId + supplierId — всі незалежні.
+    const [good, brand, supplier] = await Promise.all([
       dto.goodId
         ? this.prisma.good.findFirst({
             where: { id: dto.goodId, orgId, deletedAt: null },
@@ -87,9 +94,16 @@ export class PricingRulesController {
             select: { id: true },
           })
         : Promise.resolve(null),
+      dto.supplierId
+        ? this.prisma.counterparty.findFirst({
+            where: { id: dto.supplierId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (dto.goodId && !good) throw new NotFoundException('Товар не знайдено');
     if (dto.brandId && !brand) throw new NotFoundException('Бренд не знайдено');
+    if (dto.supplierId && !supplier) throw new NotFoundException('Постачальника не знайдено');
     // Bug #22: scope-поля взаємовиключні, ієрархія goodId > goodCategory > goodType.
     // Очищаємо менш специфічні рівні, щоб менеджер не зберігав суперечливі правила.
     const normalized = this.normalizeScope(dto);
@@ -119,6 +133,7 @@ export class PricingRulesController {
       include: {
         good: { select: { id: true, name: true, sku: true } },
         brand: { select: { id: true, name: true } },
+        supplier: { select: { id: true, firstName: true, lastName: true, companyName: true } },
         tiers: { orderBy: { sortOrder: 'asc' } },
       },
     });
@@ -133,9 +148,9 @@ export class PricingRulesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePricingRuleDto,
   ) {
-    // Parallel: tenant guard (existing) + FK validation (goodId + brandId).
-    // existing.orgId перевірений у where, goodId/brandId — окремі таблиці, всі три незалежні.
-    const [existing, good, brand] = await Promise.all([
+    // Parallel: tenant guard (existing) + FK validation (goodId + brandId + supplierId).
+    // existing.orgId перевірений у where, решта — окремі таблиці, всі незалежні.
+    const [existing, good, brand, supplier] = await Promise.all([
       this.prisma.pricingRule.findFirst({ where: { id, orgId, deletedAt: null } }),
       dto.goodId
         ? this.prisma.good.findFirst({
@@ -149,10 +164,17 @@ export class PricingRulesController {
             select: { id: true },
           })
         : Promise.resolve(null),
+      dto.supplierId
+        ? this.prisma.counterparty.findFirst({
+            where: { id: dto.supplierId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (!existing) throw new NotFoundException('Правило не знайдено');
     if (dto.goodId && !good) throw new NotFoundException('Товар не знайдено');
     if (dto.brandId && !brand) throw new NotFoundException('Бренд не знайдено');
+    if (dto.supplierId && !supplier) throw new NotFoundException('Постачальника не знайдено');
 
     // Bug #35: PATCH повинен застосовувати ієрархію scope з урахуванням існуючого
     // стану. Якщо клієнт надсилає лише `goodCategory` (без явного `goodId: null`),
@@ -164,6 +186,8 @@ export class PricingRulesController {
       brandId: dto.brandId !== undefined ? dto.brandId : (existing.brandId ?? undefined),
       goodCategory: dto.goodCategory !== undefined ? dto.goodCategory : existing.goodCategory,
       goodType: dto.goodType !== undefined ? dto.goodType : (existing.goodType ?? undefined),
+      supplierId:
+        dto.supplierId !== undefined ? dto.supplierId : (existing.supplierId ?? undefined),
     };
     const merged = { ...dto, ...mergedScope } as UpdatePricingRuleDto;
     const normalized = this.normalizeScope(merged);
@@ -184,6 +208,7 @@ export class PricingRulesController {
       brandId: normalized.brandId ?? null,
       goodCategory: normalized.goodCategory ?? null,
       goodType: normalized.goodType ?? null,
+      supplierId: normalized.supplierId ?? null,
     };
 
     // Replace-semantics for tiers: deleteMany + createMany in $transaction.
@@ -228,6 +253,9 @@ export class PricingRulesController {
             include: {
               good: { select: { id: true, name: true, sku: true } },
               brand: { select: { id: true, name: true } },
+              supplier: {
+                select: { id: true, firstName: true, lastName: true, companyName: true },
+              },
               tiers: { orderBy: { sortOrder: 'asc' } },
             },
           });
@@ -245,6 +273,7 @@ export class PricingRulesController {
         include: {
           good: { select: { id: true, name: true, sku: true } },
           brand: { select: { id: true, name: true } },
+          supplier: { select: { id: true, firstName: true, lastName: true, companyName: true } },
           tiers: { orderBy: { sortOrder: 'asc' } },
         },
       });
@@ -337,6 +366,10 @@ export class PricingRulesController {
   }
 
   private toDto(rule: PricingRuleWithRelations) {
+    const s = rule.supplier;
+    const supplierName = s
+      ? (s.companyName ?? [s.firstName, s.lastName].filter(Boolean).join(' ') ?? null)
+      : null;
     return {
       id: rule.id,
       name: rule.name,
@@ -348,6 +381,8 @@ export class PricingRulesController {
       goodType: rule.goodType,
       brandId: rule.brandId ?? null,
       brandName: rule.brand?.name ?? null,
+      supplierId: rule.supplierId ?? null,
+      supplierName,
       percentValue: rule.percentValue != null ? Number(rule.percentValue) : null,
       fixedAmount: rule.fixedAmount != null ? Number(rule.fixedAmount) : null,
       fixedPrice: rule.fixedPrice != null ? Number(rule.fixedPrice) : null,

@@ -597,6 +597,7 @@ model Counterparty {
   payments           Payment[]
   reconciliationActs ReconciliationAct[]
   goodsAsSupplier    Good[]                 @relation("GoodSupplier")
+  pricingRules       PricingRule[]          @relation("PricingRuleSupplier")
   warranties         Warranty[]
   calendarSlots      CalendarSlot[]
 
@@ -1248,6 +1249,7 @@ model PricingRule {
   goodCategory String?
   goodType     String?
   brandId      String?         @db.Uuid
+  supplierId   String?         @db.Uuid
   percentValue Decimal?        @db.Decimal(6, 2)
   fixedAmount  Decimal?        @db.Decimal(12, 2)
   fixedPrice   Decimal?        @db.Decimal(12, 2)
@@ -1260,6 +1262,7 @@ model PricingRule {
 
   good         Good?             @relation(fields: [goodId], references: [id])
   brand        Brand?            @relation(fields: [brandId], references: [id])
+  supplier     Counterparty?     @relation("PricingRuleSupplier", fields: [supplierId], references: [id])
   tiers        PricingRuleTier[]
   priceHistory PriceHistory[]
 
@@ -1267,6 +1270,7 @@ model PricingRule {
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
   @@index([orgId, brandId])
+  @@index([orgId, supplierId])
   @@map("pricing_rules")
 }
 

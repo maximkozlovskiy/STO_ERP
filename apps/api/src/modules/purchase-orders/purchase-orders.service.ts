@@ -619,6 +619,7 @@ export class PurchaseOrdersService {
         id: true,
         number: true,
         status: true,
+        supplierId: true,
         lines: {
           where: { deletedAt: null },
           select: {
@@ -672,6 +673,7 @@ export class PurchaseOrdersService {
         line.good.goodType ?? undefined,
         line.good.brandId ?? undefined,
         costPrice,
+        po.supplierId ?? undefined,
       );
       if (Math.abs(newSalePrice - oldSalePrice) < 0.001) continue;
       plan.push({

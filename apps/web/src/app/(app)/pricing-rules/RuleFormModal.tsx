@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { EntityPickerField } from '@/components/ui/entity-picker-field';
+import { apiFetch } from '@/lib/api-client';
+import { displayCounterpartyName } from '@/lib/utils';
 import type { Good, Brand, PricingRule, PricingRuleTier, RuleForm } from './types';
 import { TYPE_LABELS, GOOD_TYPE_OPTIONS } from './types';
 
@@ -36,6 +39,21 @@ export default function RuleFormModal({
   }, [open, initial]);
 
   const set = (patch: Partial<RuleForm>) => setForm(f => ({ ...f, ...patch }));
+
+  const searchSuppliers = useCallback(async (q: string) => {
+    const res = await apiFetch<{
+      items: {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        companyName: string | null;
+      }[];
+    }>(`/counterparties?q=${encodeURIComponent(q)}&limit=20`);
+    return res.items.map(s => ({
+      id: s.id,
+      primary: displayCounterpartyName(s),
+    }));
+  }, []);
 
   // ─── Tier management ───────────────────────────────────────────────────────
 
@@ -316,8 +334,26 @@ export default function RuleFormModal({
             Область застосування
           </p>
           <p className="text-[12px] text-muted-foreground">
-            Пріоритет: Товар {'>'} Тип товару {'>'} Весь асортимент
+            Постачальник {'>'} Товар {'>'} Бренд {'>'} Категорія {'>'} Тип {'>'} Весь асортимент
           </p>
+
+          <div>
+            <label className="block text-[13px] font-medium text-foreground mb-1">
+              Постачальник (необов&apos;язково)
+            </label>
+            <EntityPickerField
+              display={form.supplierName}
+              placeholder="Пошук постачальника..."
+              onSearch={searchSuppliers}
+              onSearchSelect={item => set({ supplierId: item.id, supplierName: item.primary })}
+              onClear={() => set({ supplierId: '', supplierName: '' })}
+            />
+            {form.supplierId && (
+              <p className="text-[11px] text-primary mt-1">
+                Правило застосується тільки при розцінці замовлень від цього постачальника
+              </p>
+            )}
+          </div>
 
           <Select
             label="Конкретний товар (необов'язково)"
