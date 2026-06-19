@@ -12,6 +12,7 @@ import { SUPPLIER_RETURN_STATUS_LABELS, SUPPLIER_RETURN_STATUS_BADGE } from '@st
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal } from '@/components/ui/search-picker-modal';
@@ -65,6 +66,15 @@ interface LocalLine {
   price: string;
 }
 
+const EMPTY_LINE: Omit<LocalLine, '_key'> = {
+  goodId: '',
+  goodName: '',
+  goodSku: null,
+  unit: '',
+  quantity: '1',
+  price: '',
+};
+
 let lineKeyCounter = 0;
 function newKey() {
   return `line_${++lineKeyCounter}`;
@@ -83,13 +93,12 @@ function lineFromApi(l: SupplierReturnLine): LocalLine {
   };
 }
 
-function totalFromLines(lines: LocalLine[]) {
-  return lines.reduce((sum, l) => {
-    const q = parseFloat(l.quantity) || 0;
-    const p = parseFloat(l.price) || 0;
-    return sum + q * p;
-  }, 0);
+function lineSubtotal(quantity: string, price: string) {
+  return (parseFloat(quantity) || 0) * (parseFloat(price) || 0);
 }
+
+const numericInputCls =
+  'w-full rounded border border-input bg-background px-2 py-1 text-[11px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring';
 
 interface Props {
   open: boolean;
@@ -106,7 +115,6 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const [supplierId, setSupplierId] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
-  const [warehouseName, setWarehouseName] = useState('');
   const [notes, setNotes] = useState('');
   const [documentDate, setDocumentDate] = useState(() => kyivToday());
   const [lines, setLines] = useState<LocalLine[]>([]);
@@ -114,6 +122,10 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const [confirming, setConfirming] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+
+  const [showLineInput, setShowLineInput] = useState(false);
+  const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
@@ -126,6 +138,11 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       mountedRef.current = false;
     };
   }, []);
+
+  // Collapse header when adding a line
+  useEffect(() => {
+    if (showLineInput) setHeaderCollapsed(true);
+  }, [showLineInput]);
 
   // Load warehouses
   useEffect(() => {
@@ -145,6 +162,13 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       .catch(() => {});
   }, [open]);
 
+  // Auto-select single warehouse
+  useEffect(() => {
+    if (warehouses.length === 1 && !warehouseId) {
+      setWarehouseId(warehouses[0].id);
+    }
+  }, [warehouses, warehouseId]);
+
   // Load existing return when editing
   useEffect(() => {
     if (!open || !editId) return;
@@ -155,7 +179,6 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         setSupplierId(data.supplierId);
         setSupplierName(data.supplierName ?? '');
         setWarehouseId(data.warehouseId);
-        setWarehouseName(data.warehouseName ?? '');
         setNotes(data.notes ?? '');
         setDocumentDate(data.documentDate ?? kyivToday());
         setLines((data.lines ?? []).map(lineFromApi));
@@ -168,36 +191,28 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     setSupplierId('');
     setSupplierName('');
     setWarehouseId('');
-    setWarehouseName('');
     setNotes('');
     setDocumentDate(kyivToday());
     setLines([]);
     setError('');
+    setHeaderCollapsed(false);
+    setShowLineInput(false);
+    setNewLine(EMPTY_LINE);
   }, []);
 
   useEffect(() => {
     if (!open) resetForm();
   }, [open, resetForm]);
 
-  const handleAddGood = useCallback((item: GoodPickerItem) => {
+  const addLine = useCallback(() => {
+    if (!newLine.goodId) return;
     setLines(prev => {
-      const exists = prev.find(l => l.goodId === item.id);
-      if (exists) return prev;
-      return [
-        ...prev,
-        {
-          _key: newKey(),
-          goodId: item.id,
-          goodName: item.primary,
-          goodSku: item._sku ?? null,
-          unit: item._unit ?? '',
-          quantity: '1',
-          price: String(item._price ?? 0),
-        },
-      ];
+      if (prev.find(l => l.goodId === newLine.goodId)) return prev;
+      return [...prev, { ...newLine, _key: newKey() }];
     });
-    setGoodPickerOpen(false);
-  }, []);
+    setNewLine(EMPTY_LINE);
+    setShowLineInput(false);
+  }, [newLine]);
 
   const handleLineChange = useCallback(
     (key: string, field: 'quantity' | 'price', value: string) => {
@@ -211,8 +226,6 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   }, []);
 
   const handleSave = useCallback(async () => {
-    // Validate inline — `validate` and `buildPayload` use current state captured at
-    // call-time через closure (callback recreated on lines/supplier/warehouse changes).
     if (!supplierId) {
       setError('Оберіть постачальника');
       return;
@@ -315,29 +328,24 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     }
   }, [editId, features.toastEnabled, onSaved, onClose]);
 
-  // sto-optimize: total — O(N) reduce, було computed на кожен render (typing → state →
-  // render → total recompute). Memoize → лише при зміні lines.
-  const total = useMemo(() => totalFromLines(lines), [lines]);
-  const isReadOnly = status !== 'DRAFT';
+  const total = useMemo(
+    () => lines.reduce((sum, l) => sum + lineSubtotal(l.quantity, l.price), 0),
+    [lines],
+  );
 
-  // sto-optimize: warehouse lookup → Map (стабільна identity для onChange handler);
-  // дозволяє замінити inline `warehouses.find()` на `O(1)` get.
   const warehouseById = useMemo(() => {
     const m = new Map<string, Warehouse>();
     for (const w of warehouses) m.set(w.id, w);
     return m;
   }, [warehouses]);
 
-  // sto-optimize: stable onChange — інакше recreated на кожен render навіть коли
-  // warehouseById identity не змінювалась.
-  const handleWarehouseChange = useCallback(
-    (e: ChangeEvent<HTMLSelectElement>) => {
-      const w = warehouseById.get(e.target.value);
-      setWarehouseId(e.target.value);
-      setWarehouseName(w?.name ?? '');
-    },
-    [warehouseById],
-  );
+  const handleWarehouseChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
+    setWarehouseId(e.target.value);
+  }, []);
+
+  const isReadOnly = status !== 'DRAFT';
+  const canEdit = !isReadOnly;
+
   const title = isEdit
     ? isReadOnly
       ? 'Повернення постачальнику'
@@ -381,225 +389,333 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
                 {isReadOnly ? 'Закрити' : 'Скасувати'}
               </Button>
-              {!isReadOnly && (
+              {canEdit && (
                 <Button size="sm" onClick={handleSave} loading={saving} disabled={confirming}>
-                  {isEdit ? 'Зберегти' : 'Створити'}
+                  {isEdit ? 'Зберегти' : 'Створити повернення'}
                 </Button>
               )}
             </div>
           </div>
         }
       >
-        <div className="flex flex-col gap-4">
-          {/* Status badge */}
-          {isEdit && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Статус:</span>
-              <Badge variant={SUPPLIER_RETURN_STATUS_BADGE[status] as BadgeVariant}>
-                {SUPPLIER_RETURN_STATUS_LABELS[status] ?? status}
-              </Badge>
-            </div>
-          )}
-
-          {error && (
-            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-
-          {/* Header fields */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                Постачальник <span className="text-destructive">*</span>
-              </label>
-              <EntityPickerField
-                display={supplierName}
-                placeholder="Оберіть постачальника..."
-                onClear={() => {
-                  setSupplierId('');
-                  setSupplierName('');
-                }}
-                onPick={() => setSupplierPickerOpen(true)}
-                disabled={isReadOnly}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                Склад <span className="text-destructive">*</span>
-              </label>
-              <select
-                value={warehouseId}
-                onChange={handleWarehouseChange}
-                disabled={isReadOnly}
-                className={cn(
-                  'w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none',
-                  'focus:ring-2 focus:ring-ring focus:ring-offset-1',
-                  'disabled:cursor-not-allowed disabled:opacity-50',
+        <div className="flex flex-col min-h-[60dvh]">
+          {/* ── Collapsible header ───────────────────────────────────────── */}
+          <div
+            className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"
+            style={{ gridTemplateRows: headerCollapsed ? '0fr' : '1fr' }}
+          >
+            <div className="overflow-hidden">
+              <div className="space-y-3 pb-1">
+                {isEdit && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Статус:</span>
+                    <Badge variant={SUPPLIER_RETURN_STATUS_BADGE[status] as BadgeVariant}>
+                      {SUPPLIER_RETURN_STATUS_LABELS[status] ?? status}
+                    </Badge>
+                  </div>
                 )}
-              >
-                <option value="">Оберіть склад...</option>
-                {warehouses.map(w => (
-                  <option key={w.id} value={w.id}>
-                    {w.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                Дата документа
-              </label>
-              <DatePickerInput
-                value={documentDate}
-                onChange={setDocumentDate}
-                disabled={isReadOnly}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                Примітки
-              </label>
-              <Input
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Необов'язково"
-                disabled={isReadOnly}
-              />
+
+                {error && (
+                  <div className="text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2">
+                    {error}
+                  </div>
+                )}
+
+                {/* Постачальник | Склад */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[13px] font-medium text-foreground mb-1">
+                      Постачальник <span className="text-destructive">*</span>
+                    </label>
+                    <EntityPickerField
+                      display={supplierName}
+                      placeholder="Пошук постачальника…"
+                      className="h-8 text-[13px]"
+                      disabled={!canEdit}
+                      onPick={() => setSupplierPickerOpen(true)}
+                      onClear={() => {
+                        setSupplierId('');
+                        setSupplierName('');
+                      }}
+                    />
+                  </div>
+                  <Select
+                    label="Склад"
+                    required
+                    value={warehouseId}
+                    onChange={handleWarehouseChange}
+                    disabled={!canEdit}
+                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                  >
+                    <option value="">— Оберіть —</option>
+                    {warehouses.map(w => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                {/* Дата | Примітки */}
+                <div className="grid grid-cols-2 gap-4">
+                  <DatePickerInput
+                    label="Дата документа"
+                    value={documentDate}
+                    onChange={setDocumentDate}
+                    disabled={!canEdit}
+                  />
+                  <Input
+                    label="Примітки"
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    placeholder="Необов'язково"
+                    disabled={!canEdit}
+                    className="h-8 text-[13px]"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Lines table */}
-          <div className="mt-2">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-medium">Товари</span>
-              {!isReadOnly && (
-                <Button variant="outline" size="sm" onClick={() => setGoodPickerOpen(true)}>
-                  <Plus className="mr-1 h-3.5 w-3.5" />
-                  Додати товар
-                </Button>
+          {/* ── Header toggle strip ──────────────────────────────────────── */}
+          <div
+            className={cn(
+              'flex items-center gap-2 py-1.5 border-b border-border text-[12px] text-muted-foreground cursor-pointer select-none shrink-0',
+              'hover:text-foreground transition-colors',
+            )}
+            onClick={() => setHeaderCollapsed(c => !c)}
+          >
+            <span className="font-medium text-foreground/60 text-[11px] uppercase tracking-wide">
+              Шапка документа
+            </span>
+            {headerCollapsed && (
+              <>
+                {supplierName && (
+                  <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground text-[11px] max-w-40 truncate">
+                    {supplierName}
+                  </span>
+                )}
+                {warehouseId && (
+                  <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground text-[11px] max-w-32 truncate">
+                    {warehouseById.get(warehouseId)?.name ?? ''}
+                  </span>
+                )}
+              </>
+            )}
+            <span className="ml-auto text-[11px]">
+              {headerCollapsed ? 'Розгорнути ↓' : 'Згорнути ↑'}
+            </span>
+          </div>
+
+          {/* ── Товари ──────────────────────────────────────────────────── */}
+          <div className="flex-1 flex flex-col pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[13px] font-medium text-foreground">Товари</span>
+              {canEdit && !showLineInput && (
+                <button
+                  type="button"
+                  onClick={() => setShowLineInput(true)}
+                  className="flex items-center gap-1 text-[12px] text-primary hover:text-primary/80 transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Додати
+                </button>
               )}
             </div>
 
-            {lines.length === 0 ? (
-              <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
-                {isReadOnly ? 'Рядки відсутні' : 'Натисніть "Додати товар" для початку'}
-              </div>
-            ) : (
-              <div className="overflow-x-auto rounded-md border border-border">
-                <table className="w-full text-sm">
-                  <colgroup>
-                    <col className="w-auto" />
-                    <col className="w-28" />
-                    <col className="w-28" />
-                    <col className="w-28" />
-                    {!isReadOnly && <col className="w-10" />}
-                  </colgroup>
-                  <thead className="border-b border-border bg-surface-hover">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">
-                        Товар
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium text-muted-foreground">
-                        Кількість
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium text-muted-foreground">
-                        Ціна, ₴
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium text-muted-foreground">
-                        Сума, ₴
-                      </th>
-                      {!isReadOnly && <th />}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {lines.map(line => {
-                      const qty = parseFloat(line.quantity) || 0;
-                      const price = parseFloat(line.price) || 0;
-                      return (
-                        <tr key={line._key} className="hover:bg-surface-hover/50">
-                          <td className="px-3 py-2">
-                            <div className="font-medium">{line.goodName}</div>
-                            {line.goodSku && (
-                              <div className="text-xs text-muted-foreground">{line.goodSku}</div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {isReadOnly ? (
-                              <span className="tabular-nums">{qty}</span>
-                            ) : (
-                              <Input
-                                type="number"
-                                min="0.001"
-                                step="0.001"
-                                value={line.quantity}
-                                onChange={e =>
-                                  handleLineChange(line._key, 'quantity', e.target.value)
-                                }
-                                className="w-24 text-right tabular-nums"
-                              />
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {isReadOnly ? (
-                              <span className="tabular-nums">
-                                {price.toLocaleString('uk-UA', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
-                              </span>
-                            ) : (
-                              <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={line.price}
-                                onChange={e => handleLineChange(line._key, 'price', e.target.value)}
-                                className="w-28 text-right tabular-nums"
-                              />
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums font-medium">
-                            {(qty * price).toLocaleString('uk-UA', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
-                          </td>
-                          {!isReadOnly && (
-                            <td className="px-2 py-2">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveLine(line._key)}
-                                className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot className="border-t border-border bg-surface-hover">
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full table-fixed text-[12px]">
+                <colgroup>
+                  <col />
+                  <col className="w-[8%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-14" />
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-border bg-secondary/40">
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      Товар
+                    </th>
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      К-сть
+                    </th>
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      ОВ
+                    </th>
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      Ціна, ₴
+                    </th>
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      Сума, ₴
+                    </th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {lines.length === 0 && !showLineInput && (
                     <tr>
                       <td
-                        colSpan={3}
-                        className="px-3 py-2 text-right text-sm font-medium text-muted-foreground"
+                        colSpan={6}
+                        className="px-3 py-8 text-center text-[12px] text-muted-foreground"
                       >
-                        Разом:
+                        {isReadOnly ? 'Рядки відсутні' : 'Натисніть «Додати» для початку'}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                        {total.toLocaleString('uk-UA', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </td>
-                      {!isReadOnly && <td />}
                     </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
+                  )}
+                  {lines.map(line => {
+                    const subtotal = lineSubtotal(line.quantity, line.price);
+                    return (
+                      <tr key={line._key} className="hover:bg-surface-hover/50">
+                        <td className="px-3 py-1.5">
+                          <div className="font-medium text-[12px]">{line.goodName}</div>
+                          {line.goodSku && (
+                            <div className="text-[11px] text-muted-foreground">{line.goodSku}</div>
+                          )}
+                        </td>
+                        <td className="px-1 py-1.5">
+                          {isReadOnly ? (
+                            <span className="tabular-nums px-2">{line.quantity}</span>
+                          ) : (
+                            <input
+                              type="number"
+                              min="0.001"
+                              step="0.001"
+                              value={line.quantity}
+                              onChange={e =>
+                                handleLineChange(line._key, 'quantity', e.target.value)
+                              }
+                              className={numericInputCls}
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 text-[11px] text-muted-foreground">
+                          {line.unit}
+                        </td>
+                        <td className="px-1 py-1.5">
+                          {isReadOnly ? (
+                            <span className="tabular-nums px-2">
+                              {parseFloat(line.price).toLocaleString('uk-UA', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={line.price}
+                              onChange={e => handleLineChange(line._key, 'price', e.target.value)}
+                              className={numericInputCls}
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 tabular-nums text-[12px] font-medium">
+                          {subtotal.toLocaleString('uk-UA', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLine(line._key)}
+                              className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {/* Inline add row */}
+                  {canEdit && showLineInput && (
+                    <tr className="bg-primary/5 border-t-2 border-primary/20">
+                      <td className="px-2 py-1.5">
+                        <EntityPickerField
+                          display={newLine.goodName}
+                          placeholder="Пошук товару…"
+                          ariaLabel="Товар"
+                          onPick={() => setGoodPickerOpen(true)}
+                          onClear={() => setNewLine(EMPTY_LINE)}
+                        />
+                      </td>
+                      <td className="px-1 py-1.5">
+                        <input
+                          type="number"
+                          min="0.001"
+                          step="0.001"
+                          value={newLine.quantity}
+                          onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
+                          className={numericInputCls}
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] text-muted-foreground">
+                        {newLine.unit}
+                      </td>
+                      <td className="px-1 py-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={newLine.price}
+                          onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
+                          placeholder="0"
+                          className={numericInputCls}
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        {lineSubtotal(newLine.quantity, newLine.price).toFixed(2)}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={addLine}
+                            disabled={!newLine.goodId}
+                            title="Додати рядок"
+                            className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowLineInput(false);
+                              setNewLine(EMPTY_LINE);
+                            }}
+                            title="Скасувати"
+                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-secondary/50 border-t border-border">
+                    <td
+                      colSpan={3}
+                      className="px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
+                    >
+                      Разом:
+                    </td>
+                    <td />
+                    <td className="px-3 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
+                      {total.toFixed(2)}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
         </div>
       </Modal>
@@ -625,7 +741,17 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       <SearchPickerModal<GoodPickerItem>
         open={goodPickerOpen}
         onClose={() => setGoodPickerOpen(false)}
-        onSelect={handleAddGood}
+        onSelect={item => {
+          setNewLine(l => ({
+            ...l,
+            goodId: item.id,
+            goodName: item.primary,
+            goodSku: item._sku ?? null,
+            unit: item._unit ?? '',
+            price: String(item._price ?? ''),
+          }));
+          setGoodPickerOpen(false);
+        }}
         title="Оберіть товар"
         fetchItems={q =>
           apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=30`).then(d =>
