@@ -34,6 +34,7 @@ export interface PurchaseOrder {
   linesCount: number;
   lines: POLine[];
   documentDate?: string | null;
+  pricedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;

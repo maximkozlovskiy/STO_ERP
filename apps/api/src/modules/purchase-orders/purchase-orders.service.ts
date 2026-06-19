@@ -726,6 +726,13 @@ export class PurchaseOrdersService {
       );
     }
 
+    if (plan.length > 0) {
+      await this.prisma.purchaseOrder.updateMany({
+        where: { id: poId, orgId },
+        data: { pricedAt: new Date() },
+      });
+    }
+
     return { updated: plan.length, details: plan };
   }
 
@@ -741,6 +748,7 @@ export class PurchaseOrdersService {
     totalVat?: import('@prisma/client').Prisma.Decimal | null;
     notes: string | null;
     documentDate?: Date | null;
+    pricedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
     deletedAt?: Date | null;
@@ -787,6 +795,7 @@ export class PurchaseOrdersService {
       totalVat: Number(po.totalVat ?? 0),
       notes: po.notes ?? null,
       documentDate: po.documentDate ? po.documentDate.toISOString().slice(0, 10) : null,
+      pricedAt: po.pricedAt ?? null,
       linesCount: po._count?.lines ?? po.lines?.length ?? 0,
       deletedAt: po.deletedAt ?? null,
       lines: (po.lines ?? []).map(l => ({

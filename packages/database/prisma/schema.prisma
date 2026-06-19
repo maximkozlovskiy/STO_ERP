@@ -1321,6 +1321,7 @@ model PurchaseOrder {
   totalVat     Decimal             @default(0) @db.Decimal(12, 2)
   notes        String?
   documentDate DateTime            @default(now()) @db.Date
+  pricedAt     DateTime?
   syncVersion  BigInt              @default(0)
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt

@@ -5,7 +5,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, ShoppingCart, Search, Eye, EyeOff, Pencil, Trash2, Zap } from 'lucide-react';
+import { Plus, ShoppingCart, Search, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import {
@@ -91,6 +91,7 @@ const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> =
   { key: 'status', label: 'Статус', defaultVisible: true },
   { key: 'amount', label: 'Сума', defaultVisible: true },
   { key: 'date', label: 'Дата документа', defaultVisible: true },
+  { key: 'priced', label: 'Розцінено', defaultVisible: true },
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
 
@@ -318,7 +319,6 @@ function PurchaseOrdersPageClient() {
     }[];
   }
   const [pricingResult, setPricingResult] = useState<Record<string, PricingResult>>({});
-  const [applyingPricingId, setApplyingPricingId] = useState<string | null>(null);
 
   const bulkDeleteSelected = useCallback(
     async (ids: string[]) => {
@@ -399,33 +399,6 @@ function PurchaseOrdersPageClient() {
       }
     },
     [openReceiveWithLines],
-  );
-
-  const applyPricing = useCallback(
-    async (po: PurchaseOrder) => {
-      setApplyingPricingId(po.id);
-      setError('');
-      try {
-        const result = await apiFetch<PricingResult>(`/purchase-orders/${po.id}/apply-pricing`, {
-          method: 'POST',
-        });
-        setPricingResult(prev => ({ ...prev, [po.id]: result }));
-        // Bug #211: apply-pricing змінює Good.salePrice → StockItem.salePrice у findStockItems →
-        // inventory cache треба інвалідувати, інакше grid показує старі ціни до 30s staleTime
-        if (result.updated > 0) {
-          queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-        }
-        if (features.toastEnabled) toast.success(`Розцінено ${result.updated} товарів`);
-      } catch (e: unknown) {
-        // Bug #199: помилка має бути видимою навіть з toastEnabled=false. Toast — додаток, не заміна setError.
-        const msg = e instanceof Error ? e.message : 'Помилка розцінки';
-        setError(msg);
-        if (features.toastEnabled) toast.error(msg);
-      } finally {
-        setApplyingPricingId(null);
-      }
-    },
-    [features.toastEnabled, queryClient],
   );
 
   const handleReceive = async () => {
@@ -1054,23 +1027,20 @@ function PurchaseOrdersPageClient() {
                                 {po.documentDate ? fmtDate(po.documentDate) : fmtDate(po.createdAt)}
                               </TableCell>
                             );
+                          if (col.key === 'priced')
+                            return (
+                              <TableCell key="priced" className="text-[13px]">
+                                {po.pricedAt ? (
+                                  <span className="text-success font-medium">Так</span>
+                                ) : (
+                                  <span className="text-muted-foreground">Ні</span>
+                                )}
+                              </TableCell>
+                            );
                           return null;
                         })}
                         <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
-                            {(po.status === 'RECEIVED' || po.status === 'PARTIAL') && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                loading={applyingPricingId === po.id}
-                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                                onClick={() => void applyPricing(po)}
-                                title="Розцінити товари за правилами"
-                              >
-                                <Zap className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
                             <Button
                               type="button"
                               variant="ghost"
