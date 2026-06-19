@@ -125,7 +125,7 @@ export class InvoiceLineResponseDto {
   @ApiProperty() vatAmount!: number;
   @ApiProperty() priceWithVat!: number;
   @ApiProperty() sortOrder!: number;
-  @ApiProperty() createdAt!: Date;
+  @ApiProperty() createdAt!: string;
 }
 
 export class InvoiceResponseDto {
@@ -143,14 +143,14 @@ export class InvoiceResponseDto {
   @ApiProperty() totalWithVat!: number;
   @ApiPropertyOptional() invoiceType?: string;
   @ApiPropertyOptional() notes?: string | null;
-  @ApiPropertyOptional() dueDate?: Date | null;
+  @ApiPropertyOptional() dueDate?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiPropertyOptional() paidAmount?: number;
   @ApiPropertyOptional({ type: [InvoiceLineResponseDto] }) lines?: InvoiceLineResponseDto[];
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional({ description: 'Set when the invoice is soft-deleted' })
-  deletedAt?: Date | null;
+  deletedAt?: string | null;
 }
 
 export class PaginatedInvoicesDto {

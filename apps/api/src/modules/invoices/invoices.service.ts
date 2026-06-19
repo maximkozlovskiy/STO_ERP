@@ -814,13 +814,14 @@ export class InvoicesService {
       totalWithVat: Number(inv.totalWithVat),
       invoiceType: inv.invoiceType,
       notes: inv.notes,
-      dueDate: inv.dueDate ?? null,
+      dueDate: inv.dueDate instanceof Date ? inv.dueDate.toISOString() : (inv.dueDate ?? null),
       documentDate: inv.documentDate ? inv.documentDate.toISOString().slice(0, 10) : null,
       ...(paidAmount !== undefined ? { paidAmount } : {}),
       ...(includeLines && inv.lines ? { lines: inv.lines.map(l => this.toLineDto(l)) } : {}),
-      createdAt: inv.createdAt,
-      updatedAt: inv.updatedAt,
-      deletedAt: inv.deletedAt ?? null,
+      createdAt: inv.createdAt instanceof Date ? inv.createdAt.toISOString() : inv.createdAt,
+      updatedAt: inv.updatedAt instanceof Date ? inv.updatedAt.toISOString() : inv.updatedAt,
+      deletedAt:
+        inv.deletedAt instanceof Date ? inv.deletedAt.toISOString() : (inv.deletedAt ?? null),
     };
   }
 
@@ -943,7 +944,7 @@ export class InvoicesService {
       vatAmount: Number(l.vatAmount),
       priceWithVat: Number(l.priceWithVat),
       sortOrder: l.sortOrder,
-      createdAt: l.createdAt,
+      createdAt: l.createdAt instanceof Date ? l.createdAt.toISOString() : l.createdAt,
     };
   }
 }

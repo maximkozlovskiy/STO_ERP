@@ -119,9 +119,9 @@ export class SupplierReturnResponseDto {
   @ApiPropertyOptional() documentDate?: string | null;
   @ApiProperty() linesCount!: number;
   @ApiProperty({ type: [SupplierReturnLineResponseDto] }) lines!: SupplierReturnLineResponseDto[];
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
-  @ApiPropertyOptional() deletedAt?: Date | null;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
+  @ApiPropertyOptional() deletedAt?: string | null;
 }
 
 export class PaginatedSupplierReturnsDto {

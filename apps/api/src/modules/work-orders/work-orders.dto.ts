@@ -284,11 +284,11 @@ export class WorkOrderResponseDto {
   @ApiPropertyOptional() description?: string | null;
   @ApiPropertyOptional() inMileage?: number | null;
   @ApiPropertyOptional() outMileage?: number | null;
-  @ApiPropertyOptional() plannedAt?: Date | null;
-  @ApiPropertyOptional() dueDate?: Date | null;
+  @ApiPropertyOptional() plannedAt?: string | null;
+  @ApiPropertyOptional() dueDate?: string | null;
   @ApiPropertyOptional() plannedHours?: number | null;
   @ApiPropertyOptional() actualHours?: number | null;
-  @ApiPropertyOptional() completedAt?: Date | null;
+  @ApiPropertyOptional() completedAt?: string | null;
   @ApiProperty() clientApproval!: boolean;
   @ApiProperty() totalLabor!: number;
   @ApiProperty() totalActualLabor!: number;
@@ -297,16 +297,16 @@ export class WorkOrderResponseDto {
   @ApiProperty() totalVat!: number;
   @ApiProperty() paidAmount!: number;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional({ description: 'Є активна гарантія' }) hasActiveWarranty?: boolean;
   @ApiPropertyOptional({ description: 'Найближчий слот у календарі: початок' })
-  slotStartAt?: Date | null;
+  slotStartAt?: string | null;
   @ApiPropertyOptional({ description: 'Найближчий слот у календарі: кінець' })
-  slotEndAt?: Date | null;
+  slotEndAt?: string | null;
   @ApiPropertyOptional({ description: 'Підйомник слота у календарі' }) slotLiftName?: string | null;
   @ApiPropertyOptional({ description: 'Set when the work order is soft-deleted' })
-  deletedAt?: Date | null;
+  deletedAt?: string | null;
 }
 
 export class PaginatedWorkOrdersDto {
@@ -368,7 +368,7 @@ export class WorkOrderLineResponseDto {
   @ApiProperty() price!: number;
   @ApiProperty() amount!: number;
   @ApiPropertyOptional() notes?: string | null;
-  @ApiProperty() createdAt!: Date;
+  @ApiProperty() createdAt!: string;
 }
 
 // ─── Work Order Part ──────────────────────────────────────

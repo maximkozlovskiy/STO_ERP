@@ -812,9 +812,9 @@ export class PurchaseOrdersService {
       totalVat: Number(po.totalVat ?? 0),
       notes: po.notes ?? null,
       documentDate: po.documentDate ? po.documentDate.toISOString().slice(0, 10) : null,
-      pricedAt: po.pricedAt ?? null,
+      pricedAt: po.pricedAt instanceof Date ? po.pricedAt.toISOString() : (po.pricedAt ?? null),
       linesCount: po._count?.lines ?? po.lines?.length ?? 0,
-      deletedAt: po.deletedAt ?? null,
+      deletedAt: po.deletedAt instanceof Date ? po.deletedAt.toISOString() : (po.deletedAt ?? null),
       lines: (po.lines ?? []).map(l => ({
         id: l.id,
         goodId: l.goodId,
@@ -837,8 +837,8 @@ export class PurchaseOrdersService {
         pricingRuleName: l.pricingRuleName ?? null,
         unitOfMeasureId: l.unitOfMeasureId ?? null,
       })),
-      createdAt: po.createdAt,
-      updatedAt: po.updatedAt,
+      createdAt: po.createdAt instanceof Date ? po.createdAt.toISOString() : po.createdAt,
+      updatedAt: po.updatedAt instanceof Date ? po.updatedAt.toISOString() : po.updatedAt,
     };
   }
 }

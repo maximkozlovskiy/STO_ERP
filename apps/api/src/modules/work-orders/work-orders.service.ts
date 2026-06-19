@@ -1491,11 +1491,12 @@ export class WorkOrdersService {
       description: wo.description ?? null,
       inMileage: wo.inMileage ?? null,
       outMileage: wo.outMileage ?? null,
-      plannedAt: wo.plannedAt ?? null,
-      dueDate: wo.dueDate ?? null,
+      plannedAt: wo.plannedAt instanceof Date ? wo.plannedAt.toISOString() : (wo.plannedAt ?? null),
+      dueDate: wo.dueDate instanceof Date ? wo.dueDate.toISOString() : (wo.dueDate ?? null),
       plannedHours: wo.plannedHours ?? null,
       actualHours: wo.actualHours ?? null,
-      completedAt: wo.completedAt ?? null,
+      completedAt:
+        wo.completedAt instanceof Date ? wo.completedAt.toISOString() : (wo.completedAt ?? null),
       clientApproval: wo.clientApproval,
       totalLabor: Number(wo.totalLabor),
       totalActualLabor: Number(wo.totalActualLabor ?? 0),
@@ -1504,13 +1505,19 @@ export class WorkOrdersService {
       totalVat: Number(wo.totalVat ?? 0),
       paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,
       documentDate: wo.documentDate ? wo.documentDate.toISOString().slice(0, 10) : null,
-      createdAt: wo.createdAt,
-      updatedAt: wo.updatedAt,
+      createdAt: wo.createdAt instanceof Date ? wo.createdAt.toISOString() : wo.createdAt,
+      updatedAt: wo.updatedAt instanceof Date ? wo.updatedAt.toISOString() : wo.updatedAt,
       hasActiveWarranty: (wo._count?.warranties ?? 0) > 0,
-      slotStartAt: wo.calendarSlots?.[0]?.startAt ?? null,
-      slotEndAt: wo.calendarSlots?.[0]?.endAt ?? null,
+      slotStartAt:
+        wo.calendarSlots?.[0]?.startAt instanceof Date
+          ? wo.calendarSlots[0].startAt.toISOString()
+          : (wo.calendarSlots?.[0]?.startAt ?? null),
+      slotEndAt:
+        wo.calendarSlots?.[0]?.endAt instanceof Date
+          ? wo.calendarSlots[0].endAt.toISOString()
+          : (wo.calendarSlots?.[0]?.endAt ?? null),
       slotLiftName: wo.calendarSlots?.[0]?.lift?.name ?? null,
-      deletedAt: wo.deletedAt ?? null,
+      deletedAt: wo.deletedAt instanceof Date ? wo.deletedAt.toISOString() : (wo.deletedAt ?? null),
     };
   }
 
@@ -1544,7 +1551,7 @@ export class WorkOrdersService {
       price: Number(line.price),
       amount: Number(line.amount),
       notes: line.notes ?? null,
-      createdAt: line.createdAt,
+      createdAt: line.createdAt instanceof Date ? line.createdAt.toISOString() : line.createdAt,
     };
   }
 

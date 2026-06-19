@@ -502,7 +502,7 @@ export class SupplierReturnsService {
       notes: sr.notes ?? null,
       documentDate: sr.documentDate ? sr.documentDate.toISOString().slice(0, 10) : null,
       linesCount: sr._count?.lines ?? sr.lines?.length ?? 0,
-      deletedAt: sr.deletedAt ?? null,
+      deletedAt: sr.deletedAt instanceof Date ? sr.deletedAt.toISOString() : (sr.deletedAt ?? null),
       lines: (sr.lines ?? []).map(l => ({
         id: l.id,
         goodId: l.goodId,
@@ -515,8 +515,8 @@ export class SupplierReturnsService {
         amount: l.quantity * Number(l.price),
         unitOfMeasureId: l.unitOfMeasureId ?? null,
       })),
-      createdAt: sr.createdAt,
-      updatedAt: sr.updatedAt,
+      createdAt: sr.createdAt instanceof Date ? sr.createdAt.toISOString() : sr.createdAt,
+      updatedAt: sr.updatedAt instanceof Date ? sr.updatedAt.toISOString() : sr.updatedAt,
     };
   }
 }

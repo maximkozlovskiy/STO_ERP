@@ -165,13 +165,13 @@ export class PurchaseOrderResponseDto {
   @ApiProperty() totalVat!: number;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
-  @ApiPropertyOptional({ description: 'Дата останнього розцінення' }) pricedAt?: Date | null;
+  @ApiPropertyOptional({ description: 'Дата останнього розцінення' }) pricedAt?: string | null;
   @ApiProperty() linesCount!: number;
   @ApiProperty({ type: [PurchaseOrderLineResponseDto] }) lines!: PurchaseOrderLineResponseDto[];
-  @ApiProperty() createdAt!: Date;
-  @ApiProperty() updatedAt!: Date;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional({ description: 'Set when the purchase order is soft-deleted' })
-  deletedAt?: Date | null;
+  deletedAt?: string | null;
 }
 
 export class PaginatedPurchaseOrdersDto {
