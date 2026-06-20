@@ -14,7 +14,7 @@
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 931/931 | Web 438/438 | E2E 233/234 (1 flaky; 11 data-skip)
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 (HEAD 4fe1a559) — fix(sync): align frontend hook interfaces with backend response DTOs (Cycle 2/3 step 1). POLine: +goodInternalCode/goodBrandName/vatRate/unitOfMeasureId; PricingRule hook: +good/brandId/brandName/supplierId/supplierName/tiers/createdAt; SupplierReturnLine.amount optional→required. TypeScript: ✅ 0 errors.
+Останній commit: 2026-06-20 (HEAD 488704b2) — fix(review): pricing-rules supplierId UUID guard + strip stray BOM (Cycle 2/3 step 2). ParseUUIDPipe({ optional: true }) на GET /pricing-rules?supplierId (§2.3 input validation); orgId filter лишається гарантом tenant isolation. Усунено UTF-8 BOM з PricingRulesClient.tsx що Windows-редактор повернув після Cycle 1. TypeScript: ✅ 0 errors.
 ```
 
 ### Аудит-висновки (2026-06-17 simplify session)
@@ -30,6 +30,7 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+488704b2  fix(review): pricing-rules supplierId UUID guard + strip stray BOM (Cycle 2/3 step 2)
 4fe1a559  fix(sync): align frontend hook interfaces with backend response DTOs (Cycle 2/3 step 1)
 cce4130a  perf(optimize): parallelize supplier + warehouse validation in SupplierReturn.update()
 cba69150  fix(tester): Bug #537 validation message Cyrillic + #538 E2E flaky (Цикл 1/3 step 3)
