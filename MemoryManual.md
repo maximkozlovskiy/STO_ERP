@@ -12,9 +12,9 @@
 Дата:       2026-06-20
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 936/936 (+5 supplierId guards) | Web 438/438 | E2E 233/245 ✅ (12 data-skip, 0 failed, 0 flaky) — 4.5min після фіксу Bug #567
+Тести:      API 936/936 (+55 pricing pass) | Web 438/438 | E2E 233/245 ✅
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 — fix(tester): Cycle 2/3 step 3 — 3 нові баги. #565 (contract test gap для supplierId ParseUUIDPipe — додано 5 тестів: GET pipe, POST cross-tenant, invalid UUID). #566 (Windows Node 18+ ::1 IPv6 default → ECONNREFUSED у E2E server-side fetch → 127.0.0.1 explicit). #567 (E2E auth: cross-port refresh cookie не виживає storageState → AuthProvider refresh fails → silent LOGOUT → /login redirect → tests bomb; додано sto_e2e_skip_refresh escape-hatch у AuthProvider + sto_employee_cache + flag у globalSetup).
+Останній commit: 2026-06-20 — perf(optimize): Cycle 2/3 step 4 — 3 фікси. (1) pricing-rules.update() — pricing_rule.updateMany паралельно з tier deleteMany+createMany (disjoint tables, "Disjoint-set updateMany pairs у $transaction" pattern). (2) PricingRulesClient.filteredRules → useMemo([rules, debouncedSearch]) — без memo фільтр пробігав на кожен keystroke. (3) SupplierReturnCreateModal (856 LOC, secondary action) → dynamic import у purchase-orders/page.tsx.
 ```
 
 ### Аудит-висновки (2026-06-17 simplify session)
@@ -30,7 +30,8 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
-<pending>  fix(tester): bugs #565/#566/#567 — supplierId contract tests, IPv4 E2E, auth escape-hatch (Cycle 2/3 step 3)
+487fb807  perf(optimize): parallelize pricing-rules tier+main update; memoize PricingRules filter; dynamic-load SupplierReturnCreateModal (Cycle 2/3 step 4)
+e4c72a49  fix(tester): bugs #565/#566/#567 — supplierId contract tests, IPv4 E2E, auth escape-hatch (Cycle 2/3 step 3)
 488704b2  fix(review): pricing-rules supplierId UUID guard + strip stray BOM (Cycle 2/3 step 2)
 4fe1a559  fix(sync): align frontend hook interfaces with backend response DTOs (Cycle 2/3 step 1)
 cce4130a  perf(optimize): parallelize supplier + warehouse validation in SupplierReturn.update()
