@@ -1035,6 +1035,117 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-20 — Prisma `$queryRaw` + pg_trgm `%` operator без `::text` cast (Bug #572) — api / backend / sql / type-resolution
+
+**Сигнал:** API endpoint що використовує `$queryRaw` з `pg_trgm` similarity (`%` оператор) повертає 500. Postgres error code `42804`: `argument of OR must be type boolean, not type text`. Працює тільки для деяких запитів (наприклад на простому `column % $1`), падає коли є concatenation на LHS: `COALESCE(a, '') || ' ' || COALESCE(b, '') % $N`.
+
+**Причина виникнення:** Prisma `$queryRaw\`...${q}...\`` шле параметр `$N`без explicit Postgres type. Planner вирішує тип на основі context — якщо контекст ambiguous (наприклад LHS — це`text || text || text`expression, а оператор`%`має кілька overloads — pg_trgm`text % text → boolean`і модуло`numeric % numeric`), результат типу `$N`може стати`text`, а `text % text`без trgm operator resolution не повертає boolean — повертає text →`WHERE ... OR text` → 42804.
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти всі $queryRaw з % оператором без ::text cast:
+grep -rn "\$queryRaw" apps/api/src --include="*.ts" -A 30 | grep -B 1 "%\s*\${" | grep -v "::text"
+
+# Контракт-тест: для кожного search/similarity endpoint — викликати з 5+ варіантами q
+# (English, Cyrillic, empty-after-trim, numeric-only) і expect статус 200.
+curl -s -w "%{http_code}" "http://localhost:3000/api/<endpoint>?q=Toyota" -H "$AUTH"
+```
+
+**Підхід до фіксу:** для всіх `$queryRaw` параметрів що використовуються в `%`, `ILIKE`, `similarity()` — додати explicit cast `::text` або `::numeric`:
+
+```typescript
+const qText = `${q}`; // створити stable string reference
+const qLike = `%${q}%`;
+await prisma.$queryRaw`
+  WHERE col % ${qText}::text          -- НЕ ${q} БЕЗ касту
+    OR col ILIKE ${qLike}::text
+    AND similarity(col, ${qText}::text) > 0.3
+`;
+```
+
+Те саме для `${uuid}::uuid` (вже застосовано в orgId), `${num}::int`, `${date}::timestamptz`.
+
+**Severity:** HIGH (endpoint падає на специфічних запитах, fallback 500 у production).
+
+**Де шукати ще:**
+
+- усі search/list endpoints що використовують `pg_trgm` GIN trgm indexes (counterparties, work_orders, goods, brands)
+- Reports services з similarity-based grouping (`reports/`, `analytics/`)
+- Будь-який `$queryRaw` де параметр з'являється у складному expression (concatenation, COALESCE, CASE WHEN)
+
+---
+
+### 2026-06-20 — pnpm-workspace.yaml overrides peer incompatibility (Bug #573) — infra / dependencies / startup
+
+**Сигнал:** API не стартує після `pnpm install`. Помилка: `FastifyError: fastify-plugin: @fastify/<plugin> - expected '5.x' fastify version, '4.28.1' is installed` (FST_ERR_PLUGIN_VERSION_MISMATCH). Або зворотний випадок: `@nestjs/*` plugin вимагає Nest 11.x а ми на 10.x. Розробник міг додати security override у `pnpm-workspace.yaml` (наприклад `>=9.3.2`) не перевіривши peer compatibility з runtime версією.
+
+**Причина виникнення:** Override був написаний з `>=` constraint щоб закрити CVE. До переїзду overrides з `package.json` у `pnpm-workspace.yaml` (pnpm 11+) — overrides у package.json silently ігнорувалися, тому проблеми не було. Після правильного переїзду — pnpm install вирішив за `>=` і витяг найновішу версію, яка вимагає newer peer.
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти всі overrides у pnpm-workspace.yaml:
+grep -A 5 "^overrides:" pnpm-workspace.yaml
+
+# Для кожного override — перевірити peer compatibility з runtime версією у apps/*/package.json:
+PLUGIN="@fastify/middie"
+RESOLVED=$(grep -A 2 "$PLUGIN" pnpm-lock.yaml | grep resolution | head -1)
+echo "Resolved: $RESOLVED"
+# Якщо resolved major > runtime major → ризик
+
+# Quickly verify: pnpm --filter @sto/api dev і чекати "Application is running"
+# Якщо exit з FST_ERR_PLUGIN_VERSION_MISMATCH → знайти max compatible major
+```
+
+**Підхід до фіксу:** pin override до останньої major-лінії що сумісна з runtime peer:
+
+```yaml
+overrides:
+  # @fastify/middie 9.x вимагає fastify 5.x; ми на 4.28 → ^8.0.0 (остання fastify-4-сумісна лінія)
+  '@fastify/middie': '^8.0.0'
+```
+
+Документувати у коментарі: причина override (CVE) + чому саме цей мажор.
+
+**Severity:** CRITICAL — API/Web не стартує = система непрацездатна. Не виявляється у CI/test бо `pnpm install` міг колись з кешу resolveить старішу версію; тільки fresh install + restart розкриває.
+
+**Де шукати ще:**
+
+- усі `>=` constraints у pnpm-workspace.yaml overrides → переписати на конкретний major
+- Раз на тиждень: `pnpm install` + `pnpm --filter @sto/api dev` + `pnpm --filter @sto/web dev` як sanity check
+- CI: додати `node dist/main` smoke test після build
+
+---
+
+### 2026-06-20 — Silent `test.skip(true)` як fake-green replacement (мета-патерн) — e2e / test-debt
+
+**Сигнал:** E2E spec містить `if (!data) return test.skip(true, '...')` де `data` — це результат API виклику до endpoint що seed надійно заповнює (counterparties, warehouses, goods, works, work-orders різних статусів). Skipped тести виглядають як "pass" у CI repoorter — фактично нічого не перевіряють.
+
+**Причина виникнення:** Автор тесту boilerplate-додав defensive skip для випадку "empty DB" (наприклад при freshly seeded test env). Але реальний seed містить усі entities — skip ніколи не спрацьовує у нормальних умовах і прикриває справжній bug коли seed або API ламається. fake-green: тест зеленіє бо skipped (technically не failed).
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти всі silent skip patterns:
+grep -rn "test.skip(true" apps/web/e2e --include="*.spec.ts"
+
+# Підрахувати кількість skipped у останньому runs:
+npx playwright test --reporter=line 2>&1 | grep -E "skipped"
+```
+
+**Підхід до фіксу:** Замінити `if (!data) test.skip(...)` на `expect(data, 'Seed має ...').toBeTruthy(); if (!data) return; // TS narrow`. Тепер регресія seed або API провалює тест замість прихованого skip. Допустимий виняток — тести feature що залежать від conditional UI (наприклад XLSX import, який є тільки для деяких типів документів) — обробляти через `if (hasFeature) {...} else {expect modal still works}`.
+
+**Severity:** MEDIUM (не bug у production, але приховує справжні regressions).
+
+**Де шукати ще:**
+
+- Будь-який spec файл при додаванні нових тестів
+- CI policy: завжди run з `--reporter=line` + grep skipped > 5 → failure
+- Pre-commit hook: `grep test.skip\(true apps/web/e2e/*.spec.ts && exit 1`
+
+---
+
 ### 2026-06-20 — E2E pagination-blind test з stale DB records (Bug #568) — e2e / test-debt / pagination
 
 **Сигнал:** E2E тест створює запис `E2E-Foo-{uid}` (`Date.now().toString().slice(-6)`), потім перевіряє `table tbody tr:has-text("E2E-Foo-...")` БЕЗ попереднього використання search-input чи filter. Tеs пройде на чистій CI БД (вебсайт показує всі 1-2 row), а у dev environment де накопичились sample/попередні E2E records — fails з timeout 20s бо новий рядок осідає на page 2/3.
