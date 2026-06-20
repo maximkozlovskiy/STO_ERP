@@ -171,15 +171,9 @@ test.describe('Наряд — кнопка "Виставити рахунок" �
     await draftTab.click();
     await page.waitForTimeout(800);
 
+    // Seed містить 8 DRAFT нарядів — фільтр Чернетка має показати рядки
     const firstRow = realRowLocator(page).first();
-    const hasRow = await firstRow
-      .waitFor({ state: 'visible', timeout: 8_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!hasRow) {
-      test.skip(true, 'Немає DRAFT нарядів у БД для перевірки');
-      return;
-    }
+    await expect(firstRow).toBeVisible({ timeout: 15_000 });
 
     // Hover-only Pencil action button opens the WO edit modal (page.tsx:1020).
     await firstRow.hover();
@@ -251,10 +245,10 @@ test.describe('Наряд — кнопка "Виставити рахунок" �
       }
     }
 
-    if (!foundRow) {
-      test.skip(true, 'Немає COMPLETED/INVOICED нарядів у БД для перевірки кнопки рахунку');
-      return;
-    }
+    // Seed містить >=1 INVOICED наряд (PAID також valid candidate, але тест шукає
+    // ['COMPLETED','INVOICED'] для canInvoice). Якщо foundRow=false — це регресія,
+    // не seed-проблема: жорсткий fail замість silent skip.
+    expect(foundRow, 'Очікувано COMPLETED або INVOICED наряд у seed').toBe(true);
 
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 15_000 });
@@ -278,15 +272,9 @@ test.describe('Наряд — вкладка "Документи" (LinkedDocumen
     await page.locator('table').first().waitFor({ state: 'visible', timeout: 20_000 });
     await clearDateFilters(page);
     await page.waitForTimeout(500);
+    // Seed містить наряди — жорсткий експект замість silent skip
     const firstRow = realRowLocator(page).first();
-    const hasRow = await firstRow
-      .waitFor({ state: 'visible', timeout: 10_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!hasRow) {
-      test.skip(true, 'Немає нарядів у БД для перевірки вкладки Документи');
-      return;
-    }
+    await expect(firstRow).toBeVisible({ timeout: 15_000 });
 
     await firstRow.hover();
     const editBtn = firstRow.locator('button[title="Відкрити наряд"]').first();
@@ -315,15 +303,9 @@ test.describe('Наряд — вкладка "Документи" (LinkedDocumen
     await page.locator('table').first().waitFor({ state: 'visible', timeout: 20_000 });
     await clearDateFilters(page);
     await page.waitForTimeout(500);
+    // Seed містить наряди — жорсткий експект замість silent skip
     const firstRow = realRowLocator(page).first();
-    const hasRow = await firstRow
-      .waitFor({ state: 'visible', timeout: 10_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!hasRow) {
-      test.skip(true, 'Немає нарядів у БД');
-      return;
-    }
+    await expect(firstRow).toBeVisible({ timeout: 15_000 });
 
     await firstRow.hover();
     const editBtn = firstRow.locator('button[title="Відкрити наряд"]').first();
@@ -356,15 +338,9 @@ test.describe('Наряд — вкладка "Документи" (LinkedDocumen
     await page.locator('table').first().waitFor({ state: 'visible', timeout: 20_000 });
     await clearDateFilters(page);
     await page.waitForTimeout(500);
+    // Seed містить наряди — жорсткий експект замість silent skip
     const firstRow = realRowLocator(page).first();
-    const hasRow = await firstRow
-      .waitFor({ state: 'visible', timeout: 10_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!hasRow) {
-      test.skip(true, 'Немає нарядів у БД');
-      return;
-    }
+    await expect(firstRow).toBeVisible({ timeout: 15_000 });
 
     await firstRow.hover();
     const editBtn = firstRow.locator('button[title="Відкрити наряд"]').first();
@@ -417,15 +393,9 @@ test.describe('Наряд — поля "Планових год." / "Факти�
     await clearDateFilters(page);
     await page.waitForTimeout(500);
 
+    // Seed містить наряди — жорсткий експект замість silent skip
     const firstRow = realRowLocator(page).first();
-    const hasRow = await firstRow
-      .waitFor({ state: 'visible', timeout: 10_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!hasRow) {
-      test.skip(true, 'Немає нарядів у БД для перевірки полів годин');
-      return;
-    }
+    await expect(firstRow).toBeVisible({ timeout: 15_000 });
 
     await firstRow.hover();
     const editBtn = firstRow.locator('button[title="Відкрити наряд"]').first();
@@ -477,10 +447,8 @@ test.describe('Наряд — поля "Планових год." / "Факти�
       break;
     }
 
-    if (!foundRow) {
-      test.skip(true, 'Немає редагованих нарядів (DRAFT/ESTIMATE/APPROVED) у БД');
-      return;
-    }
+    // Seed містить DRAFT+ESTIMATE+APPROVED — foundRow має бути true
+    expect(foundRow, 'Очікувано хоча б один DRAFT/ESTIMATE/APPROVED наряд у seed').toBe(true);
 
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 15_000 });

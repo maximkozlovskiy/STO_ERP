@@ -162,7 +162,8 @@ test.describe('Рахунки — створення через UI', () => {
   test('створити рахунок → DRAFT badge → cleanup', async ({ page }) => {
     await gotoInvoices(page);
     const cpId = await firstCpId(page);
-    if (!cpId) return test.skip(true, 'Немає контрагентів у БД');
+    expect(cpId, 'Seed має містити контрагентів').toBeTruthy();
+    if (!cpId) return; // type-narrow для TS
 
     await gotoInvoices(page);
     await page
@@ -182,9 +183,9 @@ test.describe('Рахунки — створення через UI', () => {
       .first();
     await expect(picker).toBeVisible({ timeout: 5_000 });
     const firstResult = picker.locator('button.w-full.text-left').first();
-    if (!(await firstResult.isVisible({ timeout: 5_000 }).catch(() => false))) {
-      return test.skip(true, 'Picker не знайшов контрагентів');
-    }
+    await expect(firstResult, 'Picker має знайти контрагентів з seed').toBeVisible({
+      timeout: 8_000,
+    });
     await firstResult.click();
     await expect(picker).not.toBeVisible({ timeout: 5_000 });
 
@@ -248,7 +249,7 @@ test.describe('Рахунки — Detail Panel', () => {
   });
 
   test('клік на рядок → Edit Modal відкривається', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -262,7 +263,7 @@ test.describe('Рахунки — Detail Panel', () => {
   });
 
   test('Edit Modal — статус Чернетка показується у steper-і', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -274,7 +275,7 @@ test.describe('Рахунки — Detail Panel', () => {
   });
 
   test('Detail Panel — кнопка «Надіслати» присутня для DRAFT', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -289,7 +290,7 @@ test.describe('Рахунки — Detail Panel', () => {
   });
 
   test('Detail Panel — вкладка «Позиції» відображається', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -337,7 +338,7 @@ test.describe('Рахунки — FSM переходи', () => {
   });
 
   test('DRAFT → SENT: клік «Надіслати» → badge «Надіслано»', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -359,7 +360,7 @@ test.describe('Рахунки — FSM переходи', () => {
   });
 
   test('SENT → CANCELLED: клік «Скасувати» → badge «Скасовано»', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -377,10 +378,11 @@ test.describe('Рахунки — FSM переходи', () => {
       .catch(() => false);
     if (alreadyCancelled) return;
 
+    // DRAFT/SENT/OVERDUE → можна скасувати (FSM transition CANCELLED). beforeAll створює DRAFT.
     const cancelBtn = modal.locator('button:has-text("Скасувати")').first();
-    if (!(await cancelBtn.isVisible({ timeout: 5_000 }).catch(() => false))) {
-      return test.skip(true, 'Кнопка Скасувати недоступна для поточного статусу');
-    }
+    await expect(cancelBtn, 'Кнопка "Скасувати" має бути для DRAFT рахунку').toBeVisible({
+      timeout: 8_000,
+    });
     await cancelBtn.click();
 
     // doTransition виконується без додаткового confirm dialog.
@@ -423,7 +425,7 @@ test.describe('Рахунки — реєстрація оплати', () => {
   });
 
   test('SENT → «Оплатити» → модалка оплати → PAID', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -500,7 +502,7 @@ test.describe('Рахунки — клонування', () => {
   });
 
   test('«Дублювати» → новий рахунок DRAFT з тим же контрагентом', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -569,7 +571,7 @@ test.describe('Рахунки — пошук і фільтри', () => {
   });
 
   test('пошук за номером → знаходить рахунок', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page);
     const searchInput = page
       .locator('input[placeholder*="Пошук"], input[placeholder*="номер"]')
@@ -583,7 +585,7 @@ test.describe('Рахунки — пошук і фільтри', () => {
   });
 
   test('фільтр статус «Чернетка» → показує тільки DRAFT', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page);
     await page.locator('button:has-text("Чернетка")').first().click();
     await page.waitForTimeout(500);
@@ -599,7 +601,7 @@ test.describe('Рахунки — пошук і фільтри', () => {
   });
 
   test('скидання фільтру «Всі» → відображає всі рахунки', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page);
     await page.locator('button:has-text("Чернетка")').first().click();
     await page.waitForTimeout(400);
@@ -610,7 +612,7 @@ test.describe('Рахунки — пошук і фільтри', () => {
   });
 
   test('пошук пустий рядок → відображає всі', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page);
     const searchInput = page
       .locator('input[placeholder*="Пошук"], input[placeholder*="номер"]')
@@ -652,7 +654,7 @@ test.describe('Рахунки — soft delete', () => {
   });
 
   test('hover → іконка видалення → підтвердити → рахунок зникає зі списку', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -699,7 +701,7 @@ test.describe('Рахунки — soft delete', () => {
 
   test('toggle «Показати видалені» → кількість рядків зростає', async ({ page }) => {
     // Перевіряє що після toggle з'являється хоча б один рядок із badge "видалено".
-    if (!invId) return test.skip(true, 'Рахунок для видалення не створено');
+    expect(invId, 'Рахунок для видалення має створитись у beforeAll').toBeTruthy();
 
     // Переконатись що invId видалено
     await apiDelete(page, `/invoices/${invId}`).catch(() => {});
@@ -767,7 +769,7 @@ test.describe('Рахунки — PDF', () => {
   });
 
   test('«Завантажити PDF» — не кидає видиму помилку', async ({ page }) => {
-    if (!invId) return test.skip(true, 'Рахунок не створено');
+    expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -841,7 +843,7 @@ test.describe('Рахунки — bulk cancel', () => {
   });
 
   test('вибрати 2 рахунки → «Скасувати вибрані» → BulkActionsBar зникає', async ({ page }) => {
-    if (!inv1Id || !inv2Id) return test.skip(true, 'Рахунки не створено');
+    expect(inv1Id && inv2Id, 'beforeAll має створити 2 рахунки').toBeTruthy();
     await gotoInvoices(page);
 
     // Чекаємо завантаження таблиці
@@ -850,7 +852,7 @@ test.describe('Рахунки — bulk cancel', () => {
     // Чекбокс у першому рядку
     const checkboxes = page.locator('table tbody tr input[type="checkbox"]');
     const count = await checkboxes.count();
-    if (count < 2) return test.skip(true, 'Недостатньо рядків для bulk select');
+    expect(count, 'Має бути >=2 рядки після створення 2 рахунків').toBeGreaterThanOrEqual(2);
 
     await checkboxes.nth(0).check();
     await checkboxes.nth(1).check();
@@ -863,9 +865,9 @@ test.describe('Рахунки — bulk cancel', () => {
     await expect(bulkBar).toBeVisible({ timeout: 5_000 });
 
     const bulkCancelBtn = page.locator('button:has-text("Скасувати вибрані")').first();
-    if (!(await bulkCancelBtn.isVisible({ timeout: 3_000 }).catch(() => false))) {
-      return test.skip(true, 'Bulk cancel кнопка не знайдена');
-    }
+    await expect(bulkCancelBtn, 'Кнопка bulk cancel має бути після select 2 DRAFT').toBeVisible({
+      timeout: 5_000,
+    });
     await bulkCancelBtn.click();
 
     // Confirm якщо є

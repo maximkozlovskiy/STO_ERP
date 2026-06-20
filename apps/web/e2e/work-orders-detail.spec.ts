@@ -73,10 +73,8 @@ test.describe('Наряд — додавання роботи', () => {
     await expect(page.locator('h1:has-text("Наряди")')).toBeVisible({ timeout: 20_000 });
 
     const wo = await createWo(page, 'E2E add-line test');
-    if (!wo) {
-      test.skip(true, 'Немає контрагентів для наряду');
-      return;
-    }
+    expect(wo, 'createWo має повернути наряд (seed містить CLIENT+vehicle+branch)').toBeTruthy();
+    if (!wo) return; // type-narrow для TS
 
     await page.goto(`/work-orders/${wo.id}`);
     await expect(page.locator('text=Чернетка').first()).toBeVisible({ timeout: 20_000 });
@@ -92,10 +90,8 @@ test.describe('Наряд — додавання роботи', () => {
     await expect(page.locator('h1:has-text("Наряди")')).toBeVisible({ timeout: 20_000 });
 
     const wo = await createWo(page, 'E2E add-line save test');
-    if (!wo) {
-      test.skip(true, 'Немає контрагентів');
-      return;
-    }
+    expect(wo, 'createWo має повернути наряд (seed містить CLIENT+vehicle+branch)').toBeTruthy();
+    if (!wo) return; // type-narrow для TS
 
     await page.goto(`/work-orders/${wo.id}`);
     await expect(page.locator('text=Чернетка').first()).toBeVisible({ timeout: 20_000 });
@@ -112,12 +108,7 @@ test.describe('Наряд — додавання роботи', () => {
     const workSelect = modal.locator('select').first();
     await expect(workSelect).toBeVisible({ timeout: 5_000 });
     const worksCount = await workSelect.locator('option').count();
-    if (worksCount < 2) {
-      await page.keyboard.press('Escape');
-      await apiCall(page, 'DELETE', `/work-orders/${wo.id}`);
-      test.skip(true, 'Немає робіт у каталозі');
-      return;
-    }
+    expect(worksCount, 'Seed містить роботи у каталозі').toBeGreaterThanOrEqual(2);
     await workSelect.selectOption({ index: 1 });
 
     // Виконавець
@@ -150,10 +141,8 @@ test.describe('Наряд — додавання запчастини', () => {
     await expect(page.locator('h1:has-text("Наряди")')).toBeVisible({ timeout: 20_000 });
 
     const wo = await createWo(page, 'E2E add-part test');
-    if (!wo) {
-      test.skip(true, 'Немає контрагентів');
-      return;
-    }
+    expect(wo, 'createWo має повернути наряд (seed містить CLIENT+vehicle+branch)').toBeTruthy();
+    if (!wo) return; // type-narrow для TS
 
     await page.goto(`/work-orders/${wo.id}`);
     await expect(page.locator('text=Чернетка').first()).toBeVisible({ timeout: 20_000 });
@@ -169,10 +158,8 @@ test.describe('Наряд — додавання запчастини', () => {
     await expect(page.locator('h1:has-text("Наряди")')).toBeVisible({ timeout: 20_000 });
 
     const wo = await createWo(page, 'E2E add-part save test');
-    if (!wo) {
-      test.skip(true, 'Немає контрагентів');
-      return;
-    }
+    expect(wo, 'createWo має повернути наряд (seed містить CLIENT+vehicle+branch)').toBeTruthy();
+    if (!wo) return; // type-narrow для TS
 
     await page.goto(`/work-orders/${wo.id}`);
     await expect(page.locator('text=Чернетка').first()).toBeVisible({ timeout: 20_000 });
@@ -196,13 +183,9 @@ test.describe('Наряд — додавання запчастини', () => {
     await goodInput.fill('OIL');
     await page.waitForTimeout(800);
 
+    // Seed містить товари з "OIL" у SKU — option має з'явитись
     const opt = page.locator('[role="option"]').first();
-    if (!(await opt.isVisible({ timeout: 4_000 }).catch(() => false))) {
-      await page.keyboard.press('Escape');
-      await apiCall(page, 'DELETE', `/work-orders/${wo.id}`);
-      test.skip(true, 'Немає товарів у каталозі');
-      return;
-    }
+    await expect(opt, 'Очікувано опцію товару після пошуку "OIL"').toBeVisible({ timeout: 8_000 });
     await opt.click();
 
     // Вибрати склад (required для запчастини)
@@ -238,10 +221,8 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
     await page.goto('/work-orders');
     await expect(page.locator('h1:has-text("Наряди")')).toBeVisible({ timeout: 20_000 });
     const wo = await createWo(page, 'E2E FSM full cycle');
-    if (!wo) {
-      test.skip(true, 'Немає контрагентів');
-      return;
-    }
+    expect(wo, 'createWo має повернути наряд (seed містить CLIENT+vehicle+branch)').toBeTruthy();
+    if (!wo) return; // type-narrow для TS
     woId = wo.id;
 
     // Додати роботу через API щоб totalAmount > 0 (інакше COMPLETED заблокований)
@@ -270,10 +251,9 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
   });
 
   test('ESTIMATE → Затвердити (APPROVED)', async ({ page }) => {
-    if (!woId) {
-      test.skip(true, 'попередній тест не створив WO');
-      return;
-    }
+    // Serial mode: woId має бути встановлений попереднім тестом — інакше це баг ланцюжка
+    expect(woId, 'попередній тест мав створити WO у ESTIMATE статусі').toBeTruthy();
+    if (!woId) return; // type-narrow для TS
     await page.goto(`/work-orders/${woId}`);
     await expect(page.locator('text=Кошторис').first()).toBeVisible({ timeout: 20_000 });
     await page.locator('button:has-text("Затвердити")').first().click();
@@ -283,10 +263,8 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
   });
 
   test('APPROVED → В роботу (IN_PROGRESS)', async ({ page }) => {
-    if (!woId) {
-      test.skip(true, 'WO не доступний');
-      return;
-    }
+    expect(woId, 'WO має бути доступний з попередньої сходинки FSM').toBeTruthy();
+    if (!woId) return; // type-narrow для TS
     await page.goto(`/work-orders/${woId}`);
     await expect(page.locator('text=Затверджено').first()).toBeVisible({ timeout: 20_000 });
     await page.locator('button:has-text("В роботу")').first().click();
@@ -296,10 +274,8 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
   });
 
   test('IN_PROGRESS → Виконано (COMPLETED)', async ({ page }) => {
-    if (!woId) {
-      test.skip(true, 'WO не доступний');
-      return;
-    }
+    expect(woId, 'WO має бути доступний з попередньої сходинки FSM').toBeTruthy();
+    if (!woId) return; // type-narrow для TS
     await page.goto(`/work-orders/${woId}`);
     await expect(page.locator('text=В роботі').first()).toBeVisible({ timeout: 20_000 });
     await page.locator('button:has-text("Виконано")').first().click();
@@ -309,10 +285,8 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
   });
 
   test('COMPLETED → Виставити рахунок (INVOICED)', async ({ page }) => {
-    if (!woId) {
-      test.skip(true, 'WO не доступний');
-      return;
-    }
+    expect(woId, 'WO має бути доступний з попередньої сходинки FSM').toBeTruthy();
+    if (!woId) return; // type-narrow для TS
     await page.goto(`/work-orders/${woId}`);
     await expect(page.locator('text=Виконано').first()).toBeVisible({ timeout: 20_000 });
     await page.locator('button:has-text("Виставити рахунок")').first().click();
@@ -322,10 +296,8 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
   });
 
   test('INVOICED → Оплачено (PAID)', async ({ page }) => {
-    if (!woId) {
-      test.skip(true, 'WO не доступний');
-      return;
-    }
+    expect(woId, 'WO має бути доступний з попередньої сходинки FSM').toBeTruthy();
+    if (!woId) return; // type-narrow для TS
     await page.goto(`/work-orders/${woId}`);
     await expect(page.locator('text=Виставлено').first()).toBeVisible({ timeout: 20_000 });
     // FSM INVOICED → PAID — кнопка "Оплачено" або "Оплатити"

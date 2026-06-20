@@ -82,10 +82,8 @@ test.describe('Замовлення постачальнику — прийом 
   test('кнопка "Оприбуткувати" присутня для ORDERED PO', async ({ page }) => {
     await readyPage(page);
     const po = await createPO(page);
-    if (!po) {
-      test.skip(true, 'Немає постачальника або складу');
-      return;
-    }
+    expect(po, 'createPO має створити PO (seed має SUPPLIER + WAREHOUSE)').toBeTruthy();
+    if (!po) return; // type-narrow для TS
 
     // Скинути фільтр статусів (може стояти "Чернетка" і ORDERED не видно)
     const orderedBtn = page.locator('button:has-text("Замовлено")').first();
@@ -93,11 +91,7 @@ test.describe('Замовлення постачальнику — прийом 
     await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
-    if (!(await row.isVisible({ timeout: 12_000 }))) {
-      await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
-      test.skip(true, 'Рядок PO не знайдено у таблиці');
-      return;
-    }
+    await expect(row, "Створений PO має з'явитись у таблиці").toBeVisible({ timeout: 15_000 });
 
     // Відкрити PO edit modal через кнопку "Редагувати" (hover-only Pencil icon, title="Редагувати").
     // У редагованій моделі (PurchaseOrderCreateModal) кнопка прийому "Оприбуткувати" знаходиться
@@ -114,10 +108,8 @@ test.describe('Замовлення постачальнику — прийом 
   test('кнопка "Оприбуткувати" → відкриває inline receive mode з позиціями', async ({ page }) => {
     await readyPage(page);
     const po = await createPO(page);
-    if (!po) {
-      test.skip(true, 'Немає постачальника або складу');
-      return;
-    }
+    expect(po, 'createPO має створити PO (seed має SUPPLIER + WAREHOUSE)').toBeTruthy();
+    if (!po) return; // type-narrow для TS
 
     // Скинути фільтр статусів щоб ORDERED рядок був видимий
     const orderedBtn = page.locator('button:has-text("Замовлено")').first();
@@ -125,19 +117,13 @@ test.describe('Замовлення постачальнику — прийом 
     await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
-    if (!(await row.isVisible({ timeout: 10_000 }).catch(() => false))) {
-      await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
-      test.skip(true, 'Рядок PO не знайдено');
-      return;
-    }
+    await expect(row, "Створений PO має з'явитись у таблиці").toBeVisible({ timeout: 15_000 });
 
     const modal = await openPoEditModal(page, row);
     const receiveBtn = modal.locator('button:has-text("Оприбуткувати")').first();
-    if (!(await receiveBtn.isVisible({ timeout: 5_000 }).catch(() => false))) {
-      await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
-      test.skip(true, 'Кнопка "Оприбуткувати" не знайдена');
-      return;
-    }
+    await expect(receiveBtn, 'ORDERED PO має мати кнопку "Оприбуткувати"').toBeVisible({
+      timeout: 8_000,
+    });
 
     await receiveBtn.click();
     // Інлайн receive mode — у тій самій PO-модалці з'являється кнопка "Підтвердити прийом".
@@ -157,18 +143,12 @@ test.describe('Замовлення постачальнику — прийом 
   test('прийняти товари → статус RECEIVED', async ({ page }) => {
     await readyPage(page);
     const po = await createPO(page);
-    if (!po) {
-      test.skip(true, 'Немає постачальника або складу');
-      return;
-    }
+    expect(po, 'createPO має створити PO (seed має SUPPLIER + WAREHOUSE)').toBeTruthy();
+    if (!po) return; // type-narrow для TS
 
-    // Якщо немає позицій — пропустити (потрібні рядки для прийому)
+    // Seed має товари — createPO має створити PO з позиціями
     const lines = po.lines ?? [];
-    if (!lines.length) {
-      await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
-      test.skip(true, 'PO не має позицій (немає товарів у каталозі)');
-      return;
-    }
+    expect(lines.length, 'PO має містити позиції (seed має товари)').toBeGreaterThan(0);
 
     // Скинути фільтр статусів щоб ORDERED рядок був видимий
     const orderedBtn = page.locator('button:has-text("Замовлено")').first();
@@ -176,19 +156,13 @@ test.describe('Замовлення постачальнику — прийом 
     await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
-    if (!(await row.isVisible({ timeout: 10_000 }))) {
-      await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
-      test.skip(true, 'Рядок PO не знайдено');
-      return;
-    }
+    await expect(row, "Створений PO має з'явитись у таблиці").toBeVisible({ timeout: 15_000 });
 
     const modal = await openPoEditModal(page, row);
     const receiveBtn = modal.locator('button:has-text("Оприбуткувати")').first();
-    if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
-      await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
-      test.skip(true, 'Кнопка прийому недоступна');
-      return;
-    }
+    await expect(receiveBtn, 'ORDERED PO має мати кнопку прийому').toBeVisible({
+      timeout: 8_000,
+    });
 
     await receiveBtn.click();
     // Інлайн receive mode у тій самій PO-модалці.
@@ -224,19 +198,17 @@ test.describe('Замовлення постачальнику — прийом 
   test('часткове отримання → статус PARTIAL', async ({ page }) => {
     await readyPage(page);
     const po = await createPO(page);
-    if (!po) {
-      test.skip(true, 'Немає постачальника або складу');
-      return;
-    }
+    expect(po, 'createPO має створити PO (seed має SUPPLIER + WAREHOUSE)').toBeTruthy();
+    if (!po) return; // type-narrow для TS
 
     const lines = po.lines ?? [];
-    // Потрібно мінімум 2 одиниці щоб прийняти частково
+    // createPO має створювати позиції з quantity >= 2 (для часткового прийому)
     const firstLine = lines[0];
-    if (!firstLine || firstLine.quantity < 2) {
-      await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
-      test.skip(true, 'Потрібна позиція з qty >= 2 для часткового прийому');
-      return;
-    }
+    expect(firstLine, 'PO має містити хоча б одну позицію').toBeTruthy();
+    expect(
+      firstLine?.quantity,
+      'Перша позиція має qty >= 2 для часткового прийому',
+    ).toBeGreaterThanOrEqual(2);
 
     // Скинути фільтр статусів щоб ORDERED рядок був видимий
     const orderedBtn = page.locator('button:has-text("Замовлено")').first();
@@ -244,19 +216,13 @@ test.describe('Замовлення постачальнику — прийом 
     await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
-    if (!(await row.isVisible({ timeout: 10_000 }))) {
-      await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
-      test.skip(true, 'Рядок PO не знайдено');
-      return;
-    }
+    await expect(row, "Створений PO має з'явитись у таблиці").toBeVisible({ timeout: 15_000 });
 
     const modal = await openPoEditModal(page, row);
     const receiveBtn = modal.locator('button:has-text("Оприбуткувати")').first();
-    if (!(await receiveBtn.isVisible({ timeout: 5_000 }).catch(() => false))) {
-      await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
-      test.skip(true, 'Кнопка прийому недоступна');
-      return;
-    }
+    await expect(receiveBtn, 'ORDERED PO має мати кнопку прийому').toBeVisible({
+      timeout: 8_000,
+    });
 
     await receiveBtn.click();
     // Інлайн receive mode — заповнити qty=1 у першу позицію (частковий прийом 1 з 5)

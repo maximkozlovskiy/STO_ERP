@@ -68,19 +68,13 @@ test.describe('Документи складу — TRANSFER (Переміщен�
     await readyPage(page);
 
     const warehouses = await getWarehouses(page);
-    if (warehouses.length < 2) {
-      test.skip(true, 'Потрібно мінімум 2 склади для TRANSFER');
-      return;
-    }
+    expect(warehouses.length, 'Seed має >=2 склади для TRANSFER').toBeGreaterThanOrEqual(2);
     const [src, dst] = warehouses;
 
     // Знайти філію
     const branches = await apiCall(page, 'GET', '/branches');
     const branchId = Array.isArray(branches) ? branches[0]?.id : null;
-    if (!branchId) {
-      test.skip(true, 'Немає філій');
-      return;
-    }
+    expect(branchId, 'Seed має містити філії').toBeTruthy();
 
     // Створити документ через API
     const doc = await apiCall(page, 'POST', '/stock-documents', {
@@ -112,10 +106,7 @@ test.describe('Документи складу — TRANSFER (Переміщен�
     await readyPage(page);
 
     const warehouses = await getWarehouses(page);
-    if (warehouses.length < 2) {
-      test.skip(true, 'Потрібно 2 склади');
-      return;
-    }
+    expect(warehouses.length, 'Seed має >=2 склади').toBeGreaterThanOrEqual(2);
     const [src, dst] = warehouses;
     const branches = await apiCall(page, 'GET', '/branches');
     const branchId = Array.isArray(branches) ? branches[0]?.id : null;

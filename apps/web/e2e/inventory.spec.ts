@@ -333,12 +333,9 @@ test.describe('Інвентар — 3-режимний перемикач вид
       .poll(async () => warehouseSelect.locator('option').count(), { timeout: 15_000 })
       .toBeGreaterThan(1);
 
+    // expect.poll вище гарантує options.count() > 1, тож тут жорстко перевіряємо інваріант
     const options = warehouseSelect.locator('option');
-    const count = await options.count();
-    if (count < 2) {
-      test.skip(true, 'Немає складів у tenant — фільтр не можна перевірити');
-      return;
-    }
+    expect(await options.count()).toBeGreaterThan(1);
 
     // Перехоплюємо запит до stock-items з warehouseId
     const requestPromise = page.waitForRequest(

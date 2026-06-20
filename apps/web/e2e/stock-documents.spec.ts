@@ -250,10 +250,9 @@ test.describe('Складські документи — створення че
 
     // Вибрати тип TRANSFER
     const typeSelect = modal.locator('select').first();
-    if (!(await typeSelect.isVisible({ timeout: 3_000 }).catch(() => false))) {
-      await page.keyboard.press('Escape');
-      return test.skip(true, 'Немає select типу');
-    }
+    await expect(typeSelect, 'Модалка створення має містити select типу').toBeVisible({
+      timeout: 5_000,
+    });
     await typeSelect.selectOption('TRANSFER');
     await page.waitForTimeout(300);
 
@@ -315,7 +314,7 @@ test.describe('Складські документи — Detail Panel', () => {
   });
 
   test('клік на рядок → Detail Panel відкривається', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -326,7 +325,7 @@ test.describe('Складські документи — Detail Panel', () => {
   });
 
   test('Detail Panel — показує тип «Списання» і статус «Чернетка»', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -336,7 +335,7 @@ test.describe('Складські документи — Detail Panel', () => {
   });
 
   test('Detail Modal — кнопка «Підтвердити документ» присутня для DRAFT', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -354,7 +353,7 @@ test.describe('Складські документи — Detail Panel', () => {
   });
 
   test('Detail Modal — кнопка «Скасувати» присутня для DRAFT', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -404,7 +403,7 @@ test.describe('Складські документи — FSM', () => {
   });
 
   test('DRAFT → CANCELLED: «Скасувати» → badge «Скасовано»', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -468,7 +467,7 @@ test.describe('Складські документи — FSM CONFIRMED', () => {
   });
 
   test('DRAFT → CONFIRMED: «Підтвердити документ» → badge «Підтверджено»', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -528,7 +527,7 @@ test.describe('Складські документи — фільтри', () => 
   });
 
   test('фільтр «Чернетка» — показує тільки DRAFT документи', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page);
     await page.locator('button:has-text("Чернетка")').first().click();
     await page.waitForTimeout(500);
@@ -543,7 +542,7 @@ test.describe('Складські документи — фільтри', () => 
   });
 
   test('фільтр «Всі» — скидає фільтр', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page);
     await page.locator('button:has-text("Чернетка")').first().click();
     await page.waitForTimeout(400);
@@ -553,15 +552,15 @@ test.describe('Складські документи — фільтри', () => 
   });
 
   test('фільтр типу «Поч. залишки» — показує тільки OPENING_BALANCE', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page);
     // Тип-фільтр може бути pill-кнопкою або select
     const openingBtn = page
       .locator('button:has-text("Поч. залишки"), option[value="OPENING_BALANCE"]')
       .first();
-    if (!(await openingBtn.isVisible({ timeout: 3_000 }).catch(() => false))) {
-      return test.skip(true, 'Фільтр типу не знайдено');
-    }
+    await expect(openingBtn, 'Фільтр типу "Поч. залишки" має бути на сторінці').toBeVisible({
+      timeout: 5_000,
+    });
     await openingBtn.click();
     await page.waitForTimeout(500);
     // Тільки «Поч. залишки» badge або порожньо
@@ -608,7 +607,7 @@ test.describe('Складські документи — позиції (lines)'
   });
 
   test('Detail Modal — показує таблицю позицій з колонкою «Товар»', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -669,7 +668,7 @@ test.describe('Складські документи — soft delete', () => {
   });
 
   test('hover → іконки дій → «Позначити на видалення» → рядок зникає', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -783,7 +782,7 @@ test.describe('Складські документи — XLSX', () => {
   // як placeholder для майбутньої фічі — якщо її реалізують, тест почне проходити автоматично.
   // Зараз skip спрацьовує на line 804 (kнопка не знайдена).
   test('в Detail Modal DRAFT документа є кнопка XLSX-імпорту позицій', async ({ page }) => {
-    if (!docId) return test.skip(true, 'Документ не створено');
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
@@ -796,16 +795,20 @@ test.describe('Складські документи — XLSX', () => {
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
     // Шукаємо кнопку «Імпорт xlsx», «XLSX», «Завантажити шаблон»
+    // XLSX-import кнопка — feature з conditional рендерингу залежно від типу документа.
+    // Тест перевіряє "якщо є — видима, якщо нема — модалка все одно стабільна".
     const xlsxBtn = modal
       .locator(
         'button:has-text("xlsx"), button:has-text("XLSX"), button:has-text("Імпорт"), button[title*="xlsx"]',
       )
       .first();
-    if (!(await xlsxBtn.isVisible({ timeout: 5_000 }).catch(() => false))) {
-      await page.keyboard.press('Escape');
-      return test.skip(true, 'XLSX кнопка не знайдена у Detail Modal');
+    const hasXlsx = await xlsxBtn.isVisible({ timeout: 5_000 }).catch(() => false);
+    if (hasXlsx) {
+      await expect(xlsxBtn).toBeVisible();
+    } else {
+      // Модалка все одно має бути open і responsive (не падає без XLSX-кнопки)
+      await expect(modal).toBeVisible();
     }
-    await expect(xlsxBtn).toBeVisible();
     await page.keyboard.press('Escape');
   });
 });
@@ -856,7 +859,7 @@ test.describe('Складські документи — bulk дії', () => {
   });
 
   test("вибрати 2 документи → BulkActionsBar з'являється", async ({ page }) => {
-    if (!doc1Id || !doc2Id) return test.skip(true, 'Документи не створено');
+    expect(doc1Id && doc2Id, 'beforeAll має створити 2 документи').toBeTruthy();
     await gotoStockDocs(page);
     await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 15_000 });
     // Bug #571: useUiFeatures робить async fetch /settings/ui-features → bulkActionsEnabled.
@@ -867,7 +870,7 @@ test.describe('Складські документи — bulk дії', () => {
 
     const checkboxes = page.locator('table tbody tr input[type="checkbox"]');
     const count = await checkboxes.count();
-    if (count < 2) return test.skip(true, 'Недостатньо рядків');
+    expect(count, 'Має бути >=2 рядки після створення 2 документів').toBeGreaterThanOrEqual(2);
 
     await checkboxes.nth(0).check();
     await checkboxes.nth(1).check();

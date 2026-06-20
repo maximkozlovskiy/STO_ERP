@@ -114,11 +114,9 @@ test.describe('Наряди — картка', () => {
   test('картка наряду показує статус або FSM-кнопки', async ({ page }) => {
     await page.goto('/work-orders');
     await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
+    // Seed гарантує існування нарядів — жорсткий експект, без silent skip
     const firstRow = page.locator('table tbody tr').first();
-    if (!(await firstRow.isVisible({ timeout: 10_000 }))) {
-      test.skip(true, 'Немає нарядів у БД');
-      return;
-    }
+    await expect(firstRow).toBeVisible({ timeout: 15_000 });
 
     // Work-orders list uses a sidebar-preview pattern: row click selects (opens sidebar),
     // "Відкрити →" button navigates to the detail page.

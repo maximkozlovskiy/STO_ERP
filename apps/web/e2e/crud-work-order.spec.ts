@@ -139,12 +139,9 @@ test.describe('Наряди — картка (seed дані)', () => {
     await page.goto('/work-orders');
     await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
 
-    // Якщо нарядів немає — пропустити
+    // Seed гарантує існування нарядів — жорсткий експект, без silent skip
     const firstRow = page.locator('table tbody tr').first();
-    if (!(await firstRow.isVisible({ timeout: 10_000 }))) {
-      test.skip(true, 'Немає нарядів у БД для перевірки картки');
-      return;
-    }
+    await expect(firstRow).toBeVisible({ timeout: 15_000 });
 
     await firstRow.click();
     await expect(page).toHaveURL(/\/work-orders\/[a-z0-9-]+/, { timeout: 10_000 });
@@ -166,10 +163,7 @@ test.describe('Наряди — картка (seed дані)', () => {
   test('FSM кнопки відповідають статусу наряду', async ({ page }) => {
     await page.goto('/work-orders');
     const firstRow = page.locator('table tbody tr').first();
-    if (!(await firstRow.isVisible({ timeout: 10_000 }))) {
-      test.skip(true, 'Немає нарядів для перевірки FSM');
-      return;
-    }
+    await expect(firstRow).toBeVisible({ timeout: 15_000 });
 
     await firstRow.click();
     await expect(page).toHaveURL(/\/work-orders\/[a-z0-9-]+/, { timeout: 10_000 });
