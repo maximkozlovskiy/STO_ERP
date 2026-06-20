@@ -1,5 +1,6 @@
 import { Body, Controller, ForbiddenException, Get, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { SetupInitDto, SetupInitResponseDto } from './setup.dto';
 import { SetupService } from './setup.service';
 
@@ -19,6 +20,10 @@ export class SetupController {
   }
 
   @Post('init')
+  // §2.5 Hardening: публічний one-shot endpoint. isAlreadyInitialized() self-locks
+  // після першого виклику, але throttle захищає від race-burst flood-у на cold start
+  // (брутфорс паралельних запитів до того як перший COMMIT-нув setup).
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
   @ApiOperation({ summary: 'Ініціалізація системи (перший запуск)' })
   @ApiResponse({ status: 201, type: SetupInitResponseDto })
   @ApiResponse({ status: 403, description: 'Систему вже налаштовано' })

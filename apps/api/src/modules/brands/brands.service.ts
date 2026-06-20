@@ -160,17 +160,44 @@ export class BrandsService {
     await this.cache.del(cacheKey(orgId));
   }
 
-  // Diff synonyms: soft-delete removed, create new
+  // Diff synonyms: soft-delete removed, create new (resurrection-aware).
+  //
+  // §5.2 — BrandSynonym has @@unique([orgId, synonym]) WITHOUT deletedAt.
+  // Naive `createMany({ skipDuplicates: true })` silently ignores synonyms whose
+  // row already exists in `deletedAt != null` state (the unique slot is still
+  // occupied), so re-adding "OEM" after removing it would NOT reappear.
+  // We split the incoming list into (a) resurrect — flip deletedAt=null AND
+  // re-bind to this brandId for existing soft-deleted rows (org-scoped because
+  // the unique is org-scoped), (b) create — only truly new synonyms.
   private async syncSynonyms(orgId: string, brandId: string, incoming: string[]): Promise<void> {
-    const existing = await this.prisma.brandSynonym.findMany({
-      where: { brandId, orgId, deletedAt: null },
-      select: { id: true, synonym: true },
-    });
-    const existingSet = new Set(existing.map(s => s.synonym));
+    // Read active rows for THIS brand + any soft-deleted rows ACROSS the org
+    // (unique is per-org, so resurrection must consider other brands' tombstones).
+    const [activeOfBrand, deletedInOrg] = await Promise.all([
+      this.prisma.brandSynonym.findMany({
+        where: { brandId, orgId, deletedAt: null },
+        select: { id: true, synonym: true },
+      }),
+      incoming.length
+        ? this.prisma.brandSynonym.findMany({
+            where: { orgId, synonym: { in: incoming }, deletedAt: { not: null } },
+            select: { id: true, synonym: true },
+          })
+        : Promise.resolve([] as { id: string; synonym: string }[]),
+    ]);
+    const activeBySyn = new Map(activeOfBrand.map(s => [s.synonym, s.id]));
+    const deletedBySyn = new Map(deletedInOrg.map(s => [s.synonym, s.id]));
     const incomingSet = new Set(incoming);
 
-    const toRemove = existing.filter(s => !incomingSet.has(s.synonym)).map(s => s.id);
-    const toAdd = incoming.filter(s => !existingSet.has(s));
+    // Active rows of THIS brand that are no longer in incoming → soft-delete.
+    const toRemove = [...activeBySyn.entries()]
+      .filter(([syn]) => !incomingSet.has(syn))
+      .map(([, id]) => id);
+    // Incoming entries not yet active for this brand.
+    const notActive = incoming.filter(s => !activeBySyn.has(s));
+    // Among those, ones whose soft-deleted row exists somewhere in the org → resurrect+rebind.
+    const toResurrect = notActive.filter(s => deletedBySyn.has(s)).map(s => deletedBySyn.get(s)!);
+    // The rest → truly new rows.
+    const toCreate = notActive.filter(s => !deletedBySyn.has(s));
 
     await Promise.all([
       toRemove.length
@@ -179,9 +206,15 @@ export class BrandsService {
             data: { deletedAt: new Date() },
           })
         : Promise.resolve(),
-      toAdd.length
+      toResurrect.length
+        ? this.prisma.brandSynonym.updateMany({
+            where: { id: { in: toResurrect } },
+            data: { deletedAt: null, brandId },
+          })
+        : Promise.resolve(),
+      toCreate.length
         ? this.prisma.brandSynonym.createMany({
-            data: toAdd.map(s => ({ orgId, brandId, synonym: s })),
+            data: toCreate.map(s => ({ orgId, brandId, synonym: s })),
             skipDuplicates: true,
           })
         : Promise.resolve(),

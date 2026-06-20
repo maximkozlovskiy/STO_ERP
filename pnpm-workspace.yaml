@@ -1,6 +1,9 @@
 packages:
-  - "apps/*"
-  - "packages/*"
+  - 'apps/*'
+  - 'packages/*'
+overrides:
+  '@fastify/middie': '>=9.3.2'
+  next: '>=15.3.6'
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true

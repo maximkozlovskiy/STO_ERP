@@ -57,6 +57,21 @@ export class SmsProcessor extends WorkerHost {
     }
 
     const result: unknown = await response.json();
-    this.logger.log(`SMS надіслано на ${phone}: ${JSON.stringify(result)}`);
+    // §2.4 PII: маскуємо телефон у логах (показуємо лише останні 4 цифри).
+    // pino.redact не покриває string-інтерполяцію в повідомленні логера;
+    // потрібно маскувати на сайті виклику.
+    this.logger.log(`SMS надіслано на ${maskPhone(phone)}: ${JSON.stringify(result)}`);
   }
+}
+
+/**
+ * Маскує телефон для логування: лишає лише останні 4 цифри.
+ * +380501234567 → +***4567
+ * 0501234567    → ***4567
+ */
+function maskPhone(phone: string): string {
+  if (phone.length <= 4) return '****';
+  const visible = phone.slice(-4);
+  const prefix = phone.startsWith('+') ? '+' : '';
+  return `${prefix}***${visible}`;
 }

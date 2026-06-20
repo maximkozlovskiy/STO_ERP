@@ -32,7 +32,11 @@ export function GoodPriceHistoryTab({ goodId, onCountChange }: GoodPriceHistoryT
         setItems(res.items);
         onCountChange?.(res.total);
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        // §8.2: don't silently swallow fetch errors — surface to console for diagnostics.
+        // Tab UI keeps empty state (acceptable for read-only history view), but devs see the failure.
+        if (!cancelled) console.error('[GoodPriceHistoryTab] fetch failed', err);
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });

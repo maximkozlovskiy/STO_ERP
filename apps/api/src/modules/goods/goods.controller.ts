@@ -19,6 +19,8 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { GoodsService } from './goods.service';
 import {
   CreateGoodDto,
@@ -51,8 +53,13 @@ export class GoodsController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC')
   @ApiOperation({ summary: 'Список товарів/запчастин' })
-  findAll(@OrgContext() orgId: string, @Query() query: GoodQueryDto) {
-    return this.service.findAll(orgId, query);
+  // §2.1 Auth: pass role → service маскує purchasePrice для MECHANIC/RECEPTIONIST.
+  findAll(
+    @OrgContext() orgId: string,
+    @Query() query: GoodQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.findAll(orgId, query, user.role);
   }
 
   // Specific sub-routes BEFORE :id — Fastify matches in declaration order, :id is greedy
@@ -77,15 +84,24 @@ export class GoodsController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC')
   @ApiOperation({ summary: 'Отримати товар' })
-  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOne(orgId, id);
+  // §2.1 Auth: pass role → service маскує purchasePrice для MECHANIC/RECEPTIONIST.
+  findOne(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.findOne(orgId, id, user.role);
   }
 
   @Post()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Створити товар' })
-  create(@OrgContext() orgId: string, @Body() dto: CreateGoodDto) {
-    return this.service.create(orgId, dto);
+  create(
+    @OrgContext() orgId: string,
+    @Body() dto: CreateGoodDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.create(orgId, dto, user.role);
   }
 
   @Patch(':id')
@@ -95,8 +111,9 @@ export class GoodsController {
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateGoodDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.update(orgId, id, dto);
+    return this.service.update(orgId, id, dto, user.role);
   }
 
   @Delete(':id')
@@ -113,8 +130,9 @@ export class GoodsController {
   restore(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<GoodResponseDto> {
-    return this.service.restore(orgId, id);
+    return this.service.restore(orgId, id, user.role);
   }
 
   // ─── UoM Sub-resource ────────────────────────────────────────────────────────

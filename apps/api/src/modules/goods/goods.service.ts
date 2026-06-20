@@ -21,6 +21,19 @@ import {
 } from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 
+// §2.1 Auth: purchasePrice (закупівельна ціна) — фінансово чутливе поле.
+// MECHANIC/RECEPTIONIST бачать каталог запчастин (Roles на @Get/findAll/findOne),
+// але НЕ повинні бачити закупівельну ціну (cost leakage → можна вирахувати маржу).
+// Дозволено лише ролям з фінансовим/складським доступом.
+const PURCHASE_PRICE_VISIBLE_ROLES = new Set<string>([
+  'OWNER',
+  'ADMIN',
+  'STOREKEEPER',
+  'ACCOUNTANT',
+]);
+const canSeePurchasePrice = (role?: string | null): boolean =>
+  !!role && PURCHASE_PRICE_VISIBLE_ROLES.has(role);
+
 @Injectable()
 export class GoodsService {
   constructor(
@@ -28,7 +41,7 @@ export class GoodsService {
     private readonly docNumbers: DocumentNumberService,
   ) {}
 
-  async findAll(orgId: string, query: GoodQueryDto): Promise<PaginatedGoodsDto> {
+  async findAll(orgId: string, query: GoodQueryDto, userRole?: string): Promise<PaginatedGoodsDto> {
     const where: Prisma.GoodWhereInput = {
       orgId,
       ...(query.showDeleted ? {} : { deletedAt: null }),
@@ -70,14 +83,14 @@ export class GoodsService {
     ]);
 
     return {
-      items: items.map(item => this.toDto(item)),
+      items: items.map(item => this.toDto(item, userRole)),
       total,
       page: query.page,
       limit: take,
     };
   }
 
-  async findOne(orgId: string, id: string): Promise<GoodResponseDto> {
+  async findOne(orgId: string, id: string, userRole?: string): Promise<GoodResponseDto> {
     const item = await this.prisma.good.findFirst({
       where: { id, orgId, deletedAt: null },
       include: {
@@ -87,10 +100,10 @@ export class GoodsService {
       },
     });
     if (!item) throw new NotFoundException('Товар не знайдено');
-    return this.toDto(item);
+    return this.toDto(item, userRole);
   }
 
-  async create(orgId: string, dto: CreateGoodDto): Promise<GoodResponseDto> {
+  async create(orgId: string, dto: CreateGoodDto, userRole?: string): Promise<GoodResponseDto> {
     // Parallel: sku-uniqueness check + FK validation — обидва незалежні precheck-и.
     const [existing] = await Promise.all([
       dto.sku
@@ -114,10 +127,15 @@ export class GoodsService {
         brand: { select: { name: true } },
       },
     });
-    return this.toDto(item);
+    return this.toDto(item, userRole);
   }
 
-  async update(orgId: string, id: string, dto: UpdateGoodDto): Promise<GoodResponseDto> {
+  async update(
+    orgId: string,
+    id: string,
+    dto: UpdateGoodDto,
+    userRole?: string,
+  ): Promise<GoodResponseDto> {
     // Parallel: tenant guard (narrow id-only select) + sku-uniqueness + FK validation —
     // три незалежні precheck-и. Narrow вибірку замість this.findOne() (повний DTO + include
     // preferredSupplier + goodCategory) бо нам тільки потрібна existence-перевірка перед update,
@@ -148,7 +166,7 @@ export class GoodsService {
         brand: { select: { name: true } },
       },
     });
-    return this.toDto(item);
+    return this.toDto(item, userRole);
   }
 
   async remove(orgId: string, id: string): Promise<void> {
@@ -162,7 +180,7 @@ export class GoodsService {
     if (result.count === 0) throw new NotFoundException('Товар не знайдено');
   }
 
-  async restore(orgId: string, id: string): Promise<GoodResponseDto> {
+  async restore(orgId: string, id: string, userRole?: string): Promise<GoodResponseDto> {
     // Defense-in-depth: atomic updateMany with full compound where (sto-review pattern
     // 2026-05-30). Combines existence + tenant + "currently-deleted" assertion into one
     // statement. include is fetched separately via findFirstOrThrow (updateMany does not
@@ -179,7 +197,7 @@ export class GoodsService {
         brand: { select: { name: true } },
       },
     });
-    return this.toDto(item);
+    return this.toDto(item, userRole);
   }
 
   /**
@@ -628,34 +646,41 @@ export class GoodsService {
     };
   }
 
-  private toDto(item: {
-    id: string;
-    orgId: string;
-    internalCode?: string | null;
-    sku: string | null;
-    name: string;
-    brand?: { name: string } | null;
-    unit: string;
-    unitId?: string | null;
-    brandId?: string | null;
-    goodCategoryId?: string | null;
-    purchasePrice: import('@prisma/client').Prisma.Decimal | null;
-    salePrice: import('@prisma/client').Prisma.Decimal;
-    category: string | null;
-    barcode: string | null;
-    notes: string | null;
-    goodType: import('@prisma/client').GoodType | null;
-    preferredSupplierId: string | null;
-    preferredSupplier?: {
-      firstName: string | null;
-      lastName: string | null;
-      companyName: string | null;
-    } | null;
-    goodCategory?: { id: string; name: string } | null;
-    deletedAt?: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }): GoodResponseDto {
+  private toDto(
+    item: {
+      id: string;
+      orgId: string;
+      internalCode?: string | null;
+      sku: string | null;
+      name: string;
+      brand?: { name: string } | null;
+      unit: string;
+      unitId?: string | null;
+      brandId?: string | null;
+      goodCategoryId?: string | null;
+      purchasePrice: import('@prisma/client').Prisma.Decimal | null;
+      salePrice: import('@prisma/client').Prisma.Decimal;
+      category: string | null;
+      barcode: string | null;
+      notes: string | null;
+      goodType: import('@prisma/client').GoodType | null;
+      preferredSupplierId: string | null;
+      preferredSupplier?: {
+        firstName: string | null;
+        lastName: string | null;
+        companyName: string | null;
+      } | null;
+      goodCategory?: { id: string; name: string } | null;
+      deletedAt?: Date | null;
+      createdAt: Date;
+      updatedAt: Date;
+    },
+    userRole?: string,
+  ): GoodResponseDto {
+    // §2.1 Auth: маскуємо purchasePrice (закупівельна ціна) для ролей без фінансового доступу
+    // (MECHANIC, RECEPTIONIST). Без role-параметра — за замовчуванням приховуємо
+    // (default-deny: внутрішні виклики без auth-контексту НЕ повинні розкривати cost).
+    const showCost = canSeePurchasePrice(userRole);
     return {
       id: item.id,
       orgId: item.orgId,
@@ -666,7 +691,7 @@ export class GoodsService {
       unit: item.unit,
       unitId: item.unitId ?? null,
       brandId: item.brandId ?? null,
-      purchasePrice: item.purchasePrice != null ? Number(item.purchasePrice) : null,
+      purchasePrice: showCost && item.purchasePrice != null ? Number(item.purchasePrice) : null,
       salePrice: Number(item.salePrice),
       category: item.category ?? null,
       goodCategoryId: item.goodCategoryId ?? null,
