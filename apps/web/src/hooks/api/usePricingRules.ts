@@ -2,19 +2,34 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 
+export interface PricingRuleTier {
+  id: string;
+  costMin: number;
+  costMax: number | null;
+  percentValue: number;
+  sortOrder: number;
+}
+
 export interface PricingRule {
   id: string;
   name: string;
   type: string;
   priority: number;
   goodId?: string | null;
+  good?: { id: string; name: string; sku: string | null } | null;
   goodCategory?: string | null;
   goodType?: string | null;
+  brandId?: string | null;
+  brandName?: string | null;
+  supplierId?: string | null;
+  supplierName?: string | null;
   percentValue?: number | null;
   fixedAmount?: number | null;
   fixedPrice?: number | null;
   roundTo?: number | null;
   isActive: boolean;
+  createdAt?: string;
+  tiers?: PricingRuleTier[];
   deletedAt?: string | null;
 }
 

@@ -11,7 +11,7 @@ export interface SupplierReturnLine {
   unitShortName?: string;
   quantity: number;
   price: number;
-  amount?: number;
+  amount: number;
   unitOfMeasureId?: string | null;
 }
 

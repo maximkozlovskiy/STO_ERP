@@ -7,16 +7,20 @@ export interface POLine {
   goodId: string;
   goodName?: string;
   goodSku?: string | null;
+  goodInternalCode?: string | null;
+  goodBrandName?: string | null;
   unit?: string;
   unitShortName?: string;
   coefficient?: number;
   quantity: number;
   price: number;
   amount?: number;
+  vatRate?: number;
   vatAmount?: number;
   receivedQty?: number;
   pricedSalePrice?: number | null;
   pricingRuleName?: string | null;
+  unitOfMeasureId?: string | null;
 }
 
 export interface PurchaseOrder {
