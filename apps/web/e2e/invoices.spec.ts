@@ -844,15 +844,23 @@ test.describe('Рахунки — bulk cancel', () => {
 
   test('вибрати 2 рахунки → «Скасувати вибрані» → BulkActionsBar зникає', async ({ page }) => {
     expect(inv1Id && inv2Id, 'beforeAll має створити 2 рахунки').toBeTruthy();
-    await gotoInvoices(page);
+    // Bug #345: invoices page has kyivToday() default date filter — clear it,
+    // інакше invoice створений із серверним documentDate (UTC) може випасти.
+    await gotoInvoices(page, true);
 
-    // Чекаємо завантаження таблиці
-    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 15_000 });
+    // Чекаємо завантаження таблиці. tbody містить skeleton row "Завантаження"
+    // поки isLoading=true — треба чекати саме рядка з даними, а не будь-якого <tr>.
+    // Кожен рядок із даними містить чекбокс у першій колонці (bulk select).
+    await expect
+      .poll(async () => await page.locator('table tbody tr input[type="checkbox"]').count(), {
+        timeout: 20_000,
+        message: 'Має бути >=2 чекбокси після створення 2 рахунків',
+      })
+      .toBeGreaterThanOrEqual(2);
 
-    // Чекбокс у першому рядку
     const checkboxes = page.locator('table tbody tr input[type="checkbox"]');
     const count = await checkboxes.count();
-    expect(count, 'Має бути >=2 рядки після створення 2 рахунків').toBeGreaterThanOrEqual(2);
+    expect(count).toBeGreaterThanOrEqual(2);
 
     await checkboxes.nth(0).check();
     await checkboxes.nth(1).check();

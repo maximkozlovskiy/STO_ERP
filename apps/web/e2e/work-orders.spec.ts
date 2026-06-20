@@ -112,28 +112,34 @@ test.describe('Наряди — картка', () => {
   });
 
   test('картка наряду показує статус або FSM-кнопки', async ({ page }) => {
+    // Список не навігує — клік відкриває side-panel + edit-modal через "Відкрити наряд".
+    // Тут перевіряємо саме сторінку картки, тому беремо ID наряду через API + direct goto.
     await page.goto('/work-orders');
-    await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
-    // Seed гарантує існування нарядів — жорсткий експект, без silent skip
-    const firstRow = page.locator('table tbody tr').first();
-    await expect(firstRow).toBeVisible({ timeout: 15_000 });
+    // Чекаємо завантаження таблиці (h1 + перший рядок) — це гарантує що
+    // AuthProvider встиг переписати access token у sessionStorage.
+    await expect(page.locator('h1:has-text("Наряди")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 15_000 });
+    const token = await page.evaluate(
+      () =>
+        sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
+    );
+    const wo = await page.evaluate(async t => {
+      const r = await fetch('http://localhost:3000/api/work-orders?limit=1', {
+        headers: { Authorization: `Bearer ${t}` },
+      });
+      if (!r.ok) return null;
+      const j = await r.json();
+      return Array.isArray(j) ? j[0] : (j.items?.[0] ?? null);
+    }, token);
+    expect(wo, 'Seed має містити хоча б 1 наряд').toBeTruthy();
+    if (!wo) return;
 
-    // Work-orders list uses a sidebar-preview pattern: row click selects (opens sidebar),
-    // "Відкрити →" button navigates to the detail page.
-    await firstRow.click();
-    // Wait for sidebar preview to appear — the "Відкрити →" button is inside it
-    const openBtn = page.locator('button:has-text("Відкрити")').first();
-    await expect(openBtn).toBeVisible({ timeout: 8_000 });
-    await Promise.all([
-      page.waitForURL(/\/work-orders\/[a-z0-9-]+/, { timeout: 15_000 }),
-      openBtn.click(),
-    ]);
+    await page.goto(`/work-orders/${wo.id}`);
 
     // Картка завжди показує або статус-badge, або FSM кнопки (або обидва)
-    // Статус-badge є завжди — це мінімальна перевірка що картка відрендерилась
     const statusBadge = page.locator(
       'text=/Чернетка|Кошторис|Затверджено|В роботі|Виконано|Виставлено|Оплачено|Архів|Скасовано/',
     );
-    await expect(statusBadge.first()).toBeVisible({ timeout: 10_000 });
+    await expect(statusBadge.first()).toBeVisible({ timeout: 15_000 });
   });
 });

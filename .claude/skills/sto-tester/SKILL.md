@@ -3456,3 +3456,147 @@ grep -rn "fetch.*localhost:3000\|request.newContext\|http://localhost:3000" apps
 **Severity:** HIGH (intermittent — особливо ризикне у flaky test investigations що йдуть кругом).
 
 **Де шукати ще:** будь-який Node-side fetch до `localhost` де target сервер біндить IPv4-only. WatermelonDB sync clients, BullMQ workers, cross-service HTTP calls у monorepo dev.
+
+---
+
+### 2026-06-20 — Sidebar-preview pattern: row click НЕ навігує (Bug #574) — e2e / ux-pattern / list-pages
+
+**Сигнал:** E2E тест ламається на `expect(page).toHaveURL(/\/<entity>\/[a-z0-9-]+/)` після `firstRow.click()`. Скріншот показує що сторінка залишилась на /<entity>, а сайдбар (DetailPanel) або відкритий з даними або закритий — без переходу URL.
+
+**Причина виникнення:** Listing pages у STO ERP мігрували на pattern: row click → set `selectedWO/selectedInvoice/...` → DetailPanel side-preview праворуч; навігація на детальну сторінку відбувається або через **окрему кнопку "Відкрити" всередині сайдбара** (яка теж відкриває MODAL, не URL), або через action-button у останній колонці (icon-only з `title="..."` — теж модалка). Тест писався у часи коли row click робив `router.push(/<entity>/${id})`. UI еволюціонував — тест не оновили.
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти всі тести що очікують URL після row click:
+grep -rn "firstRow\|tbody tr.*click\(\)" apps/web/e2e --include="*.spec.ts" -A 3 | grep -B 1 "toHaveURL.*\[a-z0-9-\]"
+
+# Перехресна перевірка з UI: чи дійсно є router.push у list-page?
+for page in apps/web/src/app/\(app\)/work-orders apps/web/src/app/\(app\)/invoices ...; do
+  grep -nE "onClick.*setSelected|router\.push" $page/page.tsx
+done
+# Якщо тільки setSelected — UI не навігує
+```
+
+**Підхід до фіксу:** для тестів детальної сторінки — НЕ через row click, а через **API + page.goto**:
+
+```typescript
+// ❌ КРИХКО: row click → expect URL
+await firstRow.click();
+await expect(page).toHaveURL(/\/work-orders\/[a-z0-9-]+/);
+
+// ✅ СТАБІЛЬНО: API → direct goto
+await page.goto('/work-orders');
+await expect(page.locator('h1:has-text("Наряди")')).toBeVisible();
+await expect(page.locator('table tbody tr').first()).toBeVisible(); // wait for auth
+const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
+const wo = await page.evaluate(async t => {
+  const r = await fetch('http://localhost:3000/api/work-orders?limit=1', {
+    headers: { Authorization: `Bearer ${t}` },
+  });
+  const j = await r.json();
+  return Array.isArray(j) ? j[0] : j.items?.[0];
+}, token);
+await page.goto(`/work-orders/${wo.id}`);
+```
+
+**Severity:** MEDIUM — тести зеленіли коли row click DID навігувати; після migration UI на side-preview pattern стали failed. Не критично але потребує синхронної правки в усіх spec-ах list-pages.
+
+**Де шукати ще:** invoices, purchase-orders, stock-documents, counterparties, employees — усі list-pages з `useListPage` хук-ом потенційно мають той самий pattern. Перевіряти всі `firstRow.click()` + `toHaveURL`.
+
+---
+
+### 2026-06-20 — Skeleton/loading row матчиться як data row (Bug #575) — e2e / async-state / table-loading
+
+**Сигнал:** Тест читає `await expect(page.locator('table tbody tr').first()).toBeVisible()` і думає що таблиця завантажилась, потім `count = await page.locator('table tbody tr input[type="checkbox"]').count()` повертає 0 — хоча API запит свіжо створив 2 рядки. Скріншот показує текст "Завантаження" у таблиці.
+
+**Причина виникнення:** NestJS+TanStack Query list-pages рендерять у `<tbody>` skeleton row коли `isLoading=true`:
+
+```tsx
+<TableBody>
+  {loading && <TableRow><TableCell>Завантаження...</TableCell></TableRow>}
+  {!loading && invoices.map(...)}
+</TableBody>
+```
+
+Локатор `table tbody tr` матчить будь-який `<tr>` всередині `<tbody>` — і skeleton, і data row. `first()` дає skeleton; перевірки на checkbox/text/inline-edit count 0 — тест падає з confusing error.
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти всі тести що читають table tbody tr без фільтра на колонку даних:
+grep -rn "table tbody tr.*first\(\)" apps/web/e2e --include="*.spec.ts"
+# Кожен — кандидат на skeleton race
+```
+
+**Підхід до фіксу:** Чекати на елемент який є **тільки у data row**, не у skeleton:
+
+```typescript
+// ❌ КРИХКО: матчить skeleton row
+await expect(page.locator('table tbody tr').first()).toBeVisible();
+const count = await page.locator('table tbody tr input[type="checkbox"]').count(); // 0
+
+// ✅ СТАБІЛЬНО: poll кількість checkbox-ів (skeleton не має checkbox)
+await expect
+  .poll(async () => await page.locator('table tbody tr input[type="checkbox"]').count(), {
+    timeout: 20_000,
+    message: 'Має бути >=2 чекбокси після створення 2 рахунків',
+  })
+  .toBeGreaterThanOrEqual(2);
+
+// АБО — використати специфічний content селектор:
+await expect(page.locator(`table tbody tr:has-text("${invoiceNumber}")`)).toBeVisible();
+```
+
+**Severity:** MEDIUM — flaky/false-fail; не критично, але важко дебажити (locator знаходить tr, але all assertions після — fail).
+
+**Де шукати ще:** будь-яка list-page де `loading` rendering включає `<TableRow>` (invoices, work-orders, purchase-orders, stock-documents). Виправляти всі `await expect(page.locator('table tbody tr').first()).toBeVisible()` що передують `count()` або `nth(N)` запиту.
+
+---
+
+### 2026-06-20 — Hardcoded seed values vs E2E-generated fixtures (Bug #576) — e2e / fixture-drift / first-row-pollution
+
+**Сигнал:** Тест очікує hardcoded seed values (`AA1234BB`, `Toyota`, `Camry`) на сторінці першого ресурсу з API. На сторінці натомість `E2E-Make E2E-Model-560110` — артефакт з раніших E2E прогонів. Test fail з `getByText(/AA1234BB|Toyota/).first() not found`.
+
+**Причина виникнення:** E2E suite створює тестові ресурси через API (CRUD specs), не завжди cleanup-ить afterAll. Накопичення E2E-fixtures у DB → `GET /vehicles?limit=1` повертає E2E-артефакт замість seed.
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти hardcoded seed references у тестах:
+grep -rn "AA1234BB\|Toyota Camry\|Honda Civic\|Іван Петренко" apps/web/e2e --include="*.spec.ts"
+# Кожен match — крихкий до E2E-fixture pollution
+```
+
+**Підхід до фіксу:** замість hardcoded — fetch актуальні поля через API і regex з них:
+
+```typescript
+// ❌ КРИХКО: hardcoded seed values
+await expect(page.getByText(/AA1234BB|2020|Toyota/i).first()).toBeVisible();
+
+// ✅ СТАБІЛЬНО: динамічний regex з API
+const vehicle = await page.evaluate(
+  async ({ tok, id }) => {
+    const r = await fetch(`http://localhost:3000/api/vehicles/${id}`, {
+      headers: { Authorization: `Bearer ${tok}` },
+    });
+    return r.json();
+  },
+  { tok: token, id: vehicleId },
+);
+
+// make+model завжди є — присутні у h1
+await expect(page.getByText(new RegExp(escapeRegex(vehicle.make), 'i')).first()).toBeVisible();
+
+// Опціональні поля — якщо truthy:
+const optional = [vehicle.licensePlate, vehicle.year, vehicle.vin].filter(Boolean);
+if (optional.length > 0) {
+  await expect(
+    page.getByText(new RegExp(optional.map(escapeRegex).join('|'), 'i')).first(),
+  ).toBeVisible();
+}
+```
+
+**Severity:** MEDIUM — fail тільки якщо порядок rows у API список залежить від E2E artifacts; після seed reset (cleanup DB) знов працює. False positives у CI.
+
+**Де шукати ще:** будь-який тест що очікує специфічних seed values (vehicles, counterparties, work-orders, goods) на першому елементі API list response. Перевіряти ВСІ hardcoded brand/model/name/phone strings.

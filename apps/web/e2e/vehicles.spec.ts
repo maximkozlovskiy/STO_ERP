@@ -84,8 +84,41 @@ test.describe('Автомобілі', () => {
     expect(vehicleId).toBeTruthy();
     await page.goto(`/vehicles/${vehicleId}`);
     await expect(page.locator('h1').first()).toBeVisible({ timeout: 20_000 });
-    // Seed Camry має licensePlate=AA1234BB, year=2020 — як мінімум один має зявитись.
-    await expect(page.getByText(/AA1234BB|2020|Toyota/i).first()).toBeVisible({ timeout: 10_000 });
+
+    // Дізнатись реальні дані авто з API (E2E-seed або Toyota Camry — будь-яке).
+    // Раніше hardcoded "AA1234BB|2020|Toyota" — крихко при чисто E2E-сеед.
+    const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
+    const vehicle = await page.evaluate(
+      async ({ tok, id }) => {
+        const r = await fetch(`http://localhost:3000/api/vehicles/${id}`, {
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+        if (!r.ok) return null;
+        return r.json();
+      },
+      { tok: token, id: vehicleId },
+    );
+    expect(vehicle, 'API має повернути авто').toBeTruthy();
+
+    // make+model завжди є — присутні у h1, перевіряємо через page.
+    expect(vehicle.make).toBeTruthy();
+    expect(vehicle.model).toBeTruthy();
+    await expect(
+      page.getByText(new RegExp(vehicle.make.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')).first(),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // Хоча б одне з опціональних полів має бути присутнім (Info-рядки рендеряться
+    // тільки якщо value truthy). Якщо немає жодного — це нормально для E2E-fixture.
+    const optional = [vehicle.licensePlate, vehicle.year, vehicle.vin, vehicle.color].filter(
+      Boolean,
+    );
+    if (optional.length > 0) {
+      const optionalRegex = new RegExp(
+        optional.map(v => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+        'i',
+      );
+      await expect(page.getByText(optionalRegex).first()).toBeVisible({ timeout: 5_000 });
+    }
   });
 
   test('/vehicles/new — форма "Новий автомобіль" завантажується', async ({ page }) => {

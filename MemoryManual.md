@@ -12,9 +12,12 @@
 Дата:       2026-06-20
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 960/960 | Web 471/471 | E2E ~300+ (target 0-2 skipped) ✅ 0 failed
+Тести:      API 960/960 | Web 471/471 | E2E 298/300 ✅ 0 failed / 0 skipped / 2 flaky (passed on retry)
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 — test(e2e): 6336f201 — hard expects замість silent test.skip(true) у 8 spec-ах + 2 нових spec (bookings 6, counterparty-detail 10). Прибрано ~50 dead-code skip патернів — seed містить усі необхідні entities, тому if(!data)→skip було fake-green. Тепер регресії seed або UI логіки призводять до FAIL.
+Останній commit: 2026-06-20 — fix(tester): фінальна верифікація 300 E2E тестів. Виправлено 4 failed:
+ (1) work-orders.spec.ts:114 + crud-work-order.spec.ts:147/169 — список нарядів не навігує (row click → side-panel, "Відкрити наряд" → edit-modal). Тести очікували URL change. Fix: ID наряду через API + page.goto('/work-orders/<id>').
+ (2) vehicles.spec.ts:83 — hardcoded "AA1234BB|2020|Toyota" крихко при E2E-fixture (model "E2E-Model-560110"). Fix: дізнатись make/year/licensePlate авто через API, регенерувати regex.
+ (3) invoices.spec.ts:845 — `table tbody tr` матчив skeleton row "Завантаження" → 0 checkbox. Fix: expect.poll на кількість checkbox-ів замість tr.
 
 Bug #572 (HIGH) FIXED: search 500 на pg_trgm `%` оператор — Postgres 42804 "argument of OR must be type boolean, not type text". Prisma надсилав ${q} без типу, planner не міг вирішити operator. Fix: ${qText}::text cast у 3 SQL запитах (counterparties, work-orders, goods).
 

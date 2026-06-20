@@ -135,21 +135,43 @@ test.describe('Наряди — CRUD', () => {
 // ─── Картка наряду ────────────────────────────────────────────────────────────
 
 test.describe('Наряди — картка (seed дані)', () => {
-  test('відкрити існуючий наряд → додати роботу → перевірити суму', async ({ page }) => {
+  // Helper — список нарядів не навігує (row click → side-panel, "Відкрити наряд" → edit-modal).
+  // Тому ID наряду беремо через API + page.goto на детальну сторінку.
+  async function gotoFirstWoDetail(page: import('@playwright/test').Page) {
     await page.goto('/work-orders');
-    await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
+    // Чекаємо AuthProvider, інакше sessionStorage ще порожній.
+    await expect(page.locator('h1:has-text("Наряди")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 15_000 });
+    const token = await page.evaluate(
+      () =>
+        sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
+    );
+    const wo = await page.evaluate(async t => {
+      const r = await fetch('http://localhost:3000/api/work-orders?limit=1', {
+        headers: { Authorization: `Bearer ${t}` },
+      });
+      if (!r.ok) return null;
+      const j = await r.json();
+      return Array.isArray(j) ? j[0] : (j.items?.[0] ?? null);
+    }, token);
+    expect(wo, 'Seed має містити хоча б 1 наряд').toBeTruthy();
+    if (!wo) return null;
+    await page.goto(`/work-orders/${wo.id}`);
+    return wo as { id: string; status: string };
+  }
 
-    // Seed гарантує існування нарядів — жорсткий експект, без silent skip
-    const firstRow = page.locator('table tbody tr').first();
-    await expect(firstRow).toBeVisible({ timeout: 15_000 });
-
-    await firstRow.click();
-    await expect(page).toHaveURL(/\/work-orders\/[a-z0-9-]+/, { timeout: 10_000 });
+  test('відкрити існуючий наряд → додати роботу → перевірити суму', async ({ page }) => {
+    const wo = await gotoFirstWoDetail(page);
+    if (!wo) return;
 
     // Картка завантажилась — є статус-badge
     await expect(
-      page.locator('text=/Чернетка|Кошторис|Затверджено|В роботі|Виконано|Оплачено/').first(),
-    ).toBeVisible({ timeout: 10_000 });
+      page
+        .locator(
+          'text=/Чернетка|Кошторис|Затверджено|В роботі|Виконано|Виставлено|Оплачено|Архів|Скасовано/',
+        )
+        .first(),
+    ).toBeVisible({ timeout: 15_000 });
 
     // Перевірити що є секція "Роботи" або "Запчастини"
     await expect(page.locator('text=/Роботи|Запчастини|Лінії/').first()).toBeVisible({
@@ -161,12 +183,8 @@ test.describe('Наряди — картка (seed дані)', () => {
   });
 
   test('FSM кнопки відповідають статусу наряду', async ({ page }) => {
-    await page.goto('/work-orders');
-    const firstRow = page.locator('table tbody tr').first();
-    await expect(firstRow).toBeVisible({ timeout: 15_000 });
-
-    await firstRow.click();
-    await expect(page).toHaveURL(/\/work-orders\/[a-z0-9-]+/, { timeout: 10_000 });
+    const wo = await gotoFirstWoDetail(page);
+    if (!wo) return;
 
     // Статус-badge завжди присутній
     const statusBadge = page
