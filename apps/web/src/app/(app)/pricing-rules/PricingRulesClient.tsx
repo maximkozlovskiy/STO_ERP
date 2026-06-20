@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { keepPreviousData } from '@tanstack/react-query';
@@ -42,16 +42,6 @@ import {
 // Виносимо у окремий chunk: Modal + 8+ Input/Select/Tier rows = ~350 LOC JSX, не
 // потрібні поки користувач переглядає таблицю правил.
 const RuleFormModal = dynamic(() => import('./RuleFormModal'), { ssr: false });
-
-function scopeLabel(rule: PricingRule): string {
-  const supplier = rule.supplierId ? `[${rule.supplierName ?? 'Постачальник'}] ` : '';
-  if (rule.goodId && rule.good) return `${supplier}Товар: ${rule.good.name}`;
-  if (rule.goodType)
-    return `${supplier}Тип: ${GOOD_TYPE_OPTIONS.find(o => o.value === rule.goodType)?.label ?? rule.goodType}`;
-  if (rule.goodCategory) return `${supplier}Категорія: ${rule.goodCategory}`;
-  if (rule.supplierId) return `Постачальник: ${rule.supplierName ?? '—'}`;
-  return 'Весь асортимент';
-}
 
 function valueLabel(rule: PricingRule): string {
   switch (rule.type) {

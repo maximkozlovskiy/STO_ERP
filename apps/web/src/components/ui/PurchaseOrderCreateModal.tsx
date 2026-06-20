@@ -80,7 +80,6 @@ interface PODetail {
   contractNumber?: string | null;
   notes?: string | null;
   documentDate?: string | null;
-  createdAt?: string | Date | null;
   lines?: POLine[];
 }
 
@@ -192,7 +191,6 @@ export function PurchaseOrderCreateModal({
   const [poNumber, setPoNumber] = useState('');
   const [contractId, setContractId] = useState<string | null>(null);
   const [contractNumber, setContractNumber] = useState<string | null>(null);
-  const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [lines, setLines] = useState<LocalLine[]>([]);
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
   const [showLineInput, setShowLineInput] = useState(false);
@@ -334,7 +332,6 @@ export function PurchaseOrderCreateModal({
     setShowLineInput(false);
     setContractId(null);
     setContractNumber(null);
-    setCreatedAt(null);
     setReceiveMode(false);
     setReceiveQtys({});
     if (!isEditMode) {
@@ -363,7 +360,6 @@ export function PurchaseOrderCreateModal({
           setSupplierDisplay(po.supplierName ?? '');
           setContractId(po.contractId ?? null);
           setContractNumber(po.contractNumber ?? null);
-          setCreatedAt(po.createdAt ? new Date(po.createdAt).toLocaleDateString('uk-UA') : null);
           setLines(
             (po.lines ?? []).map(l => ({
               _key: nextKey(),
@@ -512,20 +508,6 @@ export function PurchaseOrderCreateModal({
       internalCode: g.internalCode ?? null,
       brandName: g.brandName ?? null,
     }));
-  }, []);
-
-  const handleGoodSelect = useCallback((item: GoodItem) => {
-    setNewLine(l => ({
-      ...l,
-      goodId: item.id,
-      goodName: item.primary,
-      goodSku: item.sku ?? null,
-      goodInternalCode: item.internalCode ?? null,
-      goodBrandName: item.brandName ?? null,
-      unit: item.unit ?? 'шт',
-      price: String(item.purchasePrice ?? ''),
-    }));
-    setGoodSearchOpen(false);
   }, []);
 
   // ── FSM ───────────────────────────────────────────────────────────────────
@@ -841,21 +823,6 @@ export function PurchaseOrderCreateModal({
       setApplyingPricing(false);
     }
   };
-
-  // sto-optimize: memoize array of chips — раніше recompute + .filter() на кожен
-  // typing keystroke у Input полях форми (notes тощо), навіть коли header згорнуто
-  // у false.
-  const headerChips = useMemo(
-    () =>
-      headerCollapsed
-        ? [
-            supplierDisplay || null,
-            form.warehouseId ? (warehouseById.get(form.warehouseId)?.name ?? null) : null,
-            contractNumber ? `Дог. ${contractNumber}` : null,
-          ].filter(Boolean)
-        : [],
-    [headerCollapsed, supplierDisplay, form.warehouseId, warehouseById, contractNumber],
-  );
 
   return (
     <>

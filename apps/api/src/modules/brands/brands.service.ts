@@ -80,10 +80,11 @@ export class BrandsService {
     });
     if (anyExisting) {
       if (!anyExisting.deletedAt) throw new ConflictException('Бренд з такою назвою вже існує');
-      const restored = await this.prisma.brand.update({
+      // Resurrect soft-deleted brand. Include is omitted: we re-fetch after
+      // syncSynonyms() below, so the returned row would be stale anyway.
+      await this.prisma.brand.update({
         where: { id: anyExisting.id },
         data: { name: dto.name, deletedAt: null },
-        include: SYNONYMS_INCLUDE,
       });
       await this.syncSynonyms(orgId, anyExisting.id, synonyms);
       const item = await this.prisma.brand.findFirstOrThrow({
