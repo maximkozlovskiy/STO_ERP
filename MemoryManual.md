@@ -12,9 +12,9 @@
 Дата:       2026-06-20
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 940/940 | Web 471/471 | E2E 233/245 ✅ 0 failed
+Тести:      API 960/960 (+20 нових role-gate/resurrection) | Web 471/471 | E2E 233/245 ✅ 0 failed
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 — fix(security): SEC-001 — JWT fallback secret видалено з passport strategy. `config.get<string>('JWT_ACCESS_SECRET') ?? 'dev_access_secret'` → `getOrThrow<string>('JWT_ACCESS_SECRET')` (fail-fast на старті). Final OWASP audit Top 10 пройдено: 1 CRITICAL виправлено, 28 HIGH задокументовано як deps з runtime-exposure=0 (vitest/middie/undici/glob — DEV/mobile only), 1 MEDIUM trade-off (SSE token у query — обмеження EventSource API).
+Останній commit: 2026-06-20 — fix(review): 4c62d12d — фінальний огляд після 3 QA циклів. pnpm 11 overrides перенесено в pnpm-workspace.yaml (раніше у package.json — мовчазно ігнорувались → next>=15.3.6 та @fastify/middie>=9.3.2 security overrides не діяли). goods.controller — `@CurrentUser` тепер типізовано через `AuthenticatedUser`. Додано 2 regression spec-и: `goods.role-gate.spec.ts` (14 тестів — purchasePrice масковано MECHANIC/RECEPTIONIST, fail-closed undefined/unknown) та `brands.service.spec.ts` (6 тестів — syncSynonyms resurrection: @@unique([orgId, synonym]) без deletedAt). Виправлено docstring `maskPhone()` у sms.processor.ts.
 ```
 
 ### Security audit (2026-06-20)
@@ -37,7 +37,8 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
-<HEAD>    simplify(e2e): Цикл 3/3 step 6 — extract nextWorkingDayIso + openPoEditModal helpers, drop dead enableDetailPanel
+4c62d12d  fix(review): фінальний огляд 3/3 — pnpm overrides + AuthenticatedUser типізація + regression specs
+27210eb2  simplify(e2e): Цикл 3/3 step 6 — extract nextWorkingDayIso + openPoEditModal helpers, drop dead enableDetailPanel
 3083ae58  fix(tester): Цикл 3/3 step 5 — Bug #571 (e2e fake-green silent skips)
 a0149911  docs(skills): add public hot-path multi-field WHERE compound B-tree drift to sto-optimize
 bb48063d  perf(optimize): Цикл 3/3 step 4 — covering index booking_requests(orgId,branchId,status,requestedDate)
