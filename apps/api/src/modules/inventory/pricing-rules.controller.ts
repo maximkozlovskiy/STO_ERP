@@ -34,6 +34,16 @@ type PricingRuleWithRelations = PricingRule & {
   tiers: PricingRuleTier[];
 };
 
+// sto-review §13 + accumulated pattern (2026-06-19, relation-include drift):
+// один shared include shape для findAll/create/update — гарантує, що додавання
+// нового scalar (наприклад good.internalCode) не оминає жоден з 4 endpoints.
+const PRICING_RULE_INCLUDE = {
+  good: { select: { id: true, name: true, sku: true } },
+  brand: { select: { id: true, name: true } },
+  supplier: { select: { id: true, firstName: true, lastName: true, companyName: true } },
+  tiers: { orderBy: { sortOrder: 'asc' } },
+} satisfies Prisma.PricingRuleInclude;
+
 @ApiTags('Pricing Rules')
 @Controller('pricing-rules')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -66,12 +76,7 @@ export class PricingRulesController {
     const [rules, total] = await this.prisma.$transaction([
       this.prisma.pricingRule.findMany({
         where,
-        include: {
-          good: { select: { id: true, name: true, sku: true } },
-          brand: { select: { id: true, name: true } },
-          supplier: { select: { id: true, firstName: true, lastName: true, companyName: true } },
-          tiers: { orderBy: { sortOrder: 'asc' } },
-        },
+        include: PRICING_RULE_INCLUDE,
         orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
         take: 200,
       }),
@@ -139,12 +144,7 @@ export class PricingRulesController {
             }
           : {}),
       },
-      include: {
-        good: { select: { id: true, name: true, sku: true } },
-        brand: { select: { id: true, name: true } },
-        supplier: { select: { id: true, firstName: true, lastName: true, companyName: true } },
-        tiers: { orderBy: { sortOrder: 'asc' } },
-      },
+      include: PRICING_RULE_INCLUDE,
     });
     return this.toDto(rule);
   }
@@ -267,14 +267,7 @@ export class PricingRulesController {
           await Promise.all([tierWork, mainUpdate]);
           return tx.pricingRule.findFirstOrThrow({
             where: { id, orgId },
-            include: {
-              good: { select: { id: true, name: true, sku: true } },
-              brand: { select: { id: true, name: true } },
-              supplier: {
-                select: { id: true, firstName: true, lastName: true, companyName: true },
-              },
-              tiers: { orderBy: { sortOrder: 'asc' } },
-            },
+            include: PRICING_RULE_INCLUDE,
           });
         },
         { timeout: 10_000 },
@@ -287,12 +280,7 @@ export class PricingRulesController {
       });
       rule = await this.prisma.pricingRule.findFirstOrThrow({
         where: { id, orgId },
-        include: {
-          good: { select: { id: true, name: true, sku: true } },
-          brand: { select: { id: true, name: true } },
-          supplier: { select: { id: true, firstName: true, lastName: true, companyName: true } },
-          tiers: { orderBy: { sortOrder: 'asc' } },
-        },
+        include: PRICING_RULE_INCLUDE,
       });
     }
     return this.toDto(rule);
