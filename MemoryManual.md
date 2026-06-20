@@ -14,7 +14,7 @@
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 936/936 (+55 pricing pass) | Web 438/438 | E2E 233/245 ✅
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 — perf(optimize): Cycle 2/3 step 4 — 3 фікси. (1) pricing-rules.update() — pricing_rule.updateMany паралельно з tier deleteMany+createMany (disjoint tables, "Disjoint-set updateMany pairs у $transaction" pattern). (2) PricingRulesClient.filteredRules → useMemo([rules, debouncedSearch]) — без memo фільтр пробігав на кожен keystroke. (3) SupplierReturnCreateModal (856 LOC, secondary action) → dynamic import у purchase-orders/page.tsx.
+Останній commit: 2026-06-20 — fix(review): Цикл 3/3 step 2 — (1) додано @Throttle на 3 публічні booking endpoints (branches/availability 30 req/min, request 5 req/min — anti-enumeration + SMS-spam protection); (2) прибрано UTF-8 BOM (ef bb bf) з 10 файлів: payments.controller, stock-documents.controller, 3 catalog tabs, 5 web pages.
 ```
 
 ### Аудит-висновки (2026-06-17 simplify session)
@@ -30,6 +30,8 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+3f1527f0  fix(review): Цикл 3/3 step 2 — public booking @Throttle + strip BOM from 10 files
+4f1f345d  fix(sync): align WO status labels and StockTotal interface with API contracts (Цикл 3/3 step 1)
 487fb807  perf(optimize): parallelize pricing-rules tier+main update; memoize PricingRules filter; dynamic-load SupplierReturnCreateModal (Cycle 2/3 step 4)
 e4c72a49  fix(tester): bugs #565/#566/#567 — supplierId contract tests, IPv4 E2E, auth escape-hatch (Cycle 2/3 step 3)
 488704b2  fix(review): pricing-rules supplierId UUID guard + strip stray BOM (Cycle 2/3 step 2)
