@@ -28,6 +28,9 @@ const prismaMock = {
   brand: {
     findFirst: vi.fn(),
   },
+  counterparty: {
+    findFirst: vi.fn(),
+  },
   $transaction: vi.fn().mockImplementation((arg: unknown) => {
     if (typeof arg === 'function') {
       return (arg as (tx: unknown) => Promise<unknown>)(prismaMock);
@@ -110,6 +113,38 @@ describe('PricingRules — HTTP Contract', () => {
         url: '/pricing-rules',
       });
       expect(res.statusCode).toBe(403);
+    });
+
+    // ── Bug #565: ParseUUIDPipe guard на ?supplierId= ─────────────────────────
+    // sto-review Cycle 2 додав ParseUUIDPipe({ optional: true }) щоб довільний рядок
+    // (`?supplierId=DROP+TABLE`) валідувався class-validator-ом, а не Prisma WHERE.
+    // Без contract-тесту регресія можлива при будь-якому рефакторингу контролера.
+    it('Bug #565: GET ?supplierId=not-uuid → 400 (ParseUUIDPipe guard)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/pricing-rules?supplierId=not-a-uuid',
+      });
+      expect(res.statusCode).toBe(400);
+      // Prisma findMany НЕ викликаний — pipe блокує до execution
+      expect(prismaMock.pricingRule.findMany).not.toHaveBeenCalled();
+    });
+
+    it('Bug #565: GET ?supplierId=<UUID> → 200 (фільтрація працює)', async () => {
+      prismaMock.$transaction.mockResolvedValueOnce([[], 0]);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/pricing-rules?supplierId=11111111-1111-4111-8111-111111111199',
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('Bug #565: GET без supplierId → 200 (optional pipe)', async () => {
+      prismaMock.$transaction.mockResolvedValueOnce([[], 0]);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/pricing-rules',
+      });
+      expect(res.statusCode).toBe(200);
     });
   });
 
@@ -290,6 +325,41 @@ describe('PricingRules — HTTP Contract', () => {
       const body = res.json<{ message: string }>();
       expect(body.message).toMatch(/Бренд не знайдено/);
       // pricingRule.create НЕ викликаний — write блокується ДО запису
+      expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
+    });
+
+    // ── Bug #565: supplierId cross-tenant FK validation (Bug #186 pattern) ────
+    it('Bug #565: POST з supplierId з ЧУЖОЇ org → 404 «Постачальника не знайдено»', async () => {
+      prismaMock.counterparty.findFirst.mockResolvedValueOnce(null); // інша org
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules',
+        payload: {
+          name: 'Cross-tenant supplier attempt',
+          type: 'PERCENT',
+          supplierId: '11111111-1111-4111-8111-111111111199',
+          percentValue: 25,
+        },
+      });
+      expect(res.statusCode).toBe(404);
+      const body = res.json<{ message: string }>();
+      expect(body.message).toMatch(/Постачальника не знайдено/);
+      expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
+    });
+
+    it('Bug #565: POST з невалідним supplierId UUID → 400 (class-validator)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules',
+        payload: {
+          name: 'Bad UUID',
+          type: 'PERCENT',
+          supplierId: 'not-a-uuid',
+          percentValue: 25,
+        },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(prismaMock.counterparty.findFirst).not.toHaveBeenCalled();
       expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
     });
   });

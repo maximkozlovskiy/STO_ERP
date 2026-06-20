@@ -10,7 +10,10 @@ import * as fs from 'fs';
  */
 async function globalSetup() {
   const baseURL = 'http://localhost:3001';
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+  // Bug #566: Force IPv4 (127.0.0.1) to avoid Node ::1 (IPv6) resolution on Windows
+  // when API binds only to 0.0.0.0 (IPv4). Otherwise globalSetup intermittently fails
+  // with ECONNREFUSED ::1:3000 during fetch().
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3000';
 
   // Step 1: get JWT через прямий API виклик (швидше за UI логін)
   const res = await fetch(`${apiBase}/api/auth/login`, {
@@ -46,7 +49,7 @@ async function globalSetup() {
         body: JSON.stringify({ email, password }),
       });
       const json = await r.json();
-      return { ok: r.ok, accessToken: json.accessToken };
+      return { ok: r.ok, accessToken: json.accessToken, employee: json.employee };
     },
     {
       email: process.env.E2E_EMAIL ?? 'admin@sto.local',
@@ -60,9 +63,19 @@ async function globalSetup() {
   }
 
   // Set access token у sessionStorage (TOKEN_KEY = 'sto_access_token')
-  await page.evaluate(token => {
-    sessionStorage.setItem('sto_access_token', token);
-  }, loginResult.accessToken);
+  // Bug #567: also write employee cache to localStorage (EMPLOYEE_CACHE_KEY = 'sto_employee_cache').
+  // Without it AuthProvider optimistic init falls into isLoading=true → refreshToken() →
+  // 401 (no refresh cookie captured cross-origin) → LOGOUT → redirect to /login.
+  // With cached employee + valid token → init skips refresh, TopShell renders immediately.
+  await page.evaluate(
+    ({ token, employee }) => {
+      sessionStorage.setItem('sto_access_token', token);
+      if (employee) {
+        localStorage.setItem('sto_employee_cache', JSON.stringify(employee));
+      }
+    },
+    { token: loginResult.accessToken, employee: loginResult.employee },
+  );
 
   // Save state — включає cookies (sto_refresh) і sessionStorage (через storage state)
   const authDir = path.join(__dirname, '.auth');
@@ -93,8 +106,47 @@ async function globalSetup() {
   if (!hasDevtoolsFlag) {
     origin.localStorage.push({ name: 'sto_e2e_disable_devtools', value: '1' });
   }
-  // Save accessToken in localStorage too as fallback (most pages read sessionStorage via TOKEN_KEY)
-  // Real apps use sessionStorage — Playwright stores it as `sessionStorage` since 1.40.
+  // Bug #567: skip refresh-on-mount during E2E — the refresh cookie cannot be captured
+  // cross-origin by Playwright storageState. AuthProvider checks this flag + cached
+  // employee and trusts the stored token instead of triggering 401-prone refresh.
+  const hasSkipRefreshFlag = origin.localStorage.some(
+    (e: { name: string }) => e.name === 'sto_e2e_skip_refresh',
+  );
+  if (!hasSkipRefreshFlag) {
+    origin.localStorage.push({ name: 'sto_e2e_skip_refresh', value: '1' });
+  }
+  // Bug #567: persist employee cache so optimistic init in AuthProvider sees
+  // valid (token + cached employee) tuple → renders TopShell immediately.
+  if (loginResult.employee) {
+    const hasEmployeeCache = origin.localStorage.some(
+      (e: { name: string }) => e.name === 'sto_employee_cache',
+    );
+    if (!hasEmployeeCache) {
+      origin.localStorage.push({
+        name: 'sto_employee_cache',
+        value: JSON.stringify(loginResult.employee),
+      });
+    }
+  }
+  // Bug #567: Playwright storageState restores localStorage but NOT sessionStorage
+  // (known limitation, not honored despite admin.json having sessionStorage block).
+  // Mirror the access token under sto_e2e_access_token in localStorage — AuthProvider's
+  // reducer init copies it into sessionStorage on first render when the E2E flag is on.
+  const hasMirrorToken = origin.localStorage.some(
+    (e: { name: string }) => e.name === 'sto_e2e_access_token',
+  );
+  if (!hasMirrorToken) {
+    origin.localStorage.push({
+      name: 'sto_e2e_access_token',
+      value: loginResult.accessToken,
+    });
+  } else {
+    // Refresh existing value
+    origin.localStorage = origin.localStorage.map((e: { name: string; value: string }) =>
+      e.name === 'sto_e2e_access_token' ? { ...e, value: loginResult.accessToken } : e,
+    );
+  }
+  // Save accessToken in sessionStorage too — kept for Playwright versions that DO restore it.
   origin.sessionStorage = [{ name: 'sto_access_token', value: loginResult.accessToken }];
   fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
 

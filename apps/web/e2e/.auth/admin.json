@@ -1,29 +1,30 @@
 {
-  "cookies": [
-    {
-      "name": "sto_refresh",
-      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMTAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6ImExMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MTg3MDEwOSwiZXhwIjoxNzg0NDYyMTA5fQ.JVSbWgM694VbqBAMGoSnXvn369qr8JhvBv8UOz5UcDg",
-      "domain": "localhost",
-      "path": "/api/auth",
-      "expires": 1816430109.516793,
-      "httpOnly": true,
-      "secure": false,
-      "sameSite": "Strict"
-    }
-  ],
+  "cookies": [],
   "origins": [
     {
       "origin": "http://localhost:3001",
       "localStorage": [
         {
+          "name": "sto_employee_cache",
+          "value": "{\"id\":\"a1000000-0000-4000-8000-000000000010\",\"orgId\":\"a1000000-0000-4000-8000-000000000001\",\"firstName\":\"Адмін\",\"lastName\":\"СТО\",\"role\":\"OWNER\"}"
+        },
+        {
           "name": "sto_e2e_disable_devtools",
           "value": "1"
+        },
+        {
+          "name": "sto_e2e_skip_refresh",
+          "value": "1"
+        },
+        {
+          "name": "sto_e2e_access_token",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMTAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6ImExMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MTkxODE5MywiZXhwIjoxNzgxOTE5MDkzfQ.5TLXSoD1nb7VzGIK2E_qgcifdfldl2su2uFwAnpehO4"
         }
       ],
       "sessionStorage": [
         {
           "name": "sto_access_token",
-          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMTAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6ImExMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MTg3MDEwOSwiZXhwIjoxNzgxODcxMDA5fQ.Z5lJdo2Pp2Kk7nW9TF9W7L_37Ecq845bSWQ9KjhyIX4"
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMTAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMTAiLCJvcmdJZCI6ImExMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInJvbGUiOiJPV05FUiIsImlhdCI6MTc4MTkxODE5MywiZXhwIjoxNzgxOTE5MDkzfQ.5TLXSoD1nb7VzGIK2E_qgcifdfldl2su2uFwAnpehO4"
         }
       ]
     }

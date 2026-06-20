@@ -22,7 +22,11 @@ import * as fs from 'fs';
  * instead of re-logging in from each test — that would hit dev rate-limit.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+// Bug #566: Windows Node 18+ resolves `localhost` → `::1` first (IPv6), but API binds
+// only to `0.0.0.0` (IPv4) → intermittent ECONNREFUSED ::1:3000 from server-side request
+// contexts. Browser-side requests work because Chromium handles dual-stack itself.
+// Fix: force IPv4 by using 127.0.0.1 explicitly for ALL server-side API calls.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3000';
 const STORAGE_STATE_PATH = path.join(__dirname, '.auth/admin.json');
 
 test.use({ storageState: STORAGE_STATE_PATH });
@@ -206,6 +210,42 @@ test.describe('Estimate share', () => {
   }) => {
     console.log('🔍 seededEstimateWoId:', seededEstimateWoId);
     expect(seededEstimateWoId, 'beforeAll must have seeded an ESTIMATE work-order').toBeTruthy();
+
+    // Bug #567: re-issue fresh access token + employee cache before navigation.
+    // Reasoning: AuthProvider's useEffect runs refreshToken() on mount; refresh cookie
+    // is not preserved cross-origin in storageState (path=/api/auth, sameSite=strict,
+    // different port). When refresh fails → LOGOUT → redirect /login. Workaround:
+    // inject fresh token + employee cache via addInitScript so optimistic init returns
+    // isLoading=false, AND refreshToken() result doesn't matter because we still have
+    // a valid access token for API calls.
+    const apiCtx = await request.newContext();
+    try {
+      const loginRes = await apiCtx.post(`${API_BASE}/api/auth/login`, {
+        headers: { 'Content-Type': 'application/json' },
+        data: {
+          email: process.env.E2E_EMAIL ?? 'admin@sto.local',
+          password: process.env.E2E_PASSWORD ?? 'admin123',
+        },
+      });
+      if (loginRes.ok()) {
+        const { accessToken: fresh, employee } = (await loginRes.json()) as {
+          accessToken: string;
+          employee: unknown;
+        };
+        await page.addInitScript(
+          ({ token, emp }) => {
+            sessionStorage.setItem('sto_access_token', token);
+            if (emp) localStorage.setItem('sto_employee_cache', JSON.stringify(emp));
+            // Bug #567: skip refresh-on-mount in AuthProvider.
+            localStorage.setItem('sto_e2e_skip_refresh', '1');
+          },
+          { token: fresh, emp: employee },
+        );
+        accessToken = fresh;
+      }
+    } finally {
+      await apiCtx.dispose();
+    }
 
     // Open work-orders page; click "Кошторис" status tab to filter ESTIMATE.
     await page.goto('/work-orders');

@@ -91,7 +91,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(
     reducer,
     (() => {
-      const stored = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_KEY) : null;
+      // Bug #567: Playwright storageState restores localStorage automatically but NOT
+      // sessionStorage (known limitation). For E2E we mirror access token into localStorage
+      // under sto_e2e_access_token; AuthProvider hydrates sessionStorage from it on mount.
+      let stored: string | null = null;
+      if (typeof window !== 'undefined') {
+        stored = sessionStorage.getItem(TOKEN_KEY);
+        if (!stored && localStorage.getItem('sto_e2e_skip_refresh') === '1') {
+          const fromLocal = localStorage.getItem('sto_e2e_access_token');
+          if (fromLocal) {
+            sessionStorage.setItem(TOKEN_KEY, fromLocal);
+            stored = fromLocal;
+          }
+        }
+      }
       const cached = readCachedEmployee();
       if (stored && cached) {
         return { employee: cached, accessToken: stored, isLoading: false };
@@ -141,6 +154,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (stored) {
+      // Bug #567/#568: E2E escape hatch. globalSetup cannot capture sto_refresh
+      // cookie because it's path-scoped to /api/auth on a different port (3000 vs 3001
+      // baseURL) and sameSite=strict — Playwright storageState skips it. Without this
+      // flag every E2E test triggers refresh-on-mount → 401 → silent LOGOUT → /login
+      // redirect, even though the access token cached in sessionStorage is still valid.
+      const cached = readCachedEmployee();
+      const e2eSkipRefresh =
+        typeof window !== 'undefined' &&
+        localStorage.getItem('sto_e2e_skip_refresh') === '1' &&
+        !!cached;
+      if (e2eSkipRefresh) {
+        // Trust the cached employee + access token; skip background refresh.
+        return () => {
+          cancelled = true;
+        };
+      }
       // Token in sessionStorage — still need to get employee info via refresh
       refreshToken().then(ok => {
         if (cancelled) return;

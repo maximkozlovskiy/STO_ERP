@@ -489,6 +489,15 @@ done
 ### §1.3 — Frontend (Next.js)
 
 ```bash
+# Bug #567 — E2E sessionStorage не restored Playwright-ом: будь-який рефактор
+# AuthProvider або setup-auth.ts може непомітно зламати E2E auth state.
+# Перевірити обидві сторони escape-hatch:
+grep -n "sto_e2e_skip_refresh\|sto_e2e_access_token" apps/web/src/lib/auth/context.tsx
+# Має бути 2+ matches (reducer init copy + useEffect skip)
+grep -n "sto_e2e_skip_refresh\|sto_e2e_access_token" apps/web/e2e/setup-auth.ts
+# Має бути 2+ matches (write skip_refresh + write access_token mirror)
+# Якщо хоч в одному файлі 0 — E2E зламається на 100% тестів (всі побачать login)
+
 # Bug #506/#510 — Дублюючі interface declarations (hook vs PageClient inline)
 # Кожен дубльований тип = ризик дрейфу при додаванні нового поля у бекенді.
 grep -rEn "^interface (WorkOrder|Invoice|Counterparty|Vehicle|Good|Warehouse|Employee) " apps/web/src --include="*.ts*"
@@ -3150,3 +3159,89 @@ grep -A 5 "beforeAll" "$spec" | grep -E "expect.*toBeTruthy|expect.*not.toBeNull
 - ✅ E2E: 42/42 passed (smoke, console-errors serial mode, inventory, api-errors)
 
 ---
+
+---
+
+### 2026-06-20 — E2E sessionStorage НЕ restored через storageState (Bug #567) — e2e / playwright / sessionStorage-limitation
+
+**Сигнал:** E2E test failure screenshot показує login форму замість очікуваної сторінки. `getByRole(...)` timeout одразу після `page.goto('/work-orders')`. У минулих сесіях документувалось як "seed race" чи "flaky" — насправді коренева причина — Playwright не restore-ить sessionStorage між контекстами.
+
+**Причина виникнення:** Playwright `storageState({ path })` зберігає `sessionStorage` у admin.json для inspection, АЛЕ `test.use({ storageState: ... })` restore-ить тільки cookies + localStorage. sessionStorage **завжди порожній** у новому контексті. Це **відома обмеження** Playwright (1.40+), не баг — sessionStorage by definition tab-scoped, не persistable.
+
+Якщо AuthProvider читає access token з sessionStorage (як у STO ERP, для запобігання cross-tab token sharing) → у E2E завжди `stored = null` → reducer init returns `{isLoading: true}` → useEffect goes into `else` branch → `refreshToken()` → 401 (no refresh cookie either) → silent LOGOUT → redirect /login.
+
+**Підтверджено runtime check:**
+
+```ts
+test('debug', async ({ page }) => {
+  await page.goto('/counterparties');
+  const state = await page.evaluate(() => ({
+    hasToken: !!sessionStorage.getItem('sto_access_token'), // false!
+    hasCached: !!localStorage.getItem('sto_employee_cache'), // true ✓
+    flag: localStorage.getItem('sto_e2e_skip_refresh'), // '1' ✓
+  }));
+});
+// → hasToken: false despite admin.json having sessionStorage block
+```
+
+**Підхід до виявлення:**
+
+```bash
+# 1) E2E test fails з timeout на UI селектор, але screenshot test-failed-*.png показує login UI:
+ls apps/web/test-results/*/test-failed-1.png | head -5
+# Перевірити кожен screenshot — якщо там "Вхід до системи" замість очікуваного content → auth issue
+
+# 2) Перевірити admin.json чи захоплено sto_refresh cookie:
+cat apps/web/e2e/.auth/admin.json | jq '.cookies | length'
+# 0 → cookie ніколи не захоплена → refresh fails завжди
+
+# 3) Перевірити чи stored token має достатньо TTL:
+node -e "const t=JSON.parse(Buffer.from('<token>'.split('.')[1], 'base64')); console.log({iat: new Date(t.iat*1000), exp: new Date(t.exp*1000), now: new Date()})"
+# Якщо now > exp → token вже expired → навіть успішний refresh не врятує
+```
+
+**Підхід до фіксу (3-prong):**
+
+1. **`setup-auth.ts`**: дзеркалити access token у `localStorage.sto_e2e_access_token` (localStorage Playwright restore-ить, sessionStorage — ні). Плюс зберегти `sto_e2e_skip_refresh = '1'` + `sto_employee_cache = JSON.stringify(employee)`.
+
+2. **AuthProvider reducer init**: якщо `typeof window === 'object'` (client) + `sessionStorage.sto_access_token` порожній + `localStorage.sto_e2e_skip_refresh === '1'` + є `localStorage.sto_e2e_access_token` → скопіювати у sessionStorage ПЕРЕД першим читанням `stored`.
+
+3. **AuthProvider useEffect**: коли flag + cached → пропустити refresh-on-mount (інакше refresh fails → 401 → LOGOUT → redirect).
+
+У production жоден E2E ключ не встановлюється — zero impact.
+
+**Регресія-guard:** при будь-якій зміні `apps/web/src/lib/auth/context.tsx` — перевірити що E2E flag шлях не зник. Додати spec: `describe('E2E escape hatch', () => it('skips refresh when sto_e2e_skip_refresh=1 + cached employee'))`.
+
+**Severity:** CRITICAL — блокує всі захищені E2E тести довжиною >15 хв cumulative.
+
+**Де шукати ще:** будь-який frontend-app з httpOnly refresh cookie + cross-port API + Playwright E2E — той самий патерн. Альтернативно — використати `webServer` block у `playwright.config.ts` що проксує API через web port (`/api/*` → API), що робить same-origin → cookies survive.
+
+---
+
+### 2026-06-20 — Node IPv6 default на Windows ламає server-side fetch (Bug #566) — e2e / infrastructure / dns-resolution
+
+**Сигнал:** Інтермітентний `Error: apiRequestContext.get: connect ECONNREFUSED ::1:3000` у Playwright `request.newContext()` або Node `fetch()`. Браузерні запити з Chromium працюють (Chromium handles dual-stack автономно).
+
+**Причина виникнення:** Node 18+ на Windows за замовчуванням повертає IPv6 (`::1`) перед IPv4 (`127.0.0.1`) при resolution `localhost`. NestJS+Fastify `app.listen(port, '0.0.0.0')` слухає тільки IPv4 → ECONNREFUSED. Туторіали показують `'0.0.0.0'` як "все мережеві інтерфейси" — це невірно для dual-stack.
+
+**Підхід до виявлення:**
+
+```bash
+# Grep всі server-side localhost references у E2E:
+grep -rn "fetch.*localhost:3000\|request.newContext\|http://localhost:3000" apps/web/e2e/ | grep -v "page.evaluate"
+# Кожен match — кандидат на ECONNREFUSED під час прогону на Windows
+```
+
+**Підхід до фіксу:**
+
+1. **Швидкий (per-file):** замінити `http://localhost:3000` → `http://127.0.0.1:3000` у server-side fetch contexts (estimate-share.spec.ts, setup-auth.ts). Браузерні `page.evaluate(() => fetch('http://localhost:3000'))` ОК — Chromium handles.
+
+2. **Кращий (architectural):** змінити API на dual-stack `app.listen(port, '::')`. Ризик: всі production deployments полагаються на `0.0.0.0` semantics — змінити лише за згодою owner.
+
+3. **Alternative (env-based):** Додати у `playwright.config.ts` webServer.env `NEXT_PUBLIC_API_URL=http://127.0.0.1:3000`. Centralized override — всі тести підбирають.
+
+**Регресія-guard:** запустити test 3 рази підряд — якщо хоч раз ECONNREFUSED → проблема не вирішена.
+
+**Severity:** HIGH (intermittent — особливо ризикне у flaky test investigations що йдуть кругом).
+
+**Де шукати ще:** будь-який Node-side fetch до `localhost` де target сервер біндить IPv4-only. WatermelonDB sync clients, BullMQ workers, cross-service HTTP calls у monorepo dev.
