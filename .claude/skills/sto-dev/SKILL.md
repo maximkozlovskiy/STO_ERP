@@ -907,6 +907,9 @@ TypeScript
   [ ] Немає `React.X` namespace без імпорту
   [ ] Немає `console.log`
   [ ] Enums з Prisma/shared, не magic strings
+  [ ] Немає `// Bug #NNN:` коментарів (належать commit message, не коду)
+  [ ] Немає коментарів що пояснюють ЩО (// Знаходимо, // Повертаємо, // Filter deleted)
+  [ ] TODO залишені тільки якщо є конкретний WHY (обмеження, constraint, дедлайн)
 
 NestJS
   [ ] Кожен запит фільтрується по `orgId`
