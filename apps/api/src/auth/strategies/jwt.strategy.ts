@@ -18,10 +18,14 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     config: ConfigService,
     private readonly prisma: PrismaService,
   ) {
+    // §2.1 SECURITY: ніяких fallback secret — `getOrThrow` падає при старті,
+    // якщо JWT_ACCESS_SECRET не заданий. Раніше fallback 'dev_access_secret'
+    // означав, що у production з втраченим env-var JWT валідувався б публічно
+    // відомим рядком → зловмисник міг би підробити будь-який access-token.
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('JWT_ACCESS_SECRET') ?? 'dev_access_secret',
+      secretOrKey: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
     });
   }
 

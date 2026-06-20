@@ -1,5 +1,77 @@
 # BUG_REPORT.md — STO ERP
 
+## Session 2026-06-20 — Security Audit (OWASP Top 10 для NestJS/Next.js) — HEAD 27210eb2
+
+Final security audit після 3 QA циклів. Перевірено: SQL Injection, Broken Auth, Sensitive Data Exposure,
+Broken Access Control, Security Misconfiguration, XSS, CSRF, Mass Assignment, Multi-tenant isolation,
+Dependencies. Виправлено CRITICAL без breaking changes; HIGH через залежності задокументовано.
+
+### CRITICAL — виправлено
+
+**SEC-001 — JWT fallback secret у passport strategy** (`apps/api/src/auth/strategies/jwt.strategy.ts:24`)
+
+- **Сигнал:** `secretOrKey: config.get<string>('JWT_ACCESS_SECRET') ?? 'dev_access_secret'` —
+  fallback на hardcoded literal, що публічно відомий у репозиторії.
+- **Ризик:** якщо у production змінна `JWT_ACCESS_SECRET` випала з env (race, помилка операційної
+  команди, неправильний systemd unit), сервіс продовжує приймати JWT, підписані рядком `dev_access_secret`.
+  Зловмисник без доступу до серверу здатний підробити access-token для будь-якої ролі та орг-ід.
+- **Фікс:** `secretOrKey: config.getOrThrow<string>('JWT_ACCESS_SECRET')` — додаток впаде на старті,
+  якщо secret не заданий. Узгоджено з patternом `auth.service.ts` (signAccess/signRefresh уже використовують `getOrThrow`).
+- **Severity:** CRITICAL — direct auth bypass у разі misconfiguration.
+
+### HIGH — задокументовано (потребують `pnpm update`, не code change)
+
+Залежності з відомими CVE — оновлюються через pnpm overrides або підняття major-версій:
+
+- `@fastify/middie <=9.3.1` — auth bypass у child plugin scopes (NestJS platform-fastify dep).
+  Не використовується безпосередньо: STO ERP застосовує Fastify-нативні plugins (helmet/cookie/multipart),
+  middie підвантажується транзитивно `@nestjs/platform-fastify`. Уразливість стосується middleware-mounted
+  authentication, чого у нас немає (auth через NestJS guards). Експлуатована поверхня = нуль.
+- `vitest <3.2.6` — RCE через Vitest UI dev server. Уразливість DEV-only, у production runtime
+  vitest не запускається. На CI/CD UI server не виставлений у мережу.
+- `shell-quote` (expo-mobile dep) — newline injection. Mobile app не на критичному шляху security audit.
+- `undici <6.27.0 / <7.28.0` — DoS WebSocket / SOCKS5 cross-origin. Транзитивна dependency через
+  jsdom (test), expo-router (mobile), @expo/cli. У runtime API не виставляється.
+- `glob <10.5.0` — CLI injection через `-c/--cmd`. Використовується @nestjs/cli як dev tool, не runtime.
+
+Рекомендація: `pnpm update vitest @nestjs/platform-fastify @nestjs/cli` після завершення поточного
+sprint (не блокує реліз; не runtime). Mobile vulnerabilities — окрема ітерація після pin Expo SDK.
+
+### MEDIUM — прийняті trade-off
+
+**SEC-MED-001 — SSE token у query parameter** (`apps/api/src/modules/dashboard/dashboard.controller.ts:63`)
+
+- EventSource API не підтримує custom headers — JWT передається як `?token=`.
+- Token потрапляє в access-log і browser history. Обмеження браузера.
+- Mitigations у місці: throttle 5 з'єднань/хв на IP, `getOrThrow` для secret, повна перевірка claims.
+- Альтернатива (WebSocket з handshake header) збільшила б complexity без чистої перемоги: token
+  у URL all'е попадає в same-origin logs локально. На production deployment access-log не leak-ається назовні.
+
+### Перевірено — OK
+
+| Категорія             | Висновок                                                                                                                                                                                                                                            |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SQL Injection         | Всі $queryRaw — tagged template literal з parametrized substitution (search/reports/dashboard) — OK                                                                                                                                                 |
+| Broken Auth           | bcrypt 12 rounds, refresh httpOnly+secure(prod)+sameSite:strict+path:/api/auth, JWT secrets via getOrThrow (після SEC-001 фіксу) — OK                                                                                                               |
+| Sensitive Data        | `purchasePrice` маскується для MECHANIC/RECEPTIONIST у `goods.service.ts`. `passwordHash` ніде у \*.dto.ts. SMS-телефон маскується у логах (`maskPhone(phone)`). EstimatePublicDto спеціальний (work-orders.share-public.spec.ts регрес-guard) — OK |
+| Broken Access Control | Кожен `@Controller` (крім public booking/setup/work-orders-public) має `@UseGuards(JwtAuthGuard, RolesGuard)`. `@Roles(...)` присутній на методах. `@Param('id', ParseUUIDPipe)` всюди — OK                                                         |
+| Security Misconfig    | `helmet` first plugin, CORS обмежений до `WEB_ORIGIN` (fail-closed на localhost), Swagger тільки у `NODE_ENV !== 'production'`, ValidationPipe `whitelist+forbidNonWhitelisted+transform` глобально — OK                                            |
+| XSS                   | Один `dangerouslySetInnerHTML` у `layout.tsx` — статичний literal color-mode boot script (без user input) — OK                                                                                                                                      |
+| CSRF                  | Refresh cookie `sameSite: 'strict'` + httpOnly. State-changing API через Bearer token (не auto-sent). Public booking POST через CORS-обмежений origin — OK                                                                                          |
+| Mass Assignment       | ValidationPipe `whitelist: true` глобально + `forbidNonWhitelisted: true`. `orgId` у DTO лише у \*ResponseDto (output) — `whitelist` strip-ає його з input — OK                                                                                     |
+| Multi-tenant          | `orgId` беремо з JWT через `@OrgContext()`, ніде з body. Всі `findFirst/findMany` мають `orgId` у `where`. `findUnique` тільки на компосит-ключі або branchId (з guard) — OK                                                                        |
+| Throttling            | Глобал 200/хв, `/auth/login` 10/хв, public booking 5–30/хв за endpoint, public PDF share 10–20/хв, dashboard SSE 5/хв — OK                                                                                                                          |
+| BullMQ                | Зовнішні API (SMS/ПРРО) тільки через черги з `attempts ≥ 10`, exponential backoff — OK                                                                                                                                                              |
+
+### Висновок
+
+- CRITICAL: 1 знайдено → 1 виправлено (JWT fallback secret).
+- HIGH: 0 у коді; 28 у залежностях (більшість dev-only / mobile-only, runtime exposure нуль).
+- MEDIUM: 1 прийнятний trade-off (SSE token у query param — обмеження браузера).
+- TypeScript: 0 errors (api + web).
+
+---
+
 ## Session 2026-05-30 — FULL tester: Sprint A (Prettier + ESLint + Error Boundary + Shared types) (HEAD 539a0ad)
 
 Scope (5 commits, e0457c2..539a0ad):
