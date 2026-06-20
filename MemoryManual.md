@@ -44,6 +44,10 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+b28f3411  refactor(comments): remove Bug# references and noise comments; document comment policy in sto-dev
+          — Strip `// Bug #NNN:` prefixes from ~180 comments across 130+ production files
+          — Preserve WHY text (constraints, workarounds, timeouts, race-guards)
+          — sto-dev SKILL.md: add ЗАБОРОНЕНО/ДОЗВОЛЕНО examples
 6336f201  test(e2e): hard expects замість silent skip + 2 нових spec (bookings, counterparty-detail)
 9b9e2ce0  fix(tester): Bug #572 search 500 + Bug #573 fastify/middie API startup crash
 26f3895d  docs(memory): update after E2E expansion — 277/284 pass (+39 tests)
