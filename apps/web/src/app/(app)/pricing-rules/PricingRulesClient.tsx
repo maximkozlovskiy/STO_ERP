@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { keepPreviousData } from '@tanstack/react-query';
@@ -116,18 +116,22 @@ export default function PricingRulesClient() {
 
   const load = invalidateRules;
 
-  const filteredRules = debouncedSearch
-    ? rules.filter(r => {
-        const q = debouncedSearch.toLowerCase();
-        return (
-          r.name.toLowerCase().includes(q) ||
-          (r.supplierName ?? '').toLowerCase().includes(q) ||
-          (r.brandName ?? '').toLowerCase().includes(q) ||
-          (r.goodCategory ?? '').toLowerCase().includes(q) ||
-          (r.good?.name ?? '').toLowerCase().includes(q)
-        );
-      })
-    : rules;
+  // sto-optimize: memoize filter — typing in `search` re-renders parent on every
+  // keystroke, але реальний `debouncedSearch` змінюється раз на ~300ms; без useMemo
+  // `.filter()` біжить по всіх правилах на КОЖЕН keystroke навіть коли predicate
+  // ідентичний. Identity-стабільний masaв тримає `.map(rule => ...)` chain pure.
+  const filteredRules = useMemo(() => {
+    if (!debouncedSearch) return rules;
+    const q = debouncedSearch.toLowerCase();
+    return rules.filter(
+      r =>
+        r.name.toLowerCase().includes(q) ||
+        (r.supplierName ?? '').toLowerCase().includes(q) ||
+        (r.brandName ?? '').toLowerCase().includes(q) ||
+        (r.goodCategory ?? '').toLowerCase().includes(q) ||
+        (r.good?.name ?? '').toLowerCase().includes(q),
+    );
+  }, [rules, debouncedSearch]);
 
   useEffect(() => {
     let cancelled = false;

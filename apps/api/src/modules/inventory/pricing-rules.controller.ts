@@ -234,29 +234,37 @@ export class PricingRulesController {
     if (needsTierTx) {
       rule = await this.prisma.$transaction(
         async tx => {
-          if (tiers !== undefined || switchedAwayFromCostTier) {
-            // Bug #191 pattern: tier-deleteMany уже org-trusted (pricingRule existing org-checked),
-            // але tiers не мають власного orgId — фільтр по pricingRuleId безпечний.
-            await tx.pricingRuleTier.deleteMany({ where: { pricingRuleId: id } });
-          }
-          if (tiers !== undefined && tiers.length > 0) {
-            await tx.pricingRuleTier.createMany({
-              data: tiers.map((t, i) => ({
-                pricingRuleId: id,
-                costMin: t.costMin,
-                costMax: t.costMax ?? null,
-                percentValue: t.percentValue,
-                sortOrder: t.sortOrder ?? i,
-              })),
-            });
-          }
+          // sto-optimize: pricing_rules.updateMany пишеться у ОКРЕМУ таблицю від
+          // pricing_rule_tiers (deleteMany+createMany), тому головний update може
+          // йти ПАРАЛЕЛЬНО з tier-sequence. Tiers тут зберігають ВНУТРІШНІЙ порядок
+          // (delete МУСИТЬ передувати create), але pricingRule.updateMany не залежить
+          // від результату жодної з них. Паттерн "Disjoint-set updateMany pairs".
+          const tierWork = (async () => {
+            if (tiers !== undefined || switchedAwayFromCostTier) {
+              // Bug #191 pattern: tier-deleteMany уже org-trusted (pricingRule existing org-checked),
+              // але tiers не мають власного orgId — фільтр по pricingRuleId безпечний.
+              await tx.pricingRuleTier.deleteMany({ where: { pricingRuleId: id } });
+            }
+            if (tiers !== undefined && tiers.length > 0) {
+              await tx.pricingRuleTier.createMany({
+                data: tiers.map((t, i) => ({
+                  pricingRuleId: id,
+                  costMin: t.costMin,
+                  costMax: t.costMax ?? null,
+                  percentValue: t.percentValue,
+                  sortOrder: t.sortOrder ?? i,
+                })),
+              });
+            }
+          })();
           // Bug #191 pattern: updateMany з orgId — defense-in-depth tenant guard.
           // existing.org вже перевірений вище, але дублюємо щоб патерн був безпечним для копіювання
           // і виключаємо випадок коли інший запит soft-delete-нув правило між findFirst і update.
-          await tx.pricingRule.updateMany({
+          const mainUpdate = tx.pricingRule.updateMany({
             where: { id, orgId, deletedAt: null },
             data: updateData,
           });
+          await Promise.all([tierWork, mainUpdate]);
           return tx.pricingRule.findFirstOrThrow({
             where: { id, orgId },
             include: {

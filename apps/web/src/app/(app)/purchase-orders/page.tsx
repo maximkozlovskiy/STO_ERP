@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import { useState, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -50,7 +51,16 @@ import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { useListPage } from '@/hooks/useListPage';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { PurchaseOrderCreateModal } from '@/components/ui/PurchaseOrderCreateModal';
-import { SupplierReturnCreateModal } from '@/components/ui/SupplierReturnCreateModal';
+// sto-optimize: SupplierReturnCreateModal — 856 LOC secondary action на сторінці
+// /purchase-orders. Завантажується тільки при відкритті модального вікна
+// (Створити SR / Редагувати SR). PO modal лишається eager — це primary action.
+const SupplierReturnCreateModal = dynamic(
+  () =>
+    import('@/components/ui/SupplierReturnCreateModal').then(m => ({
+      default: m.SupplierReturnCreateModal,
+    })),
+  { ssr: false },
+);
 import {
   useSupplierReturns,
   useDeleteSupplierReturn,
