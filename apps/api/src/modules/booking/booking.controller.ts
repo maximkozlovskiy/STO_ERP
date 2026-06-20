@@ -15,6 +15,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -37,6 +38,9 @@ export class BookingController {
    * provide a no-auth list endpoint that only exposes minimal fields.
    */
   @Get('branches')
+  // Public endpoint → throttle to prevent enumeration / abuse of branch list.
+  // 30 req/min per IP is plenty for legitimate widget usage (typically 1 call per page load).
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @ApiOperation({ summary: 'Список філій для онлайн-запису (публічний)' })
   async listPublicBranches() {
     const branches = await this.service.listBranchesForBooking();
@@ -46,6 +50,9 @@ export class BookingController {
   }
 
   @Get('availability')
+  // Public endpoint → throttle slot enumeration (без cap зловмисник може
+  // probing-ити доступність хвилину за хвилиною й мапити графік СТО).
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @ApiOperation({ summary: 'Вільні слоти для запису (публічний)' })
   async getAvailability(
     @Query('date') date: string,
@@ -73,6 +80,9 @@ export class BookingController {
 
   @Post('request')
   @HttpCode(HttpStatus.CREATED)
+  // Public endpoint → strict throttle: 5 заявок/хв з одного IP блокує спам-флуд
+  // (SMS уведомлення власнику СТО триггерять gateway-кошти).
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @ApiOperation({ summary: 'Створити заявку на запис (публічний)' })
   async createPublic(@Body() dto: CreateBookingRequestDto) {
     // Bug #112: same soft-delete + encapsulation fix as getAvailability.

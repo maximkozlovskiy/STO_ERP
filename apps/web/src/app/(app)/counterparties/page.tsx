@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
