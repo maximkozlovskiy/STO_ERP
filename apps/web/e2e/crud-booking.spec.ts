@@ -73,7 +73,17 @@ test.describe('Онлайн-запис (Bookings)', () => {
     const uniquePhone = `+38099${Date.now().toString().slice(-7)}`;
     const bookingRes = await page.evaluate(
       async ({ branchId, phone }) => {
-        const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+        // Знайти наступний робочий день (Mon-Fri у Києві), щоб уникнути 400
+        // "Запит на неробочий день" — Bug #571 (fake-green skip коли E2E запускається у Sat/Fri вечір).
+        const nextWorkingDay = (() => {
+          for (let i = 1; i <= 7; i++) {
+            const d = new Date(Date.now() + i * 86400000);
+            const isoWd = ((d.getUTCDay() + 6) % 7) + 1; // 1=Mon..7=Sun
+            // 07:00Z = 10:00 Kyiv (EEST UTC+3) → у межах 09:00-18:00 робочих годин
+            if (isoWd >= 1 && isoWd <= 5) return d.toISOString().split('T')[0] + 'T07:00:00Z';
+          }
+          return new Date(Date.now() + 86400000).toISOString().split('T')[0] + 'T07:00:00Z';
+        })();
         const r = await fetch('http://localhost:3000/api/booking/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -81,7 +91,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
             branchId,
             clientName: 'E2E Тест',
             clientPhone: phone,
-            requestedDate: tomorrow,
+            requestedDate: nextWorkingDay,
           }),
         });
         if (!r.ok) return null;
@@ -150,7 +160,16 @@ test.describe('Онлайн-запис (Bookings)', () => {
     const cancelPhone = `+38099${(Date.now() + 1).toString().slice(-7)}`;
     const bookingRes = await page.evaluate(
       async ({ branchId, phone }) => {
-        const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+        // Working-day helper, див. коментар у попередньому тесті (Bug #571).
+        // 07:00Z = 10:00 Kyiv (EEST UTC+3) — у межах робочих годин 09:00-18:00.
+        const nextWorkingDay = (() => {
+          for (let i = 1; i <= 7; i++) {
+            const d = new Date(Date.now() + i * 86400000);
+            const isoWd = ((d.getUTCDay() + 6) % 7) + 1;
+            if (isoWd >= 1 && isoWd <= 5) return d.toISOString().split('T')[0] + 'T07:00:00Z';
+          }
+          return new Date(Date.now() + 86400000).toISOString().split('T')[0] + 'T07:00:00Z';
+        })();
         const r = await fetch('http://localhost:3000/api/booking/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -158,7 +177,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
             branchId,
             clientName: 'E2E Cancel',
             clientPhone: phone,
-            requestedDate: tomorrow,
+            requestedDate: nextWorkingDay,
           }),
         });
         if (!r.ok) return null;

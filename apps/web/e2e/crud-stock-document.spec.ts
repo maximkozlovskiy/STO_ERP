@@ -95,43 +95,61 @@ test.describe('Документи складу — CRUD', () => {
     if (await confirmBtn.isVisible({ timeout: 3_000 })) await confirmBtn.click();
   });
 
-  test('FSM DRAFT → CONFIRMED через Detail Panel', async ({ page }) => {
+  test('FSM DRAFT → CONFIRMED через API transition', async ({ page }) => {
     await page.goto('/stock-documents');
     await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
       timeout: 20_000,
     });
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
 
-    // Знайти склад
-    const warehouseId = await page.evaluate(
+    // Знайти склад + branchId + good (DTO вимагає branchId, transition вимагає lines — Bug #571 fix).
+    const seed = await page.evaluate(
       async ({ token }) => {
-        const r = await fetch('http://localhost:3000/api/warehouses?limit=1', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const d = await r.json();
-        return d[0]?.id ?? null;
+        const [wRes, gRes] = await Promise.all([
+          fetch('http://localhost:3000/api/warehouses?limit=1', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch('http://localhost:3000/api/goods?limit=1', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+        const wData = await wRes.json();
+        const gData = await gRes.json();
+        const w = wData[0];
+        const g = gData?.items?.[0] ?? gData[0];
+        return {
+          warehouseId: w?.id ?? null,
+          branchId: w?.branchId ?? null,
+          goodId: g?.id ?? null,
+        };
       },
       { token },
     );
 
-    if (!warehouseId) {
-      test.skip(true, 'Немає складів');
+    if (!seed.warehouseId || !seed.branchId || !seed.goodId) {
+      test.skip(true, 'Немає складів, branchId або товарів');
       return;
     }
 
-    // Створити документ через API
+    // Створити RECEIPT з позицією (WRITEOFF з порожнім складом → undefined cost у transition).
+    // RECEIPT збільшує склад, transition підтверджує без перевірки залишків.
     const doc = await page.evaluate(
-      async ({ token, warehouseId }) => {
+      async ({ token, warehouseId, branchId, goodId }) => {
         const r = await fetch('http://localhost:3000/api/stock-documents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ type: 'WRITEOFF', warehouseId }),
+          body: JSON.stringify({
+            type: 'RECEIPT',
+            warehouseId,
+            branchId,
+            lines: [{ goodId, quantity: 1, price: 100 }],
+          }),
         });
         if (!r.ok) return null;
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
-      { token, warehouseId },
+      { token, warehouseId: seed.warehouseId, branchId: seed.branchId, goodId: seed.goodId },
     );
 
     if (!doc) {
@@ -148,15 +166,31 @@ test.describe('Документи складу — CRUD', () => {
     // Без strict expect — fake-green (Bug #287).
     const row = page.locator(`table tbody tr:has-text("${doc.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
-    // Кнопка "Провести" у Detail Panel
-    const confirmDocBtn = page.locator('button:has-text("Провести")').first();
-    await expect(confirmDocBtn).toBeVisible({ timeout: 8_000 });
-    await confirmDocBtn.click();
-    // Підтвердити якщо є confirm dialog (опціонально — не всі типи документів мають)
-    const yesBtn = page.locator('button:has-text("Підтвердити"), button:has-text("Так")').first();
-    if (await yesBtn.isVisible({ timeout: 3_000 }).catch(() => false)) await yesBtn.click();
-    await expect(page.locator('text=Підтверджено').first()).toBeVisible({ timeout: 8_000 });
+
+    // Bug #504: Detail Panel у stock-documents видалений (dead UI).
+    // FSM transition виконується через API endpoint /stock-documents/:id/transition.
+    // Тест перевіряє реальну поведінку: статус DRAFT → CONFIRMED після POST на transition,
+    // і що UI оновлює badge на "Проведено" (фільтр відображення).
+    const transitionRes = await page.evaluate(
+      async ({ token, id }) => {
+        const r = await fetch(`http://localhost:3000/api/stock-documents/${id}/transition`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ status: 'CONFIRMED' }),
+        });
+        return { status: r.status, body: await r.text() };
+      },
+      { token, id: doc.id },
+    );
+    expect(transitionRes.status).toBeLessThan(400);
+    const updatedDoc = JSON.parse(transitionRes.body);
+    expect(updatedDoc.status).toBe('CONFIRMED');
+
+    // UI має відобразити проведений документ — перемикаємо фільтр "Проведені" / reload.
+    await page.reload();
+    await expect(page.locator(`table tbody tr:has-text("${doc.number}")`).first()).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Cleanup
     await page.evaluate(

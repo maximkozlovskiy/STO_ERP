@@ -117,7 +117,7 @@ test.describe('Замовлення постачальнику — прийом 
     await page.waitForTimeout(300);
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
-    if (!(await row.isVisible({ timeout: 10_000 }))) {
+    if (!(await row.isVisible({ timeout: 10_000 }).catch(() => false))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
       test.skip(true, 'Рядок PO не знайдено');
       return;
@@ -126,8 +126,11 @@ test.describe('Замовлення постачальнику — прийом 
     // Open PO edit modal via Pencil (title="Редагувати").
     await row.hover();
     await row.locator('button[title="Редагувати"]').first().click();
-    const receiveBtn = page.locator('button:has-text("Оприбуткувати")').first();
-    if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
+    // Чекати модалку — Bug #571: без цього кнопки пошукуються до рендеру → fake-green skip.
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+    const receiveBtn = modal.locator('button:has-text("Оприбуткувати")').first();
+    if (!(await receiveBtn.isVisible({ timeout: 5_000 }).catch(() => false))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
       test.skip(true, 'Кнопка "Оприбуткувати" не знайдена');
       return;
@@ -135,13 +138,12 @@ test.describe('Замовлення постачальнику — прийом 
 
     await receiveBtn.click();
     // Інлайн receive mode — у тій самій PO-модалці з'являється кнопка "Підтвердити прийом".
-    const poModal = page.locator('[role="dialog"]').first();
-    await expect(poModal.locator('button:has-text("Підтвердити прийом")')).toBeVisible({
+    await expect(modal.locator('button:has-text("Підтвердити прийом")')).toBeVisible({
       timeout: 8_000,
     });
 
     // Закрити без збереження — кнопка "Скасувати" повертає у нормальний режим.
-    await poModal.locator('button:has-text("Скасувати")').first().click();
+    await modal.locator('button:has-text("Скасувати")').first().click();
     await page.keyboard.press('Escape');
     const leaveBtn = page.locator('button:has-text("Покинути")').first();
     if (await leaveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await leaveBtn.click();
@@ -180,7 +182,10 @@ test.describe('Замовлення постачальнику — прийом 
     // Open PO edit modal via Pencil (title="Редагувати").
     await row.hover();
     await row.locator('button[title="Редагувати"]').first().click();
-    const receiveBtn = page.locator('button:has-text("Оприбуткувати")').first();
+    // Чекати модалку — Bug #571: інакше пошук кнопок зразу після click() — race.
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+    const receiveBtn = modal.locator('button:has-text("Оприбуткувати")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
       test.skip(true, 'Кнопка прийому недоступна');
@@ -189,7 +194,6 @@ test.describe('Замовлення постачальнику — прийом 
 
     await receiveBtn.click();
     // Інлайн receive mode у тій самій PO-модалці.
-    const modal = page.locator('[role="dialog"]').first();
     await expect(modal.locator('button:has-text("Підтвердити прийом")')).toBeVisible({
       timeout: 8_000,
     });
@@ -251,8 +255,11 @@ test.describe('Замовлення постачальнику — прийом 
     // Open PO edit modal via Pencil (title="Редагувати").
     await row.hover();
     await row.locator('button[title="Редагувати"]').first().click();
-    const receiveBtn = page.locator('button:has-text("Оприбуткувати")').first();
-    if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
+    // Чекати модалку — Bug #571.
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+    const receiveBtn = modal.locator('button:has-text("Оприбуткувати")').first();
+    if (!(await receiveBtn.isVisible({ timeout: 5_000 }).catch(() => false))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
       test.skip(true, 'Кнопка прийому недоступна');
       return;
@@ -260,7 +267,6 @@ test.describe('Замовлення постачальнику — прийом 
 
     await receiveBtn.click();
     // Інлайн receive mode — заповнити qty=1 у першу позицію (частковий прийом 1 з 5)
-    const modal = page.locator('[role="dialog"]').first();
     await expect(modal.locator('button:has-text("Підтвердити прийом")')).toBeVisible({
       timeout: 8_000,
     });

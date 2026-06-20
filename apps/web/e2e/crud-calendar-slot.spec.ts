@@ -56,10 +56,13 @@ test.describe('Календар — слоти', () => {
       return;
     }
 
-    // Сьогоднішня дата для слоту
+    // Сьогоднішня дата для слоту. Час обираємо унікальний в межах робочого дня
+    // (07:00-14:00 UTC = 10:00-17:00 Kyiv EEST), щоб уникнути конфліктів з seed-слотами
+    // і повторних запусків — Bug #571 (раніше фіксований T09:00 завжди конфліктував).
     const today = new Date().toISOString().split('T')[0];
-    const startAt = `${today}T09:00:00.000Z`;
-    const endAt = `${today}T10:00:00.000Z`;
+    const hourOffset = (new Date().getSeconds() % 7) + 7; // 7..13 UTC = 10..16 Kyiv
+    const startAt = `${today}T${String(hourOffset).padStart(2, '0')}:00:00.000Z`;
+    const endAt = `${today}T${String(hourOffset).padStart(2, '0')}:30:00.000Z`;
 
     const slot = await page.evaluate(
       async ({ token, liftId, counterpartyId, startAt, endAt }) => {

@@ -7,7 +7,17 @@ test.describe.configure({ mode: 'serial' });
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 async function getToken(page: Page): Promise<string> {
-  return (await page.evaluate(() => sessionStorage.getItem('sto_access_token'))) ?? '';
+  // Bug #567: Playwright не restores sessionStorage між contexts. AuthProvider commitреду
+  // copies sto_e2e_access_token з localStorage → sessionStorage на mount. У beforeAll
+  // page.goto + waitForTimeout(1000) може випереджати цей commit → empty token →
+  // apiPost throws → docId never set → весь describe skipped (Bug #571 fix).
+  return await page.evaluate(() => {
+    return (
+      sessionStorage.getItem('sto_access_token') ??
+      localStorage.getItem('sto_e2e_access_token') ??
+      ''
+    );
+  });
 }
 
 async function apiPost<T>(page: Page, path: string, body: unknown): Promise<T> {
@@ -735,16 +745,27 @@ test.describe('Складські документи — XLSX', () => {
     const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
     const p = await ctx.newPage();
     await p.goto('/stock-documents');
-    await p.waitForTimeout(1000);
-    const wh = await firstWarehouse(p);
-    if (!wh) {
+    // Чекаємо доки AuthProvider copy sto_e2e_access_token → sessionStorage (Bug #567 fix).
+    // Без цього waitForTimeout(1000) може випереджати reducer init → empty токен → beforeAll skip.
+    await p.waitForFunction(
+      () =>
+        !!sessionStorage.getItem('sto_access_token') ||
+        !!localStorage.getItem('sto_e2e_access_token'),
+      undefined,
+      { timeout: 10_000 },
+    );
+    try {
+      const wh = await firstWarehouse(p);
+      if (!wh) {
+        await ctx.close();
+        return;
+      }
+      const doc = await createDocApi(p, wh.warehouseId, wh.branchId);
+      docId = doc.id;
+      docNumber = doc.number;
+    } finally {
       await ctx.close();
-      return;
     }
-    const doc = await createDocApi(p, wh.warehouseId, wh.branchId);
-    docId = doc.id;
-    docNumber = doc.number;
-    await ctx.close();
   });
 
   test.afterAll(async ({ browser }) => {
@@ -757,6 +778,10 @@ test.describe('Складські документи — XLSX', () => {
     await ctx.close();
   });
 
+  // TODO(coverage gap): XLSX-імпорт позицій у Detail Modal stock-documents не реалізовано
+  // у UI (тільки експорт PDF/XLSX/DOCX через DocumentExportToolbar). Тест залишається
+  // як placeholder для майбутньої фічі — якщо її реалізують, тест почне проходити автоматично.
+  // Зараз skip спрацьовує на line 804 (kнопка не знайдена).
   test('в Detail Modal DRAFT документа є кнопка XLSX-імпорту позицій', async ({ page }) => {
     if (!docId) return test.skip(true, 'Документ не створено');
     await gotoStockDocs(page, true);
@@ -795,19 +820,29 @@ test.describe('Складські документи — bulk дії', () => {
     const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
     const p = await ctx.newPage();
     await p.goto('/stock-documents');
-    await p.waitForTimeout(1000);
-    const wh = await firstWarehouse(p);
-    if (!wh) {
+    // Bug #571: чекаємо токен у storage (Bug #567 — sessionStorage не restored).
+    await p.waitForFunction(
+      () =>
+        !!sessionStorage.getItem('sto_access_token') ||
+        !!localStorage.getItem('sto_e2e_access_token'),
+      undefined,
+      { timeout: 10_000 },
+    );
+    try {
+      const wh = await firstWarehouse(p);
+      if (!wh) {
+        await ctx.close();
+        return;
+      }
+      const [d1, d2] = await Promise.all([
+        createDocApi(p, wh.warehouseId, wh.branchId),
+        createDocApi(p, wh.warehouseId, wh.branchId),
+      ]);
+      doc1Id = d1.id;
+      doc2Id = d2.id;
+    } finally {
       await ctx.close();
-      return;
     }
-    const [d1, d2] = await Promise.all([
-      createDocApi(p, wh.warehouseId, wh.branchId),
-      createDocApi(p, wh.warehouseId, wh.branchId),
-    ]);
-    doc1Id = d1.id;
-    doc2Id = d2.id;
-    await ctx.close();
   });
 
   test.afterAll(async ({ browser }) => {
@@ -824,6 +859,11 @@ test.describe('Складські документи — bulk дії', () => {
     if (!doc1Id || !doc2Id) return test.skip(true, 'Документи не створено');
     await gotoStockDocs(page);
     await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 15_000 });
+    // Bug #571: useUiFeatures робить async fetch /settings/ui-features → bulkActionsEnabled.
+    // Чекаємо рендер checkbox-ів (features.bulkActionsEnabled === true) перед count().
+    await expect(page.locator('table tbody tr input[type="checkbox"]').first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     const checkboxes = page.locator('table tbody tr input[type="checkbox"]');
     const count = await checkboxes.count();
