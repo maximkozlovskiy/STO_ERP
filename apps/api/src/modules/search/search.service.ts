@@ -44,6 +44,8 @@ export class SearchService {
     // Perf: similarity() обчислюється у WHERE І ORDER BY = 2 виклики на рядок.
     // Subquery виносить sim як column → 1 обчислення; planner може використати
     // GIN trgm index (work_orders.number) лише для filter, sort іде по pre-computed col.
+    // Bug #572: ${q}::text explicit cast — без нього `text % text` (pg_trgm) plan-fail.
+    const qText = `${q}`;
     const rows = await this.prisma.$queryRaw<
       {
         id: string;
@@ -58,12 +60,12 @@ export class SearchService {
       FROM (
         SELECT wo.id, wo."number", wo."status",
                cp."firstName", cp."lastName", cp."companyName",
-               similarity(wo."number", ${q}) AS sim
+               similarity(wo."number", ${qText}::text) AS sim
         FROM work_orders wo
         LEFT JOIN counterparties cp ON cp.id = wo."counterpartyId" AND cp."deletedAt" IS NULL
         WHERE wo."orgId" = ${orgId}::uuid
           AND wo."deletedAt" IS NULL
-          AND wo."number" % ${q}
+          AND wo."number" % ${qText}::text
       ) s
       WHERE sim > 0.1
       ORDER BY sim DESC
@@ -86,6 +88,14 @@ export class SearchService {
     // Without the companyName branch, B2B clients are invisible to the command palette.
     // Perf: similarity() рахується ОДИН раз у subquery + GREATEST() порівнюється pre-computed
     // cols, замість 4 окремих викликів similarity (2 WHERE + 2 ORDER BY).
+    //
+    // Bug #572 (HIGH): без `${q}::text` cast Postgres не може вирішити `%` оператор.
+    // pg_trgm `%` визначений для (text, text)→bool, але Prisma надсилає параметр як `unknown`,
+    // через що planner намагається застосувати numeric modulo (text→numeric coercion) і
+    // повертає 42804: "argument of OR must be type boolean, not type text". Explicit `::text`
+    // cast форсує trgm operator resolution. Те саме для `${'%' + q + '%'}::text` у ILIKE.
+    const qText = `${q}`;
+    const qLike = `%${q}%`;
     const rows = await this.prisma.$queryRaw<
       {
         id: string;
@@ -98,18 +108,18 @@ export class SearchService {
       SELECT id, "firstName", "lastName", "companyName", phone
       FROM (
         SELECT id, "firstName", "lastName", "companyName", phone,
-               similarity(COALESCE("firstName", '') || ' ' || COALESCE("lastName", ''), ${q}) AS sim_person,
-               similarity(COALESCE("companyName", ''), ${q}) AS sim_company
+               similarity(COALESCE("firstName", '') || ' ' || COALESCE("lastName", ''), ${qText}::text) AS sim_person,
+               similarity(COALESCE("companyName", ''), ${qText}::text) AS sim_company
         FROM counterparties
         WHERE "orgId" = ${orgId}::uuid
           AND "deletedAt" IS NULL
           AND (
-            COALESCE("firstName", '') || ' ' || COALESCE("lastName", '') % ${q}
-            OR COALESCE("companyName", '') % ${q}
-            OR phone ILIKE ${'%' + q + '%'}
+            (COALESCE("firstName", '') || ' ' || COALESCE("lastName", '')) % ${qText}::text
+            OR COALESCE("companyName", '') % ${qText}::text
+            OR phone ILIKE ${qLike}::text
           )
       ) s
-      WHERE sim_person > 0.1 OR sim_company > 0.1 OR phone ILIKE ${'%' + q + '%'}
+      WHERE sim_person > 0.1 OR sim_company > 0.1 OR phone ILIKE ${qLike}::text
       ORDER BY GREATEST(sim_person, sim_company) DESC
       LIMIT ${limit}
     `;
@@ -128,15 +138,18 @@ export class SearchService {
     // so double-quoted identifiers are required — unquoted would be folded to lowercase.
     // Perf: similarity рахується тричі для name (WHERE + ORDER BY); виносимо у subquery +
     // 2-фазний join: спочатку pre-filter goods (мала вибірка), потім aggregate stock.
+    // Bug #572: ${q}::text cast — без нього `text % text` (pg_trgm) plan-fail.
+    const qText = `${q}`;
+    const qLike = `%${q}%`;
     const rows = await this.prisma.$queryRaw<
       { id: string; name: string; sku: string | null; available: number | null }[]
     >`
       WITH matched AS (
-        SELECT g.id, g.name, g.sku, similarity(g.name, ${q}) AS sim
+        SELECT g.id, g.name, g.sku, similarity(g.name, ${qText}::text) AS sim
         FROM goods g
         WHERE g."orgId" = ${orgId}::uuid
           AND g."deletedAt" IS NULL
-          AND (g.name % ${q} OR g.sku ILIKE ${'%' + q + '%'})
+          AND (g.name % ${qText}::text OR g.sku ILIKE ${qLike}::text)
       )
       SELECT m.id, m.name, m.sku,
              COALESCE(SUM(si.quantity - COALESCE(si."reserved", 0)), 0) AS available
@@ -144,7 +157,7 @@ export class SearchService {
       LEFT JOIN stock_items si ON si."goodId" = m.id
         AND si."orgId" = ${orgId}::uuid
         AND si."deletedAt" IS NULL
-      WHERE m.sim > 0.1 OR m.sku ILIKE ${'%' + q + '%'}
+      WHERE m.sim > 0.1 OR m.sku ILIKE ${qLike}::text
       GROUP BY m.id, m.name, m.sku, m.sim
       ORDER BY m.sim DESC
       LIMIT ${limit}

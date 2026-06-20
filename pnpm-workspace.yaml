@@ -2,7 +2,11 @@ packages:
   - 'apps/*'
   - 'packages/*'
 overrides:
-  '@fastify/middie': '>=9.3.2'
+  # Bug #573 (CRITICAL): @fastify/middie 9.x вимагає fastify 5.x. Apps/api на fastify 4.28 →
+  # API не стартує: "FST_ERR_PLUGIN_VERSION_MISMATCH: @fastify/middie - expected '5.x' fastify
+  # version, '4.28.1' is installed". Pin до 8.x — остання fastify-4-сумісна лінія,
+  # містить security fixes що були причиною overriding original transitive.
+  '@fastify/middie': '^8.0.0'
   next: '>=15.3.6'
 allowBuilds:
   '@nestjs/core': true
