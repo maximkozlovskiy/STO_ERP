@@ -37,7 +37,9 @@ test.describe('Каталог — CRUD роботи', () => {
     await saveBtn.click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
-    // Перевірити в таблиці (20s — під паралельним навантаженням invalidateQueries може чекати)
+    // Bug #568: при stale E2E даних у БД sort=name ASC ховає новостворений рядок
+    // за межами page 1. Використовуємо пошук щоб однозначно знайти рядок.
+    await page.getByPlaceholder('Пошук робіт...').fill(workName);
     await expect(page.locator(`table tbody tr:has-text("${workName}")`).first()).toBeVisible({
       timeout: 20_000,
     });
@@ -115,7 +117,9 @@ test.describe('Каталог — CRUD товару', () => {
     if (await leaveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await leaveBtn.click();
     await expect(modal).not.toBeVisible({ timeout: 5_000 });
 
-    // Перевірити в таблиці (20s — під паралельним навантаженням invalidateQueries може чекати)
+    // Bug #568: stale E2E товари (Dup1-E2E-DUP-*) у БД при sort=name ASC ховають
+    // новий рядок за межами page 1 (total>30). Шукаємо через пошук.
+    await page.getByPlaceholder(/Пошук за назвою/).fill(goodName);
     await expect(page.locator(`table tbody tr:has-text("${goodName}")`).first()).toBeVisible({
       timeout: 20_000,
     });

@@ -1035,6 +1035,106 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-06-20 — E2E pagination-blind test з stale DB records (Bug #568) — e2e / test-debt / pagination
+
+**Сигнал:** E2E тест створює запис `E2E-Foo-{uid}` (`Date.now().toString().slice(-6)`), потім перевіряє `table tbody tr:has-text("E2E-Foo-...")` БЕЗ попереднього використання search-input чи filter. Tеs пройде на чистій CI БД (вебсайт показує всі 1-2 row), а у dev environment де накопичились sample/попередні E2E records — fails з timeout 20s бо новий рядок осідає на page 2/3.
+
+**Причина виникнення:** Автор тесту тестував локально під clean state і не зрозумів, що sort=name ASC + pagination(30) поховає нові рядки за алфавітними prefix-ами накопиченних даних. Тест assumes "новий запис → на сторінці 1" — це справедливо тільки коли total ≤ pageSize.
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти всі E2E тести що шукають створений запис у таблиці БЕЗ попереднього search.fill:
+grep -rn "table tbody tr:has-text" apps/web/e2e --include="*.spec.ts" | while read line; do
+  file=$(echo "$line" | cut -d: -f1)
+  # Перевірити чи у тесті раніше викликається `getByPlaceholder(/Пошук/).fill` або `fill` у search-полі
+  if ! grep -B 50 "table tbody tr:has-text" "$file" | grep -q "Пошук\|search\|filter.*fill"; then
+    echo "PAGINATION-BLIND: $line"
+  fi
+done
+```
+
+**Підхід до фіксу:** після save і перед `toBeVisible` — заповнити поле пошуку: `await page.getByPlaceholder('Пошук...').fill(uniqueName)`. Це детермінізує що новий запис буде серед видимих rows незалежно від stale data. Альтернативи (rejected): teardown cleanup між тестами (overhead), sort DESC тут не працює для timestamp-based names.
+
+**Severity:** HIGH (інтермітентне падіння у dev environment, регулярний блокер тестового suite).
+
+**Де шукати ще:**
+
+- `crud-catalog.spec.ts` (виправлено для робіт + товарів)
+- `crud-counterparties.spec.ts`, `crud-vehicles.spec.ts`, `invoices.spec.ts`, `work-orders.spec.ts`, `stock-documents.spec.ts` — кожен create+verify-row pattern
+- Будь-який модуль з pagination 30+ rows + alphabetic sort default
+
+---
+
+### 2026-06-20 — Reflector-based contract test для new @Decorator (Bug #569) — api / contract / regression-guard
+
+**Сигнал:** Review commit додає security/behavioral decorator на існуючий controller method: `@Throttle({...})`, `@UseGuards(JwtAuthGuard)`, `@Roles(...)`, `@HttpCode(...)`, `@ApiBearerAuth()`. Існуючі тести для модуля (`*.service.spec.ts`) перевіряють бізнес-логіку, але не reflection metadata. Майбутній рефактор, copy-paste нового endpoint без декоратора, чи tooling-помилка може тихо видалити декоратор → security гарантія зникає без сигналу.
+
+**Причина виникнення:** Декоратор реалізований через `Reflect.defineMetadata` — він невидимий у звичайному unit test що мокає service. Жоден існуючий guard не падає при відсутності decorator (Throttler guard просто пропускає route без metadata). Розробник довіряє що decorator залишиться на місці — але це false security.
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти всі публічні (без guards) endpoints у API:
+grep -rn "@Controller\|@Get(\|@Post(\|@Patch(\|@Delete(" apps/api/src/modules --include="*.controller.ts" \
+  | grep -v "spec"
+# Для кожного — переконатись що або є @UseGuards або є @Throttle
+# Якщо є @Throttle → перевірити чи існує `*.throttle.contract.spec.ts`
+ls apps/api/src/modules/*/  | grep -E "throttle.*contract\.spec"
+```
+
+**Підхід до фіксу:** створити `<module>.<decorator>.contract.spec.ts`. Імпортувати controller class, використати `new Reflector()`, читати metadata з handler reference:
+
+```ts
+const limit = reflector.get<number>(
+  `${THROTTLER_LIMIT}default`,
+  BookingController.prototype.createPublic,
+);
+expect(limit).toBe(5);
+```
+
+Метадата keys для `@nestjs/throttler` — `THROTTLER_LIMIT+'default'`, `THROTTLER_TTL+'default'` (для named throttler — замість `default` ім'я).
+
+**Severity:** LOW (немає прямого багу), але HIGH preventive (захищає від тихого регресу security декоратора).
+
+**Де шукати ще:** будь-який модуль з `@Throttle/@Roles/@UseGuards/@HttpCode` доданим після initial implementation. Особливо — публічні endpoints у `booking`, `share`, `webhooks` модулях.
+
+---
+
+### 2026-06-20 — Cross-package LABELS/BADGE контракт-тест для shared constants (Bug #570) — web / shared / drift-detection
+
+**Сигнал:** Frontend код використовує `LABELS[entity.status] ?? entity.status` де LABELS приходить з `@sto/shared` (centralized) або (gorest) inline-копія. Backend має enum у Prisma schema (`WorkOrderStatus`, `InvoiceStatus`, `PurchaseOrderStatus`, `StockDocumentType`, `GoodType`, `CounterpartyType`). Коли backend додає новий enum value — frontend LABELS не оновлюється автоматично, fallback `?? entity.status` повертає raw `NEW_STATUS_X` що показується клієнту замість українського перекладу.
+
+**Причина виникнення:** Розробник вірить що backend `prisma enum + LABELS у shared` синхронізовані, але немає механізму що це enforces. TS не падає бо обидва типи `Record<string, string>`. Drift лишається непомічений до production коли користувач бачить англомовний raw status.
+
+**Підхід до виявлення:**
+
+```bash
+# Знайти всі *_LABELS використання з ?? fallback:
+grep -rn "_LABELS\[.*\] ?? " apps/web/src --include="*.tsx" --include="*.ts"
+
+# Для кожного — знайти corresponding prisma enum:
+grep "enum.*Status\|enum GoodType\|enum CounterpartyType" packages/database/prisma/schema.prisma
+
+# Перевірити що існує contract test:
+find apps/web/src -name "*labels.test.*" -o -name "*-status.test.*"
+```
+
+**Підхід до фіксу:** створити `apps/web/src/lib/<entity>-status-labels.test.ts` зі списком `EXPECTED_STATUSES` (дзеркало `prisma enum`) і it.each-перевіркою: кожен має label/badge/description, label містить кирилицю (`/[Ѐ-ӿ]/`), label.length > 0, all 3 maps мають однакові ключі. Тест паде ПЕРШИМ якщо backend додасть статус без оновлення shared.
+
+**Severity:** LOW (regression guard, no current bug).
+
+**Де шукати ще:**
+
+- `INVOICE_STATUS_LABELS` (Invoice.status)
+- `PO_STATUS_LABELS` (PurchaseOrder.status)
+- `STOCK_DOC_STATUS_LABELS`, `STOCK_DOC_TYPE_LABELS`
+- `COUNTERPARTY_TYPE_LABELS` (Counterparty.type)
+- `GOOD_TYPE_LABELS` (Good.goodType)
+- `EMPLOYEE_ROLE_LABELS` (Employee.role)
+
+---
+
 ### 2026-06-17 — Local interface дрейфує від hook/DTO коли додається нове поле (Bug #506 / #510) — frontend / type-duplication
 
 **Сигнал:** Те саме ім'я типу `WorkOrder` / `Invoice` / `Counterparty` дублюється:

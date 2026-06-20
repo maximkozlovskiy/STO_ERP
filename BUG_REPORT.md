@@ -17317,3 +17317,98 @@ test('debug auth state', async ({ page }) => {
 **Verified:** `npx playwright test e2e/crm.spec.ts e2e/work-orders.spec.ts --retries=0` → 17/17 passed (16s) після фіксу. До фіксу — 0/17 (всі timeout на login screen).
 
 ---
+
+## Session 2026-06-20 — sto-tester Цикл 3/3 step 3 (фінальне тестування)
+
+**Контекст:** HEAD `2d77c7eb` — review Цикл 3/3 step 2 (Throttle на booking + BOM strip).
+**Baseline:** TS API 0 | Web 0 | API 936 | Web 438 | E2E 231 passed (1 flaky/fail).
+**Мета циклу:** API 940+ | Web 471+ | E2E ≥231 passed, 0 failed.
+
+---
+
+### Bug #568 — HIGH e2e / catalog / stale data + pagination
+
+**Файл:** `apps/web/e2e/crud-catalog.spec.ts:41,118`
+**Severity:** HIGH (стабільне падіння в БД з накопиченими E2E records)
+**Категорія:** e2e / regression / pagination-blind-test
+
+**Опис:** Тести `створити роботу → перевірити` і `створити товар з артикулом → перевірити` створюють запис із назвою `E2E-Робота-{uid}` / `E2E-Товар-{uid}` і перевіряють що рядок видно у таблиці через `table tbody tr:has-text(...)`. Таблиця сортується за name ASC, pageSize=30. У БД накопичились stale записи з попередніх runs (`Dup1-E2E-DUP-*`, `E2E-DUP-*`) — total 42 товари. Перші 30 — `Dup1-E2E-DUP-*` (алфавітно перед `E2E-Товар-*`) → нові E2E-Товар-\* з'являються тільки на сторінці 2 → тест fails з timeout 20s.
+
+**Очікувана поведінка:** Після save запис видно у таблиці незалежно від кількості stale records.
+**Фактична поведінка:** Тест шукає рядок на page 1, де його нема, бо алфавітне сортування ховає нові записи за межі першої сторінки.
+
+**Сигнал:** `Locator: locator('table tbody tr:has-text("E2E-Товар-XXX")').first()` Expected: visible Timeout: 20000ms. Скриншот test-failed-1.png показує таб "Товари" з заповненою таблицею, але `E2E-Товар-*` відсутні (вони на page 2).
+
+**Причина виникнення:** Tests assume that щойно створений запис буде на page 1 без використання сортування DESC або фільтру пошуку. Це працює коли БД порожня (CI з clean state), але не у dev environment де записи накопичуються між сесіями. Тест-debt: відсутність cleanup OR active filtering.
+
+**Підхід до виявлення (нова practика):** будь-який E2E тест що створює запис і перевіряє його у таблиці без активного пошуку/фільтру — потенційно flaky у dev environment. Grep: `grep -rn "table tbody tr:has-text" apps/web/e2e/` → для кожного знайти попередній `Pagination` або фільтр-input fill. Якщо нема — додати search.fill(workName/goodName) перед toBeVisible.
+
+**Статус:** [x] виправлено — обидва тести тепер після save заповнюють поле пошуку: `page.getByPlaceholder('Пошук робіт...').fill(workName)` та `page.getByPlaceholder(/Пошук за назвою/).fill(goodName)`. Це детермінізує положення створеного рядка незалежно від stale data. Verified: `npx playwright test e2e/crud-catalog.spec.ts --workers=1` → 4 passed (12.1s).
+
+**Де шукати ще:**
+
+- Інші catalog tabs (ServicesTab — є search placeholder "Пошук послуг...")
+- Counterparties create/verify flow — той самий патерн
+- Будь-який модуль з пагінацією 30+ rows і test data що накопичується (work-orders, invoices, stock-documents).
+
+**Регресія-guard:** crud-catalog.spec.ts тепер містить inline-коментар з посиланням на Bug #568 — будь-який майбутній refactor цих тестів повинен зберігати search.fill() pattern.
+
+---
+
+### Bug #569 — LOW api / contract / missing test for new decorators
+
+**Файл:** `apps/api/src/modules/booking/booking.throttle.contract.spec.ts` (новий)
+**Severity:** LOW (немає прямого багу, але відсутність regression guard)
+**Категорія:** api / contract / regression-guard
+
+**Опис:** Review Cycle 3/step 2 додав `@Throttle({ default: { ttl: 60_000, limit: 30 } })` на `listPublicBranches`, `getAvailability` і `limit: 5` на `createPublic`. Це критичні security декоратори — без них публічний widget відкритий для DoS/enumeration/SMS-flooding. Існуючий `booking.service.spec.ts` не покривав controller. Майбутній рефактор міг тихо видалити декоратор.
+
+**Очікувана поведінка:** Contract test що засипає якщо декоратор зник або значення limit/ttl зросло до небезпечного рівня.
+**Фактична поведінка:** Декоратори існували, але без regression guard.
+
+**Статус:** [x] виправлено — створено `booking.throttle.contract.spec.ts` (4 tests) що читає Throttler metadata через `Reflector.get(THROTTLER_LIMIT+'default', handler)` і верифікує точні значення limit/ttl. Тест буде падати ПЕРШИМ якщо декоратор видалити чи послабити. Verified: 4 passed (1.86s).
+
+**Підхід до виявлення (нова practика):** після review-commit що додає `@Throttle/@UseGuards/@Roles/@HttpCode` на існуючий endpoint — обов'язково додати reflection-based contract test у `<module>.<feature>.contract.spec.ts`. Reflector metadata keys для @nestjs/throttler — `THROTTLER_LIMIT+name`, `THROTTLER_TTL+name` (де name = 'default' для дефолтного throttler).
+
+**Де шукати ще:** інші публічні endpoints без auth (grep `apps/api/src/modules -rn "@Throttle"`) → для кожного перевірити чи є парний contract test з reflector check.
+
+---
+
+### Bug #570 — LOW web / regression / WO_STATUS_LABELS contract test
+
+**Файл:** `apps/web/src/lib/wo-status-labels.test.ts` (новий)
+**Severity:** LOW (regression guard для sync Cycle 3/step 1)
+**Категорія:** web / contract / shared-constants
+
+**Опис:** Sync Cycle 3/step 1 (commit 4f1f345d) переніс `WO_STATUS_LABELS` з локальної копії у `counterparties/[id]/PageClient.tsx` на single source of truth з `@sto/shared`. Це усунуло drift коли backend додав статус ESTIMATE. Але не було тесту що перевіряв повну множину покритих статусів — якщо backend додасть новий enum value (наприклад `ON_HOLD_PARTS`), `WO_STATUS_LABELS[wo.status] ?? wo.status` поверне raw enum string, що покаже клієнту `ON_HOLD_PARTS` замість українського «Очікування запчастин».
+
+**Статус:** [x] виправлено — створено `wo-status-labels.test.ts` (33 tests) що:
+
+- Перевіряє всі очікувані статуси (DRAFT, ESTIMATE, APPROVED, IN_PROGRESS, ON_HOLD, COMPLETED, INVOICED, PAID, ARCHIVED, CANCELLED) мають укр. label, badge variant, description
+- Кожен label містить кирилицю (regex `/[Ѐ-ӿ]/`)
+- Multimap LABELS/BADGE/DESCRIPTIONS мають однакову множину ключів (drift detection)
+- Fallback patern `?? wo.status` працює для невідомого статусу
+- Тест fails ПЕРШИМ коли backend додає статус у `prisma/schema.prisma WorkOrderStatus` без оновлення shared. Verified: 33 passed (9ms).
+
+**Підхід до виявлення (нова practika):** для кожного `*_LABELS` об'єкта з `@sto/shared` що використовується у фронті як `LABELS[entity.status] ?? fallback` — додати regression-guard test що перевіряє повноту покриття (всі prisma enum values mapped) і фактичну українську локалізацію (regex кирилиці).
+
+**Де шукати ще:**
+
+- `INVOICE_STATUS_LABELS`, `PO_STATUS_LABELS`, `STOCK_DOC_STATUS_LABELS`, `COUNTERPARTY_TYPE_LABELS`, `GOOD_TYPE_LABELS` — кожен має reflectible enum у `prisma/schema.prisma`.
+- Якщо існує — переконатись тест exists; якщо нема — додати pattern як у wo-status-labels.test.ts.
+
+---
+
+**Підсумок Цикл 3/3 step 3:**
+
+| Метрика    | Baseline | Після фіксу | Delta |
+| ---------- | -------- | ----------- | ----- |
+| TS API     | ✅ 0     | ✅ 0        | =     |
+| TS Web     | ✅ 0     | ✅ 0        | =     |
+| API tests  | 936      | 940         | +4    |
+| Web tests  | 438      | 471         | +33   |
+| E2E tests  | 231/245  | 232/245     | +1    |
+| BUG_REPORT | #567     | #570        | +3    |
+
+**Виправлено: 3 баги (1 HIGH e2e, 2 LOW regression-guards).**
+**Скрипти: 0 нових код-багів коду — review-Cycle 3 чистий, всі залишки — test-coverage gaps.**
