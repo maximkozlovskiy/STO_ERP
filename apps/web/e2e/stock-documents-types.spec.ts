@@ -84,10 +84,8 @@ test.describe('Документи складу — TRANSFER (Переміщен�
       branchId,
       notes: 'E2E TRANSFER test',
     });
-    if (!doc) {
-      test.skip(true, 'API не створив документ');
-      return;
-    }
+    expect(doc, 'POST /stock-documents має повернути документ').toBeTruthy();
+    if (!doc) return; // type-narrow для TS
 
     await page.reload();
     await readyPage(page);
@@ -110,10 +108,7 @@ test.describe('Документи складу — TRANSFER (Переміщен�
     const [src, dst] = warehouses;
     const branches = await apiCall(page, 'GET', '/branches');
     const branchId = Array.isArray(branches) ? branches[0]?.id : null;
-    if (!branchId) {
-      test.skip(true, 'Немає філій');
-      return;
-    }
+    expect(branchId, 'Seed має містити філії').toBeTruthy();
 
     const doc = await apiCall(page, 'POST', '/stock-documents', {
       type: 'TRANSFER',
@@ -121,10 +116,8 @@ test.describe('Документи складу — TRANSFER (Переміщен�
       targetWarehouseId: dst.id,
       branchId,
     });
-    if (!doc) {
-      test.skip(true, 'API не створив документ');
-      return;
-    }
+    expect(doc, 'POST /stock-documents має повернути документ').toBeTruthy();
+    if (!doc) return; // type-narrow для TS
 
     await page.reload();
     await readyPage(page);
@@ -179,17 +172,11 @@ test.describe('Документи складу — OPENING_BALANCE (Початк
     await readyPage(page);
 
     const warehouses = await getWarehouses(page);
-    if (!warehouses.length) {
-      test.skip(true, 'Немає складів');
-      return;
-    }
+    expect(warehouses.length, 'Seed має містити склади').toBeGreaterThan(0);
 
     const branches = await apiCall(page, 'GET', '/branches');
     const branchId = Array.isArray(branches) ? branches[0]?.id : null;
-    if (!branchId) {
-      test.skip(true, 'Немає філій');
-      return;
-    }
+    expect(branchId, 'Seed має містити філії').toBeTruthy();
 
     const doc = await apiCall(page, 'POST', '/stock-documents', {
       type: 'OPENING_BALANCE',
@@ -197,10 +184,8 @@ test.describe('Документи складу — OPENING_BALANCE (Початк
       branchId,
       notes: 'E2E OPENING_BALANCE test',
     });
-    if (!doc) {
-      test.skip(true, 'API не створив документ');
-      return;
-    }
+    expect(doc, 'POST /stock-documents має повернути документ').toBeTruthy();
+    if (!doc) return; // type-narrow для TS
 
     await page.reload();
     await readyPage(page);
