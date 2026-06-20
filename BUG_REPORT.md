@@ -3,6 +3,34 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-06-20 — Massive E2E coverage expansion — HEAD bf2f78a6
+
+Знайшли через нові spec-файли (vehicles, profile, ndi, settings-sync, calendar-views, command-palette,
+supplier-returns) реальний backend regression на endpoint `/api/search`. Створено 39 нових тестів,
+видалено 18 silent `test.skip(true)` у 5 crud spec-ах.
+
+### Bug #572 — HIGH backend / search / 500 без types-фільтра або з type=counterparty
+
+- **Сигнал:** `GET /api/search?q=Toyota&limit=5` → `500 Internal Server Error`. Те саме `?q=test`,
+  `?q=Іван`. Працює лише з `?types=wo` або `?types=good`. `?types=counterparty` (один) → теж 500.
+- **Причина:** `searchCounterparties` у `apps/api/src/modules/search/search.service.ts:84` ймовірно
+  падає на `similarity()` для двослівного COALESCE-конкатеному виразі коли `pg_trgm` extension
+  встановлений, але GIN-index на конкатені відсутній — Postgres намагається обчислити similarity
+  для всієї таблиці без index seek + `companyName` колонка має NULL у seed (B2C клієнти), і
+  similarity-проти-пустого-рядка повертає NaN/Infinity → exception.
+- **Виявлено:** E2E spec `command-palette.spec.ts` намагався перевірити що /api/search повертає
+  результати по "Toyota" — отримав 500. Перевірка через прямий curl підтвердила: 500 на default
+  types (всі три), 500 на `types=counterparty`, OK на `types=wo` і `types=good`.
+- **Контекст E2E:** spec написаний як UI-contract тест: palette не падає graceful навіть коли API
+  search впав. Backend bug треба фіксити окремо у `sto-backend` агенті.
+- **Severity:** HIGH — глобальний пошук (Ctrl+K) це первинна UX для опитних користувачів. Кожен
+  ввід поза `wo`/`good` повертає 500 → frontend показує помилку → користувач думає що системи не
+  працює. На production seed з реальними клієнтами помилка може бути іншою.
+- **Де ще шукати:** інші місця де `similarity(COALESCE(a) || ' ' || COALESCE(b), q)` — patternу
+  search/index/raw SQL з конкатенацією NULL-able колонок.
+- **Статус:** [ ] не виправлено у цій сесії (поза скоупом завдання). Зафіксовано як регресію для
+  наступного `sto-backend` циклу.
+
 ## Session 2026-06-20 — Security Audit (OWASP Top 10 для NestJS/Next.js) — HEAD 27210eb2
 
 Final security audit після 3 QA циклів. Перевірено: SQL Injection, Broken Auth, Sensitive Data Exposure,
