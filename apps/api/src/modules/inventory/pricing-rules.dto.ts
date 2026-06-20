@@ -1,4 +1,4 @@
-import {
+﻿import {
   IsString,
   IsEnum,
   IsOptional,
@@ -80,10 +80,7 @@ export class CreatePricingRuleDto {
   @IsString()
   goodCategory?: string;
 
-  // Bug #33: goodType — це enum GoodType у БД, тому валідуємо як enum.
-  // Без @IsEnum довільний рядок проходив DTO і валив `applyRuleToGoods` runtime exception
-  // (`invalid input value for enum GoodType`).
-  // Bug #264: emptyToUndefined gap — UI Select з default `''` → 400.
+  // goodType is a GoodType enum in the DB — @IsEnum prevents Postgres 'invalid input value for enum GoodType'.
   @ApiPropertyOptional({ enum: GoodType })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -105,7 +102,7 @@ export class CreatePricingRuleDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
-  // Bug #248: anti-DoS cap. COST_TIER з 50 рівнями — і так абсурд для реальної ціноутворення.
+  // Anti-DoS: 50 COST_TIER levels is already absurd for real pricing.
   @ArrayMaxSize(50, { message: 'Не більше 50 рівнів у правилі ціноутворення' })
   @ValidateNested({ each: true })
   @Type(() => CreatePricingRuleTierDto)
@@ -147,7 +144,7 @@ export class UpdatePricingRuleDto {
   @IsString()
   name?: string;
 
-  // Bug #264: emptyToUndefined gap — UpdatePricingRuleDto.type.
+  // emptyToUndefined gap: UpdatePricingRuleDto.type.
   @ApiPropertyOptional({ enum: PricingRuleType })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -172,8 +169,8 @@ export class UpdatePricingRuleDto {
   @IsString()
   goodCategory?: string;
 
-  // Bug #33: goodType — enum, не довільний рядок (див. CreatePricingRuleDto).
-  // Bug #264: emptyToUndefined gap.
+  // goodType is a GoodType enum — not an arbitrary string (see CreatePricingRuleDto).
+  // emptyToUndefined gap.
   @ApiPropertyOptional({ enum: GoodType })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -195,14 +192,14 @@ export class UpdatePricingRuleDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
-  // Bug #248: anti-DoS cap. COST_TIER з 50 рівнями — і так абсурд для реальної ціноутворення.
+  // Anti-DoS: 50 COST_TIER levels is already absurd for real pricing.
   @ArrayMaxSize(50, { message: 'Не більше 50 рівнів у правилі ціноутворення' })
   @ValidateNested({ each: true })
   @Type(() => CreatePricingRuleTierDto)
   tiers?: CreatePricingRuleTierDto[];
 
-  // Bug #27: PATCH повинен мати ті самі валідатори, що й POST,
-  // інакше ціна продажу може стати від'ємною (`percentValue: -50` → costPrice * 0.5).
+  // PATCH must have the same validators as POST — without Min(0), `percentValue: -50`
+  // would set salePrice = costPrice * 0.5 (selling below cost).
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)

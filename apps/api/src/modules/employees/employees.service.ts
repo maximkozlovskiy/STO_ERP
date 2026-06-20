@@ -117,9 +117,8 @@ export class EmployeesService {
             rateScheme: dto.rateScheme as object,
             phone: dto.phone,
             email: dto.email,
-            // Bug #375: застосувати status/dateOfFire якщо передано у DTO.
-            // Раніше create() ігнорував їх → silent data loss (frontend бачив ACTIVE
-            // незалежно від form.status).
+            // Apply status/dateOfFire if provided — create() used to silently ignore them
+            // → frontend always saw ACTIVE regardless of form.status.
             ...(dto.status && { status: dto.status }),
             ...(dto.dateOfHire && { dateOfHire: new Date(dto.dateOfHire) }),
             ...(dto.dateOfFire && { dateOfFire: new Date(dto.dateOfFire) }),
@@ -137,10 +136,9 @@ export class EmployeesService {
           // (orgId,email) blocks create() due to @@unique([orgId,email]). Re-use
           // the row by updating it back to active and re-pointing to the new employee.
           //
-          // Bug #374: race-guard всередині TX. Між pre-check (рядки 94-102) і цим
-          // findUnique інший запит міг створити активний AuthAccount з тим же email.
-          // Без явної перевірки fall through до create() → P2002 → generic 500.
-          // Замість цього кидаємо зрозумілий 409 ConflictException.
+          // Race guard inside TX: between pre-check and this findUnique another request could
+          // have created an active AuthAccount with the same email. Without explicit check,
+          // fall-through to create() → P2002 → generic 500 instead of a clear 409.
           const soft = await tx.authAccount.findUnique({
             where: { orgId_email: { orgId, email: dto.loginEmail } },
             select: { id: true, deletedAt: true },
@@ -216,11 +214,9 @@ export class EmployeesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    // Bug #373: каскад soft-delete на AuthAccount.
-    // Інакше `findUnique({ orgId_email })` у наступному `create()` знайде активний
-    // AuthAccount (від видаленого Employee) і кине 409 — re-create з тим же
-    // loginEmail неможливе. Resurrection-pattern у create() розрахований саме
-    // на soft-deleted AuthAccount → треба позначити обидва атомарно.
+    // Cascade soft-delete to AuthAccount — otherwise `findUnique({ orgId_email })` in the next
+    // create() finds an active AuthAccount (from the deleted Employee) and throws 409.
+    // The resurrection pattern in create() expects a soft-deleted AuthAccount → must mark both atomically.
     const now = new Date();
     const result = await this.prisma.$transaction(
       async tx => {
@@ -274,7 +270,7 @@ export class EmployeesService {
         }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    );
     return this.findOne(orgId, id);
   }
 
@@ -306,7 +302,7 @@ export class EmployeesService {
         }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    );
     return this.findOne(orgId, id);
   }
 
@@ -342,7 +338,7 @@ export class EmployeesService {
         }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    );
     return this.findOne(orgId, id);
   }
 
@@ -385,7 +381,7 @@ export class EmployeesService {
         }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    );
     return this.findOne(orgId, id);
   }
 

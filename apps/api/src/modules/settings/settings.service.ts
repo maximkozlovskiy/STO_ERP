@@ -16,9 +16,9 @@ import {
 } from './settings.dto';
 
 const TTL_SECONDS = 300; // 5 minutes
-// Bug #520: getWorkHours викликається на КОЖЕН mount CalendarDayGrid (cold cache на нову сесію).
-// Окремий TTL=60s бо work-hours можуть бути швидко змінені адміном у settings;
-// інвалідація все одно є у updateBranchSettings — TTL це другий рівень захисту.
+// Separate TTL=60s for work-hours: getWorkHours is called on every CalendarDayGrid mount (cold
+// cache on new session); shorter TTL reflects that admins can change work hours quickly.
+// Cache invalidation in updateBranchSettings is the primary mechanism; TTL is defense-in-depth.
 const WORK_HOURS_TTL_SECONDS = 60;
 
 @Injectable()
@@ -151,9 +151,6 @@ export class SettingsService {
   }
 
   async getWorkHours(orgId: string): Promise<{ workStartHour: number; workEndHour: number }> {
-    // Bug #520: викликається на КОЖЕН mount CalendarDayGrid. До кешу — DB hit
-    // (findFirst по orgId з orderBy за nested relation `branch.createdAt`).
-    // Cache 60s + invalidation у updateBranchSettings → 1 DB hit / 60s / orgId.
     const cacheKey = `settings:work-hours:${orgId}`;
     try {
       const cached = await this.redis.get(cacheKey);
@@ -176,12 +173,10 @@ export class SettingsService {
     };
     const workStartHour = parseHour(settings?.workStartTime, 9);
     const workEndHour = parseHour(settings?.workEndTime, 18);
-    // Bug #515 defense-in-depth: defensive guard проти інвертованих часів у БД
-    // (legacy/corrupt data до додавання Matches regex у DTO). Інакше frontend
-    // dynHours = Array.from({ length: workEndHour - workStartHour }) дасть [] для
-    // негативної довжини → дільник 0 → NaN у CSS → DOM crash. Повертаємо fallback
-    // діапазон щоб calendar лишався працездатним; адмін бачить grid 09-18 поки
-    // не виправить settings.
+    // Defense-in-depth against inverted hours in DB (legacy/corrupt data before Matches regex was
+    // added to DTO). Without this: Array.from({ length: workEndHour - workStartHour }) → [] for
+    // negative length → divide-by-0 → NaN in CSS → DOM crash. Fallback keeps calendar usable
+    // until admin fixes settings.
     const result =
       workEndHour <= workStartHour
         ? { workStartHour: 9, workEndHour: 18 }
@@ -216,8 +211,8 @@ export class SettingsService {
     });
     if (!branch) throw new NotFoundException('Філію не знайдено');
 
-    // Bug #515 cross-field guard: workEndTime повинен бути після workStartTime.
-    // Reading current settings (якщо лише одне поле у PATCH) — merge з incoming.
+    // Cross-field guard: workEndTime must be after workStartTime. Read current settings
+    // (if only one field in PATCH) and merge with incoming before comparing.
     if (dto.workStartTime !== undefined || dto.workEndTime !== undefined) {
       const current = await this.prisma.branchSettings.findUnique({
         where: { branchId },
@@ -242,9 +237,8 @@ export class SettingsService {
     });
 
     await this.invalidateBranchCache(orgId, branchId);
-    // Bug #520: work-hours кеш orgId-scope (один на org незалежно від branch),
-    // інвалідуємо тільки коли workStartTime/workEndTime реально змінилися щоб
-    // не плодити cache misses при PATCH-ах інших полів (smsEnabled, fiscalEnabled).
+    // work-hours cache is org-scoped (one per org regardless of branch). Invalidate only when
+    // workStartTime/workEndTime actually changed — not on every PATCH (smsEnabled, fiscalEnabled, etc.).
     if (dto.workStartTime !== undefined || dto.workEndTime !== undefined) {
       await this.invalidateWorkHoursCache(orgId);
     }
@@ -488,10 +482,9 @@ export class SettingsService {
     orgId: string,
     dto: { name: string; rate: number; isDefault?: boolean; isActive?: boolean },
   ) {
-    // Bug #357: коли створюється новий isDefault=true → unset попередні defaults
-    // у тому ж orgId scope атомарно. Без цього multiple defaults можливі (немає
-    // unique index `[orgId, isDefault]` у schema), і `getDefaultTaxRate()` буде
-    // повертати випадковий результат.
+    // When isDefault=true: atomically unset previous defaults in the same orgId scope.
+    // No unique index on [orgId, isDefault] in schema → multiple defaults possible without this;
+    // getDefaultTaxRate() would return a non-deterministic row.
     const rate = dto.isDefault
       ? await this.prisma.$transaction(async tx => {
           await tx.taxRate.updateMany({
@@ -531,8 +524,7 @@ export class SettingsService {
     id: string,
     dto: { name?: string; rate?: number; isDefault?: boolean; isActive?: boolean },
   ) {
-    // Bug #357: коли встановлюється isDefault=true → unset попередні defaults
-    // у тому ж orgId scope (виключаючи поточний id) атомарно.
+    // When setting isDefault=true: atomically unset previous defaults in orgId scope (excluding current id).
     if (dto.isDefault === true) {
       await this.prisma.$transaction(async tx => {
         await tx.taxRate.updateMany({
@@ -575,8 +567,8 @@ export class SettingsService {
   }
 
   async deleteTaxRate(orgId: string, id: string) {
-    // TaxRate is referenced indirectly through invoices/lines (по rate as decimal).
-    // Hard delete would lose audit trail. We soft-deactivate via isActive=false.
+    // TaxRate referenced indirectly through invoices/lines — hard delete loses audit trail.
+    // Soft-deactivate via isActive=false instead.
     const existing = await this.prisma.taxRate.findFirst({ where: { id, orgId } });
     if (!existing) throw new NotFoundException('Ставку ПДВ не знайдено');
     if (existing.isDefault)

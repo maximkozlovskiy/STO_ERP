@@ -13,7 +13,7 @@ export function useTabBar() {
   const { closeTab: ctxCloseTab, restoreModal, setPendingRestore } = ctx;
   const pathname = usePathname();
 
-  // Bug #424: stable references — без useCallback кожен render TabBar створював
+  // stable references — без useCallback кожен render TabBar створював
   // нові інлайн-arrow-функції у `.map()` → React.memo на TabChip ламався → всі chip-и
   // re-render-или навіть коли змінювалася лише одна tab. Тепер handler залежить лише
   // від ctx.closeTab/setPendingRestore/restoreModal, які мають стабільні reference

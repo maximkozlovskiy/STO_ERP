@@ -36,7 +36,7 @@ export class WebhooksService {
   }
 
   async create(orgId: string, dto: CreateWebhookDto): Promise<WebhookEndpointResponseDto> {
-    // Bug #114: SSRF defense — reject loopback/private/link-local URLs.
+    // SSRF defense: reject loopback/private/link-local URLs.
     // @IsUrl({ require_tld: false }) on the DTO accepts `http://localhost:6379`
     // which would let a compromised admin pipe webhook payloads to internal
     // Redis/Postgres/cloud-metadata endpoints.
@@ -71,7 +71,7 @@ export class WebhooksService {
     id: string,
     dto: UpdateWebhookDto,
   ): Promise<WebhookEndpointResponseDto> {
-    // Bug #114: re-validate URL on update (same SSRF defense as create).
+    // Re-validate URL on update (same SSRF defense as create).
     if (dto.url !== undefined) {
       const urlError = validatePublicUrl(dto.url);
       if (urlError) throw new BadRequestException(urlError);

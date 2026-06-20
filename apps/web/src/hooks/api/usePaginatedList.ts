@@ -37,7 +37,7 @@ export function usePaginatedList<T>(
   const { employee } = useAuth();
   const qs = buildParams(filters);
   const key = options?.queryKey ?? endpoint;
-  // Bug #355: queryKey має МАТЧИТИ XKeys.list(filters) factory =
+  // queryKey має МАТЧИТИ XKeys.list(filters) factory =
   // [...XKeys.all, 'list', filters] = [key, 'list', filters]. Без 'list' як
   // другого елемента TopShell prefetch потрапляє у dead cache slot (Bug #281 pattern).
   return useQuery<PaginatedResponse<T>>({

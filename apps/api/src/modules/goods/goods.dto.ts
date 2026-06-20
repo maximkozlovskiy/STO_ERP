@@ -1,4 +1,4 @@
-import {
+﻿import {
   IsString,
   IsNotEmpty,
   IsNumber,
@@ -52,7 +52,7 @@ export class CreateGoodDto {
   goodCategoryId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() barcode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
-  // Bug #262: emptyToUndefined gap вЂ” UpdateGoodDto extends PartialType СѓСЃРїР°РґРєРѕРІСѓС” С†РµР№ Р±Р°Рі.
+  // emptyToUndefined: UpdateGoodDto extends PartialType and inherits this transform.
   @ApiPropertyOptional({ enum: GoodType })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -149,7 +149,7 @@ export class CreateGoodUoMDto {
   })
   @IsOptional()
   @IsNumber()
-  // Bug #312: coefficient=0 в†’ divide-by-zero Сѓ qty_base. РўРѕР№ СЃР°РјРёР№ guard С‰Рѕ Bug #302 РґР»СЏ UnitOfMeasure DTO.
+  // coefficient=0 → divide-by-zero in qty_base conversion.
   @Min(0.000001)
   coefficient?: number;
 
@@ -190,8 +190,7 @@ export class UpdateGoodUoMDto {
     description: 'РљРѕРµС„С–С†С–С”РЅС‚ РїРµСЂРµСЂР°С…СѓРЅРєСѓ РґРѕ Р±Р°Р·РѕРІРѕС— РѕРґРёРЅРёС†С–',
   })
   @IsOptional()
-  @IsNumber()
-  // Bug #312: coefficient=0 в†’ divide-by-zero. РўРѕР№ СЃР°РјРёР№ guard С‰Рѕ Сѓ CreateGoodUoMDto.
+  // coefficient=0 → divide-by-zero in qty_base conversion.
   @Min(0.000001)
   coefficient?: number;
 

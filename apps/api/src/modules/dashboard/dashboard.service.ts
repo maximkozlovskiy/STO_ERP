@@ -61,7 +61,6 @@ export class DashboardService {
     // поле стане 0. Promise.allSettled поверх — додатковий захист від exceptions.
     const [activeWoCount, todayRevenueData, pendingInvoiceCount, lowStockCount] =
       await Promise.allSettled([
-        // Активні наряди: IN_PROGRESS + ON_HOLD
         this.withTimeout(
           this.prisma.workOrder.count({
             where: {
@@ -73,8 +72,7 @@ export class DashboardService {
           SUBQUERY_TIMEOUT_MS,
         ),
 
-        // Виручка сьогодні: PAYMENT settlement transactions
-        // (SettlementTransaction є append-only — не має deletedAt)
+        // PAYMENT settlement transactions (SettlementTransaction is append-only — no deletedAt)
         this.withTimeout(
           this.prisma.settlementTransaction.aggregate({
             where: {
@@ -87,7 +85,6 @@ export class DashboardService {
           SUBQUERY_TIMEOUT_MS,
         ),
 
-        // Очікуючі рахунки: не-PAID і не-CANCELLED
         this.withTimeout(
           this.prisma.invoice.count({
             where: {
@@ -100,10 +97,9 @@ export class DashboardService {
         ),
 
         // Низькі залишки: StockItem де `quantity <= minStock` (per-warehouse minStock).
-        // Bug #83: попередня версія повертала ВСЮ кількість stock_items (без фільтра),
-        // дашборд показував misleading number. Узгоджуємо з /stock-items/low —
-        // через raw COUNT (Prisma не підтримує cross-field порівняння у where).
-        // Schema без @map → колонки camelCase у Postgres → подвійні лапки обов'язкові.
+        // Raw COUNT via $queryRaw: Prisma does not support cross-field comparison in where
+        // (quantity <= minStock), so we use SQL directly. Aligned with /stock-items/low endpoint.
+        // Schema has no @map → Postgres columns are camelCase → double-quotes required.
         this.withTimeout(
           this.prisma.$queryRaw<Array<{ count: bigint }>>`
             SELECT COUNT(*)::bigint AS count

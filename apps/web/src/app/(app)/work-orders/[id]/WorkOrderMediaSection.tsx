@@ -5,7 +5,6 @@ import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 
 interface WorkOrderMedia {
-  // Bug #93: `fileKey` removed — backend no longer leaks the internal MinIO path.
   id: string;
   workOrderId: string;
   filename: string;
@@ -34,7 +33,7 @@ export function WorkOrderMediaSection({
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
-  // Bug #89: Escape closes lightbox + a11y. Without this keyboard users can't
+  // Escape closes lightbox + a11y. Without this keyboard users can't
   // dismiss the photo preview at all.
   useEffect(() => {
     if (!lightboxUrl) return;
@@ -48,7 +47,7 @@ export function WorkOrderMediaSection({
   const handleMediaUpload = async (files: FileList) => {
     setUploadingMedia(true);
     onError?.('');
-    // Bug #85: використовуємо apiMultipartFetch для silent refresh при 401.
+    // використовуємо apiMultipartFetch для silent refresh при 401.
     // Раніше native fetch з прямим Bearer ламався після того як access token закінчувався (~15 хв)
     // і користувач отримував абстрактне "Не вдалося завантажити N файл(ів)" без auto-recovery.
     //

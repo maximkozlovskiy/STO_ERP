@@ -139,9 +139,9 @@ export class SupplierReturnsService {
     const lines = dto.lines ?? [];
     const dedupedLines = deduplicateBy(lines, l => l.goodId);
 
-    // Bug #495: cross-tenant FK guard — кожен goodId/unitOfMeasureId з DTO має існувати
+    // cross-tenant FK guard: кожен goodId/unitOfMeasureId з DTO має існувати
     // у цій організації. Сирий Prisma write валідує лише глобальне існування FK,
-    // НЕ orgId → FK з чужої org проходить → cross-tenant linkage (Bug #161 pattern).
+    // НЕ orgId → FK з чужої org проходить → cross-tenant linkage.
     await this.validateLineRefs(orgId, dedupedLines);
 
     const number = await this.docNumbers.next(orgId, 'SUPPLIER_RETURN');
@@ -220,7 +220,7 @@ export class SupplierReturnsService {
     if (dto.supplierId && !supplier) throw new NotFoundException('Постачальника не знайдено');
     if (dto.warehouseId && !warehouse) throw new NotFoundException('Склад не знайдено');
 
-    // Bug #495: cross-tenant FK guard для update() — кожен новий goodId/unitOfMeasureId
+    // cross-tenant FK guard for update() — кожен новий goodId/unitOfMeasureId
     // має існувати у цій організації. Валідація ПЕРЕД $transaction (read-only).
     if (dto.lines !== undefined && dto.lines.length > 0) {
       const dedupedForCheck = deduplicateBy(dto.lines, l => l.goodId);
@@ -415,7 +415,7 @@ export class SupplierReturnsService {
   }
 
   /**
-   * Cross-tenant FK guard для рядків повернення (Bug #495).
+   * Cross-tenant FK guard для рядків повернення.
    * Сирий Prisma write валідує лише глобальне існування FK, НЕ orgId — тому
    * відсутність цього guard дозволяє linkage товарів/одиниць виміру з чужої org.
    * Паралельно перевіряємо batch through Promise.all → 1–2 RTT замість N послідовних.

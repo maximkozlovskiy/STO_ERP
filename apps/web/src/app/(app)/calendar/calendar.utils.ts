@@ -7,12 +7,6 @@ export const KYIV_TZ = 'Europe/Kyiv';
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const SIDEBAR_W = 160;
 
-// Bug #517: HOURS/TOTAL_HOURS/WINDOW_START/WINDOW_END/pxToHours видалені після
-// рефактору на dynamic workStartHour/workEndHour (commits 46b64596, a0301b36).
-// Імпорт цих констант у новому компоненті відтворить hardcoded 08-19, що
-// розсинхронізує grid з реальним BranchSettings. Використовуй state.hours /
-// state.windowStart / state.windowEnd з useCalendarState().
-
 // Time picker: 15-min step within working hours window.
 export const PICK_MINUTES = [0, 15, 30, 45];
 
@@ -97,8 +91,8 @@ export function decimalHoursToHHMM(h: number): string {
 }
 
 export function decimalHoursToISO(date: string, h: number): string {
-  // Bug #354: парсинг без TZ → local-time у браузерах поза Kyiv.
-  // Використовуємо DST-aware Kyiv → UTC конверсію.
+  // парсинг без TZ → local-time у браузерах поза Kyiv.
+  // Використовуємо Kyiv → UTC конверсію.
   return kyivDateTimeToISO(date, decimalHoursToHHMM(h));
 }
 
@@ -110,7 +104,7 @@ export function snapTo15(h: number): number {
 export function parseHHMM(s: string): { h: number; m: number } {
   const [hh, mm] = s.split(':').map(Number);
   const snapped = Math.round((mm ?? 0) / 15) * 15;
-  // Bug #517: fallback 9 (BranchSettings Prisma default workStartTime='09:00').
+  // fallback 9 (BranchSettings Prisma default workStartTime='09:00').
   return { h: hh ?? 9, m: snapped >= 60 ? 0 : snapped };
 }
 

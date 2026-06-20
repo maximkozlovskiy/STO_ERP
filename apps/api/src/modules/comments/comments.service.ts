@@ -78,10 +78,9 @@ export class CommentsService {
     authorId: string,
     dto: CreateCommentDto,
   ): Promise<CommentResponseDto> {
-    // Bug #253: cross-tenant FK guard. `Comment.entityId` — поліморфне посилання
-    // без Prisma FK. Без перевірки автентифікований user з org A може створити
-    // коментар про сутність з org B → `Comment.orgId=A, entityId=<from-B>` лежить
-    // у БД невидимий обом сторонам, ламає audit-trail.
+    // Cross-tenant FK guard: `Comment.entityId` is a polymorphic reference without a Prisma FK.
+    // Without this check, a user from org A can create a comment about an entity from org B →
+    // `Comment.orgId=A, entityId=<from-B>` sits in the DB invisible to both sides, breaking audit-trail.
     await this.assertEntityBelongsToOrg(orgId, dto.entityType, dto.entityId);
     const comment = await this.prisma.comment.create({
       data: { orgId, entityType: dto.entityType, entityId: dto.entityId, body: dto.body, authorId },
@@ -91,8 +90,8 @@ export class CommentsService {
   }
 
   /**
-   * Bug #253: assert полиморфної сутності належить org. Перебирає `entityType`
-   * через мапу замість switch — простіше додавати нові типи (Vehicle, Invoice...).
+   * Assert polymorphic entity belongs to org. Uses a map instead of switch —
+   * easier to add new entity types (Vehicle, Invoice, ...).
    */
   private async assertEntityBelongsToOrg(
     orgId: string,

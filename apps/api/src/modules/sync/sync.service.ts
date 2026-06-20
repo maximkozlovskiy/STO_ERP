@@ -56,7 +56,7 @@ const PUSH_SAFE_TABLES = new Set([
   'calendar_slots',
 ]);
 
-// Bug #127: Prisma client exposes models in SINGULAR camelCase form (e.g. `prisma.workOrder`),
+// Prisma client exposes models in SINGULAR camelCase (e.g. `prisma.workOrder`),
 // while Postgres tables (via `@@map`) are PLURAL. A naive `snake_to_camel` of the table name
 // produces a plural identifier (`workOrders`) which is `undefined` on PrismaClient, causing
 // `TypeError: Cannot read properties of undefined` at `getStatus` (the `.catch` only catches
@@ -147,7 +147,7 @@ export class SyncService {
               // For deleted records, only send the id — no PII in tombstone payloads
               payload = { id: row.id };
             } else {
-              // Bug #128: Prisma rows contain BigInt `syncVersion` (and Decimal fields).
+              // Prisma rows contain BigInt `syncVersion` (and Decimal fields).
               // Both crash `JSON.stringify` and trigger a 500. Normalise each value:
               // BigInt → number (sync version fits in 2^53 for decades), Decimal → number.
               payload = {};

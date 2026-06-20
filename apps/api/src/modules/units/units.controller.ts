@@ -28,11 +28,9 @@ import { UnitsService } from './units.service';
 export class UnitsController {
   constructor(private readonly service: UnitsService) {}
 
-  // Bug #299: попередньо `max-age=300, stale-while-revalidate=60` → browser cache
-  // міг показувати застарілий список (включно з вже видаленими/відновленими) до 360с
-  // після mutation. Redis cache на бекенді інвалідується через `cache.del()` після кожного
-  // write, тому браузеру довіряти кеш не потрібно — нехай завжди питає сервер
-  // (сервер відповість з Redis за мікросекунди при кеш-хіті).
+  // `private, no-cache` prevents browser from serving stale list after mutations:
+  // with `max-age=300` browser cached deleted/restored units for up to 360s.
+  // Redis cache (invalidated on every write) makes server response near-instant anyway.
   @Header('Cache-Control', 'private, no-cache')
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')

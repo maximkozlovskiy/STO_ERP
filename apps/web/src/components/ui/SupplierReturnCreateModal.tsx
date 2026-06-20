@@ -64,11 +64,8 @@ interface LocalLine {
   goodName: string;
   goodSku?: string | null;
   unit: string;
-  // Bug #548: backend повертає unitShortName з UoM relation (supplier-returns.service.ts toDto).
-  // PO modal після Bug #498 рендерить line.unitShortName || line.unit; SR modal копіював
-  // лейаут, але не цю логіку → показував лише сирий unit.
   unitShortName?: string | null;
-  // Bug #549: зберігаємо unitOfMeasureId, інакше при PATCH backend пересоздає рядки
+  // зберігаємо unitOfMeasureId, інакше при PATCH backend пересоздає рядки
   // з NULL UoM (update() робить soft-delete + createMany з l.unitOfMeasureId ?? null).
   unitOfMeasureId?: string | null;
   quantity: string;
@@ -260,7 +257,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
 
   // ── Lines ──────────────────────────────────────────────────────────────────
   const addLine = useCallback(() => {
-    // Bug #551: дублюємо guard з кнопки «+» на випадок keyboard-shortcut / programmatic виклику.
+    // дублюємо guard з кнопки «+» на випадок keyboard-shortcut / programmatic виклику.
     if (!newLine.goodId) return;
     if ((parseFloat(newLine.quantity) || 0) <= 0) return;
     setLines(prev => {
@@ -334,7 +331,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           goodId: l.goodId,
           quantity: parseFloat(l.quantity) || 0,
           price: parseFloat(l.price) || 0,
-          // Bug #549: передаємо unitOfMeasureId, інакше backend.update() пересоздає рядки
+          // передаємо unitOfMeasureId, інакше backend.update() пересоздає рядки
           // з NULL UoM (soft-delete + createMany з l.unitOfMeasureId ?? null).
           ...(l.unitOfMeasureId ? { unitOfMeasureId: l.unitOfMeasureId } : {}),
         })),
@@ -751,7 +748,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                           <button
                             type="button"
                             onClick={addLine}
-                            // Bug #551: блокуємо «+» при порожній К-сть, щоб не плодити рядки,
+                            // блокуємо «+» при порожній К-сть, щоб не плодити рядки,
                             // які handleSave потім reject'не з помилкою «Кількість має бути > 0».
                             disabled={!newLine.goodId || (parseFloat(newLine.quantity) || 0) <= 0}
                             title="Додати рядок"

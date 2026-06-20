@@ -114,12 +114,12 @@ export class EstimateExportService {
       description: wo.description ?? '',
       totalLabor: Number(wo.totalLabor),
       totalParts: Number(wo.totalParts),
-      // Bug #508 / Bug #528: PDF/XLSX/DOCX кошторис показує ПЛАНОВУ суму.
-      // wo.totalAmount = totalActualLabor + totalParts (включає фактичні години
-      // якщо вони введені). Для SHAREABLE_STATUSES (DRAFT/ESTIMATE/APPROVED) це
-      // семантично некоректно: клієнт бачить кошторис, а не акт виконаних робіт.
-      // Math у рядках (по normoHours × price) має збігатися з ЗАГАЛЬНА СУМА.
-      // Symmetric з work-orders.service.ts:1745 (findByShareToken JSON endpoint).
+      // PDF/XLSX/DOCX estimate shows PLANNED total, not actual.
+      // wo.totalAmount = totalActualLabor + totalParts (uses actual hours when entered).
+      // For SHAREABLE_STATUSES (DRAFT/ESTIMATE/APPROVED) this is semantically wrong:
+      // the client sees an estimate, not a completion act.
+      // Row math (normoHours × price) must match the grand total shown to the client.
+      // Symmetric with work-orders.service.ts findByShareToken (JSON endpoint).
       totalAmount: Number(wo.totalLabor) + Number(wo.totalParts),
       lines: wo.lines.map(l => ({
         name: l.work?.name ?? '—',

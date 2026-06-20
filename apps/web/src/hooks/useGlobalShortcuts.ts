@@ -74,7 +74,7 @@ export function useGlobalShortcuts(enabled: boolean) {
   );
 
   // N — new item based on current section.
-  // Bug #354: routes /work-orders/new та /counterparties/new НЕ існують (create-flow через модалку).
+  // routes /work-orders/new та /counterparties/new НЕ існують (create-flow через модалку).
   // Замість маршруту шлемо `?action=new` query — сторінка-список ловить через useSearchParams і відкриває модалку.
   useKeyboardShortcut(
     'n',

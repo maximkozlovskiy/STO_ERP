@@ -834,20 +834,67 @@ return { id, firstName, lastName, phone };
 
 ## Коментарі — коли і як
 
+### ЗАБОРОНЕНО (видаляти при code review)
+
 ```typescript
-// ❌ Коментар що пояснює ЩО (код вже це каже)
-// Знаходимо замовлення по id
-const order = await this.prisma.workOrder.findFirst({ where: { id, orgId } });
+// ❌ Bug/Issue/PR reference — не належить коду, належить commit message
+// Bug #123: виправлено N+1 запит
+// Fix #456: додано перевірку null
+// Cycle 2/3 step 3 — ...
 
-// ❌ Коментар що згадує задачу/PR
-// Додано для issue #123
+// ❌ Що робить очевидний код
+// Знаходимо замовлення
+const wo = await prisma.workOrder.findFirst(...)
+// Повертаємо результат
+return result;
+// Фільтруємо видалені
+where: { deletedAt: null }
+// Increment counter
+counter++;
 
-// ✅ Коментар пояснює ЧОМУ (неочевидне)
-// SettlementAccount не має deletedAt — це singleton per counterparty, ніколи не видаляється
-const account = await this.prisma.settlementAccount.findFirst({ where: { counterpartyId } });
+// ❌ TODO без конкретного WHY або дедлайну
+// TODO: рефакторити
+// TODO: покращити продуктивність
+// FIXME: не знаю чому це потрібно
+```
 
-// ✅ Workaround з причиною
-// Prisma не підтримує upsert з composite unique в транзакції до v5.8 — робимо вручну
+### ДОЗВОЛЕНО (корисні коментарі)
+
+```typescript
+// ✅ Прихований constraint або інваріант
+// SettlementAccount — singleton per counterparty, ніколи не видаляється (немає deletedAt)
+const account = await prisma.settlementAccount.findFirst({ where: { counterpartyId } });
+
+// ✅ Workaround з причиною (платформний баг, обмеження версії)
+// SWC не резолвить tsconfig paths на Windows — залишати tsc builder
+
+// ✅ DST/timezone пастка
+// Kyiv offset +02/+03 залежно від DST — завжди Intl.DateTimeFormat, ніколи hardcode
+
+// ✅ Security reasoning де неочевидно
+// getOrThrow (не get) — fallback до відомого рядка дозволяє auth bypass в prod
+
+// ✅ Postgres-специфічна поведінка
+// ADD VALUE — окремий файл міграції: Postgres забороняє ADD VALUE + використання в одній транзакції
+// camelCase у подвійних лапках: Postgres без quotes folds до lowercase (orgId → orgid)
+
+// ✅ Performance invariant де неочевидно
+// Module-level singleton: new Intl.DateTimeFormat() дорогий (locale init) — не в циклі
+
+// ✅ Race condition guard
+// Refs ensure handleModalClose sees sync state, not stale closure
+
+// ✅ Явний timeout (пояснити чому нестандартний)
+// explicit timeout 10s — COMPLETED транзакція робить N writeoff + N release + 1 charge
+// при 50+ запчастинах це може зайняти > 5s default
+await prisma.$transaction(async tx => { ... }, { timeout: 10_000 });
+
+// ✅ TODO з конкретним WHY і умовою коли виправити
+// Multi-branch gap: single-branch assumption — для multi-branch orgs потрібен resolve
+// per-vehicle by lastWorkOrderBranchId або Organisation-level SMS config
+
+// ✅ regression guard В ТЕСТАХ (тільки в *.spec.ts / *.test.ts)
+// regression guard: якщо видалиш цей тест, Bug #NNN відтвориться мовчки
 ```
 
 ---

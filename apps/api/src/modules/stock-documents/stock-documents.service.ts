@@ -215,7 +215,7 @@ export class StockDocumentsService {
         });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    ); // explicit timeout: create + createMany in one tx, can exceed Prisma default 30s on large batches
 
     return this.toDto(doc);
   }
@@ -281,7 +281,7 @@ export class StockDocumentsService {
         });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    ); // explicit timeout: soft-delete lines + createMany in one tx
 
     return this.toDto(updated);
   }
@@ -327,8 +327,8 @@ export class StockDocumentsService {
           await Promise.all(
             doc.lines.map(line => {
               const lineUnitId = line.good?.unitId ?? null;
-              // Bug #236: persist resolved UoM — extracted to avoid duplication in both branches.
-              // sto-review §2.2: defense-in-depth — include orgId у where (узгоджено з PO.receive
+              // persist resolved UoM — extracted to avoid duplication in both branches.
+              // defense-in-depth: include orgId у where (узгоджено з PO.receive
               // де line update теж компаундний where: { id, orgId }).
               const maybeUpdateUom = lineUnitId
                 ? tx.stockDocumentLine.update({
@@ -388,7 +388,7 @@ export class StockDocumentsService {
           });
         },
         { timeout: 15_000 },
-      ); // Bug #132: explicit timeout — N rows × createMovement (батч-tracking + StockMovement + upsert stockItem)
+      ); // explicit 15s timeout: N rows × createMovement (StockMovement + upsert stockItem); exceeds Prisma default at ~50+ lines
     } else {
       await this.prisma.stockDocument.update({ where: { id, orgId }, data: { status: newStatus } });
     }
@@ -468,8 +468,8 @@ export class StockDocumentsService {
         goodSku: l.good?.sku ?? null,
         unit: l.good?.unit,
         unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
-        // Bug #316: safeCoeff() ловить legacy/seed coefficient=0/NaN/негативні —
-        // фронт використовує coefficient як дільник для display↔base conversion.
+        // safeCoeff() guards against legacy/seed coefficient=0/NaN/negative —
+        // frontend uses coefficient as divisor for display↔base conversion; 0 → Infinity → silent NaN.
         coefficient: safeCoeff(l.good?.unitOfMeasure?.coefficient),
         quantity: l.quantity,
         price: l.price != null ? Number(l.price) : null,

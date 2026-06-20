@@ -8,7 +8,7 @@ export interface FollowUpJob {
   orgId: string;
 }
 
-// Hard caps — prevent OOM on large fleets (Bug #106).
+// Hard caps — prevent OOM on large fleets.
 // TODO: switch to cursor pagination when single org has > 1000 vehicles or schedules.
 const MAX_SCHEDULES_PER_RUN = 1000;
 const MAX_VEHICLES_PER_RUN = 1000;
@@ -41,9 +41,9 @@ export class FollowUpProcessor extends WorkerHost {
     // -1 RTT на кожен daily tick. Раніше: послідовно settings → branch.
     const [settings, branch] = await Promise.all([
       this.prisma.organisationSettings.findFirst({ where: { orgId } }),
-      // Pick the oldest branch for SMS sender config (Bug #100).
-      // TODO: for multi-branch orgs, resolve per-vehicle by lastWorkOrderBranchId or
-      // expose Organisation-level SMS config. Current behaviour: stable "first created" branch.
+      // Pick the oldest branch for SMS sender config.
+      // Multi-branch gap: single-branch assumption — for multi-branch orgs, should resolve
+      // per-vehicle by lastWorkOrderBranchId or expose Organisation-level SMS config.
       this.prisma.garageBranch.findFirst({
         where: { orgId, deletedAt: null },
         orderBy: { createdAt: 'asc' },
@@ -62,7 +62,7 @@ export class FollowUpProcessor extends WorkerHost {
       'FOLLOWUP_REMINDER',
     );
 
-    // DST-safe Kyiv "today" anchor (Bug #99). Set UTC 09:00 (= 11:00/12:00 Kyiv depending on DST)
+    // DST-safe Kyiv "today" anchor. Set UTC 09:00 (= 11:00/12:00 Kyiv depending on DST)
     // so setDate(±N) operates well away from the local-midnight boundary.
     const today = new Date();
     today.setUTCHours(9, 0, 0, 0);
@@ -74,7 +74,7 @@ export class FollowUpProcessor extends WorkerHost {
     cutoffDate.setDate(cutoffDate.getDate() - (settings.followUpDays ?? 90));
 
     // Maintenance schedules due within forecast window — exclude already-overdue ones
-    // (Bug #102: previously sent SMS daily for missed maintenance months in the past).
+    // (previously sent SMS daily for missed maintenance months in the past).
     // Parallel: upcomingMaintenance + inactiveVehicles — independent reads on різні таблиці
     // (maintenanceSchedule vs vehicle), без cross-deps. -1 RTT на кожен daily tick.
     const [upcomingMaintenanceRaw, inactiveVehiclesRaw] = await Promise.all([
@@ -96,7 +96,7 @@ export class FollowUpProcessor extends WorkerHost {
         },
         take: MAX_SCHEDULES_PER_RUN,
       }),
-      // "Inactive" vehicles — had a completed WO before cutoff but none after (Bug #101).
+      // "Inactive" vehicles — had a completed WO before cutoff but none after.
       // Vehicles that NEVER had a completed WO are excluded — they were never our customers
       // for that vehicle, so a "we miss you" SMS would be misleading.
       this.prisma.vehicle.findMany({
@@ -244,7 +244,7 @@ export class FollowUpProcessor extends WorkerHost {
     );
 
     // If ALL sends failed (and we tried at least one), surface the error to BullMQ for retry.
-    // Per-message failures otherwise don't block the batch (Bug #104).
+    // Per-message failures otherwise don't block the batch.
     if (sendErrors > 0 && sendSuccess === 0 && lastError) {
       throw lastError;
     }

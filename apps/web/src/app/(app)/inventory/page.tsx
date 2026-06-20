@@ -160,7 +160,7 @@ export default function InventoryPage() {
     to: to || undefined,
   };
 
-  // Bug #457: gate за viewMode — без enabled три hooks тригерили запити
+  // gate за viewMode — без enabled три hooks тригерили запити
   // одразу при mount, агрегуючи до 5500 рядків навіть коли user у режимі 'goods'.
   const { data: byDocData, isLoading: loadingDoc } = useStockByDocument(
     viewFilters,

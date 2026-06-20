@@ -174,7 +174,7 @@ export function CounterpartyEditModal({
   // Live counterparty id — звіряється у handler-fetch async після await, щоб не
   // setState у списки чужого CP при швидкому перемиканні (§8.2 tenant-guard).
   const currentCpIdRef = useRef<string | null>(null);
-  // Bug #372: explicit deps `[counterparty?.id]` — ref оновлюється ТІЛЬКИ при
+  // explicit deps `[counterparty?.id]` — ref оновлюється ТІЛЬКИ при
   // зміні CP-id, а не на кожен render (form-keystrokes). ESLint-clean.
   useEffect(() => {
     currentCpIdRef.current = counterparty?.id ?? null;

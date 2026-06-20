@@ -47,7 +47,7 @@ export default function BrandsTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
-  // Bug #307: race-guard для swiftest showDeleted toggles — outdated response відкидається.
+  // race-guard для swift showDeleted toggles — outdated response відкидається.
   const loadReqRef = useRef(0);
 
   const load = useCallback(
@@ -163,9 +163,8 @@ export default function BrandsTab() {
   };
 
   const restore = async (id: string) => {
-    // Bug #308: in-flight guard — повторні кліки на restore призводили б до 2..N паралельних
-    // POST; перший update встановлює deletedAt=null, наступні updateMany повертають count=0 →
-    // NotFoundException → false-error у UI. Також ловимо stale error перед action.
+    // in-flight guard: duplicate POSTs → 2nd+ returns 404 → false-error in UI.
+    // First update sets deletedAt=null; subsequent updateMany return count=0 → NotFoundException.
     if (restoringIds.has(id)) return;
     setError('');
     setRestoringIds(prev => new Set(prev).add(id));

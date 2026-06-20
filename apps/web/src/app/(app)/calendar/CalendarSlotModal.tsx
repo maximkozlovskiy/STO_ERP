@@ -69,9 +69,8 @@ function calcEndAt(totalMin: number): string {
   return `${pad(Math.floor(clamped / 60))}:${pad(clamped % 60)}`;
 }
 
-// Bug #397: const між import-statement'ами порушує ESLint `import/first` + може
-// плутати Next.js static-export build. Усі imports згруповані вище; dynamic const
-// залишається тут, відразу після останнього import.
+// ESLint import/first constraint + Next.js static-export build: const між import-statement'ами порушує правила.
+// Усі imports згруповані вище; dynamic const залишається тут, відразу після останнього import.
 // sto-optimize: CreateWorkOrderModal — 1823 LOC; calendar відкривається без створення WO
 // у більшості сесій → lazy-load при першому кліку «Створити наряд» з модалки слота.
 const CreateWorkOrderModal = dynamic(
@@ -442,7 +441,6 @@ export function CalendarSlotModal({
     };
   }, [open, form.counterpartyId, cpPhone]);
 
-  // Завантажуємо авто клієнта при зміні counterpartyId.
   // Якщо 1 авто — одразу ставимо vehicleId; якщо >1 — показуємо Select; якщо 0 — ховаємо.
   // form.vehicleId та setForm НЕ в deps щоб уникнути циклу: ефект сам пише в form.vehicleId.
   // Замість stale closure — читаємо актуальне значення через formRef.
@@ -453,7 +451,7 @@ export function CalendarSlotModal({
       setCpVehicles([]);
       return;
     }
-    // Bug #366: скидаємо cpVehicles ОДРАЗУ при старті нового fetch, щоб не показувати
+    // скидаємо cpVehicles ОДРАЗУ при старті нового fetch, щоб не показувати
     // vehicles попереднього клієнта поки нові завантажуються.
     setCpVehicles([]);
     const ac = new AbortController();
@@ -467,9 +465,9 @@ export function CalendarSlotModal({
         });
         if (ac.signal.aborted || !mountedRef.current) return;
         setCpVehicles(all);
-        // Bug #367: defense-in-depth — якщо поточний form.vehicleId не належить
-        // жодному vehicle нового клієнта (успадкований з минулого через WO picker
-        // або edit slot) — скидаємо, інакше auto-fill для 1-vehicle клієнта блокується
+        // defense-in-depth: vehicleId inherited from prior client (via WO picker or edit slot)
+        // — if it belongs to none of the new client's vehicles, it leaks to newWo POST → invalid FK.
+        // Reset prevents auto-fill for 1-vehicle client from being blocked:
         // і newWo POST отримує invalid FK.
         const currentVid = formRef.current.vehicleId;
         const stillValid = currentVid && all.some(v => v.id === currentVid);
@@ -628,8 +626,8 @@ export function CalendarSlotModal({
         }
       }
     }
-    // Bug #354: kyivDateTimeToISO замість `new Date(...).toISOString()`
-    // local-парсингу без TZ. DST-aware (+02 зима, +03 літо).
+    // DST-aware: kyivDateTimeToISO замість `new Date(...).toISOString()`
+    // local-парсингу без TZ (+02 зима, +03 літо).
     const startIso = kyivDateTimeToISO(date, form.startAt);
     // For overflow slots the backend expects endAt as the real wall-clock end time
     // on the *same* day (e.g. 22:00 for 2 h from 20:00), not the next-day display time.
@@ -1355,9 +1353,8 @@ export function CalendarSlotModal({
                   const cpDisp = item.counterpartyName ?? '';
                   setCpDisplay(cpDisp);
                   setCpPhone(null);
-                  // Bug #365: при заміні клієнта через WO picker скидаємо vehicleId
-                  // і cpVehicles. Без цього form.vehicleId успадковується з минулого
-                  // клієнта → leak до newWo POST → 400 FK mismatch.
+                  // при заміні клієнта через WO picker скидаємо vehicleId і cpVehicles:
+                  // без цього form.vehicleId успадковується з минулого клієнта → leak до newWo POST → 400 FK mismatch.
                   setCpVehicles([]);
                   setForm(f => ({
                     ...f,
@@ -1377,7 +1374,7 @@ export function CalendarSlotModal({
                 const cpDisp = item.counterpartyName ?? '';
                 setCpDisplay(cpDisp);
                 setCpPhone(null);
-                // Bug #365: defensive — починаємо з чистого vehicleId/cpVehicles
+                // defensive: починаємо з чистого vehicleId/cpVehicles
                 setCpVehicles([]);
                 setForm(f => ({
                   ...f,
@@ -1496,8 +1493,8 @@ export function CalendarSlotModal({
             vehicleId: form.vehicleId || undefined,
             liftId: form.liftId || undefined,
             description: form.notes || undefined,
-            // Bug #451: guard against `date = ''` (URL без ?date param на першому
-            // render до effect default-у). Без guard будуємо "T17:00" — invalid ISO.
+            // guard against `date = ''` on first render before effect default:
+            // without guard we'd build "T17:00" — invalid ISO string.
             plannedStartAt: form.startAt && date ? `${date}T${form.startAt}` : undefined,
             plannedEndAt: form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined,
             plannedHours: nh > 0 ? String(nh) : undefined,

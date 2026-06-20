@@ -51,7 +51,7 @@ interface Supplier {
 
 interface GoodUoM {
   id: string;
-  // Bug #400: backend `/goods/:id/uoms` returns both GoodUoM.id (PK) і unitOfMeasureId (FK у UnitOfMeasure).
+  // backend `/goods/:id/uoms` returns both GoodUoM.id (PK) і unitOfMeasureId (FK у UnitOfMeasure).
   // Парт-API очікує саме UnitOfMeasure.id (commit 1facbb67) — без цього поля у interface
   // TS не сигналізує, що Select option має використовувати unitOfMeasureId (бачте Bug #396).
   unitOfMeasureId: string;
@@ -310,7 +310,7 @@ export function WorkOrderAddPartModal({
               >
                 <option value="">— Базова —</option>
                 {goodUoMs.map(u => (
-                  // Bug #396: value=unitOfMeasureId (UnitOfMeasure.id), не u.id (GoodUoM.id).
+                  // value=unitOfMeasureId (UnitOfMeasure.id), не u.id (GoodUoM.id).
                   // Backend addPart робить findFirst({ unitOfMeasureId: dto.unitOfMeasureId, goodId, orgId }) —
                   // GoodUoM.id у це поле ніколи не матчиться → silent-stored null без помилки.
                   <option key={u.id} value={u.unitOfMeasureId}>

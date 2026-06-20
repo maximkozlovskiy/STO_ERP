@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   BadRequestException,
   NotFoundException,
@@ -60,20 +60,13 @@ export class InventoryService {
     }
     const db = tx ?? this.prisma;
 
-    // Bug #15 + Bug #26: RECEIPT з quantity > 0 завжди створює StockBatch. Якщо ціна
-    // відсутня (типове для TRANSFER або інвентаризаційного оприбуткування) — fallback
-    // на good.purchasePrice, інакше 0 (безкоштовні зразки). Це зберігає батч-tracking
-    // без блокування легітимних бізнес-операцій.
+    // RECEIPT with quantity > 0 always creates a StockBatch. If price is absent (typical for
+    // TRANSFER or inventory-receipt), fall back to good.purchasePrice, otherwise 0 (free samples).
+    // This preserves batch-tracking without blocking legitimate business operations.
     //
-    // Bug #238 defense-in-depth: validate tenant boundary for caller-supplied UoM.
-    // Current callers (PO receive, SD transition, batch.service) already validate or
-    // pass org-trusted values, but InventoryService is a public API surface — any
-    // future caller (work-orders, mobile sync, manual adjustments) could leak
-    // cross-tenant linkage. FK alone enforces only global existence, not orgId.
-    //
-    // sto-optimize: обидва lookups незалежні (good.purchasePrice + uom.tenant guard) →
-    // Promise.all замість sequential await. Економить 1 RTT на створенні
-    // RECEIPT-руху з UoM (типовий випадок PO receive).
+    // Validate tenant boundary for caller-supplied UoM: InventoryService is a public API surface —
+    // future callers (work-orders, mobile sync, manual adjustments) could leak cross-tenant linkage.
+    // FK alone enforces only global existence, not orgId.
     const needsCostLookup =
       dto.type === 'RECEIPT' && dto.quantity > 0 && (dto.price === undefined || dto.price === null);
     const needsUomGuard = !!dto.unitOfMeasureId;
@@ -142,7 +135,6 @@ export class InventoryService {
       },
     });
 
-    // Create batch on RECEIPT. resolvedCostPrice = dto.price ?? good.purchasePrice ?? 0.
     if (dto.type === 'RECEIPT' && dto.quantity > 0) {
       await this.batchService.createFromReceipt(
         orgId,
@@ -208,9 +200,6 @@ export class InventoryService {
   }
 
   async findStockItems(orgId: string, warehouseId?: string, goodId?: string, q?: string) {
-    // Bug #34: relation-фільтри `good`/`warehouse` повинні відсікати soft-deleted сутності,
-    // щоб список інвентаря не показував позиції з видаленими товарами/складами
-    // (узгоджується з `findLowStockItems` нижче, який це робить через raw SQL).
     const where: Prisma.StockItemWhereInput = {
       orgId,
       deletedAt: null,

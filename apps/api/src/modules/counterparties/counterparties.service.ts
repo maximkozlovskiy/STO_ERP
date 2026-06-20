@@ -98,16 +98,12 @@ export class CounterpartiesService {
   }
 
   async create(orgId: string, dto: CreateCounterpartyDto): Promise<CounterpartyResponseDto> {
-    // Bug #348: pre-allocate contract number via DocumentNumberService BEFORE
-    // entering the main $transaction. next() uses its own $transaction with
-    // SELECT FOR UPDATE — nesting transactions would deadlock or hide the lock.
-    // Generate the number only when a contract will actually be created.
+    // Pre-allocate contract number via DocumentNumberService BEFORE entering the main $transaction.
+    // next() uses its own $transaction with SELECT FOR UPDATE — nesting transactions would deadlock or hide the lock.
     const needsContract = dto.type === 'SUPPLIER' || dto.type === 'BOTH';
-    // Bug #360: auto-create PURCHASE contract must use org-level currency (Settings →
-    // Org → «Валюта обліку»), not hardcoded 'UAH'. Without this fetch the auto-contract
-    // breaks the documented invariant (tooltip: «Використовується за замовчуванням у
-    // договорах і звітах»). Fallback to 'UAH' if settings row missing (fresh org).
-    // Both lookups are independent + tenant-safe → Promise.all (-1 RTT).
+    // Auto-create PURCHASE contract must use org-level currency (Settings → Org → «Валюта обліку»),
+    // not hardcoded 'UAH' — breaks the documented invariant for orgs with non-UAH default currency.
+    // Fallback to 'UAH' if settings row missing (fresh org). Both lookups are independent → Promise.all (-1 RTT).
     const [contractNumber, orgSettingsRow] = await Promise.all([
       needsContract
         ? this.documentNumberService.next(orgId, 'COUNTERPARTY_AGREEMENT')
@@ -139,8 +135,7 @@ export class CounterpartiesService {
             },
           });
         }
-        // Auto-create primary PURCHASE contract for suppliers — currencyCode
-        // успадковується від org settings (Bug #360).
+        // Auto-create primary PURCHASE contract for suppliers — currencyCode inherited from org settings.
         if (needsContract && contractNumber) {
           await tx.counterpartyContract.create({
             data: {
@@ -160,7 +155,7 @@ export class CounterpartiesService {
         });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    );
     return this.toDto(item);
   }
 
@@ -248,7 +243,7 @@ export class CounterpartiesService {
 
   async removeGarage(orgId: string, counterpartyId: string, garageId: string): Promise<void> {
     // Parallel parent (counterparty) guard + child (garage) tenant-scoped fetch (-1 RTT).
-    // Bug #398: select.isDefault — щоб auto-promote next sibling якщо видаляємо default.
+    // select.isDefault — needed to auto-promote next sibling when deleting the default garage.
     const [cp, garage] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
@@ -261,9 +256,8 @@ export class CounterpartiesService {
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     if (!garage) throw new NotFoundException('Гараж не знайдено');
-    // Bug #398: auto-promote найстарший активний sibling як новий default,
-    // інакше інваріант «у counterparty є default garage» силентно порушений.
-    // Парний з Bug #355 (WarehousesService.remove) / #356 (GoodsService.deleteBarcode).
+    // Auto-promote the oldest active sibling as new default — otherwise the invariant
+    // «counterparty always has a default garage» is silently broken.
     await this.prisma.$transaction(
       async tx => {
         await tx.customerGarage.update({
@@ -308,7 +302,7 @@ export class CounterpartiesService {
         where: { id: counterpartyId, orgId, deletedAt: null },
         select: { id: true },
       }),
-      // Bug review: findMany without take is OOM risk. 200 is generous —
+      // findMany without take is OOM risk. 200 is generous —
       // realistic contract count per counterparty is <10.
       this.prisma.counterpartyContract.findMany({
         where: { counterpartyId, orgId, deletedAt: null },
@@ -325,14 +319,11 @@ export class CounterpartiesService {
     counterpartyId: string,
     dto: CreateContractDto,
   ): Promise<ContractResponseDto> {
-    // Bug review: isPrimary is scoped PER contractType — a BOTH-type counterparty
-    // can have one primary PURCHASE and one primary SALE simultaneously. Previously
-    // the swap unset primary across both types, breaking the auto-PURCHASE invariant
-    // when a primary SALE was created.
-    // Bug #361: currencyCode сирий string без FK у DB — service ОБОВ'ЯЗКОВО валідує
-    // що код існує у Currency таблиці org (як Settings.updateOrganisationSettings).
-    // Без guard користувач може зберегти `currencyCode: 'XYZ'` → UX broken у таблиці
-    // (`'1 000.00 XYZ'`) + downstream FX-розрахунки впадуть.
+    // isPrimary is scoped PER contractType — a BOTH-type counterparty can have one primary PURCHASE
+    // and one primary SALE simultaneously. Swapping across both types broke the auto-PURCHASE invariant.
+    // currencyCode is a raw string without a DB FK — must validate it exists in Currency table
+    // (same as Settings.updateOrganisationSettings). Without guard, `currencyCode: 'XYZ'` is saved
+    // silently → UX broken in invoices (`'1 000.00 XYZ'`) + downstream FX calculations fail.
     const [cp, sameTypeCount, currencyExists] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
@@ -397,9 +388,8 @@ export class CounterpartiesService {
     contractId: string,
     dto: UpdateContractDto,
   ): Promise<ContractResponseDto> {
-    // Bug #361: парний guard для PATCH — інакше можна підмінити currencyCode на
-    // невалідний через `PATCH .../contracts/<id>` навіть якщо `createContract`
-    // блокує `XYZ`. Запускаємо паралельно з cp + contract lookups.
+    // Paired currencyCode guard for PATCH — without it a PATCH can substitute an invalid code
+    // even if createContract blocks it. Runs in parallel with cp + contract lookups.
     const [cp, contract, currencyExists] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
@@ -426,8 +416,8 @@ export class CounterpartiesService {
       this.validateContractType(cp.type, dto.contractType);
     }
 
-    // Bug review: scope isPrimary swap to SAME contractType only — otherwise
-    // setting a SALE contract as primary unsets primary on PURCHASE contracts.
+    // Scope isPrimary swap to SAME contractType only — otherwise setting a SALE contract as primary
+    // would unset primary on PURCHASE contracts.
     const swapType = dto.contractType ?? contract.contractType;
 
     const updated = await this.prisma.$transaction(
@@ -466,9 +456,8 @@ export class CounterpartiesService {
   }
 
   async removeContract(orgId: string, counterpartyId: string, contractId: string): Promise<void> {
-    // Bug #352: read full contract to know contractType + isPrimary so we can
-    // count only same-type contracts for SUPPLIER guard and auto-promote next
-    // primary after deleting the current primary.
+    // Read contractType + isPrimary to count only same-type contracts for SUPPLIER guard
+    // and auto-promote next primary after deleting the current primary.
     const [cp, contract] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
@@ -482,14 +471,12 @@ export class CounterpartiesService {
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     if (!contract) throw new NotFoundException('Договір не знайдено');
 
-    // Bug #351 + #352: do guard + soft-delete + auto-promote atomically.
-    // Counting OUTSIDE the transaction creates a race: two concurrent deletes
-    // both see count=2 and both proceed → SUPPLIER ends up with 0 contracts.
-    // Inside Serializable-default tx the second writer either sees the first
-    // delete (count drops to 1 → guard fires) or rolls back on conflict.
-    // Also gate the soft-delete on `deletedAt: null` so a re-delete after
-    // concurrent winner is a no-op (updateMany.count === 0) instead of
-    // resurrecting `deletedAt` timestamp and re-running auto-promote.
+    // Guard + soft-delete + auto-promote must be atomic. Counting OUTSIDE the transaction
+    // creates a race: two concurrent deletes both see count=2 and both proceed → SUPPLIER
+    // ends up with 0 contracts. Inside the tx the second writer either sees the first delete
+    // (count drops to 1 → guard fires) or rolls back on conflict.
+    // Gate the soft-delete on `deletedAt: null` so a re-delete after concurrent winner
+    // is a no-op (updateMany.count === 0) instead of resurrecting deletedAt + re-running auto-promote.
     await this.prisma.$transaction(
       async tx => {
         if (cp.type === CounterpartyType.SUPPLIER) {
@@ -513,10 +500,9 @@ export class CounterpartiesService {
         // Concurrent delete winner — nothing to promote, exit cleanly.
         if (deleted.count === 0) return;
 
-        // Bug #351: if deleting a primary contract, auto-promote the next remaining
-        // contract of the same type to primary. Otherwise the counterparty would be
-        // left without a primary contract for that type — breaking the invariant
-        // used by WorkOrder/PurchaseOrder auto-selection.
+        // If deleting a primary contract, auto-promote the next remaining contract of the same type.
+        // Otherwise the counterparty would be left without a primary contract for that type —
+        // breaking the invariant used by WorkOrder/PurchaseOrder auto-selection.
         if (contract.isPrimary) {
           const next = await tx.counterpartyContract.findFirst({
             where: {

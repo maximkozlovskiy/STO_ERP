@@ -93,7 +93,7 @@ export class CompletionActsController {
 
   @Delete(':id')
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER)
-  // Bug #80: cancel() returns Promise<void> — emit 204 No Content (matches logout/removeSlot/removeLine).
+  // cancel() returns Promise<void> — must emit 204 No Content (default is 200 without this decorator).
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Cancel completion act (DRAFT only)' })
   cancel(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {

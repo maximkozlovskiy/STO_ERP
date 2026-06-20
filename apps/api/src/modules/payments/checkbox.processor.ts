@@ -28,10 +28,9 @@ export class CheckboxProcessor extends WorkerHost {
   async process(job: Job<FiscalReceiptJob>): Promise<void> {
     const { paymentId, orgId, branchId, amount, method } = job.data;
 
-    // Bug #346: idempotency guard — if fiscalReceiptId already set (from a previous
-    // attempt that succeeded at Checkbox but failed before payment.update committed),
-    // skip the external API call entirely. Without this, a transient DB error on
-    // payment.update causes a retry that creates a SECOND fiscal receipt in Checkbox.
+    // Idempotency guard: if fiscalReceiptId already set (previous attempt succeeded at Checkbox
+    // but failed before payment.update committed), skip external call — otherwise a transient DB
+    // error on payment.update causes a retry that creates a SECOND fiscal receipt in Checkbox.
     const existingPayment = await this.prisma.payment.findFirst({
       where: { id: paymentId, orgId },
       select: { fiscalReceiptId: true },
@@ -42,7 +41,6 @@ export class CheckboxProcessor extends WorkerHost {
       return;
     }
 
-    // Load branch settings to get Checkbox credentials — scoped to the specific branch
     const branchSettings = await this.prisma.branchSettings.findFirst({
       where: branchId ? { orgId, branchId } : { orgId },
     });
@@ -100,8 +98,8 @@ export class CheckboxProcessor extends WorkerHost {
       clearTimeout(timer);
     }
 
-    // Bug #273: any 3xx with redirect: 'manual' MUST be rejected — Checkbox API never
-    // returns 3xx on a sell endpoint; if it does, treat as suspicious tampering.
+    // Any 3xx with redirect: 'manual' MUST be rejected — Checkbox API never returns 3xx
+    // on a sell endpoint; if it does, treat as suspicious SSRF redirect tampering.
     if (response.status >= 300 && response.status < 400) {
       throw new Error(
         `Checkbox API повернув перенаправлення ${response.status} — підозріла поведінка, запит відхилено`,

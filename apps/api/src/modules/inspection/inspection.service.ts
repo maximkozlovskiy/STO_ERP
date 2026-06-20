@@ -1,4 +1,4 @@
-import {
+﻿import {
   BadRequestException,
   ConflictException,
   Injectable,
@@ -70,7 +70,6 @@ export class InspectionService {
     if (!wo) throw new NotFoundException('Наряд не знайдено');
     if (existing) throw new ConflictException('Звіт огляду вже існує для цього наряду');
 
-    // Find critical points and pre-fetch matching works in a single query (N+1 fix).
     const criticalPoints = dto.points.filter(p => p.status === 'CRITICAL');
     const hasCritical = criticalPoints.length > 0;
 
@@ -102,8 +101,8 @@ export class InspectionService {
       works.find(w => w.name.toLowerCase().includes(pointName.toLowerCase())) ?? null;
 
     // All side effects in a single transaction to avoid partial state.
-    // Bug #130: явний timeout 10s — loop з N workOrderLine.create на critical points
-    // (DEFAULT_INSPECTION_POINTS може мати 50+ точок) → потребує більше за 5s default.
+    // Explicit 10s timeout — loop creates N workOrderLine rows for critical points
+    // (up to 50 points) which exceeds the 5s Prisma default.
     const { report, autoCreatedLines } = await this.prisma.$transaction(
       async tx => {
         const created = await tx.inspectionReport.create({

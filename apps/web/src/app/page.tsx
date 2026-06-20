@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-// Bug #293: root `/` — публічна сторінка; `apiFetch` шле stale Authorization і при 401
+// root `/` — публічна сторінка; `apiFetch` шле stale Authorization і при 401
 // редиректить на `/login`, прихаваючи `setup.initialized=false` сигнал. Використовуємо
 // `publicFetch` (без auth header, без auto-redirect).
 import { publicFetch } from '@/lib/api-client';

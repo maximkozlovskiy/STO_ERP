@@ -26,7 +26,7 @@ export interface GoodWithDocuments {
   documents: GoodMovementDoc[];
 }
 
-// Bug #458: BatchConsumption schema (packages/database/prisma/schema.prisma:1196)
+// BatchConsumption schema (packages/database/prisma/schema.prisma:1196)
 // has `documentType String` + `documentId String` — both NON-null. Backend
 // `byBatch()` maps them verbatim without `?? null`. Previously typed as
 // `string | null` here — over-permissive, would TS-allow dead null checks.
@@ -132,7 +132,7 @@ function buildStockQuery(filters: StockByDocumentFilter): string {
   return qs ? `?${qs}` : '';
 }
 
-// Bug #457: `enabled` gate — без нього всі 3 hooks тригерились при mount у режимі 'goods',
+// `enabled` gate — без нього всі 3 hooks тригерились при mount у режимі 'goods',
 // агрегуючи до 5000 рядків. Споживач передає `enabled: viewMode === 'documents'` (або 'batches').
 export function useStockByDocument(filters: StockByDocumentFilter, enabled: boolean = true) {
   const { employee } = useAuth();

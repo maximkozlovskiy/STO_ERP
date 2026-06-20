@@ -186,7 +186,7 @@ export class GarageResponseDto {
 // в”Ђв”Ђв”Ђ CounterpartyContract в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateContractDto {
-  // Bug #353: @MaxLength anti-DoS вЂ” РЅРѕРјРµСЂ РґРѕРєСѓРјРµРЅС‚Р° РјР°С” СЂРµР°Р»С–СЃС‚РёС‡РЅРёР№ РІРµСЂС…РЅС–Р№ Р»С–РјС–С‚.
+  // @MaxLength anti-DoS вЂ” РЅРѕРјРµСЂ РґРѕРєСѓРјРµРЅС‚Р° РјР°С” СЂРµР°Р»С–СЃС‚РёС‡РЅРёР№ РІРµСЂС…РЅС–Р№ Р»С–РјС–С‚.
   @ApiPropertyOptional({
     description: 'РќРѕРјРµСЂ РґРѕРіРѕРІРѕСЂСѓ (Р°РІС‚Рѕ СЏРєС‰Рѕ РЅРµ РїРµСЂРµРґР°РЅРѕ)',
   })
@@ -223,7 +223,7 @@ export class CreateContractDto {
   @Min(0)
   creditLimit?: number;
 
-  // Bug #359: toUpperCurrencyCode РЅРѕСЂРјР°Р»С–Р·СѓС” `uah` в†’ `UAH` (Currency.code UPPERCASE
+  // toUpperCurrencyCode РЅРѕСЂРјР°Р»С–Р·СѓС” `uah` в†’ `UAH` (Currency.code UPPERCASE
   // Сѓ DB-СЃС–РґС–, lookup case-sensitive). Replaces emptyToUndefined вЂ” С‚РѕР№ helper Р»РёС€Рµ
   // РјР°РїРёС‚СЊ '' в†’ undefined, РЅРµ upper-cases.
   @ApiPropertyOptional({ description: 'ISO РєРѕРґ РІР°Р»СЋС‚Рё (РЅР°РїСЂ. UAH, USD, EUR)' })
@@ -242,7 +242,7 @@ export class CreateContractDto {
 }
 
 export class UpdateContractDto {
-  // Bug #353: @MaxLength anti-DoS вЂ” РЅРѕРјРµСЂ РґРѕРєСѓРјРµРЅС‚Р° РјР°С” СЂРµР°Р»С–СЃС‚РёС‡РЅРёР№ РІРµСЂС…РЅС–Р№ Р»С–РјС–С‚.
+  // @MaxLength anti-DoS вЂ” РЅРѕРјРµСЂ РґРѕРєСѓРјРµРЅС‚Р° РјР°С” СЂРµР°Р»С–СЃС‚РёС‡РЅРёР№ РІРµСЂС…РЅС–Р№ Р»С–РјС–С‚.
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -281,7 +281,7 @@ export class UpdateContractDto {
   @Min(0)
   creditLimit?: number;
 
-  // Bug #359: toUpperCurrencyCode РЅРѕСЂРјР°Р»С–Р·СѓС” `uah` в†’ `UAH` (Currency.code UPPERCASE
+  // toUpperCurrencyCode РЅРѕСЂРјР°Р»С–Р·СѓС” `uah` в†’ `UAH` (Currency.code UPPERCASE
   // Сѓ DB-СЃС–РґС–, lookup case-sensitive). Replaces emptyToUndefined вЂ” С‚РѕР№ helper Р»РёС€Рµ
   // РјР°РїРёС‚СЊ '' в†’ undefined, РЅРµ upper-cases.
   @ApiPropertyOptional({ description: 'ISO РєРѕРґ РІР°Р»СЋС‚Рё (РЅР°РїСЂ. UAH, USD, EUR)' })

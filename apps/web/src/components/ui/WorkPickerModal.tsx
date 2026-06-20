@@ -54,7 +54,7 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
         setCategories(arr);
       })
       .catch(() => {
-        // Bug #387: allow retry on next open after failure
+        // allow retry on next open after failure
         if (!cancelled) categoriesLoadedRef.current = false;
       });
     return () => {

@@ -96,11 +96,6 @@ export class WorkOrdersService {
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────
-  // Bug #432: SHAREABLE_STATUSES перенесено у work-orders.fsm.ts для cross-module
-  // експорту (FE shared mirror + completion-acts.service потенційно). Раніше
-  // приватна static — тепер public expor з fsm.ts. Семантика та сама:
-  // публічне share-посилання активне у DRAFT/ESTIMATE/APPROVED; після IN_PROGRESS
-  // публічне посилання губить сенс, а CLOSED-статуси містять чутливі дані.
 
   async findAll(orgId: string, query: WorkOrderQueryDto): Promise<PaginatedWorkOrdersDto> {
     const showDeleted = query.showDeleted === 'true';
@@ -189,7 +184,6 @@ export class WorkOrdersService {
   async findOne(orgId: string, id: string, userRole?: string): Promise<WorkOrderDetailDto> {
     const wo = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      // Bug #350: include contract so detail shows contractNumber (toDto maps it).
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
@@ -386,7 +380,7 @@ export class WorkOrdersService {
     }
     if (dto.liftId && !lift) throw new NotFoundException('Підйомник не знайдено');
 
-    // Bug #86: capture old field-values BEFORE update so AuditEvent.diff is meaningful.
+    // Capture old field-values BEFORE update so AuditEvent.diff is meaningful.
     // Only include fields user actually attempted to change (dto.X !== undefined).
     const oldData: Record<string, unknown> = {};
     const newData: Record<string, unknown> = {};
@@ -406,14 +400,12 @@ export class WorkOrdersService {
         'clientApproval',
         'plannedAt',
         'dueDate',
-        // Bug #433: documentDate і liftId пишуться у data (рядки нижче),
-        // але були пропущені у audit-list — той самий шаблон що Bug #421.
-        // Зміна дати документа / підйомника не з'являлась у AuditEvent (silent gap
-        // у compliance/bookkeeping audit trail).
+        // documentDate and liftId changes must appear in AuditEvent — omitting them
+        // silently drops date/lift mutations from the compliance audit trail.
         'documentDate',
         'liftId',
-        // Bug #421: plannedHours/actualHours були в data-payload але не у audit
-        // diff — зміни нормогодин не з'являлись у AuditEvent (тихий пропуск).
+        // plannedHours/actualHours must also appear in AuditEvent — normo-hour changes
+        // were silently missing from the audit diff.
         'plannedHours',
         'actualHours',
       ] as const
@@ -447,9 +439,7 @@ export class WorkOrdersService {
         plannedHours: dto.plannedHours === undefined ? undefined : (dto.plannedHours ?? null),
         actualHours: dto.actualHours === undefined ? undefined : (dto.actualHours ?? null),
       },
-      // Bug #350 follow-up: include contract so PATCH response carries contractNumber.
-      // Without it, frontend WorkOrderDetail.contractNumber stays null after edits
-      // (description/mileage/priority…) → contract row in UI disappears on save.
+      // PATCH response must include contract so contractNumber doesn't vanish after any field edit.
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
@@ -459,7 +449,7 @@ export class WorkOrdersService {
       },
     });
 
-    // Bug #86: AuditEvent for field-level updates (only if something actually changed)
+    // AuditEvent for field-level updates (only if something actually changed)
     if (userId && Object.keys(newData).length > 0) {
       this.audit
         .record(orgId, 'WorkOrder', id, 'UPDATE', userId, oldData, newData)
@@ -541,10 +531,9 @@ export class WorkOrdersService {
     });
     if (!original) throw new NotFoundException('Наряд не знайдено');
 
-    // Bug #90: validate FK references still exist (not soft-deleted) BEFORE create.
-    // Without this, FK violation surfaces as Prisma P2003 (HTTP 500) instead of a
-    // friendly 404 with a clear message in Ukrainian.
-    // Perf: docNumbers.next не залежить від FK validation — паралелимо разом.
+    // Validate FK references still exist (not soft-deleted) BEFORE create.
+    // Without this, FK violation surfaces as P2003 (HTTP 500) instead of a friendly 404.
+    // docNumbers.next is independent of FK validation — parallelise together.
     const [vehicle, counterparty, branch, number] = await Promise.all([
       this.prisma.vehicle.findFirst({
         where: { id: original.vehicleId, orgId, deletedAt: null },
@@ -566,7 +555,7 @@ export class WorkOrdersService {
     if (!branch) throw new NotFoundException('Філію було видалено — клонування неможливе');
 
     // 3. Pre-compute totals from the original's lines/parts so the cloned WO
-    // ships consistent totalLabor/totalParts/totalAmount (Bug #81). Without this,
+    // ships consistent totalLabor/totalParts/totalAmount. Without this,
     // Prisma defaults leave them at 0 while lines[].amount has real values.
     const totalLabor = original.lines.reduce((s, l) => s + Number(l.amount), 0);
     const totalParts = original.parts.reduce((s, p) => s + Number(p.amount), 0);
@@ -586,19 +575,15 @@ export class WorkOrdersService {
         priority: original.priority,
         repairCategory: original.repairCategory,
         dueDate: original.dueDate,
-        // Bug #426: plannedHours прочитаний з original (line 499) але НЕ записаний у
-        // clone — silent loss. clone() копіює всі planning поля (dueDate, lines з normoHours,
-        // parts з quantity), тож plannedHours має бути таким же — forecast має сенс зберегти.
-        // actualHours навмисно ОПУЩЕНО — clone — нова DRAFT-сесія, фактичні години
-        // ще не існують (симетрично з actualHours: null у lines.create нижче).
+        // plannedHours copied from original — clone preserves all planning fields.
+        // actualHours intentionally omitted — clone is a new DRAFT session, actual hours do not yet exist.
         plannedHours: original.plannedHours,
         totalLabor,
         totalActualLabor: totalLabor,
         totalParts,
         totalAmount: totalLabor + totalParts,
         lines: {
-          // Bug #94: clones are DRAFT — actualHours must reset to null. Copying the
-          // original's value misleads "factual labour" reports for the new visit.
+          // clones are DRAFT — actualHours reset to null; copying original value misleads labour reports for the new visit.
           create: original.lines.map(l => ({
             orgId,
             workId: l.workId,
@@ -629,8 +614,6 @@ export class WorkOrdersService {
       },
     });
 
-    // Bug #96: AuditEvent for clone — without this the "Журнал змін" tab of the
-    // cloned WO is empty, hiding who/when created the duplicate.
     if (userId) {
       this.audit
         .record(orgId, 'WorkOrder', cloned.id, 'CREATE', userId, undefined, {
@@ -682,8 +665,8 @@ export class WorkOrdersService {
     if (newStatus === 'COMPLETED') updates.completedAt = new Date();
 
     // All side-effects + status update run in one transaction to prevent partial state.
-    // Bug #130: явний timeout 10s — COMPLETED транзакція робить N writeoff + N release + 1 charge
-    // у циклі через workOrderPart; при 50+ запчастинах це може зайняти > 5s default.
+    // Explicit 10s timeout: COMPLETED tx does N writeoff + N release + 1 charge per part;
+    // 50+ parts can exceed the 5s Prisma default.
     const updated = await this.prisma.$transaction(
       async tx => {
         if (newStatus === 'IN_PROGRESS') {
@@ -715,8 +698,8 @@ export class WorkOrdersService {
     );
 
     // Sync Vehicle.currentMileage from outMileage when WO completes.
-    // Bug #75: Prisma `lt` filter EXCLUDES NULL rows — vehicles created without
-    // an initial mileage stay NULL forever. Match both "lower" and "NULL".
+    // Prisma `lt` filter EXCLUDES NULL rows — vehicles without an initial mileage
+    // stay NULL forever. Match both "lower mileage" and "NULL" explicitly.
     if (newStatus === 'COMPLETED' && wo.outMileage) {
       this.prisma.vehicle
         .updateMany({
@@ -990,7 +973,7 @@ export class WorkOrdersService {
         return created;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #138: explicit timeout — create + recalcTotals (2 findMany take:1000 + update)
+    ); // explicit timeout: create + recalcTotals (2 findMany take:1000 + update) can exceed Prisma default
 
     return this.toLineDto(line);
   }
@@ -1015,10 +998,9 @@ export class WorkOrdersService {
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-    // Bug #522: дозволяємо у IN_PROGRESS/ON_HOLD ТІЛЬКИ patch'i що зачіпають
-    // винятково actualHours (механік закриває фактичні години). Інші поля у тих
-    // статусах = 400 («Не можна редагувати позиції наряду в поточному статусі»).
-    // У EDITABLE_STATUSES (DRAFT/ESTIMATE/APPROVED) — всі поля як раніше.
+    // Allow IN_PROGRESS/ON_HOLD ONLY for patches that touch exclusively actualHours
+    // (mechanic closing actual hours). Other fields in those statuses → 400.
+    // In EDITABLE_STATUSES (DRAFT/ESTIMATE/APPROVED) all fields are allowed.
     const isLineActualOnlyPatch =
       dto.workId === undefined &&
       dto.employeeId === undefined &&
@@ -1047,12 +1029,8 @@ export class WorkOrdersService {
             amount,
             liftId: dto.liftId,
             notes: dto.notes,
-            // Bug #521: distinguish "field omitted" (undefined → skip) від
-            // "field cleared" (null → SET NULL). Симетрія з UpdateWorkOrderDto
-            // logic у `update()` (рядок 431). Без цього inline-edit що очищає
-            // actualHours лагав 400 на DTO рівні; навіть якщо DTO прийняв null,
-            // `dto.actualHours !== undefined && { actualHours: dto.actualHours }`
-            // писало `actualHours: null` правильно — але DTO відхиляв ще до цього.
+            // Distinguish "field omitted" (undefined → skip) from "field cleared" (null → SET NULL).
+            // Symmetric with UpdateWorkOrderDto.actualHours in update().
             actualHours: dto.actualHours === undefined ? undefined : (dto.actualHours ?? null),
           },
           include: {
@@ -1064,7 +1042,7 @@ export class WorkOrdersService {
         return result;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #138: explicit timeout — update + recalcTotals
+    ); // explicit timeout: update + recalcTotals
 
     return this.toLineDto(updated);
   }
@@ -1096,7 +1074,7 @@ export class WorkOrdersService {
         await this.recalcTotals(workOrderId, tx, orgId);
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #138: explicit timeout — soft-delete + recalcTotals
+    ); // explicit timeout: soft-delete + recalcTotals
   }
 
   // ─── Parts ───────────────────────────────────────────────
@@ -1105,9 +1083,8 @@ export class WorkOrdersService {
     orgId: string,
     workOrderId: string,
     dto: CreateWorkOrderPartDto,
-    // Bug #529: приймаємо userRole для consistency з findOne — controller передає
-    // @CurrentUser().role. Без параметра OWNER/ADMIN отримує DTO без costPrice
-    // після додавання → довод��ться refresh detail page щоб побачити батч-собівартість.
+    // userRole passed for consistency with findOne: without it OWNER/ADMIN get a DTO
+    // without costPrice after adding a part and need a full page refresh to see it.
     userRole?: string,
   ): Promise<WorkOrderPartResponseDto> {
     // Tiered parallelization — wo + good + warehouse + optional goodUoM у єдиний Promise.all.
@@ -1139,10 +1116,9 @@ export class WorkOrdersService {
     }
     if (!good) throw new NotFoundException('Товар не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
-    // Bug #399: fail-loudly — silent-ignore unknown UnitOfMeasureId маскує contract bugs
-    // на FE (#396 — WorkOrderAddPartModal посилав GoodUoM.id у поле UnitOfMeasure.id;
-    // backend silent-stored null без сигналу про втрату даних). Якщо unitOfMeasureId
-    // переданий але GoodUoM запис для нього відсутній → 404 з підказкою користувачу.
+    // Fail-loudly on unknown unitOfMeasureId: silent null-store masks frontend contract bugs
+    // (WorkOrderAddPartModal sent GoodUoM.id in the UnitOfMeasure.id field; backend silently
+    // stored null with no signal about data loss). If provided but GoodUoM is missing → 404.
     if (dto.unitOfMeasureId && !uomJunction) {
       throw new NotFoundException(
         'Одиницю виміру не сконфігуровано для цього товару. Налаштуйте у каталозі (Товари → Одиниці виміру) або виберіть базову.',
@@ -1163,8 +1139,7 @@ export class WorkOrdersService {
             quantity: dto.quantity,
             price,
             amount,
-            // Bug #420: WorkOrderPart.unitOfMeasureId FK → UnitOfMeasure.
-            // uomJunction.unitOfMeasureId is the FK; uomJunction.id is the GoodUoM PK.
+            // uomJunction.unitOfMeasureId is the FK (→ UnitOfMeasure); uomJunction.id is the GoodUoM PK.
             unitOfMeasureId: uomJunction?.unitOfMeasureId ?? null,
           },
           include: { good: PART_GOOD_INCLUDE },
@@ -1173,7 +1148,7 @@ export class WorkOrdersService {
         return { ...created, goodUoM: uomJunction };
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #138: explicit timeout — create + recalcTotals
+    ); // explicit timeout: create + recalcTotals
 
     return this.toPartDto(part, userRole);
   }
@@ -1183,7 +1158,7 @@ export class WorkOrdersService {
     workOrderId: string,
     partId: string,
     dto: UpdateWorkOrderPartDto,
-    // Bug #529: симетрично з addPart — приймаємо userRole для role-gated costPrice.
+    // userRole passed symmetrically with addPart — for role-gated costPrice visibility.
     userRole?: string,
   ): Promise<WorkOrderPartResponseDto> {
     // Parallel parent (editable WO) + child part fetch — same-aggregate same-tenant guard.
@@ -1220,7 +1195,7 @@ export class WorkOrdersService {
         where: { unitOfMeasureId: newUnitOfMeasureId, goodId: goodIdForPart, orgId },
         select: GOOD_UOM_SELECT,
       });
-      // Bug #399: fail-loudly — silent-store-null маскує FE contract bugs (#396).
+      // Fail-loudly: silent null-store masks frontend contract bugs.
       if (!uomJunction) {
         throw new NotFoundException(
           'Одиницю виміру не сконфігуровано для цього товару. Налаштуйте у каталозі (Товари → Одиниці виміру) або виберіть базову.',
@@ -1236,7 +1211,7 @@ export class WorkOrdersService {
             quantity,
             price,
             amount,
-            // Bug #420: store UnitOfMeasure.id (FK); uomJunction.id is the GoodUoM PK.
+            // store UnitOfMeasure.id (FK); uomJunction.id is the GoodUoM PK.
             unitOfMeasureId:
               dto.unitOfMeasureId === undefined
                 ? part.unitOfMeasureId
@@ -1248,7 +1223,7 @@ export class WorkOrdersService {
         return { ...result, goodUoM: uomJunction };
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #138: explicit timeout — update + recalcTotals
+    ); // explicit timeout: update + recalcTotals
 
     return this.toPartDto(updated, userRole);
   }
@@ -1280,7 +1255,7 @@ export class WorkOrdersService {
         await this.recalcTotals(workOrderId, tx, orgId);
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #138: explicit timeout — soft-delete + recalcTotals
+    ); // explicit timeout: soft-delete + recalcTotals
   }
 
   // ─── Helpers ─────────────────────────────────────────────
@@ -1573,9 +1548,9 @@ export class WorkOrdersService {
     const result: Record<string, number> = {};
     for (const part of parts) {
       if (part.unitOfMeasureId) {
-        // Bug #316: defense-in-depth. DTO `@Min(0.000001)` блокує coefficient=0 на write-path,
-        // але legacy/seed/direct-SQL дані можуть мати 0. `?? 1` НЕ ловить 0
-        // (nullish coalescing спрацьовує лише на null/undefined). safeCoeff() ловить 0/NaN/негативні.
+        // DTO @Min(0.000001) blocks coefficient=0 on write-path, but legacy/seed/direct-SQL
+        // data may have 0. `?? 1` does NOT catch 0 (nullish coalescing fires only on null/undefined).
+        // safeCoeff() handles 0/NaN/negative.
         result[part.id] = safeCoeff(uomCoeffById[part.unitOfMeasureId]);
       }
     }
@@ -1626,7 +1601,7 @@ export class WorkOrdersService {
       goodBrandName: part.good?.brand?.name ?? null,
       unitOfMeasureId: part.unitOfMeasureId ?? null,
       unitShortName: selectedUoM?.unitOfMeasure.shortName ?? baseUoM?.shortName ?? part.good?.unit,
-      // Bug #316: safeCoeff() для legacy/seed 0 — фронт використовує coefficient як дільник для display↔base conversion.
+      // safeCoeff() guards legacy/seed coefficient=0 — frontend uses it as divisor for display↔base conversion.
       coefficient: safeCoeff(selectedUoM?.coefficient ?? baseUoM?.coefficient),
       warehouseId: part.warehouseId,
       quantity: part.quantity,
@@ -1659,7 +1634,6 @@ export class WorkOrdersService {
       select: { id: true, status: true, shareToken: true },
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-    // Bug #432: SHAREABLE_STATUSES перенесено з private static у fsm.ts експорт.
     if (!SHAREABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException(
         'Поділитися кошторисом можна лише у статусі чернетка / кошторис / затверджено',
@@ -1697,7 +1671,6 @@ export class WorkOrdersService {
       where: {
         shareToken: token,
         deletedAt: null,
-        // Bug #432: shared SHAREABLE_STATUSES з fsm.ts.
         status: { in: [...SHAREABLE_STATUSES] },
       },
       include: {
@@ -1776,12 +1749,10 @@ export class WorkOrdersService {
       inMileage: wo.inMileage ?? null,
       totalLabor: Number(wo.totalLabor),
       totalParts: Number(wo.totalParts),
-      // Bug #508: публічний кошторис показує ПЛАНОВУ суму. wo.totalAmount
-      // обчислюється у бекенді як totalActualLabor + totalParts (включає
-      // фактичні години якщо вони введені) — у SHAREABLE_STATUSES (DRAFT/
-      // ESTIMATE/APPROVED) це семантично некоректно: клієнт бачить кошторис,
-      // а не акт виконаних робіт. Обчислюємо локально як totalLabor + totalParts
-      // щоб математика рядків (по normoHours) збігалася з totalAmount.
+      // Public estimate shows PLANNED total: wo.totalAmount = totalActualLabor + totalParts
+      // (uses actual hours when entered). For SHAREABLE_STATUSES this is semantically wrong —
+      // the client sees an estimate, not a completion act. Compute locally as totalLabor + totalParts
+      // so row math (normoHours × price) matches the grand total.
       totalAmount: Number(wo.totalLabor) + Number(wo.totalParts),
       lines: wo.lines.map(l => ({
         id: l.id,
@@ -1870,9 +1841,9 @@ export class WorkOrdersService {
     const TAKE = 500;
     const [invoices, payments, calendarSlots, warranties] = await Promise.all([
       this.prisma.invoice.findMany({
-        // Bug #415: CANCELLED інвойси виключені для узгодженості з `findByWorkOrder` і
-        // `createFromWorkOrder` pre-check. Інакше badge "Документи" показує count
-        // що включає cancelled → користувач думає рахунок існує, тоді як активного немає.
+        // CANCELLED invoices excluded for consistency with `findByWorkOrder` and
+        // `createFromWorkOrder` pre-check: the "Документи" badge must not count cancelled
+        // invoices — otherwise the user sees count > 0 but no active invoice exists.
         where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
         select: { id: true, number: true, status: true, amount: true, documentDate: true },
         orderBy: { createdAt: 'desc' },
@@ -1930,7 +1901,7 @@ export class WorkOrdersService {
     const [invoices, payments, calendarSlots, warranties] = await Promise.all([
       this.prisma.invoice.groupBy({
         by: ['workOrderId'],
-        // Bug #415: симетрично з getLinkedDocuments — CANCELLED виключений з counts.
+        // Symmetric with getLinkedDocuments — CANCELLED excluded from counts.
         where: {
           workOrderId: { in: workOrderIds },
           orgId,

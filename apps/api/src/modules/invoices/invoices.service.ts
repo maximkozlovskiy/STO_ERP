@@ -110,8 +110,8 @@ export class InvoicesService {
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: { select: { number: true } },
-        // Bug #232: include good.unit + unitOfMeasure щоб InvoiceLineResponseDto.unitShortName/coefficient
-        // не були завжди undefined. Krok 3 додав ці поля у DTO але includes не оновили.
+        // good.unit + unitOfMeasure required: unitShortName/coefficient were always undefined
+        // until includes were updated to match DTO fields.
         lines: {
           orderBy: { sortOrder: 'asc' },
           take: 500,
@@ -132,7 +132,7 @@ export class InvoicesService {
   }
 
   async createFromWorkOrder(orgId: string, workOrderId: string): Promise<InvoiceResponseDto> {
-    // Bug #412: prep-check WO existence + duplicate (pre-tx) for fast 4xx feedback.
+    // Pre-tx check WO existence + duplicate for fast 4xx feedback.
     // Race still possible — actual create wrapped in Serializable tx with re-check below.
     const [wo, existingPre] = await Promise.all([
       this.prisma.workOrder.findFirst({
@@ -148,8 +148,8 @@ export class InvoicesService {
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-    // Bug #432: shared INVOICEABLE_STATUSES — раніше inline `['COMPLETED', 'INVOICED']`.
-    // Будь-який новий статус у whitelist оновлюється тільки у одному місці тепер.
+    // shared INVOICEABLE_STATUSES: раніше inline `['COMPLETED', 'INVOICED']` — будь-який
+    // новий статус у whitelist оновлюється тільки у одному місці.
     if (!INVOICEABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Рахунок можна виставити лише для завершеного наряду');
     }
@@ -161,10 +161,9 @@ export class InvoicesService {
     // status reservation already creates similar gaps).
     const number = await this.docNumbers.next(orgId, 'INVOICE');
 
-    // Bug #412: Serializable isolation + re-check `existing` within the tx prevents
-    // two concurrent createFromWorkOrder calls from BOTH passing the pre-check and
-    // creating duplicate invoices. On Serializable conflict, Prisma throws P2034 →
-    // map to BadRequestException with user-friendly Ukrainian message.
+    // Serializable isolation + re-check `existing` within the tx prevents two concurrent
+    // createFromWorkOrder calls from BOTH passing the pre-check and creating duplicate invoices.
+    // On Serializable conflict, Prisma throws P2034 → map to BadRequestException.
     try {
       const inv = await this.prisma.$transaction(
         async tx => {
@@ -297,13 +296,12 @@ export class InvoicesService {
   }
 
   async clone(orgId: string, id: string): Promise<InvoiceResponseDto> {
-    // 1. Find original invoice with lines
     const original = await this.prisma.invoice.findFirst({
       where: { id, orgId, deletedAt: null },
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: { select: { number: true } },
-        // Bug #232: include good.unitOfMeasure для коректного toDto(true) на завершенні clone.
+        // good.unitOfMeasure required for correct toDto(true) on clone completion.
         lines: {
           orderBy: { sortOrder: 'asc' },
           take: 500,
@@ -320,8 +318,8 @@ export class InvoicesService {
     });
     if (!original) throw new NotFoundException('Рахунок не знайдено');
 
-    // Bug #90: validate counterparty still exists (not soft-deleted) BEFORE create.
-    // Otherwise Prisma P2003 surfaces as HTTP 500 instead of a friendly 404.
+    // Validate counterparty still exists (not soft-deleted) BEFORE create:
+    // Prisma P2003 would surface as HTTP 500 instead of a friendly 404.
     const counterparty = await this.prisma.counterparty.findFirst({
       where: { id: original.counterpartyId, orgId, deletedAt: null },
       select: { id: true },
@@ -329,20 +327,17 @@ export class InvoicesService {
     if (!counterparty)
       throw new NotFoundException('Контрагента було видалено — клонування неможливе');
 
-    // 2. Get new number
     const number = await this.docNumbers.next(orgId, 'INVOICE');
 
-    // 3. Pre-compute VAT totals from original's lines so the cloned invoice
-    // ships consistent totalWithoutVat/totalVat/totalWithVat (Bug #82). Without
-    // this, Prisma defaults leave them at 0 while lines[].priceWithVat has real values.
+    // Pre-compute VAT totals from original's lines so the cloned invoice ships consistent
+    // totalWithoutVat/totalVat/totalWithVat; Prisma defaults leave them at 0 while
+    // lines[].priceWithVat has real values.
     const totalWithoutVat = original.lines.reduce((s, l) => s + Number(l.priceWithoutVat), 0);
     const totalVat = original.lines.reduce((s, l) => s + Number(l.vatAmount), 0);
     const totalWithVat = original.lines.reduce((s, l) => s + Number(l.priceWithVat), 0);
 
-    // 4. Create cloned invoice as DRAFT
-    // Bug #91: clone is a standalone invoice — must NOT inherit workOrderId,
-    // otherwise the same WO accumulates duplicate invoices and the WO→Invoice
-    // 1:1 invariant breaks (auto-invoice on completion would create a 3rd).
+    // Clone must NOT inherit workOrderId: the same WO would accumulate duplicate invoices
+    // and the WO→Invoice 1:1 invariant breaks (auto-invoice on completion creates a 3rd).
     const cloned = await this.prisma.invoice.create({
       data: {
         orgId,
@@ -444,7 +439,7 @@ export class InvoicesService {
         sortOrder: dto.sortOrder ?? 0,
         unitOfMeasureId: dto.unitOfMeasureId ?? null,
       },
-      // Bug #232: include good для unitShortName/coefficient у відповіді.
+      // good include required for unitShortName/coefficient in response.
       include: {
         good: {
           select: {
@@ -500,7 +495,7 @@ export class InvoicesService {
         priceWithVat,
         sortOrder: dto.sortOrder ?? undefined,
       },
-      // Bug #232: include good для unitShortName/coefficient у відповіді.
+      // good include required for unitShortName/coefficient in response.
       include: {
         good: {
           select: {
@@ -557,8 +552,6 @@ export class InvoicesService {
     const totalVat = Number(result._sum.vatAmount ?? 0);
     const totalWithVat = Number(result._sum.priceWithVat ?? 0);
 
-    // Bug #76: prior code had a dead ternary (`totalWithVat || lines.length === 0 ? totalWithVat : totalWithVat`).
-    // Both branches identical → result always equals totalWithVat. Use it directly.
     await this.prisma.invoice.update({
       where: { id: invoiceId, orgId },
       data: { totalWithoutVat, totalVat, totalWithVat, amount: totalWithVat },
@@ -605,33 +598,25 @@ export class InvoicesService {
       }),
     ]);
     if (!woPre) throw new NotFoundException('Наряд не знайдено');
-    // Bug #432: shared INVOICEABLE_STATUSES — раніше inline `['COMPLETED', 'INVOICED']`.
     if (!INVOICEABLE_STATUSES.includes(woPre.status))
       throw new BadRequestException('Рахунок можна виставити лише для завершеного наряду');
     if (!existing) throw new NotFoundException('Активний рахунок не знайдено');
-    // Bug #403: refreshFromWorkOrder перезаписував рядки SENT/PAID/OVERDUE без перевірки →
-    // ламає бухоблік. update() має guard на DRAFT — тут симетрично.
+    // Guard: refreshFromWorkOrder must not overwrite SENT/PAID/OVERDUE lines — breaks bookkeeping.
     if (existing.status !== InvoiceStatus.DRAFT)
       throw new BadRequestException(
         'Оновити можна лише чернетку рахунку. Скасуйте поточний і виставте новий.',
       );
 
-    // Bug #406: vatRate=0 викривлював облік ПДВ. Симетрично з addLine (dto.vatRate ?? 20).
+    // vatRate=0 corrupts VAT accounting — default 20 matches addLine (dto.vatRate ?? 20).
     const DEFAULT_VAT = 20;
 
-    // Bug #407 + sto-optimize: WO lines+parts fetched inside tx to close TOCTOU between
-    // pre-check (reads WO contents) and createMany (writes invoice lines). Plain default
-    // isolation (ReadCommitted) дозволяє concurrent addLine(invoice) або інший
-    // refreshFromWorkOrder злити стан між pre-check і tx-body. Serializable + inner re-check
-    // status — симетрично з createFromWorkOrder (Bug #412): Postgres SSI ловить write-conflict
-    // → P2034 → 4xx з UA-повідомленням замість мовчазного override.
+    // WO lines+parts fetched inside tx to close TOCTOU between pre-check (reads WO contents)
+    // and createMany (writes invoice lines). ReadCommitted allows concurrent addLine/refreshFromWorkOrder
+    // to silently merge stale state. Serializable + inner re-check status — Postgres SSI catches
+    // write-conflict → P2034 → 4xx instead of silent override.
     try {
       await this.prisma.$transaction(
         async tx => {
-          // Re-check invoice + fetch WO lines/parts in parallel inside Serializable tx.
-          // invInTx: guard against DRAFT→SENT race between pre-check and tx entry.
-          // wo: lines+parts needed for lineData below. Independent reads → Promise.all
-          // saves one RTT and shortens the Serializable lock window.
           const [invInTx, wo] = await Promise.all([
             tx.invoice.findFirst({
               where: { id: existing.id, orgId, deletedAt: null },
@@ -664,11 +649,8 @@ export class InvoicesService {
 
           const lineData = [
             ...wo.lines.map((l, i) => {
-              // Bug: раніше тут було `l.normoHours * price` — не враховувало actualHours.
-              // Це викривлювало рахунок після refresh: WO.totalAmount враховує actualHours
-              // (через totalActualLabor у recalcTotals), а refreshFromWorkOrder перезаписував
-              // invoice.amount на суму NORMO рядків. Симетрично з WO PDF/recalcTotals:
-              // quantity = actualHours ?? normoHours.
+              // quantity = actualHours ?? normoHours: раніше `l.normoHours * price` не враховувало
+              // actualHours → invoice.amount розходилась з WO.totalAmount (totalActualLabor).
               const quantity = l.actualHours ?? l.normoHours;
               const unitPrice = Number(l.price);
               const priceWithoutVat = quantity * unitPrice;
@@ -876,11 +858,9 @@ export class InvoicesService {
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
 
     const cp = inv.counterparty;
-    // Bug #269: попередній `cp?.companyName ?? [...].join(' ') ?? ''` мав мертвий `?? ''`
-    // після `.join(' ')` (завжди string), і провалював edge-case `companyName=''` (порожній
-    // рядок не nullish → `?? [...]` НЕ переходить до lastName/firstName). Уніфіковано з
-    // work-orders.service.ts:1016 — `formatPersonName(...) || ''` коректно обробляє
-    // companyName=null/undefined/''.
+    // `companyName ?? [...].join(' ') ?? ''` had dead `?? ''` (join always returns string),
+    // and failed when companyName='' (non-nullish → never reached lastName/firstName).
+    // formatPersonName(...) || '' correctly handles companyName=null/undefined/''.
     const counterpartyName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || '';
 
     return this.pdf.generateInvoicePdf({
@@ -892,7 +872,6 @@ export class InvoicesService {
       lines: (inv.lines ?? []).map(l => ({
         description: l.description,
         quantity: l.quantity,
-        // Раніше hardcoded 'шт' — тепер реально використовуємо include що тягне UoM.
         unit: l.good?.unitOfMeasure?.shortName ?? l.good?.unit ?? 'шт',
         unitPrice: Number(l.unitPrice),
         vatRate: Number(l.vatRate),
@@ -935,7 +914,7 @@ export class InvoicesService {
       description: l.description,
       unitOfMeasureId: l.unitOfMeasureId ?? null,
       unitShortName: selectedUoM?.unitOfMeasure.shortName ?? baseUoM?.shortName ?? l.good?.unit,
-      // Bug #316: safeCoeff() для legacy/seed 0 — фронт використовує coefficient як дільник для display↔base conversion.
+      // safeCoeff() catches legacy/seed coefficient=0 — frontend uses it as divisor for display↔base conversion.
       coefficient: safeCoeff(selectedUoM?.coefficient ?? baseUoM?.coefficient),
       quantity: l.quantity,
       unitPrice: Number(l.unitPrice),

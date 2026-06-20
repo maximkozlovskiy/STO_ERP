@@ -13,9 +13,9 @@ import type { AuthEmployee, AuthState } from './types';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 const TOKEN_KEY = 'sto_access_token';
 
-// Bug #131: публічні роути НЕ повинні робити refresh-запит на mount —
+// публічні роути НЕ повинні робити refresh-запит на mount —
 // браузер логує 401 у console, що ламає console-errors.spec.ts і шумить у Sentry.
-// Bug #282: експортується тут як SSOT, TopShell використовує isPublicRoute з цього модуля.
+// експортується тут як SSOT, TopShell використовує isPublicRoute з цього модуля.
 export const PUBLIC_ROUTES = ['/login', '/setup', '/', '/403', '/booking'] as const;
 
 export function isPublicRoute(pathname: string): boolean {
@@ -91,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(
     reducer,
     (() => {
-      // Bug #567: Playwright storageState restores localStorage automatically but NOT
+      // Playwright storageState restores localStorage automatically but NOT
       // sessionStorage (known limitation). For E2E we mirror access token into localStorage
       // under sto_e2e_access_token; AuthProvider hydrates sessionStorage from it on mount.
       let stored: string | null = null;
@@ -136,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state.employee]);
 
   // On mount — try to restore session via refresh cookie.
-  // Bug #131: пропускаємо refresh на публічних роутах щоб не отримувати 401 console.error
+  // пропускаємо refresh на публічних роутах щоб не отримувати 401 console.error
   // коли користувач свідомо відкрив /login або /setup без сесії.
   useEffect(() => {
     let cancelled = false;
@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (stored) {
-      // Bug #567/#568: E2E escape hatch. globalSetup cannot capture sto_refresh
+      // E2E escape hatch. globalSetup cannot capture sto_refresh
       // cookie because it's path-scoped to /api/auth on a different port (3000 vs 3001
       // baseURL) and sameSite=strict — Playwright storageState skips it. Without this
       // flag every E2E test triggers refresh-on-mount → 401 → silent LOGOUT → /login
@@ -202,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (!res.ok) {
-      // Bug #137: NestJS class-validator повертає `message: string[]` при 400 — join з '; '.
+      // NestJS class-validator повертає `message: string[]` при 400 — join з '; '.
       const err = (await res.json().catch(() => ({ message: 'Помилка входу' }))) as {
         message: string | string[];
       };

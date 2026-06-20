@@ -10,7 +10,7 @@ import { Prisma } from '@prisma/client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 /**
- * Bug #127/#128: маппінг відомих Prisma error codes у HTTP-статуси.
+ * Маппінг відомих Prisma error codes у HTTP-статуси.
  * Без цього мапінгу `prisma.X.findFirst({ where: { id: 'not-uuid' } })`
  * кидає P2023 → потрапляє у "Unhandled exception" гілку → 500 → шум у Sentry.
  *
@@ -75,7 +75,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         message = exception.message;
       }
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
-      // Bug #127/#128: Prisma помилки конвертуємо у 4xx БЕЗ Sentry alert.
+      // Prisma помилки конвертуємо у 4xx БЕЗ Sentry alert (P2002 = conflict, P2025 = not found)
       const mapped = mapPrismaErrorToHttp(exception);
       if (mapped) {
         status = mapped.status;

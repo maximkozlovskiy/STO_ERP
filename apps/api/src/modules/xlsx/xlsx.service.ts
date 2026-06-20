@@ -869,9 +869,9 @@ export class XlsxService {
         continue;
       }
 
-      // Bug #198: захист від data-corruption. Якщо у товара немає `purchasePrice` —
-      // PERCENT/COMPETITOR_PLUS/COST_TIER правила повернуть newSalePrice=0 → затирання salePrice.
-      // Пропускаємо такі товари і повідомляємо користувачу через notFound.
+      // Data-corruption guard: if the good has no `purchasePrice`,
+      // PERCENT/COMPETITOR_PLUS/COST_TIER rules return newSalePrice=0 → salePrice wiped.
+      // Skip such goods and report them to the user via notFound.
       if (good.purchasePrice == null || Number(good.purchasePrice) <= 0) {
         notFound.push(`${good.sku ?? item.sku ?? item.barcode ?? good.name} (без собівартості)`);
         continue;
@@ -916,7 +916,7 @@ export class XlsxService {
     const dedupedPlan = deduplicateBy(plan, u => u.goodId);
 
     // Batch у chunks по 100 — короткі транзакції, менше lock contention.
-    // Bug #191: updateMany з orgId — defense-in-depth tenant guard.
+    // updateMany includes orgId in where — defense-in-depth tenant guard.
     const CHUNK = 100;
     for (let i = 0; i < dedupedPlan.length; i += CHUNK) {
       const chunk = dedupedPlan.slice(i, i + CHUNK);
@@ -924,7 +924,7 @@ export class XlsxService {
         async tx => {
           // sto-optimize: chunk вже дедуплікований по goodId → disjoint PK writes, race-safe.
           // У $transaction Prisma serializes на pinned connection — Promise.all дає
-          // JS-overhead-economy без втрати safety. Bug #191 tenant guard збережений у where.
+          // JS-overhead-economy без втрати safety. Tenant guard (orgId) збережений у where.
           await Promise.all(
             chunk.map(u =>
               tx.good.updateMany({

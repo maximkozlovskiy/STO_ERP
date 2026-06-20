@@ -105,7 +105,7 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
                 options: { colorize: true, translateTime: 'SYS:standard', ignore: 'pid,hostname' },
               }
             : undefined,
-        // Bug #216: link pino's req.id to the inbound x-request-id header so logs and the
+        // Links pino's req.id to the inbound x-request-id header so logs and the
         // response header echoed by CorrelationIdMiddleware share the SAME id. Without this
         // pino-http falls back to its built-in sequential counter (1, 2, 3, ...) — making
         // correlation between an HTTP response and the JSON log impossible.
@@ -122,7 +122,7 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
         // Redact sensitive fields from logs (multi-tenant + secrets hygiene).
         // Bodies of /auth/* and other handlers may contain password/refresh/access tokens —
         // a future log statement that spreads req.body would otherwise leak them.
-        // Bug #217: include ownerPassword (setup endpoint) — same hygiene principle.
+        // Include ownerPassword (setup endpoint) — same hygiene principle.
         redact: [
           'req.headers.authorization',
           'req.headers.cookie',

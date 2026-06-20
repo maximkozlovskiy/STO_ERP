@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -61,12 +61,10 @@ export class PricingRulesController {
     @OrgContext() orgId: string,
     @Query('supplierId', new ParseUUIDPipe({ optional: true })) supplierId?: string,
   ) {
-    // Bug #17: правила, прив'язані до soft-deleted Good — приховуємо.
-    // Bug #18: повертаємо paginated shape { items, total, page, limit } для відповідності API-контракту.
-    // sto-review §2.3: supplierId — ParseUUIDPipe({ optional: true }), щоб довільний рядок
-    // (`?supplierId=DROP TABLE`) валідувався class-validator-ом, а не Prisma WHERE.
-    // sto-review §2.2: pricingRule.orgId filter гарантує що malicious UUID з чужої org
-    // не поверне results (rule.orgId !== orgId → 0 рядків навіть якщо supplierId існує у іншій org).
+    // Rules linked to soft-deleted Goods are hidden (OR: goodId=null | good.deletedAt=null).
+    // supplierId uses ParseUUIDPipe so arbitrary strings (`?supplierId=DROP TABLE`) are rejected
+    // before reaching Prisma WHERE. orgId filter ensures a malicious UUID from another org
+    // returns 0 rows even if the supplierId exists there.
     const where: Prisma.PricingRuleWhereInput = {
       orgId,
       deletedAt: null,
@@ -118,10 +116,7 @@ export class PricingRulesController {
     if (dto.goodId && !good) throw new NotFoundException('Товар не знайдено');
     if (dto.brandId && !brand) throw new NotFoundException('Бренд не знайдено');
     if (dto.supplierId && !supplier) throw new NotFoundException('Постачальника не знайдено');
-    // Bug #22: scope-поля взаємовиключні, ієрархія goodId > goodCategory > goodType.
-    // Очищаємо менш специфічні рівні, щоб менеджер не зберігав суперечливі правила.
     const normalized = this.normalizeScope(dto);
-    // Bug #23 echo: backend очищає поля values, які не належать обраному type.
     const cleanValues = this.cleanValuesForType(normalized);
     const { tiers, ...ruleData } = cleanValues;
     const rule = await this.prisma.pricingRule.create({
@@ -185,7 +180,7 @@ export class PricingRulesController {
     if (dto.brandId && !brand) throw new NotFoundException('Бренд не знайдено');
     if (dto.supplierId && !supplier) throw new NotFoundException('Постачальника не знайдено');
 
-    // Bug #35: PATCH повинен застосовувати ієрархію scope з урахуванням існуючого
+    // PATCH must apply scope hierarchy considering existing
     // стану. Якщо клієнт надсилає лише `goodCategory` (без явного `goodId: null`),
     // а в БД вже встановлено `goodId` — після `normalizeScope(dto)` бачимо лише
     // нові поля і `goodId` залишається старим → суперечливий стан goodId+goodCategory.
@@ -241,7 +236,7 @@ export class PricingRulesController {
           // від результату жодної з них. Паттерн "Disjoint-set updateMany pairs".
           const tierWork = (async () => {
             if (tiers !== undefined || switchedAwayFromCostTier) {
-              // Bug #191 pattern: tier-deleteMany уже org-trusted (pricingRule existing org-checked),
+              // Tier-deleteMany is org-trusted (pricingRule existing org-checked),
               // але tiers не мають власного orgId — фільтр по pricingRuleId безпечний.
               await tx.pricingRuleTier.deleteMany({ where: { pricingRuleId: id } });
             }
@@ -257,7 +252,7 @@ export class PricingRulesController {
               });
             }
           })();
-          // Bug #191 pattern: updateMany з orgId — defense-in-depth tenant guard.
+          // updateMany з orgId — defense-in-depth tenant guard.
           // existing.org вже перевірений вище, але дублюємо щоб патерн був безпечним для копіювання
           // і виключаємо випадок коли інший запит soft-delete-нув правило між findFirst і update.
           const mainUpdate = tx.pricingRule.updateMany({
@@ -273,7 +268,7 @@ export class PricingRulesController {
         { timeout: 10_000 },
       );
     } else {
-      // Bug #191 pattern: updateMany з orgId — defense-in-depth.
+      // updateMany з orgId — defense-in-depth.
       await this.prisma.pricingRule.updateMany({
         where: { id, orgId, deletedAt: null },
         data: updateData,
@@ -291,7 +286,7 @@ export class PricingRulesController {
   @HttpCode(204)
   @ApiOperation({ summary: 'Видалити правило ціноутворення' })
   async remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    // Bug #191 pattern: updateMany з orgId — defense-in-depth tenant guard для soft-delete.
+    // updateMany з orgId — defense-in-depth tenant guard для soft-delete.
     const res = await this.prisma.pricingRule.updateMany({
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
@@ -313,7 +308,7 @@ export class PricingRulesController {
   }
 
   /**
-   * Bug #22: Scope-поля взаємовиключні. Ієрархія: goodId > goodCategory > goodType > all.
+   * Scope fields are mutually exclusive: Ієрархія: goodId > goodCategory > goodType > all.
    * Якщо вказано goodId — обнуляємо goodCategory і goodType.
    * Якщо вказано goodCategory (без goodId) — обнуляємо goodType.
    */
@@ -338,7 +333,7 @@ export class PricingRulesController {
   }
 
   /**
-   * Bug #23: При зміні type старі value-поля (percentValue/fixedAmount/fixedPrice) можуть
+   * При зміні type старі value-поля (percentValue/fixedAmount/fixedPrice) можуть
    * залишатись у БД після перемикання в UI. Backend нормалізує: для обраного type
    * залишаємо лише релевантне поле, інші — undefined → не пишеться в Prisma.
    */

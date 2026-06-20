@@ -106,7 +106,6 @@ export class PaymentsService {
           },
         });
 
-        // Update settlement account
         await this.settlements.createTransaction(
           orgId,
           {
@@ -120,7 +119,6 @@ export class PaymentsService {
           tx,
         );
 
-        // Mark invoice SENT→PAID if linked
         if (dto.invoiceId) {
           // sto-optimize: only status + workOrderId guards consulted; full row not needed.
           const inv = await tx.invoice.findFirst({
@@ -141,7 +139,6 @@ export class PaymentsService {
           }
         }
 
-        // Increment paidAmount on work order inside the atomic transaction
         if (dto.workOrderId) {
           await tx.workOrder.update({
             where: { id: dto.workOrderId, orgId },
@@ -152,11 +149,10 @@ export class PaymentsService {
         return created;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout — payment + settlement + invoice/WO updates
+    ); // explicit timeout — payment + settlement + invoice/WO updates
 
-    // Apply FSM transition INVOICED→PAID via WorkOrdersService (outside tx — has its own transaction)
-    // This is safe because: payment record + settlement are already committed above;
-    // if transition fails, the payment stands and the operator can retry status change manually.
+    // FSM INVOICED→PAID outside tx (WorkOrdersService has its own tx). Safe: payment + settlement
+    // already committed; if transition fails, operator retries status manually.
     if (dto.workOrderId) {
       await this.workOrders
         .transition(orgId, dto.workOrderId, 'PAID', userId)
@@ -167,7 +163,6 @@ export class PaymentsService {
         });
     }
 
-    // Notify counterparty about payment received
     if (counterparty.phone) {
       this.notifications
         .send(orgId, 'PAYMENT_RECEIVED', {
@@ -203,9 +198,8 @@ export class PaymentsService {
       },
     );
 
-    // Bug #267: queue loyalty points earn. Non-blocking — if queue is down, log warning,
-    // payment stays. loyalty earn job (BullMQ) внутрішньо перевіряє
-    // OrganisationSettings.loyaltyEnabled — якщо програма вимкнена, виходить без запису.
+    // Non-blocking loyalty earn: if queue is down, log warning, payment stands.
+    // BullMQ job checks OrganisationSettings.loyaltyEnabled — exits without writing if disabled.
     await this.loyalty
       .queueEarn(orgId, dto.counterpartyId, dto.amount, payment.id)
       .catch((err: unknown) =>

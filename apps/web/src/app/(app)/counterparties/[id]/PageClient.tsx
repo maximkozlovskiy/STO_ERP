@@ -221,7 +221,7 @@ export default function CounterpartyCardPage() {
   }, []);
 
   useEffect(() => {
-    // Bug review: /currencies повертає { items, total }, не bare array; +
+    // /currencies повертає { items, total }, не bare array;
     // фейл /currencies не повинен ховати orgCurrency у Promise.all-loss.
     let cancelled = false;
     void Promise.allSettled([
@@ -1084,8 +1084,8 @@ export default function CounterpartyCardPage() {
                     onChange={e =>
                       setContractForm(f => ({
                         ...f,
-                        // Bug #362: backend lookup case-sensitive — нормалізуємо до
-                        // UPPERCASE одразу при вводі, інакше `uah` → 400 з API.
+                        // backend lookup case-sensitive — normalize to UPPERCASE immediately on input,
+                        // otherwise `uah` → 400 from API.
                         currencyCode: e.target.value.toUpperCase().slice(0, 10),
                       }))
                     }

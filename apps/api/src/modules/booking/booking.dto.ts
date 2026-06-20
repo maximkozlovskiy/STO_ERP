@@ -22,7 +22,7 @@ export class BookingAvailabilityQueryDto {
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsArray()
-  // Bug #251: cap unbounded array on PUBLIC endpoint — без cap зловмисник може
+  // Cap unbounded array on PUBLIC endpoint — без cap зловмисник може
   // POST-ити Array(1_000_000).fill(UUID) → ValidationPipe виконає N×regex (DoS).
   // 50 — реалістичний максимум для одного бронювання (узгоджено з inspection.dto).
   @ArrayMaxSize(50, { message: 'Не більше 50 послуг' })
@@ -44,7 +44,7 @@ export class CreateBookingRequestDto {
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsArray()
-  // Bug #251: cap unbounded array на PUBLIC endpoint (див. AvailabilityQueryDto).
+  // Cap unbounded array on PUBLIC endpoint (DoS guard — see AvailabilityQueryDto above).
   @ArrayMaxSize(50, { message: 'Не більше 50 послуг' })
   @IsUUID(undefined, { each: true })
   serviceIds?: string[];

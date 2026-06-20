@@ -104,7 +104,7 @@ export default function PricingRulesClient() {
   }
   const [pricingImportResult, setPricingImportResult] = useState<PricingImportResult | null>(null);
 
-  // Bug #30: tracking mounted state — refetch після create/update/delete не повинен setState
+  // tracking mounted state — refetch після create/update/delete не повинен setState
   // на unmounted компонент (race коли користувач перейшов на іншу сторінку).
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -141,7 +141,7 @@ export default function PricingRulesClient() {
     const cachedBrands = getCached<Brand[]>('cache:brands');
     if (cachedBrands?.length) setBrands(cachedBrands);
 
-    // Bug #32: `/goods?limit=500` валиться на ValidationPipe (GoodQueryDto.@Max(200)).
+    // `/goods?limit=500` валиться на ValidationPipe (GoodQueryDto.@Max(200)).
     // Узгоджуємо з рештою сторінок (dashboard, work-orders, invoices використовують limit=200).
     Promise.all([
       apiFetch<{ items: Good[] }>('/goods?limit=200'),
@@ -155,7 +155,7 @@ export default function PricingRulesClient() {
         }
       })
       .catch((e: unknown) => {
-        // Bug #29: не ковтаємо помилку мовчки. Логуємо для діагностики,
+        // не ковтаємо помилку мовчки. Логуємо для діагностики,
         // але не блокуємо UI (правила можна редагувати без списку товарів/брендів).
         console.warn('Не вдалося завантажити довідники для форми правила:', e);
       });
@@ -164,7 +164,7 @@ export default function PricingRulesClient() {
     };
   }, []);
 
-  // Bug #23: надсилаємо лише значення, релевантне для обраного type, щоб не зберігати
+  // надсилаємо лише значення, релевантне для обраного type, щоб не зберігати
   // "сміттєві" поля з минулої редакції форми.
   const buildPayload = (form: RuleForm) => {
     const isPercent = form.type === 'PERCENT' || form.type === 'COMPETITOR_PLUS';
@@ -338,7 +338,7 @@ export default function PricingRulesClient() {
                 try {
                   const fd = new FormData();
                   fd.append('file', pricingFile);
-                  // Bug #197: FormData потребує multipart/form-data Content-Type з boundary,
+                  // FormData потребує multipart/form-data Content-Type з boundary,
                   // що `apiFetch` перетирає на application/json → 400 "не multipart". Використовуємо apiMultipartFetch.
                   const result = await apiMultipartFetch<PricingImportResult>(
                     '/xlsx/apply-pricing-from-list',

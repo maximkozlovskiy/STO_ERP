@@ -202,7 +202,7 @@ function InfrastructurePageClient() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
 
-  // Bug (review): nowMs з useEffect замість new Date() у render — запобігає SSR hydration mismatch.
+  // nowMs з useEffect замість new Date() у render — запобігає SSR hydration mismatch.
   const [nowMs, setNowMs] = useState(0);
   useEffect(() => {
     setNowMs(Date.now());
@@ -273,7 +273,7 @@ function InfrastructurePageClient() {
         });
       } else if (modal === 'zone') {
         const url = editingId ? `/zones/${editingId}` : '/zones';
-        // Bug #136: UpdateZoneDto не дозволяє branchId — relation FK immutable у PATCH.
+        // UpdateZoneDto не дозволяє branchId — relation FK immutable у PATCH.
         const body = editingId
           ? { name: form.name, type: form.type }
           : { branchId: form.branchId, name: form.name, type: form.type };
@@ -284,7 +284,7 @@ function InfrastructurePageClient() {
           ? Number(form.maintenanceIntervalDays)
           : undefined;
         const url = editingId ? `/lifts/${editingId}` : '/lifts';
-        // Bug #136: UpdateLiftDto не дозволяє zoneId — relation FK immutable у PATCH.
+        // UpdateLiftDto не дозволяє zoneId — relation FK immutable у PATCH.
         const commonFields = {
           name: form.name,
           type: form.type,
@@ -301,7 +301,7 @@ function InfrastructurePageClient() {
         await apiFetch<Lift>(url, { method, body: JSON.stringify(body) });
       } else if (modal === 'warehouse') {
         const url = editingId ? `/warehouses/${editingId}` : '/warehouses';
-        // Bug #136: UpdateWarehouseDto не дозволяє branchId — relation FK immutable у PATCH.
+        // UpdateWarehouseDto не дозволяє branchId — relation FK immutable у PATCH.
         const body = editingId
           ? { name: form.name, type: form.type, isMain: form.isMain === 'true' }
           : {

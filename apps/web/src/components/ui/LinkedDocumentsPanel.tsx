@@ -334,14 +334,14 @@ export function LinkedDocumentsPanel({
   onLoad,
 }: {
   workOrderId: string;
-  // Bug #409: parent інкрементує key після створення/refresh пов'язаного документу
+  // parent інкрементує key після створення/refresh пов'язаного документу
   // → useEffect deps тригерять fetch без unmount/remount, стале UI не показується.
   refreshKey?: number;
   onLoad?: (counts: LinkedDocumentsCounts) => void;
 }) {
   const [data, setData] = useState<LinkedDocuments | null>(null);
   const [loading, setLoading] = useState(true);
-  // Bug #414: окремий error-state, інакше backend помилку 500/timeout не відрізнити
+  // окремий error-state, інакше backend помилку 500/timeout не відрізнити
   // від справжнього empty-state ("Пов'язаних документів немає") — користувач отримує
   // false reassurance.
   const [error, setError] = useState<string | null>(null);
@@ -349,8 +349,6 @@ export function LinkedDocumentsPanel({
   const [preview, setPreview] = useState<PreviewType | null>(null);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
 
-  // Bug #409 (паре): preview зберігає посилання на конкретний item (LinkedInvoice/...).
-  // Після refetch цей item може бути замінений у новому масиві — preview показує STALE.
   // Скидаємо preview перед новим fetch.
   useEffect(() => {
     // Race-guard: користувач швидко перемикає workOrderId → стара відповідь не має
@@ -374,7 +372,7 @@ export function LinkedDocumentsPanel({
       })
       .catch((e: unknown) => {
         if (!cancelled) {
-          // Bug #414: не «приховувати» error під empty-state. Залишаємо data null —
+          // не «приховувати» error під empty-state. Залишаємо data null —
           // render-логіка покаже банер з повідомленням і Retry-кнопкою.
           setData(null);
           setError(e instanceof Error ? e.message : 'Не вдалось завантажити пов’язані документи');
@@ -401,7 +399,7 @@ export function LinkedDocumentsPanel({
     );
   }
 
-  // Bug #414: error має пріоритет над null/empty data — інакше панель «приховала» помилку.
+  // error має пріоритет над null/empty data — інакше панель «приховала» помилку.
   if (error) {
     return (
       <div

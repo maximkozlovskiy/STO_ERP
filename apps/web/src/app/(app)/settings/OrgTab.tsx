@@ -184,7 +184,7 @@ export default function OrgTab() {
               onChange={e =>
                 setOrgSettings({
                   ...orgSettings,
-                  // Bug #362: ISO коди UPPERCASE у БД (UAH/USD/EUR). Без normalize
+                  // ISO коди UPPERCASE у БД (UAH/USD/EUR). Без normalize
                   // `uah` → 400 з backend (case-sensitive lookup). Cap at 10 — VarChar(10).
                   currency: e.target.value.toUpperCase().slice(0, 10),
                 })

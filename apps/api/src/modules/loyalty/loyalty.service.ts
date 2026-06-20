@@ -109,11 +109,10 @@ export class LoyaltyService {
     paymentAmount: number,
     documentId?: string,
   ): Promise<void> {
-    // Bug #271: paymentAmount приходить з PaymentsService де `dto.amount: number` —
-    // якщо upstream дав NaN/Infinity (race з Decimal-конвертацією, malformed queue job),
-    // `Math.floor(NaN) === NaN`, `NaN <= 0 === false` → guard `points <= 0` НЕ ловить,
-    // `prisma.loyaltyAccount.update({ data: { balance: { increment: NaN } } })` зберігає
-    // NaN/null у БД → балансу немає, але `loyaltyTransaction` створено. Захист.
+    // Guard against NaN/Infinity: if upstream sends malformed Decimal-converted amount,
+    // Math.floor(NaN) === NaN and NaN <= 0 === false so `points <= 0` guard does NOT catch it.
+    // prisma.loyaltyAccount.update({ balance: { increment: NaN } }) stores null in DB —
+    // loyaltyTransaction is created but balance is lost.
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) return;
 
     // Parallel: settings read + tenant guard на counterparty. assertCounterparty
@@ -226,7 +225,7 @@ export class LoyaltyService {
         return discountAmount;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout — atomic redeem з 2 операціями
+    ); // explicit timeout — atomic redeem: balance check + decrement + tx log
 
     return { discountAmount: result };
   }

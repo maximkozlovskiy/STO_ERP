@@ -85,8 +85,8 @@ interface RevenueReport {
   rows: RevenueDay[];
   totalRevenue: number;
 }
-// Bug #36: правильний тип для відповіді `/stock-items/low`. Раніше було `WorkOrderSummary[]`,
-// що проходило TS (типи "довірливі"), але вело до runtime-помилок при доступі до полів.
+// Correct type for `/stock-items/low` response. Previously `WorkOrderSummary[]`
+// passed TS (types were "trusting") but caused runtime errors when accessing fields.
 interface LowStockItem {
   goodId: string;
   goodName: string;

@@ -13,10 +13,9 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-// Bug #247: вкладені DTO без декораторів пропускали свавільні значення (workId без UUID,
-// quantity < 0, note довжиною 1М символів). `lines` / `parts` без @ArrayMaxSize дозволяли
-// DoS через мільйонні масиви. Тепер усі поля валідуються; масиви обмежені 200 елементами
-// (реалістичний максимум для нормо-карти).
+// Nested DTOs without decorators allowed arbitrary values (workId without UUID,
+// quantity < 0, notes 1M chars). Arrays without @ArrayMaxSize enabled DoS via million-element payloads.
+// Arrays capped at 200 — realistic maximum for a normative card.
 export class TemplateLineDto {
   @ApiProperty()
   @IsUUID()

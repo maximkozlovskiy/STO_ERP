@@ -182,7 +182,6 @@ export function useCalendarState() {
 
   const formCloseRafRef = useRef<number | null>(null);
 
-  // Animate form open/close
   useEffect(() => {
     if (formHideTimerRef.current) clearTimeout(formHideTimerRef.current);
     if (formCloseRafRef.current !== null) {
@@ -485,9 +484,9 @@ export function useCalendarState() {
 
   // Skip day-view fetch when user is in stats/month view — saves N round-trips
   // on date changes that affect only the other view's data.
-  // Bug #512: `lifts.length` має бути у deps бо `load()` читає `liftsRef.current`
-  // у .then() для матчингу PENDING бронювань до вільного підйомника. Якщо /lifts
-  // повернувся ПІСЛЯ /booking + /calendar/slots (cold cache, slow network),
+  // `lifts.length` in deps because `load()` reads `liftsRef.current` in `.then()`
+  // for matching PENDING bookings to a free lift. If /lifts returns AFTER
+  // /booking + /calendar/slots (cold cache, slow network),
   // `liftsRef.current === []` → `freeLift = undefined` для всіх бронювань →
   // `bookingSlots` порожній до явної ре-навігації. Додавання `lifts.length` гарантує
   // що ефект перевикличе load() коли lifts стейт вперше населений.
@@ -673,8 +672,7 @@ export function useCalendarState() {
       if (pr) {
         const rect = timelineRef.current?.getBoundingClientRect();
         if (!rect) return;
-        // Inline px→decimal-hours conversion з dynTotalHoursRef (Bug #517: pxToHours
-        // helper видалено бо використовував hardcoded TOTAL_HOURS=12).
+        // Inline px→decimal-hours: pxToHours helper removed because it used hardcoded TOTAL_HOURS=12.
         const deltaH =
           ((e.clientX - pr.pointerStartX) / (rect.width - SIDEBAR_W)) * dynTotalHoursRef.current;
         const todayKyiv2 = toDateString(new Date());
@@ -697,7 +695,7 @@ export function useCalendarState() {
       if (res) {
         const rect = timelineRef.current?.getBoundingClientRect();
         if (!rect) return;
-        // Inline px→decimal-hours з dynTotalHoursRef (Bug #517 див. вище).
+        // Inline px→decimal-hours (see above — pxToHours used hardcoded TOTAL_HOURS=12).
         const deltaH =
           ((e.clientX - res.pointerStartX) / (rect.width - SIDEBAR_W)) * dynTotalHoursRef.current;
         if (res.edge === 'start') {
@@ -914,8 +912,8 @@ export function useCalendarState() {
     if (!resizePreview) return slots;
     return slots.map(s => {
       if (s.id !== resizePreview.id) return s;
-      // Bug #354: decimalHoursToISO використовує kyivDateTimeToISO внутрішньо
-      // (DST-aware Kyiv → UTC), замість попереднього local-time-parsing.
+      // DST-aware: decimalHoursToISO uses kyivDateTimeToISO internally
+      // (Kyiv → UTC), not local-time-parsing.
       return {
         ...s,
         startAt: decimalHoursToISO(date, resizePreview.startH),

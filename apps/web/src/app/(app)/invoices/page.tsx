@@ -174,7 +174,7 @@ export default function InvoicesPage() {
     sortBy: invSort.sortBy,
     sortDir: invSort.sortDir,
   });
-  // Bug #328 regression guard — stable empty array reference.
+  // regression guard — stable empty array reference.
   const invoices = queryData?.items ?? (EMPTY_ITEMS as unknown as Invoice[]);
   const total = queryData?.total ?? 0;
   const totalPages = Math.ceil(total / limit) || 1;
@@ -275,7 +275,7 @@ export default function InvoicesPage() {
     };
   }, [showPayment]);
 
-  // Bug #143: async-init Select race condition. payForm.method defaults to 'cash'
+  // async-init Select race condition. payForm.method defaults to 'cash'
   // and the payment modal can open BEFORE /payment-methods resolves. If 'cash' is
   // deactivated (admin can disable it via PaymentMethodConfig), the loaded list
   // won't contain it — the Select visually jumps to the first active method
@@ -363,7 +363,7 @@ export default function InvoicesPage() {
   const [cloning, setCloning] = useState(false);
 
   const downloadPdf = async (inv: InvoiceWithOptionals) => {
-    // Bug #77: use apiBlobFetch which does silent refresh on 401 — direct fetch
+    // use apiBlobFetch which does silent refresh on 401 — direct fetch
     // breaks when access token expired (~15min) requiring full page reload.
     setError('');
     try {
@@ -454,7 +454,6 @@ export default function InvoicesPage() {
               </Badge>
             ),
             invoiceType: v => (v ? (INVOICE_TYPE_LABELS[String(v)] ?? String(v)) : undefined),
-            // Bug #274: hide zero VAT breakdown rows
             totalWithoutVat: v =>
               v != null && Number(v) > 0 ? `${fmtMoney(Number(v))} ₴` : undefined,
             totalVat: v => (v != null && Number(v) !== 0 ? `${fmtMoney(Number(v))} ₴` : undefined),

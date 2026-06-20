@@ -26,8 +26,6 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { StockDocumentCreateModal } from '@/components/ui/StockDocumentCreateModal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-// Bug #504: DetailPanel було повністю dead (selectedDoc state ніколи не set non-null).
-// Видалено разом з useDetailPanel/useDetailPanelConfig destructure та STOCK_DOC_PANEL_SCHEMA helpers.
 // Row click веде в edit modal через setEditingDocId — це реальний flow для перегляду документа.
 import {
   Table,
@@ -147,7 +145,6 @@ function StockDocumentsPageClient() {
       resetConfig,
     },
     dragProps,
-    // Bug #504/#505: detailPanel + panelConfig видалено (DetailPanel мертвий, toggle нічого не контролював).
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
@@ -186,16 +183,15 @@ function StockDocumentsPageClient() {
     sortBy: sdSort.sortBy,
     sortDir: sdSort.sortDir,
   });
-  // Bug #328 regression guard — stable empty array reference.
+  // regression guard — stable empty array reference.
   const docs = docsData?.items ?? (EMPTY_ITEMS as unknown as StockDoc[]);
   const total = docsData?.total ?? 0;
   const invalidate = () => qc.invalidateQueries({ queryKey: stockDocsKeys.all });
-  // Bug #465: оголошуємо `load` поряд з invalidate, щоб handleBulkDelete/handleTransition/markDeleted
+  // оголошуємо `load` поряд з invalidate, щоб handleBulkDelete/handleTransition/markDeleted
   // що його використовують посилались на вже визначену константу (а не на TDZ-trap при copy-paste у refactor).
   const load = invalidate;
   const [error, setError] = useState('');
 
-  // Bug #504: selectedDoc state removed — DetailPanel was dead (state ніколи не set non-null).
   const [showCreate, setShowCreate] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState<StockDoc | null>(null);
@@ -345,9 +341,6 @@ function StockDocumentsPageClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [confirm],
   );
-
-  // Bug #504: buildDocTabs видалено — використовувалось виключно у dead DetailPanel.
-  // Перегляд позицій документа доступний через edit modal (openDetailModal/setEditingDocId).
 
   return (
     <div className="page-fill p-4 md:p-6">

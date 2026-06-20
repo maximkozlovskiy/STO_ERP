@@ -27,8 +27,8 @@ export class UnitsService {
 
     const items = await this.prisma.unitOfMeasure.findMany({
       where: { orgId, ...(showDeleted ? {} : { deletedAt: null }) },
-      // Bug #296: Postgres за замовчуванням NULLS LAST у ASC → видалені (з timestamp) ішли б ПЕРЕД активними (NULL).
-      // nulls: 'first' → активні (NULL) зверху, видалені знизу (Prisma 5+ syntax).
+      // Postgres NULLS LAST by default in ASC → deleted rows (with timestamp) sorted BEFORE active (NULL deletedAt).
+      // nulls: 'first' → active rows on top, deleted at bottom (Prisma 5+ syntax).
       orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { shortName: 'asc' }],
       take: 1000,
     });
@@ -45,13 +45,12 @@ export class UnitsService {
       select: { id: true, isSystem: true, shortName: true },
     });
     if (!existing) throw new NotFoundException('Видалену одиницю виміру не знайдено');
-    // Bug #305: defense-in-depth — системні одиниці не повинні бути soft-deleted взагалі
-    // (remove() це блокує). Якщо системна виявилась soft-deleted (прямий SQL / seed) —
-    // це сигнал що щось пішло не так у БД, не дозволяємо відновлення через API.
+    // Defense-in-depth: system units must never be soft-deleted (remove() blocks it).
+    // If a system unit appears soft-deleted (direct SQL / seed bug) — reject restore via API.
     if (existing.isSystem)
       throw new BadRequestException('Системну одиницю виміру не можна відновити');
-    // Bug #298: перевірити чи нема активного дубліката з тим же shortName
-    // (наприклад, новий active рядок створений після soft-delete старого) — інакше P2002 → 500.
+    // Guard against an active duplicate with the same shortName (created after old was soft-deleted)
+    // — without this, restore() triggers P2002 unique violation → 500 instead of 409.
     const activeDuplicate = await this.prisma.unitOfMeasure.findFirst({
       where: { orgId, shortName: existing.shortName, deletedAt: null, NOT: { id } },
       select: { id: true },
@@ -113,9 +112,8 @@ export class UnitsService {
       }),
       dto.shortName
         ? this.prisma.unitOfMeasure.findFirst({
-            // Bug #297: перевіряємо і active, і soft-deleted дублікати, бо DB-constraint
-            // @@unique([orgId, shortName]) не має partial WHERE deletedAt IS NULL у migration →
-            // конфлікт з soft-deleted рядком викине P2002 → 500 замість осмисленого 409.
+            // Check both active and soft-deleted duplicates: @@unique([orgId, shortName]) has no
+            // partial WHERE deletedAt IS NULL → conflict with a soft-deleted row raises P2002 → 500 instead of 409.
             where: { orgId, shortName: dto.shortName, NOT: { id } },
             select: { id: true, deletedAt: true },
           })

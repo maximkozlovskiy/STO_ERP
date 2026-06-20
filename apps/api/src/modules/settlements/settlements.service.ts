@@ -25,10 +25,9 @@ export class SettlementsService {
     if (!Number.isFinite(dto.amount) || dto.amount <= 0) {
       throw new BadRequestException('Сума транзакції повинна бути більшою за нуль');
     }
-    // Pre-compute balance delta — pure sync check, fail-fast before any DB work.
     // CHARGE increases balance (client owes us); all other types decrease it.
-    // Bug #488: Record (без Partial) — TS-exhaustive: новий SettlementTransactionType enum
-    // value стає compile-time error, а не runtime surprise. Жодного fallback throw не треба.
+    // Record (not Partial): TS-exhaustive — a new SettlementTransactionType enum value becomes
+    // a compile-time error rather than a silent runtime surprise.
     const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
       CHARGE: 1,
       PAYMENT: -1,
@@ -70,11 +69,10 @@ export class SettlementsService {
       ]);
     };
 
-    // When called inside an outer $transaction, use that client; otherwise wrap in own transaction
     if (tx) {
       await run(tx);
     } else {
-      // Bug #132: explicit timeout — викликається з work-orders COMPLETED flow, де можуть бути додаткові writes
+      // explicit timeout — called from work-orders COMPLETED flow where additional writes may be in flight
       await this.prisma.$transaction(run, { timeout: TRANSACTION_TIMEOUT_MS });
     }
   }

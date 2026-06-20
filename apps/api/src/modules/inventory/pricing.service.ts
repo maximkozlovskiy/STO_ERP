@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { GoodType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -35,7 +35,7 @@ export class PricingService {
     costPrice: number,
   ): Promise<number> {
     // Find the most specific active rule (lowest priority number wins).
-    // Bug #17: rule with goodId must point to a non-soft-deleted Good — фільтруємо relation.
+    // Rule with goodId must point to a non-soft-deleted Good — filter the relation.
     // Priority hierarchy: goodId(1) > brandId(2) > goodCategory(3) > goodType(4) > all(10)
     const orConditions: Array<Record<string, unknown>> = [
       { goodId: null, goodCategory: null, goodType: null, brandId: null },
@@ -115,8 +115,7 @@ export class PricingService {
     });
     if (!rule) return 0;
 
-    // Bug #19: GoodType enum cast замість `as never`, який вимикав перевірку типів.
-    // Bug #178: brandId scope — якщо правило brand-scoped, перераховуємо ЛИШЕ товари цього бренду.
+    // brandId scope: if the rule is brand-scoped, recalculate ONLY goods of that brand.
     const where = {
       orgId,
       deletedAt: null as null,
@@ -174,7 +173,7 @@ export class PricingService {
     }
 
     // Batch in chunks of 100 to keep transactions short (< 5s)
-    // Bug #132: для interactive callback можна задати timeout; array-form $transaction його не приймає.
+    // Array-form $transaction doesn't accept a timeout; use callback form for explicit { timeout }.
     // Тому перетворюємо array на callback, щоб мати explicit { timeout } і не покладатись на default 5s.
     const CHUNK = 100;
     for (let i = 0; i < updates.length; i += CHUNK) {
@@ -213,8 +212,6 @@ export class PricingService {
     return updates.length;
   }
 
-  // Bug #194: prefetch helper для bulk-операцій (PO apply-pricing, etc.) — повертає всі активні
-  // правила org одним запитом, щоб уникнути N+1 у циклах calculateSalePrice.
   async getActiveRulesForOrg(orgId: string) {
     return this.prisma.pricingRule.findMany({
       where: { orgId, isActive: true, deletedAt: null },

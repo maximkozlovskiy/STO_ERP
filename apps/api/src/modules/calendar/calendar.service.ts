@@ -305,7 +305,7 @@ export class CalendarService {
         });
 
         return [created1, created2];
-        // Bug #130: explicit 5s timeout (2 conflict checks + 1-2 creates — well below default).
+        // Explicit 5s timeout: 2 conflict checks + 1-2 creates — well below Prisma default 30s.
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
@@ -473,11 +473,9 @@ export class CalendarService {
       throw new BadRequestException('Невірний інтервал часу');
     }
     const excludeFilter = dto.excludeSlotId ? { not: dto.excludeSlotId } : undefined;
-    // Bug #397: фільтр workOrderId — щоб виключити слоти що належать поточному
-    // наряду під час редагування його планового періоду.
+    // excludeWorkOrderId filter — excludes slots of the current WO when editing its planned period.
     const excludeWoFilter = dto.excludeWorkOrderId ? { not: dto.excludeWorkOrderId } : undefined;
-    // bug-cycle (calendar conflict): findMany без take — порушує §1 (OOM на патологічних
-    // даних). Realistic upper bound для часового вікна = декілька десятків.
+    // findMany without take violates OOM guard — realistic upper bound for a time window is a few dozen slots.
     const CONFLICT_TAKE = 50;
     // Security: strip PII — conflict check only needs scheduling fields + WO number.
     // MECHANIC role has access to this endpoint; returning cpPhone/vehiclePlate would
@@ -567,19 +565,18 @@ export class CalendarService {
     return this.prisma.$transaction(
       async tx => {
         // sto-optimize: tenant guard + parentSlot lookup are independent reads — run in parallel
-        // to save 1 RTT. Both are needed before any mutation: workOrder for 404 (Bug #442),
-        // parentSlot for conflict OR clause (Bug #444). Promise.all inside $transaction
+        // to save 1 RTT. Both are needed before any mutation: workOrder for 404 guard,
+        // parentSlot for conflict OR clause. Promise.all inside $transaction
         // executes both queries on the same Prisma connection concurrently.
         const [workOrder, parentSlot] = await Promise.all([
-          // Bug #442: tenant-isolation guard — без цієї перевірки cross-tenant
-          // workOrderId silenо повертає { updated: 0 } замість 404 → probe vector
-          // через time-window (атакувальник з валідним JWT іншої org може перевірити
-          // існування WO-ID). Парне з шаблоном #161 у SKILL §1.1 Tenant Isolation.
+          // Tenant-isolation guard: without this check cross-tenant workOrderId silently
+          // returns { updated: 0 } instead of 404 → enumeration probe vector (attacker with
+          // valid JWT from another org can verify existence of WO-IDs).
           tx.workOrder.findFirst({
             where: { id: workOrderId, orgId, deletedAt: null },
             select: { id: true },
           }),
-          // Bug #444: we need parentSlot's liftId/employeeId for the conflict OR clause.
+          // Need parentSlot's liftId/employeeId for the conflict OR clause.
           tx.calendarSlot.findFirst({
             where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
             select: { id: true, liftId: true, employeeId: true },
@@ -587,14 +584,11 @@ export class CalendarService {
         ]);
         if (!workOrder) throw new NotFoundException('Наряд не знайдено');
 
-        // Bug #444: conflict check vs OTHER WO slots on same lift/employee.
-        // Canonical createSlot()/updateSlot() guard against double-booking; this alternate
-        // mutation endpoint MUST replicate the guard (SKILL §1.1 «Alternate-mutation endpoint
-        // обходить canonical guards» — pattern Bug #403). Without it, moving WO planned dates
-        // can silently overlap another WO's slot on the same lift/employee → 2 overlapping
-        // calendar entries, broken capacity invariant.
+        // Conflict check vs OTHER WO slots on same lift/employee. This alternate mutation
+        // endpoint must replicate the guard from createSlot()/updateSlot() — without it,
+        // moving WO planned dates can silently overlap another WO's slot → broken capacity invariant.
         //
-        // If no parent slot exists or has no resources, the conflict probe would be a no-op.
+        // If no parent slot exists or has no resources, the conflict probe is a no-op.
         if (parentSlot && (parentSlot.liftId || parentSlot.employeeId)) {
           const orConflicts: Array<{ liftId?: string; employeeId?: string }> = [];
           if (parentSlot.liftId) orConflicts.push({ liftId: parentSlot.liftId });

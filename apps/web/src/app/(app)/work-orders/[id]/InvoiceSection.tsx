@@ -119,7 +119,7 @@ export function InvoiceSection({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      // Bug #77 + Bug #341 pattern: filename uses human-readable number;
+      // filename uses human-readable number;
       // anchor must be in the DOM for Firefox to dispatch the download.
       a.download = `invoice-${invoiceNumber}.pdf`;
       document.body.appendChild(a);

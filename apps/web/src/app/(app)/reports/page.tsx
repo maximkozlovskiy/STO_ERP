@@ -117,7 +117,7 @@ function ReportsPageClient() {
   const searchParams = useSearchParams();
   const tab = (searchParams.get('tab') ?? 'revenue') as Tab;
   const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
-  // Bug #294: `new Date()` тримати ВСЕРЕДИНІ useState initializer — він викликається
+  // `new Date()` тримати ВСЕРЕДИНІ useState initializer — він викликається
   // тільки на першому render; винесена в render path змінна перевиконується на кожний
   // ререндер + ризик SSR/CSR hydration mismatch.
   const [from, setFrom] = useState(() => `${kyivToday().slice(0, 4)}-01-01`);

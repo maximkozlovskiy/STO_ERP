@@ -116,7 +116,6 @@ function ManagerNode({
   }, [newName, node.id, endpoint, features.toastEnabled, onChanged, setSaving]);
 
   const handleDelete = useCallback(async () => {
-    // Bug #313 pattern: useConfirm замість window.confirm — узгоджений UX.
     if (
       !(await confirm({
         title: `Видалити "${node.name}"?`,

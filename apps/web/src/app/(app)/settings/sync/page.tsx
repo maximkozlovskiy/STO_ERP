@@ -19,7 +19,7 @@ export default function SyncPage() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   // Derived: показуємо локальну error (від manual triggerSync) АБО актуальну query-error.
-  // Bug #278: раніше було `useState(statusError ...)` — initializer запускається лише на
+  // раніше було `useState(statusError ...)` — initializer запускається лише на
   // першому render, коли statusError ще undefined → refetchInterval помилка ховається.
   const displayError = error || (statusError instanceof Error ? statusError.message : '');
 

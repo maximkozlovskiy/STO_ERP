@@ -28,7 +28,7 @@ export class OutboundWebhookProcessor extends WorkerHost {
       payload: unknown;
     };
 
-    // Bug #114: defense-in-depth SSRF check at delivery time. The URL was validated
+    // Defense-in-depth SSRF check at delivery time. The URL was validated
     // at create/update, but DNS rebinding or a stale endpoint config could still
     // route to an internal target. We refuse to even open the connection.
     const urlError = validatePublicUrl(url);

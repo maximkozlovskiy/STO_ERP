@@ -90,7 +90,7 @@ export function DateTimePickerInput({
     () => (timeOnly ? { date: undefined, time: value.slice(0, 5) } : parseDateTime(value)),
     [value, timeOnly],
   );
-  // Bug #378: default hour fallback має поважати minHour/maxHour, інакше при
+  // default hour fallback має поважати minHour/maxHour, інакше при
   // відкритті picker з порожнім value та minHour=10 у `<select value="09">`
   // не буде відповідної `<option>` (React warning + state-mismatch UX).
   const fallbackHour = availableHours[0] ?? '09';

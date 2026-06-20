@@ -18,8 +18,7 @@ export class CreateUnitDto {
   })
   @IsOptional()
   @IsNumber()
-  // Bug #302: coefficient РІРёРєРѕСЂРёСЃС‚РѕРІСѓС”С‚СЊСЃСЏ СЏРє РґС–Р»СЊРЅРёРє Сѓ `qty_base = qty / coefficient`
-  // (work-orders.service.ts, purchase-orders, invoices). 0 в†’ Infinity в†’ silent NaN-propagation.
+  // coefficient is a divisor: `qty_base = qty / coefficient` (work-orders, purchase-orders, invoices). 0 → Infinity → silent NaN propagation.
   @Min(0.000001)
   coefficient?: number;
 
@@ -70,7 +69,7 @@ export class UpdateUnitDto {
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @IsNumber()
-  // Bug #302: coefficient СЏРє РґС–Р»СЊРЅРёРє вЂ” 0 Р·Р°Р±РѕСЂРѕРЅРµРЅРѕ.
+  // coefficient is a divisor — 0 causes Infinity → silent NaN propagation.
   @Min(0.000001)
   coefficient?: number;
 

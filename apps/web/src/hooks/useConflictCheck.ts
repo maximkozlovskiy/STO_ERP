@@ -54,7 +54,7 @@ export function useConflictCheck(debounceMs = 400) {
     (params: CheckParams) => {
       if (timerRef.current) clearTimeout(timerRef.current);
       if (!params.startAt || !params.endAt || params.startAt >= params.endAt) {
-        // Bug #396: інкрементуємо токен і в early-return — інакше pending in-flight
+        // інкрементуємо токен і в early-return — інакше pending in-flight
         // fetch (запит що вже стартував до невалідного зміни) може повернутись зі
         // старими даними і перезаписати очищений стан конфлікту.
         reqIdRef.current++;

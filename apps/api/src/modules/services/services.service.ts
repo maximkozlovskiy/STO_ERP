@@ -97,7 +97,7 @@ export class ServicesService {
         });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    );
 
     return this.toDto(item);
   }
@@ -183,7 +183,7 @@ export class ServicesService {
         });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    );
 
     return this.toDto(item);
   }
@@ -242,8 +242,8 @@ export class ServicesService {
     const [items, total] = await Promise.all([
       this.prisma.service.findMany({
         where,
-        // Bug #306: показуємо активні (deletedAt=NULL) перед видаленими у showDeleted=true списках.
-        // Postgres дефолтно ставить NULL у кінець ASC → ховаємо явним `nulls: 'first'`.
+        // Postgres puts NULLs last in ASC — explicit `nulls: 'first'` shows active records
+        // before deleted ones in showDeleted=true lists.
         orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
         skip,
         take: limit,

@@ -26,7 +26,7 @@ export class CreateInvoiceDto {
   workOrderId?: string;
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
   @ApiPropertyOptional() @IsOptional() @IsString() invoiceType?: string;
-  // Bug #260: emptyToUndefined gap — date-input скидання → 400 без трансформу.
+  // emptyToUndefined gap: date-input reset → 400 without transform.
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -49,7 +49,7 @@ export class UpdateInvoiceDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   counterpartyId?: string;
-  // Bug #260: emptyToUndefined gap у PATCH-шляху.
+  // emptyToUndefined gap у PATCH-шляху.
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)

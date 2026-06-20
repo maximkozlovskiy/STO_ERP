@@ -32,7 +32,7 @@ export default function RevenueChart({ data }: { data: RevenuePoint[] }) {
           tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
           axisLine={false}
           tickLine={false}
-          // Bug #358: T12:00:00 безпечно дає правильний день у Kyiv TZ незалежно
+          // T12:00:00 безпечно дає правильний день у Kyiv TZ незалежно
           // від local TZ браузера (полудень UTC = 14:00/15:00 Kyiv — не може
           // відкотитись на попередній день).
           tickFormatter={d => TICK_DATE_FMT.format(new Date(d + 'T12:00:00'))}

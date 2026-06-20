@@ -33,7 +33,6 @@ import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-// Bug #505: DetailPanelToggle import видалено разом з 2 dead toggle render points.
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
@@ -165,7 +164,6 @@ function PurchaseOrdersPageClient() {
       resetConfig,
     },
     dragProps,
-    // Bug #505: detailPanel видалено (DetailPanel зник у Bug #496 fix, toggle нічого не контролював).
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
@@ -196,7 +194,7 @@ function PurchaseOrdersPageClient() {
     sortBy: poSort.sortBy,
     sortDir: poSort.sortDir,
   });
-  // Bug #328 regression guard — stable empty array reference.
+  // regression guard — stable empty array reference.
   const orders = queryData?.items ?? (EMPTY_ITEMS as unknown as PurchaseOrder[]);
   const total = queryData?.total ?? 0;
   const totalPages = Math.ceil(total / limit) || 1;
@@ -263,7 +261,6 @@ function PurchaseOrdersPageClient() {
       resetConfig: resetSrConfig,
     },
     dragProps: srDragProps,
-    // Bug #505: srDetailPanel видалено — DetailPanel ніколи не існував для returns tab.
     savedFilters: { saved: srSavedFilters, save: saveSrFilter, remove: removeSrFilter },
     features: srFeatures,
     limit: srLimit,
@@ -430,7 +427,7 @@ function PurchaseOrdersPageClient() {
       setShowReceive(null);
       dirty.resetDirty();
       queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-      // Bug #210: RECEIPT створює stock movement → stockItem.quantity змінюється,
+      // RECEIPT створює stock movement → stockItem.quantity змінюється,
       // тому inventory cache теж треба інвалідувати, інакше /inventory показує старі залишки
       queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
     } catch (e: unknown) {
@@ -744,7 +741,7 @@ function PurchaseOrdersPageClient() {
                                 }
                                 onClick={async e => {
                                   e.stopPropagation();
-                                  // Bug #499: без try/catch throw з mutateAsync → silent failure
+                                  // без try/catch throw з mutateAsync → silent failure
                                   // (TanStack Query не має глобального MutationCache.onError у проекті).
                                   try {
                                     await deleteSupplierReturn.mutateAsync(sr.id);

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-// Bug #292: `/setup` — публічна сторінка; `apiFetch` шле stale Authorization з sessionStorage
+// `/setup` — публічна сторінка; `apiFetch` шле stale Authorization з sessionStorage
 // і при 401 робить `window.location.replace('/login')` — ламає setup wizard. Використовуємо
 // `publicFetch` (без auth header, без auto-redirect).
 import { publicFetch } from '@/lib/api-client';

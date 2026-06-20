@@ -90,6 +90,6 @@ export class DocumentNumberService {
         return `${prefix}${seqStr}`;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #130: explicit 5s timeout — SELECT FOR UPDATE + UPDATE in one row
+    ); // explicit timeout: SELECT FOR UPDATE + UPDATE in one tx, well below Prisma default 30s
   }
 }

@@ -60,7 +60,7 @@ export class CreatePurchaseOrderDto {
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
   @IsOptional()
   @IsArray()
-  // Bug #248: anti-DoS cap; 500 рядків — гранично великий покупковий ордер.
+  // Anti-DoS cap: 500 lines is an extreme upper bound for a purchase order.
   @ArrayMaxSize(500, { message: 'Не більше 500 рядків у покупковому ордері' })
   @ValidateNested({ each: true })
   @Type(() => PurchaseOrderLineDto)

@@ -80,11 +80,11 @@ const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv'
 // prefetchQuery — no-op якщо дані вже fresh (staleTime не минув), безпечно.
 type PrefetchFn = (qc: ReturnType<typeof useQueryClient>) => void;
 const PREFETCH_MAP: Record<string, PrefetchFn> = {
-  // Bug #281: prefetch queryKey МАЄ збігатися з тим що page-споживач передає у useXxx({...}).
+  // prefetch queryKey МАЄ збігатися з тим що page-споживач передає у useXxx({...}).
   // Якщо ключі різні — react-query тримає prefetched data у окремому cache slot який сторінка
   // ніколи не читає. Default filter shape копіюємо з конкретної сторінки first-mount state.
   '/work-orders': qc => {
-    // Bug #356: shape МАЄ збігатися з work-orders/page.tsx first-mount useWorkOrders({...}).
+    // shape МАЄ збігатися з work-orders/page.tsx first-mount useWorkOrders({...}).
     // Поля dateFrom/dateTo/sortBy/sortDir додані пізніше — без них prefetch у dead cache slot.
     const today = kyivToday();
     void qc.prefetchQuery({
@@ -111,7 +111,7 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
   },
   '/counterparties': qc =>
     void qc.prefetchQuery({
-      // Bug #356: shape match counterparties/page.tsx first-mount useCounterparties({...})
+      // shape match counterparties/page.tsx first-mount useCounterparties({...})
       // — useSortState('lastName','asc') додає sortBy/sortDir.
       queryKey: counterpartiesKeys.list({
         page: 1,
@@ -127,7 +127,7 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       staleTime: 30_000,
     }),
   '/invoices': qc => {
-    // Bug #356: shape МАЄ збігатися з invoices/page.tsx first-mount useInvoices({...})
+    // shape МАЄ збігатися з invoices/page.tsx first-mount useInvoices({...})
     // — dateFrom/dateTo defaults до kyivToday(), useSortState('createdAt','desc').
     const today = kyivToday();
     void qc.prefetchQuery({
@@ -157,7 +157,7 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       staleTime: 30_000,
     }),
   '/purchase-orders': qc => {
-    // Bug #356: shape МАЄ збігатися з purchase-orders/page.tsx first-mount.
+    // shape МАЄ збігатися з purchase-orders/page.tsx first-mount.
     const today = kyivToday();
     void qc.prefetchQuery({
       queryKey: purchaseOrdersKeys.list({
@@ -181,7 +181,7 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
   },
   '/employees': qc =>
     void qc.prefetchQuery({
-      // Bug #356: shape match employees/page.tsx first-mount useEmployees({...}).
+      // shape match employees/page.tsx first-mount useEmployees({...}).
       // Page шле undefined для q/role (через `|| undefined`), не порожні рядки.
       queryKey: employeesKeys.list({
         q: undefined,
@@ -222,7 +222,7 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       staleTime: 30_000,
     }),
   '/stock-documents': qc => {
-    // Bug #356: shape МАЄ збігатися з stock-documents/page.tsx first-mount useStockDocuments({...}).
+    // shape МАЄ збігатися з stock-documents/page.tsx first-mount useStockDocuments({...}).
     const today = kyivToday();
     void qc.prefetchQuery({
       queryKey: stockDocsKeys.list({
@@ -365,7 +365,7 @@ function isActive(pathname: string, href: string): boolean {
   return pathname.startsWith(href);
 }
 
-// Bug #282: PUBLIC_ROUTES + isPublicRoute імпортуються з @/lib/auth (SSOT). Раніше дублювались
+// PUBLIC_ROUTES + isPublicRoute імпортуються з @/lib/auth (SSOT). Раніше дублювались
 // тут, що ризикувало drift при додаванні нового public route (`/forgot-password` тощо).
 
 export function TopShell({ children }: { children: ReactNode }) {
@@ -396,7 +396,7 @@ export function TopShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!pendingRestore) return;
-    // Bug #422: setPendingRestore(null) ВИНЕСЕНО за межі if-блоку. Без цього невідомий
+    // setPendingRestore(null) ВИНЕСЕНО за межі if-блоку. Без цього невідомий
     // modalKey (deprecated tab з localStorage старої версії або майбутні modalKey-и які
     // забули обробити тут) лишається у state навіки → блокує наступні валідні відкриття
     // того ж tab-у (`setPendingRestore(sameRef)` бейлається у React).
@@ -745,7 +745,7 @@ export function TopShell({ children }: { children: ReactNode }) {
           open={restoredWoOpen}
           workOrderId={restoredWoId}
           onClose={() => {
-            // Bug #420: tab-close при закритті, але НЕ при мінімізації.
+            // tab-close при закритті, але НЕ при мінімізації.
             // minimizingRestoredRef=true коли юзер натиснув "−" — в цьому випадку
             // minimizeModal вже оновив/додав вкладку, closeTab не потрібен.
             if (!minimizingRestoredRef.current && restoredTabId) closeTab(restoredTabId);
@@ -758,7 +758,7 @@ export function TopShell({ children }: { children: ReactNode }) {
             minimizingRestoredRef.current = true;
           }}
           onUpdated={() => {
-            // Bug #420: інвалідація списку work-orders + linked queries — без цього сторінка
+            // інвалідація списку work-orders + linked queries — без цього сторінка
             // /work-orders залишиться зі stale кешем після save/transition через restored modal.
             queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
           }}

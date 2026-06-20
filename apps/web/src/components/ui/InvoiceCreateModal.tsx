@@ -160,7 +160,7 @@ export function InvoiceCreateModal({
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
-  // Bug #461: snapshot id-шників рядків станом на load — щоб у handleSave виявити
+  // snapshot id-шників рядків станом на load — щоб у handleSave виявити
   // рядки які користувач видалив локально (з UI). Без цього DELETE на бекенд не
   // йде і видалені рядки повертаються при наступному перезавантаженні модалки.
   const initialLineIdsRef = useRef<Set<string>>(new Set());
@@ -241,8 +241,6 @@ export function InvoiceCreateModal({
           unitPrice: String(l.unitPrice),
         }));
         setLines(loadedLines);
-        // Bug #461: запам'ятати початковий набір id-шників. handleSave порівняє з поточним
-        // станом і пошле DELETE для тих що зникли (користувач натиснув removeLine).
         initialLineIdsRef.current = new Set(loadedLines.map(l => l.id!).filter(Boolean));
       })
       .catch(e => {
@@ -356,7 +354,7 @@ export function InvoiceCreateModal({
         setNewLine(EMPTY_LINE);
       }
 
-      // Bug #463: розрахувати total з рядків і передати у POST замість 0.01 placeholder.
+      // розрахувати total з рядків і передати у POST замість 0.01 placeholder.
       // Backend `addLine` потім перерахує точно з ПДВ через recalcTotals, але якщо
       // мережа впала між POST /invoices і POST /lines — invoice не залишається з
       // нерелевантним amount=0.01.
@@ -414,7 +412,7 @@ export function InvoiceCreateModal({
         }),
       });
 
-      // Bug #461: видалити рядки що були у початковому списку але користувач
+      // видалити рядки що були у початковому списку але користувач
       // прибрав через removeLine. Без цього бекенд лишає їх у БД.
       const currentIds = new Set(lines.map(l => l.id).filter(Boolean) as string[]);
       const removedIds = [...initialLineIdsRef.current].filter(id => !currentIds.has(id));

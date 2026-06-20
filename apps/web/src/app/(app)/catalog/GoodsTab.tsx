@@ -186,7 +186,7 @@ export default function GoodsTab() {
   const [goodModalOpen, setGoodModalOpen] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [batchViewerGoodId, setBatchViewerGoodId] = useState<string | null>(null);
-  // Bug #309: in-flight set для restore — блокує дублюючі POST.
+  // in-flight set для restore — блокує дублюючі POST.
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
   const {
@@ -230,8 +230,8 @@ export default function GoodsTab() {
   );
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
-  // Bug #328: `?? []` creates a fresh array literal each render → useBulkSelect prunes
-  // every cycle. Use module-level frozen EMPTY_ITEMS for stable reference.
+  // `?? []` creates a fresh array literal each render → useBulkSelect prunes every cycle.
+  // Use module-level frozen EMPTY_ITEMS for stable reference.
   const rawGoodsItems = goods?.items ?? (EMPTY_ITEMS as unknown as Good[]);
   const goodsItems = useMemo(() => {
     if (!rawGoodsItems.length) return rawGoodsItems;
@@ -253,7 +253,6 @@ export default function GoodsTab() {
         id: 'delete',
         label: 'Видалити вибрані',
         variant: 'destructive',
-        // Bug #313: useConfirm замість window.confirm.
         onClick: async ids => {
           if (
             !(await confirm({
@@ -280,9 +279,8 @@ export default function GoodsTab() {
     [bulkSelect, features.toastEnabled, confirm],
   );
 
-  // Bug #323: race-guard для CategoryManagerModal refetch — без нього швидкі CRUD
-  // (rename → add → toggle) запускали кілька fetch-ів, resolve order не гарантовано →
-  // stale tree (без щойно доданої категорії).
+  // race-guard для CategoryManagerModal refetch: rapid CRUD (rename → add → toggle)
+  // causes resolve order not guaranteed → stale tree (без щойно доданої категорії).
   const goodCatReqRef = useRef(0);
   const loadGoodCategories = useCallback(() => {
     const cached = getCached<CategoryNode[]>('cache:good-categories');
@@ -312,8 +310,7 @@ export default function GoodsTab() {
     if (cSuppliers) setSuppliers(cSuppliers);
     if (cGoodCats) setGoodCatTree(cGoodCats);
 
-    // Bug #315: AbortController щоб setState не виконувався після unmount
-    // (React warning у DEV + memory churn).
+    // AbortController so setState doesn't run after unmount — React DEV warning + memory churn.
     const ac = new AbortController();
     Promise.all([
       apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200', { signal: ac.signal }).catch(
@@ -343,7 +340,7 @@ export default function GoodsTab() {
     return () => ac.abort();
   }, []);
 
-  // Bug #307: race-guard для swift showDeleted/q/page toggles — outdated response відкидається.
+  // race-guard для swift showDeleted/q/page toggles — outdated response відкидається.
   const goodCategoryIds = useMemo(
     () => (selectedGoodCat ? collectDescendantIds(goodCatTree, selectedGoodCat) : undefined),
     [selectedGoodCat, goodCatTree],
@@ -432,7 +429,7 @@ export default function GoodsTab() {
   };
 
   const restoreGood = async (id: string) => {
-    // Bug #309: in-flight guard + clear stale error.
+    // in-flight guard — blocks duplicate POSTs.
     if (restoringIds.has(id)) return;
     setError('');
     setRestoringIds(prev => new Set(prev).add(id));

@@ -43,7 +43,7 @@ export class AuditService {
     entityType: string,
     entityId: string,
   ): Promise<{ items: AuditEventItem[]; total: number }> {
-    // Bug #88: previously returned `total: items.length` which capped at the take=100
+    // Previously returned `total: items.length` which capped at the take=100
     // limit and silently hid extra events from the UI. Use a real $transaction count
     // so the frontend knows the actual number of events for this entity.
     const where = { orgId, entityType, entityId };

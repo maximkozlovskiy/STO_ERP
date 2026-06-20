@@ -92,9 +92,6 @@ interface LocalLine {
   goodInternalCode?: string | null;
   goodBrandName?: string | null;
   unit: string;
-  // Bug #498: backend повертає unitShortName з UoM relation (purchase-orders.service.ts:771).
-  // Parent page.tsx рендерить line.unitShortName ?? line.unit; цей modal раніше показував
-  // тільки сирий unit (drift display).
   unitShortName?: string | null;
   quantity: string;
   price: string;
@@ -633,7 +630,7 @@ export function PurchaseOrderCreateModal({
     setSavingBoth(true);
     setError('');
     try {
-      // Bug #460: backend CreatePurchaseOrderDto приймає `lines` у body та створює всі рядки
+      // backend CreatePurchaseOrderDto приймає `lines` у body та створює всі рядки
       // у $transaction (атомарно, з recalc totalAmount). Endpoint POST /purchase-orders/:id/lines
       // НЕ існує — попередній цикл `for ... POST /lines` повертав 404 на кожен виклик і залишав
       // PO як orphan-draft без позицій.

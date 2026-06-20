@@ -227,12 +227,12 @@ export class GoodsController {
 
   // ─── Batches + Price History Sub-resources ───────────────────────────────────
   //
-  // Bug #28: list-style sub-resources повертають `{ items, total }` shape для
-  // відповідності API-контракту STO ERP (frontend всюди очікує `data.items.length`).
-  // Bug #31: перед запитом валідуємо існування Good у поточній org → 404 інакше
+  // list-style sub-resources повертають `{ items, total }` shape для відповідності
+  // API-контракту STO ERP (frontend всюди очікує `data.items.length`).
+  // Перед запитом валідуємо існування Good у поточній org → 404 інакше
   // силует "Немає партій" приховує помилковий goodId.
-  // Bug #120/#121: `total` повинен бути реальним COUNT з БД, а не `items.length`
-  // (яке cap-ується `take` у service/query). Інакше повторюємо Bug #88 регрес.
+  // `total` повинен бути реальним COUNT з БД, а не `items.length`
+  // (яке cap-ується `take` у service/query).
 
   @Get(':id/batches')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST')

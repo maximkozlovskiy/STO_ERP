@@ -21,7 +21,7 @@ async function bootstrap() {
   );
 
   // Register Fastify plugins
-  // Bug #135: security headers must be set first so they apply to ALL responses (including error paths).
+  // Security headers must be set first so they apply to ALL responses (including error paths).
   // - contentSecurityPolicy disabled: Swagger UI uses inline scripts and would otherwise refuse to load.
   // - crossOriginEmbedderPolicy disabled: avoids breaking PDF/file downloads that come from MinIO with COEP-free headers.
   // - crossOriginResourcePolicy 'cross-origin' so web app on port 3001 can fetch resources from API on 3000 in dev.

@@ -56,8 +56,8 @@ export class ExchangeRatesService {
 
   async create(orgId: string, dto: CreateExchangeRateDto): Promise<ExchangeRateResponseDto> {
     const date = parseDateOnly(dto.date);
-    // Parallel: currency FK validation + existing-row dup check (Bug #152 + merge).
-    // Both queries scoped by orgId, independent — collapse у Promise.all (-1 RTT).
+    // Parallel: currency FK validation + existing-row dup check — both scoped by orgId,
+    // independent reads — collapse у Promise.all (-1 RTT).
     const [currency, anyExisting] = await Promise.all([
       this.prisma.currency.findFirst({
         where: { id: dto.currencyId, orgId, deletedAt: null },
@@ -126,9 +126,9 @@ export class ExchangeRatesService {
     ]);
     if (!existing) throw new NotFoundException('Курс валюти не знайдено');
 
-    // Bug #151: зміна дати має поважати унікальність (orgId, currencyId, date).
-    // Інакше PATCH на зайняту дату падає на DB P2002 → generic 409 замість
-    // локалізованого повідомлення (так само як у create()).
+    // Date change must respect the unique index (orgId, currencyId, date): without this
+    // check a PATCH on an occupied date hits DB P2002 → generic 409 instead of a
+    // localized message (same invariant as create()).
     if (newDate && newDate.getTime() !== new Date(existing.date).setUTCHours(0, 0, 0, 0)) {
       if (duplicate && duplicate.currencyId === existing.currencyId) {
         throw new ConflictException('Курс на цю дату вже існує');

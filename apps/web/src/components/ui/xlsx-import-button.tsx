@@ -23,9 +23,6 @@ interface TemplateResponse {
   filename: string;
 }
 
-// Bug #118: previously this file dup-ed getToken/setToken/tryRefresh/fetchWithAuth
-// from lib/api-client.ts. Use the shared helpers — apiFetch for JSON, apiMultipartFetch
-// for FormData uploads — so silent refresh + redirect-on-logout drift is impossible.
 export function XlsxImportButton({
   templateType,
   importUrl,

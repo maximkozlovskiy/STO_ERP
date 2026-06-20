@@ -165,7 +165,7 @@ const WO_COLUMNS: Array<{ key: string; label: string }> = [
 ];
 const WO_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(WO_COLUMNS.map(c => c.key));
 
-// Bug #354: Suspense обгортка для useSearchParams (Next.js static-export вимога).
+// Suspense обгортка для useSearchParams (Next.js static-export вимога).
 // Inner-функція тримає всю логіку, default-export лише wrapper.
 export default function WorkOrdersPage() {
   return (
@@ -258,7 +258,7 @@ function WorkOrdersPageInner() {
     sortBy: woSort.sortBy,
     sortDir: woSort.sortDir,
   });
-  // Bug #328 regression guard: fresh `[]` literal per render → useBulkSelect
+  // regression guard: fresh `[]` literal per render → useBulkSelect
   // effect fires on every render. Use module-level frozen EMPTY_ITEMS instead.
   const orders = queryData?.items ?? (EMPTY_ITEMS as unknown as WorkOrder[]);
   const total = queryData?.total ?? 0;
@@ -440,7 +440,7 @@ function WorkOrdersPageInner() {
     [resetPage, setActiveSavedFilterId],
   );
 
-  // Bug #354: підтримка `?action=new` query — Command Palette + N shortcut + calendar prefill.
+  // підтримка `?action=new` query — Command Palette + N shortcut + calendar prefill.
   useEffect(() => {
     if (searchParams?.get('action') !== 'new') return;
     const cpId = searchParams.get('counterpartyId');

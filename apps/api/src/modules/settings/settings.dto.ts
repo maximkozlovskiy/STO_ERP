@@ -52,7 +52,7 @@ export class UpdateOrganisationSettingsDto {
   // Bug review (currency feature): Р±РµР· РїРѕР»СЏ Сѓ DTO `forbidNonWhitelisted: true`
   // РіР»РѕР±Р°Р»СЊРЅРѕ РІС–РґС…РёР»СЏРІ PATCH Р· `currency` в†’ save РІР°Р»СЋС‚Рё Сѓ Settings в†’ Org РјРѕРІС‡РєРё
   // С„РµР№Р»РёРІСЃСЏ 400-РєРѕСЋ РґР»СЏ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°.
-  // Bug #359: toUpperCurrencyCode РЅРѕСЂРјР°Р»С–Р·СѓС” `uah` в†’ `UAH` + trim + @MaxLength(10)
+  // toUpperCurrencyCode РЅРѕСЂРјР°Р»С–Р·СѓС” `uah` в†’ `UAH` + trim + @MaxLength(10)
   // anti-DoS. Currency.code @db.VarChar(10) Сѓ СЃС…РµРјС– вЂ” РїРѕР·Р° 10 СЃРёРјРІРѕР»С–РІ РЅРµ РїСЂРѕР№РґРµ.
   @ApiPropertyOptional({ description: 'ISO РєРѕРґ РІР°Р»СЋС‚Рё РѕР±Р»С–РєСѓ (UAH, USD, EUR)' })
   @IsOptional()
@@ -63,7 +63,7 @@ export class UpdateOrganisationSettingsDto {
   })
   currency?: string;
 
-  // Bug #263: emptyToUndefined gap вЂ” settings selects Р· default `''` в†’ 400.
+  // emptyToUndefined gap вЂ” settings selects Р· default `''` в†’ 400.
   @ApiPropertyOptional({ enum: VatMode })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -112,7 +112,7 @@ export class UpdateOrganisationSettingsDto {
   @IsString()
   brandTheme?: string;
 
-  // Bug #263: emptyToUndefined gap.
+  // emptyToUndefined gap.
   @ApiPropertyOptional({ enum: BatchCostMethod })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -205,7 +205,7 @@ export class UpdateOrganisationSettingsDto {
   syncCalendarSlotWithPlannedHours?: boolean;
 }
 
-// Bug #515: HH:MM regex (00:00вЂ“23:59). Р‘РµР· regex backend РїСЂРёР№РјР°С” 'foo'/'25:99' в†’
+// HH:MM regex (00:00вЂ“23:59). Р‘РµР· regex backend РїСЂРёР№РјР°С” 'foo'/'25:99' в†’
 // Р‘Р” РєРѕСЂСѓРјРїРѕРІР°РЅР° в†’ getBranchSettings РїРѕРІРµСЂС‚Р°С” СЃРјС–С‚С‚СЏ в†’ frontend settings form
 // РїРѕРєР°Р·СѓС” РЅРµРІР°Р»С–РґРЅС– Р·РЅР°С‡РµРЅРЅСЏ; gorshe вЂ” workStartTime='20:00' + workEndTime='09:00'
 // РїСЂРѕС…РѕРґРёС‚СЊ (РѕР±РёРґРІР° РІР°Р»С–РґРЅС– СЃС‚СЂРѕРєРё) в†’ getWorkHours РїРѕРІРµСЂС‚Р°С” С–РЅРІРµСЂС‚РѕРІР°РЅС– РіРѕРґРёРЅРё в†’

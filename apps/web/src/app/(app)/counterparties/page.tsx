@@ -79,7 +79,7 @@ const CRM_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean 
 ];
 const CRM_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(CRM_COLUMNS.map(c => c.key));
 
-// Bug #354: Suspense обгортка для useSearchParams (Next.js static-export вимога).
+// Suspense обгортка для useSearchParams — Next.js static-export вимога.
 export default function CrmPage() {
   return (
     <Suspense fallback={null}>
@@ -143,7 +143,7 @@ function CrmPageInner() {
     sortBy: crmSort.sortBy,
     sortDir: crmSort.sortDir,
   });
-  // Bug #328 regression guard — stable empty array reference.
+  // stable empty array reference: ?? [] creates fresh array each render → useBulkSelect prunes every cycle.
   const counterparties = queryData?.items ?? (EMPTY_ITEMS as unknown as Counterparty[]);
   const total = queryData?.total ?? 0;
 
@@ -152,7 +152,7 @@ function CrmPageInner() {
   const [editingCp, setEditingCp] = useState<Counterparty | null>(null);
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
 
-  // Bug #354: підтримка `?action=new` query — Command Palette + N shortcut
+  // підтримка `?action=new` query: Command Palette + N shortcut
   // навігують сюди замість неіснуючого /counterparties/new маршруту.
   useEffect(() => {
     if (searchParams?.get('action') === 'new') {

@@ -68,7 +68,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
         setCategories(arr);
       })
       .catch(() => {
-        // Bug #387: allow retry on next open after failure
+        // allow retry on next open after failure
         if (!cancelled) categoriesLoadedRef.current = false;
       });
     return () => {
@@ -205,7 +205,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                       key={item.id}
                       type="button"
                       onClick={() => {
-                        // Bug #538: secondary дзеркалить sub-line у списку — internalCode
+                        // secondary дзеркалить sub-line у списку — internalCode
                         // (T-0000NN) + sku + price. Без нього майбутні споживачі що читають
                         // лише `secondary` бачать неконсистентну метадату.
                         const meta = [item.internalCode, item.sku].filter(Boolean).join(' · ');

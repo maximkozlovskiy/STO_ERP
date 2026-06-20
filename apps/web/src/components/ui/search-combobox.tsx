@@ -155,7 +155,7 @@ export function SearchCombobox<T extends { id: string }>({
 
   const hasError = !!errorMessage;
   const showSelected = !!value && !!displayValue && !query;
-  // Bug #140: коли `value` (id) встановлено, але `displayValue` ще порожній (наприклад, форма
+  // коли `value` (id) встановлено, але `displayValue` ще порожній (наприклад, форма
   // відкрилася з server-state і назва підвантажується паралельним fetch'ем) — рендеримо
   // skeleton placeholder замість порожнього search input. Інакше користувач думає що вибір втрачено.
   const showLoadingPill = !!value && !displayValue && !query;
@@ -191,7 +191,7 @@ export function SearchCombobox<T extends { id: string }>({
             )}
           </div>
         ) : showLoadingPill ? (
-          // Bug #140: placeholder поки displayValue завантажується — показує що вибір НЕ втрачено
+          // placeholder поки displayValue завантажується — показує що вибір НЕ втрачено
           <div
             className={cn(
               'flex items-center h-9 w-full rounded border text-[14px] text-muted-foreground bg-surface px-3',

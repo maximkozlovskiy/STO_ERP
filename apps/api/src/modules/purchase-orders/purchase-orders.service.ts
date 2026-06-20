@@ -116,9 +116,8 @@ export class PurchaseOrdersService {
         skip,
         take,
         orderBy: { [sortField]: sortOrder },
-        // Lines omitted from list — loaded on demand via findOne when detail opens.
-        // Avoids fetching up to 1000 line rows × 20 POs per list request.
-        // Bug #349: include contract so list shows contractNumber (toDto maps it).
+        // Lines omitted from list — loaded on demand via findOne (avoids 1000 rows × 20 POs).
+        // contract included so list shows contractNumber (toDto maps it).
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },
@@ -140,7 +139,6 @@ export class PurchaseOrdersService {
   async findOne(orgId: string, id: string): Promise<PurchaseOrderResponseDto> {
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      // Bug #349: include contract so detail shows contractNumber (toDto maps it).
       include: {
         supplier: { select: { firstName: true, lastName: true, companyName: true } },
         warehouse: { select: { name: true } },
@@ -256,7 +254,7 @@ export class PurchaseOrdersService {
         });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    );
 
     return this.toDto(po);
   }
@@ -387,7 +385,7 @@ export class PurchaseOrdersService {
         });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    );
 
     return this.toDto(updated);
   }
@@ -411,7 +409,7 @@ export class PurchaseOrdersService {
         await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #132: explicit timeout
+    );
     return this.findOne(orgId, id);
   }
 
@@ -464,9 +462,8 @@ export class PurchaseOrdersService {
       }
     }
 
-    // Bug review: dedupe protection on lineId — без цього клієнт міг би відправити дві
-    // recv-записи з тим самим lineId і отримати подвійний `increment` (Promise.all виконує
-    // обидва update — навіть якщо у одній tx, обидва зростають).
+    // Dedupe protection on lineId: without this, two recv entries with the same lineId produce
+    // double `increment` — Promise.all runs both updates even inside one tx, both accumulate.
     const seen = new Set<string>();
     for (const recv of dto.lines) {
       if (seen.has(recv.lineId)) {
@@ -504,7 +501,7 @@ export class PurchaseOrdersService {
                 : null) ??
               line.good?.unitId ??
               null;
-            // Bug #237: avoid overwriting an existing PO line UoM on subsequent partial
+            // avoid overwriting an existing PO line UoM on subsequent partial
             // receives. Only persist UoM when (a) this is the first receive (no prior qty),
             // or (b) the caller passed an explicit override — otherwise keep the original.
             const shouldUpdateLineUom = line.receivedQty === 0 || !!recv.unitOfMeasureId;
@@ -535,7 +532,6 @@ export class PurchaseOrdersService {
           }),
         );
 
-        // Record payable to supplier for goods received in this batch
         if (receivedAmount > 0) {
           await this.settlements.createTransaction(
             orgId,
@@ -551,7 +547,6 @@ export class PurchaseOrdersService {
           );
         }
 
-        // Determine and apply new status inside the same transaction
         const updatedLines = await tx.purchaseOrderLine.findMany({
           where: { purchaseOrderId: id, orgId, deletedAt: null },
           take: 1000,
@@ -565,8 +560,8 @@ export class PurchaseOrdersService {
             : po.status;
         await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
       },
-      { timeout: 30_000 },
-    ); // Bug #132: explicit timeout — велике PO (сотні рядків) × createMovement з batch-tracking
+      { timeout: 30_000 }, // large PO (hundreds of lines) × createMovement with batch tracking
+    );
     return this.findOne(orgId, id);
   }
 
@@ -638,9 +633,8 @@ export class PurchaseOrdersService {
       );
     }
 
-    // Bug #194: prefetch active rules once — раніше calculateSalePrice fetch-ив правила
-    // у циклі (N+1), та кожна лінія викликала окремий $transaction без timeout.
-    // Тепер: 1 query на правила + 1 транзакція з chunked updates + explicit timeout.
+    // Prefetch active rules once to avoid N+1 (each line previously fetched rules in a loop
+    // and called a separate $transaction without timeout).
     const rules = ruleId
       ? await this.pricingService
           .getActiveRulesForOrg(orgId)
@@ -684,7 +678,7 @@ export class PurchaseOrdersService {
 
     if (plan.length === 0) return { updated: 0, details: [] };
 
-    // Дедуп по goodId для Good.salePrice update (last-write-wins для однакових goodId).
+    // Deduplicate by goodId for Good.salePrice update (last-write-wins for duplicate goodId rows).
     const dedupedPlan = deduplicateBy(
       plan.filter(u => Math.abs(u.newSalePrice - u.oldSalePrice) >= 0.001),
       u => u.goodId,
@@ -692,7 +686,6 @@ export class PurchaseOrdersService {
 
     const CHUNK = 100;
 
-    // 1. Оновити Good.salePrice + PriceHistory лише для змінених цін
     if (dedupedPlan.length > 0) {
       for (let i = 0; i < dedupedPlan.length; i += CHUNK) {
         const chunk = dedupedPlan.slice(i, i + CHUNK);
@@ -722,7 +715,6 @@ export class PurchaseOrdersService {
       }
     }
 
-    // 2. Оновити pricedSalePrice + pricingRuleName на кожній лінії (для всіх ліній)
     for (let i = 0; i < plan.length; i += CHUNK) {
       const chunk = plan.slice(i, i + CHUNK);
       await this.prisma.$transaction(
@@ -745,7 +737,6 @@ export class PurchaseOrdersService {
       data: { pricedAt: new Date() },
     });
 
-    // updated = кількість ліній для яких знайдено правило (незалежно від зміни ціни)
     return { updated: plan.filter(u => u.ruleName !== null).length, details: plan };
   }
 
@@ -824,8 +815,7 @@ export class PurchaseOrdersService {
         goodBrandName: l.good?.brand?.name ?? null,
         unit: l.good?.unit,
         unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
-        // Bug #316: safeCoeff() ловить legacy/seed coefficient=0/NaN/негативні —
-        // фронт використовує coefficient як дільник для display↔base conversion.
+        // safeCoeff() catches legacy/seed coefficient=0/NaN/negative — frontend uses it as divisor for display↔base conversion.
         coefficient: safeCoeff(l.good?.unitOfMeasure?.coefficient),
         quantity: l.quantity,
         price: Number(l.price),

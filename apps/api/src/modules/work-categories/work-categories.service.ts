@@ -87,14 +87,14 @@ export class WorkCategoriesService {
     if (!existing) throw new NotFoundException('Категорію не знайдено');
     if (dto.parentId && !parent) throw new NotFoundException('Батьківську категорію не знайдено');
 
-    // Bug #319: системні категорії не можна перейменовувати або переносити (зміна назви/parentId).
-    // Косметичні поля (sortOrder, icon) дозволяються — це per-org налаштування.
+    // System categories must not be renamed or moved (name/parentId changes).
+    // Cosmetic fields (sortOrder, icon) are allowed — they are per-org preferences.
     if (existing.isSystem && (dto.name !== undefined || dto.parentId !== undefined)) {
       throw new BadRequestException('Системну категорію не можна перейменовувати або переносити');
     }
 
-    // Bug #321: defense-in-depth — updateMany з deletedAt: null у where, щоб race
-    // між findFirst і update не оновив soft-deleted рядок.
+    // Atomic updateMany with deletedAt: null in where — prevents a race between
+    // findFirst and update from touching a concurrently soft-deleted row.
     const result = await this.prisma.workCategory.updateMany({
       where: { id, orgId, deletedAt: null },
       data: dto,
@@ -108,9 +108,8 @@ export class WorkCategoriesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    // Bug #320: блокувати soft-delete системних категорій (UI ховає кнопку, але
-    // backend — авторитет). Без guard curl з валідним JWT може видалити весь
-    // системний catalog (71 категорія робіт + 365 категорій товарів).
+    // Block soft-delete of system categories at the backend (UI hides the button, but backend is authoritative).
+    // Without this guard, a raw curl with a valid JWT can wipe the entire system catalog.
     const existing = await this.prisma.workCategory.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true, isSystem: true },
@@ -133,8 +132,7 @@ export class WorkCategoriesService {
     id: string,
     isActive: boolean,
   ): Promise<WorkCategoryResponseDto> {
-    // Bug #321: defense-in-depth — атомарний updateMany з повним where (id, orgId,
-    // deletedAt: null) замість findFirst+update — без race-вікна для soft-deleted рядка.
+    // Atomic updateMany with full compound where — no race window for a concurrently soft-deleted row.
     const result = await this.prisma.workCategory.updateMany({
       where: { id, orgId, deletedAt: null },
       data: { isActive },

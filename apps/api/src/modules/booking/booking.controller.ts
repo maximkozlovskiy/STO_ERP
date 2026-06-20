@@ -34,7 +34,7 @@ export class BookingController {
   // ─── Public endpoints (no auth required) ─────────────────
 
   /**
-   * Bug #111: public booking widget can't reach `/branches` (auth-guarded) —
+   * Public booking widget can't reach `/branches` (auth-guarded) —
    * provide a no-auth list endpoint that only exposes minimal fields.
    */
   @Get('branches')
@@ -59,15 +59,14 @@ export class BookingController {
     @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId: string,
     @Query('serviceIds') serviceIds?: string,
   ) {
-    // Bug #119: lightweight runtime validation (avoid Prisma P2023 → 500 on bad UUID/date)
+    // Lightweight runtime validation — avoid Prisma P2023 → 500 on bad UUID/date
     if (!branchId || !UUID_RE.test(branchId)) {
       throw new BadRequestException('Некоректний branchId');
     }
     if (!date || !DATE_RE.test(date)) {
       throw new BadRequestException('Дата у форматі YYYY-MM-DD');
     }
-    // Bug #112: soft-deleted branches must be invisible to public booking.
-    // Use service-public method instead of bracket access to private prisma.
+    // Soft-deleted branches must be invisible to public booking.
     const branch = await this.service.findBranchForBooking(branchId);
     if (!branch) return [];
     return this.service.getAvailability(
@@ -85,7 +84,7 @@ export class BookingController {
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @ApiOperation({ summary: 'Створити заявку на запис (публічний)' })
   async createPublic(@Body() dto: CreateBookingRequestDto) {
-    // Bug #112: same soft-delete + encapsulation fix as getAvailability.
+    // Soft-deleted branches must be invisible to public booking.
     const branch = await this.service.findBranchForBooking(dto.branchId);
     if (!branch) throw new NotFoundException('Філію не знайдено');
     return this.service.create(branch.orgId, dto);

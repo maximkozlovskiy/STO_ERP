@@ -55,7 +55,7 @@ export class CreateServiceDto {
   @ApiPropertyOptional({ type: [ServiceWorkItemDto] })
   @IsOptional()
   @IsArray()
-  // Bug #248: anti-DoS cap; СЂРµР°Р»С–СЃС‚РёС‡РЅРёР№ РјР°РєСЃРёРјСѓРј robotic-РѕРїРµСЂР°С†С–Р№ Сѓ РїРѕСЃР»СѓР·С–.
+  // Anti-DoS cap: 100 works is a realistic maximum for a single service.
   @ArrayMaxSize(100, { message: 'РќРµ Р±С–Р»СЊС€Рµ 100 СЂРѕР±С–С‚ Сѓ РїРѕСЃР»СѓР·С–' })
   @ValidateNested({ each: true })
   @Type(() => ServiceWorkItemDto)

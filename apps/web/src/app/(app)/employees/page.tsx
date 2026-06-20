@@ -331,9 +331,9 @@ export default function EmployeesPage() {
     setError('');
     try {
       await apiFetch<void>(`/employees/${id}`, { method: 'DELETE' });
-      // Bug #371: functional setter — `selectedEmp?.id` через captured closure
-      // може бути stale якщо користувач перемкнув рядок між confirm і DELETE-result.
-      // `prev` тут — це поточний state з React-черги, не closure.
+      // functional setter: `selectedEmp?.id` via captured closure can be stale
+      // if user switched rows between confirm and DELETE-result.
+      // `prev` is React queue state, not closure.
       setSelectedEmp(prev => (prev?.id === id ? null : prev));
       load();
     } catch (e: unknown) {

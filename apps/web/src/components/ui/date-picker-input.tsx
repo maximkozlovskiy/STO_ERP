@@ -86,7 +86,7 @@ export function DatePickerInput({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Bug #87: parse min/max bounds and enforce them in both manual typing and DayPicker.
+  // parse min/max bounds and enforce them in both manual typing and DayPicker.
   // Memoize: parseApiDate створює новий Date об'єкт на кожен виклик. Без useMemo
   // disabledMatchers нижче перебудовується на кожен ререндер → DayPicker втрачає
   // внутрішню memoization і ре-обчислює всі дні щоразу.
@@ -105,7 +105,7 @@ export function DatePickerInput({
     // Try to parse DD.MM.YYYY manually typed input
     if (text.length === 10) {
       const parsed = parse(text, 'dd.MM.yyyy', new Date());
-      // Bug #87: reject out-of-range dates (silently — UI shows raw text, but
+      // reject out-of-range dates (silently — UI shows raw text, but
       // onChange does not fire so parent's `value` stays valid).
       if (isValid(parsed) && isWithinBounds(parsed)) {
         onChange(format(parsed, 'yyyy-MM-dd'));
@@ -123,7 +123,7 @@ export function DatePickerInput({
 
   const selected = useMemo(() => parseApiDate(value), [value]);
 
-  // Bug #87: react-day-picker `disabled` accepts an array of matchers.
+  // react-day-picker `disabled` accepts an array of matchers.
   // Memoize: масив-літерал перебудовується на кожен ререндер. DayPicker всередині диф-ить
   // disabled по reference — без useMemo втрачається mеmoization матриці днів.
   const disabledMatchers = useMemo<Matcher[]>(() => {

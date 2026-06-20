@@ -28,7 +28,7 @@ export class CommentsController {
   constructor(private readonly service: CommentsService) {}
 
   @Get()
-  // Bug #255: explicit @Roles to make RolesGuard active (was no-op before).
+  // Explicit @Roles required: RolesGuard is a no-op without it.
   // Comments — open для всіх ролей що працюють з нарядами/клієнтами/авто/рахунками.
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Коментарі до сутності' })

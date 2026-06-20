@@ -1,5 +1,5 @@
 /**
- * Bug #114: SSRF defense for outbound webhooks (and any future user-supplied URL).
+ * SSRF defense for outbound webhooks (and any future user-supplied URL).
  *
  * Blocks requests to:
  *  - loopback: 127.0.0.0/8, ::1
@@ -83,7 +83,7 @@ export function validatePublicUrl(raw: string): string | null {
     // fe80::/10 — link-local (fe80-febf in first hextet)
     if (/^fe[89ab][0-9a-f]?:/i.test(host)) return 'Недозволена IPv6 (link-local)';
 
-    // Bug #123: IPv6 with embedded IPv4 has TWO legacy forms — IPv4-mapped
+    // IPv6 with embedded IPv4 has TWO legacy forms — IPv4-mapped
     // (`::ffff:a.b.c.d`, RFC 4291 §2.5.5.2) and IPv4-compatible (`::a.b.c.d`,
     // deprecated §2.5.5.1). After Node URL normalization both become the
     // pure-hex compressed form (e.g. `::ffff:7f00:1`, `::7f00:1`).

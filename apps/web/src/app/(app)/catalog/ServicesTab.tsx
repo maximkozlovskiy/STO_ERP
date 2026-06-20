@@ -127,7 +127,7 @@ export default function ServicesTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
-  // Bug #309: in-flight set для restore — блокує дублюючі POST.
+  // in-flight set для restore — блокує дублюючі POST.
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
   const {
@@ -171,8 +171,8 @@ export default function ServicesTab() {
   );
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
-  // Bug #328: `?? []` creates a fresh array literal each render → useBulkSelect prunes
-  // every cycle. Use module-level frozen EMPTY_ITEMS for stable reference.
+  // `?? []` creates a fresh array literal each render → useBulkSelect prunes every cycle.
+  // Use module-level frozen EMPTY_ITEMS for stable reference.
   const servicesItems = services?.items ?? (EMPTY_ITEMS as unknown as Service[]);
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(servicesItems);
 
@@ -184,7 +184,6 @@ export default function ServicesTab() {
         id: 'delete',
         label: 'Видалити вибрані',
         variant: 'destructive',
-        // Bug #313: useConfirm замість window.confirm.
         onClick: async ids => {
           if (
             !(await confirm({
@@ -214,7 +213,7 @@ export default function ServicesTab() {
   // ── Unsaved guard ────────────────────────────────────────────────────────────
   const servicesFormDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
-  // Bug #307: race-guard для swift showDeleted/q/page toggles — outdated response відкидається.
+  // race-guard для swift showDeleted/q/page toggles — outdated response відкидається.
   const loadReqRef = useRef(0);
   const load = useCallback(() => {
     setLoading(true);
@@ -374,7 +373,7 @@ export default function ServicesTab() {
   };
 
   const restore = async (id: string) => {
-    // Bug #309: in-flight guard + clear stale error.
+    // in-flight guard — blocks duplicate POSTs.
     if (restoringIds.has(id)) return;
     setError('');
     setRestoringIds(prev => new Set(prev).add(id));

@@ -301,7 +301,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
   const save = async () => {
     setError('');
     if (!isEdit && form.grantAccess) {
-      // Bug #380: trim перед перевіркою — інакше whitespace-only '   ' проходить
+      // trim перед перевіркою — інакше whitespace-only '   ' проходить
       // як truthy і нерозбірливий backend `@IsEmail` помилка показується замість
       // зрозумілого «Вкажіть email для входу».
       if (!form.loginEmail.trim()) {

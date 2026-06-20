@@ -291,8 +291,8 @@ export class XlsxController {
   // ─── Helper ───────────────────────────────────────────────────────────────────
 
   private async getUploadedFile(req: FastifyRequest): Promise<MultipartFile> {
-    // Bug #190: fastify-multipart кидає FastifyError "the request is not multipart" з 406
-    // коли content-type не multipart. Ловимо щоб повертати дружнє 400 українською замість 406.
+    // fastify-multipart throws FastifyError "the request is not multipart" with 406
+    // when content-type is not multipart. Catch to return a friendly 400 in Ukrainian instead.
     let data: MultipartFile | undefined;
     try {
       data = await req.file();

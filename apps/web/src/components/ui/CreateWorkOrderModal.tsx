@@ -172,7 +172,7 @@ interface WorkOrderDetail {
     quantity: number;
     costPrice?: number | null;
     price: number;
-    // Bug #434: backend `toPartDto` повертає unitOfMeasureId (work-orders.service.ts:1529),
+    // backend `toPartDto` повертає unitOfMeasureId (work-orders.service.ts:1529),
     // але локальний interface його пропускав → load mapper хардкодив '' → inline-edit
     // dropdown губив попередньо обраний UoM. Type drift: interface локальний, не
     // імпортується з shared, тож TS не ловив розбіжність з backend DTO.
@@ -396,10 +396,10 @@ export function CreateWorkOrderModal({
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
-  // Refs ensure handleModalClose sees sync state, not stale closure (Bug #381 race).
+  // Refs ensure handleModalClose sees sync state, not stale closure.
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
-  // Bug #440: track initial planned dates loaded from WO so we can detect
+  // track initial planned dates loaded from WO so we can detect
   // whether they actually changed before prompting the calendar-sync dialog.
   // Without this every save() — even one that only touches description or
   // lines — would ask "Планові дати наряду змінились" and lie to the user.
@@ -418,7 +418,7 @@ export function CreateWorkOrderModal({
   const [error, setError] = useState('');
   const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
   const [vatRate, setVatRate] = useState(0);
-  // Bug #523: default = true (Prisma schema default + DocumentsTab `?? true`).
+  // default = true (Prisma schema default + DocumentsTab `?? true`).
   // Раніше `useState(false)` + `?? false` → silent drift: settings toggle on,
   // WO модалка ефективно off коли GET /settings/organisation lag-ить чи не повертає поле.
   const [recalcPlannedHoursEnabled, setRecalcPlannedHoursEnabled] = useState(true);
@@ -432,7 +432,7 @@ export function CreateWorkOrderModal({
   const [smsLoading, setSmsLoading] = useState(false);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceConflict, setInvoiceConflict] = useState(false);
-  // Bug #409: інкрементуємо після успішного invoice create/refresh →
+  // інкрементуємо після успішного invoice create/refresh →
   // LinkedDocumentsPanel ререфетчить без потреби unmount/remount tab.
   const [linkedDocsRefreshKey, setLinkedDocsRefreshKey] = useState(0);
   const [linkedDocsCounts, setLinkedDocsCounts] = useState<LinkedDocumentsCounts | null>(null);
@@ -461,7 +461,7 @@ export function CreateWorkOrderModal({
     return () => document.removeEventListener('mousedown', handler);
   }, [statusMenuOpen]);
 
-  // Bug #408 follow-up: onKeyDown на <div role="presentation"> без tabIndex/focus
+  // follow-up: onKeyDown на <div role="presentation"> без tabIndex/focus
   // не спрацьовує — Esc мовчки ігнорувався. Глобальний listener забезпечує закриття
   // діалогу-конфлікту з клавіатури згідно §14 a11y.
   //
@@ -500,7 +500,7 @@ export function CreateWorkOrderModal({
       liftId: form.liftId || undefined,
       startAt: startIso,
       endAt: endIso,
-      // Bug #397: виключити слоти цього самого наряду — інакше будь-який наряд
+      // виключити слоти цього самого наряду — інакше будь-який наряд
       // з уже створеним слотом показує "Підйомник зайнятий" на власний час.
       excludeWorkOrderId: workOrderId,
     });
@@ -614,7 +614,7 @@ export function CreateWorkOrderModal({
     ])
       .then(([org, rates]) => {
         setVatMode((org.vatMode as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE') ?? 'NONE');
-        // Bug #523: дефолт = true (Prisma schema default). Без цього при legacy DTO
+        // дефолт = true (Prisma schema default). Без цього при legacy DTO
         // response, що не містить поля, settings/DocumentsTab показує on, а тут off.
         setRecalcPlannedHoursEnabled(org.recalcPlannedHoursFromLines ?? true);
         setRecalcActualHoursEnabled(org.recalcActualHoursFromLines ?? true);
@@ -626,7 +626,7 @@ export function CreateWorkOrderModal({
   }, []);
 
   // Apply prefill + auto-select single branch when modal opens.
-  // Bug #421: deps include `workOrderId` — без цього при перемиканні між мінімізованими
+  // deps include `workOrderId` — без цього при перемиканні між мінімізованими
   // tab-ами (A → B, обидва edit-mode, open=true весь час) stale state (error banner,
   // inline "Додати рядок", showLineInput, lines/parts WO-A, статус-меню) лишається
   // видимим поки fetch для B ще не resolved. Тепер кожна зміна workOrderId одразу
@@ -652,7 +652,7 @@ export function CreateWorkOrderModal({
     setCurrentStatus('DRAFT');
     // A fresh modal session starts without a prior partial create.
     createdWoRef.current = null;
-    // Bug #440: reset snapshot so previous WO's dates don't bleed into a new session.
+    // reset snapshot so previous WO's dates don't bleed into a new session.
     initialPlannedRef.current = {
       startAt: prefill?.plannedStartAt ?? '',
       endAt: prefill?.plannedEndAt ?? '',
@@ -719,7 +719,7 @@ export function CreateWorkOrderModal({
           plannedHours: wo.plannedHours != null ? String(wo.plannedHours) : '',
           actualHours: wo.actualHours != null ? String(wo.actualHours) : '',
         });
-        // Bug #440: snapshot loaded dates for later change-detection.
+        // snapshot loaded dates for later change-detection.
         // Used by save() to decide whether to show calendar-sync dialog.
         initialPlannedRef.current = {
           startAt: isoToKyivLocalDateTime(wo.plannedAt),
@@ -752,7 +752,7 @@ export function CreateWorkOrderModal({
             quantity: String(p.quantity),
             costPrice: p.costPrice ?? null,
             price: String(p.price),
-            // Bug #434: зберігаємо UoM що повернув backend, інакше inline-edit dropdown
+            // зберігаємо UoM що повернув backend, інакше inline-edit dropdown
             // скине вибір до дефолту "шт" навіть якщо реально товар у "кг".
             unitOfMeasureId: p.unitOfMeasureId ?? '',
             unitShortName: p.unitShortName ?? '',
@@ -888,7 +888,7 @@ export function CreateWorkOrderModal({
   // Goods with no StockItem rows are explicitly mapped to 0 (groupBy omits empty buckets,
   // but UX-wise "no stock" should read as 0, not '—' which we reserve for "unknown goodId").
   //
-  // Bug #454: derive a *stable string key* from the set of goodId-s. The previous
+  // derive a *stable string key* from the set of goodId-s. The previous
   // dep array `[parts, newPart.goodId, editingPart.goodId]` re-fired the effect on
   // ANY parts mutation — including typing in quantity/price — issuing a fresh
   // /goods/stock-totals request per keystroke even when the set of goods had not
@@ -1000,12 +1000,12 @@ export function CreateWorkOrderModal({
 
   const addLine = () => {
     if (!newLine.workId || !newLine.employeeId) return;
-    // Bug #382: блокуємо повний дублікат (work + виконавець) — типовий user-error.
+    // блокуємо повний дублікат (work + виконавець) — типовий user-error.
     if (lines.some(l => l.workId === newLine.workId && l.employeeId === newLine.employeeId)) {
       setError('Цю роботу для цього виконавця вже додано');
       return;
     }
-    // Bug #383: захист від негативних/нульових normoHours (DTO @Min(0.01) інакше rejects after WO created).
+    // захист від негативних/нульових normoHours (DTO @Min(0.01) інакше rejects after WO created).
     const normo = toNumberOrUndefined(newLine.normoHours);
     if (newLine.normoHours && (normo === undefined || normo <= 0)) {
       setError('Нормо-години мають бути більше нуля');
@@ -1077,12 +1077,12 @@ export function CreateWorkOrderModal({
 
   const addPart = () => {
     if (!newPart.goodId || !newPart.warehouseId) return;
-    // Bug #382: блокуємо повний дублікат (товар + склад).
+    // блокуємо повний дублікат (товар + склад).
     if (parts.some(p => p.goodId === newPart.goodId && p.warehouseId === newPart.warehouseId)) {
       setError('Цей товар із цього складу вже додано');
       return;
     }
-    // Bug #383: backend DTO @Min(0.001) для quantity → reject цілого create() після WO POST.
+    // backend DTO @Min(0.001) для quantity → reject цілого create() після WO POST.
     const qty = toNumberOrUndefined(newPart.quantity);
     if (qty === undefined || qty <= 0) {
       setError('Кількість має бути більше нуля');
@@ -1105,7 +1105,7 @@ export function CreateWorkOrderModal({
   const createdWoRef = useRef<CreatedWorkOrder | null>(null);
 
   const create = async () => {
-    // Bug #384: warn user if half-typed row would be silently dropped (data loss).
+    // warn user if half-typed row would be silently dropped (data loss).
     // Pre-check BEFORE setSaving so the button stays enabled and the warning is visible.
     const hasHalfLine = !!newLine.workId && !newLine.employeeId;
     const hasHalfPart = !!newPart.goodId && !newPart.warehouseId;
@@ -1213,7 +1213,7 @@ export function CreateWorkOrderModal({
     // Commit any open inline-edit row synchronously so save() reads the latest actualHours.
     // setLines is async (React batched), so compute the merged snapshot here and use it
     // directly in the rest of save() via committedLines instead of the stale `lines` closure.
-    // Bug #526: spread `l` FIRST so `id` (and other DB-only fields) survive the merge.
+    // spread `l` FIRST so `id` (and other DB-only fields) survive the merge.
     // editingLine state never carries `id` → раніше merge скидав `id` у undefined →
     // save() filter `!!l.id && l.actualHours !== ''` пропускав рядок → PATCH lines
     // не надсилався → actualHours на line-рівні ніколи не зберігалось у IN_PROGRESS/ON_HOLD.
@@ -1225,7 +1225,7 @@ export function CreateWorkOrderModal({
       setEditingLineKey(null);
     }
     try {
-      // Bug #525: computedActualHours має бути `undefined` коли користувач
+      // computedActualHours має бути `undefined` коли користувач
       // не вказував явно і recalc не може порахувати (lines.length=0). Інакше
       // PATCH з null перетирав збережене значення WO.actualHours у БД.
       let computedActualHours: number | null | undefined;
@@ -1247,7 +1247,7 @@ export function CreateWorkOrderModal({
         computedActualHours = null;
       }
 
-      // Bug #522: у IN_PROGRESS/ON_HOLD дозволяємо тільки patch actualHours
+      // у IN_PROGRESS/ON_HOLD дозволяємо тільки patch actualHours
       // (на WO + на лініях). Інші поля (description, priority, dates...) сервер
       // відкине бо WO у тих статусах не у EDITABLE_STATUSES для full update.
       // У DRAFT/ESTIMATE/APPROVED → повний PATCH як було.
@@ -1331,7 +1331,7 @@ export function CreateWorkOrderModal({
           });
         }
       } else if (canEditActual) {
-        // Bug #522: у IN_PROGRESS/ON_HOLD PATCH лише actualHours для існуючих рядків.
+        // у IN_PROGRESS/ON_HOLD PATCH лише actualHours для існуючих рядків.
         // Жодних DELETE/POST/PATCH інших полів — бекенд відхилить як non-actual-only.
         // Only PATCH lines where actualHours was explicitly set (non-empty string).
         // Sending null for lines the user never touched overwrites previously saved
@@ -1345,7 +1345,7 @@ export function CreateWorkOrderModal({
           });
         }
       }
-      // Bug #440: show calendar-sync dialog ONLY when planned dates actually
+      // show calendar-sync dialog ONLY when planned dates actually
       // changed compared to the values loaded from the WO. Otherwise every save
       // (even a description-only edit) prompts the user with a misleading
       // "Планові дати наряду змінились" message and risks an unnecessary PATCH.
@@ -1376,7 +1376,7 @@ export function CreateWorkOrderModal({
                 body: JSON.stringify({ startAt, endAt }),
               },
             );
-            // Bug #441: коли у наряду немає слоту в календарі, backend silently
+            // коли у наряду немає слоту в календарі, backend silently
             // повертає { updated: 0 }. Без user-facing feedback клієнт думає що
             // синхронізація відбулась.
             if (result && result.updated === 0 && features.toastEnabled) {
@@ -1486,7 +1486,7 @@ export function CreateWorkOrderModal({
 
   // Підсумки фактичних сум: actualHours ?? normoHours для кожного рядка (бо save()
   // надсилає на бекенд саме такий фолбек коли recalcActualHoursFromLines=true).
-  // Bug #524: hasAny=true лише коли є ХОЧА Б ОДИН рядок з ЯВНО введеним
+  // hasAny=true лише коли є ХОЧА Б ОДИН рядок з ЯВНО введеним
   // actualHours — інакше "Факт. роботи" tfoot дублював "Разом робіт" і вводив
   // користувача в оману (виглядало ніби факт. години = плановим).
   // Використовуємо toNumberOrUndefined (а не parseFloat) щоб коректно обробити
@@ -1649,7 +1649,7 @@ export function CreateWorkOrderModal({
 
   const handleInvoice = async () => {
     if (!workOrderId) return;
-    // Bug #404: захоплюємо початковий статус ДО transition, щоб мати куди rollback при failure.
+    // захоплюємо початковий статус ДО transition, щоб мати куди rollback при failure.
     const statusBeforeTransition = currentStatus;
     let transitionedHere = false;
     setInvoiceLoading(true);
@@ -1667,7 +1667,7 @@ export function CreateWorkOrderModal({
         `/invoices/from-work-order/${workOrderId}`,
         { method: 'POST' },
       );
-      // Bug #409: тригернути перезавантаження LinkedDocumentsPanel, інакше "Документи"
+      // тригернути перезавантаження LinkedDocumentsPanel, інакше "Документи"
       // tab не показує щойно створений рахунок без manual tab-switch.
       setLinkedDocsRefreshKey(k => k + 1);
       if (features.toastEnabled) {
@@ -1681,7 +1681,7 @@ export function CreateWorkOrderModal({
       if (msg.includes('вже існує')) {
         setInvoiceConflict(true);
       } else {
-        // Bug #404: якщо ми щойно перевели COMPLETED→INVOICED і invoice create провалився —
+        // якщо ми щойно перевели COMPLETED→INVOICED і invoice create провалився —
         // rollback transition назад у COMPLETED, щоб FSM-інваріант не порушувався.
         if (transitionedHere && statusBeforeTransition === 'COMPLETED') {
           try {
@@ -1712,7 +1712,7 @@ export function CreateWorkOrderModal({
         `/invoices/from-work-order/${workOrderId}/refresh`,
         { method: 'POST' },
       );
-      // Bug #409: refresh змінив totals/lines рахунку → перезавантажити LinkedDocumentsPanel
+      // refresh змінив totals/lines рахунку → перезавантажити LinkedDocumentsPanel
       // щоб totals у preview popup були свіжими.
       setLinkedDocsRefreshKey(k => k + 1);
       if (features.toastEnabled) {
@@ -1740,7 +1740,7 @@ export function CreateWorkOrderModal({
       if (inv?.id) {
         window.open(`/invoices/${inv.id}`, '_blank');
       } else {
-        // Bug #405: /find повертає null коли рахунку немає (за дизайном — не 404).
+        // /find повертає null коли рахунку немає (за дизайном — не 404).
         // Race: інший admin скасував рахунок між POST і кліком. Користувач має знати.
         if (features.toastEnabled) {
           toast.warning('Рахунок не знайдено. Можливо, його було скасовано.');
@@ -1759,7 +1759,7 @@ export function CreateWorkOrderModal({
   // overflow re-write. Без useCallback ця модалка (з частим typing у inputs)
   // тригерила re-attach на КОЖЕН keystroke.
   //
-  // Bug #381 regression: читаємо `saving`/`transitioning` ВИКЛЮЧНО з ref'ів —
+  // regression: читаємо `saving`/`transitioning` ВИКЛЮЧНО з ref'ів —
   // вони оновлюються СИНХРОННО у setSavingBoth/setTransitioningBoth ДО React state-flush.
   // Без ref'а closure захоплює застарілий saving=false коли `create()` ще у `await POST`
   // → Modal закривається на Escape всупереч guard'у (race window що ловить test #381).
@@ -2475,7 +2475,7 @@ export function CreateWorkOrderModal({
                         {lines.length === 0 && !showLineInput && (
                           <tr>
                             <td
-                              // Bug #435: VAT-колонка умовна (vatMode !== 'NONE'), тож
+                              // VAT-колонка умовна (vatMode !== 'NONE'), тож
                               // загальна кількість колонок 6 або 7. Парна таблиця "Товари"
                               // вже робить умовний colSpan; для works був хардкод 6 →
                               // visual drift коли VAT-колонка є.
@@ -2615,7 +2615,7 @@ export function CreateWorkOrderModal({
                                         onClick={() => {
                                           if (!editingLine.workId || !editingLine.employeeId)
                                             return;
-                                          // Bug #526: spread `l` first to preserve `id` (DB-only).
+                                          // spread `l` first to preserve `id` (DB-only).
                                           // editingLine ніколи не містить `id` (виставляється лише
                                           // workId/workName/employeeId/normoHours/actualHours/price);
                                           // без `...l` merge зкидав `id` → save() filter `!!l.id` пропускав
@@ -3135,7 +3135,7 @@ export function CreateWorkOrderModal({
                                         onClick={() => {
                                           if (!editingPart.goodId || !editingPart.warehouseId)
                                             return;
-                                          // Bug #526 (parallel fix): spread `pt` first to preserve `id`.
+                                          // (parallel fix): spread `pt` first to preserve `id`.
                                           // Same merge bug as for lines — editingPart never carries `id`,
                                           // тому без `...pt` save() filter не побачив би existing part
                                           // → POST дублікат + duplicate-key fail.
@@ -3550,7 +3550,7 @@ export function CreateWorkOrderModal({
       />
 
       {invoiceConflict && (
-        // Bug #408: ESC обробляється глобальним document listener (див. useEffect вище —
+        // ESC обробляється глобальним document listener (див. useEffect вище —
         // onKeyDown на <div role="presentation"> без tabIndex/focus не фaйрить).
         // Overlay click + autoFocus для модального UX.
         <div
@@ -3581,7 +3581,7 @@ export function CreateWorkOrderModal({
               >
                 Оновити (перезаписати рядки)
               </Button>
-              {/* Bug #410: захист від race — поки triggers in-flight, інші дії dialog
+              {/* захист від race — поки triggers in-flight, інші дії dialog
                   заборонені (інакше "Відкрити існуючий" відкриває рахунок паралельно з
                   refresh → дві вкладки + застаріле UI). */}
               <Button

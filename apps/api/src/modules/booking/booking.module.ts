@@ -4,10 +4,10 @@ import { BookingService } from './booking.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  // Bug #506: NotificationsModule provides NotificationsService.send() — single
-  // source of truth for SMS template resolve + branchSettings credentials.
-  // Removed BullModule.registerQueue({ name: 'sms' }) — booking no longer
-  // bypasses NotificationsService to push raw `{ templateCode, params }` jobs.
+  // NotificationsModule provides NotificationsService.send() — single source of truth
+  // for SMS template resolve + branchSettings credentials. Booking must NOT push raw
+  // `{ templateCode, params }` jobs directly to the queue — SmsProcessor.process()
+  // would see provider=undefined → silent skip ("Невідомий SMS-провайдер").
   // NotificationsModule is @Global() so technically the import is optional, but
   // explicit keeps the dependency graph greppable.
   imports: [NotificationsModule],

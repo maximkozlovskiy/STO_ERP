@@ -126,7 +126,7 @@ export default function WorksTab() {
   });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
-  // Bug #309: in-flight set для restore — блокує дублюючі POST.
+  // in-flight set для restore — блокує дублюючі POST.
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
   const {
@@ -171,7 +171,7 @@ export default function WorksTab() {
   );
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
-  // Bug #328 regression guard — stable empty array reference.
+  // stable empty array reference: ?? [] creates fresh array each render → useBulkSelect prunes every cycle.
   const rawWorksItems = works?.items ?? (EMPTY_ITEMS as unknown as Work[]);
   const { sort: worksSort, toggle: toggleWorksSort } = useSortState('name', 'asc');
   const worksItems = useMemo(() => {
@@ -194,8 +194,8 @@ export default function WorksTab() {
         id: 'delete',
         label: 'Видалити вибрані',
         variant: 'destructive',
-        // Bug #313: використовуємо useConfirm (стилізований діалог) замість window.confirm
-        // (нативний блокуючий діалог). Парність з work-orders/counterparties/employees.
+        // стилізований діалог useConfirm замість нативного блокуючого window.confirm —
+        // парність з work-orders/counterparties/employees.
         onClick: async ids => {
           if (
             !(await confirm({
@@ -226,10 +226,9 @@ export default function WorksTab() {
   const worksFormDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const editWorkDirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
-  // Bug #323: race-guard для CategoryManagerModal refetch — швидкі CRUD у
-  // модалі (rename → add child → toggle) запускали 3 послідовні fetch-и; resolve
-  // order не гарантовано → останній resolve wins → stale tree. Reuse того ж
-  // patterна що modalUoMReqRef у GoodsTab.
+  // race-guard для CategoryManagerModal refetch: rapid CRUD (rename → add child → toggle)
+  // causes resolve order not guaranteed → last resolve wins → stale tree.
+  // Same pattern as modalUoMReqRef у GoodsTab.
   const catReqRef = useRef(0);
   const reloadCategories = useCallback(() => {
     const reqId = ++catReqRef.current;
@@ -251,8 +250,8 @@ export default function WorksTab() {
     const cached = getCached<Category[]>('cache:work-categories');
     if (cached) setCategories(cached);
 
-    // sto-optimize (Bug #315 pattern): AbortController щоб setState не виконувався після
-    // unmount (React DEV warning + memory churn). Парний підхід з GoodsTab.tsx.
+    // sto-optimize: AbortController so setState doesn't run after unmount — React DEV warning + memory churn.
+    // Same pattern as GoodsTab.tsx.
     const ac = new AbortController();
     const reqId = ++catReqRef.current;
     apiFetch<Category[]>('/work-categories', { signal: ac.signal })
@@ -354,7 +353,7 @@ export default function WorksTab() {
   };
 
   const restore = async (id: string) => {
-    // Bug #309: in-flight guard + clear stale error.
+    // in-flight guard — blocks duplicate POSTs.
     if (restoringIds.has(id)) return;
     setError('');
     setRestoringIds(prev => new Set(prev).add(id));

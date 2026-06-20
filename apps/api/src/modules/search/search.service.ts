@@ -44,7 +44,8 @@ export class SearchService {
     // Perf: similarity() обчислюється у WHERE І ORDER BY = 2 виклики на рядок.
     // Subquery виносить sim як column → 1 обчислення; planner може використати
     // GIN trgm index (work_orders.number) лише для filter, sort іде по pre-computed col.
-    // Bug #572: ${q}::text explicit cast — без нього `text % text` (pg_trgm) plan-fail.
+    // `::text` explicit cast required: without it Prisma sends param as `unknown` type,
+    // causing pg_trgm `%` operator (text, text) resolution to fail.
     const qText = `${q}`;
     const rows = await this.prisma.$queryRaw<
       {
@@ -89,11 +90,9 @@ export class SearchService {
     // Perf: similarity() рахується ОДИН раз у subquery + GREATEST() порівнюється pre-computed
     // cols, замість 4 окремих викликів similarity (2 WHERE + 2 ORDER BY).
     //
-    // Bug #572 (HIGH): без `${q}::text` cast Postgres не може вирішити `%` оператор.
-    // pg_trgm `%` визначений для (text, text)→bool, але Prisma надсилає параметр як `unknown`,
-    // через що planner намагається застосувати numeric modulo (text→numeric coercion) і
-    // повертає 42804: "argument of OR must be type boolean, not type text". Explicit `::text`
-    // cast форсує trgm operator resolution. Те саме для `${'%' + q + '%'}::text` у ILIKE.
+    // `::text` cast required: Prisma sends params as `unknown` — pg_trgm `%` operator expects
+    // (text, text)→bool but planner falls back to numeric modulo coercion →
+    // 42804: "argument of OR must be type boolean, not type text". Same applies to `::text` in ILIKE.
     const qText = `${q}`;
     const qLike = `%${q}%`;
     const rows = await this.prisma.$queryRaw<
@@ -138,7 +137,7 @@ export class SearchService {
     // so double-quoted identifiers are required — unquoted would be folded to lowercase.
     // Perf: similarity рахується тричі для name (WHERE + ORDER BY); виносимо у subquery +
     // 2-фазний join: спочатку pre-filter goods (мала вибірка), потім aggregate stock.
-    // Bug #572: ${q}::text cast — без нього `text % text` (pg_trgm) plan-fail.
+    // `::text` cast required — without it pg_trgm `text % text` plan-fails (see searchCounterparties above).
     const qText = `${q}`;
     const qLike = `%${q}%`;
     const rows = await this.prisma.$queryRaw<

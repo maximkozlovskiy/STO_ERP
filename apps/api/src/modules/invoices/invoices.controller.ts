@@ -71,8 +71,7 @@ export class InvoicesController {
     @Body() dto: CreateInvoiceDto,
     @CurrentUser() user: { id: string },
   ) {
-    // Bug #92: @CurrentUser повертає { id, orgId, role } (jwt.strategy.ts), не { sub }.
-    // user.sub був завжди undefined → creator/audit info втрачено.
+    // @CurrentUser повертає { id, orgId, role } (jwt.strategy.ts), не { sub } — user.sub завжди undefined.
     return this.service.create(orgId, dto, user?.id);
   }
 

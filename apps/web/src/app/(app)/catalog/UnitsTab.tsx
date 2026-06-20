@@ -164,7 +164,7 @@ export default function UnitsTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
-  // Bug #303: блокування повторних кліків Restore (інакше дублюючі POST → 2nd+ повертає 404)
+  // блокування повторних кліків Restore: дублюючі POST → 2nd+ повертає 404
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(
@@ -182,8 +182,8 @@ export default function UnitsTab() {
         .then(d => {
           if (opts?.signal?.aborted) return;
           setUnits(d);
-          // Bug #300: cache:units завжди має містити лише активні (consumers like GoodsTab
-          // показують одиниці у select). Якщо ми у withDeleted режимі — фільтруємо клієнтсайд.
+          // cache:units must contain only active units (consumers like GoodsTab show units in select).
+          // If in withDeleted mode — filter client-side.
           const activeOnly = withDeleted ? d.filter(u => !u.deletedAt) : d;
           setCache('cache:units', activeOnly);
         })
@@ -201,7 +201,7 @@ export default function UnitsTab() {
   );
 
   useEffect(() => {
-    // Bug #301: AbortController щоб попередній fetch не "виграв" race після toggle.
+    // AbortController so previous fetch doesn't "win" race after toggle.
     const controller = new AbortController();
     load({ fromCache: !showDeleted, signal: controller.signal });
     return () => controller.abort();
@@ -214,7 +214,7 @@ export default function UnitsTab() {
       setError("Усі поля є обов'язковими");
       return;
     }
-    // Bug #302: coefficient = 0 → divide-by-zero у qty_base. Frontend guard.
+    // coefficient = 0 → divide-by-zero in qty_base: frontend guard.
     const coeff = form.coefficient ? Number(form.coefficient) : undefined;
     if (coeff !== undefined && (!Number.isFinite(coeff) || coeff <= 0)) {
       setError('Коефіцієнт має бути більший 0');
@@ -253,7 +253,7 @@ export default function UnitsTab() {
       setEditError("Скорочення та назва є обов'язковими");
       return;
     }
-    // Bug #302: coefficient guard
+    // coefficient = 0 → divide-by-zero in qty_base
     const coeff = editForm.coefficient ? Number(editForm.coefficient) : undefined;
     if (coeff !== undefined && (!Number.isFinite(coeff) || coeff <= 0)) {
       setEditError('Коефіцієнт має бути більший 0');
@@ -290,7 +290,6 @@ export default function UnitsTab() {
       }))
     )
       return;
-    // Bug #304: очистити попередню помилку перед action
     setError('');
     try {
       await apiFetch<void>(`/units/${id}`, { method: 'DELETE' });
@@ -303,7 +302,7 @@ export default function UnitsTab() {
   // ── Restore ───────────────────────────────────────────────────────────────
 
   const restore = async (id: string) => {
-    // Bug #303: in-flight guard — блокувати повторні кліки, інакше дублюючі POST → 404 errors
+    // in-flight guard: блокувати повторні кліки, дублюючі POST → 404 errors
     if (restoringIds.has(id)) return;
     setRestoringIds(prev => {
       const next = new Set(prev);
@@ -474,7 +473,6 @@ export default function UnitsTab() {
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         {isDeleted ? (
-                          // Deleted: show restore button
                           <Button
                             variant="ghost"
                             size="sm"

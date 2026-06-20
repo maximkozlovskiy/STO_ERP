@@ -1,8 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-// Bug #93: `fileKey` (internal MinIO object path like `org/<uuid>/work-orders/<uuid>/<uuid>.jpg`)
-// was leaking on every response. The frontend only consumes `signedUrl` — keep it that way to
-// avoid disclosing the bucket layout (org id appears verbatim in the key).
+// `fileKey` (internal MinIO path like `org/<uuid>/work-orders/<uuid>/<uuid>.jpg`) must never be
+// included in responses — it exposes the bucket layout and org id. Frontend uses `signedUrl` only.
 export class WorkOrderMediaResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() workOrderId!: string;

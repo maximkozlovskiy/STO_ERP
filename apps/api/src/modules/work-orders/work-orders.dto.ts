@@ -47,7 +47,7 @@ export class CreateWorkOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
 
-  // Bug #257: emptyToUndefined gap вЂ” sprint cycle 3 РїСЂРѕРїСѓСЃС‚РёРІ work-orders DTO.
+  // emptyToUndefined gap вЂ” sprint cycle 3 РїСЂРѕРїСѓСЃС‚РёРІ work-orders DTO.
   // Frontend СЃРµР»РµРєС‚Рё С‰Рѕ С€Р»СЋС‚СЊ `''` РїСЂРё default state в†’ 400 Р±РµР· С‚СЂР°РЅСЃС„РѕСЂРјСѓ.
   @ApiPropertyOptional({ enum: WorkOrderPriority })
   @IsOptional()
@@ -61,7 +61,7 @@ export class CreateWorkOrderDto {
   @IsEnum(RepairCategory)
   repairCategory?: RepairCategory;
 
-  // Bug #258: emptyToUndefined gap вЂ” datetime-local input С€Р»Рµ `''` РїСЂРё reset в†’ 400.
+  // emptyToUndefined gap вЂ” datetime-local input С€Р»Рµ `''` РїСЂРё reset в†’ 400.
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -101,7 +101,7 @@ export class UpdateWorkOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) outMileage?: number;
 
-  // Bug #259: emptyToUndefined gap Сѓ PATCH-С€Р»СЏС…Сѓ.
+  // emptyToUndefined gap Сѓ PATCH-С€Р»СЏС…Сѓ.
   @ApiPropertyOptional({ enum: WorkOrderPriority })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -239,7 +239,7 @@ export class WorkOrderQueryDto {
   @IsBooleanString()
   showDeleted?: string;
 
-  // Bug #337: @IsISO8601() РїСЂРёР№РјР°С” datetime СЂСЏРґРєРё Р· С‡Р°СЃРѕРІРѕСЋ РєРѕРјРїРѕРЅРµРЅС‚РѕСЋ в†’ С…РёР±РЅР° С„С–Р»СЊС‚СЂР°С†С–СЏ.
+  // @IsISO8601() РїСЂРёР№РјР°С” datetime СЂСЏРґРєРё Р· С‡Р°СЃРѕРІРѕСЋ РєРѕРјРїРѕРЅРµРЅС‚РѕСЋ в†’ С…РёР±РЅР° С„С–Р»СЊС‚СЂР°С†С–СЏ.
   // @IsDateString() РїСЂРёР№РјР°С” Р»РёС€Рµ YYYY-MM-DD С„РѕСЂРјР°С‚ вЂ” РІС–РґРїРѕРІС–РґРЅРѕ РґРѕ СЂРµС€С‚Рё РјРѕРґСѓР»С–РІ.
   @ApiPropertyOptional({ description: 'Р”Р°С‚Р° РґРѕРєСѓРјРµРЅС‚Р° РІС–Рґ (YYYY-MM-DD)' })
   @IsOptional()
@@ -362,13 +362,13 @@ export class CreateWorkOrderLineDto {
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 
-// Bug #521: actualHours РІРёРєР»СЋС‡Р°С”РјРѕ Р· PartialType Р±Рѕ РЅР°Рј РїРѕС‚СЂС–Р±РµРЅ С€РёСЂС€РёР№ С‚РёРї
+// actualHours РІРёРєР»СЋС‡Р°С”РјРѕ Р· PartialType Р±Рѕ РЅР°Рј РїРѕС‚СЂС–Р±РµРЅ С€РёСЂС€РёР№ С‚РёРї
 // `number | null` (Р° CreateWorkOrderLineDto.actualHours = `number`). РџС–СЃР»СЏ Omit
 // РґРѕРґР°С”РјРѕ СЏРІРЅСѓ РІРµСЂСЃС–СЋ Р· nullable handling.
 export class UpdateWorkOrderLineDto extends PartialType(
   OmitType(CreateWorkOrderLineDto, ['actualHours'] as const),
 ) {
-  // Bug #521: nullable handling вЂ” frontend save() РЅР°РґСЃРёР»Р°С” `null` РєРѕР»Рё РєРѕСЂРёСЃС‚СѓРІР°С‡
+  // nullable handling вЂ” frontend save() РЅР°РґСЃРёР»Р°С” `null` РєРѕР»Рё РєРѕСЂРёСЃС‚СѓРІР°С‡
   // РѕС‡РёСЃС‚РёРІ inline "Р“РѕРґ (С„Р°РєС‚.)" в†’ Р±РµР· `ValidateIf(o => o.actualHours !== null)`
   // class-validator РєРёРґР°РІ 400 С– Р±СѓРґСЊ-СЏРєРёР№ save() Р· РїРѕСЂРѕР¶РЅС–Рј actualHours Р»Р°РіР°РІ
   // partial-PATCH (work-order СЂС–РІРµРЅСЊ РїСЂРѕР№С€РѕРІ, line PATCH вЂ” fail в†’ corrupted state).

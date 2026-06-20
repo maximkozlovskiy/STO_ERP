@@ -75,13 +75,11 @@ export class GoodCategoriesService {
     if (!existing) throw new NotFoundException('Категорію товарів не знайдено');
     if (dto.parentId && !parent) throw new NotFoundException('Батьківську категорію не знайдено');
 
-    // Bug #319: системні категорії не можна перейменовувати або переносити.
-    // Косметичні поля (sortOrder) дозволяються.
+    // System categories cannot be renamed or re-parented — cosmetic fields (sortOrder) are allowed.
     if (existing.isSystem && (dto.name !== undefined || dto.parentId !== undefined)) {
       throw new BadRequestException('Системну категорію не можна перейменовувати або переносити');
     }
 
-    // Bug #321: defense-in-depth — updateMany з deletedAt: null у where.
     const result = await this.prisma.goodCategory.updateMany({
       where: { id, orgId, deletedAt: null },
       data: dto,
@@ -95,8 +93,7 @@ export class GoodCategoriesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    // Bug #320: блокувати soft-delete системних категорій (UI ховає кнопку,
-    // але backend — авторитет).
+    // Block soft-delete of system categories — UI hides the button, but backend is the authority.
     const item = await this.prisma.goodCategory.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true, isSystem: true },
@@ -134,7 +131,6 @@ export class GoodCategoriesService {
     id: string,
     isActive: boolean,
   ): Promise<GoodCategoryResponseDto> {
-    // Bug #321: defense-in-depth — атомарний updateMany з повним where.
     const result = await this.prisma.goodCategory.updateMany({
       where: { id, orgId, deletedAt: null },
       data: { isActive },

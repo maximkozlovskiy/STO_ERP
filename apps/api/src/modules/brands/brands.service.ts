@@ -31,9 +31,8 @@ export class BrandsService {
       this.prisma.brand.findMany({
         where,
         include: SYNONYMS_INCLUDE,
-        // Bug #306: explicit `nulls: 'first'` для deletedAt — Postgres за замовчуванням
-        // ставить NULL у кінець ASC → активні (deletedAt=NULL) йшли б ПОСЛЕ видалених
-        // у списку showDeleted=true. Парний паттерн до units.service.ts (Bug #296).
+        // Explicit `nulls: 'first'` для deletedAt — Postgres за замовчуванням ставить NULL
+        // у кінець ASC → активні (deletedAt=NULL) йшли б після видалених у showDeleted=true.
         orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
         take: 1000,
       }),

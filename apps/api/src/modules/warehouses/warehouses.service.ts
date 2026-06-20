@@ -113,11 +113,9 @@ export class WarehousesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    // Bug #355: якщо видаляємо `isMain=true` склад → auto-promote найстарший
-    // активний sibling як новий `isMain`. Інакше invariant «у org є головний
-    // склад» силентно порушується → downstream warehouse-selection повертає
-    // випадковий склад (orderBy [isMain:desc, name:asc] стає [false, name]).
-    // Patern Bug #351 (CounterpartyContract).
+    // When deleting an `isMain=true` warehouse → auto-promote the oldest active sibling as new `isMain`.
+    // Without this, the invariant «org always has a main warehouse» is silently broken
+    // → downstream warehouse-selection returns a random warehouse (orderBy [isMain:desc] becomes [false, name]).
     const existing = await this.prisma.warehouse.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true, isMain: true },

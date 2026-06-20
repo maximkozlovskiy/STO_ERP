@@ -100,8 +100,8 @@ export class WorkOrderMediaService {
     });
     if (!wo) throw new NotFoundException('Наряд не знайдено');
 
-    // Bug #88 pattern: total must reflect actual count in DB, not the take-capped length —
-    // otherwise UI thinks the user is seeing everything when 51+ items exist.
+    // total must reflect actual DB count, not the take-capped length —
+    // otherwise UI thinks the user sees everything when 51+ items exist.
     const [records, total] = await Promise.all([
       this.prisma.workOrderMedia.findMany({
         where: { orgId, workOrderId },
@@ -132,11 +132,10 @@ export class WorkOrderMediaService {
     });
     if (!record) throw new NotFoundException('Медіа не знайдено');
 
-    // Bug #116: delete the DB row FIRST. If MinIO deletion fails (network,
-    // remote 5xx), we want zero rows pointing at a missing object — the alternative
-    // (file gone, DB row stays) is worse because findAll would generate broken
-    // signedUrls forever. Failed MinIO cleanup becomes garbage that a batch
-    // job can sweep later — we surface it as a warning, not a user error.
+    // Delete DB row FIRST. If MinIO deletion fails (network / 5xx),
+    // we prefer zero rows pointing at a missing object over the alternative
+    // (file gone, DB row stays) which would generate broken signedUrls forever.
+    // Failed MinIO cleanup becomes orphaned garbage swept by a batch job.
     const result = await this.prisma.workOrderMedia.deleteMany({
       where: { id: mediaId, orgId, workOrderId },
     });
@@ -162,7 +161,7 @@ export class WorkOrderMediaService {
     },
     signedUrl: string,
   ): WorkOrderMediaResponseDto {
-    // Bug #93: fileKey stays internal — exposed only via the time-limited signedUrl.
+    // fileKey stays internal — exposed only via the time-limited signedUrl.
     return {
       id: r.id,
       workOrderId: r.workOrderId,

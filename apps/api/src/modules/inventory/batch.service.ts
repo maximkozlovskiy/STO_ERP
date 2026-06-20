@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+﻿import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma, BatchCostMethod, StockBatch } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -84,8 +84,8 @@ export class BatchService {
       good.brandId ?? undefined,
       dto.costPrice,
     );
-    // Bug #14: при безкоштовному прийомі (costPrice=0) використовуємо поточну ціну товару,
-    // щоб не записати партію з salePrice=0 і не зламати наступні продажі.
+    // Free receipt (costPrice=0): use current good price to avoid recording a batch with salePrice=0
+    // which would break subsequent sales.
     const salePrice =
       dto.costPrice > 0 && computedSalePrice > 0 ? computedSalePrice : currentSalePriceForBatch;
 
@@ -107,7 +107,7 @@ export class BatchService {
     });
 
     // Update Good.salePrice and log PriceHistory if price changed.
-    // Bug #14: безкоштовний прийом (costPrice=0 → salePrice=0) НЕ повинен затирати поточну salePrice.
+    // Free receipt (costPrice=0 → salePrice=0) must NOT overwrite the current salePrice.
     const currentSalePrice = Number(good.salePrice);
     const canUpdateSalePrice =
       dto.costPrice > 0 && salePrice > 0 && Math.abs(salePrice - currentSalePrice) > 0.001;
@@ -135,9 +135,9 @@ export class BatchService {
   /**
    * Consume `qty` units of a good from active batches using the given cost method.
    *
-   * Bug #20: Якщо `tx` не передано — обгортаємо роботу в `$transaction`, щоб
-   * `stockBatch.update` і `batchConsumption.create` були атомарними. Інакше
-   * краш між двома операціями залишить партію без consumption-логу.
+   * If `tx` is not provided, wraps in `$transaction` so `stockBatch.update` and
+   * `batchConsumption.create` are atomic — a crash between the two would leave a batch
+   * with no consumption log.
    */
   async consumeBatch(
     orgId: string,
@@ -151,7 +151,7 @@ export class BatchService {
     tx?: Prisma.TransactionClient,
   ): Promise<BatchConsumeResult[]> {
     if (!tx) {
-      // Bug #132: explicit timeout — batch consume може touchнути 10+ батчів
+      // Explicit timeout: consume can touch 10+ batches in a loop, exceeding the 5s Prisma default.
       return this.prisma.$transaction(
         innerTx =>
           this.consumeBatch(
@@ -176,8 +176,7 @@ export class BatchService {
       return [{ batchId: '', quantity: qty, costPrice: avgCost }];
     }
 
-    // Find batches by method
-    // Bug #133: FEFO має explicit `nulls: 'last'` — товари без терміну йдуть В КІНЦІ (не випадково через Postgres default).
+    // FEFO requires explicit `nulls: 'last'` — goods without expiry must go LAST; Postgres default for ASC is nulls-last only for some versions.
     const orderBy: Prisma.StockBatchOrderByWithRelationInput[] =
       costMethod === 'LIFO'
         ? [{ createdAt: 'desc' }]
@@ -236,13 +235,11 @@ export class BatchService {
   }
 
   async getAvgCost(orgId: string, goodId: string, warehouseId?: string): Promise<number> {
-    // Bug #16: warehouseId опціональний. Якщо не передано — агрегуємо по всіх складах.
-    // Порожній рядок раніше зі сторони контролера трактувався як склад "" → 0 партій.
-    // sto-optimize: Postgres weighted SUM (SUM(qty*cost) / SUM(qty)) одним запитом
-    // замість findMany(take:500) + JS reduce ×2. Bug #270 detminism збережено через
-    // ORDER BY createdAt DESC + LIMIT 500 у CTE — той самий контракт. Hot-path
-    // (consumeBatch AVG_COST, кожна WO продаж/списання) — менше row marshaling
-    // + менший wire payload (1 рядок з 2 float замість 500 рядків × 2 колонки).
+    // warehouseId is optional — omit to aggregate across all warehouses.
+    // An empty-string warehouse was previously treated as warehouse "" → 0 batches.
+    // Postgres weighted SUM in a single query vs findMany(take:500) + JS reduce saves
+    // row marshaling on this hot-path (consumeBatch AVG_COST, every WO sale/writeoff).
+    // Determinism preserved: ORDER BY createdAt DESC + LIMIT 500 in the CTE.
     type AvgCostRow = { total_cost: number | null; total_qty: number | null };
     const rows = warehouseId
       ? await this.prisma.$queryRaw<AvgCostRow[]>`
@@ -322,8 +319,8 @@ export class BatchService {
   /**
    * Return `qty` units to an existing batch (e.g. WO cancellation).
    *
-   * Bug #20: Якщо `tx` не передано — обгортаємо роботу в `$transaction`, щоб
-   * `stockBatch.update` і `batchConsumption.create` були атомарними.
+   * If `tx` is not provided, wraps in `$transaction` so `stockBatch.update` and
+   * `batchConsumption.create` are atomic.
    */
   async returnToBatch(
     orgId: string,
@@ -334,7 +331,6 @@ export class BatchService {
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
     if (!tx) {
-      // Bug #132: explicit timeout
       await this.prisma.$transaction(
         innerTx => this.returnToBatch(orgId, batchId, qty, documentType, documentId, innerTx),
         { timeout: TRANSACTION_TIMEOUT_MS },

@@ -25,7 +25,6 @@ export class SetupService {
 
     const result = await this.prisma.$transaction(
       async tx => {
-        // 1. Organisation
         const org = await tx.organisation.create({
           data: {
             name: dto.orgName,
@@ -34,18 +33,16 @@ export class SetupService {
           },
         });
 
-        // Fix self-reference: orgId = org.id
+        // Self-reference: initial orgId is a temp placeholder, update to org.id after creation.
         await tx.organisation.update({
           where: { id: org.id },
           data: { orgId: org.id },
         });
 
-        // 2. Organisation settings (defaults)
         await tx.organisationSettings.create({
           data: { orgId: org.id },
         });
 
-        // 3. Default document number configs
         const docTypes = [
           'WORK_ORDER',
           'INVOICE',
@@ -68,9 +65,8 @@ export class SetupService {
           RECONCILIATION_ACT: 'АС',
         };
 
-        // createMany — single round-trip per table replaces 8+5 sequential
-        // creates. Doc-configs and payment methods have no relations to set,
-        // so batch insert is safe inside the bootstrap transaction.
+        // createMany: single round-trip replaces 8+5 sequential creates.
+        // Doc-configs and payment methods have no relations → batch insert is safe inside bootstrap tx.
         await tx.documentNumberConfig.createMany({
           data: docTypes.map(docType => ({
             orgId: org.id,
@@ -80,7 +76,6 @@ export class SetupService {
           })),
         });
 
-        // 4. Default payment methods
         const methods = [
           { code: 'cash', name: 'Готівка', sortOrder: 1, requiresFiscal: true },
           { code: 'card_terminal', name: 'Термінал', sortOrder: 2, requiresFiscal: true },
@@ -97,7 +92,6 @@ export class SetupService {
           data: methods.map(m => ({ orgId: org.id, ...m })),
         });
 
-        // 5. Default tax rates
         await tx.taxRate.createMany({
           data: [
             { orgId: org.id, name: 'Без ПДВ', rate: 0, isDefault: false },
@@ -106,7 +100,6 @@ export class SetupService {
           ],
         });
 
-        // 6. Branch
         const branch = await tx.garageBranch.create({
           data: {
             orgId: org.id,
@@ -115,12 +108,10 @@ export class SetupService {
           },
         });
 
-        // 7. Branch settings (defaults)
         await tx.branchSettings.create({
           data: { branchId: branch.id, orgId: org.id },
         });
 
-        // 8. Warehouse
         const warehouse = await tx.warehouse.create({
           data: {
             orgId: org.id,
@@ -130,7 +121,6 @@ export class SetupService {
           },
         });
 
-        // 9. Owner employee
         const employee = await tx.employee.create({
           data: {
             orgId: org.id,
@@ -141,7 +131,6 @@ export class SetupService {
           },
         });
 
-        // 10. AuthAccount
         await tx.authAccount.create({
           data: {
             orgId: org.id,
@@ -154,7 +143,7 @@ export class SetupService {
         return { org, branch, warehouse, employee };
       },
       { timeout: 15_000 },
-    ); // Bug #132: bootstrap creates 14+ rows; default 5s може недостатньо на повільному disk
+    ); // bootstrap creates 14+ rows; default 5s може недостатньо на повільному disk
 
     const accessToken = this.authService.generateAccessToken({
       sub: result.employee.id,

@@ -47,7 +47,7 @@ const TabBarContext = createContext<TabBarContextValue>({
   setPendingRestore: noop,
 });
 
-// Bug #423: runtime shape validation. Старі версії TabBar зберігали tab-и з
+// runtime shape validation. Старі версії TabBar зберігали tab-и з
 // `kind: 'page'` або без `restoreProps`. JSON.parse + type-cast пропускав сміття
 // → потім `sameIdentity(undefined, ...)` крашив, або `restoreProps.workOrderId`
 // undefined відкривала модалку у create-mode замість edit. Фільтруємо при load
@@ -174,7 +174,7 @@ export function TabBarProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Bug #425: stable reference — читаємо з `tabsRef.current` (синхронізується іншим
+  // stable reference — читаємо з `tabsRef.current` (синхронізується іншим
   // useEffect-ом вище) замість залежності від `tabs`. Без цього context value
   // recreated на кожну зміну tabs → всі consumers re-render (включно з модалкою що
   // підписана лише на `minimizeModal`).

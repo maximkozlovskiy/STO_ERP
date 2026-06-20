@@ -84,7 +84,7 @@ export function useCreatePayment() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: invoicesKeys.all });
       qc.invalidateQueries({ queryKey: ['work-orders'] });
-      // Bug #245: payments.service викликає settlements.createTransaction(PAYMENT)
+      // payments.service викликає settlements.createTransaction(PAYMENT)
       // який змінює settlementAccount.balance для counterparty. CRM-лист показує
       // currentBalance — без цієї invalidation баланс залишається стале до staleTime=30s.
       qc.invalidateQueries({ queryKey: counterpartiesKeys.all });

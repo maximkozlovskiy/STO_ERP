@@ -38,7 +38,6 @@ import { InvoiceSection, type InvoiceRef } from './InvoiceSection';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface WorkOrderMedia {
-  // Bug #93: `fileKey` removed — backend no longer leaks the internal MinIO path.
   id: string;
   workOrderId: string;
   filename: string;
@@ -253,8 +252,6 @@ export default function WorkOrderCardPage() {
   const [downloadingActPdf, setDownloadingActPdf] = useState(false);
 
   // undefined = not yet loaded; null = loaded but no invoice; InvoiceRef = present.
-  // Bug #510: create / refresh / PDF actions now live inside <InvoiceSection>;
-  // PageClient тільки тримає завантажений ref і пропагує оновлення.
   const [invoiceRef, setInvoiceRef] = useState<InvoiceRef | null | undefined>(undefined);
 
   const [transitioning, setTransitioning] = useState(false);
@@ -360,7 +357,7 @@ export default function WorkOrderCardPage() {
         if (mountedRef.current) setComments(r.items ?? []);
       })
       .catch((e: unknown) => {
-        // Bug #341: silent .catch ховало помилки завантаження коментарів — діагностика
+        // silent .catch ховало помилки завантаження коментарів — діагностика
         // неможлива. Тепер логуємо у console.warn (тісно з review patten 88d2c8d).
         console.warn('Помилка завантаження коментарів:', e);
       });
@@ -372,7 +369,7 @@ export default function WorkOrderCardPage() {
         if (mountedRef.current) setMedia(d.items ?? []);
       })
       .catch((e: unknown) => {
-        // Bug #341: silent .catch ховало помилки завантаження медіа — debug-ability fix.
+        // silent .catch ховало помилки завантаження медіа — debug-ability fix.
         console.warn('Помилка завантаження медіа наряду:', e);
       });
   }, [id]);
@@ -478,7 +475,7 @@ export default function WorkOrderCardPage() {
         if (mountedRef.current) setInspectionPoints(d);
       })
       .catch((e: unknown) => {
-        // Bug #341: silent .catch ховало помилки завантаження inspection-points —
+        // silent .catch ховало помилки завантаження inspection-points —
         // debug-ability fix (тісно з review patten 88d2c8d).
         console.warn('Помилка завантаження точок огляду:', e);
       });
@@ -587,7 +584,7 @@ export default function WorkOrderCardPage() {
   };
 
   const downloadPdf = async () => {
-    // Bug #77: use apiBlobFetch which does silent refresh on 401 — direct fetch
+    // use apiBlobFetch which does silent refresh on 401 — direct fetch
     // breaks when access token expired (~15min) requiring full page reload.
     setError('');
     try {
@@ -623,7 +620,7 @@ export default function WorkOrderCardPage() {
     setDownloadingActPdf(true);
     setError('');
     try {
-      // Bug #77: same silent-refresh hardening as downloadPdf above.
+      // same silent-refresh hardening as downloadPdf above.
       const blob = await apiBlobFetch(`/completion-acts/${actId}/pdf`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

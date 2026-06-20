@@ -1,4 +1,4 @@
-import { calculatePagination } from '../../common/utils/pagination';
+﻿import { calculatePagination } from '../../common/utils/pagination';
 import {
   Injectable,
   NotFoundException,
@@ -68,8 +68,8 @@ export class GoodsService {
     const [items, total] = await Promise.all([
       this.prisma.good.findMany({
         where,
-        // Bug #306: показуємо активні (deletedAt=NULL) перед видаленими у showDeleted=true списках.
-        // Postgres дефолтно ставить NULL у кінець ASC → ховаємо явним `nulls: 'first'`.
+        // Show active (deletedAt=NULL) before deleted in showDeleted=true lists.
+        // Postgres puts NULL last in ASC by default → override with explicit `nulls: 'first'`.
         orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
         skip,
         take,
@@ -119,8 +119,8 @@ export class GoodsService {
     const internalCode = await this.docNumbers.next(orgId, 'GOOD_INTERNAL_CODE');
     const item = await this.prisma.good.create({
       data: { ...dto, orgId, unit: dto.unit ?? 'шт', salePrice: dto.salePrice ?? 0, internalCode },
-      // Bug #537: include goodCategory so create response carries goodCategoryName
-      // (mirror findAll/findOne include; otherwise UI list/detail shows null after create).
+      // include goodCategory so response carries goodCategoryName
+      // (mirrors findAll/findOne include; otherwise UI shows null after create/update).
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
         goodCategory: { select: { id: true, name: true } },
@@ -159,7 +159,6 @@ export class GoodsService {
     const item = await this.prisma.good.update({
       where: { id, orgId },
       data: dto,
-      // Bug #537: include goodCategory so update response carries goodCategoryName.
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
         goodCategory: { select: { id: true, name: true } },
@@ -201,11 +200,11 @@ export class GoodsService {
   }
 
   /**
-   * Bug #161: optional FK поля (brandId / unitId / preferredSupplierId) валідуються
-   * у межах поточної org ПЕРЕД записом. Без цього:
-   *  1) FK з ІНШОЇ org проходить сирий DB constraint → cross-tenant витік (правило #6);
-   *  2) неіснуючий ID → P2003 → загальне 400 замість конкретного повідомлення українською.
-   * Усталений патерн STO ERP (Bug #90 у invoices/work-orders): findFirst({ id, orgId, deletedAt: null }).
+   * Optional FK fields (brandId / unitId / preferredSupplierId) are validated within the current org
+   * BEFORE writing. Without this:
+   *  1) FK from ANOTHER org passes the raw DB constraint → cross-tenant data leak (rule #6);
+   *  2) non-existent ID → P2003 → generic 400 instead of a Ukrainian-language message.
+   * Pattern: findFirst({ id, orgId, deletedAt: null }).
    */
   private async validateFkReferences(
     orgId: string,
@@ -235,8 +234,7 @@ export class GoodsService {
             select: { id: true },
           })
         : Promise.resolve(null),
-      // sto-review: goodCategoryId — повторюємо patter Bug #161 для нового FK.
-      // Без перевірки cross-tenant ID пройде сирий DB FK constraint (он-prem deploy).
+      // goodCategoryId — same pattern: without this check a cross-tenant ID passes the raw DB FK constraint.
       dto.goodCategoryId
         ? this.prisma.goodCategory.findFirst({
             where: { id: dto.goodCategoryId, orgId, deletedAt: null },
@@ -296,8 +294,7 @@ export class GoodsService {
       throw new ConflictException('Штрихкод уже використовується');
     }
 
-    // Bug #356: коли створюється новий isPrimary=true → unset попередні primary
-    // у тому ж goodId scope атомарно. Без цього multiple primaries у good.
+    // When creating isPrimary=true → unset previous primaries atomically; otherwise multiple primaries per good.
     const barcode = dto.isPrimary
       ? await this.prisma.$transaction(async tx => {
           await tx.goodBarcode.updateMany({
@@ -327,10 +324,8 @@ export class GoodsService {
   }
 
   async deleteBarcode(orgId: string, goodId: string, barcodeId: string): Promise<void> {
-    // Bug #356: якщо видаляємо `isPrimary=true` barcode → auto-promote next active
-    // sibling як новий primary. Інакше товар може залишитись без primary barcode,
-    // що ламає POS scan-resolution і print-label «головний» convention.
-    // Patern Bug #351 (CounterpartyContract auto-promote).
+    // If deleting the isPrimary=true barcode, auto-promote the next active sibling — otherwise
+    // the good is left without a primary barcode, breaking POS scan-resolution and print-label convention.
     const existing = await this.prisma.goodBarcode.findFirst({
       where: { id: barcodeId, orgId, goodId },
       select: { id: true, isPrimary: true },
@@ -445,7 +440,7 @@ export class GoodsService {
             },
           });
           if (isFirst) {
-            // Bug #224: defense-in-depth — updateMany with orgId guard so any future
+            // Defense-in-depth — updateMany with orgId guard so any future
             // refactor that loses the goodId/orgId pre-check cannot cross-tenant write.
             await tx.good.updateMany({
               where: { id: goodId, orgId, deletedAt: null },
@@ -457,10 +452,8 @@ export class GoodsService {
         { timeout: TRANSACTION_TIMEOUT_MS },
       );
     } catch (e) {
-      // Bug #225: TOCTOU between `existing`/`count` precheck and `tx.create` —
-      // two concurrent identical adds both pass precheck and one hits the
-      // (orgId, goodId, unitOfMeasureId) unique constraint. Map P2002 to a
-      // friendly Conflict (HTTP 409) instead of leaking Prisma 500.
+      // TOCTOU: two concurrent identical adds both pass precheck, one hits the
+      // (orgId, goodId, unitOfMeasureId) unique constraint → map P2002 to 409 instead of leaking Prisma 500.
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new ConflictException('Ця одиниця виміру вже додана до товару');
       }
@@ -471,7 +464,7 @@ export class GoodsService {
   }
 
   async setDefaultUoM(orgId: string, goodId: string, uomId: string): Promise<GoodUoMResponseDto> {
-    // Bug #223: validate Good itself exists and is not soft-deleted in this org
+    // Validate Good itself exists and is not soft-deleted in this org
     // before mutating any UoM rows for it. Parallel parent-guard + child-fetch (-1 RTT).
     const [good, uom] = await Promise.all([
       this.prisma.good.findFirst({
@@ -500,7 +493,7 @@ export class GoodsService {
     await this.prisma.$transaction([
       this.prisma.goodUoM.updateMany({ where: { orgId, goodId }, data: { isDefault: false } }),
       this.prisma.goodUoM.update({ where: { id: uomId }, data: { isDefault: true } }),
-      // Bug #224: defense-in-depth — updateMany with orgId+deletedAt guard.
+      // Defense-in-depth — updateMany with orgId+deletedAt guard.
       this.prisma.good.updateMany({
         where: { id: goodId, orgId, deletedAt: null },
         data: { unitId: uom.unitOfMeasureId, unit: uom.unitOfMeasure.shortName },
@@ -511,7 +504,7 @@ export class GoodsService {
   }
 
   async removeUoM(orgId: string, goodId: string, uomId: string): Promise<void> {
-    // Bug #223: ensure parent Good is in this org and not soft-deleted.
+    // Ensure parent Good is in this org and not soft-deleted.
     // Parallel parent-guard + uom-fetch + count (-2 RTT vs sequential).
     const [good, uom, total] = await Promise.all([
       this.prisma.good.findFirst({
@@ -549,7 +542,7 @@ export class GoodsService {
               where: { id: next.id, orgId, goodId },
               data: { isDefault: true },
             });
-            // Bug #224: defense-in-depth — updateMany with orgId+deletedAt guard.
+            // Defense-in-depth — updateMany with orgId+deletedAt guard.
             await tx.good.updateMany({
               where: { id: goodId, orgId, deletedAt: null },
               data: { unitId: next.unitOfMeasureId, unit: next.unitOfMeasure.shortName },

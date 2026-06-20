@@ -12,8 +12,8 @@ import {
 // per call. Booking create runs on every public widget submit → hoist.
 const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA');
 
-// Bug #511: DST-safe formatter to produce Kyiv-local "HH:MM" key from any Date.
-// Previously bookedTimes used `getUTCHours()` — у літо 09:00 Kyiv (06:00Z) давав ключ
+// DST-safe formatter to produce Kyiv-local "HH:MM" key from any Date.
+// getUTCHours() gives wrong slot on DST boundary: у літо 09:00 Kyiv (06:00Z) давав ключ
 // '06:00' замість '09:00' → блокування підтверджених бронювань ніколи не спрацьовувало
 // (slot keys будуються з BranchSettings.workStartTime у Kyiv-локальному часі).
 // en-GB локаль гарантовано emits "HH:MM" 24-годинний padded формат.
@@ -24,7 +24,7 @@ const KYIV_HM_FMT = new Intl.DateTimeFormat('en-GB', {
   hour12: false,
 });
 
-// Bug #514: ISO weekday у Kyiv TZ (1=Mon..7=Sun) — для перевірки workDays при create().
+// ISO weekday у Kyiv TZ (1=Mon..7=Sun) — для перевірки workDays при create().
 // 'en-GB' з weekday: 'short' дає "Mon"/"Tue"/.../"Sun".
 const KYIV_WEEKDAY_FMT = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/Kyiv',
@@ -47,15 +47,13 @@ export class BookingService {
 
   constructor(
     private readonly prisma: PrismaService,
-    // Bug #506: route booking SMS through NotificationsService.send() — single source
-    // of truth for branchSettings provider/apiKey + NotificationTemplate body. Previously
-    // smsQueue.add() bypassed template resolve and pushed `{ templateCode, params }` —
-    // SmsProcessor.process() saw provider=undefined → silent skip ("Невідомий SMS-провайдер").
+    // Route booking SMS through NotificationsService.send() — single source of truth for
+    // branchSettings provider/apiKey + NotificationTemplate body. Direct smsQueue.add() bypasses
+    // template resolve → SmsProcessor.process() sees provider=undefined → silent skip.
     private readonly notifications: NotificationsService,
   ) {}
 
   /**
-   * Bug #112: Public booking widget needs branch info without auth.
    * Single source of truth for branch lookup — soft-deleted branches must NEVER
    * leak to public booking, otherwise customers see slots for a closed location.
    */
@@ -81,10 +79,10 @@ export class BookingService {
   }
 
   /**
-   * Bug #113: Working hours are LOCAL to Europe/Kyiv (09:00–18:00 Kyiv time),
-   * not UTC. Use `+02:00`/`+03:00` ISO offset depending on DST so slots are
-   * produced in real Kyiv time. We derive the offset from a `toLocaleString`
-   * round-trip on the requested date to handle DST transition days correctly.
+   * Working hours are LOCAL to Europe/Kyiv, not UTC. Use `+02:00`/`+03:00` ISO
+   * offset depending on DST so slots are produced in real Kyiv time. Derive the
+   * offset from a `toLocaleString` round-trip on the requested date to handle
+   * DST transition days correctly.
    */
   private kyivOffsetForDate(date: string): string {
     // Convert the date's noon-UTC moment to Kyiv local time and read the offset.
@@ -106,7 +104,7 @@ export class BookingService {
     date: string,
     serviceIds?: string[],
   ): Promise<AvailabilitySlotDto[]> {
-    // Bug #113: day boundaries must be Kyiv-local, not UTC, otherwise a slot
+    // Day boundaries must be Kyiv-local, not UTC, otherwise a slot
     // requested for "2026-05-27 in Kyiv" would search a misaligned UTC window.
     const offset = this.kyivOffsetForDate(date);
     const dayStart = new Date(`${date}T00:00:00.000${offset}`);
@@ -184,8 +182,8 @@ export class BookingService {
 
     // Build set of times already taken by confirmed booking requests (HH:MM strings).
     // BookingRequest doesn't track liftId — block all lifts for that time.
-    // Bug #511: ключ ОБОВ'ЯЗКОВО Kyiv-local (DST-aware). Раніше `getUTCHours()` давав
-    // зміщений ключ ('06:00' замість '09:00' у літо) → blocking ніколи не спрацьовував.
+    // Key MUST be Kyiv-local (DST-aware): `getUTCHours()` давав зміщений ключ
+    // ('06:00' замість '09:00' у літо) → blocking ніколи не спрацьовував.
     // Slot generation нижче формує `timeKey` з Kyiv-локальних `startLimitMinutes`
     // (на основі `BranchSettings.workStartTime`), тому ключі повинні бути в одній TZ.
     const bookedTimes = new Set(
@@ -261,14 +259,11 @@ export class BookingService {
   }
 
   async create(orgId: string, dto: CreateBookingRequestDto): Promise<BookingRequestResponseDto> {
-    // Bug #252: cross-tenant FK guard for poly-array `serviceIds`. Without this,
-    // public endpoint /booking/request can store work-IDs з ЧУЖОЇ org (Postgres
-    // text[] не FK, Prisma не валідує) → cross-tenant linkage у заявці. Parallel
-    // з branch-guard бо обидва незалежні (різні таблиці).
-    // Bug #514: додано BranchSettings fetch у Promise.all — для server-side
-    // валідації working hours (workStartTime/workEndTime/workDays). Захист
-    // defense-in-depth: backend не може довіряти, що public widget завжди
-    // викликав /availability перед submit (curl-обхід, modified клієнт).
+    // Cross-tenant FK guard for poly-array `serviceIds`: public endpoint /booking/request
+    // can store work-IDs з ЧУЖОЇ org (Postgres text[] не FK, Prisma не валідує) →
+    // cross-tenant linkage у заявці.
+    // BranchSettings fetch for server-side validation of working hours — backend cannot
+    // trust that the public widget always called /availability before submit (curl bypass).
     const [branch, serviceCount, branchSettings] = await Promise.all([
       // sto-optimize: only branch.name used for SMS template — narrow projection.
       this.prisma.garageBranch.findFirst({
@@ -290,7 +285,7 @@ export class BookingService {
       throw new BadRequestException('Деякі послуги не знайдено');
     }
 
-    // Bug #514: Server-side guard для working hours. У Kyiv-локальній TZ.
+    // Server-side guard для working hours. У Kyiv-локальній TZ.
     const requestedAt = new Date(dto.requestedDate);
     if (Number.isNaN(requestedAt.getTime())) {
       throw new BadRequestException('Невірний формат дати');
@@ -323,7 +318,7 @@ export class BookingService {
       },
     });
 
-    // Bug #506: SMS confirmation via NotificationsService.send() — резолвить branchSettings
+    // SMS confirmation via NotificationsService.send() — резолвить branchSettings
     // (provider/apiKey/senderName) + NotificationTemplate.body, рендерить шаблон і кладе
     // справжній SendSmsJob shape у queue. Non-blocking: помилка резолву (SMS не налаштовано
     // на branch або шаблону немає) логується, але бронювання залишається.
@@ -381,10 +376,9 @@ export class BookingService {
       data: { status: 'CONFIRMED' },
     });
     if (result.count === 0) throw new NotFoundException('Заявку не знайдено');
-    // Bug #276: post-update fetch має включати branch relation — без цього confirm()
-    // повертає BookingRequestResponseDto з branchName=null навіть якщо філія є.
-    // toDto() читає r.branch?.name; findFirstOrThrow без include → r.branch=undefined.
-    // Контракт DTO декларує branchName — клієнт може очікувати рендер у success-toast.
+    // Post-update fetch must include branch relation — without it confirm() returns
+    // BookingRequestResponseDto with branchName=null even when branch exists.
+    // toDto() reads r.branch?.name; findFirstOrThrow without include → r.branch=undefined.
     const updated = await this.prisma.bookingRequest.findFirstOrThrow({
       where: { id, orgId },
       include: { branch: { select: { name: true } } },

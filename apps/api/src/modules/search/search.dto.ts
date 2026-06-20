@@ -4,7 +4,7 @@ import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 export class SearchQueryDto {
   @ApiProperty({ description: 'Пошуковий запит', minLength: 2, maxLength: 100 })
   @IsString()
-  // Bug #117: trigram similarity becomes meaningless and CPU-heavy below 2 chars.
+  // trigram similarity is meaningless and CPU-heavy below 2 chars.
   @MinLength(2, { message: 'Запит має містити мінімум 2 символи' })
   @MaxLength(100)
   q!: string;
@@ -29,11 +29,9 @@ export class SearchResultItemDto {
 
 export class SearchResponseDto {
   @ApiProperty({ type: [SearchResultItemDto] }) items!: SearchResultItemDto[];
-  // Bug #122: cap-ed total — equals `items.length` (≤ limit). NOT the real DB
-  // match count: every per-type query is `LIMIT perType` so a full COUNT would
-  // require N extra heavy similarity scans for no UI benefit (command-palette
-  // only consumes `items`). Documented here so consumers do not interpret it
-  // as paginated total.
+  // total equals items.length (≤ limit), NOT the real DB match count: every per-type query
+  // uses LIMIT perType, so a full COUNT would require N extra similarity scans for no UI
+  // benefit (command-palette only consumes items).
   @ApiProperty({
     description:
       'Кількість повернутих результатів (capped at limit). НЕ є реальною кількістю матчів у БД.',

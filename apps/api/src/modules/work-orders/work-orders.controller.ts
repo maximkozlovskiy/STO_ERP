@@ -98,7 +98,6 @@ export class WorkOrdersController {
     @Body() dto: UpdateWorkOrderDto,
     @CurrentUser() user: { id: string },
   ) {
-    // Bug #86: pass user.id so update() writes a per-field AuditEvent.
     return this.service.update(orgId, id, dto, user.id);
   }
 
@@ -138,9 +137,6 @@ export class WorkOrdersController {
     @Body() dto: TransitionWorkOrderDto,
     @CurrentUser() user: { id: string },
   ) {
-    // @CurrentUser повертає { id, orgId, role } (див. AuthenticatedUser у jwt.strategy.ts).
-    // Раніше тут була анотація { sub } — `user.sub` був undefined у рантаймі,
-    // через що audit-лог про FSM-перехід тихо не писався.
     return this.service.transition(orgId, id, dto.status, user.id);
   }
 
@@ -224,9 +220,8 @@ export class WorkOrdersController {
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateWorkOrderPartDto,
-    // Bug #529: симетрично з findOne — service маскує costPrice для не-привілейованих
-    // ролей. Без role-передачі OWNER/ADMIN не побачив би costPrice одразу після
-    // додавання (fail-closed default → undefined → refresh потрібен).
+    // role passed to service so OWNER/ADMIN see costPrice immediately after addPart
+    // (fail-closed default = undefined; without role they'd need a full page refresh).
     @CurrentUser() user: { role: string },
   ) {
     return this.service.addPart(orgId, id, dto, user.role);

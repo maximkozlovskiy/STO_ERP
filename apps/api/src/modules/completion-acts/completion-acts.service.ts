@@ -25,12 +25,9 @@ export class CompletionActsService {
   ) {}
 
   async findAll(orgId: string, workOrderId?: string): Promise<PaginatedCompletionActsDto> {
-    // Bug #275: CANCELLED acts мають бути виключені з активного списку.
-    // cancel() не робить soft-delete (deletedAt лишається null) — тільки змінює status.
-    // Без цього фронт після cancel перезавантажує сторінку → бачить «прихований» CANCELLED act
-    // у списку → setCompletionAct(items[0]) → користувач знову бачить cancelled act,
-    // не може клацнути «Сформувати акт» бо вже є запис у стані.
-    // Узгоджено з createFromWorkOrder line 120 (status: { not: CANCELLED }).
+    // Exclude CANCELLED acts from the active list: cancel() only changes status, does not soft-delete.
+    // Without this filter the frontend sees the CANCELLED act after reload → setCompletionAct(items[0])
+    // → user can't click "Create act" because a record already exists in that state.
     const where = {
       orgId,
       deletedAt: null,
@@ -137,8 +134,8 @@ export class CompletionActsService {
       }),
     ]);
     if (!wo) throw new NotFoundException('Наряд не знайдено');
-    // Bug #432: shared INVOICEABLE_STATUSES — раніше inline `['COMPLETED', 'INVOICED']`.
-    // Той самий whitelist що у InvoicesService.createFromWorkOrder.
+    // Use shared INVOICEABLE_STATUSES — same whitelist as InvoicesService.createFromWorkOrder,
+    // avoids drift between the two guards.
     if (!INVOICEABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException('Акт можна сформувати лише для завершеного наряду');
     }
@@ -203,7 +200,7 @@ export class CompletionActsService {
         workOrderId = act.workOrder?.id ?? null;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // Bug #130: explicit 5s timeout
+    ); // Explicit 5s timeout: SELECT + 2 UPDATEs — well below Prisma default 30s.
 
     if (workOrderId) {
       try {

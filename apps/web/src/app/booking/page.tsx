@@ -21,7 +21,7 @@ interface AvailabilitySlot {
   available: boolean;
 }
 
-// Bug #111: public booking widget must NOT use `apiFetch` — that helper redirects
+// public booking widget must NOT use `apiFetch` — that helper redirects
 // to /login on any 401, which would happen the moment we try to hit auth-guarded
 // endpoints. Use raw `fetch` against the dedicated public `/api/booking/*` routes.
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -40,7 +40,7 @@ async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
-    // Bug #137: NestJS class-validator повертає `message: string[]` при 400 — join з '; '.
+    // NestJS class-validator повертає `message: string[]` при 400 — join з '; '.
     const body = (await res.json().catch(() => ({ message: res.statusText }))) as {
       message?: string | string[];
     };
