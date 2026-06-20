@@ -12,9 +12,9 @@
 Дата:       2026-06-20
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 960/960 (20 role-gate/resurrection — після simplify merge) | Web 471/471 | E2E 233/245 ✅ 0 failed
+Тести:      API 960/960 | Web 471/471 | E2E 277/284 (7 skipped) ✅ 0 failed — +39 тестів
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 — simplify(review): 4c883670 — Простіше goods.role-gate.spec.ts (89 рядків → 56, без втрати coverage): об'єднано privileged + privileged-null у один матричний it.each {role, dbValue, expected}; об'єднано non-privileged + fail-closed у один it.each з однаковим setup/expectation. Виправлено pnpm-workspace.yaml: рядок '@sentry-internal/node-cpu-profiler': set this to true or false (placeholder ще від initial commit, pnpm тихо парсив як рядок → пакет не збирався) → false. Тести: 20/20 ✓; tsc api/web/shared 0 errors.
+Останній commit: 2026-06-20 — test(e2e): c8ccfdad — Massive E2E coverage expansion: +39 тестів у 7 нових spec-файлах (profile, ndi, settings-sync, vehicles, calendar-views, command-palette, supplier-returns), знищено 18 silent test.skip(true) у 5 crud spec-ах (crud-booking, crud-calendar-slot, crud-invoice, crud-purchase-order, crud-stock-document) — Bug #571 follow-up; Bug #572 (HIGH backend search 500) задокументовано у BUG_REPORT.md для наступного sto-backend циклу.
 ```
 
 ### Security audit (2026-06-20)
@@ -37,6 +37,9 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+c8ccfdad  test(e2e): Add command-palette + supplier-returns coverage, surface Bug #572 (search 500)
+bf2f78a6  test(e2e): Add 30 tests across 5 new specs — profile, ndi, sync, vehicles, calendar-views
+7575081d  fix(e2e): Eliminate test.skip(true) fake-green in 5 crud specs — Bug #571 follow-up
 4c883670  simplify(review): role-gate spec merge + pnpm-workspace placeholder fix
 4c62d12d  fix(review): фінальний огляд 3/3 — pnpm overrides + AuthenticatedUser типізація + regression specs
 27210eb2  simplify(e2e): Цикл 3/3 step 6 — extract nextWorkingDayIso + openPoEditModal helpers, drop dead enableDetailPanel
