@@ -26,6 +26,7 @@ export interface GoodPickerItem {
 interface StockTotal {
   goodId: string;
   totalQuantity: number;
+  byWarehouse: { warehouseId: string; quantity: number }[];
 }
 
 // sto-optimize: module-level stable refs — `new Map()` всередині `setStockMap(new Map())`

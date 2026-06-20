@@ -21,6 +21,7 @@ import {
   COUNTERPARTY_TYPE_BADGE,
   COUNTERPARTY_TYPE_DESCRIPTIONS,
   CONTRACT_TYPE_LABELS,
+  WO_STATUS_LABELS,
 } from '@sto/shared';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -104,6 +105,8 @@ interface LoyaltyTransaction {
   id: string;
   type: string;
   points: number;
+  documentId?: string | null;
+  documentType?: string | null;
   createdAt: string;
   notes?: string | null;
 }
@@ -172,18 +175,17 @@ const LEGAL_FORM_LABELS: Record<string, string> = {
 };
 const TYPE_BADGE = COUNTERPARTY_TYPE_BADGE;
 
-const WO_STATUS_LABELS: Record<string, string> = {
-  NEW: 'Новий',
-  IN_PROGRESS: 'В роботі',
-  DONE: 'Готовий',
-  CLOSED: 'Закрито',
-  CANCELLED: 'Скасовано',
-};
+// WO_STATUS_LABELS imported from @sto/shared — single source of truth
 const WO_STATUS_COLORS: Record<string, string> = {
-  NEW: 'bg-info-subtle text-info',
-  IN_PROGRESS: 'bg-warning-subtle text-warning',
-  DONE: 'bg-success-subtle text-success',
-  CLOSED: 'bg-secondary text-muted-foreground',
+  DRAFT: 'bg-secondary text-muted-foreground',
+  ESTIMATE: 'bg-warning-subtle text-warning',
+  APPROVED: 'bg-info-subtle text-info',
+  IN_PROGRESS: 'bg-info-subtle text-info',
+  ON_HOLD: 'bg-warning-subtle text-warning',
+  COMPLETED: 'bg-success-subtle text-success',
+  INVOICED: 'bg-info-subtle text-info',
+  PAID: 'bg-success-subtle text-success',
+  ARCHIVED: 'bg-secondary text-muted-foreground',
   CANCELLED: 'bg-destructive-subtle text-destructive',
 };
 
