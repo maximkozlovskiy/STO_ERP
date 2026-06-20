@@ -84,70 +84,46 @@ function makeService(prisma: unknown): GoodsService {
 }
 
 describe('GoodsService.findOne — purchasePrice role-gating', () => {
-  // ─── 1. Привілейовані ролі — purchasePrice ВИДИМИЙ ─────────────────────────
-  it.each(['OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT'])(
-    '%s бачить purchasePrice (число) коли значення встановлене',
-    async role => {
-      const prisma = makePrismaWithGood(100);
-      const service = makeService(prisma);
+  // ─── 1. Привілейовані ролі — purchasePrice ВИДИМИЙ (число або null з БД) ───
+  // Об'єднаний матричний sweep: 4 ролі × 2 db-значення = 8 кейсів через одне it.each.
+  it.each<{ role: string; dbValue: number | null; expected: number | null }>([
+    { role: 'OWNER', dbValue: 100, expected: 100 },
+    { role: 'ADMIN', dbValue: 100, expected: 100 },
+    { role: 'STOREKEEPER', dbValue: 100, expected: 100 },
+    { role: 'ACCOUNTANT', dbValue: 100, expected: 100 },
+    { role: 'OWNER', dbValue: null, expected: null },
+    { role: 'ADMIN', dbValue: null, expected: null },
+    { role: 'STOREKEEPER', dbValue: null, expected: null },
+    { role: 'ACCOUNTANT', dbValue: null, expected: null },
+  ])(
+    '$role бачить purchasePrice=$expected коли БД=$dbValue',
+    async ({ role, dbValue, expected }) => {
+      const service = makeService(makePrismaWithGood(dbValue));
 
       const good = await service.findOne(ORG, GOOD_ID, role);
-      expect(good.purchasePrice).toBe(100);
+      expect(good.purchasePrice).toBe(expected);
     },
   );
 
-  it.each(['OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT'])(
-    '%s отримує purchasePrice=null коли значення IS NULL у БД (доступ є)',
-    async role => {
-      const prisma = makePrismaWithGood(null);
-      const service = makeService(prisma);
+  // ─── 2. Не-привілейовані + fail-closed (undefined/unknown/'') → null ───────
+  // Усі ці кейси мають однаковий setup (dbValue=100) і однаковий expectation
+  // (purchasePrice=null). Об'єднано в один it.each (2 не-privileged + 3 fail-closed).
+  it.each<{ label: string; role: string | undefined }>([
+    { label: 'MECHANIC — приховано', role: 'MECHANIC' },
+    { label: 'RECEPTIONIST — приховано', role: 'RECEPTIONIST' },
+    { label: 'undefined → fail-closed', role: undefined },
+    { label: 'unknown role (GUEST) → fail-closed', role: 'GUEST' },
+    { label: 'порожній рядок → fail-closed', role: '' },
+  ])('$label → purchasePrice null', async ({ role }) => {
+    const service = makeService(makePrismaWithGood(100));
 
-      const good = await service.findOne(ORG, GOOD_ID, role);
-      expect(good.purchasePrice).toBeNull();
-    },
-  );
-
-  // ─── 2. НЕ-привілейовані ролі — purchasePrice ПРИХОВАНИЙ ───────────────────
-  it.each(['MECHANIC', 'RECEPTIONIST'])(
-    '%s НЕ бачить purchasePrice (поле → null у DTO)',
-    async role => {
-      const prisma = makePrismaWithGood(100);
-      const service = makeService(prisma);
-
-      const good = await service.findOne(ORG, GOOD_ID, role);
-      expect(good.purchasePrice).toBeNull();
-    },
-  );
-
-  // ─── 3. Fail-closed — undefined/unknown ролі → null (приховано) ────────────
-  it('userRole === undefined → fail-closed → purchasePrice null', async () => {
-    const prisma = makePrismaWithGood(100);
-    const service = makeService(prisma);
-
-    const good = await service.findOne(ORG, GOOD_ID);
+    const good = await service.findOne(ORG, GOOD_ID, role);
     expect(good.purchasePrice).toBeNull();
   });
 
-  it('невідома роль (e.g. майбутній GUEST/PARTNER) → fail-closed → null', async () => {
-    const prisma = makePrismaWithGood(100);
-    const service = makeService(prisma);
-
-    const good = await service.findOne(ORG, GOOD_ID, 'GUEST');
-    expect(good.purchasePrice).toBeNull();
-  });
-
-  it('userRole === "" (порожній рядок) → fail-closed → null', async () => {
-    const prisma = makePrismaWithGood(100);
-    const service = makeService(prisma);
-
-    const good = await service.findOne(ORG, GOOD_ID, '');
-    expect(good.purchasePrice).toBeNull();
-  });
-
-  // ─── 4. Маскування НЕ ламає інші поля DTO ──────────────────────────────────
+  // ─── 3. Маскування НЕ ламає інші поля DTO ──────────────────────────────────
   it('маскування purchasePrice НЕ впливає на salePrice/name/sku', async () => {
-    const prisma = makePrismaWithGood(100);
-    const service = makeService(prisma);
+    const service = makeService(makePrismaWithGood(100));
 
     const good = await service.findOne(ORG, GOOD_ID, 'MECHANIC');
     expect(good.purchasePrice).toBeNull();
