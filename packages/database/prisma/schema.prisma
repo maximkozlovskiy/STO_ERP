@@ -2079,6 +2079,12 @@ model BookingRequest {
   // (orgId, deletedAt, createdAt) даs covering без heap-read для розбраковки soft-deleted.
   @@index([orgId, status, deletedAt])
   @@index([orgId, deletedAt, createdAt])
+  // Covering index для публічного hot-path `BookingService.getAvailability()`:
+  // WHERE orgId=X AND branchId=Y AND status='CONFIRMED' AND requestedDate BETWEEN ... AND deletedAt IS NULL.
+  // Existing indexes покривають orgId+status, але branchId+requestedDate range залишались
+  // heap-row filter. Цей індекс ставить equality columns першими (orgId, branchId, status)
+  // + range column останнім (requestedDate) для single index-range scan без heap re-filter.
+  @@index([orgId, branchId, status, requestedDate])
   @@map("booking_requests")
 }
 

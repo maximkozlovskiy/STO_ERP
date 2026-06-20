@@ -7,6 +7,15 @@
 
 ## 2026-06-20
 
+### <next> perf(optimize): Цикл 3/3 step 4 — covering index booking_requests(orgId,branchId,status,requestedDate)
+
+- Аудит-результат: `BookingService.getAvailability()` (публічний widget hot-path без auth) фільтрує по orgId + branchId + status='CONFIRMED' + requestedDate range + deletedAt
+- Існуючі індекси `(orgId,status,deletedAt)` + `(orgId,deletedAt,createdAt)` покривали лише префікс — branchId equality + requestedDate range фолбекали на per-row heap filter
+- Migration `20260620100000_add_booking_request_availability_index` додає `(orgId, branchId, status, requestedDate)` — equality columns першими, range column останнім → single index-range scan без heap re-filter
+- Сигнал з накопичених підходів (Trgm index drift, Reverse-FK index miss) застосовано: новий public endpoint з multi-field WHERE без супутнього compound index — patern drift детектовано і виправлено
+- Інші перевірки чисті: loyalty `getTransactions()` має take:50+count parallel; maintenance-schedules — `(orgId,vehicleId,deletedAt)` і `(orgId,nextMaintenanceDate)` покривають findAll/findUpcoming; booking `getAvailability()` усі 5 queries паралельні через Promise.all + module-level Intl singletons; counterparties PageClient — tab-guard на effects, малі списки без потреби memo
+- TS green (api 0 errors, web 0 errors)
+
 ### 0b60970c fix(review): align SupplierReturn modal FSM with backend SR_TRANSITIONS
 
 - Post-redesign (0bcc7365 PO-style copy) drift: frontend STATUS_TRANSITIONS не відповідав backend SR_TRANSITIONS у supplier-returns.service.ts — `DRAFT:[CONFIRMED]` губив CANCELLED; `CONFIRMED:[CANCELLED]` додавав неіснуючий перехід (бек: `CONFIRMED:[]`)

@@ -12,9 +12,9 @@
 Дата:       2026-06-20
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 940/940 (+4 booking @Throttle contract) | Web 471/471 (+33 WO_STATUS_LABELS contract) | E2E 232/245 ✅ 0 failed
+Тести:      API 940/940 | Web 471/471 | E2E 232/245 ✅ 0 failed
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 — fix(tester): Цикл 3/3 step 3 — Bug #568 crud-catalog test pagination-blind (нові записи ховались за stale Dup1-E2E-DUP-* через name ASC sort) → fill search input перед toBeVisible; Bug #569 booking.throttle.contract.spec.ts (Reflector-based regression guard для @Throttle); Bug #570 wo-status-labels.test.ts (33 tests — contract між WorkOrderStatus enum і shared LABELS/BADGE/DESCRIPTIONS).
+Останній commit: 2026-06-20 — perf(optimize): Цикл 3/3 step 4 — covering index `booking_requests(orgId, branchId, status, requestedDate)` для публічного hot-path `BookingService.getAvailability()`. WHERE-clause: orgId+branchId equality + status='CONFIRMED' + requestedDate range + deletedAt IS NULL. Існуючі індекси (orgId,status,deletedAt) і (orgId,deletedAt,createdAt) покривали лише префікс — branchId+requestedDate залишались heap row-by-row filter. Single index-range scan без heap re-filter для public widget mount.
 ```
 
 ### Аудит-висновки (2026-06-17 simplify session)
@@ -30,7 +30,8 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
-<HEAD>    fix(tester): Цикл 3/3 step 3 — Bug #568-#570 (E2E search fill, Throttle contract, WO labels contract)
+<HEAD>    perf(optimize): Цикл 3/3 step 4 — covering index booking_requests(orgId,branchId,status,requestedDate)
+667f8798  fix(tester): Цикл 3/3 step 3 — Bug #568-#570 (E2E search fill, Throttle contract, WO labels contract)
 2d77c7eb  docs(memory): update MemoryManual after review Цикл 3/3 step 2
 3f1527f0  fix(review): Цикл 3/3 step 2 — public booking @Throttle + strip BOM from 10 files
 4f1f345d  fix(sync): align WO status labels and StockTotal interface with API contracts (Цикл 3/3 step 1)
