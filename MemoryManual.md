@@ -14,8 +14,15 @@
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 940/940 | Web 471/471 | E2E 233/245 ✅ 0 failed
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 — simplify(e2e): Цикл 3/3 step 6 — extract `nextWorkingDayIso()` helper у crud-booking.spec.ts (2 копії IIFE → 1 функція файлового scope, обчислюється у Node і passes у `page.evaluate` як параметр); extract `openPoEditModal(page, row)` helper у purchase-orders-receive.spec.ts (3 копії pattern hover+click+await expect(modal) → 1 виклик); прибрано dead `enableDetailPanel()` (нікому не викликається). Net -13 LOC, 0 поведінкових змін.
+Останній commit: 2026-06-20 — fix(security): SEC-001 — JWT fallback secret видалено з passport strategy. `config.get<string>('JWT_ACCESS_SECRET') ?? 'dev_access_secret'` → `getOrThrow<string>('JWT_ACCESS_SECRET')` (fail-fast на старті). Final OWASP audit Top 10 пройдено: 1 CRITICAL виправлено, 28 HIGH задокументовано як deps з runtime-exposure=0 (vitest/middie/undici/glob — DEV/mobile only), 1 MEDIUM trade-off (SSE token у query — обмеження EventSource API).
 ```
+
+### Security audit (2026-06-20)
+
+- **CRITICAL fix:** jwt.strategy.ts тепер вимагає JWT_ACCESS_SECRET через `getOrThrow`; fail-fast на старті, fallback на публічно відомий 'dev_access_secret' видалено
+- **Перевірено OK:** SQL injection (всі $queryRaw — tagged template Prisma.sql), Auth (bcrypt 12 + refresh httpOnly+sameSite:strict+path:/api/auth), Sensitive data (purchasePrice масковано MECHANIC/RECEPTIONIST у goods.service.ts, SMS phone — `maskPhone()` у sms.processor.ts, EstimatePublicDto guard у work-orders.share-public.spec.ts), Access Control (RolesGuard+JwtAuthGuard глобально, public endpoints тільки booking/setup/work-orders-public), Misconfig (helmet first plugin, ValidationPipe whitelist+forbidNonWhitelisted глобально, CORS WEB_ORIGIN fail-closed, Swagger тільки у dev), XSS (єдиний dangerouslySetInnerHTML у layout.tsx — static literal color-mode boot), CSRF (sameSite:strict на refresh cookie, Bearer-only для mutations), Mass Assignment (whitelist:true strip-ає orgId/role з input), Multi-tenant (orgId з JWT через @OrgContext всюди, ніде з body)
+- **Trade-off:** SSE `/dashboard/stream?token=…` — EventSource без custom header API; mitigated throttle 5/min + getOrThrow secret + claims verify
+- **HIGH deps:** 28 у залежностях — vitest <3.2.6 (DEV-only RCE), @fastify/middie <=9.3.1 (middleware bypass, у NestJS guards не використовується), undici (jsdom test + Expo mobile), glob (@nestjs/cli dev tool), shell-quote (Expo mobile). Жодна не у production runtime критичного шляху. Окрема ітерація `pnpm update` після sprint.
 
 ### Аудит-висновки (2026-06-17 simplify session)
 
