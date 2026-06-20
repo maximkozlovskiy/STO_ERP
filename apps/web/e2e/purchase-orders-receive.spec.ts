@@ -54,11 +54,6 @@ async function createPO(page: Page) {
   return fresh ?? po;
 }
 
-// Увімкнути Detail Panel для purchase-orders (зберігається в localStorage)
-async function enableDetailPanel(page: Page) {
-  await page.evaluate(() => localStorage.setItem('sto_detail_panel_purchase-orders', 'true'));
-}
-
 async function readyPage(page: Page) {
   // addInitScript гарантує що localStorage встановлено до React hydration
   await page.addInitScript(() => {
@@ -66,6 +61,19 @@ async function readyPage(page: Page) {
   });
   await page.goto('/purchase-orders');
   await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
+}
+
+/**
+ * Відкриває PO edit modal через hover + Pencil і чекає на dialog.
+ * Bug #571: без `await expect(modal).toBeVisible()` пошук кнопок одразу після click() — race.
+ * Повертає locator модалки для подальшого пошуку кнопок ("Оприбуткувати", "Підтвердити прийом").
+ */
+async function openPoEditModal(page: Page, row: ReturnType<Page['locator']>) {
+  await row.hover();
+  await row.locator('button[title="Редагувати"]').first().click();
+  const modal = page.locator('[role="dialog"]').first();
+  await expect(modal).toBeVisible({ timeout: 5_000 });
+  return modal;
 }
 
 // ─── Прийом товарів (PARTIAL / RECEIVED) ─────────────────────────────────────
@@ -123,12 +131,7 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    // Open PO edit modal via Pencil (title="Редагувати").
-    await row.hover();
-    await row.locator('button[title="Редагувати"]').first().click();
-    // Чекати модалку — Bug #571: без цього кнопки пошукуються до рендеру → fake-green skip.
-    const modal = page.locator('[role="dialog"]').first();
-    await expect(modal).toBeVisible({ timeout: 5_000 });
+    const modal = await openPoEditModal(page, row);
     const receiveBtn = modal.locator('button:has-text("Оприбуткувати")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }).catch(() => false))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
@@ -179,12 +182,7 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    // Open PO edit modal via Pencil (title="Редагувати").
-    await row.hover();
-    await row.locator('button[title="Редагувати"]').first().click();
-    // Чекати модалку — Bug #571: інакше пошук кнопок зразу після click() — race.
-    const modal = page.locator('[role="dialog"]').first();
-    await expect(modal).toBeVisible({ timeout: 5_000 });
+    const modal = await openPoEditModal(page, row);
     const receiveBtn = modal.locator('button:has-text("Оприбуткувати")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);
@@ -252,12 +250,7 @@ test.describe('Замовлення постачальнику — прийом 
       return;
     }
 
-    // Open PO edit modal via Pencil (title="Редагувати").
-    await row.hover();
-    await row.locator('button[title="Редагувати"]').first().click();
-    // Чекати модалку — Bug #571.
-    const modal = page.locator('[role="dialog"]').first();
-    await expect(modal).toBeVisible({ timeout: 5_000 });
+    const modal = await openPoEditModal(page, row);
     const receiveBtn = modal.locator('button:has-text("Оприбуткувати")').first();
     if (!(await receiveBtn.isVisible({ timeout: 5_000 }).catch(() => false))) {
       await apiCall(page, 'DELETE', `/purchase-orders/${po.id}`);

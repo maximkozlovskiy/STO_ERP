@@ -12,9 +12,9 @@
 Дата:       2026-06-20
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 940/940 | Web 471/471 | E2E 232/245 ✅ 0 failed
+Тести:      API 940/940 | Web 471/471 | E2E 233/245 ✅ 0 failed
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 — perf(optimize): Цикл 3/3 step 4 — covering index `booking_requests(orgId, branchId, status, requestedDate)` для публічного hot-path `BookingService.getAvailability()`. WHERE-clause: orgId+branchId equality + status='CONFIRMED' + requestedDate range + deletedAt IS NULL. Існуючі індекси (orgId,status,deletedAt) і (orgId,deletedAt,createdAt) покривали лише префікс — branchId+requestedDate залишались heap row-by-row filter. Single index-range scan без heap re-filter для public widget mount.
+Останній commit: 2026-06-20 — simplify(e2e): Цикл 3/3 step 6 — extract `nextWorkingDayIso()` helper у crud-booking.spec.ts (2 копії IIFE → 1 функція файлового scope, обчислюється у Node і passes у `page.evaluate` як параметр); extract `openPoEditModal(page, row)` helper у purchase-orders-receive.spec.ts (3 копії pattern hover+click+await expect(modal) → 1 виклик); прибрано dead `enableDetailPanel()` (нікому не викликається). Net -13 LOC, 0 поведінкових змін.
 ```
 
 ### Аудит-висновки (2026-06-17 simplify session)
@@ -30,7 +30,10 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
-<HEAD>    perf(optimize): Цикл 3/3 step 4 — covering index booking_requests(orgId,branchId,status,requestedDate)
+<HEAD>    simplify(e2e): Цикл 3/3 step 6 — extract nextWorkingDayIso + openPoEditModal helpers, drop dead enableDetailPanel
+3083ae58  fix(tester): Цикл 3/3 step 5 — Bug #571 (e2e fake-green silent skips)
+a0149911  docs(skills): add public hot-path multi-field WHERE compound B-tree drift to sto-optimize
+bb48063d  perf(optimize): Цикл 3/3 step 4 — covering index booking_requests(orgId,branchId,status,requestedDate)
 667f8798  fix(tester): Цикл 3/3 step 3 — Bug #568-#570 (E2E search fill, Throttle contract, WO labels contract)
 2d77c7eb  docs(memory): update MemoryManual after review Цикл 3/3 step 2
 3f1527f0  fix(review): Цикл 3/3 step 2 — public booking @Throttle + strip BOM from 10 files
@@ -43,10 +46,6 @@ cce4130a  perf(optimize): parallelize supplier + warehouse validation in Supplie
 cba69150  fix(tester): Bug #537 validation message Cyrillic + #538 E2E flaky (Цикл 1/3 step 3)
 00f6c657  fix(review): remove UTF-8 BOM from 19 DTO files
 968e49b0  fix(api): resolve 37 TypeScript errors — Date→string conversions + undefined variable refs
-40e3d6ff  docs(memory): update MemoryManual after TypeScript error fixes (37 errors resolved)
-f1fea90b  fix(sync): complete Date serialization alignment in remaining modules
-7d940576  fix(sync): align Date field serialization in API response DTOs
-1f60d1b0  perf(optimize): add GIN trgm index for goods.barcode search
 ```
 
 Повна історія → [CHANGELOG.md](CHANGELOG.md)
