@@ -47,9 +47,16 @@ export class PricingRulesController {
   @Get()
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.STOREKEEPER)
   @ApiOperation({ summary: 'Список правил ціноутворення' })
-  async findAll(@OrgContext() orgId: string, @Query('supplierId') supplierId?: string) {
+  async findAll(
+    @OrgContext() orgId: string,
+    @Query('supplierId', new ParseUUIDPipe({ optional: true })) supplierId?: string,
+  ) {
     // Bug #17: правила, прив'язані до soft-deleted Good — приховуємо.
     // Bug #18: повертаємо paginated shape { items, total, page, limit } для відповідності API-контракту.
+    // sto-review §2.3: supplierId — ParseUUIDPipe({ optional: true }), щоб довільний рядок
+    // (`?supplierId=DROP TABLE`) валідувався class-validator-ом, а не Prisma WHERE.
+    // sto-review §2.2: pricingRule.orgId filter гарантує що malicious UUID з чужої org
+    // не поверне results (rule.orgId !== orgId → 0 рядків навіть якщо supplierId існує у іншій org).
     const where: Prisma.PricingRuleWhereInput = {
       orgId,
       deletedAt: null,
