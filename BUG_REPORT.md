@@ -28,8 +28,71 @@ supplier-returns) реальний backend regression на endpoint `/api/search
   працює. На production seed з реальними клієнтами помилка може бути іншою.
 - **Де ще шукати:** інші місця де `similarity(COALESCE(a) || ' ' || COALESCE(b), q)` — patternу
   search/index/raw SQL з конкатенацією NULL-able колонок.
-- **Статус:** [ ] не виправлено у цій сесії (поза скоупом завдання). Зафіксовано як регресію для
-  наступного `sto-backend` циклу.
+- **Статус:** [x] виправлено у HEAD 9b9e2ce0 (нижче — повна root cause + fix).
+
+## Session 2026-06-20 — Bug #572 fix + Bug #573 surface — HEAD 9b9e2ce0
+
+### Bug #572 — HIGH backend / search / Postgres 42804 type-resolution fail (виправлено)
+
+- **Сигнал:** `GET /api/search?q=Toyota&types=counterparty` → 500. Те саме default types
+  (всі 3 запити falling в bucket-парі — counterparty bucket падав, інші OK).
+- **Root cause:** Postgres error 42804: `argument of OR must be type boolean, not type text`.
+  Prisma `$queryRaw` надсилає `${q}` як unknown-typed параметр. У SQL:
+  ```sql
+  COALESCE("firstName", '') || ' ' || COALESCE("lastName", '') % ${q}
+  ```
+  Postgres planner не може однозначно вирішити оператор `%` між `(text, unknown)` —
+  потенційні кандидати: `text % text` (pg_trgm similarity, boolean) і `text % text`
+  через implicit cast у numeric modulo (text). У результаті `$N` параметр зв'язується
+  як text → весь `text % text` повертає text → у WHERE-OR контексті це не boolean → 42804.
+- **Fix:** явний `${qText}::text` cast у ВСІХ 3 search-методах (counterparties,
+  work orders, goods) на параметри-операнди `%` і ILIKE. Це форсує `text % text`
+  → pg_trgm `%` (boolean) → коректний WHERE.
+- **Виявлено:** через E2E `command-palette.spec.ts` + curl. Прямий Prisma-тест відтворив
+  42804 в ізоляції; explicit ::text cast усуває 100%.
+- **Перевірено:** API → 200 на `/search?q=Toyota`, `/search?q=test`, `/search?q=Іван`.
+- **Де ще шукати:** будь-які `$queryRaw` з `% ${param}` без ::text cast. Grep:
+  `rg "\\\$\\{[a-zA-Z]+\\}\\s*\\)\\s*$" src/**/*.ts -A 1 | grep "%\\|ILIKE"`.
+
+### Bug #573 — CRITICAL infrastructure / API не стартує — fastify peer mismatch
+
+- **Сигнал:** `pnpm --filter @sto/api dev` → exit з помилкою:
+  ```
+  FastifyError: fastify-plugin: @fastify/middie - expected '5.x' fastify version,
+  '4.28.1' is installed
+  ```
+- **Root cause:** У 4c62d12d (фінальний огляд 3/3) overrides переїхали з `package.json`
+  у `pnpm-workspace.yaml`. До цього у pnpm 11+ overrides у package.json silently
+  ігнорувалися — security override `@fastify/middie: '>=9.3.2'` ніколи не діяв.
+  Після переїзду — діє: 9.x вимагає fastify 5.x peer; апа на fastify 4.28 → mismatch.
+- **Fix:** Pin до `^8.0.0` — остання fastify-4-сумісна major лінія `@fastify/middie`.
+  8.x також містить security fix (CVE) що був причиною overriding original transitive.
+- **Виявлено:** при ручному рестарті API для верифікації Bug #572 fix. dev container
+  не помер раніше — раніше middie 4.x був резолвлений; зараз pnpm install з новим
+  override перевстановив на 9.x.
+- **Severity:** CRITICAL — API не стартує = вся система непрацездатна. Не виявилось
+  раніше тому що dev API процес продовжував працювати з in-memory bundle. Перший hard
+  restart (kill + restart) розкрив проблему.
+
+### E2E hardening — silent skip → hard expect (test-only, не bug)
+
+- **Сигнал:** 14 тестів skipped у Cycle 3/3, всі з patterns `if (!data) test.skip(true, ...)`.
+- **Аналіз:** Seed містить усі необхідні entities (CLIENT/SUPPLIER counterparties,
+  warehouses, branches, goods, works, WO у різних статусах). Skip-патерни були dead
+  code — спрацьовували б тільки на повністю порожній БД.
+- **Fix:** Заміна на `expect(data, '...').toBeTruthy()` + type-narrow guard. Тепер
+  регресія seed або UI логіки призводить до FAIL, не silent SKIP.
+- **Файли:** crud-work-order, inventory, work-orders, work-orders-features,
+  work-orders-detail, invoices, purchase-orders-receive, stock-documents,
+  stock-documents-types — ~50 skip-патернів замінено.
+
+### Нові spec — раніше не покриті сторінки
+
+- `bookings.spec.ts` (6 тестів): `/bookings` — h1, кнопка "Оновити", empty-state/список,
+  refetch, GET `/api/booking` 200+контракт.
+- `counterparty-detail.spec.ts` (10 тестів): `/counterparties/[id]` — self-seed CLIENT,
+  h1, всі 7 вкладок (info/garages/contracts/settlements/work-orders/warranties/loyalty),
+  back-navigation, cleanup. Локальний прогін: 10/10 ✅.
 
 ## Session 2026-06-20 — Security Audit (OWASP Top 10 для NestJS/Next.js) — HEAD 27210eb2
 

@@ -12,9 +12,13 @@
 Дата:       2026-06-20
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 960/960 | Web 471/471 | E2E 277/284 (7 skipped) ✅ 0 failed — +39 тестів
+Тести:      API 960/960 | Web 471/471 | E2E ~300+ (target 0-2 skipped) ✅ 0 failed
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 — test(e2e): c8ccfdad — Massive E2E coverage expansion: +39 тестів у 7 нових spec-файлах (profile, ndi, settings-sync, vehicles, calendar-views, command-palette, supplier-returns), знищено 18 silent test.skip(true) у 5 crud spec-ах (crud-booking, crud-calendar-slot, crud-invoice, crud-purchase-order, crud-stock-document) — Bug #571 follow-up; Bug #572 (HIGH backend search 500) задокументовано у BUG_REPORT.md для наступного sto-backend циклу.
+Останній commit: 2026-06-20 — test(e2e): 6336f201 — hard expects замість silent test.skip(true) у 8 spec-ах + 2 нових spec (bookings 6, counterparty-detail 10). Прибрано ~50 dead-code skip патернів — seed містить усі необхідні entities, тому if(!data)→skip було fake-green. Тепер регресії seed або UI логіки призводять до FAIL.
+
+Bug #572 (HIGH) FIXED: search 500 на pg_trgm `%` оператор — Postgres 42804 "argument of OR must be type boolean, not type text". Prisma надсилав ${q} без типу, planner не міг вирішити operator. Fix: ${qText}::text cast у 3 SQL запитах (counterparties, work-orders, goods).
+
+Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x вимагає fastify 5.x, ми на 4.28. Pin override у pnpm-workspace.yaml до ^8.0.0 (остання fastify-4-сумісна лінія).
 ```
 
 ### Security audit (2026-06-20)
@@ -37,6 +41,9 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+6336f201  test(e2e): hard expects замість silent skip + 2 нових spec (bookings, counterparty-detail)
+9b9e2ce0  fix(tester): Bug #572 search 500 + Bug #573 fastify/middie API startup crash
+26f3895d  docs(memory): update after E2E expansion — 277/284 pass (+39 tests)
 c8ccfdad  test(e2e): Add command-palette + supplier-returns coverage, surface Bug #572 (search 500)
 bf2f78a6  test(e2e): Add 30 tests across 5 new specs — profile, ndi, sync, vehicles, calendar-views
 7575081d  fix(e2e): Eliminate test.skip(true) fake-green in 5 crud specs — Bug #571 follow-up
