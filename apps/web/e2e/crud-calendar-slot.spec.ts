@@ -34,11 +34,11 @@ test.describe('Календар — слоти', () => {
     await expect(page.locator('h1:has-text("Календар")')).toBeVisible({ timeout: 20_000 });
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
 
-    // Отримати ліфт і контрагента
+    // Отримати ВСІ ліфти + контрагента щоб мати запас на конфлікти "Підйомник вже зайнятий".
     const data = await page.evaluate(
       async ({ token }) => {
         const [liftsRes, cpRes] = await Promise.all([
-          fetch('http://localhost:3000/api/lifts?limit=1', {
+          fetch('http://localhost:3000/api/lifts', {
             headers: { Authorization: `Bearer ${token}` },
           }),
           fetch('http://localhost:3000/api/counterparties?limit=1', {
@@ -46,42 +46,53 @@ test.describe('Календар — слоти', () => {
           }),
         ]);
         const [lifts, cps] = await Promise.all([liftsRes.json(), cpRes.json()]);
-        return { liftId: lifts[0]?.id, counterpartyId: cps.items?.[0]?.id };
+        return {
+          liftIds: Array.isArray(lifts) ? lifts.map((l: { id: string }) => l.id) : [],
+          counterpartyId: cps.items?.[0]?.id,
+        };
       },
       { token },
     );
 
-    if (!data.liftId || !data.counterpartyId) {
-      test.skip(true, 'Немає ліфту або контрагента');
-      return;
-    }
+    expect(data.liftIds.length, 'GET /api/lifts повернув порожньо').toBeGreaterThan(0);
+    expect(data.counterpartyId, 'GET /api/counterparties повернув порожньо').toBeTruthy();
 
-    // Сьогоднішня дата для слоту. Час обираємо унікальний в межах робочого дня
-    // (07:00-14:00 UTC = 10:00-17:00 Kyiv EEST), щоб уникнути конфліктів з seed-слотами
-    // і повторних запусків — Bug #571 (раніше фіксований T09:00 завжди конфліктував).
+    // Bug #571 follow-up #2: одного ліфта недостатньо — на ньому може вже бути слот
+    // на обраний час. Перебираємо комбінації lift × hour доки не знайдемо вільну.
+    // Час: 07:00-13:00 UTC = 10:00-16:00 Kyiv (робочий день).
     const today = new Date().toISOString().split('T')[0];
-    const hourOffset = (new Date().getSeconds() % 7) + 7; // 7..13 UTC = 10..16 Kyiv
-    const startAt = `${today}T${String(hourOffset).padStart(2, '0')}:00:00.000Z`;
-    const endAt = `${today}T${String(hourOffset).padStart(2, '0')}:30:00.000Z`;
 
-    const slot = await page.evaluate(
-      async ({ token, liftId, counterpartyId, startAt, endAt }) => {
-        const r = await fetch('http://localhost:3000/api/calendar/slots', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ liftId, counterpartyId, startAt, endAt }),
-        });
-        if (!r.ok) return null;
-        const text = await r.text();
-        return text ? JSON.parse(text) : null;
-      },
-      { token, ...data, startAt, endAt },
-    );
-
-    if (!slot) {
-      test.skip(true, 'Не вдалось створити слот');
-      return;
+    let slot: { id: string; [k: string]: unknown } | null = null;
+    let lastError: unknown = null;
+    outer: for (const liftId of data.liftIds) {
+      for (let h = 7; h <= 13; h++) {
+        const startAt = `${today}T${String(h).padStart(2, '0')}:00:00.000Z`;
+        const endAt = `${today}T${String(h).padStart(2, '0')}:30:00.000Z`;
+        const res = await page.evaluate(
+          async ({ token, liftId, counterpartyId, startAt, endAt }) => {
+            const r = await fetch('http://localhost:3000/api/calendar/slots', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ liftId, counterpartyId, startAt, endAt }),
+            });
+            if (!r.ok) return { error: r.status, body: await r.text().catch(() => '') };
+            const text = await r.text();
+            return text ? JSON.parse(text) : null;
+          },
+          { token, liftId, counterpartyId: data.counterpartyId, startAt, endAt },
+        );
+        if (res && !('error' in res)) {
+          slot = res as typeof slot;
+          break outer;
+        }
+        lastError = res;
+      }
     }
+
+    expect(
+      slot,
+      `Не знайдено вільної комбінації lift × hour для створення слоту. Last error: ${JSON.stringify(lastError)}`,
+    ).toBeTruthy();
 
     // Перезавантажити і перевірити що слот є на timeline.
     // Точна перевірка наявності слоту: data-calendar-slot з відповідним часом.
@@ -103,7 +114,7 @@ test.describe('Календар — слоти', () => {
           headers: { Authorization: `Bearer ${token}` },
         });
       },
-      { token, id: slot.id },
+      { token, id: slot!.id },
     );
   });
 

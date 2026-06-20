@@ -28,71 +28,66 @@ test.describe('Документи складу — CRUD', () => {
     });
   });
 
-  test('створити WRITEOFF документ DRAFT → перевірити → видалити', async ({ page }) => {
+  test('створити WRITEOFF документ DRAFT через API → видно у списку → видалити', async ({
+    page,
+  }) => {
+    // Bug #571 fix: попередньо UI-flow через модалку був ненадійний (selects з UI можуть
+    // не знайти склад/тип → skip → fake-green). Замінено на API-creation, оскільки модалка
+    // тестується окремим тестом "кнопка Документ присутня".
     await page.goto('/stock-documents');
     await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
       timeout: 20_000,
     });
-    // Add-button renamed to single noun "Документ".
-    await page
-      .getByRole('button', { name: /^Документ$/ })
-      .first()
-      .click();
+    const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
 
-    const modal = page.locator('[role="dialog"]').first();
-    await expect(modal).toBeVisible({ timeout: 8_000 });
+    const seed = await page.evaluate(
+      async ({ token }) => {
+        const wRes = await fetch('http://localhost:3000/api/warehouses?limit=1', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const w = (await wRes.json())[0];
+        return { warehouseId: w?.id ?? null, branchId: w?.branchId ?? null };
+      },
+      { token },
+    );
+    expect(seed.warehouseId, 'Seed має містити хоча б 1 склад').toBeTruthy();
+    expect(seed.branchId, 'Склад seed має мати привязану філію').toBeTruthy();
 
-    // Вибрати тип WRITEOFF якщо є вибір
-    const typeSelect = modal
-      .locator('select, [role="combobox"]')
-      .filter({ hasText: /Тип|Списання|WRITEOFF/ })
-      .first();
-    if (await typeSelect.isVisible({ timeout: 2_000 })) {
-      const hasWriteoff = await typeSelect
-        .locator('option:has-text("Списання"), option[value="WRITEOFF"]')
-        .isVisible()
-        .catch(() => false);
-      if (hasWriteoff) await typeSelect.selectOption('WRITEOFF');
-    }
+    const doc = await page.evaluate(
+      async ({ token, warehouseId, branchId }) => {
+        const r = await fetch('http://localhost:3000/api/stock-documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: 'WRITEOFF', warehouseId, branchId, lines: [] }),
+        });
+        if (!r.ok) return { error: r.status, body: await r.text().catch(() => '') };
+        const text = await r.text();
+        return text ? JSON.parse(text) : null;
+      },
+      { token, warehouseId: seed.warehouseId, branchId: seed.branchId },
+    );
+    expect(
+      doc && !('error' in doc),
+      `POST /api/stock-documents має створити WRITEOFF, отримано: ${JSON.stringify(doc)}`,
+    ).toBeTruthy();
 
-    // Вибрати склад
-    const warehouseSelect = modal
-      .locator('select, [role="combobox"]')
-      .filter({ hasText: /Оберіть склад|Головний/ })
-      .first();
-    if (await warehouseSelect.isVisible({ timeout: 3_000 })) {
-      const opts = await warehouseSelect.locator('option').count();
-      if (opts > 1) await warehouseSelect.selectOption({ index: 1 });
-    }
-
-    const saveBtn = modal.locator('button:has-text("Створити документ")');
-    const isEnabled = await saveBtn.isEnabled({ timeout: 5_000 }).catch(() => false);
-    if (!isEnabled) {
-      await expect(saveBtn).toBeDisabled();
-      await page.keyboard.press('Escape');
-      test.skip(true, 'Немає складу або філії — кнопка Створити задізейблена');
-      return;
-    }
-    await saveBtn.click();
-    // If save fails (API error / missing test data), modal stays open with error message.
-    // Give it time to either close (success) or show error (skip gracefully).
-    const closed = await modal
-      .waitFor({ state: 'hidden', timeout: 10_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!closed) {
-      await page.keyboard.press('Escape');
-      test.skip(true, 'Не вдалось зберегти документ (API помилка або немає тестових даних)');
-      return;
-    }
-
-    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 15_000 });
+    await page.reload();
+    await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
+      timeout: 20_000,
+    });
+    const row = page.locator(`table tbody tr:has-text("${doc.number}")`).first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
 
     // Cleanup
-    const row = page.locator('table tbody tr').first();
-    await row.locator('button:has(svg.lucide-trash2)').first().click();
-    const confirmBtn = page.locator('button:has-text("Помітити на видалення")').first();
-    if (await confirmBtn.isVisible({ timeout: 3_000 })) await confirmBtn.click();
+    await page.evaluate(
+      async ({ token, id }) => {
+        await fetch(`http://localhost:3000/api/stock-documents/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      },
+      { token, id: doc.id },
+    );
   });
 
   test('FSM DRAFT → CONFIRMED через API transition', async ({ page }) => {
@@ -126,10 +121,9 @@ test.describe('Документи складу — CRUD', () => {
       { token },
     );
 
-    if (!seed.warehouseId || !seed.branchId || !seed.goodId) {
-      test.skip(true, 'Немає складів, branchId або товарів');
-      return;
-    }
+    expect(seed.warehouseId, 'Seed має містити склад').toBeTruthy();
+    expect(seed.branchId, 'Склад має бути привязаний до філії').toBeTruthy();
+    expect(seed.goodId, 'Seed має містити хоча б 1 товар').toBeTruthy();
 
     // Створити RECEIPT з позицією (WRITEOFF з порожнім складом → undefined cost у transition).
     // RECEIPT збільшує склад, transition підтверджує без перевірки залишків.
@@ -145,17 +139,17 @@ test.describe('Документи складу — CRUD', () => {
             lines: [{ goodId, quantity: 1, price: 100 }],
           }),
         });
-        if (!r.ok) return null;
+        if (!r.ok) return { error: r.status, body: await r.text().catch(() => '') };
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
       { token, warehouseId: seed.warehouseId, branchId: seed.branchId, goodId: seed.goodId },
     );
 
-    if (!doc) {
-      test.skip(true, 'Не вдалось створити документ');
-      return;
-    }
+    expect(
+      doc && !('error' in doc),
+      `POST /api/stock-documents має створити RECEIPT, отримано: ${JSON.stringify(doc)}`,
+    ).toBeTruthy();
 
     await page.reload();
     await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({

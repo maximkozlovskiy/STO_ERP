@@ -130,10 +130,8 @@ test.describe('Рахунки — CRUD', () => {
       { token },
     );
 
-    if (!cpRes) {
-      test.skip(true, 'Немає контрагентів');
-      return;
-    }
+    // Seed гарантує контрагентів — silent skip = регресія.
+    expect(cpRes, 'GET /api/counterparties повернув порожній список').toBeTruthy();
 
     // Створити рахунок через API
     const inv = await page.evaluate(
@@ -143,17 +141,17 @@ test.describe('Рахунки — CRUD', () => {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ counterpartyId: cpId, amount: 50 }),
         });
-        if (!r.ok) return null;
+        if (!r.ok) return { error: r.status, body: await r.text().catch(() => '') };
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
       { token, cpId: cpRes },
     );
 
-    if (!inv) {
-      test.skip(true, 'Не вдалось створити рахунок');
-      return;
-    }
+    expect(
+      inv && !('error' in inv),
+      `POST /api/invoices має створити рахунок, отримано: ${JSON.stringify(inv)}`,
+    ).toBeTruthy();
 
     // Bug #345: invoices page has kyivToday() date filter by default.
     await page.goto('/invoices');

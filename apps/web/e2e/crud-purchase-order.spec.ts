@@ -141,10 +141,11 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       { token },
     );
 
-    if (!data.supplierId || !data.warehouseId) {
-      test.skip(true, 'Немає постачальника або складу');
-      return;
-    }
+    expect(
+      data.supplierId,
+      'GET /api/counterparties?types=SUPPLIER,BOTH повернув порожньо',
+    ).toBeTruthy();
+    expect(data.warehouseId, 'GET /api/warehouses повернув порожньо').toBeTruthy();
 
     // Створити PO через API
     const po = await page.evaluate(
@@ -154,17 +155,17 @@ test.describe('Замовлення постачальнику — CRUD', () => 
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ supplierId, warehouseId }),
         });
-        if (!r.ok) return null;
+        if (!r.ok) return { error: r.status, body: await r.text().catch(() => '') };
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
       { token, ...data },
     );
 
-    if (!po) {
-      test.skip(true, 'Не вдалось створити PO');
-      return;
-    }
+    expect(
+      po && !('error' in po),
+      `POST /api/purchase-orders має створити PO, отримано: ${JSON.stringify(po)}`,
+    ).toBeTruthy();
 
     // PO створено через API — перевести в ORDERED через API і перевірити статус у таблиці.
     // Detail Panel кнопка залежить від localStorage стану — ненадійно в E2E.
@@ -183,7 +184,10 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       { token, id: po.id },
     );
 
+    // FSM transition DRAFT → ORDERED обов'язково має пройти (це частина бізнес-логіки PO).
+    // Silent skip = fake-green. Якщо transition провалився — є чітка регресія FSM map або API.
     if (!ordered || ordered.status !== 'ORDERED') {
+      // Cleanup перед fail щоб БД лишалась чиста.
       await page.evaluate(
         async ({ token, id }) => {
           await fetch(`http://localhost:3000/api/purchase-orders/${id}`, {
@@ -193,8 +197,9 @@ test.describe('Замовлення постачальнику — CRUD', () => 
         },
         { token, id: po.id },
       );
-      test.skip(true, 'Не вдалось перевести PO в ORDERED');
-      return;
+      throw new Error(
+        `FSM DRAFT → ORDERED transition провалився: ${JSON.stringify(ordered)} (PO id=${po.id})`,
+      );
     }
 
     // Bug #345: purchase-orders page has kyivToday() date filter — clear it + search by number
@@ -259,10 +264,8 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       },
       { token },
     );
-    if (!data.supplierId || !data.warehouseId) {
-      test.skip(true, 'Немає постачальника або складу');
-      return;
-    }
+    expect(data.supplierId, 'Seed має містити постачальника (type SUPPLIER або BOTH)').toBeTruthy();
+    expect(data.warehouseId, 'Seed має містити хоча б 1 склад').toBeTruthy();
 
     const po = await page.evaluate(
       async ({ token, supplierId, warehouseId }) => {
@@ -276,10 +279,10 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       },
       { token, ...data },
     );
-    if (!po) {
-      test.skip(true, 'Не вдалось створити PO');
-      return;
-    }
+    expect(
+      po,
+      `POST /api/purchase-orders повернув null/empty — створення PO провалилось`,
+    ).toBeTruthy();
 
     // Перевідкрити сторінку щоб список оновився
     await page.goto('/purchase-orders');
@@ -347,10 +350,8 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       },
       { token },
     );
-    if (!data.supplierId || !data.warehouseId) {
-      test.skip(true, 'Немає постачальника або складу');
-      return;
-    }
+    expect(data.supplierId, 'Seed має містити постачальника').toBeTruthy();
+    expect(data.warehouseId, 'Seed має містити склад').toBeTruthy();
 
     const po = await page.evaluate(
       async ({ token, supplierId, warehouseId }) => {
@@ -364,10 +365,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       },
       { token, ...data },
     );
-    if (!po) {
-      test.skip(true, 'Не вдалось створити PO');
-      return;
-    }
+    expect(po, 'POST /api/purchase-orders повернув null — створення PO провалилось').toBeTruthy();
 
     await page.goto('/purchase-orders');
     await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });

@@ -79,10 +79,9 @@ test.describe('Онлайн-запис (Bookings)', () => {
       };
     });
 
-    if (!data.branchId) {
-      test.skip(true, 'Немає публічної філії для онлайн-запису');
-      return;
-    }
+    // Bug #287/#571 follow-up: ніколи не skip — seed містить публічну філію.
+    // Якщо відсутня — це регресія сидінгу, тест має падати голосно.
+    expect(data.branchId, 'Seed не створив публічну філію /api/booking/branches').toBeTruthy();
 
     // Унікальний phone для кожного тест-запуску (останні 6 цифр = timestamp)
     const uniquePhone = `+38099${Date.now().toString().slice(-7)}`;
@@ -98,17 +97,18 @@ test.describe('Онлайн-запис (Bookings)', () => {
             requestedDate,
           }),
         });
-        if (!r.ok) return null;
+        if (!r.ok) return { error: r.status, body: await r.text().catch(() => '') };
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
       { branchId: data.branchId, phone: uniquePhone, requestedDate: nextWorkingDayIso() },
     );
 
-    if (!bookingRes) {
-      test.skip(true, 'Не вдалось створити заявку');
-      return;
-    }
+    // Якщо API повернув помилку — це баг, не silent skip.
+    expect(
+      bookingRes && !('error' in bookingRes),
+      `POST /api/booking/request має створити заявку, отримано: ${JSON.stringify(bookingRes)}`,
+    ).toBeTruthy();
 
     await page.reload();
     await expect(page.locator('h1:has-text("Онлайн-запис"), h1:has-text("Заявки")')).toBeVisible({
@@ -156,10 +156,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
       const list = await r.json().catch(() => []);
       return Array.isArray(list) ? list[0]?.id : null;
     });
-    if (!branchId) {
-      test.skip(true, 'Немає публічної філії для онлайн-запису');
-      return;
-    }
+    expect(branchId, 'Seed не створив публічну філію /api/booking/branches').toBeTruthy();
 
     const cancelPhone = `+38099${(Date.now() + 1).toString().slice(-7)}`;
     const bookingRes = await page.evaluate(
@@ -174,17 +171,17 @@ test.describe('Онлайн-запис (Bookings)', () => {
             requestedDate,
           }),
         });
-        if (!r.ok) return null;
+        if (!r.ok) return { error: r.status, body: await r.text().catch(() => '') };
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
       { branchId, phone: cancelPhone, requestedDate: nextWorkingDayIso() },
     );
 
-    if (!bookingRes) {
-      test.skip(true, 'Не вдалось створити заявку');
-      return;
-    }
+    expect(
+      bookingRes && !('error' in bookingRes),
+      `POST /api/booking/request має створити заявку, отримано: ${JSON.stringify(bookingRes)}`,
+    ).toBeTruthy();
 
     await page.reload();
     await expect(page.locator('h1:has-text("Онлайн-запис"), h1:has-text("Заявки")')).toBeVisible({
