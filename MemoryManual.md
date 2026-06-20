@@ -12,9 +12,9 @@
 Дата:       2026-06-20
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 960/960 (+20 нових role-gate/resurrection) | Web 471/471 | E2E 233/245 ✅ 0 failed
+Тести:      API 960/960 (20 role-gate/resurrection — після simplify merge) | Web 471/471 | E2E 233/245 ✅ 0 failed
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
-Останній commit: 2026-06-20 — fix(review): 4c62d12d — фінальний огляд після 3 QA циклів. pnpm 11 overrides перенесено в pnpm-workspace.yaml (раніше у package.json — мовчазно ігнорувались → next>=15.3.6 та @fastify/middie>=9.3.2 security overrides не діяли). goods.controller — `@CurrentUser` тепер типізовано через `AuthenticatedUser`. Додано 2 regression spec-и: `goods.role-gate.spec.ts` (14 тестів — purchasePrice масковано MECHANIC/RECEPTIONIST, fail-closed undefined/unknown) та `brands.service.spec.ts` (6 тестів — syncSynonyms resurrection: @@unique([orgId, synonym]) без deletedAt). Виправлено docstring `maskPhone()` у sms.processor.ts.
+Останній commit: 2026-06-20 — simplify(review): 4c883670 — Простіше goods.role-gate.spec.ts (89 рядків → 56, без втрати coverage): об'єднано privileged + privileged-null у один матричний it.each {role, dbValue, expected}; об'єднано non-privileged + fail-closed у один it.each з однаковим setup/expectation. Виправлено pnpm-workspace.yaml: рядок '@sentry-internal/node-cpu-profiler': set this to true or false (placeholder ще від initial commit, pnpm тихо парсив як рядок → пакет не збирався) → false. Тести: 20/20 ✓; tsc api/web/shared 0 errors.
 ```
 
 ### Security audit (2026-06-20)
@@ -37,6 +37,7 @@ Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати �
 ## Останній commit
 
 ```
+4c883670  simplify(review): role-gate spec merge + pnpm-workspace placeholder fix
 4c62d12d  fix(review): фінальний огляд 3/3 — pnpm overrides + AuthenticatedUser типізація + regression specs
 27210eb2  simplify(e2e): Цикл 3/3 step 6 — extract nextWorkingDayIso + openPoEditModal helpers, drop dead enableDetailPanel
 3083ae58  fix(tester): Цикл 3/3 step 5 — Bug #571 (e2e fake-green silent skips)
