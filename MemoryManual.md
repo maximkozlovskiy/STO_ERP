@@ -9,10 +9,12 @@
 ## Поточний стан
 
 ```
-Дата:       2026-06-20
+Дата:       2026-07-03
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 960/960 | Web 471/471 | E2E 298/300 ✅ 0 failed / 0 skipped / 2 flaky (passed on retry)
+Sync:       2026-07-03 ✅ Dir1 0 missing | Dir2 0 wrong URLs | Dir3 0 type mismatches
+Latest review: 2026-07-03 (auto, HEAD a59a023f) — 12 issues (0 Critical / 5 Important / 7 Suggestion), fixed 12/12; BOM×7, $transaction timeout×4, React.X namespace×1
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 Останній commit: 2026-06-20 — fix(tester): фінальна верифікація 300 E2E тестів. Виправлено 4 failed:
  (1) work-orders.spec.ts:114 + crud-work-order.spec.ts:147/169 — список нарядів не навігує (row click → side-panel, "Відкрити наряд" → edit-modal). Тести очікували URL change. Fix: ID наряду через API + page.goto('/work-orders/<id>').
@@ -44,6 +46,10 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+a59a023f  fix(review): strip BOM from 7 inventory/goods files + $transaction timeouts + React namespace types
+          — BOM (§1): 7 files after comment-cleanup Windows/PowerShell edit
+          — $transaction timeout (§5): 4 blocks — goods.service (barcode primary swap/delete), settings.service (taxRate default create/update) → { timeout: 10_000 }
+          — React.X namespace (§1): CalendarSlotModal.tsx → named type imports (Dispatch/SetStateAction/RefObject)
 b28f3411  refactor(comments): remove Bug# references and noise comments; document comment policy in sto-dev
           — Strip `// Bug #NNN:` prefixes from ~180 comments across 130+ production files
           — Preserve WHY text (constraints, workarounds, timeouts, race-guards)
