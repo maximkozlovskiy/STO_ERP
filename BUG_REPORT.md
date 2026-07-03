@@ -1323,3 +1323,70 @@ cross-supplier PO → 400; tenant isolation; CONFIRMED → non-editable / non-de
 - **Fix:** додати 5 нових `it(...)` кейсів у той самий describe-блок.
 - **Статус:** [x] виправлено — 6 нових `it(...)` додано у `supplier-payments.service.spec.ts` (bank-account NotFound, cross-supplier PO create → 400, update PATCH CONFIRMED → 400, update sourceType→BANK без bankAccountId → 400, Bug #588 auto-clear pair, Bug #588 no-op safety pair).
 - **Verification:** vitest 16/16 passed.
+
+---
+
+## Session 2026-07-03 (FULL /sto-tester) — SupplierPayment cross-resource invalidation gap (HEAD dd6fdb03)
+
+Baseline: TypeScript 0 errors (api/web/shared), API vitest 976/976 passed, Web vitest 471/471 passed, E2E 305/307 (2 flaky re-verified green), API health OK, dev server up.
+
+FULL-audit scope (feat/supplier-payments branch, ~15 files):
+
+- `apps/api/src/modules/supplier-payments/**`
+- `apps/web/src/hooks/api/useSupplierPayments.ts`
+- `apps/web/src/components/ui/SupplierPaymentCreateModal.tsx`
+- `apps/web/src/app/(app)/supplier-payments/page.tsx`
+- `packages/database/prisma/schema.prisma` + migrations `20260703100000_add_supplier_payment` / `20260703100001_seed_supplier_payment_doc_numbers`
+- `packages/shared/src/constants/statuses.ts` (SUPPLIER*PAYMENT_STATUS*\*)
+- `apps/web/src/lib/panel-schema.ts` (SUPPLIER_PAYMENT_PANEL_SCHEMA)
+
+Static-checks passed (0 bugs found у цих секціях):
+
+- §1.1 backend business logic: FSM DRAFT→CONFIRMED пише PAYMENT settlement у $transaction з re-read guard (Bug #412 pattern OK); documentType='SupplierPayment' консистентний; CLIENT-guard; cross-supplier PO guard; supplierId filter cross-tenant guard; source-type consistency; alternate-mutation endpoint audit — inne mutation відсутні; auto-create ignores OrganisationSettings — не застосовне (currency поки не читається); Bug #533 backfill migration присутня; Bug #319/320 isSystem — не застосовне (немає seed-керованих SupplierPayment).
+- §1.2 TypeScript: усі DTO мають декоратори (@IsUUID/@IsString/@IsNumber/@IsEnum), optional numeric поля мають @IsNumber+@Min, немає nested inner DTO без валідації, ParseUUIDPipe скрізь, Ukrainian exception messages, `syncVersion` не витікає у DTO (Prisma model → toDto без витоку).
+- §1.3 frontend: hook queryKey factory консистентний; local `SupplierPayment` interface відповідає backend DTO (одне джерело); cascade-clear FK у modal (`onClear` супʼера clears PO, `onSelect` супʼера clears PO); pattern Bug #499 (mutateAsync у try/catch) — все обгорнуто; dead state — не знайдено (usePaginatedList shared, немає осиротілих search/timeout ref); SSR-safe date — modal використовує `useState(() => kyivToday())` — OK.
+- §1.4 security: контролер за JwtAuthGuard+RolesGuard (OWNER/ADMIN/ACCOUNTANT) — публічних ендпоінтів немає; @IsArray немає у цих DTO (Bug #587 — не застосовне); @MaxLength — конвенція не enforce-иться проектом (13/N DTO мають — не supplier-payments-specific gap).
+- §1.5 backend test coverage: `supplier-payments.service.spec.ts` 16 тестів; regression-guards є для confirm PAYMENT semantics, race re-read у $tx, non-DRAFT reject, cross-supplier PO reject, sourceType consistency, Bug #588 auto-clear pair.
+- §1.7 a11y/i18n: усі placeholders/labels українською; buttons мають текст + leftIcon (aria-label не потрібен); дата DD.MM.YYYY через fmtDate.
+
+Виявлений gap:
+
+### Bug #590 — HIGH frontend / cache-staleness — `useConfirmSupplierPayment` не інвалідує `counterpartiesKeys.all`
+
+- **Файл:** `apps/web/src/hooks/api/useSupplierPayments.ts:91-101` (до фіксу)
+- **Симптом:** користувач створює DRAFT SupplierPayment на суму 5000 ₴ для постачальника A, потім тисне «Провести». Backend виконує `settlements.createTransaction({ counterpartyId: A, type: 'PAYMENT', amount: 5000 })` → `SettlementAccount.balance` постачальника A зменшується на 5000. Але React Query cache для counterparties не інвалідується → CRM/counterparties list та DetailPanel показують стару `balance` value до `staleTime=30_000ms`. Користувач бачить: «Провів оплату 5000 ₴ — але у CRM борг тільки що не змінився». Refresh допомагає, але викликає підозру щодо консистентності системи.
+- **Причина виникнення:** розробник міркує ізольовано «confirm SupplierPayment → refresh SupplierPayment list» — правильно, але **пропускає downstream side-effect** (settlement PAYMENT → balance). Той самий підхід уже виправлений у `useCreatePayment` (`useInvoices.ts:79-93`) з коментарем «Bug #245: без counterpartiesKeys.all CRM balance застаріває». Symmetric bug: mutation що триггерить `settlements.createTransaction` через **будь-який** endpoint має інвалідувати `counterpartiesKeys.all`.
+- **Виявлено:** ручний трейс `confirm()` → `settlements.createTransaction(PAYMENT)` → `settlementAccount.update({ balance: { increment: -5000 } })` → grep `counterpartiesKeys` у `useSupplierPayments.ts` — 0 matches. Порівняння з `useInvoices.ts:79-93` показало, що аналогічний confirm-like mutation вже має цей invalidate + inline коментар про Bug #245.
+- **Severity:** HIGH — silent UX staleness (не runtime error), впливає на всі ролі-permission-и що бачать CRM (OWNER/ADMIN/ACCOUNTANT), звіти по заборгованостях можуть використовувати стале value до 30s. Не CRITICAL бо: (а) backend консистентний — DB має правильний баланс; (б) через 30s cache протухне; (в) вручний refresh виправляє. Фіксується 4 рядки + regression-guard test.
+- **Fix approach:** додати `void qc.invalidateQueries({ queryKey: counterpartiesKeys.all })` у `onSuccess` `useConfirmSupplierPayment`. `useCancelSupplierPayment` — навмисно НЕ інвалідує counterparties, бо `cancel()` з DRAFT НЕ пише settlement (guard у backend) → balance не змінюється; зайвий refetch = CRM-noise у workflow. Додати inline-коментар про кожне рішення для документування invariant.
+- **Fix:**
+  - `useSupplierPayments.ts` — імпорт `counterpartiesKeys`; у `useConfirmSupplierPayment.onSuccess` додано `void qc.invalidateQueries({ queryKey: counterpartiesKeys.all })` + коментар «Bug #590: confirm() пише settlement PAYMENT → зменшує баланс постачальника».
+  - `useCancelSupplierPayment.onSuccess` — inline-коментар «cancel() з DRAFT НЕ пише settlement, тож counterparties балансу не чіпає. Явно НЕ інвалідовано щоб уникнути зайвих refetch на CRM.» (документування навмисної асиметрії).
+- **Regression-guard:** новий `apps/web/src/hooks/api/useSupplierPayments.test.tsx` (10 тестів, аналог `useInvoices.test.tsx`) з ключовим кейсом `useConfirmSupplierPayment (Bug #590 regression)` — assert що `invalidateQueries` було викликано з `counterpartiesKeys.all`; парний assert для `useCancelSupplierPayment` — що `counterpartiesKeys.all` **НЕ** був викликаний (documents intentional asymmetry).
+- **Статус:** [x] виправлено — `useSupplierPayments.ts` + 10 нових hook-тестів.
+- **Verification:** `tsc --noEmit` clean; `useSupplierPayments.test.tsx` 10/10 passed; full web vitest 481/481 passed (+10 vs baseline 471); full API vitest 976/976 passed (no regression).
+- **Де ще шукати:** будь-який FE hook що робить POST на backend endpoint, який всередині `$transaction` викликає `settlements.createTransaction` — має інвалідувати `counterpartiesKeys.all`. Кандидати: `useConfirmSupplierPayment` (fixed), `useCreatePayment` (fixed у #245), майбутні `useCreditNote`, `useRefund`, `useSupplierReturn` confirm-like мутації. Sanity-grep: `grep -rln "createTransaction" apps/api/src/modules/*/*.service.ts` для кожного service-метода знайти всі FE endpoint-и що його триггерять і у кожному відповідному хуку перевірити `counterpartiesKeys.all` invalidate.
+
+### Bug #591 — MEDIUM frontend test — брак `useSupplierPayments.test.tsx` (regression-guard для queryKey factory + cross-invalidation)
+
+- **Файл:** `apps/web/src/hooks/api/useSupplierPayments.test.tsx` (не існував до цієї сесії)
+- **Симптом:** усі analog-модулі (`useInvoices.test.tsx`, `useWorkOrders.test.tsx`, `useInventory.test.tsx`, `usePaginatedList.test.tsx`) мають hook-тести з full-coverage: queryKey factory shape, filter → URL query, enabled-gate, cross-resource invalidation (Bug #245 pattern). `useSupplierPayments.ts` — 0 тестів, тож refactor може силенто змінити queryKey shape (breaks page prefetch), забути `enabled: !!id` у useSupplierPayment (Bug #281 pattern), видалити counterpartiesKeys invalidate (Bug #590 регресія). Все проходить CI зеленим.
+- **Причина виникнення:** нова фіча була додана без парного hook spec — конвенція `usePaginatedList`-based hooks мати `.test.tsx` не enforce-иться CI-lint-ом.
+- **Severity:** MEDIUM (regression-risk gap) — не runtime bug, але блокуючий стан для safe refactor у майбутньому. Особливо коли Bug #590 fix одразу required його regression-guard.
+- **Fix:** створено `useSupplierPayments.test.tsx` з 10 тестами:
+  - `supplierPaymentsKeys factory` × 4 (all/lists/list-filter-key/detail)
+  - `useSupplierPayments (list)` × 2 (enabled-gate без employee, filter → URL query includes page/status/supplierId/q/dateFrom/dateTo)
+  - `useCreateSupplierPayment` × 1 (POST + invalidate supplierPaymentsKeys.all)
+  - `useConfirmSupplierPayment (Bug #590 regression)` × 1 (POST + invalidate supplierPayments.all + detail(id) + **counterpartiesKeys.all**)
+  - `useCancelSupplierPayment` × 1 (POST + invalidate supplierPayments.all + detail(id) + assert **NOT** invalidates counterparties)
+  - `useDeleteSupplierPayment` × 1 (DELETE + invalidate supplierPaymentsKeys.all)
+- **Статус:** [x] виправлено — 10 нових тестів у `useSupplierPayments.test.tsx` 10/10 passed.
+- **Verification:** див. Bug #590 verification block (той самий run).
+- **Де ще шукати:** усі майбутні нові `use<X>.ts` hooks що використовують `usePaginatedList` або запускають cross-resource side-effects — потребують парний `.test.tsx`. Grep: `for f in apps/web/src/hooks/api/use*.ts; do t="${f%.ts}.test.tsx"; [ -f "$t" ] || echo "MISSING TEST: $f"; done`. Не enforce на CI поки — це рекомендація для sto-review checklist.
+
+### Підсумок сесії
+
+- **Знайдено:** 2 баги (HIGH: 1, MEDIUM: 1)
+- **Виправлено:** 2/2
+- **Baseline після сесії:** TypeScript 0 errors (api/web/shared), API vitest 976/976, Web vitest **481/481** (+10 vs baseline), E2E 305/307 (2 flaky known), dev server up.
+- **Крок 7 — self-improvement:** Bug #590 патерн — «FE mutation що триггерить `settlements.createTransaction` → ОБОВ'ЯЗКОВО інвалідувати counterpartiesKeys.all» — вже задокументовано у SKILL.md як частина Bug #210-#212 підходу (§1.3 «React Query cross-resource invalidation»). Bug #591 патерн — «новий `use<X>.ts` hook без парного `use<X>.test.tsx`» — рекомендація для sto-review checklist. Обидва — розширення існуючих підходів, не новий тип; SKILL.md залишається без змін окрім додавання explicit `use*Payment*` reference у §1.3.

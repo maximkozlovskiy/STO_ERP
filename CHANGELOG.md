@@ -7,6 +7,14 @@
 
 ## 2026-07-03
 
+### d27e1f14 fix(tester): Bug #590 — useConfirmSupplierPayment invalidates counterparties
+
+- `useConfirmSupplierPayment.onSuccess` тепер додатково інвалідує `counterpartiesKeys.all` (Bug #590 HIGH)
+- `confirm()` пише settlement PAYMENT через SettlementsService → баланс постачальника у settlementAccount.balance змінюється; без invalidate CRM/counterparties list показував стару balance до staleTime=30s
+- `useCancelSupplierPayment` навмисно НЕ інвалідує counterparties (cancel з DRAFT не пише settlement) — inline-коментар документує асиметрію
+- Bug #591 MEDIUM: додано `apps/web/src/hooks/api/useSupplierPayments.test.tsx` (10 тестів, аналог useInvoices.test.tsx): queryKey factory shape × 4, list URL params + enabled-gate × 2, create/confirm/cancel/delete invalidate × 4; ключовий regression-guard для Bug #590 (assert counterpartiesKeys.all у invalidateQueries) + пара для cancel (assert NOT invalidates counterparties)
+- Verification: tsc clean; web vitest 481/481 (+10 vs baseline 471); api vitest 976/976 (no regression)
+
 ### 48ad57a6 feat(supplier-payments): document + endpoint for paying suppliers
 
 - Нова модель `SupplierPayment` (гілка `feat/supplier-payments`) — закриває борг перед постачальником, який раніше накопичувався (`PurchaseOrder.receive` → CHARGE), але не мав чим оплачуватись (клієнтський `Payment` заточений під Checkbox + лояльність)
