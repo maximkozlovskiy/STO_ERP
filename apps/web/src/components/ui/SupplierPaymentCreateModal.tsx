@@ -26,13 +26,11 @@ interface Supplier {
 interface BankAccount {
   id: string;
   name: string;
-  deletedAt?: string | null;
 }
 
 interface CashRegister {
   id: string;
   name: string;
-  deletedAt?: string | null;
 }
 
 interface PaymentMethod {
@@ -89,23 +87,21 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
     if (!open) return;
     const cachedBanks = getCached<BankAccount[]>('cache:bank-accounts');
     const cachedCash = getCached<CashRegister[]>('cache:cash-registers');
-    if (cachedBanks) setBanks(cachedBanks.filter(b => !b.deletedAt));
-    if (cachedCash) setCashRegisters(cachedCash.filter(c => !c.deletedAt));
+    if (cachedBanks) setBanks(cachedBanks);
+    if (cachedCash) setCashRegisters(cachedCash);
 
-    apiFetch<BankAccount[]>('/bank-accounts')
-      .then(data => {
+    apiFetch<{ items: BankAccount[] }>('/bank-accounts')
+      .then(({ items }) => {
         if (!mountedRef.current) return;
-        const active = data.filter(b => !b.deletedAt);
-        setCache('cache:bank-accounts', active);
-        setBanks(active);
+        setCache('cache:bank-accounts', items);
+        setBanks(items);
       })
       .catch(() => {});
-    apiFetch<CashRegister[]>('/cash-registers')
-      .then(data => {
+    apiFetch<{ items: CashRegister[] }>('/cash-registers')
+      .then(({ items }) => {
         if (!mountedRef.current) return;
-        const active = data.filter(c => !c.deletedAt);
-        setCache('cache:cash-registers', active);
-        setCashRegisters(active);
+        setCache('cache:cash-registers', items);
+        setCashRegisters(items);
       })
       .catch(() => {});
     apiFetch<PaymentMethod[]>('/payment-methods')
