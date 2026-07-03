@@ -212,6 +212,7 @@ export class SupplierPaymentsService {
         sourceType: true,
         bankAccountId: true,
         cashRegisterId: true,
+        purchaseOrderId: true,
       },
     });
     if (!sp) throw new NotFoundException('Оплату не знайдено');
@@ -220,6 +221,13 @@ export class SupplierPaymentsService {
     }
 
     const nextSupplierId = dto.supplierId ?? sp.supplierId;
+    // Bug #588 — paired FK invariant: якщо supplier змінюється БЕЗ явного нового purchaseOrderId,
+    // а існуючий PO належав старому постачальнику, автоматично чистимо `purchaseOrderId`.
+    // Дзеркалить UX-логіку `SupplierPaymentCreateModal` (onSelect(supplier) → clear PO pair) —
+    // без цього API-only client (Postman/sync/mobile) створює orphan cross-supplier linkage.
+    const supplierChanged = dto.supplierId !== undefined && dto.supplierId !== sp.supplierId;
+    const shouldClearOrphanPO =
+      supplierChanged && dto.purchaseOrderId === undefined && sp.purchaseOrderId !== null;
     const nextSourceType = dto.sourceType ?? sp.sourceType;
     // Ефективні поля джерела після застосування патчу — валідуємо консистентність.
     const nextBankAccountId =
@@ -293,7 +301,9 @@ export class SupplierPaymentsService {
           nextSourceType === PaymentSourceType.CASH_REGISTER ? (nextCashRegisterId ?? null) : null,
         ...(dto.purchaseOrderId !== undefined
           ? { purchaseOrderId: dto.purchaseOrderId || null }
-          : {}),
+          : shouldClearOrphanPO
+            ? { purchaseOrderId: null }
+            : {}),
         ...(dto.amount !== undefined ? { amount: dto.amount } : {}),
         ...(dto.method !== undefined ? { method: dto.method } : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),

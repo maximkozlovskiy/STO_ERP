@@ -1278,3 +1278,48 @@ Sync/Review — 0 open issues (review 12/12 fixed, sync 0 mismatches).
   - `settings.dto.ts:287` — `workDays` cap 7 (enum-обмежений range 0-6)
   - `works.dto.ts:58` — `categoryIds` cap 100
 - **Verification:** `tsc --noEmit` clean, API 960/960 tests passed.
+
+---
+
+## Session 2026-07-03 — SupplierPayment feature sweep (гілка `feat/supplier-payments`, HEAD cd3c35d3)
+
+Baseline: API tsc 0 errors, Web tsc 0 errors, `supplier-payments.service.spec.ts` 10/10 passed.
+Scope: `apps/api/src/modules/supplier-payments/**`, `apps/web/src/app/(app)/supplier-payments/page.tsx`,
+`apps/web/src/components/ui/SupplierPaymentCreateModal.tsx`, `apps/web/src/hooks/api/useSupplierPayments.ts`.
+
+Static-analysis focus (business invariants за завданням):
+`confirm()` пише 1 PAYMENT settlement / documentType='SupplierPayment' / race-safe re-read;
+`cancel()` без settlement; sourceType↔BANK_ACCOUNT/CASH_REGISTER консистентність; CLIENT → 400;
+cross-supplier PO → 400; tenant isolation; CONFIRMED → non-editable / non-deletable; pagination cap; supplierId filter cross-tenant guard.
+
+### Bug #588 — HIGH backend / data integrity — `update()` дозволяє orphan `purchaseOrderId` при зміні `supplierId`
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.ts:201-305`
+- **Сценарій:** DRAFT SupplierPayment має `supplierId=S1, purchaseOrderId=PO1` (PO1 належить S1). Користувач шле `PATCH /supplier-payments/{id} { supplierId: S2 }` **без** `purchaseOrderId` у payload.
+  - Рядок 258: `dto.purchaseOrderId` undefined → PO-запит пропускається у `Promise.all`.
+  - Рядок 277: `if (dto.purchaseOrderId)` — false → cross-supplier guard `purchaseOrder.supplierId !== nextSupplierId` НЕ виконується.
+  - Рядок 294: `dto.purchaseOrderId !== undefined` — false → `purchaseOrderId` НЕ переписується.
+  - Результат: запис має `supplierId=S2` і `purchaseOrderId=PO1` (PO належить S1). Downstream `findOne` include повертає PO чужого постачальника → UX показує «Замовлення X (Постачальник S1)» на оплаті S2, звіти по заборгованостях S2 включають/виключають PO S1 залежно від join.
+- **Причина виникнення:** розробник валідує лише **новоприбулі** dto-поля (`if (dto.purchaseOrderId)`) — стандартний PATCH-патерн для незалежних полів. Але `supplierId` і `purchaseOrderId` — **paired FK**: PO валідне лише у контексті свого supplier. UI (`SupplierPaymentCreateModal.tsx:258,388`) правильно клірить пару у `onClear` супʼера і у `onSelect` пікера супʼера, але backend `update()` не має symmetric-guard → API-only client (Postman, sync, майбутній mobile) обходить UX-invariant.
+- **Виявлено:** ручний трейс `update()` проти сценарію «зміна лише supplierId» — не покрито ані існуючим `supplier-payments.service.spec.ts` (10 тестів на create/confirm/cancel/remove, 0 на update), ані `Bug #587` grep-checkslist. Тип bug-у — типова «paired FK state on update» (аналогічно Bug #191 style, але для business FK замість tenant orgId).
+- **Severity:** HIGH — silent data corruption (немає runtime error), долає auth-role (авторизований ACCOUNTANT робить). Не CRITICAL бо: (а) FSM-guard блокує mutation після CONFIRMED, (б) settlement/balance ще не написаний у DRAFT, (в) UI ховає невідповідність. Але звітність по заборгованостях постачальника може силентно розійтися; auto-sync у cloud підхопить corrupt row.
+- **Fix approach:** у `update()` селектнути поточний `purchaseOrderId` у першому `findFirst`; якщо `dto.supplierId` присутній і `dto.supplierId !== sp.supplierId` і `dto.purchaseOrderId === undefined` — примусово переписати `purchaseOrderId: null` у `data` (mirror UX auto-clear). Або: якщо існуючий `sp.purchaseOrderId` НЕ відповідає `nextSupplierId` — теж кинути `BadRequestException` (strict). Обираю auto-null (menu-friendly), бо `Modal.onSelect(supplier)` вже робить те саме на UI.
+- **Fix:** service.update — розширити select у prep-fetch на `purchaseOrderId` + `supplierId` (вже є), обчислити `supplierChanged = dto.supplierId != null && dto.supplierId !== sp.supplierId`, у data-payload: `if (supplierChanged && dto.purchaseOrderId === undefined) → purchaseOrderId: null`.
+- **Regression-guard:** новий кейс у `supplier-payments.service.spec.ts` — `update(): PATCH supplierId → PO orphan auto-cleared`.
+- **Статус:** [x] виправлено — `supplier-payments.service.ts:207-233` (prep select розширений `purchaseOrderId: true`, обчислено `shouldClearOrphanPO`, spread у data). 2 regression-тести додано: (a) supplier зміна з orphan PO → PO auto-null; (b) supplier зміна без PO у sp → data-payload НЕ містить purchaseOrderId (не пише зайвого no-op).
+- **Verification:** `pnpm --filter @sto/api exec tsc --noEmit` clean; `supplier-payments.service.spec.ts` 16/16 passed (10 старих + 6 нових).
+
+### Bug #589 — MEDIUM test / regression-coverage — прогалини у `supplier-payments.service.spec.ts`
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.spec.ts`
+- **Сигнал:** існуючий spec має 10 тестів для create/confirm/cancel/remove; `update()` НЕ покрито ніяк.
+- **Прогалини:**
+  1. `create()` з невідомим `bankAccountId` → 404 (NotFoundException) — незакрито.
+  2. `create()` з `purchaseOrderId` іншого постачальника → 400 — незакрито.
+  3. `update()`: PATCH на CONFIRMED → 400 — незакрито (guard існує).
+  4. `update()`: PATCH `sourceType=BANK_ACCOUNT` без `bankAccountId` → 400 — незакрито (guard існує через `assertSourceConsistency`).
+  5. `update()`: PATCH `supplierId` без `purchaseOrderId` → auto-clear PO (regression guard для Bug #588).
+- **Severity:** MEDIUM — code-side guards існують (окрім Bug #588), але без regression-тестів refactor може силенто зламати FSM/paired-FK invariants.
+- **Fix:** додати 5 нових `it(...)` кейсів у той самий describe-блок.
+- **Статус:** [x] виправлено — 6 нових `it(...)` додано у `supplier-payments.service.spec.ts` (bank-account NotFound, cross-supplier PO create → 400, update PATCH CONFIRMED → 400, update sourceType→BANK без bankAccountId → 400, Bug #588 auto-clear pair, Bug #588 no-op safety pair).
+- **Verification:** vitest 16/16 passed.
