@@ -15,6 +15,7 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 960/960 | Web 471/471 | E2E 298/300 ✅ 0 failed / 0 skipped / 2 flaky (passed on retry)
 Sync:       2026-07-03 ✅ Dir1 0 missing | Dir2 0 wrong URLs | Dir3 0 type mismatches
 Latest review: 2026-07-03 (auto, HEAD a59a023f) — 12 issues (0 Critical / 5 Important / 7 Suggestion), fixed 12/12; BOM×7, $transaction timeout×4, React.X namespace×1
+Latest tester: 2026-07-03 (FULL, HEAD 2b3c6e93) — Bug #587 MEDIUM anti-DoS: 5 @IsArray без @ArrayMaxSize у brands/goods/settings/works DTOs, всі 5 виправлено
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 Останній commit: 2026-06-20 — fix(tester): фінальна верифікація 300 E2E тестів. Виправлено 4 failed:
  (1) work-orders.spec.ts:114 + crud-work-order.spec.ts:147/169 — список нарядів не навігує (row click → side-panel, "Відкрити наряд" → edit-modal). Тести очікували URL change. Fix: ID наряду через API + page.goto('/work-orders/<id>').

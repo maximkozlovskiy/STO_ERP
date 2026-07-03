@@ -1247,3 +1247,34 @@ test('debug auth state', async ({ page }) => {
 
 **Виправлено: 1 HIGH багу-кластер (8 окремих silent skips → 5 фактично виправлено, 3 deferred як flaky-у-серії).**
 **Скрипти: 0 нових код-багів продукту — тільки test-hygiene fixes у 5 e2e файлах.**
+
+---
+
+## Session 2026-07-03 — Anti-DoS gap: `@IsArray` без `@ArrayMaxSize` — HEAD 2b3c6e93
+
+Baseline: TypeScript 0/0/0 errors, API 960/960 unit passed, Web 471/471 component passed, E2E 298/300 (2 known flaky).
+Sync/Review — 0 open issues (review 12/12 fixed, sync 0 mismatches).
+
+### Bug #587 — MEDIUM backend / DoS / `@IsArray` без `@ArrayMaxSize` у 5 DTO-полях
+
+- **Сигнал:** static analysis `grep @IsArray` + 5-line context check for `@ArrayMaxSize|@ArrayMinSize` — знайдено 5 real matches у 4 файлах:
+  1. `apps/api/src/modules/brands/brands.dto.ts:12` — `CreateBrandDto.synonyms?: string[]`
+  2. `apps/api/src/modules/brands/brands.dto.ts:25` — `UpdateBrandDto.synonyms?: string[]`
+  3. `apps/api/src/modules/goods/goods.dto.ts:80` — `GoodQueryDto.goodCategoryIds?: string[]`
+  4. `apps/api/src/modules/settings/settings.dto.ts:285` — `BranchSettingsUpdateDto.workDays?: number[]`
+  5. `apps/api/src/modules/works/works.dto.ts:55` — `WorkQueryDto.categoryIds?: string[]`
+- **Причина:** SKILL.md §1.4 checklist item «`@IsArray()` → `@ArrayMaxSize(N)`» — DoS-guard, без cap ValidationPipe виконає N×regex/N×IsUUID на масиві мільйон елементів → OOM Node.js worker перед тим як Prisma побачить payload. Атака вимагає JWT (endpoints protected), але автентифікований admin/insider може crash-нути один API worker з єдиного запиту.
+- **Виявлено:** static scan після review — усі дотримуються pattern «`@IsArray()` + `@ArrayMaxSize(N)` + `@IsUUID(undefined, { each: true })`» окрім цих 5 файлів. Pattern був майже full-coverage — тільки ці 5 файлів пропустили cap. Referrence — booking.dto.ts має `@ArrayMaxSize(50)` на public endpoints (правильний spot-fix), але для auth-protected endpoints cap пропущений systematic-ly.
+- **Severity:** MEDIUM — auth required, але single POST може crash-нути worker + inconsistent з SKILL enforcement. Не blocker але consistency.
+- **Fix:**
+  - `brands.synonyms` — max 20 synonyms per brand (реалістичний максимум, BMW/BMV/бмв тощо)
+  - `goodCategoryIds` — max 100 (для filter — реалістично category tree може мати до 100 IDs у subtree)
+  - `workDays` — max 7 (0-6, максимум 7 різних значень)
+  - `categoryIds` — max 100 (те саме що goodCategoryIds — filter query)
+- **Де ще шукати:** будь-який новий DTO що додає `@IsArray()` — обов'язково перевірити наявність `@ArrayMaxSize`. Особливо для query filter DTOs (`XQueryDto`) де атакувальник контролює payload у URL/query.
+- **Статус:** [x] виправлено — 5 DTO-полів отримали `@ArrayMaxSize` cap:
+  - `brands.dto.ts:12,25` — `synonyms` cap 20 + `MaxLength(100)` на кожен елемент + name `MaxLength(100)`
+  - `goods.dto.ts:83` — `goodCategoryIds` cap 100
+  - `settings.dto.ts:287` — `workDays` cap 7 (enum-обмежений range 0-6)
+  - `works.dto.ts:58` — `categoryIds` cap 100
+- **Verification:** `tsc --noEmit` clean, API 960/960 tests passed.

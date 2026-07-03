@@ -1,4 +1,5 @@
 import {
+  ArrayMaxSize,
   IsString,
   IsNotEmpty,
   IsNumber,
@@ -78,6 +79,10 @@ export class GoodQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
+  // Anti-DoS cap: без ліміту атакувальник з JWT може POST-ити Array(1_000_000).fill(UUID)
+  // → ValidationPipe виконає N×regex per element → OOM Node worker. 100 = реалістичний
+  // максимум для filter по subtree категорій.
+  @ArrayMaxSize(100, { message: 'Не більше 100 категорій у фільтрі' })
   @Matches(UUID_RE, { each: true })
   @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
   goodCategoryIds?: string[];

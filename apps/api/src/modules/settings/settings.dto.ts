@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -283,6 +284,8 @@ export class UpdateBranchSettingsDto {
   })
   @IsOptional()
   @IsArray()
+  // Робочих днів максимум 7 (0-6); anti-DoS cap проти мільйон-дублікатних payload.
+  @ArrayMaxSize(7, { message: 'Не більше 7 робочих днів' })
   @IsInt({ each: true })
   @Min(0, { each: true })
   @Max(6, { each: true })
