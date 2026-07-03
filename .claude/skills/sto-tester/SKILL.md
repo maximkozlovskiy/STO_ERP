@@ -3600,3 +3600,67 @@ if (optional.length > 0) {
 **Severity:** MEDIUM — fail тільки якщо порядок rows у API список залежить від E2E artifacts; після seed reset (cleanup DB) знов працює. False positives у CI.
 
 **Де шукати ще:** будь-який тест що очікує специфічних seed values (vehicles, counterparties, work-orders, goods) на першому елементі API list response. Перевіряти ВСІ hardcoded brand/model/name/phone strings.
+
+---
+
+### 2026-07-03 — Sprint-wide DTO drift detection: `@IsArray` без `@ArrayMaxSize` через 5-line context grep (Bug #587) — api / dto / anti-dos / drift
+
+**Сигнал:** Проєкт має 30+ файлів з `@IsArray()` + `@ArrayMaxSize(N)` pattern (canonical DoS-guard) АЛЕ 5 файлів пропустили cap. Naïve grep `@IsArray` дає 20+ matches, ручна перевірка кожного = time-sink. TS зелений (arrays валідні), unit tests зелені (тести не шлють мільйон-elementних payload), review не ловить (checklist-item існує, але grep-based scan не використаний). Виявляється тільки systematic-audit-ом всіх DTO-полів.
+
+**Причина виникнення:** Розробник копіює structure з існуючого DTO але забуває `@ArrayMaxSize` бо копіює тільки validate/type-guards. Простий один-файловий review пропускає (кожен окремо looks fine); тільки cross-file grep + context-check ловить drift від project-wide pattern. Ключова insight — canonical patterns (SKILL checklist item існує) не дотримуються 100%-но, тому audit має бути **grep+context**, не **manual-review**.
+
+**Підхід до виявлення (загальний principle for canonical-pattern audits):**
+
+Використовувати bash pipeline що:
+
+1. Знаходить всі occurrences primary marker (`@IsArray()`)
+2. Для кожного — читає N-line context навколо
+3. Перевіряє чи парний marker (`@ArrayMaxSize`) є в contexті
+4. Виводить false-negatives (occurrences що пропустили pattern)
+
+```bash
+# Template для audit будь-якого canonical pattern:
+for line in $(grep -rn "<PRIMARY_MARKER>" <SCOPE> --include="*.<EXT>" | cut -d: -f1-2); do
+  file=$(echo "$line" | cut -d: -f1)
+  ln=$(echo "$line" | cut -d: -f2)
+  start=$((ln - 5))  # 5-line context БЕЗ (декоратори зазвичай згруповані вгорі поля)
+  end=$((ln + 5))    # 5-line context ПІСЛЯ
+  ctx=$(sed -n "${start},${end}p" "$file")
+  if ! echo "$ctx" | grep -qE "<PAIRED_MARKER_REGEX>"; then
+    echo "MISSING: $file:$ln"
+  fi
+done
+```
+
+Приклади для STO ERP:
+
+- `@IsArray()` + no `@ArrayMaxSize|@ArrayMinSize` → anti-DoS gap
+- `@IsString()` + no `@MaxLength|@IsIn|@IsEmail|@IsUrl|@Matches|@IsUUID` → anti-DoS gap
+- `@IsUUID()` + no `Transform` (у CreateDto) → nil-UUID injection (якщо потрібна strict v4)
+- `?: number` у Create/UpdateDto + no `@IsInt|@IsNumber|@Min|@Max|@IsPositive|@Type` → number coercion attack (Bug #283)
+- `$transaction(async` без парного `timeout:` — потенційний 5s default → PG killed (SKILL §1.1)
+
+Виключати false-positives ФІЛЬТРУЮЧИ клас через parent-класу name grep:
+
+```bash
+# Знайти найближчий `export class .*Dto` вище цього line і пропустити Response/Paginated:
+class_line=$(awk -v LN="$ln" 'NR<=LN && /^export class.*Dto/ {classline=$0} END {print classline}' "$file")
+echo "$class_line" | grep -qE "Response|Paginated|Public|List" && continue
+```
+
+**Підхід до фіксу:** батчевий — для кожного знайденого поля:
+
+1. Визначити realistic-бізнес максимум (small tables → 20, medium → 100, list-cap → 200)
+2. Додати `@ArrayMaxSize(N, { message: '...' })` між `@IsArray()` та inner-element validator
+3. Якщо inner element `@IsString()` → додати `@MaxLength(N, { each: true })` (per-element cap)
+4. Import `ArrayMaxSize` з `class-validator`
+5. Verify tsc + unit tests зелені
+
+**Severity:** MEDIUM (auth-protected endpoints — потрібен insider), але systematic-consistency: SKILL checklist існує, значить treat as release-blocker.
+
+**Де шукати ще:**
+
+- КОЖЕН новий `@IsArray()` у review → чи парний `@ArrayMaxSize`?
+- Query DTOs (`*QueryDto`) — часто пропускають cap для array filter параметрів (URL string може містити багато IDs)
+- Update DTOs що успадковують через `extends PartialType(CreateDto)` — cap успадковується автоматично, але новий field у Create потребує cap одразу
+- Аналогічний sprint-audit для інших canonical patterns: `@IsString + @MaxLength`, `?: number + @IsNumber/@Type`, `$transaction + timeout`, `@Controller + @UseGuards`.
