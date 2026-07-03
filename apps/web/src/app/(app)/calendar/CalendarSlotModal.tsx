@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
+import type { Dispatch, SetStateAction, RefObject } from 'react';
 import dynamic from 'next/dynamic';
 import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -213,18 +214,18 @@ interface CalendarSlotModalProps {
   date: string;
   lifts: Lift[];
   form: SlotForm;
-  setForm: React.Dispatch<React.SetStateAction<SlotForm>>;
+  setForm: Dispatch<SetStateAction<SlotForm>>;
 
   editingSlotId: string | null;
   isEditingPast: boolean;
   pendingSlot: PendingSlot | null;
-  setPendingSlot: React.Dispatch<React.SetStateAction<PendingSlot | null>>;
+  setPendingSlot: Dispatch<SetStateAction<PendingSlot | null>>;
 
   /** Controls the height-animated collapse wrapper */
   formMounted: boolean;
   formVisible: boolean;
-  formCollapseRef: React.RefObject<HTMLDivElement | null>;
-  formInnerRef: React.RefObject<HTMLDivElement | null>;
+  formCollapseRef: RefObject<HTMLDivElement | null>;
+  formInnerRef: RefObject<HTMLDivElement | null>;
 
   minHour: number;
   windowStart: number;

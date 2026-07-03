@@ -1,4 +1,4 @@
-﻿import {
+import {
   IsString,
   IsEnum,
   IsOptional,

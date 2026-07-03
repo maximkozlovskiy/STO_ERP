@@ -486,21 +486,24 @@ export class SettingsService {
     // No unique index on [orgId, isDefault] in schema → multiple defaults possible without this;
     // getDefaultTaxRate() would return a non-deterministic row.
     const rate = dto.isDefault
-      ? await this.prisma.$transaction(async tx => {
-          await tx.taxRate.updateMany({
-            where: { orgId, isDefault: true },
-            data: { isDefault: false },
-          });
-          return tx.taxRate.create({
-            data: {
-              orgId,
-              name: dto.name,
-              rate: dto.rate,
-              isDefault: true,
-              isActive: dto.isActive ?? true,
-            },
-          });
-        })
+      ? await this.prisma.$transaction(
+          async tx => {
+            await tx.taxRate.updateMany({
+              where: { orgId, isDefault: true },
+              data: { isDefault: false },
+            });
+            return tx.taxRate.create({
+              data: {
+                orgId,
+                name: dto.name,
+                rate: dto.rate,
+                isDefault: true,
+                isActive: dto.isActive ?? true,
+              },
+            });
+          },
+          { timeout: 10_000 },
+        )
       : await this.prisma.taxRate.create({
           data: {
             orgId,
@@ -526,23 +529,26 @@ export class SettingsService {
   ) {
     // When setting isDefault=true: atomically unset previous defaults in orgId scope (excluding current id).
     if (dto.isDefault === true) {
-      await this.prisma.$transaction(async tx => {
-        await tx.taxRate.updateMany({
-          where: { orgId, isDefault: true, NOT: { id } },
-          data: { isDefault: false },
-        });
-        // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
-        const result = await tx.taxRate.updateMany({
-          where: { id, orgId },
-          data: {
-            name: dto.name ?? undefined,
-            rate: dto.rate ?? undefined,
-            isDefault: true,
-            isActive: dto.isActive ?? undefined,
-          },
-        });
-        if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
-      });
+      await this.prisma.$transaction(
+        async tx => {
+          await tx.taxRate.updateMany({
+            where: { orgId, isDefault: true, NOT: { id } },
+            data: { isDefault: false },
+          });
+          // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
+          const result = await tx.taxRate.updateMany({
+            where: { id, orgId },
+            data: {
+              name: dto.name ?? undefined,
+              rate: dto.rate ?? undefined,
+              isDefault: true,
+              isActive: dto.isActive ?? undefined,
+            },
+          });
+          if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
+        },
+        { timeout: 10_000 },
+      );
     } else {
       // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
       const result = await this.prisma.taxRate.updateMany({

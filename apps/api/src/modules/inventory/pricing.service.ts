@@ -1,4 +1,4 @@
-﻿import { Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { GoodType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 

@@ -1,4 +1,4 @@
-﻿import { calculatePagination } from '../../common/utils/pagination';
+import { calculatePagination } from '../../common/utils/pagination';
 import {
   Injectable,
   NotFoundException,
@@ -296,21 +296,24 @@ export class GoodsService {
 
     // When creating isPrimary=true → unset previous primaries atomically; otherwise multiple primaries per good.
     const barcode = dto.isPrimary
-      ? await this.prisma.$transaction(async tx => {
-          await tx.goodBarcode.updateMany({
-            where: { orgId, goodId, isPrimary: true },
-            data: { isPrimary: false },
-          });
-          return tx.goodBarcode.create({
-            data: {
-              orgId,
-              goodId,
-              barcode: dto.barcode.trim(),
-              type: dto.type ?? 'EAN13',
-              isPrimary: true,
-            },
-          });
-        })
+      ? await this.prisma.$transaction(
+          async tx => {
+            await tx.goodBarcode.updateMany({
+              where: { orgId, goodId, isPrimary: true },
+              data: { isPrimary: false },
+            });
+            return tx.goodBarcode.create({
+              data: {
+                orgId,
+                goodId,
+                barcode: dto.barcode.trim(),
+                type: dto.type ?? 'EAN13',
+                isPrimary: true,
+              },
+            });
+          },
+          { timeout: 10_000 },
+        )
       : await this.prisma.goodBarcode.create({
           data: {
             orgId,
@@ -332,23 +335,26 @@ export class GoodsService {
     });
     if (!existing) throw new NotFoundException('Штрихкод не знайдено');
 
-    await this.prisma.$transaction(async tx => {
-      // Defense-in-depth: deleteMany with compound where (race-safe).
-      await tx.goodBarcode.deleteMany({ where: { id: barcodeId, orgId, goodId } });
-      if (existing.isPrimary) {
-        const next = await tx.goodBarcode.findFirst({
-          where: { orgId, goodId, id: { not: barcodeId } },
-          orderBy: { createdAt: 'asc' },
-          select: { id: true },
-        });
-        if (next) {
-          await tx.goodBarcode.updateMany({
-            where: { id: next.id, orgId, goodId },
-            data: { isPrimary: true },
+    await this.prisma.$transaction(
+      async tx => {
+        // Defense-in-depth: deleteMany with compound where (race-safe).
+        await tx.goodBarcode.deleteMany({ where: { id: barcodeId, orgId, goodId } });
+        if (existing.isPrimary) {
+          const next = await tx.goodBarcode.findFirst({
+            where: { orgId, goodId, id: { not: barcodeId } },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
           });
+          if (next) {
+            await tx.goodBarcode.updateMany({
+              where: { id: next.id, orgId, goodId },
+              data: { isPrimary: true },
+            });
+          }
         }
-      }
-    });
+      },
+      { timeout: 10_000 },
+    );
   }
 
   // ─── Good UoM ──────────────────────────────────────────────────────────────
