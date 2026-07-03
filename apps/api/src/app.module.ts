@@ -36,6 +36,7 @@ import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { SupplierReturnsModule } from './modules/supplier-returns/supplier-returns.module';
+import { SupplierPaymentsModule } from './modules/supplier-payments/supplier-payments.module';
 import { StockDocumentsModule } from './modules/stock-documents/stock-documents.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -166,6 +167,7 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
     CalendarModule,
     PurchaseOrdersModule,
     SupplierReturnsModule,
+    SupplierPaymentsModule,
     StockDocumentsModule,
     InvoicesModule,
     PaymentsModule,

@@ -230,6 +230,31 @@ export const SUPPLIER_RETURN_STATUS_BADGE: Record<string, BadgeVariant> = {
   CANCELLED: 'destructive',
 };
 
+// ─── Supplier Payments ────────────────────────────────────────────────────────
+
+export const SUPPLIER_PAYMENT_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Чернетка',
+  CONFIRMED: 'Проведено',
+  CANCELLED: 'Скасовано',
+};
+
+export const SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS: Record<string, string> = {
+  DRAFT: 'Чернетка — оплату оформлено, ще не проведено',
+  CONFIRMED: 'Проведено — борг перед постачальником зменшено на суму оплати',
+  CANCELLED: 'Скасовано — оплату анульовано',
+};
+
+export const SUPPLIER_PAYMENT_STATUS_BADGE: Record<string, BadgeVariant> = {
+  DRAFT: 'secondary',
+  CONFIRMED: 'success',
+  CANCELLED: 'destructive',
+};
+
+export const PAYMENT_SOURCE_TYPE_LABELS: Record<string, string> = {
+  BANK_ACCOUNT: 'Банк',
+  CASH_REGISTER: 'Каса',
+};
+
 // ─── Stock Documents ──────────────────────────────────────────────────────────
 
 export const STOCK_DOC_STATUS_LABELS: Record<string, string> = {

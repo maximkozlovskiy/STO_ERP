@@ -160,6 +160,7 @@ async function main() {
     { documentType: DocumentType.STOCK_OPENING, prefix: 'ВЗЛ' },
     { documentType: DocumentType.RECONCILIATION_ACT, prefix: 'АКТ' },
     { documentType: DocumentType.COUNTERPARTY_AGREEMENT, prefix: 'ДГ' },
+    { documentType: DocumentType.SUPPLIER_PAYMENT, prefix: 'ОПП' },
     {
       documentType: DocumentType.GOOD_INTERNAL_CODE,
       prefix: 'T',

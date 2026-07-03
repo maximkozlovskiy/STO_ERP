@@ -101,6 +101,7 @@ enum DocumentType {
   COMPLETION_ACT
   COUNTERPARTY_AGREEMENT
   GOOD_INTERNAL_CODE
+  SUPPLIER_PAYMENT
 }
 
 enum ContractType {
@@ -162,6 +163,17 @@ enum SupplierReturnStatus {
   DRAFT
   CONFIRMED
   CANCELLED
+}
+
+enum SupplierPaymentStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaymentSourceType {
+  BANK_ACCOUNT
+  CASH_REGISTER
 }
 
 enum InvoiceStatus {
@@ -593,6 +605,7 @@ model Counterparty {
   loyaltyAccount     LoyaltyAccount?
   purchaseOrders     PurchaseOrder[]
   supplierReturns    SupplierReturn[]
+  supplierPayments   SupplierPayment[]
   invoices           Invoice[]
   workOrders         WorkOrder[]
   payments           Payment[]
@@ -1348,10 +1361,11 @@ model PurchaseOrder {
   updatedAt    DateTime            @updatedAt
   deletedAt    DateTime?
 
-  supplier  Counterparty          @relation(fields: [supplierId], references: [id])
-  warehouse Warehouse             @relation(fields: [warehouseId], references: [id])
-  contract  CounterpartyContract? @relation(fields: [contractId], references: [id])
-  lines     PurchaseOrderLine[]
+  supplier         Counterparty          @relation(fields: [supplierId], references: [id])
+  warehouse        Warehouse             @relation(fields: [warehouseId], references: [id])
+  contract         CounterpartyContract? @relation(fields: [contractId], references: [id])
+  lines            PurchaseOrderLine[]
+  supplierPayments SupplierPayment[]
 
   @@index([orgId, status, deletedAt])
   @@index([orgId, syncVersion])
@@ -1434,6 +1448,37 @@ model SupplierReturnLine {
   @@index([supplierReturnId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("supplier_return_lines")
+}
+
+model SupplierPayment {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String                @db.Uuid
+  supplierId      String                @db.Uuid
+  purchaseOrderId String?               @db.Uuid
+  sourceType      PaymentSourceType
+  bankAccountId   String?               @db.Uuid
+  cashRegisterId  String?               @db.Uuid
+  number          String
+  status          SupplierPaymentStatus @default(DRAFT)
+  amount          Decimal               @db.Decimal(12, 2)
+  method          String
+  notes           String?
+  documentDate    DateTime              @default(now()) @db.Date
+  syncVersion     BigInt                @default(0)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  deletedAt       DateTime?
+
+  supplier      Counterparty   @relation(fields: [supplierId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  bankAccount   BankAccount?   @relation(fields: [bankAccountId], references: [id])
+  cashRegister  CashRegister?  @relation(fields: [cashRegisterId], references: [id])
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, supplierId, createdAt])
+  @@index([orgId, status, createdAt])
+  @@index([orgId, syncVersion])
+  @@map("supplier_payments")
 }
 
 model StockDocument {
@@ -2190,10 +2235,11 @@ model BankAccount {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  organisation   Organisation   @relation(fields: [orgId], references: [id])
-  currency       Currency       @relation(fields: [currencyId], references: [id])
-  branch         GarageBranch?  @relation(fields: [branchId], references: [id])
-  primaryForOrgs Organisation[] @relation("OrgPrimaryBankAccount")
+  organisation     Organisation      @relation(fields: [orgId], references: [id])
+  currency         Currency          @relation(fields: [currencyId], references: [id])
+  branch           GarageBranch?     @relation(fields: [branchId], references: [id])
+  primaryForOrgs   Organisation[]    @relation("OrgPrimaryBankAccount")
+  supplierPayments SupplierPayment[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -2211,9 +2257,10 @@ model CashRegister {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  organisation Organisation @relation(fields: [orgId], references: [id])
-  currency     Currency     @relation(fields: [currencyId], references: [id])
-  branch       GarageBranch @relation(fields: [branchId], references: [id])
+  organisation     Organisation      @relation(fields: [orgId], references: [id])
+  currency         Currency          @relation(fields: [currencyId], references: [id])
+  branch           GarageBranch      @relation(fields: [branchId], references: [id])
+  supplierPayments SupplierPayment[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
