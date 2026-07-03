@@ -98,6 +98,9 @@ DRAFT → ORDERED → PARTIAL → RECEIVED
    - `purchaseOrderLine.update({ receivedQty: += received })` у `Promise.all` (disjoint rows — safe)
    - `SettlementsService.createTransaction(CHARGE)` — борг перед постачальником
 
+> Борг, створений `receive()`, закривається документом [SupplierPayment](supplier-payment.md)
+> (`SettlementTransaction(PAYMENT)`). PO можна опціонально прив'язати до оплати для аналітики.
+
 ### update() — contract resolution
 
 ```

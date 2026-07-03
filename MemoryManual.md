@@ -15,7 +15,7 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 960/960 | Web 471/471 | E2E 298/300 ✅ 0 failed / 0 skipped / 2 flaky (passed on retry)
 Sync:       2026-07-03 ✅ Dir1 0 missing | Dir2 2 fixed (bank-accounts/cash-registers paginated) | Dir3 2 fixed (deletedAt removed)
 Latest review: 2026-07-03 (auto, HEAD 951506b7, feat/supplier-payments) — SupplierPayment feature: 1 issue (0 Critical / 1 Important / 0 Suggestion), fixed 1/1; paired FK state (§8.2): onClear supplier не скидав purchaseOrderId/purchaseOrderNumber → orphan PO reference. Business invariants OK: PAYMENT через SettlementsService.createTransaction, FSM re-read у tx, documentType='SupplierPayment', tenant isolation ✓, soft delete ✓, CONFIRMED не можна видалити ✓, немає Checkbox/loyalty. 10/10 regression тестів passed.
-Latest tester: 2026-07-03 (FULL, HEAD 2b3c6e93) — Bug #587 MEDIUM anti-DoS: 5 @IsArray без @ArrayMaxSize у brands/goods/settings/works DTOs, всі 5 виправлено
+Latest tester: 2026-07-03 (SupplierPayment, HEAD 92390dbc, feat/supplier-payments) — Bug #588 HIGH: update() дозволяв orphan purchaseOrderId після зміни supplierId через API (UI-модалка робила auto-clear, API-clients обходили). Fix: service.update авто-очищає PO при supplierChanged && purchaseOrderId undefined. +6 regression тестів (16/16 spec). API 976/976.
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 Останній commit: 2026-06-20 — fix(tester): фінальна верифікація 300 E2E тестів. Виправлено 4 failed:
  (1) work-orders.spec.ts:114 + crud-work-order.spec.ts:147/169 — список нарядів не навігує (row click → side-panel, "Відкрити наряд" → edit-modal). Тести очікували URL change. Fix: ID наряду через API + page.goto('/work-orders/<id>').
@@ -47,6 +47,15 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+65064c6a  docs(skills): SupplierPayment Bug #588 → sto-tester paired-FK approach (feat/supplier-payments)
+92390dbc  fix(tester): Bug #588 — supplier-payments update() auto-clears orphan PO on supplier change (feat/supplier-payments)
+          — API-only clients могли лишити purchaseOrderId від старого постачальника → cross-supplier linkage
+          — Fix: shouldClearOrphanPO = supplierChanged && dto.purchaseOrderId===undefined && sp.purchaseOrderId!==null
+48ad57a6  feat(supplier-payments): document + endpoint for paying suppliers (feat/supplier-payments)
+          — Нова модель SupplierPayment: оплата постачальнику, FSM DRAFT→CONFIRMED пише SettlementTransaction(PAYMENT)
+          — Джерело коштів обов'язкове (bank/cash), опц. прив'язка до PurchaseOrder. БЕЗ Checkbox/loyalty (supplier-side)
+          — API /supplier-payments (OWNER/ADMIN/ACCOUNTANT) + web список/модалка/nav. Дос'є: docs/objects/supplier-payment.md
+          — Міграції 20260703100000 (модель+enums+DocumentType) + 20260703100001 (backfill DocumentNumberConfig ОПП)
 951506b7  fix(review): clear paired purchase-order ref when supplier cleared in SupplierPaymentCreateModal (feat/supplier-payments)
           — §8.2 paired FK state: EntityPickerField.onClear supplier тепер скидає обидві пари (supplierId+supplierName, purchaseOrderId+purchaseOrderNumber)
           — Без фіксу залишався orphan PO → backend 400 без пояснення у UI

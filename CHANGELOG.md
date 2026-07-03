@@ -5,6 +5,25 @@
 
 ---
 
+## 2026-07-03
+
+### 48ad57a6 feat(supplier-payments): document + endpoint for paying suppliers
+
+- Нова модель `SupplierPayment` (гілка `feat/supplier-payments`) — закриває борг перед постачальником, який раніше накопичувався (`PurchaseOrder.receive` → CHARGE), але не мав чим оплачуватись (клієнтський `Payment` заточений під Checkbox + лояльність)
+- Enum-и `SupplierPaymentStatus` (DRAFT/CONFIRMED/CANCELLED) + `PaymentSourceType` (BANK_ACCOUNT/CASH_REGISTER); `SUPPLIER_PAYMENT` у `DocumentType` (prefix `ОПП`)
+- FSM DRAFT→CONFIRMED: при проведенні пише `SettlementTransaction(PAYMENT)` через `SettlementsService.createTransaction()` (re-read статусу в `$transaction` — race-safe); джерело коштів обов'язкове (bank АБО cash), опційна прив'язка до PurchaseOrder; БЕЗ Checkbox/loyalty
+- API `/supplier-payments` (GET/POST/PATCH/DELETE + confirm/cancel), ролі OWNER/ADMIN/ACCOUNTANT; web: список + `SupplierPaymentCreateModal` + nav «Оплати постачальникам»
+- Міграції `20260703100000_add_supplier_payment` + `20260703100001_seed_supplier_payment_doc_numbers` (backfill enum-value в окремій міграції — Postgres не дозволяє ADD VALUE + use у тій же tx)
+- Дос'є `docs/objects/supplier-payment.md` (BR-SUPPAY-001..008)
+
+### d699d0ae fix(sync) + 951506b7 fix(review) + 92390dbc fix(tester): SupplierPayment QA
+
+- sync: `/bank-accounts` + `/cash-registers` повертають `{ items, total }`, не голий масив — виправлено typing + destructuring; прибрано неіснуючі `deletedAt` поля з local interfaces
+- review: §8.2 paired FK — `onClear` постачальника скидає й прив'язку PO (orphan reference)
+- tester: **Bug #588 (HIGH)** — `update()` лишав orphan `purchaseOrderId` після зміни `supplierId` для API-only clients (UI робив auto-clear) → cross-supplier linkage; fix авто-очищає PO; +6 regression тестів (16/16 spec, API 976/976)
+
+---
+
 ## 2026-06-20
 
 ### <next> perf(optimize): Цикл 3/3 step 4 — covering index booking_requests(orgId,branchId,status,requestedDate)
