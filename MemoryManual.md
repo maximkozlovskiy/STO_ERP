@@ -13,8 +13,8 @@
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 960/960 | Web 471/471 | E2E 298/300 ✅ 0 failed / 0 skipped / 2 flaky (passed on retry)
-Sync:       2026-07-03 ✅ Dir1 0 missing | Dir2 0 wrong URLs | Dir3 0 type mismatches
-Latest review: 2026-07-03 (auto, HEAD a59a023f) — 12 issues (0 Critical / 5 Important / 7 Suggestion), fixed 12/12; BOM×7, $transaction timeout×4, React.X namespace×1
+Sync:       2026-07-03 ✅ Dir1 0 missing | Dir2 2 fixed (bank-accounts/cash-registers paginated) | Dir3 2 fixed (deletedAt removed)
+Latest review: 2026-07-03 (auto, HEAD 951506b7, feat/supplier-payments) — SupplierPayment feature: 1 issue (0 Critical / 1 Important / 0 Suggestion), fixed 1/1; paired FK state (§8.2): onClear supplier не скидав purchaseOrderId/purchaseOrderNumber → orphan PO reference. Business invariants OK: PAYMENT через SettlementsService.createTransaction, FSM re-read у tx, documentType='SupplierPayment', tenant isolation ✓, soft delete ✓, CONFIRMED не можна видалити ✓, немає Checkbox/loyalty. 10/10 regression тестів passed.
 Latest tester: 2026-07-03 (FULL, HEAD 2b3c6e93) — Bug #587 MEDIUM anti-DoS: 5 @IsArray без @ArrayMaxSize у brands/goods/settings/works DTOs, всі 5 виправлено
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 Останній commit: 2026-06-20 — fix(tester): фінальна верифікація 300 E2E тестів. Виправлено 4 failed:
@@ -47,6 +47,12 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+951506b7  fix(review): clear paired purchase-order ref when supplier cleared in SupplierPaymentCreateModal (feat/supplier-payments)
+          — §8.2 paired FK state: EntityPickerField.onClear supplier тепер скидає обидві пари (supplierId+supplierName, purchaseOrderId+purchaseOrderNumber)
+          — Без фіксу залишався orphan PO → backend 400 без пояснення у UI
+d699d0ae  fix(sync): align SupplierPaymentCreateModal with bank-accounts/cash-registers API contracts (feat/supplier-payments)
+          — /bank-accounts + /cash-registers return { items, total } not bare array; fix apiFetch typing + destructuring
+          — Remove client-side deletedAt filter (server returns only active); remove deletedAt from local interfaces
 a59a023f  fix(review): strip BOM from 7 inventory/goods files + $transaction timeouts + React namespace types
           — BOM (§1): 7 files after comment-cleanup Windows/PowerShell edit
           — $transaction timeout (§5): 4 blocks — goods.service (barcode primary swap/delete), settings.service (taxRate default create/update) → { timeout: 10_000 }
