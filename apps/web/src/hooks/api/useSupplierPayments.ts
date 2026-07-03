@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
+import { counterpartiesKeys } from './useCounterparties';
 
 export type PaymentSourceType = 'BANK_ACCOUNT' | 'CASH_REGISTER';
 
@@ -96,6 +97,11 @@ export function useConfirmSupplierPayment() {
     onSuccess: (_, id) => {
       void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
       void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.detail(id) });
+      // Bug #590: confirm() пише settlement PAYMENT → зменшує баланс постачальника
+      // у settlementAccount.balance. CRM/counterparties list, PurchaseOrder деталь
+      // та баланси у dossier показують застарілий баланс до staleTime=30s без
+      // цього invalidate. Дзеркалить useCreatePayment (Bug #245).
+      void qc.invalidateQueries({ queryKey: counterpartiesKeys.all });
     },
   });
 }
@@ -108,6 +114,8 @@ export function useCancelSupplierPayment() {
     onSuccess: (_, id) => {
       void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
       void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.detail(id) });
+      // cancel() з DRAFT НЕ пише settlement (guard у service), тож counterparties
+      // балансу не чіпає. Явно НЕ інвалідовано щоб уникнути зайвих refetch на CRM.
     },
   });
 }
