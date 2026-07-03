@@ -253,6 +253,12 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
               onClear={() => {
                 setSupplierId('');
                 setSupplierName('');
+                // Прив'язка до PO належить конкретному постачальнику; при очищенні
+                // постачальника треба скинути обидва поля пари, інакше залишається
+                // orphan purchaseOrderId який не пройде backend-валідацію (PO не
+                // належатиме "новому" вибраному постачальнику) — §8.2 paired FK state.
+                setPurchaseOrderId('');
+                setPurchaseOrderNumber('');
               }}
             />
           </div>
