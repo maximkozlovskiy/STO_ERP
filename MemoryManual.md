@@ -9,13 +9,13 @@
 ## Поточний стан
 
 ```
-Дата:       2026-07-03
+Дата:       2026-07-04
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 976/976 | Web 481/481 (+10 hook tests) | E2E 305/307 ✅ 0 failed / 0 skipped / 2 flaky (passed on retry)
+Тести:      API 976/976 | Web 485/485 (+4 BankAccountsTab regression) | E2E 305/307 ✅ 0 failed / 0 skipped / 2 flaky (passed on retry)
 Sync:       2026-07-03 ✅ Dir1 0 missing | Dir2 2 fixed (bank-accounts/cash-registers paginated) | Dir3 2 fixed (deletedAt removed)
 Latest review: 2026-07-03 (auto, HEAD 951506b7, feat/supplier-payments) — SupplierPayment feature: 1 issue (0 Critical / 1 Important / 0 Suggestion), fixed 1/1; paired FK state (§8.2): onClear supplier не скидав purchaseOrderId/purchaseOrderNumber → orphan PO reference. Business invariants OK: PAYMENT через SettlementsService.createTransaction, FSM re-read у tx, documentType='SupplierPayment', tenant isolation ✓, soft delete ✓, CONFIRMED не можна видалити ✓, немає Checkbox/loyalty. 10/10 regression тестів passed.
-Latest tester: 2026-07-03 FULL (HEAD d27e1f14, feat/supplier-payments) — Bug #590 HIGH: useConfirmSupplierPayment не інвалідував counterpartiesKeys.all → CRM balance постачальника застарівав до 30s після confirm (settlement PAYMENT пише). Bug #591 MEDIUM: брак useSupplierPayments.test.tsx → додано 10 hook-тестів (аналог useInvoices.test.tsx) з regression-guard для Bug #590. Попередній: Bug #588 HIGH (92390dbc) update() paired-FK orphan cleared.
+Latest tester: 2026-07-04 (HEAD 4eb3187f, feat/supplier-payments) — Bug #592 HIGH: /ndi BankAccountsTab crash "Cannot read properties of undefined (reading 'map')". getCached() повертає sessionStorage JSON без валідації форми → зіпсований запис ({items:undefined} або голий масив) → setBankAccounts(undefined) → .map crash. Fix: Array.isArray(cached.items) guard у BankAccountsTab/CashRegistersTab/CurrenciesTab + 4 regression-тести. Backend контракт OK. Попереднє: Bug #590 HIGH useConfirmSupplierPayment invalidate counterparties; Bug #591 useSupplierPayments.test.tsx; Bug #588 HIGH update() paired-FK orphan.
 Latest E2E: 2026-07-03 (SupplierPayment) — новий `apps/web/e2e/supplier-payments.spec.ts` 7/7 passed. Покриває: рендер сторінки/фільтрів/модалки, create→таблиця→cleanup, FSM DRAFT→CONFIRMED пише settlement PAYMENT + баланс постачальника −amount + documentType=SupplierPayment у transactions + CONFIRMED не видаляється, guard BANK_ACCOUNT без bankAccountId→400, DRAFT→CANCELLED не пише settlement. Тест сам сідить cash register (currency+branch — seed не містить). Related specs (supplier-returns, crud-purchase-order) без регресій.
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
 Останній commit: 2026-06-20 — fix(tester): фінальна верифікація 300 E2E тестів. Виправлено 4 failed:
