@@ -3,6 +3,30 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-07-04 — Runtime crash /ndi BankAccountsTab
+
+### Bug #592 — HIGH frontend / cache-shape drift / Runtime TypeError
+
+- **Сигнал:** `Cannot read properties of undefined (reading 'map')` у `BankAccountsTab`
+  (`NdiPageClient` → `/ndi`). Виникало при відкритті вкладки "Банківські рахунки" у Turbopack dev.
+- **Файл:** `apps/web/src/app/(app)/ndi/BankAccountsTab.tsx:48` (+ `:52`); той самий патерн у
+  `CashRegistersTab.tsx:41`, `CurrenciesTab.tsx:43`.
+- **Root cause:** `getCached('cache:bank-accounts')` / `getCached('cache:currencies')` повертає
+  розпарсений JSON з sessionStorage БЕЗ валідації форми (`ref-cache.ts:getCached` — сирий
+  `JSON.parse`). Якщо запис має стару/зіпсовану форму (`{ items: undefined }` від попереднього
+  білду, або голий масив замість `{ items }`), то `setBankAccounts(cached.items)` пише `undefined`
+  у state → синхронний перший рендер робить `bankAccounts.map(...)` на `undefined` → crash усього
+  NdiPageClient. Backend `/bank-accounts` та `/currencies` повертають коректний `{ items, total }` —
+  контракт правильний; проблема суто у незахищеному читанні кешу.
+- **Fix:** guard `Array.isArray(cached.items)` перед кожним `setX(cached.items)` у трьох табах.
+- **Регресія-guard:** новий `BankAccountsTab.test.tsx` (4 кейси): items=undefined, currencies
+  items=undefined, голий масив (стара форма), валідний кеш рендериться синхронно.
+- **Severity:** HIGH — crash усієї сторінки /ndi при зіпсованому кеші; жоден TS/unit не ловив
+  (кеш читається з runtime sessionStorage, форма не типізується на межі).
+- **Де ще шукати:** будь-який `getCached<{ items: X[] }>(...)` → `setX(cached.items)` без
+  `Array.isArray` guard. Довгостроково — валідувати форму у самому `getCached`.
+- **Статус:** [x] виправлено.
+
 ## Session 2026-06-20 — Massive E2E coverage expansion — HEAD bf2f78a6
 
 Знайшли через нові spec-файли (vehicles, profile, ndi, settings-sync, calendar-views, command-palette,

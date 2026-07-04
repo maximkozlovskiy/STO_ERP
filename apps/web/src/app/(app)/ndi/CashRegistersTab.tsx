@@ -37,7 +37,7 @@ export default function CashRegistersTab() {
     setLoadingCr(true);
 
     const cachedCurrencies = getCached<{ items: Currency[] }>('cache:currencies');
-    if (cachedCurrencies) {
+    if (cachedCurrencies && Array.isArray(cachedCurrencies.items)) {
       setCurrencies(cachedCurrencies.items);
     }
     const cachedBranches = getCached<BranchInfo[]>('cache:branches');
