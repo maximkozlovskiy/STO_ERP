@@ -57,6 +57,8 @@ export class SupplierPaymentsController {
       query.showDeleted === 'true',
       query.dateFrom,
       query.dateTo,
+      query.sortBy,
+      query.sortDir,
     );
   }
 

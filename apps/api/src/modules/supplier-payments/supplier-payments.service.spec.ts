@@ -390,4 +390,72 @@ describe('SupplierPaymentsService — regression guards', () => {
     };
     expect(updateCall.data).not.toHaveProperty('purchaseOrderId');
   });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // findAll() — сортування (whitelist orderBy)
+  // ──────────────────────────────────────────────────────────────────────
+
+  function findManyOrderBy() {
+    return (
+      prisma.supplierPayment.findMany.mock.calls[0]![0] as {
+        orderBy: Record<string, string>;
+      }
+    ).orderBy;
+  }
+
+  it('findAll(): валідний sortBy=amount + sortDir=asc → orderBy { amount: asc }', async () => {
+    await service.findAll(
+      ORG,
+      1,
+      20,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      'amount',
+      'asc',
+    );
+    expect(findManyOrderBy()).toEqual({ amount: 'asc' });
+  });
+
+  it('findAll(): sortBy=documentDate → orderBy { documentDate: desc } (default dir)', async () => {
+    await service.findAll(
+      ORG,
+      1,
+      20,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      'documentDate',
+    );
+    expect(findManyOrderBy()).toEqual({ documentDate: 'desc' });
+  });
+
+  it('findAll(): невідомий sortBy → fallback orderBy { createdAt: desc }', async () => {
+    await service.findAll(
+      ORG,
+      1,
+      20,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      'DROP TABLE',
+      'asc',
+    );
+    // Whitelist відкидає невідоме поле → createdAt; напрям зберігається (asc валідний).
+    expect(findManyOrderBy()).toEqual({ createdAt: 'asc' });
+  });
+
+  it('findAll(): без sort-параметрів → orderBy { createdAt: desc }', async () => {
+    await service.findAll(ORG, 1, 20);
+    expect(findManyOrderBy()).toEqual({ createdAt: 'desc' });
+  });
 });

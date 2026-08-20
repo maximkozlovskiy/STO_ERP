@@ -40,6 +40,8 @@ export class SupplierPaymentsService {
     showDeleted = false,
     dateFrom?: string,
     dateTo?: string,
+    sortBy?: string,
+    sortDir?: 'asc' | 'desc',
   ): Promise<PaginatedSupplierPaymentsDto> {
     const where: Prisma.SupplierPaymentWhereInput = {
       orgId,
@@ -79,13 +81,23 @@ export class SupplierPaymentsService {
       };
     }
 
+    // Whitelist сортування — ключ із запиту → реальне поле БД. Fallback createdAt.
+    const SORT_FIELDS: Record<string, string> = {
+      number: 'number',
+      amount: 'amount',
+      documentDate: 'documentDate',
+      createdAt: 'createdAt',
+    };
+    const sortField = SORT_FIELDS[sortBy ?? ''] ?? 'createdAt';
+    const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
+
     const { skip, take } = calculatePagination({ page, limit });
     const [items, total] = await Promise.all([
       this.prisma.supplierPayment.findMany({
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortField]: sortOrder },
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           bankAccount: { select: { name: true } },

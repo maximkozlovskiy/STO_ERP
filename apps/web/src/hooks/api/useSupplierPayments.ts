@@ -36,6 +36,8 @@ export interface SupplierPaymentsFilter extends Record<string, unknown> {
   showDeleted?: boolean;
   dateFrom?: string;
   dateTo?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
 }
 
 export interface CreateSupplierPaymentInput {

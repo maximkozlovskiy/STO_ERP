@@ -50,8 +50,10 @@ import {
   TableBody,
   TableRow,
   TableHead,
+  SortableHead,
   TableCell,
 } from '@/components/ui/table';
+import { useSortState } from '@/hooks/useSortState';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
@@ -120,6 +122,7 @@ function SupplierPaymentsPageInner() {
   const [dateTo, setDateTo] = useState('');
   const [selected, setSelected] = useState<SupplierPayment | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const { sort, toggle: toggleSort } = useSortState('createdAt', 'desc');
 
   const debouncedQ = useDebounce(q, 300);
 
@@ -131,6 +134,8 @@ function SupplierPaymentsPageInner() {
     showDeleted,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    sortBy: sort.sortBy,
+    sortDir: sort.sortDir,
   });
 
   const items = data?.items ?? (EMPTY_ITEMS as unknown as SupplierPayment[]);
@@ -510,15 +515,33 @@ function SupplierPaymentsPageInner() {
                     />
                   </TableHead>
                 )}
-                {visibleColumns.map(col => (
-                  <TableHead
-                    key={col.key}
-                    className={col.key === 'amount' ? 'text-right' : undefined}
-                    {...dragProps(col.key)}
-                  >
-                    {col.label}
-                  </TableHead>
-                ))}
+                {visibleColumns.map(col => {
+                  // Ключ колонки → поле сортування бекенду (whitelist SORT_FIELDS у service).
+                  const SORTABLE: Record<string, string> = {
+                    number: 'number',
+                    amount: 'amount',
+                    date: 'documentDate',
+                  };
+                  const sortKey = SORTABLE[col.key];
+                  if (sortKey)
+                    return (
+                      <SortableHead
+                        key={col.key}
+                        sortKey={sortKey}
+                        currentSort={sort}
+                        onSort={toggleSort}
+                        className={col.key === 'amount' ? 'text-right' : undefined}
+                        {...dragProps(col.key)}
+                      >
+                        {col.label}
+                      </SortableHead>
+                    );
+                  return (
+                    <TableHead key={col.key} {...dragProps(col.key)}>
+                      {col.label}
+                    </TableHead>
+                  );
+                })}
               </TableRow>
             </TableHeader>
             <TableBody>

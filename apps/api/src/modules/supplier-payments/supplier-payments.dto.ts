@@ -8,6 +8,7 @@ import {
   IsBooleanString,
   IsEnum,
   IsNumberString,
+  IsIn,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -194,4 +195,19 @@ export class SupplierPaymentQueryDto {
   @Transform(emptyToUndefined)
   @IsNumberString()
   limit?: string;
+
+  @ApiPropertyOptional({
+    description: 'Поле сортування',
+    enum: ['number', 'amount', 'documentDate', 'createdAt'],
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsIn(['number', 'amount', 'documentDate', 'createdAt'])
+  sortBy?: string;
+
+  @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsIn(['asc', 'desc'])
+  sortDir?: 'asc' | 'desc';
 }
