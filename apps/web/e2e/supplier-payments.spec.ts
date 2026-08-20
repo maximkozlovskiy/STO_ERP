@@ -357,4 +357,59 @@ test.describe('Оплати постачальникам', () => {
       { token, API, id: sp.id },
     );
   });
+
+  test('картка /supplier-payments/[id] рендерить усі поля', async ({ page }) => {
+    await page.goto('/supplier-payments');
+    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
+      timeout: 20_000,
+    });
+    const token = await getToken(page);
+    const seed = await seedSupplierAndCash(page, token);
+    expect(seed.supplierId).toBeTruthy();
+    expect(seed.cashRegisterId).toBeTruthy();
+
+    const sp = await page.evaluate(
+      async ({ token, API, supplierId, cashRegisterId }) => {
+        const r = await fetch(`${API}/supplier-payments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            supplierId,
+            sourceType: 'CASH_REGISTER',
+            cashRegisterId,
+            amount: 333,
+            method: 'cash',
+            notes: 'E2E card notes',
+          }),
+        });
+        return r.json();
+      },
+      { token, API, supplierId: seed.supplierId, cashRegisterId: seed.cashRegisterId },
+    );
+    expect(sp.id).toBeTruthy();
+
+    // Відкриваємо картку напряму за URL
+    await page.goto(`/supplier-payments/${sp.id}`);
+
+    // Заголовок = номер оплати
+    await expect(page.locator(`h1:has-text("${sp.number}")`)).toBeVisible({ timeout: 15_000 });
+    // Секція реквізитів + ключові поля
+    await expect(page.getByText('Реквізити')).toBeVisible();
+    await expect(page.getByText('Метод оплати', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('Джерело коштів', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('E2E card notes')).toBeVisible();
+    // DRAFT → кнопка "Провести" присутня
+    await expect(page.locator('button:has-text("Провести")').first()).toBeVisible();
+
+    // cleanup
+    await page.evaluate(
+      async ({ token, API, id }) => {
+        await fetch(`${API}/supplier-payments/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {});
+      },
+      { token, API, id: sp.id },
+    );
+  });
 });

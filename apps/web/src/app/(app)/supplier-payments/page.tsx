@@ -1,7 +1,8 @@
 'use client';
 
 import { Suspense, useState, useCallback, useMemo } from 'react';
-import { Plus, Wallet, Search, Eye, EyeOff, Trash2, Check, Ban } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Plus, Wallet, Search, Eye, EyeOff, Trash2, Check, Ban, ExternalLink } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRequireAuth } from '@/lib/auth';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -88,6 +89,7 @@ function SupplierPaymentsPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
   const { confirm, dialogProps } = useConfirm();
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const {
     page,
@@ -628,6 +630,15 @@ function SupplierPaymentsPageInner() {
                   hidden={f.hidden}
                 />
               ))}
+
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<ExternalLink className="h-4 w-4" />}
+                onClick={() => router.push(`/supplier-payments/${selected.id}`)}
+              >
+                Відкрити картку
+              </Button>
 
               {!selected.deletedAt && (
                 <PanelSection title="Дії">
