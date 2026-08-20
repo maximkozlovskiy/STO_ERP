@@ -74,6 +74,10 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [poPickerOpen, setPoPickerOpen] = useState(false);
   const mountedRef = useRef(true);
+  // Auto-select single source має спрацювати РАЗ на джерело (коли завантажився
+  // список), а не після кожного рендера — інакше повторно вибирає щойно очищене
+  // користувачем поле «— Оберіть —» і його неможливо лишити порожнім.
+  const autoSelectedRef = useRef<{ cash: boolean; bank: boolean }>({ cash: false, bank: false });
 
   useEffect(() => {
     mountedRef.current = true;
@@ -85,23 +89,26 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
   // ── Reference data ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return;
-    const cachedBanks = getCached<BankAccount[]>('cache:bank-accounts');
-    const cachedCash = getCached<CashRegister[]>('cache:cash-registers');
-    if (cachedBanks) setBanks(cachedBanks);
-    if (cachedCash) setCashRegisters(cachedCash);
+    // Кеш зберігається у формі { items } — та сама що у /ndi BankAccountsTab/
+    // CashRegistersTab. Читати ЛИШЕ через Array.isArray guard: чужа/стара форма
+    // (голий масив або items=undefined) інакше потрапить у banks.map → crash (Bug #592).
+    const cachedBanks = getCached<{ items: BankAccount[] }>('cache:bank-accounts');
+    if (cachedBanks && Array.isArray(cachedBanks.items)) setBanks(cachedBanks.items);
+    const cachedCash = getCached<{ items: CashRegister[] }>('cache:cash-registers');
+    if (cachedCash && Array.isArray(cachedCash.items)) setCashRegisters(cachedCash.items);
 
     apiFetch<{ items: BankAccount[] }>('/bank-accounts')
-      .then(({ items }) => {
+      .then(res => {
         if (!mountedRef.current) return;
-        setCache('cache:bank-accounts', items);
-        setBanks(items);
+        setCache('cache:bank-accounts', res);
+        setBanks(res.items);
       })
       .catch(() => {});
     apiFetch<{ items: CashRegister[] }>('/cash-registers')
-      .then(({ items }) => {
+      .then(res => {
         if (!mountedRef.current) return;
-        setCache('cache:cash-registers', items);
-        setCashRegisters(items);
+        setCache('cache:cash-registers', res);
+        setCashRegisters(res.items);
       })
       .catch(() => {});
     apiFetch<PaymentMethod[]>('/payment-methods')
@@ -112,15 +119,23 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
       .catch(() => {});
   }, [open]);
 
-  // Auto-select single source / default method
+  // Auto-select single source — раз на джерело коли список прибув.
+  // Не читає cashRegisterId/bankAccountId у deps, щоб не перевибирати
+  // щойно очищене користувачем поле.
   useEffect(() => {
-    if (sourceType === 'CASH_REGISTER' && cashRegisters.length === 1 && !cashRegisterId) {
+    if (
+      sourceType === 'CASH_REGISTER' &&
+      cashRegisters.length === 1 &&
+      !autoSelectedRef.current.cash
+    ) {
+      autoSelectedRef.current.cash = true;
       setCashRegisterId(cashRegisters[0].id);
     }
-    if (sourceType === 'BANK_ACCOUNT' && banks.length === 1 && !bankAccountId) {
+    if (sourceType === 'BANK_ACCOUNT' && banks.length === 1 && !autoSelectedRef.current.bank) {
+      autoSelectedRef.current.bank = true;
       setBankAccountId(banks[0].id);
     }
-  }, [sourceType, cashRegisters, banks, cashRegisterId, bankAccountId]);
+  }, [sourceType, cashRegisters, banks]);
 
   useEffect(() => {
     if (methods.length > 0 && !method) setMethod(methods[0].code);
@@ -139,6 +154,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
     setNotes('');
     setDocumentDate(kyivToday());
     setError('');
+    autoSelectedRef.current = { cash: false, bank: false };
   }, []);
 
   useEffect(() => {

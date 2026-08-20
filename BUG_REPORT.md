@@ -3,6 +3,33 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-08-20 — Code review feat/supplier-payments
+
+### Bug #593 — HIGH frontend / cache-shape conflict / same key, two shapes
+
+- **Сигнал:** знайдено code review (high effort). `SupplierPaymentCreateModal` ділить
+  sessionStorage-ключі `cache:bank-accounts` / `cache:cash-registers` з `/ndi`
+  `BankAccountsTab` та `CashRegistersTab`, АЛЕ використовував **несумісну форму**:
+  таби пишуть/читають `{ items: [...] }`, а модалка — **голий масив**.
+- **Файл:** `apps/web/src/components/ui/SupplierPaymentCreateModal.tsx:88-106`.
+- **Root cause:** дві сторони пишуть різні форми у той самий ключ. Коли таб записав
+  `{ items }`, а модалка читає `getCached<BankAccount[]>(...)` → отримує об'єкт (truthy) →
+  `setBanks({items:[...]})` кладе не-масив у state. Якщо фоновий `apiFetch('/bank-accounts')`
+  падає (offline — first-class сценарій offline-first ERP; `.catch(() => {})` ковтає),
+  і користувач перемикає джерело на «Банківський рахунок» → `banks.map(...)` → crash.
+  Зворотний бік: модалка пише голий масив → `cachedBa.items` у табі = undefined → кеш
+  тихо ігнорується. Це той самий клас що Bug #592, переспливлий у новий компонент.
+- **Fix:** модалка тепер читає `{ items }` з `Array.isArray(cached.items)` guard і пише
+  `{ items }` (той самий контракт що таби + API-відповідь). Плюс два супутні:
+  - auto-select single source тепер спрацьовує РАЗ на джерело (через `autoSelectedRef`),
+    а не після кожного рендера → перестав перевибирати щойно очищене поле «— Оберіть —».
+- **Регресія-guard:** новий `SupplierPaymentCreateModal.test.tsx` (3 кейси): { items }-форма
+  з таба + offline не крашиться, голий масив не крашиться, модалка пише канонічну { items }.
+- **Severity:** HIGH — crash модалки оплати постачальнику при спільному кеші + offline.
+- **Де ще шукати:** будь-які два компоненти що ділять `cache:*` ключ але пишуть різну форму.
+  Довгостроково — валідувати/нормалізувати форму у самому `ref-cache.ts:getCached`.
+- **Статус:** [x] виправлено.
+
 ## Session 2026-07-04 — Runtime crash /ndi BankAccountsTab
 
 ### Bug #592 — HIGH frontend / cache-shape drift / Runtime TypeError
