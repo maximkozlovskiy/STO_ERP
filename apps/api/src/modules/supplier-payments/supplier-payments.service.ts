@@ -81,15 +81,18 @@ export class SupplierPaymentsService {
       };
     }
 
-    // Whitelist сортування — ключ із запиту → реальне поле БД. Fallback createdAt.
+    // Whitelist сортування — ключ із запиту → реальне поле БД.
     const SORT_FIELDS: Record<string, string> = {
       number: 'number',
       amount: 'amount',
       documentDate: 'documentDate',
       createdAt: 'createdAt',
     };
-    const sortField = SORT_FIELDS[sortBy ?? ''] ?? 'createdAt';
-    const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
+    // Невідоме поле → повний fallback на дефолт (createdAt desc), включно з напрямом:
+    // напрям без валідного поля не має сенсу, інакше garbage sortBy тихо міняє порядок.
+    const known = sortBy != null && sortBy in SORT_FIELDS;
+    const sortField = known ? SORT_FIELDS[sortBy] : 'createdAt';
+    const sortOrder = known && sortDir === 'asc' ? 'asc' : 'desc';
 
     const { skip, take } = calculatePagination({ page, limit });
     const [items, total] = await Promise.all([

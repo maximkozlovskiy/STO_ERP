@@ -242,16 +242,33 @@ function SupplierPaymentsPageInner() {
 
   const bulkDeleteSelected = useCallback(
     async (ids: string[]) => {
+      // Видаляти можна лише DRAFT/CANCELLED — CONFIRMED сервер відхиляє.
+      // Фільтруємо ДО запитів, щоб не показувати розмите "M не вдалось" на проведених.
+      const byId = new Map(items.map(sp => [sp.id, sp]));
+      const deletable = ids.filter(id => {
+        const sp = byId.get(id);
+        return sp && sp.status !== 'CONFIRMED';
+      });
+      const skipped = ids.length - deletable.length;
+
+      if (deletable.length === 0) {
+        toast.warning('Проведені оплати не можна видалити');
+        return;
+      }
       if (
         !(await confirm({
-          title: `Видалити ${ids.length} оплат?`,
+          title: `Видалити ${deletable.length} оплат?`,
+          message:
+            skipped > 0
+              ? `${skipped} проведених оплат буде пропущено (їх не можна видалити).`
+              : undefined,
           confirmLabel: 'Видалити',
           variant: 'destructive',
         }))
       )
         return;
       const results = await Promise.allSettled(
-        ids.map(id => apiFetch(`/supplier-payments/${id}`, { method: 'DELETE' })),
+        deletable.map(id => apiFetch(`/supplier-payments/${id}`, { method: 'DELETE' })),
       );
       const succeeded = results.filter(r => r.status === 'fulfilled').length;
       const failed = results.length - succeeded;
@@ -264,7 +281,7 @@ function SupplierPaymentsPageInner() {
         else toast.error('Не вдалося видалити оплати');
       }
     },
-    [confirm, bulkSelect, features.toastEnabled, queryClient],
+    [confirm, bulkSelect, features.toastEnabled, queryClient, items],
   );
 
   const bulkActions = useMemo<BulkAction[]>(
@@ -631,14 +648,17 @@ function SupplierPaymentsPageInner() {
                 />
               ))}
 
-              <Button
-                variant="outline"
-                size="sm"
-                leftIcon={<ExternalLink className="h-4 w-4" />}
-                onClick={() => router.push(`/supplier-payments/${selected.id}`)}
-              >
-                Відкрити картку
-              </Button>
+              {/* Видалену оплату не можна відкрити — findOne фільтрує deletedAt:null → 404. */}
+              {!selected.deletedAt && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<ExternalLink className="h-4 w-4" />}
+                  onClick={() => router.push(`/supplier-payments/${selected.id}`)}
+                >
+                  Відкрити картку
+                </Button>
+              )}
 
               {!selected.deletedAt && (
                 <PanelSection title="Дії">

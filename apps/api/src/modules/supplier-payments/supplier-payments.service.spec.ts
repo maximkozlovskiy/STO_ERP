@@ -450,7 +450,25 @@ describe('SupplierPaymentsService — regression guards', () => {
       'DROP TABLE',
       'asc',
     );
-    // Whitelist відкидає невідоме поле → createdAt; напрям зберігається (asc валідний).
+    // Невідоме поле → повний fallback createdAt desc; asc ігнорується
+    // (напрям без валідного поля не має сенсу, інакше garbage sortBy тихо міняє порядок).
+    expect(findManyOrderBy()).toEqual({ createdAt: 'desc' });
+  });
+
+  it('findAll(): валідне поле + asc зберігає напрям (createdAt asc)', async () => {
+    await service.findAll(
+      ORG,
+      1,
+      20,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      'createdAt',
+      'asc',
+    );
     expect(findManyOrderBy()).toEqual({ createdAt: 'asc' });
   });
 
