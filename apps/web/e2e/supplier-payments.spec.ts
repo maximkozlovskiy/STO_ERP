@@ -484,4 +484,60 @@ test.describe('Оплати постачальникам', () => {
       { token, API, id: sp.id },
     );
   });
+
+  test('олівець у рядку DRAFT → одразу модалка редагування (без переходу на картку)', async ({
+    page,
+  }) => {
+    await page.goto('/supplier-payments');
+    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
+      timeout: 20_000,
+    });
+    const token = await getToken(page);
+    const seed = await seedSupplierAndCash(page, token);
+    expect(seed.cashRegisterId).toBeTruthy();
+
+    const sp = await page.evaluate(
+      async ({ token, API, supplierId, cashRegisterId }) => {
+        const r = await fetch(`${API}/supplier-payments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            supplierId,
+            sourceType: 'CASH_REGISTER',
+            cashRegisterId,
+            amount: 111,
+            method: 'cash',
+          }),
+        });
+        return r.json();
+      },
+      { token, API, supplierId: seed.supplierId, cashRegisterId: seed.cashRegisterId },
+    );
+    expect(sp.id).toBeTruthy();
+
+    await page.goto('/supplier-payments');
+    await clearDateFilter(page);
+    const row = page.locator(`table tbody tr:has-text("${sp.number}")`).first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+
+    // Клік олівця у рядку DRAFT → модалка редагування (URL лишається на списку)
+    await row.hover();
+    await row.getByRole('button', { name: `Редагувати оплату ${sp.number}` }).click();
+    await expect(page.getByText('Редагувати оплату')).toBeVisible({ timeout: 10_000 });
+    // Не перейшли на картку — URL усе ще список (Next.js static export додає trailing slash;
+    // картка була б /supplier-payments/<uuid>).
+    await expect(page).toHaveURL(/\/supplier-payments\/?(\?.*)?$/);
+    // Поле суми передзаповнене
+    await expect(page.getByLabel('Сума, ₴')).toHaveValue('111');
+
+    await page.evaluate(
+      async ({ token, API, id }) => {
+        await fetch(`${API}/supplier-payments/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {});
+      },
+      { token, API, id: sp.id },
+    );
+  });
 });

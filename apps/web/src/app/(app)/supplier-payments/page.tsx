@@ -124,6 +124,7 @@ function SupplierPaymentsPageInner() {
   const [dateTo, setDateTo] = useState('');
   const [selected, setSelected] = useState<SupplierPayment | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const { sort, toggle: toggleSort } = useSortState('createdAt', 'desc');
 
   const debouncedQ = useDebounce(q, 300);
@@ -628,9 +629,18 @@ function SupplierPaymentsPageInner() {
                             variant="ghost"
                             size="icon-sm"
                             title={sp.status === 'DRAFT' ? 'Редагувати' : 'Відкрити картку'}
-                            aria-label={`Відкрити оплату ${sp.number}`}
+                            aria-label={
+                              sp.status === 'DRAFT'
+                                ? `Редагувати оплату ${sp.number}`
+                                : `Відкрити оплату ${sp.number}`
+                            }
                             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            onClick={() => router.push(`/supplier-payments/${sp.id}`)}
+                            onClick={() =>
+                              // DRAFT → одразу редагування у модалці; інші статуси → картка (перегляд).
+                              sp.status === 'DRAFT'
+                                ? setEditingId(sp.id)
+                                : router.push(`/supplier-payments/${sp.id}`)
+                            }
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -739,6 +749,14 @@ function SupplierPaymentsPageInner() {
         open={showCreate}
         onClose={() => setShowCreate(false)}
         onSaved={() => setPage(1)}
+      />
+
+      {/* Редагування DRAFT прямо зі списку (олівець у рядку) */}
+      <SupplierPaymentCreateModal
+        open={!!editingId}
+        paymentId={editingId ?? undefined}
+        onClose={() => setEditingId(null)}
+        onSaved={() => setEditingId(null)}
       />
 
       <ConfirmDialog {...dialogProps} />
