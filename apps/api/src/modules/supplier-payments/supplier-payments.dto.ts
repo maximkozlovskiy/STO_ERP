@@ -160,6 +160,12 @@ export class SupplierPaymentQueryDto {
   @IsUUID()
   supplierId?: string;
 
+  @ApiPropertyOptional({ description: 'Фільтр за замовленням постачальнику' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  purchaseOrderId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)

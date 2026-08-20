@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/lib/auth';
-import { Check, Ban, Trash2, ExternalLink } from 'lucide-react';
+import { Check, Ban, Trash2, ExternalLink, Pencil } from 'lucide-react';
+import { SupplierPaymentCreateModal } from '@/components/ui/SupplierPaymentCreateModal';
 import {
   useSupplierPayment,
   useConfirmSupplierPayment,
@@ -49,6 +51,7 @@ export default function SupplierPaymentCardPage() {
   const confirmMut = useConfirmSupplierPayment();
   const cancelMut = useCancelSupplierPayment();
   const deleteMut = useDeleteSupplierPayment();
+  const [editOpen, setEditOpen] = useState(false);
 
   const handleConfirm = async (payment: SupplierPayment) => {
     const ok = await confirm({
@@ -217,6 +220,14 @@ export default function SupplierPaymentCardPage() {
               </Button>
               <Button
                 variant="outline"
+                leftIcon={<Pencil className="h-4 w-4" />}
+                disabled={isPending}
+                onClick={() => setEditOpen(true)}
+              >
+                Редагувати
+              </Button>
+              <Button
+                variant="outline"
                 leftIcon={<Ban className="h-4 w-4" />}
                 loading={cancelMut.isPending}
                 disabled={isPending}
@@ -238,6 +249,13 @@ export default function SupplierPaymentCardPage() {
           </Button>
         </div>
       )}
+
+      <SupplierPaymentCreateModal
+        open={editOpen}
+        paymentId={sp.id}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => setEditOpen(false)}
+      />
 
       <ConfirmDialog {...dialogProps} />
     </div>

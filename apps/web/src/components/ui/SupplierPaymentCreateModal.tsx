@@ -14,7 +14,11 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal } from '@/components/ui/search-picker-modal';
-import type { PaymentSourceType } from '@/hooks/api/useSupplierPayments';
+import {
+  useSupplierPayment,
+  useUpdateSupplierPayment,
+  type PaymentSourceType,
+} from '@/hooks/api/useSupplierPayments';
 
 interface Supplier {
   id: string;
@@ -44,14 +48,29 @@ interface PurchaseOrderRef {
   number: string;
 }
 
+/** Передзаповнення при створенні оплати з іншого документа (напр. PurchaseOrder). */
+export interface SupplierPaymentPrefill {
+  supplierId?: string;
+  supplierName?: string;
+  purchaseOrderId?: string;
+  purchaseOrderNumber?: string;
+  /** Сума-підказка (напр. залишок боргу по PO). Користувач може відкоригувати. */
+  amount?: number;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
+  /** Якщо задано — режим редагування наявної DRAFT-оплати (PATCH). */
+  paymentId?: string;
+  /** Передзаповнення при створенні (ігнорується у режимі редагування). */
+  prefill?: SupplierPaymentPrefill;
 }
 
-export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
+export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, prefill }: Props) {
   const features = useUiFeatures();
+  const isEdit = !!paymentId;
 
   const [supplierId, setSupplierId] = useState('');
   const [supplierName, setSupplierName] = useState('');
@@ -85,6 +104,45 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
       mountedRef.current = false;
     };
   }, []);
+
+  const updateMut = useUpdateSupplierPayment();
+
+  // Режим редагування — тягнемо наявну оплату для заповнення форми.
+  const { data: existing } = useSupplierPayment(isEdit && open ? paymentId! : null);
+  const editNonDraft = isEdit && existing != null && existing.status !== 'DRAFT';
+
+  // Заповнення форми з наявної оплати (edit) — раз на завантаження запису.
+  const populatedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open || !isEdit || !existing) return;
+    if (populatedRef.current === existing.id) return;
+    populatedRef.current = existing.id;
+    setSupplierId(existing.supplierId);
+    setSupplierName(existing.supplierName ?? '');
+    setSourceType(existing.sourceType);
+    setBankAccountId(existing.bankAccountId ?? '');
+    setCashRegisterId(existing.cashRegisterId ?? '');
+    setPurchaseOrderId(existing.purchaseOrderId ?? '');
+    setPurchaseOrderNumber(existing.purchaseOrderNumber ?? '');
+    setAmount(String(existing.amount));
+    setMethod(existing.method);
+    setNotes(existing.notes ?? '');
+    setDocumentDate(existing.documentDate ?? kyivToday());
+    // джерело вже обрано з запису — не даємо auto-select перезаписати
+    autoSelectedRef.current = { cash: true, bank: true };
+  }, [open, isEdit, existing]);
+
+  // Передзаповнення при створенні з іншого документа (напр. PurchaseOrder).
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (!open || isEdit || !prefill || prefilledRef.current) return;
+    prefilledRef.current = true;
+    if (prefill.supplierId) setSupplierId(prefill.supplierId);
+    if (prefill.supplierName) setSupplierName(prefill.supplierName);
+    if (prefill.purchaseOrderId) setPurchaseOrderId(prefill.purchaseOrderId);
+    if (prefill.purchaseOrderNumber) setPurchaseOrderNumber(prefill.purchaseOrderNumber);
+    if (prefill.amount != null && prefill.amount > 0) setAmount(String(prefill.amount));
+  }, [open, isEdit, prefill]);
 
   // ── Reference data ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -155,6 +213,8 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
     setDocumentDate(kyivToday());
     setError('');
     autoSelectedRef.current = { cash: false, bank: false };
+    populatedRef.current = null;
+    prefilledRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -186,22 +246,28 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
     }
     setError('');
     setSaving(true);
+    const payload = {
+      supplierId,
+      sourceType,
+      bankAccountId: sourceType === 'BANK_ACCOUNT' ? bankAccountId : undefined,
+      cashRegisterId: sourceType === 'CASH_REGISTER' ? cashRegisterId : undefined,
+      purchaseOrderId: purchaseOrderId || undefined,
+      amount: amt,
+      method,
+      notes: notes || undefined,
+      documentDate,
+    };
     try {
-      await apiFetch('/supplier-payments', {
-        method: 'POST',
-        body: JSON.stringify({
-          supplierId,
-          sourceType,
-          bankAccountId: sourceType === 'BANK_ACCOUNT' ? bankAccountId : undefined,
-          cashRegisterId: sourceType === 'CASH_REGISTER' ? cashRegisterId : undefined,
-          purchaseOrderId: purchaseOrderId || undefined,
-          amount: amt,
-          method,
-          notes: notes || undefined,
-          documentDate,
-        }),
-      });
-      if (features.toastEnabled) toast.success('Оплату створено');
+      if (isEdit) {
+        await updateMut.mutateAsync({ id: paymentId!, data: payload });
+        if (features.toastEnabled) toast.success('Оплату оновлено');
+      } else {
+        await apiFetch('/supplier-payments', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        if (features.toastEnabled) toast.success('Оплату створено');
+      }
       onSaved();
       onClose();
     } catch (e) {
@@ -224,6 +290,9 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
     features.toastEnabled,
     onSaved,
     onClose,
+    isEdit,
+    paymentId,
+    updateMut,
   ]);
 
   return (
@@ -231,7 +300,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
       <Modal
         open={open}
         onClose={onClose}
-        title="Нова оплата постачальнику"
+        title={isEdit ? 'Редагувати оплату' : 'Нова оплата постачальнику'}
         size="lg"
         footer={
           <div className="flex gap-2 items-center justify-end w-full">
@@ -241,15 +310,21 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved }: Props) {
             <Button
               onClick={handleSave}
               loading={saving}
-              disabled={saving || !supplierId}
+              disabled={saving || !supplierId || editNonDraft}
               size="sm"
             >
-              Створити оплату
+              {isEdit ? 'Зберегти' : 'Створити оплату'}
             </Button>
           </div>
         }
       >
         <div className="space-y-4">
+          {editNonDraft && (
+            <div className="text-[13px] text-warning bg-warning-subtle border border-warning/30 rounded-lg px-3 py-2">
+              Редагування дозволено лише у статусі «Чернетка». Ця оплата вже проведена або
+              скасована.
+            </div>
+          )}
           {error && (
             <div className="text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2">
               {error}

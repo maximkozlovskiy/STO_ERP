@@ -412,4 +412,76 @@ test.describe('Оплати постачальникам', () => {
       { token, API, id: sp.id },
     );
   });
+
+  test('редагування DRAFT-оплати з картки → PATCH змінює суму', async ({ page }) => {
+    await page.goto('/supplier-payments');
+    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
+      timeout: 20_000,
+    });
+    const token = await getToken(page);
+    const seed = await seedSupplierAndCash(page, token);
+    expect(seed.cashRegisterId).toBeTruthy();
+
+    const sp = await page.evaluate(
+      async ({ token, API, supplierId, cashRegisterId }) => {
+        const r = await fetch(`${API}/supplier-payments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            supplierId,
+            sourceType: 'CASH_REGISTER',
+            cashRegisterId,
+            amount: 111,
+            method: 'cash',
+          }),
+        });
+        return r.json();
+      },
+      { token, API, supplierId: seed.supplierId, cashRegisterId: seed.cashRegisterId },
+    );
+    expect(sp.id).toBeTruthy();
+
+    await page.goto(`/supplier-payments/${sp.id}`);
+    await expect(page.locator(`h1:has-text("${sp.number}")`)).toBeVisible({ timeout: 15_000 });
+
+    // Клік "Редагувати" → модалка edit-mode
+    await page.locator('button:has-text("Редагувати")').first().click();
+    await expect(page.getByText('Редагувати оплату')).toBeVisible({ timeout: 10_000 });
+
+    // Змінити суму → Зберегти (PATCH). Поле суми — text+inputMode=decimal (UA-кома),
+    // не type="number"; шукаємо за міткою «Сума, ₴».
+    const amountInput = page.getByLabel('Сума, ₴');
+    await expect(amountInput).toHaveValue('111', { timeout: 10_000 });
+    await amountInput.fill('222');
+    await page.locator('button:has-text("Зберегти")').first().click();
+
+    // Перевірка через API: сума оновилась, статус лишився DRAFT
+    await expect
+      .poll(
+        async () => {
+          const updated = await page.evaluate(
+            async ({ token, API, id }) => {
+              const r = await fetch(`${API}/supplier-payments/${id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              return r.json();
+            },
+            { token, API, id: sp.id },
+          );
+          return `${updated.amount}:${updated.status}`;
+        },
+        { timeout: 10_000, message: 'PATCH має оновити суму до 222, статус DRAFT' },
+      )
+      .toBe('222:DRAFT');
+
+    await page.evaluate(
+      async ({ token, API, id }) => {
+        await fetch(`${API}/supplier-payments/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {});
+      },
+      { token, API, id: sp.id },
+    );
+  });
 });

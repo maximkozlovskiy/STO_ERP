@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Wallet, Search, Eye, EyeOff, Trash2, Check, Ban, ExternalLink } from 'lucide-react';
+import { Plus, Wallet, Search, Eye, EyeOff, Trash2, Check, Ban, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRequireAuth } from '@/lib/auth';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -561,13 +561,14 @@ function SupplierPaymentsPageInner() {
                     </TableHead>
                   );
                 })}
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading && (
                 <TableRow>
                   <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 1 : 0)}
+                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
                     className="py-12 text-center"
                   >
                     <div className="flex justify-center">
@@ -580,7 +581,7 @@ function SupplierPaymentsPageInner() {
               {!isLoading && items.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 1 : 0)}
+                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
                     className="p-0"
                   >
                     <EmptyState
@@ -619,6 +620,36 @@ function SupplierPaymentsPageInner() {
                       </TableCell>
                     )}
                     {visibleColumns.map(col => renderCell(sp, col.key))}
+                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        {!sp.deletedAt && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            title={sp.status === 'DRAFT' ? 'Редагувати' : 'Відкрити картку'}
+                            aria-label={`Відкрити оплату ${sp.number}`}
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                            onClick={() => router.push(`/supplier-payments/${sp.id}`)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {!sp.deletedAt && sp.status !== 'CONFIRMED' && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            title="Помітити на видалення"
+                            aria-label={`Видалити оплату ${sp.number}`}
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => void handleDelete(sp)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
             </TableBody>
@@ -647,18 +678,6 @@ function SupplierPaymentsPageInner() {
                   hidden={f.hidden}
                 />
               ))}
-
-              {/* Видалену оплату не можна відкрити — findOne фільтрує deletedAt:null → 404. */}
-              {!selected.deletedAt && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  leftIcon={<ExternalLink className="h-4 w-4" />}
-                  onClick={() => router.push(`/supplier-payments/${selected.id}`)}
-                >
-                  Відкрити картку
-                </Button>
-              )}
 
               {!selected.deletedAt && (
                 <PanelSection title="Дії">

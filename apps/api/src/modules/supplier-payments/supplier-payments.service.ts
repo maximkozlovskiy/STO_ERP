@@ -42,12 +42,14 @@ export class SupplierPaymentsService {
     dateTo?: string,
     sortBy?: string,
     sortDir?: 'asc' | 'desc',
+    purchaseOrderId?: string,
   ): Promise<PaginatedSupplierPaymentsDto> {
     const where: Prisma.SupplierPaymentWhereInput = {
       orgId,
       ...(showDeleted ? {} : { deletedAt: null }),
     };
     if (status) where.status = status;
+    if (purchaseOrderId) where.purchaseOrderId = purchaseOrderId;
     if (supplierId) {
       // cross-tenant guard: постачальник має належати цій org
       const cp = await this.prisma.counterparty.findFirst({

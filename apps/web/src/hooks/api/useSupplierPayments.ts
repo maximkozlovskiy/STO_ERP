@@ -32,6 +32,7 @@ export interface SupplierPaymentsFilter extends Record<string, unknown> {
   limit?: number;
   status?: string;
   supplierId?: string;
+  purchaseOrderId?: string;
   q?: string;
   showDeleted?: boolean;
   dateFrom?: string;
@@ -87,6 +88,21 @@ export function useCreateSupplierPayment() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+    },
+  });
+}
+
+export function useUpdateSupplierPayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<CreateSupplierPaymentInput> }) =>
+      apiFetch<SupplierPayment>(`/supplier-payments/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_, { id }) => {
+      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.detail(id) });
     },
   });
 }

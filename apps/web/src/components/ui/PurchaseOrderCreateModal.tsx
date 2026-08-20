@@ -17,6 +17,7 @@ import {
   X,
   Zap,
   PackageCheck,
+  Wallet,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -41,6 +42,11 @@ import {
 } from '@/components/ui/CounterpartyEditModal';
 import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
 import type { CategoryNode } from '@/components/ui/category-tree';
+import {
+  SupplierPaymentCreateModal,
+  type SupplierPaymentPrefill,
+} from '@/components/ui/SupplierPaymentCreateModal';
+import type { SupplierPayment } from '@/hooks/api/useSupplierPayments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -211,6 +217,8 @@ export function PurchaseOrderCreateModal({
   const [pricingRulesLoading, setPricingRulesLoading] = useState(false);
   const [ruleFilterBySupplier, setRuleFilterBySupplier] = useState(true);
   const [error, setError] = useState('');
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentPrefill, setPaymentPrefill] = useState<SupplierPaymentPrefill | null>(null);
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
   const [supplierDetailData, setSupplierDetailData] = useState<CounterpartyForModal | null>(null);
@@ -572,6 +580,33 @@ export function PurchaseOrderCreateModal({
     if (vatMode === 'EXCLUSIVE') return (total * vatRate) / 100;
     return total - total / (1 + vatRate / 100);
   }, [total, vatMode, vatRate]);
+
+  // Оплатити постачальнику по цьому замовленню — передзаповнюємо постачальника,
+  // PO та ЗАЛИШОК БОРГУ (totalAmount − сума проведених оплат по цьому PO).
+  const openPayment = useCallback(async () => {
+    if (!activePOId) return;
+    let remaining = total; // fallback — сума позицій
+    try {
+      const [po, paymentsRes] = await Promise.all([
+        apiFetch<{ totalAmount: number }>(`/purchase-orders/${activePOId}`),
+        apiFetch<{ items: SupplierPayment[] }>(
+          `/supplier-payments?purchaseOrderId=${activePOId}&status=CONFIRMED&limit=100`,
+        ),
+      ]);
+      const paid = paymentsRes.items.reduce((sum, p) => sum + Number(p.amount), 0);
+      remaining = Math.max(0, Number(po.totalAmount) - paid);
+    } catch {
+      // мережа/офлайн — лишаємо fallback (сума позицій), користувач відкоригує
+    }
+    setPaymentPrefill({
+      supplierId: form.supplierId || undefined,
+      supplierName: supplierDisplay || undefined,
+      purchaseOrderId: activePOId,
+      purchaseOrderNumber: poNumber || undefined,
+      amount: remaining > 0 ? remaining : undefined,
+    });
+    setPaymentOpen(true);
+  }, [activePOId, total, form.supplierId, supplierDisplay, poNumber]);
 
   const lineSubtotal = (qty: string, price: string) =>
     (parseFloat(qty) || 0) * (parseFloat(price) || 0);
@@ -955,6 +990,18 @@ export function PurchaseOrderCreateModal({
               )}
             </div>
             <div className="flex gap-2 items-center flex-wrap">
+              {isEditMode && currentStatus !== 'CANCELLED' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void openPayment()}
+                  disabled={saving || transitioning}
+                  title="Створити оплату постачальнику по цьому замовленню"
+                >
+                  <Wallet size={15} className="mr-1" />
+                  Оплатити
+                </Button>
+              )}
               {isEditMode && (
                 <>
                   <Button
@@ -1841,6 +1888,14 @@ export function PurchaseOrderCreateModal({
           )}
         </div>
       </Modal>
+
+      {/* Оплата постачальнику по цьому замовленню */}
+      <SupplierPaymentCreateModal
+        open={paymentOpen}
+        prefill={paymentPrefill ?? undefined}
+        onClose={() => setPaymentOpen(false)}
+        onSaved={() => setPaymentOpen(false)}
+      />
     </>
   );
 }

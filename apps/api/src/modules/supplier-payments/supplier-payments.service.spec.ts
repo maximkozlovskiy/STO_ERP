@@ -403,6 +403,33 @@ describe('SupplierPaymentsService — regression guards', () => {
     ).orderBy;
   }
 
+  function findManyWhere() {
+    return (
+      prisma.supplierPayment.findMany.mock.calls[0]![0] as {
+        where: Record<string, unknown>;
+      }
+    ).where;
+  }
+
+  it('findAll(): purchaseOrderId → where.purchaseOrderId (фільтр по замовленню)', async () => {
+    const PO_ID = '55555555-5555-4555-8555-555555555555';
+    await service.findAll(
+      ORG,
+      1,
+      20,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      PO_ID,
+    );
+    expect(findManyWhere()).toMatchObject({ orgId: ORG, purchaseOrderId: PO_ID });
+  });
+
   it('findAll(): валідний sortBy=amount + sortDir=asc → orderBy { amount: asc }', async () => {
     await service.findAll(
       ORG,

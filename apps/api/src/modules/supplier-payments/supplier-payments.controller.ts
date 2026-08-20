@@ -59,6 +59,7 @@ export class SupplierPaymentsController {
       query.dateTo,
       query.sortBy,
       query.sortDir,
+      query.purchaseOrderId,
     );
   }
 
