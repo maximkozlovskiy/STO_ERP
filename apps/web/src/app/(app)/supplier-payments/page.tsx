@@ -86,6 +86,15 @@ const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> =
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
 
+// Whitelist сортовних колонок → поле бекенду (SP_SORT_FIELDS у service). Module-level:
+// раніше об'єкт створювався всередині visibleColumns.map() — тобто на кожен render
+// колонок × render родителя (typing у filter Input тригерить hot-path алокацію).
+const SP_SORTABLE_BY_COL: Record<string, string> = {
+  number: 'number',
+  amount: 'amount',
+  date: 'documentDate',
+};
+
 function SupplierPaymentsPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
   const { confirm, dialogProps } = useConfirm();
@@ -578,13 +587,7 @@ function SupplierPaymentsPageInner() {
                       </TableHead>
                     )}
                     {visibleColumns.map(col => {
-                      // Ключ колонки → поле сортування бекенду (whitelist SORT_FIELDS у service).
-                      const SORTABLE: Record<string, string> = {
-                        number: 'number',
-                        amount: 'amount',
-                        date: 'documentDate',
-                      };
-                      const sortKey = SORTABLE[col.key];
+                      const sortKey = SP_SORTABLE_BY_COL[col.key];
                       if (sortKey)
                         return (
                           <SortableHead

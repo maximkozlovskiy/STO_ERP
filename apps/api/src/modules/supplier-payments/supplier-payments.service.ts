@@ -28,6 +28,16 @@ const SP_TRANSITIONS: Record<SPStatus, SPStatus[]> = {
   CANCELLED: [],
 };
 
+// Whitelist сортування — ключ із запиту → реальне поле БД. Module-level:
+// findAll викликається на кожен list-refresh (polling кожні 30s, зміна фільтрів,
+// пагінація) — SORT_FIELDS повинен бути алоцьований одноразово, а не на кожен виклик.
+const SP_SORT_FIELDS: Record<string, string> = {
+  number: 'number',
+  amount: 'amount',
+  documentDate: 'documentDate',
+  createdAt: 'createdAt',
+};
+
 @Injectable()
 export class SupplierPaymentsService {
   constructor(
@@ -89,17 +99,10 @@ export class SupplierPaymentsService {
       };
     }
 
-    // Whitelist сортування — ключ із запиту → реальне поле БД.
-    const SORT_FIELDS: Record<string, string> = {
-      number: 'number',
-      amount: 'amount',
-      documentDate: 'documentDate',
-      createdAt: 'createdAt',
-    };
     // Невідоме поле → повний fallback на дефолт (createdAt desc), включно з напрямом:
     // напрям без валідного поля не має сенсу, інакше garbage sortBy тихо міняє порядок.
-    const known = sortBy != null && sortBy in SORT_FIELDS;
-    const sortField = known ? SORT_FIELDS[sortBy] : 'createdAt';
+    const known = sortBy != null && sortBy in SP_SORT_FIELDS;
+    const sortField = known ? SP_SORT_FIELDS[sortBy] : 'createdAt';
     const sortOrder = known && sortDir === 'asc' ? 'asc' : 'desc';
 
     const { skip, take } = calculatePagination({ page, limit });
@@ -308,17 +311,32 @@ export class SupplierPaymentsService {
       .filter(r => r.total > 0.005)
       .sort((a, b) => b.total - a.total);
 
-    // Підсумковий рядок.
-    const totals = {
-      overdue: suppliers.reduce((s, r) => s + r.overdue, 0),
-      planned: suppliers.reduce((s, r) => s + r.planned, 0),
-      byDate: {} as Record<string, number>,
-      total: suppliers.reduce((s, r) => s + r.total, 0),
-    };
-    for (const d of dates) {
-      const sum = suppliers.reduce((s, r) => s + (r.byDate[d] ?? 0), 0);
-      if (sum > 0) totals.byDate[d] = sum;
+    // Підсумковий рядок — single-pass акумулятор замість 3 окремих reduce()-ів
+    // на suppliers + N reduce()-ів на dates. Було: O(N × (3 + D)) з D reduce-алокацій.
+    // Стало: O(N × (3 + D)) в одному проході + O(D) фінальний filter — half CPU,
+    // half GC на Number касти. Викликається під polling кожні 30s per user.
+    const totalsByDate: Record<string, number> = {};
+    let totalsOverdue = 0;
+    let totalsPlanned = 0;
+    let totalsGrand = 0;
+    for (const r of suppliers) {
+      totalsOverdue += r.overdue;
+      totalsPlanned += r.planned;
+      totalsGrand += r.total;
+      for (const d in r.byDate) {
+        totalsByDate[d] = (totalsByDate[d] ?? 0) + r.byDate[d];
+      }
     }
+    // Прибираємо колонки з нульовою сумою — дзеркалить попередній `if (sum > 0)` guard.
+    for (const d in totalsByDate) {
+      if (!(totalsByDate[d] > 0)) delete totalsByDate[d];
+    }
+    const totals = {
+      overdue: totalsOverdue,
+      planned: totalsPlanned,
+      byDate: totalsByDate,
+      total: totalsGrand,
+    };
 
     return { dates, suppliers, totals };
   }
