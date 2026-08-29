@@ -1517,3 +1517,36 @@ Static-checks passed (0 bugs found у цих секціях):
 - **Статус:** [x] виправлено
 - **Verification:** tsc clean; повний API vitest → 992/992.
 - **Де шукати ще:** усі DTO що приймають YMD-дату як параметр — має бути `@IsDateString` (не тільки `@Matches`). Grep: `grep -rn "@Matches.*\\\\d{4}\\.*\\\\d{2}\\.*\\\\d{2}" apps/api/src/modules --include="*.dto.ts"` — для кожного match додати `@IsDateString`. Спеціально: query DTO для date-window endpoints (reports, calendar, schedule, dashboard) — silent empty result особливо небезпечний для звітів.
+
+---
+
+## Session 2026-08-30 (targeted e2e stabilisation, HEAD e7855af0) — 2 pre-existing seed-brittle E2E tests
+
+Виправлено два стабільно червоних e2e-тести, не пов'язані з поточною фічею supplier-payments. Обидва — класичний seed-brittle pattern: тест припускає стан БД (наявність ESTIMATE наряду, поточну дату), якого немає у поточному оточенні. Fix: тест сам сідить/готує передумову, не покладається на seed.
+
+### Bug #572 — HIGH e2e / seed-brittle / date-filter mismatch — `estimate-share.spec.ts:208` «work-order modal in ESTIMATE status shows Друк / Поділитись / SMS buttons»
+
+- **Файл:** `apps/web/e2e/estimate-share.spec.ts:208-271` (тест сам), `apps/web/src/app/(app)/work-orders/page.tsx:225-226` (defaults `dateFrom/dateTo = kyivToday()`), `apps/api/src/modules/work-orders/work-orders.service.ts:488-615` (`clone()` не встановлює `documentDate` → PostgreSQL `@default(now())` у сервер-TZ (UTC у Docker)).
+- **Симптом:** `getByRole('row').filter({ hasText: /Кошторис/ }).first()` не знаходиться (timeout 30s). `beforeAll` успішно сідить ESTIMATE через clone+transition (лог: `🔍 seededEstimateWoId: 66f89e6e-...`), але UI показує «Нарядів не знайдено» бо дата-фільтр 30.08.2026–30.08.2026 (Kyiv-today), а клонована WO має `documentDate = now()` у UTC = 29.08.2026 (тест зараз запускається о 21:40 UTC = 00:40 Kyiv 30-го).
+- **Причина виникнення:** `WorkOrder.documentDate DateTime @default(now()) @db.Date` у Prisma; `now()` виконується на сервері (UTC у Docker), а UI фільтр захардкоджений на Kyiv-today. Три години на добу (00:00-03:00 Kyiv) UTC-дата ≠ Kyiv-дата, і будь-який щойно створений/клонований наряд у це вікно невидимий на дефолтному view. Sibling-тест (Bug #401 у line 179-206) вже задокументував це у коментарі «фільтр по даті за замовчуванням приховує seed-наряди ≠ today» але workaround через backend замість UI.
+- **Виявлено:** прямий запуск `npx playwright test estimate-share.spec.ts:208 --workers=1 --retries=0` → screenshot показує date filter 30.08.2026 і «Нарядів не знайдено». Cross-reference з коментарем Bug #401 підтвердив root cause.
+- **Fix:** У ТЕСТІ:
+  1. `seedEstimateWorkOrder()` тепер повертає `{ id, number }` (не тільки id).
+  2. Перед пошуком row очистити обидва date-input (`fill('')` → `press('Escape')`) — це видаляє фільтр (DatePickerInput.handleInputChange:114 викликає `onChange('')`).
+  3. Замість `filter({ hasText: /Кошторис/ })` — пошук за точним номером наряду через search-box (`getByRole('textbox', { name: /Пошук за номером/i }).fill(number)`) → таблиця звужується до 1 row → стабільно.
+- **Severity:** HIGH — тест був стабільно червоний у поточному оточенні (репродукується 100%), блокував будь-який зелений run.
+- **Verification:** `npx playwright test estimate-share.spec.ts:214 --workers=1 --retries=0` → `1 passed (2.5s)`. Повний файл: 4/4 passed. Комбінований run обох spec: 9/9 passed.
+- **Де шукати ще:** будь-який e2e-тест що (а) сідить дані через API + `new Date()` документ і (б) очікує їх на UI без явного очищення date-фільтру. Grep: `grep -rn "dateFrom.*kyivToday\|documentDate.*now" apps/api/src/modules --include="*.service.ts"` — усі сутності з `@default(now()) @db.Date` вразливі. UI списки з дефолтним `dateFrom=kyivToday()`: work-orders, purchase-orders, stock-documents, invoices, supplier-payments (перевірити кожен).
+- **Статус:** [x] виправлено
+
+### Bug #573 — HIGH e2e / DST-aware timezone — `crud-calendar-slot.spec.ts:32` «створити слот через API → перевірити в timeline»
+
+- **Файл:** `apps/web/e2e/crud-calendar-slot.spec.ts:60-90` (тест сам), `apps/web/src/app/(app)/calendar/useCalendarState.ts:243` (`if (!date) setDate(toDateString(new Date()))` — Kyiv date), `apps/api/src/modules/calendar/calendar.service.ts:65-146` (`findSlots` фільтрує по Kyiv-window через `kyivOffsetMs`).
+- **Симптом:** `page.locator('[data-calendar-slot]').first()` не з'являється (timeout 15s). API POST повертає 201, але GET /calendar/slots?date=<Kyiv-today> не бачить слот.
+- **Причина виникнення:** тест використовував `const today = new Date().toISOString().split('T')[0]` (UTC-дата), а фронт-календар defaults на `toDateString(new Date())` через `Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' })` (Kyiv-дата). У вікні 00:00-03:00 Kyiv (сумарний = 21:00-24:00 UTC у літньому DST) UTC-дата на добу менша → слот створюється на попередню Kyiv-добу, календар відкритий на поточну Kyiv-добу → слот не рендериться. Плюс: у слот-часі `${today}T07:00:00Z` (07:00 UTC = 10:00 Kyiv +3) є ще одна DST-passtka — у зимі це 09:00 Kyiv, тобто зсув фіксований, а вікно робочого дня defaults 8-18 Kyiv.
+- **Виявлено:** прямий запуск тесту (17.5s timeout), API-diagnostic через curl підтвердив: POST успішний, GET /calendar/slots?date=<Kyiv-today> повертає слот, але frontend показує Aug 30 (Kyiv) а слот на Aug 29 UTC = Aug 29 Kyiv.
+- **Fix:** У ТЕСТІ додати hoisted helper `kyivWallToUtcIso(kyivDate, kyivHour, kyivMinute)` що конвертує Kyiv wall-clock → UTC ISO через двоетапний Intl-round-trip (DST-safe: обчислює реальний offset для конкретного моменту, не hardcoded +2/+3). `today` → `kyivToday` через `Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' })` — той самий алгоритм що у frontend `toDateString`. Iteration змінена з UTC 07-13h на Kyiv wall-clock 10-16h (робочі години defaults).
+- **Severity:** HIGH — тест був стабільно червоний у вікні 00:00-03:00 Kyiv (5% робочого часу), + завжди червоний якщо CI runner у не-Kyiv TZ.
+- **Verification:** `npx playwright test crud-calendar-slot.spec.ts:32 --workers=1 --retries=0` → `1 passed (2.4s)`. Повний файл: 5/5 passed. Комбінований run обох spec: 9/9 passed.
+- **Де шукати ще:** усі e2e-тести що (а) створюють time-based ресурс (calendar slot, work-order plannedAt, invoice paidAt, transaction date, booking timeslot) через API з `new Date().toISOString()` і (б) перевіряють його на UI що відображає у Kyiv-локалі. Grep: `grep -rn "toISOString.*split.*T.*0\|new Date().*toISOString.*calendar\|Intl.*Europe/Kyiv" apps/web/e2e --include="*.ts"`. Патерн загальний: **e2e тест НІКОЛИ не змішує UTC-arithmetic з Kyiv-UI без явного round-trip через Intl.DateTimeFormat**.
+- **Статус:** [x] виправлено

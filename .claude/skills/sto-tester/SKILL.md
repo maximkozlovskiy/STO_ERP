@@ -3855,3 +3855,88 @@ Alternative pattern: custom validator `@IsYmdDate` що комбінує both ch
 - усі DTO що приймають YMD-date як параметр (query для reports, calendar, schedule, dashboard, filters `dateFrom/dateTo`)
 - усі DTO що використовують `@Matches` з date-like regex — semantic-parse-check пропущений
 - аналогічний pattern для other formats: phone (`@Matches(/^\+?\d{10,15}$/)` без range-check коду країни), IBAN (`@Matches(/^UA\d{27}$/)` без checksum-check), EDRPOU (`@Matches(/^\d{8,10}$/)` без mod-11 checksum)
+
+### 2026-08-30 — E2E: seeded entity invisible через дефолтний date-фільтр списку (Bug #572) — e2e / seed-brittle / list-filters
+
+**Сигнал:** Test сідить нову сутність (WorkOrder/Invoice/PurchaseOrder…) через API у `beforeAll`/inline, потім навігує на список і не знаходить її row. Screenshot показує «Нарядів не знайдено» (або аналог), при цьому date-input явно виставлений на «today». API GET підтверджує сутність існує; UI фільтр її ховає.
+
+**Причина виникнення:**
+
+- Prisma-модель має `documentDate DateTime @default(now()) @db.Date` — `now()` виконується на сервері (у Docker Postgres це UTC).
+- UI-список має дефолт `dateFrom = kyivToday(), dateTo = kyivToday()` — Kyiv-локальна today.
+- У вікні 00:00-03:00 Kyiv (літо, +3) UTC-дата на добу менша. Seed відбувається зараз (сервер UTC = 29-те), UI фільтр показує 30-те → row невидимий.
+- Розробник тесту припускає що «today на сервері == today у UI» — це вірно 21 годину на добу, але 3 години невірно.
+
+**Підхід до виявлення:**
+
+- Runtime signal: `getByRole('row').filter({ hasText: /<label>/ })` timeout, screenshot показує «нічого не знайдено» з date-фільтром 30.XX.YYYY (Kyiv-today).
+- Static grep: `grep -rn "new Date().*setSeededDate\|@default(now()).*@db.Date\|dateFrom.*kyivToday" apps/ --include="*.tsx" --include="*.ts"` — cross-match між Prisma-defaults і UI-defaults.
+- Cross-reference: якщо у file є коментар типу «фільтр по даті за замовчуванням приховує seed-наряди ≠ today» (Bug #401 у estimate-share.spec.ts:181) — це вже задокументована grabля; шукати ВСІ тести на цьому файлі, не тільки той що падає.
+
+**Підхід до фіксу:** У ТЕСТІ, а НЕ у продукті (продукт-дефолт "today" — валідний UX):
+
+1. Seed API-helper повертає не тільки `id`, а й `number` (або той поле що відображається у search-box).
+2. Перед пошуком row: очистити date-input (`fill('')` → `press('Escape')` — DatePickerInput.handleInputChange з empty string викликає `onChange('')` що видаляє фільтр).
+3. Замість `filter({ hasText: /<label>/ })` (розмите) — search-box + exact number (детермінізм): `getByRole('textbox', { name: /Пошук/i }).fill(number)`.
+
+**Anti-pattern:** обійти через API (як Bug #401 у same file line 179-206 «UI/E2E test для розкриття модалу через таблицю нестабільний... натомість перевіряємо backend»). Це фіксує один тест, але не root-cause — наступний UI-тест впаде так само. Кращий шлях — self-seed з cleanup.
+
+**Severity:** HIGH — тест стабільно червоний у поточному оточенні, блокує зелений run 3 години на добу (+ завжди у CI runner з UTC TZ).
+
+**Де шукати ще:**
+
+- Усі e2e specs де beforeAll створює entity через API + перевіряє на UI: `grep -rn "beforeAll.*await\|await.*seed\|await.*create" apps/web/e2e --include="*.spec.ts"`
+- Усі списки з дефолтом `dateFrom=kyivToday()`: work-orders, purchase-orders, stock-documents, invoices, supplier-payments (grep у apps/web/src/app для кожного `page.tsx`)
+- Analogічно для будь-якого списку з дефолтним filter що не пропускає seed-дані (branchId, warehouseId, status).
+
+### 2026-08-30 — E2E: DST-aware Kyiv timezone у test time-arithmetic (Bug #573) — e2e / dst / timezone
+
+**Сигнал:** Test створює time-based ресурс (calendar slot, work-order plannedAt, invoice paidAt) через API і перевіряє його на UI. У певні години доби (00:00-03:00 Kyiv у літньому +3 DST, 00:00-02:00 у зимньому +2) тест падає з «element not found». Screenshot показує UI на правильному day view, але без створеного ресурсу.
+
+**Причина виникнення:**
+
+- Test використовує `new Date().toISOString().split('T')[0]` для отримання «today» → це **UTC**-дата, не Kyiv-дата. `.toISOString()` завжди UTC незалежно від Playwright `timezoneId: 'Europe/Kyiv'` (сеттінг впливає на `getDate()`/`getHours()`, але не на toISOString).
+- Frontend отримує «today» через `Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date())` (наприклад calendar.utils.ts:65 `toDateString()` або format.ts:120 `kyivToday()`) → це Kyiv-дата.
+- У 21:00-24:00 UTC (літо +3) Kyiv уже на добу вперед. Test створює ресурс на UTC-добу, UI відображає Kyiv-добу — mismatch.
+- Додатковий підводний камінь: hardcoded UTC-час `${today}T07:00:00Z` (=10:00 Kyiv +3) працює тільки взимку/влітку по-різному; workDayStartHour defaults 8-18 Kyiv → «безпечний» діапазон UTC змінюється зі зміною DST.
+
+**Підхід до виявлення:**
+
+- Runtime signal: тест з `new Date().toISOString().split('T')[0]` падає непередбачувано (flaky) або стабільно у CI (UTC TZ) — pattern «green на dev, red на CI» типовий сигнал timezone-issue.
+- Static grep: `grep -rn "toISOString.*split.*T.*\[0\]\|new Date().*toISOString" apps/web/e2e --include="*.spec.ts"` — усі такі тести на date-arithmetic вразливі.
+- Cross-check: якщо продукт-код (frontend/backend) використовує `Intl` з `timeZone: 'Europe/Kyiv'`, а тест — `toISOString()`, це гарантовано mismatch у DST-boundary вікні.
+
+**Підхід до фіксу:** У ТЕСТІ:
+
+1. Kyiv-дата — той самий алгоритм що у продукті: `const kyivToday = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());` (`sv-SE` дає `YYYY-MM-DD`).
+2. Kyiv wall-clock → UTC ISO — DST-safe helper через двоетапний Intl round-trip:
+   ```ts
+   function kyivWallToUtcIso(kyivDate: string, kyivHour: number, kyivMinute = 0): string {
+     const guess = new Date(
+       `${kyivDate}T${String(kyivHour).padStart(2, '0')}:${String(kyivMinute).padStart(2, '0')}:00Z`,
+     );
+     const kyivHourOfGuess = parseInt(
+       new Intl.DateTimeFormat('en-US', {
+         timeZone: 'Europe/Kyiv',
+         hour: 'numeric',
+         hour12: false,
+       }).format(guess),
+       10,
+     );
+     const shiftMs = (kyivHour - kyivHourOfGuess) * 3_600_000;
+     return new Date(guess.getTime() + shiftMs).toISOString();
+   }
+   ```
+   Обчислює реальний offset для конкретного моменту (не hardcoded +2/+3).
+3. Iterate по Kyiv-годинах робочого дня (10-16), не по UTC — це узгоджено з UI workStartHour/workEndHour defaults.
+
+**Anti-pattern:** hardcoded `+3` (літо) або `+2` (зима) offset у тесті — ламається при переході DST 2 рази на рік. Використання `date.getTimezoneOffset()` — залежить від хост-OS TZ, не від Playwright `timezoneId`.
+
+**Severity:** HIGH — тест стабільно червоний у DST-boundary вікні (5% робочого часу) + завжди червоний у CI runner з UTC TZ. Категорія «CI-only failure» найгірша бо не reproducible локально без явного `TZ=UTC`.
+
+**Де шукати ще:**
+
+- Усі e2e тести з date/time arithmetic: `grep -rn "toISOString\|new Date(.*).*format\|hardcoded.*[+-]0[23]:00" apps/web/e2e --include="*.spec.ts"`.
+- Backend spec-тести з дата-арифметикою: same issue, але тести використовують сервер-tz (`TZ=UTC` у Docker). Приклад — Bug #592 (purchase-orders.service.spec.ts:834).
+- Frontend unit-тести з `new Date()` + Intl — Intl.DateTimeFormat не респектує `vi.setSystemTime()` timezone. Використовувати `vi.stubEnv('TZ', 'Europe/Kyiv')` перед `beforeEach`.
+- Загальне правило: **e2e/spec тест НІКОЛИ не змішує UTC-arithmetic з Kyiv-UI/DB без явного round-trip через Intl.DateTimeFormat**.
