@@ -770,6 +770,125 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
     expect(prisma.purchaseOrderLine.update).not.toHaveBeenCalled();
     expect(inventory.createMovement).not.toHaveBeenCalled();
   });
+
+  it('receive повне → авто paymentDate = сьогодні + contract.paymentDeferDays (RECEIVED)', async () => {
+    // PO з договором (10 днів відтермінування), без paymentDate.
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.ORDERED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      paymentDate: null,
+      contract: { paymentDeferDays: 10 },
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 0,
+          good: { unitId: GOOD_UNIT_ID },
+        },
+      ],
+    });
+    // findOne у кінці
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 10,
+          good: { name: 'X', sku: null, unit: 'шт', unitOfMeasure: null },
+          unitOfMeasureId: GOOD_UNIT_ID,
+        },
+      ],
+      supplier: { firstName: 'S', lastName: '', companyName: null },
+      warehouse: { name: 'W' },
+    });
+
+    await service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 10 }] }, USER_ID);
+
+    // Останній purchaseOrder.update у $transaction — зі статусом RECEIVED + paymentDate.
+    const updateCalls = prisma.purchaseOrder.update.mock.calls;
+    const statusUpdate = updateCalls.find(
+      c => (c[0] as { data?: { status?: string } }).data?.status === PurchaseOrderStatus.RECEIVED,
+    );
+    expect(statusUpdate).toBeDefined();
+    const data = (statusUpdate![0] as { data: { paymentDate?: Date } }).data;
+    expect(data.paymentDate).toBeInstanceOf(Date);
+    // = сьогодні (Kyiv) + 10 днів
+    const expected = new Date();
+    expected.setUTCDate(expected.getUTCDate() + 10);
+    expect(data.paymentDate!.toISOString().slice(0, 10)).toBe(expected.toISOString().slice(0, 10));
+  });
+
+  it('receive без договору → paymentDate НЕ встановлюється', async () => {
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.ORDERED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      paymentDate: null,
+      contract: null,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 0,
+          good: { unitId: GOOD_UNIT_ID },
+        },
+      ],
+    });
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 10,
+          good: { name: 'X', sku: null, unit: 'шт', unitOfMeasure: null },
+          unitOfMeasureId: GOOD_UNIT_ID,
+        },
+      ],
+      supplier: { firstName: 'S', lastName: '', companyName: null },
+      warehouse: { name: 'W' },
+    });
+
+    await service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 10 }] }, USER_ID);
+
+    const statusUpdate = prisma.purchaseOrder.update.mock.calls.find(
+      c => (c[0] as { data?: { status?: string } }).data?.status === PurchaseOrderStatus.RECEIVED,
+    );
+    expect(statusUpdate).toBeDefined();
+    expect((statusUpdate![0] as { data: Record<string, unknown> }).data).not.toHaveProperty(
+      'paymentDate',
+    );
+  });
 });
 
 // Bug #473-#476: regression guards для update() — contract resolution + tenant guards

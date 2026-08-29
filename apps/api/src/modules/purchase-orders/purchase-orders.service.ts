@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
-import { kyivToday } from '../../common/utils/kyiv-date';
+import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
 import { calculatePagination } from '../../common/utils/pagination';
@@ -224,6 +224,7 @@ export class PurchaseOrdersService {
             totalAmount,
             totalVat,
             documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
+            paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
           },
         });
         if (computedLines.length) {
@@ -371,6 +372,9 @@ export class PurchaseOrdersService {
             totalAmount,
             ...(totalVat !== undefined ? { totalVat } : {}),
             documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
+            ...(dto.paymentDate !== undefined
+              ? { paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null }
+              : {}),
           },
           include: {
             supplier: { select: { firstName: true, lastName: true, companyName: true } },
@@ -427,6 +431,8 @@ export class PurchaseOrdersService {
           take: 1000,
           include: { good: { select: { unitId: true } } },
         },
+        // Для авто-обчислення дати оплати (RECEIVED): дата + днів відтермінування договору.
+        contract: { select: { paymentDeferDays: true } },
       },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
@@ -558,7 +564,20 @@ export class PurchaseOrdersService {
           : anyReceived
             ? PurchaseOrderStatus.PARTIAL
             : po.status;
-        await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
+
+        // Авто-заповнення планової дати оплати при повному отриманні (RECEIVED),
+        // якщо поле ще порожнє і договір має відтермінування:
+        // paymentDate = сьогодні + paymentDeferDays. Ручне значення не перезаписуємо.
+        const defer = po.contract?.paymentDeferDays ?? null;
+        const shouldSetPaymentDate =
+          newStatus === PurchaseOrderStatus.RECEIVED && !po.paymentDate && defer != null;
+        await tx.purchaseOrder.update({
+          where: { id, orgId },
+          data: {
+            status: newStatus,
+            ...(shouldSetPaymentDate ? { paymentDate: addDaysKyiv(kyivToday(), defer) } : {}),
+          },
+        });
       },
       { timeout: 30_000 }, // large PO (hundreds of lines) × createMovement with batch tracking
     );
@@ -752,6 +771,7 @@ export class PurchaseOrdersService {
     totalVat?: import('@prisma/client').Prisma.Decimal | null;
     notes: string | null;
     documentDate?: Date | null;
+    paymentDate?: Date | null;
     pricedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -803,6 +823,7 @@ export class PurchaseOrdersService {
       totalVat: Number(po.totalVat ?? 0),
       notes: po.notes ?? null,
       documentDate: po.documentDate ? po.documentDate.toISOString().slice(0, 10) : null,
+      paymentDate: po.paymentDate ? po.paymentDate.toISOString().slice(0, 10) : null,
       pricedAt: po.pricedAt instanceof Date ? po.pricedAt.toISOString() : (po.pricedAt ?? null),
       linesCount: po._count?.lines ?? po.lines?.length ?? 0,
       deletedAt: po.deletedAt instanceof Date ? po.deletedAt.toISOString() : (po.deletedAt ?? null),

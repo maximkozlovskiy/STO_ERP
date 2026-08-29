@@ -540,4 +540,31 @@ test.describe('Оплати постачальникам', () => {
       { token, API, id: sp.id },
     );
   });
+
+  test('вкладка «Графік оплат» рендерить шахматку (Протерміновані/Планові/Разом)', async ({
+    page,
+  }) => {
+    await page.goto('/supplier-payments?tab=schedule');
+    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
+      timeout: 20_000,
+    });
+    // Вкладка активна
+    await expect(page.locator('button:has-text("Графік оплат")')).toBeVisible();
+
+    // Дочекатись поки завершиться завантаження (зникне спінер), потім
+    // або шахматка з колонками, або empty-state (якщо немає боргів).
+    const table = page.locator('th:has-text("Протерміновані")');
+    const empty = page.getByText('Немає запланованих оплат');
+    await expect(table.or(empty)).toBeVisible({ timeout: 30_000 });
+
+    if (await table.isVisible().catch(() => false)) {
+      await expect(page.locator('th:has-text("Планові")')).toBeVisible();
+      await expect(page.locator('td:has-text("Разом:")')).toBeVisible();
+    }
+
+    // Перемикання назад на «Список»
+    await page.locator('button:has-text("Список")').first().click();
+    await expect(page).toHaveURL(/tab=list/);
+    await expect(page.locator('button:has-text("Нова оплата")')).toBeVisible();
+  });
 });

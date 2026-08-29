@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-08-29
+
+### feat(supplier-payments): графік оплат постачальникам + PurchaseOrder.paymentDate
+
+- Нова колонка `PurchaseOrder.paymentDate` (`@db.Date`, nullable) + міграція
+  `20260820120000_add_po_payment_date`. Редаговане поле «Дата оплати» у PO-модалці.
+- Авто-заповнення `paymentDate` у `receive()` при повному отриманні (RECEIVED):
+  `сьогодні + CounterpartyContract.paymentDeferDays`. Ручне значення не перезаписується.
+- `GET /supplier-payments/schedule?from=&to=` — шахматка боргів по датах. Джерело:
+  RECEIVED/PARTIAL PO з `outstanding = totalAmount − Σ CONFIRMED SupplierPayment`.
+  Bucket за `paymentDate`: null/минуле → overdue, у 20-денному вікні → byDate[дата],
+  далі → planned. Кредит-ліміт договору віднімається з найпізніших (planned→дати→overdue).
+- Вкладка «Список / Графік оплат» на `/supplier-payments` (URL `?tab=schedule`) +
+  компонент `SupplierPaymentScheduleTab` (Протерміновані червоні / дати DD.MM жовті /
+  Планові зелені / рядок «Разом»).
+- Тести: +5 `getSchedule` (bucket/outstanding/кредит-ліміт), +2 PO `receive()` auto-fill,
+  +1 E2E вкладки. Файли: `schema.prisma`, `purchase-orders.{dto,service}.ts`,
+  `supplier-payments.{controller,dto,service}.ts`, `PurchaseOrderCreateModal.tsx`,
+  `useSupplierPayments.ts`, `supplier-payments/page.tsx` + `SupplierPaymentScheduleTab.tsx`,
+  `lib/format.ts` (addDaysISO), `common/utils/kyiv-date.ts` (addDaysKyiv).
+
+---
+
 ## 2026-07-03
 
 ### d27e1f14 fix(tester): Bug #590 — useConfirmSupplierPayment invalidates counterparties

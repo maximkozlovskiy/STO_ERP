@@ -217,3 +217,35 @@ export class SupplierPaymentQueryDto {
   @IsIn(['asc', 'desc'])
   sortDir?: 'asc' | 'desc';
 }
+
+export class SupplierPaymentScheduleQueryDto {
+  @ApiProperty({ description: 'Початок вікна (YYYY-MM-DD), зазвичай сьогодні' })
+  @IsDateString()
+  from!: string;
+
+  @ApiProperty({ description: 'Кінець вікна (YYYY-MM-DD), зазвичай from + 19 днів' })
+  @IsDateString()
+  to!: string;
+}
+
+export class SupplierPaymentScheduleRowDto {
+  @ApiProperty() supplierId!: string;
+  @ApiProperty() supplierName!: string;
+  @ApiProperty({ description: 'Сума протермінованих оплат' }) overdue!: number;
+  @ApiProperty({ description: 'Сума планових оплат (поза 20-денним вікном)' }) planned!: number;
+  @ApiProperty({ description: 'Мапа дата(YYYY-MM-DD) → сума' }) byDate!: Record<string, number>;
+  @ApiProperty({ description: 'Разом до оплати (після кредит-ліміту)' }) total!: number;
+}
+
+export class SupplierPaymentScheduleDto {
+  @ApiProperty({ type: [String], description: '20 дат вікна YYYY-MM-DD' }) dates!: string[];
+  @ApiProperty({ type: [SupplierPaymentScheduleRowDto] })
+  suppliers!: SupplierPaymentScheduleRowDto[];
+  @ApiProperty({ description: 'Підсумковий рядок (сума по всіх постачальниках)' })
+  totals!: {
+    overdue: number;
+    planned: number;
+    byDate: Record<string, number>;
+    total: number;
+  };
+}

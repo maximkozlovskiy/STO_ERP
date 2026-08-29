@@ -23,6 +23,7 @@ import {
   CreateSupplierPaymentDto,
   UpdateSupplierPaymentDto,
   SupplierPaymentQueryDto,
+  SupplierPaymentScheduleQueryDto,
 } from './supplier-payments.dto';
 
 @ApiTags('Supplier Payments')
@@ -64,6 +65,13 @@ export class SupplierPaymentsController {
   }
 
   // Specific sub-routes BEFORE :id (Fastify route ordering rule)
+  @Get('schedule')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Графік оплат постачальникам (шахматка по датах)' })
+  getSchedule(@OrgContext() orgId: string, @Query() query: SupplierPaymentScheduleQueryDto) {
+    return this.service.getSchedule(orgId, query.from, query.to);
+  }
+
   @Post(':id/confirm')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @HttpCode(HttpStatus.OK)

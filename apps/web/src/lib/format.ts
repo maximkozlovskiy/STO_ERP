@@ -121,6 +121,13 @@ export function kyivToday(): string {
   return KYIV_YMD_FMT.format(new Date());
 }
 
+/** Додає `days` днів до дати `YYYY-MM-DD` і повертає `YYYY-MM-DD` (UTC-арифметика, без DST-стрибків). */
+export function addDaysISO(ymd: string, days: number): string {
+  const d = new Date(ymd + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * DST-aware offset for `Europe/Kyiv` at a given UTC instant (in ms).
  * Returns +02h у зимовий період, +03h у літній. Не залежить від local TZ браузера.

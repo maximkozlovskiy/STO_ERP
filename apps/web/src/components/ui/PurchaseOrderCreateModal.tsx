@@ -86,6 +86,7 @@ interface PODetail {
   contractNumber?: string | null;
   notes?: string | null;
   documentDate?: string | null;
+  paymentDate?: string | null;
   lines?: POLine[];
 }
 
@@ -186,6 +187,7 @@ export function PurchaseOrderCreateModal({
     warehouseId: '',
     notes: '',
     documentDate: kyivToday(),
+    paymentDate: '',
   });
   const [supplierDisplay, setSupplierDisplay] = useState('');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -340,7 +342,13 @@ export function PurchaseOrderCreateModal({
     setReceiveMode(false);
     setReceiveQtys({});
     if (!isEditMode) {
-      setForm({ supplierId: '', warehouseId: '', notes: '', documentDate: kyivToday() });
+      setForm({
+        supplierId: '',
+        warehouseId: '',
+        notes: '',
+        documentDate: kyivToday(),
+        paymentDate: '',
+      });
       setSupplierDisplay('');
     }
   }, [open, purchaseOrderIdProp, isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -361,6 +369,7 @@ export function PurchaseOrderCreateModal({
             warehouseId: po.warehouseId ?? '',
             notes: po.notes ?? '',
             documentDate: po.documentDate ? po.documentDate.slice(0, 10) : kyivToday(),
+            paymentDate: po.paymentDate ? po.paymentDate.slice(0, 10) : '',
           });
           setSupplierDisplay(po.supplierName ?? '');
           setContractId(po.contractId ?? null);
@@ -683,6 +692,7 @@ export function PurchaseOrderCreateModal({
           warehouseId: form.warehouseId,
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
+          paymentDate: form.paymentDate || undefined,
           lines: linesPayload.length > 0 ? linesPayload : undefined,
         }),
       });
@@ -725,6 +735,7 @@ export function PurchaseOrderCreateModal({
           contractId: contractId ?? null,
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
+          paymentDate: form.paymentDate || undefined,
           lines: allLines,
         }),
       });
@@ -879,6 +890,17 @@ export function PurchaseOrderCreateModal({
                   value={form.documentDate}
                   onChange={v => setForm(f => ({ ...f, documentDate: v }))}
                   disabled={!canEdit}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[13px] font-medium text-muted-foreground">Дата оплати:</span>
+              <div className="w-36">
+                {/* Авто-заповнюється при отриманні (дата + відтермінування договору);
+                    редагується вручну для будь-якого збереженого замовлення. */}
+                <DatePickerInput
+                  value={form.paymentDate}
+                  onChange={v => setForm(f => ({ ...f, paymentDate: v }))}
                 />
               </div>
             </div>

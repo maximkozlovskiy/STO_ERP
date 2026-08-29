@@ -29,7 +29,7 @@ describe('SupplierPaymentsService — regression guards', () => {
     counterparty: { findFirst: ReturnType<typeof vi.fn> };
     bankAccount: { findFirst: ReturnType<typeof vi.fn> };
     cashRegister: { findFirst: ReturnType<typeof vi.fn> };
-    purchaseOrder: { findFirst: ReturnType<typeof vi.fn> };
+    purchaseOrder: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let settlements: { createTransaction: ReturnType<typeof vi.fn> };
@@ -76,7 +76,7 @@ describe('SupplierPaymentsService — regression guards', () => {
       counterparty: { findFirst: vi.fn() },
       bankAccount: { findFirst: vi.fn() },
       cashRegister: { findFirst: vi.fn() },
-      purchaseOrder: { findFirst: vi.fn() },
+      purchaseOrder: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
@@ -502,5 +502,84 @@ describe('SupplierPaymentsService — regression guards', () => {
   it('findAll(): без sort-параметрів → orderBy { createdAt: desc }', async () => {
     await service.findAll(ORG, 1, 20);
     expect(findManyOrderBy()).toEqual({ createdAt: 'desc' });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // getSchedule() — шахматка оплат
+  // ──────────────────────────────────────────────────────────────────────
+
+  const poRow = (over: {
+    supplierId?: string;
+    supplierName?: string;
+    totalAmount: number;
+    paymentDate: string | null;
+    creditLimit?: number | null;
+    paid?: number[];
+  }) => ({
+    id: '99999999-9999-4999-8999-999999999999',
+    supplierId: over.supplierId ?? SUPPLIER_ID,
+    totalAmount: over.totalAmount,
+    paymentDate: over.paymentDate ? new Date(over.paymentDate + 'T00:00:00Z') : null,
+    supplier: { firstName: null, lastName: null, companyName: over.supplierName ?? 'Acme' },
+    contract: over.creditLimit != null ? { creditLimit: over.creditLimit } : { creditLimit: null },
+    supplierPayments: (over.paid ?? []).map(a => ({ amount: a })),
+  });
+
+  it('getSchedule(): paymentDate у вікні → сума у byDate; overdue для null/минулого', async () => {
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-10' }), // < from → overdue
+      poRow({ totalAmount: 500, paymentDate: null }), // null → overdue
+      poRow({ totalAmount: 2000, paymentDate: '2026-08-25' }), // у вікні
+      poRow({ totalAmount: 700, paymentDate: '2026-12-31' }), // > to → planned
+    ]);
+    const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    expect(r.dates).toHaveLength(20);
+    const row = r.suppliers[0];
+    expect(row.overdue).toBe(1500); // 1000 + 500
+    expect(row.byDate['2026-08-25']).toBe(2000);
+    expect(row.planned).toBe(700);
+    expect(row.total).toBe(4200);
+    expect(r.totals.total).toBe(4200);
+  });
+
+  it('getSchedule(): outstanding = totalAmount − Σ CONFIRMED payments по PO', async () => {
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-25', paid: [300, 200] }), // 500 залишок
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-25', paid: [1000] }), // 0 → пропустити
+    ]);
+    const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    expect(r.suppliers[0].byDate['2026-08-25']).toBe(500);
+    expect(r.suppliers[0].total).toBe(500);
+  });
+
+  it('getSchedule(): кредит-ліміт віднімає з найпізніших (5000 борг, 2000 ліміт → 3000)', async () => {
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poRow({ totalAmount: 5000, paymentDate: '2026-08-25', creditLimit: 2000 }),
+    ]);
+    const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    // єдина клітинка → ліміт зменшує її з 5000 до 3000
+    expect(r.suppliers[0].byDate['2026-08-25']).toBe(3000);
+    expect(r.suppliers[0].total).toBe(3000);
+  });
+
+  it('getSchedule(): ліміт покриває planned ПЕРШИМ, overdue лишається повним', async () => {
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-10', creditLimit: 1500 }), // overdue 1000
+      poRow({ totalAmount: 1000, paymentDate: '2026-12-31', creditLimit: 1500 }), // planned 1000
+    ]);
+    const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    // ліміт 1500: спочатку planned(1000)→0, потім overdue: 1000−500=500
+    expect(r.suppliers[0].planned).toBe(0);
+    expect(r.suppliers[0].overdue).toBe(500);
+    expect(r.suppliers[0].total).toBe(500);
+  });
+
+  it('getSchedule(): ліміт ≥ борг → постачальник не показується', async () => {
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-25', creditLimit: 5000 }),
+    ]);
+    const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    expect(r.suppliers).toHaveLength(0);
+    expect(r.totals.total).toBe(0);
   });
 });

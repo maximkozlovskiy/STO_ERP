@@ -57,6 +57,12 @@ export class CreatePurchaseOrderDto {
   @IsDateString()
   documentDate?: string;
 
+  @ApiPropertyOptional({ description: 'Планова дата оплати постачальнику (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  paymentDate?: string;
+
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
   @IsOptional()
   @IsArray()
@@ -98,6 +104,12 @@ export class UpdatePurchaseOrderDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   documentDate?: string;
+
+  @ApiPropertyOptional({ description: 'Планова дата оплати постачальнику (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  paymentDate?: string;
 
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
   @IsOptional()
@@ -165,6 +177,7 @@ export class PurchaseOrderResponseDto {
   @ApiProperty() totalVat!: number;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
+  @ApiPropertyOptional({ description: 'Планова дата оплати' }) paymentDate?: string | null;
   @ApiPropertyOptional({ description: 'Дата останнього розцінення' }) pricedAt?: string | null;
   @ApiProperty() linesCount!: number;
   @ApiProperty({ type: [PurchaseOrderLineResponseDto] }) lines!: PurchaseOrderLineResponseDto[];

@@ -9,10 +9,11 @@
 ## Поточний стан
 
 ```
-Дата:       2026-07-04
+Дата:       2026-08-29
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API 976/976 | Web 485/485 (+4 BankAccountsTab regression) | E2E 305/307 ✅ 0 failed / 0 skipped / 2 flaky (passed on retry)
+Тести:      API 976+/976+ | Web 485/485 | E2E 305/307 ✅ (2 flaky)
+Latest feature: 2026-08-29 (feat/supplier-payments) — «Графік оплат постачальникам». PurchaseOrder.paymentDate (нова колонка, авто-fill у receive() = сьогодні+paymentDeferDays договору; редаговане поле в PO-модалці). GET /supplier-payments/schedule — шахматка боргів по датах (RECEIVED/PARTIAL PO, outstanding=totalAmount−ΣCONFIRMED payments, bucket overdue/дата/planned, кредит-ліміт з найпізніших). Вкладка «Список/Графік оплат» на /supplier-payments (SupplierPaymentScheduleTab). Tests: +5 getSchedule spec, +2 PO receive auto-fill, +1 E2E schedule tab. Live: today+10 auto-fill ✓, 5000−2000ліміт=3000 ✓.
 Sync:       2026-07-03 ✅ Dir1 0 missing | Dir2 2 fixed (bank-accounts/cash-registers paginated) | Dir3 2 fixed (deletedAt removed)
 Latest review: 2026-07-03 (auto, HEAD 951506b7, feat/supplier-payments) — SupplierPayment feature: 1 issue (0 Critical / 1 Important / 0 Suggestion), fixed 1/1; paired FK state (§8.2): onClear supplier не скидав purchaseOrderId/purchaseOrderNumber → orphan PO reference. Business invariants OK: PAYMENT через SettlementsService.createTransaction, FSM re-read у tx, documentType='SupplierPayment', tenant isolation ✓, soft delete ✓, CONFIRMED не можна видалити ✓, немає Checkbox/loyalty. 10/10 regression тестів passed.
 Latest tester: 2026-07-04 (HEAD 4eb3187f, feat/supplier-payments) — Bug #592 HIGH: /ndi BankAccountsTab crash "Cannot read properties of undefined (reading 'map')". getCached() повертає sessionStorage JSON без валідації форми → зіпсований запис ({items:undefined} або голий масив) → setBankAccounts(undefined) → .map crash. Fix: Array.isArray(cached.items) guard у BankAccountsTab/CashRegistersTab/CurrenciesTab + 4 regression-тести. Backend контракт OK. Попереднє: Bug #590 HIGH useConfirmSupplierPayment invalidate counterparties; Bug #591 useSupplierPayments.test.tsx; Bug #588 HIGH update() paired-FK orphan.

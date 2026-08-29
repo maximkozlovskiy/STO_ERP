@@ -1,5 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { Prisma, SupplierPaymentStatus, PaymentSourceType } from '@prisma/client';
+import {
+  Prisma,
+  SupplierPaymentStatus,
+  PaymentSourceType,
+  PurchaseOrderStatus,
+} from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { calculatePagination } from '../../common/utils/pagination';
@@ -12,6 +17,7 @@ import {
   UpdateSupplierPaymentDto,
   SupplierPaymentResponseDto,
   PaginatedSupplierPaymentsDto,
+  SupplierPaymentScheduleDto,
 } from './supplier-payments.dto';
 
 type SPStatus = SupplierPaymentStatus;
@@ -119,6 +125,143 @@ export class SupplierPaymentsService {
       page,
       limit: take,
     };
+  }
+
+  /**
+   * Графік оплат постачальникам — шахматка боргів по датах.
+   *
+   * Джерело: RECEIVED/PARTIAL PurchaseOrder з невідфактурованим залишком боргу
+   * (totalAmount − Σ CONFIRMED SupplierPayment по цьому PO).
+   *
+   * Bucket по PurchaseOrder.paymentDate:
+   *   - null або < from            → overdue (протерміновані)
+   *   - from..to (20-денне вікно)  → byDate[YYYY-MM-DD]
+   *   - > to                        → planned (планові)
+   *
+   * Кредитний ліміт (максимум по PURCHASE-договорах постачальника) віднімається
+   * від сумарного боргу з НАЙПІЗНІШИХ (planned → останні дати → overdue) — тобто
+   * протерміновані зменшуються останніми. Якщо ліміт ≥ борг → постачальник пропускається.
+   */
+  async getSchedule(orgId: string, from: string, to: string): Promise<SupplierPaymentScheduleDto> {
+    const fromDate = new Date(from + 'T00:00:00.000Z');
+    const toDate = new Date(to + 'T23:59:59.999Z');
+
+    // Список дат вікна (YYYY-MM-DD) для колонок.
+    const dates: string[] = [];
+    for (let d = new Date(fromDate); d <= toDate; d.setUTCDate(d.getUTCDate() + 1)) {
+      dates.push(d.toISOString().slice(0, 10));
+    }
+
+    const orders = await this.prisma.purchaseOrder.findMany({
+      where: {
+        orgId,
+        deletedAt: null,
+        status: { in: [PurchaseOrderStatus.RECEIVED, PurchaseOrderStatus.PARTIAL] },
+      },
+      select: {
+        id: true,
+        supplierId: true,
+        totalAmount: true,
+        paymentDate: true,
+        supplier: { select: { firstName: true, lastName: true, companyName: true } },
+        contract: { select: { creditLimit: true } },
+        supplierPayments: {
+          where: { deletedAt: null, status: SupplierPaymentStatus.CONFIRMED },
+          select: { amount: true },
+        },
+      },
+      take: 5000,
+    });
+
+    // Акумулятор по постачальнику.
+    type Acc = {
+      supplierName: string;
+      overdue: number;
+      planned: number;
+      byDate: Record<string, number>;
+      creditLimit: number;
+    };
+    const bySupplier = new Map<string, Acc>();
+
+    for (const po of orders) {
+      const paid = po.supplierPayments.reduce((s, p) => s + Number(p.amount), 0);
+      const outstanding = Number(po.totalAmount) - paid;
+      if (outstanding <= 0) continue;
+
+      let acc = bySupplier.get(po.supplierId);
+      if (!acc) {
+        acc = {
+          supplierName:
+            formatPersonName(
+              po.supplier?.lastName,
+              po.supplier?.firstName,
+              po.supplier?.companyName,
+            ) || '—',
+          overdue: 0,
+          planned: 0,
+          byDate: {},
+          creditLimit: 0,
+        };
+        bySupplier.set(po.supplierId, acc);
+      }
+
+      // Кредит-ліміт постачальника = максимальний по його договорах.
+      const limit = po.contract?.creditLimit != null ? Number(po.contract.creditLimit) : 0;
+      if (limit > acc.creditLimit) acc.creditLimit = limit;
+
+      // Bucket
+      const pd = po.paymentDate ? po.paymentDate.toISOString().slice(0, 10) : null;
+      if (pd == null || pd < from) {
+        acc.overdue += outstanding;
+      } else if (pd >= from && pd <= to) {
+        acc.byDate[pd] = (acc.byDate[pd] ?? 0) + outstanding;
+      } else {
+        acc.planned += outstanding;
+      }
+    }
+
+    // Застосувати кредит-ліміт: віднімаємо з найпізніших (planned → дати спадно → overdue).
+    const suppliers = Array.from(bySupplier.entries())
+      .map(([supplierId, acc]) => {
+        let remaining = acc.creditLimit;
+        // planned
+        const consume = (available: number): [number, number] => {
+          if (remaining <= 0) return [available, 0];
+          const eaten = Math.min(available, remaining);
+          remaining -= eaten;
+          return [available - eaten, eaten];
+        };
+        let planned = acc.planned;
+        [planned] = consume(planned);
+        // дати у спадному порядку
+        const byDate: Record<string, number> = {};
+        const sortedDates = Object.keys(acc.byDate).sort((a, b) => (a < b ? 1 : -1));
+        for (const d of sortedDates) {
+          const [left] = consume(acc.byDate[d]);
+          if (left > 0) byDate[d] = left;
+        }
+        let overdue = acc.overdue;
+        [overdue] = consume(overdue);
+
+        const total = overdue + planned + Object.values(byDate).reduce((s, v) => s + v, 0);
+        return { supplierId, supplierName: acc.supplierName, overdue, planned, byDate, total };
+      })
+      .filter(r => r.total > 0.005)
+      .sort((a, b) => b.total - a.total);
+
+    // Підсумковий рядок.
+    const totals = {
+      overdue: suppliers.reduce((s, r) => s + r.overdue, 0),
+      planned: suppliers.reduce((s, r) => s + r.planned, 0),
+      byDate: {} as Record<string, number>,
+      total: suppliers.reduce((s, r) => s + r.total, 0),
+    };
+    for (const d of dates) {
+      const sum = suppliers.reduce((s, r) => s + (r.byDate[d] ?? 0), 0);
+      if (sum > 0) totals.byDate[d] = sum;
+    }
+
+    return { dates, suppliers, totals };
   }
 
   async findOne(orgId: string, id: string): Promise<SupplierPaymentResponseDto> {

@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
+import { useAuth } from '@/lib/auth';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 import { counterpartiesKeys } from './useCounterparties';
 
@@ -61,7 +62,44 @@ export const supplierPaymentsKeys = {
   lists: () => [...supplierPaymentsKeys.all, 'list'] as const,
   list: (filters: SupplierPaymentsFilter) => [...supplierPaymentsKeys.lists(), filters] as const,
   detail: (id: string) => [...supplierPaymentsKeys.all, 'detail', id] as const,
+  schedule: (from: string, to: string) =>
+    [...supplierPaymentsKeys.all, 'schedule', from, to] as const,
 };
+
+export interface SupplierPaymentScheduleRow {
+  supplierId: string;
+  supplierName: string;
+  overdue: number;
+  planned: number;
+  byDate: Record<string, number>;
+  total: number;
+}
+
+export interface SupplierPaymentSchedule {
+  dates: string[];
+  suppliers: SupplierPaymentScheduleRow[];
+  totals: {
+    overdue: number;
+    planned: number;
+    byDate: Record<string, number>;
+    total: number;
+  };
+}
+
+/** Графік оплат — шахматка боргів постачальникам по датах (custom, non-CRUD). */
+export function useSupplierPaymentsSchedule(from: string, to: string) {
+  const { employee } = useAuth();
+  return useQuery({
+    queryKey: supplierPaymentsKeys.schedule(from, to),
+    queryFn: ({ signal }) =>
+      apiFetch<SupplierPaymentSchedule>(`/supplier-payments/schedule?from=${from}&to=${to}`, {
+        signal,
+      }),
+    enabled: !!employee && !!from && !!to,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
 
 export function useSupplierPayments(filters: SupplierPaymentsFilter = {}) {
   return usePaginatedList<SupplierPayment>('/supplier-payments', filters, {

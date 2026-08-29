@@ -1,7 +1,8 @@
 'use client';
 
 import { Suspense, useState, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { SupplierPaymentScheduleTab } from './SupplierPaymentScheduleTab';
 import { Plus, Wallet, Search, Eye, EyeOff, Trash2, Check, Ban, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRequireAuth } from '@/lib/auth';
@@ -90,6 +91,17 @@ function SupplierPaymentsPageInner() {
   const { confirm, dialogProps } = useConfirm();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab: 'list' | 'schedule' =
+    searchParams.get('tab') === 'schedule' ? 'schedule' : 'list';
+  const setActiveTab = useCallback(
+    (tab: 'list' | 'schedule') => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('tab', tab);
+      router.replace(`?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
 
   const {
     page,
@@ -385,365 +397,398 @@ function SupplierPaymentsPageInner() {
           <Wallet className="h-5 w-5" />
           Оплати постачальникам
         </h1>
-        <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-          Нова оплата
-        </Button>
+        {activeTab === 'list' && (
+          <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
+            Нова оплата
+          </Button>
+        )}
       </div>
 
-      {error && (
-        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
-          {error instanceof Error ? error.message : 'Помилка завантаження'}
-        </div>
-      )}
-
-      {/* Saved filters */}
-      {features.savedFiltersEnabled && (
-        <SavedFiltersBar<SpFilters>
-          saved={savedFilters}
-          activeId={activeSavedFilterId}
-          onApply={applyFilter}
-          onSave={handleSaveFilter}
-          onRemove={removeFilter}
-          hideSaveButton
-        />
-      )}
-
-      {/* Status filter pills */}
-      <div className="flex flex-wrap gap-1.5 shrink-0">
-        <StatusPill
-          value=""
-          label="Усі"
-          active={status === ''}
-          onSelect={() => {
-            setStatus('');
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-        />
-        {STATUS_OPTIONS.map(s => (
-          <StatusPill
-            key={s}
-            value={s}
-            label={SUPPLIER_PAYMENT_STATUS_LABELS[s]}
-            description={SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS[s]}
-            active={status === s}
-            onSelect={v => {
-              setStatus(v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-          />
+      {/* Section tabs */}
+      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
+        {(
+          [
+            { key: 'list', label: 'Список' },
+            { key: 'schedule', label: 'Графік оплат' },
+          ] as const
+        ).map(tab => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm',
+              activeTab === tab.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {tab.label}
+          </button>
         ))}
       </div>
 
-      {/* Filters row */}
-      <div className="flex flex-wrap items-center gap-3 shrink-0">
-        <Input
-          value={q}
-          onChange={e => {
-            setQ(e.target.value);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          placeholder="Пошук за номером / постачальником…"
-          leftElement={<Search />}
-          className="w-64 h-8 text-[13px]"
-        />
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">Від</span>
-          <DatePickerInput
-            value={dateFrom}
-            onChange={v => {
-              setDateFrom(v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            max={dateTo || undefined}
-            className="w-36"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">До</span>
-          <DatePickerInput
-            value={dateTo}
-            onChange={v => {
-              setDateTo(v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            min={dateFrom || undefined}
-            className="w-36"
-          />
-        </div>
+      {activeTab === 'schedule' && <SupplierPaymentScheduleTab />}
 
-        <div className="flex items-center gap-2 ml-auto">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
-            onClick={() => {
-              setShowDeleted(v => !v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            className={cn(showDeleted && 'border-primary text-primary')}
-          >
-            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          </Button>
-          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-          <ColumnsDropdown
-            columns={orderedColumns}
-            visibleKeys={colVisible}
-            onToggle={toggleCol}
-            onReorder={reorder}
-            onRename={renameColumn}
-            onReset={resetConfig}
-            hasCustomization={
-              JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
-              Object.keys(customLabels).length > 0
-            }
-          />
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-        </div>
-      </div>
+      {activeTab === 'list' && (
+        <>
+          {error && (
+            <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
+              {error instanceof Error ? error.message : 'Помилка завантаження'}
+            </div>
+          )}
 
-      {/* Bulk actions */}
-      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
-        <BulkActionsBar
-          count={bulkSelect.count}
-          selectedIds={Array.from(bulkSelect.selected)}
-          actions={bulkActions}
-          onClear={bulkSelect.clear}
-        />
-      )}
+          {/* Saved filters */}
+          {features.savedFiltersEnabled && (
+            <SavedFiltersBar<SpFilters>
+              saved={savedFilters}
+              activeId={activeSavedFilterId}
+              onApply={applyFilter}
+              onSave={handleSaveFilter}
+              onRemove={removeFilter}
+              hideSaveButton
+            />
+          )}
 
-      {/* Table + DetailPanel */}
-      <div className="flex flex-1 min-h-0">
-        <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {features.bulkActionsEnabled && (
-                  <TableHead className="w-9 pr-0">
-                    <input
-                      type="checkbox"
-                      checked={bulkSelect.allSelected}
-                      ref={selectAllRef}
-                      onChange={bulkSelect.toggleAll}
-                      className="h-3.5 w-3.5 rounded border-border"
-                      aria-label="Вибрати всі"
-                    />
-                  </TableHead>
-                )}
-                {visibleColumns.map(col => {
-                  // Ключ колонки → поле сортування бекенду (whitelist SORT_FIELDS у service).
-                  const SORTABLE: Record<string, string> = {
-                    number: 'number',
-                    amount: 'amount',
-                    date: 'documentDate',
-                  };
-                  const sortKey = SORTABLE[col.key];
-                  if (sortKey)
-                    return (
-                      <SortableHead
-                        key={col.key}
-                        sortKey={sortKey}
-                        currentSort={sort}
-                        onSort={toggleSort}
-                        className={col.key === 'amount' ? 'text-right' : undefined}
-                        {...dragProps(col.key)}
-                      >
-                        {col.label}
-                      </SortableHead>
-                    );
-                  return (
-                    <TableHead key={col.key} {...dragProps(col.key)}>
-                      {col.label}
-                    </TableHead>
-                  );
-                })}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="py-12 text-center"
-                  >
-                    <div className="flex justify-center">
-                      <Spinner size="md" />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
+          {/* Status filter pills */}
+          <div className="flex flex-wrap gap-1.5 shrink-0">
+            <StatusPill
+              value=""
+              label="Усі"
+              active={status === ''}
+              onSelect={() => {
+                setStatus('');
+                resetPage();
+                setActiveSavedFilterId(null);
+              }}
+            />
+            {STATUS_OPTIONS.map(s => (
+              <StatusPill
+                key={s}
+                value={s}
+                label={SUPPLIER_PAYMENT_STATUS_LABELS[s]}
+                description={SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS[s]}
+                active={status === s}
+                onSelect={v => {
+                  setStatus(v);
+                  resetPage();
+                  setActiveSavedFilterId(null);
+                }}
+              />
+            ))}
+          </div>
 
-              {!isLoading && items.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="p-0"
-                  >
-                    <EmptyState
-                      icon={Wallet}
-                      title="Оплат ще немає"
-                      description="Створіть першу оплату постачальнику для закриття боргу."
-                    />
-                  </TableCell>
-                </TableRow>
-              )}
+          {/* Filters row */}
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <Input
+              value={q}
+              onChange={e => {
+                setQ(e.target.value);
+                resetPage();
+                setActiveSavedFilterId(null);
+              }}
+              placeholder="Пошук за номером / постачальником…"
+              leftElement={<Search />}
+              className="w-64 h-8 text-[13px]"
+            />
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] text-muted-foreground shrink-0">Від</span>
+              <DatePickerInput
+                value={dateFrom}
+                onChange={v => {
+                  setDateFrom(v);
+                  resetPage();
+                  setActiveSavedFilterId(null);
+                }}
+                max={dateTo || undefined}
+                className="w-36"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] text-muted-foreground shrink-0">До</span>
+              <DatePickerInput
+                value={dateTo}
+                onChange={v => {
+                  setDateTo(v);
+                  resetPage();
+                  setActiveSavedFilterId(null);
+                }}
+                min={dateFrom || undefined}
+                className="w-36"
+              />
+            </div>
 
-              {!isLoading &&
-                items.map(sp => (
-                  <TableRow
-                    key={sp.id}
-                    onClick={() =>
-                      detailPanel.enabled && setSelected(prev => (prev?.id === sp.id ? null : sp))
-                    }
-                    className={cn(
-                      'group transition-colors',
-                      detailPanel.enabled && 'cursor-pointer',
-                      sp.deletedAt && 'opacity-60',
-                      selected?.id === sp.id && detailPanel.enabled && 'bg-primary/5',
-                      bulkSelect.isSelected(sp.id) && 'bg-primary/5',
-                    )}
-                  >
+            <div className="flex items-center gap-2 ml-auto">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+                onClick={() => {
+                  setShowDeleted(v => !v);
+                  resetPage();
+                  setActiveSavedFilterId(null);
+                }}
+                className={cn(showDeleted && 'border-primary text-primary')}
+              >
+                {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+              </Button>
+              {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+              <ColumnsDropdown
+                columns={orderedColumns}
+                visibleKeys={colVisible}
+                onToggle={toggleCol}
+                onReorder={reorder}
+                onRename={renameColumn}
+                onReset={resetConfig}
+                hasCustomization={
+                  JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
+                  Object.keys(customLabels).length > 0
+                }
+              />
+              <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+            </div>
+          </div>
+
+          {/* Bulk actions */}
+          {features.bulkActionsEnabled && bulkSelect.count > 0 && (
+            <BulkActionsBar
+              count={bulkSelect.count}
+              selectedIds={Array.from(bulkSelect.selected)}
+              actions={bulkActions}
+              onClear={bulkSelect.clear}
+            />
+          )}
+
+          {/* Table + DetailPanel */}
+          <div className="flex flex-1 min-h-0">
+            <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+              <Table>
+                <TableHeader>
+                  <TableRow>
                     {features.bulkActionsEnabled && (
-                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <TableHead className="w-9 pr-0">
                         <input
                           type="checkbox"
-                          checked={bulkSelect.isSelected(sp.id)}
-                          onChange={() => bulkSelect.toggle(sp.id)}
+                          checked={bulkSelect.allSelected}
+                          ref={selectAllRef}
+                          onChange={bulkSelect.toggleAll}
                           className="h-3.5 w-3.5 rounded border-border"
-                          aria-label={`Вибрати оплату ${sp.number}`}
+                          aria-label="Вибрати всі"
+                        />
+                      </TableHead>
+                    )}
+                    {visibleColumns.map(col => {
+                      // Ключ колонки → поле сортування бекенду (whitelist SORT_FIELDS у service).
+                      const SORTABLE: Record<string, string> = {
+                        number: 'number',
+                        amount: 'amount',
+                        date: 'documentDate',
+                      };
+                      const sortKey = SORTABLE[col.key];
+                      if (sortKey)
+                        return (
+                          <SortableHead
+                            key={col.key}
+                            sortKey={sortKey}
+                            currentSort={sort}
+                            onSort={toggleSort}
+                            className={col.key === 'amount' ? 'text-right' : undefined}
+                            {...dragProps(col.key)}
+                          >
+                            {col.label}
+                          </SortableHead>
+                        );
+                      return (
+                        <TableHead key={col.key} {...dragProps(col.key)}>
+                          {col.label}
+                        </TableHead>
+                      );
+                    })}
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                        className="py-12 text-center"
+                      >
+                        <div className="flex justify-center">
+                          <Spinner size="md" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {!isLoading && items.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
+                        className="p-0"
+                      >
+                        <EmptyState
+                          icon={Wallet}
+                          title="Оплат ще немає"
+                          description="Створіть першу оплату постачальнику для закриття боргу."
                         />
                       </TableCell>
-                    )}
-                    {visibleColumns.map(col => renderCell(sp, col.key))}
-                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        {!sp.deletedAt && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            title={sp.status === 'DRAFT' ? 'Редагувати' : 'Відкрити картку'}
-                            aria-label={
-                              sp.status === 'DRAFT'
-                                ? `Редагувати оплату ${sp.number}`
-                                : `Відкрити оплату ${sp.number}`
-                            }
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            onClick={() =>
-                              // DRAFT → одразу редагування у модалці; інші статуси → картка (перегляд).
-                              sp.status === 'DRAFT'
-                                ? setEditingId(sp.id)
-                                : router.push(`/supplier-payments/${sp.id}`)
-                            }
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
+                    </TableRow>
+                  )}
+
+                  {!isLoading &&
+                    items.map(sp => (
+                      <TableRow
+                        key={sp.id}
+                        onClick={() =>
+                          detailPanel.enabled &&
+                          setSelected(prev => (prev?.id === sp.id ? null : sp))
+                        }
+                        className={cn(
+                          'group transition-colors',
+                          detailPanel.enabled && 'cursor-pointer',
+                          sp.deletedAt && 'opacity-60',
+                          selected?.id === sp.id && detailPanel.enabled && 'bg-primary/5',
+                          bulkSelect.isSelected(sp.id) && 'bg-primary/5',
                         )}
-                        {!sp.deletedAt && sp.status !== 'CONFIRMED' && (
+                      >
+                        {features.bulkActionsEnabled && (
+                          <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={bulkSelect.isSelected(sp.id)}
+                              onChange={() => bulkSelect.toggle(sp.id)}
+                              className="h-3.5 w-3.5 rounded border-border"
+                              aria-label={`Вибрати оплату ${sp.number}`}
+                            />
+                          </TableCell>
+                        )}
+                        {visibleColumns.map(col => renderCell(sp, col.key))}
+                        <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
+                            {!sp.deletedAt && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                title={sp.status === 'DRAFT' ? 'Редагувати' : 'Відкрити картку'}
+                                aria-label={
+                                  sp.status === 'DRAFT'
+                                    ? `Редагувати оплату ${sp.number}`
+                                    : `Відкрити оплату ${sp.number}`
+                                }
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                                onClick={() =>
+                                  // DRAFT → одразу редагування у модалці; інші статуси → картка (перегляд).
+                                  sp.status === 'DRAFT'
+                                    ? setEditingId(sp.id)
+                                    : router.push(`/supplier-payments/${sp.id}`)
+                                }
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {!sp.deletedAt && sp.status !== 'CONFIRMED' && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                title="Помітити на видалення"
+                                aria-label={`Видалити оплату ${sp.number}`}
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => void handleDelete(sp)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Detail panel */}
+            <DetailPanel
+              open={!!selected && detailPanel.enabled}
+              onClose={() => setSelected(null)}
+              title={selected?.number ?? ''}
+              subtitle={selected?.supplierName}
+              configFields={panelConfigFields}
+              onToggleField={panelConfig.toggleField}
+              onReorderFields={panelConfig.reorderFields}
+              onReset={panelConfig.reset}
+            >
+              {selected && (
+                <>
+                  {panelFields.map(f => (
+                    <PanelField
+                      key={f.key}
+                      fieldKey={f.key}
+                      label={f.label}
+                      value={f.value}
+                      hidden={f.hidden}
+                    />
+                  ))}
+
+                  {!selected.deletedAt && (
+                    <PanelSection title="Дії">
+                      <div className="flex flex-col gap-2">
+                        {selected.status === 'DRAFT' && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              leftIcon={<Check className="h-4 w-4" />}
+                              loading={confirmMut.isPending}
+                              onClick={() => void handleConfirm(selected)}
+                            >
+                              Провести
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              leftIcon={<Ban className="h-4 w-4" />}
+                              loading={cancelMut.isPending}
+                              onClick={() => void handleCancel(selected)}
+                            >
+                              Скасувати
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              leftIcon={<Trash2 className="h-4 w-4" />}
+                              loading={deleteMut.isPending}
+                              onClick={() => void handleDelete(selected)}
+                            >
+                              Помітити на видалення
+                            </Button>
+                          </>
+                        )}
+                        {selected.status === 'CANCELLED' && (
                           <Button
-                            type="button"
                             variant="ghost"
-                            size="icon-sm"
-                            title="Помітити на видалення"
-                            aria-label={`Видалити оплату ${sp.number}`}
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => void handleDelete(sp)}
+                            size="sm"
+                            leftIcon={<Trash2 className="h-4 w-4" />}
+                            loading={deleteMut.isPending}
+                            onClick={() => void handleDelete(selected)}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            Помітити на видалення
                           </Button>
                         )}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-            </TableBody>
-          </Table>
-        </div>
-
-        {/* Detail panel */}
-        <DetailPanel
-          open={!!selected && detailPanel.enabled}
-          onClose={() => setSelected(null)}
-          title={selected?.number ?? ''}
-          subtitle={selected?.supplierName}
-          configFields={panelConfigFields}
-          onToggleField={panelConfig.toggleField}
-          onReorderFields={panelConfig.reorderFields}
-          onReset={panelConfig.reset}
-        >
-          {selected && (
-            <>
-              {panelFields.map(f => (
-                <PanelField
-                  key={f.key}
-                  fieldKey={f.key}
-                  label={f.label}
-                  value={f.value}
-                  hidden={f.hidden}
-                />
-              ))}
-
-              {!selected.deletedAt && (
-                <PanelSection title="Дії">
-                  <div className="flex flex-col gap-2">
-                    {selected.status === 'DRAFT' && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          leftIcon={<Check className="h-4 w-4" />}
-                          loading={confirmMut.isPending}
-                          onClick={() => void handleConfirm(selected)}
-                        >
-                          Провести
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          leftIcon={<Ban className="h-4 w-4" />}
-                          loading={cancelMut.isPending}
-                          onClick={() => void handleCancel(selected)}
-                        >
-                          Скасувати
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          leftIcon={<Trash2 className="h-4 w-4" />}
-                          loading={deleteMut.isPending}
-                          onClick={() => void handleDelete(selected)}
-                        >
-                          Помітити на видалення
-                        </Button>
-                      </>
-                    )}
-                    {selected.status === 'CANCELLED' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        leftIcon={<Trash2 className="h-4 w-4" />}
-                        loading={deleteMut.isPending}
-                        onClick={() => void handleDelete(selected)}
-                      >
-                        Помітити на видалення
-                      </Button>
-                    )}
-                  </div>
-                </PanelSection>
+                    </PanelSection>
+                  )}
+                </>
               )}
-            </>
-          )}
-        </DetailPanel>
-      </div>
+            </DetailPanel>
+          </div>
 
-      {/* Pagination */}
-      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+          {/* Pagination */}
+          <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+        </>
+      )}
 
       <SupplierPaymentCreateModal
         open={showCreate}
