@@ -630,4 +630,64 @@ describe('SupplierPaymentsService — regression guards', () => {
     ).where;
     expect(where.supplier).toEqual({ deletedAt: null });
   });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Bug #597 — regression guards for cross-field validation.
+  // Guards існують у service (from > to → 400, windowDays > 100 → 400),
+  // але без тестів наступний refactor може їх видалити → CI green → user
+  // отримує 200 з empty/misleading result замість 400 helpful error.
+  // Pattern: Bug #416 (Serializable inner re-check test).
+  // ──────────────────────────────────────────────────────────────────────
+
+  it('getSchedule(): from > to → BadRequestException, БЕЗ DB-виклику (Bug #597)', async () => {
+    await expect(service.getSchedule(ORG, '2026-09-01', '2026-08-30')).rejects.toThrow(
+      BadRequestException,
+    );
+    // DB не мали чіпати — cross-field guard спрацював ДО Promise.all.
+    expect(prisma.purchaseOrder.findMany).not.toHaveBeenCalled();
+    expect(prisma.supplierPayment.groupBy).not.toHaveBeenCalled();
+    expect(prisma.counterpartyContract.findMany).not.toHaveBeenCalled();
+  });
+
+  it('getSchedule(): вікно > 100 днів → BadRequestException, БЕЗ DB-виклику (Bug #597)', async () => {
+    // 2026-01-01 .. 2026-04-30 = 119 днів → windowDays=119 > 100 → 400.
+    await expect(service.getSchedule(ORG, '2026-01-01', '2026-04-30')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.purchaseOrder.findMany).not.toHaveBeenCalled();
+  });
+
+  it('getSchedule(): windowDays на межі 100 → OK, DB викликано (Bug #597)', async () => {
+    // 2026-01-01 .. 2026-04-10 = 99 днів різниці + 23:59:59 → Math.round → 100 → passes strict `> 100`.
+    // Регресія-guard: якщо guard стане `>= 100` — цей тест червоний.
+    await expect(service.getSchedule(ORG, '2026-01-01', '2026-04-10')).resolves.toBeDefined();
+    expect(prisma.purchaseOrder.findMany).toHaveBeenCalledOnce();
+  });
+
+  it('getSchedule(): totals.byDate агрегує суми з усіх постачальників по датам (Bug #597)', async () => {
+    // Два постачальники, один PO у одну дату, один у іншу.
+    // Regression-guard для single-pass reduce (optimize cycle 2) — переконуємось
+    // що totals.byDate НЕ пропускає жодного bucket-у і НЕ дублює.
+    const SUPPLIER2 = '55555555-5555-4555-8555-555555555555';
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-25' }), // supplier A → 25-го
+      poRow({ totalAmount: 600, paymentDate: '2026-08-26' }), // supplier A → 26-го
+      poRow({
+        totalAmount: 400,
+        paymentDate: '2026-08-25',
+        supplierId: SUPPLIER2,
+        supplierName: 'Beta',
+      }), // supplier B → 25-го
+    ]);
+    const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    // 25-го = 1000 (A) + 400 (B) = 1400
+    expect(r.totals.byDate['2026-08-25']).toBe(1400);
+    // 26-го = 600 (A)
+    expect(r.totals.byDate['2026-08-26']).toBe(600);
+    // Порожні колонки не потрапляють у totals.byDate.
+    expect(r.totals.byDate['2026-08-27']).toBeUndefined();
+    // Sanity: сума збігається з grand total.
+    expect(r.totals.total).toBe(2000);
+    expect(r.suppliers).toHaveLength(2);
+  });
 });

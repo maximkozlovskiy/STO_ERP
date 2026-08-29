@@ -1036,6 +1036,44 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-08-30 — Cross-field guard + новий single-pass aggregator без regression-test (Bug #597) — api / backend / test-coverage / regression-guard
+
+**Сигнал:** Service-метод має `throw new BadRequestException('...')` для крос-полю validation (наприклад `from > to`, `windowDays > 100`, `startDate > endDate`, `qty > available`) АБО новий single-pass aggregator (типово після optimize-cycle: замінили multi-reduce на for-of + локальні акумулятори у `totals.byX`). Парний `*.spec.ts` НЕ містить жодного `it(...)` для цих guards чи aggregators — grep за унікальним фрагментом error-повідомлення / aggregator-output повертає 0 matches. Це патерн Bug #416 (Serializable inner re-check test) — точно той самий принцип.
+
+**Причина виникнення:** feature-розробка додає тільки happy-path тести (byDate mapping, credit-limit reduction). Guards і аgg-и додаються ПІЗНІШЕ у review-циклі («Cross-field guard: без цього from > to тихо перевертає bucket-логіку») або в optimize-циклі («заміняємо 3 reduce на one-pass»). Розробник фокусується на impl-fix, забуває парний test-fix. Класична split-fix gap-family: pattern у скіллі §1.5 `spec-vs-impl parity — guard added, but no regression test` — тут той самий у cross-field і aggregation формі.
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Знайти всі cross-field guards у service.ts:
+grep -rn "throw new BadRequestException" apps/api/src/modules --include="*.service.ts" -B1 | grep -B1 "if (.*>.*\|if (.*<.*\|if (.*!==.*"
+
+# 2. Для кожного знайденого — унікальний фрагмент error-повідомлення:
+#    Наприклад "Вікно графіка не може перевищувати"
+grep -rn "'Вікно графіка не може перевищувати'" apps/api/src --include="*.spec.ts"
+# 0 matches → gap
+
+# 3. Aggregator у service (single-pass after optimize):
+grep -rn "for (const .* of .* )\|for (const .* in " apps/api/src --include="*.service.ts" -A2 | grep -B1 "totals\[.*\] = (totals\[.*\] ?? 0) +"
+
+# 4. У парному spec шукати assert на цей aggregator output:
+grep -rn "totals\.byX\|totals\.byDate\|totals\.by" apps/api/src --include="*.spec.ts"
+# Якщо тільки totals.total тестується, а totals.byX — ні → gap
+```
+
+**Підхід до фіксу:** для кожного знайденого gap-у додати `it(...)` кейси у парному spec:
+
+- Для cross-field guard — 3 кейси: (а) invalid combo → `rejects.toThrow(BadRequestException)`; (б) DB не викликано (`expect(prisma.X.find).not.toHaveBeenCalled()`); (в) boundary case → resolves (перевіряє `>` vs `>=` typo).
+- Для single-pass aggregator — 1-2 кейси з РІЗНИМИ input variantами: (а) 2+ contributors у той самий bucket → sum (не overwrite); (б) empty bucket не потрапляє у output; (в) sanity — сума окремих bucket-ів == grand total.
+
+**Severity:** MEDIUM (regression risk, не immediate bug). Не HIGH бо impl зараз працює. Не LOW бо: (а) guard-у-коді без тестy = висока ймовірність silent regression при наступному refactor-і; (б) aggregator output — user-visible (footer/totals), помилка миттєво помітна користувачу.
+
+**Де шукати ще:** будь-який сервіс з recent `simplify:`, `perf(optimize):`, `fix(review):` commit-ом що змінив service.ts (додав guard/aggregator) — перевірити чи парний `*.spec.ts` теж змінений у тому ж diff. Grep: `git log --oneline --grep="review\|optimize\|simplify" -10` → `git show <commit> --stat | grep -E "service.ts|spec.ts"` → якщо тільки `.service.ts` у diff, а `.spec.ts` — ні = потенційна gap.
+
+**Регресія-guard для цього патерну:** pre-commit hook що для КОЖНОГО `fix(review):` / `simplify(review):` / `perf(optimize):` commit-у з `.service.ts` у diff, вимагає теж діф у парному `.spec.ts` (або explicit «no test needed» commit-message annotation).
+
+---
+
 ### 2026-08-30 — URL deep-link writer без парного reader (Bug #596) — web / frontend / navigation / broken-feature
 
 **Сигнал:** Кнопка «покажи X у Y» на сторінці A виглядає як deep-link (icon `ExternalLink`, `text-primary`), клік перекидає у target-сторінку Y — АЛЕ Y відкривається у голому стані без візуальної відмітки/відкритої модалки/скролу на потрібний item. Grep по всій кодовій базі `?<param>=` повертає РІВНО 1 match — той самий писач; читач відсутній.

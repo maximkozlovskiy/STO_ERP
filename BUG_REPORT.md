@@ -1590,3 +1590,30 @@ Static-checks passed (0 bugs found у цих секціях):
 - **Verification:** `npx playwright test crud-calendar-slot.spec.ts:32 --workers=1 --retries=0` → `1 passed (2.4s)`. Повний файл: 5/5 passed. Комбінований run обох spec: 9/9 passed.
 - **Де шукати ще:** усі e2e-тести що (а) створюють time-based ресурс (calendar slot, work-order plannedAt, invoice paidAt, transaction date, booking timeslot) через API з `new Date().toISOString()` і (б) перевіряють його на UI що відображає у Kyiv-локалі. Grep: `grep -rn "toISOString.*split.*T.*0\|new Date().*toISOString.*calendar\|Intl.*Europe/Kyiv" apps/web/e2e --include="*.ts"`. Патерн загальний: **e2e тест НІКОЛИ не змішує UTC-arithmetic з Kyiv-UI без явного round-trip через Intl.DateTimeFormat**.
 - **Статус:** [x] виправлено
+
+---
+
+## Session 2026-08-30 (FULL /sto-tester, HEAD e02c1288, feat/supplier-payments, цикл 3/3) — regression-guard gap
+
+Третій (фінальний) цикл /sto-tester по всьому проєкту. Baseline перед сесією зелений (tsc 0/0, API 992/992, Web 488/488). Виявлено 1 real bug (MEDIUM regression-guard gap для `getSchedule` cross-field guards + `totals.byDate` single-pass aggregator).
+
+### Bug #597 — MEDIUM test coverage / regression-guard gap — `getSchedule()` cross-field guards + `totals.byDate` single-pass agg без тестів
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.ts:148-341` (impl), `apps/api/src/modules/supplier-payments/supplier-payments.service.spec.ts` (spec — 3 gaps).
+- **Симптом:** три business-guards / інваріанти існують у коді, але не мають парних тестів. Це патерн Bug #416: guard-у-коді + zero-test = наступний refactor (типово "цей блок дублює перевірку вище" або "спростимо") видаляє guard без падіння CI → регресія у прод.
+  1. **`from > to` cross-field guard (line 151)** — `throw BadRequestException('Дата "від" не може бути пізнішою за дату "до"')`. Без цього перевернутий діапазон тихо створює порожнє вікно, весь bucketing логіки ламається (usв PO → planned/overdue).
+  2. **`windowDays > 100` cap (line 159)** — `throw BadRequestException('Вікно графіка не може перевищувати 100 днів')`. Захист від DoS/memory: 10 000+ днів на некоректному вводі роздула би відповідь до MB.
+  3. **`totals.byDate` single-pass aggregator (lines 317-332, optimize cycle 2)** — новий алгоритм замінив 3 послідовні `reduce()` + вкладений `for/reduce` на одну for-of прохід з локальними акумуляторами. Тільки `totals.total` перевіряється у suite (2 місця); `totals.byDate` — жодного assert. Якщо refactor зіпсує aggregator (наприклад забуде `totalsByDate[d] = (totalsByDate[d] ?? 0) + r.byDate[d]` і зробить просто `= r.byDate[d]` — overwrite замість sum), тести пройдуть green, але UI покаже неправильні totals у footer.
+- **Причина виникнення:** сесії feature-розробки (реалізація getSchedule) додали тільки happy-path тести (byDate mapping, credit limit, unlinked payments). Guards і new aggregator додані пізніше (Cycle 1 review для guards, Cycle 2 optimize для aggregator) БЕЗ парного тесту-регресії. Класична gap-family для «додав захист / оптимізацію → забув test». Спорідене з Bug #416 (Serializable inner re-check test) — точно той самий принцип.
+- **Виявлено:** grep у SP service spec:
+  - `grep -n "from > to\|100 днів\|BadRequest.*Дата\|BadRequest.*Вікно" supplier-payments.service.spec.ts` → 0 matches (guards без тестів).
+  - `grep -n "totals.byDate" supplier-payments.service.spec.ts` → 0 matches (aggregator без тестів). Тільки `totals.total` перевіряється у 2 місцях.
+- **Severity:** MEDIUM — regression risk, не immediate bug (impl зараз працює). Не HIGH бо: (а) impl-код правильний зараз; (б) UI не blocked. Не LOW бо: (в) 3 guard-и × заповнений час до наступного refactor-y = висока ймовірність silent regression; (г) `totals.byDate` — user-visible у UI footer, помилка одразу помітна.
+- **Fix:** 4 нові `it(...)` кейси у `supplier-payments.service.spec.ts`:
+  1. `getSchedule(): from > to → BadRequestException, БЕЗ DB-виклику` — перевіряє guard + що жоден Prisma-виклик не був зроблений (rejects.toThrow + `expect(findMany).not.toHaveBeenCalled()`).
+  2. `getSchedule(): вікно > 100 днів → BadRequestException, БЕЗ DB-виклику` — 2026-01-01..2026-04-30 (119 днів) → 400.
+  3. `getSchedule(): windowDays на межі 100 → OK, DB викликано` — 2026-01-01..2026-04-10 (99+0.999→round=100) → passes strict `> 100`. Якщо guard стане `>= 100` (typo) — тест червоний.
+  4. `getSchedule(): totals.byDate агрегує суми з усіх постачальників по датам` — 2 постачальники, 3 PO у 2 дати → перевіряє sum aggregation (не overwrite), відсутність зайвих empty-колонок у totals, sanity-check grand total.
+- **Статус:** [x] виправлено — `supplier-payments.service.spec.ts` +4 tests. Spec повний: 34/34 passed (було 30).
+- **Verification:** `pnpm --filter @sto/api exec vitest run supplier-payments.service.spec` → 34/34 passed. Повний API vitest → 996/996 (992 + 4 нових).
+- **Де шукати ще:** будь-який service-метод що (а) додає cross-field-validation guard (throw у perceived-invalid комбо параметрів) АБО (б) додає single-pass aggregator який замінює multi-pass reduce (як тут — optimize cycle 2), АЛЕ БЕЗ парного `*.spec.ts` тесту. Grep: `grep -rn "throw new BadRequestException" apps/api/src/modules --include="*.service.ts" -B1` — знайти guards, потім grep у парному spec за унікальним фрагментом error-повідомлення. 0 matches у spec → gap. Особливо для recently-refactored сервісів (свіжий commit `perf(optimize):` або `simplify:`).
