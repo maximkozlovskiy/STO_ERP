@@ -15,7 +15,7 @@ TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API 976+/976+ | Web 485/485 | E2E 305/307 ✅ (2 flaky)
 Latest feature: 2026-08-29 (feat/supplier-payments) — «Графік оплат постачальникам». PurchaseOrder.paymentDate (нова колонка, авто-fill у receive() = сьогодні+paymentDeferDays договору; редаговане поле в PO-модалці). GET /supplier-payments/schedule — шахматка боргів по датах (RECEIVED/PARTIAL PO, outstanding=totalAmount−ΣCONFIRMED payments, bucket overdue/дата/planned, кредит-ліміт з найпізніших). Вкладка «Список/Графік оплат» на /supplier-payments (SupplierPaymentScheduleTab). Tests: +5 getSchedule spec, +2 PO receive auto-fill, +1 E2E schedule tab. Live: today+10 auto-fill ✓, 5000−2000ліміт=3000 ✓.
 Sync:       2026-07-03 ✅ Dir1 0 missing | Dir2 2 fixed (bank-accounts/cash-registers paginated) | Dir3 2 fixed (deletedAt removed)
-Latest review: 2026-07-03 (auto, HEAD 951506b7, feat/supplier-payments) — SupplierPayment feature: 1 issue (0 Critical / 1 Important / 0 Suggestion), fixed 1/1; paired FK state (§8.2): onClear supplier не скидав purchaseOrderId/purchaseOrderNumber → orphan PO reference. Business invariants OK: PAYMENT через SettlementsService.createTransaction, FSM re-read у tx, documentType='SupplierPayment', tenant isolation ✓, soft delete ✓, CONFIRMED не можна видалити ✓, немає Checkbox/loyalty. 10/10 regression тестів passed.
+Latest review: 2026-08-29 (auto, HEAD ad65c36f, feat/supplier-payments, цикл 1/3) — schedule + PO paymentDate: 5 issues (0 Critical / 3 Important / 2 Suggestion), fixed 5/5. (1) counterpartyContract.findMany без take → OOM guard 5000. (2) getSchedule без from<=to валідації → 400 з cap 100 днів. (3) receive() використовував paymentDeferDays з soft-deleted договору → deletedAt guard. (4) PO Modal «Дата оплати» без disabled={!canEdit} → 400 при PATCH non-DRAFT. (5) purchase-orders/page.tsx receive не інвалідував supplier-payments/counterparties → шахматка/баланси stale 30s. (0) React.ReactNode → import type. TS 0 errors, 992/992 vitest ✓.
 Latest tester: 2026-07-04 (HEAD 4eb3187f, feat/supplier-payments) — Bug #592 HIGH: /ndi BankAccountsTab crash "Cannot read properties of undefined (reading 'map')". getCached() повертає sessionStorage JSON без валідації форми → зіпсований запис ({items:undefined} або голий масив) → setBankAccounts(undefined) → .map crash. Fix: Array.isArray(cached.items) guard у BankAccountsTab/CashRegistersTab/CurrenciesTab + 4 regression-тести. Backend контракт OK. Попереднє: Bug #590 HIGH useConfirmSupplierPayment invalidate counterparties; Bug #591 useSupplierPayments.test.tsx; Bug #588 HIGH update() paired-FK orphan.
 Latest E2E: 2026-07-03 (SupplierPayment) — новий `apps/web/e2e/supplier-payments.spec.ts` 7/7 passed. Покриває: рендер сторінки/фільтрів/модалки, create→таблиця→cleanup, FSM DRAFT→CONFIRMED пише settlement PAYMENT + баланс постачальника −amount + documentType=SupplierPayment у transactions + CONFIRMED не видаляється, guard BANK_ACCOUNT без bankAccountId→400, DRAFT→CANCELLED не пише settlement. Тест сам сідить cash register (currency+branch — seed не містить). Related specs (supplier-returns, crud-purchase-order) без регресій.
 Dev-сервери: API ✅ :3000 | Web ✅ :3001 | Docker: запускати вручну
@@ -49,6 +49,13 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+ad65c36f  fix(review): 5 findings on supplier-payments schedule + PO paymentDate (feat/supplier-payments)
+          — getSchedule: counterpartyContract.findMany take=5000, from<=to валідація + cap 100 днів
+          — receive: перевірка po.contract.deletedAt перед застосуванням paymentDeferDays
+          — PO Modal: disabled={!canEdit} на «Дата оплати» (backend PATCH блокує non-DRAFT)
+          — purchase-orders page: invalidate supplierPaymentsKeys/counterpartiesKeys після receive
+          — PageClient supplier-payments: React.ReactNode → import type { ReactNode }
+
 65064c6a  docs(skills): SupplierPayment Bug #588 → sto-tester paired-FK approach (feat/supplier-payments)
 92390dbc  fix(tester): Bug #588 — supplier-payments update() auto-clears orphan PO on supplier change (feat/supplier-payments)
           — API-only clients могли лишити purchaseOrderId від старого постачальника → cross-supplier linkage
