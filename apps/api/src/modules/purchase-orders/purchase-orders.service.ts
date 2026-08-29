@@ -432,7 +432,8 @@ export class PurchaseOrdersService {
           include: { good: { select: { unitId: true } } },
         },
         // Для авто-обчислення дати оплати (RECEIVED): дата + днів відтермінування договору.
-        contract: { select: { paymentDeferDays: true } },
+        // deletedAt потрібен щоб уникнути «freeze» відтермінування з архівного договору.
+        contract: { select: { paymentDeferDays: true, deletedAt: true } },
       },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
@@ -566,9 +567,12 @@ export class PurchaseOrdersService {
             : po.status;
 
         // Авто-заповнення планової дати оплати при повному отриманні (RECEIVED),
-        // якщо поле ще порожнє і договір має відтермінування:
+        // якщо поле ще порожнє і АКТИВНИЙ (не soft-deleted) договір має відтермінування:
         // paymentDate = сьогодні + paymentDeferDays. Ручне значення не перезаписуємо.
-        const defer = po.contract?.paymentDeferDays ?? null;
+        // Prisma не фільтрує relation include за deletedAt автоматично → перевіряємо явно,
+        // інакше «фризимо» відтермінування з архівного договору.
+        const defer =
+          po.contract && po.contract.deletedAt == null ? po.contract.paymentDeferDays : null;
         const shouldSetPaymentDate =
           newStatus === PurchaseOrderStatus.RECEIVED && !po.paymentDate && defer != null;
         await tx.purchaseOrder.update({

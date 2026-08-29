@@ -896,11 +896,13 @@ export function PurchaseOrderCreateModal({
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-[13px] font-medium text-muted-foreground">Дата оплати:</span>
               <div className="w-36">
-                {/* Авто-заповнюється при отриманні (дата + відтермінування договору);
-                    редагується вручну для будь-якого збереженого замовлення. */}
+                {/* Задається на DRAFT; після ORDERED — авто-заповнюється при повному отриманні
+                    (RECEIVED) = сьогодні + CounterpartyContract.paymentDeferDays.
+                    Backend PATCH /purchase-orders/:id блокує зміни поза DRAFT (тому disabled). */}
                 <DatePickerInput
                   value={form.paymentDate}
                   onChange={v => setForm(f => ({ ...f, paymentDate: v }))}
+                  disabled={!canEdit}
                 />
               </div>
             </div>

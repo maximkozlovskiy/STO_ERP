@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/lib/auth';
 import { Check, Ban, Trash2, ExternalLink, Pencil } from 'lucide-react';
@@ -31,7 +31,7 @@ function fmt(n: number) {
 }
 
 /** Single labeled field — рендериться лише коли value не порожнє. */
-function Field({ label, value }: { label: string; value?: React.ReactNode }) {
+function Field({ label, value }: { label: string; value?: ReactNode }) {
   const isEmpty = value === null || value === undefined || value === '';
   return (
     <div>

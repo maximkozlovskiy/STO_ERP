@@ -16,6 +16,8 @@ import {
 } from '@/hooks/api/usePurchaseOrders';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { inventoryKeys } from '@/hooks/api/useInventory';
+import { supplierPaymentsKeys } from '@/hooks/api/useSupplierPayments';
+import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -430,6 +432,11 @@ function PurchaseOrdersPageClient() {
       // RECEIPT створює stock movement → stockItem.quantity змінюється,
       // тому inventory cache теж треба інвалідувати, інакше /inventory показує старі залишки
       queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+      // receive() пише settlement CHARGE (борг постачальнику↑) + може авто-встановити
+      // paymentDate → шахматка /supplier-payments?tab=schedule і counterparty balance
+      // мають одразу відобразити зміни (без 30s очікування staleTime).
+      queryClient.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+      queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка прийому товару');
     } finally {
@@ -1103,6 +1110,11 @@ function PurchaseOrdersPageClient() {
         onClose={() => setEditingPOId(null)}
         onSaved={() => {
           queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+          // Modal внутрішньо може виконати receive() → settlement CHARGE + paymentDate
+          // → шахматка та counterparty balance мають одразу оновитись (без 30s staleTime).
+          queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+          queryClient.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+          queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
         }}
       />
 

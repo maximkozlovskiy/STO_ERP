@@ -143,8 +143,19 @@ export class SupplierPaymentsService {
    * протерміновані зменшуються останніми. Якщо ліміт ≥ борг → постачальник пропускається.
    */
   async getSchedule(orgId: string, from: string, to: string): Promise<SupplierPaymentScheduleDto> {
+    // Cross-field guard: без цього from > to тихо перевертає bucket-логіку —
+    // всі PO потрапляють у planned/overdue, вікно порожнє, користувач не розуміє чому.
+    if (from > to) {
+      throw new BadRequestException('Дата "від" не може бути пізнішою за дату "до"');
+    }
     const fromDate = new Date(from + 'T00:00:00.000Z');
     const toDate = new Date(to + 'T23:59:59.999Z');
+    // Кап на розмір вікна — 20 днів достатньо для UX, 100 — жорсткий upper bound
+    // (10000+ днів на некоректному вводі роздула би відповідь до MB).
+    const windowDays = Math.round((toDate.getTime() - fromDate.getTime()) / 86_400_000);
+    if (windowDays > 100) {
+      throw new BadRequestException('Вікно графіка не може перевищувати 100 днів');
+    }
 
     // Список дат вікна (YYYY-MM-DD) для колонок.
     const dates: string[] = [];
@@ -190,6 +201,7 @@ export class SupplierPaymentsService {
       }),
       // Кредит-ліміт з АКТИВНИХ PURCHASE-договорів постачальника (не лише з тих,
       // що прив'язані до outstanding-PO) — інакше ліміт губиться для PO без договору.
+      // Safety cap 5000: 1 постачальник → зазвичай 1-3 контракти; > 5000 у org = аномалія.
       this.prisma.counterpartyContract.findMany({
         where: {
           orgId,
@@ -198,6 +210,7 @@ export class SupplierPaymentsService {
           creditLimit: { not: null },
         },
         select: { counterpartyId: true, creditLimit: true },
+        take: 5000,
       }),
     ]);
 
