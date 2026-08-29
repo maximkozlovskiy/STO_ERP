@@ -69,7 +69,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   { href: '/stock-documents', label: 'Документи складу', icon: FileText, section: 'documents' },
 
   // ─── Взаєморозрахунки ─────────────────────────────────────────────
-  { href: '/invoices', label: 'Рахунки', icon: Receipt, section: 'settlements' },
+  { href: '/invoices', label: 'Рахунки клієнтам', icon: Receipt, section: 'settlements' },
   {
     href: '/supplier-payments',
     label: 'Оплати постачальникам',
