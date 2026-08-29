@@ -4,7 +4,7 @@ import { formatPersonName } from '@sto/shared';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
-import { calculatePagination } from '../../common/utils/pagination';
+import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { throwIfSerializationConflict } from '../../common/utils/prisma-errors';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -88,14 +88,13 @@ export class InvoicesService {
     }
 
     const { skip, take } = calculatePagination({ page, limit });
-    const sortField = INV_SORT_FIELDS[sortBy ?? ''] ?? 'createdAt';
-    const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
+    const orderBy = buildSortOrderBy(INV_SORT_FIELDS, sortBy, sortDir);
     const [items, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
         skip,
         take,
-        orderBy: { [sortField]: sortOrder },
+        orderBy,
         include: {
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           workOrder: { select: { number: true } },

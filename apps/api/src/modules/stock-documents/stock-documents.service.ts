@@ -3,7 +3,7 @@ import { DocumentType, Prisma, StockDocumentType, StockMovementType } from '@pri
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { calculatePagination } from '../../common/utils/pagination';
+import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -72,8 +72,7 @@ export class StockDocumentsService {
     }
 
     const { skip, take } = calculatePagination({ page, limit });
-    const sortField = SD_SORT_FIELDS[sortBy ?? ''] ?? 'createdAt';
-    const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
+    const orderBy = buildSortOrderBy(SD_SORT_FIELDS, sortBy, sortDir);
     // Bug review (sto-optimize 2026-06-05): lines не використовуються у table-cells списку,
     // лише `doc.lines.length` у комірці «Позицій». DetailPanel рендериться для ОДНОГО
     // вибраного doc і завантажується lazily через GET /stock-documents/:id (findOne уже
@@ -84,7 +83,7 @@ export class StockDocumentsService {
         where,
         skip,
         take,
-        orderBy: { [sortField]: sortOrder },
+        orderBy,
         include: {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },

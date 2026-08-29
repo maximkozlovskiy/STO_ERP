@@ -21,3 +21,30 @@ export function calculatePagination(params: {
   const take = Math.min(Math.max(1, Math.floor(params.limit ?? 20)), cap);
   return { skip: (page - 1) * take, take };
 }
+
+/**
+ * Будує Prisma `orderBy` з whitelist дозволених полів сортування.
+ *
+ * Whitelist-семантика (єдина для всіх list-endpoints):
+ * - `sortBy` є у whitelist → сортуємо за мапнутим полем; `sortDir='asc'` інакше 'desc'.
+ * - `sortBy` невідоме/порожнє → ПОВНИЙ fallback на `{ [fallback]: 'desc' }`, включно з
+ *   напрямом (garbage sortBy не повинен тихо перевертати дефолтний порядок).
+ *
+ * Замінює 5 дубльованих inline-ідіом (invoices/purchase-orders/stock-documents/
+ * work-orders/supplier-payments findAll) — усуває drift між `in`-check та `?? ''` формами.
+ *
+ * Usage:
+ *   const orderBy = buildSortOrderBy(INV_SORT_FIELDS, sortBy, sortDir);
+ *   await prisma.invoice.findMany({ where, skip, take, orderBy });
+ */
+export function buildSortOrderBy(
+  whitelist: Record<string, string>,
+  sortBy: string | undefined,
+  sortDir: 'asc' | 'desc' | undefined,
+  fallback = 'createdAt',
+): Record<string, 'asc' | 'desc'> {
+  const known = sortBy != null && sortBy in whitelist;
+  const field = known ? whitelist[sortBy] : fallback;
+  const dir: 'asc' | 'desc' = known && sortDir === 'asc' ? 'asc' : 'desc';
+  return { [field]: dir };
+}

@@ -7,7 +7,7 @@ import {
 } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { calculatePagination } from '../../common/utils/pagination';
+import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -99,19 +99,16 @@ export class SupplierPaymentsService {
       };
     }
 
-    // Невідоме поле → повний fallback на дефолт (createdAt desc), включно з напрямом:
-    // напрям без валідного поля не має сенсу, інакше garbage sortBy тихо міняє порядок.
-    const known = sortBy != null && sortBy in SP_SORT_FIELDS;
-    const sortField = known ? SP_SORT_FIELDS[sortBy] : 'createdAt';
-    const sortOrder = known && sortDir === 'asc' ? 'asc' : 'desc';
-
+    // Невідоме поле → повний fallback на дефолт (createdAt desc), включно з напрямом
+    // (garbage sortBy не повинен тихо міняти порядок). Whitelist-семантика у buildSortOrderBy.
     const { skip, take } = calculatePagination({ page, limit });
+    const orderBy = buildSortOrderBy(SP_SORT_FIELDS, sortBy, sortDir);
     const [items, total] = await Promise.all([
       this.prisma.supplierPayment.findMany({
         where,
         skip,
         take,
-        orderBy: { [sortField]: sortOrder },
+        orderBy,
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           bankAccount: { select: { name: true } },

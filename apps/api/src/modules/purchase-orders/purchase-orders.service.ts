@@ -4,7 +4,7 @@ import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
-import { calculatePagination } from '../../common/utils/pagination';
+import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
@@ -111,14 +111,13 @@ export class PurchaseOrdersService {
     }
 
     const { skip, take } = calculatePagination({ page, limit });
-    const sortField = PO_SORT_FIELDS[sortBy ?? ''] ?? 'createdAt';
-    const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
+    const orderBy = buildSortOrderBy(PO_SORT_FIELDS, sortBy, sortDir);
     const [items, total] = await Promise.all([
       this.prisma.purchaseOrder.findMany({
         where,
         skip,
         take,
-        orderBy: { [sortField]: sortOrder },
+        orderBy,
         // Lines omitted from list — loaded on demand via findOne (avoids 1000 rows × 20 POs).
         // contract included so list shows contractNumber (toDto maps it).
         include: {

@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
-import { calculatePagination } from '../../common/utils/pagination';
+import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -140,14 +140,13 @@ export class WorkOrdersService {
     }
 
     const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
-    const sortField = WO_SORT_FIELDS[query.sortBy ?? ''] ?? 'createdAt';
-    const sortDir = query.sortDir === 'asc' ? 'asc' : 'desc';
+    const orderBy = buildSortOrderBy(WO_SORT_FIELDS, query.sortBy, query.sortDir);
     const [items, total] = await Promise.all([
       this.prisma.workOrder.findMany({
         where,
         skip,
         take,
-        orderBy: { [sortField]: sortDir },
+        orderBy,
         include: {
           vehicle: { select: { make: true, model: true, licensePlate: true } },
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
