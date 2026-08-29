@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
@@ -252,6 +252,24 @@ function PurchaseOrdersPageClient() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
+
+  // Bug #596: deep-link `?open=<poId>` — відкриває edit-modal для конкретного PO
+  // (напр. з /supplier-payments/[id] «покажи замовлення»). Читаємо ОДНОРАЗОВО з URL,
+  // очищуємо параметр щоб refresh не спамив модалку, і на mount якщо UUID валідний —
+  // виставляємо editingPOId. Дзеркалить URL-driven pattern активної вкладки (line 134).
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (openId && UUID_RE.test(openId)) {
+      setEditingPOId(openId);
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('open');
+      router.replace(params.toString() ? `?${params.toString()}` : '?', { scroll: false });
+    }
+    // Свідомо без залежності від searchParams: ефект має спрацювати РАЗ при монтуванні
+    // (deep-link з зовнішньої сторінки). Наступні пуші тієї ж сторінки — не reopen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Supplier returns — useListPage (columns, detail-panel, saved-filters)
   const {

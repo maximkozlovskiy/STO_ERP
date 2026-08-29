@@ -185,7 +185,11 @@ export default function SupplierPaymentCardPage() {
               sp.purchaseOrderNumber ? (
                 <button
                   type="button"
-                  onClick={() => router.push(`/purchase-orders?highlight=${sp.purchaseOrderId}`)}
+                  // Bug #596: раніше пушив ?highlight=<id> — параметр ніде не обробляли,
+                  // deep-link був broken (голий список без відмітки). Тепер ?open=<id>
+                  // читається у /purchase-orders/page.tsx і одразу відкриває edit-modal
+                  // конкретного PO (deep-link працює з history/bookmark однаково).
+                  onClick={() => router.push(`/purchase-orders?open=${sp.purchaseOrderId}`)}
                   className="inline-flex items-center gap-1 text-primary hover:underline"
                 >
                   {sp.purchaseOrderNumber}

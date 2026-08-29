@@ -3,6 +3,46 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-08-30 — FULL /sto-tester Цикл 2/3 — HEAD c8057635
+
+Другий FULL цикл після Cycle 1 (Bugs #592-#595 виправлені у HEAD d5d58af7 + /simplify
+розширив у c8057635 + /sto-optimize у a5fc685e). Baseline перед сесією: tsc api+web 0,
+API vitest 992/992, Web vitest 488/488. Всі 4 Cycle-1 [x]-баги ПЕРЕВІРЕНО у коді:
+kyivToday/addDaysKyiv у purchase-orders.service.spec.ts:836, useCreateSupplierPayment
+у SupplierPaymentCreateModal.tsx:20+113, IsDateString у supplier-payments.dto.ts:231+236,
+renderWithQueryClient з query-utils імпортується у SupplierPaymentCreateModal.test.tsx +
+DocumentCreateModals.test.tsx.
+
+### Bug #596 — LOW frontend / broken deep-link — `/supplier-payments/[id]` → PO page з `?highlight=<id>` — приймач не обробляє параметр
+
+- **Файл:** `apps/web/src/app/(app)/supplier-payments/[id]/PageClient.tsx:188`
+  (кнопка «покажи PO» у полі «Замовлення постачальнику»).
+- **Симптом:** користувач відкриває картку оплати → клікає номер PO → відкривається
+  список `/purchase-orders` **без будь-якої візуальної відмітки** на бажаному замовленні.
+  Кнопка виглядає як deep-link (стрілка ExternalLink), але фактично лише перекидає у
+  голий список — користувач бачить сотні PO і має шукати вручну.
+- **Root cause:** сторінка SP-детально пушить у router URL з query param `?highlight=<poId>`,
+  але `apps/web/src/app/(app)/purchase-orders/page.tsx` не читає цей параметр —
+  `grep -rn "highlight" apps/web/src/app` дає РІВНО 1 match (той самий push).
+  Приймач ігнорує → deep-link мертвий. Ціль контракту зрозуміла з коду (open PO for
+  view/edit), але PO page має лише edit-modal через клік на рядок (`setEditingPOId`) —
+  URL-driven open не реалізовано.
+- **Виявлено:** статичний scan `?highlight=` пар писача/читача у full-project search
+  (Крок 1 §1.3 frontend routing). Пара «writer 1 / reader 0» = broken feature contract.
+- **Fix:** (а) SP-детально: `?highlight=` → `?open=` (семантика «відкрий deep-link на цей id»);
+  (б) `/purchase-orders/page.tsx`: у useEffect при монтуванні читаємо `searchParams.get('open')`,
+  якщо є і UUID-валідний — `setEditingPOId(id)` + `params.delete('open') + router.replace` щоб
+  refresh не спамив модалку. Одразу відкривається редагування конкретного PO. Ідемпотентно
+  (deep-link з history/bookmark працює однаково). Дзеркалить наявний pattern «active tab»
+  через URL param у тій самій сторінці (line 134).
+- **Severity:** LOW — не data corruption, не crash; broken UX-feature. Однак «кнопка яка
+  нічого не робить» — release-blocker для UX polish (користувач втрачає довіру до deep-links).
+- **Де ще шукати:** будь-який `router.push('/<page>?<param>=...')` де таргет-сторінка не
+  має `searchParams.get('<param>')` handler. Grep-guard: для кожного `router.push` з
+  query param — знайти `.get('<param>')` у target-сторінці. Якщо 0 → broken deep-link.
+- **Регресія-guard:** оновити BUG-checklist у §1.3 (нижче, крок 7 self-improvement).
+- **Статус:** [x] виправлено.
+
 ## Session 2026-08-20 — Code review feat/supplier-payments
 
 ### Bug #593 — HIGH frontend / cache-shape conflict / same key, two shapes

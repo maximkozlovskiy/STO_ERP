@@ -627,6 +627,7 @@ done
 - [ ] **`setX(value)` викликається, але `x` не читається у JSX (Bug #497, sub-patern Bug #160):** на відміну від класичного dead-state (setter не викликається І value не читається — обидві сторони мертві), цей варіант **гірший**: setter ВИКЛИКАЄТЬСЯ під час async-операцій (`apiFetch`/`mutateAsync`), state перерендерить компонент, але value НІКОЛИ не зчитується у JSX → user не бачить loading-spinner/disabled-state/error-banner під час operation. На відміну від dead state — тут є performance impact (extra renders) + UX gap. Grep: `grep -rnE "useState[<(](bool|number|null|string)" apps/web/src/app --include="*.tsx" -A 5` → для кожного state-name взяти grep по файлу: `grep -nE "\b<name>\b" $file` — якщо є тільки декларація + setter calls але **немає** читання `{<name> && ...}`/`disabled={<name>}`/`loading={<name>}` у JSX → bug. Найчастіше: `detailLoading`/`loadingId`/`saving` після refactor що видалив conditional render. Severity MEDIUM (silent UX). Фікс: ЛИБО видалити state (якщо feature не потрібна), ЛИБО додати render-time consumption (loading-button, spinner, disabled-row). Особливо ризиковано коли state описує per-row tracking — `detailLoadingId: string | null` дозволяє per-row loading-state на action-кнопках.
 - [ ] **`mutateAsync()` у inline click-handler без try/catch — silent failure (Bug #499):** TanStack Query mutation hook без `useMutation({onError})` АБО без global `MutationCache.onError` у `QueryClientProvider` config → `await mutateAsync` throw перериває handler. Якщо handler має `toast.success` ПІСЛЯ await — success тост не показується, але також НЕ показується error тост. Користувач клікнув "Видалити" → нічого не відбулось → бачить що рядок все ще там → плутанина. Grep: `grep -rnE "await\s+\w+\.mutateAsync\(" apps/web/src/app --include="*.tsx" -B 1 -A 2` — для кожного match перевірити: (а) `try/catch` обгортка; АБО (б) hook має `useMutation({onError: ...})`; АБО (в) `MutationCache.onError` глобально. Якщо жодного з трьох — bug. Cross-check: `grep -rn "MutationCache\|mutationCache:" apps/web/src` — якщо взагалі немає global onError, КОЖЕН inline mutateAsync без try/catch = bug. Severity MEDIUM (silent failure, user confusion). Фікс-pattern inline: `try { await mut.mutateAsync(); toast.success } catch (e) { toast.error(e.message) }`. Альтернативний фікс (preferable): додати `onError` у сам hook — спрацює для ВСІХ callers. Регресія-guard: vitest mock mutation з `mockRejectedValue` → click button → assert `toast.error` called.
 - [ ] **Dead state cleanup у paired файлах після review (Bug #496, paired with Bug #341):** коли review-fix commit ВИДАЛЯЄ dead state з одного файлу (наприклад `selectDoc`/`toggleSelectDoc` у stock-documents), часто паралельний файл (`purchase-orders/page.tsx`, `invoices/page.tsx`) має **той самий патерн** — `useState<X | null>(null)` + setter тільки до `null` + ніколи non-null. Grep: для кожного `useState<\w+\s*\|\s*null>` у `apps/web/src/app/(app)/**/page.tsx`: підрахувати кількість `setName(<value>)` де value НЕ `null` → якщо 0 → dead state. Pair-check: якщо review-fix щойно видалив dead state з одного `<entity>/page.tsx` → пройти ВСІ інші list-pages (`grep -rln "DetailPanel\|<entity-name>Panel" apps/web/src/app/(app)`) і перевірити. Severity HIGH якщо state годує панель/модал що рендериться у JSX (feature мертва). Регресія-guard: vitest snapshot тест на JSX → щоб видалення DetailPanel не пройшло як silent regression.
+- [ ] **URL deep-link writer без парного reader (Bug #596):** будь-який `router.push('/<page>?<param>=<value>')` де таргет-сторінка НЕ має `searchParams.get('<param>')` handler → deep-link мертвий (кнопка перекидає у голий список без візуальної відмітки/дії). Класика: `/supplier-payments/[id]` пушить `?highlight=<poId>` а `/purchase-orders/page.tsx` не читає → 0 UX-ефекту. Grep-команда: для кожного writer `grep -rnE "router\.(push|replace)\(\`?[/'\"]<page>[^)]_\?[a-z]+=" apps/web/src --include="_.tsx"`— витягти`<param>`name, потім`grep -n "searchParams.get\('<param>'\)" apps/web/src/app/\*\*/<page>/page.tsx`. Якщо 0 matches → broken deep-link. Fix pattern: (а) reader додає `useEffect(() => { const v = searchParams.get(<param>); if (v && ...валідно) { setState(v); params.delete(<param>); router.replace... } }, [])` — ідемпотентний, mount-only (свідомо БЕЗ deps щоб refresh не спамив дію); (б) якщо feature непотрібна — просто прибрати param у writer. Severity: LOW (broken UX-feature, не data loss); MEDIUM якщо feature розрекламована tooltip'ом/label'ом («відкрити картку X» → нічого). Where else: будь-який pair сторінок з cross-linking (`/counterparties/[id]`↔`/work-orders`, `/vehicles/[id]`↔`/work-orders`, `/invoices/[id]`↔`/counterparties`).
 - [ ] **Review-fix completeness audit для крос-файлових патернів (Bug #341):** будь-який review-fix commit `fix(review): replace X with Y` що чіпає **N файлів** (наприклад заміна `.catch(() => {})` на `console.warn`) — після кожного такого commit пройти **ВЕСЬ codebase** на той самий патерн і переконатись що review знайшов УСІ файли. Grep-команда має бути така ж яка вживалась у review, але БЕЗ filter по changed-files. Типові пропуски: (а) сторінки `[id]/PageClient.tsx` коли review працював зі сторінкою у root (`/X/page.tsx`); (б) tabbed-content (`*Tab.tsx`) поза основним route файлом; (в) sub-components всередині той самий сторінки; (г) shared hooks/utilities у `apps/web/src/hooks` чи `lib`. Парний сигнал у git log: `git log --oneline | grep "fix(review)" | head -3` — для останнього review-fix-commit взяти grep-паттерн з нього (наприклад `\.catch(() => {})`) і виконати `grep -rn "<pattern>" apps/web/src --include="*.tsx" --include="*.ts" | grep -v <вже-виправлені>` → нові match = upskipped review (BUG нової tester-сесії). Виключення з cleanup: легітимні випадки документуються у самому місці (toast-double-protection, optional PWA SW, fire-and-forget telemetry) — тестер відрізняє за наявністю парного user-feedback каналу (toast/setError/console.warn вище у фукнції). Severity: успадковує severity оригінального review-fix bug-у. Grep шаблон: `git show --stat <last-review-commit> -- '*.tsx' '*.ts' | awk '/^ /{print $1}'` — список файлів review-fix; для кожного знайденого згодом match → перевірити чи серед них. Якщо ні → bug.
 
 ---
@@ -1034,6 +1035,54 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-08-30 — URL deep-link writer без парного reader (Bug #596) — web / frontend / navigation / broken-feature
+
+**Сигнал:** Кнопка «покажи X у Y» на сторінці A виглядає як deep-link (icon `ExternalLink`, `text-primary`), клік перекидає у target-сторінку Y — АЛЕ Y відкривається у голому стані без візуальної відмітки/відкритої модалки/скролу на потрібний item. Grep по всій кодовій базі `?<param>=` повертає РІВНО 1 match — той самий писач; читач відсутній.
+
+**Причина виникнення:** розробник додав кнопку з deep-link URL контрактом (`?highlight=<id>`, `?open=<id>`, `?focus=<id>`) припускаючи що target-сторінка вже читає param. Часто це припущення переноситься з іншого проєкту чи pattern-у, який тут не імплементований. Runtime не падає — Next.js просто ігнорує unknown query params. TS зелений (query params — це runtime dictionary, не типізовано). Немає test-coverage бо E2E рідко перевіряють post-navigation state за URL param.
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Знайти всіх писачів deep-links з query params
+grep -rnE "router\.(push|replace)\(\`?[/'\"][a-z-/]+[^)]*\?[a-z]+=" apps/web/src --include="*.tsx"
+
+# 2. Для кожного знайденого writer витягти <target-page> і <param-name>
+# 3. Перевірити чи target читає param
+for pair in "supplier-payments:highlight" "counterparties:tab" ...; do
+  target=$(echo $pair | cut -d: -f1)
+  param=$(echo $pair | cut -d: -f2)
+  grep -c "searchParams.get('$param')" apps/web/src/app/\(app\)/$target/page.tsx || echo "MISSING READER: $pair"
+done
+```
+
+**Підхід до фіксу:** два еквівалентні шляхи в залежності від UX-наміру:
+
+- (A) **Реалізувати reader** (preferable коли feature корисна): у target-сторінці на mount читати param, виконувати відповідну дію (setEditingId, scroll to element, expand section), одразу очищувати param через `router.replace` щоб refresh не спамив. Ідемпотентно.
+
+```typescript
+useEffect(() => {
+  const openId = searchParams.get('open');
+  if (openId && UUID_RE.test(openId)) {
+    setEditingPOId(openId);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('open');
+    router.replace(params.toString() ? `?${params.toString()}` : '?', { scroll: false });
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []); // mount-only — deep-link з зовнішньої сторінки; refresh не reopens
+```
+
+- (B) **Прибрати param у writer** якщо feature ще не готова — не залишати broken UX.
+
+**Severity:** LOW (broken UX-feature, не data corruption, не crash); MEDIUM якщо кнопка має tooltip/label що обіцяє конкретну дію («відкрити картку X»).
+
+**Де шукати ще:** будь-який cross-linking pair сторінок: `/counterparties/[id]` ↔ `/work-orders`, `/vehicles/[id]` ↔ `/work-orders`, `/invoices/[id]` ↔ `/counterparties`, `/purchase-orders/[id]` ↔ `/supplier-payments`, `/warehouses/[id]` ↔ `/stock-documents`. Кожна pair — потенційна broken deep-link diadic.
+
+**Регресія-guard:** мінімальний Playwright тест: `page.goto('/target?param=<uuid>')` → `await expect(modal-or-highlighted-row).toBeVisible()`. Без цього регресія (видалення reader-useEffect у refactor) пройде CI зеленою.
+
+---
 
 ### 2026-06-20 — Prisma `$queryRaw` + pg_trgm `%` operator без `::text` cast (Bug #572) — api / backend / sql / type-resolution
 
