@@ -158,6 +158,8 @@ export class SupplierPaymentsService {
           orgId,
           deletedAt: null,
           status: { in: [PurchaseOrderStatus.RECEIVED, PurchaseOrderStatus.PARTIAL] },
+          // Не показувати борги видалених постачальників (orphan-рядки у шахматці).
+          supplier: { deletedAt: null },
         },
         select: {
           id: true,

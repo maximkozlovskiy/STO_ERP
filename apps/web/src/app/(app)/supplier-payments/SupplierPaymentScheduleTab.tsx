@@ -75,7 +75,7 @@ export function SupplierPaymentScheduleTab() {
                   {ddmm(d)}
                 </th>
               ))}
-              <th className="text-right font-medium px-2 py-2 min-w-24 border-b border-l border-border bg-success-subtle text-success">
+              <th className="sticky right-0 z-20 text-right font-medium px-2 py-2 min-w-24 border-b border-l border-border bg-success-subtle text-success">
                 Планові
               </th>
             </tr>
@@ -99,7 +99,7 @@ export function SupplierPaymentScheduleTab() {
                   {cell(totals.byDate[d])}
                 </td>
               ))}
-              <td className="text-right px-2 py-1.5 border-b border-l border-border">
+              <td className="sticky right-0 z-10 bg-muted/40 text-right px-2 py-1.5 border-b border-l border-border">
                 {cell(totals.planned)}
               </td>
             </tr>
@@ -134,8 +134,10 @@ export function SupplierPaymentScheduleTab() {
                 })}
                 <td
                   className={cn(
-                    'text-right px-2 py-1.5 border-b border-l border-border',
-                    row.planned > 0.005 && 'bg-success-subtle text-success font-medium',
+                    'sticky right-0 z-10 text-right px-2 py-1.5 border-b border-l border-border',
+                    row.planned > 0.005
+                      ? 'bg-success-subtle text-success font-medium'
+                      : 'bg-surface',
                   )}
                 >
                   {cell(row.planned)}

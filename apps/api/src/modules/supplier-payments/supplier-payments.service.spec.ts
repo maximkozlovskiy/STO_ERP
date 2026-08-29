@@ -620,4 +620,14 @@ describe('SupplierPaymentsService — regression guards', () => {
     expect(r.suppliers).toHaveLength(0);
     expect(r.totals.total).toBe(0);
   });
+
+  it('getSchedule(): PO-запит виключає видалених постачальників (orphan-рядки)', async () => {
+    await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    const where = (
+      prisma.purchaseOrder.findMany.mock.calls[0]![0] as {
+        where: { supplier?: { deletedAt: null } };
+      }
+    ).where;
+    expect(where.supplier).toEqual({ deletedAt: null });
+  });
 });
