@@ -11,12 +11,13 @@
 // Fix: модалка читає { items } з Array.isArray guard і пише { items } (той самий
 // контракт що таби + API-відповідь). Ці тести фіксують обидві сторони.
 
-import { render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { screen, waitFor } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 
 import { SupplierPaymentCreateModal } from '../SupplierPaymentCreateModal';
+// Bug #593: модалка використовує React Query хуки → потрібен QueryClientProvider.
+// Спільний helper (simplify/reuse) замість локальної копії.
+import { renderWithQueryClient } from '../../../__tests__/query-utils';
 
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
@@ -26,17 +27,6 @@ vi.mock('@/lib/api-client', () => ({
 vi.mock('@/hooks/useUiFeatures', () => ({
   useUiFeatures: () => ({ toastEnabled: false }),
 }));
-
-// Bug #593: модалка використовує React Query хуки (useUpdateSupplierPayment,
-// useSupplierPayment) з commit 7e6bfab9 — без QueryClientProvider усі рендери
-// падають з "No QueryClient set". Обгортаємо render() у свіжий QueryClient
-// (retry: false для швидкого fail замість Escape retries).
-function renderWithQueryClient(ui: ReactNode) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
-}
 
 describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592)', () => {
   beforeEach(() => {

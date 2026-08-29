@@ -146,6 +146,17 @@ function PurchaseOrdersPageClient() {
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
 
+  // Прийом PO (receive) має побічні ефекти на кількох агрегатах: RECEIPT-рух →
+  // inventory (залишки); settlement CHARGE + авто paymentDate → supplier-payments
+  // (шахматка) і counterparties (баланс). Інвалідуємо всі одразу, щоб не чекати 30s
+  // staleTime. Єдине місце правди — викликається з receive-handler і edit-modal onSaved.
+  const invalidatePoReceiptCaches = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+    queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+    queryClient.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+    queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
+  }, [queryClient]);
+
   const {
     page,
     setPage,
@@ -428,15 +439,7 @@ function PurchaseOrdersPageClient() {
       });
       setShowReceive(null);
       dirty.resetDirty();
-      queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-      // RECEIPT створює stock movement → stockItem.quantity змінюється,
-      // тому inventory cache теж треба інвалідувати, інакше /inventory показує старі залишки
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-      // receive() пише settlement CHARGE (борг постачальнику↑) + може авто-встановити
-      // paymentDate → шахматка /supplier-payments?tab=schedule і counterparty balance
-      // мають одразу відобразити зміни (без 30s очікування staleTime).
-      queryClient.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
-      queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
+      invalidatePoReceiptCaches();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка прийому товару');
     } finally {
@@ -1108,14 +1111,7 @@ function PurchaseOrdersPageClient() {
         open={!!editingPOId}
         purchaseOrderId={editingPOId ?? undefined}
         onClose={() => setEditingPOId(null)}
-        onSaved={() => {
-          queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-          // Modal внутрішньо може виконати receive() → settlement CHARGE + paymentDate
-          // → шахматка та counterparty balance мають одразу оновитись (без 30s staleTime).
-          queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-          queryClient.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
-          queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
-        }}
+        onSaved={invalidatePoReceiptCaches}
       />
 
       {/* Receive modal */}
