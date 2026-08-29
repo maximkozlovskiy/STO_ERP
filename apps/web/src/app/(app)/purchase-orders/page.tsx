@@ -73,7 +73,7 @@ import {
   type BadgeVariant,
 } from '@sto/shared';
 import { toast } from '@/lib/toast';
-import { cn } from '@/lib/utils';
+import { cn, UUID_RE } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
 
@@ -115,12 +115,6 @@ const COLUMNS_SR: Array<{ key: string; label: string; defaultVisible?: boolean }
   { key: 'date', label: 'Дата документа', defaultVisible: true },
 ];
 const COLUMNS_SR_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS_SR.map(c => c.key));
-
-// Regex для валідації PO id з ?open=<uuid> deep-link. Module-level: раніше створювався
-// у тілі компонента → нова RegExp instance на кожен render (typing у filter Input,
-// hover на рядку, будь-який setState батька). Використовується один раз на mount у
-// effect, але stability тут — питання hygiene.
-const PO_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Опції фільтра статусу — повністю статичні (PO_STATUS_LABELS — імпортована константа).
 // Раніше створювались у тілі компонента на кожен render разом з рядками StatusPill.
@@ -276,7 +270,7 @@ function PurchaseOrdersPageClient() {
   // виставляємо editingPOId. Дзеркалить URL-driven pattern активної вкладки (line 134).
   useEffect(() => {
     const openId = searchParams.get('open');
-    if (openId && PO_UUID_RE.test(openId)) {
+    if (openId && UUID_RE.test(openId)) {
       setEditingPOId(openId);
       const params = new URLSearchParams(searchParams.toString());
       params.delete('open');

@@ -5,6 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** UUID v4 shape (case-insensitive). Спільний для валідації deep-link/route params. */
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Bug #139: відображення імені контрагента — спільна логіка для combobox primary,
  * displayValue і список item'ів. Прибирає dead `?? ''` після `.join(' ')` і додає

@@ -311,10 +311,9 @@ export class SupplierPaymentsService {
       .filter(r => r.total > 0.005)
       .sort((a, b) => b.total - a.total);
 
-    // Підсумковий рядок — single-pass акумулятор замість 3 окремих reduce()-ів
-    // на suppliers + N reduce()-ів на dates. Було: O(N × (3 + D)) з D reduce-алокацій.
-    // Стало: O(N × (3 + D)) в одному проході + O(D) фінальний filter — half CPU,
-    // half GC на Number касти. Викликається під polling кожні 30s per user.
+    // Підсумковий рядок: один прохід накопичує скалярні totals + суми по датах,
+    // потім O(D) прибирає порожні колонки. Замінює попередні 3 reduce() по suppliers
+    // + вкладений reduce() на кожну дату.
     const totalsByDate: Record<string, number> = {};
     let totalsOverdue = 0;
     let totalsPlanned = 0;

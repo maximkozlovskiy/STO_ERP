@@ -4,7 +4,9 @@ import { kyivDateTimeToISO } from '@/lib/format';
 import type { CounterpartyOption } from './calendar.types';
 
 export const KYIV_TZ = 'Europe/Kyiv';
-export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Re-export спільного UUID_RE з lib/utils — єдине джерело правди
+// (споживачі calendar.utils, напр. CalendarSlotModal, працюють без змін).
+export { UUID_RE } from '@/lib/utils';
 export const SIDEBAR_W = 160;
 
 // Time picker: 15-min step within working hours window.
