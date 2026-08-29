@@ -3664,3 +3664,194 @@ echo "$class_line" | grep -qE "Response|Paginated|Public|List" && continue
 - Query DTOs (`*QueryDto`) — часто пропускають cap для array filter параметрів (URL string може містити багато IDs)
 - Update DTOs що успадковують через `extends PartialType(CreateDto)` — cap успадковується автоматично, але новий field у Create потребує cap одразу
 - Аналогічний sprint-audit для інших canonical patterns: `@IsString + @MaxLength`, `?: number + @IsNumber/@Type`, `$transaction + timeout`, `@Controller + @UseGuards`.
+
+---
+
+### 2026-08-30 — Spec-vs-impl timezone-arithmetic parity (Bug #592) — api / test / dst-aware
+
+**Сигнал:** Baseline API vitest падає з `expected 'YYYY-MM-DD_A' to be 'YYYY-MM-DD_B'` де різниця 1 день. Тест-спека обчислює `expected` через `new Date() + setUTCDate()` (UTC-арифметика), а impl-код використовує `kyivToday()/addDaysKyiv()` (Kyiv-арифметика). Падає у ~3-годинному вікні між UTC-північчю і Kyiv-північчю (23:00 UTC — 02:00 UTC літньою EEST). Днем — passes, вночі — flaky. Виглядає як «flaky тест», але насправді deterministic bug у spec (impl правильний).
+
+**Причина виникнення:** Розробник знає що impl використовує Kyiv-timezone (є коментарі, `feedback_dst_kyiv.md` у MEMORY), але у spec інтуїтивно робить `new Date()` (UTC) без парного `kyivToday()`. Обидва працюють однаково днем (наприклад 12:00 UTC = 15:00 EEST — той самий календарний день), але на кордоні днів розходяться на 1 день.
+
+**Підхід до виявлення:** будь-який spec що асертить дату отриману через impl-функції `kyivToday()/addDaysKyiv/kyivOffsetMs` — має ВИКОРИСТОВУВАТИ ТІ САМІ утиліти для обчислення `expected`, не `new Date()`. Grep:
+
+```bash
+# Знайти spec-и що робить дату-арифметику AJC UTC:
+grep -rn "setUTCDate\|toISOString().slice(0, 10)" apps/api/src --include="*.spec.ts"
+
+# Для кожного файлу — знайти паралельний impl і перевірити:
+# imports kyivToday/addDaysKyiv/kyivOffsetMs ==> spec теж має їх використовувати
+```
+
+Регресія-guard-check: після кожного нового `kyivToday()`/`addDaysKyiv()` виклику у impl → prevent-check у корреспондентному spec-файлі. Baseline-red в conditional window (3h/day) видає bug шляхом того що CI/tester-сесії у певний час доби показують червоне.
+
+**Підхід до фіксу:** заміна `new Date() + setUTCDate(+N)` на `addDaysKyiv(kyivToday(), N)` у spec. Додати inline-коментар що пояснює чому UTC-арифметика неправильна для перевірки Kyiv-boundary дати. Import з `../../common/utils/kyiv-date` (той самий модуль що impl).
+
+**Severity:** HIGH — release-blocker у 3h/day вікні (ховає майбутні регресії у тому ж модулі; tester-сесії неможливі). Not CRITICAL бо (а) impl правильний; (б) 1-line fix; (в) flaky, не всеhoduring.
+
+**Де шукати ще:**
+
+- усі `*.spec.ts` що торкаються `paymentDate`, `dueDate`, `expiryDate`, `documentDate`, `warrantyExpiresAt`, будь-який `@db.Date` field
+- специфічно auto-fill дати: `receive()` PO, `create()` Invoice (dueDate = today + N), `addDaysISO()` FE
+- reports/calendar/schedule endpoints з date-window semantics — тести повинні використовувати той самий Kyiv-timezone helper
+
+---
+
+### 2026-08-30 — QueryClientProvider absent після React Query hook migration (Bug #593) — web / test / rq-migration
+
+**Сигнал:** Baseline web vitest падає з `Error: No QueryClient set, use QueryClientProvider to set one`. Stack trace вказує на новий hook (`useUpdateSupplierPayment`, `useConfirmX`, будь-який `use*Mutation`) у компоненті, який раніше використовував raw `apiFetch`. Тест-файл існує і був зелений до commit-міграції на RQ (типовий commit-message: `feat(rq): migrate X` / `refactor(<area>): use useX hook`).
+
+Особливо підступний варіант: **transitive rendering** — batch-тест для parent modal (`PurchaseOrderCreateModal`) падає бо parent транзитивно рендерить newly-migrated child (`SupplierPaymentCreateModal` з RQ hooks) через кнопку/попап. Grep parent тесту на `QueryClientProvider` — 0 matches; grep parent компонента на child modal → міграція child + parent тест не оновлені.
+
+**Причина виникнення:** Refactor commit що мігрує компонент з raw fetch на React Query hooks (типово: `useUpdateX`, `useCreateX`, `useConfirmX`) додає нову залежність від `QueryClientProvider` context. Тести написані ДО міграції рендерять компонент напряму: `render(<Component .../>)` — без обгортки. Тест-мок для `apiFetch` продовжує працювати (raw path), але `useQueryClient()` throws бо context пустий.
+
+**Підхід до виявлення (для нової міграції на RQ hook):**
+
+```bash
+# 1. Знайти нові RQ hooks у shared/api hooks:
+git log --oneline -10 --name-only apps/web/src/hooks/api/ | head -30
+
+# 2. Для кожного нового hook — знайти всіх consumers у components:
+for hook in $(grep -rlE "^export function use(Create|Update|Delete|Confirm|Cancel)" apps/web/src/hooks/api --include="*.ts" | head); do
+  # знайти всі імпорти цього hook
+  grep -rln "$hook" apps/web/src/components --include="*.tsx" | grep -v test
+done
+
+# 3. Для кожного component-у — знайти парний test і перевірити wrapper:
+for comp in $(git diff HEAD~5 HEAD --name-only apps/web/src/components/ui/*.tsx); do
+  test="apps/web/src/components/ui/__tests__/$(basename $comp .tsx).test.tsx"
+  [ -f "$test" ] || continue
+  grep -q "QueryClientProvider\|renderWithQueryClient" "$test" || echo "MISSING QCP: $test"
+done
+
+# 4. Transitive check — для кожного PARENT modal у якому transitively рендериться
+# newly-migrated child modal (grep parent for child-modal-name), теж потребує QCP:
+grep -rn "<SupplierPaymentCreateModal\|<XCreateModal" apps/web/src/components/ui --include="*.tsx" -l | while read f; do
+  test="apps/web/src/components/ui/__tests__/$(basename $f .tsx).test.tsx"
+  [ -f "$test" ] && grep -q "QueryClientProvider" "$test" || echo "MISSING QCP (transitive): $test"
+done
+```
+
+Alternative signal: baseline `vitest run` показує 4+ failures з ідентичною error message. Grep stack traces → всі вказують на `useQueryClient` у одному hook → знайти commit що додав hook у component → перевірити всі парні тести.
+
+**Підхід до фіксу:** створити helper у test-файлі:
+
+```typescript
+function renderWithQueryClient(ui: ReactNode) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
+```
+
+`retry: false` — швидкий fail замість retry-цикл у тесті. Замінити всі `render(<Component ...>)` на `renderWithQueryClient(<Component ...>)`. Додати inline-коментар що пояснює причину (commit-hash міграції).
+
+**Довгостроково-безпечніший pattern:** shared `test-utils.tsx` з `renderWithProviders(ui)` що обгортає QueryClient + Router + AuthProvider — використовувати у всіх нових тестах. Тоді нові тести автоматично захищені від майбутніх міграцій на context-based hooks.
+
+**Severity:** HIGH — release-blocker baseline (тест-файл повністю мовчить, регресії ховаються). Особливо критично для regression-guard тестів (Bug #460 pattern).
+
+**Де шукати ще:**
+
+- кожен `*.test.tsx` для компонентів у `components/ui/*.tsx` що містять `useMutation`/`useQuery`/`useQueryClient`
+- transitive: parent modals що рендерять newly-migrated child modals (grep parent-component-file на child-component-name)
+- аналогічно для Router/AuthProvider міграцій — сам pattern однаковий (context absent → hook throws на mount)
+
+---
+
+### 2026-08-30 — Partial hook migration: один branch мігрований, інший — raw apiFetch (Bug #594) — web / cache / rq-migration-completeness
+
+**Сигнал:** Компонент має 2+ branches у handleSave/handleSubmit що роблять POST/PATCH/DELETE:
+
+- гілка A (наприклад `if (isEdit) updateMut.mutateAsync(payload)`) — через RQ hook, з auto-invalidate onSuccess
+- гілка B (наприклад `else await apiFetch('/resource', {method:'POST', body:...})`) — raw fetch, БЕЗ invalidate
+
+Результат: одна гілка правильно оновлює cache (список свіжий), інша — не оновлює (staleness до `staleTime=30s`). User бачить асиметричну поведінку: "оновлення працює одразу, а створення — з затримкою".
+
+Симптом типовий: `usePaginatedList` (staleTime=30s) не показує new item після create; після 30s або manual refresh — з'являється. Легко сплутати з "backend повільний" або "not saving properly", коли фактично cache stale.
+
+**Причина виникнення:** Refactor commit `feat(rq): migrate X` мігрує only-update path (updateMut вже існує) або only-create path (createMut існує), пропускає другий branch. Хук для іншого branch **існує** у файлі `use<X>.ts` (з `onSuccess: invalidate .all`), але не імпортується у компонент → forgotten pair. Класична партіальна міграція.
+
+**Підхід до виявлення:**
+
+```bash
+# Для кожного use<X>Mutation hook у apps/web/src/hooks/api/*.ts:
+grep -rn "^export function use\(Create\|Update\|Delete\|Confirm\|Cancel\)" apps/web/src/hooks/api --include="*.ts" -l | while read hookfile; do
+  hookname=$(basename $hookfile .ts | sed 's/^use//')
+  # Знайти endpoint URL що цей hook використовує (mutationFn):
+  endpoint=$(grep -A 3 "^export function use\(Create\|Update\)" $hookfile | grep "apiFetch" | grep -oE "'/[^']*'" | head -1)
+  [ -z "$endpoint" ] && continue
+
+  # Grep всіх components що імпортують ЦЕЙ hook:
+  grep -rln "use\(Create\|Update\|Delete\)$hookname" apps/web/src/components apps/web/src/app --include="*.tsx" | grep -v test | while read component; do
+    # У кожному component-у — шукати парний RAW apiFetch на той самий endpoint:
+    if grep -q "apiFetch($endpoint" "$component"; then
+      echo "PARTIAL MIGRATION: $component uses BOTH hook AND raw apiFetch on $endpoint"
+    fi
+  done
+done
+```
+
+Manual variant (faster у real audit): для кожного modal-компонента з `handleSave` — прочитати обидві gілки (`if (isEdit)` / `else`) — обидві мають бути mutation-hook, не змішано.
+
+**Підхід до фіксу:** імпортувати парний hook (`useCreateSupplierPayment`), додати `const createMut = useCreateSupplierPayment();`, замінити raw `apiFetch(url, {method: 'POST', body: ...})` на `await createMut.mutateAsync(payload)`. Update `useCallback` deps: додати `createMut`. Payload shape зазвичай той самий об'єкт що вже підготовлений.
+
+**Регресія-guard:** component-test `it('create-flow викликає mutation-hook')` — mock `apiFetch`, click "Створити", assert `apiFetch` called з правильним URL + `invalidateQueries` called (verify via mocked `useQueryClient`).
+
+**Severity:** HIGH — silent UX gap (user думає "не зберіглось", насправді збереглось + stale cache). Не CRITICAL бо самовиправляється через 30s.
+
+**Де шукати ще:**
+
+- будь-який modal з `if (isEdit) updateMut.mutateAsync else await apiFetch(POST)` pattern — pair-check
+- аналогічно `if (bulk) await apiFetch else deleteMut.mutateAsync` — асиметрія delete-hook vs bulk-raw
+- specifically: modal-и що були нещодавно refactor-нуті ("feat(<area>): manual editing" / "feat(rq): migrate <component>") — check both branches
+
+---
+
+### 2026-08-30 — Regex-shape validation без semantic parseability (Bug #595) — api / dto / validator
+
+**Сигнал:** DTO приймає рядок з `@Matches(/^\d{4}-\d{2}-\d{2}$/)` (YMD regex) як **єдину** валідацію дати. Endpoint приймає `?from=2026-99-99&to=2026-13-45` як 200 з empty/silent-wrong result (замість 400). Regex тільки перевіряє SHAPE (4-2-2 digits), не SEMANTIC validity (місяць 1-12, день 1-31, valid leap year).
+
+Downstream: `new Date('2026-99-99T00:00:00Z')` → `Invalid Date` → NaN арифметика → або silent-empty result, або "NaN днів у діапазоні" тощо. Не крешить, але видає wrong data.
+
+**Причина виникнення:** Розробник обирає `@Matches` бо (а) швидко, regex здається self-documenting; (б) не знає що `@IsDateString` accepts also full ISO-8601 (`"2026-08-30T12:00:00Z"`) і не хоче цього; (в) `@IsDateString` alias для `@IsISO8601` у class-validator може бути неочевидний. Комбо `@IsDateString + @Matches(YMD_RE)` = strict validation + YMD-only shape — але подвійна декорація не intuitive.
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Знайти всі @Matches з YMD-like regex:
+grep -rnE "@Matches\(.*\\\\d\{4\}.*\\\\d\{2\}.*\\\\d\{2\}" apps/api/src/modules --include="*.dto.ts"
+
+# 2. Для кожного match — перевірити чи парний @IsDateString у наступних 3 рядках:
+grep -rnE "@Matches\(.*\\\\d\{4\}" apps/api/src/modules --include="*.dto.ts" -A 3 | grep -B 3 "!:\s*string" | grep -v "@IsDateString" | grep "@Matches"
+
+# 3. Аналогічно для інших date-like patterns: @Matches(/^\d{2}\.\d{2}\.\d{4}/) для DD.MM.YYYY:
+grep -rnE "@Matches\(.*\\\\d\{2\}.*\\\\d\{2\}.*\\\\d\{4\}" apps/api/src/modules --include="*.dto.ts"
+
+# 4. Contract-test guard: для endpoint що приймає date-string — тест з invalid semantic date:
+#    POST/GET з `?from=2026-99-99` → expect 400 (не 200 з empty)
+```
+
+Sanity-check: у Postman/curl `curl "/api/<endpoint>?from=2026-99-99" -H "Auth: ..."` → якщо 200 з empty дані замість 400 → bug.
+
+**Підхід до фіксу:** додати `@IsDateString({ strict: true })` РАЗОМ з `@Matches(YMD_RE)`:
+
+```typescript
+@IsDateString({ strict: true }, { message: 'from має бути валідною датою' })
+@Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'from має бути у форматі YYYY-MM-DD' })
+from!: string;
+```
+
+`@IsDateString({ strict: true })` перевіряє parseability через `new Date()` + strict-mode (відхиляє `2009-02-29`, `2026-99-99`). `@Matches` обмежує до YMD-only shape (без time-компонента).
+
+Alternative pattern: custom validator `@IsYmdDate` що комбінує both check-и в одну декорацію.
+
+**Регресія-guard:** contract-test для endpoint з invalid semantic date → expect 400 + Ukrainian message.
+
+**Severity:** MEDIUM — silent empty result / silent-wrong data. Не HIGH бо: (а) валідні дати з UI date-picker — коректні; (б) DoS-vector обмежений; (в) якщо frontend відправить invalid date — user first bug report.
+
+**Де шукати ще:**
+
+- усі DTO що приймають YMD-date як параметр (query для reports, calendar, schedule, dashboard, filters `dateFrom/dateTo`)
+- усі DTO що використовують `@Matches` з date-like regex — semantic-parse-check пропущений
+- аналогічний pattern для other formats: phone (`@Matches(/^\+?\d{10,15}$/)` без range-check коду країни), IBAN (`@Matches(/^UA\d{27}$/)` без checksum-check), EDRPOU (`@Matches(/^\d{8,10}$/)` без mod-11 checksum)
