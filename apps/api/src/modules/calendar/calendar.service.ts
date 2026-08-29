@@ -26,6 +26,47 @@ const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv'
 const WORK_DAY_START_H = 8;
 const WORK_DAY_END_H = 20;
 
+// sto-optimize (cycle 3/3): shared include shape для create()/update() — попереджає alloc per-request.
+// Дзеркалить SLOT_INCLUDE що раніше жив у тілі create(). Прив'язан до Prisma Client через inference.
+const SLOT_INCLUDE = {
+  counterparty: {
+    select: { firstName: true, lastName: true, companyName: true, phone: true } as const,
+  },
+  vehicle: { select: { make: true, model: true, licensePlate: true } as const },
+  workOrder: {
+    select: {
+      number: true,
+      status: true,
+      counterpartyId: true,
+      counterparty: {
+        select: { firstName: true, lastName: true, companyName: true, phone: true } as const,
+      },
+      vehicle: { select: { make: true, model: true, licensePlate: true } as const },
+    },
+  },
+} as const;
+
+// sto-optimize (cycle 3/3): CONFLICT_SELECT hoisted from checkConflicts() body.
+// Security: strip PII — conflict check only needs scheduling fields + WO number.
+// MECHANIC role has access to this endpoint; returning cpPhone/vehiclePlate would
+// allow enumeration of all customer PII across the org.
+// Defense-in-depth: counterpartyId also dropped — no consumer uses it, and exposing
+// it would let MECHANIC enumerate customer UUIDs via time-window probing.
+const CONFLICT_SELECT = {
+  id: true,
+  startAt: true,
+  endAt: true,
+  liftId: true,
+  employeeId: true,
+  workOrderId: true,
+  parentSlotId: true,
+  status: true,
+  type: true,
+  workOrder: {
+    select: { number: true, status: true },
+  },
+} as const;
+
 /** Returns the UTC timestamp for WORK_DAY_END_H (20:00) Kyiv time on the same calendar day as `d`. */
 function kyivEndOfWorkDay(d: Date): Date {
   const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
@@ -204,23 +245,7 @@ export class CalendarService {
       ? new Date(slot2Start!.getTime() + (endAt.getTime() - workDayEnd.getTime()))
       : null;
 
-    const SLOT_INCLUDE = {
-      counterparty: {
-        select: { firstName: true, lastName: true, companyName: true, phone: true } as const,
-      },
-      vehicle: { select: { make: true, model: true, licensePlate: true } as const },
-      workOrder: {
-        select: {
-          number: true,
-          status: true,
-          counterpartyId: true,
-          counterparty: {
-            select: { firstName: true, lastName: true, companyName: true, phone: true } as const,
-          },
-          vehicle: { select: { make: true, model: true, licensePlate: true } as const },
-        },
-      },
-    } as const;
+    // SLOT_INCLUDE hoisted to module-level (sto-optimize cycle 3/3).
 
     const slots = await this.prisma.$transaction(
       async tx => {
@@ -477,25 +502,7 @@ export class CalendarService {
     const excludeWoFilter = dto.excludeWorkOrderId ? { not: dto.excludeWorkOrderId } : undefined;
     // findMany without take violates OOM guard — realistic upper bound for a time window is a few dozen slots.
     const CONFLICT_TAKE = 50;
-    // Security: strip PII — conflict check only needs scheduling fields + WO number.
-    // MECHANIC role has access to this endpoint; returning cpPhone/vehiclePlate would
-    // allow enumeration of all customer PII across the org.
-    // Defense-in-depth: counterpartyId also dropped — no consumer uses it, and exposing
-    // it would let MECHANIC enumerate customer UUIDs via time-window probing.
-    const CONFLICT_SELECT = {
-      id: true,
-      startAt: true,
-      endAt: true,
-      liftId: true,
-      employeeId: true,
-      workOrderId: true,
-      parentSlotId: true,
-      status: true,
-      type: true,
-      workOrder: {
-        select: { number: true, status: true },
-      },
-    } as const;
+    // CONFLICT_SELECT hoisted to module-level (sto-optimize cycle 3/3).
 
     const [liftSlots, empSlots] = await Promise.all([
       dto.liftId

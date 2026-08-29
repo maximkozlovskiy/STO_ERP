@@ -31,6 +31,13 @@ const MOVEMENT_TYPES: Partial<Record<StockDocumentType, StockMovementType>> = {
   RECEIPT: StockMovementType.RECEIPT,
 };
 
+// sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
+// re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/INV_SORT_FIELDS/WO_SORT/PO_SORT.
+const SD_SORT_FIELDS: Record<string, string> = {
+  documentDate: 'documentDate',
+  createdAt: 'createdAt',
+};
+
 @Injectable()
 export class StockDocumentsService {
   constructor(
@@ -65,11 +72,7 @@ export class StockDocumentsService {
     }
 
     const { skip, take } = calculatePagination({ page, limit });
-    const SD_SORT: Record<string, string> = {
-      documentDate: 'documentDate',
-      createdAt: 'createdAt',
-    };
-    const sortField = SD_SORT[sortBy ?? ''] ?? 'createdAt';
+    const sortField = SD_SORT_FIELDS[sortBy ?? ''] ?? 'createdAt';
     const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
     // Bug review (sto-optimize 2026-06-05): lines не використовуються у table-cells списку,
     // лише `doc.lines.length` у комірці «Позицій». DetailPanel рендериться для ОДНОГО

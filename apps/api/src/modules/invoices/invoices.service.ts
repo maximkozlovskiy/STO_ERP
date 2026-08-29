@@ -31,6 +31,15 @@ const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
   CANCELLED: [],
 };
 
+// sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
+// re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/WO_SORT/PO_SORT/SD_SORT.
+const INV_SORT_FIELDS: Record<string, string> = {
+  documentDate: 'documentDate',
+  createdAt: 'createdAt',
+  dueDate: 'dueDate',
+  amount: 'amount',
+};
+
 @Injectable()
 export class InvoicesService {
   constructor(
@@ -79,13 +88,7 @@ export class InvoicesService {
     }
 
     const { skip, take } = calculatePagination({ page, limit });
-    const INV_SORT: Record<string, string> = {
-      documentDate: 'documentDate',
-      createdAt: 'createdAt',
-      dueDate: 'dueDate',
-      amount: 'amount',
-    };
-    const sortField = INV_SORT[sortBy ?? ''] ?? 'createdAt';
+    const sortField = INV_SORT_FIELDS[sortBy ?? ''] ?? 'createdAt';
     const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
     const [items, total] = await Promise.all([
       this.prisma.invoice.findMany({

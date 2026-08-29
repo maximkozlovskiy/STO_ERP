@@ -13,6 +13,19 @@ export interface CreateTransactionDto {
   createdBy?: string;
 }
 
+// sto-optimize (cycle 3/3): balance-sign hoisted from createTransaction() body.
+// CHARGE increases balance (client owes us); all other types decrease it.
+// Record (not Partial): TS-exhaustive — a new SettlementTransactionType enum value becomes
+// a compile-time error rather than a silent runtime surprise.
+// Called from every FSM transition (invoice→PAID, SP→CONFIRMED, PO/SD receipt) — every request paid alloc.
+const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
+  CHARGE: 1,
+  PAYMENT: -1,
+  PREPAYMENT: -1,
+  REFUND: -1,
+  CREDIT_NOTE: -1,
+};
+
 @Injectable()
 export class SettlementsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -25,16 +38,6 @@ export class SettlementsService {
     if (!Number.isFinite(dto.amount) || dto.amount <= 0) {
       throw new BadRequestException('Сума транзакції повинна бути більшою за нуль');
     }
-    // CHARGE increases balance (client owes us); all other types decrease it.
-    // Record (not Partial): TS-exhaustive — a new SettlementTransactionType enum value becomes
-    // a compile-time error rather than a silent runtime surprise.
-    const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
-      CHARGE: 1,
-      PAYMENT: -1,
-      PREPAYMENT: -1,
-      REFUND: -1,
-      CREDIT_NOTE: -1,
-    };
     const balanceDelta = BALANCE_SIGN[dto.type] * dto.amount;
 
     const run = async (db: Prisma.TransactionClient | PrismaService) => {

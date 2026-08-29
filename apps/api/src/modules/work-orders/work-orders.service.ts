@@ -77,6 +77,16 @@ const COST_PRICE_VISIBLE_ROLES = new Set<string>(['OWNER', 'ADMIN', 'STOREKEEPER
 const canSeeCostPrice = (role?: string | null): boolean =>
   !!role && COST_PRICE_VISIBLE_ROLES.has(role);
 
+// sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
+// re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/INV_SORT_FIELDS/PO_SORT_FIELDS/SD_SORT_FIELDS.
+const WO_SORT_FIELDS: Record<string, string> = {
+  documentDate: 'documentDate',
+  createdAt: 'createdAt',
+  plannedAt: 'plannedAt',
+  dueDate: 'dueDate',
+  totalAmount: 'totalAmount',
+};
+
 @Injectable()
 export class WorkOrdersService {
   private readonly logger = new Logger(WorkOrdersService.name);
@@ -130,14 +140,7 @@ export class WorkOrdersService {
     }
 
     const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
-    const WO_SORT: Record<string, string> = {
-      documentDate: 'documentDate',
-      createdAt: 'createdAt',
-      plannedAt: 'plannedAt',
-      dueDate: 'dueDate',
-      totalAmount: 'totalAmount',
-    };
-    const sortField = WO_SORT[query.sortBy ?? ''] ?? 'createdAt';
+    const sortField = WO_SORT_FIELDS[query.sortBy ?? ''] ?? 'createdAt';
     const sortDir = query.sortDir === 'asc' ? 'asc' : 'desc';
     const [items, total] = await Promise.all([
       this.prisma.workOrder.findMany({

@@ -50,6 +50,14 @@ const PO_TRANSITIONS: Record<POStatus, POStatus[]> = {
   CANCELLED: [],
 };
 
+// sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
+// re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/INV_SORT_FIELDS/WO_SORT/SD_SORT_FIELDS.
+const PO_SORT_FIELDS: Record<string, string> = {
+  documentDate: 'documentDate',
+  createdAt: 'createdAt',
+  totalAmount: 'totalAmount',
+};
+
 @Injectable()
 export class PurchaseOrdersService {
   constructor(
@@ -103,12 +111,7 @@ export class PurchaseOrdersService {
     }
 
     const { skip, take } = calculatePagination({ page, limit });
-    const PO_SORT: Record<string, string> = {
-      documentDate: 'documentDate',
-      createdAt: 'createdAt',
-      totalAmount: 'totalAmount',
-    };
-    const sortField = PO_SORT[sortBy ?? ''] ?? 'createdAt';
+    const sortField = PO_SORT_FIELDS[sortBy ?? ''] ?? 'createdAt';
     const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
     const [items, total] = await Promise.all([
       this.prisma.purchaseOrder.findMany({
