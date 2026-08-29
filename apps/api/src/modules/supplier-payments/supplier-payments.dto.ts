@@ -9,6 +9,7 @@ import {
   IsEnum,
   IsNumberString,
   IsIn,
+  Matches,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -218,13 +219,15 @@ export class SupplierPaymentQueryDto {
   sortDir?: 'asc' | 'desc';
 }
 
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export class SupplierPaymentScheduleQueryDto {
   @ApiProperty({ description: 'Початок вікна (YYYY-MM-DD), зазвичай сьогодні' })
-  @IsDateString()
+  @Matches(YMD_RE, { message: 'from має бути у форматі YYYY-MM-DD' })
   from!: string;
 
   @ApiProperty({ description: 'Кінець вікна (YYYY-MM-DD), зазвичай from + 19 днів' })
-  @IsDateString()
+  @Matches(YMD_RE, { message: 'to має бути у форматі YYYY-MM-DD' })
   to!: string;
 }
 

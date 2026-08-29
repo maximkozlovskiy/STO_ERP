@@ -25,15 +25,8 @@ export function SupplierPaymentScheduleTab() {
   const from = useMemo(() => kyivToday(), []);
   const to = useMemo(() => addDaysISO(from, WINDOW_DAYS - 1), [from]);
 
-  const { data, isLoading, error } = useSupplierPaymentsSchedule(from, to);
+  const { data, error } = useSupplierPaymentsSchedule(from, to);
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-16">
-        <Spinner />
-      </div>
-    );
-  }
   if (error) {
     return (
       <div className="text-destructive text-sm py-8 text-center">
@@ -41,7 +34,16 @@ export function SupplierPaymentScheduleTab() {
       </div>
     );
   }
-  if (!data || data.suppliers.length === 0) {
+  // Спінер поки немає даних — покриває і завантаження, і стан «auth ще вантажиться»
+  // (query disabled → isLoading=false, але data ще undefined; не показуємо empty-state завчасно).
+  if (!data) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner />
+      </div>
+    );
+  }
+  if (data.suppliers.length === 0) {
     return (
       <EmptyState
         icon={Wallet}

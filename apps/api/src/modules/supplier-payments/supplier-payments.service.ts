@@ -152,26 +152,64 @@ export class SupplierPaymentsService {
       dates.push(d.toISOString().slice(0, 10));
     }
 
-    const orders = await this.prisma.purchaseOrder.findMany({
-      where: {
-        orgId,
-        deletedAt: null,
-        status: { in: [PurchaseOrderStatus.RECEIVED, PurchaseOrderStatus.PARTIAL] },
-      },
-      select: {
-        id: true,
-        supplierId: true,
-        totalAmount: true,
-        paymentDate: true,
-        supplier: { select: { firstName: true, lastName: true, companyName: true } },
-        contract: { select: { creditLimit: true } },
-        supplierPayments: {
-          where: { deletedAt: null, status: SupplierPaymentStatus.CONFIRMED },
-          select: { amount: true },
+    const [orders, unlinkedPayments, contracts] = await Promise.all([
+      this.prisma.purchaseOrder.findMany({
+        where: {
+          orgId,
+          deletedAt: null,
+          status: { in: [PurchaseOrderStatus.RECEIVED, PurchaseOrderStatus.PARTIAL] },
         },
-      },
-      take: 5000,
-    });
+        select: {
+          id: true,
+          supplierId: true,
+          totalAmount: true,
+          paymentDate: true,
+          supplier: { select: { firstName: true, lastName: true, companyName: true } },
+          supplierPayments: {
+            where: { deletedAt: null, status: SupplierPaymentStatus.CONFIRMED },
+            select: { amount: true },
+          },
+        },
+        // Детермінований порядок для take-cap: найстаріші (за датою оплати) першими.
+        orderBy: [{ paymentDate: { sort: 'asc', nulls: 'first' } }, { createdAt: 'asc' }],
+        take: 5000,
+      }),
+      // Загальні (не прив'язані до PO) CONFIRMED-оплати — гасять борг постачальника
+      // з найстаріших (overdue) першими. PO-linked оплати вже враховані в outstanding.
+      this.prisma.supplierPayment.groupBy({
+        by: ['supplierId'],
+        where: {
+          orgId,
+          deletedAt: null,
+          status: SupplierPaymentStatus.CONFIRMED,
+          purchaseOrderId: null,
+        },
+        _sum: { amount: true },
+      }),
+      // Кредит-ліміт з АКТИВНИХ PURCHASE-договорів постачальника (не лише з тих,
+      // що прив'язані до outstanding-PO) — інакше ліміт губиться для PO без договору.
+      this.prisma.counterpartyContract.findMany({
+        where: {
+          orgId,
+          deletedAt: null,
+          contractType: 'PURCHASE',
+          creditLimit: { not: null },
+        },
+        select: { counterpartyId: true, creditLimit: true },
+      }),
+    ]);
+
+    const unlinkedBySupplier = new Map<string, number>(
+      unlinkedPayments.map(p => [p.supplierId, Number(p._sum.amount ?? 0)]),
+    );
+    const limitBySupplier = new Map<string, number>();
+    for (const c of contracts) {
+      const lim = c.creditLimit != null ? Number(c.creditLimit) : 0;
+      limitBySupplier.set(
+        c.counterpartyId,
+        Math.max(limitBySupplier.get(c.counterpartyId) ?? 0, lim),
+      );
+    }
 
     // Акумулятор по постачальнику.
     type Acc = {
@@ -179,7 +217,6 @@ export class SupplierPaymentsService {
       overdue: number;
       planned: number;
       byDate: Record<string, number>;
-      creditLimit: number;
     };
     const bySupplier = new Map<string, Acc>();
 
@@ -200,14 +237,9 @@ export class SupplierPaymentsService {
           overdue: 0,
           planned: 0,
           byDate: {},
-          creditLimit: 0,
         };
         bySupplier.set(po.supplierId, acc);
       }
-
-      // Кредит-ліміт постачальника = максимальний по його договорах.
-      const limit = po.contract?.creditLimit != null ? Number(po.contract.creditLimit) : 0;
-      if (limit > acc.creditLimit) acc.creditLimit = limit;
 
       // Bucket
       const pd = po.paymentDate ? po.paymentDate.toISOString().slice(0, 10) : null;
@@ -220,28 +252,40 @@ export class SupplierPaymentsService {
       }
     }
 
-    // Застосувати кредит-ліміт: віднімаємо з найпізніших (planned → дати спадно → overdue).
     const suppliers = Array.from(bySupplier.entries())
       .map(([supplierId, acc]) => {
-        let remaining = acc.creditLimit;
-        // planned
-        const consume = (available: number): [number, number] => {
-          if (remaining <= 0) return [available, 0];
+        // 1) Загальні оплати гасять борг з найстаріших (overdue → найближчі дати → planned).
+        let generalPaid = unlinkedBySupplier.get(supplierId) ?? 0;
+        const payOldest = (available: number): number => {
+          if (generalPaid <= 0) return available;
+          const eaten = Math.min(available, generalPaid);
+          generalPaid -= eaten;
+          return available - eaten;
+        };
+        let overdue = payOldest(acc.overdue);
+        const byDateAfterPaid: Record<string, number> = {};
+        const ascDates = Object.keys(acc.byDate).sort();
+        for (const d of ascDates) {
+          byDateAfterPaid[d] = payOldest(acc.byDate[d]);
+        }
+        let planned = payOldest(acc.planned);
+
+        // 2) Кредит-ліміт зменшує з найпізніших (planned → дати спадно → overdue).
+        let remaining = limitBySupplier.get(supplierId) ?? 0;
+        const consume = (available: number): number => {
+          if (remaining <= 0) return available;
           const eaten = Math.min(available, remaining);
           remaining -= eaten;
-          return [available - eaten, eaten];
+          return available - eaten;
         };
-        let planned = acc.planned;
-        [planned] = consume(planned);
-        // дати у спадному порядку
+        planned = consume(planned);
         const byDate: Record<string, number> = {};
-        const sortedDates = Object.keys(acc.byDate).sort((a, b) => (a < b ? 1 : -1));
-        for (const d of sortedDates) {
-          const [left] = consume(acc.byDate[d]);
-          if (left > 0) byDate[d] = left;
+        const descDates = Object.keys(byDateAfterPaid).sort((a, b) => (a < b ? 1 : -1));
+        for (const d of descDates) {
+          const left = consume(byDateAfterPaid[d]);
+          if (left > 0.005) byDate[d] = left;
         }
-        let overdue = acc.overdue;
-        [overdue] = consume(overdue);
+        overdue = consume(overdue);
 
         const total = overdue + planned + Object.values(byDate).reduce((s, v) => s + v, 0);
         return { supplierId, supplierName: acc.supplierName, overdue, planned, byDate, total };
