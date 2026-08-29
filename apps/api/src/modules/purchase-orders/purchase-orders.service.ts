@@ -484,8 +484,12 @@ export class PurchaseOrdersService {
     // NB: Prisma всередині $transaction виконує DB-операції послідовно (один pinned connection),
     // тож Promise.all дає лише JS-overhead-economy. receivedAmount акумулюємо через map → reduce
     // (уникаємо shared mutable у async callbacks).
+    //
+    // sto-optimize (2026-08-30): bucket-by-id Map замість Array.find() у циклі →
+    // O(N+M) замість O(N×M). Помітно на PO з 100+ ліній (10_000 порівнянь → 200).
+    const lineById = new Map(po.lines.map(l => [l.id, l]));
     const activeLines = dto.lines
-      .map(recv => ({ recv, line: po.lines.find(l => l.id === recv.lineId) }))
+      .map(recv => ({ recv, line: lineById.get(recv.lineId) }))
       .filter(
         (x): x is { recv: (typeof dto.lines)[0]; line: NonNullable<typeof x.line> } =>
           !!x.line && x.recv.receivedQty > 0,

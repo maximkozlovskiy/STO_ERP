@@ -643,6 +643,9 @@ model CounterpartyContract {
   purchaseOrders PurchaseOrder[]
 
   @@index([orgId, counterpartyId, deletedAt])
+  // sto-optimize (2026-08-30): hot-path getSchedule — filter by (orgId, contractType='PURCHASE'),
+  // не використовує counterpartyId — існуючий базовий індекс не покривав.
+  @@index([orgId, contractType, deletedAt])
   @@index([orgId, syncVersion])
   @@map("counterparty_contracts")
 }
@@ -1478,6 +1481,9 @@ model SupplierPayment {
   @@index([orgId, deletedAt])
   @@index([orgId, supplierId, createdAt])
   @@index([orgId, status, createdAt])
+  // sto-optimize (2026-08-30): findAll(purchaseOrderId=?) + getSchedule nested include
+  // + groupBy(purchaseOrderId=null) — FK PO axis не було покрито.
+  @@index([orgId, purchaseOrderId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("supplier_payments")
 }
