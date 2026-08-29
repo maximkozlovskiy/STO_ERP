@@ -2,14 +2,13 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { WarehouseType } from '@prisma/client';
+// Shared regex accepts nil UUIDs used in seed data (class-validator @IsUUID rejects them).
+import { UUID_REGEX } from '@sto/shared';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
-
-// Accepts nil UUIDs used in seed data (class-validator @IsUUID rejects nil UUIDs).
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class CreateWarehouseDto {
   @ApiProperty()
-  @Matches(UUID_RE, { message: 'branchId must be a UUID' })
+  @Matches(UUID_REGEX, { message: 'branchId must be a UUID' })
   branchId!: string;
 
   @ApiProperty({ example: 'РћСЃРЅРѕРІРЅРёР№ СЃРєР»Р°Рґ' })

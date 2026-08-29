@@ -16,6 +16,7 @@ import {
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { GoodType } from '@prisma/client';
+import { UUID_REGEX } from '@sto/shared';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateGoodDto {
@@ -68,8 +69,6 @@ export class CreateGoodDto {
 
 export class UpdateGoodDto extends PartialType(CreateGoodDto) {}
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export class GoodQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() barcode?: string;
@@ -83,7 +82,7 @@ export class GoodQueryDto {
   // → ValidationPipe виконає N×regex per element → OOM Node worker. 100 = реалістичний
   // максимум для filter по subtree категорій.
   @ArrayMaxSize(100, { message: 'Не більше 100 категорій у фільтрі' })
-  @Matches(UUID_RE, { each: true })
+  @Matches(UUID_REGEX, { each: true })
   @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
   goodCategoryIds?: string[];
 

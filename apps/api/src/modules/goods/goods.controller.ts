@@ -15,6 +15,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { UUID_REGEX } from '@sto/shared';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -34,10 +35,6 @@ import {
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 import { BatchService } from '../inventory/batch.service';
 import { PrismaService } from '../../prisma/prisma.service';
-
-// RFC 4122 v1-v8 UUID — Postgres gen_random_uuid() emits v4, tests sometimes use v0.
-// Loose enough to match anything Prisma `@db.Uuid` accepts.
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @ApiTags('Goods')
 @Controller('goods')
@@ -76,7 +73,7 @@ export class GoodsController {
     if (goodIds.length > 100) throw new BadRequestException('Максимум 100 товарів за раз');
     // Defence-in-depth: invalid UUID would reach Postgres as `invalid input syntax for type uuid`
     // (500 with cryptic message). Validate up-front and reject with 400.
-    const invalid = goodIds.find(id => !UUID_RE.test(id));
+    const invalid = goodIds.find(id => !UUID_REGEX.test(id));
     if (invalid) throw new BadRequestException(`Некоректний goodId: ${invalid}`);
     return this.service.stockTotals(orgId, goodIds);
   }

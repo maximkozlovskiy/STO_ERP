@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { UUID_REGEX } from '@sto/shared';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -24,7 +25,6 @@ import { BookingService } from './booking.service';
 import { CreateBookingRequestDto } from './booking.dto';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 @ApiTags('booking')
 @Controller('booking')
@@ -60,7 +60,7 @@ export class BookingController {
     @Query('serviceIds') serviceIds?: string,
   ) {
     // Lightweight runtime validation — avoid Prisma P2023 → 500 on bad UUID/date
-    if (!branchId || !UUID_RE.test(branchId)) {
+    if (!branchId || !UUID_REGEX.test(branchId)) {
       throw new BadRequestException('Некоректний branchId');
     }
     if (!date || !DATE_RE.test(date)) {

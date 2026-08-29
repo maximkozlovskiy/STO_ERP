@@ -13,15 +13,14 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
-
-// Accepts any UUID including nil UUID (00000000-...) used in seed data.
+// Shared regex accepts any UUID including nil UUID (00000000-...) used in seed data.
 // class-validator @IsUUID rejects nil UUIDs (version check fails).
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { UUID_REGEX } from '@sto/shared';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateWorkDto {
   @ApiProperty()
-  @Matches(UUID_RE, { message: 'categoryId must be a UUID' })
+  @Matches(UUID_REGEX, { message: 'categoryId must be a UUID' })
   categoryId!: string;
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
   @ApiProperty({ description: 'РќРѕСЂРјРѕ-РіРѕРґРёРЅ' }) @IsNumber() @Min(0) normoHours!: number;
@@ -47,7 +46,7 @@ export class WorkQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
-  @Matches(UUID_RE, { message: 'categoryId must be a UUID' })
+  @Matches(UUID_REGEX, { message: 'categoryId must be a UUID' })
   categoryId?: string;
 
   // РњР°СЃРёРІ ID РєР°С‚РµРіРѕСЂС–Р№ (Р±Р°С‚СЊРєРѕ + РІСЃС– РЅР°С‰Р°РґРєРё) вЂ” РґР»СЏ С„С–Р»СЊС‚СЂР°С†С–С— РїРѕ РїС–РґРґРµСЂРµРІСѓ
@@ -58,7 +57,7 @@ export class WorkQueryDto {
   // → ValidationPipe виконає N×regex per element → OOM Node worker. 100 = реалістичний
   // максимум для filter по subtree категорій робіт.
   @ArrayMaxSize(100, { message: 'Не більше 100 категорій у фільтрі' })
-  @Matches(UUID_RE, { each: true })
+  @Matches(UUID_REGEX, { each: true })
   @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
   categoryIds?: string[];
 
