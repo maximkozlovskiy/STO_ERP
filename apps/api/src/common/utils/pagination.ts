@@ -43,7 +43,9 @@ export function buildSortOrderBy(
   sortDir: 'asc' | 'desc' | undefined,
   fallback = 'createdAt',
 ): Record<string, 'asc' | 'desc'> {
-  const known = sortBy != null && sortBy in whitelist;
+  // `hasOwnProperty`, а не `in` — інакше sortBy='constructor'/'toString' резолвиться
+  // у прототипний метод Object.prototype і ламає Prisma orderBy (500).
+  const known = sortBy != null && Object.prototype.hasOwnProperty.call(whitelist, sortBy);
   const field = known ? whitelist[sortBy] : fallback;
   const dir: 'asc' | 'desc' = known && sortDir === 'asc' ? 'asc' : 'desc';
   return { [field]: dir };
