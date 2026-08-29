@@ -12,6 +12,8 @@
 // контракт що таби + API-відповідь). Ці тести фіксують обидві сторони.
 
 import { render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 
 import { SupplierPaymentCreateModal } from '../SupplierPaymentCreateModal';
@@ -24,6 +26,17 @@ vi.mock('@/lib/api-client', () => ({
 vi.mock('@/hooks/useUiFeatures', () => ({
   useUiFeatures: () => ({ toastEnabled: false }),
 }));
+
+// Bug #593: модалка використовує React Query хуки (useUpdateSupplierPayment,
+// useSupplierPayment) з commit 7e6bfab9 — без QueryClientProvider усі рендери
+// падають з "No QueryClient set". Обгортаємо render() у свіжий QueryClient
+// (retry: false для швидкого fail замість Escape retries).
+function renderWithQueryClient(ui: ReactNode) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
 
 describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592)', () => {
   beforeEach(() => {
@@ -49,7 +62,9 @@ describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592
     apiFetchMock.mockRejectedValue(new Error('offline'));
 
     expect(() =>
-      render(<SupplierPaymentCreateModal open onClose={() => {}} onSaved={() => {}} />),
+      renderWithQueryClient(
+        <SupplierPaymentCreateModal open onClose={() => {}} onSaved={() => {}} />,
+      ),
     ).not.toThrow();
     // Модалка відрендерилась, дефолтне джерело CASH_REGISTER → каса з кешу присутня.
     await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument());
@@ -63,7 +78,9 @@ describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592
     apiFetchMock.mockRejectedValue(new Error('offline'));
 
     expect(() =>
-      render(<SupplierPaymentCreateModal open onClose={() => {}} onSaved={() => {}} />),
+      renderWithQueryClient(
+        <SupplierPaymentCreateModal open onClose={() => {}} onSaved={() => {}} />,
+      ),
     ).not.toThrow();
   });
 
@@ -77,7 +94,9 @@ describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592
       return Promise.resolve({ items: [], total: 0 });
     });
 
-    render(<SupplierPaymentCreateModal open onClose={() => {}} onSaved={() => {}} />);
+    renderWithQueryClient(
+      <SupplierPaymentCreateModal open onClose={() => {}} onSaved={() => {}} />,
+    );
 
     await waitFor(() => {
       const raw = window.sessionStorage.getItem('cache:bank-accounts');

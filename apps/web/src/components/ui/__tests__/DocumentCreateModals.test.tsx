@@ -13,12 +13,25 @@
 //                     must show inline error and NOT POST.
 
 import { render, screen, waitFor, act } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 import { InvoiceCreateModal } from '../InvoiceCreateModal';
 import { PurchaseOrderCreateModal } from '../PurchaseOrderCreateModal';
 import { StockDocumentCreateModal } from '../StockDocumentCreateModal';
+
+// Bug #593: PurchaseOrderCreateModal транзитивно рендерить SupplierPaymentCreateModal
+// (кнопка "Оплата постачальнику"). SP modal з commit 7e6bfab9 використовує React Query
+// хуки → без QueryClientProvider тест PO падає "No QueryClient set". Обгортаємо усі
+// рендери у свіжий QC (retry: false).
+function renderWithQueryClient(ui: ReactNode) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
 
 // Shared mock for apiFetch — each test installs its own implementation.
 const apiFetchMock = vi.fn();
@@ -89,7 +102,7 @@ describe('PurchaseOrderCreateModal — regression', () => {
 
     const onSaved = vi.fn();
     const onClose = vi.fn();
-    render(<PurchaseOrderCreateModal open onClose={onClose} onSaved={onSaved} />);
+    renderWithQueryClient(<PurchaseOrderCreateModal open onClose={onClose} onSaved={onSaved} />);
 
     // Wait for warehouses to load and auto-select to settle if applicable.
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/warehouses'));

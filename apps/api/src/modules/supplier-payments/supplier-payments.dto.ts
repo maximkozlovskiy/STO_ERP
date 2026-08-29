@@ -221,12 +221,19 @@ export class SupplierPaymentQueryDto {
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// Bug #595: `@Matches(YMD_RE)` accepts semantic-invalid strings like "2026-99-99"
+// (regex тільки перевіряє shape). `new Date('2026-99-99T00:00:00Z')` → Invalid Date →
+// `windowDays = NaN` → `NaN > 100` false → passes cap → for-loop skipped → empty result.
+// User бачить "немає боргів" замість 400. Комбо `@IsDateString` (parseable) + `@Matches`
+// (YMD-only, не ISO-8601 з часом) = strict validation + user-friendly error.
 export class SupplierPaymentScheduleQueryDto {
   @ApiProperty({ description: 'Початок вікна (YYYY-MM-DD), зазвичай сьогодні' })
+  @IsDateString({ strict: true }, { message: 'from має бути валідною датою' })
   @Matches(YMD_RE, { message: 'from має бути у форматі YYYY-MM-DD' })
   from!: string;
 
   @ApiProperty({ description: 'Кінець вікна (YYYY-MM-DD), зазвичай from + 19 днів' })
+  @IsDateString({ strict: true }, { message: 'to має бути валідною датою' })
   @Matches(YMD_RE, { message: 'to має бути у форматі YYYY-MM-DD' })
   to!: string;
 }

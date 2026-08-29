@@ -17,6 +17,7 @@ import { SearchPickerModal } from '@/components/ui/search-picker-modal';
 import {
   useSupplierPayment,
   useUpdateSupplierPayment,
+  useCreateSupplierPayment,
   type PaymentSourceType,
 } from '@/hooks/api/useSupplierPayments';
 
@@ -106,6 +107,10 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
   }, []);
 
   const updateMut = useUpdateSupplierPayment();
+  // Bug #594: створення через хук (а не raw apiFetch) щоб onSuccess у хуку
+  // інвалідував supplierPaymentsKeys.all — інакше нова оплата не з'являється
+  // у списку до staleTime=30s (usePaginatedList кешує на 30 секунд).
+  const createMut = useCreateSupplierPayment();
 
   // Режим редагування — тягнемо наявну оплату для заповнення форми.
   const { data: existing } = useSupplierPayment(isEdit && open ? paymentId! : null);
@@ -262,10 +267,8 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
         await updateMut.mutateAsync({ id: paymentId!, data: payload });
         if (features.toastEnabled) toast.success('Оплату оновлено');
       } else {
-        await apiFetch('/supplier-payments', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        });
+        // Bug #594: через хук — щоб onSuccess інвалідував supplierPaymentsKeys.all.
+        await createMut.mutateAsync(payload);
         if (features.toastEnabled) toast.success('Оплату створено');
       }
       onSaved();
@@ -293,6 +296,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
     isEdit,
     paymentId,
     updateMut,
+    createMut,
   ]);
 
   return (

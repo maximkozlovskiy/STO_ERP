@@ -9,6 +9,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
+import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 
 // Bug #187 / #200: regression-захист для applyPricing
 // Bug #200: оновлено fixtures з полем `status` (defense-in-depth status guard c1dc5dd)
@@ -828,9 +829,11 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
     expect(statusUpdate).toBeDefined();
     const data = (statusUpdate![0] as { data: { paymentDate?: Date } }).data;
     expect(data.paymentDate).toBeInstanceOf(Date);
-    // = сьогодні (Kyiv) + 10 днів
-    const expected = new Date();
-    expected.setUTCDate(expected.getUTCDate() + 10);
+    // = сьогодні (Kyiv) + 10 днів. Bug #592: попередня версія тесту рахувала expected
+    // через `new Date() + setUTCDate` — це UTC-арифметика, а impl використовує Kyiv (kyivToday()).
+    // На кордоні днів (Kyiv +2/+3 vs UTC) різниця в 1 день → тест падає в ~3 годинних вікнах.
+    // Правильно: використовувати ті самі kyivToday/addDaysKyiv що і imp (DST-aware).
+    const expected = addDaysKyiv(kyivToday(), 10);
     expect(data.paymentDate!.toISOString().slice(0, 10)).toBe(expected.toISOString().slice(0, 10));
   });
 

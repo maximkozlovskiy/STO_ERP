@@ -1441,3 +1441,79 @@ Static-checks passed (0 bugs found у цих секціях):
 - **Виправлено:** 2/2
 - **Baseline після сесії:** TypeScript 0 errors (api/web/shared), API vitest 976/976, Web vitest **481/481** (+10 vs baseline), E2E 305/307 (2 flaky known), dev server up.
 - **Крок 7 — self-improvement:** Bug #590 патерн — «FE mutation що триггерить `settlements.createTransaction` → ОБОВ'ЯЗКОВО інвалідувати counterpartiesKeys.all» — вже задокументовано у SKILL.md як частина Bug #210-#212 підходу (§1.3 «React Query cross-resource invalidation»). Bug #591 патерн — «новий `use<X>.ts` hook без парного `use<X>.test.tsx`» — рекомендація для sto-review checklist. Обидва — розширення існуючих підходів, не новий тип; SKILL.md залишається без змін окрім додавання explicit `use*Payment*` reference у §1.3.
+
+---
+
+## Session 2026-08-30 (FULL /sto-tester, HEAD 05acaae4) — baseline reds + SP create-path cache staleness
+
+Цикл 1/3 повного `/sto-tester` над усім проєктом. Фокус: supplier-payments (getSchedule шахматка, PO paymentDate auto-fill), але з повним статичним аналізом §1.1–§1.7 по всьому коду.
+
+**Baseline на старті:**
+
+- TypeScript API: 0 errors
+- TypeScript Web: 0 errors
+- API vitest: **991/992** (❌ 1 test failed — baseline red)
+- Web vitest: **484/488** (❌ 4 tests failed — baseline red)
+- Останній commit: `05acaae4 docs(memory): record review cycle 1 findings`
+
+Три baseline reds — усі release-blocker, виправлені у пріоритеті ПЕРЕД статичним аналізом.
+
+---
+
+### Bug #592 — HIGH test / DST-aware Kyiv timezone — `purchase-orders.service.spec.ts:834` порівнює impl-Kyiv-дату з test-UTC-датою → падає у 3-годинному вікні на кордоні днів
+
+- **Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts:774-835` (тест «receive повне → авто paymentDate = сьогодні + contract.paymentDeferDays»)
+- **Симптом:** API vitest baseline **991/992** — 1 test падає з `expected '2026-09-09' to be '2026-09-08'`. Помилка з'являється лише коли тест запускається у ~3-годинному вікні між UTC-північчю (00:00 UTC) і Kyiv-північчю (00:00 EEST = 21:00 UTC попереднього дня). Днем — passes; вночі (та сама сесія в якій ми тестуємо) — падає. Робить baseline flaky release-blocker.
+- **Причина виникнення:** тест обчислював `expected` через `const expected = new Date(); expected.setUTCDate(expected.getUTCDate() + 10);` — це **UTC-арифметика** з UTC-day-boundary. Реалізація `receive()` використовує `addDaysKyiv(kyivToday(), defer)` — **Kyiv-арифметика** з Kyiv-day-boundary. На кордоні днів Kyiv (наприклад 30 серпня 00:01 EEST = 29 серпня 21:01 UTC) — `kyivToday()` = "2026-08-30", `new Date().toISOString()` = "2026-08-29T21:01:...". Різниця 1 день → assert падає. Це рівно `feedback_dst_kyiv.md` пастка з MEMORY.md.
+- **Виявлено:** baseline `pnpm --filter @sto/api test --run` → 1 failure. Grep error message в output файлі → знайдено конкретне assert рядок 834.
+- **Severity:** HIGH — release-blocker baseline (ховає майбутні регресії у тому ж модулі; тестер-сесії неможливі, поки baseline червоний). Не CRITICAL бо: (а) production не зачеплений (impl-код правильний, тільки тест хибний); (б) фіксується 1 рядком; (в) flaky характер обмежує impact до ~3h/добу.
+- **Fix:** імпортовано `kyivToday, addDaysKyiv` з `../../common/utils/kyiv-date` у spec-файл; `const expected = new Date(); expected.setUTCDate(...)` → `const expected = addDaysKyiv(kyivToday(), 10)`. Додано inline-коментар що пояснює чому UTC-арифметика неправильна для перевірки Kyiv-дати.
+- **Статус:** [x] виправлено
+- **Verification:** `pnpm --filter @sto/api exec vitest run purchase-orders.service.spec.ts` → 41/41 passed. Повний API vitest → 992/992 passed.
+- **Де шукати ще:** будь-який `*.spec.ts` що асертить дату отриману через impl `kyivToday()/addDaysKyiv/kyivOffsetMs()` — має теж використовувати ті самі утиліти (не `new Date()`/`setUTCDate`). Grep: `grep -rn "setUTCDate\|toISOString().slice(0, 10)" apps/api/src --include="*.spec.ts"` — для кожного знайти чи impl-порівняння використовує Kyiv-timezone утиліту.
+
+---
+
+### Bug #593 — HIGH test / QueryClientProvider absent — 4 web tests fail після React Query migration `SupplierPaymentCreateModal`
+
+- **Файли:**
+  - `apps/web/src/components/ui/__tests__/SupplierPaymentCreateModal.test.tsx` (3 tests failed)
+  - `apps/web/src/components/ui/__tests__/DocumentCreateModals.test.tsx` (1 test failed — `PurchaseOrderCreateModal — regression / Bug #460`)
+- **Симптом:** Web vitest baseline **484/488** — 4 tests падають з `Error: No QueryClient set, use QueryClientProvider to set one` у `useUpdateSupplierPayment` (line 134 `useQueryClient()`). Stack пояснює каскад: `PurchaseOrderCreateModal` транзитивно рендерить `SupplierPaymentCreateModal` (кнопка «Оплата постачальнику», line 1917) → SP modal з commit `7e6bfab9` (Manual editing / pay-from-purchase-order) додав `useUpdateSupplierPayment` hook → без QCProvider обгортки будь-який `render()` крашиться.
+- **Причина виникнення:** commit `7e6bfab9` мігрував SP modal з raw `apiFetch` на React Query hooks (`useUpdateSupplierPayment`, `useSupplierPayment`). Існуючі тести (написані ДО міграції) не оновлені: використовували `render(<SupplierPaymentCreateModal .../>)` без QueryClientProvider обгортки, бо старий компонент не мав RQ hooks. Класичний Bug #429 патерн: `vi.mock/shared lib НЕ оновлений після refactor-extract`, але замість `vi.mock` — сам wrapper components.
+- **Виявлено:** baseline `pnpm --filter @sto/web exec vitest run` → 4 failures у 2 файлах. Full stack trace → `useUpdateSupplierPayment src/hooks/api/useSupplierPayments.ts:134:14` → grep import у SP modal → нещодавня міграція на RQ у commit 7e6bfab9.
+- **Severity:** HIGH — release-blocker baseline (весь `SupplierPaymentCreateModal.test.tsx` + `DocumentCreateModals.test.tsx PO test` мовчки перестали покривати регресії). Особливо критично для Bug #460 регресія-guard: якщо PO modal почне POST-ити `lines` окремо (замість body), test не спрацює бо він раніше падає на mount.
+- **Fix:**
+  - `SupplierPaymentCreateModal.test.tsx`: додано `renderWithQueryClient(ui)` helper з свіжим `QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })`; замінено всі 3 `render(<SupplierPaymentCreateModal .../>)` виклики на `renderWithQueryClient(...)`. Додано inline-коментар що пояснює регресію-source (commit 7e6bfab9).
+  - `DocumentCreateModals.test.tsx`: аналогічний `renderWithQueryClient` helper; замінено `render(<PurchaseOrderCreateModal .../>)` (line 105). Тести InvoiceCreateModal/StockDocumentCreateModal не змінені — вони не використовують RQ hooks і не рендерять SP modal транзитивно (перевірено grep).
+- **Статус:** [x] виправлено
+- **Verification:** `pnpm --filter @sto/web exec vitest run SupplierPaymentCreateModal DocumentCreateModals` → 6/6 passed.
+- **Де шукати ще:** будь-який компонент з `useMutation`/`useQuery`/`useQueryClient` — його `*.test.tsx` мусить обгортати `render()` у `QueryClientProvider`. Sanity-grep для нових міграцій на RQ hook: `git log --oneline -- <component-file>` → знайти commit-міграцію → `git show <commit> --stat` → перевірити чи `*.test.tsx` файли оновлені. Також transitive: parent modal що рендерить child з RQ hooks (як `PurchaseOrderCreateModal` → `SupplierPaymentCreateModal` тут).
+
+---
+
+### Bug #594 — HIGH frontend / cache-staleness — `SupplierPaymentCreateModal` create-path bypasses `useCreateSupplierPayment` hook → new payment не з'являється у списку до staleTime=30s
+
+- **Файл:** `apps/web/src/components/ui/SupplierPaymentCreateModal.tsx:264-268` (create branch в `handleSave`)
+- **Симптом:** користувач створює нову DRAFT оплату (нове створення, не редагування) → toast «Оплату створено» показується → модалка закривається → **список у `/supplier-payments` не оновлюється до 30 секунд** (React Query `staleTime=30_000` у usePaginatedList). Не CRITICAL бо: (а) через 30s стане свіжо; (б) вручний refresh (F5) виправляє; (в) `onSaved={() => setPage(1)}` перезаписує page state — але якщо page вже 1, RQ не перезапитує сам себе без invalidate. UX-плутанина: користувач думає що створення провалилось.
+- **Причина виникнення:** commit `7e6bfab9` мігрував **UPDATE**-path з raw `apiFetch` на `useUpdateSupplierPayment` hook (`updateMut.mutateAsync` — line 262). CREATE-path у той самий commit залишився з raw `await apiFetch('/supplier-payments', { method: 'POST', body: ... })` (line 265) → пропущено пару. Hook `useCreateSupplierPayment` існує у `useSupplierPayments.ts:119` і має правильний `onSuccess: invalidate supplierPaymentsKeys.all`. Симетрична асиметрія — update тепер інвалідує, create — ні.
+- **Виявлено:** ручний trace SP modal `handleSave` → line 262 `updateMut.mutateAsync` (OK) vs line 265 `apiFetch('/supplier-payments', {method:'POST',...})` (raw). Grep `useCreateSupplierPayment` у SP modal → 0 matches (не імпортовано). Grep у `useSupplierPayments.ts:119` → hook exists з invalidate.
+- **Severity:** HIGH — silent UX gap що виглядає як «створення провалилось». Впливає на всі OWNER/ADMIN/ACCOUNTANT ролі. Не CRITICAL бо самовиправляється через 30s.
+- **Fix:** імпортовано `useCreateSupplierPayment` у SP modal; додано `const createMut = useCreateSupplierPayment();`; у `handleSave` create-branch замінено raw `apiFetch(...)` на `await createMut.mutateAsync(payload)`. Оновлено `useCallback` deps: додано `createMut`. Payload shape вже точно відповідає `CreateSupplierPaymentInput` (той самий об'єкт).
+- **Статус:** [x] виправлено
+- **Verification:** tsc clean; full web vitest → 488/488 passed (Крок 4).
+- **Де шукати ще:** канонічний Bug #499 варіант — mutation hook існує, але компонент використовує raw apiFetch у одному з branch-ів (типово: refactor мігрує only-update АБО only-create, забуває інший path). Grep: для кожного `use*(Create|Update|Delete|Confirm|Cancel)*Payment*` hook у `apps/web/src/hooks/api/` — знайти usage у components → у component-у грепнути парний raw `apiFetch(url-із-hook, ...)` — matches = bug. Особливо парний Bug #591 регресія-gap: `useSupplierPayments.test.tsx` тестує `useCreateSupplierPayment` (line 100-114), АЛЕ немає компонент-тесту що SP modal-у РЕАЛЬНО використовує цей hook у create-flow.
+
+---
+
+### Bug #595 — MEDIUM backend / DTO validation — `SupplierPaymentScheduleQueryDto` використовує `@Matches(YMD_RE)` замість `@IsDateString()` → приймає невалідні дати типу `"2026-99-99"` → silent empty result замість 400
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.dto.ts:226,230` (`from!: string; to!: string;`)
+- **Симптом:** `GET /supplier-payments/schedule?from=2026-99-99&to=2026-99-99` повертає **200 з порожнім `{ dates: [], suppliers: [], totals: {...} }`**. Валідація приймає рядок бо `^\d{4}-\d{2}-\d{2}$` матчиться; `new Date('2026-99-99T00:00:00.000Z')` → `Invalid Date`; `windowDays = NaN`; `NaN > 100` false → passes cap; loop `for (let d = new Date(fromDate); d <= toDate; ...)` — Invalid Date порівняння повертає false → loop skipped → empty dates. Користувач/UI отримує "немає боргів" замість "400 неправильна дата".
+- **Причина виникнення:** розробник використав `@Matches(YMD_RE)` для швидкого regex-guard, не помітивши що YMD-регекс не перевіряє semantics (місяць 1-12, день 1-31). `@IsDateString()` з class-validator валідує через `new Date()` parseable + strict-mode.
+- **Виявлено:** semantic trace `getSchedule()` з невалідним from → `windowDays = NaN` → loop empty. Знайдено при перевірці Krok 1 §1.2 «Nullable/Invalid-date DTO input».
+- **Severity:** MEDIUM — silent empty result вводить в оману (user думає боргів нема, а насправді 400 сховане). Не HIGH бо: (а) валідні дати з UI (через date-picker) — коректні; (б) DoS-vector обмежений (кап 100 днів все ще діє при NaN false-negative); (в) якщо frontend відправить invalid date — user first bug report → швидко фіксується.
+- **Fix:** `@Matches(YMD_RE)` → `@IsDateString({ strict: true })` + `@Matches(YMD_RE, {message: '... має бути у форматі YYYY-MM-DD'})` (комбо: strict date + YMD-only shape, бо `@IsDateString` дозволяє також ISO-8601 datetime `"2026-08-30T00:00:00Z"`, а нам потрібен лише YYYY-MM-DD). YMD_RE лишається як user-friendly error-повідомлення.
+- **Статус:** [x] виправлено
+- **Verification:** tsc clean; повний API vitest → 992/992.
+- **Де шукати ще:** усі DTO що приймають YMD-дату як параметр — має бути `@IsDateString` (не тільки `@Matches`). Grep: `grep -rn "@Matches.*\\\\d{4}\\.*\\\\d{2}\\.*\\\\d{2}" apps/api/src/modules --include="*.dto.ts"` — для кожного match додати `@IsDateString`. Спеціально: query DTO для date-window endpoints (reports, calendar, schedule, dashboard) — silent empty result особливо небезпечний для звітів.
