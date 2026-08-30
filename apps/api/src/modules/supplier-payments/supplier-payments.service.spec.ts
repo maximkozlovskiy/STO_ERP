@@ -547,7 +547,7 @@ describe('SupplierPaymentsService — regression guards', () => {
     ]);
 
   it('getSchedule(): payable з балансу розподіляється по PO-датах (overdue/byDate/planned)', async () => {
-    // Балансовий борг 4200 = точна сума PO-outstanding → розподіл 1:1 (k=1).
+    // Балансовий борг 4200 = точна сума PO-outstanding → FIFO покриває всі PO повністю.
     mockPayable(4200);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
       poRow({ totalAmount: 1000, paymentDate: '2026-08-10' }), // < from → overdue
@@ -565,21 +565,48 @@ describe('SupplierPaymentsService — regression guards', () => {
     expect(r.totals.total).toBe(4200);
   });
 
-  it('getSchedule(): сума ЗАВЖДИ = balance, а не Σ PO (графік узгоджений зі звітом)', async () => {
-    // Ключовий регрес-guard для цього багу: реальний борг = 47, а PO роздуті до 30953.
-    // Раніше графік показував 30953; тепер — рівно 47, розподілені за формою PO.
+  it('getSchedule(): FIFO — сума = balance, борг лягає на найстаріші PO (47 vs 30953)', async () => {
+    // Ключовий регрес-guard: реальний борг = 47, а PO роздуті до 30953.
+    // FIFO наливає 47 на НАЙСТАРІШИЙ PO (953-overdue за датою 08-10, nulls/asc порядок
+    // з findMany orderBy) → увесь борг 47 в overdue; PO на 30000 (пізніший) не показується.
     mockPayable(47);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
-      poRow({ totalAmount: 30000, paymentDate: '2026-08-25' }),
-      poRow({ totalAmount: 953, paymentDate: '2026-08-10' }), // overdue
+      // Порядок як з findMany: paymentDate asc → 08-10 перший (найстаріший).
+      poRow({ totalAmount: 953, paymentDate: '2026-08-10' }), // overdue, найстаріший → бере 47
+      poRow({ totalAmount: 30000, paymentDate: '2026-08-25' }), // пізніший → не дійшла черга
     ]);
     const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
     const row = r.suppliers[0];
-    // 47 розподілено пропорційно: byDate ≈ 47*30000/30953, overdue ≈ 47*953/30953.
     expect(row.total).toBeCloseTo(47, 5);
-    expect(row.byDate['2026-08-25'] + row.overdue).toBeCloseTo(47, 5);
-    expect(row.byDate['2026-08-25']).toBeCloseTo(45.55, 1);
-    expect(row.overdue).toBeCloseTo(1.45, 1);
+    expect(row.overdue).toBeCloseTo(47, 5); // увесь борг на найстарішому (overdue)
+    expect(row.byDate['2026-08-25']).toBeUndefined(); // пізніший PO не показується
+  });
+
+  it('getSchedule(): FIFO часткове перекриття — перший PO повний, другий частково', async () => {
+    // payable=1500 наливається: PO[0] (1000) повний, PO[1] (1000) отримує 500, решта відсічена.
+    mockPayable(1500);
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-25' }), // найстаріший у вікні → 1000
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-26' }), // наступний → 500
+    ]);
+    const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    const row = r.suppliers[0];
+    expect(row.byDate['2026-08-25']).toBe(1000);
+    expect(row.byDate['2026-08-26']).toBe(500);
+    expect(row.total).toBe(1500);
+  });
+
+  it('getSchedule(): борг з балансу понад суму PO → надлишок в overdue', async () => {
+    // payable=1200, єдиний PO outstanding=1000 → 1000 у дату, 200 надлишку → overdue.
+    mockPayable(1200);
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-25' }),
+    ]);
+    const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    const row = r.suppliers[0];
+    expect(row.byDate['2026-08-25']).toBe(1000);
+    expect(row.overdue).toBe(200);
+    expect(row.total).toBe(1200);
   });
 
   it('getSchedule(): борг з балансу без відкритих PO → усе в overdue', async () => {
@@ -700,7 +727,7 @@ describe('SupplierPaymentsService — regression guards', () => {
     // Regression-guard для single-pass reduce (optimize cycle 2) — переконуємось
     // що totals.byDate НЕ пропускає жодного bucket-у і НЕ дублює.
     const SUPPLIER2 = '55555555-5555-4555-8555-555555555555';
-    // Баланси = точні суми PO-outstanding → розподіл 1:1 (k=1) для обох.
+    // Баланси = точні суми PO-outstanding → FIFO покриває всі PO повністю для обох.
     prisma.settlementAccount.findMany.mockResolvedValueOnce([
       {
         counterpartyId: SUPPLIER_ID,

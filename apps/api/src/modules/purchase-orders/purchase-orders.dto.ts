@@ -178,6 +178,10 @@ export class PurchaseOrderResponseDto {
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiPropertyOptional({ description: 'Планова дата оплати' }) paymentDate?: string | null;
+  @ApiPropertyOptional({
+    description: 'Залишок боргу по PO (totalAmount − Σ CONFIRMED оплат); лише у списку',
+  })
+  outstanding?: number;
   @ApiPropertyOptional({ description: 'Дата останнього розцінення' }) pricedAt?: string | null;
   @ApiProperty() linesCount!: number;
   @ApiProperty({ type: [PurchaseOrderLineResponseDto] }) lines!: PurchaseOrderLineResponseDto[];

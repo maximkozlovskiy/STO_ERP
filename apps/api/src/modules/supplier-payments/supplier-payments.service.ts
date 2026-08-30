@@ -135,13 +135,14 @@ export class SupplierPaymentsService {
    * ЗАВЖДИ показують однакову суму по постачальнику — балансовий борг враховує ВСІ
    * рухи (PO-linked/unlinked платежі, повернення, коригування), а не лише PO.
    *
-   * PurchaseOrder.paymentDate + outstanding використовуються ЛИШЕ як форма розподілу
-   * (ваги) цього боргу по колонках — сума ніколи не перевищує фактичний balance:
+   * Розподіл — FIFO: payable «наливається» на непогашені PO по черзі від найстарішого
+   * (за paymentDate), кожен PO лягає у свою колонку за paymentDate:
    *   - null або < from            → overdue (протерміновані)
    *   - from..to (20-денне вікно)  → byDate[YYYY-MM-DD]
    *   - > to                        → planned (планові)
-   * Якщо балансовий борг є, а відкритих PO нема (борг з інших джерел) — увесь payable
-   * йде в overdue (треба платити, планових дат нема).
+   * PO, до яких борг не дійшов, вважаються оплаченими (неприв'язаними платежами/поверненнями)
+   * і не показуються. Залишок боргу понад суму відкритих PO (коригування без PO або взагалі
+   * без PO) → overdue. Сума по рядку завжди = payable (= balance), узгоджено зі звітом.
    *
    * Кредитний ліміт (максимум по PURCHASE-договорах постачальника) віднімається
    * від сумарного боргу з НАЙПІЗНІШИХ (planned → останні дати → overdue) — тобто
@@ -246,13 +247,11 @@ export class SupplierPaymentsService {
       );
     }
 
-    // Ваги розподілу з PO (лише ФОРМА графіка, не сума): outstanding по бакетах.
-    type Weights = {
-      overdue: number;
-      planned: number;
-      byDate: Record<string, number>;
-    };
-    const weightsBySupplier = new Map<string, Weights>();
+    // Непогашені PO по постачальнику у FIFO-порядку. `orders` вже відсортовані
+    // orderBy [{ paymentDate: asc, nulls: first }, { createdAt: asc }] — найтерміновіші
+    // (найстаріша дата оплати / null) першими, тож просто зберігаємо цей порядок.
+    type OpenPo = { outstanding: number; paymentDate: string | null };
+    const openPosBySupplier = new Map<string, OpenPo[]>();
 
     for (const po of orders) {
       // Тільки постачальники з фактичним балансовим боргом формують рядок.
@@ -262,64 +261,60 @@ export class SupplierPaymentsService {
       const outstanding = Number(po.totalAmount) - paid;
       if (outstanding <= 0) continue;
 
-      let w = weightsBySupplier.get(po.supplierId);
-      if (!w) {
-        w = { overdue: 0, planned: 0, byDate: {} };
-        weightsBySupplier.set(po.supplierId, w);
-      }
-
-      const pd = po.paymentDate ? po.paymentDate.toISOString().slice(0, 10) : null;
-      if (pd == null || pd < from) {
-        w.overdue += outstanding;
-      } else if (pd >= from && pd <= to) {
-        w.byDate[pd] = (w.byDate[pd] ?? 0) + outstanding;
-      } else {
-        w.planned += outstanding;
-      }
+      const list = openPosBySupplier.get(po.supplierId);
+      const entry: OpenPo = {
+        outstanding,
+        paymentDate: po.paymentDate ? po.paymentDate.toISOString().slice(0, 10) : null,
+      };
+      if (list) list.push(entry);
+      else openPosBySupplier.set(po.supplierId, [entry]);
     }
 
-    // Для кожного постачальника з боргом розподіляємо АВТОРИТЕТНИЙ payable за формою PO-ваг,
-    // клемпимо до payable, потім застосовуємо кредит-ліміт з найпізніших.
+    // Кладе суму у overdue / byDate[pd] / planned за датою оплати PO.
+    const bucket = (
+      acc: { overdue: number; planned: number; byDate: Record<string, number> },
+      amount: number,
+      pd: string | null,
+    ): void => {
+      if (pd == null || pd < from) acc.overdue += amount;
+      else if (pd <= to) acc.byDate[pd] = (acc.byDate[pd] ?? 0) + amount;
+      else acc.planned += amount;
+    };
+
+    // Для кожного постачальника з боргом: FIFO-налив АВТОРИТЕТНОГО payable на непогашені PO
+    // від найстарішого, потім кредит-ліміт з найпізніших.
     const suppliers = Array.from(payableBySupplier.entries())
       .map(([supplierId, { payable, name }]) => {
-        const w = weightsBySupplier.get(supplierId);
-        const weightSum =
-          (w?.overdue ?? 0) +
-          (w?.planned ?? 0) +
-          (w ? Object.values(w.byDate).reduce((s, v) => s + v, 0) : 0);
+        const acc = { overdue: 0, planned: 0, byDate: {} as Record<string, number> };
 
-        // Масштаб: payable / Σваг. Якщо ваг нема (борг без відкритих PO) — усе в overdue.
-        let overdue: number;
-        let planned: number;
-        const byDateScaled: Record<string, number> = {};
-        if (w && weightSum > 0) {
-          const k = payable / weightSum;
-          overdue = w.overdue * k;
-          planned = w.planned * k;
-          for (const d of Object.keys(w.byDate)) {
-            byDateScaled[d] = w.byDate[d] * k;
-          }
-        } else {
-          overdue = payable;
-          planned = 0;
+        // FIFO: борг «наливається» на PO по черзі; PO, до яких не дійшла черга,
+        // вважаються оплаченими (неприв'язаними платежами/поверненнями) — не показуються.
+        let remaining = payable;
+        for (const po of openPosBySupplier.get(supplierId) ?? []) {
+          if (remaining <= 0.005) break;
+          const take = Math.min(po.outstanding, remaining);
+          remaining -= take;
+          bucket(acc, take, po.paymentDate);
         }
+        // Борг понад суму відкритих PO (коригування/повернення без PO) → протерміновані.
+        if (remaining > 0.005) acc.overdue += remaining;
 
         // Кредит-ліміт зменшує з найпізніших (planned → дати спадно → overdue).
-        let remaining = limitBySupplier.get(supplierId) ?? 0;
+        let limit = limitBySupplier.get(supplierId) ?? 0;
         const consume = (available: number): number => {
-          if (remaining <= 0) return available;
-          const eaten = Math.min(available, remaining);
-          remaining -= eaten;
+          if (limit <= 0) return available;
+          const eaten = Math.min(available, limit);
+          limit -= eaten;
           return available - eaten;
         };
-        planned = consume(planned);
+        const planned = consume(acc.planned);
         const byDate: Record<string, number> = {};
-        const descDates = Object.keys(byDateScaled).sort((a, b) => (a < b ? 1 : -1));
+        const descDates = Object.keys(acc.byDate).sort((a, b) => (a < b ? 1 : -1));
         for (const d of descDates) {
-          const left = consume(byDateScaled[d]);
+          const left = consume(acc.byDate[d]);
           if (left > 0.005) byDate[d] = left;
         }
-        overdue = consume(overdue);
+        const overdue = consume(acc.overdue);
 
         const total = overdue + planned + Object.values(byDate).reduce((s, v) => s + v, 0);
         return { supplierId, supplierName: name, overdue, planned, byDate, total };

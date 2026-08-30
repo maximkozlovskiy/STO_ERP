@@ -73,9 +73,10 @@ import {
   type BadgeVariant,
 } from '@sto/shared';
 import { toast } from '@/lib/toast';
-import { cn, UUID_RE } from '@/lib/utils';
+import { cn, UUID_RE, daysUntil } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
+import { ExpiryBadge } from '@/components/ui/expiry-badge';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 
@@ -102,6 +103,8 @@ const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> =
   { key: 'status', label: 'Статус', defaultVisible: true },
   { key: 'amount', label: 'Сума', defaultVisible: true },
   { key: 'date', label: 'Дата документа', defaultVisible: true },
+  { key: 'paymentDate', label: 'Дата оплати', defaultVisible: true },
+  { key: 'payDue', label: 'Днів до оплати', defaultVisible: true },
   { key: 'priced', label: 'Розцінено', defaultVisible: true },
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
@@ -201,6 +204,10 @@ function PurchaseOrdersPageClient() {
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
   const { sort: poSort, toggle: togglePoSort } = useSortState('createdAt', 'desc');
+
+  // SSR-safe «сьогодні» для бейджа «Днів до оплати» (уникає hydration mismatch).
+  const [today, setToday] = useState<Date | null>(null);
+  useEffect(() => setToday(new Date()), []);
 
   // React Query hooks
   const {
@@ -933,7 +940,7 @@ function PurchaseOrdersPageClient() {
                       </TableHead>
                     )}
                     {visibleColumns.map(col => {
-                      const sortable = ['date', 'amount'].includes(col.key);
+                      const sortable = ['date', 'amount', 'paymentDate'].includes(col.key);
                       const sortKey =
                         col.key === 'date'
                           ? 'documentDate'
@@ -1065,6 +1072,35 @@ function PurchaseOrdersPageClient() {
                                 {po.documentDate ? fmtDate(po.documentDate) : fmtDate(po.createdAt)}
                               </TableCell>
                             );
+                          if (col.key === 'paymentDate')
+                            return (
+                              <TableCell
+                                key="paymentDate"
+                                className="text-[13px] text-muted-foreground"
+                              >
+                                {po.paymentDate ? fmtDate(po.paymentDate) : '—'}
+                              </TableCell>
+                            );
+                          if (col.key === 'payDue') {
+                            // Бейдж лише де є реальний залишок боргу по PO.
+                            const dpd =
+                              (po.outstanding ?? 0) > 0
+                                ? daysUntil(po.paymentDate, today?.getTime() ?? 0)
+                                : null;
+                            return (
+                              <TableCell key="payDue" className="text-[13px]">
+                                {dpd != null && (
+                                  <ExpiryBadge
+                                    date={po.paymentDate}
+                                    nowMs={today?.getTime() ?? 0}
+                                    expiredLabel={`Прострочено ${Math.abs(dpd)} дн.`}
+                                    soonLabel={`${dpd} дн.`}
+                                    soonDays={20}
+                                  />
+                                )}
+                              </TableCell>
+                            );
+                          }
                           if (col.key === 'priced')
                             return (
                               <TableCell key="priced" className="text-[13px]">

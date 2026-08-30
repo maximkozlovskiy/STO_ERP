@@ -56,6 +56,7 @@ const PO_SORT_FIELDS: Record<string, string> = {
   documentDate: 'documentDate',
   createdAt: 'createdAt',
   totalAmount: 'totalAmount',
+  paymentDate: 'paymentDate',
 };
 
 @Injectable()
@@ -130,8 +131,33 @@ export class PurchaseOrdersService {
       this.prisma.purchaseOrder.count({ where }),
     ]);
 
+    // outstanding по PO поточної сторінки: totalAmount − Σ CONFIRMED SupplierPayment.
+    // Один groupBy на сторінку (≤200 PO) — для бейджа «Днів до оплати» у списку купівлі
+    // (показується лише де є реальний залишок боргу). Патерн-еталон — getSchedule.
+    const poIds = items.map(i => i.id);
+    const paidByPo = new Map<string, number>();
+    if (poIds.length > 0) {
+      const grouped = await this.prisma.supplierPayment.groupBy({
+        by: ['purchaseOrderId'],
+        where: {
+          orgId,
+          deletedAt: null,
+          status: 'CONFIRMED',
+          purchaseOrderId: { in: poIds },
+        },
+        _sum: { amount: true },
+      });
+      for (const g of grouped) {
+        if (g.purchaseOrderId) paidByPo.set(g.purchaseOrderId, Number(g._sum.amount ?? 0));
+      }
+    }
+
     return {
-      items: items.map(item => this.toDto(item as Parameters<typeof this.toDto>[0])),
+      items: items.map(item => {
+        const dto = this.toDto(item as Parameters<typeof this.toDto>[0]);
+        dto.outstanding = Math.max(0, dto.totalAmount - (paidByPo.get(item.id) ?? 0));
+        return dto;
+      }),
       total,
       page,
       limit: take,
