@@ -25,7 +25,6 @@ describe('SupplierPaymentsService — regression guards', () => {
       create: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
       count: ReturnType<typeof vi.fn>;
-      groupBy: ReturnType<typeof vi.fn>;
     };
     counterparty: { findFirst: ReturnType<typeof vi.fn> };
     counterpartyContract: { findMany: ReturnType<typeof vi.fn> };
@@ -75,7 +74,6 @@ describe('SupplierPaymentsService — regression guards', () => {
         create: vi.fn(),
         findMany: vi.fn().mockResolvedValue([]),
         count: vi.fn().mockResolvedValue(0),
-        groupBy: vi.fn().mockResolvedValue([]),
       },
       counterparty: { findFirst: vi.fn() },
       counterpartyContract: { findMany: vi.fn().mockResolvedValue([]) },
