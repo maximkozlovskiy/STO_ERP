@@ -32,6 +32,7 @@ describe('SupplierPaymentsService — regression guards', () => {
     bankAccount: { findFirst: ReturnType<typeof vi.fn> };
     cashRegister: { findFirst: ReturnType<typeof vi.fn> };
     purchaseOrder: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
+    settlementAccount: { findMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let settlements: { createTransaction: ReturnType<typeof vi.fn> };
@@ -81,6 +82,7 @@ describe('SupplierPaymentsService — regression guards', () => {
       bankAccount: { findFirst: vi.fn() },
       cashRegister: { findFirst: vi.fn() },
       purchaseOrder: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
+      settlementAccount: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
@@ -533,11 +535,22 @@ describe('SupplierPaymentsService — regression guards', () => {
       { counterpartyId: supplierId, creditLimit: limit },
     ]);
 
-  /** Мок загальних (unlinked) CONFIRMED-оплат (supplierPayment.groupBy). */
-  const mockUnlinked = (sum: number, supplierId = SUPPLIER_ID) =>
-    prisma.supplierPayment.groupBy.mockResolvedValueOnce([{ supplierId, _sum: { amount: sum } }]);
+  /**
+   * Мок АВТОРИТЕТНОГО боргу постачальника — SettlementAccount з від'ємним балансом.
+   * payable = |balance|; balance зберігаємо від'ємним (ми винні постачальнику).
+   */
+  const mockPayable = (payable: number, over?: { supplierId?: string; name?: string }) =>
+    prisma.settlementAccount.findMany.mockResolvedValueOnce([
+      {
+        counterpartyId: over?.supplierId ?? SUPPLIER_ID,
+        balance: -payable,
+        counterparty: { firstName: null, lastName: null, companyName: over?.name ?? 'Acme' },
+      },
+    ]);
 
-  it('getSchedule(): paymentDate у вікні → сума у byDate; overdue для null/минулого', async () => {
+  it('getSchedule(): payable з балансу розподіляється по PO-датах (overdue/byDate/planned)', async () => {
+    // Балансовий борг 4200 = точна сума PO-outstanding → розподіл 1:1 (k=1).
+    mockPayable(4200);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
       poRow({ totalAmount: 1000, paymentDate: '2026-08-10' }), // < from → overdue
       poRow({ totalAmount: 500, paymentDate: null }), // null → overdue
@@ -554,30 +567,46 @@ describe('SupplierPaymentsService — regression guards', () => {
     expect(r.totals.total).toBe(4200);
   });
 
-  it('getSchedule(): outstanding = totalAmount − Σ CONFIRMED PO-linked payments', async () => {
+  it('getSchedule(): сума ЗАВЖДИ = balance, а не Σ PO (графік узгоджений зі звітом)', async () => {
+    // Ключовий регрес-guard для цього багу: реальний борг = 47, а PO роздуті до 30953.
+    // Раніше графік показував 30953; тепер — рівно 47, розподілені за формою PO.
+    mockPayable(47);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
-      poRow({ totalAmount: 1000, paymentDate: '2026-08-25', paid: [300, 200] }), // 500 залишок
-      poRow({ totalAmount: 1000, paymentDate: '2026-08-25', paid: [1000] }), // 0 → пропустити
+      poRow({ totalAmount: 30000, paymentDate: '2026-08-25' }),
+      poRow({ totalAmount: 953, paymentDate: '2026-08-10' }), // overdue
     ]);
     const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
-    expect(r.suppliers[0].byDate['2026-08-25']).toBe(500);
+    const row = r.suppliers[0];
+    // 47 розподілено пропорційно: byDate ≈ 47*30000/30953, overdue ≈ 47*953/30953.
+    expect(row.total).toBeCloseTo(47, 5);
+    expect(row.byDate['2026-08-25'] + row.overdue).toBeCloseTo(47, 5);
+    expect(row.byDate['2026-08-25']).toBeCloseTo(45.55, 1);
+    expect(row.overdue).toBeCloseTo(1.45, 1);
+  });
+
+  it('getSchedule(): борг з балансу без відкритих PO → усе в overdue', async () => {
+    // Баланс від'ємний (борг з поверненя/коригування), жодного RECEIVED/PARTIAL PO.
+    mockPayable(500);
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([]);
+    const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    expect(r.suppliers[0].overdue).toBe(500);
+    expect(r.suppliers[0].planned).toBe(0);
     expect(r.suppliers[0].total).toBe(500);
   });
 
-  it('getSchedule(): загальні (unlinked) CONFIRMED-оплати гасять борг з overdue першим (Bug review #1)', async () => {
+  it('getSchedule(): постачальник з балансом ≥ 0 не показується (нічого не винні)', async () => {
+    // Немає SettlementAccount з balance<0 → рядка немає, навіть якщо є відкриті PO.
+    prisma.settlementAccount.findMany.mockResolvedValueOnce([]);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
-      poRow({ totalAmount: 1000, paymentDate: '2026-08-10' }), // overdue 1000
-      poRow({ totalAmount: 1000, paymentDate: '2026-08-25' }), // date 1000
+      poRow({ totalAmount: 5000, paymentDate: '2026-08-25' }),
     ]);
-    mockUnlinked(1200); // загальна оплата 1200 без прив'язки до PO
     const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
-    // 1200 гасить overdue(1000)→0, потім date: 1000−200=800
-    expect(r.suppliers[0].overdue).toBe(0);
-    expect(r.suppliers[0].byDate['2026-08-25']).toBe(800);
-    expect(r.suppliers[0].total).toBe(800);
+    expect(r.suppliers).toHaveLength(0);
+    expect(r.totals.total).toBe(0);
   });
 
   it('getSchedule(): кредит-ліміт віднімає з найпізніших (5000 борг, 2000 ліміт → 3000)', async () => {
+    mockPayable(5000);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
       poRow({ totalAmount: 5000, paymentDate: '2026-08-25' }),
     ]);
@@ -590,6 +619,7 @@ describe('SupplierPaymentsService — regression guards', () => {
 
   it('getSchedule(): ліміт з АКТИВНОГО договору навіть коли PO без contract (review #5)', async () => {
     // PO без contract, але у постачальника є PURCHASE-договір з лімітом → ліміт застосовується.
+    mockPayable(5000);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
       poRow({ totalAmount: 5000, paymentDate: '2026-08-25' }),
     ]);
@@ -599,6 +629,7 @@ describe('SupplierPaymentsService — regression guards', () => {
   });
 
   it('getSchedule(): ліміт покриває planned ПЕРШИМ, overdue лишається повним', async () => {
+    mockPayable(2000);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
       poRow({ totalAmount: 1000, paymentDate: '2026-08-10' }), // overdue 1000
       poRow({ totalAmount: 1000, paymentDate: '2026-12-31' }), // planned 1000
@@ -612,6 +643,7 @@ describe('SupplierPaymentsService — regression guards', () => {
   });
 
   it('getSchedule(): ліміт ≥ борг → постачальник не показується', async () => {
+    mockPayable(1000);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
       poRow({ totalAmount: 1000, paymentDate: '2026-08-25' }),
     ]);
@@ -621,14 +653,15 @@ describe('SupplierPaymentsService — regression guards', () => {
     expect(r.totals.total).toBe(0);
   });
 
-  it('getSchedule(): PO-запит виключає видалених постачальників (orphan-рядки)', async () => {
+  it('getSchedule(): SettlementAccount-запит виключає видалених постачальників (orphan-рядки)', async () => {
     await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
     const where = (
-      prisma.purchaseOrder.findMany.mock.calls[0]![0] as {
-        where: { supplier?: { deletedAt: null } };
+      prisma.settlementAccount.findMany.mock.calls[0]![0] as {
+        where: { balance?: unknown; counterparty?: { deletedAt: null } };
       }
     ).where;
-    expect(where.supplier).toEqual({ deletedAt: null });
+    expect(where.counterparty).toEqual({ deletedAt: null });
+    expect(where.balance).toEqual({ lt: 0 });
   });
 
   // ──────────────────────────────────────────────────────────────────────
@@ -645,7 +678,7 @@ describe('SupplierPaymentsService — regression guards', () => {
     );
     // DB не мали чіпати — cross-field guard спрацював ДО Promise.all.
     expect(prisma.purchaseOrder.findMany).not.toHaveBeenCalled();
-    expect(prisma.supplierPayment.groupBy).not.toHaveBeenCalled();
+    expect(prisma.settlementAccount.findMany).not.toHaveBeenCalled();
     expect(prisma.counterpartyContract.findMany).not.toHaveBeenCalled();
   });
 
@@ -669,6 +702,19 @@ describe('SupplierPaymentsService — regression guards', () => {
     // Regression-guard для single-pass reduce (optimize cycle 2) — переконуємось
     // що totals.byDate НЕ пропускає жодного bucket-у і НЕ дублює.
     const SUPPLIER2 = '55555555-5555-4555-8555-555555555555';
+    // Баланси = точні суми PO-outstanding → розподіл 1:1 (k=1) для обох.
+    prisma.settlementAccount.findMany.mockResolvedValueOnce([
+      {
+        counterpartyId: SUPPLIER_ID,
+        balance: -1600,
+        counterparty: { firstName: null, lastName: null, companyName: 'Acme' },
+      },
+      {
+        counterpartyId: SUPPLIER2,
+        balance: -400,
+        counterparty: { firstName: null, lastName: null, companyName: 'Beta' },
+      },
+    ]);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
       poRow({ totalAmount: 1000, paymentDate: '2026-08-25' }), // supplier A → 25-го
       poRow({ totalAmount: 600, paymentDate: '2026-08-26' }), // supplier A → 26-го

@@ -130,13 +130,18 @@ export class SupplierPaymentsService {
   /**
    * Графік оплат постачальникам — шахматка боргів по датах.
    *
-   * Джерело: RECEIVED/PARTIAL PurchaseOrder з невідфактурованим залишком боргу
-   * (totalAmount − Σ CONFIRMED SupplierPayment по цьому PO).
+   * АВТОРИТЕТНЕ джерело суми боргу — SettlementAccount.balance (те саме, що звіт
+   * «Взаєморозрахунки»): payable = max(0, −balance). Це гарантує, що графік і звіт
+   * ЗАВЖДИ показують однакову суму по постачальнику — балансовий борг враховує ВСІ
+   * рухи (PO-linked/unlinked платежі, повернення, коригування), а не лише PO.
    *
-   * Bucket по PurchaseOrder.paymentDate:
+   * PurchaseOrder.paymentDate + outstanding використовуються ЛИШЕ як форма розподілу
+   * (ваги) цього боргу по колонках — сума ніколи не перевищує фактичний balance:
    *   - null або < from            → overdue (протерміновані)
    *   - from..to (20-денне вікно)  → byDate[YYYY-MM-DD]
    *   - > to                        → planned (планові)
+   * Якщо балансовий борг є, а відкритих PO нема (борг з інших джерел) — увесь payable
+   * йде в overdue (треба платити, планових дат нема).
    *
    * Кредитний ліміт (максимум по PURCHASE-договорах постачальника) віднімається
    * від сумарного боргу з НАЙПІЗНІШИХ (planned → останні дати → overdue) — тобто
@@ -163,7 +168,7 @@ export class SupplierPaymentsService {
       dates.push(d.toISOString().slice(0, 10));
     }
 
-    const [orders, unlinkedPayments, contracts] = await Promise.all([
+    const [orders, payableAccounts, contracts] = await Promise.all([
       this.prisma.purchaseOrder.findMany({
         where: {
           orgId,
@@ -187,17 +192,22 @@ export class SupplierPaymentsService {
         orderBy: [{ paymentDate: { sort: 'asc', nulls: 'first' } }, { createdAt: 'asc' }],
         take: 5000,
       }),
-      // Загальні (не прив'язані до PO) CONFIRMED-оплати — гасять борг постачальника
-      // з найстаріших (overdue) першими. PO-linked оплати вже враховані в outstanding.
-      this.prisma.supplierPayment.groupBy({
-        by: ['supplierId'],
+      // АВТОРИТЕТНА сума боргу — SettlementAccount з від'ємним балансом (ми винні
+      // постачальнику). payable = −balance. Дзеркалить reports.settlements totalCredit,
+      // тож графік і звіт «Взаєморозрахунки» завжди узгоджені. Фільтр deletedAt на
+      // counterparty прибирає борги видалених постачальників (як supplier-фільтр у PO).
+      this.prisma.settlementAccount.findMany({
         where: {
           orgId,
-          deletedAt: null,
-          status: SupplierPaymentStatus.CONFIRMED,
-          purchaseOrderId: null,
+          balance: { lt: 0 },
+          counterparty: { deletedAt: null },
         },
-        _sum: { amount: true },
+        select: {
+          counterpartyId: true,
+          balance: true,
+          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+        },
+        take: 5000,
       }),
       // Кредит-ліміт з АКТИВНИХ PURCHASE-договорів постачальника (не лише з тих,
       // що прив'язані до outstanding-PO) — інакше ліміт губиться для PO без договору.
@@ -214,9 +224,19 @@ export class SupplierPaymentsService {
       }),
     ]);
 
-    const unlinkedBySupplier = new Map<string, number>(
-      unlinkedPayments.map(p => [p.supplierId, Number(p._sum.amount ?? 0)]),
-    );
+    // payable по постачальнику = |balance| (balance < 0 = кредиторська заборгованість).
+    const payableBySupplier = new Map<string, { payable: number; name: string }>();
+    for (const a of payableAccounts) {
+      payableBySupplier.set(a.counterpartyId, {
+        payable: -Number(a.balance),
+        name:
+          formatPersonName(
+            a.counterparty.lastName,
+            a.counterparty.firstName,
+            a.counterparty.companyName,
+          ) || '—',
+      });
+    }
     const limitBySupplier = new Map<string, number>();
     for (const c of contracts) {
       const lim = c.creditLimit != null ? Number(c.creditLimit) : 0;
@@ -226,66 +246,65 @@ export class SupplierPaymentsService {
       );
     }
 
-    // Акумулятор по постачальнику.
-    type Acc = {
-      supplierName: string;
+    // Ваги розподілу з PO (лише ФОРМА графіка, не сума): outstanding по бакетах.
+    type Weights = {
       overdue: number;
       planned: number;
       byDate: Record<string, number>;
     };
-    const bySupplier = new Map<string, Acc>();
+    const weightsBySupplier = new Map<string, Weights>();
 
     for (const po of orders) {
+      // Тільки постачальники з фактичним балансовим боргом формують рядок.
+      if (!payableBySupplier.has(po.supplierId)) continue;
+
       const paid = po.supplierPayments.reduce((s, p) => s + Number(p.amount), 0);
       const outstanding = Number(po.totalAmount) - paid;
       if (outstanding <= 0) continue;
 
-      let acc = bySupplier.get(po.supplierId);
-      if (!acc) {
-        acc = {
-          supplierName:
-            formatPersonName(
-              po.supplier?.lastName,
-              po.supplier?.firstName,
-              po.supplier?.companyName,
-            ) || '—',
-          overdue: 0,
-          planned: 0,
-          byDate: {},
-        };
-        bySupplier.set(po.supplierId, acc);
+      let w = weightsBySupplier.get(po.supplierId);
+      if (!w) {
+        w = { overdue: 0, planned: 0, byDate: {} };
+        weightsBySupplier.set(po.supplierId, w);
       }
 
-      // Bucket
       const pd = po.paymentDate ? po.paymentDate.toISOString().slice(0, 10) : null;
       if (pd == null || pd < from) {
-        acc.overdue += outstanding;
+        w.overdue += outstanding;
       } else if (pd >= from && pd <= to) {
-        acc.byDate[pd] = (acc.byDate[pd] ?? 0) + outstanding;
+        w.byDate[pd] = (w.byDate[pd] ?? 0) + outstanding;
       } else {
-        acc.planned += outstanding;
+        w.planned += outstanding;
       }
     }
 
-    const suppliers = Array.from(bySupplier.entries())
-      .map(([supplierId, acc]) => {
-        // 1) Загальні оплати гасять борг з найстаріших (overdue → найближчі дати → planned).
-        let generalPaid = unlinkedBySupplier.get(supplierId) ?? 0;
-        const payOldest = (available: number): number => {
-          if (generalPaid <= 0) return available;
-          const eaten = Math.min(available, generalPaid);
-          generalPaid -= eaten;
-          return available - eaten;
-        };
-        let overdue = payOldest(acc.overdue);
-        const byDateAfterPaid: Record<string, number> = {};
-        const ascDates = Object.keys(acc.byDate).sort();
-        for (const d of ascDates) {
-          byDateAfterPaid[d] = payOldest(acc.byDate[d]);
-        }
-        let planned = payOldest(acc.planned);
+    // Для кожного постачальника з боргом розподіляємо АВТОРИТЕТНИЙ payable за формою PO-ваг,
+    // клемпимо до payable, потім застосовуємо кредит-ліміт з найпізніших.
+    const suppliers = Array.from(payableBySupplier.entries())
+      .map(([supplierId, { payable, name }]) => {
+        const w = weightsBySupplier.get(supplierId);
+        const weightSum =
+          (w?.overdue ?? 0) +
+          (w?.planned ?? 0) +
+          (w ? Object.values(w.byDate).reduce((s, v) => s + v, 0) : 0);
 
-        // 2) Кредит-ліміт зменшує з найпізніших (planned → дати спадно → overdue).
+        // Масштаб: payable / Σваг. Якщо ваг нема (борг без відкритих PO) — усе в overdue.
+        let overdue: number;
+        let planned: number;
+        const byDateScaled: Record<string, number> = {};
+        if (w && weightSum > 0) {
+          const k = payable / weightSum;
+          overdue = w.overdue * k;
+          planned = w.planned * k;
+          for (const d of Object.keys(w.byDate)) {
+            byDateScaled[d] = w.byDate[d] * k;
+          }
+        } else {
+          overdue = payable;
+          planned = 0;
+        }
+
+        // Кредит-ліміт зменшує з найпізніших (planned → дати спадно → overdue).
         let remaining = limitBySupplier.get(supplierId) ?? 0;
         const consume = (available: number): number => {
           if (remaining <= 0) return available;
@@ -295,15 +314,15 @@ export class SupplierPaymentsService {
         };
         planned = consume(planned);
         const byDate: Record<string, number> = {};
-        const descDates = Object.keys(byDateAfterPaid).sort((a, b) => (a < b ? 1 : -1));
+        const descDates = Object.keys(byDateScaled).sort((a, b) => (a < b ? 1 : -1));
         for (const d of descDates) {
-          const left = consume(byDateAfterPaid[d]);
+          const left = consume(byDateScaled[d]);
           if (left > 0.005) byDate[d] = left;
         }
         overdue = consume(overdue);
 
         const total = overdue + planned + Object.values(byDate).reduce((s, v) => s + v, 0);
-        return { supplierId, supplierName: acc.supplierName, overdue, planned, byDate, total };
+        return { supplierId, supplierName: name, overdue, planned, byDate, total };
       })
       .filter(r => r.total > 0.005)
       .sort((a, b) => b.total - a.total);
