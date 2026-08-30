@@ -226,10 +226,10 @@ export class PurchaseOrderQueryDto {
 
   @ApiPropertyOptional({
     description: 'Поле сортування',
-    enum: ['documentDate', 'createdAt', 'totalAmount'],
+    enum: ['documentDate', 'createdAt', 'totalAmount', 'paymentDate'],
   })
   @IsOptional()
-  @IsIn(['documentDate', 'createdAt', 'totalAmount'])
+  @IsIn(['documentDate', 'createdAt', 'totalAmount', 'paymentDate'])
   sortBy?: string;
 
   @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })
