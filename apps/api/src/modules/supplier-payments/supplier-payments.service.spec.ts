@@ -678,14 +678,25 @@ describe('SupplierPaymentsService — regression guards', () => {
     expect(r.totals.total).toBe(0);
   });
 
-  it('getSchedule(): SettlementAccount-запит виключає видалених постачальників (orphan-рядки)', async () => {
+  it('getSchedule(): SettlementAccount-запит виключає видалених + не-supplier counterparty (Bug #599)', async () => {
+    // Bug #599 — payableAccounts має відфільтрувати:
+    //   (а) deleted counterparty (orphan-рядки — див. Bug #600 divergence зі звітом);
+    //   (б) counterparty.type IN (SUPPLIER, BOTH) — CLIENT з prepayment refund НЕ повинен
+    //       з'являтись у графіку оплат ПОСТАЧАЛЬНИКУ.
+    // Регресія-guard проти повернення до filter без type-check.
     await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
     const where = (
       prisma.settlementAccount.findMany.mock.calls[0]![0] as {
-        where: { balance?: unknown; counterparty?: { deletedAt: null } };
+        where: {
+          balance?: unknown;
+          counterparty?: { deletedAt: null; type?: { in: string[] } };
+        };
       }
     ).where;
-    expect(where.counterparty).toEqual({ deletedAt: null });
+    expect(where.counterparty).toEqual({
+      deletedAt: null,
+      type: { in: ['SUPPLIER', 'BOTH'] },
+    });
     expect(where.balance).toEqual({ lt: 0 });
   });
 

@@ -58,6 +58,10 @@ const PO_SORT_FIELDS: Record<string, string> = {
   totalAmount: 'totalAmount',
   paymentDate: 'paymentDate',
 };
+// Bug #598 — nullable-fields: PurchaseOrder.paymentDate є nullable → без explicit
+// `nulls: 'last'` DESC-sort виносить сотні PO з null paymentDate наверх (Postgres default).
+// Set hoisted на module-level разом з whitelist — жодного повторного alloc на request.
+const PO_NULLABLE_SORT_FIELDS: ReadonlySet<string> = new Set(['paymentDate']);
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -112,7 +116,13 @@ export class PurchaseOrdersService {
     }
 
     const { skip, take } = calculatePagination({ page, limit });
-    const orderBy = buildSortOrderBy(PO_SORT_FIELDS, sortBy, sortDir);
+    const orderBy = buildSortOrderBy(
+      PO_SORT_FIELDS,
+      sortBy,
+      sortDir,
+      'createdAt',
+      PO_NULLABLE_SORT_FIELDS,
+    );
     const [items, total] = await Promise.all([
       this.prisma.purchaseOrder.findMany({
         where,

@@ -130,10 +130,16 @@ export class SupplierPaymentsService {
   /**
    * Графік оплат постачальникам — шахматка боргів по датах.
    *
-   * АВТОРИТЕТНЕ джерело суми боргу — SettlementAccount.balance (те саме, що звіт
-   * «Взаєморозрахунки»): payable = max(0, −balance). Це гарантує, що графік і звіт
-   * ЗАВЖДИ показують однакову суму по постачальнику — балансовий борг враховує ВСІ
-   * рухи (PO-linked/unlinked платежі, повернення, коригування), а не лише PO.
+   * АВТОРИТЕТНЕ джерело суми боргу — SettlementAccount.balance для АКТИВНИХ
+   * (`deletedAt IS NULL`) counterparty ТИПУ `SUPPLIER` або `BOTH`: payable = max(0, −balance).
+   * Балансовий борг враховує ВСІ рухи (PO-linked/unlinked платежі, повернення, коригування),
+   * а не лише PO.
+   *
+   * **Розбіжність зі звітом «Взаєморозрахунки»** (Bug #600 documented trade-off):
+   * `reports.settlements` НЕ фільтрує `deletedAt`/`type` — включає soft-deleted counterparty
+   * і CLIENT-типу акаунти з від'ємним балансом. Тому:
+   *   schedule.totals.total ≤ report.totalCredit
+   * розбіжність = сума боргів deleted counterparty + boргів CLIENT-типу.
    *
    * Розподіл — FIFO: payable «наливається» на непогашені PO по черзі від найстарішого
    * (за paymentDate), кожен PO лягає у свою колонку за paymentDate:
@@ -142,7 +148,7 @@ export class SupplierPaymentsService {
    *   - > to                        → planned (планові)
    * PO, до яких борг не дійшов, вважаються оплаченими (неприв'язаними платежами/поверненнями)
    * і не показуються. Залишок боргу понад суму відкритих PO (коригування без PO або взагалі
-   * без PO) → overdue. Сума по рядку завжди = payable (= balance), узгоджено зі звітом.
+   * без PO) → overdue. Сума по рядку завжди = payable (= |balance|).
    *
    * Кредитний ліміт (максимум по PURCHASE-договорах постачальника) віднімається
    * від сумарного боргу з НАЙПІЗНІШИХ (planned → останні дати → overdue) — тобто
@@ -194,14 +200,22 @@ export class SupplierPaymentsService {
         take: 5000,
       }),
       // АВТОРИТЕТНА сума боргу — SettlementAccount з від'ємним балансом (ми винні
-      // постачальнику). payable = −balance. Дзеркалить reports.settlements totalCredit,
-      // тож графік і звіт «Взаєморозрахунки» завжди узгоджені. Фільтр deletedAt на
-      // counterparty прибирає борги видалених постачальників (як supplier-фільтр у PO).
+      // постачальнику). payable = −balance. Дзеркалить reports.settlements totalCredit
+      // (для АКТИВНИХ counterparty типу SUPPLIER/BOTH — див. Bug #600 divergence).
+      //
+      // Bug #599 — type filter: без `type: { in: SUPPLIER|BOTH }` клієнт з prepayment refund
+      // pending (balance<0 на CLIENT-акаунті) потрапляє у ГРАФІК ОПЛАТ ПОСТАЧАЛЬНИКУ як
+      // рядок з CLIENT-іменем. Semantic contamination — schedule має відображати лише
+      // тих, кому як постачальнику ми винні. Замаскований у demo-org тим, що єдиний
+      // такий CLIENT soft-deleted (deletedAt filter його виключає).
+      //
+      // deletedAt filter (як supplier-фільтр у PO вище) прибирає orphan-рядки —
+      // trade-off з reports.settlements (не має цього фільтра): docstring Bug #600.
       this.prisma.settlementAccount.findMany({
         where: {
           orgId,
           balance: { lt: 0 },
-          counterparty: { deletedAt: null },
+          counterparty: { deletedAt: null, type: { in: ['SUPPLIER', 'BOTH'] } },
         },
         select: {
           counterpartyId: true,

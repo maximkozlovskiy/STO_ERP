@@ -30,23 +30,37 @@ export function calculatePagination(params: {
  * - `sortBy` невідоме/порожнє → ПОВНИЙ fallback на `{ [fallback]: 'desc' }`, включно з
  *   напрямом (garbage sortBy не повинен тихо перевертати дефолтний порядок).
  *
+ * Nullable-поля (Bug #598): якщо resolved field ∈ `nullableFields` — обгортаємо у
+ * `{ sort, nulls: 'last' }`, щоб NULL-и завжди були внизу, незалежно від напряму.
+ * Postgres default: ASC → NULLS LAST, DESC → NULLS FIRST — для nullable-полів (paymentDate,
+ * completedAt, pricedAt, dueDate) DESC-sort «пустеніє» top списку (сотні draft-записів
+ * з null-датами наверху). Задає стабільний UX: NULL = «немає значення» = внизу.
+ *
  * Замінює 5 дубльованих inline-ідіом (invoices/purchase-orders/stock-documents/
  * work-orders/supplier-payments findAll) — усуває drift між `in`-check та `?? ''` формами.
  *
  * Usage:
  *   const orderBy = buildSortOrderBy(INV_SORT_FIELDS, sortBy, sortDir);
+ *   const orderBy = buildSortOrderBy(PO_SORT_FIELDS, sortBy, sortDir, 'createdAt',
+ *                                    new Set(['paymentDate']));
  *   await prisma.invoice.findMany({ where, skip, take, orderBy });
  */
+type SortValue = 'asc' | 'desc' | { sort: 'asc' | 'desc'; nulls: 'first' | 'last' };
+
 export function buildSortOrderBy(
   whitelist: Record<string, string>,
   sortBy: string | undefined,
   sortDir: 'asc' | 'desc' | undefined,
   fallback = 'createdAt',
-): Record<string, 'asc' | 'desc'> {
+  nullableFields?: ReadonlySet<string>,
+): Record<string, SortValue> {
   // `hasOwnProperty`, а не `in` — інакше sortBy='constructor'/'toString' резолвиться
   // у прототипний метод Object.prototype і ламає Prisma orderBy (500).
   const known = sortBy != null && Object.prototype.hasOwnProperty.call(whitelist, sortBy);
   const field = known ? whitelist[sortBy] : fallback;
   const dir: 'asc' | 'desc' = known && sortDir === 'asc' ? 'asc' : 'desc';
+  if (nullableFields && nullableFields.has(field)) {
+    return { [field]: { sort: dir, nulls: 'last' } };
+  }
   return { [field]: dir };
 }

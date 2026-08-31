@@ -3,6 +3,67 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-08-30 — sto-tester FIFO-графік + колонки оплати — HEAD 05ebbeb1
+
+Автоматичний bug hunt для комітів `282d5fba` (feat: FIFO-графік + outstanding колонки)
+
+- `05ebbeb1` (fix: sortBy=paymentDate whitelist). Baseline перед сесією:
+
+* API tsc: 0 помилок.
+* supplier-payments.service.spec.ts: 37/37 ✅.
+* purchase-orders.service.spec.ts + contract.spec.ts: 41+26=67/67 ✅.
+* Live факти: FDGD −1600 balance → schedule overdue=1600 ✅; sortBy=paymentDate → 200 ✅.
+
+### Bug #598 — MEDIUM frontend/backend / nullable-sort surface — `sortBy=paymentDate&sortDir=desc` виносить NULL-paymentDate PO наверх списку
+
+- **Файли:**
+  - `apps/api/src/common/utils/pagination.ts:42` — `buildSortOrderBy()` повертає плоский `{ [field]: dir }` без керування `nulls`.
+  - `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:115` — findAll використовує `buildSortOrderBy(PO_SORT_FIELDS, sortBy, sortDir)`.
+  - `apps/web/src/app/(app)/purchase-orders/page.tsx:943` — sortable header `paymentDate`.
+- **Симптом (live-репродукція, admin@sto.local):**
+  ```
+  GET /api/purchase-orders?sortBy=paymentDate&sortDir=desc&limit=10
+  → перші 5 items: paymentDate=[null, null, null, null, null]
+  ```
+  Користувач клікає «Дата оплати» у списку купівлі щоб побачити НАЙПІЗНІШІ dates наверху (типовий UX для "коли платити") — натомість отримує сотні draft/no-pay-date замовлень, справжні дати ховаються у глибині сторінки. ASC працює як очікується (nulls внизу), бо у Postgres дефолт для `ORDER BY x ASC` = `NULLS LAST` для nullable колонок, для `DESC` = `NULLS FIRST`.
+- **Root cause:** Prisma підтримує `orderBy: { field: { sort: 'desc', nulls: 'last' } }` — але `buildSortOrderBy` повертає лише `{ field: 'desc' }`, отже Postgres застосовує свій default. Для nullable-полів (`paymentDate` — nullable у schema.prisma), DESC-сортування завжди «пустеніє» top списку. Проблема з'явилась при додаванні `paymentDate` у whitelist (05ebbeb1) — раніше whitelist мав тільки non-null поля (`createdAt`, `documentDate`, `totalAmount`).
+- **Виявлено:** live-curl через паперовий admin login → JSON перевірка перших елементів після sort DESC.
+- **Fix:** розширити `buildSortOrderBy` опцією `nullableFields?: Set<string>` — для nullable-поля повертати `{ [field]: { sort: dir, nulls: 'last' } }` замість плоскої форми. Postgres-агностично, Prisma-native. У `purchase-orders.service.ts` передати `new Set(['paymentDate'])` як опцію. Патерн універсальний — інші list-сервіси (invoices, work-orders) з nullable-сортовними полями отримають той самий guard коли додадуть.
+- **Severity:** MEDIUM — UX regression у щойно доданій feature. Не data corruption, але фіча «сортувати за датою оплати» повертає фактично марний result для основного use-case (DESC).
+- **Де ще шукати:** `grep -rn "buildSortOrderBy" apps/api/src/modules --include="*.service.ts"` → для кожного viклику перевірити whitelist на nullable-поля (`paymentDate`, `completedAt`, `pricedAt`, `dueDate`, `expiryDate`). Кожен nullable у whitelist без `nullableFields`-option = потенційний Bug #598.
+- **Регресія-guard:** новий unit-тест `pagination.spec.ts` — для nullable field + desc → `{ [f]: { sort:'desc', nulls:'last' } }`; для non-nullable → плоска форма (backward-compat). Плюс тест у `purchase-orders.service.spec.ts` що `sortBy=paymentDate&desc` дає orderBy з `nulls: 'last'`.
+- **Статус:** [x] ВИПРАВЛЕНО (buildSortOrderBy += nullableFields; PO передає Set(['paymentDate']); live: DESC → дати зверху, null внизу; +12 pagination + 4 PO тести)
+
+### Bug #599 — MEDIUM backend / semantic filter miss — `getSchedule` включає CLIENT-типу counterparty з від'ємним балансом як «постачальник до оплати»
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.ts:200-212` (`payableAccounts` findMany).
+- **Симптом:** якщо клієнт має prepayment refund pending (SettlementAccount.balance<0 для CLIENT-типу) — цей клієнт з'явиться у **графіку оплат ПОСТАЧАЛЬНИКАМ** як строка з payable=|balance|. Наразі приховано випадково: в тестовій org єдиний такий запис (`TestClient E2E-Detail` з balance=-400) вже soft-deleted → filter `counterparty: { deletedAt: null }` його виключає. Але тільки-но CLIENT з від'ємним балансом активний — потрапляє у шахматку оплат ПОСТАЧАЛЬНИКУ, з CLIENT-іменем у колонці «Постачальник».
+- **Root cause:** query фільтрує `balance: { lt: 0 }` + `counterparty.deletedAt: null`, але НЕ фільтрує `counterparty.type ∈ { SUPPLIER, BOTH }`. Схема:
+  ```prisma
+  enum CounterpartyType { CLIENT SUPPLIER BOTH }
+  ```
+  Для СТО типовий контрагент — CLIENT (машина у ремонті) або SUPPLIER (постачальник запчастин); BOTH — рідкість (напр. авто-магазин що і послуги надає, і сам замовляє). Схема «оплати постачальнику» операційно = SUPPLIER або BOTH.
+- **Виявлено:** ручний trace через reports.settlements (198 rows) → знайдено `TestClient E2E-Detail (type=CLIENT, balance=-400)` серед negative-balance списку → перевірка чому не потрапив у schedule → deleted → інакше потрапив би. Sanity check коду `payableAccounts` where-clause підтвердив missing type-filter.
+- **Fix:** додати `counterparty: { deletedAt: null, type: { in: ['SUPPLIER', 'BOTH'] } }` у `payableAccounts` findMany. Виключає з схеми оплат постачальникам будь-які клієнтські прописи. Аналогічний filter логічно потрібен на `contracts` query (creditLimit тільки для SUPPLIER/BOTH), але там `contractType: 'PURCHASE'` вже неявно виключає CLIENT (PURCHASE-договір з клієнтом семантично неможливий, хоч API не заборонить).
+- **Severity:** MEDIUM — semantic contamination графіка. Не корупція, не крашить. Але фінансовий звіт з невірною категоризацією = довіра ↓ («чому клієнт у списку постачальників?»). Latent bug — активується коли реальний клієнт має prepayment refund pending; для demo-org замаскований soft-delete.
+- **Де ще шукати:** будь-який `settlementAccount.findMany` де фінансовий домен — supplier vs client — вимагає розмежування:
+  - reports.settlements: legitimate mixed (обидва бажані у звіті) — не чіпати.
+  - supplier-payments.getSchedule: **потрібен filter** — Bug #599.
+  - клієнтські прайси/платежі/картки — те саме дзеркало для CLIENT-only endpoints.
+- **Регресія-guard:** новий тест у `supplier-payments.service.spec.ts`: `getSchedule` мокає `settlementAccount.findMany` — перевірити що where.counterparty містить `type: { in: ['SUPPLIER', 'BOTH'] }`.
+- **Статус:** [x] ВИПРАВЛЕНО (додано `type: { in: ['SUPPLIER','BOTH'] }` у payableAccounts findMany where.counterparty)
+
+### Bug #600 — LOW docs / stale invariant claim — docstring `getSchedule` каже «графік і звіт завжди узгоджені», але це неправда за наявності deleted counterparty з debt
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.ts:132-137` (JSDoc блок над `getSchedule`).
+- **Симптом:** doc-string обіцяє: «АВТОРИТЕТНЕ джерело — SettlementAccount.balance (те саме, що звіт «Взаєморозрахунки»)». Live-перевірка: schedule totals.total = 1600 (лише FDGD), звіт `reports.settlements` totalCredit = 2000 (FDGD 1600 + TestClient soft-deleted 400). Divergence 400. Root: schedule фільтрує `counterparty.deletedAt: null`, звіт — ні. Оба поведінки виправдані окремо (schedule ховає orphan, звіт агрегує усі accounts), але заявлена інваріант «завжди узгоджені» — фактично не виконується. Розробник читає docstring → покладається на claim → пізніше несподівано отримує divergence bug-report від бухгалтерії.
+- **Root cause:** commit 2aea04e4 змінив підхід (payable=balance замість ΣPO) і додав filter deleted-supplier, але docstring не оновлений під filter.
+- **Fix:** переписати docstring: «АВТОРИТЕТНЕ джерело — SettlementAccount.balance для АКТИВНИХ counterparty (deletedAt IS NULL). Для звіту «Взаєморозрахунки» — той самий balance, але БЕЗ фільтра deleted → divergence на суму боргів видалених counterparty». Це також задокументувати як trade-off (не bug, не потребує фіксу звіту).
+- **Severity:** LOW — docs-only, не впливає на runtime. Але важливий: невірна інваріант документація призводить до недовіри до звіту у нових розробників.
+- **Де ще шукати:** grep docstrings з «завжди узгоджені» або «дзеркалить» — перевіряти проти реальних filter-різниць. Особливо для звітів/агрегатів де filter deleted не симетричний.
+- **Регресія-guard:** не потрібно — docs-only fix.
+- **Статус:** [x] ВИПРАВЛЕНО (docstring getSchedule переписаний: divergence зі звітом задокументований як trade-off)
+
 ## Session 2026-08-30 — FULL /sto-tester Цикл 2/3 — HEAD c8057635
 
 Другий FULL цикл після Cycle 1 (Bugs #592-#595 виправлені у HEAD d5d58af7 + /simplify
