@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-08-31
+
+### feat(supplier-payments): FIFO-графік оплат по документах + колонки оплати у списку купівлі
+
+**Baseline-баг (2aea04e4):** графік показував 30953₴ по постачальнику, звіт «Взаєморозрахунки» — 47₴.
+Причина: графік реконструював борг із `Σ PurchaseOrder.totalAmount − PO-linked платежі`, ігноруючи
+фактичний `SettlementAccount.balance` (враховує повернення, unlinked-платежі, коригування). Фікс:
+авторитетне джерело суми = `SettlementAccount.balance` (payable = `−balance` для `balance<0`).
+
+**FIFO-розподіл (282d5fba):** пропорційне масштабування балансу → FIFO-налив. payable «наливається»
+на непогашені RECEIVED/PARTIAL PO по черзі від найстарішого (`orderBy paymentDate asc nulls first`);
+`take = min(po.outstanding, remaining)`; кожен PO → своя колонка (overdue/byDate/planned) з реальним
+залишком; PO, до яких борг не дійшов = оплачені (не показуються); надлишок понад ΣPO → overdue.
+Прибрало мікро-частки масштабування — осмислені суми документів. Підсумок = balance.
+
+**Список купівлі (282d5fba+05ebbeb1):** +колонка «Дата оплати» (сортовна) + «Днів до оплати»
+(`ExpiryBadge` «N дн.»/«Прострочено N дн.», лише де `outstanding>0`). Backend: `findAll` += groupBy
+CONFIRMED-платежів → `outstanding` у PO list DTO; `PO_SORT_FIELDS` + `PurchaseOrderQueryDto.sortBy`
+whitelist += `paymentDate`.
+
+**Bugs #598-#600 (441c04aa, sto-tester):**
+
+- #598 MEDIUM: `sortBy=paymentDate&desc` виносив null-date PO наверх (Postgres NULLS FIRST для DESC).
+  `buildSortOrderBy` += `nullableFields?: Set` → для nullable-field `{ sort, nulls:'last' }`.
+- #599 MEDIUM: `getSchedule` включав CLIENT-типу counterparty з `balance<0` як «постачальника»
+  (semantic contamination) → filter `counterparty.type in [SUPPLIER,BOTH]`.
+- #600 LOW: docstring «завжди узгоджений зі звітом» неправда (divergence на deleted/CLIENT
+  counterparty, звіт не фільтрує) → переписаний як задокументований trade-off.
+
+QA: sync 0 розбіжностей, review 0 findings, tester 3 fixed. +16 регрес-тестів (12 pagination
+nullable + 4 PO outstanding). API vitest 1015/1015, web 488/488, tsc 0/0. Live: FDGD −1600 → графік
+1600 (= звіт); DESC-sort дати зверху; CLIENT відфільтрований.
+
+---
+
 ## 2026-08-29
 
 ### feat(supplier-payments): графік оплат постачальникам + PurchaseOrder.paymentDate
