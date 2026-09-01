@@ -553,6 +553,7 @@ grep -rnE "const (open|load|select|fetch)[A-Z][A-Za-z]* = (async )?\(" apps/web/
 - [ ] `error` page-level ≠ `formError` (не перезаписувати)
 - [ ] Paired FK state (`counterpartyId` + `counterpartyDisplayName`) → скидати **обидва** на onClose/POST success/onClear
 - [ ] Fetch у обробнику події → token-ref (`++ref.current`; `if (ref.current !== reqId) return`) + скинути похідний стан
+- [ ] **Cross-field guard на беку → знайти ВСІ frontend-entry-points**: коли додано backend-cross-field валідацію (напр. `hasCounterpartyName`), grep `POST /<endpoint>` по apps/web/src → **кожен** callsite має власний frontend guard з ідентичною логікою (**trim + OR + одне повідомлення**). Sample bug: guard у CounterpartyEditModal, але CalendarSlotModal-wizard (2й callsite) мав власний `!x && !y` без trim → whitespace-only обходило frontend, backend повертав 400 із загальним message без inline. Grep: `grep -rn "'/counterparties'" apps/web/src` — перевір ВСІ файли, не тільки основний edit-modal
 
 #### §8.2.1 Select race
 
