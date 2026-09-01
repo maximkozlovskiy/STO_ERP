@@ -241,8 +241,11 @@ export class InventoryService {
         );
         weightedCostPrice = weightedFromConsumed(consumed);
       }
-      // Проставити batchId у рух коли списано з однієї партії (для трасування).
-      if (consumed.length === 1) {
+      // Проставити batchId у рух коли списано з однієї реальної партії (для трасування).
+      // AVG_COST: batchService повертає sentinel {batchId:''} (агрегат по кількох партіях) —
+      // порожній рядок НЕ є UUID, update з batchId:'' викличе runtime Postgres error
+      // "invalid input syntax for type uuid" → FSM COMPLETED падатиме. Пропускаємо.
+      if (consumed.length === 1 && consumed[0].batchId) {
         await db.stockMovement.update({
           where: { id: movement.id },
           data: { batchId: consumed[0].batchId },

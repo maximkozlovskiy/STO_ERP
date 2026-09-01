@@ -549,4 +549,5 @@ Skip-first-run ref скидається на зміну parent-id.
 | MP-B6 Cross-field        | POST-точки без дзеркального guard + `.trim()`                                    |
 | MP-B8 Міграції           | `ADD VALUE` + DML в одному файлі                                                 |
 | MP-B9 Hot-path           | inline `include:`/`select:` у findAll; `take: 1000`                              |
+| MP-B10 Sentinel UUID FK  | `consumed[0].batchId`/`res[0].XId` записується у `@db.Uuid` без truthy-guard     |
 | MP-F5 SSR today          | `new Date()`/`Date.now()` у render-body                                          |

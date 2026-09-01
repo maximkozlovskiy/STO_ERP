@@ -377,6 +377,14 @@ for f in $(grep -rl "\$transaction(async" apps/api/src --include="*.ts" | grep -
   to=$(grep -c "timeout:" "$f")
   [ "$tx" -gt "$to" ] && echo "MISMATCH $f: $tx tx, $to timeouts"
 done
+
+# Sentinel empty-string у UUID FK write: shape `consumed[0].batchId` / `res[0].XId`
+# без truthy-guard, при цьому колонка у Prisma-схемі — `@db.Uuid`. AVG_COST/aggregate
+# branch у batch/alloc-сервісі може повертати '' → Postgres кидає runtime
+# "invalid input syntax for type uuid: """.
+grep -rnE "consumed\[0\]\.batchId|allocations\[0\]\.[a-zA-Z]+Id|results?\[0\]\.[a-zA-Z]+Id" apps/api/src/modules --include="*.ts" | grep -v spec | head
+# Fix: `if (results[0].id) db.X.update({...})` або truthy у ternary:
+# `results[0].id ? results[0].id : null`.
 ```
 
 - [ ] FSM: `transition()` читає з `WORK_ORDER_TRANSITIONS` map
@@ -1554,6 +1562,15 @@ done
 Документувати inline коментарем _чому саме ці статуси_ — інакше наступний розробник додасть DRAFT "для повноти" і поверне баг.
 
 **Severity:** CRITICAL — financial/regulatory compliance bug. tsc мовчить, runtime працює, користувач довіряє звіту; виявляється лише при перевірці ДПС або реальному квартальному звіті.
+
+---
+
+### 2026-09-02 — Sentinel empty-string у UUID FK колонку → runtime "invalid input syntax for type uuid" — §5 Business Rules / §6 Database
+
+**Сигнал:** сервіс-повертайка (batch consume, alloc allocator, кубометр-агрегатор) використовує sentinel-значення у полі-ідентифікаторі: наприклад `BatchService.consumeBatch(AVG_COST)` повертає `[{batchId: '', quantity, costPrice: avgCost}]` як позначку "агрегат по кількох партіях, не одна конкретна". Викликач далі: `if (consumed.length === 1) db.stockMovement.update({ data: { batchId: consumed[0].batchId } })` — пише `''` у колонку `batchId String? @db.Uuid` (nullable, але тип UUID). Postgres при UPDATE з `''::uuid` кидає `invalid input syntax for type uuid: ""` → FSM COMPLETED/CONFIRMED падає runtime тільки на організаціях з активним cost method AVG_COST (або аналогічним aggregate). Тест з real-UUID мока (`batchId: 'b1'`) не reproduce edge-case → баг проходить review.
+**Grep:** `grep -rnE "consumed\[0\]\.batchId|consumed\.length === 1" apps/api/src` — для кожного match: (1) чи sentinel-повертайка може дати `''`? Дивитись origin у batch.service/alloc-сервісі — `if (costMethod === 'AVG_COST') return [{batchId: '', ...}]`; (2) чи update пише у колонку `@db.Uuid` (не `String @db.Text`)? Схема `packages/database/prisma/schema.prisma`. Аналогічно: `allocId`, `parentId`, будь-який `X_ID` sentinel.
+**Фікс:** truthy-guard `consumed[0].batchId ? consumed[0].batchId : null` — використовує факт що порожній рядок falsy, UUID (36 chars) — truthy. Або зробити sentinel explicit `null` у consumeBatch AVG_COST (краще, але ламає existing consumers що очікують length===1). Regression-guard spec: mock returns `[{batchId: '', ...}]`, assert `update.NOT.toHaveBeenCalled` (для single-target update) або `data: { batchId: null }` (для nullable).
+**Severity:** CRITICAL — runtime blocker: WO завершення / SD confirm падають на всіх org з AVG_COST; TS зелений, unit-тести з real UUID мока пропускають. Виявляється лише real E2E або property-based test з sentinel.
 
 ---
 
