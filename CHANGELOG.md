@@ -5,6 +5,36 @@
 
 ---
 
+## 2026-09-01 (c)
+
+### feat(counterparties): галка «Показувати видалені» + відновлення договорів і авто
+
+- **Запит користувача**: бачити soft-deleted договори/авто у формі контрагента (як галка
+  у списках) + можливість відновлювати.
+- **Backend**: `findContracts` + vehicles `findAll` += `showDeleted` param (умовний
+  `deletedAt:null`); `VehicleResponseDto` += `deletedAt`. Нові restore-endpoints:
+  `POST /counterparties/:id/contracts/:cid/restore` + `POST /vehicles/:id/restore`
+  (atomic `updateMany` з `NOT:{deletedAt:null}`, еталон brands). Ролі OWNER/ADMIN
+  (= delete). `restoreContract` ставить `isPrimary=false` (уникнення дубля-головного).
+- **Frontend** (CounterpartyEditModal): галки на вкладках Договори/Авто; видалені рядки
+  приглушені + бейдж «Видалено»; кнопка «Відновити» (RotateCcw). Окремі toggle-useEffect
+  (both directions, skip-first-run ref). ModalContract/Vehicle += deletedAt.
+- **Review (03a93799)**: dedupe toggle-fetch при CP-switch (ref reset) + role parity
+  (restore contract OWNER/ADMIN, не RECEPTIONIST).
+- **Bugs #601-#605 (8c047275, sto-tester)**:
+  - #601/#602 HIGH: `vehicles.restore` не перевіряв ланцюг parent'ів — відновлення авто
+    у видалений гараж/контрагент → orphan «зомбі» (невидиме у findAll). Fix: nested-select
+    guard garage.deletedAt + counterparty.deletedAt → BadRequest з підказкою.
+  - #603 HIGH: `restoreContract` без CP-existence guard (асиметрія із sibling-методами). Fix.
+  - #604/#605 MEDIUM: мок без restoreContract + 0 регрес-тестів. Fix: новий
+    `vehicles.service.spec.ts` (13) + 7 на договори + contract-spec.
+- QA: sync 0, review 2 fixed, tester 5 fixed. API vitest 1035/1035 (+20), tsc 0/0.
+  Live: DELETE→showDeleted=true бачить (deletedAt)→restore(201, deletedAt=null,
+  contract isPrimary=false); orphan garage/cp → 400; happy → 201.
+  Коміти c30c22bd + 03a93799 + 8c047275.
+
+---
+
 ## 2026-09-01
 
 ### feat(counterparties): редагування + soft-delete договору у формі контрагента
