@@ -92,6 +92,16 @@ function defaultContractType(cpType: string): string {
   return types.length === 1 ? types[0] : '';
 }
 
+// «Назва» контрагента обов'язкова, але гнучко: має бути Назва компанії АБО Ім'я/Прізвище.
+// Дзеркалить cross-field guard на беку (counterparties.service).
+function hasCounterpartyName(f: {
+  companyName: string;
+  firstName: string;
+  lastName: string;
+}): boolean {
+  return !!(f.companyName.trim() || f.firstName.trim() || f.lastName.trim());
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TYPE_LABELS = COUNTERPARTY_TYPE_LABELS;
@@ -391,6 +401,10 @@ export function CounterpartyEditModal({
   }, [dirty, onClose]);
 
   const create = async () => {
+    if (!hasCounterpartyName(form)) {
+      setError('Вкажіть назву компанії або ім’я/прізвище контрагента');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -421,6 +435,10 @@ export function CounterpartyEditModal({
 
   const update = async () => {
     if (!counterparty) return;
+    if (!hasCounterpartyName(form)) {
+      setError('Вкажіть назву компанії або ім’я/прізвище контрагента');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -738,7 +756,11 @@ export function CounterpartyEditModal({
         bodyMinHeight={isEdit ? 340 : undefined}
         footer={
           editTab === 'main' ? (
-            <Button onClick={isEdit ? update : create} loading={saving}>
+            <Button
+              onClick={isEdit ? update : create}
+              loading={saving}
+              disabled={!hasCounterpartyName(form)}
+            >
               {isEdit ? 'Оновити' : 'Зберегти'}
             </Button>
           ) : null
@@ -827,6 +849,7 @@ export function CounterpartyEditModal({
 
               <Input
                 label="Назва компанії"
+                required={form.type === 'SUPPLIER'}
                 value={form.companyName}
                 onChange={e => {
                   setForm(f => ({ ...f, companyName: e.target.value }));

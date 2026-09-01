@@ -17,6 +17,16 @@ import {
   UpdateCounterpartyDto,
 } from './counterparties.dto';
 
+// «Назва» контрагента обов'язкова, але гнучко: має бути companyName АБО firstName/lastName.
+// Cross-field guard — DTO не може це виразити через @IsOptional на кожному полі окремо.
+function hasCounterpartyName(v: {
+  companyName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}): boolean {
+  return !!(v.companyName?.trim() || v.firstName?.trim() || v.lastName?.trim());
+}
+
 @Injectable()
 export class CounterpartiesService {
   constructor(
@@ -98,6 +108,9 @@ export class CounterpartiesService {
   }
 
   async create(orgId: string, dto: CreateCounterpartyDto): Promise<CounterpartyResponseDto> {
+    if (!hasCounterpartyName(dto)) {
+      throw new BadRequestException('Вкажіть назву компанії або ім’я/прізвище контрагента');
+    }
     // Pre-allocate contract number via DocumentNumberService BEFORE entering the main $transaction.
     // next() uses its own $transaction with SELECT FOR UPDATE — nesting transactions would deadlock or hide the lock.
     const needsContract = dto.type === 'SUPPLIER' || dto.type === 'BOTH';
@@ -164,14 +177,23 @@ export class CounterpartiesService {
     id: string,
     dto: UpdateCounterpartyDto,
   ): Promise<CounterpartyResponseDto> {
-    // sto-optimize: narrow tenant guard — `findFirst` without `select` тягне ВСІ
-    // 15+ колонок Counterparty (phone/email/edrpou/notes/legalForm/...) лише
-    // для existence check. Update нижче все одно повертає DTO. -50-80% wire payload.
+    // sto-optimize: narrow tenant guard — тягнемо лише existence + name-поля (не всі
+    // 15+ колонок) для cross-field name-guard. Update нижче все одно повертає DTO.
     const existing = await this.prisma.counterparty.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true },
     });
     if (!existing) throw new NotFoundException('Контрагента не знайдено');
+    // Merged-стан: PATCH частковий → перевіряємо результат після застосування dto
+    // (undefined = не чіпаємо, лишається наявне; '' = очищення).
+    const merged = {
+      companyName: dto.companyName !== undefined ? dto.companyName : existing.companyName,
+      firstName: dto.firstName !== undefined ? dto.firstName : existing.firstName,
+      lastName: dto.lastName !== undefined ? dto.lastName : existing.lastName,
+    };
+    if (!hasCounterpartyName(merged)) {
+      throw new BadRequestException('Вкажіть назву компанії або ім’я/прізвище контрагента');
+    }
     const item = await this.prisma.counterparty.update({
       where: { id, orgId },
       data: dto,
