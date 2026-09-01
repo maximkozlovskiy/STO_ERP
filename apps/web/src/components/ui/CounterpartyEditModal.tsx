@@ -232,6 +232,12 @@ export function CounterpartyEditModal({
   });
   const modalContractsReqRef = useRef(0);
 
+  // Skip-first-run refs для toggle-useEffect (див. коментарі нижче). Оголошені тут
+  // (не поруч зі своїми useEffect), бо головний useEffect їх скидає при зміні CP —
+  // ES const має TDZ у порядку виконання, тому декларація має передувати використанню.
+  const vehiclesLoadedRef = useRef(false);
+  const contractsLoadedRef = useRef(false);
+
   // Load related data when modal opens for an existing counterparty
   useEffect(() => {
     if (!open || !counterparty) return;
@@ -300,13 +306,17 @@ export function CounterpartyEditModal({
       .finally(() => {
         if (modalContractsReqRef.current === cReqId) setModalContractsLoading(false);
       });
+    // Reset skip-first-run refs — головний useEffect уже завантажив дані для нового CP,
+    // toggle-useEffect має пропустити свій перший прогін (уникнення дубля-запиту).
+    vehiclesLoadedRef.current = false;
+    contractsLoadedRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, counterparty?.id]);
 
   // Перезавантаження авто при перемиканні галки «Показувати видалені» (both directions —
-  // toggle-on показує deleted, toggle-off ховає їх назад). Не спрацьовує на open —
-  // ефект-mount співпадає з дефолтом false, а головний useEffect уже завантажив активні.
-  const vehiclesLoadedRef = useRef(false);
+  // toggle-on показує deleted, toggle-off ховає їх назад). Skip перший прогін після
+  // open/CP-switch (головний useEffect уже завантажив дані з дефолтом false); при зміні
+  // CP головний useEffect скидає `vehiclesLoadedRef.current = false` — уникнення дубля.
   useEffect(() => {
     if (!open || !counterparty) {
       vehiclesLoadedRef.current = false;
@@ -335,7 +345,7 @@ export function CounterpartyEditModal({
   }, [showDeletedVehicles, open, counterparty?.id]);
 
   // Перезавантаження договорів при перемиканні галки (both directions).
-  const contractsLoadedRef = useRef(false);
+  // Skip-first-run ref обнуляється у головному useEffect при зміні CP (див. вище).
   useEffect(() => {
     if (!open || !counterparty) {
       contractsLoadedRef.current = false;

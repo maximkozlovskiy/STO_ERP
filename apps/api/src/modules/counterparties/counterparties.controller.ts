@@ -162,7 +162,7 @@ export class CounterpartiesController {
   }
 
   @Post(':id/contracts/:contractId/restore')
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Відновити видалений договір' })
   @ApiResponse({ status: 201, type: ContractResponseDto })
   restoreContract(
