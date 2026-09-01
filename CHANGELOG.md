@@ -24,6 +24,17 @@
   CREATE→PATCH(defer 7→14 + endDate)→DELETE(204, gone) ✓. web tsc 0.
   Коміти 407dac38 + 331faa26.
 
+### feat(counterparties): редагування авто у формі контрагента
+
+- **Запит користувача** (скріншот): рядок авто (вкладка «Авто») мав лише кнопку
+  видалення — додано **олівець** (редагувати), дзеркалить рядок договорів.
+- `editingVehicleId` керує режимом create/edit; `startEditVehicle(v)` prefill'ить
+  форму; `saveVehicle()` об'єднує POST/PATCH — PATCH БЕЗ `customerGarageId` (гараж уже
+  існує, лише POST auto-створює). `Vehicle` тип += `vin` (потрібен для prefill).
+- `deleteVehicle`: якщо редагували видалене авто → `resetVehicleForm`. tenant-guard.
+- Backend уже мав `PATCH /vehicles/:id` — чиста frontend-робота. Review 0 findings.
+  Live: CREATE→PATCH(model/year/plate/vin)→DELETE(204) ✓. web tsc 0. Коміт 84488164.
+
 ---
 
 ## 2026-08-31 (b)
