@@ -5,6 +5,25 @@
 
 ---
 
+## 2026-09-01 (e)
+
+### feat(counterparties): після створення картка лишається відкритою в edit-режимі
+
+- **Запит користувача**: при створенні контрагента модалка після «Зберегти» закривалась —
+  щоб додати авто/договори, треба було знову відкривати (вже редагування).
+- Тепер після create картка **лишається відкритою** і перемикається в edit-режим
+  (з'являються вкладки Авто/Договори/Історія), як при редагуванні.
+- `onSaved(cp, isNew)` — новий 2-й параметр (create→true, update→false). Головний список
+  (`counterparties/page`) при `isNew` НЕ закриває, а `setEditingCp({balance:0, ...cp})` →
+  `counterparty` proc заповнюється → `isEdit=true` → вкладки. Модалка не ремаунтиться, форма
+  ре-синхронізується з backend-response через наявний useEffect.
+- CalendarSlotModal/PurchaseOrderCreateModal/RuleFormModal/GoodEditModal onSaved ігнорують
+  `isNew` (усі edit-only, create через них неможливий) — TS-safe, не зламано.
+- toast «Контрагента створено — тепер можна додати авто та договори».
+- QA: review 0 findings. web tsc 0. Коміт 9d61dfaa.
+
+---
+
 ## 2026-09-01 (d)
 
 ### feat(counterparties): назва контрагента обов'язкова (гнучко — компанія АБО ПІБ)
