@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Pencil } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
@@ -208,6 +208,9 @@ export function CounterpartyEditModal({
   const [contractsError, setContractsError] = useState('');
   const [showAddContract, setShowAddContract] = useState(false);
   const [addingContract, setAddingContract] = useState(false);
+  // Редагування наявного договору: id → форма prefill; null → режим створення.
+  const [editingContractId, setEditingContractId] = useState<string | null>(null);
+  const [deletingContractId, setDeletingContractId] = useState<string | null>(null);
   const [orgCurrency, setOrgCurrency] = useState('UAH');
   const [currencies, setCurrencies] = useState<{ code: string; name: string }[]>([]);
   const [addContractForm, setAddContractForm] = useState({
@@ -432,53 +435,125 @@ export function CounterpartyEditModal({
     }
   };
 
-  const addContract = async () => {
+  // Скидання форми договору у дефолтний стан.
+  const resetContractForm = () => {
+    setAddContractForm({
+      contractType: '',
+      startDate: '',
+      endDate: '',
+      creditLimit: '',
+      currencyCode: '',
+      paymentDeferDays: '',
+      isPrimary: false,
+    });
+    setEditingContractId(null);
+    setShowAddContract(false);
+  };
+
+  // Відкрити форму на РЕДАГУВАННЯ наявного договору — prefill з рядка.
+  const startEditContract = (c: ModalContract) => {
+    setAddContractForm({
+      contractType: c.contractType,
+      startDate: c.startDate ? c.startDate.slice(0, 10) : '',
+      endDate: c.endDate ? c.endDate.slice(0, 10) : '',
+      creditLimit: c.creditLimit != null ? String(c.creditLimit) : '',
+      currencyCode: c.currencyCode || '',
+      paymentDeferDays: c.paymentDeferDays != null ? String(c.paymentDeferDays) : '',
+      isPrimary: c.isPrimary,
+    });
+    setEditingContractId(c.id);
+    setContractsError('');
+    setShowAddContract(true);
+  };
+
+  const saveContract = async () => {
     if (!counterparty) return;
     // Tenant-guard (Bug #370): handler-fetch ↔ зміна counterparty. Якщо під час
-    // POST користувач закрив/перевідкрив modal для іншого CP — викидаємо setState
+    // запиту користувач закрив/перевідкрив modal для іншого CP — викидаємо setState
     // у чужу таблицю contracts. Дзеркалить захист у addVehicle/deleteVehicle.
     const cpIdAtStart = counterparty.id;
     const cpTypeAtStart = counterparty.type;
+    const editId = editingContractId;
     setAddingContract(true);
     setContractsError('');
     try {
       // Вибір користувача (select уже фільтрований за типом контрагента + має дефолт).
       // Fallback на дефолт-тип якщо поле чомусь порожнє (для BOTH guard на кнопці не пустить).
       const resolvedType = addContractForm.contractType || defaultContractType(cpTypeAtStart);
-      const created = await apiFetch<ModalContract>(`/counterparties/${cpIdAtStart}/contracts`, {
-        method: 'POST',
-        body: JSON.stringify({
-          contractType: resolvedType,
-          startDate: addContractForm.startDate,
-          endDate: addContractForm.endDate || undefined,
-          creditLimit: addContractForm.creditLimit
-            ? Number(addContractForm.creditLimit)
-            : undefined,
-          currencyCode: addContractForm.currencyCode || orgCurrency,
-          paymentDeferDays: addContractForm.paymentDeferDays
-            ? Number(addContractForm.paymentDeferDays)
-            : undefined,
-          isPrimary: addContractForm.isPrimary || undefined,
-        }),
+      const body = JSON.stringify({
+        contractType: resolvedType,
+        startDate: addContractForm.startDate,
+        endDate: addContractForm.endDate || undefined,
+        creditLimit: addContractForm.creditLimit ? Number(addContractForm.creditLimit) : undefined,
+        currencyCode: addContractForm.currencyCode || orgCurrency,
+        paymentDeferDays: addContractForm.paymentDeferDays
+          ? Number(addContractForm.paymentDeferDays)
+          : undefined,
+        isPrimary: addContractForm.isPrimary || undefined,
       });
+      const saved = await apiFetch<ModalContract>(
+        editId
+          ? `/counterparties/${cpIdAtStart}/contracts/${editId}`
+          : `/counterparties/${cpIdAtStart}/contracts`,
+        { method: editId ? 'PATCH' : 'POST', body },
+      );
       if (currentCpIdRef.current !== cpIdAtStart) return; // CP змінився — drop
-      setModalContracts(prev => [...prev, created]);
-      setAddContractForm({
-        contractType: '',
-        startDate: '',
-        endDate: '',
-        creditLimit: '',
-        currencyCode: '',
-        paymentDeferDays: '',
-        isPrimary: false,
+      setModalContracts(prev => {
+        // isPrimary ексклюзивний У МЕЖАХ contractType (дзеркалить бек swapType-scope):
+        // якщо saved став головним — скидаємо прапорець з інших того ж типу.
+        const next = saved.isPrimary
+          ? prev.map(c => (c.contractType === saved.contractType ? { ...c, isPrimary: false } : c))
+          : [...prev];
+        const idx = next.findIndex(c => c.id === saved.id);
+        if (idx >= 0) next[idx] = saved;
+        else next.push(saved);
+        return next;
       });
-      setShowAddContract(false);
-      toast.success('Договір додано');
+      resetContractForm();
+      toast.success(editId ? 'Договір оновлено' : 'Договір додано');
     } catch (e: unknown) {
       if (currentCpIdRef.current === cpIdAtStart)
         setContractsError(e instanceof Error ? e.message : 'Помилка');
     } finally {
       setAddingContract(false);
+    }
+  };
+
+  const deleteContract = async (c: ModalContract) => {
+    if (!counterparty) return;
+    if (
+      !(await confirm({
+        title: 'Видалити договір?',
+        message: `Договір ${c.number} буде видалено.`,
+        variant: 'destructive',
+      }))
+    )
+      return;
+    const cpIdAtStart = counterparty.id;
+    setDeletingContractId(c.id);
+    setContractsError('');
+    try {
+      await apiFetch(`/counterparties/${cpIdAtStart}/contracts/${c.id}`, { method: 'DELETE' });
+      if (currentCpIdRef.current !== cpIdAtStart) return; // CP змінився — drop
+      setModalContracts(prev => {
+        const next = prev.filter(x => x.id !== c.id);
+        // Бек промоутить наступний головний того ж типу (найстаріший) у тому ж $transaction.
+        // Дзеркалимо optimistic: якщо видалили головний і лишились інші того ж типу — робимо
+        // головним перший наявний (список приходить createdAt asc). Істина — при перевідкритті.
+        if (c.isPrimary) {
+          const idx = next.findIndex(x => x.contractType === c.contractType);
+          if (idx >= 0) next[idx] = { ...next[idx], isPrimary: true };
+        }
+        return next;
+      });
+      // Якщо редагували саме цей договір — закриваємо форму.
+      if (editingContractId === c.id) resetContractForm();
+      toast.success('Договір видалено');
+    } catch (e: unknown) {
+      if (currentCpIdRef.current === cpIdAtStart)
+        setContractsError(e instanceof Error ? e.message : 'Помилка');
+    } finally {
+      setDeletingContractId(null);
     }
   };
 
@@ -838,12 +913,18 @@ export function CounterpartyEditModal({
                       variant="outline"
                       leftIcon={<Plus className="h-3.5 w-3.5" />}
                       onClick={() => {
-                        // Дефолт-вид за типом контрагента (Купівля для постачальника,
-                        // Продаж для клієнта, порожньо для BOTH — явний вибір).
-                        setAddContractForm(f => ({
-                          ...f,
+                        // Режим СТВОРЕННЯ (не edit): дефолт-вид за типом контрагента
+                        // (Купівля для постачальника, Продаж для клієнта, порожньо для BOTH).
+                        setEditingContractId(null);
+                        setAddContractForm({
                           contractType: defaultContractType(counterparty?.type ?? ''),
-                        }));
+                          startDate: kyivToday(),
+                          endDate: '',
+                          creditLimit: '',
+                          currencyCode: '',
+                          paymentDeferDays: '',
+                          isPrimary: false,
+                        });
                         setShowAddContract(true);
                       }}
                     >
@@ -985,22 +1066,7 @@ export function CounterpartyEditModal({
                       </div>
                     </div>
                     <div className="flex gap-2 justify-end">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setShowAddContract(false);
-                          setAddContractForm({
-                            contractType: '',
-                            startDate: '',
-                            endDate: '',
-                            creditLimit: '',
-                            currencyCode: '',
-                            paymentDeferDays: '',
-                            isPrimary: false,
-                          });
-                        }}
-                      >
+                      <Button size="sm" variant="outline" onClick={resetContractForm}>
                         Скасувати
                       </Button>
                       <Button
@@ -1010,9 +1076,9 @@ export function CounterpartyEditModal({
                           !addContractForm.startDate ||
                           (counterparty.type === 'BOTH' && !addContractForm.contractType)
                         }
-                        onClick={addContract}
+                        onClick={saveContract}
                       >
-                        Зберегти
+                        {editingContractId ? 'Оновити' : 'Зберегти'}
                       </Button>
                     </div>
                   </AnimatedBody>
@@ -1034,13 +1100,16 @@ export function CounterpartyEditModal({
                           <th className="text-left px-3 py-2 text-muted-foreground font-medium">
                             Завершення
                           </th>
+                          <th className="px-3 py-2 w-20">
+                            <span className="sr-only">Дії</span>
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
                         {modalContracts.map(c => (
                           <tr
                             key={c.id}
-                            className="bg-surface hover:bg-secondary/50 transition-colors"
+                            className="group bg-surface hover:bg-secondary/50 transition-colors"
                           >
                             <td className="px-3 py-2 font-medium text-foreground">
                               <span className="flex items-center gap-1.5">
@@ -1060,6 +1129,27 @@ export function CounterpartyEditModal({
                             </td>
                             <td className="px-3 py-2 text-muted-foreground">
                               {c.endDate ? fmtDate(c.endDate) : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  title="Редагувати"
+                                  onClick={() => startEditContract(c)}
+                                  className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-secondary hover:text-foreground transition"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Видалити"
+                                  disabled={deletingContractId === c.id}
+                                  onClick={() => deleteContract(c)}
+                                  className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive-subtle hover:text-destructive transition disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
