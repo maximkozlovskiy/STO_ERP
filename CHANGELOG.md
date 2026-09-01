@@ -5,6 +5,27 @@
 
 ---
 
+## 2026-09-01
+
+### feat(counterparties): редагування + soft-delete договору у формі контрагента
+
+- **Запит користувача** (скріншот): рядок договору (вкладка «Договори») мав лише 4
+  колонки (Номер/Тип/Початок/Завершення) без жодних дій.
+- Додано кнопки у рядок (opacity-on-hover): **олівець** (редагувати) + **кошик**
+  (soft-delete з `useConfirm`). Backend уже мав `PATCH`/`DELETE
+/counterparties/:id/contracts/:contractId` — чиста frontend-робота.
+- `editingContractId` керує режимом create/edit; `startEditContract(c)` prefill'ить
+  форму; `saveContract()` об'єднує POST/PATCH; кнопка «Оновити»/«Зберегти».
+- `deleteContract(c)` — optimistic filter + промоут наступного головного ТОГО Ж
+  `contractType` (дзеркалить бековий `$transaction` promote); isPrimary optimistic
+  scoped по `contractType` (дзеркалить бековий `swapType`-scope, коректно для BOTH).
+- Усі handler'и з tenant-guard (`cpIdAtStart` + `currentCpIdRef`, Bug #370-патерн).
+- Review 1 SUGGESTION (уточнено коментар promote-primary) fixed. Live:
+  CREATE→PATCH(defer 7→14 + endDate)→DELETE(204, gone) ✓. web tsc 0.
+  Коміти 407dac38 + 331faa26.
+
+---
+
 ## 2026-08-31 (b)
 
 ### fix(counterparties): вид договору — завжди редагований select, фільтр за типом
