@@ -50,6 +50,7 @@ type Vehicle = {
   model: string;
   year: number | null;
   licensePlate: string;
+  vin?: string | null;
 };
 
 type ModalWorkOrder = {
@@ -179,6 +180,8 @@ export function CounterpartyEditModal({
   const [showAddVehicle, setShowAddVehicle] = useState(false);
   const [addingVehicle, setAddingVehicle] = useState(false);
   const [deletingVehicleId, setDeletingVehicleId] = useState<string | null>(null);
+  // Редагування наявного авто: id → форма prefill; null → режим створення.
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [addVehicleForm, setAddVehicleForm] = useState({
     make: '',
     model: '',
@@ -368,42 +371,77 @@ export function CounterpartyEditModal({
     }
   };
 
-  const addVehicle = async () => {
+  // Скидання форми авто у дефолтний стан (вихід з create/edit-режиму).
+  const resetVehicleForm = () => {
+    setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' });
+    setEditingVehicleId(null);
+    setShowAddVehicle(false);
+  };
+
+  // Відкрити форму на РЕДАГУВАННЯ наявного авто — prefill з рядка.
+  const startEditVehicle = (v: Vehicle) => {
+    setAddVehicleForm({
+      make: v.make,
+      model: v.model,
+      year: v.year != null ? String(v.year) : '',
+      licensePlate: v.licensePlate || '',
+      vin: v.vin || '',
+    });
+    setEditingVehicleId(v.id);
+    setShowAddVehicle(true);
+  };
+
+  const saveVehicle = async () => {
     if (!counterparty || !addVehicleForm.make || !addVehicleForm.model) return;
-    // Tenant-guard: handler-fetch ↔ зміна counterparty (§8.2). Якщо під час create
+    // Tenant-guard: handler-fetch ↔ зміна counterparty (§8.2). Якщо під час запиту
     // користувач перемкнувся на іншого CP — викидаємо setState у чужу таблицю.
     // Звіряємо проти currentCpIdRef (живий id з ref), а не з captured closure.
     const cpIdAtStart = counterparty.id;
+    const editId = editingVehicleId;
     setAddingVehicle(true);
     try {
-      // Якщо гаража ще немає — створюємо автоматично (новий контрагент без гаражу).
-      // Назва "Основний" + isDefault:true дзеркалить backend (counterparties.service.ts
-      // auto-create на create() для CLIENT/BOTH) — консистентний UX.
-      let garageId = modalGarageId;
-      if (!garageId) {
-        const garage = await apiFetch<{ id: string }>(`/counterparties/${cpIdAtStart}/garages`, {
-          method: 'POST',
-          body: JSON.stringify({ name: 'Основний', isDefault: true }),
+      const payload = {
+        make: addVehicleForm.make,
+        model: addVehicleForm.model,
+        year: addVehicleForm.year ? Number(addVehicleForm.year) : undefined,
+        licensePlate: addVehicleForm.licensePlate || undefined,
+        vin: addVehicleForm.vin || undefined,
+      };
+      let saved: Vehicle;
+      if (editId) {
+        // PATCH наявного авто — гараж уже існує, customerGarageId не потрібен.
+        saved = await apiFetch<Vehicle>(`/vehicles/${editId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
         });
-        garageId = garage.id;
-        if (currentCpIdRef.current === cpIdAtStart) setModalGarageId(garage.id);
+      } else {
+        // Якщо гаража ще немає — створюємо автоматично (новий контрагент без гаражу).
+        // Назва "Основний" + isDefault:true дзеркалить backend (counterparties.service.ts
+        // auto-create на create() для CLIENT/BOTH) — консистентний UX.
+        let garageId = modalGarageId;
+        if (!garageId) {
+          const garage = await apiFetch<{ id: string }>(`/counterparties/${cpIdAtStart}/garages`, {
+            method: 'POST',
+            body: JSON.stringify({ name: 'Основний', isDefault: true }),
+          });
+          garageId = garage.id;
+          if (currentCpIdRef.current === cpIdAtStart) setModalGarageId(garage.id);
+        }
+        saved = await apiFetch<Vehicle>('/vehicles', {
+          method: 'POST',
+          body: JSON.stringify({ customerGarageId: garageId, ...payload }),
+        });
       }
-      const created = await apiFetch<Vehicle>('/vehicles', {
-        method: 'POST',
-        body: JSON.stringify({
-          customerGarageId: garageId,
-          make: addVehicleForm.make,
-          model: addVehicleForm.model,
-          year: addVehicleForm.year ? Number(addVehicleForm.year) : undefined,
-          licensePlate: addVehicleForm.licensePlate || undefined,
-          vin: addVehicleForm.vin || undefined,
-        }),
-      });
       if (currentCpIdRef.current !== cpIdAtStart) return; // CP змінився — викидаємо setState
-      setModalVehicles(v => [...v, created]);
-      setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' });
-      setShowAddVehicle(false);
-      toast.success('Авто додано');
+      setModalVehicles(v => {
+        const idx = v.findIndex(x => x.id === saved.id);
+        if (idx < 0) return [...v, saved];
+        const next = [...v];
+        next[idx] = saved;
+        return next;
+      });
+      resetVehicleForm();
+      toast.success(editId ? 'Авто оновлено' : 'Авто додано');
     } catch (e: unknown) {
       if (currentCpIdRef.current === cpIdAtStart)
         toast.error(e instanceof Error ? e.message : 'Помилка');
@@ -420,6 +458,8 @@ export function CounterpartyEditModal({
       await apiFetch(`/vehicles/${id}`, { method: 'DELETE' });
       if (currentCpIdRef.current !== cpIdAtStart) return;
       setModalVehicles(v => v.filter(x => x.id !== id));
+      // Якщо редагували саме це авто — закриваємо форму.
+      if (editingVehicleId === id) resetVehicleForm();
       toast.success('Авто видалено');
     } catch (e: unknown) {
       // 404 = вже видалено (stale UI) — просто прибираємо з локального списку.
@@ -754,7 +794,18 @@ export function CounterpartyEditModal({
                       size="sm"
                       variant="outline"
                       leftIcon={<Plus className="h-3.5 w-3.5" />}
-                      onClick={() => setShowAddVehicle(true)}
+                      onClick={() => {
+                        // Режим СТВОРЕННЯ — скидаємо edit-стан і форму.
+                        setEditingVehicleId(null);
+                        setAddVehicleForm({
+                          make: '',
+                          model: '',
+                          year: '',
+                          licensePlate: '',
+                          vin: '',
+                        });
+                        setShowAddVehicle(true);
+                      }}
                     >
                       Додати авто
                     </Button>
@@ -802,29 +853,16 @@ export function CounterpartyEditModal({
                       />
                     </div>
                     <div className="flex gap-2 justify-end">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setShowAddVehicle(false);
-                          setAddVehicleForm({
-                            make: '',
-                            model: '',
-                            year: '',
-                            licensePlate: '',
-                            vin: '',
-                          });
-                        }}
-                      >
+                      <Button size="sm" variant="outline" onClick={resetVehicleForm}>
                         Скасувати
                       </Button>
                       <Button
                         size="sm"
-                        onClick={addVehicle}
+                        onClick={saveVehicle}
                         loading={addingVehicle}
                         disabled={!addVehicleForm.make || !addVehicleForm.model}
                       >
-                        Зберегти
+                        {editingVehicleId ? 'Оновити' : 'Зберегти'}
                       </Button>
                     </div>
                   </AnimatedBody>
@@ -843,14 +881,16 @@ export function CounterpartyEditModal({
                           <th className="text-left px-3 py-2 text-muted-foreground font-medium">
                             Рік
                           </th>
-                          <th className="w-16" />
+                          <th className="w-20">
+                            <span className="sr-only">Дії</span>
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
                         {modalVehicles.map(v => (
                           <tr
                             key={v.id}
-                            className="bg-surface hover:bg-secondary/50 transition-colors"
+                            className="group bg-surface hover:bg-secondary/50 transition-colors"
                           >
                             <td className="px-3 py-2 font-medium text-foreground">
                               {v.make} {v.model}
@@ -859,16 +899,26 @@ export function CounterpartyEditModal({
                               {v.licensePlate || '—'}
                             </td>
                             <td className="px-3 py-2 text-muted-foreground">{v.year ?? '—'}</td>
-                            <td className="px-3 py-2">
-                              <button
-                                type="button"
-                                onClick={() => deleteVehicle(v.id)}
-                                disabled={deletingVehicleId === v.id}
-                                className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
-                                title="Видалити"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                            <td className="px-3 py-2 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  title="Редагувати"
+                                  onClick={() => startEditVehicle(v)}
+                                  className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-secondary hover:text-foreground transition"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Видалити"
+                                  onClick={() => deleteVehicle(v.id)}
+                                  disabled={deletingVehicleId === v.id}
+                                  className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive-subtle hover:text-destructive transition disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
