@@ -401,4 +401,142 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
       data: { unitOfMeasureId: UNIT_ID },
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Bug #610: TRANSFER cost-carry regression guard (commit 19f81ccb)
+  //
+  // TRANSFER — це WRITEOFF з source + RECEIPT в target. Раніше обидва йшли у Promise.all
+  // і target RECEIPT отримував baseArgs.price (ціна документа, ЯКА У TRANSFER часто
+  // salePrice або 0). Після 19f81ccb: SEQUENTIAL — src.weightedCostPrice (реальна FIFO
+  // собівартість з партій джерела) передається у target RECEIPT.price → цільова партія
+  // створюється з ПРАВИЛЬНОЮ собівартістю (не salePrice, не 0).
+  //
+  // Регресія без тесту: рефактор який поверне Promise.all — target отримає baseArgs.price
+  // → cost carry зламаний, звіт рентабельності недостовірний. Verified live (spec header).
+  // ──────────────────────────────────────────────────────────────────────
+  it('Bug #610: TRANSFER передає src.weightedCostPrice у target RECEIPT.price (cost carry)', async () => {
+    const TARGET_WH = '77777777-7777-4777-8777-777777777777';
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПМ-2026-0001',
+      type: StockDocumentType.TRANSFER,
+      status: 'DRAFT',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: TARGET_WH,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 5,
+          price: 100, // baseArgs.price — fallback ЯКЩО weightedCostPrice=null
+          good: { unitId: null },
+        },
+      ],
+    });
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПМ-2026-0001',
+      type: StockDocumentType.TRANSFER,
+      status: 'CONFIRMED',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: TARGET_WH,
+      notes: null,
+      documentDate: new Date(),
+      confirmedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      branch: { name: 'Філія 1' },
+      warehouse: { name: 'Склад-1' },
+      targetWarehouse: { name: 'Склад-2' },
+      lines: [],
+    });
+    // WRITEOFF повертає weightedCostPrice=42 (реальна FIFO cost, ≠ baseArgs.price=100)
+    inventory.createMovement
+      .mockResolvedValueOnce({
+        movementId: 'm-writeoff',
+        consumed: [{ batchId: 'b-src', quantity: 5, costPrice: 42 }],
+        weightedCostPrice: 42,
+      })
+      .mockResolvedValueOnce({
+        movementId: 'm-receipt',
+        consumed: [],
+        weightedCostPrice: null,
+      });
+
+    await service.transition(ORG, DOC_ID, 'CONFIRMED', 'user-1');
+
+    // Два виклики: WRITEOFF source потім RECEIPT target
+    expect(inventory.createMovement).toHaveBeenCalledTimes(2);
+    const [writeoffCall, receiptCall] = inventory.createMovement.mock.calls;
+    // 1: WRITEOFF з source warehouseId, quantity=-5
+    expect(writeoffCall![1]).toMatchObject({
+      warehouseId: WAREHOUSE_ID,
+      type: StockMovementType.WRITEOFF,
+      quantity: -5,
+    });
+    // 2: RECEIPT з target warehouseId, quantity=+5, і КРИТИЧНО price=42 (FIFO cost)
+    expect(receiptCall![1]).toMatchObject({
+      warehouseId: TARGET_WH,
+      type: StockMovementType.RECEIPT,
+      quantity: 5,
+      price: 42, // з src.weightedCostPrice — НЕ baseArgs.price=100
+    });
+  });
+
+  it('Bug #610: TRANSFER коли src.weightedCostPrice=null → fallback до baseArgs.price', async () => {
+    const TARGET_WH = '77777777-7777-4777-8777-777777777777';
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПМ-2026-0002',
+      type: StockDocumentType.TRANSFER,
+      status: 'DRAFT',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: TARGET_WH,
+      lines: [{ id: LINE_ID, goodId: GOOD_ID, quantity: 3, price: 55, good: { unitId: null } }],
+    });
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПМ-2026-0002',
+      type: StockDocumentType.TRANSFER,
+      status: 'CONFIRMED',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: TARGET_WH,
+      notes: null,
+      documentDate: new Date(),
+      confirmedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      branch: { name: 'Філія 1' },
+      warehouse: { name: 'Склад-1' },
+      targetWarehouse: { name: 'Склад-2' },
+      lines: [],
+    });
+    inventory.createMovement
+      .mockResolvedValueOnce({
+        movementId: 'm-writeoff',
+        consumed: [],
+        weightedCostPrice: null, // edge case: consume порожній (не має партій — не мало б статись, але defense-in-depth)
+      })
+      .mockResolvedValueOnce({
+        movementId: 'm-receipt',
+        consumed: [],
+        weightedCostPrice: null,
+      });
+
+    await service.transition(ORG, DOC_ID, 'CONFIRMED', 'user-1');
+    const [, receiptCall] = inventory.createMovement.mock.calls;
+    expect(receiptCall![1]).toMatchObject({
+      warehouseId: TARGET_WH,
+      type: StockMovementType.RECEIPT,
+      price: 55, // fallback до baseArgs.price
+    });
+  });
 });

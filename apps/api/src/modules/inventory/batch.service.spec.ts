@@ -204,6 +204,42 @@ describe('BatchService', () => {
         data: expect.objectContaining({ quantity: -4, documentLineId: 'line1' }),
       });
     });
+
+    // Bug #609: regression-guard для orderBy різних costMethod. Refactor який
+    // випадково поміняє asc↔desc для LIFO/FEFO пройде CI зеленим без цих тестів
+    // (verified live: LIFO бере найновішу партію @120, FEFO fallback на createdAt asc).
+    it('LIFO: використовує orderBy createdAt desc (найновіша перша)', async () => {
+      prisma.stockBatch.findMany.mockResolvedValue([
+        { id: 'newer', remainingQty: 5, costPrice: 200 },
+        { id: 'older', remainingQty: 10, costPrice: 100 },
+      ]);
+      await service.consumeBatch('org', 'g1', 'wh1', 3, 'WO', 'wo1', undefined, 'LIFO');
+      expect(prisma.stockBatch.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: [{ createdAt: 'desc' }] }),
+      );
+    });
+
+    it('FEFO: orderBy expiryDate asc nulls last, then createdAt asc', async () => {
+      prisma.stockBatch.findMany.mockResolvedValue([
+        { id: 'exp-soon', remainingQty: 5, costPrice: 100 },
+      ]);
+      await service.consumeBatch('org', 'g1', 'wh1', 3, 'WO', 'wo1', undefined, 'FEFO');
+      expect(prisma.stockBatch.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+        }),
+      );
+    });
+
+    it('FIFO: orderBy createdAt asc (найстаріша перша)', async () => {
+      prisma.stockBatch.findMany.mockResolvedValue([
+        { id: 'old', remainingQty: 5, costPrice: 100 },
+      ]);
+      await service.consumeBatch('org', 'g1', 'wh1', 3, 'WO', 'wo1', undefined, 'FIFO');
+      expect(prisma.stockBatch.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: [{ createdAt: 'asc' }] }),
+      );
+    });
   });
 
   describe('getAvgCost', () => {

@@ -254,3 +254,216 @@ describe('WorkOrdersService.update — query shape (Bug #350 follow-up)', () => 
     expect(data.actualHours).toBeUndefined();
   });
 });
+
+// ─── writeOffPartsAndCharge — batchCostPrice/batchId writeback ───────────────
+//
+// Bug #609 regression-guard: після commit 19f81ccb (feat/inventory FIFO+COGS підключення)
+// COMPLETED-transition наряду викликає inventory.createMovement(WRITEOFF) для кожної
+// запчастини, отримує { consumed, weightedCostPrice } і записує:
+//   WorkOrderPart.batchCostPrice = weightedCostPrice  (для звіту рентабельності)
+//   WorkOrderPart.batchId        = consumed[0].batchId коли consumed.length===1, інакше NULL
+//
+// Без цього тесту рефактор який видалить update workOrderPart блок пройде CI зеленим —
+// runtime баг: звіт рентабельності показує NULL cost, маржа неточна.
+describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId writeback', () => {
+  const WO_ID = '11111111-1111-4111-8111-111111111111';
+  const PART1_ID = '22222222-2222-4222-8222-222222222222';
+  const PART2_ID = '33333333-3333-4333-8333-333333333333';
+  const GOOD_ID = '44444444-4444-4444-8444-444444444444';
+  const WH_ID = '55555555-5555-4555-8555-555555555555';
+  const BATCH1_ID = '66666666-6666-4666-8666-666666666666';
+
+  function makeSvc(
+    inventoryCreateMovement: ReturnType<typeof vi.fn>,
+    partsToProcess: Array<{ id: string; quantity: number }>,
+    partUpdate: ReturnType<typeof vi.fn>,
+  ): WorkOrdersService {
+    const prisma = {
+      workOrderPart: {
+        findMany: vi.fn().mockResolvedValue(
+          partsToProcess.map(p => ({
+            id: p.id,
+            goodId: GOOD_ID,
+            warehouseId: WH_ID,
+            quantity: p.quantity,
+            unitOfMeasureId: null,
+          })),
+        ),
+        update: partUpdate,
+      },
+      goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService;
+    const inventory = { createMovement: inventoryCreateMovement } as unknown as InstanceType<
+      typeof WorkOrdersService
+    >['inventory'];
+    const settlements = { createTransaction: vi.fn() } as unknown as InstanceType<
+      typeof WorkOrdersService
+    >['settlements'];
+    // Constructor: prisma, inventory, settlements, notifications, docNumbers,
+    //   maintenanceSchedules, pdf, audit, warranties, settingsService, config
+    return new WorkOrdersService(
+      prisma,
+      inventory,
+      settlements,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+    );
+  }
+
+  it('single-batch WRITEOFF → part.batchCostPrice + part.batchId проставляються', async () => {
+    const partUpdate = vi.fn().mockResolvedValue({});
+    const createMovement = vi.fn().mockImplementation((_, dto) => {
+      if (dto.type === 'RESERVATION_RELEASE') {
+        return Promise.resolve({ movementId: 'm-rel', consumed: [], weightedCostPrice: null });
+      }
+      // WRITEOFF single batch
+      return Promise.resolve({
+        movementId: 'm-wo',
+        consumed: [{ batchId: BATCH1_ID, quantity: 2, costPrice: 120 }],
+        weightedCostPrice: 120,
+      });
+    });
+    const svc = makeSvc(createMovement, [{ id: PART1_ID, quantity: 2 }], partUpdate);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (svc as any).writeOffPartsAndCharge(
+      'org-1',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
+      'user-1',
+      undefined,
+    );
+    expect(partUpdate).toHaveBeenCalledTimes(1);
+    expect(partUpdate.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        where: { id: PART1_ID },
+        data: { batchCostPrice: 120, batchId: BATCH1_ID },
+      }),
+    );
+  });
+
+  it('span >1 batch → batchCostPrice=weighted, batchId=NULL (нема єдиного джерела)', async () => {
+    const partUpdate = vi.fn().mockResolvedValue({});
+    const createMovement = vi.fn().mockImplementation((_, dto) => {
+      if (dto.type === 'RESERVATION_RELEASE') {
+        return Promise.resolve({ movementId: 'm-rel', consumed: [], weightedCostPrice: null });
+      }
+      return Promise.resolve({
+        movementId: 'm-wo',
+        consumed: [
+          { batchId: BATCH1_ID, quantity: 3, costPrice: 100 },
+          { batchId: 'other-batch', quantity: 2, costPrice: 200 },
+        ],
+        weightedCostPrice: (3 * 100 + 2 * 200) / 5, // 140
+      });
+    });
+    const svc = makeSvc(createMovement, [{ id: PART1_ID, quantity: 5 }], partUpdate);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (svc as any).writeOffPartsAndCharge(
+      'org-1',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
+      'user-1',
+      undefined,
+    );
+    expect(partUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: PART1_ID },
+        data: { batchCostPrice: 140, batchId: null },
+      }),
+    );
+  });
+
+  it('weightedCostPrice=null → workOrderPart.update НЕ викликається (не перезаписує NULL)', async () => {
+    const partUpdate = vi.fn().mockResolvedValue({});
+    const createMovement = vi.fn().mockImplementation((_, dto) => {
+      if (dto.type === 'RESERVATION_RELEASE') {
+        return Promise.resolve({ movementId: 'm-rel', consumed: [], weightedCostPrice: null });
+      }
+      return Promise.resolve({
+        movementId: 'm-wo',
+        consumed: [],
+        weightedCostPrice: null,
+      });
+    });
+    const svc = makeSvc(createMovement, [{ id: PART1_ID, quantity: 2 }], partUpdate);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (svc as any).writeOffPartsAndCharge(
+      'org-1',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
+      'user-1',
+      undefined,
+    );
+    expect(partUpdate).not.toHaveBeenCalled();
+  });
+
+  it('multiple parts → кожен отримує окремий update із власним batchCostPrice', async () => {
+    const partUpdate = vi.fn().mockResolvedValue({});
+    const createMovement = vi.fn().mockImplementation((_, dto) => {
+      if (dto.type === 'RESERVATION_RELEASE') {
+        return Promise.resolve({ movementId: 'm-rel', consumed: [], weightedCostPrice: null });
+      }
+      // Різні cost для різних partId
+      const cost = dto.documentLineId === PART1_ID ? 100 : 250;
+      return Promise.resolve({
+        movementId: 'm-wo',
+        consumed: [{ batchId: BATCH1_ID, quantity: dto.quantity * -1, costPrice: cost }],
+        weightedCostPrice: cost,
+      });
+    });
+    const svc = makeSvc(
+      createMovement,
+      [
+        { id: PART1_ID, quantity: 2 },
+        { id: PART2_ID, quantity: 1 },
+      ],
+      partUpdate,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (svc as any).writeOffPartsAndCharge(
+      'org-1',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
+      'user-1',
+      undefined,
+    );
+    expect(partUpdate).toHaveBeenCalledTimes(2);
+    const call1 = partUpdate.mock.calls.find(c => c[0].where.id === PART1_ID);
+    const call2 = partUpdate.mock.calls.find(c => c[0].where.id === PART2_ID);
+    expect(call1?.[0].data.batchCostPrice).toBe(100);
+    expect(call2?.[0].data.batchCostPrice).toBe(250);
+  });
+
+  it('WRITEOFF не передає price (собівартість береться з партій, не з price ЯКА ЄЦІНА ПРОДАЖУ)', async () => {
+    const partUpdate = vi.fn().mockResolvedValue({});
+    const createMovement = vi.fn().mockImplementation((_, dto) => {
+      if (dto.type === 'RESERVATION_RELEASE') {
+        return Promise.resolve({ movementId: 'm-rel', consumed: [], weightedCostPrice: null });
+      }
+      return Promise.resolve({
+        movementId: 'm-wo',
+        consumed: [{ batchId: BATCH1_ID, quantity: 2, costPrice: 100 }],
+        weightedCostPrice: 100,
+      });
+    });
+    const svc = makeSvc(createMovement, [{ id: PART1_ID, quantity: 2 }], partUpdate);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (svc as any).writeOffPartsAndCharge(
+      'org-1',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
+      'user-1',
+      undefined,
+    );
+    // WRITEOFF DTO не має ключа price (собівартість береться з партій)
+    const wo = createMovement.mock.calls.find(c => c[1].type === 'WRITEOFF');
+    expect(wo?.[1]).not.toHaveProperty('price');
+    // documentLineId = part.id (для BatchConsumption trace)
+    expect(wo?.[1].documentLineId).toBe(PART1_ID);
+  });
+});

@@ -1793,3 +1793,66 @@ Static-checks passed (0 bugs found у цих секціях):
 - **Severity:** MEDIUM.
 - **Де шукати ще:** grep @Post.\*restore у controllers -> для кожного мін. 3 тести у sibling spec.
 - **Статус:** [x] виправлено
+
+## Session 2026-09-02 (targeted /sto-tester, HEAD 450e2a24, feat/supplier-payments) — FIFO/COGS підключення (commit 19f81ccb)
+
+Живе тестування ФІНАНСОВОЇ зміни: партійне списання (FIFO/LIFO/FEFO/AVG_COST) + COGS у WorkOrderPart.batchCostPrice + TRANSFER cost carry + reconcile міграція. 10 сценаріїв через curl:
+
+1. **LIFO live** — WRITEOFF 5 бере найновішу партію @120 → rem 10→5. ✅
+2. **FEFO live** — з null-expiry обома партіями → fallback createdAt asc → rem @100: 10→7. ✅
+3. **AVG_COST live** — weighted 108.33; фізично FIFO спадає @100: 7→5. ✅
+4. **Shortage guard** — WRITEOFF 100 при available=10 → 400 «Недостатньо товару». Партії та StockItem не змінилися. ✅
+5. **TRANSFER cost carry** (single-batch) — 5 з @100 → target отримує batch costPrice=100 (НЕ salePrice=200). ✅
+6. **TRANSFER span** — 5 з @40+@60 → target 1 batch costPrice=48 (weighted). ✅
+7. **WO COMPLETED single-batch** — batchCostPrice=120, batchId=<uuid>, StockMovement.WRITEOFF.batchId=<uuid>, BatchConsumption.documentLineId=part.id. ✅
+8. **WO span** — costPrice=58 (weighted 3×50+2×70)/5, batchId=NULL, 2 BatchConsumption. ✅
+9. **RESERVATION** не чіпає партії (reserved=3, remaining незмінні). ✅
+10. **Partial multi-writeoff одної партії** двічі — batch @50 rem: 10→7→3. ✅
+11. **supplier-return** живий — @70 rem 1→0, batch inactive. ✅
+12. **Reconcile міграція idempotent** — no-op при чистій БД (18 consumptions до/після). ✅
+13. **Reconcile deficit** — штучний +100 → FIFO доспоживає до інваріанту (rem back to 5). ✅
+14. **Глобальний інваріант Σremaining==StockItem.quantity** — 0 mismatches по всіх org/good/warehouse. ✅
+
+Регресія: усе OK. Тести реальних сценаріїв усі зелені. Знайдено 3 **coverage gap** баги (тестова інфраструктура, не runtime):
+
+### Bug #609 — HIGH test-coverage — writeOffPartsAndCharge batchCostPrice/batchId writeback без regression-guard
+
+- **Файл:** apps/api/src/modules/work-orders/work-orders.service.ts:885-908 (writeOffPartsAndCharge); apps/api/src/modules/work-orders/work-orders.service.spec.ts (0 tests для методу).
+- **Симптом:** commit 19f81ccb додає CRITICAL логіку: після inventory.createMovement(WRITEOFF) → якщо weightedCostPrice != null, записує WorkOrderPart.batchCostPrice + batchId. Без цього WorkOrderPart залишиться з costPrice=null → звіт рентабельності показує NULL cost → маржа неточна. Refactor який видалить блок `if (writeoff.weightedCostPrice != null) { db.workOrderPart.update({...}) }` пройде CI зеленим — існують тільки live-E2E (повільні + потребують БД).
+- **Причина виникнення:** нова інтеграція складна (4 sync-writes: RESERVATION_RELEASE → WRITEOFF → WorkOrderPart.update → SettlementsService.createTransaction). Пропущений test-plan.
+- **Виявлено:** grep `batchCostPrice.*update\|weightedCostPrice.*data:` у work-orders.service.spec.ts → 0 matches.
+- **Fix:** додано 5 нових тестів у `describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId writeback')`:
+  1. single-batch → part.batchCostPrice + part.batchId проставляються.
+  2. span >1 batch → batchCostPrice=weighted, batchId=NULL.
+  3. weightedCostPrice=null → workOrderPart.update НЕ викликається.
+  4. multiple parts → кожен окремий update із власним costPrice.
+  5. WRITEOFF не передає price (собівартість з партій, не ціна продажу).
+- **Severity:** HIGH — фінансова точність рентабельності залежить від цього write-back.
+- **Де шукати ще:** будь-який `createMovement(WRITEOFF)` виклик де caller зберігає `weightedCostPrice` — перевірити наявність парного `<row>.update` тесту.
+- **Статус:** [x] виправлено
+
+### Bug #610 — HIGH test-coverage — TRANSFER cost-carry (src.weightedCostPrice → target.price) без regression-guard
+
+- **Файл:** apps/api/src/modules/stock-documents/stock-documents.service.ts:350-374 (SEQUENTIAL WRITEOFF+RECEIPT у TRANSFER); stock-documents.service.spec.ts не мала тесту для TRANSFER-path.
+- **Симптом:** commit 19f81ccb змінив TRANSFER з Promise.all на SEQUENTIAL: src=await createMovement(WRITEOFF) → target createMovement(RECEIPT, price=src.weightedCostPrice ?? baseArgs.price). Без цього target partia створювалася з salePrice/0 замість реальної FIFO cost джерела. Регресія (повернення до Promise.all): цільові партії з ціною продажу → cost-carry зламаний → рентабельність недостовірна для товарів переміщених між складами.
+- **Причина виникнення:** оригінальна Promise.all-версія оптимізована на швидкість, але не враховувала що target price МАЄ бути FIFO cost джерела (щоб рентабельність з target warehouse рахувалася від правильної собівартості).
+- **Виявлено:** grep `TRANSFER.*weightedCostPrice\|src\.weightedCostPrice` у stock-documents.service.spec.ts → 0 matches. Verified live: TRANSFER 5×@40 → target batch cost=40 (не salePrice=100 з lines.price).
+- **Fix:** додано 2 нових тести:
+  1. TRANSFER передає src.weightedCostPrice=42 у target.price (НЕ baseArgs.price=100).
+  2. TRANSFER fallback: коли weightedCostPrice=null → target.price = baseArgs.price.
+- **Severity:** HIGH — рентабельність multi-склад бізнесу.
+- **Статус:** [x] виправлено
+
+### Bug #611 — MEDIUM test-coverage — LIFO/FEFO/FIFO orderBy без regression-guard у batch.service.spec
+
+- **Файл:** apps/api/src/modules/inventory/batch.service.ts:180-185 (consumeBatch orderBy switch); batch.service.spec.ts — тільки AVG_COST і FIFO happy-path, без LIFO/FEFO.
+- **Симптом:** switch за costMethod у consumeBatch: LIFO=[createdAt:desc], FEFO=[expiryDate:asc nulls:last, createdAt:asc], FIFO=[createdAt:asc]. Refactor який поміняє asc↔desc або видалить nulls:last пройде CI зеленим (у батчах з null expiry FEFO стає FIFO — silent regression).
+- **Причина виникнення:** costMethod було FIFO-only довший час; LIFO/FEFO/AVG_COST додано пізніше без парного unit-тесту (existed lookup only у AVG_COST path).
+- **Виявлено:** grep `LIFO\|FEFO` у batch.service.spec.ts → 0 matches (тільки AVG_COST).
+- **Fix:** додано 3 тести до `describe('consumeBatch')`:
+  1. LIFO orderBy = [createdAt:desc].
+  2. FEFO orderBy = [expiryDate:asc nulls:last, createdAt:asc].
+  3. FIFO orderBy = [createdAt:asc].
+- **Severity:** MEDIUM — silent regression у cost-method за замовчуванням для клієнтів з не-FIFO налаштуваннями.
+- **Де шукати ще:** будь-який `switch (costMethod)` / `switch (paymentMethod)` / `switch (docType)` map з різними orderBy/filter — перевірити регресійне покриття кожної гілки.
+- **Статус:** [x] виправлено
