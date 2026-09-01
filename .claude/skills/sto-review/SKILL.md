@@ -167,6 +167,7 @@ grep -rn "@Get\|@Post\|@Patch\|@Delete" apps/api/src/modules/ --include="*.contr
 - [ ] `costPrice`, `purchasePrice`, `salePrice`, `priceHistory`, `margin` → тільки `OWNER/ADMIN/STOREKEEPER/ACCOUNTANT`
 - [ ] `/setup/init` → перевіряє `isAlreadyInitialized()` (anti-replay)
 - [ ] `@CurrentUser()` повертає `{ sub, orgId, role }` — не `any`; у контролерах використовувати `user.id`, не `user.sub` (jwt.strategy.ts повертає `{ id, orgId, role }`)
+- [ ] Restore-endpoint (`POST :id/restore`) → ролі ІДЕНТИЧНІ delete-endpoint. Асиметрія (restore дозволений ширшій ролі ніж delete) = роль може «undo» видалення яке сама не мала права зробити
 
 #### §2.2 Tenant Isolation
 
@@ -287,6 +288,12 @@ grep -rnE "document\.addEventListener\(['\"]keydown" apps/web/src/components/ui 
 
 # Spread SyntheticEvent з заміною target — ламає прототип
 grep -rnE "\{\s*\.\.\.e\s*,\s*target:\s*\{\s*\.\.\.e\.target" apps/web/src/ --include="*.tsx" --include="*.ts"
+
+# Skip-first-run ref (`*LoadedRef` / `mountedRef` / `initedRef`) поруч з toggle-useEffect —
+# перевірити чи ref СКИДАЄТЬСЯ у батьківському (parent-key) useEffect. Інакше при зміні
+# parent-id (counterparty/tab/entity) main useEffect І toggle useEffect обидва фаєрять
+# fetch → дубль-запит + гонка (реф `true` з попередньої сесії парента).
+grep -rnE "(Loaded|Mounted|Inited|SkipFirst)Ref\s*=\s*useRef\(false\)" apps/web/src/ --include="*.tsx"
 ```
 
 - [ ] `addEventListener` → `return () => removeEventListener`
@@ -301,6 +308,7 @@ grep -rnE "\{\s*\.\.\.e\s*,\s*target:\s*\{\s*\.\.\.e\.target" apps/web/src/ --in
 - [ ] `requestAnimationFrame` що мутує DOM/state → id у `useRef<number|null>(null)`; `cancelAnimationFrame` на toggle + у unmount `useEffect(() => () => {...}, [])`
 - [ ] Pair `setTimeout` + `rAF` для анімації → обидва id у refs; cleanup у dedicated unmount-effect
 - [ ] `<Input>` wrapper з mask → НЕ `{ ...e, target: {...e.target, value: X} }` (ламає SyntheticEvent прототип); мутувати `e.target.value` напряму
+- [ ] Skip-first-run ref (`*LoadedRef`) у toggle-useEffect → батьківський (parent-key) useEffect ЯКИЙ ФАЄРИТЬ ПРИ ЗМІНІ CP/entity-id повинен скидати `ref.current = false` (інакше дубль-fetch при switch — main + toggle обидва фаєрять на новий id); ref-декларація перед useEffect що її використовує (уникнення TDZ якщо refactor пересуне блоки)
 
 #### §3.2 Backend
 
