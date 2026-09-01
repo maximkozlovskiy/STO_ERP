@@ -199,6 +199,13 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   );
 }
 
+// Транзакційні знаки/кольори у вкладці «Розрахунки». Джерело правди — бекове BALANCE_SIGN
+// (apps/api/.../settlements.service.ts). BALANCE_UP = +1 (баланс росте); CHARGE_LIKE =
+// нарахування (колір destructive). SUPPLIER_CHARGE (=−1, destructive) відсутній у BALANCE_UP —
+// без нього отримання товару від постачальника малювалось би як «+», хоча зменшує баланс.
+const BALANCE_UP_TX_TYPES = new Set(['CHARGE', 'SUPPLIER_PAYMENT', 'SUPPLIER_REFUND']);
+const CHARGE_LIKE_TX_TYPES = new Set(['CHARGE', 'SUPPLIER_CHARGE']);
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function CounterpartyCardPage() {
@@ -1328,14 +1335,14 @@ export default function CounterpartyCardPage() {
                   <span
                     className={cn(
                       'text-sm font-semibold',
-                      ['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'].includes(t.type)
-                        ? 'text-success'
-                        : 'text-destructive-text',
+                      // Колір за семантикою (як у SettlementsTabContent): нарахування (наш борг/клієнт
+                      // винен) → destructive; оплата/повернення → success.
+                      CHARGE_LIKE_TX_TYPES.has(t.type) ? 'text-destructive-text' : 'text-success',
                     )}
                   >
-                    {['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'].includes(t.type)
-                      ? '-'
-                      : '+'}
+                    {/* Знак = дзеркало бекового BALANCE_SIGN. +1: CHARGE, SUPPLIER_PAYMENT, SUPPLIER_REFUND;
+                        −1: PAYMENT, PREPAYMENT, REFUND, CREDIT_NOTE, SUPPLIER_CHARGE. */}
+                    {BALANCE_UP_TX_TYPES.has(t.type) ? '+' : '-'}
                     {fmtMoney(Math.abs(t.amount))} ₴
                   </span>
                 </div>
