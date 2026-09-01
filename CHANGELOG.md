@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-09-02
+
+### fix(settlements): виправлення знаку балансу постачальника — графік оплат оживає
+
+**Баг (виявлено при створенні тестових даних для календаря оплат):** `receive()` PO писав
+`CHARGE(+1)` постачальнику → баланс ДОДАТНИЙ (наче він винен НАМ), хоча ми отримали товар і
+винні ЙОМУ. Графік оплат (фільтр `balance<0`) і звіт «Взаєморозрахунки» не бачили проведених
+PO — feature фактично мертва (усі 8 SUPPLIER-акаунтів мали `balance>0`).
+
+**Корінь:** `CHARGE`/`PAYMENT` dual-use (клієнт+постачальник) з протилежною семантикою.
+**Рішення (варіант C):** окремі постачальницькі типи — `SUPPLIER_CHARGE(−1)`,
+`SUPPLIER_PAYMENT(+1)`, `SUPPLIER_REFUND(+1)`. Клієнтські `CHARGE(+1)`/`PAYMENT(−1)` незмінні.
+Знак лишається чистою функцією від `type` (BALANCE_SIGN — exported single source).
+
+- **Backend:** enum += 3; BALANCE_SIGN += 3 (exported); 3 writer'и (receive/supplier-payment/
+  supplier-return); reconciliation act переюзує BALANCE_SIGN (усунуто 2-гу копію осі).
+- **Frontend:** TX_LABELS/COLORS + `settlementBalanceTone()` (lib/utils) + BALANCE_UP_TYPES —
+  консолідовано 5 копій осі знаку (SettlementsTabContent + картка контрагента).
+- **Міграції (2 окремі):** ADD VALUE ×3; backfill re-type історичних txs по documentType +
+  recompute `balance=Σ signed(tx)` + syncVersion++.
+- **QA:** sync 0, review 1 (5-та копія осі у картці — виправлено), tester 3
+  (#606 інверсія кольору→спільний хелпер; #607 звіт не фільтрував deleted CP; #608 exhaustive
+  runtime-assert на BALANCE_SIGN знаки).
+
+**Клієнти НЕ зачеплені** (documentType строго розділені; client-balances незмінні). **Звіт
+коректніший** (8 постачальників з фальшивого totalDebit → totalCredit). **Live-інваріант:**
+`balance==Σ signed(tx)` для 139/139 контрагентів. Графік ожив: 7 постачальників по колонках.
+API vitest 1043/1043, web 488/488, tsc 0/0.
+Коміти 23ce9109 + 484f6b92 + d2ae2e7e.
+
+---
+
 ## 2026-09-01 (e)
 
 ### feat(counterparties): після створення картка лишається відкритою в edit-режимі
