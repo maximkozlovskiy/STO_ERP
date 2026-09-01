@@ -1,5 +1,7 @@
 import * as fc from 'fast-check';
 import { describe, it, expect } from 'vitest';
+import { SettlementTransactionType } from '@prisma/client';
+import { BALANCE_SIGN } from './settlements.service';
 
 type TxType =
   | 'CHARGE'
@@ -182,6 +184,59 @@ describe('Settlements — balance invariants (property-based)', () => {
         const balance = applyTransactions([], initialBalance);
         return balance === initialBalance;
       }),
+    );
+  });
+
+  // Bug #608 regression guard: наступний refactor знаку не втратить жодне enum-значення.
+  it('BALANCE_SIGN покриває ВСІ SettlementTransactionType (exhaustive) і кожен ±1', () => {
+    const enumValues = Object.values(SettlementTransactionType);
+    // Не менше 8 значень (CHARGE/PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE + 3 SUPPLIER_*).
+    expect(enumValues.length).toBeGreaterThanOrEqual(8);
+    for (const t of enumValues) {
+      const sign = BALANCE_SIGN[t];
+      expect(sign, `BALANCE_SIGN missing for enum value ${t}`).toBeDefined();
+      expect([1, -1], `BALANCE_SIGN[${t}] must be ±1, got ${sign}`).toContain(sign);
+    }
+    // Явні очікування знаку по кожному типу — інвертація зловиться CI (Bug #606 root cause).
+    expect(BALANCE_SIGN.CHARGE).toBe(1);
+    expect(BALANCE_SIGN.PAYMENT).toBe(-1);
+    expect(BALANCE_SIGN.PREPAYMENT).toBe(-1);
+    expect(BALANCE_SIGN.REFUND).toBe(-1);
+    expect(BALANCE_SIGN.CREDIT_NOTE).toBe(-1);
+    expect(BALANCE_SIGN.SUPPLIER_CHARGE).toBe(-1);
+    expect(BALANCE_SIGN.SUPPLIER_PAYMENT).toBe(1);
+    expect(BALANCE_SIGN.SUPPLIER_REFUND).toBe(1);
+  });
+
+  it('частковий постач. цикл: receive(X) − pay(Y<X) + refund(Z) → −(X−Y−Z)', () => {
+    fc.assert(
+      fc.property(moneyAmount(), moneyAmount(), moneyAmount(), (received, paid, refunded) => {
+        // Пропускаємо надлишкові плати/повернення (реальний BUG-scenario 1: часткова оплата <X)
+        fc.pre(paid <= received);
+        fc.pre(refunded <= received - paid);
+        const balance = applyTransactions([
+          { type: 'SUPPLIER_CHARGE', amount: received },
+          { type: 'SUPPLIER_PAYMENT', amount: paid },
+          { type: 'SUPPLIER_REFUND', amount: refunded },
+        ]);
+        return balance === -(received - paid - refunded);
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it('змішаний BOTH-контрагент: CLIENT CHARGE + SUPPLIER_CHARGE, знаки НЕ інтерферують', () => {
+    fc.assert(
+      fc.property(moneyAmount(), moneyAmount(), (clientDebt, supplierDebt) => {
+        // BOTH-контрагент: WO нарахування (+) і PO receive (−).
+        // Результат = clientDebt − supplierDebt (алгебраїчна сума знаку).
+        const balance = applyTransactions([
+          { type: 'CHARGE', amount: clientDebt }, // клієнт нам винен: +
+          { type: 'SUPPLIER_CHARGE', amount: supplierDebt }, // ми винні постачальнику: −
+        ]);
+        return balance === clientDebt - supplierDebt;
+      }),
+      { numRuns: 300 },
     );
   });
 });

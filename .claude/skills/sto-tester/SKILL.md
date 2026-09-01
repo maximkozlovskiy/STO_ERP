@@ -1036,6 +1036,40 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-02 — після фінансової migration з backfill: audit invariant через live API (Bug #606, #607, #608) — api / backend / frontend / financial-integrity / migration-verification
+
+**Сигнал:** commit виду `fix(settlements): виправлення знаку` / `add enum value + backfill` / будь-яке `packages/database/prisma/migrations/*_backfill_*`. Знак/тип-специфічна логіка (BALANCE_SIGN, вид документа → тип транзакції). Міграція має 2 стадії: (1) ADD ENUM VALUE окремо (Postgres constraint — не можна вживати нове значення у тій самій транзакції); (2) DML backfill (`UPDATE ... SET type=...` + `UPDATE ... SET balance = Σ signed(tx)`).
+
+**Причина виникнення:** знак балансу = чиста функція типу транзакції; але семантика **різна для клієнта і постачальника** (CHARGE:+1 для клієнта = "нам винен" правильно; але той самий CHARGE:+1 для постачальника означав би "постачальник нам винен" — тоді як фактично **ми винні йому**). Old-code `receive() → CHARGE` мовчки писав неправильний знак → баланси постачальників уперто додатні → `getSchedule` (фільтр balance<0) не бачив жодного → feature "мертва" на реальних даних, але тести проходять (spec-level `type='CHARGE' → balance += amount` семантично коректний). Fix: розщепити на 3 нові enum-значення (SUPPLIER_CHARGE/PAYMENT/REFUND) + backfill re-type історичні transactions по строгих `documentType` + recompute balance = Σ signed(tx). У фронтенд-двох місцях знак-код паралельно розходиться (Bug #606).
+
+**Підхід до виявлення:**
+
+1. **Live invariant sweep** — для КОЖНОГО акаунта: `balance == Σ BALANCE_SIGN(tx.type) × tx.amount`. Python-скрипт через API endpoints (`/counterparties/:id/balance` + `/counterparties/:id/transactions?limit=500`); дзеркальний BALANCE_SIGN словник у скрипті. 139 counterparties за <60s. Гарантує ідемпотентність backfill.
+2. **Cross-source coherence** — `/reports/settlements` (totalCredit) vs `/supplier-payments/schedule` (totals.total): має збігатися по СУМІ **для активних (не-deleted) SUPPLIER/BOTH** counterparty (обидва фільтри однакові). Різниця = docstring trade-off (CLIENT balance<0 = переплата = не входить у schedule). Якщо `reports` НЕ фільтрує soft-deleted, а `schedule` фільтрує → різниця = сума боргу soft-deleted CP → **знак-баг у одному з них** (Bug #607).
+3. **Frontend sibling-drift audit** — grep всіх копій `TX_TYPES / balance>0 ? 'destructive' : 'success'` heuristics: не менше 2 файлів (список settlements + картка CP), може бути й у панель-схемах, dashboard-widgets, PDF-templates. Bug #606 сценарій: після enum-розширення обидва місця треба переоцінити семантично (тип-aware colouring; **CLIENT vs SUPPLIER мають РІЗНУ шкалу проблема/OK**).
+4. **BALANCE_SIGN exhaustiveness assert** — vitest `Object.values(SettlementTransactionType).forEach(t => expect(BALANCE_SIGN[t]).toBeDefined())` + явні `expect(BALANCE_SIGN.CHARGE).toBe(1)` на кожен ключ. TS-exhaustive `Record<enum, ...>` дає compile-time guard проти НОВОГО enum-value без запису, але не проти зміни СЕРЕДНЬОГО ключа з `1` на `-1` (реальний Bug #606 root cause).
+5. **Ланцюг end-to-end через API** (сценарій #1): receive(X) → partial SP(Y, Y<X) → balance = −(X−Y); графік показує залишок. Verify SUPPLIER_REFUND(+1) на живому SR — schedule оновлюється, tx-log містить `SUPPLIER_REFUND` рядок (не `REFUND`).
+6. **Client-regression proof** — вибірково для 5-10 CLIENT-акаунтів: `Counter(tx.type)` не містить жодного `SUPPLIER_*`. Backfill не re-typed клієнтські transactions (WorkOrder/Payment documentType недоторкані).
+
+**Підхід до фіксу:**
+
+- **Тип-aware UI helper** у `lib/utils.ts`: `settlementBalanceTone(balance, type)` → `'destructive'|'warning'|'success'|'muted'`. CLIENT>0=red / <0=warning; SUPPLIER<0=red / >0=warning; BOTH=nonzero→red (attention-first, тип-нейтральний). Всі balance-header-и (settlements list, CP detail card, dashboards, panels) імпортують з ONE МІСЦЯ.
+- **Nested soft-delete filter** у звітах над settlement-акаунтами: `where.counterparty = { deletedAt: null }`. Кросс-endpoint узгодженість (report ↔ schedule).
+- **Regression tests** у settlements-invariants: (а) BALANCE_SIGN exhaustive by-enum-value assert; (б) property-based `partial cycle: receive(X) − pay(Y) + refund(Z) → −(X−Y−Z)`; (в) BOTH-mix: `CHARGE(clientDebt) + SUPPLIER_CHARGE(supDebt) → balance = clientDebt − supDebt` (знаки не інтерферують).
+
+**Severity:** HIGH (гроші, фінансові UI/reports узгодженість). Не CRITICAL бо backfill спрацював коректно (invariant 139/139) — але наступна фінансова зміна знаку могла б викликати silent drift.
+
+**Де шукати ще:**
+
+- Reconciliation act (settlements-account.service:133) — вже використовує BALANCE_SIGN, але **новий** endpoint над settlement-транзакціями (aggregate/export/pdf) може дублювати логіку. Grep: `type ==?= 'CHARGE'|'PAYMENT'|'REFUND'`.
+- Dashboard KPI-віджети (`apps/web/src/app/(app)/dashboard/*`) — якщо є "заборгованість" картки, які фільтрують по balance sign, треба тип-aware evaluate.
+- PDF-templates акту звірки — свій копі-код знаку у `pdfmake` docDefinition.
+- Sync-outbox (`apps/api/src/modules/sync-outbox`) — якщо там pending SettlementTransaction зі старими типами (не мали backfill бо не commited), треба check migration coverage.
+- Mobile app (`apps/mobile/src`) — якщо є settlements-екран з локальним copy-in знаку.
+- Виправлення знаку в reports/schedules — треба перевірити чи не залежить від нього публічний API contract (share-token публічний акт-of-recon PDF).
+
+---
+
 ### 2026-09-01 — restore() без парент-chain guard → silent orphan (Bugs #601, #602, #603) — api / backend / data-integrity / soft-delete
 
 **Сигнал:** новий `POST /:id/restore` endpoint над child-агрегатом (Vehicle всередині CustomerGarage всередині Counterparty; CounterpartyContract всередині Counterparty; Invoice всередині WorkOrder; etc.). `service.restore()` робить atomic `updateMany({ where: { id, orgId, NOT: { deletedAt: null } }, data: { deletedAt: null } })` — тінш prep-check на активність parent(-ів). Але sibling `create()` / `findX()` / `updateX()` / `removeX()` того ж модуля мають parent-guard: `findFirst({ id: parentId, orgId, deletedAt: null })` → 404. Асиметрія: guards для читання/створення/зміни ≠ guards для відновлення. Live curl: `DELETE child` → `DELETE parent` → `POST child/restore` → **201** (silent orphan: child.deletedAt=null, parent.deletedAt=not-null; `GET parent/children` → 404 бо parent-guard, а `GET /children/{childId}` — 200 бо шукає тільки за `orgId` + `deletedAt: null`).

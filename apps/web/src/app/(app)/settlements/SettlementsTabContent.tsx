@@ -9,7 +9,7 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
-import { cn } from '@/lib/utils';
+import { cn, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
 interface Counterparty {
@@ -239,11 +239,12 @@ export function SettlementsTabContent() {
                   <div
                     className={cn(
                       'text-2xl font-bold mt-1',
-                      (balance ?? 0) > 0
-                        ? 'text-destructive'
-                        : (balance ?? 0) < 0
-                          ? 'text-success'
-                          : 'text-foreground',
+                      // Bug #606: тип-aware тон — CLIENT/SUPPLIER мають різну шкалу
+                      // «проблема vs OK». Було: >0=red|<0=success (client-only героистика,
+                      // яка інвертувала колір для SUPPLIER balance<0 = «ми винні» → success).
+                      settlementBalanceToneClass(
+                        settlementBalanceTone(balance ?? 0, selected?.type),
+                      ),
                     )}
                   >
                     {balance != null ? fmt(balance) : '—'}

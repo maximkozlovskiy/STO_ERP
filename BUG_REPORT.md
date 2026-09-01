@@ -3,6 +3,59 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-09-02 — sto-tester фінансова зміна знаку балансу постачальника — HEAD d373c8c0
+
+Bug hunt комітів `23ce9109` (fix: BALANCE_SIGN, receive→SUPPLIER_CHARGE, migrations 20260902120000 + 20260902120100) та `484f6b92` (review: sibling-drift у PageClient).
+
+**Baseline (перед сесією):**
+
+- API tsc: 0. Web tsc: 0.
+- Vitest settlements + supplier-payments + supplier-returns + purchase-orders: 146/146 ✅.
+- **Live invariant check** (139 counterparties, всі txs): `balance == Σ BALANCE_SIGN(tx.type) × tx.amount` — 139/139 ✅. Backfill спрацював, дрейфу немає.
+- TX types у БД: `CHARGE:61, PAYMENT:66, SUPPLIER_CHARGE:79, SUPPLIER_PAYMENT:28` (без SUPPLIER_REFUND/PREPAYMENT/REFUND/CREDIT_NOTE).
+- 8 SUPPLIER з balance<0 (сума |−63253|); звіт `/reports/settlements` totalCredit=65253 (різниця 2000 = 2 CLIENT з balance<0: FDGD −1600 + TestClient −400 → переплати клієнтів).
+- `/supplier-payments/schedule?from=2026-09-01&to=2026-12-01`: 7 постачальників, total=60553. Один SUPPLIER (soft-deleted `eaac0311`, balance −700) відфільтрований — це Bug #600 trade-off.
+
+### Bug #606 — MEDIUM frontend/UX — інверсія кольору балансу CP у `SettlementsTabContent` vs `PageClient` (детальна картка) — [x] виправлено
+
+- **Файли:**
+  - `apps/web/src/app/(app)/settlements/SettlementsTabContent.tsx:240-247` — колір balance-header:
+    - `balance > 0` → `text-destructive` (червоний).
+    - `balance < 0` → `text-success` (зелений).
+  - `apps/web/src/app/(app)/counterparties/[id]/PageClient.tsx:1306-1314` — колір balance-header:
+    - `balance < 0` → `text-destructive` (червоний).
+    - `balance > 0` → `text-success` (зелений).
+- **Симптом:** ОДИН і той самий контрагент має **різний колір цифри** на двох сторінках:
+  - Клієнт Іван (CLIENT, balance +7230): у `/settlements` → **ЧЕРВОНИЙ**; у `/counterparties/[id]` → **ЗЕЛЕНИЙ**.
+  - АвтоДеталь ТОВ (SUPPLIER, balance −48553): у `/settlements` → **ЗЕЛЕНИЙ**; у `/counterparties/[id]` → **ЧЕРВОНИЙ**.
+- **Природа:** старий колір-код `SettlementsTabContent` (>0 = red) орієнтований на клієнта: >0 = "клієнт нам винен = проблема стягнути". Після фіксу знаку постачальника (23ce9109) семантика двох типів РІЗНА:
+  - CLIENT: balance>0 = дебіторська (треба стягнути), balance<0 = переплата (треба вирішити).
+  - SUPPLIER: balance<0 = кредиторська (треба оплатити), balance>0 = ми переплатили (аномалія).
+- **Fix:** обидва місця → **єдина тип-aware функція** `settlementBalanceTone(balance, type)` у `lib/utils.ts`: враховує тип CP (`SUPPLIER/BOTH/CLIENT`), повертає `'destructive' | 'warning' | 'success' | 'muted'`. Обидві сторінки читають з неї. `BOTH` — трактуємо як SUPPLIER-first (частіше ми винні за товар, ніж клієнт-переплата), або як **`destructive` для будь-якого ненульового** (безпечно: привертає увагу).
+- **Severity:** MEDIUM — фінансова UI-інверсія, вводить в оману користувача (зелений = "все ок" для боргу, який треба гасити).
+
+### Bug #607 — LOW/CLEANUP backend/reports — `reports.settlements()` не фільтрує soft-deleted counterparty — [x] виправлено
+
+- **Файл:** `apps/api/src/modules/reports/reports.service.ts:307-316` — `findMany` без `counterparty.deletedAt: null`.
+- **Симптом:** звіт "Взаєморозрахунки" показує рядок для soft-deleted CP (`eaac0311` — SUPPLIER, deletedAt=2026-07-03, balance −700, ім'я 'Тест Пост ТОВ') → клацнути неможливо (404). Схема різниться з `/supplier-payments/schedule`, яка фільтрує.
+- **Fix:** `where.counterparty = { deletedAt: null }` (Prisma nested filter). Розбіжність docstring Bug #600 продовжує існувати лише для `type in (SUPPLIER,BOTH) but balance<0 та CLIENT з balance<0` — обидва тепер вже узгоджені, docstring переписати.
+- **Severity:** LOW — cleanup, не критично для рахування.
+
+### Bug #608 — HIGH backend/regression-guard — 0 тестів на **тип-роздільність** знаку у settlements-invariants suite — [x] виправлено
+
+- **Файл:** `apps/api/src/modules/settlements/settlements.invariants.spec.ts`.
+- **Симптом:** invariants spec існує (10 тестів), перевіряє `getSchedule` та `reports.settlements`, але після фіксу 23ce9109 — жоден тест не гарантує, що:
+  - SUPPLIER_CHARGE не потрапить у CLIENT-акаунт (бо `documentType='PurchaseOrder'` унікальний).
+  - Після повного циклу receive → supplier-payment SUPPLIER-balance повертається у 0 (property-invariant).
+  - Клієнтські CHARGE/PAYMENT не рестарт-mixed з SUPPLIER-типами (regression, що backfill не re-typed CLIENT-транзакції).
+- **Fix:** +3 regression-тести:
+  1. `full supplier cycle: receive(1000) → supplier-payment(1000) → balance=0` (property invariant).
+  2. `partial receive + partial payment + refund: balance = −(recv − pay − ref)`.
+  3. `BALANCE_SIGN exhaustiveness: for each SettlementTransactionType, sign is ±1 (compile-time via Record<enum, ...>) + runtime assert 8 keys`.
+- **Severity:** HIGH — regression-guard gap на фінансовій зміні (гроші!). Наступний refactor знаку не впаде на CI.
+
+---
+
 ## Session 2026-08-30 — sto-tester FIFO-графік + колонки оплати — HEAD 05ebbeb1
 
 Автоматичний bug hunt для комітів `282d5fba` (feat: FIFO-графік + outstanding колонки)

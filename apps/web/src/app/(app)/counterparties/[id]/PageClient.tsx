@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
-import { cn, daysUntil } from '@/lib/utils';
+import { cn, daysUntil, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { AnimatedBody } from '@/components/ui/modal';
 import { fmtMoney, fmtInt, fmtDate, kyivToday } from '@/lib/format';
 import {
@@ -1306,11 +1306,11 @@ export default function CounterpartyCardPage() {
               <p
                 className={cn(
                   'text-xl font-bold',
-                  cp.balance < 0
-                    ? 'text-destructive'
-                    : cp.balance > 0
-                      ? 'text-success'
-                      : 'text-muted-foreground',
+                  // Bug #606: тип-aware тон (див. settlementBalanceTone у lib/utils).
+                  // Було: <0=red|>0=success (лише supplier-first) → інвертувало
+                  // колір для клієнтської переплати (CLIENT balance<0 → red = «проблема»
+                  // замість warning) і показувало клієнтський борг (CLIENT>0) як «success».
+                  settlementBalanceToneClass(settlementBalanceTone(cp.balance, cp.type)),
                 )}
               >
                 {fmtMoney(cp.balance)} ₴
