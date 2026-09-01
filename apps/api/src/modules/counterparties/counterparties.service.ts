@@ -296,7 +296,11 @@ export class CounterpartiesService {
       throw new BadRequestException('Клієнт може мати лише договір Продажу');
   }
 
-  async findContracts(orgId: string, counterpartyId: string): Promise<ContractResponseDto[]> {
+  async findContracts(
+    orgId: string,
+    counterpartyId: string,
+    showDeleted = false,
+  ): Promise<ContractResponseDto[]> {
     const [cp, items] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: counterpartyId, orgId, deletedAt: null },
@@ -304,14 +308,35 @@ export class CounterpartiesService {
       }),
       // findMany without take is OOM risk. 200 is generous —
       // realistic contract count per counterparty is <10.
+      // showDeleted: показує soft-deleted договори (форма контрагента, галка).
       this.prisma.counterpartyContract.findMany({
-        where: { counterpartyId, orgId, deletedAt: null },
+        where: { counterpartyId, orgId, ...(showDeleted ? {} : { deletedAt: null }) },
         orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
         take: 200,
       }),
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     return items.map(c => this.toContractDto(c));
+  }
+
+  async restoreContract(
+    orgId: string,
+    counterpartyId: string,
+    contractId: string,
+  ): Promise<ContractResponseDto> {
+    // Atomic updateMany з `NOT: { deletedAt: null }` (еталон brands.service.restore).
+    // isPrimary → false при відновленні: інакше можливий ДРУГИЙ головний того ж
+    // contractType (якщо за час видалення інший став головним). Користувач за потреби
+    // робить відновлений головним вручну — уникаємо дубля-primary без зайвого запиту.
+    const result = await this.prisma.counterpartyContract.updateMany({
+      where: { id: contractId, counterpartyId, orgId, NOT: { deletedAt: null } },
+      data: { deletedAt: null, isPrimary: false },
+    });
+    if (result.count === 0) throw new NotFoundException('Видалений договір не знайдено');
+    const contract = await this.prisma.counterpartyContract.findFirstOrThrow({
+      where: { id: contractId, orgId },
+    });
+    return this.toContractDto(contract);
   }
 
   async createContract(

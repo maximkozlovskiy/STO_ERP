@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Pencil } from 'lucide-react';
+import { Plus, Trash2, Pencil, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
@@ -51,6 +51,7 @@ type Vehicle = {
   year: number | null;
   licensePlate: string;
   vin?: string | null;
+  deletedAt?: string | null;
 };
 
 type ModalWorkOrder = {
@@ -72,6 +73,7 @@ type ModalContract = {
   creditLimit: number | null;
   currencyCode: string;
   paymentDeferDays: number | null;
+  deletedAt?: string | null;
 };
 
 // Доступні види договору за типом контрагента: SUPPLIER → лише Купівля,
@@ -182,6 +184,8 @@ export function CounterpartyEditModal({
   const [deletingVehicleId, setDeletingVehicleId] = useState<string | null>(null);
   // Редагування наявного авто: id → форма prefill; null → режим створення.
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
+  // Галки «Показувати видалені» (soft-deleted авто/договори) у формі контрагента.
+  const [showDeletedVehicles, setShowDeletedVehicles] = useState(false);
   const [addVehicleForm, setAddVehicleForm] = useState({
     make: '',
     model: '',
@@ -214,6 +218,7 @@ export function CounterpartyEditModal({
   // Редагування наявного договору: id → форма prefill; null → режим створення.
   const [editingContractId, setEditingContractId] = useState<string | null>(null);
   const [deletingContractId, setDeletingContractId] = useState<string | null>(null);
+  const [showDeletedContracts, setShowDeletedContracts] = useState(false);
   const [orgCurrency, setOrgCurrency] = useState('UAH');
   const [currencies, setCurrencies] = useState<{ code: string; name: string }[]>([]);
   const [addContractForm, setAddContractForm] = useState({
@@ -245,6 +250,9 @@ export function CounterpartyEditModal({
     setContractsError('');
     setShowAddVehicle(false);
     setShowAddContract(false);
+    // Галки видалених скидаються при відкритті модалки для (іншого) контрагента.
+    setShowDeletedVehicles(false);
+    setShowDeletedContracts(false);
 
     setModalVehiclesLoading(true);
     // sto-optimize: parallel garages (для defaultGarageId) + bulk vehicles
@@ -294,6 +302,65 @@ export function CounterpartyEditModal({
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, counterparty?.id]);
+
+  // Перезавантаження авто при перемиканні галки «Показувати видалені» (both directions —
+  // toggle-on показує deleted, toggle-off ховає їх назад). Не спрацьовує на open —
+  // ефект-mount співпадає з дефолтом false, а головний useEffect уже завантажив активні.
+  const vehiclesLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!open || !counterparty) {
+      vehiclesLoadedRef.current = false;
+      return;
+    }
+    // Skip перший прогін після open (дефолт false вже завантажений головним useEffect).
+    if (!vehiclesLoadedRef.current) {
+      vehiclesLoadedRef.current = true;
+      return;
+    }
+    const vReqId = ++modalVehiclesReqRef.current;
+    setModalVehiclesLoading(true);
+    const qs = showDeletedVehicles ? '&showDeleted=true' : '';
+    apiFetch<Vehicle[]>(`/vehicles?counterpartyId=${counterparty.id}${qs}`)
+      .then(vehicles => {
+        if (modalVehiclesReqRef.current === vReqId) setModalVehicles(vehicles);
+      })
+      .catch(err => {
+        if (modalVehiclesReqRef.current === vReqId)
+          setVehiclesError(err instanceof Error ? err.message : 'Помилка завантаження авто');
+      })
+      .finally(() => {
+        if (modalVehiclesReqRef.current === vReqId) setModalVehiclesLoading(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDeletedVehicles, open, counterparty?.id]);
+
+  // Перезавантаження договорів при перемиканні галки (both directions).
+  const contractsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!open || !counterparty) {
+      contractsLoadedRef.current = false;
+      return;
+    }
+    if (!contractsLoadedRef.current) {
+      contractsLoadedRef.current = true;
+      return;
+    }
+    const cReqId = ++modalContractsReqRef.current;
+    setModalContractsLoading(true);
+    const qs = showDeletedContracts ? '?showDeleted=true' : '';
+    apiFetch<ModalContract[]>(`/counterparties/${counterparty.id}/contracts${qs}`)
+      .then(items => {
+        if (modalContractsReqRef.current === cReqId) setModalContracts(items ?? []);
+      })
+      .catch(err => {
+        if (modalContractsReqRef.current === cReqId)
+          setContractsError(err instanceof Error ? err.message : 'Помилка завантаження договорів');
+      })
+      .finally(() => {
+        if (modalContractsReqRef.current === cReqId) setModalContractsLoading(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDeletedContracts, open, counterparty?.id]);
 
   useEffect(() => {
     if (!open) return;
@@ -457,7 +524,13 @@ export function CounterpartyEditModal({
     try {
       await apiFetch(`/vehicles/${id}`, { method: 'DELETE' });
       if (currentCpIdRef.current !== cpIdAtStart) return;
-      setModalVehicles(v => v.filter(x => x.id !== id));
+      // З галкою «показувати видалені» — лишаємо рядок, позначаємо deletedAt (покаже бейдж
+      // + кнопку «Відновити»). Без галки — прибираємо зі списку.
+      setModalVehicles(v =>
+        showDeletedVehicles
+          ? v.map(x => (x.id === id ? { ...x, deletedAt: new Date().toISOString() } : x))
+          : v.filter(x => x.id !== id),
+      );
       // Якщо редагували саме це авто — закриваємо форму.
       if (editingVehicleId === id) resetVehicleForm();
       toast.success('Авто видалено');
@@ -470,6 +543,22 @@ export function CounterpartyEditModal({
       } else {
         toast.error(msg);
       }
+    } finally {
+      setDeletingVehicleId(null);
+    }
+  };
+
+  const restoreVehicle = async (v: Vehicle) => {
+    const cpIdAtStart = counterparty?.id ?? null;
+    setDeletingVehicleId(v.id);
+    try {
+      const restored = await apiFetch<Vehicle>(`/vehicles/${v.id}/restore`, { method: 'POST' });
+      if (currentCpIdRef.current !== cpIdAtStart) return;
+      setModalVehicles(list => list.map(x => (x.id === restored.id ? restored : x)));
+      toast.success('Авто відновлено');
+    } catch (e: unknown) {
+      if (currentCpIdRef.current === cpIdAtStart)
+        toast.error(e instanceof Error ? e.message : 'Помилка');
     } finally {
       setDeletingVehicleId(null);
     }
@@ -576,21 +665,49 @@ export function CounterpartyEditModal({
       await apiFetch(`/counterparties/${cpIdAtStart}/contracts/${c.id}`, { method: 'DELETE' });
       if (currentCpIdRef.current !== cpIdAtStart) return; // CP змінився — drop
       setModalContracts(prev => {
-        const next = prev.filter(x => x.id !== c.id);
+        // З галкою «показувати видалені» — лишаємо рядок, позначаємо deletedAt + isPrimary=false
+        // (видалений не може бути головним). Без галки — прибираємо зі списку.
+        let next = showDeletedContracts
+          ? prev.map(x =>
+              x.id === c.id ? { ...x, deletedAt: new Date().toISOString(), isPrimary: false } : x,
+            )
+          : prev.filter(x => x.id !== c.id);
         // Бек промоутить наступний головний того ж типу (найстаріший) у тому ж $transaction.
-        // Дзеркалимо optimistic: якщо видалили головний — робимо головним перший наявний
-        // ТОГО Ж contractType у списку. Бек сортує `[isPrimary desc, createdAt asc]`, але
-        // після видалення primary у решти same-type isPrimary=false → тайбрейк за createdAt asc
+        // Дзеркалимо optimistic: якщо видалили головний — робимо головним перший АКТИВНИЙ
+        // ТОГО Ж contractType. Бек сортує `[isPrimary desc, createdAt asc]`, але після
+        // видалення primary у решти same-type isPrimary=false → тайбрейк за createdAt asc
         // → findIndex дає найстаріший, що збігається з беком. Істина — при перевідкритті.
         if (c.isPrimary) {
-          const idx = next.findIndex(x => x.contractType === c.contractType);
-          if (idx >= 0) next[idx] = { ...next[idx], isPrimary: true };
+          const idx = next.findIndex(x => x.contractType === c.contractType && !x.deletedAt);
+          if (idx >= 0) next = next.map((x, i) => (i === idx ? { ...x, isPrimary: true } : x));
         }
         return next;
       });
       // Якщо редагували саме цей договір — закриваємо форму.
       if (editingContractId === c.id) resetContractForm();
       toast.success('Договір видалено');
+    } catch (e: unknown) {
+      if (currentCpIdRef.current === cpIdAtStart)
+        setContractsError(e instanceof Error ? e.message : 'Помилка');
+    } finally {
+      setDeletingContractId(null);
+    }
+  };
+
+  const restoreContract = async (c: ModalContract) => {
+    if (!counterparty) return;
+    const cpIdAtStart = counterparty.id;
+    setDeletingContractId(c.id);
+    setContractsError('');
+    try {
+      // Бек restore ставить isPrimary=false (уникнення дубля-головного) — приймаємо as-is.
+      const restored = await apiFetch<ModalContract>(
+        `/counterparties/${cpIdAtStart}/contracts/${c.id}/restore`,
+        { method: 'POST' },
+      );
+      if (currentCpIdRef.current !== cpIdAtStart) return;
+      setModalContracts(prev => prev.map(x => (x.id === restored.id ? restored : x)));
+      toast.success('Договір відновлено');
     } catch (e: unknown) {
       if (currentCpIdRef.current === cpIdAtStart)
         setContractsError(e instanceof Error ? e.message : 'Помилка');
@@ -786,9 +903,20 @@ export function CounterpartyEditModal({
             {!modalVehiclesLoading && !vehiclesError && (
               <>
                 <div className="flex items-center justify-between">
-                  <span className="text-[13px] text-muted-foreground">
-                    {modalVehicles.length} авто
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] text-muted-foreground">
+                      {modalVehicles.length} авто
+                    </span>
+                    <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={showDeletedVehicles}
+                        onChange={e => setShowDeletedVehicles(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-border accent-primary"
+                      />
+                      Показувати видалені
+                    </label>
+                  </div>
                   {!showAddVehicle && (
                     <Button
                       size="sm"
@@ -890,10 +1018,20 @@ export function CounterpartyEditModal({
                         {modalVehicles.map(v => (
                           <tr
                             key={v.id}
-                            className="group bg-surface hover:bg-secondary/50 transition-colors"
+                            className={cn(
+                              'group bg-surface hover:bg-secondary/50 transition-colors',
+                              v.deletedAt && 'opacity-60',
+                            )}
                           >
                             <td className="px-3 py-2 font-medium text-foreground">
-                              {v.make} {v.model}
+                              <span className="flex items-center gap-1.5">
+                                {v.make} {v.model}
+                                {v.deletedAt && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive-subtle text-destructive">
+                                    Видалено
+                                  </span>
+                                )}
+                              </span>
                             </td>
                             <td className="px-3 py-2 text-muted-foreground">
                               {v.licensePlate || '—'}
@@ -901,23 +1039,37 @@ export function CounterpartyEditModal({
                             <td className="px-3 py-2 text-muted-foreground">{v.year ?? '—'}</td>
                             <td className="px-3 py-2 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <button
-                                  type="button"
-                                  title="Редагувати"
-                                  onClick={() => startEditVehicle(v)}
-                                  className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-secondary hover:text-foreground transition"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Видалити"
-                                  onClick={() => deleteVehicle(v.id)}
-                                  disabled={deletingVehicleId === v.id}
-                                  className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive-subtle hover:text-destructive transition disabled:opacity-50"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                {v.deletedAt ? (
+                                  <button
+                                    type="button"
+                                    title="Відновити"
+                                    onClick={() => restoreVehicle(v)}
+                                    disabled={deletingVehicleId === v.id}
+                                    className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition disabled:opacity-50"
+                                  >
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      title="Редагувати"
+                                      onClick={() => startEditVehicle(v)}
+                                      className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-secondary hover:text-foreground transition"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Видалити"
+                                      onClick={() => deleteVehicle(v.id)}
+                                      disabled={deletingVehicleId === v.id}
+                                      className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive-subtle hover:text-destructive transition disabled:opacity-50"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -956,9 +1108,20 @@ export function CounterpartyEditModal({
             {!modalContractsLoading && !contractsError && (
               <>
                 <div className="flex items-center justify-between">
-                  <span className="text-[13px] text-muted-foreground">
-                    {modalContracts.length} договор{modalContracts.length === 1 ? '' : 'ів'}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] text-muted-foreground">
+                      {modalContracts.length} договор{modalContracts.length === 1 ? '' : 'ів'}
+                    </span>
+                    <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={showDeletedContracts}
+                        onChange={e => setShowDeletedContracts(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-border accent-primary"
+                      />
+                      Показувати видалені
+                    </label>
+                  </div>
                   {!showAddContract && (
                     <Button
                       size="sm"
@@ -1161,14 +1324,22 @@ export function CounterpartyEditModal({
                         {modalContracts.map(c => (
                           <tr
                             key={c.id}
-                            className="group bg-surface hover:bg-secondary/50 transition-colors"
+                            className={cn(
+                              'group bg-surface hover:bg-secondary/50 transition-colors',
+                              c.deletedAt && 'opacity-60',
+                            )}
                           >
                             <td className="px-3 py-2 font-medium text-foreground">
                               <span className="flex items-center gap-1.5">
                                 {c.number}
-                                {c.isPrimary && (
+                                {c.isPrimary && !c.deletedAt && (
                                   <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary">
                                     Головний
+                                  </span>
+                                )}
+                                {c.deletedAt && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive-subtle text-destructive">
+                                    Видалено
                                   </span>
                                 )}
                               </span>
@@ -1184,23 +1355,37 @@ export function CounterpartyEditModal({
                             </td>
                             <td className="px-3 py-2 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <button
-                                  type="button"
-                                  title="Редагувати"
-                                  onClick={() => startEditContract(c)}
-                                  className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-secondary hover:text-foreground transition"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Видалити"
-                                  disabled={deletingContractId === c.id}
-                                  onClick={() => deleteContract(c)}
-                                  className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive-subtle hover:text-destructive transition disabled:opacity-50"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                {c.deletedAt ? (
+                                  <button
+                                    type="button"
+                                    title="Відновити"
+                                    disabled={deletingContractId === c.id}
+                                    onClick={() => restoreContract(c)}
+                                    className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition disabled:opacity-50"
+                                  >
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      title="Редагувати"
+                                      onClick={() => startEditContract(c)}
+                                      className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-secondary hover:text-foreground transition"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Видалити"
+                                      disabled={deletingContractId === c.id}
+                                      onClick={() => deleteContract(c)}
+                                      className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive-subtle hover:text-destructive transition disabled:opacity-50"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>
