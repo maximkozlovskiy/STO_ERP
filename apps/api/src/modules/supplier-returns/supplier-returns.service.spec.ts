@@ -193,10 +193,9 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(orgArg).toBe(ORG);
     expect(dtoArg).toMatchObject({
       counterpartyId: SUPPLIER_ID,
-      // REFUND, НЕ PAYMENT. Семантика: постачальник повертає нам гроші / наш борг ↓.
-      // BALANCE_SIGN[REFUND] = -1 → balance decrement (так само як PAYMENT) АЛЕ
-      // без помилкового запису "ми надіслали гроші постачальнику".
-      type: 'REFUND',
+      // SUPPLIER_REFUND (+1): повернули товар постачальнику → наш борг перед ним ↓.
+      // НЕ REFUND (−1, збільшив би наш борг) і НЕ PAYMENT.
+      type: 'SUPPLIER_REFUND',
       amount: 1000,
       documentType: 'SupplierReturn',
       documentId: SR_ID,

@@ -182,7 +182,7 @@ describe('SupplierPaymentsService — regression guards', () => {
   // confirm() — головний FSM-step
   // ──────────────────────────────────────────────────────────────────────
 
-  it('confirm(): settlement PAYMENT (НЕ CHARGE, НЕ REFUND) + documentType=SupplierPayment', async () => {
+  it('confirm(): settlement SUPPLIER_PAYMENT (+1, наш борг ↓) + documentType=SupplierPayment', async () => {
     prisma.supplierPayment.findFirst
       .mockResolvedValueOnce({ status: SupplierPaymentStatus.DRAFT }) // pre-check
       .mockResolvedValueOnce({
@@ -199,7 +199,7 @@ describe('SupplierPaymentsService — regression guards', () => {
     expect(orgArg).toBe(ORG);
     expect(dtoArg).toMatchObject({
       counterpartyId: SUPPLIER_ID,
-      type: 'PAYMENT',
+      type: 'SUPPLIER_PAYMENT',
       amount: 500,
       documentType: 'SupplierPayment',
       documentId: SP_ID,

@@ -497,6 +497,18 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
       expect.objectContaining({ unitOfMeasureId: GOOD_UNIT_ID, goodId: GOOD_ID }),
       expect.anything(),
     );
+    // receive пише SUPPLIER_CHARGE (−1: ми винні постачальнику), НЕ CHARGE (+1, клієнтський).
+    // Fix знаку балансу постачальника — без цього графік оплат не бачить проведених PO.
+    expect(settlements.createTransaction).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({
+        counterpartyId: SUPPLIER_ID,
+        type: 'SUPPLIER_CHARGE',
+        amount: 1000,
+        documentType: 'PurchaseOrder',
+      }),
+      expect.anything(),
+    );
   });
 
   it('receive з own-org unitOfMeasureId override → unitOfMeasure.findMany викликано з orgId, override застосовано', async () => {

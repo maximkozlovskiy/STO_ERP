@@ -1,10 +1,26 @@
 import * as fc from 'fast-check';
 import { describe, it, expect } from 'vitest';
 
-type TxType = 'CHARGE' | 'PAYMENT' | 'PREPAYMENT' | 'REFUND' | 'CREDIT_NOTE';
+type TxType =
+  | 'CHARGE'
+  | 'PAYMENT'
+  | 'PREPAYMENT'
+  | 'REFUND'
+  | 'CREDIT_NOTE'
+  | 'SUPPLIER_CHARGE'
+  | 'SUPPLIER_PAYMENT'
+  | 'SUPPLIER_REFUND';
 
-const BALANCE_INCREASING: TxType[] = ['CHARGE'];
-const BALANCE_DECREASING: TxType[] = ['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'];
+// Дзеркалить BALANCE_SIGN (settlements.service). Постачальницькі типи мають окрему семантику:
+// SUPPLIER_CHARGE −1 (ми винні), SUPPLIER_PAYMENT/SUPPLIER_REFUND +1 (наш борг ↓).
+const BALANCE_INCREASING: TxType[] = ['CHARGE', 'SUPPLIER_PAYMENT', 'SUPPLIER_REFUND'];
+const BALANCE_DECREASING: TxType[] = [
+  'PAYMENT',
+  'PREPAYMENT',
+  'REFUND',
+  'CREDIT_NOTE',
+  'SUPPLIER_CHARGE',
+];
 
 /** Кумулятивно застосовує транзакції до початкового балансу. */
 function applyTransactions(txs: { type: TxType; amount: number }[], initialBalance = 0): number {
@@ -75,10 +91,16 @@ describe('Settlements — balance invariants (property-based)', () => {
     );
   });
 
-  it('тільки CHARGE може зробити баланс позитивним з нуля', () => {
+  it('balance-decreasing типи роблять баланс від’ємним з нуля', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom<TxType>('PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'),
+        fc.constantFrom<TxType>(
+          'PAYMENT',
+          'PREPAYMENT',
+          'REFUND',
+          'CREDIT_NOTE',
+          'SUPPLIER_CHARGE',
+        ),
         moneyAmount(),
         (type, amount) => {
           const balance = applyTransactions([{ type, amount }], 0);
@@ -86,6 +108,33 @@ describe('Settlements — balance invariants (property-based)', () => {
         },
       ),
       { numRuns: 200 },
+    );
+  });
+
+  it('balance-increasing типи роблять баланс додатним з нуля', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom<TxType>('CHARGE', 'SUPPLIER_PAYMENT', 'SUPPLIER_REFUND'),
+        moneyAmount(),
+        (type, amount) => {
+          const balance = applyTransactions([{ type, amount }], 0);
+          return balance > 0;
+        },
+      ),
+      { numRuns: 200 },
+    );
+  });
+
+  it('постачальницький цикл SUPPLIER_CHARGE(−X) + SUPPLIER_PAYMENT(+X) → balance = 0', () => {
+    fc.assert(
+      fc.property(moneyAmount(), amount => {
+        const balance = applyTransactions([
+          { type: 'SUPPLIER_CHARGE', amount }, // отримали товар → ми винні
+          { type: 'SUPPLIER_PAYMENT', amount }, // заплатили → борг погашено
+        ]);
+        return balance === 0;
+      }),
+      { numRuns: 300 },
     );
   });
 

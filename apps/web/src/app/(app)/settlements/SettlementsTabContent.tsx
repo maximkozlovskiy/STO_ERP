@@ -14,6 +14,7 @@ import { fmtMoney, fmtDate } from '@/lib/format';
 
 interface Counterparty {
   id: string;
+  type?: string;
   firstName?: string;
   lastName?: string;
   companyName?: string;
@@ -44,6 +45,9 @@ const TX_LABELS: Record<string, string> = {
   PREPAYMENT: 'Передоплата',
   REFUND: 'Повернення',
   CREDIT_NOTE: 'Кредит-нота',
+  SUPPLIER_CHARGE: 'Нарахування (постач.)',
+  SUPPLIER_PAYMENT: 'Оплата постачальнику',
+  SUPPLIER_REFUND: 'Повернення постачальнику',
 };
 const TX_COLORS: Record<string, string> = {
   CHARGE: 'text-destructive',
@@ -51,7 +55,13 @@ const TX_COLORS: Record<string, string> = {
   PREPAYMENT: 'text-success',
   REFUND: 'text-warning',
   CREDIT_NOTE: 'text-muted-foreground',
+  SUPPLIER_CHARGE: 'text-destructive', // збільшує наш борг постачальнику
+  SUPPLIER_PAYMENT: 'text-success', // гасить наш борг
+  SUPPLIER_REFUND: 'text-success',
 };
+// Типи, що ЗБІЛЬШУЮТЬ баланс (BALANCE_SIGN = +1) — для знаку «+»/«−» у рядку транзакції.
+// Дзеркалить бековий BALANCE_SIGN (settlements.service): CHARGE + постачальницькі оплата/повернення.
+const BALANCE_UP_TYPES = new Set(['CHARGE', 'SUPPLIER_PAYMENT', 'SUPPLIER_REFUND']);
 
 function fmt(n: number) {
   return `${fmtMoney(n)} ₴`;
@@ -239,11 +249,15 @@ export function SettlementsTabContent() {
                     {balance != null ? fmt(balance) : '—'}
                   </div>
                   <div className="text-[12px] text-muted-foreground mt-1">
-                    {(balance ?? 0) > 0
-                      ? 'Заборгованість клієнта'
-                      : (balance ?? 0) < 0
-                        ? 'Переплата клієнта'
-                        : 'Немає заборгованостей'}
+                    {(() => {
+                      const b = balance ?? 0;
+                      if (b === 0) return 'Немає заборгованостей';
+                      const isSupplier = selected?.type === 'SUPPLIER' || selected?.type === 'BOTH';
+                      // balance>0 = нам винні; balance<0 = ми винні.
+                      if (b > 0)
+                        return isSupplier ? 'Переплата постачальнику' : 'Заборгованість клієнта';
+                      return isSupplier ? 'Ми винні постачальнику' : 'Переплата клієнта';
+                    })()}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -323,7 +337,7 @@ export function SettlementsTabContent() {
                           TX_COLORS[tx.type] ?? 'text-foreground-muted',
                         )}
                       >
-                        {tx.type === 'CHARGE' ? '+' : '−'}
+                        {BALANCE_UP_TYPES.has(tx.type) ? '+' : '−'}
                         {fmt(tx.amount)}
                       </div>
                     </div>

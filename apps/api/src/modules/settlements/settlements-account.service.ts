@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PdfService } from '../pdf/pdf.service';
 import { CreateReconciliationActDto } from './settlements.dto';
+import { BALANCE_SIGN } from './settlements.service';
 
 // Module-level Intl singleton — DateTimeFormat constructor is the expensive part (locale-data init).
 // Both kyivStartOfDay/kyivEndOfDay used to allocate a new formatter per call; createReconciliationAct
@@ -129,10 +130,12 @@ export class SettlementsAccountService {
 
     // Opening balance derived from current snapshot balance minus in-period delta
     // This avoids a full table scan on the append-only transactions log
-    const periodDelta = transactions.reduce((sum, t) => {
-      const delta = t.type === 'CHARGE' ? Number(t.amount) : -Number(t.amount);
-      return sum + delta;
-    }, 0);
+    // Використовуємо ЄДИНЕ джерело знаку (BALANCE_SIGN) — раніше тут була захардкоджена
+    // копія `type==='CHARGE' ? + : -`, яка не знала про постачальницькі типи (SUPPLIER_*).
+    const periodDelta = transactions.reduce(
+      (sum, t) => sum + BALANCE_SIGN[t.type] * Number(t.amount),
+      0,
+    );
 
     const closingBalance = Number(account.balance);
     const openingBalance = closingBalance - periodDelta;

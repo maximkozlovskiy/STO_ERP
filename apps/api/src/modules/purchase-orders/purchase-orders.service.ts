@@ -586,7 +586,9 @@ export class PurchaseOrdersService {
             orgId,
             {
               counterpartyId: po.supplierId,
-              type: 'CHARGE',
+              // SUPPLIER_CHARGE (−1): отримали товар → МИ винні постачальнику (balance↓).
+              // НЕ CHARGE — той дає +1 (клієнтська семантика «нам винні»).
+              type: 'SUPPLIER_CHARGE',
               amount: receivedAmount,
               documentType: 'PurchaseOrder',
               documentId: id,

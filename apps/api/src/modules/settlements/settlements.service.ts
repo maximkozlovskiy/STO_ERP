@@ -13,17 +13,24 @@ export interface CreateTransactionDto {
   createdBy?: string;
 }
 
-// sto-optimize (cycle 3/3): balance-sign hoisted from createTransaction() body.
-// CHARGE increases balance (client owes us); all other types decrease it.
-// Record (not Partial): TS-exhaustive — a new SettlementTransactionType enum value becomes
-// a compile-time error rather than a silent runtime surprise.
+// ЄДИНЕ ДЖЕРЕЛО ПРАВДИ про знак балансу (balance>0 = нам винні / дебіторська;
+// balance<0 = ми винні / кредиторська). Експортується — reconciliation act
+// (settlements-account.service) використовує ЦЮ мапу замість власної копії.
+//
+// Знак — чиста функція від type. Клієнтські vs постачальницькі типи РОЗДІЛЕНІ, бо
+// семантика протилежна: клієнт CHARGE → клієнт нам винен (+); постачальник отримання
+// товару → МИ винні постачальнику (SUPPLIER_CHARGE −). Той самий тип не можна переюзати.
+// Record (not Partial): TS-exhaustive — новий enum-value → compile-error, не runtime-сюрприз.
 // Called from every FSM transition (invoice→PAID, SP→CONFIRMED, PO/SD receipt) — every request paid alloc.
-const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
-  CHARGE: 1,
-  PAYMENT: -1,
+export const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
+  CHARGE: 1, // клієнт винен нам (наряд/рахунок)
+  PAYMENT: -1, // клієнт заплатив нам
   PREPAYMENT: -1,
   REFUND: -1,
   CREDIT_NOTE: -1,
+  SUPPLIER_CHARGE: -1, // отримали товар → ми винні постачальнику
+  SUPPLIER_PAYMENT: 1, // заплатили постачальнику → наш борг меншає
+  SUPPLIER_REFUND: 1, // повернули товар постачальнику → наш борг меншає
 };
 
 @Injectable()

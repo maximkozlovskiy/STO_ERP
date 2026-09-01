@@ -349,15 +349,14 @@ export class SupplierReturnsService {
 
         const returnAmount = Number(sr.totalAmount);
         if (returnAmount > 0) {
-          // Повернення товару постачальнику: ми відправили йому товар назад, він
-          // повертає нам кошти / зменшує наш борг. Семантика — REFUND
-          // (gross знижує заборгованість, як і PAYMENT, але без помилкового
-          // запису "ми надіслали гроші постачальнику").
+          // Повернення товару постачальнику: ми відправили йому товар назад → наш борг
+          // перед ним зменшується. Семантика — SUPPLIER_REFUND (BALANCE_SIGN = +1,
+          // підіймає від'ємний борг до 0). НЕ REFUND (−1) — той збільшив би наш борг.
           await this.settlements.createTransaction(
             orgId,
             {
               counterpartyId: sr.supplierId,
-              type: 'REFUND',
+              type: 'SUPPLIER_REFUND',
               amount: returnAmount,
               documentType: 'SupplierReturn',
               documentId: id,

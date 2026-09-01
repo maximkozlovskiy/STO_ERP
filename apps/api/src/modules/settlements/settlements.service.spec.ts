@@ -93,6 +93,29 @@ describe('SettlementsService.createTransaction', () => {
     },
   );
 
+  // Постачальницькі типи — окрема семантика знаку (fix знаку балансу постачальника):
+  // отримали товар (SUPPLIER_CHARGE) → ми винні (balance↓); заплатили/повернули → borg↑.
+  it('SUPPLIER_CHARGE декрементує balance на -amount (ми винні постачальнику)', async () => {
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    await service.createTransaction('org-1', dto({ type: 'SUPPLIER_CHARGE', amount: 100 }));
+    expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
+      where: { id: 'acc-1', orgId: 'org-1' },
+      data: { balance: { increment: -100 } },
+    });
+  });
+
+  it.each(['SUPPLIER_PAYMENT', 'SUPPLIER_REFUND'] as const)(
+    '%s інкрементує balance на +amount (наш борг постачальнику меншає)',
+    async type => {
+      prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+      await service.createTransaction('org-1', dto({ type, amount: 100 }));
+      expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
+        where: { id: 'acc-1', orgId: 'org-1' },
+        data: { balance: { increment: 100 } },
+      });
+    },
+  );
+
   it('створює settlementTransaction з усіма полями', async () => {
     prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
     await service.createTransaction(

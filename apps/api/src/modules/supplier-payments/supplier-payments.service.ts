@@ -601,13 +601,14 @@ export class SupplierPaymentsService {
         }
 
         // Оплата постачальнику: ми надсилаємо йому кошти → наш борг зменшується.
-        // Семантика — PAYMENT (BALANCE_SIGN = -1). Без Checkbox і лояльності —
-        // фіскалізація й бонуси стосуються лише клієнтських оплат.
+        // Семантика — SUPPLIER_PAYMENT (BALANCE_SIGN = +1, підіймає від'ємний борг до 0).
+        // НЕ PAYMENT (−1) — той для клієнтської оплати (клієнт платить НАМ). Без Checkbox
+        // і лояльності — фіскалізація й бонуси стосуються лише клієнтських оплат.
         await this.settlements.createTransaction(
           orgId,
           {
             counterpartyId: sp.supplierId,
-            type: 'PAYMENT',
+            type: 'SUPPLIER_PAYMENT',
             amount: Number(sp.amount),
             documentType: 'SupplierPayment',
             documentId: id,

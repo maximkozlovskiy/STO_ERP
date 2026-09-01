@@ -147,6 +147,12 @@ enum SettlementTransactionType {
   REFUND
   PREPAYMENT
   CREDIT_NOTE
+  // Постачальницькі типи — окрема семантика знаку (див. BALANCE_SIGN у settlements.service):
+  // ми отримали товар → ми винні (balance↓); заплатили/повернули → борг меншає (balance↑).
+  // Клієнтські CHARGE(+1)/PAYMENT(−1) НЕ можна переюзати — знак протилежний.
+  SUPPLIER_CHARGE
+  SUPPLIER_PAYMENT
+  SUPPLIER_REFUND
 }
 
 // ─── PHASE 17 ENUMS ──────────────────────────────────────
