@@ -1036,6 +1036,45 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-02 — inventory cost-method switch + COGS writeback: 3-layer regression protocol (Bugs #609, #610, #611) — backend / financial-integrity / test-coverage
+
+**Сигнал:** commit виду `feat(inventory): підключення партійного FIFO-списання` — service метод стає multi-return (`{ movementId, consumed, weightedCostPrice }` замість void), додається switch за `costMethod: 'FIFO' | 'LIFO' | 'FEFO' | 'AVG_COST'` з різним orderBy, а caller (WorkOrder writeoff / StockDocument TRANSFER / SupplierReturn) отримує cost і **записує його назад** у власну row-модель (`WorkOrderPart.batchCostPrice`, `WorkOrderPart.batchId` або target batch у TRANSFER).
+
+**Причина виникнення:** нова інтеграція — 3 незалежні концерни зливаються в один хвіст `$transaction`:
+(1) **cost-method switch** — легко проґавити test для не-default гілки (LIFO/FEFO зі спалахом), кожна `[{ createdAt: 'desc' }]` vs `[{ expiryDate: { sort: 'asc', nulls: 'last' } }, ...]` — детальний Prisma orderBy, refactor який поміняє asc↔desc чи видалить `nulls:'last'` пройде CI зеленим бо тести є тільки на FIFO happy-path;
+(2) **writeback у row-модель** — після createMovement (WRITEOFF) → `if (result.weightedCostPrice != null) { db.workOrderPart.update({...}) }` — блок легко зняти при refactor «прибираю зайвий update» без падіння тестів (жоден spec не мокає write-side);
+(3) **cost carry між рухами** (TRANSFER) — old код був `Promise.all([writeoff, receipt, uom])`; new код SEQUENTIAL: `const src = await writeoff(...); await receipt({ price: src.weightedCostPrice ?? baseArgs.price })`. Refactor що поверне Promise.all для «швидкості» → target batch отримає ціну продажу з lines.price замість реальної FIFO cost джерела → рентабельність multi-склад бізнесу зламана.
+
+**Підхід до виявлення:**
+
+1. **Live invariant sweep через API** — обов'язково для inventory-фін. змін:
+   - **Cost-method matrix**: PATCH `/settings/organisation {costMethod: 'LIFO'|'FEFO'|'AVG_COST'|'FIFO'}` → seed 2-3 партії з різними cost/дата створення → WRITEOFF через `/stock-documents` → перевірити правильну партію списану (LIFO = найновішу, FIFO = найстарішу, FEFO fallback = createdAt asc для null-expiry, AVG_COST weighted).
+   - **Global invariant**: `Σ StockBatch.remainingQty(active) == StockItem.quantity` — Prisma raw query GROUP BY orgId/goodId/warehouseId, HAVING <> — очікується **0 mismatches**.
+   - **Reconcile migration idempotency**: re-run migration SQL → snapshot до/після identical. Injected +100 → re-run → back to expected.
+   - **WO COMPLETED → batchCostPrice trace**: single-batch → `batchCostPrice=X, batchId=<uuid>`; span → `batchCostPrice=weighted, batchId=null`, 2+ BatchConsumption рядки з `documentLineId=part.id`.
+   - **TRANSFER cost carry**: RECEIPT 5×@40 + 5×@60 → TRANSFER 8 → target batch costPrice = (5×40+3×60)/8 = 47.5 (weighted); НЕ salePrice, НЕ lines.price.
+2. **Test-coverage audit** — для кожного нового return-value:
+   - grep у spec-і: чи є `expect(...).batchCostPrice` / `expect(prisma.workOrderPart.update).toHaveBeenCalledWith` для write-back? 0 matches = gap.
+   - grep для orderBy: `expect(...findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: [{ createdAt: 'desc' }] }))` — окремий тест на КОЖНУ гілку switch (LIFO, FEFO, FIFO). Missing branches = MEDIUM.
+3. **Sequential vs Promise.all trap** — grep TRANSFER-логіки: `await Promise.all([.*writeoff.*, .*receipt.*])` = potential regression (не carry-cost). Правильний паттерн: `const src = await writeoff(...); await receipt({ price: src.weightedCostPrice ?? baseArgs.price });`.
+
+**Підхід до фіксу:** додати 3 регресійні тести:
+
+- **writeback тест** (5 сценаріїв): single-batch (batchId set), span (batchId=null), null weightedCostPrice (skip update), multi-parts (окремий update кожен), no-price-arg (WRITEOFF DTO не має `price` бо cost з партій).
+- **cost carry тест** (2 сценарії): TRANSFER передає src.weightedCostPrice=X у target.price (не baseArgs.price); fallback до baseArgs.price коли weightedCostPrice=null.
+- **orderBy switch тест** (3+ сценарії): 1 assertion per cost-method (`expect(prisma.stockBatch.findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: [...] }))` — легкий mock, ловить refactor.
+
+**Severity:** HIGH (Bugs #609, #610) — фінансова точність рентабельності (WO звіт, star-report). MEDIUM (Bug #611) — silent drift для клієнтів на LIFO/FEFO.
+
+**Де шукати ще:**
+
+- Будь-який `service.method()` що змінив signature з `void → { ...compound }` — grep у sibling `.spec.ts` за новими компонентами result — якщо не mock-нуті, callers не тестують writeback.
+- Будь-який `await createMovement(WRITEOFF)` де caller зберігає `weightedCostPrice` — перевірити наявність парного `<row>.update` тесту з `batchCostPrice` у data.
+- Будь-який `switch (costMethod)` / `switch (paymentMethod)` / `switch (docType)` map — окремий unit-тест на кожну гілку, не тільки default happy-path.
+- Sequential $tx ordering: коли Promise.all перетворено на sequential `await` — regression-guard `expect(callOrder).toEqual(['WRITEOFF', 'RECEIPT'])` (спираючись на `mock.calls.map(c => c[1].type)`).
+
+---
+
 ### 2026-09-02 — після фінансової migration з backfill: audit invariant через live API (Bug #606, #607, #608) — api / backend / frontend / financial-integrity / migration-verification
 
 **Сигнал:** commit виду `fix(settlements): виправлення знаку` / `add enum value + backfill` / будь-яке `packages/database/prisma/migrations/*_backfill_*`. Знак/тип-специфічна логіка (BALANCE_SIGN, вид документа → тип транзакції). Міграція має 2 стадії: (1) ADD ENUM VALUE окремо (Postgres constraint — не можна вживати нове значення у тій самій транзакції); (2) DML backfill (`UPDATE ... SET type=...` + `UPDATE ... SET balance = Σ signed(tx)`).
