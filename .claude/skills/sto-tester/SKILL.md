@@ -1036,6 +1036,54 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-01 — restore() без парент-chain guard → silent orphan (Bugs #601, #602, #603) — api / backend / data-integrity / soft-delete
+
+**Сигнал:** новий `POST /:id/restore` endpoint над child-агрегатом (Vehicle всередині CustomerGarage всередині Counterparty; CounterpartyContract всередині Counterparty; Invoice всередині WorkOrder; etc.). `service.restore()` робить atomic `updateMany({ where: { id, orgId, NOT: { deletedAt: null } }, data: { deletedAt: null } })` — тінш prep-check на активність parent(-ів). Але sibling `create()` / `findX()` / `updateX()` / `removeX()` того ж модуля мають parent-guard: `findFirst({ id: parentId, orgId, deletedAt: null })` → 404. Асиметрія: guards для читання/створення/зміни ≠ guards для відновлення. Live curl: `DELETE child` → `DELETE parent` → `POST child/restore` → **201** (silent orphan: child.deletedAt=null, parent.deletedAt=not-null; `GET parent/children` → 404 бо parent-guard, а `GET /children/{childId}` — 200 бо шукає тільки за `orgId` + `deletedAt: null`).
+
+**Причина виникнення:** новий restore-endpoint копіює pattern з простих моделей (brands, colors — flat, без FK на soft-delete-able parent). Розробник фокусується на: (а) atomic updateMany з `NOT:{deletedAt:null}` (race-safety); (б) `NotFoundException` на count===0; (в) tenant `orgId` у where. Пропускає: chain-parent activity. Особливо небезпечно для 2-3 рівнів (Vehicle → Garage → Counterparty): треба joined-check. Live-verifiable за 30 секунд curl, але tsc/vitest без DB-integration тестів — зелені.
+
+**Підхід до виявлення:**
+
+```bash
+# 1. Знайти всі async restore методи
+grep -rn "async restore" apps/api/src/modules --include="*.service.ts" -A5
+
+# 2. Для кожного знайденого - чек чи є parent-guard findFirst({id: parentId, orgId, deletedAt: null}) ПЕРЕД updateMany
+# Grep за idiom "findFirst" у тому самому методі. Якщо тільки `updateMany` — gap.
+
+# 3. Схема parent-chain: відкрити schema.prisma, знайти model X, знайти всі relation fields
+# з `? =` (nullable/optional), перевірити чи parent-model має `deletedAt DateTime?` (soft-delete-able)
+
+# 4. Live-perevirka curl-скриптом:
+#    (a) create parent → create child; (b) DELETE child; (c) DELETE parent;
+#    (d) POST child/restore → якщо 201 = bug
+```
+
+**Підхід до фіксу:** ОДИН `findFirst` перед atomic-restore що (а) знаходить child (включно з `deletedAt:not-null` — це і є "to be restored"), (б) SELECT parent-chain з `deletedAt` полями через nested include/select, (в) distinguisher-логіка:
+
+- child не знайдено / чужа org → `NotFoundException`
+- child вже активний (double-restore) → `NotFoundException` (та сама 404-семантика)
+- parent chain has any `deletedAt !== null` → `BadRequestException` з друnestly-friendly text ("Контрагента авто видалено. Спочатку відновіть контрагента.") — з ПРІОРИТЕТОМ найдальшого предка (CP > garage), бо восстановлення CP автоматично зробить дитячі-restore можливими.
+
+Приклад для Vehicle (2 рівня): `prisma.vehicle.findFirst({ where: {id, orgId}, select: { deletedAt: true, customerGarage: { select: { deletedAt: true, counterparty: { select: { deletedAt: true }}}}}})` → 4 guards у порядку CP > garage > double-restore > tenant.
+
+Для CounterpartyContract (1 рівень): окремий `counterparty.findFirst({id:cpId, orgId, deletedAt:null})` — простіше, дзеркалить sibling-guards (findContracts, createContract, updateContract, removeContract усі мають цей check).
+
+**Severity:** HIGH (data corruption через public API, silent orphan). Не CRITICAL бо lower-tier data (не invoice/settlement), АЛЕ підриває UX-довіру («restore не працює») + може ламати downstream (WorkOrder з vehicleId що вказує на orphan → invalid state).
+
+**Де шукати ще:**
+
+- `WorkOrder.restore()` (якщо додано) — parent: Counterparty, Vehicle (обидва soft-delete-able)
+- `Invoice.restore()` (якщо додано) — parent: WorkOrder, Counterparty
+- `PurchaseOrder.restore()` — parent: Counterparty, CounterpartyContract, Branch/Warehouse
+- `WorkOrderLine.restore()` / `WorkOrderPart.restore()` — parent: WorkOrder (з двома FK: work, part goodId)
+- `StockDocument.restore()` / `StockDocumentLine.restore()` — parent: Warehouse, Branch
+- **BullseyeGrep для нових restore endpoints у майбутньому:** `grep -rn "@Post.*restore" apps/api/src/modules --include="*.controller.ts"` — для кожного sibling `service.restore()` перевірити наявність parent-chain guard.
+
+**Регресія-guard для цього патерну:** для КОЖНОГО нового `restore()` — обов'язковий регресійний тест-набір з мін. 5 кейсами: (1) happy-path (усі парент активні → 201); (2) double-restore (child.deletedAt=null → 404 БЕЗ updateMany); (3) parent-CP soft-deleted → 400 БЕЗ updateMany; (4) parent-garage soft-deleted (якщо 2 рівні) → 400 БЕЗ updateMany; (5) cross-tenant / non-existent → 404 БЕЗ updateMany. `expect(prisma.X.updateMany).not.toHaveBeenCalled()` — критичний assert для fail-closed поведінки (інакше guard видалять "як зайвий" → runtime orphan).
+
+---
+
 ### 2026-08-30 — Cross-field guard + новий single-pass aggregator без regression-test (Bug #597) — api / backend / test-coverage / regression-guard
 
 **Сигнал:** Service-метод має `throw new BadRequestException('...')` для крос-полю validation (наприклад `from > to`, `windowDays > 100`, `startDate > endDate`, `qty > available`) АБО новий single-pass aggregator (типово після optimize-cycle: замінили multi-reduce на for-of + локальні акумулятори у `totals.byX`). Парний `*.spec.ts` НЕ містить жодного `it(...)` для цих guards чи aggregators — grep за унікальним фрагментом error-повідомлення / aggregator-output повертає 0 matches. Це патерн Bug #416 (Serializable inner re-check test) — точно той самий принцип.

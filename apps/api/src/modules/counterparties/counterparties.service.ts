@@ -324,6 +324,14 @@ export class CounterpartiesService {
     counterpartyId: string,
     contractId: string,
   ): Promise<ContractResponseDto> {
+    // Bug #603: parent-CP guard — дзеркалить прекчеки findContracts/create/update/removeContract.
+    // Без цього silent orphan: contract.deletedAt=null, counterparty.deletedAt=not-null →
+    // договір видно через прямий GET, але список для CP повертає 404 (Контрагента не знайдено).
+    const cp = await this.prisma.counterparty.findFirst({
+      where: { id: counterpartyId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
     // Atomic updateMany з `NOT: { deletedAt: null }` (еталон brands.service.restore).
     // isPrimary → false при відновленні: інакше можливий ДРУГИЙ головний того ж
     // contractType (якщо за час видалення інший став головним). Користувач за потреби

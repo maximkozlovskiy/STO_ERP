@@ -576,4 +576,139 @@ describe('CounterpartiesService — contract flows', () => {
       expect(prisma.counterpartyContract.count).not.toHaveBeenCalled();
     });
   });
+
+  // Bug #603 + #605: regression-guard для restoreContract (парний check parent CP + семантика).
+  describe('restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards', () => {
+    it('Bug #603: NotFoundException коли parent CP soft-deleted (найде null → пре-check фейлить ДО updateMany)', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce(null); // CP soft-deleted / не існує
+      await expect(service.restoreContract('org-1', 'cp-1', 'con-1')).rejects.toThrow(
+        /Контрагента не знайдено/,
+      );
+      // Жодного updateMany — без парент-check не пропускаємо на write-path
+      expect(prisma.counterpartyContract.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('NotFoundException коли contract вже активний або не існує (double-restore, updateMany.count===0)', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1' });
+      prisma.counterpartyContract.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.restoreContract('org-1', 'cp-1', 'con-1')).rejects.toThrow(
+        /Видалений договір не знайдено/,
+      );
+    });
+
+    it('пре-check CP містить orgId + deletedAt:null (tenant isolation)', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1' });
+      prisma.counterpartyContract.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.counterpartyContract.findFirstOrThrow = vi.fn().mockResolvedValueOnce({
+        id: 'con-1',
+        orgId: 'org-1',
+        counterpartyId: 'cp-1',
+        number: 'ДГ-1',
+        contractType: 'PURCHASE',
+        startDate: new Date('2026-01-01'),
+        endDate: null,
+        isPrimary: false,
+        creditLimit: null,
+        currencyCode: 'UAH',
+        paymentDeferDays: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      });
+      await service.restoreContract('org-7', 'cp-1', 'con-1');
+      expect(prisma.counterparty.findFirst).toHaveBeenCalledWith({
+        where: { id: 'cp-1', orgId: 'org-7', deletedAt: null },
+        select: { id: true },
+      });
+    });
+
+    it('updateMany where містить counterpartyId + orgId + NOT:{deletedAt:null} (cross-CP + tenant)', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1' });
+      prisma.counterpartyContract.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.counterpartyContract.findFirstOrThrow = vi.fn().mockResolvedValueOnce({
+        id: 'con-1',
+        orgId: 'org-1',
+        counterpartyId: 'cp-1',
+        number: 'ДГ-1',
+        contractType: 'SALE',
+        startDate: new Date('2026-01-01'),
+        endDate: null,
+        isPrimary: false,
+        creditLimit: null,
+        currencyCode: 'UAH',
+        paymentDeferDays: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      });
+      await service.restoreContract('org-1', 'cp-1', 'con-1');
+      expect(prisma.counterpartyContract.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'con-1',
+          counterpartyId: 'cp-1',
+          orgId: 'org-1',
+          NOT: { deletedAt: null },
+        },
+        data: { deletedAt: null, isPrimary: false },
+      });
+    });
+
+    it('data містить isPrimary:false (уникнення дубля-primary того ж contractType)', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1' });
+      prisma.counterpartyContract.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.counterpartyContract.findFirstOrThrow = vi.fn().mockResolvedValueOnce({
+        id: 'con-1',
+        orgId: 'org-1',
+        counterpartyId: 'cp-1',
+        number: 'ДГ-1',
+        contractType: 'PURCHASE',
+        startDate: new Date('2026-01-01'),
+        endDate: null,
+        isPrimary: false,
+        creditLimit: null,
+        currencyCode: 'UAH',
+        paymentDeferDays: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      });
+      await service.restoreContract('org-1', 'cp-1', 'con-1');
+      const call = prisma.counterpartyContract.updateMany.mock.calls[0][0];
+      expect(call.data.isPrimary).toBe(false);
+      expect(call.data.deletedAt).toBeNull();
+    });
+
+    it('повертає ContractResponseDto зі всіх ISO дат + deletedAt=null', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1' });
+      prisma.counterpartyContract.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.counterpartyContract.findFirstOrThrow = vi.fn().mockResolvedValueOnce({
+        id: 'con-1',
+        orgId: 'org-1',
+        counterpartyId: 'cp-1',
+        number: 'ДГ-1',
+        contractType: 'PURCHASE',
+        startDate: new Date('2026-01-01T00:00:00Z'),
+        endDate: null,
+        isPrimary: false,
+        creditLimit: null,
+        currencyCode: 'UAH',
+        paymentDeferDays: null,
+        createdAt: new Date('2026-01-01T10:00:00Z'),
+        updatedAt: new Date('2026-01-02T10:00:00Z'),
+        deletedAt: null,
+      });
+      const res = await service.restoreContract('org-1', 'cp-1', 'con-1');
+      expect(res).toMatchObject({
+        id: 'con-1',
+        counterpartyId: 'cp-1',
+        contractType: 'PURCHASE',
+        startDate: '2026-01-01',
+        isPrimary: false,
+        deletedAt: null,
+      });
+      // ISO-string createdAt/updatedAt (не Date object) — DTO contract
+      expect(typeof res.createdAt).toBe('string');
+      expect(typeof res.updatedAt).toBe('string');
+    });
+  });
 });

@@ -1678,3 +1678,65 @@ Static-checks passed (0 bugs found у цих секціях):
 - **Статус:** [x] виправлено — `supplier-payments.service.spec.ts` +4 tests. Spec повний: 34/34 passed (було 30).
 - **Verification:** `pnpm --filter @sto/api exec vitest run supplier-payments.service.spec` → 34/34 passed. Повний API vitest → 996/996 (992 + 4 нових).
 - **Де шукати ще:** будь-який service-метод що (а) додає cross-field-validation guard (throw у perceived-invalid комбо параметрів) АБО (б) додає single-pass aggregator який замінює multi-pass reduce (як тут — optimize cycle 2), АЛЕ БЕЗ парного `*.spec.ts` тесту. Grep: `grep -rn "throw new BadRequestException" apps/api/src/modules --include="*.service.ts" -B1` — знайти guards, потім grep у парному spec за унікальним фрагментом error-повідомлення. 0 matches у spec → gap. Особливо для recently-refactored сервісів (свіжий commit `perf(optimize):` або `simplify:`).
+
+---
+
+## Session 2026-09-01 (targeted /sto-tester, HEAD 03a93799, feat/supplier-payments) — restore-endpoints (галка «Показувати видалені»)
+
+Цілеспрямований прогін по фічі "showDeleted-toggle + restore vehicles/contracts" (c30c22bd + 03a93799). Baseline перед сесією: API tsc 0/0, Web tsc 0/0, counterparties+vehicles specs 41/41. Знайдено 3 real bugs (HIGH: orphan-refs at restore) + 2 test-coverage gaps.
+
+### Bug #601 — HIGH data-integrity / restore створює orphan reference — vehicles.restore() не перевіряє parent garage
+
+- **Файл:** apps/api/src/modules/vehicles/vehicles.service.ts:77-88 (restore()).
+- **Симптом:** Live: POST /vehicles/{id} -> DELETE /vehicles/{id} -> DELETE /counterparties/{cpId}/garages/{gid} -> POST /vehicles/{id}/restore повертає 201 з deletedAt:null та customerGarageId:<soft-deleted garage>. Vehicle тепер посилається на видалений гараж. GET /vehicles?counterpartyId=... (filter customerGarage.deletedAt:null) не бачить його — користувач вважає що restore зламано, а з БД перспективи авто «зомбі», доступне лише через прямий GET /vehicles/{id}.
+- **Причина виникнення:** restore() скопіювала pattern з brands.service.restore (updateMany where:{id,orgId,NOT:{deletedAt:null}}) — там немає FK на soft-delete-able parent. Vehicle завжди належить CustomerGarage, а гараж може бути soft-deleted окремо (removeGarage у counterparties.service.ts:244-288 не cascade-soft-deletes vehicles). Асиметрія: create() захищає (if (!garage) throw NotFoundException), restore() — ні.
+- **Виявлено:** живий сценарій через curl (див. вище). Grep restore у vehicles.service.ts — updateMany без парного garage-check.
+- **Fix:** restore() перед atomic updateMany додає prep-check через findFirst({id,orgId, customerGarage:{deletedAt:null, counterparty:{deletedAt:null}}}) із include garage.counterparty — якщо не знайдено АЛЕ Vehicle сам існує (з чи без deletedAt) → distinguisher: якщо vehicle не існує/чужа org — 404 як зараз; якщо garage soft-deleted → BadRequestException з friendly-text. Мінімум — валідація замість silent orphan.
+- **Severity:** HIGH — data corruption через public API. UI-friendly фейл (restore повертає 201, авто зникає з списку) підриває довіру до фічі.
+- **Де шукати ще:** будь-який restore() метод на моделі з required FK до parent що теж soft-delete-able. Grep: grep -rn "async restore" apps/api/src/modules --include="\*.service.ts" — для кожного знайти FK у schema.prisma; якщо parent має deletedAt DateTime? → відсутній guard = bug.
+- **Статус:** [x] виправлено
+
+### Bug #602 — HIGH data-integrity — vehicles.restore() не перевіряє parent counterparty
+
+- **Файл:** apps/api/src/modules/vehicles/vehicles.service.ts:77-88.
+- **Симптом:** Live: DELETE /vehicles/{vid} -> DELETE /counterparties/{cpId} (не cascade-soft-deletes vehicles/garages) -> POST /vehicles/{vid}/restore -> 201. Vehicle воскрес у CP що не існує з бізнес-точки. GET /counterparties/{cpId} -> 404, але vehicle досі referenced.
+- **Причина виникнення:** див. Bug #601 — той самий pattern (restore без grandparent-check). Тут chain vehicle -> garage -> counterparty з двома рівнями deletedAt.
+- **Виявлено:** живий curl-сценарій.
+- **Fix:** Об'єднано з Bug #601 в один pre-check: findFirst із nested where customerGarage:{deletedAt:null, counterparty:{deletedAt:null}}.
+- **Severity:** HIGH.
+- **Статус:** [x] виправлено
+
+### Bug #603 — HIGH data-integrity — restoreContract() не перевіряє parent counterparty
+
+- **Файл:** apps/api/src/modules/counterparties/counterparties.service.ts:322-340 (restoreContract).
+- **Симптом:** Live: створити SUPPLIER (auto-PURCHASE #1) -> додати PURCHASE #2 -> DELETE contracts/#2 -> DELETE counterparties/{cpId} -> POST /counterparties/{cpId}/contracts/{#2}/restore -> 201, contract воскрес, але GET /counterparties/{cpId}/contracts -> 404. Contract у limbo: deletedAt:null, counterparty.deletedAt:not-null.
+- **Причина виникнення:** асиметрія з findContracts (line 304-308: findFirst({id,orgId,deletedAt:null}) guard) — той метод відмовляє показувати список для soft-deleted CP, але restore пропускає без будь-якої CP-check. Guards читання != guards запису.
+- **Виявлено:** живий curl-сценарій.
+- **Fix:** restoreContract() перед updateMany — prep-check counterparty.findFirst({id,orgId,deletedAt:null}) -> 404 якщо не активний. Дзеркалить пре-check findContracts/createContract/updateContract/removeContract.
+- **Severity:** HIGH.
+- **Де шукати ще:** усі restore\* методи над child-агрегатами.
+- **Статус:** [x] виправлено
+
+### Bug #604 — MEDIUM test-coverage — counterparties.contract.spec.ts serviceMock не містить restoreContract
+
+- **Файл:** apps/api/src/modules/counterparties/counterparties.contract.spec.ts:11-24.
+- **Симптом:** serviceMock перелічує 12 методів (findAll..removeContract) без restoreContract. Новий controller endpoint POST /:id/contracts/:contractId/restore викликає this.service.restoreContract — mock повертає undefined. Будь-який тест на restore-endpoint отримає TypeError: Cannot read properties of undefined.
+- **Причина виникнення:** новий endpoint додано у контроллер, але test-mock зафіксований у sibling spec — легко забути. Partial mock через Test.createTestingModule providers.useValue не type-safe.
+- **Виявлено:** grep restoreContract у test files -> 0 matches.
+- **Fix:** Додати restoreContract: vi.fn() до serviceMock (+ тести — Bug #605).
+- **Severity:** MEDIUM — не блокує зараз, але guarantees future test failure.
+- **Статус:** [x] виправлено
+
+### Bug #605 — MEDIUM test-coverage — restore endpoints без жодного автотесту
+
+- **Файл:** відсутні тести. vehicles.service.spec.ts не існує; counterparties.service.spec.ts без restoreContract; contract spec без restore endpoint.
+- **Симптом:** grep restoreContract|vehicles._restore|restoreVehicle у apps/api/src/\*\*/_.spec.ts -> 0 matches. Два нових endpoints без regression-guard. Класичний патерн SKILL Bug #478-#480 (нове enum без regression), Bug #532-#536 (constructor DI drift без spec-update). Refactor що видалить NOT:{deletedAt:null} з updateMany-where або спрощення що зніме parent-check — пройде CI зеленим і поламає fic Bug #601/#602/#603.
+- **Причина виникнення:** feature-розробка (c30c22bd) + review-fix (03a93799) — фокус на code-shape, не тестах.
+- **Виявлено:** grep -rn restore apps/api/src/modules/{counterparties,vehicles} --include=\*.spec.ts -> 0.
+- **Fix:** Додано регресійне покриття:
+  1. counterparties.service.spec.ts +6 it(...) для restoreContract — Bug #603 CP-guard, double-restore 404, cross-CP-path 404, orgId у where (tenant), isPrimary=false у data, DTO shape.
+  2. NEW vehicles.service.spec.ts — з 0 -> 8 tests: restore() happy/double/deleted-garage/deleted-CP/cross-tenant, findAll(showDeleted) shape (2 тести), remove() atomic updateMany.
+  3. counterparties.contract.spec.ts +1 it(...) для POST /restore + restoreContract: vi.fn() (fix Bug #604).
+- **Severity:** MEDIUM.
+- **Де шукати ще:** grep @Post.\*restore у controllers -> для кожного мін. 3 тести у sibling spec.
+- **Статус:** [x] виправлено
