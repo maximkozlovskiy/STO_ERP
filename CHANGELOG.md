@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-09-01 (d)
+
+### feat(counterparties): назва контрагента обов'язкова (гнучко — компанія АБО ПІБ)
+
+- **Запит користувача**: поле «Назва» при створенні контрагента зробити обов'язковим.
+- Раніше усі name-поля `@IsOptional` → можна було зберегти контрагента без імені
+  (у списку показувалось «(без імені)»).
+- **Правило** (гнучко, cross-field): має бути `companyName` АБО `firstName`/`lastName`.
+  Для SUPPLIER (видно лише «Назва компанії») — обов'язкова назва компанії (required-мітка).
+- **Backend** (`counterparties.service`): `hasCounterpartyName()` guard у `create(dto)` +
+  `update` (merged-стан: PATCH частковий → перевіряємо результат `dto.X ?? existing.X`, тож
+  очищення останньої назви теж → 400). Guard стоїть ДО `documentNumberService.next()` (номер
+  не витрачається на fail-path). `BadRequestException`.
+- **Frontend** (`CounterpartyEditModal`): guard у create/update + disabled кнопки «Зберегти» +
+  inline-помилка + required-мітка для SUPPLIER.
+- **Review-fix (de2d692e)**: `CalendarSlotModal` (2-й entry-point створення контрагента у
+  майстрі запису) мав власний guard без `.trim()` + інше повідомлення → синхронізовано всі
+  3 точки (whitespace-only назва тепер відхиляється однаково).
+- QA: review 1 fixed. Live: create без назви→400, з companyName/firstName→201, update-очистити→400.
+  api+web tsc 0, vitest 48/48 counterparties + 488/488 web. Коміти ee23c53a + de2d692e.
+
+---
+
 ## 2026-09-01 (c)
 
 ### feat(counterparties): галка «Показувати видалені» + відновлення договорів і авто
