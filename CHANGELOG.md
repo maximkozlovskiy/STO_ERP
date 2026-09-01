@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-08-31 (b)
+
+### fix(counterparties): вид договору — завжди редагований select, фільтр за типом
+
+- **Баг** (скріншот користувача): для SUPPLIER/CLIENT поле «Вид договору» у формі
+  додавання договору було СТАТИЧНИМ нередагованим блоком (`<Select>` рендерився лише
+  для `type===BOTH`); submit примусово перевизначав `contractType` за типом контрагента,
+  ігноруючи вибір.
+- **Вимога**: не блокувати поле — завжди `<Select>`, лише фільтрувати пункти за типом +
+  дефолт. SUPPLIER → лише «Купівля» (дефолт); CLIENT → лише «Продаж» (дефолт); BOTH →
+  обидва + порожній placeholder (явний вибір).
+- Хелпери `contractTypesForCounterparty(cpType)` + `defaultContractType(cpType)`; рендер
+  завжди `<Select>` з фільтрованими опціями (`CONTRACT_TYPE_LABELS`); `onClick` «Додати
+  договір» виставляє дефолт; submit `resolvedType = вибір || дефолт`.
+- Файл `CounterpartyEditModal.tsx`. Review 0 findings. web tsc 0.
+
+---
+
 ## 2026-08-31
 
 ### feat(supplier-payments): FIFO-графік оплат по документах + колонки оплати у списку купівлі

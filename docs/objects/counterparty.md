@@ -101,6 +101,7 @@ model CounterpartyContract {
 - Пошук по `firstName + lastName` АБО `companyName` (similarity окремо для кожного)
 - `companyName` — B2B клієнти, `firstName + lastName` — фізичні особи; обидва поля nullable
 - **isPrimary в CounterpartyContract:** при soft-delete договору з `isPrimary: true` → promote наступного (`findFirst({ orderBy: { createdAt: 'asc' } })`) у той самий `$transaction`
+- **Вид договору у формі (CounterpartyEditModal):** поле «Вид договору» — завжди редагований `<Select>` (НЕ disabled-блок), пункти ФІЛЬТРУЮТЬСЯ за типом контрагента через `contractTypesForCounterparty()`: SUPPLIER → лише `PURCHASE`, CLIENT → лише `SALE`, BOTH → обидва + порожній placeholder (обов'язковий вибір, guard на кнопці «Зберегти»). Дефолт при відкритті форми — `defaultContractType()` (єдиний доступний тип, або '' для BOTH). Submit бере вибір користувача (не перевизначає за типом контрагента).
 - **isDefault в CustomerGarage:** аналогічна поведінка при видаленні
 - `SettlementAccount` створюється автоматично (lazy upsert) при першій транзакції
 - `syncVersion` — поле для cloud sync (pull blacklist: `phone`, `edrpou`, `email` не синхронізуються на мобільний)
