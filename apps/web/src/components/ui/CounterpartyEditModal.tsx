@@ -73,6 +73,22 @@ type ModalContract = {
   paymentDeferDays: number | null;
 };
 
+// Доступні види договору за типом контрагента: SUPPLIER → лише Купівля,
+// CLIENT → лише Продаж, BOTH → обидва. Поле «Вид договору» завжди редаговане
+// (select), лише список пунктів фільтрується — жодного disabled-стану.
+function contractTypesForCounterparty(cpType: string): Array<'PURCHASE' | 'SALE'> {
+  if (cpType === 'SUPPLIER') return ['PURCHASE'];
+  if (cpType === 'CLIENT') return ['SALE'];
+  return ['PURCHASE', 'SALE']; // BOTH (та будь-який інший) — обидва
+}
+
+// Дефолтний вид при відкритті форми: єдиний доступний для SUPPLIER/CLIENT,
+// порожній для BOTH (обов'язковий явний вибір).
+function defaultContractType(cpType: string): string {
+  const types = contractTypesForCounterparty(cpType);
+  return types.length === 1 ? types[0] : '';
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TYPE_LABELS = COUNTERPARTY_TYPE_LABELS;
@@ -426,12 +442,9 @@ export function CounterpartyEditModal({
     setAddingContract(true);
     setContractsError('');
     try {
-      const resolvedType =
-        cpTypeAtStart === 'CLIENT'
-          ? 'SALE'
-          : cpTypeAtStart === 'SUPPLIER'
-            ? 'PURCHASE'
-            : addContractForm.contractType;
+      // Вибір користувача (select уже фільтрований за типом контрагента + має дефолт).
+      // Fallback на дефолт-тип якщо поле чомусь порожнє (для BOTH guard на кнопці не пустить).
+      const resolvedType = addContractForm.contractType || defaultContractType(cpTypeAtStart);
       const created = await apiFetch<ModalContract>(`/counterparties/${cpIdAtStart}/contracts`, {
         method: 'POST',
         body: JSON.stringify({
@@ -824,7 +837,15 @@ export function CounterpartyEditModal({
                       size="sm"
                       variant="outline"
                       leftIcon={<Plus className="h-3.5 w-3.5" />}
-                      onClick={() => setShowAddContract(true)}
+                      onClick={() => {
+                        // Дефолт-вид за типом контрагента (Купівля для постачальника,
+                        // Продаж для клієнта, порожньо для BOTH — явний вибір).
+                        setAddContractForm(f => ({
+                          ...f,
+                          contractType: defaultContractType(counterparty?.type ?? ''),
+                        }));
+                        setShowAddContract(true);
+                      }}
                     >
                       Додати договір
                     </Button>
@@ -840,22 +861,21 @@ export function CounterpartyEditModal({
                             <span className="text-destructive"> *</span>
                           )}
                         </label>
-                        {counterparty.type === 'BOTH' ? (
-                          <Select
-                            value={addContractForm.contractType}
-                            onChange={e =>
-                              setAddContractForm(f => ({ ...f, contractType: e.target.value }))
-                            }
-                          >
-                            <option value="">Оберіть вид</option>
-                            <option value="PURCHASE">Купівля</option>
-                            <option value="SALE">Продаж</option>
-                          </Select>
-                        ) : (
-                          <div className="px-3 py-2 rounded-lg border border-border bg-secondary text-[13px] text-foreground">
-                            {counterparty.type === 'CLIENT' ? 'Продаж' : 'Купівля'}
-                          </div>
-                        )}
+                        {/* Поле завжди редаговане (не блокуємо) — лише список пунктів
+                            фільтрується за типом контрагента. */}
+                        <Select
+                          value={addContractForm.contractType}
+                          onChange={e =>
+                            setAddContractForm(f => ({ ...f, contractType: e.target.value }))
+                          }
+                        >
+                          {counterparty.type === 'BOTH' && <option value="">Оберіть вид</option>}
+                          {contractTypesForCounterparty(counterparty.type).map(t => (
+                            <option key={t} value={t}>
+                              {CONTRACT_TYPE_LABELS[t] ?? t}
+                            </option>
+                          ))}
+                        </Select>
                       </div>
                       <label className="flex items-center gap-2 cursor-pointer select-none pb-2">
                         <input
