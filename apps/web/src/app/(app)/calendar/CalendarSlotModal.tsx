@@ -345,8 +345,11 @@ export function CalendarSlotModal({
   };
 
   const saveWizardStep1 = async () => {
-    if (!newCp.firstName && !newCp.lastName && !newCp.companyName) {
-      setCpWizardError("Вкажіть ім'я або назву компанії");
+    // Дзеркалить cross-field name-guard беку (counterparties.service.hasCounterpartyName):
+    // whitespace-only не рахується як назва — інакше backend поверне 400 із загальним
+    // повідомленням, і користувач не побачить inline-помилки.
+    if (!newCp.firstName.trim() && !newCp.lastName.trim() && !newCp.companyName.trim()) {
+      setCpWizardError('Вкажіть назву компанії або ім’я/прізвище контрагента');
       return;
     }
     setSavingCp(true);
