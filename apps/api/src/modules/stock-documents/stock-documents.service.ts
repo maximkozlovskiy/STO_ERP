@@ -327,7 +327,7 @@ export class StockDocumentsService {
           // (не справжній паралелізм) — але це безпечно для race-конкуренції stockItem upsert
           // (Postgres serialize ON CONFLICT під тим самим connection).
           await Promise.all(
-            doc.lines.map(line => {
+            doc.lines.map(async line => {
               const lineUnitId = line.good?.unitId ?? null;
               // persist resolved UoM — extracted to avoid duplication in both branches.
               // defense-in-depth: include orgId у where (узгоджено з PO.receive
@@ -348,29 +348,31 @@ export class StockDocumentsService {
                 unitOfMeasureId: lineUnitId,
               };
               if (doc.type === 'TRANSFER') {
-                return Promise.all([
-                  this.inventory.createMovement(
-                    orgId,
-                    {
-                      ...baseArgs,
-                      warehouseId: doc.warehouseId,
-                      type: 'WRITEOFF',
-                      quantity: -line.quantity,
-                    },
-                    tx,
-                  ),
-                  this.inventory.createMovement(
-                    orgId,
-                    {
-                      ...baseArgs,
-                      warehouseId: doc.targetWarehouseId!,
-                      type: 'RECEIPT',
-                      quantity: line.quantity,
-                    },
-                    tx,
-                  ),
-                  maybeUpdateUom,
-                ]);
+                // ПОСЛІДОВНО (не Promise.all): спершу writeoff зі складу-джерела списує партії
+                // FIFO і повертає собівартість; цільова партія створюється з ЦІЄЮ собівартістю
+                // (перенос cost, не ціна продажу). Fallback baseArgs.price якщо консюм порожній.
+                const src = await this.inventory.createMovement(
+                  orgId,
+                  {
+                    ...baseArgs,
+                    warehouseId: doc.warehouseId,
+                    type: 'WRITEOFF',
+                    quantity: -line.quantity,
+                  },
+                  tx,
+                );
+                await this.inventory.createMovement(
+                  orgId,
+                  {
+                    ...baseArgs,
+                    warehouseId: doc.targetWarehouseId!,
+                    type: 'RECEIPT',
+                    quantity: line.quantity,
+                    price: src.weightedCostPrice ?? baseArgs.price,
+                  },
+                  tx,
+                );
+                return maybeUpdateUom;
               }
               const quantity = doc.type === 'WRITEOFF' ? -line.quantity : line.quantity;
               return Promise.all([

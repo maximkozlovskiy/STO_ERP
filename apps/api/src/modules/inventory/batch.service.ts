@@ -184,45 +184,58 @@ export class BatchService {
           ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }]
           : [{ createdAt: 'asc' }]; // FIFO default
 
-    const batches = await db.stockBatch.findMany({
-      where: { orgId, goodId, warehouseId, isActive: true, remainingQty: { gt: 0 } },
-      orderBy,
-      take: 100,
-    });
-
     let remaining = qty;
     const results: BatchConsumeResult[] = [];
+    const PAGE = 100;
 
-    for (const batch of batches) {
-      if (remaining <= 0) break;
-      const take = Math.min(remaining, batch.remainingQty);
+    // While-пагінація: списання може зачепити >100 партій (span). Кожна сторінка
+    // вибирає активні партії з remainingQty>0 у порядку costMethod; після декременту
+    // наступна сторінка природно бере наступні. Guard `progressed` проти нескінченного
+    // циклу якщо БД раптом віддала партії без remainingQty.
+    while (remaining > 0) {
+      const batches = await db.stockBatch.findMany({
+        where: { orgId, goodId, warehouseId, isActive: true, remainingQty: { gt: 0 } },
+        orderBy,
+        take: PAGE,
+      });
+      if (batches.length === 0) break;
+      let progressed = false;
 
-      // sto-optimize: update + create на ОДНУ ітерацію не залежать один від
-      // одного — Promise.all зекономить 1 RTT на батч. Loop-carried лишається
-      // (`remaining -= take`), тому ітерації між собою сериалізовані як і раніше.
-      await Promise.all([
-        db.stockBatch.update({
-          where: { id: batch.id },
-          data: {
-            remainingQty: { decrement: take },
-            isActive: batch.remainingQty - take > 0,
-          },
-        }),
-        db.batchConsumption.create({
-          data: {
-            orgId,
-            batchId: batch.id,
-            goodId,
-            quantity: -take,
-            documentType,
-            documentId,
-            documentLineId: documentLineId ?? null,
-          },
-        }),
-      ]);
+      for (const batch of batches) {
+        if (remaining <= 0) break;
+        const take = Math.min(remaining, batch.remainingQty);
+        if (take <= 0) continue;
 
-      results.push({ batchId: batch.id, quantity: take, costPrice: Number(batch.costPrice) });
-      remaining -= take;
+        // sto-optimize: update + create на ОДНУ ітерацію не залежать один від
+        // одного — Promise.all зекономить 1 RTT на батч.
+        await Promise.all([
+          db.stockBatch.update({
+            where: { id: batch.id },
+            data: {
+              remainingQty: { decrement: take },
+              isActive: batch.remainingQty - take > 0,
+            },
+          }),
+          db.batchConsumption.create({
+            data: {
+              orgId,
+              batchId: batch.id,
+              goodId,
+              quantity: -take,
+              documentType,
+              documentId,
+              documentLineId: documentLineId ?? null,
+            },
+          }),
+        ]);
+
+        results.push({ batchId: batch.id, quantity: take, costPrice: Number(batch.costPrice) });
+        remaining -= take;
+        progressed = true;
+      }
+      // Уся сторінка активних партій оброблена, але борг лишився і прогресу нема —
+      // далі партій нема (менше за PAGE) або аномалія → виходимо у throw нижче.
+      if (!progressed || batches.length < PAGE) break;
     }
 
     if (remaining > 0) {

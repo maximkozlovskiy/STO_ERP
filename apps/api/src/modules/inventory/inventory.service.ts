@@ -5,9 +5,10 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { Prisma, StockMovementType } from '@prisma/client';
+import { Prisma, StockMovementType, BatchCostMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { BatchService } from './batch.service';
+import { BatchService, BatchConsumeResult } from './batch.service';
+import { SettingsService } from '../settings/settings.service';
 import { kyivOffsetMs } from '../../common/utils/kyiv-date';
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -36,18 +37,37 @@ export interface CreateMovementDto {
   unitOfMeasureId?: string | null;
 }
 
+/**
+ * Результат руху залишків. Для розходу (quantity<0, не reservation) містить списані партії
+ * та зважену собівартість (COGS) — викликач (наряд) фіксує її у WorkOrderPart.batchCostPrice.
+ */
+export interface CreateMovementResult {
+  movementId: string;
+  consumed: BatchConsumeResult[];
+  weightedCostPrice: number | null;
+}
+
+/** Зважена собівартість (COGS) зі списаних партій: Σ(qty×costPrice)/Σqty; null якщо нічого. */
+function weightedFromConsumed(consumed: BatchConsumeResult[]): number | null {
+  const totalQty = consumed.reduce((s, c) => s + c.quantity, 0);
+  if (totalQty <= 0) return null;
+  const totalCost = consumed.reduce((s, c) => s + c.quantity * c.costPrice, 0);
+  return totalCost / totalQty;
+}
+
 @Injectable()
 export class InventoryService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => BatchService)) private readonly batchService: BatchService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   async createMovement(
     orgId: string,
     dto: CreateMovementDto,
     tx?: Prisma.TransactionClient,
-  ): Promise<void> {
+  ): Promise<CreateMovementResult> {
     if (dto.quantity === 0) throw new BadRequestException('Кількість не може бути нульовою');
     if (!Number.isFinite(dto.quantity)) {
       throw new BadRequestException('Невірне значення кількості');
@@ -182,6 +202,65 @@ export class InventoryService {
         reserved: Math.max(0, reservedDelta),
       },
     });
+
+    // Партійне списання (COGS) для фізичного розходу: quantityDelta<0 (WRITEOFF/TRANSFER-out).
+    // RESERVATION/RESERVATION_RELEASE не чіпають фізичну кількість → партій не торкаються.
+    // Consume в тій самій tx, ПІСЛЯ upsert StockItem → інваріант Σ remainingQty == quantity
+    // тримається за конструкцією. Метод списання (FIFO/FEFO/LIFO/AVG) — з налаштувань org.
+    let consumed: BatchConsumeResult[] = [];
+    let weightedCostPrice: number | null = null;
+    if (quantityDelta < 0) {
+      const costMethod = await this.resolveCostMethod(orgId);
+      const consumeQty = Math.abs(quantityDelta);
+      if (costMethod === 'AVG_COST') {
+        // AVG_COST: собівартість = зважена середня ДО списання; фізичний декремент партій —
+        // FIFO (щоб remainingQty спадав і не ламав інваріант; protected AVG-return не чіпаємо).
+        weightedCostPrice = await this.batchService.getAvgCost(orgId, dto.goodId, dto.warehouseId);
+        consumed = await this.batchService.consumeBatch(
+          orgId,
+          dto.goodId,
+          dto.warehouseId,
+          consumeQty,
+          dto.documentType ?? 'StockMovement',
+          dto.documentId ?? movement.id,
+          dto.documentLineId,
+          'FIFO',
+          db as Prisma.TransactionClient,
+        );
+      } else {
+        consumed = await this.batchService.consumeBatch(
+          orgId,
+          dto.goodId,
+          dto.warehouseId,
+          consumeQty,
+          dto.documentType ?? 'StockMovement',
+          dto.documentId ?? movement.id,
+          dto.documentLineId,
+          costMethod,
+          db as Prisma.TransactionClient,
+        );
+        weightedCostPrice = weightedFromConsumed(consumed);
+      }
+      // Проставити batchId у рух коли списано з однієї партії (для трасування).
+      if (consumed.length === 1) {
+        await db.stockMovement.update({
+          where: { id: movement.id },
+          data: { batchId: consumed[0].batchId },
+        });
+      }
+    }
+
+    return { movementId: movement.id, consumed, weightedCostPrice };
+  }
+
+  /** costMethod з налаштувань org (Redis-кешовано у SettingsService); fallback FIFO. */
+  private async resolveCostMethod(orgId: string): Promise<BatchCostMethod> {
+    try {
+      const settings = await this.settingsService.getOrganisationSettings(orgId);
+      return settings.costMethod ?? 'FIFO';
+    } catch {
+      return 'FIFO';
+    }
   }
 
   async getStockLevel(

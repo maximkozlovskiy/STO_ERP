@@ -879,20 +879,33 @@ export class WorkOrdersService {
         },
         db,
       );
-      await this.inventory.createMovement(
+      // WRITEOFF списує партії (FIFO/costMethod з налаштувань) і повертає реальну
+      // собівартість (COGS). НЕ передаємо price=part.price (то ЦІНА ПРОДАЖУ) — собівартість
+      // визначається партіями. Фіксуємо batchCostPrice/batchId у part для звіту рентабельності.
+      const writeoff = await this.inventory.createMovement(
         orgId,
         {
           goodId: part.goodId,
           warehouseId: part.warehouseId,
           type: 'WRITEOFF',
           quantity: -baseQty,
-          price: Number(part.price),
           documentType: 'WorkOrder',
           documentId: wo.id,
+          documentLineId: part.id,
           createdBy: userId,
         },
         db,
       );
+      if (writeoff.weightedCostPrice != null) {
+        await db.workOrderPart.update({
+          where: { id: part.id },
+          data: {
+            batchCostPrice: writeoff.weightedCostPrice,
+            // batchId лише коли списано з однієї партії; NULL при span через кілька партій.
+            batchId: writeoff.consumed.length === 1 ? writeoff.consumed[0].batchId : null,
+          },
+        });
+      }
     }
     const chargeAmount = Number(wo.totalAmount ?? 0);
     if (chargeAmount <= 0)
