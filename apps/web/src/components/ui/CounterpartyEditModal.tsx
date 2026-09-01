@@ -113,7 +113,12 @@ interface CounterpartyEditModalProps {
   /** null = create new */
   counterparty: CounterpartyForModal | null;
   onClose: () => void;
-  onSaved: (cp: CounterpartyForModal) => void;
+  /**
+   * Викликається після збереження. `isNew=true` — контрагента щойно СТВОРЕНО:
+   * батько має лишити модалку відкритою і передати `cp` назад як `counterparty`
+   * (модалка перемкнеться в edit-режим із вкладками Авто/Договори), а не закривати.
+   */
+  onSaved: (cp: CounterpartyForModal, isNew: boolean) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -424,8 +429,10 @@ export function CounterpartyEditModal({
         }),
       });
       dirty.resetDirty();
-      onSaved(created);
-      toast.success('Контрагента створено');
+      // Батько передасть created як counterparty → модалка перемкнеться в edit-режим
+      // (з'являться вкладки Авто/Договори/Історія). Модалка НЕ закривається.
+      onSaved(created, true);
+      toast.success('Контрагента створено — тепер можна додати авто та договори');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
     } finally {
@@ -457,7 +464,7 @@ export function CounterpartyEditModal({
         }),
       });
       dirty.resetDirty();
-      onSaved(updated);
+      onSaved(updated, false);
       toast.success('Контрагента збережено');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');

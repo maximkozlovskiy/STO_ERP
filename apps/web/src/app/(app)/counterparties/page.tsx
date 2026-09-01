@@ -662,10 +662,17 @@ function CrmPageInner() {
           setModal(false);
           setEditingCp(null);
         }}
-        onSaved={() => {
-          setModal(false);
-          setEditingCp(null);
+        onSaved={(cp, isNew) => {
           queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
+          if (isNew) {
+            // Після створення — лишаємо модалку відкритою в edit-режимі (передаємо
+            // створеного як editingCp → з'являються вкладки Авто/Договори). Новий
+            // контрагент має нульовий баланс (модалка balance не читає, лише тип потребує).
+            setEditingCp({ balance: 0, ...cp } as Counterparty);
+          } else {
+            setModal(false);
+            setEditingCp(null);
+          }
         }}
       />
       <ConfirmDialog {...dialogProps} />
