@@ -5,6 +5,43 @@
 
 ---
 
+## 2026-09-02 (b)
+
+### feat(inventory): підключення партійного FIFO-списання + COGS до розходів
+
+**Баг (виявлено при перевірці собівартості/партійності):** `consumeBatch` (FIFO/FEFO/LIFO/AVG,
+написаний і протестований) — **0 викликів** з реальних розходів («мертвий код»). Партії лише
+створювались (RECEIPT), `remainingQty` монотонно ріс (розсинхрон із StockItem.quantity), COGS у
+наряді = ціна ПРОДАЖУ (не собівартість), `WorkOrderPart.batchCostPrice` завжди NULL → звіт
+рентабельності брав `Good.purchasePrice` (неточна маржа), налаштування «Метод списання партій»
+(FIFO/FEFO/LIFO/Середній у НДІ→Організація) ігнорувалось.
+
+**Рішення — ЦЕНТРАЛІЗАЦІЯ у `createMovement`** (CLAUDE.md: stock тільки через неї):
+
+- `createMovement`: `void → CreateMovementResult{movementId, consumed[], weightedCostPrice}`;
+  на розході (`quantityDelta<0`, не reservation) викликає `consumeBatch` за `costMethod` з
+  `OrganisationSettings` (Redis-кеш, fallback FIFO), рахує зважену COGS, проставляє
+  `StockMovement.batchId` при single-batch.
+- AVG_COST: `weightedCostPrice=getAvgCost`, але фізичний декремент партій — FIFO (інваріант
+  `Σ remainingQty == quantity`).
+- `consumeBatch`: `take:100 → while-пагінація` (span >100 партій).
+- work-orders `writeOff`: фіксує `batchCostPrice`+`batchId` у `WorkOrderPart`; прибрано `price=part.price`.
+- stock-documents TRANSFER: послідовно writeoff→receipt, перенос собівартості джерела на цільову партію.
+- reports profitability: код без змін — `batchCostPrice` тепер заповнюється → маржа точна.
+- `inventory.module += SettingsModule` (без circular DI).
+- **reconcile-міграція** `20260902130000` для ПРОД (FIFO-доспоживає надлишок remainingQty; no-op на чистій БД).
+
+**QA:** review 0 findings (10 фінансових інваріантів перевірено); tester 0 runtime-багів
+(14 live-сценаріїв: FIFO/LIFO/FEFO/AVG, TRANSFER cost-carry, наряд COGS, нестача, інваріант) +
+Bugs #609-#611 (3 regression-coverage gaps → +10 тестів: COGS-writeback, TRANSFER cost-carry, orderBy method).
+
+**Dev:** партійні тестові дані скинуто (роздуті від непрацюючого списання).
+Live: RECEIPT 10×100+10×120→avgCost 110; WRITEOFF 15 FIFO span→партія1 0/10 inactive, партія2 5/10,
+COGS 1600; StockItem.quantity=5 == Σremaining=5. API vitest 1057/1057, tsc 0/0.
+Коміти 19f81ccb + 2027fa85.
+
+---
+
 ## 2026-09-02
 
 ### fix(settlements): виправлення знаку балансу постачальника — графік оплат оживає
