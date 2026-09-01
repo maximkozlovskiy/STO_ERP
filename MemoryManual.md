@@ -150,17 +150,17 @@ cba69150  fix(tester): Bug #537 validation message Cyrillic + #538 E2E flaky (Ц
 
 ## Довідники (читати за потреби)
 
-| Файл                                                 | Коли читати                                                                    |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | API модулі (28), Prisma моделі (41), утиліти, sync                             |
-| [docs/PATTERNS.md](docs/PATTERNS.md)                 | UI компоненти, hooks, B1-B7, EntityPickerField                                 |
-| [docs/BUSINESS-RULES.md](docs/BUSINESS-RULES.md)     | FSM, інвентар, розрахунки, тенант-ізоляція                                     |
-| [docs/GOTCHAS.md](docs/GOTCHAS.md)                   | Відомі пастки — читати перед новою фічею                                       |
-| [CHANGELOG.md](CHANGELOG.md)                         | Журнал комітів по фічах                                                        |
-| [docs/PHASES.md](docs/PHASES.md)                     | Поточна фаза і задачі                                                          |
-| [docs/objects/](docs/objects/)                       | Дос'є агрегатів: WO, Invoice, PO, StockDoc, Counterparty, Good, Work, Calendar |
-| [docs/specs/\_TEMPLATE.md](docs/specs/_TEMPLATE.md)  | Шаблон специфікації нової фічі                                                 |
-| [.claude/memory/MEMORY.md](.claude/memory/MEMORY.md) | User preferences                                                               |
+| Файл                                                 | Коли читати                                                                                                                                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | API модулі (28), Prisma моделі (41), утиліти, sync                                                                                                                                         |
+| [docs/PATTERNS.md](docs/PATTERNS.md)                 | UI компоненти, hooks, B1-B7, EntityPickerField + **Мета-патерни MP-B1..B10/MP-F1..F5** (наскрізні: SOT, централізація мутацій, tenant-guard, config-over-hardcode, enum-axis, атомарність) |
+| [docs/BUSINESS-RULES.md](docs/BUSINESS-RULES.md)     | FSM, інвентар, розрахунки, тенант-ізоляція                                                                                                                                                 |
+| [docs/GOTCHAS.md](docs/GOTCHAS.md)                   | Відомі пастки — читати перед новою фічею                                                                                                                                                   |
+| [CHANGELOG.md](CHANGELOG.md)                         | Журнал комітів по фічах                                                                                                                                                                    |
+| [docs/PHASES.md](docs/PHASES.md)                     | Поточна фаза і задачі                                                                                                                                                                      |
+| [docs/objects/](docs/objects/)                       | Дос'є агрегатів: WO, Invoice, PO, StockDoc, Counterparty, Good, Work, Calendar                                                                                                             |
+| [docs/specs/\_TEMPLATE.md](docs/specs/_TEMPLATE.md)  | Шаблон специфікації нової фічі                                                                                                                                                             |
+| [.claude/memory/MEMORY.md](.claude/memory/MEMORY.md) | User preferences                                                                                                                                                                           |
 
 ---
 
