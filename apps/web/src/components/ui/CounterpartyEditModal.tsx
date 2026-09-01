@@ -538,8 +538,10 @@ export function CounterpartyEditModal({
       setModalContracts(prev => {
         const next = prev.filter(x => x.id !== c.id);
         // Бек промоутить наступний головний того ж типу (найстаріший) у тому ж $transaction.
-        // Дзеркалимо optimistic: якщо видалили головний і лишились інші того ж типу — робимо
-        // головним перший наявний (список приходить createdAt asc). Істина — при перевідкритті.
+        // Дзеркалимо optimistic: якщо видалили головний — робимо головним перший наявний
+        // ТОГО Ж contractType у списку. Бек сортує `[isPrimary desc, createdAt asc]`, але
+        // після видалення primary у решти same-type isPrimary=false → тайбрейк за createdAt asc
+        // → findIndex дає найстаріший, що збігається з беком. Істина — при перевідкритті.
         if (c.isPrimary) {
           const idx = next.findIndex(x => x.contractType === c.contractType);
           if (idx >= 0) next[idx] = { ...next[idx], isPrimary: true };
