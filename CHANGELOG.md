@@ -5,6 +5,37 @@
 
 ---
 
+## 2026-09-02 (g) — feat: drill-down документів у графіку оплат постачальникам
+
+### 2d960bc9 feat(supplier-payments): drill-down документів у графіку оплат
+
+Клік по клітинці/колонці «Графіка оплат» → панель під таблицею зі списком PO, по яких
+виникає ця оплата (№ · дата оплати · сума · залишок · перехід на PO). Тригери: клітинка
+постачальник×день, рядок «Разом» (усі постачальники), бакети «Протерміновані»/«Планові».
+
+**Backend:** винесено ЄДИНИЙ private `computeScheduleAllocations` (FIFO-налив боргу на PO +
+кредит-ліміт зі збереженням per-PO алокацій). `getSchedule` → тонка обгортка (DTO незмінний),
+новий `getScheduleDocuments` фільтрує алокації по бакету → **Σ allocated панелі == сума клітинки
+за конструкцією** (немає sibling-drift). Новий `GET /supplier-payments/schedule/documents`
+(date XOR target, supplierId опційний) перед `:id`.
+
+**Frontend:** `useSupplierPaymentDocuments` (enabled лише при кліку), клікабельні клітинки з сумою,
+підсвічування активної, панель під таблицею, reuse `PurchaseOrderCreateModal` для переходу на PO.
+
+### QA-ланцюжок
+
+- **sync** — 0 розбіжностей (контракт узгоджений).
+- **review (c7708711)** — 1 IMPORTANT: a11y — `role="button"` клітинки без `tabIndex`+`onKeyDown`
+  (WCAG 2.1.1, keyboard-only не міг відкрити drill-down). Fix: `activateOnKey` + focus-visible ring.
+- **tester (4ff47b9d)** — Bug #616 MEDIUM: новий `date` DTO мав `@Matches(YMD_RE)` без
+  `@IsDateString({strict})` → семантично-невалідні дати (`2026-99-99`) → silent-empty замість 400
+  (sibling-drift Bug #595 у тому ж файлі). Fix + 6 regression. **Live-інваріант консистентності:
+  18/18 клітинок, 0 mismatches.**
+
+API 1106→1112, Web 491, tsc 0/0, E2E +1.
+
+---
+
 ## 2026-09-02 (f) — QA-цикл 3 фінальний: КОНВЕРГЕНЦІЯ (0 findings)
 
 ### review cycle 3 final — 0 findings
