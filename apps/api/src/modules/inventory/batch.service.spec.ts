@@ -14,6 +14,7 @@ describe('BatchService', () => {
       findMany: ReturnType<typeof vi.fn>;
       findFirst: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
     };
     batchConsumption: { create: ReturnType<typeof vi.fn> };
     priceHistory: { create: ReturnType<typeof vi.fn> };
@@ -34,6 +35,10 @@ describe('BatchService', () => {
         findMany: vi.fn().mockResolvedValue([]),
         findFirst: vi.fn(),
         update: vi.fn().mockResolvedValue({}),
+        // Bug #613 — conditional decrement через updateMany з `remainingQty: { gte: take }`.
+        // За успішного мока — count=1 (декремент застосувався); тести можуть
+        // mockResolvedValueOnce({ count: 0 }) для race-scenario.
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       batchConsumption: { create: vi.fn().mockResolvedValue({}) },
       priceHistory: { create: vi.fn().mockResolvedValue({}) },
@@ -240,6 +245,34 @@ describe('BatchService', () => {
       expect(prisma.stockBatch.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ orderBy: [{ createdAt: 'asc' }] }),
       );
+    });
+
+    // Bug #613 — conditional decrement через updateMany з `remainingQty: { gte: take }`
+    // захищає від concurrent consume race window: два одночасних WRITEOFF одного
+    // goodId+warehouseId читають ту саму findMany snapshot → без gte-фільтра другий
+    // декремент дав би від'ємний remainingQty. updateMany з count=0 = race lost → throw.
+    it('Bug #613: використовує updateMany з фільтром remainingQty: { gte: take } (не update)', async () => {
+      prisma.stockBatch.findMany.mockResolvedValue([
+        { id: 'b1', remainingQty: 10, costPrice: 100 },
+      ]);
+      await service.consumeBatch('org', 'g1', 'wh1', 4, 'WO', 'wo1', undefined, 'FIFO');
+      expect(prisma.stockBatch.updateMany).toHaveBeenCalledWith({
+        where: { id: 'b1', remainingQty: { gte: 4 } },
+        data: expect.objectContaining({ remainingQty: { decrement: 4 } }),
+      });
+      // Плюс: старий update — НЕ викликаний у consume-path (тільки createFromReceipt / returnToBatch)
+      expect(prisma.stockBatch.update).not.toHaveBeenCalled();
+    });
+
+    it('Bug #613: race lost (updateMany.count=0) → BadRequestException + $tx rollback', async () => {
+      prisma.stockBatch.findMany.mockResolvedValue([
+        { id: 'b1', remainingQty: 10, costPrice: 100 },
+      ]);
+      // Симулюємо race: інший tx декрементив партію між findMany і updateMany → count=0.
+      prisma.stockBatch.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(
+        service.consumeBatch('org', 'g1', 'wh1', 4, 'WO', 'wo1', undefined, 'FIFO'),
+      ).rejects.toThrow(/Партію змінено іншою транзакцією|повторіть операцію/i);
     });
   });
 

@@ -214,11 +214,18 @@ export class BatchService {
         const take = Math.min(remaining, batch.remainingQty);
         if (take <= 0) continue;
 
-        // sto-optimize: update + create на ОДНУ ітерацію не залежать один від
-        // одного — Promise.all зекономить 1 RTT на батч.
-        await Promise.all([
-          db.stockBatch.update({
-            where: { id: batch.id },
+        // Bug #613 — race-condition guard: conditional decrement через updateMany з
+        // WHERE remainingQty >= take. При concurrent consume того ж goodId+warehouseId
+        // (2 WO WRITEOFF одночасно) findMany віддає STALE snapshot → без цієї умови
+        // другий tx декрементує row до -N. updateMany з предикатом дасть count=0 при
+        // race → повторюємо findMany на наступній ітерації while (progressed=false → break
+        // → throw). All-or-nothing тримається бо $transaction rollback скасовує
+        // будь-які часткові decrement + попередні consumption у поточному ланцюгу.
+        // sto-optimize: update + create не залежать одне від одного — Promise.all
+        // зекономить 1 RTT на батч.
+        const [updated] = await Promise.all([
+          db.stockBatch.updateMany({
+            where: { id: batch.id, remainingQty: { gte: take } },
             data: {
               remainingQty: { decrement: take },
               isActive: batch.remainingQty - take > 0,
@@ -236,6 +243,13 @@ export class BatchService {
             },
           }),
         ]);
+
+        if (updated.count === 0) {
+          // Race lost: інший tx декрементив партію між findMany і updateMany. Скасовуємо
+          // batchConsumption через throw → $transaction rollback (Promise.all виконаний, але
+          // весь ланцюг ще у tx). Наступний retry рівня викликача (WO/Invoice) з'ясує стан.
+          throw new BadRequestException('Партію змінено іншою транзакцією — повторіть операцію');
+        }
 
         results.push({ batchId: batch.id, quantity: take, costPrice: Number(batch.costPrice) });
         remaining -= take;

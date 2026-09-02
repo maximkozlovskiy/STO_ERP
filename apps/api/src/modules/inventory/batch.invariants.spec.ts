@@ -597,3 +597,155 @@ describe('StockDocument TRANSFER — cost-carry invariant', () => {
     expect(targetPrice).toBe(0);
   });
 });
+
+// ─── Bug #614 — Mid-life switch costMethod invariants ─────────────────────────
+// Ключове питання: коли організація створила партії у FIFO, потім переключилась
+// на AVG_COST → LIFO → FEFO — чи тримається Σ remainingQty(active) == StockItem.quantity?
+// Модель дзеркалить InventoryService.createMovement AVG_COST-branch (рядок 227),
+// який завжди викликає consumeBatch(..., 'FIFO', ...) для фізичного декременту
+// (щоб інваріант не залежав від lookup-режиму собівартості).
+describe('BatchService — mid-life costMethod switch invariants (Bug #614)', () => {
+  it('послідовні WRITEOFF з різним costMethod → Σ remainingQty(active) == вихідне − Σ consumed', () => {
+    fc.assert(
+      fc.property(
+        batchArray,
+        fc.array(
+          fc.record({
+            method: methodArb, // FIFO/LIFO/FEFO — AVG_COST у моделі не мутує партії
+            qty: fc.integer({ min: 1, max: 300 }),
+          }),
+          { minLength: 1, maxLength: 12 },
+        ),
+        (batches, ops) => {
+          const clone = batches.map(b => ({ ...b }));
+          const initialSum = clone.reduce((s, b) => s + b.remainingQty, 0);
+          let totalConsumed = 0;
+          for (const op of ops) {
+            const res = consumeBatchModel(clone, op.qty, op.method);
+            if (!('error' in res)) {
+              totalConsumed += res.reduce((s, r) => s + r.quantity, 0);
+            }
+            // insufficient/error — партії НЕ мутувались (all-or-nothing з рядка 91 моделі)
+          }
+          const finalSum = clone.reduce((s, b) => s + b.remainingQty, 0);
+          return finalSum === initialSum - totalConsumed;
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+
+  it('після серії mid-life switch: жодна партія не в мінус, isActive узгоджено з remainingQty', () => {
+    fc.assert(
+      fc.property(
+        batchArray,
+        fc.array(fc.record({ method: methodArb, qty: fc.integer({ min: 1, max: 500 }) }), {
+          minLength: 1,
+          maxLength: 15,
+        }),
+        (batches, ops) => {
+          const clone = batches.map(b => ({ ...b }));
+          for (const op of ops) consumeBatchModel(clone, op.qty, op.method);
+          return clone.every(
+            b => b.remainingQty >= 0 && (b.remainingQty > 0 ? b.isActive : !b.isActive),
+          );
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+
+  it('AVG_COST commit path декрементує партії FIFO — Σ інваріант тримається саме тому', () => {
+    // Модель: AVG_COST у реальному InventoryService.createMovement викликає
+    // consumeBatch(..., 'FIFO', ...) — тобто фізичний декремент завжди FIFO.
+    // Тестуємо цей контракт: змішана послідовність where AVG_COST replaced by FIFO.
+    fc.assert(
+      fc.property(
+        batchArray,
+        fc.array(
+          fc.record({
+            declaredMethod: fc.constantFrom<CostMethod>('FIFO', 'LIFO', 'FEFO', 'AVG_COST'),
+            qty: fc.integer({ min: 1, max: 200 }),
+          }),
+          { minLength: 1, maxLength: 10 },
+        ),
+        (batches, ops) => {
+          const clone = batches.map(b => ({ ...b }));
+          const initialSum = clone.reduce((s, b) => s + b.remainingQty, 0);
+          let physicallyConsumed = 0;
+          for (const op of ops) {
+            // AVG_COST у real code = FIFO для decrement, sentinel для lookup — тому мутуємо FIFO
+            const effective: CostMethod =
+              op.declaredMethod === 'AVG_COST' ? 'FIFO' : op.declaredMethod;
+            const res = consumeBatchModel(clone, op.qty, effective);
+            if (!('error' in res)) {
+              physicallyConsumed += res.reduce((s, r) => s + r.quantity, 0);
+            }
+          }
+          const finalSum = clone.reduce((s, b) => s + b.remainingQty, 0);
+          return (
+            finalSum === initialSum - physicallyConsumed && clone.every(b => b.remainingQty >= 0)
+          );
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+});
+
+// ─── Bug #613 — Concurrent consume race-guard invariants ──────────────────────
+// Модель дзеркалить conditional decrement через updateMany з `remainingQty: gte: take`.
+// Race scenario: два concurrent WRITEOFF читають однаковий snapshot findMany,
+// один комітить перший, другий на updateMany отримує count=0 → throw.
+describe('BatchService — concurrent consume race-guard (Bug #613)', () => {
+  it('conditional decrement симуляція: 2 concurrent → 1 success + 1 throw = все консистентно', () => {
+    // Модель: батч remaining=10, обидва tx читають 10, беруть take=10.
+    // Перший updateMany з gte:10 → count=1, декремент до 0.
+    // Другий updateMany з gte:10 → count=0 (тепер remaining=0), throw.
+    // Результат: 1 успіх × 10 units, 1 fail; сумарний consumed = 10 = initial.
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 2, max: 100 }), // initial remaining
+        fc.integer({ min: 1, max: 50 }), // take per concurrent tx
+        (initial, take) => {
+          fc.pre(take <= initial);
+          let remaining = initial;
+          const results: { success: boolean; consumed: number }[] = [];
+          // Симуляція: 2 concurrent tx, кожен намагається взяти take.
+          for (let i = 0; i < 2; i++) {
+            if (remaining >= take) {
+              remaining -= take;
+              results.push({ success: true, consumed: take });
+            } else {
+              // updateMany.count === 0 → throw → 0 consumed (все rollback)
+              results.push({ success: false, consumed: 0 });
+            }
+          }
+          const totalConsumed = results.reduce((s, r) => s + r.consumed, 0);
+          // Інваріант: сумарний consumed НЕ перевищує початковий remaining
+          return (
+            totalConsumed <= initial && remaining === initial - totalConsumed && remaining >= 0
+          );
+        },
+      ),
+      { numRuns: 500 },
+    );
+  });
+
+  it('conditional decrement guard: якщо remainingQty < take → count=0 → скасовуємо consume', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 100 }),
+        fc.integer({ min: 1, max: 200 }),
+        (remaining, take) => {
+          // Симуляція updateMany з `WHERE remainingQty >= take`
+          const wouldDecrement = remaining >= take;
+          const finalRemaining = wouldDecrement ? remaining - take : remaining;
+          // Інваріант: після спроби декременту, remaining НІКОЛИ не негативний.
+          return finalRemaining >= 0;
+        },
+      ),
+      { numRuns: 500 },
+    );
+  });
+});

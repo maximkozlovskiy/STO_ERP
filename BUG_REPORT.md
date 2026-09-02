@@ -1895,3 +1895,60 @@ Static-checks passed (0 bugs found у цих секціях):
 - **Severity:** MEDIUM (regression-guard, не активний баг).
 - **Де шукати ще:** будь-який фінансово-чутливий обчислювальний блок з ≥3 гілок (switch по type/enum, багатоетапне вирахування) — додавати property-based invariants до відповідного \*.invariants.spec.ts.
 - **Статус:** [x] виправлено (guard додано, всі 24 тести PASS з першого запуску — інваріанти тримаються).
+
+## Session 2026-09-02 (targeted /sto-tester CYCLE 2, HEAD e0385776, feat/supplier-payments) — concurrent race + mid-life switch
+
+**Контекст:** Bug hunt циклу 2 — ДРУГИЙ незалежний прохід після повного циклу 1 (AVG_COST sentinel fix + 24 property invariants + FIFO cost carry). Фокус: те що цикл-1 не покрив — real concurrency, mid-life switch, defensive DB layer.
+
+**Baseline (перед fix):** API tsc 0, Web tsc 0, API tests 1083 passed / 74 files, Web tests 488 passed / 45 files.
+
+**Знайдено нових багів:** 2 CRITICAL + 1 MEDIUM regression-guard.
+
+### Bug #613 — HIGH concurrency — createMovement WRITEOFF/RESERVATION_RELEASE та consumeBatch без row-lock захисту → quantity/remainingQty можуть стати від'ємними
+
+- **Файл:** apps/api/src/modules/inventory/inventory.service.ts:118-140 (pre-check), :187-204 (upsert без post-check); apps/api/src/modules/inventory/batch.service.ts:219-238 (безумовний decrement).
+- **Симптом:** Два concurrent WRITEOFF того самого товару обидва проходять pre-check `available >= |qty|` (читання stale snapshot). Postgres serialize упсерт рядково через row-lock, але **сам pre-check** уже виконаний з застарілими даними → другий tx декрементує `quantity` до -N БЕЗ помилки (немає CHECK constraint на quantity>=0). Аналогічно у `consumeBatch`: `stockBatch.update({ decrement: take })` виконується безумовно → `remainingQty=-N`. **Інваріант `quantity>=0 && remainingQty>=0` силентно ламається** при 2 одночасних наряди/розхід того самого запчастини (реалістичний сценарій СТО з 2 механіками).
+- **Причина виникнення:** Prisma default = Read Committed; row-lock блокує тільки послідовний UPDATE, але не «pre-check → update» ланцюг. Оригінальний дизайн вважав що весь потік у $transaction захищений — але isolation Read Committed **не** серіалізує read+write. Немає CHECK constraint у міграціях (перевірено: grep CHECK.\*remainingQty = 0 matches).
+- **Виявлено:** grep `isolationLevel|Serializable` у `apps/api/src/modules/inventory` = 0 matches. Порівняння з `invoices.service.ts` (має Serializable + inner re-check для `createFromWorkOrder` — Bug #412) — inventory hot-path НЕ має аналогічного захисту.
+- **Fix:**
+  1. **inventory.service.ts:187-217** — `stockItem.upsert(...).select({ quantity, reserved })` + post-check `if (upserted.quantity < 0) throw` / `if (upserted.reserved < 0) throw`. Виконується всередині $tx → throw викликає rollback всього ланцюга (WRITEOFF + consumeBatch + settlements). Простіше за Serializable + менше SSI overhead для звичайних sequential cases.
+  2. **batch.service.ts:219-247** — замінено `stockBatch.update({ decrement })` на `stockBatch.updateMany({ where: { id, remainingQty: { gte: take } }, data: { decrement } })`. Conditional update: якщо інший tx уже задекрементив між findMany і updateMany → `count=0` → throw «Партію змінено іншою транзакцією». Атомарний check + decrement на рівні Postgres.
+  3. **inventory.service.spec.ts** — 3 нових regression-тести у `describe('Bug #613 — concurrent WRITEOFF race-condition guard')`: WRITEOFF race → throw; RESERVATION_RELEASE race → throw; happy-path → OK.
+  4. **batch.service.spec.ts** — 2 нових regression-тести: updateMany з правильним where filter (не update); race-lost count=0 → throw.
+  5. **batch.invariants.spec.ts** — 2 нових property-based тести (Bug #613 secure section): 2 concurrent tx симуляція → totalConsumed <= initial ∀ (initial, take); guard остаточно не негативний.
+- **Severity:** HIGH — фізичний склад ламається без сигналу; downstream: неправильний COGS у нарядах (від'ємна собівартість), balance у settlements неузгоджений, при скасуванні наряду returnToBatch ще більше ламає.
+- **Де шукати ще:** будь-який write-path де pre-check → upsert/update виконується у Read Committed без row-lock контракту: `settlementAccount.balance` (Bug #412 закрив invoice-flow, але sequences у intra-org можуть бути); `cashRegister.balance`; `bankAccount.balance`; `deliveryOrder.receivedQty`. Grep: `findFirst({ select: { quantity }}) → upsert/update({ increment/decrement })` без $tx isolation.
+- **Статус:** [x] виправлено
+
+### Bug #614 — MEDIUM test-coverage — mid-life switch costMethod (FIFO → AVG_COST → LIFO) без property-based інваріантного тесту
+
+- **Файл:** apps/api/src/modules/inventory/batch.invariants.spec.ts — до fix'у тільки FIFO/LIFO/FEFO/AVG-sentinel окремо, без mixed sequences.
+- **Симптом:** organisation.costMethod може змінитись у середині життя існуючих партій (адмін переключив у налаштуваннях). Ключове: AVG_COST шлях у `InventoryService.createMovement` викликає `consumeBatch(..., 'FIFO', ...)` (рядок 227) — тобто **фізичний декремент завжди FIFO** незалежно від lookup-режиму. Немає property-based тесту що після довільної послідовності `[{FIFO, WRITEOFF}, {AVG, WRITEOFF}, {LIFO, WRITEOFF}]` інваріант `Σ remainingQty(active) == initial - Σ consumed` тримається. Refactor який випадково зробить `consumeBatch(..., 'AVG_COST', ...)` у AVG-branch (return sentinel замість фізичного декременту) пройде unit CI зеленим — інваріант зламається у runtime у клієнта що переключився на AVG.
+- **Причина виникнення:** окремі costMethod-тести пишуться під конкретний Bug #N; mixed-sequence property invariant вимагає розуміння всього design contract «AVG_COST commit path декрементує FIFO».
+- **Виявлено:** grep `describe.*mid-life|switch.*costMethod` у `batch.invariants.spec.ts` — 0 matches. Огляд `describe`-блоків показав тільки single-method тести.
+- **Fix:** новий describe-блок `BatchService — mid-life costMethod switch invariants (Bug #614)` з 3 property-based тестами:
+  1. Послідовні WRITEOFF з різним costMethod → `finalSum === initialSum - totalConsumed`.
+  2. Після серії mid-life switch: жодна партія у мінус + isActive узгоджено з remainingQty.
+  3. AVG_COST у commit path декрементує FIFO (модель контракту з рядка 227).
+- **Severity:** MEDIUM (regression-guard, не активний баг).
+- **Де шукати ще:** будь-який `switch (costMethod)` / `switch (mode)` де 1 гілка робить lookup-only без мутації, інша — write-side effects. Різний write-path у різних гілках = потенційний drift при mid-life switch config.
+- **Статус:** [x] виправлено
+
+### Bug #615 — LOW technical-debt — inventory.service.ts:158-173 RECEIPT з batch.createFromReceipt всередині upsert-flow без row-lock захисту від concurrent RECEIPT
+
+- **Файл:** apps/api/src/modules/inventory/inventory.service.ts:158-173.
+- **Симптом:** Одночасні `POST /stock-items/receipt` для того самого товару → обидва створять окремий StockBatch (unique constraint на `orgId+goodId+warehouseId+batchNumber` — але `batchNumber` часто null → унікальність не гарантована). Не CRITICAL: створення нових партій — append-only, не порушує інваріант. Але **дубль-партія з тим же costPrice, без batchNumber** — забруднення FIFO-порядку (2 партії з createdAt дуже близько → непередбачувано яка перша).
+- **Причина виникнення:** RECEIPT не має pre-check на існуючу партію (create-only, без merge-logic).
+- **Виявлено:** аналіз createFromReceipt — не робить upsert на batch, просто create. Прийнятно для current-day usage (унікальний batchNumber на partition).
+- **Fix:** не потрібен — це defensive concern, не bug. Задокументовано у docstring `createFromReceipt`.
+- **Severity:** LOW (technical debt).
+- **Де шукати ще:** будь-який create-only endpoint де concurrent request може створити дублікат semantic entity.
+- **Статус:** [x] задокументовано (без коду)
+
+**Підсумок циклу 2:**
+
+- Знайдено: 2 real багів (1 HIGH concurrency + 1 MEDIUM test-coverage gap) + 1 LOW documented.
+- Виправлено: 2 з 3 (LOW не потребував коду).
+- Додано тестів: +10 (3 inventory.service.spec + 2 batch.service.spec + 5 batch.invariants.spec).
+- API tests: 1083 → 1093 (+10). Web tests: 488 (без змін). TSC: 0 errors.
+- Ключовий висновок: цикл 1 покрив semantic invariants (Σ, sign, FIFO order), цикл 2 покрив operational invariants (concurrency race, mid-life switch, defensive DB layer).

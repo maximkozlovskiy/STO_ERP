@@ -22,7 +22,12 @@ describe('InventoryService.createMovement guards', () => {
 
   beforeEach(async () => {
     prisma = {
-      stockItem: { findFirst: vi.fn(), upsert: vi.fn().mockResolvedValue({}) },
+      // Bug #613: upsert selects { quantity, reserved } for post-check guard.
+      // Дефолтний повернення — валідні ненегативні (щоб happy-path не тригерив throw).
+      stockItem: {
+        findFirst: vi.fn(),
+        upsert: vi.fn().mockResolvedValue({ quantity: 100, reserved: 0 }),
+      },
       stockMovement: {
         create: vi.fn().mockResolvedValue({ id: 'mov-1' }),
         update: vi.fn().mockResolvedValue({}),
@@ -299,6 +304,43 @@ describe('InventoryService.createMovement guards', () => {
       expect(prisma.stockMovement.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ unitOfMeasureId: null }),
       });
+    });
+  });
+
+  // ─── Bug #613 — post-upsert race-condition guards ──────────────────────────
+  // Regression-guard для defensive-checks у createMovement (Bug #613): pre-check
+  // available>=|qty| читає STALE snapshot без row-lock — два concurrent WRITEOFF
+  // того самого товару обидва проходять pre-check, потім Postgres serialize upsert
+  // рядково → другий залишає quantity=-N. Post-check ПІСЛЯ upsert ловить негатив і
+  // throws → $transaction rollback. Без guard: silent quantity<0 у StockItem.
+  describe('Bug #613 — concurrent WRITEOFF race-condition guard', () => {
+    it('WRITEOFF з concurrent race (upsert повернув quantity<0) → BadRequestException', async () => {
+      prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 0 });
+      // Симулюємо race: pre-check бачить 10, але між pre-check і upsert інший tx
+      // задекрементив до 0, і наш decrement -10 записав -10 у row-lock послідовності.
+      prisma.stockItem.upsert.mockResolvedValueOnce({ quantity: -10, reserved: 0 });
+      await expect(
+        service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -10 })),
+      ).rejects.toThrow(/Недостатньо товару.*concurrent/i);
+    });
+
+    it('RESERVATION_RELEASE з concurrent race (reserved<0 після upsert) → BadRequestException', async () => {
+      prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 5 });
+      prisma.stockItem.upsert.mockResolvedValueOnce({ quantity: 10, reserved: -1 });
+      await expect(
+        service.createMovement('org-1', dto({ type: 'RESERVATION_RELEASE', quantity: -5 })),
+      ).rejects.toThrow(/Резерв не може стати від/i);
+    });
+
+    it('happy-path (upsert повернув quantity>=0, reserved>=0) → без throw', async () => {
+      prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 0 });
+      prisma.stockItem.upsert.mockResolvedValueOnce({ quantity: 0, reserved: 0 });
+      batchService.consumeBatch.mockResolvedValueOnce([
+        { batchId: 'b1', quantity: 10, costPrice: 50 },
+      ]);
+      await expect(
+        service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -10 })),
+      ).resolves.toBeDefined();
     });
   });
 });
