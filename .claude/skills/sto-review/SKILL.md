@@ -1613,6 +1613,44 @@ grep -rnE "_count as \{|_avg as \{|_min as \{|_max as \{" apps/api/src --include
 
 ---
 
+### 2026-09-02 — `role="button"` без `tabIndex={0}` + `onKeyDown` (Enter/Space) → keyboard-broken drill-down — §8 Web Frontend / §14 a11y
+
+**Сигнал:** новий drill-down UI (клікабельна клітинка таблиці/шахматки/heatmap, `<tr onClick>` рядок ліста, «плитка» dashboard) додає `role="button"` для screen reader-а і `cursor-pointer` для миші, але забуває пару `tabIndex={0}` + `onKeyDown`. Keyboard-only юзер (Tab-навігація, screen reader) не може активувати: focus не приходить (немає `tabIndex`) або приходить але Enter/Space не викликає handler. WCAG 2.1.1 (Keyboard) fail. Патерн-регресія: `role="button"` вважається «done» після додавання, а насправді — це половина контракту, друга половина — keyboard activation. Codebase вже має правильний шаблон в `inline-edit-cell.tsx` (єдине джерело правди). Знайдено у `SupplierPaymentScheduleTab.tsx` (`ClickableCell`/`TotalCell` — по 20-40 клітинок шахматки; `<tr>` панелі drill-down документів).
+
+**Grep:**
+
+```bash
+# role="button" без пари tabIndex+onKeyDown
+grep -rnE "role=['\"]button['\"]" apps/web/src/ --include="*.tsx" -B2 -A5 \
+  | grep -v "onKeyDown\|tabIndex\|inline-edit-cell\|<button\|// ok"
+# <tr onClick=... без onKeyDown/role/tabIndex — рядки-як-кнопки списку
+grep -rnE "<tr[^>]*onClick=" apps/web/src/ --include="*.tsx" -A3 | grep -v "onKeyDown\|role=\|tabIndex"
+# Двосторонній: cursor-pointer + onClick на <div>/<td>/<tr>/<li> без role="button"|tabIndex — WCAG 2.1.1
+grep -rnE "cursor-pointer" apps/web/src/ --include="*.tsx" -B3 -A3 \
+  | grep -B3 -A3 "onClick" | grep -v "role=\"button\"\|<button\|tabIndex"
+```
+
+**Фікс:** module-level helper (реюзабельний):
+
+```ts
+function activateOnKey(onClick: () => void) {
+  return (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault(); // Space інакше скролить сторінку
+      onClick();
+    }
+  };
+}
+```
+
+- `role="button" tabIndex={0} onKeyDown={activateOnKey(handler)}` + `focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary` (видимий фокус, WCAG 2.4.7). Для `<tr>` — додатково `aria-label="Відкрити X"` (screen reader не оголошує «row», а «button opens X»).
+
+Якщо handler опціональний (`clickable = !!id`) — усі 3 атрибути мають бути conditional (`clickable ? 0 : undefined`), інакше mixed-mode `tabIndex=0` на нефункціональний елемент = false-affordance для screen reader.
+
+**Severity:** IMPORTANT — WCAG fail (клавіатурні юзери + screen reader-и не можуть використати фічу); degradation без TS/runtime помилки; latent regression у кожній новій «heatmap/шахматка/heatgrid» UI-фічі поки не додано у це review §8/§14.
+
+---
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
