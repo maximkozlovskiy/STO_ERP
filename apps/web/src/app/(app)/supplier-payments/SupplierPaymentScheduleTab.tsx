@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
 import { Wallet, X, ChevronRight } from 'lucide-react';
 import {
   useSupplierPaymentsSchedule,
@@ -251,14 +251,28 @@ export function SupplierPaymentScheduleTab() {
                 <tbody>
                   {docs.map(doc => {
                     const clickable = !!doc.poId;
+                    const open = clickable ? () => setEditingPOId(doc.poId) : undefined;
                     return (
                       <tr
                         key={doc.poId || doc.number}
-                        onClick={clickable ? () => setEditingPOId(doc.poId) : undefined}
+                        onClick={open}
+                        onKeyDown={
+                          open
+                            ? e => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  open();
+                                }
+                              }
+                            : undefined
+                        }
+                        role={clickable ? 'button' : undefined}
+                        tabIndex={clickable ? 0 : undefined}
+                        aria-label={clickable ? `Відкрити замовлення ${doc.number}` : undefined}
                         className={cn(
                           'transition-colors',
                           clickable
-                            ? 'hover:bg-secondary/40 cursor-pointer'
+                            ? 'hover:bg-secondary/40 cursor-pointer focus-visible:outline-none focus-visible:bg-secondary/40'
                             : 'text-muted-foreground',
                         )}
                       >
@@ -301,6 +315,22 @@ export function SupplierPaymentScheduleTab() {
   );
 }
 
+/**
+ * Keyboard activation для `<td role="button">` — Enter/Space відкриває панель,
+ * як для нативного <button>. Без цього keyboard-only користувач (Tab-навігація,
+ * screen reader) не може відкрити drill-down: клітинка отримує focus, але
+ * жоден key handler не спрацьовує (WCAG 2.1.1). Space має preventDefault, щоб
+ * не проскролити сторінку.
+ */
+function activateOnKey(onClick: () => void) {
+  return (e: KeyboardEvent<HTMLTableCellElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  };
+}
+
 /** Клітинка постачальника — клікабельна лише коли є сума. */
 function ClickableCell({
   value,
@@ -319,11 +349,14 @@ function ClickableCell({
   return (
     <td
       onClick={hasValue ? onClick : undefined}
+      onKeyDown={hasValue ? activateOnKey(onClick) : undefined}
       role={hasValue ? 'button' : undefined}
+      tabIndex={hasValue ? 0 : undefined}
       className={cn(
         'text-right px-2 py-1.5 border-b border-border',
         sticky && 'sticky right-0 z-10 border-l',
-        hasValue && 'cursor-pointer hover:brightness-95',
+        hasValue &&
+          'cursor-pointer hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
         active && 'ring-2 ring-inset ring-primary',
         className,
         sticky && !className && 'bg-surface',
@@ -352,12 +385,15 @@ function TotalCell({
   return (
     <td
       onClick={hasValue ? onClick : undefined}
+      onKeyDown={hasValue ? activateOnKey(onClick) : undefined}
       role={hasValue ? 'button' : undefined}
+      tabIndex={hasValue ? 0 : undefined}
       className={cn(
         'text-right px-2 py-1.5 border-b border-border',
         sticky && 'sticky right-0 z-10 bg-muted/40 border-l',
         variant === 'overdue' && hasValue && 'bg-destructive text-white',
-        hasValue && 'cursor-pointer hover:brightness-95',
+        hasValue &&
+          'cursor-pointer hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
         active && 'ring-2 ring-inset ring-primary',
       )}
     >
