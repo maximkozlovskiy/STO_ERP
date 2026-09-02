@@ -280,8 +280,15 @@ export class SupplierPaymentScheduleDocumentsQueryDto {
   @Matches(YMD_RE, { message: 'to має бути у форматі YYYY-MM-DD' })
   to!: string;
 
+  // Bug #616: тільки `@Matches(YMD_RE)` пропускає семантично-невалідні дати
+  // (2026-99-99, 2026-13-01, 2026-02-31) — regex перевіряє лише shape. Далі
+  // `wantBucket='2026-99-99'` не збігається з жодним allocation bucket → silent
+  // порожня відповідь замість 400. Комбо `@IsDateString({strict})` (parseable) +
+  // `@Matches(YMD_RE)` (YMD-only, без ISO-часу) = strict validation, дзеркалить
+  // `from`/`to` у цьому ж DTO (Bug #595).
   @ApiPropertyOptional({ description: 'Конкретна дата колонки byDate (YYYY-MM-DD)' })
   @IsOptional()
+  @IsDateString({ strict: true }, { message: 'date має бути валідною датою' })
   @Matches(YMD_RE, { message: 'date має бути у форматі YYYY-MM-DD' })
   date?: string;
 

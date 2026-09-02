@@ -3,7 +3,43 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
-## Session 2026-09-02 — sto-tester фінансова зміна знаку балансу постачальника — HEAD d373c8c0
+## Session 2026-09-02 — sto-tester drill-down документів у графіку оплат — HEAD 6c8eeff5
+
+Bug hunt комітів `2d960bc9` (feat: drill-down документів у графіку оплат) + `c7708711` (fix: WCAG a11y для клітинок).
+
+**Baseline (перед сесією):**
+
+- API tsc: 0. Web tsc: 0.
+- API vitest: 1106/1106 ✅ (75 suites). Перший прогін впав із tinypool crash — транзиентна помилка воркера, повторний прогін green.
+- Web vitest: 491/491 ✅ (45 suites).
+- supplier-payments spec: 48/48 ✅ (service + contract).
+- **Live invariant check** (7 постачальників × 18 клітинок = overdue+byDate+planned per supplier + totals row): для КОЖНОЇ ненульової клітинки шахматки `Σ allocated з /schedule/documents == значення клітинки з /schedule`. **18/18 checked, 0 fails ✅**. Фінансова консистентність збережена.
+- Кредит-лімітний edge (АвтоДеталь ТОВ: balance=−49683, creditLimit=2000, schedule.total=47683=49683−2000) — інваріант тримається, документи показують зменшений allocated.
+- Синтетичний «борг без документа» (poId=''): 1 рядок (АвтоДеталь ТОВ, alloc=1030.00) — включений у overdue, Σ сходиться.
+- Валідаційні edge-cases: `date+target`=400 ✅, ні один=400 ✅, invalid supplierId (non-UUID)=400 ✅, вікно>100днів=400 ✅, from>to=400 ✅, invalid `target` value=400 ✅, no auth=401 ✅, from missing=400 ✅.
+- Tenant test: 1 org у seed → cross-tenant runtime-repro не можливий, орієнтуємось на статичний аналіз (кожен `findMany` містить `orgId` у where — verified).
+
+### Bug #616 — MEDIUM backend/validation — `SupplierPaymentScheduleDocumentsQueryDto.date` приймає семантично-невалідні дати (регресія паттерну Bug #595) — [x] виправлено
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.dto.ts:284-286` — поле `date?: string`:
+  ```ts
+  @IsOptional()
+  @Matches(YMD_RE, { message: 'date має бути у форматі YYYY-MM-DD' })
+  date?: string;
+  ```
+  Тільки regex-shape (`^\d{4}-\d{2}-\d{2}$`), без `@IsDateString({ strict: true })`.
+- **Симптом (live-репродукція, `admin@sto.local`):**
+  ```
+  GET /supplier-payments/schedule/documents?from=2026-09-01&to=2026-12-01&date=2026-99-99  → HTTP 200 []
+  GET /supplier-payments/schedule/documents?from=2026-09-01&to=2026-12-01&date=2026-13-01  → HTTP 200 []
+  GET /supplier-payments/schedule/documents?from=2026-09-01&to=2026-12-01&date=2026-02-31  → HTTP 200 []
+  GET /supplier-payments/schedule/documents?from=2026-09-01&to=2026-12-01&date=9999-99-99  → HTTP 200 []
+  ```
+  Всі повертають HTTP 200 з порожнім масивом замість HTTP 400. Regex `\d{4}-\d{2}-\d{2}` пропускає `99-99` (два цифри). Далі `wantBucket = '2026-99-99'`, у `allocations` не існує bucket-у з такою назвою → фільтр повертає порожньо → користувач бачить «Немає документів» замість помилки. Порівняння з `from`/`to` (за тим же DTO): вони мають `@IsDateString({ strict: true })` + `@Matches(YMD_RE)`, тому `from=2026-99-99` → HTTP 400. **Це точно та ж пастка що вже описана у doc-коментарі до `SupplierPaymentScheduleQueryDto` (lines 224-228, Bug #595), але виправлення застосоване лише до `from`/`to`, не до `date`**.
+- **Природа:** copy-paste розширення: розробник додав drill-down DTO `SupplierPaymentScheduleDocumentsQueryDto`, скопіював `@Matches(YMD_RE)` для `date`, але забув парний `@IsDateString({ strict: true })`. Regex-only shape валідація без semantic-parse — знайома пастка. Симптом ідентичний Bug #595: silent empty replacement of an error, користувач думає «немає боргів у цю дату».
+- **Fix:** додати `@IsDateString({ strict: true }, { message: 'date має бути валідною датою' })` перед `@Matches(YMD_RE, ...)`. Комбо: `IsDateString` парсить (ловить 99-99/13-01/Feb-31) + `Matches` обмежує форму до YYYY-MM-DD (без ISO-часу).
+- **Regression-guard:** розширити `supplier-payments.contract.spec.ts` — три HTTP-400 кейси на невалідну `date`: `2026-99-99`, `2026-13-01`, `2026-02-31`. Дзеркалить існуючий контракт-guard на `from`/`to`.
+- **Severity:** MEDIUM — фінансова UI-панель тихо показує «Немає документів» замість помилки; невірна дата у URL (закладка, share-link, deep-link зі старим форматом) вводить в оману.
 
 Bug hunt комітів `23ce9109` (fix: BALANCE_SIGN, receive→SUPPLIER_CHARGE, migrations 20260902120000 + 20260902120100) та `484f6b92` (review: sibling-drift у PageClient).
 

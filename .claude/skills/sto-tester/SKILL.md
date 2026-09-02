@@ -4171,6 +4171,14 @@ Alternative pattern: custom validator `@IsYmdDate` що комбінує both ch
 - усі DTO що приймають YMD-date як параметр (query для reports, calendar, schedule, dashboard, filters `dateFrom/dateTo`)
 - усі DTO що використовують `@Matches` з date-like regex — semantic-parse-check пропущений
 - аналогічний pattern для other formats: phone (`@Matches(/^\+?\d{10,15}$/)` без range-check коду країни), IBAN (`@Matches(/^UA\d{27}$/)` без checksum-check), EDRPOU (`@Matches(/^\d{8,10}$/)` без mod-11 checksum)
+- **sibling-drift у ТОМУ Ж DTO-файлі (Bug #616 — регресія Bug #595):** коли sprint додає **новий** DTO (drill-down/child endpoint) поруч з існуючим fix-ed DTO — розробник копіює `@Matches(YMD_RE)` для sibling-поля, але забуває парний `@IsDateString({ strict: true })`. Doc-comment у файлі описує пастку (пред-існуючий Bug #595), але автор нового DTO читає лише декоратори наявного поля, а не doc-comment вище. Grep-guard: у файлах де вже є fix (`@IsDateString({ strict: true })` + `@Matches(YMD_RE)`) — перевірити чи КОЖНЕ `@Matches(YMD_RE)` має парний `@IsDateString`, не тільки перше:
+  ```bash
+  # Знайти DTO де fix застосовано частково: файл має ХОЧ ОДИН @IsDateString({strict}), але
+  # деякі @Matches(YMD_RE) — самотні (без парного @IsDateString у попередніх 3 рядках).
+  for f in $(grep -rl "IsDateString.*strict.*true" apps/api/src/modules --include="*.dto.ts"); do
+    awk '/@Matches\(YMD_RE/{ if (!has_ds) print FILENAME ":" NR ": lone @Matches"; has_ds=0 } /@IsDateString.*strict/{ has_ds=1 } /^[[:space:]]*[a-z].*:/{ has_ds=0 }' "$f"
+  done
+  ```
 
 ### 2026-08-30 — E2E: seeded entity invisible через дефолтний date-фільтр списку (Bug #572) — e2e / seed-brittle / list-filters
 
