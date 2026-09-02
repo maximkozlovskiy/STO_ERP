@@ -539,15 +539,15 @@ Skip-first-run ref скидається на зміну parent-id.
 
 ## Зведення grep-детекторів (для CI / review)
 
-| Патерн                   | Сигнал порушення                                                                 |
-| ------------------------ | -------------------------------------------------------------------------------- |
-| MP-B1/B7 SOT осі         | `type ==?= 'CHARGE'\|'PAYMENT'`; `Partial<Record<`                               |
-| MP-B2 Централізація      | `prisma.stockItem.update(`, `settlementAccount.update(`, `.delete(` поза service |
-| MP-B3 Tenant/soft-delete | `findFirst`/`findMany` без `orgId`; `where:{id}` в update                        |
-| MP-B4/F1 Async guard     | `await apiFetch` → `setState` без `Ref.current !== …AtStart`                     |
-| MP-B5 Config             | magic `invoiceDueDays`/`'FIFO'` поза settings                                    |
-| MP-B6 Cross-field        | POST-точки без дзеркального guard + `.trim()`                                    |
-| MP-B8 Міграції           | `ADD VALUE` + DML в одному файлі                                                 |
-| MP-B9 Hot-path           | inline `include:`/`select:` у findAll; `take: 1000`                              |
-| MP-B10 Sentinel UUID FK  | `consumed[0].batchId`/`res[0].XId` записується у `@db.Uuid` без truthy-guard     |
-| MP-F5 SSR today          | `new Date()`/`Date.now()` у render-body                                          |
+| Патерн                   | Сигнал порушення                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------- |
+| MP-B1/B7 SOT осі         | `type ==?= 'CHARGE'\|'PAYMENT'`; `Partial<Record<`                                    |
+| MP-B2 Централізація      | `prisma.stockItem.update(`, `settlementAccount.update(`, `.delete(` поза service      |
+| MP-B3 Tenant/soft-delete | `findFirst`/`findMany` без `orgId`; `where:{id}` в update                             |
+| MP-B4/F1 Async guard     | `await apiFetch` → `setState` без `Ref.current !== …AtStart`                          |
+| MP-B5 Config             | magic `invoiceDueDays`/`'FIFO'` поза settings                                         |
+| MP-B6 Cross-field        | POST-точки без дзеркального guard + `.trim()`                                         |
+| MP-B8 Міграції           | `ADD VALUE` + DML в одному файлі                                                      |
+| MP-B9 Hot-path           | inline `include:`/`select:` у findAll; `take: 1000`                                   |
+| MP-B10 Sentinel UUID FK  | in-band `''`-sentinel у `@db.Uuid` — тип має бути `string \| null`, не порожній рядок |
+| MP-F5 SSR today          | `new Date()`/`Date.now()` у render-body                                               |

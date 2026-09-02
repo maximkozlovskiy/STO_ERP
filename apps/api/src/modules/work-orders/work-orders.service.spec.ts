@@ -378,13 +378,12 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     );
   });
 
-  // Regression-guard: AVG_COST у InventoryService повертає consumed=[{batchId:'', ...}]
-  // (sentinel — batch aggregate). Раніше `batchId: consumed.length===1 ? consumed[0].batchId : null`
-  // писав порожній рядок у WorkOrderPart.batchId :: uuid → Postgres кидав
-  // "invalid input syntax for type uuid: """ → FSM COMPLETED падав runtime,
-  // WO завершення блокувалось на всіх організаціях з costMethod=AVG_COST.
-  // Тепер: sentinel-batchId '' → part.batchId=null (COGS зберігається, посилання на партію ні).
-  it('AVG_COST sentinel batchId="" → part.batchId=null, batchCostPrice зберігається', async () => {
+  // Regression-guard: AVG_COST у InventoryService повертає consumed=[{batchId: null, ...}]
+  // (агрегат — не одна партія). `batchId: consumed.length===1 ? consumed[0].batchId : null`
+  // → null напряму лягає у nullable WorkOrderPart.batchId :: uuid (порожній рядок раніше
+  // пробивав "invalid input syntax for type uuid" → FSM COMPLETED падав на всіх org з
+  // costMethod=AVG_COST). COGS (batchCostPrice) зберігається, посилання на партію — ні.
+  it('AVG_COST агрегат batchId=null → part.batchId=null, batchCostPrice зберігається', async () => {
     const partUpdate = vi.fn().mockResolvedValue({});
     const createMovement = vi.fn().mockImplementation((_, dto) => {
       if (dto.type === 'RESERVATION_RELEASE') {
@@ -392,7 +391,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
       }
       return Promise.resolve({
         movementId: 'm-wo',
-        consumed: [{ batchId: '', quantity: 2, costPrice: 130 }],
+        consumed: [{ batchId: null, quantity: 2, costPrice: 130 }],
         weightedCostPrice: 130,
       });
     });

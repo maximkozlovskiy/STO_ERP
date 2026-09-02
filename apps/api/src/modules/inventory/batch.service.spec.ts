@@ -164,7 +164,8 @@ describe('BatchService', () => {
         undefined,
         'AVG_COST',
       );
-      expect(result).toEqual([{ batchId: '', quantity: 5, costPrice: 150 }]);
+      // AVG_COST — агрегат, batchId=null (не одна фізична партія; лягає у nullable uuid).
+      expect(result).toEqual([{ batchId: null, quantity: 5, costPrice: 150 }]);
     });
 
     it('FIFO: списує з найстарішої партії', async () => {

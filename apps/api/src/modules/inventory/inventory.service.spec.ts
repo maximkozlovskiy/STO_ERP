@@ -236,20 +236,17 @@ describe('InventoryService.createMovement guards', () => {
     expect(batchService.consumeBatch).not.toHaveBeenCalled();
   });
 
-  // Regression-guard: AVG_COST branch у BatchService.consumeBatch повертає sentinel-запис
-  // {batchId:'', quantity, costPrice: avgCost} (агрегат по кількох партіях, не одна конкретна).
-  // Раніше `if (consumed.length === 1) stockMovement.update({batchId: consumed[0].batchId})`
-  // писав порожній рядок у StockMovement.batchId :: uuid → Postgres кидав
-  // "invalid input syntax for type uuid: """ → WRITEOFF/WO COMPLETED падав runtime.
-  // Тепер update викликається ЛИШЕ коли batchId — непорожній UUID.
-  it('AVG_COST sentinel batchId="" НЕ викликає stockMovement.update (uuid guard)', async () => {
+  // Regression-guard: AVG_COST branch у BatchService.consumeBatch повертає агрегат
+  // {batchId: null, quantity, costPrice: avgCost} (не одна конкретна партія).
+  // `const singleBatchId = consumed.length===1 ? consumed[0].batchId : null; if (singleBatchId)`
+  // → update пропускається, коли batchId===null (порожній рядок раніше пробивав
+  // StockMovement.batchId :: uuid → "invalid input syntax for type uuid").
+  it('AVG_COST агрегат batchId=null НЕ викликає stockMovement.update (uuid guard)', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
     settingsService.getOrganisationSettings.mockResolvedValue({ costMethod: 'AVG_COST' });
     batchService.getAvgCost.mockResolvedValue(110);
-    // AVG_COST branch у batch.service.ts повертає [{batchId:'', ...}] як sentinel.
-    // При цьому physical consume у нашому inventory.service йде FIFO — мок повертає real
-    // batch, тому щоб reproduce edge-case (single sentinel), явно ставимо ''.
-    batchService.consumeBatch.mockResolvedValue([{ batchId: '', quantity: 5, costPrice: 110 }]);
+    // AVG_COST branch повертає [{batchId: null, ...}] — дзеркалимо реальний контракт.
+    batchService.consumeBatch.mockResolvedValue([{ batchId: null, quantity: 5, costPrice: 110 }]);
     await service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -5 }));
     expect(prisma.stockMovement.update).not.toHaveBeenCalled();
   });

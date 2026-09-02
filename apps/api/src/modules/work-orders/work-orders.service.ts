@@ -897,14 +897,10 @@ export class WorkOrdersService {
         db,
       );
       if (writeoff.weightedCostPrice != null) {
-        // batchId лише коли списано з однієї реальної партії. AVG_COST повертає sentinel
-        // {batchId:''} (агрегат) — порожній рядок НЕ є UUID, Postgres кине
-        // "invalid input syntax for type uuid" при update workOrderPart.batchId :: uuid.
-        // Труна COGS-звіту рентабельності при cost method = AVG.
-        const singleBatchId =
-          writeoff.consumed.length === 1 && writeoff.consumed[0].batchId
-            ? writeoff.consumed[0].batchId
-            : null;
+        // batchId лише коли списано рівно з однієї реальної партії. AVG_COST-агрегат
+        // повертає batchId=null, span — length>1 → обидва дають null (нема single-batch
+        // трасування). Нижче NULL коректно лягає у nullable uuid WorkOrderPart.batchId.
+        const singleBatchId = writeoff.consumed.length === 1 ? writeoff.consumed[0].batchId : null;
         await db.workOrderPart.update({
           where: { id: part.id },
           data: {

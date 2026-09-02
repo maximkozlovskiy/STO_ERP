@@ -17,7 +17,13 @@ export interface CreateBatchDto {
 }
 
 export interface BatchConsumeResult {
-  batchId: string;
+  /**
+   * ID реальної партії, з якої списано. `null` — коли рядок не відповідає одній фізичній
+   * партії (AVG_COST-агрегат): `StockMovement.batchId`/`WorkOrderPart.batchId` — nullable
+   * `@db.Uuid`, тож `null` присвоюється напряму без гейта у викликачів (порожній рядок
+   * пробивав би "invalid input syntax for type uuid").
+   */
+  batchId: string | null;
   quantity: number;
   costPrice: number;
 }
@@ -171,9 +177,11 @@ export class BatchService {
     const db = tx;
 
     if (costMethod === 'AVG_COST') {
-      // AVG_COST — no batch tracking, just return avg cost for reference
+      // AVG_COST — no batch tracking, just return avg cost for reference.
+      // batchId: null — агрегат не відповідає одній партії; викликач присвоює null у
+      // nullable uuid-колонку без гейта (див. BatchConsumeResult.batchId).
       const avgCost = await this.getAvgCost(orgId, goodId, warehouseId);
-      return [{ batchId: '', quantity: qty, costPrice: avgCost }];
+      return [{ batchId: null, quantity: qty, costPrice: avgCost }];
     }
 
     // FEFO requires explicit `nulls: 'last'` — goods without expiry must go LAST; Postgres default for ASC is nulls-last only for some versions.

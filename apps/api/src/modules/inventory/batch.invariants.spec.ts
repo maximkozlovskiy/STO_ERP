@@ -1,5 +1,6 @@
 import * as fc from 'fast-check';
 import { describe, it, expect } from 'vitest';
+import { BALANCE_SIGN } from '../settlements/settlements.service';
 
 /**
  * Property-based invariants for партійне списання (FIFO/FEFO/LIFO/AVG_COST).
@@ -15,8 +16,8 @@ import { describe, it, expect } from 'vitest';
  * 4. Партія з remainingQty==0 автоматично isActive=false
  * 5. FIFO/LIFO/FEFO порядок обходу партій відповідає costMethod
  * 6. Нестача (qty > Σ remainingQty) → throw ПЕРЕД будь-якою мутацією (all-or-nothing)
- * 7. AVG_COST — sentinel {batchId: '', qty, costPrice: avgCost} — length===1 і batchId falsy
- * 8. batchCostPrice fixation: single-batch consume → batchId зафіксовано; span → NULL
+ * 7. AVG_COST — агрегат {batchId: null, qty, costPrice: avgCost} — length===1 і batchId===null
+ * 8. batchCostPrice fixation: single-batch consume → batchId зафіксовано; span/AVG → NULL
  */
 
 // ─── Model of FIFO/LIFO/FEFO consumption ──────────────────────────────────────
@@ -33,7 +34,7 @@ interface Batch {
 type CostMethod = 'FIFO' | 'LIFO' | 'FEFO' | 'AVG_COST';
 
 interface ConsumeResult {
-  batchId: string;
+  batchId: string | null; // null — AVG_COST-агрегат (не одна фізична партія), дзеркалить BatchConsumeResult
   quantity: number;
   costPrice: number;
 }
@@ -81,7 +82,7 @@ function consumeBatchModel(
       .reduce((s, b) => s + b.remainingQty, 0);
     if (totalQty < qty) return { error: 'insufficient' };
     const avgCost = totalQty > 0 ? totalCost / totalQty : 0;
-    return [{ batchId: '', quantity: qty, costPrice: avgCost }];
+    return [{ batchId: null, quantity: qty, costPrice: avgCost }];
   }
 
   const ordered = orderBatches(batches, method);
@@ -248,7 +249,7 @@ describe('BatchService — consume invariants (property-based)', () => {
     );
   });
 
-  it("інваріант #7 (AVG_COST): sentinel {batchId:'', length===1}", () => {
+  it('інваріант #7 (AVG_COST): агрегат {batchId:null, length===1}', () => {
     fc.assert(
       fc.property(batchArray, fc.integer({ min: 1, max: 500 }), (batches, qty) => {
         const clone = batches.map(b => ({ ...b }));
@@ -256,10 +257,8 @@ describe('BatchService — consume invariants (property-based)', () => {
         fc.pre(qty <= total && qty > 0);
         const res = consumeBatchModel(clone, qty, 'AVG_COST');
         if ('error' in res) return true;
-        // Sentinel invariants: length===1, batchId=='' (falsy), quantity===qty.
-        return (
-          res.length === 1 && res[0].batchId === '' && !res[0].batchId && res[0].quantity === qty
-        );
+        // Агрегат: length===1, batchId===null (лягає у nullable uuid), quantity===qty.
+        return res.length === 1 && res[0].batchId === null && res[0].quantity === qty;
       }),
       { numRuns: 300 },
     );
@@ -270,15 +269,14 @@ describe('BatchService — consume invariants (property-based)', () => {
     // Bug #609 стосувався саме цього write-path (batchId fixation single-batch).
     fc.assert(
       fc.property(batchArray, methodArb, (batches, method) => {
-        // AVG_COST завжди length===1 — не наш кейс тут.
-        fc.pre(method !== 'AVG_COST');
+        // methodArb не містить AVG_COST — тут лише партійні методи (FIFO/LIFO/FEFO).
         const clone = batches.map(b => ({ ...b }));
         const ordered = orderBatches(clone, method);
         fc.pre(ordered.length > 0);
         const singleQty = Math.min(1, ordered[0].remainingQty);
         const res = consumeBatchModel(clone, singleQty, method);
         if ('error' in res) return true;
-        return res.length === 1 && res[0].batchId !== '';
+        return res.length === 1 && res[0].batchId != null;
       }),
       { numRuns: 200 },
     );
@@ -289,7 +287,7 @@ describe('BatchService — consume invariants (property-based)', () => {
     // batchId (у WorkOrderPart) має бути NULL — інакше UUID FK не зафіксується.
     fc.assert(
       fc.property(batchArray, methodArb, (batches, method) => {
-        fc.pre(method !== 'AVG_COST');
+        // methodArb не містить AVG_COST — лише партійні методи.
         const clone = batches.map(b => ({ ...b }));
         const ordered = orderBatches(clone, method);
         fc.pre(ordered.length >= 2);
@@ -497,17 +495,10 @@ describe('SupplierPayments.getSchedule — FIFO invariants (property-based)', ()
 // ─── Supplier balance sign — cross-invariant with BALANCE_SIGN table ─────────
 
 describe('BALANCE_SIGN — supplier cycle invariants', () => {
-  // Мінімальна модель — знак = ±1, balance = Σ signed(tx).
-  const SIGN: Record<string, number> = {
-    CHARGE: 1,
-    PAYMENT: -1,
-    PREPAYMENT: -1,
-    REFUND: -1,
-    CREDIT_NOTE: -1,
-    SUPPLIER_CHARGE: -1,
-    SUPPLIER_PAYMENT: 1,
-    SUPPLIER_REFUND: 1,
-  };
+  // Знак = ±1, balance = Σ signed(tx). Реюзаємо ЕКСПОРТОВАНУ таблицю з прод-коду —
+  // інверсія знаку у settlements.service (напр. SUPPLIER_PAYMENT:-1) впаде тут, а не
+  // проти локальної копії (яка б мовчки дрейфувала). Reuse-finding cycle 1.
+  const SIGN = BALANCE_SIGN;
 
   it('SUPPLIER_CHARGE(X) → balance = -X (ми винні X)', () => {
     fc.assert(
@@ -598,13 +589,11 @@ describe('StockDocument TRANSFER — cost-carry invariant', () => {
   });
 
   it('weightedCostPrice=0 (free-sample cost) НЕ падає у fallback (0 — валідна ціна)', () => {
-    // Regression: якщо код напише `src.weightedCostPrice || fallback` замість `??`,
-    // безкоштовне походження (cost=0) втратить нульову семантику.
-    const src = { weightedCostPrice: 0 };
+    // Regression Bug #610: cost-carry має брати `?? fallback` (не `|| fallback`),
+    // інакше безкоштовне походження (cost=0) втратить нульову семантику і візьме sale price.
+    const src: { weightedCostPrice: number | null } = { weightedCostPrice: 0 };
     const fallback = 100;
-    const withNullish = src.weightedCostPrice ?? fallback; // 0 — коректно
-    const withOr = src.weightedCostPrice || fallback; // 100 — БАГ
-    expect(withNullish).toBe(0);
-    expect(withOr).toBe(100); // документує різницю; код має використовувати ??
+    const targetPrice = src.weightedCostPrice ?? fallback;
+    expect(targetPrice).toBe(0);
   });
 });
