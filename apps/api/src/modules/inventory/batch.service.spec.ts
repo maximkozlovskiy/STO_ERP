@@ -257,7 +257,8 @@ describe('BatchService', () => {
       ]);
       await service.consumeBatch('org', 'g1', 'wh1', 4, 'WO', 'wo1', undefined, 'FIFO');
       expect(prisma.stockBatch.updateMany).toHaveBeenCalledWith({
-        where: { id: 'b1', remainingQty: { gte: 4 } },
+        // orgId — defense-in-depth tenant guard (CLAUDE.md #6).
+        where: { id: 'b1', orgId: 'org', remainingQty: { gte: 4 } },
         data: expect.objectContaining({ remainingQty: { decrement: 4 } }),
       });
       // Плюс: старий update — НЕ викликаний у consume-path (тільки createFromReceipt / returnToBatch)

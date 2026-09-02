@@ -221,7 +221,8 @@ export class BatchService {
         // update + create незалежні → Promise.all (−1 RTT на батч).
         const [updated] = await Promise.all([
           db.stockBatch.updateMany({
-            where: { id: batch.id, remainingQty: { gte: take } },
+            // orgId — defense-in-depth (id вже UUID PK з orgId-scoped findMany; CLAUDE.md #6).
+            where: { id: batch.id, orgId, remainingQty: { gte: take } },
             data: {
               remainingQty: { decrement: take },
               isActive: batch.remainingQty - take > 0,
