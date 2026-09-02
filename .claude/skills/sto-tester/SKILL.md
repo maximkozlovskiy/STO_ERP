@@ -1036,6 +1036,36 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-02 — 0 нових багів у активному фінансовому scope → property-based cross-invariant regression-guard (Bug #612) — backend / financial-integrity / test-coverage / property-based
+
+**Сигнал:** прийшов явний `/sto-tester` bug hunt циклу N на фінансово-чутливій гілці (FIFO/AVG_COST, BALANCE_SIGN, cost-carry). Всі 5 фокус-областей ретельно перевіряються (grep sentinel-подібних місць, live API scenarios, cross-source coherence, sibling-drift audit). Результат: **0 нових активних багів** — усі попередні цикли (N−1, N−2) вже додали example-based regression-guards на конкретні Bug #M.
+
+**Причина виникнення:** прицільні unit-тести (Bugs #609–#611 у попередньому циклі) ловлять ту КОНКРЕТНУ регресію яка була (single-batch batchId set, span batchId=null, TRANSFER weightedCostPrice pass-through) — але не доводять що **інваріант тримається для БУДЬ-ЯКОЇ послідовності операцій**. Refactor який зачепить cross-invariant поведінку (напр., змінить `??` на `||` у cost-carry — прийме 0 як falsy → підмінить на fallback; або поміняє знак SUPPLIER_REFUND — зростить наш борг замість зменшити) пройде example-based CI зеленим бо конкретна регресія-приклад НЕ у тестовому наборі.
+
+**Підхід до виявлення:** коли **0 активних багів** у зачеплених фінансових інваріантах — не залишати turn без внеску:
+
+1. Ідентифікувати ключові інваріанти зі згаданих фокус-областей (FIFO span, cost-method порядок, all-or-nothing нестачі, AVG_COST sentinel форма, single-vs-span batchId fixation, FIFO-графік bucket-сума, BALANCE_SIGN supplier cycle, TRANSFER cost-carry `??` vs `||`).
+2. Grep у sibling `*.invariants.spec.ts` файлах наявності `fc.property` для КОЖНОГО інваріанту. Якщо тільки `it()` example-based тести без property-based — це coverage-gap.
+3. Дзеркалити реалізацію у моделі-функції (`consumeBatchModel`, `fillSchedule`, `applyLimit`) — тестувати ІНВАРІАНТ, не конкретну реалізацію (модель відокремлена від Prisma-моків).
+4. **Ключове:** написати тест який документує ЗНАЧЕННЯ проти якого код захищений (напр., `it("weightedCostPrice=0 через ?? НЕ падає у fallback", () => { expect(0 ?? 100).toBe(0); expect(0 || 100).toBe(100); })` — regression-guard проти майбутнього `??→||` refactor'у).
+
+**Підхід до фіксу:** новий файл `<module>.invariants.spec.ts` з 4-6 `describe`-блоками (10-25 property-based тестів, 200-500 numRuns):
+
+- **Consume/mutation invariants** — Σ output == input; масовий баланс (Σ before − after == expected); нема ресурсу у мінус; guard-стан (isActive=false при resource=0); порядок обходу (FIFO/LIFO strict-first); all-or-nothing на нестачі (throw + no mutation).
+- **Aggregation invariants** — Σ bucket-сум == загальне; overflow → excess bucket; строгий порядок наповнення; лімітне зменшення з правильної сторони.
+- **Sign/enum invariants** — exhaustive check `Object.values(enum).forEach(t => expect(SIGN[t]).toBeDefined())`; повний цикл (charge + payment → 0); частковий цикл (X-Y); RELATED types мають ТОЙ САМИЙ знак (напр., REFUND та PAYMENT).
+- **`??` vs `||` документація** — окремі `it()` тести які показують різницю на legitimate-zero value (free-sample cost=0, discount=0) — regression-guard проти `??→||` refactor.
+
+**Severity:** MEDIUM (regression-guard, не активний баг). Але критично **не пропустити turn без внеску** — reviewer/tester agent що звітує «0 знайдено» без нових тестів залишає майбутні регресії відкритими.
+
+**Де шукати ще:**
+
+- Будь-який модуль з 3+ finger-print-стилю Bug'ів (financial cycle, FSM transition, sync outbox) — після 3-го bug-fix переходити з example-based на property-based.
+- Multi-branch функції (switch/if-else 3+ гілок): property-based crosscheck що invariant тримається у КОЖНІЙ гілці незалежно від input distribution.
+- Nullable-safe операції (`??`, `??=`) — окремий документуючий тест показує legitimate-zero через `??` ≠ через `||`.
+
+---
+
 ### 2026-09-02 — inventory cost-method switch + COGS writeback: 3-layer regression protocol (Bugs #609, #610, #611) — backend / financial-integrity / test-coverage
 
 **Сигнал:** commit виду `feat(inventory): підключення партійного FIFO-списання` — service метод стає multi-return (`{ movementId, consumed, weightedCostPrice }` замість void), додається switch за `costMethod: 'FIFO' | 'LIFO' | 'FEFO' | 'AVG_COST'` з різним orderBy, а caller (WorkOrder writeoff / StockDocument TRANSFER / SupplierReturn) отримує cost і **записує його назад** у власну row-модель (`WorkOrderPart.batchCostPrice`, `WorkOrderPart.batchId` або target batch у TRANSFER).
