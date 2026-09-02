@@ -214,15 +214,11 @@ export class BatchService {
         const take = Math.min(remaining, batch.remainingQty);
         if (take <= 0) continue;
 
-        // Bug #613 — race-condition guard: conditional decrement через updateMany з
-        // WHERE remainingQty >= take. При concurrent consume того ж goodId+warehouseId
-        // (2 WO WRITEOFF одночасно) findMany віддає STALE snapshot → без цієї умови
-        // другий tx декрементує row до -N. updateMany з предикатом дасть count=0 при
-        // race → повторюємо findMany на наступній ітерації while (progressed=false → break
-        // → throw). All-or-nothing тримається бо $transaction rollback скасовує
-        // будь-які часткові decrement + попередні consumption у поточному ланцюгу.
-        // sto-optimize: update + create не залежать одне від одного — Promise.all
-        // зекономить 1 RTT на батч.
+        // Bug #613 — race-guard: conditional decrement (WHERE remainingQty >= take) — CAS проти
+        // concurrent consume того ж батча (STALE findMany snapshot). count=0 при програній гонці
+        // → throw → $transaction rollback (скасовує і batchConsumption). DB CHECK
+        // (stock_batches_remaining_nonneg, 20260902210000) — backstop джерело-правди.
+        // update + create незалежні → Promise.all (−1 RTT на батч).
         const [updated] = await Promise.all([
           db.stockBatch.updateMany({
             where: { id: batch.id, remainingQty: { gte: take } },

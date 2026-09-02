@@ -4,6 +4,7 @@ import { formatPersonName } from '@sto/shared';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
+import { sumLineTotals } from '../../common/utils/vat';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { throwIfSerializationConflict } from '../../common/utils/prisma-errors';
@@ -333,17 +334,8 @@ export class InvoicesService {
 
     // Pre-compute VAT totals from original's lines so the cloned invoice ships consistent
     // totalWithoutVat/totalVat/totalWithVat; Prisma defaults leave them at 0 while
-    // lines[].priceWithVat has real values.
-    // sto-optimize: single-pass — три послідовних reduce за той самий original.lines
-    // → одне проходження + 3 accumulators. Для інвойса з 100 рядків: 300 iter + 3 closures → 100 iter + 0 closures.
-    let totalWithoutVat = 0;
-    let totalVat = 0;
-    let totalWithVat = 0;
-    for (const l of original.lines) {
-      totalWithoutVat += Number(l.priceWithoutVat);
-      totalVat += Number(l.vatAmount);
-      totalWithVat += Number(l.priceWithVat);
-    }
+    // lines[].priceWithVat has real values. sumLineTotals — спільний single-pass суматор.
+    const { totalWithoutVat, totalVat, totalWithVat } = sumLineTotals(original.lines);
 
     // Clone must NOT inherit workOrderId: the same WO would accumulate duplicate invoices
     // and the WO→Invoice 1:1 invariant breaks (auto-invoice on completion creates a 3rd).
@@ -703,15 +695,7 @@ export class InvoicesService {
             await tx.invoiceLine.createMany({ data: lineData });
           }
 
-          // sto-optimize: single-pass — три reduce за той самий lineData → одне проходження + 3 accumulators.
-          let totalWithoutVat = 0;
-          let totalVat = 0;
-          let totalWithVat = 0;
-          for (const l of lineData) {
-            totalWithoutVat += l.priceWithoutVat;
-            totalVat += l.vatAmount;
-            totalWithVat += l.priceWithVat;
-          }
+          const { totalWithoutVat, totalVat, totalWithVat } = sumLineTotals(lineData);
           await tx.invoice.update({
             where: { id: existing.id, orgId },
             data: { totalWithoutVat, totalVat, totalWithVat, amount: totalWithVat },

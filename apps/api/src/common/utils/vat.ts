@@ -36,6 +36,26 @@ export function calcLineVat(
   };
 }
 
+/**
+ * Сумує ВЖЕ-ОБЧИСЛЕНІ per-line значення ПДВ у підсумки документа (single-pass).
+ * На відміну від `calcDocVat` (перераховує з raw price/qty/vatRate/vatMode) — тут рядки
+ * несуть готові `priceWithoutVat`/`vatAmount`/`priceWithVat` (напр. InvoiceLine у БД).
+ * `Number()` коерсія толерує Prisma `Decimal` і plain-number однаково.
+ */
+export function sumLineTotals(
+  lines: { priceWithoutVat: unknown; vatAmount: unknown; priceWithVat: unknown }[],
+): { totalWithoutVat: number; totalVat: number; totalWithVat: number } {
+  let totalWithoutVat = 0;
+  let totalVat = 0;
+  let totalWithVat = 0;
+  for (const l of lines) {
+    totalWithoutVat += Number(l.priceWithoutVat);
+    totalVat += Number(l.vatAmount);
+    totalWithVat += Number(l.priceWithVat);
+  }
+  return { totalWithoutVat, totalVat, totalWithVat };
+}
+
 export function calcDocVat(
   lines: { qty: number; price: number; vatRate: number; vatMode: VatMode }[],
 ): { totalVat: number; totalWithoutVat: number; totalWithVat: number } {

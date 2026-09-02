@@ -323,10 +323,8 @@ export class SupplierPaymentsService {
         };
         const planned = consume(acc.planned);
         const byDate: Record<string, number> = {};
-        // sto-optimize: byDateSum накопичується у тому ж циклі що заповнює byDate —
-        // економимо повторний Object.values(byDate).reduce на кожного постачальника
-        // (50 suppliers × ~20 dates: 50 alloc + 20 iter per supplier → 0 alloc, inline
-        // for-in одноразово всередині вже існуючого циклу).
+        // byDateSum накопичується inline у циклі що заповнює byDate (замість окремого
+        // Object.values(byDate).reduce на кожного постачальника).
         let byDateSum = 0;
         const descDates = Object.keys(acc.byDate).sort((a, b) => (a < b ? 1 : -1));
         for (const d of descDates) {

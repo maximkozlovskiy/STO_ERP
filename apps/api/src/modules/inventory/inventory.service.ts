@@ -204,17 +204,15 @@ export class InventoryService {
       select: { quantity: true, reserved: true },
     });
 
-    // Bug #613 — race-condition guard: pre-check `available >= |qty|` (рядок 118)
-    // виконується на STALE читанні, і два concurrent WRITEOFF того самого товару обидва
-    // проходять pre-check → після Postgres row-lock другий upsert записує quantity = -X.
-    // Post-check ПІСЛЯ upsert читає підсумок ROW-LOCKED значення → throw → rollback
-    // всього $transaction (WRITEOFF + consumeBatch + settlements). Захищає інваріант
-    // "quantity >= 0 && reserved >= 0" незалежно від concurrency при відсутності
-    // Serializable ізоляції у shared write hot-path.
-    if (upserted.quantity < 0) {
+    // Bug #613 — race-guard: pre-check (рядок 118) читає STALE snapshot, тож два concurrent
+    // WRITEOFF обидва проходять → row-locked upsert може лишити від'ємне значення. Post-check
+    // читає підсумок ROW-LOCKED значення → throw → rollback усього $transaction. DB CHECK
+    // (20260902210000) — джерело-правди backstop; ці throw дають локалізоване повідомлення.
+    // Гейтимо за знаком дельти — на RECEIPT/RESERVATION приріст не може стати від'ємним.
+    if (quantityDelta < 0 && upserted.quantity < 0) {
       throw new BadRequestException('Недостатньо товару на складі (concurrent WRITEOFF)');
     }
-    if (upserted.reserved < 0) {
+    if (reservedDelta < 0 && upserted.reserved < 0) {
       throw new BadRequestException(
         "Резерв не може стати від'ємним (concurrent RESERVATION_RELEASE)",
       );
