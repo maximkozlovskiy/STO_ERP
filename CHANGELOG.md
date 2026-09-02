@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-09-02 (e) — Повний QA-цикл 2 (sync/review/tester/optimize/e2e/simplify/code-review/security)
+
+### cbebc2f5 fix(tester): Bug #613 — concurrent WRITEOFF race guard (HIGH)
+
+`createMovement` pre-check `available >= |qty|` читав STALE snapshot без row-lock → два concurrent WRITEOFF
+того самого товару обидва проходили → `StockItem.quantity`/`StockBatch.remainingQty` могли стати від'ємними
+(немає CHECK). Fix: (a) post-upsert re-check через `.select({quantity,reserved})` (RETURNING, 0 RTT) → throw
+→ rollback; (b) `stockBatch.update({decrement})` → `updateMany({where:{remainingQty:{gte:take}}})` atomic
+conditional decrement, count=0 → throw. +5 regression + mid-life switch invariants (#614).
+
+### 33008171 perf(optimize): single-pass aggregation
+
+getSchedule byDateSum inline + invoices totals single-pass. Concurrency-фікс concept-верифіковано:
+`.select` на upsert = RETURNING (0 extra RTT), updateMany count у response — фікс НЕ ослаблений.
+
+### 76a7d0fa refactor(simplify): DB-CHECK backstop + sumLineTotals (altitude+reuse)
+
+Міграція 20260902210000: CHECK `stock_items(quantity>=0 AND reserved>=0)` + `stock_batches(remainingQty>=0)`
+як джерело-правди на рівні БД (ловить будь-який забутий/майбутній writer, зокрема sync-merge). App-guard
+лишається (локалізоване повідомлення + CAS-retry) — defense-in-depth на 3 рівнях. `sumLineTotals` винесено
+у vat.ts (обидва invoice-сайти). Post-upsert check гейтимо за знаком дельти.
+
+### 8636a7db fix(review): createMovement no-tx self-wrap у $transaction
+
+Latent gap: multi-write createMovement (movement+consume+upsert+consumption) у no-tx гілці не обгортав
+у транзакцію → throw лишив би orphan-записи. Fix: `if (!tx) return $transaction(inner => …)`. +2 regression.
+
+### 3f3a0a32 fix(security): orgId у consumeBatch updateMany (defense-in-depth)
+
+CLAUDE.md #6 — orgId у where updateMany (атака неможлива, id — UUID PK з orgId-scoped findMany).
+
+**Пройдено чисто:** sync 0 · review 0 · e2e 59/59 · security 0 findings. API 1095/1095, Web 488/488, tsc 0/0.
+
+---
+
 ## 2026-09-02 (d) — Повний QA-цикл 1 (sync/review/tester/optimize/e2e/simplify/code-review/security)
 
 ### 184b257a fix(review): AVG_COST sentinel batchId='' пробивав UUID FK (CRITICAL)

@@ -31,6 +31,15 @@
   джерела** (`weightedCostPrice`), не з ціною продажу.
 - **ІНВАРІАНТ:** `Σ remainingQty(active) == StockItem.quantity` — тримається за конструкцією
   (consume + upsert StockItem в одній `$transaction`).
+- **НЕ-ВІДʼЄМНІСТЬ (Bug #613, 3 рівні захисту):** concurrent WRITEOFF того самого товару міг лишити
+  `quantity`/`remainingQty` від'ємними (pre-check `available>=|qty|` читає STALE snapshot без row-lock).
+  Захист: (1) pre-check (рання відмова); (2) **post-upsert re-check** `quantity>=0 && reserved>=0` через
+  `.select` (RETURNING, 0 RTT) → throw → rollback + **conditional `updateMany({remainingQty:{gte:take}})`**
+  (CAS: count=0 при програній гонці → throw); (3) **DB CHECK** `stock_items_quantity_nonneg` +
+  `stock_batches_remaining_nonneg` (міграція `20260902210000`) — джерело-правди backstop для будь-якого
+  забутого/майбутнього writer (sync-merge). App-throw дає локалізоване повідомлення, CHECK — 23514.
+- **АТОМАРНІСТЬ:** `createMovement` без переданого `tx` самообгортається у `$transaction` (no-tx self-wrap),
+  щоб multi-write (movement + consume + upsert + BatchConsumption) відкочувався цілком при throw.
 
 > ⚠️ **Історія:** до 2026-09-02 `consumeBatch` НЕ викликався з розходів («мертвий код») —
 > партії лише створювались (RECEIPT), `remainingQty` монотонно ріс, COGS = ціна продажу,
