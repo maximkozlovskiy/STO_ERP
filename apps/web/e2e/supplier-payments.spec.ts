@@ -178,7 +178,7 @@ test.describe('Оплати постачальникам', () => {
     );
   });
 
-  test('FSM DRAFT→CONFIRMED пише settlement PAYMENT → баланс постачальника зменшується', async ({
+  test('FSM DRAFT→CONFIRMED пише settlement SUPPLIER_PAYMENT → борг постачальнику підіймається до 0', async ({
     page,
   }) => {
     await page.goto('/supplier-payments');
@@ -231,10 +231,11 @@ test.describe('Оплати постачальникам', () => {
     expect(confirmed.status, `confirm response: ${JSON.stringify(confirmed.body)}`).toBe(200);
     expect(confirmed.body.status).toBe('CONFIRMED');
 
-    // PAYMENT зменшує баланс на суму (BALANCE_SIGN[PAYMENT] = -1)
+    // SUPPLIER_PAYMENT підіймає баланс на суму (BALANCE_SIGN[SUPPLIER_PAYMENT] = +1;
+    // баланс постачальника від'ємний = «ми винні», оплата зменшує борг → баланс росте до 0)
     const balanceAfterConfirm = await getBalance(page, token, seed.supplierId);
-    expect(balanceAfterConfirm, 'PAYMENT зменшує баланс на 200').toBeCloseTo(
-      balanceBefore - 200,
+    expect(balanceAfterConfirm, 'SUPPLIER_PAYMENT підіймає баланс на 200').toBeCloseTo(
+      balanceBefore + 200,
       2,
     );
 
@@ -248,7 +249,9 @@ test.describe('Оплати постачальникам', () => {
         const items = d.items ?? d;
         return items.some(
           (t: { type: string; documentType?: string; documentId?: string }) =>
-            t.type === 'PAYMENT' && t.documentType === 'SupplierPayment' && t.documentId === id,
+            t.type === 'SUPPLIER_PAYMENT' &&
+            t.documentType === 'SupplierPayment' &&
+            t.documentId === id,
         );
       },
       { token, API, supplierId: seed.supplierId, id: sp.id },
