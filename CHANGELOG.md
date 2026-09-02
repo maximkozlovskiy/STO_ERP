@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-09-02 (f) — QA-цикл 3 фінальний: КОНВЕРГЕНЦІЯ (0 findings)
+
+### review cycle 3 final — 0 findings
+
+Незалежний фінальний прохід на HEAD 3f3a0a32 (26 файлів у diff 74bf41b6..HEAD). Перевірено:
+
+- **createMovement no-tx self-wrap** (inventory.service.ts:87-91): recursive `$transaction(inner => this.createMovement(orgId, dto, innerTx))` — на 2-му проходженні `tx` defined → wrapper skip (0 подвійна обгортка). Всі inner-writes через `db=tx`. `getAvgCost` через `this.prisma` — read-only snapshot ДО списання (задокументовано). 15s timeout адекватний.
+- **DB CHECK migration 20260902210000**: clamp idempotent (WHERE quantity<0), DO-guard IF NOT EXISTS на pg_constraint idempotent, імена унікальні (grep = 1 match), `isActive=false` при `remainingQty<0` — broken batch → deactivate (логічно).
+- **sumLineTotals** (vat.ts:45): `unknown`-типізація приймає Prisma.Decimal і plain number; `Number()` коерсія коректна. Обидва callsites (invoices.clone:338, refreshFromWorkOrder:698) передають об'єкти з 3 полями.
+- **Cross-cutting**: 0 `React.X`, 0 `console.log`, 0 `: any`, 0 BOM, всі findMany з `take`, всі $transaction з timeout, 0 hard-delete у зачеплених сервісах, 0 sentinel.
+
+Baseline тримається: API 1095/1095, Web 488/488, TSC api ✅ 0 / web ✅ 0. Не з цієї сесії (pre-existing SUGGESTION, не блокатор): `fetchPartCoefficients` в work-orders.service:1559 без orgId — UUID PK, атака неможлива, залишено на майбутнє.
+
+---
+
 ## 2026-09-02 (e) — Повний QA-цикл 2 (sync/review/tester/optimize/e2e/simplify/code-review/security)
 
 ### cbebc2f5 fix(tester): Bug #613 — concurrent WRITEOFF race guard (HIGH)
