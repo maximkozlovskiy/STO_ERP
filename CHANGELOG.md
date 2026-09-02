@@ -5,6 +5,39 @@
 
 ---
 
+## 2026-09-02 (d) — Повний QA-цикл 1 (sync/review/tester/optimize/e2e/simplify/code-review/security)
+
+### 184b257a fix(review): AVG_COST sentinel batchId='' пробивав UUID FK (CRITICAL)
+
+`BatchService.consumeBatch(AVG_COST)` повертав `[{batchId:'', …}]`; `createMovement` + `writeOffPartsAndCharge`
+писали `''` у `@db.Uuid` → Postgres "invalid input syntax for type uuid" → WRITEOFF/WO COMPLETED падав
+на всіх org з costMethod=AVG_COST. Fix: truthy-guard у 2 write-шляхах + 2 regression-specs.
+
+### 1350cb3f perf(optimize): consume hot-path index + PO list nowMs memo
+
+Covering index `stock_batches(orgId,goodId,warehouseId,isActive,createdAt)` усуває external sort на кожній
+сторінці FIFO/LIFO consumeBatch (migration 20260902200000). `nowMs=useMemo` замість per-row `getTime()` у
+purchase-orders списку.
+
+### 58e522ef fix(e2e): supplier-payment stale sign-assertion
+
+E2E `supplier-payments.spec.ts:181` стверджував стару семантику (PAYMENT, balanceBefore−200). Після переходу
+на SUPPLIER_PAYMENT (BALANCE_SIGN=+1) баланс постачальника (відʼємний = «ми винні») підіймається до 0 →
+assertion `balanceBefore+200`, тип транзакції `SUPPLIER_PAYMENT`.
+
+### 02559610 refactor(simplify): sentinel batchId ''→null у джерелі + reuse BALANCE_SIGN
+
+Altitude-фікс (4 simplify-агенти): `BatchConsumeResult.batchId` `string→string|null`; AVG_COST-агрегат повертає
+`null`, який напряму лягає у nullable uuid → обидва call-site гейти згортаються у плоский тернар без truthy-обгортки
+й дубльованого коментаря. `batch.invariants.spec` реюзає ЕКСПОРТОВАНУ `BALANCE_SIGN` (інверсія знаку у прод
+тепер впаде тут). Прибрано неможливий `fc.pre` + JS-тавтологію.
+
+**Пройдено чисто:** sync 0 розбіжностей · code-review 0 correctness-багів · security-review 0 (tenant isolation,
+$queryRaw параметризований, consume-loop обмежений, e2e-JWT — прострочений local fixture). API 1083/1083, Web
+488/488, tsc 0/0.
+
+---
+
 ## 2026-09-02 (c)
 
 ### test(invariants): +24 property-based тести — FIFO/AVG/BALANCE/TRANSFER (Bug #612)
