@@ -12,6 +12,7 @@ describe('InventoryService.createMovement guards', () => {
     stockItem: { findFirst: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
     stockMovement: { create: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
     good: { findFirst: ReturnType<typeof vi.fn> };
+    $transaction: ReturnType<typeof vi.fn>;
   };
   let batchService: {
     createFromReceipt: ReturnType<typeof vi.fn>;
@@ -33,6 +34,9 @@ describe('InventoryService.createMovement guards', () => {
         update: vi.fn().mockResolvedValue({}),
       },
       good: { findFirst: vi.fn().mockResolvedValue({ purchasePrice: null }) },
+      // Bug #613 no-tx self-wrap: createMovement без tx re-enter через $transaction.
+      // Passthrough — callback дістає той самий мок (той самий tx-контекст у тесті).
+      $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
     };
     batchService = {
       createFromReceipt: vi.fn().mockResolvedValue({}),
@@ -92,6 +96,22 @@ describe('InventoryService.createMovement guards', () => {
     await expect(
       service.createMovement('org-1', dto({ type: 'RESERVATION_RELEASE', quantity: -5 })),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  // Bug #613 (cycle 2 code-review): виклик без tx має самообгортатись у $transaction,
+  // щоб throw (race/нестача) не лишив orphan-записів (StockMovement/StockItem/BatchConsumption).
+  it('createMovement без tx re-enter через $transaction (атомарність)', async () => {
+    await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10, price: 50 }));
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('createMovement з tx НЕ обгортається повторно у $transaction', async () => {
+    await service.createMovement(
+      'org-1',
+      dto({ type: 'RECEIPT', quantity: 10, price: 50 }),
+      prisma as never,
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('RECEIPT збільшує quantity і не торкається reserved', async () => {

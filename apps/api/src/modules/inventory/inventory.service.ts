@@ -78,7 +78,18 @@ export class InventoryService {
     if (dto.type === 'RESERVATION_RELEASE' && dto.quantity > 0) {
       throw new BadRequestException("Зняття резерву: кількість повинна бути від'ємною");
     }
-    const db = tx ?? this.prisma;
+
+    // Атомарність: createMovement робить кілька залежних записів (StockMovement +
+    // StockBatch/consumeBatch + StockItem upsert + BatchConsumption). Якщо викликач не
+    // передав tx — самообгортаємось у $transaction, інакше throw (race-guard/нестача)
+    // лишив би частину записів без rollback (напр. orphan BatchConsumption). Усі поточні
+    // прод-викликачі передають tx; це backstop для майбутніх/службових викликів.
+    if (!tx) {
+      return this.prisma.$transaction(innerTx => this.createMovement(orgId, dto, innerTx), {
+        timeout: 15_000,
+      });
+    }
+    const db = tx;
 
     // RECEIPT with quantity > 0 always creates a StockBatch. If price is absent (typical for
     // TRANSFER or inventory-receipt), fall back to good.purchasePrice, otherwise 0 (free samples).
