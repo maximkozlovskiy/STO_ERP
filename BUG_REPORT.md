@@ -1952,3 +1952,30 @@ Static-checks passed (0 bugs found у цих секціях):
 - Додано тестів: +10 (3 inventory.service.spec + 2 batch.service.spec + 5 batch.invariants.spec).
 - API tests: 1083 → 1093 (+10). Web tests: 488 (без змін). TSC: 0 errors.
 - Ключовий висновок: цикл 1 покрив semantic invariants (Σ, sign, FIFO order), цикл 2 покрив operational invariants (concurrency race, mid-life switch, defensive DB layer).
+
+## Session 2026-09-02 (targeted /sto-tester CYCLE 3 фінальний, HEAD 47e26321, feat/supplier-payments) — жива верифікація DB-механізмів
+
+**Мета:** підтвердити стабільність механізмів, доданих циклами 1-2, через **живу перевірку в БД** (не unit mocks).
+
+**Метод:** ad-hoc probe-скрипт `packages/database/prisma/cycle3-live-probe.ts` (не в suite, видалений після циклу) виконав 7 перевірок проти живої dev БД. Дані для перевірки: 8 stock_items × реальні партії + 222 settlement_accounts (11 non-zero).
+
+**Результати живих проб:**
+
+1. ✅ `stock_items.quantity < 0` INSERT rejected by `stock_items_quantity_nonneg` (23514 check_violation) — DB CHECK живий.
+2. ✅ `stock_items.reserved < 0` INSERT rejected by same CHECK.
+3. ✅ `stock_items UPDATE quantity=-1` rejected by CHECK — не тільки INSERT-guard, а й UPDATE (Postgres CHECK застосовується на обидва).
+4. ✅ `stock_batches.remainingQty < 0` INSERT rejected by `stock_batches_remaining_nonneg`.
+5. ✅ **Rollback semantic:** `$transaction(async tx => { tx.stockMovement.create(...); tx.$executeRaw INSERT stock_items(-99999); })` → CHECK throws → tx rollback → StockMovement count unchanged. Атомарність тримається навіть при змішаному ORM+raw шляху всередині tx. Це дзеркалить прод-сценарій «WRITEOFF race-guard throw» після post-upsert check.
+6. ✅ **Inventory invariant sweep:** `Σ remainingQty(active) == StockItem.quantity` для 8 живих (goodId, warehouseId) пар — 0 mismatches. Реальні партії з реальних RECEIPT/WRITEOFF операцій.
+7. ✅ **Settlement invariant sweep:** `balance == Σ signed(tx)` для 222 акаунтів (11 non-zero) — 0 mismatches. Врахований повний sign-map (CHARGE+1, PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE−1, SUPPLIER_CHARGE−1, SUPPLIER_PAYMENT/SUPPLIER_REFUND+1). Джерело правди — `BALANCE_SIGN` у `settlements.service.ts`; єдиний recompute-споживач (`settlements-account.service.ts:136`) використовує ту саму мапу → drift неможливий.
+
+**Regression guards зелені:** `batch.invariants.spec` 29/29 + `settlements.invariants.spec` 13/13 + `supplier-payments.service.spec` 37/37 + `purchase-orders.service.spec` 45/45.
+
+**Знайдено нових багів:** 0 активних. Один спостережувальний артефакт (probe-скрипт спочатку використовував неповний sign-map без SUPPLIER\_\* типів → хибний false-positive) → **це підказка про тестерський pattern:** живі агрегати-переклад semantics (`BALANCE_SIGN`, `WORK_ORDER_TRANSITIONS`) слід читати з коду, не хардкодити в probe. Патерн зафіксований у SKILL нижче.
+
+**Підсумок фінального циклу 3:**
+
+- Знайдено активних багів: **0** — очікувана конвергенція (як і після циклу 2 без нових findings).
+- Тести без змін: API 1095/1095 ✅ | Web 488/488 ✅ | TSC api/web/shared 0 errors ✅.
+- Живі проби додали **empirical evidence** до unit-guards: DB CHECK constraints реально ловлять row, rollback реально спрацьовує, invariant реально тримається на живих даних а не тільки на мок-масивах.
+- Конвергенція трьох циклів: цикл 1 → semantic invariants (Σ, sign, FIFO), цикл 2 → operational invariants (concurrency, mid-life switch, DB layer), цикл 3 → **live evidence** що механізми ЦИКЛУ 2 працюють у продакшн-подібному середовищі.

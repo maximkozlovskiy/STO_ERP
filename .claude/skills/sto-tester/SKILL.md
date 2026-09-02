@@ -1104,6 +1104,46 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ---
 
+### 2026-09-02 — Live-DB probe для DB CHECK/rollback/invariant верифікації (цикл 3 фінальний) — backend / operational-verification / live-evidence
+
+**Сигнал:** цикли N−1, N−2 додали defensive layers (CHECK constraints, post-upsert re-check, updateMany conditional, self-wrap $transaction) що покриті **unit-тестами з моками**. Unit-тест довіряє: "Prisma поверне те що ми мокали". Але жоден unit-тест не доводить що:
+
+1. Postgres реально ловить CHECK violation на UPDATE (не тільки INSERT).
+2. `$transaction` реально відкочує mixed ORM+raw операції.
+3. Live-БД масштабно (сотні рядків, реальні агрегати) тримає інваріант — не тільки 8-рядкові unit fixtures.
+
+**Причина виникнення:** unit-тести — це "письмо про механізм", live-probe — "фотографія роботи механізму". Розрив між ними — коли мок відрізняється від реальної Prisma-семантики (наприклад, `updateMany` повертає `{ count: 0 }` при race — мок каже так, але БД може повернути `{ count: n }` якщо запит некоректно скомпонований).
+
+**Підхід до виявлення:** фінальний цикл (після 2+ циклів semantic + operational тестування) робить ad-hoc probe-скрипт:
+
+1. **DB constraint probe** — прямий `$executeRaw INSERT/UPDATE` з value що має порушити CHECK; перевірити код помилки (23514 для check_violation, 23503 для FK, 23505 для unique). Обов'язково перевірити ОБИДВІ операції (INSERT + UPDATE), бо Postgres CHECK застосовується на обидві, але міграція може випадково додати WHERE clause який відключить одну з них.
+2. **Transaction rollback probe** — `$transaction(async tx => { tx.model.create(...); tx.$executeRaw INSERT з CHECK-violation })` → count рядків до і після має бути однаковим. Це доводить що mixed ORM+raw шлях справді відкочується (не всі клієнти БД коректно rollback-ують raw після ORM writes).
+3. **System-wide invariant sweep** — SQL що обчислює обидві сторони інваріанту через subquery і повертає різницю. Приклад: `SELECT si.quantity, (SELECT SUM(sb.remainingQty) FROM stock_batches sb WHERE ...) as batchSum FROM stock_items si` → фільтр `WHERE ABS(quantity - batchSum) > epsilon`. Живі дані (сотні рядків реальних операцій) — не мок-fixture.
+4. **Semantic map has to be READ, not HARDCODED:** якщо перевіряєш агрегат що залежить від sign-мапи (BALANCE_SIGN, FSM transitions), **не** переписуй мапу у probe — прочитай з коду або документуй що probe валідний ЛИШЕ для набору типів N (усі інші типи → окрема перевірка). Помилка probe-автора з хардкодом мапи → **false positive** — гірший за пропущений баг, бо провокує розслідування живих даних без причини.
+
+**Підхід до фіксу:** якщо live-probe знайшла:
+
+- CHECK не спрацював → додати міграцію з CHECK у наступному коміті (не забути `DO $$ ... IF NOT EXISTS` guard для ідемпотентності).
+- Rollback не спрацював → перевірити чи callee робить власний `$transaction` (nested tx у Postgres — savepoint, а не new tx); чи є bare `prisma.` виклик поза tx у coreoperation.
+- Invariant не тримається → **не патчити probe** — розслідувати чому реальні дані розійшлись; типово стара міграція або legacy data що потрапило до дії constraint. Clamp + backfill окремою міграцією.
+- Хибний false positive через хардкод мапи → probe виправити, але **документувати у BUG_REPORT** як learning для наступних циклів.
+
+**Regression-guard тести:** live-probe скрипт видаляється після циклу (не в suite — залежить від живої БД). Замість нього:
+
+- Регресія на CHECK constraint: unit-тест що mock-ує Prisma throw з `code: '23514'` → сервіс повертає локалізоване повідомлення.
+- Регресія на rollback: інтеграційний тест з реальною $transaction (не мок) через test-database.
+- Регресія на invariant: property-based тест у `*.invariants.spec.ts` (Bug #612 approach).
+
+**Severity:** MEDIUM (verification-only, не активний баг сам по собі). Але критичний як **фінальна валідація** перед merge/release — доводить що вся піраміда захисту (unit → integration → live) когерентна.
+
+**Де шукати ще:**
+
+- Будь-яка міграція що додає CHECK/UNIQUE/FK — перевірити через probe ЩО constraint реально живе (не тільки в schema.prisma; міграція може розійтись зі схемою).
+- Будь-який `createMovement`/`createTransaction`/`createDocument` з self-wrap `$transaction` — probe що throw під час run відкочує ВСІ side-effects (не тільки перший).
+- Будь-яка recompute-функція (`SettlementsAccountService.recomputeBalance`, ReconciliationService) що читає з map — переконатись що map єдиний джерело правди (grep що інших map немає) → тоді invariant тримається за конструкцією.
+
+---
+
 ### 2026-09-02 — inventory cost-method switch + COGS writeback: 3-layer regression protocol (Bugs #609, #610, #611) — backend / financial-integrity / test-coverage
 
 **Сигнал:** commit виду `feat(inventory): підключення партійного FIFO-списання` — service метод стає multi-return (`{ movementId, consumed, weightedCostPrice }` замість void), додається switch за `costMethod: 'FIFO' | 'LIFO' | 'FEFO' | 'AVG_COST'` з різним orderBy, а caller (WorkOrder writeoff / StockDocument TRANSFER / SupplierReturn) отримує cost і **записує його назад** у власну row-модель (`WorkOrderPart.batchCostPrice`, `WorkOrderPart.batchId` або target batch у TRANSFER).
