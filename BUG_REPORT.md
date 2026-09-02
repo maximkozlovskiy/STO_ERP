@@ -1856,3 +1856,42 @@ Static-checks passed (0 bugs found у цих секціях):
 - **Severity:** MEDIUM — silent regression у cost-method за замовчуванням для клієнтів з не-FIFO налаштуваннями.
 - **Де шукати ще:** будь-який `switch (costMethod)` / `switch (paymentMethod)` / `switch (docType)` map з різними orderBy/filter — перевірити регресійне покриття кожної гілки.
 - **Статус:** [x] виправлено
+
+## Session 2026-09-02 (targeted /sto-tester, HEAD 184b257a, feat/supplier-payments) — фінансові інваріанти циклу 1
+
+**Контекст:** review щойно виправив Critical AVG_COST sentinel batchId='' → UUID FK 500 (commit 184b257a). Bug hunt циклу 1 сфокусований на 5 фінансово-чутливих інваріантах:
+
+1. Партійне FIFO/FEFO/LIFO/AVG списання — Σ remainingQty(active) == StockItem.quantity, span, all-or-nothing.
+2. Supplier balance sign (BALANCE_SIGN 8 типів).
+3. FIFO-графік оплат постачальнику.
+4. TRANSFER cost-carry.
+5. AVG_COST edge-cases (інші sentinel-подібні місця).
+
+**Baseline:** API tsc 0, Web tsc 0, API tests 1059 passed / 73 files, Web tests 488 passed / 45 files.
+
+**Знайдено нових багів:** 0.
+
+**Причина 0 багів:** усі 5 фокус-областей уже покриті:
+
+- AVG_COST sentinel — 2 use-site (inventory.service.ts:248, work-orders.service.ts:905) обидва з truthy-guard `consumed[0].batchId` (порожній рядок falsy → skip UUID FK write).
+- Bug #609–#611 нещодавно додали regression-guards для FIFO/COGS підключення + LIFO/FEFO orderBy + TRANSFER cost-carry.
+- Bug #606–#608 покрили BALANCE_SIGN exhaustive check + supplier balance UI sign consistency.
+- Bug #597–#600 покрили FIFO schedule window + payable=|balance| + type filter SUPPLIER/BOTH.
+- Bug #191 + Bug #232 патерни guardyють tenant/update-path invariants.
+
+**Додано** (regression-guard, не bug-fix):
+
+### Bug #612 — MEDIUM test-coverage — партійні + фінансові інваріанти без property-based regression-guard
+
+- **Файл:** apps/api/src/modules/inventory/batch.invariants.spec.ts (новий, 24 тести).
+- **Симптом:** 5 фінансових інваріантів (FIFO span, cost-method порядок, all-or-nothing нестачі, AVG_COST sentinel форма, single-vs-span batchId fixation, FIFO-графік bucket-сума, кредит-ліміт зменшення з planned→dates-desc→overdue, BALANCE_SIGN supplier cycle, TRANSFER cost-carry `??` vs `||`) працюють РАЗОМ у коді, але кожен окремий unit-тест ловить лише одну гілку — cross-invariant regression пройде CI зеленим.
+- **Причина виникнення:** прицільні unit-тести пишуться під конкретний Bug #N; property-based інваріанти доводять що після БУДЬ-ЯКОЇ послідовності операцій балансовий інваріант тримається — не залежить від фантазії тест-автора.
+- **Виявлено:** grep у batch.service.spec.ts — тільки `it()` example-based тести, жодного `fc.property`. Аналогічно inventory.invariants.spec.ts має тільки stockItem-level інваріанти, не batch-level.
+- **Fix:** новий файл `batch.invariants.spec.ts` з 4 `describe`-блоками (24 property-based тести, 500 numRuns default):
+  1. **BatchService — consume invariants** (10 тестів): Σ consumed == qty; масовий баланс (Σ before − after == qty); нема партій у мінус; remainingQty=0 → isActive=false; FIFO/LIFO order; нестача → error БЕЗ мутації (all-or-nothing); AVG_COST sentinel форма; single-vs-span розрізнення; cross-method Σ==qty.
+  2. **SupplierPayments.getSchedule — FIFO invariants** (5 тестів): Σ bucket-сум == payable; надлишок → overdue; FIFO строгий порядок закриття PO; кредит-ліміт зменшення з planned→dates-desc→overdue; ліміт ≥ payable → усе 0.
+  3. **BALANCE_SIGN — supplier cycle invariants** (5 тестів): SUPPLIER_CHARGE → balance=-X; повний цикл → 0; payable = max(0, -balance); частковий цикл (X−Y) з X>Y; SUPPLIER_REFUND має ТОЙ САМИЙ знак що SUPPLIER_PAYMENT (регресія — refund з чужим знаком = зростання боргу).
+  4. **StockDocument TRANSFER — cost-carry invariant** (4 тести): weightedCostPrice != null → target.price = weightedCostPrice; null → fallback; **0 (free sample) → 0 через `??`** (документує, що `||` дасть fallback — БАГ, `??` не дасть).
+- **Severity:** MEDIUM (regression-guard, не активний баг).
+- **Де шукати ще:** будь-який фінансово-чутливий обчислювальний блок з ≥3 гілок (switch по type/enum, багатоетапне вирахування) — додавати property-based invariants до відповідного \*.invariants.spec.ts.
+- **Статус:** [x] виправлено (guard додано, всі 24 тести PASS з першого запуску — інваріанти тримаються).

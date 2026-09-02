@@ -5,6 +5,31 @@
 
 ---
 
+## 2026-09-02 (c)
+
+### test(invariants): +24 property-based тести — FIFO/AVG/BALANCE/TRANSFER (Bug #612)
+
+**Контекст:** bug hunt циклу 1 на feat/supplier-payments сфокусований на 5 фінансово-чутливих
+інваріантах (партійне FIFO/FEFO/LIFO/AVG списання; supplier balance sign 8 типів; FIFO-графік оплат;
+TRANSFER cost-carry; AVG_COST sentinel edge-cases). **0 нових активних багів** — усі 5 областей
+уже покриті recent commits (#606-#611 + #597-#600).
+
+**Додано** `apps/api/src/modules/inventory/batch.invariants.spec.ts` (24 property-based тести):
+
+1. **BatchService — consume invariants** (10): Σ consumed==qty; масовий баланс; нема партій у мінус;
+   remainingQty=0→isActive=false; FIFO/LIFO order; нестача → error БЕЗ мутації (all-or-nothing);
+   AVG_COST sentinel форма; single-vs-span batchId fixation; cross-method Σ==qty.
+2. **SupplierPayments.getSchedule — FIFO invariants** (5): Σ bucket==payable; надлишок→overdue; FIFO
+   строгий порядок закриття PO; кредит-ліміт planned→dates-desc→overdue; ліміт≥payable→усе 0.
+3. **BALANCE_SIGN — supplier cycle** (5): SUPPLIER_CHARGE→balance=-X; повний цикл→0;
+   payable=max(0,-balance); частковий X-Y; SUPPLIER_REFUND має ТОЙ САМИЙ знак що SUPPLIER_PAYMENT.
+4. **StockDocument TRANSFER — cost-carry** (4): weightedCostPrice→target.price; null→fallback;
+   **0 (free sample) через `??` НЕ падає у fallback** (документує `||` як БАГ).
+
+Всі 24 PASS з першого запуску. API tests 1059→1083, TS 0/0.
+
+---
+
 ## 2026-09-02 (b)
 
 ### feat(inventory): підключення партійного FIFO-списання + COGS до розходів
