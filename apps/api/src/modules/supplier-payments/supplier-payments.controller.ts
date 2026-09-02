@@ -24,7 +24,9 @@ import {
   UpdateSupplierPaymentDto,
   SupplierPaymentQueryDto,
   SupplierPaymentScheduleQueryDto,
+  SupplierPaymentScheduleDocumentsQueryDto,
 } from './supplier-payments.dto';
+import { BadRequestException } from '@nestjs/common';
 
 @ApiTags('Supplier Payments')
 @ApiBearerAuth()
@@ -70,6 +72,25 @@ export class SupplierPaymentsController {
   @ApiOperation({ summary: 'Графік оплат постачальникам (шахматка по датах)' })
   getSchedule(@OrgContext() orgId: string, @Query() query: SupplierPaymentScheduleQueryDto) {
     return this.service.getSchedule(orgId, query.from, query.to);
+  }
+
+  // Drill-down: документи (PO) по яких виникає оплата у клітинці/бакеті шахматки.
+  // ПЕРЕД :id (Fastify route ordering). Один route для всіх трьох тригерів кліку.
+  @Get('schedule/documents')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Документи (PO) для клітинки графіка оплат' })
+  getScheduleDocuments(
+    @OrgContext() orgId: string,
+    @Query() query: SupplierPaymentScheduleDocumentsQueryDto,
+  ) {
+    // date XOR target — рівно одне має бути задане (клітинка byDate АБО бакет overdue/planned).
+    if ((query.date && query.target) || (!query.date && !query.target)) {
+      throw new BadRequestException('Потрібно вказати рівно одне: date АБО target');
+    }
+    const target = query.date
+      ? ({ kind: 'date', date: query.date } as const)
+      : ({ kind: query.target! } as const);
+    return this.service.getScheduleDocuments(orgId, query.from, query.to, target, query.supplierId);
   }
 
   @Post(':id/confirm')

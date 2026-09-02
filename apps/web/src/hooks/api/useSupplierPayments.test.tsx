@@ -22,6 +22,7 @@ import {
   useConfirmSupplierPayment,
   useCancelSupplierPayment,
   useDeleteSupplierPayment,
+  useSupplierPaymentDocuments,
 } from './useSupplierPayments';
 import { counterpartiesKeys } from './useCounterparties';
 
@@ -193,6 +194,54 @@ describe('useSupplierPayments', () => {
       );
       const calls = spy.mock.calls.map(c => JSON.stringify(c[0]?.queryKey ?? c[0]));
       expect(calls).toContain(JSON.stringify(supplierPaymentsKeys.all));
+    });
+  });
+
+  describe('useSupplierPaymentDocuments (drill-down)', () => {
+    it('params=null → enabled=false, apiFetch НЕ викликається (клітинку не клікнуто)', async () => {
+      useAuthMock.mockReturnValue({ employee: { id: '1' } });
+      const { wrapper } = createWrapper();
+      renderHook(() => useSupplierPaymentDocuments(null), { wrapper });
+      await new Promise(r => setTimeout(r, 20));
+      expect(apiFetchMock).not.toHaveBeenCalled();
+    });
+
+    it('date-params → GET з date + supplierId у query', async () => {
+      useAuthMock.mockReturnValue({ employee: { id: '1' } });
+      apiFetchMock.mockResolvedValueOnce([]);
+      const { wrapper } = createWrapper();
+      renderHook(
+        () =>
+          useSupplierPaymentDocuments({
+            from: '2026-09-02',
+            to: '2026-09-21',
+            date: '2026-09-08',
+            supplierId: 'sup-1',
+          }),
+        { wrapper },
+      );
+      await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
+      const url = apiFetchMock.mock.calls[0][0] as string;
+      expect(url).toContain('/supplier-payments/schedule/documents?');
+      expect(url).toContain('date=2026-09-08');
+      expect(url).toContain('supplierId=sup-1');
+      expect(url).not.toContain('target=');
+    });
+
+    it('target-params без supplierId → GET з target, без supplierId (рядок «Разом»)', async () => {
+      useAuthMock.mockReturnValue({ employee: { id: '1' } });
+      apiFetchMock.mockResolvedValueOnce([]);
+      const { wrapper } = createWrapper();
+      renderHook(
+        () =>
+          useSupplierPaymentDocuments({ from: '2026-09-02', to: '2026-09-21', target: 'overdue' }),
+        { wrapper },
+      );
+      await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
+      const url = apiFetchMock.mock.calls[0][0] as string;
+      expect(url).toContain('target=overdue');
+      expect(url).not.toContain('supplierId=');
+      expect(url).not.toContain('date=');
     });
   });
 });

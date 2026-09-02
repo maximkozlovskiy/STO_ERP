@@ -64,6 +64,15 @@ export const supplierPaymentsKeys = {
   detail: (id: string) => [...supplierPaymentsKeys.all, 'detail', id] as const,
   schedule: (from: string, to: string) =>
     [...supplierPaymentsKeys.all, 'schedule', from, to] as const,
+  scheduleDocuments: (from: string, to: string, targetKey: string, supplierId?: string) =>
+    [
+      ...supplierPaymentsKeys.all,
+      'schedule-docs',
+      from,
+      to,
+      targetKey,
+      supplierId ?? 'all',
+    ] as const,
 };
 
 export interface SupplierPaymentScheduleRow {
@@ -98,6 +107,50 @@ export function useSupplierPaymentsSchedule(from: string, to: string) {
     enabled: !!employee && !!from && !!to,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
+  });
+}
+
+/** Документ (PO) у клітинці графіка оплат — дзеркалить SupplierPaymentScheduleDocumentDto. */
+export interface SupplierPaymentScheduleDocument {
+  poId: string;
+  number: string;
+  supplierId: string;
+  supplierName: string;
+  paymentDate: string | null;
+  totalAmount: number;
+  outstanding: number;
+  allocated: number;
+}
+
+/** Параметри drill-down: date XOR target (взаємовиключні), supplierId опційний. */
+export type SupplierPaymentDocumentsParams =
+  | { from: string; to: string; date: string; supplierId?: string }
+  | { from: string; to: string; target: 'overdue' | 'planned'; supplierId?: string };
+
+/**
+ * Документи (PO) для клітинки/бакета шахматки. `params === null` поки клітинку не клікнуто
+ * (enabled:false → запит не шлеться). Σ allocated == сума клітинки (спільний backend-helper).
+ */
+export function useSupplierPaymentDocuments(params: SupplierPaymentDocumentsParams | null) {
+  const { employee } = useAuth();
+  const targetKey = params ? ('date' in params ? params.date : params.target) : '';
+  return useQuery({
+    queryKey: params
+      ? supplierPaymentsKeys.scheduleDocuments(params.from, params.to, targetKey, params.supplierId)
+      : [...supplierPaymentsKeys.all, 'schedule-docs', 'disabled'],
+    queryFn: ({ signal }) => {
+      const p = params!;
+      const qs = new URLSearchParams({ from: p.from, to: p.to });
+      if (p.supplierId) qs.set('supplierId', p.supplierId);
+      if ('date' in p) qs.set('date', p.date);
+      else qs.set('target', p.target);
+      return apiFetch<SupplierPaymentScheduleDocument[]>(
+        `/supplier-payments/schedule/documents?${qs.toString()}`,
+        { signal },
+      );
+    },
+    enabled: !!employee && !!params,
+    staleTime: 30_000,
   });
 }
 

@@ -155,6 +155,142 @@ export class SupplierPaymentsService {
    * протерміновані зменшуються останніми. Якщо ліміт ≥ борг → постачальник пропускається.
    */
   async getSchedule(orgId: string, from: string, to: string): Promise<SupplierPaymentScheduleDto> {
+    const { allocations } = await this.computeScheduleAllocations(orgId, from, to);
+
+    // Список дат вікна (YYYY-MM-DD) для колонок.
+    const fromDate = new Date(from + 'T00:00:00.000Z');
+    const toDate = new Date(to + 'T23:59:59.999Z');
+    const dates: string[] = [];
+    for (let d = new Date(fromDate); d <= toDate; d.setUTCDate(d.getUTCDate() + 1)) {
+      dates.push(d.toISOString().slice(0, 10));
+    }
+
+    // Агрегуємо per-PO алокації helper-а у бакети шахматки. Оскільки і тут, і у
+    // getScheduleDocuments джерело — ОДИН computeScheduleAllocations, суми клітинок і
+    // сума документів у панелі збігаються за конструкцією (немає sibling-drift).
+    const rowBySupplier = new Map<
+      string,
+      { supplierName: string; overdue: number; planned: number; byDate: Record<string, number> }
+    >();
+    for (const a of allocations) {
+      if (a.allocated <= 0.005) continue;
+      let row = rowBySupplier.get(a.supplierId);
+      if (!row) {
+        row = { supplierName: a.supplierName, overdue: 0, planned: 0, byDate: {} };
+        rowBySupplier.set(a.supplierId, row);
+      }
+      if (a.bucket === 'overdue') row.overdue += a.allocated;
+      else if (a.bucket === 'planned') row.planned += a.allocated;
+      else row.byDate[a.bucket] = (row.byDate[a.bucket] ?? 0) + a.allocated;
+    }
+
+    const suppliers = Array.from(rowBySupplier.entries())
+      .map(([supplierId, r]) => {
+        let byDateSum = 0;
+        for (const d in r.byDate) byDateSum += r.byDate[d];
+        return {
+          supplierId,
+          supplierName: r.supplierName,
+          overdue: r.overdue,
+          planned: r.planned,
+          byDate: r.byDate,
+          total: r.overdue + r.planned + byDateSum,
+        };
+      })
+      .filter(r => r.total > 0.005)
+      .sort((a, b) => b.total - a.total);
+
+    // Підсумковий рядок: один прохід накопичує скалярні totals + суми по датах.
+    const totalsByDate: Record<string, number> = {};
+    let totalsOverdue = 0;
+    let totalsPlanned = 0;
+    let totalsGrand = 0;
+    for (const r of suppliers) {
+      totalsOverdue += r.overdue;
+      totalsPlanned += r.planned;
+      totalsGrand += r.total;
+      for (const d in r.byDate) {
+        totalsByDate[d] = (totalsByDate[d] ?? 0) + r.byDate[d];
+      }
+    }
+    for (const d in totalsByDate) {
+      if (!(totalsByDate[d] > 0)) delete totalsByDate[d];
+    }
+    const totals = {
+      overdue: totalsOverdue,
+      planned: totalsPlanned,
+      byDate: totalsByDate,
+      total: totalsGrand,
+    };
+
+    return { dates, suppliers, totals };
+  }
+
+  /**
+   * Документи (PO), по яких виникає оплата у конкретній клітинці/бакеті шахматки.
+   * Reused той самий computeScheduleAllocations → суми ТУТ збігаються з клітинками getSchedule.
+   * `target`: конкретна дата byDate АБО бакет overdue/planned. `supplierId` опційний
+   * (без нього — усі постачальники, для кліку по рядку «Разом»).
+   */
+  async getScheduleDocuments(
+    orgId: string,
+    from: string,
+    to: string,
+    target: { kind: 'date'; date: string } | { kind: 'overdue' } | { kind: 'planned' },
+    supplierId?: string,
+  ): Promise<
+    Array<{
+      poId: string;
+      number: string;
+      supplierId: string;
+      supplierName: string;
+      paymentDate: string | null;
+      totalAmount: number;
+      outstanding: number;
+      allocated: number;
+    }>
+  > {
+    const { allocations } = await this.computeScheduleAllocations(orgId, from, to, supplierId);
+    const wantBucket = target.kind === 'date' ? target.date : target.kind;
+    return allocations
+      .filter(a => a.allocated > 0.005 && a.bucket === wantBucket)
+      .map(a => ({
+        poId: a.poId,
+        number: a.number,
+        supplierId: a.supplierId,
+        supplierName: a.supplierName,
+        paymentDate: a.paymentDate,
+        totalAmount: a.totalAmount,
+        outstanding: a.outstanding,
+        allocated: a.allocated,
+      }));
+    // Порядок збережено з allocations (FIFO: paymentDate asc, nulls first).
+  }
+
+  /**
+   * ЄДИНЕ ДЖЕРЕЛА ПРАВДИ для графіка оплат: FIFO-налив АВТОРИТЕТНОГО боргу
+   * (SettlementAccount.balance) на непогашені RECEIVED/PARTIAL PO + кредит-ліміт,
+   * зі збереженням per-PO алокацій. getSchedule сумує їх у бакети, getScheduleDocuments
+   * фільтрує по цільовому бакету — тож панель документів завжди збігається з клітинками.
+   */
+  private async computeScheduleAllocations(
+    orgId: string,
+    from: string,
+    to: string,
+    supplierId?: string,
+  ): Promise<{
+    allocations: Array<{
+      supplierId: string;
+      supplierName: string;
+      poId: string;
+      number: string;
+      paymentDate: string | null;
+      totalAmount: number;
+      outstanding: number;
+      allocated: number;
+      bucket: string; // 'overdue' | 'planned' | 'YYYY-MM-DD'
+    }>;
+  }> {
     // Cross-field guard: без цього from > to тихо перевертає bucket-логіку —
     // всі PO потрапляють у planned/overdue, вікно порожнє, користувач не розуміє чому.
     if (from > to) {
@@ -162,17 +298,10 @@ export class SupplierPaymentsService {
     }
     const fromDate = new Date(from + 'T00:00:00.000Z');
     const toDate = new Date(to + 'T23:59:59.999Z');
-    // Кап на розмір вікна — 20 днів достатньо для UX, 100 — жорсткий upper bound
-    // (10000+ днів на некоректному вводі роздула би відповідь до MB).
+    // Кап на розмір вікна — 100 днів жорсткий upper bound (некоректний ввід роздув би відповідь).
     const windowDays = Math.round((toDate.getTime() - fromDate.getTime()) / 86_400_000);
     if (windowDays > 100) {
       throw new BadRequestException('Вікно графіка не може перевищувати 100 днів');
-    }
-
-    // Список дат вікна (YYYY-MM-DD) для колонок.
-    const dates: string[] = [];
-    for (let d = new Date(fromDate); d <= toDate; d.setUTCDate(d.getUTCDate() + 1)) {
-      dates.push(d.toISOString().slice(0, 10));
     }
 
     const [orders, payableAccounts, contracts] = await Promise.all([
@@ -183,9 +312,12 @@ export class SupplierPaymentsService {
           status: { in: [PurchaseOrderStatus.RECEIVED, PurchaseOrderStatus.PARTIAL] },
           // Не показувати борги видалених постачальників (orphan-рядки у шахматці).
           supplier: { deletedAt: null },
+          // Drill-down: звузити до одного постачальника (менше даних).
+          ...(supplierId ? { supplierId } : {}),
         },
         select: {
           id: true,
+          number: true,
           supplierId: true,
           totalAmount: true,
           paymentDate: true,
@@ -206,16 +338,13 @@ export class SupplierPaymentsService {
       // Bug #599 — type filter: без `type: { in: SUPPLIER|BOTH }` клієнт з prepayment refund
       // pending (balance<0 на CLIENT-акаунті) потрапляє у ГРАФІК ОПЛАТ ПОСТАЧАЛЬНИКУ як
       // рядок з CLIENT-іменем. Semantic contamination — schedule має відображати лише
-      // тих, кому як постачальнику ми винні. Замаскований у demo-org тим, що єдиний
-      // такий CLIENT soft-deleted (deletedAt filter його виключає).
-      //
-      // deletedAt filter (як supplier-фільтр у PO вище) прибирає orphan-рядки —
-      // trade-off з reports.settlements (не має цього фільтра): docstring Bug #600.
+      // тих, кому як постачальнику ми винні.
       this.prisma.settlementAccount.findMany({
         where: {
           orgId,
           balance: { lt: 0 },
           counterparty: { deletedAt: null, type: { in: ['SUPPLIER', 'BOTH'] } },
+          ...(supplierId ? { counterpartyId: supplierId } : {}),
         },
         select: {
           counterpartyId: true,
@@ -224,22 +353,20 @@ export class SupplierPaymentsService {
         },
         take: 5000,
       }),
-      // Кредит-ліміт з АКТИВНИХ PURCHASE-договорів постачальника (не лише з тих,
-      // що прив'язані до outstanding-PO) — інакше ліміт губиться для PO без договору.
-      // Safety cap 5000: 1 постачальник → зазвичай 1-3 контракти; > 5000 у org = аномалія.
+      // Кредит-ліміт з АКТИВНИХ PURCHASE-договорів постачальника.
       this.prisma.counterpartyContract.findMany({
         where: {
           orgId,
           deletedAt: null,
           contractType: 'PURCHASE',
           creditLimit: { not: null },
+          ...(supplierId ? { counterpartyId: supplierId } : {}),
         },
         select: { counterpartyId: true, creditLimit: true },
         take: 5000,
       }),
     ]);
 
-    // payable по постачальнику = |balance| (balance < 0 = кредиторська заборгованість).
     const payableBySupplier = new Map<string, { payable: number; name: string }>();
     for (const a of payableAccounts) {
       payableBySupplier.set(a.counterpartyId, {
@@ -261,114 +388,124 @@ export class SupplierPaymentsService {
       );
     }
 
-    // Непогашені PO по постачальнику у FIFO-порядку. `orders` вже відсортовані
-    // orderBy [{ paymentDate: asc, nulls: first }, { createdAt: asc }] — найтерміновіші
-    // (найстаріша дата оплати / null) першими, тож просто зберігаємо цей порядок.
-    type OpenPo = { outstanding: number; paymentDate: string | null };
+    // Непогашені PO по постачальнику у FIFO-порядку (orders вже відсортовані).
+    type OpenPo = {
+      poId: string;
+      number: string;
+      outstanding: number;
+      paymentDate: string | null;
+    };
     const openPosBySupplier = new Map<string, OpenPo[]>();
-
     for (const po of orders) {
-      // Тільки постачальники з фактичним балансовим боргом формують рядок.
       if (!payableBySupplier.has(po.supplierId)) continue;
-
       const paid = po.supplierPayments.reduce((s, p) => s + Number(p.amount), 0);
       const outstanding = Number(po.totalAmount) - paid;
       if (outstanding <= 0) continue;
-
-      const list = openPosBySupplier.get(po.supplierId);
       const entry: OpenPo = {
+        poId: po.id,
+        number: po.number,
         outstanding,
         paymentDate: po.paymentDate ? po.paymentDate.toISOString().slice(0, 10) : null,
       };
+      const list = openPosBySupplier.get(po.supplierId);
       if (list) list.push(entry);
       else openPosBySupplier.set(po.supplierId, [entry]);
     }
 
-    // Кладе суму у overdue / byDate[pd] / planned за датою оплати PO.
-    const bucket = (
-      acc: { overdue: number; planned: number; byDate: Record<string, number> },
-      amount: number,
-      pd: string | null,
-    ): void => {
-      if (pd == null || pd < from) acc.overdue += amount;
-      else if (pd <= to) acc.byDate[pd] = (acc.byDate[pd] ?? 0) + amount;
-      else acc.planned += amount;
-    };
+    // Бакет за датою оплати PO.
+    const bucketOf = (pd: string | null): string =>
+      pd == null || pd < from ? 'overdue' : pd <= to ? pd : 'planned';
 
-    // Для кожного постачальника з боргом: FIFO-налив АВТОРИТЕТНОГО payable на непогашені PO
-    // від найстарішого, потім кредит-ліміт з найпізніших.
-    const suppliers = Array.from(payableBySupplier.entries())
-      .map(([supplierId, { payable, name }]) => {
-        const acc = { overdue: 0, planned: 0, byDate: {} as Record<string, number> };
+    const allocations: Array<{
+      supplierId: string;
+      supplierName: string;
+      poId: string;
+      number: string;
+      paymentDate: string | null;
+      totalAmount: number;
+      outstanding: number;
+      allocated: number;
+      bucket: string;
+    }> = [];
 
-        // FIFO: борг «наливається» на PO по черзі; PO, до яких не дійшла черга,
-        // вважаються оплаченими (неприв'язаними платежами/поверненнями) — не показуються.
-        let remaining = payable;
-        for (const po of openPosBySupplier.get(supplierId) ?? []) {
-          if (remaining <= 0.005) break;
-          const take = Math.min(po.outstanding, remaining);
-          remaining -= take;
-          bucket(acc, take, po.paymentDate);
-        }
-        // Борг понад суму відкритих PO (коригування/повернення без PO) → протерміновані.
-        if (remaining > 0.005) acc.overdue += remaining;
+    for (const [sid, { payable, name }] of payableBySupplier) {
+      const pos = openPosBySupplier.get(sid) ?? [];
 
-        // Кредит-ліміт зменшує з найпізніших (planned → дати спадно → overdue).
-        let limit = limitBySupplier.get(supplierId) ?? 0;
-        const consume = (available: number): number => {
-          if (limit <= 0) return available;
-          const eaten = Math.min(available, limit);
+      // FIFO-налив АВТОРИТЕТНОГО боргу на PO від найстарішого. Зберігаємо allocated per-PO.
+      let remaining = payable;
+      const alloc: Array<{
+        poId: string;
+        number: string;
+        paymentDate: string | null;
+        totalAmount: number;
+        outstanding: number;
+        allocated: number;
+        bucket: string;
+      }> = [];
+      for (const po of pos) {
+        if (remaining <= 0.005) break;
+        const take = Math.min(po.outstanding, remaining);
+        remaining -= take;
+        alloc.push({
+          poId: po.poId,
+          number: po.number,
+          paymentDate: po.paymentDate,
+          totalAmount: po.outstanding, // outstanding — те що реально до оплати
+          outstanding: po.outstanding,
+          allocated: take,
+          bucket: bucketOf(po.paymentDate),
+        });
+      }
+      // Борг понад суму відкритих PO (коригування/повернення без PO) → синтетичний overdue-рядок.
+      if (remaining > 0.005) {
+        alloc.push({
+          poId: '',
+          number: '— (борг без документа)',
+          paymentDate: null,
+          totalAmount: remaining,
+          outstanding: remaining,
+          allocated: remaining,
+          bucket: 'overdue',
+        });
+      }
+
+      // Кредит-ліміт зменшує allocated з найпізніших PO (planned → дати спадно → overdue),
+      // ДЗЕРКАЛИТЬ порядок споживання у попередньому getSchedule (planned → byDate desc → overdue).
+      let limit = limitBySupplier.get(sid) ?? 0;
+      if (limit > 0) {
+        const rank = (b: string): number => (b === 'planned' ? 2 : b === 'overdue' ? 0 : 1);
+        // Спочатку planned, потім byDate спадно за датою, потім overdue.
+        const order = [...alloc].sort((x, y) => {
+          const rx = rank(x.bucket);
+          const ry = rank(y.bucket);
+          if (rx !== ry) return ry - rx; // planned(2) → byDate(1) → overdue(0)
+          if (rx === 1) return x.bucket < y.bucket ? 1 : x.bucket > y.bucket ? -1 : 0; // дати спадно
+          return 0;
+        });
+        for (const a of order) {
+          if (limit <= 0) break;
+          const eaten = Math.min(a.allocated, limit);
+          a.allocated -= eaten;
           limit -= eaten;
-          return available - eaten;
-        };
-        const planned = consume(acc.planned);
-        const byDate: Record<string, number> = {};
-        // byDateSum накопичується inline у циклі що заповнює byDate (замість окремого
-        // Object.values(byDate).reduce на кожного постачальника).
-        let byDateSum = 0;
-        const descDates = Object.keys(acc.byDate).sort((a, b) => (a < b ? 1 : -1));
-        for (const d of descDates) {
-          const left = consume(acc.byDate[d]);
-          if (left > 0.005) {
-            byDate[d] = left;
-            byDateSum += left;
-          }
         }
-        const overdue = consume(acc.overdue);
+      }
 
-        const total = overdue + planned + byDateSum;
-        return { supplierId, supplierName: name, overdue, planned, byDate, total };
-      })
-      .filter(r => r.total > 0.005)
-      .sort((a, b) => b.total - a.total);
-
-    // Підсумковий рядок: один прохід накопичує скалярні totals + суми по датах,
-    // потім O(D) прибирає порожні колонки. Замінює попередні 3 reduce() по suppliers
-    // + вкладений reduce() на кожну дату.
-    const totalsByDate: Record<string, number> = {};
-    let totalsOverdue = 0;
-    let totalsPlanned = 0;
-    let totalsGrand = 0;
-    for (const r of suppliers) {
-      totalsOverdue += r.overdue;
-      totalsPlanned += r.planned;
-      totalsGrand += r.total;
-      for (const d in r.byDate) {
-        totalsByDate[d] = (totalsByDate[d] ?? 0) + r.byDate[d];
+      for (const a of alloc) {
+        allocations.push({
+          supplierId: sid,
+          supplierName: name,
+          poId: a.poId,
+          number: a.number,
+          paymentDate: a.paymentDate,
+          totalAmount: a.totalAmount,
+          outstanding: a.outstanding,
+          allocated: a.allocated,
+          bucket: a.bucket,
+        });
       }
     }
-    // Прибираємо колонки з нульовою сумою — дзеркалить попередній `if (sum > 0)` guard.
-    for (const d in totalsByDate) {
-      if (!(totalsByDate[d] > 0)) delete totalsByDate[d];
-    }
-    const totals = {
-      overdue: totalsOverdue,
-      planned: totalsPlanned,
-      byDate: totalsByDate,
-      total: totalsGrand,
-    };
 
-    return { dates, suppliers, totals };
+    return { allocations };
   }
 
   async findOne(orgId: string, id: string): Promise<SupplierPaymentResponseDto> {

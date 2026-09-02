@@ -570,4 +570,37 @@ test.describe('Оплати постачальникам', () => {
     await expect(page).toHaveURL(/tab=list/);
     await expect(page.locator('button:has-text("Нова оплата")')).toBeVisible();
   });
+
+  test('клік по клітинці графіка → панель зі списком документів', async ({ page }) => {
+    await page.goto('/supplier-payments?tab=schedule');
+    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const table = page.locator('th:has-text("Протерміновані")');
+    const empty = page.getByText('Немає запланованих оплат');
+    await expect(table.or(empty)).toBeVisible({ timeout: 30_000 });
+
+    // Якщо немає боргів — drill-down нічого показувати, тест не застосовний.
+    if (!(await table.isVisible().catch(() => false))) {
+      test.skip(true, 'Немає боргів для drill-down у цьому середовищі');
+      return;
+    }
+
+    // Знайти першу клікабельну клітинку (role=button — лише клітинки з сумою).
+    const clickableCell = page.locator('td[role="button"]').first();
+    await expect(clickableCell).toBeVisible({ timeout: 10_000 });
+    await clickableCell.click();
+
+    // Панель документів під таблицею.
+    await expect(page.getByText(/^Документи:/)).toBeVisible({ timeout: 10_000 });
+    // Або список PO (заголовок «№»), або «Немає документів».
+    const docsHeader = page.locator('th:has-text("№")');
+    const noDocs = page.getByText('Немає документів');
+    await expect(docsHeader.or(noDocs)).toBeVisible({ timeout: 10_000 });
+
+    // Закрити панель.
+    await page.getByLabel('Закрити').click();
+    await expect(page.getByText(/^Документи:/)).toBeHidden();
+  });
 });

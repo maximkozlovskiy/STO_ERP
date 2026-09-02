@@ -772,4 +772,149 @@ describe('SupplierPaymentsService — regression guards', () => {
     expect(r.totals.total).toBe(2000);
     expect(r.suppliers).toHaveLength(2);
   });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // getScheduleDocuments() — drill-down документів клітинки шахматки.
+  // Ключовий інваріант: Σ allocated документів у бакеті == сума клітинки getSchedule
+  // (спільний computeScheduleAllocations → немає sibling-drift панель↔клітинка).
+  // ──────────────────────────────────────────────────────────────────────
+
+  /** PO з унікальним id/number (getScheduleDocuments повертає їх). */
+  const poDoc = (over: {
+    id: string;
+    number: string;
+    supplierId?: string;
+    supplierName?: string;
+    totalAmount: number;
+    paymentDate: string | null;
+    paid?: number[];
+  }) => ({
+    id: over.id,
+    number: over.number,
+    supplierId: over.supplierId ?? SUPPLIER_ID,
+    totalAmount: over.totalAmount,
+    paymentDate: over.paymentDate ? new Date(over.paymentDate + 'T00:00:00Z') : null,
+    supplier: { firstName: null, lastName: null, companyName: over.supplierName ?? 'Acme' },
+    supplierPayments: (over.paid ?? []).map(a => ({ amount: a })),
+  });
+
+  it('getScheduleDocuments(): date-бакет повертає лише PO цього дня + Σ allocated == клітинка', async () => {
+    // 2 PO у 25-го, 1 у 26-го; balance=1600 покриває всі → date 25-го = 1000+400? Ні:
+    // FIFO наливає 1600: PO1(1000)@25 повний, PO2(600)@26 повний → 25-го = 1000, 26-го = 600.
+    mockPayable(1600);
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poDoc({ id: 'po-1', number: 'ЗАМ-1', totalAmount: 1000, paymentDate: '2026-08-25' }),
+      poDoc({ id: 'po-2', number: 'ЗАМ-2', totalAmount: 600, paymentDate: '2026-08-26' }),
+    ]);
+    const docs = await service.getScheduleDocuments(ORG, '2026-08-20', '2026-09-08', {
+      kind: 'date',
+      date: '2026-08-25',
+    });
+    expect(docs).toHaveLength(1);
+    expect(docs[0].number).toBe('ЗАМ-1');
+    expect(docs[0].poId).toBe('po-1');
+    const sum = docs.reduce((s, d) => s + d.allocated, 0);
+    expect(sum).toBe(1000); // == клітинка byDate['2026-08-25'] у getSchedule
+  });
+
+  it('getScheduleDocuments(): overdue-бакет фільтрує лише прострочені/null-date', async () => {
+    mockPayable(1500);
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poDoc({ id: 'po-o1', number: 'OVR-1', totalAmount: 500, paymentDate: '2026-08-10' }), // overdue
+      poDoc({ id: 'po-o2', number: 'OVR-2', totalAmount: 400, paymentDate: null }), // overdue
+      poDoc({ id: 'po-d', number: 'DATE-1', totalAmount: 600, paymentDate: '2026-08-25' }), // byDate
+    ]);
+    const docs = await service.getScheduleDocuments(ORG, '2026-08-20', '2026-09-08', {
+      kind: 'overdue',
+    });
+    expect(docs.map(d => d.number).sort()).toEqual(['OVR-1', 'OVR-2']);
+    expect(docs.reduce((s, d) => s + d.allocated, 0)).toBe(900); // 500 + 400
+  });
+
+  it('getScheduleDocuments(): planned-бакет — PO поза вікном', async () => {
+    mockPayable(700);
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poDoc({ id: 'po-p', number: 'PLN-1', totalAmount: 700, paymentDate: '2026-12-31' }),
+    ]);
+    const docs = await service.getScheduleDocuments(ORG, '2026-08-20', '2026-09-08', {
+      kind: 'planned',
+    });
+    expect(docs).toHaveLength(1);
+    expect(docs[0].number).toBe('PLN-1');
+    expect(docs[0].allocated).toBe(700);
+  });
+
+  it('getScheduleDocuments(): КОНСИСТЕНТНІСТЬ — Σ allocated бакета == клітинка getSchedule (той самий mock)', async () => {
+    // Один набір даних → викликаємо ОБИДВА методи → суми мають збігатися по кожному бакету.
+    const setup = () => {
+      mockPayable(1500);
+      prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+        poDoc({ id: 'po-a', number: 'A', totalAmount: 1000, paymentDate: '2026-08-25' }),
+        poDoc({ id: 'po-b', number: 'B', totalAmount: 1000, paymentDate: '2026-08-26' }),
+      ]);
+    };
+    setup();
+    const sched = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    setup();
+    const docs25 = await service.getScheduleDocuments(ORG, '2026-08-20', '2026-09-08', {
+      kind: 'date',
+      date: '2026-08-25',
+    });
+    setup();
+    const docs26 = await service.getScheduleDocuments(ORG, '2026-08-20', '2026-09-08', {
+      kind: 'date',
+      date: '2026-08-26',
+    });
+    // FIFO: 1500 → 25-го 1000 (повний PO A), 26-го 500 (частковий PO B).
+    expect(docs25.reduce((s, d) => s + d.allocated, 0)).toBe(
+      sched.suppliers[0].byDate['2026-08-25'],
+    );
+    expect(docs26.reduce((s, d) => s + d.allocated, 0)).toBe(
+      sched.suppliers[0].byDate['2026-08-26'],
+    );
+    expect(docs25[0].allocated).toBe(1000);
+    expect(docs26[0].allocated).toBe(500);
+  });
+
+  it('getScheduleDocuments(): кредит-ліміт зменшує allocated з найпізніших', async () => {
+    // borg 2000: overdue 1000 + planned 1000; ліміт 1500 з'їдає planned(1000)→0 + overdue 500.
+    mockPayable(2000);
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poDoc({ id: 'po-ov', number: 'OV', totalAmount: 1000, paymentDate: '2026-08-10' }), // overdue
+      poDoc({ id: 'po-pl', number: 'PL', totalAmount: 1000, paymentDate: '2026-12-31' }), // planned
+    ]);
+    mockLimit(1500);
+    const overdueDocs = await service.getScheduleDocuments(ORG, '2026-08-20', '2026-09-08', {
+      kind: 'overdue',
+    });
+    // planned повністю з'їдено лімітом → overdue лишається 500.
+    expect(overdueDocs.reduce((s, d) => s + d.allocated, 0)).toBe(500);
+  });
+
+  it('getScheduleDocuments(): supplierId звужує запити до одного постачальника', async () => {
+    mockPayable(500);
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poDoc({ id: 'po-x', number: 'X', totalAmount: 500, paymentDate: '2026-08-25' }),
+    ]);
+    await service.getScheduleDocuments(
+      ORG,
+      '2026-08-20',
+      '2026-09-08',
+      { kind: 'date', date: '2026-08-25' },
+      SUPPLIER_ID,
+    );
+    // orgId + supplierId у where усіх 3 запитів (tenant + звуження).
+    const poWhere = prisma.purchaseOrder.findMany.mock.calls[0]![0].where;
+    expect(poWhere.orgId).toBe(ORG);
+    expect(poWhere.supplierId).toBe(SUPPLIER_ID);
+    const saWhere = prisma.settlementAccount.findMany.mock.calls[0]![0].where;
+    expect(saWhere.counterpartyId).toBe(SUPPLIER_ID);
+  });
+
+  it('getScheduleDocuments(): from > to → BadRequestException (спільний guard)', async () => {
+    await expect(
+      service.getScheduleDocuments(ORG, '2026-09-01', '2026-08-30', { kind: 'overdue' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.purchaseOrder.findMany).not.toHaveBeenCalled();
+  });
 });

@@ -259,3 +259,48 @@ export class SupplierPaymentScheduleDto {
     total: number;
   };
 }
+
+// Drill-down: документи (PO), по яких виникає оплата у клітинці шахматки.
+// `date` XOR (`target`) — взаємовиключні: конкретна дата byDate АБО бакет overdue/planned.
+// `supplierId` опційний — без нього повертаються документи ВСІХ постачальників (клік по
+// рядку «Разом» шахматки).
+export class SupplierPaymentScheduleDocumentsQueryDto {
+  @ApiPropertyOptional({ description: 'Постачальник (без нього — усі постачальники)' })
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
+
+  @ApiProperty({ description: 'Початок вікна (YYYY-MM-DD) — той самий що у /schedule' })
+  @IsDateString({ strict: true }, { message: 'from має бути валідною датою' })
+  @Matches(YMD_RE, { message: 'from має бути у форматі YYYY-MM-DD' })
+  from!: string;
+
+  @ApiProperty({ description: 'Кінець вікна (YYYY-MM-DD) — той самий що у /schedule' })
+  @IsDateString({ strict: true }, { message: 'to має бути валідною датою' })
+  @Matches(YMD_RE, { message: 'to має бути у форматі YYYY-MM-DD' })
+  to!: string;
+
+  @ApiPropertyOptional({ description: 'Конкретна дата колонки byDate (YYYY-MM-DD)' })
+  @IsOptional()
+  @Matches(YMD_RE, { message: 'date має бути у форматі YYYY-MM-DD' })
+  date?: string;
+
+  @ApiPropertyOptional({ description: 'Бакет: overdue (протерміновані) або planned (планові)' })
+  @IsOptional()
+  @IsIn(['overdue', 'planned'], { message: 'target має бути overdue або planned' })
+  target?: 'overdue' | 'planned';
+}
+
+export class SupplierPaymentScheduleDocumentDto {
+  @ApiProperty() poId!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty() supplierId!: string;
+  @ApiProperty() supplierName!: string;
+  @ApiProperty({ nullable: true, description: 'Дата оплати YYYY-MM-DD або null' })
+  paymentDate!: string | null;
+  @ApiProperty({ description: 'Повна сума замовлення' }) totalAmount!: number;
+  @ApiProperty({ description: 'Несплачений залишок (totalAmount − CONFIRMED платежі)' })
+  outstanding!: number;
+  @ApiProperty({ description: 'Сума боргу, «налита» на цей PO (після кредит-ліміту)' })
+  allocated!: number;
+}

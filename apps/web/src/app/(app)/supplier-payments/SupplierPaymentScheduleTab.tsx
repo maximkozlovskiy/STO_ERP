@@ -1,10 +1,15 @@
 'use client';
 
-import { useMemo } from 'react';
-import { Wallet } from 'lucide-react';
-import { useSupplierPaymentsSchedule } from '@/hooks/api/useSupplierPayments';
+import { useMemo, useState } from 'react';
+import { Wallet, X, ChevronRight } from 'lucide-react';
+import {
+  useSupplierPaymentsSchedule,
+  useSupplierPaymentDocuments,
+  type SupplierPaymentDocumentsParams,
+} from '@/hooks/api/useSupplierPayments';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PurchaseOrderCreateModal } from '@/components/ui/PurchaseOrderCreateModal';
 import { fmtMoney, kyivToday, addDaysISO } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -21,11 +26,25 @@ function ddmm(ymd: string): string {
   return `${d}.${m}`;
 }
 
+/** Опис вибраної клітинки: параметри запиту + людський підпис для заголовка панелі. */
+interface Selection {
+  params: SupplierPaymentDocumentsParams;
+  label: string;
+}
+
 export function SupplierPaymentScheduleTab() {
   const from = useMemo(() => kyivToday(), []);
   const to = useMemo(() => addDaysISO(from, WINDOW_DAYS - 1), [from]);
 
   const { data, error } = useSupplierPaymentsSchedule(from, to);
+  const [selected, setSelected] = useState<Selection | null>(null);
+  const [editingPOId, setEditingPOId] = useState<string | null>(null);
+
+  const {
+    data: docs,
+    isFetching: docsLoading,
+    error: docsError,
+  } = useSupplierPaymentDocuments(selected?.params ?? null);
 
   if (error) {
     return (
@@ -55,9 +74,38 @@ export function SupplierPaymentScheduleTab() {
 
   const { dates, suppliers, totals } = data;
 
+  // Ключ вибраної клітинки для підсвічування (supplierId|bucket; '' supplierId = рядок «Разом»).
+  const selKey = (() => {
+    if (!selected) return null;
+    const p = selected.params;
+    const bucket = 'date' in p ? p.date : p.target;
+    return `${p.supplierId ?? ''}|${bucket}`;
+  })();
+
+  /** Клік по клітинці: зберігає selection (тригерить запит документів). */
+  const pick = (
+    supplierId: string | undefined,
+    supplierName: string | undefined,
+    bucket: 'overdue' | 'planned' | string,
+    isDate: boolean,
+  ) => {
+    const base = { from, to, ...(supplierId ? { supplierId } : {}) };
+    const params: SupplierPaymentDocumentsParams = isDate
+      ? { ...base, date: bucket }
+      : { ...base, target: bucket as 'overdue' | 'planned' };
+    const who = supplierName ?? 'Усі постачальники';
+    const what = isDate ? ddmm(bucket) : bucket === 'overdue' ? 'Протерміновані' : 'Планові';
+    const key = `${supplierId ?? ''}|${bucket}`;
+    // Повторний клік по тій самій клітинці — закрити панель.
+    if (selKey === key) setSelected(null);
+    else setSelected({ params, label: `${who} · ${what}` });
+  };
+
+  const key = (supplierId: string | undefined, bucket: string) => `${supplierId ?? ''}|${bucket}`;
+
   return (
-    <div className="flex flex-1 min-h-0">
-      <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+    <div className="flex flex-1 min-h-0 flex-col gap-3">
+      <div className="table-scroll-container min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
         <table className="w-full text-[12px] tabular-nums border-collapse">
           <thead className="sticky top-0 z-10 bg-secondary">
             <tr className="text-muted-foreground">
@@ -81,27 +129,31 @@ export function SupplierPaymentScheduleTab() {
             </tr>
           </thead>
           <tbody>
-            {/* Підсумковий рядок «Разом» */}
+            {/* Підсумковий рядок «Разом» — клік показує документи ВСІХ постачальників */}
             <tr className="font-semibold bg-muted/40">
               <td className="sticky left-0 z-10 bg-muted/40 px-3 py-1.5 border-b border-r border-border">
                 Разом:
               </td>
-              <td
-                className={cn(
-                  'text-right px-2 py-1.5 border-b border-border',
-                  totals.overdue > 0.005 && 'bg-destructive text-white',
-                )}
-              >
-                {cell(totals.overdue)}
-              </td>
+              <TotalCell
+                value={totals.overdue}
+                active={selKey === key(undefined, 'overdue')}
+                onClick={() => pick(undefined, undefined, 'overdue', false)}
+                variant="overdue"
+              />
               {dates.map(d => (
-                <td key={d} className="text-right px-2 py-1.5 border-b border-border">
-                  {cell(totals.byDate[d])}
-                </td>
+                <TotalCell
+                  key={d}
+                  value={totals.byDate[d]}
+                  active={selKey === key(undefined, d)}
+                  onClick={() => pick(undefined, undefined, d, true)}
+                />
               ))}
-              <td className="sticky right-0 z-10 bg-muted/40 text-right px-2 py-1.5 border-b border-l border-border">
-                {cell(totals.planned)}
-              </td>
+              <TotalCell
+                value={totals.planned}
+                active={selKey === key(undefined, 'planned')}
+                onClick={() => pick(undefined, undefined, 'planned', false)}
+                sticky
+              />
             </tr>
 
             {/* Рядки постачальників */}
@@ -110,43 +162,206 @@ export function SupplierPaymentScheduleTab() {
                 <td className="sticky left-0 z-10 bg-surface px-3 py-1.5 border-b border-r border-border text-foreground whitespace-nowrap">
                   {row.supplierName}
                 </td>
-                <td
-                  className={cn(
-                    'text-right px-2 py-1.5 border-b border-border',
-                    row.overdue > 0.005 && 'bg-destructive text-white',
-                  )}
-                >
-                  {cell(row.overdue)}
-                </td>
+                <ClickableCell
+                  value={row.overdue}
+                  active={selKey === key(row.supplierId, 'overdue')}
+                  onClick={() => pick(row.supplierId, row.supplierName, 'overdue', false)}
+                  className={row.overdue > 0.005 ? 'bg-destructive text-white' : undefined}
+                />
                 {dates.map(d => {
                   const v = row.byDate[d];
                   return (
-                    <td
+                    <ClickableCell
                       key={d}
-                      className={cn(
-                        'text-right px-2 py-1.5 border-b border-border',
-                        v && v > 0.005 && 'bg-warning-subtle text-warning font-medium',
-                      )}
-                    >
-                      {cell(v)}
-                    </td>
+                      value={v}
+                      active={selKey === key(row.supplierId, d)}
+                      onClick={() => pick(row.supplierId, row.supplierName, d, true)}
+                      className={
+                        v && v > 0.005 ? 'bg-warning-subtle text-warning font-medium' : undefined
+                      }
+                    />
                   );
                 })}
-                <td
-                  className={cn(
-                    'sticky right-0 z-10 text-right px-2 py-1.5 border-b border-l border-border',
+                <ClickableCell
+                  value={row.planned}
+                  active={selKey === key(row.supplierId, 'planned')}
+                  onClick={() => pick(row.supplierId, row.supplierName, 'planned', false)}
+                  sticky
+                  className={
                     row.planned > 0.005
                       ? 'bg-success-subtle text-success font-medium'
-                      : 'bg-surface',
-                  )}
-                >
-                  {cell(row.planned)}
-                </td>
+                      : 'bg-surface'
+                  }
+                />
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Панель документів під таблицею */}
+      {selected && (
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary">
+            <span className="text-sm font-medium text-foreground">Документи: {selected.label}</span>
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Закрити"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+          {docsError ? (
+            <div className="text-destructive text-sm px-4 py-6 text-center">
+              {docsError instanceof Error ? docsError.message : 'Помилка завантаження'}
+            </div>
+          ) : docsLoading && !docs ? (
+            <div className="flex justify-center py-8">
+              <Spinner />
+            </div>
+          ) : !docs || docs.length === 0 ? (
+            <div className="text-muted-foreground text-sm px-4 py-6 text-center">
+              Немає документів
+            </div>
+          ) : (
+            <div className="overflow-auto max-h-72">
+              <table className="w-full text-[13px] tabular-nums border-collapse">
+                <thead className="sticky top-0 bg-secondary text-muted-foreground">
+                  <tr>
+                    <th className="text-left font-medium px-4 py-2 border-b border-border">№</th>
+                    {!selected.params.supplierId && (
+                      <th className="text-left font-medium px-3 py-2 border-b border-border whitespace-nowrap">
+                        Постачальник
+                      </th>
+                    )}
+                    <th className="text-left font-medium px-3 py-2 border-b border-border whitespace-nowrap">
+                      Дата оплати
+                    </th>
+                    <th className="text-right font-medium px-3 py-2 border-b border-border">
+                      Сума
+                    </th>
+                    <th className="text-right font-medium px-3 py-2 border-b border-border">
+                      Залишок
+                    </th>
+                    <th className="w-8 border-b border-border" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {docs.map(doc => {
+                    const clickable = !!doc.poId;
+                    return (
+                      <tr
+                        key={doc.poId || doc.number}
+                        onClick={clickable ? () => setEditingPOId(doc.poId) : undefined}
+                        className={cn(
+                          'transition-colors',
+                          clickable
+                            ? 'hover:bg-secondary/40 cursor-pointer'
+                            : 'text-muted-foreground',
+                        )}
+                      >
+                        <td className="px-4 py-2 border-b border-border font-medium text-foreground whitespace-nowrap">
+                          {doc.number}
+                        </td>
+                        {!selected.params.supplierId && (
+                          <td className="px-3 py-2 border-b border-border whitespace-nowrap">
+                            {doc.supplierName}
+                          </td>
+                        )}
+                        <td className="px-3 py-2 border-b border-border whitespace-nowrap">
+                          {doc.paymentDate ? ddmm(doc.paymentDate) : '—'}
+                        </td>
+                        <td className="text-right px-3 py-2 border-b border-border">
+                          {fmtMoney(doc.totalAmount)}
+                        </td>
+                        <td className="text-right px-3 py-2 border-b border-border font-medium">
+                          {fmtMoney(doc.outstanding)}
+                        </td>
+                        <td className="px-2 py-2 border-b border-border text-muted-foreground">
+                          {clickable && <ChevronRight className="size-4" />}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      <PurchaseOrderCreateModal
+        open={!!editingPOId}
+        purchaseOrderId={editingPOId ?? undefined}
+        onClose={() => setEditingPOId(null)}
+      />
     </div>
+  );
+}
+
+/** Клітинка постачальника — клікабельна лише коли є сума. */
+function ClickableCell({
+  value,
+  active,
+  onClick,
+  className,
+  sticky,
+}: {
+  value: number | undefined;
+  active: boolean;
+  onClick: () => void;
+  className?: string;
+  sticky?: boolean;
+}) {
+  const hasValue = !!value && value > 0.005;
+  return (
+    <td
+      onClick={hasValue ? onClick : undefined}
+      role={hasValue ? 'button' : undefined}
+      className={cn(
+        'text-right px-2 py-1.5 border-b border-border',
+        sticky && 'sticky right-0 z-10 border-l',
+        hasValue && 'cursor-pointer hover:brightness-95',
+        active && 'ring-2 ring-inset ring-primary',
+        className,
+        sticky && !className && 'bg-surface',
+      )}
+    >
+      {cell(value)}
+    </td>
+  );
+}
+
+/** Клітинка рядка «Разом» (bold, muted-фон). */
+function TotalCell({
+  value,
+  active,
+  onClick,
+  variant,
+  sticky,
+}: {
+  value: number | undefined;
+  active: boolean;
+  onClick: () => void;
+  variant?: 'overdue';
+  sticky?: boolean;
+}) {
+  const hasValue = !!value && value > 0.005;
+  return (
+    <td
+      onClick={hasValue ? onClick : undefined}
+      role={hasValue ? 'button' : undefined}
+      className={cn(
+        'text-right px-2 py-1.5 border-b border-border',
+        sticky && 'sticky right-0 z-10 bg-muted/40 border-l',
+        variant === 'overdue' && hasValue && 'bg-destructive text-white',
+        hasValue && 'cursor-pointer hover:brightness-95',
+        active && 'ring-2 ring-inset ring-primary',
+      )}
+    >
+      {cell(value)}
+    </td>
   );
 }
