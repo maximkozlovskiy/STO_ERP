@@ -323,14 +323,22 @@ export class SupplierPaymentsService {
         };
         const planned = consume(acc.planned);
         const byDate: Record<string, number> = {};
+        // sto-optimize: byDateSum накопичується у тому ж циклі що заповнює byDate —
+        // економимо повторний Object.values(byDate).reduce на кожного постачальника
+        // (50 suppliers × ~20 dates: 50 alloc + 20 iter per supplier → 0 alloc, inline
+        // for-in одноразово всередині вже існуючого циклу).
+        let byDateSum = 0;
         const descDates = Object.keys(acc.byDate).sort((a, b) => (a < b ? 1 : -1));
         for (const d of descDates) {
           const left = consume(acc.byDate[d]);
-          if (left > 0.005) byDate[d] = left;
+          if (left > 0.005) {
+            byDate[d] = left;
+            byDateSum += left;
+          }
         }
         const overdue = consume(acc.overdue);
 
-        const total = overdue + planned + Object.values(byDate).reduce((s, v) => s + v, 0);
+        const total = overdue + planned + byDateSum;
         return { supplierId, supplierName: name, overdue, planned, byDate, total };
       })
       .filter(r => r.total > 0.005)

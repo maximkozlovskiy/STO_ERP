@@ -334,9 +334,16 @@ export class InvoicesService {
     // Pre-compute VAT totals from original's lines so the cloned invoice ships consistent
     // totalWithoutVat/totalVat/totalWithVat; Prisma defaults leave them at 0 while
     // lines[].priceWithVat has real values.
-    const totalWithoutVat = original.lines.reduce((s, l) => s + Number(l.priceWithoutVat), 0);
-    const totalVat = original.lines.reduce((s, l) => s + Number(l.vatAmount), 0);
-    const totalWithVat = original.lines.reduce((s, l) => s + Number(l.priceWithVat), 0);
+    // sto-optimize: single-pass — три послідовних reduce за той самий original.lines
+    // → одне проходження + 3 accumulators. Для інвойса з 100 рядків: 300 iter + 3 closures → 100 iter + 0 closures.
+    let totalWithoutVat = 0;
+    let totalVat = 0;
+    let totalWithVat = 0;
+    for (const l of original.lines) {
+      totalWithoutVat += Number(l.priceWithoutVat);
+      totalVat += Number(l.vatAmount);
+      totalWithVat += Number(l.priceWithVat);
+    }
 
     // Clone must NOT inherit workOrderId: the same WO would accumulate duplicate invoices
     // and the WO→Invoice 1:1 invariant breaks (auto-invoice on completion creates a 3rd).
@@ -696,9 +703,15 @@ export class InvoicesService {
             await tx.invoiceLine.createMany({ data: lineData });
           }
 
-          const totalWithoutVat = lineData.reduce((s, l) => s + l.priceWithoutVat, 0);
-          const totalVat = lineData.reduce((s, l) => s + l.vatAmount, 0);
-          const totalWithVat = lineData.reduce((s, l) => s + l.priceWithVat, 0);
+          // sto-optimize: single-pass — три reduce за той самий lineData → одне проходження + 3 accumulators.
+          let totalWithoutVat = 0;
+          let totalVat = 0;
+          let totalWithVat = 0;
+          for (const l of lineData) {
+            totalWithoutVat += l.priceWithoutVat;
+            totalVat += l.vatAmount;
+            totalWithVat += l.priceWithVat;
+          }
           await tx.invoice.update({
             where: { id: existing.id, orgId },
             data: { totalWithoutVat, totalVat, totalWithVat, amount: totalWithVat },
