@@ -208,6 +208,10 @@ function PurchaseOrdersPageClient() {
   // SSR-safe «сьогодні» для бейджа «Днів до оплати» (уникає hydration mismatch).
   const [today, setToday] = useState<Date | null>(null);
   useEffect(() => setToday(new Date()), []);
+  // sto-optimize: nowMs — один раз per render батька замість `today?.getTime() ?? 0`
+  // для КОЖНОГО рядка PO у map (20-50 рядків). У ExpiryBadge та daysUntil передаємо
+  // primitive number — стабільна ідентичність, дружня до memo.
+  const nowMs = useMemo(() => today?.getTime() ?? 0, [today]);
 
   // React Query hooks
   const {
@@ -1084,15 +1088,13 @@ function PurchaseOrdersPageClient() {
                           if (col.key === 'payDue') {
                             // Бейдж лише де є реальний залишок боргу по PO.
                             const dpd =
-                              (po.outstanding ?? 0) > 0
-                                ? daysUntil(po.paymentDate, today?.getTime() ?? 0)
-                                : null;
+                              (po.outstanding ?? 0) > 0 ? daysUntil(po.paymentDate, nowMs) : null;
                             return (
                               <TableCell key="payDue" className="text-[13px]">
                                 {dpd != null && (
                                   <ExpiryBadge
                                     date={po.paymentDate}
-                                    nowMs={today?.getTime() ?? 0}
+                                    nowMs={nowMs}
                                     expiredLabel={`Прострочено ${Math.abs(dpd)} дн.`}
                                     soonLabel={`${dpd} дн.`}
                                     soonDays={20}

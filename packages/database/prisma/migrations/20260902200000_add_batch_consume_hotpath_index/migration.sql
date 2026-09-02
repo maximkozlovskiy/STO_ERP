@@ -1,0 +1,22 @@
+-- sto-optimize: hot-path covering index for BatchService.consumeBatch (FIFO/LIFO).
+--
+-- WHERE shape: (orgId, goodId, warehouseId, isActive=true, remainingQty>0)
+-- ORDER BY:    createdAt ASC (FIFO default) або DESC (LIFO)
+--
+-- Існуючий `(orgId, goodId, warehouseId, isActive)` (schema.prisma:1252) покриває
+-- WHERE-префікс, але Postgres МАЄ виконати external sort по `createdAt` для кожної
+-- сторінки PAGE=100 партій. Під polling-навантаженням (кожне WRITEOFF/WO-COMPLETED/
+-- TRANSFER-out) sort повторюється — це sustained CPU/буфер тиск на PostgreSQL.
+--
+-- Додаємо `createdAt` як tail-колонку: тепер Postgres дає index-order scan (asc/desc)
+-- без external sort. Партії з remainingQty=0 у планері не гейтуються — це низька
+-- селективність, залишається як heap re-filter (partial index через isActive+remainingQty
+-- був би теоретично кращим, але Prisma DSL не експресує partial index — окремий
+-- CREATE INDEX ... WHERE усложнює sync-drift detection).
+--
+-- Sibling-audit: FEFO (`expiryDate asc, createdAt asc`) використовує окремий
+-- `(orgId, goodId, expiryDate)` — не має warehouseId у WHERE, потрібен ще один
+-- індекс. Пропускаємо: FEFO — рідкісний cost method (за замовчуванням FIFO),
+-- write-cost на StockBatch INSERT (в кожному RECEIPT) переважає read-виграш.
+CREATE INDEX IF NOT EXISTS "stock_batches_orgId_goodId_warehouseId_isActive_createdAt_idx"
+  ON "stock_batches" ("orgId", "goodId", "warehouseId", "isActive", "createdAt");
