@@ -18,6 +18,17 @@
 
 Baseline тримається: API 1095/1095, Web 488/488, TSC api ✅ 0 / web ✅ 0. Не з цієї сесії (pre-existing SUGGESTION, не блокатор): `fetchPartCoefficients` в work-orders.service:1559 без orgId — UUID PK, атака неможлива, залишено на майбутнє.
 
+### Решта фінального циклу 3 — усе чисто
+
+- **tester (247f33cb)** — 0 активних багів + **жива DB-верифікація конвергенції**: CHECK-constraints реально кидають 23514 на негативний INSERT/UPDATE (не тільки app-guard); rollback тримає атомарність на mixed ORM+raw; `Σ remainingQty==quantity` для 8 пар = 0 mismatch; `balance==Σ signed(tx)` для 222 акаунтів = 0 mismatch. SKILL +1 «Live-DB probe» + застереження: semantic-мапу (BALANCE_SIGN) читати з коду, не hardcode-ити у probe (дало 8 phantom mismatch).
+- **optimize** — 0 findings, 0 комітів (сигнал конвергенції). Self-wrap не додає RTT на hot-path (all callers pass tx), CHECK — inline per-row 0 I/O, sumLineTotals single-pass збережено.
+- **e2e** — 74/74 фінансові спеки green.
+- **simplify** (4-angle convergence sweep) — 0 нових findings; sumLineTotals єдиний 3-field reduce-triple, null-контракт уніфікований.
+- **code-review --fix** — 0 нових багів; 4 cross-cycle interaction-гіпотези очищені (CHECK vs transient-negative; self-wrap vs non-tx callers; nested $transaction; float-rounding clamp).
+- **security-review** — 0 findings; ключове: 23514 CHECK-violation → generic HTTP 500 «Внутрішня помилка сервера» (raw PG-текст лише у logger, не у client → 0 leak table/column/constraint names); self-wrap DoS HTTP-недосяжний; cost-поля виключені з MECHANIC-проєкцій.
+
+**Підсумок 3 циклів QA:** cycle 1 — 1 CRITICAL (AVG_COST sentinel) + altitude fix ''→null; cycle 2 — 1 HIGH (Bug #613 concurrency) + 3-рівневий backstop + no-tx self-wrap; cycle 3 — 0 findings (конвергенція, empirical live-DB evidence). API 1057→1095 (+38 regression-guards), Web 488. 19 комітів.
+
 ---
 
 ## 2026-09-02 (e) — Повний QA-цикл 2 (sync/review/tester/optimize/e2e/simplify/code-review/security)
