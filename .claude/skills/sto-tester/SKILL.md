@@ -222,6 +222,8 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 
 - [ ] **Alternate-mutation endpoint обходить canonical guards (Bug #403):** будь-який backend service-метод що **мутує той самий resource** що і `update()`/`addLine()`/`removeLine()` АЛЕ зі своєю окремою сигнатурою (`refreshFromWorkOrder`/`syncFromX`/`importFromY`/`recalculateZ`/`refreshFromExternalSource`...) — ПОВИНЕН повторити ВСІ business-guards канонічного `update()`. Типові guards що пропускаються: (а) `if (X.status !== 'DRAFT') throw BadRequestException` (FSM-readonly для submitted/paid/sent статусів); (б) `if (existing.isLocked) throw ...` (manually locked records); (в) `if (existing.isSystem) throw ...` (seed-керовані); (г) prep-check unique-constraint конфлікту. Сценарій: оригінальний `update()` має FSM-guard `!DRAFT → throw`; альтернативний endpoint забуває цей guard → перезаписує дані SENT/PAID/locked record-у без error → silently corrupts data. Grep: `grep -rnE "async (refresh|sync|import|recalculate|regenerate|rebuild)[A-Z]" apps/api/src/modules --include="*.service.ts"` — для кожного знайденого метода: знайти canonical `update()`/`updateLine()`/`updateX()` у тому ж файлі, скопіювати ВСІ `if (...) throw` guards (особливо `inv.status !== 'DRAFT'`, `existing.status !== ...`), перевірити що alternate-метод їх має. Парний підхід: будь-який mutation що приймає workOrderId/parentId і робить `deleteMany + createMany` на child resource (full overwrite) — обов'язково prep-check status батьківського resource через `if (parent.status !== <ALLOWED>) throw`. Severity CRITICAL (фінансовий ризик для invoice/payment/settlement resources). Регресія-guard: contract spec для alternate endpoint що мокає existing.status=non-DRAFT → 400.
 
+- [ ] **Concurrent pre-check → write без row-lock або conditional-decrement (Bug #613):** будь-який service-метод що робить `findFirst({ select: { counter }}) → GUARD → upsert/update({ counter: { increment/decrement }})` у $transaction БЕЗ явного `isolationLevel: 'Serializable'` — race window: 2 concurrent tx проходять guard на stale snapshot, Postgres row-lock UPDATE серіалізує тільки сам запис → другий залишає counter НЕГАТИВНИМ (немає DB CHECK constraint). Grep: `grep -rn "isolationLevel|Serializable" apps/api/src/modules/<hot-path>` = 0 matches. Fix 2-layer: (Layer 1) `.select({counter})` у upsert + post-check `if (upserted.counter < 0) throw` (rollback у $tx); (Layer 2) `X.update({data:{field:{decrement:n}}})` → `X.updateMany({where:{id, field:{gte:n}}, data:{...}})` — Postgres atomic CHECK+DECREMENT, count=0 → throw. Regression-guards: (а) service.spec `mockResolvedValueOnce({quantity:-10}) → throw`; (б) service.spec `mockResolvedValueOnce({count:0}) → throw`; (в) invariants.spec property-based `2 concurrent → totalConsumed <= initial ∀ (initial, take)`. Severity: HIGH коли інваріант фінансовий (quantity/balance/reserved); MEDIUM для non-critical counters. Where else: `settlementAccount.balance`, `cashRegister.balance`, `bankAccount.balance`, `deliveryOrder.receivedQty`, `purchaseOrder.paidAmount` — будь-який `findFirst → upsert/update({increment/decrement})` у Read Committed.
+
 - [ ] **Role-gated sensitive DTO field без regression-guard spec (Bug #527, #529):** будь-який commit вигляду `fix/feat: role-gate <Field>` що додає (а) `<X>_VISIBLE_ROLES = new Set<string>(['OWNER', ...])`, (б) helper `canSeeX(role)`, (в) `userRole?: string` параметр у service-метод(и) — ОБОВ'ЯЗКОВО має парний `*.role-gate.spec.ts` (новий або існуючий) з матрицею: (1) кожна привілейована роль × значення поля → візібл, (2) кожна непривілейована роль (включно з `MECHANIC`, `RECEPTIONIST`, `CLIENT`) → undefined, (3) edge `userRole === undefined` → fail-closed, (4) edge `userRole === ''` → fail-closed, (5) невідома роль (`'GUEST'`/`'PARTNER'`) → fail-closed, (6) lowercase (`'owner'`) → fail-closed (case-sensitive Set lookup), (7) `<Field> === null` для привілейованої → `null` (не `undefined`!) — semantic distinction "доступ є, але value not set" vs "нема доступу". Плюс: ВСІ mutation endpoint що повертають DTO (`addX`, `updateX`, не тільки `findOne`) приймають userRole і передають у toDto — інакше OWNER не побачить поле одразу після створення (refresh потрібен) АБО refactor що видалить fail-closed default витече для не-привілейованих write-ролей (`RECEPTIONIST` у write-allow для add/updatePart, але НЕ в COST_PRICE_VISIBLE_ROLES). Grep: `grep -rnE "(VISIBLE_ROLES|canSee[A-Z])" apps/api/src --include="*.ts" | grep -v "spec\|test"` → для кожного matched: `grep -rn "<sameName>" apps/api/src --include="*.spec.ts"` → нуль matches = HIGH (release-blocker для §2.1 Auth). Парне з Bug #478-#480 (enum coverage). Where else: будь-яке поле з prefix `cost*`/`purchase*`/`internal*`/`audit*`/`private*`/`secret*`/`bankAccount`/`taxId`/`salary`/`margin` у DTO.
 
 #### Prisma schema ↔ migration parity (release-blocker)
@@ -1035,6 +1037,42 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-02 — Concurrent pre-check → write без row-lock контракту → від'ємні лічильники силентно (Bug #613) — backend / concurrency / financial-integrity
+
+**Сигнал:** service-метод що робить `findFirst({ select: { counter }}) → BUSINESS-GUARD → upsert/update({ counter: { increment: -X }})` в одному `$transaction` без явного `isolationLevel: 'Serializable'`. Prisma default = Read Committed → 2 concurrent tx (два наряди на одну запчастину, два скасування резерву, два платежі з тієї ж каси) обидва проходять guard на stale snapshot. Postgres row-lock UPDATE серіалізує сам запис, але не «read → write» ланцюг → другий tx декрементує `counter` до **−N без сигналу** (немає CHECK constraint у міграціях). Downstream: неправильний COGS у нарядах, розхід балансу, negative reserved.
+
+**Причина виникнення:** оригінальний дизайн вважав що `$transaction` захищає весь потік — але Read Committed **не серіалізує** read+write. Це поширений blind spot для розробників без глибокого розуміння Postgres isolation levels. Серіalizable + inner re-check (як у `invoices.service.ts` для Bug #412) має overhead SSI для sequential cases; простіше рішення дає той же invariant.
+
+**Підхід до виявлення:**
+
+1. Grep `grep -rn "isolationLevel|Serializable" apps/api/src/modules/<hot-path>` = 0 matches для write-hot-path (inventory, settlements, cash-registers, bank-accounts, deliveryOrder-receivedQty).
+2. Grep `grep -rn "CHECK.*<counter>|<counter>.*CHECK" packages/database/prisma/migrations/` = 0 matches — немає DB-level захисту.
+3. Порівняти з іншим модулем що ЗАХИЩЕНИЙ (Bug #412 pattern) — асиметрія сигналізує ризик.
+4. Логічний walkthrough: pre-check → SLEEP → інший tx commits → наш tx wakes → `SET counter = counter + delta` → може стати негативним.
+
+**Підхід до фіксу (2 layers, обидва рекомендовано):**
+
+- **Layer 1 — post-upsert re-check:** `.select({ counter, otherCounter })` у upsert → `if (upserted.counter < 0) throw new BadRequestException('...concurrent...')`. Виконується всередині $tx → throw викликає rollback усього ланцюга. Простіше за Serializable, менше SSI overhead для звичайних sequential cases. Захищає ГЛОБАЛЬНИЙ інваріант рядка.
+- **Layer 2 — conditional updateMany:** замінити `X.update({ data: { field: { decrement: n }}})` на `X.updateMany({ where: { id, field: { gte: n }}, data: {...}})`. Postgres виконує атомарний CHECK + DECREMENT. При race `count=0` → throw «X змінено іншою транзакцією — повторіть». Захищає ЛОКАЛЬНИЙ інваріант конкретного row (партія, слот).
+
+**Regression-guard тести (обов'язково після fix):**
+
+1. **service.spec.ts:** happy-path (upsert повернув валідні значення → no throw) + race-simulation (`mockResolvedValueOnce({ quantity: -10 })` → throw). Для updateMany: `mockResolvedValueOnce({ count: 0 })` → throw + `expect(next-mutation).not.toHaveBeenCalled()`.
+2. **invariants.spec.ts (property-based):** 2 concurrent tx симуляція → `totalConsumed <= initial` для довільних (initial, take) параметрів. Гарантує що defensive-layer тримається у моделі незалежно від fantasy тест-автора.
+3. **Ключове:** документувати у коментарі до кожного guard ЧОМУ це не Serializable (bar overhead, sequential case) і ЯКА конкретно послідовність race призвела б до негативного значення.
+
+**Severity:** HIGH коли інваріант фінансовий (quantity/balance/reserved) або bookkeeping (audit-trail); MEDIUM для non-critical counters.
+
+**Де шукати ще:** будь-який `findFirst → upsert/update({ increment/decrement })` у Read Committed без isolation:
+
+- `settlementAccount.balance` (Bug #412 закрив invoice-flow; треба перевірити payment/refund flows).
+- `cashRegister.balance` / `bankAccount.balance` — суми готівки/безготу.
+- `deliveryOrder.receivedQty` — часткова отримка.
+- `purchaseOrder.paidAmount` — часткова оплата (як Bug #613 покриває inventory, потрібно перевірити fin. еквіваленти).
+- Будь-який `X.update({ data: { field: { decrement }}})` без CHECK constraint на field ≥ 0 у міграції.
+
+---
 
 ### 2026-09-02 — 0 нових багів у активному фінансовому scope → property-based cross-invariant regression-guard (Bug #612) — backend / financial-integrity / test-coverage / property-based
 
