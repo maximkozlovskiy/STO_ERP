@@ -1047,6 +1047,47 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-04 — Cross-midnight probe protocol: timezone-aware date-bucketing регресійна live-верифікація — backend / time-zone / aggregation / verification
+
+**Сигнал:** свіжий fix «UTC→Local-day» у date-групуванні (grep у diff/commits: `toISOString().slice(0,10)` → `Intl.DateTimeFormat('sv-SE',{timeZone:...})`), або зміна у helper типу `KYIV_YMD`/`localYMD`/`kyivDate`. Ризик: fix виглядає правильним у unit-тестах (mock Date), але seed-дані з реальними timestamps можуть не містити cross-midnight записів → live-response ідентичний UTC-response → регресія прихована.
+
+**Причина виникнення:** unit-тести з fabricated timestamps (`new Date('2026-01-15T22:30:00Z')`) — на 100% детерміністичні і легко проходять. Але:
+
+1. Seed-дані часто клініч-о зроблені на щільно розподілені моменти (`faker.date.recent()`) — усі можуть виявитись за межами cross-midnight window.
+2. Локальний dev-час розробника (Europe/Kyiv) — timezone-змінна тіла процесу може маскувати fix (якщо Node підключено з `TZ=Europe/Kyiv`, `d.toString()` вже показує локально — але `.toISOString()` завжди UTC, тому unit-тест ловить це через мок).
+3. Post-fix production monitoring може виявити регресію тільки через 1–2 тижні коли справжня cross-midnight транзакція трапиться.
+
+**Підхід до виявлення (live-probe):**
+
+1. `curl POST /reports/...` з `columns=[dateField,valueField]`, `groupBy=[]`, `includeRows=true` → дістати raw timestamps.
+2. У Python/JS-скрипті: для кожного timestamp порівняти `utc_day = ts[:10]` vs `local_day = astimezone(TARGET_TZ).strftime('%Y-%m-%d')` → підрахувати cross-midnight записи.
+3. Якщо `count(cross-midnight) > 0` → добре, є на чому тестити. Якщо 0 → створити тестову транзакцію через API у cross-midnight window (наприклад, `POST /... createdAt=<explicit tomorrow-01:30-local>`) або через direct DB insert.
+4. `curl POST /reports/... groupBy=[dateField] aggregations=[SUM(valueField)]` → server-day-agg.
+5. Обчислити CLIENT-side ту саму aggregation у target timezone: `by_local_day[astimezone(TZ).ymd] += value`.
+6. **АСЕРТ**: `server_response.tree[day].SUM_value == client.by_local_day[day]` для КОЖНОГО дня. Матч тільки якщо server робить local-day bucketing правильно.
+7. Extra: перевірити `sum(all days) == grandTotal` (базовий інваріант, не залежить від TZ).
+
+**Підхід до фіксу (якщо мисматч виявлено):**
+
+1. Grep `toISOString().slice\(0,10\)|toISOString\(\).*substring\(0` — усі місця які роблять UTC→string→slice. Замінити на locale-aware formatter (`Intl.DateTimeFormat('sv-SE', {timeZone: TARGET_TZ})` дає безпечний YYYY-MM-DD).
+2. Grep `getUTCHours|getUTCDate|getUTCMonth` разом з `Date` — можуть означати UTC-first логіку де треба local.
+3. У утилітному модулі (наприклад `common/utils/kyiv-date.ts`) — переконатись що всі public export'и використовують один і той самий formatter.
+4. Regression tests: (a) DST-boundary — літо `T22:30:00Z` (EEST +3 → 01:30 next day) + зима `T22:30:00Z` (EET +2 → 00:30 next day); (b) DST-transition day (останнє воскресіння березня 03:00→04:00, останнє воскресіння жовтня 04:00→03:00); (c) UTC-day boundary (00:00Z ± 1s).
+
+**Severity:** CRITICAL коли групування впливає на фінансово-звітну logic (daily sales, daily balance change, daily inventory delta). MEDIUM для UI-only (сортування списку по «сьогодні/вчора» — user побачить misplacement але не втратить дані).
+
+**Де шукати ще:**
+
+- Будь-який aggregator який приймає `DateTime` поле і робить bucketing: `normalizeKey|groupKey|dateGroup|toDateStr`.
+- Report/analytics endpoints які повертають `{date: string, value: number}[]` — перевірити чи date у local time чи UTC.
+- Cache keys що містять «сьогодні» — `getCacheKey(new Date().toISOString().slice(0,10))` буде UTC-based, не Kyiv.
+- Cron scheduler triggers («о 00:00 щодня») — Node cron у Docker без `TZ=Europe/Kyiv` спрацьовує о 03:00 Kyiv-часу.
+- Frontend chart labels (`data.map(d => d.toISOString().slice(0,10))` — той самий баг у зворотному напрямку).
+
+**Anti-pattern:** «unit-тест з mock Date проходить → OK». Правильно: живий probe з реальними timestamps + client-side re-compute у target TZ.
+
+---
+
 ### 2026-09-03 — Semantic aggregation drift: SUM over a signed field включає значення яке не впливає на ресурс (Bug #619) — backend / aggregation / business-invariant
 
 **Сигнал:** реєстр/схема декларує field як з `signedByType` (або еквівалентом «знак береться з type-поля»), а aggregator обчислює `SUM(field)` без ВИКЛЮЧЕННЯ типів які **не змінюють** підлеглий ресурс. Grep: `signedByType` / `MovementType` / `TransactionType` разом з `SUM|reduce` — і перевірити чи виключаються NON_PHYSICAL/NON_FINANCIAL типи. У StockMovement: RESERVATION/RESERVATION_RELEASE — це лічильник `reserved`, а не `quantity`; у SettlementTransaction (майбутнє): PREPAYMENT_APPLICATION без реального руху грошей — не змінює `balance`. Aggregator який їх включає дає числа-«привиди».
