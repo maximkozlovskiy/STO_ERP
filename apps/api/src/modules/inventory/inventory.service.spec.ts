@@ -232,6 +232,26 @@ describe('InventoryService.createMovement guards', () => {
     );
   });
 
+  // CRITICAL (audit 2026-09-04): Prisma upsert компілюється у `INSERT ... VALUES (quantity)
+  // ON CONFLICT DO UPDATE`. Postgres перевіряє CHECK stock_items_quantity_nonneg на INSERT-tuple
+  // ДО арбітражу конфлікту → від'ємний create.quantity валив 23514 (500) на КОЖНОМУ WRITEOFF/
+  // TRANSFER-out/WO-COMPLETED, НАВІТЬ коли рядок існує і DO UPDATE дав би коректний залишок.
+  // Guard: create.quantity МУСИТЬ бути кламповане до ≥0 (як reserved). Мок не б'є Postgres,
+  // тож асертимо саме payload create-гілки — рефактор який зніме Math.max впаде тут.
+  it('WRITEOFF: create-гілка upsert клампить quantity до ≥0 (Postgres CHECK vs ON CONFLICT)', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
+    await service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -40 }));
+    const call = prisma.stockItem.upsert.mock.calls[0]![0] as {
+      create: { quantity: number; reserved: number };
+      update: { quantity: { increment: number } };
+    };
+    // create-гілка (виконується лише коли рядка нема) — quantity НЕ від'ємна
+    expect(call.create.quantity).toBe(0);
+    expect(call.create.quantity).toBeGreaterThanOrEqual(0);
+    // update-гілка (existing row) все одно декрементує на реальну дельту
+    expect(call.update.quantity).toEqual({ increment: -40 });
+  });
+
   // Партійне списання (COGS) — головний фікс: WRITEOFF викликає consumeBatch з costMethod
   // з налаштувань і повертає зважену собівартість.
   it('WRITEOFF викликає consumeBatch з costMethod із налаштувань + повертає weightedCostPrice', async () => {

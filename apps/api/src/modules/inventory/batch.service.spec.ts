@@ -201,6 +201,41 @@ describe('BatchService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    // Bug #623 (d74b7b3d, audit 2026-09-04): exhaustion-check `remaining > QTY_EPSILON`
+    // (не `remaining > 0`). Дробові одиниці (літри/кг) через IEEE-754 лишають float-дрейф:
+    // 0.3 − 0.1 − 0.1 − 0.1 ≈ −2.7e-17 → з порогом 0 законне ПОВНЕ списання кидало б хибне
+    // «Недостатньо партій: бракує 2.7e-17 одиниць». d74b7b3d виправив, але без regression-test.
+    it('Bug #623: дробове повне списання (3×0.1 для qty=0.3) НЕ кидає (float-дрейф ≤ epsilon)', async () => {
+      prisma.stockBatch.findMany.mockResolvedValue([
+        { id: 'p1', remainingQty: 0.1, costPrice: 50 },
+        { id: 'p2', remainingQty: 0.1, costPrice: 50 },
+        { id: 'p3', remainingQty: 0.1, costPrice: 50 },
+      ]);
+      const result = await service.consumeBatch(
+        'org',
+        'g1',
+        'wh1',
+        0.3,
+        'WO',
+        'wo1',
+        undefined,
+        'FIFO',
+      );
+      const consumed = result.reduce((s, r) => s + r.quantity, 0);
+      expect(consumed).toBeCloseTo(0.3, 9);
+    });
+
+    it('Bug #623: реальна дробова нестача (qty=0.5, доступно 0.3) → все ще кидає', async () => {
+      prisma.stockBatch.findMany.mockResolvedValue([
+        { id: 'p1', remainingQty: 0.1, costPrice: 50 },
+        { id: 'p2', remainingQty: 0.1, costPrice: 50 },
+        { id: 'p3', remainingQty: 0.1, costPrice: 50 },
+      ]);
+      await expect(
+        service.consumeBatch('org', 'g1', 'wh1', 0.5, 'WO', 'wo1', undefined, 'FIFO'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('записує BatchConsumption з негативним quantity', async () => {
       prisma.stockBatch.findMany.mockResolvedValue([
         { id: 'b1', remainingQty: 10, costPrice: 100 },

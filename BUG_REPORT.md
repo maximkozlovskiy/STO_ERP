@@ -2286,3 +2286,48 @@ Backend зміна не ламає існуючих клієнтів (додає
 - **Проблема:** коментар тесту стверджував «колонки Кількість немає», але цього НЕ асертив — регресія що повертає count-колонку у flat-режимі пройшла б мовчки.
 - **Fix:** додано асерти: `thead th` з текстом «Кількість» = 0; перша th = «№»; `thead == перший body-рядок == tfoot` за к-стю клітинок. Commit `3d8cdee4`.
 - **Статус:** [x] виправлено
+
+---
+
+## Session 2026-09-04 — аудит обліку 0729e639 + d74b7b3d (main): 7 логічних фіксів + QTY_EPSILON
+
+> Верифікація що фікси коміту 0729e639 («7 логічних багів обліку — партії/баланс/собівартість») +
+> d74b7b3d (QTY_EPSILON exhaustion-check) РЕАЛЬНО працюють і не внесли регресій. Живий audit через
+> API (login admin@sto.local) + прямі Prisma-probe проти dev-БД + повний unit-suite.
+> **Baseline до сесії: API tsc 0, тести 1155/1155.** Всі 7 фіксів коміту 0729e639 підтверджено
+> коректними (див. нижче). ПІД ЧАС верифікації item #1 (OPENING_BALANCE → WRITEOFF) виявлено окремий
+> CRITICAL що блокував КОЖНЕ фізичне списання на main.
+
+### Bug #621 — CRITICAL production-breaking — Prisma upsert + Postgres CHECK: КОЖЕН WRITEOFF/TRANSFER-out/WO-COMPLETED падає 500
+
+- **Файл:** `apps/api/src/modules/inventory/inventory.service.ts:223-231` (createMovement → stockItem.upsert, create-гілка).
+- **Симптом:** Живий: OPENING_BALANCE(100) CONFIRMED → StockBatch створено, quantity=100 ✓; далі WRITEOFF(40) CONFIRMED → **500 «Внутрішня помилка сервера»**. Те саме для RECEIPT(100)→WRITEOFF(40). Стек із серверного логу: `PrismaClientUnknownRequestError` → Postgres `23514 new row for relation "stock_items" violates check constraint "stock_items_quantity_nonneg"`, failing row `quantity=-40`.
+- **Причина виникнення:** Prisma `upsert` компілюється у `INSERT ... VALUES (quantity) ON CONFLICT (orgId,goodId,warehouseId) DO UPDATE SET quantity = stock_items.quantity + delta`. **PostgreSQL перевіряє table CHECK-констрейнт на INSERT-tuple ПЕРЕД арбітражем ON CONFLICT** → від'ємний `create.quantity` (для WRITEOFF `quantityDelta = -40`) валить 23514 НАВІТЬ коли рядок існує зі 100 і DO UPDATE дав би коректні 60. CHECK-констрейнт `stock_items_quantity_nonneg` доданий міграцією `20260902210000` (QA-цикл 2 Bug #613 backstop) — з того моменту КОЖНЕ фізичне списання ламалось на main. Unit-тести мокають Prisma → upsert-мок повертає canned-значення, ніколи не б'є Postgres → баг невидимий у CI. `reserved` у create вже було кламповано `Math.max(0, reservedDelta)`, а `quantity` — ні (асиметрія).
+- **Виявлено:** живий probe `scratchpad/probe_receipt_writeoff.py` + `probe_opening_balance.py` → 500; серверний стек через перезапуск API dev-сервера з логуванням у файл; ізольовано прямим Prisma-probe (`upsert` фейлить, plain `update` по тому самому compound-key — ок; findUnique бачить рядок) + raw-SQL `INSERT ... ON CONFLICT` (23514 підтверджено на SQL-рівні).
+- **Fix:** `create.quantity: Math.max(0, quantityDelta)` (дзеркалить наявний `reserved: Math.max(0, reservedDelta)`). Create-гілка застосовується ЛИШЕ коли рядка ще нема — а тоді від'ємний залишок і так неможливий (pre-check «Недостатньо товару» відсік би). Update-гілка (existing row) незмінна: `increment: quantityDelta` дає правильний декремент. Верифіковано прямим probe (existing row 100 → upsert clamp → 60) і живим API після фіксу: RECEIPT→WRITEOFF 201 (quantity 100→60), OPENING_BALANCE→WRITEOFF 201 (quantity 100→60).
+- **Severity:** CRITICAL — блокувало ВСІ списання (WRITEOFF-документи, TRANSFER, завершення наряду з розходом запчастин) на main з моменту мерджу міграції 20260902210000. Головний бізнес-флоу (наряд COMPLETED) неможливий.
+- **Регресія:** +1 unit у `inventory.service.spec.ts` — `WRITEOFF: create-гілка upsert клампить quantity до ≥0 (Postgres CHECK vs ON CONFLICT)` — асертить `create.quantity===0` при dto.quantity=-40 і `update.quantity==={increment:-40}`. Мок не б'є Postgres, тож guard-асерт саме на payload create-гілки (рефактор що зніме Math.max впаде тут).
+- **Де шукати ще:** будь-який Prisma `upsert` на таблиці з CHECK-констрейнтом на полі що входить у `create`-payload зі знаковою дельтою. Grep `\.upsert(` — перевірено: `stockItem.upsert` єдиний під CHECK (`stock_items_quantity_nonneg`); loyalty/settings/userPreference upsert — на таблицях без non-neg CHECK. `stock_batches` має CHECK, але createFromReceipt вставляє додатні receivedQty/remainingQty (RECEIPT/OPENING_BALANCE), consumeBatch використовує updateMany (не upsert) → безпечно.
+- **Статус:** [x] виправлено
+
+### Bug #622 — MEDIUM test-coverage — Bug #178 pricing scope fix (AND→precedence) без regression-guard
+
+- **Файл:** `apps/api/src/modules/inventory/pricing.service.ts:118-132` (applyRuleToGoods scope-селекція).
+- **Симптом:** Коміт 0729e639 змінив `applyRuleToGoods` scope із AND-усіх-полів на ОДИН найспецифічніший вимір (goodId>brandId>goodCategory>goodType>global), щоб дзеркалити `resolveRule` precedence (Bug #178). Логіка коректна (звірено з resolveRule:249-266 + computePriceFromRules), АЛЕ `pricing.service.spec.ts` НЕ отримав жодного тесту на цю поведінкову зміну — комітом заявлено «+6 регресій-тестів», але всі пішли у inventory/work-orders/purchase-orders specs, жоден не покриває pricing scope. `git show 0729e639 --stat` не містить pricing.service.spec.ts.
+- **Причина виникнення:** behavioral-fix без парного regression-test — сімейство SKILL Bug #416. Майбутній рефактор/copy-paste може мовчки повернути AND-scope (brand+category правило знову звузить scope) і CI лишиться зеленим.
+- **Виявлено:** `git show 0729e639 -- pricing.service.spec.ts` → порожньо; grep «найспецифіч|most specific|single dimension» у spec → 0 matches.
+- **Fix:** +1 unit у `pricing.service.spec.ts` — brand-scoped правило (brandId set, goodCategory теж set у DB-рядку правила) → `good.findMany` викликається з `where` що містить `brandId` і НЕ містить `category` (найспецифічніший вимір = brand, а не AND) → товари бренду поза категорією теж у scope.
+- **Severity:** MEDIUM — regression-guard gap на бізнес-логіці ціноутворення. Не активний баг (фікс коректний), але незахищений.
+- **Де шукати ще:** кожен behavioral-fix у комітах де commit-message заявляє «+N тестів» — звірити що тести справді покривають ЗМІНЕНУ логіку, а не суміжну (git show --stat має містити відповідний \*.spec.ts).
+- **Статус:** [x] виправлено
+
+### Bug #623 — MEDIUM test-coverage — QTY_EPSILON exhaustion-check (d74b7b3d) без regression-guard для дробових кількостей
+
+- **Файл:** `apps/api/src/modules/inventory/batch.service.ts:272` (consumeBatch exhaustion-check `remaining > QTY_EPSILON`).
+- **Симптом:** Коміт d74b7b3d змінив exhaustion-check із `remaining > 0` на `remaining > QTY_EPSILON` (1e-9), щоб дробове повне списання (0.3−0.1−0.1−0.1≈2.7e-17) не кидало хибне «Недостатньо партій: бракує 2.7e-17 одиниць». d74b7b3d = 1 файл, +4/-1, БЕЗ spec. `batch.service.spec.ts` має лише ЦІЛОЧИСЕЛЬНИЙ exhaustion-throw тест («кидає якщо партій недостатньо», qty=10 vs 3), але жодного ДРОБОВОГО epsilon-кейсу — саме той, який d74b7b3d і виправляв.
+- **Причина виникнення:** review-фікс без regression-test (той самий gap що Bug #622, сімейство Bug #416). Рефактор що поверне `remaining > 0` відновить хибну «нестачу» на дробових одиницях (літри мастила, кг) — CI зелений.
+- **Виявлено:** `git show d74b7b3d --stat` → лише batch.service.ts; grep exhaustion-throw у batch.service.spec.ts → 0.
+- **Fix:** +1 unit у `batch.service.spec.ts` — дробові партії (3× 0.1) span для qty=0.3: `consumeBatch` НЕ кидає (повне списання), Σ consumed == 0.3; та +1 негативний кейс — реальна нестача (qty=0.5, лише 0.3 доступно) → кидає BadRequestException.
+- **Severity:** MEDIUM — regression-guard gap.
+- **Де шукати ще:** будь-яка epsilon/float-квантизація у розрахунках (vat.ts, batch, settlements) без тесту саме на дробовий/float-drift кейс.
+- **Статус:** [x] виправлено

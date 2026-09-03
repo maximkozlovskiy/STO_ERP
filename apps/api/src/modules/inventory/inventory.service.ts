@@ -224,7 +224,13 @@ export class InventoryService {
         orgId,
         goodId: dto.goodId,
         warehouseId: dto.warehouseId,
-        quantity: quantityDelta,
+        // Prisma upsert компілюється у `INSERT ... VALUES (quantity) ON CONFLICT DO UPDATE`.
+        // Postgres перевіряє CHECK-констрейнт (stock_items_quantity_nonneg, міграція 20260902210000)
+        // на INSERT-tuple ДО арбітражу конфлікту → від'ємний `quantityDelta` (WRITEOFF/TRANSFER-out)
+        // валить 23514 НАВІТЬ коли рядок існує і DO UPDATE дав би коректні 100−40=60. Клампимо
+        // create-гілку до ≥0 (дзеркалить reserved нижче): вона застосовується лише коли рядка ще
+        // НЕМА, а тоді від'ємний залишок і так неможливий (pre-check «Недостатньо товару» відсік би).
+        quantity: Math.max(0, quantityDelta),
         reserved: Math.max(0, reservedDelta),
       },
       select: { quantity: true, reserved: true },

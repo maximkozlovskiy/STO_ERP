@@ -318,6 +318,36 @@ describe('PricingService.applyRuleToGoods', () => {
     expect(result).toBe(1); // only g2 changed
   });
 
+  // Bug #178 (audit 2026-09-04) regression-guard: applyRuleToGoods scope МУСИТЬ відбирати
+  // товари по ОДНОМУ найспецифічнішому виміру (goodId>brandId>goodCategory>goodType>global),
+  // дзеркалячи resolveRule precedence — НЕ AND усіх scope-полів. Раніше AND-ив
+  // category+brand → комбіноване brand+category правило звужувало scope, товари бренду поза
+  // категорією не перераховувались. Коміт 0729e639 виправив логіку, але БЕЗ regression-test.
+  it('Bug #178: brand+category правило скоупить по brandId (найспецифічніший), НЕ AND category', async () => {
+    prisma.pricingRule.findFirst.mockResolvedValue({
+      id: 'r-brand-cat',
+      orgId: 'org',
+      name: 'BRAND+CAT PERCENT',
+      type: 'PERCENT',
+      percentValue: 20,
+      goodId: null,
+      brandId: 'b1',
+      goodCategory: 'BRAKES', // обидва задані — раніше AND-илось, тепер brandId переважає
+      goodType: null,
+    });
+    prisma.pricingRule.findMany.mockResolvedValue([]);
+    prisma.good.findMany.mockResolvedValue([]);
+    await service.applyRuleToGoods('org', 'r-brand-cat');
+    const where = prisma.good.findMany.mock.calls[0]![0].where as Record<string, unknown>;
+    // scope = найспецифічніший вимір (brandId), category НЕ у where (інакше товари бренду
+    // поза категорією BRAKES випали б зі scope)
+    expect(where.brandId).toBe('b1');
+    expect(where).not.toHaveProperty('category');
+    expect(where).not.toHaveProperty('goodType');
+    expect(where.orgId).toBe('org');
+    expect(where.deletedAt).toBeNull();
+  });
+
   // Bug #489 + Bug #491 regression-guard: defense-in-depth tenant isolation
   // commit 852d5fa4 додав `where: { id, orgId, deletedAt: null }` у tx.good.updateMany.
   // Раніше використовувався `tx.good.update({ where: { id } })` без orgId — outlier vs.
