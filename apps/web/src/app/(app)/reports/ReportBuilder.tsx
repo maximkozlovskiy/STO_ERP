@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Modal } from '@/components/ui/modal';
-import { fmtMoney, fmtDate } from '@/lib/format';
+import { fmtMoney, fmtDate, fmtInt } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
@@ -119,8 +119,18 @@ export function ReportBuilder() {
   };
 
   const removeFrom = (zone: Zone, key: string) => {
-    if (zone === 'columns') setColumns(columns.filter(k => k !== key));
-    else if (zone === 'groupBy') setGroupBy(groupBy.filter(k => k !== key));
+    if (zone === 'columns') {
+      setColumns(columns.filter(k => k !== key));
+      // Прибирання колонки → чистимо явну agg (щоб buildConfig не слав «висячу»)
+      // та sortByAggregate, якщо саме за цим полем сортували (авто-SUM теж зникне).
+      setAggs(prev => {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      if (sortAgg && sortAgg.alias.endsWith(`_${key}`)) setSortAgg(null);
+    } else if (zone === 'groupBy') setGroupBy(groupBy.filter(k => k !== key));
     else setFilters(filters.filter(f => f.field !== key));
   };
 
@@ -646,33 +656,46 @@ function fmtAggValue(
   cols?: { key: string; label: string; type: string }[],
 ): string {
   if (value === null || value === undefined) return '—';
-  if (alias.startsWith('COUNT_')) return String(value);
-  // Визначаємо тип поля за alias щоб відрізнити дати від чисел.
+  if (alias.startsWith('COUNT_')) return fmtInt(value);
+  // Визначаємо тип поля за alias щоб відрізнити дати від чисел / money vs units.
   const us = alias.indexOf('_');
   const fieldKey = us >= 0 ? alias.slice(us + 1) : '';
   const colType = cols?.find(c => c.key === fieldKey)?.type;
   if (colType === 'date') {
     // Prisma повертає Date-об'єкт; numericValue() → Number(date) = Unix-мс.
-    return fmtDate(new Date(value).toISOString());
+    if (!Number.isFinite(value)) return '—';
+    return fmtDate(new Date(value));
+  }
+  // number = кількість (штуки/одиниці) — цілі без валюти; decimal = гроші (2 знаки).
+  if (colType === 'number') {
+    return Number.isInteger(value) ? fmtInt(value) : fmtMoney(value);
   }
   return fmtMoney(value);
 }
 
-/** Форматує значення детальної колонки за типом. */
+/** Форматує значення детальної колонки за типом. `number` — кількість (без валюти),
+ *  `decimal` — грошове (2 знаки). `boolean === false` пропускає early-return (строгі порівняння). */
 function fmtCell(value: unknown, type: string): string {
+  if (type === 'boolean' && typeof value === 'boolean') return value ? 'Так' : 'Ні';
   if (value === null || value === undefined || value === '') return '—';
-  if (type === 'decimal' || type === 'number') return fmtMoney(Number(value));
-  if (type === 'date') return fmtDate(String(value));
-  if (type === 'boolean') return value ? 'Так' : 'Ні';
+  if (type === 'decimal') return fmtMoney(Number(value));
+  if (type === 'number') {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '—';
+    return Number.isInteger(n) ? fmtInt(n) : fmtMoney(n);
+  }
+  if (type === 'date') return fmtDate(value as string | Date);
   return String(value);
 }
 
 function displayGroupValue(node: GroupNode): string {
   if (node.key === '∅') return '(порожньо)';
-  if (typeof node.value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(node.value)) {
-    return fmtDate(node.value);
+  const v = node.value;
+  if (typeof v === 'boolean') return v ? 'Так' : 'Ні';
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
+    return fmtDate(v);
   }
-  return String(node.value ?? node.key);
+  return String(v ?? node.key);
 }
 
 function ResultView({
@@ -719,9 +742,15 @@ function ResultView({
               <th className="text-right font-medium px-3 py-2 border-b border-border">Кількість</th>
               {aggAliases.map(a => {
                 const active = sort?.alias === a;
+                const ariaSort: 'ascending' | 'descending' | 'none' = active
+                  ? sort!.dir === 'asc'
+                    ? 'ascending'
+                    : 'descending'
+                  : 'none';
                 return (
                   <th
                     key={a}
+                    aria-sort={ariaSort}
                     className="text-right font-medium px-3 py-2 border-b border-border whitespace-nowrap"
                   >
                     <button
@@ -729,7 +758,7 @@ function ResultView({
                       onClick={() => onSort(a)}
                       title="Сортувати групи за цим показником"
                       className={cn(
-                        'inline-flex items-center gap-0.5 rounded hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary',
+                        'inline-flex items-center gap-0.5 rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                         active && 'text-primary',
                       )}
                     >
@@ -838,7 +867,7 @@ function GroupRows({
             className={cn(
               'inline-flex items-center gap-1 text-left rounded',
               expandable &&
-                'cursor-pointer hover:bg-secondary/40 focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2',
+                'cursor-pointer hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
             )}
             disabled={!expandable}
             aria-expanded={expandable ? open : undefined}
@@ -980,5 +1009,6 @@ function downloadBlob(content: string, filename: string, mime: string) {
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  // Deferred revoke: Safari/Firefox інколи не встигають прочитати blob-URL до синхронного revoke.
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 }

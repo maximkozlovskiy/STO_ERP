@@ -119,9 +119,15 @@ function sortNodes(nodes: GroupNode[], sortAlias: string | null, sortDir: 'asc' 
   if (sortAlias) {
     // За агрегатом '∅'-група бере участь як звичайна (її сума може бути найбільшою — не
     // форсуємо в кінець, інакше «топ за сумою» не відсортується коректно).
+    // hasOwnProperty guard проти prototype-poisoning: aggregates['__proto__'] інакше
+    // повертає Object.prototype → arith NaN, undefined sort order.
     nodes.sort((a, b) => {
-      const av = a.aggregates[sortAlias] ?? 0;
-      const bv = b.aggregates[sortAlias] ?? 0;
+      const av = Object.prototype.hasOwnProperty.call(a.aggregates, sortAlias)
+        ? (a.aggregates[sortAlias] ?? 0)
+        : 0;
+      const bv = Object.prototype.hasOwnProperty.call(b.aggregates, sortAlias)
+        ? (b.aggregates[sortAlias] ?? 0)
+        : 0;
       return sortDir === 'asc' ? av - bv : bv - av;
     });
   } else {
@@ -183,7 +189,9 @@ function buildLevel(
             sortAlias,
             sortDir,
           ),
-      ...(isLeaf && includeRows ? { rows: projectRows(groupRows, columns, entity) } : {}),
+      ...(isLeaf && includeRows && columns.length > 0
+        ? { rows: projectRows(groupRows, columns, entity) }
+        : {}),
     });
   }
   sortNodes(nodes, sortAlias, sortDir);
@@ -237,8 +245,11 @@ export function aggregate(
     sortDir,
   );
   // Без групування — детальні рядки на верхньому рівні (плоска таблиця записів).
+  // Пропускаємо коли columns=[] — інакше отримали б N порожніх об'єктів (шум у мережі).
   const detailRows =
-    config.groupBy.length === 0 && includeRows ? projectRows(rows, columns, entity) : [];
+    config.groupBy.length === 0 && includeRows && columns.length > 0
+      ? projectRows(rows, columns, entity)
+      : [];
 
   return {
     tree,

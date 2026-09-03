@@ -12,9 +12,9 @@
 Дата:       2026-09-03
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API ✅ 1132/1132 | Web ✅ 495/495 | E2E конструктора 2/2 + фінансові 74/74 ✅
-Sync:       2026-09-03 Report Builder — 3 fixes (useRunSavedReport hook, op=in FilterZone, SavedReport.createdBy)
-Review:     2026-09-03 Report Builder — 4 fixes (React.DragEvent/ReactNode→named, Modal exit-анімація, TR cursor-pointer→button, useMemo palette/usedKeys)
+Тести:      API ✅ 1143/1143 (+1 aggregator spec включно) | Web ✅ 495/495 | E2E конструктора 2/2 + фінансові 74/74 ✅
+Sync:       2026-09-03 Report Builder — 1 fix (fmtAggValue date alias: MIN/MAX_dateField → fmtDate не fmtMoney). Commit eee7cb8e.
+Review:     2026-09-03 Report Builder pivot-fixes cycle 2 — 6 fixes (fmtCell/fmtAggValue: `number` type як штуки (fmtInt/fmtMoney split) + boolean=false early-return correctness; removeFrom column → clean stale agg + sortAgg alias; sortNodes hasOwnProperty guard проти prototype-poisoning; projectRows skip коли columns=[] (уникнення N порожніх обʼєктів); a11y aria-sort + focus-visible:ring-2 canonical; downloadBlob setTimeout(revoke) для Safari). Nothing critical.
 Tester:     2026-09-03 Report Builder — 2 fixes (Bug #617 CRITICAL include+select mix для parent-leaf+parent.child.leaf → PrismaClientValidationError → 400 mute; Bug #618 LOW mute-log PrismaValidation). Живий інваріант Σ(leaf aggs)==grandTotal підтверджений для 8 сценаріїв (workOrder gb=1/2/3, workOrderPart gb=1/3/5, purchaseOrderLine gb=2), diff=0.000000. Commits a29ae594+e37b4f33.
 Конструктор звітів LIVE-ПЕРЕВІРЕНО (2026-09-03, docker піднято): міграція 20260903120000_add_saved_reports застосована; групування контрагент→товар + інваріант Σтоп==grandTotal (3700==3700), enum-relation (Контрагент.Тип), фільтр status=COMPLETED, save/runSaved, валідації (invalid enum→400, groupBy>5→400) — усе ✓. Фікс під час верифікації: прибрано `where` з nested include (to-one relation → Prisma "Unknown argument where"). UI рендериться (палітра+3 зони). Native HTML5 drag Playwright не симулює (обмеження PW, не баг). Лишилось: QA-ланцюжок sync→review→tester.
 Latest feature: 2026-09-03 (feat/supplier-payments) — «Конструктор звітів (Report Builder)». Вкладка «Конструктор» на /reports: drag полів у колонки/групування(≤5)/фільтри, поля зв'язків (Контрагент.Тип), підсумки SUM/COUNT/AVG/MIN/MAX, збереження (SavedReport), експорт CSV/XLSX. Backend: метадата-реєстр (report-registry.ts) — ЄДИНЕ джерело правди; безпечний Prisma-білдер (whitelist + hasOwnProperty-guard, injection неможливий); JS-групування ≤5 рівнів. 9 сутностей: WorkOrder/WorkOrderPart/PurchaseOrderLine + Invoice/Payment/SettlementTransaction/StockMovement/StockBatch/StockItem (реєстр розширюваний, движок не міняється). Профілі FULL vs APPEND_ONLY (Payment/StockMovement/SettlementTx/StockBatch — без deletedAt); StockMovement.quantity знакова (signedByType). Повний QA-ланцюжок пройдено (sync 3 / review 4 вкл. a11y / tester 2 вкл. Bug #617 CRITICAL Prisma include+select). Live: інваріант Σлистків==grandTotal у 14+ сценаріях diff=0, знак WRITEOFF−/RECEIPT+ (нетто 37). Коміти b6301d0e/320e1e0a/463da2ad/0fb4d368/a29ae594/13861792/ea9d693d. API 1112→1139, Web 491→495.
@@ -59,6 +59,12 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+eee7cb8e  fix(sync): fmtAggValue — date agg aliases (MIN/MAX) format as date not money
+          — MIN_documentDate/MAX_completedAt раніше рендерились через fmtMoney (Unix-мс → абсурдні гривні).
+          — Fix: fmtAggValue(alias, value, cols?) → детектує date-тип через alias→fieldKey→cols lookup.
+          — Обидва call-sites оновлені (grandTotals tfoot + GroupRows per-node).
+          — Решта 7 пунктів sync-аудиту: розбіжностей 0.
+
 a29ae594  fix(tester): Report Builder Bug #617/#618 — include+select mix + mute Prisma validation
           — Bug #617 CRITICAL: mergeIncludePath для parent-leaf + parent.child.leaf (напр. good.name + good.brand.name)
             генерував include+select на одному рівні → PrismaClientValidationError → 400 mute. Fix: relation-branch

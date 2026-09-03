@@ -75,6 +75,24 @@ describe('report-aggregator', () => {
     expect(r.tree[0].rows).toEqual([{ amount: 100 }, { amount: 50 }]);
   });
 
+  it('includeRows + columns=[] → детальні рядки НЕ проєктуються (уникнення шуму)', () => {
+    const rows = [part({ amount: 10 }), part({ amount: 20 })];
+    // Без columns і без групування: detailRows має бути [], а не [{}, {}].
+    const flat = aggregate(rows, { groupBy: [], columns: [], includeRows: true }, woPart);
+    expect(flat.detailRows).toEqual([]);
+    // З групуванням і без columns: node.rows не додається.
+    const grouped = aggregate(
+      rows,
+      {
+        groupBy: ['workOrder.counterparty.companyName'],
+        columns: [],
+        includeRows: true,
+      },
+      woPart,
+    );
+    expect(grouped.tree[0].rows).toBeUndefined();
+  });
+
   it('sortByAggregate сортує групи за агрегатом (desc)', () => {
     const rows = [
       part({ cp: 'Малий', amount: 10 }),
