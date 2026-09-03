@@ -10,8 +10,12 @@
   signedByType?}), `relations[]` ({prismaPath, depth, advanced, targetHasSoftDelete}), прапорці
   `hasSoftDelete`/`profile: FULL|APPEND_ONLY`, `dateField`. Живить і backend-білдер, і фронт
   (`GET /reports/builder/metadata`).
-- **v1 сутності:** WorkOrder (Наряди), WorkOrderPart (Запчастини у нарядах), PurchaseOrderLine
-  (Рядки закупівель). Розширення = один запис у REGISTRY, движок не міняється.
+- **9 сутностей:** WorkOrder (Наряди), WorkOrderPart (Запчастини), PurchaseOrderLine (Закупівлі),
+  Invoice (Рахунки), Payment (Платежі, append-only), SettlementTransaction (Розрахунки, append-only),
+  StockMovement (Рухи, append-only, знакова quantity), StockBatch (Партії, append-only), StockItem
+  (Залишки). Розширення = один запис у REGISTRY, движок не міняється.
+- **Профілі:** FULL (deletedAt-інжекція) vs APPEND_ONLY (без deletedAt — Payment/StockMovement/
+  SettlementTransaction/StockBatch; звірено регрес-тестом registry.spec, бо StockBatch не має deletedAt).
 - **3 компоненти движка:** `report-query.builder.ts` (config→Prisma findMany),
   `report-aggregator.ts` (JS-групування ≤5 + агрегації), `report-builder.service.ts` (оркестрація
   - SavedReport CRUD).

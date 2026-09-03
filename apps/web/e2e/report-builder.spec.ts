@@ -55,4 +55,32 @@ test.describe('Конструктор звітів', () => {
     const leafSum = tree.reduce((s, n) => s + (n.aggregates.SUM_totalAmount || 0), 0);
     expect(Math.round(leafSum)).toBe(Math.round(resp.body.result.grandTotals.SUM_totalAmount));
   });
+
+  test('append-only сутність (StockMovement) зі знаковою quantity не падає', async ({ page }) => {
+    await page.goto('/reports?tab=builder');
+    await expect(page.locator('button:has-text("Конструктор")')).toBeVisible({ timeout: 20_000 });
+    const token = await page.evaluate(
+      () =>
+        localStorage.getItem('sto_access_token') || localStorage.getItem('sto_e2e_access_token'),
+    );
+    const resp = await page.evaluate(async tok => {
+      const r = await fetch('http://localhost:3000/api/reports/builder/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({
+          config: {
+            entity: 'stockMovement',
+            columns: ['quantity'],
+            groupBy: ['type'],
+            aggregations: [{ field: 'quantity', agg: 'SUM' }],
+          },
+        }),
+      });
+      return { status: r.status, body: await r.json() };
+    }, token);
+    expect(resp.status).toBe(200);
+    // append-only (без deletedAt) не падає; є групи по типах руху
+    expect(resp.body.result.tree.length).toBeGreaterThan(0);
+    expect(resp.body.result.grandTotals).toHaveProperty('SUM_quantity');
+  });
 });
