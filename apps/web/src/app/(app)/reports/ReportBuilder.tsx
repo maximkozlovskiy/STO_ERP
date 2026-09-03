@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import type { DragEvent, ReactNode } from 'react';
 import { X, ChevronRight, ChevronDown, Play, Save, Download } from 'lucide-react';
 import {
   useReportMetadata,
@@ -81,9 +82,16 @@ export function ReportBuilder() {
     return m;
   }, [entity]);
 
-  // Поля, ще не додані у жодну зону — для палітри.
-  const usedKeys = new Set([...columns, ...groupBy, ...filters.map(f => f.field)]);
-  const paletteFields = entity?.fields.filter(f => !usedKeys.has(f.key)) ?? [];
+  // Поля, ще не додані у жодну зону — для палітри. useMemo уникає перебудови Set/filter
+  // на кожен рендер (наприклад під час drag/hover, коли `over` toggling переставляє).
+  const usedKeys = useMemo(
+    () => new Set([...columns, ...groupBy, ...filters.map(f => f.field)]),
+    [columns, groupBy, filters],
+  );
+  const paletteFields = useMemo(
+    () => entity?.fields.filter(f => !usedKeys.has(f.key)) ?? [],
+    [entity, usedKeys],
+  );
 
   const resetSelection = (nextEntity: string) => {
     setEntityKey(nextEntity);
@@ -95,7 +103,7 @@ export function ReportBuilder() {
   };
 
   // ── Drag (native HTML5): поле з палітри → зона; reorder усередині зони ──
-  const onDropToZone = (zone: Zone, ev: React.DragEvent) => {
+  const onDropToZone = (zone: Zone, ev: DragEvent) => {
     ev.preventDefault();
     const key = ev.dataTransfer.getData('text/field');
     if (!key) return;
@@ -348,27 +356,26 @@ export function ReportBuilder() {
         </div>
       )}
 
-      {saveOpen && (
-        <Modal open={saveOpen} onClose={() => setSaveOpen(false)} title="Зберегти звіт">
-          <div className="flex flex-col gap-3 p-1">
-            <input
-              autoFocus
-              value={saveName}
-              onChange={e => setSaveName(e.target.value)}
-              placeholder="Назва звіту"
-              className="h-9 rounded-lg border border-border bg-surface px-3 text-[13px]"
-            />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setSaveOpen(false)}>
-                Скасувати
-              </Button>
-              <Button onClick={doSave} disabled={saveMut.isPending}>
-                Зберегти
-              </Button>
-            </div>
+      {/* Modal керує own mount/unmount + exit-анімацією; НЕ обгортати у {open && …} — це ламає exit. */}
+      <Modal open={saveOpen} onClose={() => setSaveOpen(false)} title="Зберегти звіт">
+        <div className="flex flex-col gap-3 p-1">
+          <input
+            autoFocus
+            value={saveName}
+            onChange={e => setSaveName(e.target.value)}
+            placeholder="Назва звіту"
+            className="h-9 rounded-lg border border-border bg-surface px-3 text-[13px]"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setSaveOpen(false)}>
+              Скасувати
+            </Button>
+            <Button onClick={doSave} disabled={saveMut.isPending}>
+              Зберегти
+            </Button>
           </div>
-        </Modal>
-      )}
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -388,9 +395,9 @@ function DropZone({
   hint: string;
   zone: Zone;
   items: { key: string; field: MetaField | undefined }[];
-  onDrop: (zone: Zone, ev: React.DragEvent) => void;
+  onDrop: (zone: Zone, ev: DragEvent) => void;
   onRemove: (zone: Zone, key: string) => void;
-  renderExtra?: (f: MetaField | undefined) => React.ReactNode;
+  renderExtra?: (f: MetaField | undefined) => ReactNode;
   ordered?: boolean;
 }) {
   const [over, setOver] = useState(false);
@@ -455,7 +462,7 @@ function FilterZone({
   filters: ReportFilter[];
   fieldByKey: Map<string, MetaField>;
   enums: Record<string, string[]>;
-  onDrop: (zone: Zone, ev: React.DragEvent) => void;
+  onDrop: (zone: Zone, ev: DragEvent) => void;
   onRemove: (key: string) => void;
   onChange: (f: ReportFilter[]) => void;
 }) {
@@ -684,18 +691,21 @@ function GroupRows({
         : String(node.value ?? node.key);
   return (
     <>
-      <tr
-        className={cn(
-          'border-b border-border',
-          hasChildren && 'cursor-pointer hover:bg-secondary/40',
-        )}
-      >
+      {/* Клік/hover переносимо на inner button — не на TR: cursor:pointer на TR при
+          відсутності обробника на самому TR — misleading UX (клік поза кнопкою нічого не
+          робить). Клавіатурна навігація Tab→Space/Enter — через нативний button. */}
+      <tr className="border-b border-border">
         <td className="px-4 py-1.5" style={{ paddingLeft: `${16 + depth * 20}px` }}>
           <button
             type="button"
             onClick={() => hasChildren && setOpen(o => !o)}
-            className="inline-flex items-center gap-1 text-left"
+            className={cn(
+              'inline-flex items-center gap-1 text-left rounded',
+              hasChildren &&
+                'cursor-pointer hover:bg-secondary/40 focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2',
+            )}
             disabled={!hasChildren}
+            aria-expanded={hasChildren ? open : undefined}
           >
             {hasChildren ? (
               open ? (
