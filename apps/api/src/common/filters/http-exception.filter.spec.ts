@@ -159,6 +159,25 @@ describe('HttpExceptionFilter', () => {
       );
     });
 
+    // Bug #618: PrismaClientValidationError теж має логуватися — інакше причина
+    // Prisma-помилки залишається невидимою (див. Bug #617 у BUG_REPORT.md).
+    it('Bug #618: PrismaClientValidationError логується як warn з останнім рядком повідомлення', () => {
+      const { host } = makeHost('POST', '/api/reports/builder/run');
+      const warnSpy = vi
+        .spyOn((filter as unknown as { logger: { warn: (msg: string) => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+      const ve = new Prisma.PrismaClientValidationError(
+        'Some header line\n\nPlease either use `include` or `select`, but not both at the same time',
+        { clientVersion: '5.0.0' },
+      );
+      filter.catch(ve, host);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const msg = warnSpy.mock.calls[0][0];
+      expect(msg).toContain('POST /api/reports/builder/run');
+      expect(msg).toContain('Please either use `include` or `select`');
+    });
+
     it('невідомий Prisma код → 500 (без падіння filter)', () => {
       const { host, reply } = makeHost();
       const unknown = new Prisma.PrismaClientKnownRequestError('Unknown', {

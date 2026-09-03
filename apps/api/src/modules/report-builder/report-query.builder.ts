@@ -95,28 +95,46 @@ function buildCond(op: FilterOp, value: unknown, fieldType: string): unknown {
   }
 }
 
-/** Deep-merge relation-шляху у include-дерево: проміжні → include, лист → select:{leaf:true}. */
+/**
+ * Deep-merge relation-шляху у include-дерево. Кореневий рівень — `include` (щоб не тягнути ВСІ
+ * скалярні поля кореневої сутності у select — конфлікт з існуючими рядковими скалярами columns).
+ *
+ * ВСЕРЕДИНІ relation-branch використовуємо ТІЛЬКИ `select` (без `include`), оскільки Prisma не
+ * дозволяє `include` і `select` на одному рівні (`Please either use \`include\` or \`select\`, but
+ * not both at the same time`). Bug #617: комбо `good.name` + `good.brand.name` — `good.name`
+ * створювало `select`, а `good.brand.name` створювало `include` поруч → PrismaClientValidation
+ * (400 mute-ловився http-exception.filter).
+ *
+ * Схема генерації для `good.name` + `good.brand.name`:
+ *   { good: { select: { name: true, brand: { select: { name: true } } } } }
+ *
+ * NB: `where` у nested include/select НЕ дозволений для to-one relation (усі relations тут
+ * belongs-to) → Prisma "Unknown argument where". Soft-delete relation-колонок не критичний
+ * (рядок уже відфільтрований по deletedAt кореневої сутності; ім'я видаленого зв'язку —
+ * прийнятне у звіті). Фільтрація видалених зв'язків у WHERE (setWherePath) — валідна окремо.
+ */
 function mergeIncludePath(include: Obj, entity: ReportEntityDef, prismaPath: string): void {
   const segments = prismaPath.split('.');
-  // leaf = останній сегмент (скалярне поле цільової моделі); гілки = решта.
-  let node = include;
-  for (let i = 0; i < segments.length - 1; i++) {
+  if (segments.length < 2) return;
+  // 1-й хоп — під кореневим `include`, обгортка з `select` (усе всередині — тільки select).
+  const firstHop = segments[0];
+  include[firstHop] = include[firstHop] ?? { select: {} };
+  const firstBranch = include[firstHop] as Obj;
+  firstBranch['select'] = firstBranch['select'] ?? {};
+  let node = firstBranch['select'] as Obj;
+  // проміжні хопи (segments[1..len-2]) → { select: {...} } рекурсивно
+  for (let i = 1; i < segments.length - 1; i++) {
     const seg = segments[i];
-    node[seg] = node[seg] ?? {};
+    // Може вже існувати як leaf (`select: { seg: true }`) — заміняємо на nested select-branch.
+    if (node[seg] === true || node[seg] === undefined) node[seg] = { select: {} };
     const branch = node[seg] as Obj;
-    // NB: `where` у nested include НЕ дозволений для to-one relation (усі relations тут
-    // belongs-to) → Prisma "Unknown argument where". Soft-delete relation-колонок не критичний
-    // (рядок уже відфільтрований по deletedAt кореневої сутності; ім'я видаленого зв'язку —
-    // прийнятне у звіті). Фільтрація видалених зв'язків у WHERE (setWherePath) — валідна окремо.
-    const isLastHop = i === segments.length - 2;
-    if (isLastHop) {
-      branch['select'] = branch['select'] ?? {};
-      (branch['select'] as Obj)[segments[segments.length - 1]] = true;
-    } else {
-      branch['include'] = branch['include'] ?? {};
-      node = branch['include'] as Obj;
-    }
+    branch['select'] = branch['select'] ?? {};
+    node = branch['select'] as Obj;
   }
+  // leaf — скалярне поле. Не переписуємо існуючу nested-структуру: якщо `name` вже стоїть як
+  // { select: {...} } — це неможливо у нашому реєстрі (leaf завжди скаляр), але захисно лишаємо.
+  const leaf = segments[segments.length - 1];
+  if (node[leaf] === undefined) node[leaf] = true;
 }
 
 /** Будує orderBy для (можливо вкладеного) шляху. */

@@ -32,30 +32,51 @@ describe('report-query.builder', () => {
     ).toThrow(BadRequestException);
   });
 
-  it('relation-колонка будує вкладений include+select', () => {
+  it('relation-колонка будує nested select (без include/select mix — Bug #617)', () => {
     const q = buildQuery(
       { entity: 'workOrderPart', columns: ['good.brand.name'], groupBy: [] },
       ORG,
     );
-    // good → include → brand → select:{name:true}. БЕЗ where у nested include (to-one relation).
+    // good → select → brand → select:{name:true}. Все "усередині" — тільки select
+    // (Prisma забороняє include+select на одному рівні).
     expect(q.args.include).toEqual({
       good: {
-        include: {
+        select: {
           brand: { select: { name: true } },
         },
       },
     });
   });
 
-  it('include-merge спільних префіксів (good.name + good.brand.name)', () => {
+  it('Bug #617: include-merge спільних префіксів (good.name + good.brand.name) — тільки select', () => {
     const q = buildQuery(
       { entity: 'workOrderPart', columns: ['good.name', 'good.brand.name'], groupBy: [] },
       ORG,
     );
     const good = (q.args.include as Record<string, unknown>).good as Record<string, unknown>;
-    expect(good.select).toEqual({ name: true });
-    expect(good.include).toEqual({
+    // Bug #617: раніше було good.select + good.include одночасно → Prisma 400.
+    // Тепер обидва leaf-и лежать всередині select — Prisma це приймає.
+    expect(good.include).toBeUndefined();
+    expect(good.select).toEqual({
+      name: true,
       brand: { select: { name: true } },
+    });
+  });
+
+  it('Bug #617: multi-hop (workOrder.counterparty.companyName + workOrder.number) — тільки select', () => {
+    const q = buildQuery(
+      {
+        entity: 'workOrderPart',
+        columns: ['workOrder.number', 'workOrder.counterparty.companyName'],
+        groupBy: [],
+      },
+      ORG,
+    );
+    const wo = (q.args.include as Record<string, unknown>).workOrder as Record<string, unknown>;
+    expect(wo.include).toBeUndefined();
+    expect(wo.select).toEqual({
+      number: true,
+      counterparty: { select: { companyName: true } },
     });
   });
 

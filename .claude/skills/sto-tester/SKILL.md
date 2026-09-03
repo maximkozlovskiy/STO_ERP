@@ -4264,3 +4264,57 @@ Alternative pattern: custom validator `@IsYmdDate` що комбінує both ch
 - Backend spec-тести з дата-арифметикою: same issue, але тести використовують сервер-tz (`TZ=UTC` у Docker). Приклад — Bug #592 (purchase-orders.service.spec.ts:834).
 - Frontend unit-тести з `new Date()` + Intl — Intl.DateTimeFormat не респектує `vi.setSystemTime()` timezone. Використовувати `vi.stubEnv('TZ', 'Europe/Kyiv')` перед `beforeEach`.
 - Загальне правило: **e2e/spec тест НІКОЛИ не змішує UTC-arithmetic з Kyiv-UI/DB без явного round-trip через Intl.DateTimeFormat**.
+
+---
+
+### 2026-09-03 — Dynamic Prisma include-builder: parent-leaf + parent.child.leaf → PrismaClientValidationError (Bug #617) — backend / dynamic-query / metadata-driven
+
+**Сигнал:** білдер що будує Prisma `include`-дерево з метадата-конфігу (report-builder, dynamic search, saved views) де користувач передає dot-path поля (`good.name`, `good.brand.name`). Комбо, у якій ОДИН родич (`good`) використовується І як пряме поле (`good.name` → потребує `select`), І як шлях до вкладеного (`good.brand.name` → потребує `include` бо треба спуститись на 2-й хоп). Результат — `{ good: { select: {name: true}, include: { brand: { select: {name: true}}}}}` — **Prisma не приймає `include`+`select` на одному рівні** → `PrismaClientValidationError` → 400 без деталей (див. Bug #618).
+
+**Причина виникнення:** інтуїтивна ментальна модель "leaf → select, branch → include" виглядає симетричною і охайною, але Prisma-контракт складніший: коли поруч мають бути І leaf-и, І subrel-и, потрібно все загорнути у `select` (він приймає nested `select` для relation). Автор білдера писав хопи ізольовано (по одному) — тому unit-тест на ОДИН шлях проходив, а комбо ламалося. Комбо у registry — норма (напр. groupBy=`good.name` + `good.brand.name`), тому у продакшн-конфігах баг триґериться постійно.
+
+**Підхід до виявлення:**
+
+1. **grep метадата-білдерів:** `grep -rn "select:.*true\s*}" apps/api/src --include="*.builder.ts"` — шукати місця де leaf + nested branch можуть з'явитися на одному рівні.
+2. **Комбінаторний контракт-тест:** для будь-якого dynamic-query білдера ЯКО ОБОВ'ЯЗКОВЕ — livе-тест з парою `[parentA.leafA, parentA.subrel.leafB]` (комбо, не по одному). Просто shape-тест недостатній — він може бути "green by shape, red by Prisma runtime".
+3. **Симптом-сигнатура:** будь-який 400 з message = "Некоректні дані запиту" (або аналогічний "generic") на POST /dynamic-endpoint — фактично **завжди означає баг серверного білдера** (клієнт не може обійти DTO whitelist). Це категорія «disguised 500» — не помилка вводу, а помилка коду.
+4. **Registry-driven fuzz:** для кожного registry-entity згенерувати всі валідні пари/трійки полів з різних груп (leaf-корінь, leaf-parent, leaf-grandchild) і виконати `POST /run`. У фічах з ≥3 сутностями і ≥10 полями — це десятки комбінацій; ручний обхід не спрацює.
+
+**Підхід до фіксу:**
+
+- Не змішувати `include` і `select` на одному Prisma-рівні. Правильний паттерн: коли для relation-branch треба одночасно leaf-и і подальші subrel-и — весь branch описувати ТІЛЬКИ через `select` (nested `select` для subrel — Prisma-canonical).
+- Кореневий рівень зазвичай лишається `include` (щоб не тягнути ВСІ скалярні колонки моделі у select — це змінить поведінку JS-агрегатора та roundtrip payload). Але **всередині relation** — тільки select.
+- Regression: unit-тест з РЕАЛЬНОЮ Prisma-формою (не абстрактною) + live-контрактний тест через API (не тільки builder unit).
+
+**Severity:** CRITICAL — динамічні запити з метадати ламаються тихо, користувач бачить лише "Некоректні дані запиту".
+
+**Де шукати ще:**
+
+- `apps/api/src/modules/**/*.builder.ts` — усі динамічні query-білдери
+- `apps/api/src/**/search.service.ts` — global search з relation-полями
+- `apps/api/src/**/saved-view*.ts` — user-defined column configs
+- Будь-який `prisma.X.findMany({ include: { ..., select: ... }})` де ключі динамічні
+
+---
+
+### 2026-09-03 — PrismaClientValidationError мовчки ковтається у 400 без message-логу (Bug #618) — backend / observability / dev-DX
+
+**Сигнал:** exception-filter має гілку `else if (exception instanceof Prisma.PrismaClientValidationError) { return 400 "generic message" }` **без** `logger.warn`/`logger.error` виклику. Prisma-повідомлення (з реальною причиною типу "Please either use `include` or `select`, but not both") відкидається у безодню. Розробник тесту/фронта бачить лише "Некоректні дані запиту" і не знає ЩО саме Prisma відхилила.
+
+**Причина виникнення:** filter-автор припустив, що `PrismaClientValidationError` = помилка користувача (як `class-validator`) і не заслуговує на серверний лог (не 500, не incident). Але у 100% випадків це помилка **серверного білдера** (клієнт передає лише DTO-whitelisted config), тобто фактично прихована 500. Це «disguised 500» — категорія помилки, для якої логи критичні.
+
+**Підхід до виявлення:**
+
+1. `grep -rn "PrismaClientValidationError" apps/api/src` — знайти всі обробники цього exception.
+2. У кожному обробнику перевірити чи є `logger.warn/error` виклик з `exception.message`.
+3. Якщо тільки `throw new BadRequestException('generic')` — це Bug #618-подібне.
+
+**Підхід до фіксу:** у catch-branch додати `logger.warn(\`${method} ${url}: ${lastNonEmptyLineOf(exception.message)}\`)`. Прояснення — **останній** непорожній рядок, бо Prisma кладе фактичну причину у ОСТАННІЙ рядок повідомлення (перед ним — header з invalid-args та spacer). Це не 500 → warn, не error. Regression guard: unit-тест з реалістичним багато-строковим Prisma-текстом + spy на `logger.warn`.
+
+**Severity:** LOW як user-facing, HIGH як тестерська DX/observability пастка (у моєму випадку — 15 хв діагностики Bug #617 замість 1 хв).
+
+**Де шукати ще:**
+
+- Усі `else if (exception instanceof Prisma.*)` у filter'ах — треба логувати `exception.message`, навіть якщо мапиться на 4xx.
+- `mapPrismaErrorToHttp` (Bug #451-подібні мапінги) — перевірити чи не втрачається `meta.target` у логах.
+- Загальне правило: **будь-який exception з серверної логіки (не user-input class-validator) має залишити слід у логах** — інакше debug у продакшн неможливий.

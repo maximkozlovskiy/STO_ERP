@@ -2015,3 +2015,72 @@ Static-checks passed (0 bugs found у цих секціях):
 - Тести без змін: API 1095/1095 ✅ | Web 488/488 ✅ | TSC api/web/shared 0 errors ✅.
 - Живі проби додали **empirical evidence** до unit-guards: DB CHECK constraints реально ловлять row, rollback реально спрацьовує, invariant реально тримається на живих даних а не тільки на мок-масивах.
 - Конвергенція трьох циклів: цикл 1 → semantic invariants (Σ, sign, FIFO), цикл 2 → operational invariants (concurrency, mid-life switch, DB layer), цикл 3 → **live evidence** що механізми ЦИКЛУ 2 працюють у продакшн-подібному середовищі.
+
+## Session 2026-09-03 — /sto-tester bug hunt: Report Builder (feat/supplier-payments)
+
+### Bug #617 — Report Builder: `include`+`select` конфлікт для parent-leaf + parent.child.leaf
+
+**Severity:** CRITICAL — будь-який звіт з комбінацією `X.leaf` та `X.subrel.leaf` у columns/groupBy повертає 400 `PrismaClientValidationError` (mute-ковтається http-exception.filter як "Некоректні дані запиту" без стек-логу).
+
+**Файл:** `apps/api/src/modules/report-builder/report-query.builder.ts` → `mergeIncludePath()`.
+
+**Симптом (жива проба):**
+
+```bash
+curl POST /api/reports/builder/run -d '{"config":{"entity":"workOrderPart","columns":["good.name","good.brand.name"],"groupBy":["good.name","good.brand.name"],"aggregations":[{"field":"amount","agg":"SUM"}]}}'
+→ {"statusCode":400,"message":"Некоректні дані запиту"}
+```
+
+**Причина:**
+`mergeIncludePath` для `good.name` створювала `{ good: { select: { name: true } } }`, а потім для `good.brand.name` — `{ good: { select: {...}, include: { brand: {...} } } }`. Prisma не приймає `include`+`select` на одному рівні → `PrismaClientValidationError` → http-exception.filter → 400 без деталей.
+
+**Приховувалось:** unit-тест `include-merge спільних префіксів` перевіряв ЛИШЕ shape об'єкта (не робив живий findMany), тому був "green by shape / red by runtime". Класична пастка "structural test without live guard".
+
+**Уражені комбінації (реальні у registry):**
+
+- `workOrderPart`: `good.name` + `good.brand.name` (обидва groupable=true, high probability)
+- `workOrderPart`: `workOrder.number` + `workOrder.counterparty.type` (те саме)
+- `purchaseOrderLine`: `purchaseOrder.number` + `purchaseOrder.supplier.companyName`
+
+**Фікс:** переведено relation-branch на **чистий `select` без `include`** — Prisma-canonical форма для nested-select. Схема:
+
+```js
+{ good: { select: { name: true, brand: { select: { name: true } } } } }
+```
+
+Кореневий `include` збережено (щоб не тягнути ВСІ скалярні поля кореневої моделі у select).
+
+**Regression guards:** оновлений `report-query.builder.spec.ts` — 2 тести під `Bug #617`:
+
+1. `include-merge спільних префіксів (good.name + good.brand.name)` — перевіряє відсутність `good.include`, наявність `good.select` з обома leaf-ами.
+2. `multi-hop (workOrder.number + workOrder.counterparty.companyName)` — той самий патерн, глибший relation.
+
+**Живе підтвердження після фіксу:** інваріант консистентності Σ(листкові aggregates) == grandTotal тримається до 6 знаків після коми у 8 сценаріях (workOrder gb=1/2/3, workOrderPart gb=1/3/5, purchaseOrderLine gb=2):
+
+| Entity            | groupBy                                       | SUM_amount grand | Σ leaf     | diff     |
+| ----------------- | --------------------------------------------- | ---------------- | ---------- | -------- |
+| workOrder         | 1 (status)                                    | 30478.0000       | 30478.0000 | 0.000000 |
+| workOrder         | 3 (status,priority,counterparty.type)         | 30478.0000       | 30478.0000 | 0.000000 |
+| workOrderPart     | 3 (brand.name→good.name→warehouse.name)       | 3700.0000        | 3700.0000  | 0.000000 |
+| workOrderPart     | 5 (brand→good→warehouse→wo.number→wo.cp.type) | 3700.0000        | 3700.0000  | 0.000000 |
+| purchaseOrderLine | 2 (supplier→brand.name), SUM vatAmount        | 26760.6000       | 26760.6000 | 0.000000 |
+
+- [x] виправлено
+
+### Bug #618 — Report Builder: `PrismaClientValidationError` конвертується у 400 без стек-логу (тестерська DX)
+
+**Severity:** LOW — не user-facing баг, але серйозна пастка для розробників тестів/фронта.
+
+**Файл:** `apps/api/src/common/filters/http-exception.filter.ts` (рядок 90-93).
+
+**Симптом:** будь-який Prisma-запит з невалідним include-shape повертає `{"statusCode":400,"message":"Некоректні дані запиту"}` — без стек-трейса, без указання поля, без збереження exception.message. Розробник не знає, ЩО саме Prisma не прийняла (в моєму випадку — 15 хвилин на діагностику Bug #617).
+
+**Причина:** `mapPrismaErrorToHttp` мапить `PrismaClientKnownRequestError` з логуванням, але `PrismaClientValidationError` (для якого немає код-мапи) — сухий 400 без stack-логу. Логіка припускає "це помилка користувача, не серверна", але у 100% випадків це помилка **білдера серверного коду** (клієнт передає лише config через DTO-whitelist).
+
+**Фікс не робив** — сфокусувався на первопричині (Bug #617). Але залишаю як candidat для окремого коміту з логуванням `exception.message` (не всього stack) на рівні `warn` — це дасть майбутнім тестерам одразу текст типу "Please either use `include` or `select`, but not both at the same time".
+
+**Фікс (додано у тому ж прогоні):** у `catch` для `PrismaClientValidationError` додано `logger.warn` з `${method} ${url}: ${lastLineOfPrismaMessage}`. `lastLine` — бо Prisma кладе фактичну причину у ОСТАННІЙ непорожній рядок повідомлення (перед ним header з "Invalid `prisma.X.findMany()`" + пуста лінія + пояснення).
+
+**Regression guard:** `http-exception.filter.spec.ts` → `Bug #618: PrismaClientValidationError логується як warn з останнім рядком повідомлення` — симулює реальний Prisma-текст, перевіряє warn-виклик з правильним URL + суттю.
+
+- [x] виправлено
