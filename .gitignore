@@ -43,6 +43,9 @@ installer/output/
 # Docker volumes (якщо монтуються локально)
 .docker-data/
 
+# TypeScript build info (генерується tsc --incremental)
+*.tsbuildinfo
+
 # pnpm
 .pnpm-store/
 
