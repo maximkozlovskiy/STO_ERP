@@ -9,12 +9,18 @@ import { aggregate, ReportResult, ReportAggInput } from './report-aggregator';
 export type FullReportConfig = ReportConfigInput & {
   aggregations?: ReportAggInput[];
   includeRows?: boolean;
+  /** Сортування ГРУП за агрегатом: alias='SUM_amount' + напрям. */
+  sortByAggregate?: { alias: string; dir: 'asc' | 'desc' };
 };
+
+const NUMERIC_TYPES = new Set(['number', 'decimal']);
 
 export interface ReportRunResult {
   entity: string;
   columns: Array<{ key: string; label: string; type: string }>;
   groupBy: string[];
+  /** Ефективні агрегації (явні + авто-SUM) — для рендеру заголовків/дерева. */
+  aggregations: ReportAggInput[];
   result: ReportResult;
 }
 
@@ -53,12 +59,23 @@ export class ReportBuilderService {
     const entity = getEntity(config.entity);
     const built = buildQuery(config, orgId);
     const rows = await this.runFindMany(built.model, built.args);
+
+    // Ефективні агрегації: явні + авто-SUM для числових колонок без обраної агрегації
+    // (діра #1: колонка-число без agg раніше губилась). Знакові поля (signedByType) —
+    // SUM теж коректний (нетто). balance/stateNotFlow — НЕ авто-SUM (SUM заборонений).
+    const aggregations = this.effectiveAggregations(entity, config);
+
+    // Детальні рядки завжди (діра #5: без цього «детальний звіт» неможливий).
+    const includeRows = config.includeRows ?? true;
+
     const result = aggregate(
       rows,
       {
         groupBy: config.groupBy,
-        aggregations: config.aggregations,
-        includeRows: config.includeRows,
+        columns: config.columns,
+        aggregations,
+        includeRows,
+        sortByAggregate: config.sortByAggregate,
       },
       entity,
     );
@@ -66,8 +83,32 @@ export class ReportBuilderService {
       entity: entity.key,
       columns: this.expandColumns(entity, config.columns),
       groupBy: config.groupBy,
+      aggregations, // ефективні (з авто-SUM) — фронт рендерить заголовки/дерево з них
       result,
     };
+  }
+
+  /** Явні агрегації + авто-SUM для числових columns без власної агрегації. */
+  private effectiveAggregations(
+    entity: ReportEntityDef,
+    config: FullReportConfig,
+  ): ReportAggInput[] {
+    const explicit = config.aggregations ?? [];
+    const haveAgg = new Set(explicit.map(a => a.field));
+    const auto: ReportAggInput[] = [];
+    for (const key of config.columns) {
+      if (haveAgg.has(key)) continue;
+      const fld = entity.fields.find(f => f.key === key);
+      if (
+        fld &&
+        NUMERIC_TYPES.has(fld.type) &&
+        !fld.stateNotFlow &&
+        fld.aggregations.includes('SUM')
+      ) {
+        auto.push({ field: key, agg: 'SUM' });
+      }
+    }
+    return [...explicit, ...auto];
   }
 
   private expandColumns(entity: ReportEntityDef, columns: string[]) {

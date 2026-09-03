@@ -68,6 +68,7 @@ export function ReportBuilder() {
   const [aggs, setAggs] = useState<Record<string, Agg>>({}); // field.key → Agg
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [sortAgg, setSortAgg] = useState<{ alias: string; dir: 'asc' | 'desc' } | null>(null);
   const [result, setResult] = useState<ReportRunResult | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
@@ -94,6 +95,7 @@ export function ReportBuilder() {
     setGroupBy([]);
     setFilters([]);
     setAggs({});
+    setSortAgg(null);
     setResult(null);
   };
 
@@ -131,10 +133,13 @@ export function ReportBuilder() {
   };
   const isFiltered = (key: string) => filters.some(f => f.field === key);
 
-  const buildConfig = (): ReportConfig => {
+  const buildConfig = (
+    sortOverride?: { alias: string; dir: 'asc' | 'desc' } | null,
+  ): ReportConfig => {
     const aggregations = Object.entries(aggs)
       .filter(([field]) => columns.includes(field))
       .map(([field, agg]) => ({ field, agg }));
+    const s = sortOverride !== undefined ? sortOverride : sortAgg;
     return {
       entity: entityKey,
       columns,
@@ -142,17 +147,29 @@ export function ReportBuilder() {
       filters: filters.length ? filters : undefined,
       aggregations: aggregations.length ? aggregations : undefined,
       dateRange: from && to ? { from, to } : undefined,
+      includeRows: true, // детальні рядки завжди (діра #5)
+      sortByAggregate: s ?? undefined,
     };
   };
 
-  const run = async () => {
+  const run = async (sortOverride?: { alias: string; dir: 'asc' | 'desc' } | null) => {
     if (!entityKey) return toast.warning('Оберіть джерело даних');
     if (!columns.length && !groupBy.length) return toast.warning('Додайте хоча б одну колонку');
     try {
-      setResult(await runMut.mutateAsync(buildConfig()));
+      setResult(await runMut.mutateAsync(buildConfig(sortOverride)));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Помилка звіту');
     }
+  };
+
+  /** Клік по заголовку агрегату у результаті → сортувати групи за ним (toggle asc/desc). */
+  const onSortByAgg = (alias: string) => {
+    const next: { alias: string; dir: 'asc' | 'desc' } =
+      sortAgg?.alias === alias
+        ? { alias, dir: sortAgg.dir === 'desc' ? 'asc' : 'desc' }
+        : { alias, dir: 'desc' };
+    setSortAgg(next);
+    void run(next);
   };
 
   const doSave = async () => {
@@ -177,6 +194,7 @@ export function ReportBuilder() {
     setAggs(a);
     setFrom(cfg.dateRange?.from ?? '');
     setTo(cfg.dateRange?.to ?? '');
+    setSortAgg(cfg.sortByAggregate ?? null);
     setResult(null);
   };
 
@@ -222,7 +240,7 @@ export function ReportBuilder() {
                 className="w-32"
               />
             </div>
-            <Button onClick={run} disabled={runMut.isPending}>
+            <Button onClick={() => run()} disabled={runMut.isPending}>
               <Play className="size-4" /> Запустити
             </Button>
             <Button variant="outline" onClick={() => setSaveOpen(true)}>
@@ -357,7 +375,7 @@ export function ReportBuilder() {
               onChange={setFilters}
             />
 
-            {result && <ResultView result={result} />}
+            {result && <ResultView result={result} sort={sortAgg} onSort={onSortByAgg} />}
           </div>
         </div>
       )}
@@ -622,9 +640,38 @@ function fmtAggValue(alias: string, value: number | null): string {
   return fmtMoney(value);
 }
 
-function ResultView({ result }: { result: ReportRunResult }) {
-  const aggAliases = Object.keys(result.result.grandTotals);
+/** Форматує значення детальної колонки за типом. */
+function fmtCell(value: unknown, type: string): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (type === 'decimal' || type === 'number') return fmtMoney(Number(value));
+  if (type === 'date') return fmtDate(String(value));
+  if (type === 'boolean') return value ? 'Так' : 'Ні';
+  return String(value);
+}
+
+function displayGroupValue(node: GroupNode): string {
+  if (node.key === '∅') return '(порожньо)';
+  if (typeof node.value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(node.value)) {
+    return fmtDate(node.value);
+  }
+  return String(node.value ?? node.key);
+}
+
+function ResultView({
+  result,
+  sort,
+  onSort,
+}: {
+  result: ReportRunResult;
+  sort: { alias: string; dir: 'asc' | 'desc' } | null;
+  onSort: (alias: string) => void;
+}) {
+  const aggAliases = result.aggregations.map(a => `${a.agg}_${a.field}`);
+  const cols = result.columns; // детальні колонки
   const hasGroups = result.groupBy.length > 0;
+  // Ширина labelу першої колонки + всі детальні колонки + count + агрегати.
+  const totalCols = 1 + cols.length + 1 + aggAliases.length;
+
   return (
     <div className="rounded-xl border border-border bg-surface overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary">
@@ -638,41 +685,92 @@ function ResultView({ result }: { result: ReportRunResult }) {
           <thead className="sticky top-0 bg-secondary text-muted-foreground">
             <tr>
               <th className="text-left font-medium px-4 py-2 border-b border-border">
-                {hasGroups ? 'Група' : 'Рядок'}
+                {hasGroups ? 'Група' : '№'}
               </th>
-              <th className="text-right font-medium px-3 py-2 border-b border-border">Кількість</th>
-              {aggAliases.map(a => (
+              {cols.map(c => (
                 <th
-                  key={a}
-                  className="text-right font-medium px-3 py-2 border-b border-border whitespace-nowrap"
+                  key={c.key}
+                  className={cn(
+                    'font-medium px-3 py-2 border-b border-border whitespace-nowrap',
+                    c.type === 'decimal' || c.type === 'number' ? 'text-right' : 'text-left',
+                  )}
                 >
-                  {aggAliasLabel(a, result)}
+                  {c.label}
                 </th>
               ))}
+              <th className="text-right font-medium px-3 py-2 border-b border-border">Кількість</th>
+              {aggAliases.map(a => {
+                const active = sort?.alias === a;
+                return (
+                  <th
+                    key={a}
+                    className="text-right font-medium px-3 py-2 border-b border-border whitespace-nowrap"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onSort(a)}
+                      title="Сортувати групи за цим показником"
+                      className={cn(
+                        'inline-flex items-center gap-0.5 rounded hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary',
+                        active && 'text-primary',
+                      )}
+                    >
+                      {aggAliasLabel(a, result)}
+                      {active && (sort!.dir === 'desc' ? '↓' : '↑')}
+                    </button>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
-            {hasGroups ? (
-              result.result.tree.map((n, i) => (
-                <GroupRows key={n.key + i} node={n} depth={0} aggAliases={aggAliases} />
-              ))
-            ) : (
-              <tr>
-                <td className="px-4 py-2 border-b border-border text-muted-foreground">Усього</td>
-                <td className="text-right px-3 py-2 border-b border-border">
-                  {result.result.rowCount}
-                </td>
-                {aggAliases.map(a => (
-                  <td key={a} className="text-right px-3 py-2 border-b border-border">
-                    {fmtAggValue(a, result.result.grandTotals[a])}
-                  </td>
+            {hasGroups
+              ? result.result.tree.map((n, i) => (
+                  <GroupRows
+                    key={n.key + i}
+                    node={n}
+                    depth={0}
+                    cols={cols}
+                    aggAliases={aggAliases}
+                  />
+                ))
+              : // Без групування — плоска таблиця детальних рядків (діра #5).
+                result.result.detailRows.map((row, i) => (
+                  <tr key={i} className="border-b border-border">
+                    <td className="px-4 py-1.5 text-muted-foreground">{i + 1}</td>
+                    {cols.map(c => (
+                      <td
+                        key={c.key}
+                        className={cn(
+                          'px-3 py-1.5',
+                          c.type === 'decimal' || c.type === 'number' ? 'text-right' : 'text-left',
+                        )}
+                      >
+                        {fmtCell(row[c.key], c.type)}
+                      </td>
+                    ))}
+                    <td className="text-right px-3 py-1.5 text-muted-foreground">1</td>
+                    {aggAliases.map(a => (
+                      <td key={a} className="text-right px-3 py-1.5 text-muted-foreground">
+                        —
+                      </td>
+                    ))}
+                  </tr>
                 ))}
+            {!hasGroups && result.result.detailRows.length === 0 && (
+              <tr>
+                <td colSpan={totalCols} className="px-4 py-6 text-center text-muted-foreground">
+                  Немає даних
+                </td>
               </tr>
             )}
           </tbody>
           <tfoot>
             <tr className="font-semibold bg-muted/40">
               <td className="px-4 py-2 border-t border-border">Разом</td>
+              {cols.map(c => (
+                <td key={c.key} className="border-t border-border" />
+              ))}
               <td className="text-right px-3 py-2 border-t border-border">
                 {result.result.rowCount}
               </td>
@@ -690,8 +788,9 @@ function ResultView({ result }: { result: ReportRunResult }) {
 }
 
 function aggAliasLabel(alias: string, result: ReportRunResult): string {
-  const [agg, ...rest] = alias.split('_');
-  const fieldKey = rest.join('_');
+  const us = alias.indexOf('_');
+  const agg = alias.slice(0, us);
+  const fieldKey = alias.slice(us + 1);
   const col = result.columns.find(c => c.key === fieldKey);
   return `${AGG_LABELS[agg as Agg] ?? agg}: ${col?.label ?? fieldKey}`;
 }
@@ -699,39 +798,34 @@ function aggAliasLabel(alias: string, result: ReportRunResult): string {
 function GroupRows({
   node,
   depth,
+  cols,
   aggAliases,
 }: {
   node: GroupNode;
   depth: number;
+  cols: { key: string; label: string; type: string }[];
   aggAliases: string[];
 }) {
   const [open, setOpen] = useState(depth < 1);
   const hasChildren = node.children.length > 0;
-  const displayValue =
-    node.key === '∅'
-      ? '(порожньо)'
-      : typeof node.value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(node.value)
-        ? fmtDate(node.value)
-        : String(node.value ?? node.key);
+  const hasRows = !!node.rows && node.rows.length > 0;
+  const expandable = hasChildren || hasRows;
   return (
     <>
-      {/* Клік/hover переносимо на inner button — не на TR: cursor:pointer на TR при
-          відсутності обробника на самому TR — misleading UX (клік поза кнопкою нічого не
-          робить). Клавіатурна навігація Tab→Space/Enter — через нативний button. */}
       <tr className="border-b border-border">
         <td className="px-4 py-1.5" style={{ paddingLeft: `${16 + depth * 20}px` }}>
           <button
             type="button"
-            onClick={() => hasChildren && setOpen(o => !o)}
+            onClick={() => expandable && setOpen(o => !o)}
             className={cn(
               'inline-flex items-center gap-1 text-left rounded',
-              hasChildren &&
+              expandable &&
                 'cursor-pointer hover:bg-secondary/40 focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2',
             )}
-            disabled={!hasChildren}
-            aria-expanded={hasChildren ? open : undefined}
+            disabled={!expandable}
+            aria-expanded={expandable ? open : undefined}
           >
-            {hasChildren ? (
+            {expandable ? (
               open ? (
                 <ChevronDown className="size-3.5 shrink-0" />
               ) : (
@@ -740,9 +834,13 @@ function GroupRows({
             ) : (
               <span className="inline-block w-3.5" />
             )}
-            <span className={cn(depth === 0 && 'font-medium')}>{displayValue}</span>
+            <span className={cn(depth === 0 && 'font-medium')}>{displayGroupValue(node)}</span>
           </button>
         </td>
+        {/* Детальні колонки у груповому рядку порожні (значення — у листкових рядках) */}
+        {cols.map(c => (
+          <td key={c.key} />
+        ))}
         <td className="text-right px-3 py-1.5 text-muted-foreground">{node.count}</td>
         {aggAliases.map(a => (
           <td key={a} className="text-right px-3 py-1.5">
@@ -751,8 +849,39 @@ function GroupRows({
         ))}
       </tr>
       {open &&
+        hasChildren &&
         node.children.map((c, i) => (
-          <GroupRows key={c.key + i} node={c} depth={depth + 1} aggAliases={aggAliases} />
+          <GroupRows
+            key={c.key + i}
+            node={c}
+            depth={depth + 1}
+            cols={cols}
+            aggAliases={aggAliases}
+          />
+        ))}
+      {open &&
+        hasRows &&
+        node.rows!.map((row, i) => (
+          <tr key={`r${i}`} className="border-b border-border/50 bg-secondary/20">
+            <td className="px-4 py-1" style={{ paddingLeft: `${16 + (depth + 1) * 20}px` }}>
+              <span className="text-muted-foreground text-[12px]">запис {i + 1}</span>
+            </td>
+            {cols.map(c => (
+              <td
+                key={c.key}
+                className={cn(
+                  'px-3 py-1 text-[12px]',
+                  c.type === 'decimal' || c.type === 'number' ? 'text-right' : 'text-left',
+                )}
+              >
+                {fmtCell(row[c.key], c.type)}
+              </td>
+            ))}
+            <td />
+            {aggAliases.map(a => (
+              <td key={a} />
+            ))}
+          </tr>
         ))}
     </>
   );

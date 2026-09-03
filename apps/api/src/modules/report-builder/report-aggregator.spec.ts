@@ -17,7 +17,7 @@ const part = (
 });
 
 describe('report-aggregator', () => {
-  it('SUM/COUNT/AVG/MIN/MAX коректність без групування', () => {
+  it('SUM/AVG/MIN/MAX коректність без групування; count через rowCount', () => {
     const rows = [part({ amount: 100 }), part({ amount: 200 }), part({ amount: 300 })];
     const r = aggregate(
       rows,
@@ -28,7 +28,6 @@ describe('report-aggregator', () => {
           { field: 'amount', agg: 'AVG' },
           { field: 'amount', agg: 'MIN' },
           { field: 'amount', agg: 'MAX' },
-          { field: 'quantity', agg: 'COUNT' },
         ],
       },
       woPart,
@@ -37,8 +36,61 @@ describe('report-aggregator', () => {
     expect(r.grandTotals.AVG_amount).toBe(200);
     expect(r.grandTotals.MIN_amount).toBe(100);
     expect(r.grandTotals.MAX_amount).toBe(300);
-    expect(r.grandTotals.COUNT_quantity).toBe(3);
+    // COUNT більше не пропонується per-field — кількість записів через rowCount (та group.count).
     expect(r.rowCount).toBe(3);
+    expect(r.detailRows).toEqual([]); // includeRows не заданий → детальних немає
+  });
+
+  it('includeRows без групування → плоскі детальні рядки (проєкція columns)', () => {
+    const rows = [
+      part({ amount: 100, goodName: 'Гальма' }),
+      part({ amount: 200, goodName: 'Масло' }),
+    ];
+    const r = aggregate(
+      rows,
+      { groupBy: [], columns: ['amount', 'good.name'], includeRows: true },
+      woPart,
+    );
+    expect(r.tree).toEqual([]);
+    expect(r.detailRows).toEqual([
+      { amount: 100, 'good.name': 'Гальма' },
+      { amount: 200, 'good.name': 'Масло' },
+    ]);
+  });
+
+  it('includeRows з групуванням → детальні рядки на листі', () => {
+    const rows = [
+      part({ cp: 'А', goodName: 'Гальма', amount: 100 }),
+      part({ cp: 'А', goodName: 'Масло', amount: 50 }),
+    ];
+    const r = aggregate(
+      rows,
+      {
+        groupBy: ['workOrder.counterparty.companyName'],
+        columns: ['amount'],
+        includeRows: true,
+      },
+      woPart,
+    );
+    expect(r.tree[0].rows).toEqual([{ amount: 100 }, { amount: 50 }]);
+  });
+
+  it('sortByAggregate сортує групи за агрегатом (desc)', () => {
+    const rows = [
+      part({ cp: 'Малий', amount: 10 }),
+      part({ cp: 'Великий', amount: 500 }),
+      part({ cp: 'Середній', amount: 100 }),
+    ];
+    const r = aggregate(
+      rows,
+      {
+        groupBy: ['workOrder.counterparty.companyName'],
+        aggregations: [{ field: 'amount', agg: 'SUM' }],
+        sortByAggregate: { alias: 'SUM_amount', dir: 'desc' },
+      },
+      woPart,
+    );
+    expect(r.tree.map(n => n.value)).toEqual(['Великий', 'Середній', 'Малий']);
   });
 
   it('ієрархічне групування: контрагент → товар (як у вимозі)', () => {

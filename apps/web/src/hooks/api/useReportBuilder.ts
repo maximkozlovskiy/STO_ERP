@@ -51,6 +51,7 @@ export interface ReportConfig {
   aggregations?: ReportAgg[];
   dateRange?: { from: string; to: string };
   includeRows?: boolean;
+  sortByAggregate?: { alias: string; dir: 'asc' | 'desc' };
 }
 
 export interface GroupNode {
@@ -67,8 +68,12 @@ export interface ReportRunResult {
   entity: string;
   columns: { key: string; label: string; type: string }[];
   groupBy: string[];
+  /** Ефективні агрегації (явні + авто-SUM числових колонок) — з них заголовки/дерево. */
+  aggregations: ReportAgg[];
   result: {
     tree: GroupNode[];
+    /** Плоскі детальні рядки (проєкція columns) коли groupBy порожній. */
+    detailRows: Record<string, unknown>[];
     grandTotals: Record<string, number | null>;
     rowCount: number;
     truncated: boolean;

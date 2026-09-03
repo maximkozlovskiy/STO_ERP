@@ -38,6 +38,15 @@ export class ReportDateRangeDto {
   @ApiProperty() @IsDateString({ strict: true }) @Matches(YMD_RE) to!: string;
 }
 
+export class ReportSortByAggregateDto {
+  @ApiProperty({ description: "alias агрегату, напр. 'SUM_amount'" })
+  @IsString()
+  alias!: string;
+  @ApiProperty({ enum: ['asc', 'desc'] })
+  @IsIn(['asc', 'desc'])
+  dir!: 'asc' | 'desc';
+}
+
 export class ReportConfigDto {
   @ApiProperty({ enum: ENTITY_KEYS })
   @IsIn(ENTITY_KEYS)
@@ -89,6 +98,12 @@ export class ReportConfigDto {
   @IsOptional()
   @IsBoolean()
   includeRows?: boolean;
+
+  @ApiPropertyOptional({ description: 'Сортування груп за агрегатом: {alias, dir}' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ReportSortByAggregateDto)
+  sortByAggregate?: ReportSortByAggregateDto;
 }
 
 export class ReportRunDto {
