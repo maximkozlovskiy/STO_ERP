@@ -15,9 +15,10 @@ test.describe('Конструктор звітів', () => {
     // Палітра полів зʼявилась
     await expect(page.getByText(/Поля «Запчастини у нарядах»/)).toBeVisible({ timeout: 10_000 });
     // Зони присутні
-    await expect(page.getByText('Колонки', { exact: false })).toBeVisible();
-    await expect(page.getByText(/Групування/)).toBeVisible();
-    await expect(page.getByText('Фільтри', { exact: false })).toBeVisible();
+    // Заголовки зон (не плутати з текстом-підказкою палітри, що теж містить «колонки»).
+    await expect(page.getByText('Колонки · що показувати')).toBeVisible();
+    await expect(page.getByText(/^Групування/)).toBeVisible();
+    await expect(page.getByText('Фільтри · умови вибірки')).toBeVisible();
     // Поле-чіп у палітрі (Товар — relation good.name)
     await expect(page.getByText('Товар', { exact: true }).first()).toBeVisible();
   });

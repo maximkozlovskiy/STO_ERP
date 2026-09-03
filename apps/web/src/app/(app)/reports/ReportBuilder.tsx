@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { DragEvent, ReactNode } from 'react';
-import { X, ChevronRight, ChevronDown, Play, Save, Download } from 'lucide-react';
+import { X, ChevronRight, ChevronDown, Play, Save, Download, Filter } from 'lucide-react';
 import {
   useReportMetadata,
   useRunReport,
@@ -82,16 +82,11 @@ export function ReportBuilder() {
     return m;
   }, [entity]);
 
-  // Поля, ще не додані у жодну зону — для палітри. useMemo уникає перебудови Set/filter
-  // на кожен рендер (наприклад під час drag/hover, коли `over` toggling переставляє).
-  const usedKeys = useMemo(
-    () => new Set([...columns, ...groupBy, ...filters.map(f => f.field)]),
-    [columns, groupBy, filters],
-  );
-  const paletteFields = useMemo(
-    () => entity?.fields.filter(f => !usedKeys.has(f.key)) ?? [],
-    [entity, usedKeys],
-  );
+  // Палітра ЗАВЖДИ показує всі поля сутності — одне поле може бути водночас колонкою,
+  // групуванням І фільтром (різні виміри одного поля). Дубль у межах ОДНІЄЇ зони блокує
+  // логіка drop (onDropToZone). Раніше поле зникало з палітри після додавання у будь-яку
+  // зону → не можна було перетягнути ту саму «Суму» ще й у Фільтри.
+  const paletteFields = entity?.fields ?? [];
 
   const resetSelection = (nextEntity: string) => {
     setEntityKey(nextEntity);
@@ -126,6 +121,15 @@ export function ReportBuilder() {
     else if (zone === 'groupBy') setGroupBy(groupBy.filter(k => k !== key));
     else setFilters(filters.filter(f => f.field !== key));
   };
+
+  /** Швидко додати поле у фільтри (кнопка «+ фільтр» на чіпі колонки/групування). */
+  const addFilter = (key: string) => {
+    const f = fieldByKey.get(key);
+    if (!f?.filterable) return toast.warning('Це поле не фільтрується');
+    if (filters.some(x => x.field === key)) return toast.info('Фільтр за цим полем уже є');
+    setFilters([...filters, { field: key, op: 'eq' }]);
+  };
+  const isFiltered = (key: string) => filters.some(f => f.field === key);
 
   const buildConfig = (): ReportConfig => {
     const aggregations = Object.entries(aggs)
@@ -276,7 +280,8 @@ export function ReportBuilder() {
           {/* Палітра полів */}
           <div className="rounded-xl border border-border bg-surface p-3">
             <div className="text-xs font-medium text-muted-foreground mb-2">
-              Поля «{entity.label}» — перетягніть у зони
+              Поля «{entity.label}» — перетягніть у зони (одне поле можна і в колонки, і в
+              групування, і у фільтри)
             </div>
             <div className="flex flex-wrap gap-1.5">
               {paletteFields.map(f => (
@@ -293,9 +298,6 @@ export function ReportBuilder() {
                   {f.label}
                 </span>
               ))}
-              {paletteFields.length === 0 && (
-                <span className="text-xs text-muted-foreground">Усі поля використано</span>
-              )}
             </div>
           </div>
 
@@ -308,6 +310,8 @@ export function ReportBuilder() {
               onDrop={onDropToZone}
               items={columns.map(k => ({ key: k, field: fieldByKey.get(k) }))}
               onRemove={removeFrom}
+              onFilter={addFilter}
+              isFiltered={isFiltered}
               renderExtra={f =>
                 f && f.aggregations.length > 0 ? (
                   <select
@@ -340,6 +344,8 @@ export function ReportBuilder() {
               onDrop={onDropToZone}
               items={groupBy.map(k => ({ key: k, field: fieldByKey.get(k) }))}
               onRemove={removeFrom}
+              onFilter={addFilter}
+              isFiltered={isFiltered}
               ordered
             />
             <FilterZone
@@ -388,6 +394,8 @@ function DropZone({
   items,
   onDrop,
   onRemove,
+  onFilter,
+  isFiltered,
   renderExtra,
   ordered,
 }: {
@@ -397,6 +405,8 @@ function DropZone({
   items: { key: string; field: MetaField | undefined }[];
   onDrop: (zone: Zone, ev: DragEvent) => void;
   onRemove: (zone: Zone, key: string) => void;
+  onFilter?: (key: string) => void;
+  isFiltered?: (key: string) => boolean;
   renderExtra?: (f: MetaField | undefined) => ReactNode;
   ordered?: boolean;
 }) {
@@ -435,6 +445,20 @@ function DropZone({
             {ordered && <span className="opacity-60 tabular-nums">{i + 1}.</span>}
             {it.field?.label ?? it.key}
             {renderExtra?.(it.field)}
+            {onFilter && it.field?.filterable && (
+              <button
+                type="button"
+                aria-label={isFiltered?.(it.key) ? 'Уже у фільтрах' : 'Додати у фільтри'}
+                title={isFiltered?.(it.key) ? 'Уже у фільтрах' : 'Додати у фільтри'}
+                className={cn(
+                  'transition-colors',
+                  isFiltered?.(it.key) ? 'text-primary' : 'opacity-60 hover:opacity-100',
+                )}
+                onClick={() => onFilter(it.key)}
+              >
+                <Filter className="size-3" />
+              </button>
+            )}
             <button
               type="button"
               aria-label="Прибрати"
