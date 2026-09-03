@@ -13,7 +13,7 @@
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
 Тести:      API ✅ 1148/1148 (+3 aggregator #619 + 2 service #620) | Web ✅ 495/495 | E2E конструктора 2/2 + фінансові 74/74 ✅
-Sync:       2026-09-03 Report Builder — 1 fix (fmtAggValue date alias: MIN/MAX_dateField → fmtDate не fmtMoney). Commit eee7cb8e.
+Sync:       2026-09-03 Report Builder constructor 5-fixes audit — 1 fix (Dir3: ReportRunResult.columns type missing enumName?:string in backend interface; expandColumns already returned it). Commit 089b790e.
 Review:     2026-09-03 Report Builder pivot-fixes cycle 2 — 6 fixes. Nothing critical.
 Tester:     2026-09-03 Report Builder pivot cycle 3 (live) — 2 HIGH fixes (Bug #619 SUM(stockMovement.quantity) включав RESERVATION/RESERVATION_RELEASE як фізичні → фантомні −20; тепер non-physical types виключено, +37→+57. Bug #620 MIN/MAX date без поля у columns рендерився як гроші «1 780 963 200 000,00 грн»; збагачено response.aggregations типом+label, fmtAggValue/aggAliasLabel беруть тип звідти першим). Commit 5d79db82.
 Конструктор звітів LIVE-ПЕРЕВІРЕНО (2026-09-03, docker піднято): міграція 20260903120000_add_saved_reports застосована; групування контрагент→товар + інваріант Σтоп==grandTotal (3700==3700), enum-relation (Контрагент.Тип), фільтр status=COMPLETED, save/runSaved, валідації (invalid enum→400, groupBy>5→400) — усе ✓. Фікс під час верифікації: прибрано `where` з nested include (to-one relation → Prisma "Unknown argument where"). UI рендериться (палітра+3 зони). Native HTML5 drag Playwright не симулює (обмеження PW, не баг). Лишилось: QA-ланцюжок sync→review→tester.
