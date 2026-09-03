@@ -25,7 +25,7 @@ export interface ReportAggEnriched extends ReportAggInput {
 
 export interface ReportRunResult {
   entity: string;
-  columns: Array<{ key: string; label: string; type: string }>;
+  columns: Array<{ key: string; label: string; type: string; enumName?: string }>;
   groupBy: string[];
   /** Ефективні агрегації (явні + авто-SUM) — для рендеру заголовків/дерева. */
   aggregations: ReportAggEnriched[];
