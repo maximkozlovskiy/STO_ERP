@@ -1,0 +1,74 @@
+# Report Builder — Dossier
+
+> Конструктор звітів: самообслуговуваний динамічний звіт (drag полів, фільтри, ієрархічне
+> групування ≤5, поля зв'язків `Контрагент.Тип`, підсумки, збереження, експорт).
+
+## Ключові факти
+
+- **Метадата-реєстр** (`report-registry.ts`) — ЄДИНЕ ДЖЕРЕЛО ПРАВДИ. Описує сутності: `fields[]`
+  ({key, label, type, prismaPath, enumName?, aggregations[], filterable, groupable, stateNotFlow?,
+  signedByType?}), `relations[]` ({prismaPath, depth, advanced, targetHasSoftDelete}), прапорці
+  `hasSoftDelete`/`profile: FULL|APPEND_ONLY`, `dateField`. Живить і backend-білдер, і фронт
+  (`GET /reports/builder/metadata`).
+- **v1 сутності:** WorkOrder (Наряди), WorkOrderPart (Запчастини у нарядах), PurchaseOrderLine
+  (Рядки закупівель). Розширення = один запис у REGISTRY, движок не міняється.
+- **3 компоненти движка:** `report-query.builder.ts` (config→Prisma findMany),
+  `report-aggregator.ts` (JS-групування ≤5 + агрегації), `report-builder.service.ts` (оркестрація
+  - SavedReport CRUD).
+
+## Безпека (injection неможливий за побудовою)
+
+- Користувач передає ЛИШЕ `field.key`/`entity.key` — вони резолвляться у реєстрові `prismaPath`
+  (літерали у коді) через `getEntity`/`getField` з `Object.prototype.hasOwnProperty.call`-guard
+  (захист від `__proto__`/`constructor`/`toString`, як `buildSortOrderBy`).
+- Жоден ключ Prisma (`where`/`include`/`select`/`orderBy`) не походить із вводу. Значення фільтрів
+  параметризує Prisma-клієнт. Enum-значення + `op` — з фіксованих whitelist.
+- `orgId` інжектиться у КОЖЕН `where`; `deletedAt:null` — лише де `hasSoftDelete`; nested
+  `deletedAt` на relation-хопах у WHERE (Bug #607).
+
+## Prisma-нюанси (баги live-верифікації)
+
+- **to-one relation НЕ приймає `where` у include** → Prisma "Unknown argument where". Усі relations
+  тут belongs-to → soft-delete relation-колонок пропущено (рядок уже відфільтрований по кореневому
+  deletedAt). Фікс 13861792.
+- **`include`+`select` на одному рівні заборонено** (Bug #617). relation-branch будується ПОВНІСТЮ
+  через nested `select` (`{good:{select:{name:true, brand:{select:{name:true}}}}}`), корінь — `include`.
+
+## Агрегації (report-aggregator)
+
+- SUM/COUNT/AVG/MIN/MAX; whitelist-check (agg ∈ field.aggregations, інакше 400).
+- **balance** → лише AVG/MIN/MAX (`stateNotFlow` → SUM=400 — стан, не потік).
+- **знакова quantity** (`signedByType`) → знак за сусіднім type (WRITEOFF/RESERVATION = −).
+- **grandTotals** — незалежний прохід по всій вибірці (AVG grand ≠ середнє груп — SQL-семантика).
+- **ІНВАРІАНТ:** `Σ(листкові SUM/COUNT) == grandTotal` — live-verified 8 сценаріїв, diff=0.
+- `take` cap 5000 (`REPORT_TAKE_CAP`), `truncated = rowCount >= cap` → UI-банер.
+
+## API Endpoints (`/api/reports/builder`)
+
+| Метод            | URL              | Дія                                            |
+| ---------------- | ---------------- | ---------------------------------------------- |
+| GET              | `/metadata`      | Реєстр для фронта (сутності/поля/зв'язки/enum) |
+| POST             | `/run`           | Ad-hoc звіт (ReportRunDto → tree+grandTotals)  |
+| GET              | `/saved`         | Список збережених                              |
+| POST             | `/saved`         | Зберегти (dry-run buildQuery перед create)     |
+| GET              | `/saved/:id/run` | Запустити збережений                           |
+| GET/PATCH/DELETE | `/saved/:id`     | Деталь / оновити / soft-delete                 |
+
+Ролі: `OWNER`, `ADMIN`, `ACCOUNTANT`. Route ordering: специфічні перед `:id`.
+
+## UI (Web)
+
+| Компонент             | Файл                                                           |
+| --------------------- | -------------------------------------------------------------- |
+| Вкладка «Конструктор» | `app/(app)/reports/ReportBuilder.tsx` (палітра+3 зони+таблиця) |
+| Хуки                  | `hooks/api/useReportBuilder.ts`                                |
+
+Native HTML5 drag (палітра→зона); ієрархічна таблиця з розгортанням + tfoot-підсумки; експорт
+CSV/XLSX клієнтський (SpreadsheetML).
+
+## Prisma модель
+
+`SavedReport` (FULL-профіль): `orgId, name, entity, config Json, createdBy?, syncVersion, стандартні
+поля`. Міграція `20260903120000_add_saved_reports`. `@@index([orgId, deletedAt])`.
+
+→ [docs/ARCHITECTURE.md](../ARCHITECTURE.md) · [docs/objects/settlements.md](settlements.md)

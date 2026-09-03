@@ -33,8 +33,27 @@
 useReportBuilder хуки.
 
 **v1 = каркас + 3 сутності**; реєстр розширюваний (нова сутність = один запис, движок не міняється).
-+22 тести (18 backend engine: proto-injection reject, whitelist, ієрархія, 5 рівнів, agg edge;
-4 web hook). API 1112→1130, Web 491→495, tsc 0/0. ⚠️ Міграцію застосувати коли підніметься docker DB.
+
+### QA-ланцюжок (live, docker піднято 2026-09-03)
+
+- **sync (463da2ad)** — 3 розбіжності виправлено: +useRunSavedReport хук, фільтр-op `in` без UI-опції
+  (тепер multi-select для enum / масив через кому), SavedReport.createdBy у типі.
+- **review (0fb4d368)** — 1 IMPORTANT (Modal exit-анімація подвійний guard) + 3 SUGGESTION
+  (named React imports, a11y: клікабельний рядок → inner button + aria-expanded + focus-visible,
+  memo для palette/usedKeys). Backend 0 findings (injection неможливий, tenant/soft-delete/DoS ✓).
+- **tester (a29ae594)** — **Bug #617 CRITICAL**: `mergeIncludePath` для комбо `good.name`+`good.brand.name`
+  генерував Prisma-заборонений `include`+`select` на одному рівні → 400. Fix: relation-branch повністю
+  через nested `select`. **Bug #618 LOW-DX**: PrismaClientValidationError мовчки → 400 без логу
+  (тепер logger.warn з причиною). +3 regression.
+
+**ФІНАНСОВИЙ ІНВАРІАНТ (live, 8 сценаріїв):** Σ(листкові aggregates) == grandTotal, diff=0 —
+1-5 рівнів групування × усі 3 сутності (workOrder 30478, workOrderPart 3700, purchaseOrderLine
+vatAmount 26760.6 / receivedQty 301). Валідації тримаються (proto-injection, whitelist, enum,
+groupBy>5, дати, SUM-on-price, tenant, nested deletedAt Bug #607).
+
+Fix під час live-верифікації (13861792): прибрано `where` з nested include (to-one relation →
+Prisma "Unknown argument where"). +22 юніт/hook + 3 regression + 2 E2E. API 1112→1132, Web 491→495,
+tsc 0/0. UI live-перевірено (палітра+зони), native HTML5 drag Playwright не симулює (обмеження PW).
 
 ---
 
