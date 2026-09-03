@@ -529,6 +529,12 @@ grep -rn "key={i}\|key={index}" apps/web/src/app --include="*.tsx" | head -10
 # apiFetch у PUBLIC_ROUTES сторінках (public pages мають publicFetch)
 grep -rn "apiFetch\|apiBlobFetch" apps/web/src/app --include="*.tsx" | grep -E "booking|setup" | head -5
 
+# Bug #606 — guard-order у click-shortcut «add-to-collection» helper: limit/permission-guard кидає toast на ПОВТОРНИЙ клік по вже-активному елементу.
+# Для будь-якого helper типу addToZone/addToList/pushToSelection — перевірити що includes/has() коротшить ПЕРЕД limit/permission.
+grep -rEn "\.includes\(key\)|\.has\(key\)|\.some\(.*===\s*key" apps/web/src --include="*.tsx" -B 3 -A 3 | grep -B 4 -A 2 "toast\.warning\|toast\.error" | head -60
+# Для кожного match: якщо limit-check/permission-check стоїть ВИЩЕ за unique-check → повторний клік по вже-активній кнопці кине misleading toast.
+# Правильно: `if (list.includes(key)) return;` — ПЕРШИМ, ЛИШЕ ПОТІМ `if (list.length >= LIMIT) return toast(...)`.
+
 # Bug #620 — форматер шукає тип поля у `columns` list але поле може бути ВНЕ columns
 # (aggregation-only, footer-only, computed metric) → fallback на fmtMoney/String → візуальний баг.
 grep -rEn "cols\??\.find\(.*key\s*===|columns\.find\(.*key\s*===" apps/web/src --include="*.tsx" -B 2 -A 6 | head -40
@@ -1046,6 +1052,45 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-04 — Guard-order у inline «add-to-collection» helper: unique-check коротшить перед limit/permission-check (Bug #606) — frontend / UX / guard-ordering
+
+**Сигнал:** новий helper типу `addToZone(zone, key)` / `addToList(key)` / `addToSelection(id)`, що приймає ID/key і виконує послідовність guards перед push-ом:
+
+```ts
+if (!permission) return toast.warning('немає прав');
+if (list.length >= LIMIT) return toast.warning('ліміт');
+if (!list.includes(key)) setList([...list, key]);
+```
+
+Раніше цей код був досяжний лише через drag&drop з палітри (де за визначенням не буває drop-у на вже-активному елементі, бо перетягуєш з палітри). Новий click-shortcut (кнопка на самому елементі, що може бути вже додаженим — active-стан підсвічений) відкриває сценарій «повторний add», і limit/permission guards спрацьовують на nothing-to-do action → misleading toast.
+
+**Причина виникнення:** розробник копіює гарди з drop-варіанту («де ти можеш drop-нути тільки з палітри — унікальність гарантована»). При переносі до click-варіанту (де button живе на елементі і його стан говорить «вже додано») забуває що тепер повторний виклик — реальний сценарій. Toast «Максимум 5/permission» ловиться користувачем як «система думає що я порушую ліміт», хоч насправді нічого не змінюється.
+
+**Підхід до виявлення:**
+
+1. Grep: `addTo\w+|toggleIn\w+|selectField|pushTo` — усі helper'и що модифікують collection state. Для кожного знайти всі виклики (click-handler, drop-handler, keyboard-handler, batch-import).
+2. Для кожного виявленого helper'а перевірити порядок guards: `includes(key)` / `has(id)` **МАЄ бути ПЕРШИМ** перед будь-яким toast-throwing guard (permission, limit, quota).
+3. Static test: збудувати список до ліміту → повторно викликати helper з ключем що ВЖЕ у списку → перевірити що НЕ кидається toast «ліміт».
+4. E2E-регресія: додати `waitForTimeout(300-500ms)` після повторного кліку + assert `toHaveCount(0)` на текст toast'а. Toast бібліотеки часто рендеряться async — instant assert може дати false-negative.
+
+**Підхід до фіксу:**
+
+1. `unique-check first` — перенести `if (collection.includes/has(key)) return;` на найпершу позицію ПІСЛЯ null-check на entity.
+2. Обґрунтувати коментарем чому порядок важливий (наводити конкретний сценарій — «5/5 + повторний клік») — інакше майбутній refactor поверне «природний» permission-first порядок.
+3. Дзеркально виправити всі паралельні гілки (`groupBy` і `filters` у addToZone — обидві мають той самий guard-order).
+4. Розглянути `toast.info('уже додано')` як явний feedback vs silent no-op — залежить від патерну проєкту. Silent no-op для button-with-active-state допустимо (стан кнопки вже говорить).
+
+**Severity:** LOW-MEDIUM. Не втрата даних, але критичний UX-signal: user думає що система зламана («сказав ліміт, а видалити нема як окрім X-кнопки»). Легко ловиться при manual QA, легко пропускається при static/unit-only тестуванні.
+
+**Де шукати ще:**
+
+- Будь-який Zone/Palette/Picker з click-shortcut на елементі (tag input, multi-select chip, permission grid);
+- «Add to favorites/bookmarks/pinned» — часто має limit + include-check;
+- Batch operations UI («вибрати всі до ліміту 100») — при click-toggle на elem-у;
+- Filter/sort field pickers що мають «MAX 3 sort fields», «MAX 5 filter conditions».
+
+---
 
 ### 2026-09-04 — Cross-midnight probe protocol: timezone-aware date-bucketing регресійна live-верифікація — backend / time-zone / aggregation / verification
 
