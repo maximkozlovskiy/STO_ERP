@@ -56,12 +56,19 @@ function getPath(row: Row, prismaPath: string): unknown {
 /**
  * null/undefined → '∅' (єдина «порожня» група); date → YYYY-MM-DD (групування по ДНЮ,
  * без годин — інакше кожна секунда окрема група); решта → String.
+ *
+ * TZ-critical: DateTime поля (createdAt тощо) містять час → «день» рахуємо у KYIV
+ * (не UTC), інакше рух о 01:30 04.09 Kyiv (=22:30 03.09 UTC) потрапляв би у
+ * бакет '2026-09-03'. `@db.Date` (без часу) Prisma повертає як 00:00 UTC — тут
+ * Kyiv-конверсія дає той самий Y-M-D. Формат 'sv-SE' → 'YYYY-MM-DD'.
  */
+const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+
 function normalizeKey(value: unknown, isDate: boolean): string {
   if (value === null || value === undefined || value === '') return '∅';
   if (isDate) {
     const d = value instanceof Date ? value : new Date(String(value));
-    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10); // YYYY-MM-DD
+    if (!isNaN(d.getTime())) return KYIV_YMD.format(d); // YYYY-MM-DD @ Europe/Kyiv
   }
   return String(value);
 }

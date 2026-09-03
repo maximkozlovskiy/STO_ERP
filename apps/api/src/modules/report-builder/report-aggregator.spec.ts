@@ -111,6 +111,45 @@ describe('report-aggregator', () => {
     expect(r.tree[0].value).toBe('2026-09-03'); // value — день, не timestamp
   });
 
+  it('date-групування — KYIV-день, не UTC (регресія: нічні операції не «стрибають»)', () => {
+    // 04.09.2026 00:30 Kyiv (літо EEST = UTC+3) → 03.09.2026 21:30 UTC.
+    // Без Kyiv-конверсії потрапляло б у бакет '2026-09-03' → зсув фінансового звіту.
+    // Kyiv-YMD дає '2026-09-04' (реальний день операції у СТО).
+    const sm = getEntity('stockMovement');
+    const rows = [
+      { type: 'RECEIPT', quantity: 1, createdAt: new Date('2026-09-03T21:30:00Z') }, // 04.09 00:30 Kyiv
+      { type: 'RECEIPT', quantity: 2, createdAt: new Date('2026-09-04T10:00:00Z') }, // 04.09 13:00 Kyiv
+      { type: 'RECEIPT', quantity: 4, createdAt: new Date('2026-09-04T20:00:00Z') }, // 04.09 23:00 Kyiv (не 05.09!)
+      { type: 'RECEIPT', quantity: 8, createdAt: new Date('2026-09-04T22:00:00Z') }, // 05.09 01:00 Kyiv
+    ];
+    const r = aggregate(
+      rows,
+      { groupBy: ['createdAt'], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      sm,
+    );
+    const buckets = Object.fromEntries(r.tree.map(n => [n.key, n.aggregates.SUM_quantity]));
+    expect(buckets['2026-09-04']).toBe(1 + 2 + 4); // три записи об'єднані в Kyiv-день 04.09
+    expect(buckets['2026-09-05']).toBe(8); // 22:00 UTC = 01:00 Kyiv 05.09 → окрема група
+    expect(buckets['2026-09-03']).toBeUndefined(); // жоден Kyiv-день 03.09 у датасеті
+  });
+
+  it('date-групування — зимовий час (EET = UTC+2), межа доби Kyiv', () => {
+    // 15.01.2026 00:30 Kyiv (зима EET = UTC+2) → 14.01.2026 22:30 UTC.
+    // Kyiv-YMD → '2026-01-15'; UTC-slice повертав би '2026-01-14'.
+    const sm = getEntity('stockMovement');
+    const rows = [
+      { type: 'RECEIPT', quantity: 100, createdAt: new Date('2026-01-14T22:30:00Z') }, // 15.01 00:30 Kyiv
+      { type: 'RECEIPT', quantity: 200, createdAt: new Date('2026-01-15T09:00:00Z') }, // 15.01 11:00 Kyiv
+    ];
+    const r = aggregate(
+      rows,
+      { groupBy: ['createdAt'], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      sm,
+    );
+    expect(r.tree.map(n => n.key)).toEqual(['2026-01-15']);
+    expect(r.tree[0].aggregates.SUM_quantity).toBe(300);
+  });
+
   it('sortByAggregate сортує групи за агрегатом (desc)', () => {
     const rows = [
       part({ cp: 'Малий', amount: 10 }),
