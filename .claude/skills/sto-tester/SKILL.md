@@ -169,6 +169,7 @@ grep -n "available\|quantity\|BadRequestException" apps/api/src/modules/inventor
 - [ ] `RESERVATION`: `available < qty` → `BadRequestException`
 - [ ] `WRITEOFF`: `quantity < Math.abs(qty)` → `BadRequestException`
 - [ ] `quantity=0` → `BadRequestException`
+- [ ] **Bug #619**: SUM(quantity) у reports/aggregators виключає RESERVATION/RESERVATION_RELEASE (non-physical) — інакше «нетто» містить фантоми. Grep: `grep -rn "signedByType\|quantityDelta\s*=\s*0" apps/api/src/modules/report-builder apps/api/src/modules/inventory` — набір типів має бути ідентичним; live-probe `curl POST /reports/builder/run stockMovement groupBy=[type]` → бакети RESERVATION/RESERVATION_RELEASE мають SUM=0.
 
 #### Розрахунки
 
@@ -527,6 +528,14 @@ grep -rn "key={i}\|key={index}" apps/web/src/app --include="*.tsx" | head -10
 
 # apiFetch у PUBLIC_ROUTES сторінках (public pages мають publicFetch)
 grep -rn "apiFetch\|apiBlobFetch" apps/web/src/app --include="*.tsx" | grep -E "booking|setup" | head -5
+
+# Bug #620 — форматер шукає тип поля у `columns` list але поле може бути ВНЕ columns
+# (aggregation-only, footer-only, computed metric) → fallback на fmtMoney/String → візуальний баг.
+grep -rEn "cols\??\.find\(.*key\s*===|columns\.find\(.*key\s*===" apps/web/src --include="*.tsx" -B 2 -A 6 | head -40
+# Для кожного match — перевірити:
+# 1. Чи можливий сценарій де fieldKey ВНЕ cols/columns (агрегати, footer totals)?
+# 2. Чи backend response має ще один array з type/label (aggregations, metrics)?
+# 3. Якщо так — форматер має шукати спочатку у ньому, fallback на cols.
 
 # React.X без named import
 grep -rn "React\.\(ReactNode\|CSSProperties\|ChangeEvent\|MouseEvent\|FormEvent\)" apps/web/src/ --include="*.tsx" | grep -v "//\|spec" | head -10
@@ -1037,6 +1046,69 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-03 — Semantic aggregation drift: SUM over a signed field включає значення яке не впливає на ресурс (Bug #619) — backend / aggregation / business-invariant
+
+**Сигнал:** реєстр/схема декларує field як з `signedByType` (або еквівалентом «знак береться з type-поля»), а aggregator обчислює `SUM(field)` без ВИКЛЮЧЕННЯ типів які **не змінюють** підлеглий ресурс. Grep: `signedByType` / `MovementType` / `TransactionType` разом з `SUM|reduce` — і перевірити чи виключаються NON_PHYSICAL/NON_FINANCIAL типи. У StockMovement: RESERVATION/RESERVATION_RELEASE — це лічильник `reserved`, а не `quantity`; у SettlementTransaction (майбутнє): PREPAYMENT_APPLICATION без реального руху грошей — не змінює `balance`. Aggregator який їх включає дає числа-«привиди».
+
+**Причина виникнення:** розробник aggregator'а бачить всі значення поля однакового «типу даних» (Decimal/Int) і вважає що вони всі валідні для SUM. Business-семантика «одне і те ж поле означає РІЗНЕ у різних гілках enum-типу» — тонка і легко упускається. Особливо коли `signedByType` вже реалізований — розробник думає «знак правильний, значить SUM правильний».
+
+**Підхід до виявлення:**
+
+1. Live-probe: `curl POST /reports/... groupBy=[type]` для кожної сутності з `signedByType` полем → перевірити чи `Σ(бакети) == grandTotal` **І** чи grandTotal відповідає бізнес-очікуванню (напр., «нетто фізичного руху»).
+2. Cross-check з сервісом-джерелом: `grep -n "quantityDelta|balanceDelta" apps/api/src/modules/<domain>/*.service.ts` — знайти які type-значення дають `delta = 0` → це кандидати на виключення з SUM.
+3. Reverse: подивитись реєстр/lookup-map `SIGN[TYPE] = +1/-1/0` (як у BALANCE_SIGN) — якщо там немає 0-варіантів, aggregator не має їх включати.
+4. Property-based: `fc.array(fc.record({type: fc.constantFrom(...ALL_TYPES), qty: fc.integer()}))` → `expect(sumThroughAggregator(rows)).toBe(sumThroughService(rows))`.
+
+**Підхід до фіксу:**
+
+1. Створити whitelist/blacklist на рівні aggregator (`NON_PHYSICAL_MOVEMENT_TYPES = new Set([...])`) — Set.has пошук у гарячому шляху O(1).
+2. У `numericValue` для полів з `signedByType` **повертати `null`** для non-mutation-типів — SUM пропустить, бакет покаже 0 (правильно семантично), AVG/MIN/MAX теж коректно ігнорують.
+3. Оновити коментар полю у реєстрі — задокументувати які type-значення виключені з нетто і ЧОМУ (посилання на service.ts:<line>).
+4. Regression-guard: 3 тести — (a) grandTotal з mixed-type input; (b) WRITEOFF backstop (raw позитивний → все одно негативує); (c) групування по type — non-mutation бакети мають SUM=0.
+
+**Severity:** HIGH коли поле фінансово-числове (quantity/amount/balance) і використовується у management-звітах. Різниця у результаті пропорційна активності non-physical операцій — у активному сервісі з інтенсивним резервуванням може бути >20% від реального нетто.
+
+**Де шукати ще:**
+
+- `SettlementTransaction.amount` з `type` — PREPAYMENT/CREDIT_NOTE можуть не бути частиною чистого cashflow;
+- `Payment.amount` з `method` — cash vs virtual (bonus/loyalty);
+- `Invoice.paidAmount` — включно з refund'ами;
+- Будь-яка Bookkeeping-модель з `Debit`/`Credit` sign де enum type диктує знак — перевірити чи всі значення enum'у семантично «рухають» ресурс.
+
+---
+
+### 2026-09-03 — Formatter-metadata drift: рендер тип-специфічного значення шукає тип поля у списку який його НЕ містить (Bug #620) — frontend / contract-drift / display
+
+**Сигнал:** frontend-функція форматування (`fmtValue(alias, cols)`, `renderCell(key, columns)`) резолвить тип поля через lookup у списку `columns` (те що вибрав користувач), але **той самий контекст** може містити значення полів **поза** `columns` (aggregation-only, metadata-only, computed). Grep: `\.type|colType|fieldType` разом з `\.find\(c\s*=>\s*c\.key`. Backend віддає `aggregations: [{field, agg}]` без `type` → фронт мусить сам знаходити тип → знаходить не завжди → падає у fallback (як правило money-format або plain string).
+
+**Причина виникнення:** розробник думає у категоріях «те що показується у таблиці» = `columns` = єдине джерело типів. Але агрегатне поле може бути показане у **футері** (grand total) або у **row-hover** без бути обраним як «колонка». Розробник backend'у теж не додає `type` до `aggregations` бо «фронт вже має метадану сутності» — забуваючи що метадана лежить в іншому store/hook і не завжди paired з response.
+
+**Підхід до виявлення:**
+
+1. Grep формайтерів: `grep -rn "cols\.find\|columns\.find" apps/web/src` → знайти всі місця де тип поля береться з `columns` list.
+2. Cross-verify з backend response shape: якщо response має ще один список полів (aggregations, sortBy, filters), перевірити чи там **теж** є `type` — якщо ні, потенційний бacк-контракт-gap.
+3. Live-probe: `curl POST /...` з конфігом де агрегація НЕ дублює колонку → response.aggregations vs response.columns → чи в обох є type/label? Якщо тільки в columns — бажано enrichment.
+4. Manual scenario: user drags агрегатне поле у header (не у columns) → рендер → бачить NaN/грошовий формат замість дати/enum-переклад.
+
+**Підхід до фіксу (backend-first):**
+
+1. Backend enrichment — додати `{type, label}` до кожного array item що описує «поле що буде показане». Не змінює існуючих клієнтів (тільки додає поля).
+2. Frontend — формaтер приймає ОБИДВА джерела (`aggregations`, `columns`) → шукає тип послідовно: спочатку у enrichment array, потім fallback на `columns`, потім last-resort default.
+3. **Не** покладатись на окремий metadata hook (`useReportMetadata`) у формайтері — тоді формайтер стає coupled з React hook context'ом і не тестуємий isolated. Тип має приходити **з тієї ж response** що і значення.
+4. Regression: (a) backend spec — response.aggregations[0].type/label match entity.fields[key].type/label; (b) frontend spec (експортувати формайтер якщо приватна) — `fmt(alias, value, cols_without_field, aggregations_with_field)` → правильний рендер.
+
+**Severity:** HIGH коли розбіжність візуальна для end-user (дата як мільярд грн, boolean як «0» замість «Ні», UUID як плейн-стрінг замість посилання). MEDIUM якщо тільки label відсутній (fieldKey показується технічно, але зрозуміло).
+
+**Де шукати ще:**
+
+- Форматери у sortable table headers які показують ONLY-sort поле;
+- Chart/dashboard компоненти що беруть type з columns array а показують computed metrics;
+- Excel/PDF export з aggregation-only column;
+- Notification templates що ref-ують поле-агрегат;
+- API `select` shape де backend знає тип а frontend не має локальної копії метадані сутності.
+
+---
 
 ### 2026-09-02 — Concurrent pre-check → write без row-lock контракту → від'ємні лічильники силентно (Bug #613) — backend / concurrency / financial-integrity
 
