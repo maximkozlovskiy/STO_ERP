@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-09-03 (b) — fix: конструктор звітів — pivot-модель (логічний аудит)
+
+Логічний аудит виявив розбіжність: UI обіцяв pivot (колонки+детальні рядки+групування), а
+рушій вмів лише group-by+aggregate. Виправлено 4 діри + supporting:
+
+- **#1 авто-SUM:** числова колонка без явної агрегації губилась → `effectiveAggregations` авто-SUM.
+- **#5 детальні рядки:** були недосяжні → `detailRows` (плоскі) + `node.rows` (на листі),
+  `includeRows` завжди. Тепер видно і колонки-значення, і окремі записи.
+- **#6 сортування:** групи лише за алфавітом → `sortByAggregate` (клік по заголовку агрегату,
+  toggle asc/desc); `∅` бере участь; `hasOwnProperty`-guard на alias (proto-injection, review).
+- **#3 знакова quantity:** фільтр брав сире, SUM — знакове → `filterable:false`, фільтр по type.
+- COUNT прибрано з нечислових полів (дублював group.count).
+
+**QA-ланцюжок (live):** sync 1 (date-agg рендерився як гроші) / review 6 (4 IMPORTANT: quantity
+як гроші, stale agg/sort, a11y aria-sort, **sortNodes proto-guard**; 2 suggest) / tester 2 HIGH
+(**Bug #619** SUM(quantity) рахував резервування як фізичні → нетто 37 замість 57, cross-verified
+`stockMovement.SUM==stockItem.SUM=57`; **Bug #620** date-агрегат як гроші коли поле не в columns).
+
+Інваріант `Σлистків==grandTotal` — live-verified усі 9 сутностей diff=0. API 1130→1148, Web 495,
+tsc 0. Коміти 611cb157/78aa9277/eee7cb8e/7ce451f9/5d79db82.
+
+---
+
 ## 2026-09-03 (a) — feat: конструктор звітів (Report Builder)
 
 ### b6301d0e feat(report-builder): backend движок · 320e1e0a frontend

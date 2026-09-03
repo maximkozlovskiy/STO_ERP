@@ -38,13 +38,33 @@
 - **`include`+`select` на одному рівні заборонено** (Bug #617). relation-branch будується ПОВНІСТЮ
   через nested `select` (`{good:{select:{name:true, brand:{select:{name:true}}}}}`), корінь — `include`.
 
+## Pivot-модель (детальні рядки + агрегати)
+
+Конструктор — справжній pivot, не лише group-by:
+
+- **Без groupBy** → плоска таблиця детальних рядків (`result.detailRows`, проєкція columns).
+- **З groupBy** → дерево груп; на листі детальні рядки (`node.rows`) розгортаються.
+- **Авто-SUM:** числова колонка без явної агрегації → авто-SUM (`effectiveAggregations` у service).
+  Response несе ефективні `aggregations` (явні + авто), збагачені `{type,label}` (Bug #620 — щоб
+  форматувати MIN/MAX-дати навіть коли поле не в columns).
+- **Сортування груп** за агрегатом: `sortByAggregate {alias, dir}`; клік по заголовку агрегату у UI.
+  `∅`-група бере участь у sort-by-agg (не форсується в кінець). `hasOwnProperty`-guard на alias
+  (proto-injection).
+- `includeRows` завжди true (інакше «детальний звіт» неможливий).
+
 ## Агрегації (report-aggregator)
 
-- SUM/COUNT/AVG/MIN/MAX; whitelist-check (agg ∈ field.aggregations, інакше 400).
+- SUM/AVG/MIN/MAX per-field; COUNT НЕ пропонується per-field (дублює group.count) — кількість
+  записів через `node.count`/`rowCount`.
 - **balance** → лише AVG/MIN/MAX (`stateNotFlow` → SUM=400 — стан, не потік).
-- **знакова quantity** (`signedByType`) → знак за сусіднім type (WRITEOFF/RESERVATION = −).
+- **знакова quantity** (`signedByType`) → знак за сусіднім type: WRITEOFF/RESERVATION_RELEASE = −,
+  RECEIPT = +. **НЕ-фізичні рухи** (RESERVATION/RESERVATION_RELEASE, quantityDelta=0) → виключені
+  з SUM (Bug #619 — інакше фантомні резервування спотворювали нетто). Cross-invariant:
+  `stockMovement.SUM_quantity == stockItem.SUM_quantity`.
+- StockMovement.quantity `filterable:false` — фільтр по знаковому вводить в оману; для «прихід/
+  списання» — фільтр/групування по `type`.
 - **grandTotals** — незалежний прохід по всій вибірці (AVG grand ≠ середнє груп — SQL-семантика).
-- **ІНВАРІАНТ:** `Σ(листкові SUM/COUNT) == grandTotal` — live-verified 8 сценаріїв, diff=0.
+- **ІНВАРІАНТ:** `Σ(листкові SUM) == grandTotal` — live-verified усі 9 сутностей, diff=0.
 - `take` cap 5000 (`REPORT_TAKE_CAP`), `truncated = rowCount >= cap` → UI-банер.
 
 ## API Endpoints (`/api/reports/builder`)
