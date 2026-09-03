@@ -19,6 +19,19 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   SupplierReturn: 'Повернення постачальнику',
 };
 
+/**
+ * Типи руху, що ДОДАЮТЬ фізичний товар і тому МУСЯТЬ створити партію (StockBatch).
+ * Інваріант: `Σ remainingQty(active) == StockItem.quantity`. Кожен додатний фізичний
+ * прихід зобов'язаний завести партію, інакше залишок росте без партій → подальше
+ * FEFO/FIFO-списання падає «Недостатньо партій», а товар «заморожується» (Bug: OPENING_BALANCE
+ * збільшував quantity без партії — початкові залишки ставали несписуваними).
+ * TRANSFER-receipt приходить сюди як RECEIPT (stock-documents), тож покритий.
+ */
+const BATCH_CREATING_INFLOW: ReadonlySet<StockMovementType> = new Set([
+  StockMovementType.RECEIPT,
+  StockMovementType.OPENING_BALANCE,
+]);
+
 export interface CreateMovementDto {
   goodId: string;
   warehouseId: string;
@@ -99,7 +112,9 @@ export class InventoryService {
     // future callers (work-orders, mobile sync, manual adjustments) could leak cross-tenant linkage.
     // FK alone enforces only global existence, not orgId.
     const needsCostLookup =
-      dto.type === 'RECEIPT' && dto.quantity > 0 && (dto.price === undefined || dto.price === null);
+      BATCH_CREATING_INFLOW.has(dto.type) &&
+      dto.quantity > 0 &&
+      (dto.price === undefined || dto.price === null);
     const needsUomGuard = !!dto.unitOfMeasureId;
     const [goodForCost, uom] = await Promise.all([
       needsCostLookup
@@ -166,7 +181,7 @@ export class InventoryService {
       },
     });
 
-    if (dto.type === 'RECEIPT' && dto.quantity > 0) {
+    if (BATCH_CREATING_INFLOW.has(dto.type) && dto.quantity > 0) {
       await this.batchService.createFromReceipt(
         orgId,
         {
@@ -226,6 +241,15 @@ export class InventoryService {
     if (reservedDelta < 0 && upserted.reserved < 0) {
       throw new BadRequestException(
         "Резерв не може стати від'ємним (concurrent RESERVATION_RELEASE)",
+      );
+    }
+    // Симетричний race-guard проти НАД-резервування: pre-check (рядок ~143) читає stale snapshot,
+    // тож два concurrent RESERVATION того ж товару обидва проходять → reserved може перевищити
+    // quantity → available = quantity − reserved стає від'ємним (подвійне резервування одного
+    // комплекту). Post-check row-locked значень → throw → rollback.
+    if (reservedDelta > 0 && upserted.reserved > upserted.quantity) {
+      throw new BadRequestException(
+        'Недостатньо доступного товару для резервування (concurrent RESERVATION)',
       );
     }
 

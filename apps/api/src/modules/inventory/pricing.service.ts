@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { GoodType } from '@prisma/client';
+import { GoodType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type RuleEntry = {
@@ -115,15 +115,21 @@ export class PricingService {
     });
     if (!rule) return 0;
 
-    // brandId scope: if the rule is brand-scoped, recalculate ONLY goods of that brand.
-    const where = {
-      orgId,
-      deletedAt: null as null,
-      ...(rule.goodId ? { id: rule.goodId } : {}),
-      ...(rule.brandId && !rule.goodId ? { brandId: rule.brandId } : {}),
-      ...(rule.goodCategory ? { category: rule.goodCategory } : {}),
-      ...(rule.goodType ? { goodType: rule.goodType as GoodType } : {}),
-    };
+    // Scope-поля правила ВЗАЄМО-ВИКЛЮЧНІ за пріоритетом (див. resolveRule:246-250):
+    // goodId > brandId > goodCategory > goodType > global. where МУСИТЬ відбирати рівно той
+    // набір товарів, до якого правило реально застосується — тобто по ОДНОМУ (найспецифічнішому)
+    // виміру, а не AND усіх полів. Bug #178: раніше AND-ив category+type → комбіноване
+    // brand+category правило звужувало scope, і товари бренду поза категорією не перераховувались.
+    const scope: Prisma.GoodWhereInput = rule.goodId
+      ? { id: rule.goodId }
+      : rule.brandId
+        ? { brandId: rule.brandId }
+        : rule.goodCategory
+          ? { category: rule.goodCategory }
+          : rule.goodType
+            ? { goodType: rule.goodType as GoodType }
+            : {};
+    const where = { orgId, deletedAt: null as null, ...scope };
 
     // Parallel: goods scope + active rules — обидва незалежні fetch'і, можуть виконуватись одночасно.
     // Раніше було послідовно (goods → allRules), хоча allRules не залежить від goods.

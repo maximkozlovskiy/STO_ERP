@@ -4,6 +4,13 @@ import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from './pricing.service';
 
+/**
+ * remainingQty/receivedQty — Float у схемі (підтримує дробові одиниці: літри мастила тощо).
+ * Через IEEE-754 `remainingQty - take` дає залишок ~1e-14 замість 0 → партія-«привид»
+ * лишалась isActive з мікрозалишком, забруднюючи FEFO-обхід. EPSILON квантизує «майже нуль».
+ */
+const QTY_EPSILON = 1e-9;
+
 export interface CreateBatchDto {
   goodId: string;
   warehouseId: string;
@@ -225,7 +232,9 @@ export class BatchService {
             where: { id: batch.id, orgId, remainingQty: { gte: take } },
             data: {
               remainingQty: { decrement: take },
-              isActive: batch.remainingQty - take > 0,
+              // EPSILON-квантизація: залишок ≤ 1e-9 вважаємо вичерпаним (float-дрейф), інакше
+              // партія-привид лишається isActive і забруднює наступні FEFO-обходи.
+              isActive: batch.remainingQty - take > QTY_EPSILON,
             },
           }),
           db.batchConsumption.create({
@@ -269,43 +278,32 @@ export class BatchService {
   async getAvgCost(orgId: string, goodId: string, warehouseId?: string): Promise<number> {
     // warehouseId is optional — omit to aggregate across all warehouses.
     // An empty-string warehouse was previously treated as warehouse "" → 0 batches.
-    // Postgres weighted SUM in a single query vs findMany(take:500) + JS reduce saves
-    // row marshaling on this hot-path (consumeBatch AVG_COST, every WO sale/writeoff).
-    // Determinism preserved: ORDER BY createdAt DESC + LIMIT 500 in the CTE.
+    // Зважена середня = SUM(remainingQty*costPrice)/SUM(remainingQty) по ВСІХ активних партіях.
+    // SUM агрегує в БД і повертає один рядок незалежно від кількості партій — тож LIMIT не
+    // потрібен для продуктивності, а раніше вносив зміщення: при >500 партій найстаріші
+    // (які FIFO/FEFO списує ПЕРШИМИ) випадали з cost-basis → COGS завищений. Без LIMIT — точно.
     type AvgCostRow = { total_cost: number | null; total_qty: number | null };
     const rows = warehouseId
       ? await this.prisma.$queryRaw<AvgCostRow[]>`
-          WITH recent AS (
-            SELECT "remainingQty", "costPrice"
-            FROM stock_batches
-            WHERE "orgId" = ${orgId}::uuid
-              AND "goodId" = ${goodId}::uuid
-              AND "warehouseId" = ${warehouseId}::uuid
-              AND "isActive" = true
-              AND "remainingQty" > 0
-            ORDER BY "createdAt" DESC
-            LIMIT 500
-          )
           SELECT
             COALESCE(SUM("remainingQty" * "costPrice"), 0)::float AS total_cost,
             COALESCE(SUM("remainingQty"),               0)::float AS total_qty
-          FROM recent
+          FROM stock_batches
+          WHERE "orgId" = ${orgId}::uuid
+            AND "goodId" = ${goodId}::uuid
+            AND "warehouseId" = ${warehouseId}::uuid
+            AND "isActive" = true
+            AND "remainingQty" > 0
         `
       : await this.prisma.$queryRaw<AvgCostRow[]>`
-          WITH recent AS (
-            SELECT "remainingQty", "costPrice"
-            FROM stock_batches
-            WHERE "orgId" = ${orgId}::uuid
-              AND "goodId" = ${goodId}::uuid
-              AND "isActive" = true
-              AND "remainingQty" > 0
-            ORDER BY "createdAt" DESC
-            LIMIT 500
-          )
           SELECT
             COALESCE(SUM("remainingQty" * "costPrice"), 0)::float AS total_cost,
             COALESCE(SUM("remainingQty"),               0)::float AS total_qty
-          FROM recent
+          FROM stock_batches
+          WHERE "orgId" = ${orgId}::uuid
+            AND "goodId" = ${goodId}::uuid
+            AND "isActive" = true
+            AND "remainingQty" > 0
         `;
     const totalCost = Number(rows[0]?.total_cost ?? 0);
     const totalQty = Number(rows[0]?.total_qty ?? 0);

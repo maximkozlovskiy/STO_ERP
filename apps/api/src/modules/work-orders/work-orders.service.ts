@@ -671,6 +671,20 @@ export class WorkOrdersService {
     // 50+ parts can exceed the 5s Prisma default.
     const updated = await this.prisma.$transaction(
       async tx => {
+        // Re-read статусу В транзакції: без цього два concurrent transition(COMPLETED)
+        // проходять stale FSM-check і дають ПОДВІЙНИЙ CHARGE (баланс клієнта ×2) + подвійний
+        // WRITEOFF. Дзеркалить guard у supplier-payments.confirm / supplier-returns.confirm.
+        const fresh = await tx.workOrder.findFirst({
+          where: { id, orgId, deletedAt: null },
+          select: { status: true },
+        });
+        if (!fresh) throw new NotFoundException('Наряд не знайдено');
+        if (fresh.status !== wo.status) {
+          throw new BadRequestException(
+            `Статус наряду змінився на "${fresh.status}" — повторіть дію`,
+          );
+        }
+
         if (newStatus === 'IN_PROGRESS') {
           await this.reserveParts(orgId, id, userId, tx);
         }

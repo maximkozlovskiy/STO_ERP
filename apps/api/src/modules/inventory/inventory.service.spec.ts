@@ -98,6 +98,41 @@ describe('InventoryService.createMovement guards', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  // CRITICAL (audit 2026-09-04): OPENING_BALANCE збільшує quantity, тож МУСИТЬ створити партію —
+  // інакше Σ remainingQty=0 при quantity>0 → товар несписуваний («Недостатньо партій»). Початкові
+  // залишки (міграція даних при впровадженні) — типовий сценарій; раніше партія не створювалась.
+  it('OPENING_BALANCE створює партію (як RECEIPT), інакше залишок несписуваний', async () => {
+    await service.createMovement(
+      'org-1',
+      dto({ type: 'OPENING_BALANCE', quantity: 100, price: 50 }),
+    );
+    expect(batchService.createFromReceipt).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ goodId: 'good-1', receivedQty: 100, costPrice: 50 }),
+      expect.anything(),
+    );
+  });
+
+  it('OPENING_BALANCE без price → fallback до good.purchasePrice (партія створюється)', async () => {
+    prisma.good.findFirst.mockResolvedValue({ purchasePrice: 42 });
+    await service.createMovement('org-1', dto({ type: 'OPENING_BALANCE', quantity: 100 }));
+    expect(batchService.createFromReceipt).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ receivedQty: 100, costPrice: 42 }),
+      expect.anything(),
+    );
+  });
+
+  // MEDIUM (audit 2026-09-04): симетричний race-guard проти НАД-резервування. Два concurrent
+  // RESERVATION проходять stale pre-check; post-check row-locked reserved>quantity → throw.
+  it('over-reservation guard: upsert віддає reserved > quantity → throw (concurrent RESERVATION)', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 0 }); // pre-check пройде
+    prisma.stockItem.upsert.mockResolvedValue({ quantity: 10, reserved: 20 }); // race: reserved>quantity
+    await expect(
+      service.createMovement('org-1', dto({ type: 'RESERVATION', quantity: 10 })),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   // Bug #613 (cycle 2 code-review): виклик без tx має самообгортатись у $transaction,
   // щоб throw (race/нестача) не лишив orphan-записів (StockMovement/StockItem/BatchConsumption).
   it('createMovement без tx re-enter через $transaction (атомарність)', async () => {

@@ -540,6 +540,20 @@ export class PurchaseOrdersService {
 
     await this.prisma.$transaction(
       async tx => {
+        // Re-read статусу В транзакції: без цього два concurrent receive() з однаковим payload
+        // проходять stale-check і дають ПОДВІЙНИЙ SUPPLIER_CHARGE (борг постачальнику ×2) +
+        // подвійне оприбуткування. Дзеркалить guard у supplier-payments.confirm.
+        const fresh = await tx.purchaseOrder.findFirst({
+          where: { id, orgId, deletedAt: null },
+          select: { status: true },
+        });
+        if (!fresh) throw new NotFoundException('Замовлення не знайдено');
+        if (fresh.status !== po.status) {
+          throw new BadRequestException(
+            `Статус замовлення змінився на "${fresh.status}" — повторіть прийом`,
+          );
+        }
+
         await Promise.all(
           activeLines.map(({ recv, line }) => {
             // Prefer caller-provided UoM override (already validated against orgId above);

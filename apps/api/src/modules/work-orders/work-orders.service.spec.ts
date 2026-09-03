@@ -122,6 +122,44 @@ describe('WorkOrdersService.findAll — query shape', () => {
 // include, every PATCH of description/mileage/priority would silently null-out
 // the contract row in the detail UI even when contractId stays the same.
 
+// HIGH (audit 2026-09-04): concurrent transition(COMPLETED) давав подвійний CHARGE (баланс ×2).
+// Fix — re-read статусу В $transaction; якщо змінився між pre-tx read і tx → throw (не виконує
+// side-effects повторно). Тест доводить, що вікно закрите: коли in-tx read бачить інший статус.
+describe('WorkOrdersService.transition — in-tx status re-read guard (double-CHARGE)', () => {
+  const WO_ID = '44444444-4444-4444-8444-444444444444';
+
+  it('статус змінився між pre-tx read і tx → throw, side-effects НЕ виконуються повторно', async () => {
+    const findFirst = vi
+      .fn()
+      // 1) pre-tx read — наряд ще IN_PROGRESS (проходить FSM-check IN_PROGRESS→COMPLETED)
+      .mockResolvedValueOnce({
+        id: WO_ID,
+        orgId: ORG,
+        status: 'IN_PROGRESS',
+        number: 'WO-9',
+        outMileage: null,
+        vehicleId: 'v',
+        repairCategory: null,
+        counterpartyId: 'c',
+        totalAmount: 1000,
+      })
+      // 2) in-tx guard read — інший конкурентний виклик уже перевів у COMPLETED
+      .mockResolvedValueOnce({ status: 'COMPLETED' });
+    const update = vi.fn();
+    const prisma = {
+      workOrder: { findFirst, update },
+      $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
+    } as unknown as PrismaService;
+    const service = makeService(prisma);
+
+    await expect(service.transition(ORG, WO_ID, 'COMPLETED' as never)).rejects.toThrow(
+      /Статус наряду змінився/,
+    );
+    // update НЕ викликано — guard спрацював до фінального write і до writeOffPartsAndCharge.
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
 describe('WorkOrdersService.update — query shape (Bug #350 follow-up)', () => {
   const WO_ID = '33333333-3333-4333-8333-333333333333';
 

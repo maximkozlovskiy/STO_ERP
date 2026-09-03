@@ -463,6 +463,10 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
   });
 
   it('receive без unitOfMeasureId override → fallback на good.unitId, createMovement отримує good.unitId', async () => {
+    // In-tx guard re-read (Bug #616 guard): має повернути ТОЙ САМИЙ статус що pre-tx (ORDERED),
+    // інакше `fresh.status !== po.status` кине BadRequestException. Черга Once: pre-tx (beforeEach),
+    // потім цей guard, потім persistent findOne (RECEIVED нижче).
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED });
     // Final findOne after receive (для return value) — service викликає findOne(orgId, id) внутрішньо
     prisma.purchaseOrder.findFirst.mockResolvedValue({
       id: PO_ID,
@@ -513,6 +517,8 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
 
   it('receive з own-org unitOfMeasureId override → unitOfMeasure.findMany викликано з orgId, override застосовано', async () => {
     prisma.unitOfMeasure.findMany.mockResolvedValueOnce([{ id: OWN_UOM_ID }]);
+    // In-tx guard re-read (Bug #616): статус має збігатися з pre-tx (ORDERED) → не throw.
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED });
     prisma.purchaseOrder.findFirst.mockResolvedValue({
       id: PO_ID,
       orgId: ORG,
@@ -617,6 +623,8 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
       { id: LINE_ID, quantity: 5, receivedQty: 5 },
       { id: LINE_ID_2, quantity: 5, receivedQty: 5 },
     ]);
+    // In-tx guard re-read (Bug #616): між pre-tx (ORDERED вище) і findOne (RECEIVED нижче).
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED });
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
       id: PO_ID,
       orgId: ORG,
@@ -689,6 +697,8 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
     prisma.purchaseOrderLine.findMany.mockResolvedValueOnce([
       { id: LINE_ID, quantity: 10, receivedQty: 10 },
     ]);
+    // In-tx guard re-read (Bug #616): статус має збігатися з pre-tx (PARTIAL) → не throw.
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.PARTIAL });
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
       id: PO_ID,
       orgId: ORG,
@@ -735,6 +745,8 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
     prisma.purchaseOrderLine.findMany.mockResolvedValueOnce([
       { id: LINE_ID, quantity: 10, receivedQty: 10 },
     ]);
+    // In-tx guard re-read (Bug #616): статус має збігатися з pre-tx (PARTIAL) → не throw.
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.PARTIAL });
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
       id: PO_ID,
       orgId: ORG,
@@ -807,6 +819,9 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
         },
       ],
     });
+    // In-tx guard re-read (Bug #616): статус має збігатися з pre-tx (ORDERED) → не throw.
+    // Once-черга: pre-tx (ORDERED вище), потім цей guard, потім persistent findOne (RECEIVED).
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED });
     // findOne у кінці
     prisma.purchaseOrder.findFirst.mockResolvedValue({
       id: PO_ID,
@@ -871,6 +886,8 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
         },
       ],
     });
+    // In-tx guard re-read (Bug #616): статус має збігатися з pre-tx (ORDERED) → не throw.
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED });
     prisma.purchaseOrder.findFirst.mockResolvedValue({
       id: PO_ID,
       orgId: ORG,
