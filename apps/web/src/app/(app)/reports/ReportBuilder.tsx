@@ -903,7 +903,10 @@ function ResultView({
         </span>
       </div>
       {!hasGroups && (
-        <div className="flex items-start gap-2 px-4 py-2 border-b border-border bg-amber-50 text-amber-900 text-[12.5px] dark:bg-amber-950/40 dark:text-amber-200">
+        <div
+          role="status"
+          className="flex items-start gap-2 px-4 py-2 border-b border-border bg-amber-50 text-amber-900 text-[12.5px] dark:bg-amber-950/40 dark:text-amber-200"
+        >
           <span aria-hidden>ℹ️</span>
           <span>
             Групування не задано — показано детальні рядки. Щоб згрупувати (напр. за контрагентом,
