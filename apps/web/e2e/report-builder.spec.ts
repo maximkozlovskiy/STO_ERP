@@ -23,6 +23,22 @@ test.describe('Конструктор звітів', () => {
     await expect(page.getByText('Товар', { exact: true }).first()).toBeVisible();
   });
 
+  test('колонки без групування → підказка «Групування не задано»', async ({ page }) => {
+    await page.goto('/reports?tab=builder');
+    await expect(page.locator('button:has-text("Конструктор")')).toBeVisible({ timeout: 20_000 });
+    await page.locator('select').first().selectOption('workOrder');
+    await expect(page.getByText(/Поля «Наряди»/)).toBeVisible({ timeout: 10_000 });
+
+    // Клік «К» (колонка), НЕ «Г» → плоский список без груп.
+    const statusRow = page.locator('div[draggable="true"]:has-text("Статус")').first();
+    await statusRow.getByRole('button', { name: /колонк/i }).click();
+
+    await page.locator('button:has-text("Запустити")').click();
+    await page.getByText(/Результат · рядків/).waitFor({ timeout: 10_000 });
+    // Підказка про відсутнє групування видима; колонки «Кількість» немає.
+    await expect(page.getByText(/Групування не задано/)).toBeVisible();
+  });
+
   test('клік «Г» на полі → групування (не потрібен drag)', async ({ page }) => {
     await page.goto('/reports?tab=builder');
     await expect(page.locator('button:has-text("Конструктор")')).toBeVisible({ timeout: 20_000 });

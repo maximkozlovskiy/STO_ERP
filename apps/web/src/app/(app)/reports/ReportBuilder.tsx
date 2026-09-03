@@ -889,8 +889,10 @@ function ResultView({
   const aggAliases = result.aggregations.map(a => `${a.agg}_${a.field}`);
   const cols = result.columns; // детальні колонки
   const hasGroups = result.groupBy.length > 0;
-  // Ширина labelу першої колонки + всі детальні колонки + count + агрегати.
-  const totalCols = 1 + cols.length + 1 + aggAliases.length;
+  // «Кількість» — це count рядків у групі; у плоскому режимі (без груп) завжди 1 → шум, ховаємо.
+  const showCount = hasGroups;
+  // Ширина labelу першої колонки + всі детальні колонки + (count?) + агрегати.
+  const totalCols = 1 + cols.length + (showCount ? 1 : 0) + aggAliases.length;
 
   return (
     <div className="rounded-xl border border-border bg-surface overflow-hidden">
@@ -900,6 +902,16 @@ function ResultView({
           {result.result.truncated && ' (обрізано до 5000 — звузьте період)'}
         </span>
       </div>
+      {!hasGroups && (
+        <div className="flex items-start gap-2 px-4 py-2 border-b border-border bg-amber-50 text-amber-900 text-[12.5px] dark:bg-amber-950/40 dark:text-amber-200">
+          <span aria-hidden>ℹ️</span>
+          <span>
+            Групування не задано — показано детальні рядки. Щоб згрупувати (напр. за контрагентом,
+            датою чи статусом) і побачити суми — натисніть кнопку{' '}
+            <span className="font-semibold">Г</span> на потрібному полі в палітрі зліва.
+          </span>
+        </div>
+      )}
       <div className="overflow-auto max-h-[60vh]">
         <table className="w-full text-[13px] tabular-nums border-collapse">
           <thead className="sticky top-0 bg-secondary text-muted-foreground">
@@ -918,7 +930,11 @@ function ResultView({
                   {c.label}
                 </th>
               ))}
-              <th className="text-right font-medium px-3 py-2 border-b border-border">Кількість</th>
+              {showCount && (
+                <th className="text-right font-medium px-3 py-2 border-b border-border">
+                  Кількість
+                </th>
+              )}
               {aggAliases.map(a => {
                 const active = sort?.alias === a;
                 const ariaSort: 'ascending' | 'descending' | 'none' = active
@@ -977,7 +993,6 @@ function ResultView({
                         {fmtCell(row[c.key], c.type, c.enumName)}
                       </td>
                     ))}
-                    <td className="text-right px-3 py-1.5 text-muted-foreground">1</td>
                     {aggAliases.map(a => (
                       <td key={a} className="text-right px-3 py-1.5 text-muted-foreground">
                         —
@@ -999,9 +1014,11 @@ function ResultView({
               {cols.map(c => (
                 <td key={c.key} className="border-t border-border" />
               ))}
-              <td className="text-right px-3 py-2 border-t border-border">
-                {result.result.rowCount}
-              </td>
+              {showCount && (
+                <td className="text-right px-3 py-2 border-t border-border">
+                  {result.result.rowCount}
+                </td>
+              )}
               {aggAliases.map(a => (
                 <td key={a} className="text-right px-3 py-2 border-t border-border">
                   {fmtAggValue(a, result.result.grandTotals[a], cols, result.aggregations)}
