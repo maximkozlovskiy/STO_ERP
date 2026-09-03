@@ -9,7 +9,7 @@ description: >
   Output is an IMPLEMENTATION PLAN — not a requirements document.
   Run AFTER sto-analyst (or directly for simple features where requirements are clear).
 bypassPermissions: true
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 ---
 
 # sto-feature — Feature Planning Skill

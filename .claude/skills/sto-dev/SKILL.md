@@ -52,7 +52,7 @@ bypassPermissions: true
 }
 ```
 
-> **Чому "6.0" не працює:** значення `ignoreDeprecations` має бути ≤ поточної TS major. На TS 5.9 валідне тільки `"5.0"`. `"6.0"` стане валідним коли вийде TS 6.
+> `ignoreDeprecations` має бути ≤ поточної TS major. На TS 5.9 валідне тільки `"5.0"`.
 
 ### Заборонені патерни
 
@@ -342,7 +342,7 @@ useEffect(() => {
 const res = await fetch(`/api/work-orders`, { headers: { Authorization: `Bearer ${token}` } });
 
 // ✅ apiFetch (автоматично додає auth + base URL + error handling)
-import { apiFetch } from '@/lib/api';
+import { apiFetch } from '@/lib/api-client';
 const data = await apiFetch<WorkOrder[]>('/work-orders');
 ```
 
@@ -350,10 +350,7 @@ const data = await apiFetch<WorkOrder[]>('/work-orders');
 
 ## UX/UI Features System (Phase 20)
 
-> STO ERP підтримує 10 UX-прапорців у `OrganisationSettings.uiFeatures` (JSON, per-org).
-> Всі прапорці за замовчуванням `true`. Endpoint: `GET /settings/ui-features` (доступний всім ролям).
-> Module-level cache з TTL — один fetch на сесію. При помилці кешує DEFAULTS на 60 сек.
-> Очищення при logout: слухає `sto:logout` event → скидає до DEFAULTS.
+> 10 UX-прапорців у `OrganisationSettings.uiFeatures` (JSON, per-org), всі за замовчуванням `true`. Endpoint `GET /settings/ui-features` (всі ролі). Module-level cache з TTL — один fetch/сесію; при помилці кешує DEFAULTS на 60 сек. Слухає `sto:logout` → скидає до DEFAULTS.
 
 ### uiFeatures — повна схема
 
@@ -520,15 +517,11 @@ hasError && 'border-destructive focus:ring-[hsl(0_86%_93%)',
 hasError && 'border-destructive focus:ring-[hsl(0_86%_93%)]',
 ```
 
-При ручному кодуванні arbitrary values:
-
-1. Завжди подвійно перевір парність `[` і `]` усередині рядка з класами
-2. Якщо клас довгий — винеси в змінну: `const ringErr = 'focus:ring-[hsl(0_86%_93%)]'`
-3. `/sto-review` має grep на незакриті дужки
+При ручному кодуванні: перевіряй парність `[`/`]`; довгий клас винось у змінну (`const ringErr = 'focus:ring-[hsl(0_86%_93%)]'`); `/sto-review` grep'ає незакриті дужки.
 
 ### Blob URL — `revokeObjectURL` тільки через setTimeout
 
-`URL.revokeObjectURL(url)` викликаний **синхронно** після `a.click()` зриває завантаження у Chromium (відкликає URL до того як браузер встигне fetch'нути blob).
+`URL.revokeObjectURL(url)` синхронно після `a.click()` зриває завантаження у Chromium (URL відкликається до fetch blob'а).
 
 ```tsx
 // ❌ Зриває .xlsx завантаження в Chromium
@@ -581,19 +574,9 @@ ALTER TYPE "LiftType" ADD VALUE IF NOT EXISTS 'RAMP';
 
 ### Заборонені операції
 
+Hard delete, пряме оновлення `StockItem`/`SettlementAccount`, запит без `orgId` — див. §2 Service (правила 1-4). Специфічне для Prisma:
+
 ```typescript
-// ❌ Hard delete
-prisma.workOrder.delete({ where: { id } });
-
-// ❌ Пряме оновлення StockItem
-prisma.stockItem.update({ data: { quantity: { decrement: qty } } });
-
-// ❌ Пряме оновлення SettlementAccount
-prisma.settlementAccount.update({ data: { balance: { decrement: amount } } });
-
-// ❌ Запит без orgId
-prisma.workOrder.findUnique({ where: { id } });
-
 // ❌ findMany без take (необмежена вибірка)
 prisma.stockMovement.findMany({ where: { orgId } }); // може повернути мільйони рядків
 // ✅
@@ -796,13 +779,9 @@ await this.smsQueue.add(
 
 ## Безпека
 
+Cross-tenant scoping (`orgId` у кожному запиті) — див. §2 Service правило 1.
+
 ```typescript
-// ❌ Cross-tenant — немає orgId у запиті
-const invoice = await this.prisma.invoice.findUnique({ where: { id } });
-
-// ✅ Завжди orgId
-const invoice = await this.prisma.invoice.findFirst({ where: { id, orgId, deletedAt: null } });
-
 // ❌ Сирий SQL з інтерполяцією
 await this.prisma.$queryRaw(`SELECT * FROM users WHERE name = '${name}'`);
 
@@ -1039,25 +1018,7 @@ import { PickerModal } from '@/components/ui/picker-modal';
 </Modal>
 ```
 
-**Тригер поле — завжди через EntityPickerField (див. §24):**
-
-```tsx
-// ✅ Стандарт: EntityPickerField замість ручної кнопки
-import { EntityPickerField } from '@/components/ui/entity-picker-field';
-
-<EntityPickerField
-  display={selected?.name ?? ''}
-  placeholder="Оберіть..."
-  onOpenDetail={form.entityId ? openEntityDetail : undefined}
-  onPick={() => setPickerOpen(true)}
-  onClear={() => setForm(f => ({ ...f, entityId: '' }))}
-/>
-
-// ❌ ЗАСТАРІЛИЙ патерн — НЕ використовувати
-<button onClick={() => setPickerOpen(true)} className="flex-1 text-left px-3 py-2 ...">
-  {selected ? selected.name : <span className="text-muted-foreground">Оберіть...</span>}
-</button>
-```
+**Тригер поле — завжди через `EntityPickerField`** (повний патерн і заборона ручної кнопки — §24).
 
 ### Заборонені inline-патерни
 
@@ -1306,9 +1267,9 @@ assertFsmTransition(WORK_ORDER_TRANSITIONS, wo.status, newStatus);
 
 ---
 
-## §14 — Modal + ModalTabs для 1-N зв'язків
+## §18 — Modal + ModalTabs для 1-N зв'язків
 
-### §14.1 — Структура Edit Modal з ModalTabs
+### §18.1 — Структура Edit Modal з ModalTabs
 
 Коли сутність має 1+ дочірніх колекцій (контрагент → авто, товар → штрихкоди), організуй edit modal за цим паттерном:
 
@@ -1367,7 +1328,7 @@ setModalChildren(prev => [...prev, created]);
 setModalChildren(prev => prev.filter(c => c.id !== deletedId));
 ```
 
-### §14.2 — Loading/Error в контенті вкладки
+### §18.2 — Loading/Error в контенті вкладки
 
 Loading і error показуються **у tab.content**, не на рівні ModalTabs:
 
@@ -1419,7 +1380,7 @@ tabs={[
 ]}
 ```
 
-### §14.3 — Race guard + скидання стану при відкритті
+### §18.3 — Race guard + скидання стану при відкритті
 
 `openEdit` в event handler → race guard: `const reqId = ++modalChildReqRef.current` + перевірка `if (modalChildReqRef.current !== reqId) return` в `.then/.catch/.finally`.
 
@@ -1427,7 +1388,7 @@ tabs={[
 - Декілька колекцій → окремий reqRef для кожної; fetch паралельно через `Promise.all`
 - ❌ `.catch(() => {})` — ковтає помилку; завжди `setChildError(err.message)`
 
-### §14.4 — AnimatedBody: плавна зміна висоти Modal та collapsible-секцій
+### §18.4 — AnimatedBody: плавна зміна висоти Modal та collapsible-секцій
 
 `<Modal>` анімує висоту автоматично. Для collapse-секцій поза Modal: `import { AnimatedBody } from '@/components/ui/modal'`; `{isOpen && <AnimatedBody className="px-4 py-3">{children}</AnimatedBody>}`.
 
@@ -1661,33 +1622,26 @@ import { TableContainer } from '@/components/ui/table-container';
 
 ### Чому
 
-`TableContainer` автоматично додає клас `table-scroll-container` який вирішує два візуальних баги шапки:
-
-**1. Трек скролбара починається нижче шапки** — `--table-thead-h: 33px` зміщує трек вниз:
+`TableContainer` додає клас `table-scroll-container`, який вирішує два візуальних баги шапки (CSS у globals.css):
 
 ```css
-/* globals.css */
 :root {
   --table-thead-h: 33px;
 }
+/* 1. Трек скролбара починається нижче шапки */
 .table-scroll-container::-webkit-scrollbar-track {
   margin-top: var(--table-thead-h);
 }
-```
-
-**2. Область скролбара (5px справа) зафарбована кольором шапки** — контейнер отримує `bg-secondary`, а `tbody` перекриває до `bg-surface`:
-
-```css
-/* globals.css */
+/* 2. Гатер скролбара = колір шапки, рядки перекривають до surface */
 .table-scroll-container {
-  background-color: var(--color-secondary); /* гатер скролбара = колір шапки */
+  background-color: var(--color-secondary);
 }
 .table-scroll-container tbody {
-  background-color: var(--color-surface); /* рядки — білі */
+  background-color: var(--color-surface);
 }
 ```
 
-❌ Без `TableContainer` — справа від шапки білий простір де видно фон контейнера.  
+❌ Без `TableContainer` — справа від шапки білий простір (видно фон контейнера).  
 ✅ З `TableContainer` — фон за скролбаром збігається з кольором thead.
 
 ### Props

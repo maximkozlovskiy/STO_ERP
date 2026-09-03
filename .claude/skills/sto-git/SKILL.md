@@ -4,7 +4,7 @@ description: >
   Git workflow for STO ERP: commit with conventional messages, branch management, status overview,
   and changelog generation. Use when the user says "закомітити", "зроби commit", "покажи статус",
   "створи гілку", "що змінилось", "зроби changelog", "git", або будь-що пов'язане з git.
-  NOTE: for changelog/release notes tasks use claude-sonnet-4-6 instead of haiku.
+  NOTE: for changelog/release notes tasks use claude-sonnet-5 instead of haiku.
 model: claude-haiku-4-5-20251001
 bypassPermissions: true
 ---
@@ -15,13 +15,13 @@ bypassPermissions: true
 
 Залежно від запиту користувача виконай одну з дій нижче:
 
-| Запит | Дія | Модель |
-|-------|-----|--------|
-| "закомітити", "зроби commit", "commit changes" | → [Commit Flow](#commit-flow) | haiku |
-| "покажи статус", "що змінилось", "git status" | → [Status Overview](#status-overview) | haiku |
-| "створи гілку", "нова гілка", "checkout" | → [Branch Management](#branch-management) | haiku |
-| "зроби changelog", "що нового", "release notes" | → [Changelog](#changelog) | **sonnet** — складний аналіз |
-| "покажи лог", "git log", "що було зроблено" | → [Log Overview](#log-overview) | haiku |
+| Запит                                           | Дія                                       | Модель                       |
+| ----------------------------------------------- | ----------------------------------------- | ---------------------------- |
+| "закомітити", "зроби commit", "commit changes"  | → [Commit Flow](#commit-flow)             | haiku                        |
+| "покажи статус", "що змінилось", "git status"   | → [Status Overview](#status-overview)     | haiku                        |
+| "створи гілку", "нова гілка", "checkout"        | → [Branch Management](#branch-management) | haiku                        |
+| "зроби changelog", "що нового", "release notes" | → [Changelog](#changelog)                 | **sonnet** — складний аналіз |
+| "покажи лог", "git log", "що було зроблено"     | → [Log Overview](#log-overview)           | haiku                        |
 
 > **Changelog/Release Notes** — єдина задача де складності недостатньо для haiku: потрібно кластеризувати commit-и за темами, вибрати найважливіше, написати human-readable summary. Для решти git-операцій haiku достатньо.
 
@@ -30,6 +30,7 @@ bypassPermissions: true
 ## Status Overview
 
 Виконай паралельно:
+
 ```bash
 git status
 git diff --stat
@@ -37,6 +38,7 @@ git log --oneline -10
 ```
 
 Виведи:
+
 - Які файли змінені (M), нові (??)
 - Кількість змінених рядків
 - 10 останніх комітів
@@ -49,6 +51,7 @@ git log --oneline -10
 ### 1. Зібрати інформацію
 
 Виконай паралельно:
+
 ```bash
 git status
 git diff
@@ -58,6 +61,7 @@ git log --oneline -5
 ### 2. Проаналізувати зміни
 
 Розбий зміни по категоріях:
+
 - `feat` — нова функціональність
 - `fix` — виправлення багів
 - `refactor` — рефакторинг без зміни поведінки
@@ -75,11 +79,13 @@ git log --oneline -5
 ```
 
 **Scope** — назва модуля або підсистеми:
+
 - `auth`, `settings`, `work-orders`, `inventory`, `finance`, `crm`, `catalog`
 - `web`, `mobile`, `installer`, `database`, `shared`
 - `docker`, `ci`
 
 **Приклади:**
+
 ```
 feat(settings): SettingsService з Redis-кешем + DocumentNumberingService
 
@@ -147,6 +153,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 ## Branch Management
 
 ### Поточний стан гілок
+
 ```bash
 git branch -a
 git log --oneline main..HEAD  # що є в поточній гілці але немає в main
@@ -169,11 +176,13 @@ chore/<what>
 ```
 
 ### Створити гілку
+
 ```bash
 git checkout -b feature/<name>
 ```
 
 ### Злити в main (після завершення фази)
+
 ```bash
 git checkout main
 git merge --no-ff feature/<name> -m "feat: <Phase N> — <назва фази>"
@@ -196,14 +205,17 @@ git log --oneline v0.1.0..HEAD  # або main..HEAD
 ## [0.2.0] — 2026-05-22
 
 ### Нове
+
 - feat(auth): JWT login/refresh, AuthAccount, seed admin@sto.local
 - feat(settings): SettingsService Redis-кеш, DocumentNumberingService
 - feat(web): wizard першого запуску, сторінка налаштувань
 
 ### Виправлення
+
 - fix(api): видалено застарілі .js файли з src/
 
 ### Технічне
+
 - chore(database): AuthAccount модель, міграція add_auth_account
 - chore(ci): pnpm allowBuilds для @swc/core
 ```
@@ -217,6 +229,7 @@ git log --oneline --graph --all -20
 ```
 
 Виведи структуровано:
+
 - Останні коміти з хешем і повідомленням
 - Які гілки є і де вони відносно main
 - Чи є uncommitted changes
@@ -259,6 +272,7 @@ EOF
 ```
 
 **Формат назви фази:**
+
 - `feat(phase0): bootstrap — монорепо та інфраструктура`
 - `feat(phase1): повна схема БД`
 - `feat(phase2): автентифікація`

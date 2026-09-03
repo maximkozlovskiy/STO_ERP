@@ -2,7 +2,7 @@
 name: sto-architect
 description: >
   Architecture decision records, system design, and technical decisions for STO ERP. Use when the user says "як краще архітектурно", "яке технічне рішення", "ADR", "вибір технології", "як реалізувати sync", "installer", or faces an architectural choice. Produces structured ADR saved to docs/architecture/.
-model: claude-opus-4-7
+model: claude-opus-4-8
 bypassPermissions: true
 ---
 
@@ -29,23 +29,27 @@ bypassPermissions: true
 **Статус:** Запропоновано | Прийнято | Застаріло
 **Контекст:** Чому це рішення потрібно прийняти?
 **Драйвери:**
-  - офлайн-незалежність
-  - простота встановлення для нетехнічного персоналу
-  - ...
+
+- офлайн-незалежність
+- простота встановлення для нетехнічного персоналу
+- ...
 
 ## Розглянуті варіанти
 
 ### Варіант A: {Назва}
+
 **Плюси:** ...
 **Мінуси:** ...
 **Зусилля:** S/M/L
 
 ### Варіант B: {Назва}
+
 **Плюси:** ...
 **Мінуси:** ...
 **Зусилля:** S/M/L
 
 ## Рішення
+
 **Обрано:** Варіант X
 **Обґрунтування:** ...
 **Наслідки:** ...
@@ -59,21 +63,27 @@ bypassPermissions: true
 ## Прийняті рішення (summary)
 
 ### ADR-001: Local-First Offline Architecture ✅
+
 Система повністю функціонує без інтернету. Docker Compose запускає всі сервіси локально. Cloud — опція, не залежність.
 
 ### ADR-002: Docker Compose як одиниця розгортання ✅
+
 Один `docker-compose.yml` описує весь production-стек. Встановлюється через Windows installer. Оновлення через `docker compose pull && docker compose up -d`.
 
 ### ADR-003: Inno Setup + PowerShell для Windows installer ✅
+
 Inno Setup пакує все в один `.exe`. PowerShell-скрипти — логіка встановлення, оновлення, резервного копіювання. Docker images бандлюються як `.tar.gz` (CI-артефакти).
 
 ### ADR-004: WatermelonDB для offline-mobile ✅
+
 Планшети механіків у боксах мають слабкий WiFi. WatermelonDB (SQLite) кешує наряди локально. Sync з основним API при відновленні з'єднання.
 
 ### ADR-005: BullMQ черга для зовнішніх API ✅
+
 SMS, ПРРО (Checkbox), прайси постачальників — через BullMQ з Redis. При offline завдання зберігається в черзі, retry при відновленні. Гарантована доставка.
 
 ### ADR-006: Outbox Pattern для cloud-sync (опц.) ✅
+
 Кожна транзакція пише запис в `event_outbox`. BullMQ worker кожні 30с пушить в Cloud Sync Hub. Conflict resolution: last-write-wins по `updated_at` + vector clocks для WO.
 
 ---
@@ -106,6 +116,7 @@ installer/
 ```
 
 ### Installer Flow
+
 ```
 Користувач запускає STO-ERP-Setup-v1.0.0.exe
   ↓
@@ -127,12 +138,12 @@ installer/
 
 ## Scalability Path
 
-| Фаза | Масштаб | Архітектура |
-|------|---------|-------------|
-| MVP | 1 філія, 1-10 юзерів | Docker Compose, без cloud |
-| v1.1 | 1 філія + cloud backup | Outbox sync, cloud S3 бекап |
-| v2 | Multi-branch (2-10 СТО) | Cloud Hub + консолідація |
-| v3 | SaaS-модель | Cloud-only варіант для малих СТО |
+| Фаза | Масштаб                 | Архітектура                      |
+| ---- | ----------------------- | -------------------------------- |
+| MVP  | 1 філія, 1-10 юзерів    | Docker Compose, без cloud        |
+| v1.1 | 1 філія + cloud backup  | Outbox sync, cloud S3 бекап      |
+| v2   | Multi-branch (2-10 СТО) | Cloud Hub + консолідація         |
+| v3   | SaaS-модель             | Cloud-only варіант для малих СТО |
 
 ---
 
