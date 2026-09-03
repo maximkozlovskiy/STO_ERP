@@ -124,6 +124,7 @@ function ZoneBtn({
       onClick={onClick}
       className={cn(
         'inline-flex size-5 items-center justify-center rounded text-[11px] font-semibold transition-colors',
+        'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
         disabled
           ? 'opacity-30 cursor-not-allowed'
           : active
