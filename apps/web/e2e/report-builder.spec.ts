@@ -23,6 +23,22 @@ test.describe('Конструктор звітів', () => {
     await expect(page.getByText('Товар', { exact: true }).first()).toBeVisible();
   });
 
+  test('клік «Г» на полі → групування (не потрібен drag)', async ({ page }) => {
+    await page.goto('/reports?tab=builder');
+    await expect(page.locator('button:has-text("Конструктор")')).toBeVisible({ timeout: 20_000 });
+    await page.locator('select').first().selectOption('workOrder');
+    await expect(page.getByText(/Поля «Наряди»/)).toBeVisible({ timeout: 10_000 });
+
+    // Клік «Г» (групування) на полі «Статус» через кнопку-літеру (не drag).
+    const statusRow = page.locator('div[draggable="true"]:has-text("Статус")').first();
+    await statusRow.getByRole('button', { name: /групування/i }).click();
+
+    await page.locator('button:has-text("Запустити")').click();
+    await page.getByText(/Результат · рядків/).waitFor({ timeout: 10_000 });
+    // Є групові рядки (aria-expanded) — тобто згруповано, а не плоский список.
+    await expect(page.locator('button[aria-expanded]').first()).toBeVisible();
+  });
+
   test('запуск звіту через API-конфіг → таблиця з підсумками', async ({ page }) => {
     // Драг-н-дроп у headless нестабільний; перевіряємо рендер результату через прямий
     // виклик run у контексті сторінки (той самий шлях, що й кнопка «Запустити»).

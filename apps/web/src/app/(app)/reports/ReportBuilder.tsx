@@ -101,6 +101,41 @@ function isRelation(key: string): boolean {
   return key.includes('.');
 }
 
+/** Кнопка-літера для додавання поля у зону (К/Г/Ф) на чіпі палітри. */
+function ZoneBtn({
+  letter,
+  title,
+  active,
+  disabled,
+  onClick,
+}: {
+  letter: string;
+  title: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        'inline-flex size-5 items-center justify-center rounded text-[11px] font-semibold transition-colors',
+        disabled
+          ? 'opacity-30 cursor-not-allowed'
+          : active
+            ? 'bg-primary text-white'
+            : 'bg-surface/70 hover:bg-surface text-foreground',
+      )}
+    >
+      {letter}
+    </button>
+  );
+}
+
 /** Рядок легенди кольорів: кольоровий кружечок + підпис типу поля. */
 function ColorLegendItem({ className, label }: { className: string; label: string }) {
   return (
@@ -165,11 +200,8 @@ export function ReportBuilder() {
     setResult(null);
   };
 
-  // ── Drag (native HTML5): поле з палітри → зона; reorder усередині зони ──
-  const onDropToZone = (zone: Zone, ev: DragEvent) => {
-    ev.preventDefault();
-    const key = ev.dataTransfer.getData('text/field');
-    if (!key) return;
+  // ── Додавання поля у зону (через клік-кнопку АБО drop) ──
+  const addToZone = (zone: Zone, key: string) => {
     const f = fieldByKey.get(key);
     if (!f) return;
     if (zone === 'groupBy') {
@@ -182,6 +214,13 @@ export function ReportBuilder() {
       if (!f.filterable) return toast.warning('Це поле не фільтрується');
       if (!filters.some(x => x.field === key)) setFilters([...filters, { field: key, op: 'eq' }]);
     }
+  };
+
+  // Drop (native HTML5) — резервний спосіб; основний тепер клік-кнопки на чіпі.
+  const onDropToZone = (zone: Zone, ev: DragEvent) => {
+    ev.preventDefault();
+    const key = ev.dataTransfer.getData('text/field');
+    if (key) addToZone(zone, key);
   };
 
   const removeFrom = (zone: Zone, key: string) => {
@@ -397,23 +436,46 @@ export function ReportBuilder() {
           {/* Палітра полів */}
           <div className="rounded-xl border border-border bg-surface p-3">
             <div className="text-xs font-medium text-muted-foreground mb-2">
-              Поля «{entity.label}» — перетягніть у зони (одне поле можна і в колонки, і в
-              групування, і у фільтри)
+              Поля «{entity.label}» — натисніть <b className="text-foreground">К</b> (колонка),{' '}
+              <b className="text-foreground">Г</b> (групування) або{' '}
+              <b className="text-foreground">Ф</b> (фільтр). Або перетягніть у зону.
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-col gap-1">
               {paletteFields.map(f => (
-                <span
+                <div
                   key={f.key}
                   draggable
                   onDragStart={e => e.dataTransfer.setData('text/field', f.key)}
                   className={cn(
-                    'cursor-grab select-none rounded-full px-2.5 py-1 text-xs',
+                    'flex items-center justify-between gap-1 rounded-lg px-2 py-1 text-xs',
                     chipTone(f.type),
                   )}
                   title={isRelation(f.key) ? `Зв'язане поле: ${f.key}` : f.key}
                 >
-                  {f.label}
-                </span>
+                  <span className="cursor-grab select-none truncate">{f.label}</span>
+                  <span className="flex items-center gap-0.5 shrink-0">
+                    <ZoneBtn
+                      letter="К"
+                      title="Додати у колонки"
+                      active={columns.includes(f.key)}
+                      onClick={() => addToZone('columns', f.key)}
+                    />
+                    <ZoneBtn
+                      letter="Г"
+                      title={f.groupable ? 'Додати у групування' : 'Це поле не можна групувати'}
+                      active={groupBy.includes(f.key)}
+                      disabled={!f.groupable}
+                      onClick={() => addToZone('groupBy', f.key)}
+                    />
+                    <ZoneBtn
+                      letter="Ф"
+                      title={f.filterable ? 'Додати у фільтри' : 'Це поле не фільтрується'}
+                      active={filters.some(x => x.field === f.key)}
+                      disabled={!f.filterable}
+                      onClick={() => addToZone('filters', f.key)}
+                    />
+                  </span>
+                </div>
               ))}
             </div>
             {/* Легенда кольорів чіпів */}
