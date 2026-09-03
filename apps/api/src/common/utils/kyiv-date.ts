@@ -28,3 +28,16 @@ export const kyivOffsetMs = (d: Date): number => {
   const kyivDate = new Date(kyivStr + ' UTC');
   return kyivDate.getTime() - d.getTime();
 };
+
+/**
+ * Перетворює YYYY-MM-DD діапазон (from/to) у UTC-межі Kyiv-доби: `fromDate` = початок дня від,
+ * `toDate` = кінець дня до. DST-aware через kyivOffsetMs. Кидає 400 якщо from > to.
+ * Спільне джерело для reports + report-builder (раніше дублювалось у reports.service).
+ */
+export function normalizeKyivDateRange(from: string, to: string): { fromDate: Date; toDate: Date } {
+  const fromMidnight = new Date(`${from}T00:00:00Z`);
+  const toEndOfDay = new Date(`${to}T23:59:59.999Z`);
+  const fromDate = new Date(fromMidnight.getTime() - kyivOffsetMs(fromMidnight));
+  const toDate = new Date(toEndOfDay.getTime() - kyivOffsetMs(toEndOfDay));
+  return { fromDate, toDate };
+}

@@ -318,11 +318,32 @@ model Organisation {
   exchangeRates         ExchangeRate[]
   bankAccounts          BankAccount[]
   cashRegisters         CashRegister[]
+  savedReports          SavedReport[]
   primaryBankAccount    BankAccount?           @relation("OrgPrimaryBankAccount", fields: [bankAccountId], references: [id])
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("organisations")
+}
+
+/// Збережена конфігурація звіту конструктора (report-builder). config — ReportConfig як JSON.
+model SavedReport {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  entity      String // ключ реєстру (валідність — на app-рівні при run)
+  config      Json
+  createdBy   String?   @db.Uuid
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("saved_reports")
 }
 
 model AuthAccount {
@@ -1395,14 +1416,14 @@ model PurchaseOrderLine {
   orgId           String    @db.Uuid
   purchaseOrderId String    @db.Uuid
   goodId          String    @db.Uuid
-  quantity          Float
-  price             Decimal   @db.Decimal(12, 2)
-  vatRate           Decimal   @default(0) @db.Decimal(5, 2)
-  vatAmount         Decimal   @default(0) @db.Decimal(12, 2)
-  receivedQty       Float     @default(0)
-  pricedSalePrice   Decimal?  @db.Decimal(12, 2)
-  pricingRuleName   String?
-  unitOfMeasureId   String?   @db.Uuid
+  quantity        Float
+  price           Decimal   @db.Decimal(12, 2)
+  vatRate         Decimal   @default(0) @db.Decimal(5, 2)
+  vatAmount       Decimal   @default(0) @db.Decimal(12, 2)
+  receivedQty     Float     @default(0)
+  pricedSalePrice Decimal?  @db.Decimal(12, 2)
+  pricingRuleName String?
+  unitOfMeasureId String?   @db.Uuid
   syncVersion     BigInt    @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt

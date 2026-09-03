@@ -42,6 +42,7 @@ import { InvoicesModule } from './modules/invoices/invoices.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { ReportBuilderModule } from './modules/report-builder/report-builder.module';
 import { FilesModule } from './modules/files/files.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { DocumentNumberModule } from './modules/document-number/document-number.module';
@@ -173,6 +174,7 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
     PaymentsModule,
     NotificationsModule,
     ReportsModule,
+    ReportBuilderModule,
     FilesModule,
     SyncModule,
     DocumentNumberModule,
