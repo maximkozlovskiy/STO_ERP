@@ -116,7 +116,7 @@ git status  # перевірити що staged
 git commit -m "$(cat <<'EOF'
 feat(scope): опис
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -145,7 +145,7 @@ git log --oneline -3  # підтвердити що комі�� створе�
 git add MemoryManual.md
 git commit -m "docs(memory): update MemoryManual after <short description>
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
 ---
@@ -266,7 +266,7 @@ feat(phaseN): <назва фази українською>
 - <ключова зміна 2>
 - <ключова зміна 3>
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -303,5 +303,5 @@ git commit -m "feat(phase3): налаштування та перший запу
 - SetupModule: GET /setup/status + POST /setup/init
 - Web: /setup wizard 5 кроків, /settings UI
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
