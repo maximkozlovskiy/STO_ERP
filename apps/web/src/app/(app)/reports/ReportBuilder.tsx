@@ -206,14 +206,19 @@ export function ReportBuilder() {
     const f = fieldByKey.get(key);
     if (!f) return;
     if (zone === 'groupBy') {
+      // Порядок перевірок важливий: «вже додано» — раніше за ліміт,
+      // інакше клік по вже-активному 6-му полі (при 5/5) кидає toast
+      // «Максимум 5 рівнів», хоча поле в списку вже є (Bug #606).
+      if (groupBy.includes(key)) return;
       if (!f.groupable) return toast.warning('Це поле не можна групувати');
       if (groupBy.length >= 5) return toast.warning('Максимум 5 рівнів групування');
-      if (!groupBy.includes(key)) setGroupBy([...groupBy, key]);
+      setGroupBy([...groupBy, key]);
     } else if (zone === 'columns') {
       if (!columns.includes(key)) setColumns([...columns, key]);
     } else {
+      if (filters.some(x => x.field === key)) return;
       if (!f.filterable) return toast.warning('Це поле не фільтрується');
-      if (!filters.some(x => x.field === key)) setFilters([...filters, { field: key, op: 'eq' }]);
+      setFilters([...filters, { field: key, op: 'eq' }]);
     }
   };
 
