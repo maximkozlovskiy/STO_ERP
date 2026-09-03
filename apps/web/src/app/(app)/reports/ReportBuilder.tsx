@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { X, ChevronRight, ChevronDown, Play, Save, Download, Plus } from 'lucide-react';
+import { X, ChevronRight, ChevronDown, Play, Save, Download } from 'lucide-react';
 import {
   useReportMetadata,
   useRunReport,

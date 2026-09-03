@@ -5,6 +5,39 @@
 
 ---
 
+## 2026-09-03 (a) — feat: конструктор звітів (Report Builder)
+
+### b6301d0e feat(report-builder): backend движок · 320e1e0a frontend
+
+Самообслуговуваний конструктор звітів на `/reports` → вкладка «Конструктор»: перетягування
+полів у колонки, фільтри, **ієрархічне групування до 5 рівнів** (контрагент → товари під ним),
+поля зв'язаних обʼєктів через крапку (`Контрагент.Тип`), підсумки, збереження, експорт CSV/XLSX.
+
+**Backend** (`apps/api/src/modules/report-builder/`):
+
+- **report-registry.ts** — метадата-реєстр (ЄДИНЕ ДЖЕРЕЛО ПРАВДИ): WorkOrder, WorkOrderPart,
+  PurchaseOrderLine (поля/зв'язки/агрегації/прапорці hasSoftDelete/stateNotFlow/signedByType).
+- **report-query.builder.ts** — config→Prisma findMany з whitelist; `hasOwnProperty`-guard проти
+  proto-injection; orgId+deletedAt інжектяться (deletedAt лише FULL); nested deletedAt (Bug #607);
+  relation-поля через include+select; **injection неможливий за побудовою** (усі ключі — реєстрові
+  літерали, ввід лише field.key).
+- **report-aggregator.ts** — JS-групування ≤5 рівнів: SUM/COUNT/AVG/MIN/MAX; balance-SUM guard;
+  знакова quantity; grandTotals незалежним проходом (AVG≠середнє груп).
+- SavedReport модель + міграція `20260903120000_add_saved_reports`. Endpoints
+  `/reports/builder/{metadata,run,saved*}`, ролі OWNER/ADMIN/ACCOUNTANT.
+- normalizeKyivDateRange винесено у kyiv-date.ts (reuse з reports.service).
+
+**Frontend**: вкладка «Конструктор» (ReportBuilder.tsx) — палітра чіп-токенів (native HTML5 drag),
+3 drop-зони (Колонки/Групування/Фільтри), агрегація на числові колонки, фільтри op+value,
+ієрархічна таблиця з розгортанням + tfoot-підсумки, збережені звіти, експорт CSV+XLSX.
+useReportBuilder хуки.
+
+**v1 = каркас + 3 сутності**; реєстр розширюваний (нова сутність = один запис, движок не міняється).
++22 тести (18 backend engine: proto-injection reject, whitelist, ієрархія, 5 рівнів, agg edge;
+4 web hook). API 1112→1130, Web 491→495, tsc 0/0. ⚠️ Міграцію застосувати коли підніметься docker DB.
+
+---
+
 ## 2026-09-02 (g) — feat: drill-down документів у графіку оплат постачальникам
 
 ### 2d960bc9 feat(supplier-payments): drill-down документів у графіку оплат
