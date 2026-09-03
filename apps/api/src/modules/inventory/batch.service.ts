@@ -266,7 +266,10 @@ export class BatchService {
       if (!progressed || batches.length < PAGE) break;
     }
 
-    if (remaining > 0) {
+    // EPSILON-квантизація і тут: залишок ≤ 1e-9 після span'у по дробових партіях — це
+    // float-дрейф (0.3 − 0.1 − 0.1 − 0.1 ≈ 2.7e-17), а не реальна нестача. Без порогу
+    // законне повне списання дробової кількості кидало б хибне «бракує 2.7e-17 одиниць».
+    if (remaining > QTY_EPSILON) {
       throw new BadRequestException(
         `Недостатньо партій для списання: бракує ${remaining} одиниць товару`,
       );
