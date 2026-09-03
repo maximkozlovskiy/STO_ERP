@@ -501,6 +501,7 @@ function FilterZone({
                 >
                   <option value="eq">=</option>
                   <option value="ne">≠</option>
+                  <option value="in">в списку</option>
                   <option value="contains">містить</option>
                   <option value="gt">&gt;</option>
                   <option value="gte">≥</option>
@@ -509,7 +510,43 @@ function FilterZone({
                   <option value="isNull">порожнє</option>
                 </select>
                 {f.op !== 'isNull' &&
-                  (enumVals ? (
+                  (f.op === 'in' ? (
+                    // op=in: бек очікує масив; вводимо через кому або multi-select для enum
+                    enumVals ? (
+                      <select
+                        multiple
+                        value={Array.isArray(f.value) ? (f.value as string[]) : []}
+                        onChange={e => {
+                          const selected = Array.from(e.target.selectedOptions, o => o.value);
+                          update(i, { value: selected });
+                        }}
+                        className="rounded border border-border bg-surface px-1.5 py-1 h-20"
+                      >
+                        {enumVals.map(v => (
+                          <option key={v} value={v}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={
+                          Array.isArray(f.value)
+                            ? (f.value as string[]).join(',')
+                            : String(f.value ?? '')
+                        }
+                        onChange={e =>
+                          update(i, {
+                            value: e.target.value
+                              ? e.target.value.split(',').map(s => s.trim())
+                              : [],
+                          })
+                        }
+                        placeholder="знач1,знач2"
+                        className="rounded border border-border bg-surface px-2 py-1 w-40"
+                      />
+                    )
+                  ) : enumVals ? (
                     <select
                       value={String(f.value ?? '')}
                       onChange={e => update(i, { value: e.target.value })}

@@ -80,6 +80,7 @@ export interface SavedReport {
   name: string;
   entity: string;
   config: ReportConfig;
+  createdBy?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -136,5 +137,12 @@ export function useDeleteSavedReport() {
   return useMutation<void, Error, string>({
     mutationFn: id => apiFetch(`/reports/builder/saved/${id}`, { method: 'DELETE' }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: reportBuilderKeys.saved() }),
+  });
+}
+
+/** Виконати збережений звіт за id (GET /reports/builder/saved/:id/run). */
+export function useRunSavedReport() {
+  return useMutation<ReportRunResult, Error, string>({
+    mutationFn: id => apiFetch(`/reports/builder/saved/${id}/run`),
   });
 }
