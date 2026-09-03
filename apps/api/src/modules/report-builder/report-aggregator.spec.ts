@@ -93,6 +93,24 @@ describe('report-aggregator', () => {
     expect(grouped.tree[0].rows).toBeUndefined();
   });
 
+  it('групування по date-полю нормалізує ключ до дня (YYYY-MM-DD, без годин)', () => {
+    // Два рухи в один день з різним часом → одна група (раніше кожна секунда окрема).
+    const rows = [
+      { type: 'RECEIPT', quantity: 5, createdAt: new Date('2026-09-03T08:15:30Z') },
+      { type: 'RECEIPT', quantity: 3, createdAt: new Date('2026-09-03T19:42:11Z') },
+      { type: 'RECEIPT', quantity: 2, createdAt: new Date('2026-09-04T10:00:00Z') },
+    ];
+    const sm = getEntity('stockMovement');
+    const r = aggregate(
+      rows,
+      { groupBy: ['createdAt'], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      sm,
+    );
+    expect(r.tree.map(n => n.key)).toEqual(['2026-09-03', '2026-09-04']);
+    expect(r.tree[0].count).toBe(2); // два рухи 03.09 в одній групі
+    expect(r.tree[0].value).toBe('2026-09-03'); // value — день, не timestamp
+  });
+
   it('sortByAggregate сортує групи за агрегатом (desc)', () => {
     const rows = [
       part({ cp: 'Малий', amount: 10 }),

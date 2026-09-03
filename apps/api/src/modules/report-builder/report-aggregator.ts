@@ -53,9 +53,16 @@ function getPath(row: Row, prismaPath: string): unknown {
   return node;
 }
 
-/** null/undefined → '∅' (єдина «порожня» група); решта → String. */
-function normalizeKey(value: unknown): string {
+/**
+ * null/undefined → '∅' (єдина «порожня» група); date → YYYY-MM-DD (групування по ДНЮ,
+ * без годин — інакше кожна секунда окрема група); решта → String.
+ */
+function normalizeKey(value: unknown, isDate: boolean): string {
   if (value === null || value === undefined || value === '') return '∅';
+  if (isDate) {
+    const d = value instanceof Date ? value : new Date(String(value));
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10); // YYYY-MM-DD
+  }
   return String(value);
 }
 
@@ -168,16 +175,18 @@ function buildLevel(
 ): GroupNode[] {
   if (depth >= groupBy.length) return [];
   const fld = getField(entity, groupBy[depth]);
+  const isDate = fld.type === 'date';
   const buckets = new Map<string, Row[]>();
   const firstValue = new Map<string, unknown>();
   for (const r of rows) {
     const raw = getPath(r, fld.prismaPath);
-    const k = normalizeKey(raw);
+    const k = normalizeKey(raw, isDate);
     let list = buckets.get(k);
     if (!list) {
       list = [];
       buckets.set(k, list);
-      firstValue.set(k, raw ?? null);
+      // Для дат value = нормалізований день (YYYY-MM-DD), щоб рендер показував день, не timestamp.
+      firstValue.set(k, isDate && k !== '∅' ? k : (raw ?? null));
     }
     list.push(r);
   }

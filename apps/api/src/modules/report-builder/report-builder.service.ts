@@ -133,7 +133,7 @@ export class ReportBuilderService {
   private expandColumns(entity: ReportEntityDef, columns: string[]) {
     return columns.map(key => {
       const f = entity.fields.find(x => x.key === key);
-      return { key, label: f?.label ?? key, type: f?.type ?? 'scalar' };
+      return { key, label: f?.label ?? key, type: f?.type ?? 'scalar', enumName: f?.enumName };
     });
   }
 

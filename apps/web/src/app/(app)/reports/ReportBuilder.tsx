@@ -2,7 +2,16 @@
 
 import { useMemo, useState } from 'react';
 import type { DragEvent, ReactNode } from 'react';
-import { X, ChevronRight, ChevronDown, Play, Save, Download, Filter } from 'lucide-react';
+import {
+  X,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Play,
+  Save,
+  Download,
+  Filter,
+} from 'lucide-react';
 import {
   useReportMetadata,
   useRunReport,
@@ -24,8 +33,37 @@ import { Modal } from '@/components/ui/modal';
 import { fmtMoney, fmtDate, fmtInt } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
+import {
+  WO_STATUS_LABELS,
+  WO_PRIORITY_LABELS,
+  INVOICE_STATUS_LABELS,
+  PO_STATUS_LABELS,
+  COUNTERPARTY_TYPE_LABELS,
+  GOOD_TYPE_LABELS,
+  STOCK_MOVEMENT_TYPE_LABELS,
+  SETTLEMENT_TX_TYPE_LABELS,
+} from '@sto/shared';
 
 type Zone = 'columns' | 'groupBy' | 'filters';
+
+/** enumName реєстру → мапа перекладу (мовою інтерфейсу). Bug: статуси показувались англійською. */
+const ENUM_LABELS: Record<string, Record<string, string>> = {
+  WorkOrderStatus: WO_STATUS_LABELS,
+  WorkOrderPriority: WO_PRIORITY_LABELS,
+  InvoiceStatus: INVOICE_STATUS_LABELS,
+  PurchaseOrderStatus: PO_STATUS_LABELS,
+  CounterpartyType: COUNTERPARTY_TYPE_LABELS,
+  GoodType: GOOD_TYPE_LABELS,
+  StockMovementType: STOCK_MOVEMENT_TYPE_LABELS,
+  SettlementTransactionType: SETTLEMENT_TX_TYPE_LABELS,
+};
+
+/** Переклад enum-значення (fallback — сире значення, якщо мапи/ключа немає). */
+function enumLabel(enumName: string | undefined, value: unknown): string {
+  const v = String(value ?? '');
+  if (!enumName) return v;
+  return ENUM_LABELS[enumName]?.[v] ?? v;
+}
 
 const AGG_LABELS: Record<Agg, string> = {
   SUM: 'Сума',
@@ -33,6 +71,15 @@ const AGG_LABELS: Record<Agg, string> = {
   AVG: 'Середнє',
   MIN: 'Мінімум',
   MAX: 'Максимум',
+};
+
+/** Короткі позначки агрегатів для заголовків колонок результату (щоб не було «Сума: Сума»). */
+const AGG_SHORT: Record<Agg, string> = {
+  SUM: 'Σ',
+  COUNT: 'К-сть',
+  AVG: 'сер.',
+  MIN: 'мін.',
+  MAX: 'макс.',
 };
 
 /** Колір чіпа за типом поля. */
@@ -54,6 +101,16 @@ function isRelation(key: string): boolean {
   return key.includes('.');
 }
 
+/** Рядок легенди кольорів: кольоровий кружечок + підпис типу поля. */
+function ColorLegendItem({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cn('inline-block size-2.5 rounded-full', className)} />
+      {label}
+    </span>
+  );
+}
+
 export function ReportBuilder() {
   const { data: meta, isLoading: metaLoading } = useReportMetadata();
   const runMut = useRunReport();
@@ -72,6 +129,7 @@ export function ReportBuilder() {
   const [result, setResult] = useState<ReportRunResult | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
+  const [configCollapsed, setConfigCollapsed] = useState(false);
 
   const entity: MetaEntity | undefined = useMemo(
     () => meta?.entities.find(e => e.key === entityKey),
@@ -80,6 +138,14 @@ export function ReportBuilder() {
   const fieldByKey = useMemo(() => {
     const m = new Map<string, MetaField>();
     entity?.fields.forEach(f => m.set(f.key, f));
+    return m;
+  }, [entity]);
+  // field.key → enumName (для перекладу enum-значень у результаті/групуванні).
+  const enumByField = useMemo(() => {
+    const m: Record<string, string> = {};
+    entity?.fields.forEach(f => {
+      if (f.enumName) m[f.key] = f.enumName;
+    });
     return m;
   }, [entity]);
 
@@ -167,6 +233,8 @@ export function ReportBuilder() {
     if (!columns.length && !groupBy.length) return toast.warning('Додайте хоча б одну колонку');
     try {
       setResult(await runMut.mutateAsync(buildConfig(sortOverride)));
+      // Після ручного запуску (не пересортування) — згорнути налаштування, звільнити місце.
+      if (sortOverride === undefined) setConfigCollapsed(true);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Помилка звіту');
     }
@@ -266,6 +334,22 @@ export function ReportBuilder() {
                 </Button>
               </>
             )}
+            <Button
+              variant="outline"
+              onClick={() => setConfigCollapsed(c => !c)}
+              aria-expanded={!configCollapsed}
+              title={configCollapsed ? 'Показати налаштування звіту' : 'Згорнути налаштування'}
+            >
+              {configCollapsed ? (
+                <>
+                  <ChevronDown className="size-4" /> Налаштування
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="size-4" /> Згорнути
+                </>
+              )}
+            </Button>
           </>
         )}
       </div>
@@ -304,7 +388,12 @@ export function ReportBuilder() {
           Оберіть джерело даних, щоб почати конструювати звіт.
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
+        <div
+          className={cn(
+            'grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4',
+            configCollapsed && 'hidden',
+          )}
+        >
           {/* Палітра полів */}
           <div className="rounded-xl border border-border bg-surface p-3">
             <div className="text-xs font-medium text-muted-foreground mb-2">
@@ -326,6 +415,13 @@ export function ReportBuilder() {
                   {f.label}
                 </span>
               ))}
+            </div>
+            {/* Легенда кольорів чіпів */}
+            <div className="mt-3 pt-2 border-t border-border flex flex-col gap-1 text-[11px] text-muted-foreground">
+              <ColorLegendItem className="bg-warning-subtle text-warning" label="число / сума" />
+              <ColorLegendItem className="bg-success-subtle text-success" label="список / статус" />
+              <ColorLegendItem className="bg-primary/10 text-primary" label="дата" />
+              <ColorLegendItem className="bg-secondary text-foreground" label="текст" />
             </div>
           </div>
 
@@ -384,10 +480,13 @@ export function ReportBuilder() {
               onRemove={k => removeFrom('filters', k)}
               onChange={setFilters}
             />
-
-            {result && <ResultView result={result} sort={sortAgg} onSort={onSortByAgg} />}
           </div>
         </div>
+      )}
+
+      {/* Результат — на всю ширину (щоб згорнуті налаштування давали більше місця) */}
+      {entity && result && (
+        <ResultView result={result} sort={sortAgg} onSort={onSortByAgg} enumByField={enumByField} />
       )}
 
       {/* Modal керує own mount/unmount + exit-анімацією; НЕ обгортати у {open && …} — це ламає exit. */}
@@ -583,7 +682,7 @@ function FilterZone({
                       >
                         {enumVals.map(v => (
                           <option key={v} value={v}>
-                            {v}
+                            {enumLabel(fld?.enumName, v)}
                           </option>
                         ))}
                       </select>
@@ -614,7 +713,7 @@ function FilterZone({
                       <option value="">—</option>
                       {enumVals.map(v => (
                         <option key={v} value={v}>
-                          {v}
+                          {enumLabel(fld?.enumName, v)}
                         </option>
                       ))}
                     </select>
@@ -681,9 +780,10 @@ export function fmtAggValue(
 
 /** Форматує значення детальної колонки за типом. `number` — кількість (без валюти),
  *  `decimal` — грошове (2 знаки). `boolean === false` пропускає early-return (строгі порівняння). */
-function fmtCell(value: unknown, type: string): string {
+function fmtCell(value: unknown, type: string, enumName?: string): string {
   if (type === 'boolean' && typeof value === 'boolean') return value ? 'Так' : 'Ні';
   if (value === null || value === undefined || value === '') return '—';
+  if (type === 'enum') return enumLabel(enumName, value);
   if (type === 'decimal') return fmtMoney(Number(value));
   if (type === 'number') {
     const n = Number(value);
@@ -694,10 +794,13 @@ function fmtCell(value: unknown, type: string): string {
   return String(value);
 }
 
-function displayGroupValue(node: GroupNode): string {
+/** enumName поля групування (за node.field). */
+function displayGroupValue(node: GroupNode, enumByField: Record<string, string>): string {
   if (node.key === '∅') return '(порожньо)';
   const v = node.value;
   if (typeof v === 'boolean') return v ? 'Так' : 'Ні';
+  const enumName = enumByField[node.field];
+  if (enumName) return enumLabel(enumName, v);
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
     return fmtDate(v);
   }
@@ -708,10 +811,12 @@ function ResultView({
   result,
   sort,
   onSort,
+  enumByField,
 }: {
   result: ReportRunResult;
   sort: { alias: string; dir: 'asc' | 'desc' } | null;
   onSort: (alias: string) => void;
+  enumByField: Record<string, string>;
 }) {
   const aggAliases = result.aggregations.map(a => `${a.agg}_${a.field}`);
   const cols = result.columns; // детальні колонки
@@ -786,6 +891,7 @@ function ResultView({
                     cols={cols}
                     aggAliases={aggAliases}
                     aggregations={result.aggregations}
+                    enumByField={enumByField}
                   />
                 ))
               : // Без групування — плоска таблиця детальних рядків (діра #5).
@@ -800,7 +906,7 @@ function ResultView({
                           c.type === 'decimal' || c.type === 'number' ? 'text-right' : 'text-left',
                         )}
                       >
-                        {fmtCell(row[c.key], c.type)}
+                        {fmtCell(row[c.key], c.type, c.enumName)}
                       </td>
                     ))}
                     <td className="text-right px-3 py-1.5 text-muted-foreground">1</td>
@@ -851,7 +957,8 @@ function aggAliasLabel(alias: string, result: ReportRunResult): string {
   const aggMeta = result.aggregations.find(a => a.field === fieldKey);
   const col = result.columns.find(c => c.key === fieldKey);
   const label = aggMeta?.label ?? col?.label ?? fieldKey;
-  return `${AGG_LABELS[agg as Agg] ?? agg}: ${label}`;
+  // Короткий префікс (Σ Сума, сер. Ціна) — уникає «Сума: Сума» для авто-SUM грошових колонок.
+  return `${AGG_SHORT[agg as Agg] ?? agg} ${label}`;
 }
 
 function GroupRows({
@@ -860,12 +967,14 @@ function GroupRows({
   cols,
   aggAliases,
   aggregations,
+  enumByField,
 }: {
   node: GroupNode;
   depth: number;
-  cols: { key: string; label: string; type: string }[];
+  cols: { key: string; label: string; type: string; enumName?: string }[];
   aggAliases: string[];
   aggregations: { field: string; agg: string; type?: string; label?: string }[];
+  enumByField: Record<string, string>;
 }) {
   const [open, setOpen] = useState(depth < 1);
   const hasChildren = node.children.length > 0;
@@ -895,7 +1004,9 @@ function GroupRows({
             ) : (
               <span className="inline-block w-3.5" />
             )}
-            <span className={cn(depth === 0 && 'font-medium')}>{displayGroupValue(node)}</span>
+            <span className={cn(depth === 0 && 'font-medium')}>
+              {displayGroupValue(node, enumByField)}
+            </span>
           </button>
         </td>
         {/* Детальні колонки у груповому рядку порожні (значення — у листкових рядках) */}
@@ -919,6 +1030,7 @@ function GroupRows({
             cols={cols}
             aggAliases={aggAliases}
             aggregations={aggregations}
+            enumByField={enumByField}
           />
         ))}
       {open &&
@@ -936,7 +1048,7 @@ function GroupRows({
                   c.type === 'decimal' || c.type === 'number' ? 'text-right' : 'text-left',
                 )}
               >
-                {fmtCell(row[c.key], c.type)}
+                {fmtCell(row[c.key], c.type, c.enumName)}
               </td>
             ))}
             <td />

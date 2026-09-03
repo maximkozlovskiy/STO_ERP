@@ -72,7 +72,7 @@ export interface GroupNode {
 }
 export interface ReportRunResult {
   entity: string;
-  columns: { key: string; label: string; type: string }[];
+  columns: { key: string; label: string; type: string; enumName?: string }[];
   groupBy: string[];
   /** Ефективні агрегації (явні + авто-SUM числових колонок) — з них заголовки/дерево.
    * Збагачені `type`/`label` (Bug #620) — для форматування коли поле НЕ у `columns`. */

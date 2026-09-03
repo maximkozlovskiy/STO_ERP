@@ -297,6 +297,28 @@ export const STOCK_DOC_TYPE_LABELS: Record<string, string> = {
   OPENING_BALANCE: 'Поч. залишки',
 };
 
+/** StockMovementType — усі 6 значень руху (STOCK_DOC_TYPE_LABELS покриває лише 4 документні). */
+export const STOCK_MOVEMENT_TYPE_LABELS: Record<string, string> = {
+  RECEIPT: 'Прихід',
+  WRITEOFF: 'Списання',
+  TRANSFER: 'Переміщення',
+  RESERVATION: 'Резервування',
+  RESERVATION_RELEASE: 'Зняття резерву',
+  OPENING_BALANCE: 'Поч. залишки',
+};
+
+/** SettlementTransactionType — 8 типів транзакцій взаєморозрахунків. */
+export const SETTLEMENT_TX_TYPE_LABELS: Record<string, string> = {
+  CHARGE: 'Нарахування',
+  PAYMENT: 'Оплата',
+  PREPAYMENT: 'Передоплата',
+  REFUND: 'Повернення',
+  CREDIT_NOTE: 'Кредит-нота',
+  SUPPLIER_CHARGE: 'Нарахування (постач.)',
+  SUPPLIER_PAYMENT: 'Оплата постачальнику',
+  SUPPLIER_REFUND: 'Повернення постачальнику',
+};
+
 export const STOCK_DOC_TYPE_BADGE: Record<string, BadgeVariant> = {
   WRITEOFF: 'destructive',
   TRANSFER: 'default',

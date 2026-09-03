@@ -216,7 +216,7 @@ const workOrder: ReportEntityDef = {
       prismaPath: 'completedAt',
       aggregations: ['MIN', 'MAX'],
       filterable: true,
-      groupable: false,
+      groupable: true,
     },
     {
       key: 'documentDate',
@@ -225,7 +225,7 @@ const workOrder: ReportEntityDef = {
       prismaPath: 'documentDate',
       aggregations: ['MIN', 'MAX'],
       filterable: true,
-      groupable: false,
+      groupable: true,
     },
     // relation-колонки (рівень 1 — прямий шлях WO→CP, рекомендований):
     {
@@ -692,7 +692,7 @@ const invoice: ReportEntityDef = {
       prismaPath: 'documentDate',
       aggregations: ['MIN', 'MAX'],
       filterable: true,
-      groupable: false,
+      groupable: true,
     },
     {
       key: 'dueDate',
@@ -701,7 +701,7 @@ const invoice: ReportEntityDef = {
       prismaPath: 'dueDate',
       aggregations: ['MIN', 'MAX'],
       filterable: true,
-      groupable: false,
+      groupable: true,
     },
     {
       key: 'counterparty.companyName',
@@ -790,7 +790,7 @@ const payment: ReportEntityDef = {
       prismaPath: 'createdAt',
       aggregations: ['MIN', 'MAX'],
       filterable: true,
-      groupable: false,
+      groupable: true,
     },
     {
       key: 'counterparty.companyName',
@@ -890,7 +890,7 @@ const settlementTransaction: ReportEntityDef = {
       prismaPath: 'createdAt',
       aggregations: ['MIN', 'MAX'],
       filterable: true,
-      groupable: false,
+      groupable: true,
     },
     {
       key: 'account.counterparty.companyName',
@@ -997,7 +997,7 @@ const stockMovement: ReportEntityDef = {
       prismaPath: 'createdAt',
       aggregations: ['MIN', 'MAX'],
       filterable: true,
-      groupable: false,
+      groupable: true,
     },
     {
       key: 'good.name',
@@ -1122,7 +1122,7 @@ const stockBatch: ReportEntityDef = {
       prismaPath: 'expiryDate',
       aggregations: ['MIN', 'MAX'],
       filterable: true,
-      groupable: false,
+      groupable: true,
     },
     {
       key: 'good.name',
