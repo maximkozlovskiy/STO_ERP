@@ -42,6 +42,12 @@ export interface ReportAgg {
   field: string;
   agg: Agg;
 }
+/** Ефективна агрегація з розширеною метаданими (Bug #620): `type`+`label` дозволяють
+ * коректно форматувати MIN/MAX-дати і надписи навіть коли поле НЕ у `columns`. */
+export interface ReportAggEnriched extends ReportAgg {
+  type: string;
+  label: string;
+}
 export interface ReportConfig {
   entity: string;
   columns: string[];
@@ -68,8 +74,9 @@ export interface ReportRunResult {
   entity: string;
   columns: { key: string; label: string; type: string }[];
   groupBy: string[];
-  /** Ефективні агрегації (явні + авто-SUM числових колонок) — з них заголовки/дерево. */
-  aggregations: ReportAgg[];
+  /** Ефективні агрегації (явні + авто-SUM числових колонок) — з них заголовки/дерево.
+   * Збагачені `type`/`label` (Bug #620) — для форматування коли поле НЕ у `columns`. */
+  aggregations: ReportAggEnriched[];
   result: {
     tree: GroupNode[];
     /** Плоскі детальні рядки (проєкція columns) коли groupBy порожній. */

@@ -15,12 +15,20 @@ export type FullReportConfig = ReportConfigInput & {
 
 const NUMERIC_TYPES = new Set(['number', 'decimal']);
 
+/** Ефективна агрегація з розширеною метаданими для UI-рендеру (Bug #620).
+ * `type`+`label` дозволяють правильно форматувати MIN/MAX-дати, гроші, штуки без
+ * додаткового пошуку в метадані фронта, і працює навіть коли поле не в `columns`. */
+export interface ReportAggEnriched extends ReportAggInput {
+  type: string;
+  label: string;
+}
+
 export interface ReportRunResult {
   entity: string;
   columns: Array<{ key: string; label: string; type: string }>;
   groupBy: string[];
   /** Ефективні агрегації (явні + авто-SUM) — для рендеру заголовків/дерева. */
-  aggregations: ReportAggInput[];
+  aggregations: ReportAggEnriched[];
   result: ReportResult;
 }
 
@@ -63,7 +71,18 @@ export class ReportBuilderService {
     // Ефективні агрегації: явні + авто-SUM для числових колонок без обраної агрегації
     // (діра #1: колонка-число без agg раніше губилась). Знакові поля (signedByType) —
     // SUM теж коректний (нетто). balance/stateNotFlow — НЕ авто-SUM (SUM заборонений).
-    const aggregations = this.effectiveAggregations(entity, config);
+    const rawAggregations = this.effectiveAggregations(entity, config);
+    // Bug #620: збагачуємо агрегації типом/label з реєстру — щоб фронт міг форматувати
+    // MIN/MAX-дати як дати, а не як гроші, навіть коли поле НЕ у config.columns.
+    const aggregations: ReportAggEnriched[] = rawAggregations.map(a => {
+      const fld = entity.fields.find(f => f.key === a.field);
+      return {
+        field: a.field,
+        agg: a.agg,
+        type: fld?.type ?? 'scalar',
+        label: fld?.label ?? a.field,
+      };
+    });
 
     // Детальні рядки завжди (діра #5: без цього «детальний звіт» неможливий).
     const includeRows = config.includeRows ?? true;

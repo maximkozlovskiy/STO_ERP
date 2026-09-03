@@ -2084,3 +2084,98 @@ curl POST /api/reports/builder/run -d '{"config":{"entity":"workOrderPart","colu
 **Regression guard:** `http-exception.filter.spec.ts` → `Bug #618: PrismaClientValidationError логується як warn з останнім рядком повідомлення` — симулює реальний Prisma-текст, перевіряє warn-виклик з правильним URL + суттю.
 
 - [x] виправлено
+
+---
+
+## Session 2026-09-03 — Report Builder pivot-модель: live bug hunt (feat/supplier-payments після 7ce451f9)
+
+Проведено ЖИВЕ curl-тестування через `/api/reports/builder/run` (admin@sto.local) з фокусом на консистентність, детальні рядки, авто-SUM, сортування, знакову quantity, date-агрегати. Всі 9 сутностей повертають 200. Інваріант Σ(листкові aggregates) == grandTotal тримається до 1e-6 у 1/2/N-рівневих group by. Знайдено 2 логічні баги (нижче), обидва — семантичні.
+
+### Bug #619 — Report Builder: SUM_quantity для `stockMovement` включає RESERVATION/RESERVATION_RELEASE — псує «нетто» фізичного руху
+
+**Severity:** HIGH — числовий результат SUM неправдивий у сценарії з активним резервуванням; лейбл «Кількість (нетто)» обіцяє фізичне нетто.
+
+**Файл:** `apps/api/src/modules/report-builder/report-aggregator.ts:63-75` (`numericValue`), `report-registry.ts:962-971` (поле `stockMovement.quantity`).
+
+**Симптом (live-репро):**
+
+```
+POST /reports/builder/run { entity:"stockMovement", columns:["quantity"], groupBy:["type"] }
+grandTotals: { SUM_quantity: 37 }
+- RECEIPT count=23 SUM=+122
+- WRITEOFF count=13 SUM=-65
+- RESERVATION count=3 SUM=-10   ← НЕПРАВИЛЬНО: raw stored positive, aggregator примусово негативує
+- RESERVATION_RELEASE count=3 SUM=-10   ← НЕПРАВИЛЬНО: raw stored negative, aggregator НЕ обробляє → залишається негативним
+```
+
+Фізичний нетто-рух за даними = RECEIPT(+122) + WRITEOFF(−65) + RESERVATION(0, не чіпає фізичне) + RESERVATION_RELEASE(0, теж не чіпає) = **+57**.  
+Репортер каже: **+37**. Різниця −20 = «привид» від RESERVATION/RESERVATION_RELEASE, які не є фізичними рухами (див. `inventory.service.ts:187-190`: `quantityDelta = 0` для обох).
+
+**Причина:**
+
+1. Реєстр каже `signedByType: 'type'` для quantity, але код у `numericValue`:
+   ```ts
+   if (typeVal === 'WRITEOFF' || typeVal === 'RESERVATION') n = -Math.abs(n);
+   ```
+   RESERVATION_RELEASE НЕ у списку → бере raw (стор. −5) → залишається негативним.
+   RESERVATION у списку → форсовано негативує raw (стор. +5) → віддає −5.
+2. Але **обидва типи не впливають на фізичний stockItem.quantity** — їх SUM у нетто взагалі не має рахуватися.
+
+**Виправлення (мінімально-безпечне):** у `numericValue` для полів з `signedByType` виключити RESERVATION і RESERVATION_RELEASE з обчислення (повертати `null` — таке ж значення пропускається у reduce). Для WRITEOFF залишити `-Math.abs(n)` як backstop до сирих позитивів у seed. RECEIPT/TRANSFER/OPENING_BALANCE — беруться as-is (їхній знак уже правильний з сервісу).
+
+**Regression guard:** `report-aggregator.spec.ts` → додано 3 тести:
+
+- `Bug #619: signedByType SUM(quantity) виключає RESERVATION/RESERVATION_RELEASE` (табличний з очікуваним фізичним нетто +10 замість −2);
+- `Bug #619: WRITEOFF з випадково додатним raw теж стає негативним (backstop)`;
+- `Bug #619: групування по type — RESERVATION/RESERVATION_RELEASE бакети мають SUM=0` (бакети та grandTotal).
+
+**Live-підтвердження:** після фіксу — `POST /reports/builder/run stockMovement.quantity groupBy=[type]` → grandTotal +57 (було +37 — фантомні −20 від RESERVATION+RESERVATION_RELEASE зникли), RESERVATION/RESERVATION_RELEASE бакети = 0.
+
+- [x] виправлено
+
+### Bug #620 — Report Builder frontend: MIN/MAX для дати рендериться як гроші, коли поле не в `columns`
+
+**Severity:** HIGH — user-facing візуальний баг: замість дати "01.06.2026" користувач бачить "1 780 963 200 000,00 грн".
+
+**Файл:** `apps/web/src/app/(app)/reports/ReportBuilder.tsx:653-674` (`fmtAggValue`).
+
+**Симптом (live-репро):**
+
+```
+POST /reports/builder/run { entity:"invoice", columns:["number"], groupBy:[], aggregations:[{field:"documentDate",agg:"MIN"}] }
+Response:
+  columns: [{key:"number", label:"Номер", type:"scalar"}]  ← БЕЗ documentDate
+  aggregations: [{field:"documentDate", agg:"MIN"}]
+  grandTotals: { MIN_documentDate: 1780963200000 }
+```
+
+Frontend `fmtAggValue('MIN_documentDate', 1780963200000, cols=[{key:'number',...}])`:
+
+1. Не COUNT\_ → пропускає гілку fmtInt.
+2. `fieldKey='documentDate'`.
+3. `cols.find(c => c.key === 'documentDate')` → **undefined** (documentDate НЕ у columns).
+4. `colType = undefined` → fallback → **`fmtMoney(1780963200000)`** → «1 780 963 200 000,00 грн».
+
+**Причина:** резолвер типу поля дивиться лише у `cols` (список показаних колонок), а поле-агрегат може бути ВНЕ колонок. Backend не віддає тип поля у `aggregations`.
+
+**Виправлення:** розширити контракт `aggregations` у відповіді бекенда — додати `type` і `label` для кожного агрегованого поля (з `getField(entity, field)`). Frontend `fmtAggValue` спочатку шукає у `aggregations`, потім (для сумісності) у `cols`. Це:
+
+- ізолює логіку рендеру від складу `columns`;
+- заразом дає label для tooltip/заголовка колонки-агрегату (додатковий бонус).
+
+Backend зміна не ламає існуючих клієнтів (додає поля до існуючих items).
+
+**Виправлення (реалізовано):**
+
+1. `report-builder.service.ts` — новий інтерфейс `ReportAggEnriched extends ReportAggInput { type, label }`; у `run()` після `effectiveAggregations` — map на entity.fields → додає `type` і `label`. `ReportRunResult.aggregations` тепер `ReportAggEnriched[]`.
+2. `apps/web/src/hooks/api/useReportBuilder.ts` — додано `ReportAggEnriched`, `ReportRunResult.aggregations` — це `ReportAggEnriched[]`.
+3. `ReportBuilder.tsx` — `fmtAggValue(alias, value, cols, aggregations?)` — резолвить тип поля СПОЧАТКУ з `aggregations` (source of truth), потім fallback на `cols`; `fmtAggValue` тепер `export`. `aggAliasLabel` — так само (label з aggregations першим, потім columns, потім fieldKey). `GroupRows` приймає `aggregations` пропом (передано з двох call-site: tfoot grand + tree cells).
+
+**Regression guard:** `report-builder.service.spec.ts` (новий) → 2 тести:
+
+- `effectiveAggregations додає авто-SUM тільки для числових колонок без явного agg`;
+- `Bug #620: контракт enrichment — MIN documentDate → {type:'date',label:'Дата'}`.
+
+**Live-підтвердження:** `POST /reports/builder/run { entity:"invoice", columns:["number"], aggregations:[{field:"documentDate",agg:"MIN"}]}` → `aggregations: [{field:"documentDate",agg:"MIN",type:"date",label:"Дата"}]` (було `[{field,agg}]` без типу → фронт рендерив як гроші).
+
+- [x] виправлено

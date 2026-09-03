@@ -59,7 +59,21 @@ function normalizeKey(value: unknown): string {
   return String(value);
 }
 
-/** Числове значення поля з урахуванням знакової quantity (signedByType). */
+/** Числове значення поля з урахуванням знакової quantity (signedByType).
+ *
+ * Bug #619: для stockMovement.quantity (signedByType='type') історична логіка форсувала
+ * знак за типом. Але RESERVATION/RESERVATION_RELEASE — НЕ фізичні рухи (див.
+ * inventory.service.ts:187-190: quantityDelta = 0 для обох; вони чіпають лише лічильник
+ * `reserved`). Тому у нетто-агрегації SUM(quantity) вони мають бути виключені —
+ * інакше «Кількість (нетто)» показує привид від резервувань.
+ *
+ * WRITEOFF залишається `-Math.abs(n)` як backstop (якщо якийсь клієнт зберіг WRITEOFF з
+ * додатною quantity — усе одно повернеться від'ємне значення). RECEIPT/TRANSFER/
+ * OPENING_BALANCE — беруться as-is: їхній знак приходить правильним з сервісу
+ * (RECEIPT >0, TRANSFER-writeoff <0, TRANSFER-receipt >0).
+ */
+const NON_PHYSICAL_MOVEMENT_TYPES = new Set(['RESERVATION', 'RESERVATION_RELEASE']);
+
 function numericValue(row: Row, entity: ReportEntityDef, field: string): number | null {
   const fld = getField(entity, field);
   const raw = getPath(row, fld.prismaPath);
@@ -68,8 +82,9 @@ function numericValue(row: Row, entity: ReportEntityDef, field: string): number 
   if (!Number.isFinite(n)) return null;
   if (fld.signedByType) {
     const typeVal = String(getPath(row, fld.signedByType) ?? '');
-    // Витратні рухи від'ємні (WRITEOFF/RESERVATION), прихід додатний.
-    if (typeVal === 'WRITEOFF' || typeVal === 'RESERVATION') n = -Math.abs(n);
+    // Non-physical movements не беруть участі у фізичному нетто (Bug #619).
+    if (NON_PHYSICAL_MOVEMENT_TYPES.has(typeVal)) return null;
+    if (typeVal === 'WRITEOFF') n = -Math.abs(n);
   }
   return n;
 }

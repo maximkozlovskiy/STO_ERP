@@ -955,9 +955,12 @@ const stockMovement: ReportEntityDef = {
       filterable: true,
       groupable: true,
     },
-    // quantity знакова: SUM дає нетто-рух (прихід + / списання −) через signedByType.
+    // quantity знакова: SUM дає нетто ФІЗИЧНИЙ рух (RECEIPT/OPENING_BALANCE +, WRITEOFF −).
+    // RESERVATION/RESERVATION_RELEASE виключені з нетто (Bug #619) — вони не фізичні рухи,
+    // а лічильник резерву (див. inventory.service.ts:187-190). При групуванні по type їхні
+    // бакети покажуть SUM_quantity=0.
     // filterable:false — фільтр по знаковому quantity вводить в оману (фільтр бере СИРЕ
-    // додатне значення, а SUM показує знакове нетто → quantity>0 пропускає WRITEOFF,
+    // значення з БД, а SUM показує НЕТТО з правилами above → quantity>0 пропускає WRITEOFF,
     // quantity<0 дає порожньо). Для «лише прихід/списання» — фільтр/групування по `type`.
     {
       key: 'quantity',

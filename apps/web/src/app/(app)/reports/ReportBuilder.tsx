@@ -649,18 +649,24 @@ function FilterZone({
  * Форматує значення агрегату за alias і типом поля.
  * MIN/MAX над датою → fmtDate (бекенд повертає Unix-мс від Prisma Date);
  * COUNT → ціле число; решта (SUM/AVG/MIN/MAX числових/decimal) → fmtMoney.
+ *
+ * Bug #620: тип поля резолвиться спочатку з `aggregations` (backend Bug #620 fix — містить
+ * `type` для кожного агрегованого поля), потім (для сумісності) з `cols`. Це критично для
+ * MIN/MAX-дати коли поле НЕ у `columns` — інакше рендериться як гроші.
  */
-function fmtAggValue(
+export function fmtAggValue(
   alias: string,
   value: number | null,
   cols?: { key: string; label: string; type: string }[],
+  aggregations?: { field: string; agg: string; type?: string; label?: string }[],
 ): string {
   if (value === null || value === undefined) return '—';
   if (alias.startsWith('COUNT_')) return fmtInt(value);
   // Визначаємо тип поля за alias щоб відрізнити дати від чисел / money vs units.
   const us = alias.indexOf('_');
   const fieldKey = us >= 0 ? alias.slice(us + 1) : '';
-  const colType = cols?.find(c => c.key === fieldKey)?.type;
+  const aggType = aggregations?.find(a => a.field === fieldKey)?.type;
+  const colType = aggType ?? cols?.find(c => c.key === fieldKey)?.type;
   if (colType === 'date') {
     // Prisma повертає Date-об'єкт; numericValue() → Number(date) = Unix-мс.
     if (!Number.isFinite(value)) return '—';
@@ -779,6 +785,7 @@ function ResultView({
                     depth={0}
                     cols={cols}
                     aggAliases={aggAliases}
+                    aggregations={result.aggregations}
                   />
                 ))
               : // Без групування — плоска таблиця детальних рядків (діра #5).
@@ -823,7 +830,7 @@ function ResultView({
               </td>
               {aggAliases.map(a => (
                 <td key={a} className="text-right px-3 py-2 border-t border-border">
-                  {fmtAggValue(a, result.result.grandTotals[a], cols)}
+                  {fmtAggValue(a, result.result.grandTotals[a], cols, result.aggregations)}
                 </td>
               ))}
             </tr>
@@ -838,8 +845,13 @@ function aggAliasLabel(alias: string, result: ReportRunResult): string {
   const us = alias.indexOf('_');
   const agg = alias.slice(0, us);
   const fieldKey = alias.slice(us + 1);
+  // Bug #620: агрегатне поле може бути ВНЕ `columns` (напр. MIN documentDate без
+  // documentDate у колонках) — беремо label з `aggregations` (backend enrichment),
+  // fallback на `columns`, потім на fieldKey.
+  const aggMeta = result.aggregations.find(a => a.field === fieldKey);
   const col = result.columns.find(c => c.key === fieldKey);
-  return `${AGG_LABELS[agg as Agg] ?? agg}: ${col?.label ?? fieldKey}`;
+  const label = aggMeta?.label ?? col?.label ?? fieldKey;
+  return `${AGG_LABELS[agg as Agg] ?? agg}: ${label}`;
 }
 
 function GroupRows({
@@ -847,11 +859,13 @@ function GroupRows({
   depth,
   cols,
   aggAliases,
+  aggregations,
 }: {
   node: GroupNode;
   depth: number;
   cols: { key: string; label: string; type: string }[];
   aggAliases: string[];
+  aggregations: { field: string; agg: string; type?: string; label?: string }[];
 }) {
   const [open, setOpen] = useState(depth < 1);
   const hasChildren = node.children.length > 0;
@@ -891,7 +905,7 @@ function GroupRows({
         <td className="text-right px-3 py-1.5 text-muted-foreground">{node.count}</td>
         {aggAliases.map(a => (
           <td key={a} className="text-right px-3 py-1.5">
-            {fmtAggValue(a, node.aggregates[a], cols)}
+            {fmtAggValue(a, node.aggregates[a], cols, aggregations)}
           </td>
         ))}
       </tr>
@@ -904,6 +918,7 @@ function GroupRows({
             depth={depth + 1}
             cols={cols}
             aggAliases={aggAliases}
+            aggregations={aggregations}
           />
         ))}
       {open &&

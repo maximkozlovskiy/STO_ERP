@@ -227,4 +227,61 @@ describe('report-aggregator', () => {
     expect(depth).toBe(5);
     expect(node.aggregates.SUM_totalAmount).toBe(500);
   });
+
+  // ── Bug #619: signedByType — RESERVATION/RESERVATION_RELEASE виключені з нетто ──
+  it('Bug #619: signedByType SUM(quantity) виключає RESERVATION/RESERVATION_RELEASE', () => {
+    const sm = getEntity('stockMovement');
+    // raw stored values (як у БД): RECEIPT >0, WRITEOFF <0, RESERVATION >0,
+    // RESERVATION_RELEASE <0 (per inventory.service.ts:78,127,143).
+    const rows = [
+      { type: 'RECEIPT', quantity: 10 },
+      { type: 'RECEIPT', quantity: 5 },
+      { type: 'WRITEOFF', quantity: -3 },
+      { type: 'WRITEOFF', quantity: -2 },
+      { type: 'RESERVATION', quantity: 4 }, // не фізичне → у нетто не входить
+      { type: 'RESERVATION_RELEASE', quantity: -4 }, // не фізичне → у нетто не входить
+    ];
+    const r = aggregate(
+      rows,
+      { groupBy: [], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      sm,
+    );
+    // Фізичне нетто: RECEIPT(+15) + WRITEOFF(-5) = +10.
+    // Якби RESERVATION/RESERVATION_RELEASE потрапляли — було б інше.
+    expect(r.grandTotals.SUM_quantity).toBe(10);
+  });
+
+  it('Bug #619: WRITEOFF з випадково додатним raw теж стає негативним (backstop)', () => {
+    const sm = getEntity('stockMovement');
+    const rows = [
+      { type: 'RECEIPT', quantity: 10 },
+      { type: 'WRITEOFF', quantity: 3 }, // помилково додатний raw — має стати -3
+    ];
+    const r = aggregate(
+      rows,
+      { groupBy: [], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      sm,
+    );
+    expect(r.grandTotals.SUM_quantity).toBe(7);
+  });
+
+  it('Bug #619: групування по type — RESERVATION/RESERVATION_RELEASE бакети мають SUM=0', () => {
+    const sm = getEntity('stockMovement');
+    const rows = [
+      { type: 'RECEIPT', quantity: 10 },
+      { type: 'RESERVATION', quantity: 5 },
+      { type: 'RESERVATION', quantity: 3 },
+      { type: 'RESERVATION_RELEASE', quantity: -5 },
+    ];
+    const r = aggregate(
+      rows,
+      { groupBy: ['type'], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      sm,
+    );
+    const buckets = Object.fromEntries(r.tree.map(n => [n.key, n.aggregates.SUM_quantity]));
+    expect(buckets.RECEIPT).toBe(10);
+    expect(buckets.RESERVATION).toBe(0); // всі значення null → sum=0
+    expect(buckets.RESERVATION_RELEASE).toBe(0);
+    expect(r.grandTotals.SUM_quantity).toBe(10);
+  });
 });
