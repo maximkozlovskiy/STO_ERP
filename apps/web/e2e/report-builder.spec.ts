@@ -37,6 +37,18 @@ test.describe('Конструктор звітів', () => {
     await page.getByText(/Результат · рядків/).waitFor({ timeout: 10_000 });
     // Підказка про відсутнє групування видима; колонки «Кількість» немає.
     await expect(page.getByText(/Групування не задано/)).toBeVisible();
+
+    const table = page.locator('table').first();
+    // Колонка «Кількість» ВІДСУТНЯ у плоскому режимі (commit 915ab374).
+    await expect(table.locator('thead th', { hasText: /^Кількість$/ })).toHaveCount(0);
+    // Перша колонка — «№» (не «Група»).
+    await expect(table.locator('thead th').first()).toHaveText('№');
+    // Вирівнювання не з'їхало: thead == перший рядок body == tfoot.
+    const headCols = await table.locator('thead tr th').count();
+    const bodyCols = await table.locator('tbody tr').first().locator('td').count();
+    const footCols = await table.locator('tfoot tr td').count();
+    expect(bodyCols).toBe(headCols);
+    expect(footCols).toBe(headCols);
   });
 
   test('клік «Г» на полі → групування (не потрібен drag)', async ({ page }) => {
