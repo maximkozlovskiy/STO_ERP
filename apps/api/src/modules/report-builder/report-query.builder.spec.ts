@@ -37,12 +37,11 @@ describe('report-query.builder', () => {
       { entity: 'workOrderPart', columns: ['good.brand.name'], groupBy: [] },
       ORG,
     );
-    // good → include → brand → select:{name:true}; deletedAt на кожному softDelete-хопі
+    // good → include → brand → select:{name:true}. БЕЗ where у nested include (to-one relation).
     expect(q.args.include).toEqual({
       good: {
-        where: { deletedAt: null },
         include: {
-          brand: { where: { deletedAt: null }, select: { name: true } },
+          brand: { select: { name: true } },
         },
       },
     });
@@ -56,7 +55,7 @@ describe('report-query.builder', () => {
     const good = (q.args.include as Record<string, unknown>).good as Record<string, unknown>;
     expect(good.select).toEqual({ name: true });
     expect(good.include).toEqual({
-      brand: { where: { deletedAt: null }, select: { name: true } },
+      brand: { select: { name: true } },
     });
   });
 

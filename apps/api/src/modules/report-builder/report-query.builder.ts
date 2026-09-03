@@ -102,13 +102,12 @@ function mergeIncludePath(include: Obj, entity: ReportEntityDef, prismaPath: str
   let node = include;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i];
-    const prefix = segments.slice(0, i + 1).join('.');
-    const rel = relationForPrefix(entity, prefix);
     node[seg] = node[seg] ?? {};
     const branch = node[seg] as Obj;
-    if (rel?.targetHasSoftDelete && branch['where'] === undefined) {
-      branch['where'] = { deletedAt: null };
-    }
+    // NB: `where` у nested include НЕ дозволений для to-one relation (усі relations тут
+    // belongs-to) → Prisma "Unknown argument where". Soft-delete relation-колонок не критичний
+    // (рядок уже відфільтрований по deletedAt кореневої сутності; ім'я видаленого зв'язку —
+    // прийнятне у звіті). Фільтрація видалених зв'язків у WHERE (setWherePath) — валідна окремо.
     const isLastHop = i === segments.length - 2;
     if (isLastHop) {
       branch['select'] = branch['select'] ?? {};
