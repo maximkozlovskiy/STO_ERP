@@ -12,9 +12,10 @@
 Дата:       2026-09-03
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors
-Тести:      API ✅ 1130/1130 | Web ✅ 495/495 | E2E конструктора 2/2 + фінансові 74/74 ✅
+Тести:      API ✅ 1132/1132 | Web ✅ 495/495 | E2E конструктора 2/2 + фінансові 74/74 ✅
 Sync:       2026-09-03 Report Builder — 3 fixes (useRunSavedReport hook, op=in FilterZone, SavedReport.createdBy)
 Review:     2026-09-03 Report Builder — 4 fixes (React.DragEvent/ReactNode→named, Modal exit-анімація, TR cursor-pointer→button, useMemo palette/usedKeys)
+Tester:     2026-09-03 Report Builder — 2 fixes (Bug #617 CRITICAL include+select mix для parent-leaf+parent.child.leaf → PrismaClientValidationError → 400 mute; Bug #618 LOW mute-log PrismaValidation). Живий інваріант Σ(leaf aggs)==grandTotal підтверджений для 8 сценаріїв (workOrder gb=1/2/3, workOrderPart gb=1/3/5, purchaseOrderLine gb=2), diff=0.000000. Commit a29ae594.
 Конструктор звітів LIVE-ПЕРЕВІРЕНО (2026-09-03, docker піднято): міграція 20260903120000_add_saved_reports застосована; групування контрагент→товар + інваріант Σтоп==grandTotal (3700==3700), enum-relation (Контрагент.Тип), фільтр status=COMPLETED, save/runSaved, валідації (invalid enum→400, groupBy>5→400) — усе ✓. Фікс під час верифікації: прибрано `where` з nested include (to-one relation → Prisma "Unknown argument where"). UI рендериться (палітра+3 зони). Native HTML5 drag Playwright не симулює (обмеження PW, не баг). Лишилось: QA-ланцюжок sync→review→tester.
 Latest feature: 2026-09-03 (feat/supplier-payments) — «Конструктор звітів (Report Builder)». Вкладка «Конструктор» на /reports: drag полів у колонки/групування(≤5)/фільтри, поля зв'язків (Контрагент.Тип), підсумки SUM/COUNT/AVG/MIN/MAX, збереження (SavedReport), експорт CSV/XLSX. Backend: метадата-реєстр (report-registry.ts) — ЄДИНЕ джерело правди; безпечний Prisma-білдер (whitelist + hasOwnProperty-guard, injection неможливий); JS-групування ≤5 рівнів. v1=каркас+3 сутності (WorkOrder/WorkOrderPart/PurchaseOrderLine), реєстр розширюваний. Коміти b6301d0e (backend) + 320e1e0a (frontend). API 1112→1130, Web 491→495.
 3 повні QA-цикли завершено (2026-09-02, feat/supplier-payments): cycle 1 — 1 CRITICAL (AVG_COST sentinel) + altitude ''→null; cycle 2 — 1 HIGH (Bug #613 concurrency) + 3-рівневий backstop (pre-check→post-upsert→DB CHECK) + no-tx self-wrap; cycle 3 — 0 findings (КОНВЕРГЕНЦІЯ + empirical live-DB evidence: CHECK кидає 23514, Σremaining==quantity 0-mismatch 8 пар, balance==Σsigned 0-mismatch 222 акаунти). Кожен цикл: sync→review→tester→optimize→e2e→simplify→code-review→security. API 1057→1095 (+38 guard). 19 комітів.
@@ -58,6 +59,16 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+a29ae594  fix(tester): Report Builder Bug #617/#618 — include+select mix + mute Prisma validation
+          — Bug #617 CRITICAL: mergeIncludePath для parent-leaf + parent.child.leaf (напр. good.name + good.brand.name)
+            генерував include+select на одному рівні → PrismaClientValidationError → 400 mute. Fix: relation-branch
+            повністю через select (nested select для subrel — Prisma-canonical); корінь лишається include.
+          — Bug #618 LOW-DX: PrismaClientValidationError мовчки → 400 без message-логу (15 хв діагностики #617 замість 1 хв).
+            Fix: logger.warn з останнім непорожнім рядком exception.message (Prisma кладе фактичну причину саме туди).
+          — Живий інваріант Σ(листкові aggs)==grandTotal підтверджений для 8 сценаріїв (diff=0.000000).
+          — Regression guards: +2 unit (builder Bug #617 спільні префікси + multi-hop) + 1 unit (filter Bug #618 warn).
+          — Metrics: API 1130→1132 tests (+2), tsc clean.
+
 ad65c36f  fix(review): 5 findings on supplier-payments schedule + PO paymentDate (feat/supplier-payments)
           — getSchedule: counterpartyContract.findMany take=5000, from<=to валідація + cap 100 днів
           — receive: перевірка po.contract.deletedAt перед застосуванням paymentDeferDays
