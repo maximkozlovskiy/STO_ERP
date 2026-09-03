@@ -36,11 +36,13 @@ import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { SupplierReturnsModule } from './modules/supplier-returns/supplier-returns.module';
+import { SupplierPaymentsModule } from './modules/supplier-payments/supplier-payments.module';
 import { StockDocumentsModule } from './modules/stock-documents/stock-documents.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { ReportBuilderModule } from './modules/report-builder/report-builder.module';
 import { FilesModule } from './modules/files/files.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { DocumentNumberModule } from './modules/document-number/document-number.module';
@@ -166,11 +168,13 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
     CalendarModule,
     PurchaseOrdersModule,
     SupplierReturnsModule,
+    SupplierPaymentsModule,
     StockDocumentsModule,
     InvoicesModule,
     PaymentsModule,
     NotificationsModule,
     ReportsModule,
+    ReportBuilderModule,
     FilesModule,
     SyncModule,
     DocumentNumberModule,

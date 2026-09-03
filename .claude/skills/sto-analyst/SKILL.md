@@ -7,7 +7,7 @@ description: >
   Produces: user stories, process flows, business rules catalogue (BR-XXX-NNN), acceptance criteria.
   Output is a REQUIREMENTS DOCUMENT — not a task list.
   Run BEFORE sto-feature (which answers "HOW").
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 bypassPermissions: true
 ---
 

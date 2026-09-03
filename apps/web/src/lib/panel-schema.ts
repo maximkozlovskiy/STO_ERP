@@ -17,6 +17,7 @@ import type { Invoice } from '@/hooks/api/useInvoices';
 import type { WorkOrder } from '@/hooks/api/useWorkOrders';
 import type { Work } from '@/hooks/api/useWorks';
 import type { PurchaseOrder } from '@/hooks/api/usePurchaseOrders';
+import type { SupplierPayment } from '@/hooks/api/useSupplierPayments';
 import type { StockDoc } from '@/hooks/api/useStockDocuments';
 import type { StockItem } from '@/hooks/api/useInventory';
 import type { Counterparty } from '@/hooks/api/useCounterparties';
@@ -184,6 +185,18 @@ export const PURCHASE_ORDER_PANEL_SCHEMA = [
   { key: 'notes', label: 'Нотатки' },
   { key: 'createdAt', label: 'Дата', type: 'date' },
 ] as const satisfies readonly PanelFieldDef<PurchaseOrder>[];
+
+export const SUPPLIER_PAYMENT_PANEL_SCHEMA = [
+  { key: 'status', label: 'Статус', always: true },
+  { key: 'supplierName', label: 'Постачальник' },
+  { key: 'sourceName', label: 'Джерело коштів' },
+  { key: 'method', label: 'Метод оплати' },
+  { key: 'amount', label: 'Сума', type: 'money' },
+  { key: 'purchaseOrderNumber', label: 'Замовлення' },
+  { key: 'documentDate', label: 'Дата документа', type: 'date' },
+  { key: 'notes', label: 'Нотатки' },
+  { key: 'createdAt', label: 'Дата', type: 'date' },
+] as const satisfies readonly PanelFieldDef<SupplierPayment>[];
 
 export const STOCK_DOC_PANEL_SCHEMA = [
   { key: 'type', label: 'Тип', always: true },

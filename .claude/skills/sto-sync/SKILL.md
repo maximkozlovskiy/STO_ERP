@@ -8,7 +8,7 @@ description: >
   коли блок має і backend і frontend зміни; або коли юзер каже "синхронізуй",
   "API не відповідає", "фронт не бачить даних", "типи розходяться".
   Завжди ПІСЛЯ sto-backend + sto-web, ПЕРЕД sto-review + sto-tester.
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 bypassPermissions: true
 ---
 

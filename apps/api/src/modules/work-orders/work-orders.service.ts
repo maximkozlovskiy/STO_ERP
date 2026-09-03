@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
-import { calculatePagination } from '../../common/utils/pagination';
+import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -77,6 +77,16 @@ const COST_PRICE_VISIBLE_ROLES = new Set<string>(['OWNER', 'ADMIN', 'STOREKEEPER
 const canSeeCostPrice = (role?: string | null): boolean =>
   !!role && COST_PRICE_VISIBLE_ROLES.has(role);
 
+// sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
+// re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/INV_SORT_FIELDS/PO_SORT_FIELDS/SD_SORT_FIELDS.
+const WO_SORT_FIELDS: Record<string, string> = {
+  documentDate: 'documentDate',
+  createdAt: 'createdAt',
+  plannedAt: 'plannedAt',
+  dueDate: 'dueDate',
+  totalAmount: 'totalAmount',
+};
+
 @Injectable()
 export class WorkOrdersService {
   private readonly logger = new Logger(WorkOrdersService.name);
@@ -130,21 +140,13 @@ export class WorkOrdersService {
     }
 
     const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
-    const WO_SORT: Record<string, string> = {
-      documentDate: 'documentDate',
-      createdAt: 'createdAt',
-      plannedAt: 'plannedAt',
-      dueDate: 'dueDate',
-      totalAmount: 'totalAmount',
-    };
-    const sortField = WO_SORT[query.sortBy ?? ''] ?? 'createdAt';
-    const sortDir = query.sortDir === 'asc' ? 'asc' : 'desc';
+    const orderBy = buildSortOrderBy(WO_SORT_FIELDS, query.sortBy, query.sortDir);
     const [items, total] = await Promise.all([
       this.prisma.workOrder.findMany({
         where,
         skip,
         take,
-        orderBy: { [sortField]: sortDir },
+        orderBy,
         include: {
           vehicle: { select: { make: true, model: true, licensePlate: true } },
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
@@ -877,20 +879,36 @@ export class WorkOrdersService {
         },
         db,
       );
-      await this.inventory.createMovement(
+      // WRITEOFF списує партії (FIFO/costMethod з налаштувань) і повертає реальну
+      // собівартість (COGS). НЕ передаємо price=part.price (то ЦІНА ПРОДАЖУ) — собівартість
+      // визначається партіями. Фіксуємо batchCostPrice/batchId у part для звіту рентабельності.
+      const writeoff = await this.inventory.createMovement(
         orgId,
         {
           goodId: part.goodId,
           warehouseId: part.warehouseId,
           type: 'WRITEOFF',
           quantity: -baseQty,
-          price: Number(part.price),
           documentType: 'WorkOrder',
           documentId: wo.id,
+          documentLineId: part.id,
           createdBy: userId,
         },
         db,
       );
+      if (writeoff.weightedCostPrice != null) {
+        // batchId лише коли списано рівно з однієї реальної партії. AVG_COST-агрегат
+        // повертає batchId=null, span — length>1 → обидва дають null (нема single-batch
+        // трасування). Нижче NULL коректно лягає у nullable uuid WorkOrderPart.batchId.
+        const singleBatchId = writeoff.consumed.length === 1 ? writeoff.consumed[0].batchId : null;
+        await db.workOrderPart.update({
+          where: { id: part.id },
+          data: {
+            batchCostPrice: writeoff.weightedCostPrice,
+            batchId: singleBatchId,
+          },
+        });
+      }
     }
     const chargeAmount = Number(wo.totalAmount ?? 0);
     if (chargeAmount <= 0)

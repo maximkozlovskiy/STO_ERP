@@ -5,6 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** UUID v4 shape (case-insensitive). Спільний для валідації deep-link/route params. */
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Bug #139: відображення імені контрагента — спільна логіка для combobox primary,
  * displayValue і список item'ів. Прибирає dead `?? ''` після `.join(' ')` і додає
@@ -52,6 +55,47 @@ export function toIdMap<T extends { id: string }>(arr: T[]): Map<string, T> {
   const m = new Map<string, T>();
   for (const x of arr) m.set(x.id, x);
   return m;
+}
+
+/**
+ * Тон-семантика балансу CP залежить від типу — CLIENT+SUPPLIER мають РІЗНУ шкалу
+ * "проблема vs OK". Bug #606: до фіксу два UI-місця (список settlements + картка CP)
+ * використовували дві різні захардкоджені евристики і показували ту саму цифру
+ * контрастним кольором.
+ *
+ * Семантика (узгоджена з бековим BALANCE_SIGN):
+ * - CLIENT: balance>0 = клієнт нам винен (дебіторська, треба стягнути → destructive);
+ *   balance<0 = переплата клієнта (треба вирішити → warning).
+ * - SUPPLIER: balance<0 = ми винні постачальнику (кредиторська → destructive);
+ *   balance>0 = ми переплатили постачальнику (аномалія → warning).
+ * - BOTH: обидва напрямки можливі — будь-який ненульовий = destructive (привертає увагу,
+ *   бо тип-нейтрально інтерпретувати не можемо без деталізації по transactions).
+ * - unknown/undefined type: fallback як BOTH (безпечно).
+ */
+export function settlementBalanceTone(
+  balance: number,
+  cpType: 'CLIENT' | 'SUPPLIER' | 'BOTH' | string | null | undefined,
+): 'destructive' | 'warning' | 'success' | 'muted' {
+  if (balance === 0) return 'muted';
+  if (cpType === 'CLIENT') return balance > 0 ? 'destructive' : 'warning';
+  if (cpType === 'SUPPLIER') return balance < 0 ? 'destructive' : 'warning';
+  // BOTH або невідомий тип — будь-який ненульовий баланс потребує уваги.
+  return 'destructive';
+}
+
+/** Tailwind-клас для тону settlementBalanceTone. Спрощує використання у JSX. */
+export function settlementBalanceToneClass(tone: ReturnType<typeof settlementBalanceTone>): string {
+  switch (tone) {
+    case 'destructive':
+      return 'text-destructive';
+    case 'warning':
+      return 'text-warning';
+    case 'success':
+      return 'text-success';
+    case 'muted':
+    default:
+      return 'text-muted-foreground';
+  }
 }
 
 /** Single-pass VAT + total computation for line/part rows. */

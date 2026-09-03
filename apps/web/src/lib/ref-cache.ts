@@ -29,6 +29,7 @@ export type RefCacheKey =
   | 'cache:wo-templates'
   | 'cache:currencies'
   | 'cache:bank-accounts'
+  | 'cache:cash-registers'
   | 'cache:works'
   | 'cache:good-categories';
 

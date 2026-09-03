@@ -39,7 +39,7 @@ export default function CurrenciesTab() {
   useEffect(() => {
     setLoadingCurrencies(true);
     const cached = getCached<{ items: Currency[] }>('cache:currencies');
-    if (cached) {
+    if (cached && Array.isArray(cached.items)) {
       setCurrencies(cached.items);
       setLoadingCurrencies(false);
     }

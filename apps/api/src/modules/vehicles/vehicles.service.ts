@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateVehicleDto,
@@ -16,13 +16,16 @@ export class VehiclesService {
     orgId: string,
     customerGarageId?: string,
     counterpartyId?: string,
+    showDeleted = false,
   ): Promise<VehicleResponseDto[]> {
     // sto-optimize: counterpartyId filter eliminates frontend N+1 (CRM/calendar
     // were doing garages → per-garage vehicles fetch). Single join replaces N RTT.
+    // showDeleted: показує soft-deleted авто (форма контрагента, галка «Показувати видалені»).
+    // Гараж-контейнер лишається `deletedAt: null` — видаляємо авто, не гараж.
     const items = await this.prisma.vehicle.findMany({
       where: {
         orgId,
-        deletedAt: null,
+        ...(showDeleted ? {} : { deletedAt: null }),
         ...(customerGarageId ? { customerGarageId } : {}),
         ...(counterpartyId ? { customerGarage: { counterpartyId, orgId, deletedAt: null } } : {}),
       },
@@ -69,6 +72,51 @@ export class VehiclesService {
       data: { deletedAt: new Date() },
     });
     if (result.count === 0) throw new NotFoundException('Автомобіль не знайдено');
+  }
+
+  async restore(orgId: string, id: string): Promise<VehicleResponseDto> {
+    // Bug #601/#602: до atomic-restore перевіряємо чи chain-parents (garage → counterparty)
+    // ще активні. `create()` захищає це для нових авто (findFirst гаража перед create),
+    // але restore() без парного guard силентно створює orphan reference:
+    //   - гараж soft-deleted (removeGarage не cascade-soft-deletes vehicles) → авто «зомбі»,
+    //     не показується у `findAll(counterpartyId=)` (фільтр customerGarage.deletedAt:null)
+    //   - CP soft-deleted (remove не cascade-soft-deletes garages) → авто у видаленому клієнті
+    // Читаємо vehicle разом з garage.counterparty; distinguisher за станом ланцюга.
+    const existing = await this.prisma.vehicle.findFirst({
+      where: { id, orgId },
+      select: {
+        deletedAt: true,
+        customerGarage: {
+          select: {
+            deletedAt: true,
+            counterparty: { select: { deletedAt: true } },
+          },
+        },
+      },
+    });
+    if (!existing) throw new NotFoundException('Видалене авто не знайдено');
+    if (existing.deletedAt === null) {
+      // double-restore — вже активне; лишаємо ту саму 404-семантику що для (id + orgId) misses.
+      throw new NotFoundException('Видалене авто не знайдено');
+    }
+    if (existing.customerGarage.counterparty.deletedAt !== null) {
+      throw new BadRequestException('Контрагента авто видалено. Спочатку відновіть контрагента.');
+    }
+    if (existing.customerGarage.deletedAt !== null) {
+      throw new BadRequestException(
+        'Гараж авто видалено. Спочатку відновіть гараж або перемістіть авто.',
+      );
+    }
+    // Atomic updateMany з `NOT: { deletedAt: null }` — один statement стверджує
+    // (id, orgId, currently-deleted), усуває race-вікно між findFirst + update
+    // (еталон brands.service.restore).
+    const result = await this.prisma.vehicle.updateMany({
+      where: { id, orgId, NOT: { deletedAt: null } },
+      data: { deletedAt: null },
+    });
+    if (result.count === 0) throw new NotFoundException('Видалене авто не знайдено');
+    const item = await this.prisma.vehicle.findFirstOrThrow({ where: { id, orgId } });
+    return this.toDto(item);
   }
 
   // ─── VehicleNodes ────────────────────────────────────────
@@ -148,6 +196,7 @@ export class VehiclesService {
     inspectionExpiry: Date | null;
     createdAt: Date;
     updatedAt: Date;
+    deletedAt?: Date | null;
   }): VehicleResponseDto {
     return {
       id: v.id,
@@ -173,6 +222,7 @@ export class VehiclesService {
         v.inspectionExpiry instanceof Date ? v.inspectionExpiry.toISOString() : v.inspectionExpiry,
       createdAt: v.createdAt instanceof Date ? v.createdAt.toISOString() : v.createdAt,
       updatedAt: v.updatedAt instanceof Date ? v.updatedAt.toISOString() : v.updatedAt,
+      deletedAt: v.deletedAt instanceof Date ? v.deletedAt.toISOString() : (v.deletedAt ?? null),
     };
   }
 

@@ -25,37 +25,38 @@ sto-erp/
 
 ## API Модулі (`apps/api/src/modules/`)
 
-| Модуль             | Controller prefix                                              | Ключові ендпоінти                                             |
-| ------------------ | -------------------------------------------------------------- | ------------------------------------------------------------- |
-| `auth`             | `/api/auth`                                                    | login, refresh, logout                                        |
-| `work-orders`      | `/api/work-orders`                                             | CRUD + `/transition` + `/clone` + `/parts` + `/lines`         |
-| `calendar`         | `/api/calendar`                                                | `/slots`, `/slots/by-work-order/:id`, `/conflicts/check`      |
-| `invoices`         | `/api/invoices`                                                | CRUD + `/transition` + `/lines`                               |
-| `purchase-orders`  | `/api/purchase-orders`                                         | CRUD + `/transition` + `/receive` + `/apply-pricing`          |
-| `stock-documents`  | `/api/stock-documents`                                         | CRUD + `/transition`                                          |
-| `inventory`        | `/api/stock-items`, `/api/stock-movements`, `/api/goods`       | `/by-document`, `/by-batch`, `/stock-totals`                  |
-| `settlements`      | `/api/settlements`                                             | accounts, transactions, reconciliation-acts                   |
-| `crm`              | `/api/counterparties`                                          | CRUD + `/contracts` + `/contracts/:id/set-primary`            |
-| `catalog`          | `/api/works`, `/api/goods`, `/api/services`                    | CRUD + barcodes, batches                                      |
-| `employees`        | `/api/employees`                                               | CRUD                                                          |
-| `pricing-rules`    | `/api/pricing-rules`                                           | CRUD + `/apply`                                               |
-| `xlsx`             | `/api/xlsx`                                                    | `/import`, `/apply-pricing-from-list`, `/templates/:type`     |
-| `infrastructure`   | `/api/branches`, `/api/warehouses`, `/api/zones`, `/api/lifts` | CRUD                                                          |
-| `settings`         | `/api/settings`                                                | `/organisation`, `/ui-features`                               |
-| `user-preferences` | `/api/user-preferences`                                        | `GET/PUT /:key`                                               |
-| `reports`          | `/api/reports`                                                 | dashboard, revenue, workload                                  |
-| `notifications`    | `/api/notifications`                                           | list, read                                                    |
-| `completion-acts`  | `/api/completion-acts`                                         | CRUD + PDF                                                    |
-| `vehicles`         | `/api/vehicles`                                                | CRUD + vehicleNodes sub-resource                              |
-| `payment-methods`  | `/api/payment-methods`                                         | CRUD довідника способів оплати                                |
-| `payments`         | `/api/payments`                                                | create → `SettlementsService.createTransaction(PAYMENT)`      |
-| `services`         | `/api/services`                                                | CRUD пакетів послуг (Work+Good bundle)                        |
-| `work-categories`  | `/api/work-categories`                                         | CRUD ієрархії категорій                                       |
-| `zones`            | `/api/zones`                                                   | CRUD + lifts sub-resource                                     |
-| `document-number`  | (internal)                                                     | `next(orgId, type)` → генерує номер по `DocumentNumberConfig` |
-| `files`            | `/api/files`                                                   | upload/download через MinIO                                   |
-| `setup`            | `/api/setup`                                                   | `POST /setup` — перший запуск, seed org+admin                 |
-| `sync`             | `/api/sync`                                                    | `pull(since)` + `push(records)` + `getStatus()`               |
+| Модуль             | Controller prefix                                              | Ключові ендпоінти                                                                           |
+| ------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `auth`             | `/api/auth`                                                    | login, refresh, logout                                                                      |
+| `work-orders`      | `/api/work-orders`                                             | CRUD + `/transition` + `/clone` + `/parts` + `/lines`                                       |
+| `calendar`         | `/api/calendar`                                                | `/slots`, `/slots/by-work-order/:id`, `/conflicts/check`                                    |
+| `invoices`         | `/api/invoices`                                                | CRUD + `/transition` + `/lines`                                                             |
+| `purchase-orders`  | `/api/purchase-orders`                                         | CRUD + `/transition` + `/receive` + `/apply-pricing`                                        |
+| `stock-documents`  | `/api/stock-documents`                                         | CRUD + `/transition`                                                                        |
+| `inventory`        | `/api/stock-items`, `/api/stock-movements`, `/api/goods`       | `/by-document`, `/by-batch`, `/stock-totals`                                                |
+| `settlements`      | `/api/settlements`                                             | accounts, transactions, reconciliation-acts                                                 |
+| `crm`              | `/api/counterparties`                                          | CRUD + `/contracts` + `/contracts/:id/set-primary`                                          |
+| `catalog`          | `/api/works`, `/api/goods`, `/api/services`                    | CRUD + barcodes, batches                                                                    |
+| `employees`        | `/api/employees`                                               | CRUD                                                                                        |
+| `pricing-rules`    | `/api/pricing-rules`                                           | CRUD + `/apply`                                                                             |
+| `xlsx`             | `/api/xlsx`                                                    | `/import`, `/apply-pricing-from-list`, `/templates/:type`                                   |
+| `infrastructure`   | `/api/branches`, `/api/warehouses`, `/api/zones`, `/api/lifts` | CRUD                                                                                        |
+| `settings`         | `/api/settings`                                                | `/organisation`, `/ui-features`                                                             |
+| `user-preferences` | `/api/user-preferences`                                        | `GET/PUT /:key`                                                                             |
+| `reports`          | `/api/reports`                                                 | dashboard, revenue, workload                                                                |
+| `report-builder`   | `/api/reports/builder`                                         | metadata/run/saved — конструктор звітів (реєстр + dynamic Prisma-білдер + JS-групування ≤5) |
+| `notifications`    | `/api/notifications`                                           | list, read                                                                                  |
+| `completion-acts`  | `/api/completion-acts`                                         | CRUD + PDF                                                                                  |
+| `vehicles`         | `/api/vehicles`                                                | CRUD + vehicleNodes sub-resource                                                            |
+| `payment-methods`  | `/api/payment-methods`                                         | CRUD довідника способів оплати                                                              |
+| `payments`         | `/api/payments`                                                | create → `SettlementsService.createTransaction(PAYMENT)`                                    |
+| `services`         | `/api/services`                                                | CRUD пакетів послуг (Work+Good bundle)                                                      |
+| `work-categories`  | `/api/work-categories`                                         | CRUD ієрархії категорій                                                                     |
+| `zones`            | `/api/zones`                                                   | CRUD + lifts sub-resource                                                                   |
+| `document-number`  | (internal)                                                     | `next(orgId, type)` → генерує номер по `DocumentNumberConfig`                               |
+| `files`            | `/api/files`                                                   | upload/download через MinIO                                                                 |
+| `setup`            | `/api/setup`                                                   | `POST /setup` — перший запуск, seed org+admin                                               |
+| `sync`             | `/api/sync`                                                    | `pull(since)` + `push(records)` + `getStatus()`                                             |
 
 ### Singleton сервіси (critical, одна точка мутації)
 

@@ -5,6 +5,524 @@
 
 ---
 
+## 2026-09-03 (c) — fix: конструктор звітів — фідбек користувача (5 проблем)
+
+- **Згортання панелей:** кнопка «Згорнути/Налаштування» + авто-згортання після «Запустити»,
+  звіт на всю ширину.
+- **Легенда кольорів** чіпів під палітрою (число/статус/дата/текст).
+- **Переклад enum** мовою інтерфейсу (CHARGE→«Нарахування») у рядках/групах/фільтрах.
+  +2 shared-мапи (STOCK_MOVEMENT_TYPE_LABELS, SETTLEMENT_TX_TYPE_LABELS); response columns += enumName.
+- **Групування по датах:** date-поля тепер groupable; нормалізація ключа по ДНЮ (не по секунді).
+- Короткі заголовки агрегатів («Σ Сума» замість «Сума: Сума»).
+
+**QA-ланцюжок:** sync 1 (enumName у backend-інтерфейсі) / review **1 CRITICAL** (date-групування
+було по UTC-дню → операція о 01:30 Kyiv потрапляла у попередній день; fix — KYIV_YMD, +2 DST-тести
+літо/зима) / tester 0 багів (live: ~25 cross-midnight записів — server == client Kyiv-день, інваріант
+Σ==grandTotal). API 1149→1151, Web 495, tsc 0. Коміти 189e2510/089b790e/a9112413.
+
+---
+
+## 2026-09-03 (b) — fix: конструктор звітів — pivot-модель (логічний аудит)
+
+Логічний аудит виявив розбіжність: UI обіцяв pivot (колонки+детальні рядки+групування), а
+рушій вмів лише group-by+aggregate. Виправлено 4 діри + supporting:
+
+- **#1 авто-SUM:** числова колонка без явної агрегації губилась → `effectiveAggregations` авто-SUM.
+- **#5 детальні рядки:** були недосяжні → `detailRows` (плоскі) + `node.rows` (на листі),
+  `includeRows` завжди. Тепер видно і колонки-значення, і окремі записи.
+- **#6 сортування:** групи лише за алфавітом → `sortByAggregate` (клік по заголовку агрегату,
+  toggle asc/desc); `∅` бере участь; `hasOwnProperty`-guard на alias (proto-injection, review).
+- **#3 знакова quantity:** фільтр брав сире, SUM — знакове → `filterable:false`, фільтр по type.
+- COUNT прибрано з нечислових полів (дублював group.count).
+
+**QA-ланцюжок (live):** sync 1 (date-agg рендерився як гроші) / review 6 (4 IMPORTANT: quantity
+як гроші, stale agg/sort, a11y aria-sort, **sortNodes proto-guard**; 2 suggest) / tester 2 HIGH
+(**Bug #619** SUM(quantity) рахував резервування як фізичні → нетто 37 замість 57, cross-verified
+`stockMovement.SUM==stockItem.SUM=57`; **Bug #620** date-агрегат як гроші коли поле не в columns).
+
+Інваріант `Σлистків==grandTotal` — live-verified усі 9 сутностей diff=0. API 1130→1148, Web 495,
+tsc 0. Коміти 611cb157/78aa9277/eee7cb8e/7ce451f9/5d79db82.
+
+---
+
+## 2026-09-03 (a) — feat: конструктор звітів (Report Builder)
+
+### b6301d0e feat(report-builder): backend движок · 320e1e0a frontend
+
+Самообслуговуваний конструктор звітів на `/reports` → вкладка «Конструктор»: перетягування
+полів у колонки, фільтри, **ієрархічне групування до 5 рівнів** (контрагент → товари під ним),
+поля зв'язаних обʼєктів через крапку (`Контрагент.Тип`), підсумки, збереження, експорт CSV/XLSX.
+
+**Backend** (`apps/api/src/modules/report-builder/`):
+
+- **report-registry.ts** — метадата-реєстр (ЄДИНЕ ДЖЕРЕЛО ПРАВДИ): WorkOrder, WorkOrderPart,
+  PurchaseOrderLine (поля/зв'язки/агрегації/прапорці hasSoftDelete/stateNotFlow/signedByType).
+- **report-query.builder.ts** — config→Prisma findMany з whitelist; `hasOwnProperty`-guard проти
+  proto-injection; orgId+deletedAt інжектяться (deletedAt лише FULL); nested deletedAt (Bug #607);
+  relation-поля через include+select; **injection неможливий за побудовою** (усі ключі — реєстрові
+  літерали, ввід лише field.key).
+- **report-aggregator.ts** — JS-групування ≤5 рівнів: SUM/COUNT/AVG/MIN/MAX; balance-SUM guard;
+  знакова quantity; grandTotals незалежним проходом (AVG≠середнє груп).
+- SavedReport модель + міграція `20260903120000_add_saved_reports`. Endpoints
+  `/reports/builder/{metadata,run,saved*}`, ролі OWNER/ADMIN/ACCOUNTANT.
+- normalizeKyivDateRange винесено у kyiv-date.ts (reuse з reports.service).
+
+**Frontend**: вкладка «Конструктор» (ReportBuilder.tsx) — палітра чіп-токенів (native HTML5 drag),
+3 drop-зони (Колонки/Групування/Фільтри), агрегація на числові колонки, фільтри op+value,
+ієрархічна таблиця з розгортанням + tfoot-підсумки, збережені звіти, експорт CSV+XLSX.
+useReportBuilder хуки.
+
+**v1 = каркас + 3 сутності**; реєстр розширюваний (нова сутність = один запис, движок не міняється).
+
+### QA-ланцюжок (live, docker піднято 2026-09-03)
+
+- **sync (463da2ad)** — 3 розбіжності виправлено: +useRunSavedReport хук, фільтр-op `in` без UI-опції
+  (тепер multi-select для enum / масив через кому), SavedReport.createdBy у типі.
+- **review (0fb4d368)** — 1 IMPORTANT (Modal exit-анімація подвійний guard) + 3 SUGGESTION
+  (named React imports, a11y: клікабельний рядок → inner button + aria-expanded + focus-visible,
+  memo для palette/usedKeys). Backend 0 findings (injection неможливий, tenant/soft-delete/DoS ✓).
+- **tester (a29ae594)** — **Bug #617 CRITICAL**: `mergeIncludePath` для комбо `good.name`+`good.brand.name`
+  генерував Prisma-заборонений `include`+`select` на одному рівні → 400. Fix: relation-branch повністю
+  через nested `select`. **Bug #618 LOW-DX**: PrismaClientValidationError мовчки → 400 без логу
+  (тепер logger.warn з причиною). +3 regression.
+
+**ФІНАНСОВИЙ ІНВАРІАНТ (live, 8 сценаріїв):** Σ(листкові aggregates) == grandTotal, diff=0 —
+1-5 рівнів групування × усі 3 сутності (workOrder 30478, workOrderPart 3700, purchaseOrderLine
+vatAmount 26760.6 / receivedQty 301). Валідації тримаються (proto-injection, whitelist, enum,
+groupBy>5, дати, SUM-on-price, tenant, nested deletedAt Bug #607).
+
+Fix під час live-верифікації (13861792): прибрано `where` з nested include (to-one relation →
+Prisma "Unknown argument where"). +22 юніт/hook + 3 regression + 2 E2E. API 1112→1132, Web 491→495,
+tsc 0/0. UI live-перевірено (палітра+зони), native HTML5 drag Playwright не симулює (обмеження PW).
+
+---
+
+## 2026-09-02 (g) — feat: drill-down документів у графіку оплат постачальникам
+
+### 2d960bc9 feat(supplier-payments): drill-down документів у графіку оплат
+
+Клік по клітинці/колонці «Графіка оплат» → панель під таблицею зі списком PO, по яких
+виникає ця оплата (№ · дата оплати · сума · залишок · перехід на PO). Тригери: клітинка
+постачальник×день, рядок «Разом» (усі постачальники), бакети «Протерміновані»/«Планові».
+
+**Backend:** винесено ЄДИНИЙ private `computeScheduleAllocations` (FIFO-налив боргу на PO +
+кредит-ліміт зі збереженням per-PO алокацій). `getSchedule` → тонка обгортка (DTO незмінний),
+новий `getScheduleDocuments` фільтрує алокації по бакету → **Σ allocated панелі == сума клітинки
+за конструкцією** (немає sibling-drift). Новий `GET /supplier-payments/schedule/documents`
+(date XOR target, supplierId опційний) перед `:id`.
+
+**Frontend:** `useSupplierPaymentDocuments` (enabled лише при кліку), клікабельні клітинки з сумою,
+підсвічування активної, панель під таблицею, reuse `PurchaseOrderCreateModal` для переходу на PO.
+
+### QA-ланцюжок
+
+- **sync** — 0 розбіжностей (контракт узгоджений).
+- **review (c7708711)** — 1 IMPORTANT: a11y — `role="button"` клітинки без `tabIndex`+`onKeyDown`
+  (WCAG 2.1.1, keyboard-only не міг відкрити drill-down). Fix: `activateOnKey` + focus-visible ring.
+- **tester (4ff47b9d)** — Bug #616 MEDIUM: новий `date` DTO мав `@Matches(YMD_RE)` без
+  `@IsDateString({strict})` → семантично-невалідні дати (`2026-99-99`) → silent-empty замість 400
+  (sibling-drift Bug #595 у тому ж файлі). Fix + 6 regression. **Live-інваріант консистентності:
+  18/18 клітинок, 0 mismatches.**
+
+API 1106→1112, Web 491, tsc 0/0, E2E +1.
+
+---
+
+## 2026-09-02 (f) — QA-цикл 3 фінальний: КОНВЕРГЕНЦІЯ (0 findings)
+
+### review cycle 3 final — 0 findings
+
+Незалежний фінальний прохід на HEAD 3f3a0a32 (26 файлів у diff 74bf41b6..HEAD). Перевірено:
+
+- **createMovement no-tx self-wrap** (inventory.service.ts:87-91): recursive `$transaction(inner => this.createMovement(orgId, dto, innerTx))` — на 2-му проходженні `tx` defined → wrapper skip (0 подвійна обгортка). Всі inner-writes через `db=tx`. `getAvgCost` через `this.prisma` — read-only snapshot ДО списання (задокументовано). 15s timeout адекватний.
+- **DB CHECK migration 20260902210000**: clamp idempotent (WHERE quantity<0), DO-guard IF NOT EXISTS на pg_constraint idempotent, імена унікальні (grep = 1 match), `isActive=false` при `remainingQty<0` — broken batch → deactivate (логічно).
+- **sumLineTotals** (vat.ts:45): `unknown`-типізація приймає Prisma.Decimal і plain number; `Number()` коерсія коректна. Обидва callsites (invoices.clone:338, refreshFromWorkOrder:698) передають об'єкти з 3 полями.
+- **Cross-cutting**: 0 `React.X`, 0 `console.log`, 0 `: any`, 0 BOM, всі findMany з `take`, всі $transaction з timeout, 0 hard-delete у зачеплених сервісах, 0 sentinel.
+
+Baseline тримається: API 1095/1095, Web 488/488, TSC api ✅ 0 / web ✅ 0. Не з цієї сесії (pre-existing SUGGESTION, не блокатор): `fetchPartCoefficients` в work-orders.service:1559 без orgId — UUID PK, атака неможлива, залишено на майбутнє.
+
+### Решта фінального циклу 3 — усе чисто
+
+- **tester (247f33cb)** — 0 активних багів + **жива DB-верифікація конвергенції**: CHECK-constraints реально кидають 23514 на негативний INSERT/UPDATE (не тільки app-guard); rollback тримає атомарність на mixed ORM+raw; `Σ remainingQty==quantity` для 8 пар = 0 mismatch; `balance==Σ signed(tx)` для 222 акаунтів = 0 mismatch. SKILL +1 «Live-DB probe» + застереження: semantic-мапу (BALANCE_SIGN) читати з коду, не hardcode-ити у probe (дало 8 phantom mismatch).
+- **optimize** — 0 findings, 0 комітів (сигнал конвергенції). Self-wrap не додає RTT на hot-path (all callers pass tx), CHECK — inline per-row 0 I/O, sumLineTotals single-pass збережено.
+- **e2e** — 74/74 фінансові спеки green.
+- **simplify** (4-angle convergence sweep) — 0 нових findings; sumLineTotals єдиний 3-field reduce-triple, null-контракт уніфікований.
+- **code-review --fix** — 0 нових багів; 4 cross-cycle interaction-гіпотези очищені (CHECK vs transient-negative; self-wrap vs non-tx callers; nested $transaction; float-rounding clamp).
+- **security-review** — 0 findings; ключове: 23514 CHECK-violation → generic HTTP 500 «Внутрішня помилка сервера» (raw PG-текст лише у logger, не у client → 0 leak table/column/constraint names); self-wrap DoS HTTP-недосяжний; cost-поля виключені з MECHANIC-проєкцій.
+
+**Підсумок 3 циклів QA:** cycle 1 — 1 CRITICAL (AVG_COST sentinel) + altitude fix ''→null; cycle 2 — 1 HIGH (Bug #613 concurrency) + 3-рівневий backstop + no-tx self-wrap; cycle 3 — 0 findings (конвергенція, empirical live-DB evidence). API 1057→1095 (+38 regression-guards), Web 488. 19 комітів.
+
+---
+
+## 2026-09-02 (e) — Повний QA-цикл 2 (sync/review/tester/optimize/e2e/simplify/code-review/security)
+
+### cbebc2f5 fix(tester): Bug #613 — concurrent WRITEOFF race guard (HIGH)
+
+`createMovement` pre-check `available >= |qty|` читав STALE snapshot без row-lock → два concurrent WRITEOFF
+того самого товару обидва проходили → `StockItem.quantity`/`StockBatch.remainingQty` могли стати від'ємними
+(немає CHECK). Fix: (a) post-upsert re-check через `.select({quantity,reserved})` (RETURNING, 0 RTT) → throw
+→ rollback; (b) `stockBatch.update({decrement})` → `updateMany({where:{remainingQty:{gte:take}}})` atomic
+conditional decrement, count=0 → throw. +5 regression + mid-life switch invariants (#614).
+
+### 33008171 perf(optimize): single-pass aggregation
+
+getSchedule byDateSum inline + invoices totals single-pass. Concurrency-фікс concept-верифіковано:
+`.select` на upsert = RETURNING (0 extra RTT), updateMany count у response — фікс НЕ ослаблений.
+
+### 76a7d0fa refactor(simplify): DB-CHECK backstop + sumLineTotals (altitude+reuse)
+
+Міграція 20260902210000: CHECK `stock_items(quantity>=0 AND reserved>=0)` + `stock_batches(remainingQty>=0)`
+як джерело-правди на рівні БД (ловить будь-який забутий/майбутній writer, зокрема sync-merge). App-guard
+лишається (локалізоване повідомлення + CAS-retry) — defense-in-depth на 3 рівнях. `sumLineTotals` винесено
+у vat.ts (обидва invoice-сайти). Post-upsert check гейтимо за знаком дельти.
+
+### 8636a7db fix(review): createMovement no-tx self-wrap у $transaction
+
+Latent gap: multi-write createMovement (movement+consume+upsert+consumption) у no-tx гілці не обгортав
+у транзакцію → throw лишив би orphan-записи. Fix: `if (!tx) return $transaction(inner => …)`. +2 regression.
+
+### 3f3a0a32 fix(security): orgId у consumeBatch updateMany (defense-in-depth)
+
+CLAUDE.md #6 — orgId у where updateMany (атака неможлива, id — UUID PK з orgId-scoped findMany).
+
+**Пройдено чисто:** sync 0 · review 0 · e2e 59/59 · security 0 findings. API 1095/1095, Web 488/488, tsc 0/0.
+
+---
+
+## 2026-09-02 (d) — Повний QA-цикл 1 (sync/review/tester/optimize/e2e/simplify/code-review/security)
+
+### 184b257a fix(review): AVG_COST sentinel batchId='' пробивав UUID FK (CRITICAL)
+
+`BatchService.consumeBatch(AVG_COST)` повертав `[{batchId:'', …}]`; `createMovement` + `writeOffPartsAndCharge`
+писали `''` у `@db.Uuid` → Postgres "invalid input syntax for type uuid" → WRITEOFF/WO COMPLETED падав
+на всіх org з costMethod=AVG_COST. Fix: truthy-guard у 2 write-шляхах + 2 regression-specs.
+
+### 1350cb3f perf(optimize): consume hot-path index + PO list nowMs memo
+
+Covering index `stock_batches(orgId,goodId,warehouseId,isActive,createdAt)` усуває external sort на кожній
+сторінці FIFO/LIFO consumeBatch (migration 20260902200000). `nowMs=useMemo` замість per-row `getTime()` у
+purchase-orders списку.
+
+### 58e522ef fix(e2e): supplier-payment stale sign-assertion
+
+E2E `supplier-payments.spec.ts:181` стверджував стару семантику (PAYMENT, balanceBefore−200). Після переходу
+на SUPPLIER_PAYMENT (BALANCE_SIGN=+1) баланс постачальника (відʼємний = «ми винні») підіймається до 0 →
+assertion `balanceBefore+200`, тип транзакції `SUPPLIER_PAYMENT`.
+
+### 02559610 refactor(simplify): sentinel batchId ''→null у джерелі + reuse BALANCE_SIGN
+
+Altitude-фікс (4 simplify-агенти): `BatchConsumeResult.batchId` `string→string|null`; AVG_COST-агрегат повертає
+`null`, який напряму лягає у nullable uuid → обидва call-site гейти згортаються у плоский тернар без truthy-обгортки
+й дубльованого коментаря. `batch.invariants.spec` реюзає ЕКСПОРТОВАНУ `BALANCE_SIGN` (інверсія знаку у прод
+тепер впаде тут). Прибрано неможливий `fc.pre` + JS-тавтологію.
+
+**Пройдено чисто:** sync 0 розбіжностей · code-review 0 correctness-багів · security-review 0 (tenant isolation,
+$queryRaw параметризований, consume-loop обмежений, e2e-JWT — прострочений local fixture). API 1083/1083, Web
+488/488, tsc 0/0.
+
+---
+
+## 2026-09-02 (c)
+
+### test(invariants): +24 property-based тести — FIFO/AVG/BALANCE/TRANSFER (Bug #612)
+
+**Контекст:** bug hunt циклу 1 на feat/supplier-payments сфокусований на 5 фінансово-чутливих
+інваріантах (партійне FIFO/FEFO/LIFO/AVG списання; supplier balance sign 8 типів; FIFO-графік оплат;
+TRANSFER cost-carry; AVG_COST sentinel edge-cases). **0 нових активних багів** — усі 5 областей
+уже покриті recent commits (#606-#611 + #597-#600).
+
+**Додано** `apps/api/src/modules/inventory/batch.invariants.spec.ts` (24 property-based тести):
+
+1. **BatchService — consume invariants** (10): Σ consumed==qty; масовий баланс; нема партій у мінус;
+   remainingQty=0→isActive=false; FIFO/LIFO order; нестача → error БЕЗ мутації (all-or-nothing);
+   AVG_COST sentinel форма; single-vs-span batchId fixation; cross-method Σ==qty.
+2. **SupplierPayments.getSchedule — FIFO invariants** (5): Σ bucket==payable; надлишок→overdue; FIFO
+   строгий порядок закриття PO; кредит-ліміт planned→dates-desc→overdue; ліміт≥payable→усе 0.
+3. **BALANCE_SIGN — supplier cycle** (5): SUPPLIER_CHARGE→balance=-X; повний цикл→0;
+   payable=max(0,-balance); частковий X-Y; SUPPLIER_REFUND має ТОЙ САМИЙ знак що SUPPLIER_PAYMENT.
+4. **StockDocument TRANSFER — cost-carry** (4): weightedCostPrice→target.price; null→fallback;
+   **0 (free sample) через `??` НЕ падає у fallback** (документує `||` як БАГ).
+
+Всі 24 PASS з першого запуску. API tests 1059→1083, TS 0/0.
+
+---
+
+## 2026-09-02 (b)
+
+### feat(inventory): підключення партійного FIFO-списання + COGS до розходів
+
+**Баг (виявлено при перевірці собівартості/партійності):** `consumeBatch` (FIFO/FEFO/LIFO/AVG,
+написаний і протестований) — **0 викликів** з реальних розходів («мертвий код»). Партії лише
+створювались (RECEIPT), `remainingQty` монотонно ріс (розсинхрон із StockItem.quantity), COGS у
+наряді = ціна ПРОДАЖУ (не собівартість), `WorkOrderPart.batchCostPrice` завжди NULL → звіт
+рентабельності брав `Good.purchasePrice` (неточна маржа), налаштування «Метод списання партій»
+(FIFO/FEFO/LIFO/Середній у НДІ→Організація) ігнорувалось.
+
+**Рішення — ЦЕНТРАЛІЗАЦІЯ у `createMovement`** (CLAUDE.md: stock тільки через неї):
+
+- `createMovement`: `void → CreateMovementResult{movementId, consumed[], weightedCostPrice}`;
+  на розході (`quantityDelta<0`, не reservation) викликає `consumeBatch` за `costMethod` з
+  `OrganisationSettings` (Redis-кеш, fallback FIFO), рахує зважену COGS, проставляє
+  `StockMovement.batchId` при single-batch.
+- AVG_COST: `weightedCostPrice=getAvgCost`, але фізичний декремент партій — FIFO (інваріант
+  `Σ remainingQty == quantity`).
+- `consumeBatch`: `take:100 → while-пагінація` (span >100 партій).
+- work-orders `writeOff`: фіксує `batchCostPrice`+`batchId` у `WorkOrderPart`; прибрано `price=part.price`.
+- stock-documents TRANSFER: послідовно writeoff→receipt, перенос собівартості джерела на цільову партію.
+- reports profitability: код без змін — `batchCostPrice` тепер заповнюється → маржа точна.
+- `inventory.module += SettingsModule` (без circular DI).
+- **reconcile-міграція** `20260902130000` для ПРОД (FIFO-доспоживає надлишок remainingQty; no-op на чистій БД).
+
+**QA:** review 0 findings (10 фінансових інваріантів перевірено); tester 0 runtime-багів
+(14 live-сценаріїв: FIFO/LIFO/FEFO/AVG, TRANSFER cost-carry, наряд COGS, нестача, інваріант) +
+Bugs #609-#611 (3 regression-coverage gaps → +10 тестів: COGS-writeback, TRANSFER cost-carry, orderBy method).
+
+**Dev:** партійні тестові дані скинуто (роздуті від непрацюючого списання).
+Live: RECEIPT 10×100+10×120→avgCost 110; WRITEOFF 15 FIFO span→партія1 0/10 inactive, партія2 5/10,
+COGS 1600; StockItem.quantity=5 == Σremaining=5. API vitest 1057/1057, tsc 0/0.
+Коміти 19f81ccb + 2027fa85.
+
+---
+
+## 2026-09-02
+
+### fix(settlements): виправлення знаку балансу постачальника — графік оплат оживає
+
+**Баг (виявлено при створенні тестових даних для календаря оплат):** `receive()` PO писав
+`CHARGE(+1)` постачальнику → баланс ДОДАТНИЙ (наче він винен НАМ), хоча ми отримали товар і
+винні ЙОМУ. Графік оплат (фільтр `balance<0`) і звіт «Взаєморозрахунки» не бачили проведених
+PO — feature фактично мертва (усі 8 SUPPLIER-акаунтів мали `balance>0`).
+
+**Корінь:** `CHARGE`/`PAYMENT` dual-use (клієнт+постачальник) з протилежною семантикою.
+**Рішення (варіант C):** окремі постачальницькі типи — `SUPPLIER_CHARGE(−1)`,
+`SUPPLIER_PAYMENT(+1)`, `SUPPLIER_REFUND(+1)`. Клієнтські `CHARGE(+1)`/`PAYMENT(−1)` незмінні.
+Знак лишається чистою функцією від `type` (BALANCE_SIGN — exported single source).
+
+- **Backend:** enum += 3; BALANCE_SIGN += 3 (exported); 3 writer'и (receive/supplier-payment/
+  supplier-return); reconciliation act переюзує BALANCE_SIGN (усунуто 2-гу копію осі).
+- **Frontend:** TX_LABELS/COLORS + `settlementBalanceTone()` (lib/utils) + BALANCE_UP_TYPES —
+  консолідовано 5 копій осі знаку (SettlementsTabContent + картка контрагента).
+- **Міграції (2 окремі):** ADD VALUE ×3; backfill re-type історичних txs по documentType +
+  recompute `balance=Σ signed(tx)` + syncVersion++.
+- **QA:** sync 0, review 1 (5-та копія осі у картці — виправлено), tester 3
+  (#606 інверсія кольору→спільний хелпер; #607 звіт не фільтрував deleted CP; #608 exhaustive
+  runtime-assert на BALANCE_SIGN знаки).
+
+**Клієнти НЕ зачеплені** (documentType строго розділені; client-balances незмінні). **Звіт
+коректніший** (8 постачальників з фальшивого totalDebit → totalCredit). **Live-інваріант:**
+`balance==Σ signed(tx)` для 139/139 контрагентів. Графік ожив: 7 постачальників по колонках.
+API vitest 1043/1043, web 488/488, tsc 0/0.
+Коміти 23ce9109 + 484f6b92 + d2ae2e7e.
+
+---
+
+## 2026-09-01 (e)
+
+### feat(counterparties): після створення картка лишається відкритою в edit-режимі
+
+- **Запит користувача**: при створенні контрагента модалка після «Зберегти» закривалась —
+  щоб додати авто/договори, треба було знову відкривати (вже редагування).
+- Тепер після create картка **лишається відкритою** і перемикається в edit-режим
+  (з'являються вкладки Авто/Договори/Історія), як при редагуванні.
+- `onSaved(cp, isNew)` — новий 2-й параметр (create→true, update→false). Головний список
+  (`counterparties/page`) при `isNew` НЕ закриває, а `setEditingCp({balance:0, ...cp})` →
+  `counterparty` proc заповнюється → `isEdit=true` → вкладки. Модалка не ремаунтиться, форма
+  ре-синхронізується з backend-response через наявний useEffect.
+- CalendarSlotModal/PurchaseOrderCreateModal/RuleFormModal/GoodEditModal onSaved ігнорують
+  `isNew` (усі edit-only, create через них неможливий) — TS-safe, не зламано.
+- toast «Контрагента створено — тепер можна додати авто та договори».
+- QA: review 0 findings. web tsc 0. Коміт 9d61dfaa.
+
+---
+
+## 2026-09-01 (d)
+
+### feat(counterparties): назва контрагента обов'язкова (гнучко — компанія АБО ПІБ)
+
+- **Запит користувача**: поле «Назва» при створенні контрагента зробити обов'язковим.
+- Раніше усі name-поля `@IsOptional` → можна було зберегти контрагента без імені
+  (у списку показувалось «(без імені)»).
+- **Правило** (гнучко, cross-field): має бути `companyName` АБО `firstName`/`lastName`.
+  Для SUPPLIER (видно лише «Назва компанії») — обов'язкова назва компанії (required-мітка).
+- **Backend** (`counterparties.service`): `hasCounterpartyName()` guard у `create(dto)` +
+  `update` (merged-стан: PATCH частковий → перевіряємо результат `dto.X ?? existing.X`, тож
+  очищення останньої назви теж → 400). Guard стоїть ДО `documentNumberService.next()` (номер
+  не витрачається на fail-path). `BadRequestException`.
+- **Frontend** (`CounterpartyEditModal`): guard у create/update + disabled кнопки «Зберегти» +
+  inline-помилка + required-мітка для SUPPLIER.
+- **Review-fix (de2d692e)**: `CalendarSlotModal` (2-й entry-point створення контрагента у
+  майстрі запису) мав власний guard без `.trim()` + інше повідомлення → синхронізовано всі
+  3 точки (whitespace-only назва тепер відхиляється однаково).
+- QA: review 1 fixed. Live: create без назви→400, з companyName/firstName→201, update-очистити→400.
+  api+web tsc 0, vitest 48/48 counterparties + 488/488 web. Коміти ee23c53a + de2d692e.
+
+---
+
+## 2026-09-01 (c)
+
+### feat(counterparties): галка «Показувати видалені» + відновлення договорів і авто
+
+- **Запит користувача**: бачити soft-deleted договори/авто у формі контрагента (як галка
+  у списках) + можливість відновлювати.
+- **Backend**: `findContracts` + vehicles `findAll` += `showDeleted` param (умовний
+  `deletedAt:null`); `VehicleResponseDto` += `deletedAt`. Нові restore-endpoints:
+  `POST /counterparties/:id/contracts/:cid/restore` + `POST /vehicles/:id/restore`
+  (atomic `updateMany` з `NOT:{deletedAt:null}`, еталон brands). Ролі OWNER/ADMIN
+  (= delete). `restoreContract` ставить `isPrimary=false` (уникнення дубля-головного).
+- **Frontend** (CounterpartyEditModal): галки на вкладках Договори/Авто; видалені рядки
+  приглушені + бейдж «Видалено»; кнопка «Відновити» (RotateCcw). Окремі toggle-useEffect
+  (both directions, skip-first-run ref). ModalContract/Vehicle += deletedAt.
+- **Review (03a93799)**: dedupe toggle-fetch при CP-switch (ref reset) + role parity
+  (restore contract OWNER/ADMIN, не RECEPTIONIST).
+- **Bugs #601-#605 (8c047275, sto-tester)**:
+  - #601/#602 HIGH: `vehicles.restore` не перевіряв ланцюг parent'ів — відновлення авто
+    у видалений гараж/контрагент → orphan «зомбі» (невидиме у findAll). Fix: nested-select
+    guard garage.deletedAt + counterparty.deletedAt → BadRequest з підказкою.
+  - #603 HIGH: `restoreContract` без CP-existence guard (асиметрія із sibling-методами). Fix.
+  - #604/#605 MEDIUM: мок без restoreContract + 0 регрес-тестів. Fix: новий
+    `vehicles.service.spec.ts` (13) + 7 на договори + contract-spec.
+- QA: sync 0, review 2 fixed, tester 5 fixed. API vitest 1035/1035 (+20), tsc 0/0.
+  Live: DELETE→showDeleted=true бачить (deletedAt)→restore(201, deletedAt=null,
+  contract isPrimary=false); orphan garage/cp → 400; happy → 201.
+  Коміти c30c22bd + 03a93799 + 8c047275.
+
+---
+
+## 2026-09-01
+
+### feat(counterparties): редагування + soft-delete договору у формі контрагента
+
+- **Запит користувача** (скріншот): рядок договору (вкладка «Договори») мав лише 4
+  колонки (Номер/Тип/Початок/Завершення) без жодних дій.
+- Додано кнопки у рядок (opacity-on-hover): **олівець** (редагувати) + **кошик**
+  (soft-delete з `useConfirm`). Backend уже мав `PATCH`/`DELETE
+/counterparties/:id/contracts/:contractId` — чиста frontend-робота.
+- `editingContractId` керує режимом create/edit; `startEditContract(c)` prefill'ить
+  форму; `saveContract()` об'єднує POST/PATCH; кнопка «Оновити»/«Зберегти».
+- `deleteContract(c)` — optimistic filter + промоут наступного головного ТОГО Ж
+  `contractType` (дзеркалить бековий `$transaction` promote); isPrimary optimistic
+  scoped по `contractType` (дзеркалить бековий `swapType`-scope, коректно для BOTH).
+- Усі handler'и з tenant-guard (`cpIdAtStart` + `currentCpIdRef`, Bug #370-патерн).
+- Review 1 SUGGESTION (уточнено коментар promote-primary) fixed. Live:
+  CREATE→PATCH(defer 7→14 + endDate)→DELETE(204, gone) ✓. web tsc 0.
+  Коміти 407dac38 + 331faa26.
+
+### feat(counterparties): редагування авто у формі контрагента
+
+- **Запит користувача** (скріншот): рядок авто (вкладка «Авто») мав лише кнопку
+  видалення — додано **олівець** (редагувати), дзеркалить рядок договорів.
+- `editingVehicleId` керує режимом create/edit; `startEditVehicle(v)` prefill'ить
+  форму; `saveVehicle()` об'єднує POST/PATCH — PATCH БЕЗ `customerGarageId` (гараж уже
+  існує, лише POST auto-створює). `Vehicle` тип += `vin` (потрібен для prefill).
+- `deleteVehicle`: якщо редагували видалене авто → `resetVehicleForm`. tenant-guard.
+- Backend уже мав `PATCH /vehicles/:id` — чиста frontend-робота. Review 0 findings.
+  Live: CREATE→PATCH(model/year/plate/vin)→DELETE(204) ✓. web tsc 0. Коміт 84488164.
+
+---
+
+## 2026-08-31 (b)
+
+### fix(counterparties): вид договору — завжди редагований select, фільтр за типом
+
+- **Баг** (скріншот користувача): для SUPPLIER/CLIENT поле «Вид договору» у формі
+  додавання договору було СТАТИЧНИМ нередагованим блоком (`<Select>` рендерився лише
+  для `type===BOTH`); submit примусово перевизначав `contractType` за типом контрагента,
+  ігноруючи вибір.
+- **Вимога**: не блокувати поле — завжди `<Select>`, лише фільтрувати пункти за типом +
+  дефолт. SUPPLIER → лише «Купівля» (дефолт); CLIENT → лише «Продаж» (дефолт); BOTH →
+  обидва + порожній placeholder (явний вибір).
+- Хелпери `contractTypesForCounterparty(cpType)` + `defaultContractType(cpType)`; рендер
+  завжди `<Select>` з фільтрованими опціями (`CONTRACT_TYPE_LABELS`); `onClick` «Додати
+  договір» виставляє дефолт; submit `resolvedType = вибір || дефолт`.
+- Файл `CounterpartyEditModal.tsx`. Review 0 findings. web tsc 0.
+
+---
+
+## 2026-08-31
+
+### feat(supplier-payments): FIFO-графік оплат по документах + колонки оплати у списку купівлі
+
+**Baseline-баг (2aea04e4):** графік показував 30953₴ по постачальнику, звіт «Взаєморозрахунки» — 47₴.
+Причина: графік реконструював борг із `Σ PurchaseOrder.totalAmount − PO-linked платежі`, ігноруючи
+фактичний `SettlementAccount.balance` (враховує повернення, unlinked-платежі, коригування). Фікс:
+авторитетне джерело суми = `SettlementAccount.balance` (payable = `−balance` для `balance<0`).
+
+**FIFO-розподіл (282d5fba):** пропорційне масштабування балансу → FIFO-налив. payable «наливається»
+на непогашені RECEIVED/PARTIAL PO по черзі від найстарішого (`orderBy paymentDate asc nulls first`);
+`take = min(po.outstanding, remaining)`; кожен PO → своя колонка (overdue/byDate/planned) з реальним
+залишком; PO, до яких борг не дійшов = оплачені (не показуються); надлишок понад ΣPO → overdue.
+Прибрало мікро-частки масштабування — осмислені суми документів. Підсумок = balance.
+
+**Список купівлі (282d5fba+05ebbeb1):** +колонка «Дата оплати» (сортовна) + «Днів до оплати»
+(`ExpiryBadge` «N дн.»/«Прострочено N дн.», лише де `outstanding>0`). Backend: `findAll` += groupBy
+CONFIRMED-платежів → `outstanding` у PO list DTO; `PO_SORT_FIELDS` + `PurchaseOrderQueryDto.sortBy`
+whitelist += `paymentDate`.
+
+**Bugs #598-#600 (441c04aa, sto-tester):**
+
+- #598 MEDIUM: `sortBy=paymentDate&desc` виносив null-date PO наверх (Postgres NULLS FIRST для DESC).
+  `buildSortOrderBy` += `nullableFields?: Set` → для nullable-field `{ sort, nulls:'last' }`.
+- #599 MEDIUM: `getSchedule` включав CLIENT-типу counterparty з `balance<0` як «постачальника»
+  (semantic contamination) → filter `counterparty.type in [SUPPLIER,BOTH]`.
+- #600 LOW: docstring «завжди узгоджений зі звітом» неправда (divergence на deleted/CLIENT
+  counterparty, звіт не фільтрує) → переписаний як задокументований trade-off.
+
+QA: sync 0 розбіжностей, review 0 findings, tester 3 fixed. +16 регрес-тестів (12 pagination
+nullable + 4 PO outstanding). API vitest 1015/1015, web 488/488, tsc 0/0. Live: FDGD −1600 → графік
+1600 (= звіт); DESC-sort дати зверху; CLIENT відфільтрований.
+
+---
+
+## 2026-08-29
+
+### feat(supplier-payments): графік оплат постачальникам + PurchaseOrder.paymentDate
+
+- Нова колонка `PurchaseOrder.paymentDate` (`@db.Date`, nullable) + міграція
+  `20260820120000_add_po_payment_date`. Редаговане поле «Дата оплати» у PO-модалці.
+- Авто-заповнення `paymentDate` у `receive()` при повному отриманні (RECEIVED):
+  `сьогодні + CounterpartyContract.paymentDeferDays`. Ручне значення не перезаписується.
+- `GET /supplier-payments/schedule?from=&to=` — шахматка боргів по датах. Джерело:
+  RECEIVED/PARTIAL PO з `outstanding = totalAmount − Σ CONFIRMED SupplierPayment`.
+  Bucket за `paymentDate`: null/минуле → overdue, у 20-денному вікні → byDate[дата],
+  далі → planned. Кредит-ліміт договору віднімається з найпізніших (planned→дати→overdue).
+- Вкладка «Список / Графік оплат» на `/supplier-payments` (URL `?tab=schedule`) +
+  компонент `SupplierPaymentScheduleTab` (Протерміновані червоні / дати DD.MM жовті /
+  Планові зелені / рядок «Разом»).
+- Тести: +5 `getSchedule` (bucket/outstanding/кредит-ліміт), +2 PO `receive()` auto-fill,
+  +1 E2E вкладки. Файли: `schema.prisma`, `purchase-orders.{dto,service}.ts`,
+  `supplier-payments.{controller,dto,service}.ts`, `PurchaseOrderCreateModal.tsx`,
+  `useSupplierPayments.ts`, `supplier-payments/page.tsx` + `SupplierPaymentScheduleTab.tsx`,
+  `lib/format.ts` (addDaysISO), `common/utils/kyiv-date.ts` (addDaysKyiv).
+
+---
+
+## 2026-07-03
+
+### d27e1f14 fix(tester): Bug #590 — useConfirmSupplierPayment invalidates counterparties
+
+- `useConfirmSupplierPayment.onSuccess` тепер додатково інвалідує `counterpartiesKeys.all` (Bug #590 HIGH)
+- `confirm()` пише settlement PAYMENT через SettlementsService → баланс постачальника у settlementAccount.balance змінюється; без invalidate CRM/counterparties list показував стару balance до staleTime=30s
+- `useCancelSupplierPayment` навмисно НЕ інвалідує counterparties (cancel з DRAFT не пише settlement) — inline-коментар документує асиметрію
+- Bug #591 MEDIUM: додано `apps/web/src/hooks/api/useSupplierPayments.test.tsx` (10 тестів, аналог useInvoices.test.tsx): queryKey factory shape × 4, list URL params + enabled-gate × 2, create/confirm/cancel/delete invalidate × 4; ключовий regression-guard для Bug #590 (assert counterpartiesKeys.all у invalidateQueries) + пара для cancel (assert NOT invalidates counterparties)
+- Verification: tsc clean; web vitest 481/481 (+10 vs baseline 471); api vitest 976/976 (no regression)
+
+### 48ad57a6 feat(supplier-payments): document + endpoint for paying suppliers
+
+- Нова модель `SupplierPayment` (гілка `feat/supplier-payments`) — закриває борг перед постачальником, який раніше накопичувався (`PurchaseOrder.receive` → CHARGE), але не мав чим оплачуватись (клієнтський `Payment` заточений під Checkbox + лояльність)
+- Enum-и `SupplierPaymentStatus` (DRAFT/CONFIRMED/CANCELLED) + `PaymentSourceType` (BANK_ACCOUNT/CASH_REGISTER); `SUPPLIER_PAYMENT` у `DocumentType` (prefix `ОПП`)
+- FSM DRAFT→CONFIRMED: при проведенні пише `SettlementTransaction(PAYMENT)` через `SettlementsService.createTransaction()` (re-read статусу в `$transaction` — race-safe); джерело коштів обов'язкове (bank АБО cash), опційна прив'язка до PurchaseOrder; БЕЗ Checkbox/loyalty
+- API `/supplier-payments` (GET/POST/PATCH/DELETE + confirm/cancel), ролі OWNER/ADMIN/ACCOUNTANT; web: список + `SupplierPaymentCreateModal` + nav «Оплати постачальникам»
+- Міграції `20260703100000_add_supplier_payment` + `20260703100001_seed_supplier_payment_doc_numbers` (backfill enum-value в окремій міграції — Postgres не дозволяє ADD VALUE + use у тій же tx)
+- Дос'є `docs/objects/supplier-payment.md` (BR-SUPPAY-001..008)
+
+### d699d0ae fix(sync) + 951506b7 fix(review) + 92390dbc fix(tester): SupplierPayment QA
+
+- sync: `/bank-accounts` + `/cash-registers` повертають `{ items, total }`, не голий масив — виправлено typing + destructuring; прибрано неіснуючі `deletedAt` поля з local interfaces
+- review: §8.2 paired FK — `onClear` постачальника скидає й прив'язку PO (orphan reference)
+- tester: **Bug #588 (HIGH)** — `update()` лишав orphan `purchaseOrderId` після зміни `supplierId` для API-only clients (UI робив auto-clear) → cross-supplier linkage; fix авто-очищає PO; +6 regression тестів (16/16 spec, API 976/976)
+
+---
+
 ## 2026-06-20
 
 ### <next> perf(optimize): Цикл 3/3 step 4 — covering index booking_requests(orgId,branchId,status,requestedDate)

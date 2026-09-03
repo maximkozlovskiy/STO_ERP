@@ -2,7 +2,7 @@
 name: sto-database
 description: >
   Create or modify Prisma schema, generate migrations, and write seed data for STO ERP. Use when the user says "зміни схему", "додай таблицю", "нова модель", "міграція", "prisma", or when a feature requires DB changes. Always run this BEFORE sto-backend. Handles full DB layer: schema design, migrations, indexes, seed data.
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 bypassPermissions: true
 ---
 

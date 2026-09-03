@@ -9,6 +9,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
+import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 
 // Bug #187 / #200: regression-захист для applyPricing
 // Bug #200: оновлено fixtures з полем `status` (defense-in-depth status guard c1dc5dd)
@@ -496,6 +497,18 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
       expect.objectContaining({ unitOfMeasureId: GOOD_UNIT_ID, goodId: GOOD_ID }),
       expect.anything(),
     );
+    // receive пише SUPPLIER_CHARGE (−1: ми винні постачальнику), НЕ CHARGE (+1, клієнтський).
+    // Fix знаку балансу постачальника — без цього графік оплат не бачить проведених PO.
+    expect(settlements.createTransaction).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({
+        counterpartyId: SUPPLIER_ID,
+        type: 'SUPPLIER_CHARGE',
+        amount: 1000,
+        documentType: 'PurchaseOrder',
+      }),
+      expect.anything(),
+    );
   });
 
   it('receive з own-org unitOfMeasureId override → unitOfMeasure.findMany викликано з orgId, override застосовано', async () => {
@@ -769,6 +782,127 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.purchaseOrderLine.update).not.toHaveBeenCalled();
     expect(inventory.createMovement).not.toHaveBeenCalled();
+  });
+
+  it('receive повне → авто paymentDate = сьогодні + contract.paymentDeferDays (RECEIVED)', async () => {
+    // PO з договором (10 днів відтермінування), без paymentDate.
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.ORDERED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      paymentDate: null,
+      contract: { paymentDeferDays: 10 },
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 0,
+          good: { unitId: GOOD_UNIT_ID },
+        },
+      ],
+    });
+    // findOne у кінці
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 10,
+          good: { name: 'X', sku: null, unit: 'шт', unitOfMeasure: null },
+          unitOfMeasureId: GOOD_UNIT_ID,
+        },
+      ],
+      supplier: { firstName: 'S', lastName: '', companyName: null },
+      warehouse: { name: 'W' },
+    });
+
+    await service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 10 }] }, USER_ID);
+
+    // Останній purchaseOrder.update у $transaction — зі статусом RECEIVED + paymentDate.
+    const updateCalls = prisma.purchaseOrder.update.mock.calls;
+    const statusUpdate = updateCalls.find(
+      c => (c[0] as { data?: { status?: string } }).data?.status === PurchaseOrderStatus.RECEIVED,
+    );
+    expect(statusUpdate).toBeDefined();
+    const data = (statusUpdate![0] as { data: { paymentDate?: Date } }).data;
+    expect(data.paymentDate).toBeInstanceOf(Date);
+    // = сьогодні (Kyiv) + 10 днів. Bug #592: попередня версія тесту рахувала expected
+    // через `new Date() + setUTCDate` — це UTC-арифметика, а impl використовує Kyiv (kyivToday()).
+    // На кордоні днів (Kyiv +2/+3 vs UTC) різниця в 1 день → тест падає в ~3 годинних вікнах.
+    // Правильно: використовувати ті самі kyivToday/addDaysKyiv що і imp (DST-aware).
+    const expected = addDaysKyiv(kyivToday(), 10);
+    expect(data.paymentDate!.toISOString().slice(0, 10)).toBe(expected.toISOString().slice(0, 10));
+  });
+
+  it('receive без договору → paymentDate НЕ встановлюється', async () => {
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.ORDERED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      paymentDate: null,
+      contract: null,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 0,
+          good: { unitId: GOOD_UNIT_ID },
+        },
+      ],
+    });
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 10,
+          good: { name: 'X', sku: null, unit: 'шт', unitOfMeasure: null },
+          unitOfMeasureId: GOOD_UNIT_ID,
+        },
+      ],
+      supplier: { firstName: 'S', lastName: '', companyName: null },
+      warehouse: { name: 'W' },
+    });
+
+    await service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 10 }] }, USER_ID);
+
+    const statusUpdate = prisma.purchaseOrder.update.mock.calls.find(
+      c => (c[0] as { data?: { status?: string } }).data?.status === PurchaseOrderStatus.RECEIVED,
+    );
+    expect(statusUpdate).toBeDefined();
+    expect((statusUpdate![0] as { data: Record<string, unknown> }).data).not.toHaveProperty(
+      'paymentDate',
+    );
   });
 });
 
@@ -1300,5 +1434,110 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
       goodSku: 'SKU-1',
       goodBrandName: 'Toyota',
     });
+  });
+});
+
+// Bug #598: PurchaseOrdersService.findAll — sortBy=paymentDate має завжди повертати
+// nulls-last у orderBy, інакше DESC-sort виносить сотні draft/no-pay-date PO наверх.
+// Регресія-guard: наступний refactor що видалить `PO_NULLABLE_SORT_FIELDS`-argument
+// з buildSortOrderBy виклику — падає.
+describe('PurchaseOrdersService.findAll — sortBy=paymentDate nulls-last (Bug #598)', () => {
+  let service: PurchaseOrdersService;
+  let prisma: {
+    purchaseOrder: {
+      findMany: ReturnType<typeof vi.fn>;
+      count: ReturnType<typeof vi.fn>;
+    };
+    supplierPayment: { groupBy: ReturnType<typeof vi.fn> };
+  };
+
+  const ORG = 'org-1';
+
+  beforeEach(async () => {
+    prisma = {
+      purchaseOrder: {
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+      },
+      supplierPayment: { groupBy: vi.fn().mockResolvedValue([]) },
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        PurchaseOrdersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: InventoryService, useValue: {} },
+        { provide: SettlementsService, useValue: {} },
+        { provide: DocumentNumberService, useValue: {} },
+        { provide: PricingService, useValue: {} },
+        {
+          provide: SettingsService,
+          useValue: {
+            getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+          },
+        },
+      ],
+    }).compile();
+    service = module.get(PurchaseOrdersService);
+  });
+
+  function findManyOrderBy() {
+    return (
+      prisma.purchaseOrder.findMany.mock.calls[0]![0] as {
+        orderBy: Record<string, unknown>;
+      }
+    ).orderBy;
+  }
+
+  it('sortBy=paymentDate + desc → { paymentDate: { sort: desc, nulls: last } }', async () => {
+    await service.findAll(
+      ORG,
+      1,
+      20,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      'paymentDate',
+      'desc',
+    );
+    expect(findManyOrderBy()).toEqual({ paymentDate: { sort: 'desc', nulls: 'last' } });
+  });
+
+  it('sortBy=paymentDate + asc → { paymentDate: { sort: asc, nulls: last } }', async () => {
+    await service.findAll(
+      ORG,
+      1,
+      20,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      'paymentDate',
+      'asc',
+    );
+    expect(findManyOrderBy()).toEqual({ paymentDate: { sort: 'asc', nulls: 'last' } });
+  });
+
+  it('sortBy=totalAmount (non-nullable) → плоска форма { totalAmount: desc }', async () => {
+    await service.findAll(
+      ORG,
+      1,
+      20,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      'totalAmount',
+      'desc',
+    );
+    expect(findManyOrderBy()).toEqual({ totalAmount: 'desc' });
+  });
+
+  it('без sort-параметрів → default { createdAt: desc } (backward-compat)', async () => {
+    await service.findAll(ORG, 1, 20);
+    expect(findManyOrderBy()).toEqual({ createdAt: 'desc' });
   });
 });

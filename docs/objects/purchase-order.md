@@ -64,16 +64,16 @@ DRAFT → ORDERED → PARTIAL → RECEIVED
 
 ## API Endpoints (`/api/purchase-orders`)
 
-| Метод  | URL                                      | Дія                                                    |
-| ------ | ---------------------------------------- | ------------------------------------------------------ |
-| GET    | `/api/purchase-orders`                   | Список (фільтри: status, supplierId, dateFrom, dateTo) |
-| GET    | `/api/purchase-orders/:id`               | Деталь з lines                                         |
-| POST   | `/api/purchase-orders`                   | Створити (lines у body)                                |
-| PATCH  | `/api/purchase-orders/:id`               | Оновити (тільки DRAFT)                                 |
-| DELETE | `/api/purchase-orders/:id`               | Soft-delete (тільки DRAFT/CANCELLED)                   |
-| POST   | `/api/purchase-orders/:id/transition`    | FSM перехід (DRAFT → ORDERED)                          |
-| POST   | `/api/purchase-orders/:id/receive`       | Приймання товару → StockMovement(RECEIPT) + CHARGE     |
-| POST   | `/api/purchase-orders/:id/apply-pricing` | Застосувати ціни закупки до Good.purchasePrice         |
+| Метод  | URL                                      | Дія                                                                                                                                                                  |
+| ------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/purchase-orders`                   | Список (фільтри: status, supplierId, dateFrom, dateTo; sort: documentDate/createdAt/totalAmount/paymentDate; DTO += `outstanding` = totalAmount − Σ CONFIRMED оплат) |
+| GET    | `/api/purchase-orders/:id`               | Деталь з lines (без `outstanding` — лише у списку)                                                                                                                   |
+| POST   | `/api/purchase-orders`                   | Створити (lines у body)                                                                                                                                              |
+| PATCH  | `/api/purchase-orders/:id`               | Оновити (тільки DRAFT)                                                                                                                                               |
+| DELETE | `/api/purchase-orders/:id`               | Soft-delete (тільки DRAFT/CANCELLED)                                                                                                                                 |
+| POST   | `/api/purchase-orders/:id/transition`    | FSM перехід (DRAFT → ORDERED)                                                                                                                                        |
+| POST   | `/api/purchase-orders/:id/receive`       | Приймання товару → StockMovement(RECEIPT) + CHARGE                                                                                                                   |
+| POST   | `/api/purchase-orders/:id/apply-pricing` | Застосувати ціни закупки до Good.purchasePrice                                                                                                                       |
 
 ---
 
@@ -86,6 +86,11 @@ DRAFT → ORDERED → PARTIAL → RECEIVED
 | Detail Panel schema   | `lib/panel-schema.ts` → `PURCHASE_ORDER_PANEL_SCHEMA` |
 | Hook (TanStack Query) | `hooks/api/usePurchaseOrders.ts`                      |
 
+**Колонки списку** (`COLUMNS` у page.tsx, toggle/reorder через `useListPage`): Номер, Постачальник,
+Склад, Статус, Сума, Дата документа, **Дата оплати** (сортовна, `paymentDate`, NULLS LAST при DESC —
+Bug #598), **Днів до оплати** (`ExpiryBadge` «N дн.»/«Прострочено N дн.», кольори warning/destructive,
+показується ЛИШЕ де `outstanding > 0`), Розцінено. `today` через SSR-safe `useState`+`useEffect`.
+
 ---
 
 ## Бізнес-правила: receive() інваріанти
@@ -97,6 +102,9 @@ DRAFT → ORDERED → PARTIAL → RECEIVED
    - `InventoryService.createMovement(RECEIPT)` для кожного рядка
    - `purchaseOrderLine.update({ receivedQty: += received })` у `Promise.all` (disjoint rows — safe)
    - `SettlementsService.createTransaction(CHARGE)` — борг перед постачальником
+
+> Борг, створений `receive()`, закривається документом [SupplierPayment](supplier-payment.md)
+> (`SettlementTransaction(PAYMENT)`). PO можна опціонально прив'язати до оплати для аналітики.
 
 ### update() — contract resolution
 

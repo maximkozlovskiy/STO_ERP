@@ -17,6 +17,7 @@ import {
   X,
   Zap,
   PackageCheck,
+  Wallet,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -41,6 +42,11 @@ import {
 } from '@/components/ui/CounterpartyEditModal';
 import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
 import type { CategoryNode } from '@/components/ui/category-tree';
+import {
+  SupplierPaymentCreateModal,
+  type SupplierPaymentPrefill,
+} from '@/components/ui/SupplierPaymentCreateModal';
+import type { SupplierPayment } from '@/hooks/api/useSupplierPayments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,6 +86,7 @@ interface PODetail {
   contractNumber?: string | null;
   notes?: string | null;
   documentDate?: string | null;
+  paymentDate?: string | null;
   lines?: POLine[];
 }
 
@@ -180,6 +187,7 @@ export function PurchaseOrderCreateModal({
     warehouseId: '',
     notes: '',
     documentDate: kyivToday(),
+    paymentDate: '',
   });
   const [supplierDisplay, setSupplierDisplay] = useState('');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -211,6 +219,8 @@ export function PurchaseOrderCreateModal({
   const [pricingRulesLoading, setPricingRulesLoading] = useState(false);
   const [ruleFilterBySupplier, setRuleFilterBySupplier] = useState(true);
   const [error, setError] = useState('');
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentPrefill, setPaymentPrefill] = useState<SupplierPaymentPrefill | null>(null);
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
   const [supplierDetailData, setSupplierDetailData] = useState<CounterpartyForModal | null>(null);
@@ -332,7 +342,13 @@ export function PurchaseOrderCreateModal({
     setReceiveMode(false);
     setReceiveQtys({});
     if (!isEditMode) {
-      setForm({ supplierId: '', warehouseId: '', notes: '', documentDate: kyivToday() });
+      setForm({
+        supplierId: '',
+        warehouseId: '',
+        notes: '',
+        documentDate: kyivToday(),
+        paymentDate: '',
+      });
       setSupplierDisplay('');
     }
   }, [open, purchaseOrderIdProp, isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -353,6 +369,7 @@ export function PurchaseOrderCreateModal({
             warehouseId: po.warehouseId ?? '',
             notes: po.notes ?? '',
             documentDate: po.documentDate ? po.documentDate.slice(0, 10) : kyivToday(),
+            paymentDate: po.paymentDate ? po.paymentDate.slice(0, 10) : '',
           });
           setSupplierDisplay(po.supplierName ?? '');
           setContractId(po.contractId ?? null);
@@ -573,6 +590,33 @@ export function PurchaseOrderCreateModal({
     return total - total / (1 + vatRate / 100);
   }, [total, vatMode, vatRate]);
 
+  // Оплатити постачальнику по цьому замовленню — передзаповнюємо постачальника,
+  // PO та ЗАЛИШОК БОРГУ (totalAmount − сума проведених оплат по цьому PO).
+  const openPayment = useCallback(async () => {
+    if (!activePOId) return;
+    let remaining = total; // fallback — сума позицій
+    try {
+      const [po, paymentsRes] = await Promise.all([
+        apiFetch<{ totalAmount: number }>(`/purchase-orders/${activePOId}`),
+        apiFetch<{ items: SupplierPayment[] }>(
+          `/supplier-payments?purchaseOrderId=${activePOId}&status=CONFIRMED&limit=100`,
+        ),
+      ]);
+      const paid = paymentsRes.items.reduce((sum, p) => sum + Number(p.amount), 0);
+      remaining = Math.max(0, Number(po.totalAmount) - paid);
+    } catch {
+      // мережа/офлайн — лишаємо fallback (сума позицій), користувач відкоригує
+    }
+    setPaymentPrefill({
+      supplierId: form.supplierId || undefined,
+      supplierName: supplierDisplay || undefined,
+      purchaseOrderId: activePOId,
+      purchaseOrderNumber: poNumber || undefined,
+      amount: remaining > 0 ? remaining : undefined,
+    });
+    setPaymentOpen(true);
+  }, [activePOId, total, form.supplierId, supplierDisplay, poNumber]);
+
   const lineSubtotal = (qty: string, price: string) =>
     (parseFloat(qty) || 0) * (parseFloat(price) || 0);
 
@@ -648,6 +692,7 @@ export function PurchaseOrderCreateModal({
           warehouseId: form.warehouseId,
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
+          paymentDate: form.paymentDate || undefined,
           lines: linesPayload.length > 0 ? linesPayload : undefined,
         }),
       });
@@ -690,6 +735,7 @@ export function PurchaseOrderCreateModal({
           contractId: contractId ?? null,
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
+          paymentDate: form.paymentDate || undefined,
           lines: allLines,
         }),
       });
@@ -848,6 +894,19 @@ export function PurchaseOrderCreateModal({
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[13px] font-medium text-muted-foreground">Дата оплати:</span>
+              <div className="w-36">
+                {/* Задається на DRAFT; після ORDERED — авто-заповнюється при повному отриманні
+                    (RECEIVED) = сьогодні + CounterpartyContract.paymentDeferDays.
+                    Backend PATCH /purchase-orders/:id блокує зміни поза DRAFT (тому disabled). */}
+                <DatePickerInput
+                  value={form.paymentDate}
+                  onChange={v => setForm(f => ({ ...f, paymentDate: v }))}
+                  disabled={!canEdit}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
               <span className="text-[13px] font-medium text-muted-foreground">Статус:</span>
               <div ref={statusMenuRef} className="relative flex items-center gap-1">
                 <button
@@ -955,6 +1014,18 @@ export function PurchaseOrderCreateModal({
               )}
             </div>
             <div className="flex gap-2 items-center flex-wrap">
+              {isEditMode && currentStatus !== 'CANCELLED' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void openPayment()}
+                  disabled={saving || transitioning}
+                  title="Створити оплату постачальнику по цьому замовленню"
+                >
+                  <Wallet size={15} className="mr-1" />
+                  Оплатити
+                </Button>
+              )}
               {isEditMode && (
                 <>
                   <Button
@@ -1841,6 +1912,14 @@ export function PurchaseOrderCreateModal({
           )}
         </div>
       </Modal>
+
+      {/* Оплата постачальнику по цьому замовленню */}
+      <SupplierPaymentCreateModal
+        open={paymentOpen}
+        prefill={paymentPrefill ?? undefined}
+        onClose={() => setPaymentOpen(false)}
+        onSaved={() => setPaymentOpen(false)}
+      />
     </>
   );
 }

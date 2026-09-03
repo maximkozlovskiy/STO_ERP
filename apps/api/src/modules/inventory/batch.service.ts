@@ -17,7 +17,13 @@ export interface CreateBatchDto {
 }
 
 export interface BatchConsumeResult {
-  batchId: string;
+  /**
+   * ID реальної партії, з якої списано. `null` — коли рядок не відповідає одній фізичній
+   * партії (AVG_COST-агрегат): `StockMovement.batchId`/`WorkOrderPart.batchId` — nullable
+   * `@db.Uuid`, тож `null` присвоюється напряму без гейта у викликачів (порожній рядок
+   * пробивав би "invalid input syntax for type uuid").
+   */
+  batchId: string | null;
   quantity: number;
   costPrice: number;
 }
@@ -171,9 +177,11 @@ export class BatchService {
     const db = tx;
 
     if (costMethod === 'AVG_COST') {
-      // AVG_COST — no batch tracking, just return avg cost for reference
+      // AVG_COST — no batch tracking, just return avg cost for reference.
+      // batchId: null — агрегат не відповідає одній партії; викликач присвоює null у
+      // nullable uuid-колонку без гейта (див. BatchConsumeResult.batchId).
       const avgCost = await this.getAvgCost(orgId, goodId, warehouseId);
-      return [{ batchId: '', quantity: qty, costPrice: avgCost }];
+      return [{ batchId: null, quantity: qty, costPrice: avgCost }];
     }
 
     // FEFO requires explicit `nulls: 'last'` — goods without expiry must go LAST; Postgres default for ASC is nulls-last only for some versions.
@@ -184,45 +192,69 @@ export class BatchService {
           ? [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }]
           : [{ createdAt: 'asc' }]; // FIFO default
 
-    const batches = await db.stockBatch.findMany({
-      where: { orgId, goodId, warehouseId, isActive: true, remainingQty: { gt: 0 } },
-      orderBy,
-      take: 100,
-    });
-
     let remaining = qty;
     const results: BatchConsumeResult[] = [];
+    const PAGE = 100;
 
-    for (const batch of batches) {
-      if (remaining <= 0) break;
-      const take = Math.min(remaining, batch.remainingQty);
+    // While-пагінація: списання може зачепити >100 партій (span). Кожна сторінка
+    // вибирає активні партії з remainingQty>0 у порядку costMethod; після декременту
+    // наступна сторінка природно бере наступні. Guard `progressed` проти нескінченного
+    // циклу якщо БД раптом віддала партії без remainingQty.
+    while (remaining > 0) {
+      const batches = await db.stockBatch.findMany({
+        where: { orgId, goodId, warehouseId, isActive: true, remainingQty: { gt: 0 } },
+        orderBy,
+        take: PAGE,
+      });
+      if (batches.length === 0) break;
+      let progressed = false;
 
-      // sto-optimize: update + create на ОДНУ ітерацію не залежать один від
-      // одного — Promise.all зекономить 1 RTT на батч. Loop-carried лишається
-      // (`remaining -= take`), тому ітерації між собою сериалізовані як і раніше.
-      await Promise.all([
-        db.stockBatch.update({
-          where: { id: batch.id },
-          data: {
-            remainingQty: { decrement: take },
-            isActive: batch.remainingQty - take > 0,
-          },
-        }),
-        db.batchConsumption.create({
-          data: {
-            orgId,
-            batchId: batch.id,
-            goodId,
-            quantity: -take,
-            documentType,
-            documentId,
-            documentLineId: documentLineId ?? null,
-          },
-        }),
-      ]);
+      for (const batch of batches) {
+        if (remaining <= 0) break;
+        const take = Math.min(remaining, batch.remainingQty);
+        if (take <= 0) continue;
 
-      results.push({ batchId: batch.id, quantity: take, costPrice: Number(batch.costPrice) });
-      remaining -= take;
+        // Bug #613 — race-guard: conditional decrement (WHERE remainingQty >= take) — CAS проти
+        // concurrent consume того ж батча (STALE findMany snapshot). count=0 при програній гонці
+        // → throw → $transaction rollback (скасовує і batchConsumption). DB CHECK
+        // (stock_batches_remaining_nonneg, 20260902210000) — backstop джерело-правди.
+        // update + create незалежні → Promise.all (−1 RTT на батч).
+        const [updated] = await Promise.all([
+          db.stockBatch.updateMany({
+            // orgId — defense-in-depth (id вже UUID PK з orgId-scoped findMany; CLAUDE.md #6).
+            where: { id: batch.id, orgId, remainingQty: { gte: take } },
+            data: {
+              remainingQty: { decrement: take },
+              isActive: batch.remainingQty - take > 0,
+            },
+          }),
+          db.batchConsumption.create({
+            data: {
+              orgId,
+              batchId: batch.id,
+              goodId,
+              quantity: -take,
+              documentType,
+              documentId,
+              documentLineId: documentLineId ?? null,
+            },
+          }),
+        ]);
+
+        if (updated.count === 0) {
+          // Race lost: інший tx декрементив партію між findMany і updateMany. Скасовуємо
+          // batchConsumption через throw → $transaction rollback (Promise.all виконаний, але
+          // весь ланцюг ще у tx). Наступний retry рівня викликача (WO/Invoice) з'ясує стан.
+          throw new BadRequestException('Партію змінено іншою транзакцією — повторіть операцію');
+        }
+
+        results.push({ batchId: batch.id, quantity: take, costPrice: Number(batch.costPrice) });
+        remaining -= take;
+        progressed = true;
+      }
+      // Уся сторінка активних партій оброблена, але борг лишився і прогресу нема —
+      // далі партій нема (менше за PAGE) або аномалія → виходимо у throw нижче.
+      if (!progressed || batches.length < PAGE) break;
     }
 
     if (remaining > 0) {

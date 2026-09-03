@@ -21,6 +21,10 @@ const serviceMock = {
   createContract: vi.fn(),
   updateContract: vi.fn(),
   removeContract: vi.fn(),
+  // Bug #604: restoreContract endpoint (POST :id/contracts/:cid/restore)
+  // додано у контроллер; без цього поля виклик у endpoint падає з
+  // `TypeError: this.service.restoreContract is not a function`.
+  restoreContract: vi.fn(),
 };
 
 let jwtAllow = true;
@@ -240,6 +244,42 @@ describe('Counterparties — HTTP Contract', () => {
         url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
       });
       expect(res.statusCode).toBe(204);
+    });
+  });
+
+  // Bug #605: regression-guard для нового restore-endpoint.
+  describe('POST :id/contracts/:contractId/restore', () => {
+    it('повертає 201 при валідному call + викликає service.restoreContract з path-params', async () => {
+      jwtAllow = true;
+      serviceMock.restoreContract.mockResolvedValueOnce({
+        id: 'con-1',
+        orgId: 'org-1',
+        counterpartyId: 'cp-1',
+        number: 'ДГ-1',
+        contractType: 'PURCHASE',
+        startDate: '2026-01-01',
+        endDate: null,
+        isPrimary: false, // після restore завжди false (див. Bug #603 контекст)
+        creditLimit: null,
+        currencyCode: 'UAH',
+        paymentDeferDays: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        deletedAt: null,
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/restore',
+      });
+      expect(res.statusCode).toBe(201);
+      // orgId (з JWT `orgId: 'org-1'`) + path params (cpId, contractId) — саме у цьому порядку
+      expect(serviceMock.restoreContract).toHaveBeenCalledWith(
+        'org-1',
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      );
+      // isPrimary=false у відповіді — задокументована пост-restore інваріанта.
+      expect(res.json().isPrimary).toBe(false);
     });
   });
 

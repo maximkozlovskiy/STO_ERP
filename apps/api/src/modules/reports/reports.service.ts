@@ -301,7 +301,14 @@ export class ReportsService {
   }
 
   async settlements(orgId: string, counterpartyId?: string) {
-    const where: { orgId: string; counterpartyId?: string } = { orgId };
+    // Bug #607: nested-фільтр counterparty.deletedAt=null — інакше soft-deleted CP
+    // (з ненульовим балансом) потрапляє у звіт як клікабельний рядок, який завершується
+    // 404 (deletedAt приховує на /counterparties/:id). Узгоджує «Взаєморозрахунки»
+    // із `/supplier-payments/schedule`, яка вже має цей фільтр.
+    const where: Prisma.SettlementAccountWhereInput = {
+      orgId,
+      counterparty: { deletedAt: null },
+    };
     if (counterpartyId) where.counterpartyId = counterpartyId;
 
     const accounts = await this.prisma.settlementAccount.findMany({

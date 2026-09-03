@@ -38,13 +38,15 @@ export class VehiclesController {
   @ApiOperation({ summary: 'Список авто' })
   @ApiQuery({ name: 'customerGarageId', required: false })
   @ApiQuery({ name: 'counterpartyId', required: false })
+  @ApiQuery({ name: 'showDeleted', required: false })
   @ApiResponse({ status: 200, type: [VehicleResponseDto] })
   findAll(
     @OrgContext() orgId: string,
     @Query('customerGarageId', new ParseUUIDPipe({ optional: true })) garageId?: string,
     @Query('counterpartyId', new ParseUUIDPipe({ optional: true })) counterpartyId?: string,
+    @Query('showDeleted') showDeleted?: string,
   ) {
-    return this.service.findAll(orgId, garageId, counterpartyId);
+    return this.service.findAll(orgId, garageId, counterpartyId, showDeleted === 'true');
   }
 
   @Get(':id')
@@ -76,6 +78,14 @@ export class VehiclesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
+  }
+
+  @Post(':id/restore')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Відновити видалене авто' })
+  @ApiResponse({ status: 201, type: VehicleResponseDto })
+  restore(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.restore(orgId, id);
   }
 
   @Get(':id/nodes')

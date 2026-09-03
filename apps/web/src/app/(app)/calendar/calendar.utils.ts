@@ -1,10 +1,13 @@
 // ─── Shared Calendar Utilities ───────────────────────────────────────────────
 
 import { kyivDateTimeToISO } from '@/lib/format';
+import { displayCounterpartyName } from '@/lib/utils';
 import type { CounterpartyOption } from './calendar.types';
 
 export const KYIV_TZ = 'Europe/Kyiv';
-export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Re-export спільного UUID_RE з lib/utils — єдине джерело правди
+// (споживачі calendar.utils, напр. CalendarSlotModal, працюють без змін).
+export { UUID_RE } from '@/lib/utils';
 export const SIDEBAR_W = 160;
 
 // Time picker: 15-min step within working hours window.
@@ -112,8 +115,12 @@ export function buildHHMM(h: number, m: number): string {
   return `${pad(h)}:${pad(m)}`;
 }
 
+// Thin proxy до спільного `displayCounterpartyName` з lib/utils — робастніше:
+// (1) `.trim()` на companyName відкидає пробіли/пусті рядки (raw `??` пропускав "");
+// (2) `Петренко Іван` порядок (LAST FIRST) узгоджений з рештою UI.
+// Wrapper збережений для збереження існуючих імпортів у CalendarSlotModal без масової правки.
 export function displayCounterparty(cp: CounterpartyOption): string {
-  return cp.companyName ?? ([cp.lastName, cp.firstName].filter(Boolean).join(' ') || '(без імені)');
+  return displayCounterpartyName(cp);
 }
 
 export function formatKyivDate(ds: string): string {

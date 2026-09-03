@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculatePagination, MAX_PAGE_SIZE } from './pagination';
+import { calculatePagination, MAX_PAGE_SIZE, buildSortOrderBy } from './pagination';
 
 describe('calculatePagination', () => {
   it('page=1, limit=20 → skip=0, take=20', () => {
@@ -50,5 +50,72 @@ describe('calculatePagination', () => {
 
   it('дробові значення floor-уються', () => {
     expect(calculatePagination({ page: 1.9, limit: 20.7 })).toEqual({ skip: 0, take: 20 });
+  });
+});
+
+describe('buildSortOrderBy', () => {
+  const WL = { name: 'name', createdAt: 'createdAt', paymentDate: 'paymentDate' };
+
+  it('відомий sortBy + asc → плоска форма { field: asc }', () => {
+    expect(buildSortOrderBy(WL, 'name', 'asc')).toEqual({ name: 'asc' });
+  });
+
+  it('відомий sortBy + desc → плоска форма { field: desc }', () => {
+    expect(buildSortOrderBy(WL, 'name', 'desc')).toEqual({ name: 'desc' });
+  });
+
+  it('невідомий sortBy → повний fallback { createdAt: desc }, ігнорує dir', () => {
+    expect(buildSortOrderBy(WL, 'DROP TABLE', 'asc')).toEqual({ createdAt: 'desc' });
+  });
+
+  it('undefined sortBy → fallback { createdAt: desc }', () => {
+    expect(buildSortOrderBy(WL, undefined, undefined)).toEqual({ createdAt: 'desc' });
+  });
+
+  it('прототипні ключі (constructor/toString) — fallback (hasOwnProperty guard)', () => {
+    expect(buildSortOrderBy(WL, 'constructor', 'asc')).toEqual({ createdAt: 'desc' });
+    expect(buildSortOrderBy(WL, 'toString', 'desc')).toEqual({ createdAt: 'desc' });
+  });
+
+  it('кастомний fallback field', () => {
+    expect(buildSortOrderBy(WL, undefined, undefined, 'name')).toEqual({ name: 'desc' });
+  });
+
+  // Bug #598 — nullable-fields wrapper
+  describe('nullable fields (Bug #598)', () => {
+    const NULLABLE = new Set(['paymentDate']);
+
+    it('nullable field + desc → { field: { sort:desc, nulls:last } } (не виносить NULL наверх)', () => {
+      expect(buildSortOrderBy(WL, 'paymentDate', 'desc', 'createdAt', NULLABLE)).toEqual({
+        paymentDate: { sort: 'desc', nulls: 'last' },
+      });
+    });
+
+    it('nullable field + asc → { field: { sort:asc, nulls:last } } (стабільний UX)', () => {
+      expect(buildSortOrderBy(WL, 'paymentDate', 'asc', 'createdAt', NULLABLE)).toEqual({
+        paymentDate: { sort: 'asc', nulls: 'last' },
+      });
+    });
+
+    it('non-nullable field (name) — плоска форма навіть з nullableFields set', () => {
+      expect(buildSortOrderBy(WL, 'name', 'desc', 'createdAt', NULLABLE)).toEqual({ name: 'desc' });
+    });
+
+    it('fallback createdAt (non-nullable) — плоска форма', () => {
+      expect(buildSortOrderBy(WL, 'unknown', 'asc', 'createdAt', NULLABLE)).toEqual({
+        createdAt: 'desc',
+      });
+    });
+
+    it('nullableFields undefined → backward-compat: плоска форма для всіх', () => {
+      expect(buildSortOrderBy(WL, 'paymentDate', 'desc')).toEqual({ paymentDate: 'desc' });
+    });
+
+    it('nullable field як fallback (edge): якщо fallback у nullableFields — теж wrapped', () => {
+      const nullableWithFallback = new Set(['createdAt']);
+      expect(buildSortOrderBy(WL, 'unknown', 'asc', 'createdAt', nullableWithFallback)).toEqual({
+        createdAt: { sort: 'desc', nulls: 'last' },
+      });
+    });
   });
 });

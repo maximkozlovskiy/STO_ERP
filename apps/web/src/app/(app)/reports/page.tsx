@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { fmtMoney, kyivToday } from '@/lib/format';
 import dynamic from 'next/dynamic';
 import { SettlementsTabContent } from '../settlements/SettlementsTabContent';
+import { ReportBuilder } from './ReportBuilder';
 
 const RevenueCharts = dynamic(() => import('./ReportsCharts').then(m => m.RevenueCharts), {
   ssr: false,
@@ -39,7 +40,7 @@ const LoadChart = dynamic(() => import('./ReportsCharts').then(m => m.LoadChart)
   loading: () => <div className="h-72 bg-surface-hover animate-pulse rounded-xl" />,
 });
 
-type Tab = ReportTab;
+type Tab = ReportTab | 'builder';
 
 type RevenueRow = { date: string; revenue: number; labor: number; parts: number; count: number };
 type WorkOrderRow = {
@@ -123,7 +124,9 @@ function ReportsPageClient() {
   const [from, setFrom] = useState(() => `${kyivToday().slice(0, 4)}-01-01`);
   const [to, setTo] = useState(() => kyivToday());
 
-  const reportQuery = useReport(tab, from, to);
+  // 'builder' — окрема self-contained вкладка (не фіксований звіт). Мапимо на
+  // 'settlements-detail' лише щоб useReport НЕ слав запит (той tab має enabled:false).
+  const reportQuery = useReport(tab === 'builder' ? 'settlements-detail' : tab, from, to);
   const { data: rawData, isLoading: loading, error: queryError } = reportQuery;
   // keepPreviousData повертає старі дані при зміні tab — треба використовувати _tab
   // з реального queryKey (не поточний tab), щоб не рендерити stock-поля для revenue-даних.
@@ -142,6 +145,7 @@ function ReportsPageClient() {
     { id: 'load', label: 'Завантаженість' },
     { id: 'profitability', label: 'Рентабельність' },
     { id: 'vat', label: 'ПДВ' },
+    { id: 'builder', label: 'Конструктор' },
   ];
 
   const needsDates = ['revenue', 'work-orders', 'load', 'stock', 'profitability', 'vat'].includes(
@@ -177,8 +181,11 @@ function ReportsPageClient() {
         ))}
       </div>
 
-      {/* Filters — один рядок, приховуємо для вкладки Розрахунки */}
-      {!isSettlementsDetail && (
+      {/* Конструктор — self-contained вкладка (власні фільтри/дані/експорт) */}
+      {tab === 'builder' && <ReportBuilder />}
+
+      {/* Filters — один рядок, приховуємо для вкладок Розрахунки/Конструктор */}
+      {!isSettlementsDetail && tab !== 'builder' && (
         <div className="flex flex-wrap gap-3 py-4 items-center shrink-0">
           {needsDates && (
             <>

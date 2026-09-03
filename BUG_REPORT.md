@@ -3,6 +3,247 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-09-02 — sto-tester drill-down документів у графіку оплат — HEAD 6c8eeff5
+
+Bug hunt комітів `2d960bc9` (feat: drill-down документів у графіку оплат) + `c7708711` (fix: WCAG a11y для клітинок).
+
+**Baseline (перед сесією):**
+
+- API tsc: 0. Web tsc: 0.
+- API vitest: 1106/1106 ✅ (75 suites). Перший прогін впав із tinypool crash — транзиентна помилка воркера, повторний прогін green.
+- Web vitest: 491/491 ✅ (45 suites).
+- supplier-payments spec: 48/48 ✅ (service + contract).
+- **Live invariant check** (7 постачальників × 18 клітинок = overdue+byDate+planned per supplier + totals row): для КОЖНОЇ ненульової клітинки шахматки `Σ allocated з /schedule/documents == значення клітинки з /schedule`. **18/18 checked, 0 fails ✅**. Фінансова консистентність збережена.
+- Кредит-лімітний edge (АвтоДеталь ТОВ: balance=−49683, creditLimit=2000, schedule.total=47683=49683−2000) — інваріант тримається, документи показують зменшений allocated.
+- Синтетичний «борг без документа» (poId=''): 1 рядок (АвтоДеталь ТОВ, alloc=1030.00) — включений у overdue, Σ сходиться.
+- Валідаційні edge-cases: `date+target`=400 ✅, ні один=400 ✅, invalid supplierId (non-UUID)=400 ✅, вікно>100днів=400 ✅, from>to=400 ✅, invalid `target` value=400 ✅, no auth=401 ✅, from missing=400 ✅.
+- Tenant test: 1 org у seed → cross-tenant runtime-repro не можливий, орієнтуємось на статичний аналіз (кожен `findMany` містить `orgId` у where — verified).
+
+### Bug #616 — MEDIUM backend/validation — `SupplierPaymentScheduleDocumentsQueryDto.date` приймає семантично-невалідні дати (регресія паттерну Bug #595) — [x] виправлено
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.dto.ts:284-286` — поле `date?: string`:
+  ```ts
+  @IsOptional()
+  @Matches(YMD_RE, { message: 'date має бути у форматі YYYY-MM-DD' })
+  date?: string;
+  ```
+  Тільки regex-shape (`^\d{4}-\d{2}-\d{2}$`), без `@IsDateString({ strict: true })`.
+- **Симптом (live-репродукція, `admin@sto.local`):**
+  ```
+  GET /supplier-payments/schedule/documents?from=2026-09-01&to=2026-12-01&date=2026-99-99  → HTTP 200 []
+  GET /supplier-payments/schedule/documents?from=2026-09-01&to=2026-12-01&date=2026-13-01  → HTTP 200 []
+  GET /supplier-payments/schedule/documents?from=2026-09-01&to=2026-12-01&date=2026-02-31  → HTTP 200 []
+  GET /supplier-payments/schedule/documents?from=2026-09-01&to=2026-12-01&date=9999-99-99  → HTTP 200 []
+  ```
+  Всі повертають HTTP 200 з порожнім масивом замість HTTP 400. Regex `\d{4}-\d{2}-\d{2}` пропускає `99-99` (два цифри). Далі `wantBucket = '2026-99-99'`, у `allocations` не існує bucket-у з такою назвою → фільтр повертає порожньо → користувач бачить «Немає документів» замість помилки. Порівняння з `from`/`to` (за тим же DTO): вони мають `@IsDateString({ strict: true })` + `@Matches(YMD_RE)`, тому `from=2026-99-99` → HTTP 400. **Це точно та ж пастка що вже описана у doc-коментарі до `SupplierPaymentScheduleQueryDto` (lines 224-228, Bug #595), але виправлення застосоване лише до `from`/`to`, не до `date`**.
+- **Природа:** copy-paste розширення: розробник додав drill-down DTO `SupplierPaymentScheduleDocumentsQueryDto`, скопіював `@Matches(YMD_RE)` для `date`, але забув парний `@IsDateString({ strict: true })`. Regex-only shape валідація без semantic-parse — знайома пастка. Симптом ідентичний Bug #595: silent empty replacement of an error, користувач думає «немає боргів у цю дату».
+- **Fix:** додати `@IsDateString({ strict: true }, { message: 'date має бути валідною датою' })` перед `@Matches(YMD_RE, ...)`. Комбо: `IsDateString` парсить (ловить 99-99/13-01/Feb-31) + `Matches` обмежує форму до YYYY-MM-DD (без ISO-часу).
+- **Regression-guard:** розширити `supplier-payments.contract.spec.ts` — три HTTP-400 кейси на невалідну `date`: `2026-99-99`, `2026-13-01`, `2026-02-31`. Дзеркалить існуючий контракт-guard на `from`/`to`.
+- **Severity:** MEDIUM — фінансова UI-панель тихо показує «Немає документів» замість помилки; невірна дата у URL (закладка, share-link, deep-link зі старим форматом) вводить в оману.
+
+Bug hunt комітів `23ce9109` (fix: BALANCE_SIGN, receive→SUPPLIER_CHARGE, migrations 20260902120000 + 20260902120100) та `484f6b92` (review: sibling-drift у PageClient).
+
+**Baseline (перед сесією):**
+
+- API tsc: 0. Web tsc: 0.
+- Vitest settlements + supplier-payments + supplier-returns + purchase-orders: 146/146 ✅.
+- **Live invariant check** (139 counterparties, всі txs): `balance == Σ BALANCE_SIGN(tx.type) × tx.amount` — 139/139 ✅. Backfill спрацював, дрейфу немає.
+- TX types у БД: `CHARGE:61, PAYMENT:66, SUPPLIER_CHARGE:79, SUPPLIER_PAYMENT:28` (без SUPPLIER_REFUND/PREPAYMENT/REFUND/CREDIT_NOTE).
+- 8 SUPPLIER з balance<0 (сума |−63253|); звіт `/reports/settlements` totalCredit=65253 (різниця 2000 = 2 CLIENT з balance<0: FDGD −1600 + TestClient −400 → переплати клієнтів).
+- `/supplier-payments/schedule?from=2026-09-01&to=2026-12-01`: 7 постачальників, total=60553. Один SUPPLIER (soft-deleted `eaac0311`, balance −700) відфільтрований — це Bug #600 trade-off.
+
+### Bug #606 — MEDIUM frontend/UX — інверсія кольору балансу CP у `SettlementsTabContent` vs `PageClient` (детальна картка) — [x] виправлено
+
+- **Файли:**
+  - `apps/web/src/app/(app)/settlements/SettlementsTabContent.tsx:240-247` — колір balance-header:
+    - `balance > 0` → `text-destructive` (червоний).
+    - `balance < 0` → `text-success` (зелений).
+  - `apps/web/src/app/(app)/counterparties/[id]/PageClient.tsx:1306-1314` — колір balance-header:
+    - `balance < 0` → `text-destructive` (червоний).
+    - `balance > 0` → `text-success` (зелений).
+- **Симптом:** ОДИН і той самий контрагент має **різний колір цифри** на двох сторінках:
+  - Клієнт Іван (CLIENT, balance +7230): у `/settlements` → **ЧЕРВОНИЙ**; у `/counterparties/[id]` → **ЗЕЛЕНИЙ**.
+  - АвтоДеталь ТОВ (SUPPLIER, balance −48553): у `/settlements` → **ЗЕЛЕНИЙ**; у `/counterparties/[id]` → **ЧЕРВОНИЙ**.
+- **Природа:** старий колір-код `SettlementsTabContent` (>0 = red) орієнтований на клієнта: >0 = "клієнт нам винен = проблема стягнути". Після фіксу знаку постачальника (23ce9109) семантика двох типів РІЗНА:
+  - CLIENT: balance>0 = дебіторська (треба стягнути), balance<0 = переплата (треба вирішити).
+  - SUPPLIER: balance<0 = кредиторська (треба оплатити), balance>0 = ми переплатили (аномалія).
+- **Fix:** обидва місця → **єдина тип-aware функція** `settlementBalanceTone(balance, type)` у `lib/utils.ts`: враховує тип CP (`SUPPLIER/BOTH/CLIENT`), повертає `'destructive' | 'warning' | 'success' | 'muted'`. Обидві сторінки читають з неї. `BOTH` — трактуємо як SUPPLIER-first (частіше ми винні за товар, ніж клієнт-переплата), або як **`destructive` для будь-якого ненульового** (безпечно: привертає увагу).
+- **Severity:** MEDIUM — фінансова UI-інверсія, вводить в оману користувача (зелений = "все ок" для боргу, який треба гасити).
+
+### Bug #607 — LOW/CLEANUP backend/reports — `reports.settlements()` не фільтрує soft-deleted counterparty — [x] виправлено
+
+- **Файл:** `apps/api/src/modules/reports/reports.service.ts:307-316` — `findMany` без `counterparty.deletedAt: null`.
+- **Симптом:** звіт "Взаєморозрахунки" показує рядок для soft-deleted CP (`eaac0311` — SUPPLIER, deletedAt=2026-07-03, balance −700, ім'я 'Тест Пост ТОВ') → клацнути неможливо (404). Схема різниться з `/supplier-payments/schedule`, яка фільтрує.
+- **Fix:** `where.counterparty = { deletedAt: null }` (Prisma nested filter). Розбіжність docstring Bug #600 продовжує існувати лише для `type in (SUPPLIER,BOTH) but balance<0 та CLIENT з balance<0` — обидва тепер вже узгоджені, docstring переписати.
+- **Severity:** LOW — cleanup, не критично для рахування.
+
+### Bug #608 — HIGH backend/regression-guard — 0 тестів на **тип-роздільність** знаку у settlements-invariants suite — [x] виправлено
+
+- **Файл:** `apps/api/src/modules/settlements/settlements.invariants.spec.ts`.
+- **Симптом:** invariants spec існує (10 тестів), перевіряє `getSchedule` та `reports.settlements`, але після фіксу 23ce9109 — жоден тест не гарантує, що:
+  - SUPPLIER_CHARGE не потрапить у CLIENT-акаунт (бо `documentType='PurchaseOrder'` унікальний).
+  - Після повного циклу receive → supplier-payment SUPPLIER-balance повертається у 0 (property-invariant).
+  - Клієнтські CHARGE/PAYMENT не рестарт-mixed з SUPPLIER-типами (regression, що backfill не re-typed CLIENT-транзакції).
+- **Fix:** +3 regression-тести:
+  1. `full supplier cycle: receive(1000) → supplier-payment(1000) → balance=0` (property invariant).
+  2. `partial receive + partial payment + refund: balance = −(recv − pay − ref)`.
+  3. `BALANCE_SIGN exhaustiveness: for each SettlementTransactionType, sign is ±1 (compile-time via Record<enum, ...>) + runtime assert 8 keys`.
+- **Severity:** HIGH — regression-guard gap на фінансовій зміні (гроші!). Наступний refactor знаку не впаде на CI.
+
+---
+
+## Session 2026-08-30 — sto-tester FIFO-графік + колонки оплати — HEAD 05ebbeb1
+
+Автоматичний bug hunt для комітів `282d5fba` (feat: FIFO-графік + outstanding колонки)
+
+- `05ebbeb1` (fix: sortBy=paymentDate whitelist). Baseline перед сесією:
+
+* API tsc: 0 помилок.
+* supplier-payments.service.spec.ts: 37/37 ✅.
+* purchase-orders.service.spec.ts + contract.spec.ts: 41+26=67/67 ✅.
+* Live факти: FDGD −1600 balance → schedule overdue=1600 ✅; sortBy=paymentDate → 200 ✅.
+
+### Bug #598 — MEDIUM frontend/backend / nullable-sort surface — `sortBy=paymentDate&sortDir=desc` виносить NULL-paymentDate PO наверх списку
+
+- **Файли:**
+  - `apps/api/src/common/utils/pagination.ts:42` — `buildSortOrderBy()` повертає плоский `{ [field]: dir }` без керування `nulls`.
+  - `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:115` — findAll використовує `buildSortOrderBy(PO_SORT_FIELDS, sortBy, sortDir)`.
+  - `apps/web/src/app/(app)/purchase-orders/page.tsx:943` — sortable header `paymentDate`.
+- **Симптом (live-репродукція, admin@sto.local):**
+  ```
+  GET /api/purchase-orders?sortBy=paymentDate&sortDir=desc&limit=10
+  → перші 5 items: paymentDate=[null, null, null, null, null]
+  ```
+  Користувач клікає «Дата оплати» у списку купівлі щоб побачити НАЙПІЗНІШІ dates наверху (типовий UX для "коли платити") — натомість отримує сотні draft/no-pay-date замовлень, справжні дати ховаються у глибині сторінки. ASC працює як очікується (nulls внизу), бо у Postgres дефолт для `ORDER BY x ASC` = `NULLS LAST` для nullable колонок, для `DESC` = `NULLS FIRST`.
+- **Root cause:** Prisma підтримує `orderBy: { field: { sort: 'desc', nulls: 'last' } }` — але `buildSortOrderBy` повертає лише `{ field: 'desc' }`, отже Postgres застосовує свій default. Для nullable-полів (`paymentDate` — nullable у schema.prisma), DESC-сортування завжди «пустеніє» top списку. Проблема з'явилась при додаванні `paymentDate` у whitelist (05ebbeb1) — раніше whitelist мав тільки non-null поля (`createdAt`, `documentDate`, `totalAmount`).
+- **Виявлено:** live-curl через паперовий admin login → JSON перевірка перших елементів після sort DESC.
+- **Fix:** розширити `buildSortOrderBy` опцією `nullableFields?: Set<string>` — для nullable-поля повертати `{ [field]: { sort: dir, nulls: 'last' } }` замість плоскої форми. Postgres-агностично, Prisma-native. У `purchase-orders.service.ts` передати `new Set(['paymentDate'])` як опцію. Патерн універсальний — інші list-сервіси (invoices, work-orders) з nullable-сортовними полями отримають той самий guard коли додадуть.
+- **Severity:** MEDIUM — UX regression у щойно доданій feature. Не data corruption, але фіча «сортувати за датою оплати» повертає фактично марний result для основного use-case (DESC).
+- **Де ще шукати:** `grep -rn "buildSortOrderBy" apps/api/src/modules --include="*.service.ts"` → для кожного viклику перевірити whitelist на nullable-поля (`paymentDate`, `completedAt`, `pricedAt`, `dueDate`, `expiryDate`). Кожен nullable у whitelist без `nullableFields`-option = потенційний Bug #598.
+- **Регресія-guard:** новий unit-тест `pagination.spec.ts` — для nullable field + desc → `{ [f]: { sort:'desc', nulls:'last' } }`; для non-nullable → плоска форма (backward-compat). Плюс тест у `purchase-orders.service.spec.ts` що `sortBy=paymentDate&desc` дає orderBy з `nulls: 'last'`.
+- **Статус:** [x] ВИПРАВЛЕНО (buildSortOrderBy += nullableFields; PO передає Set(['paymentDate']); live: DESC → дати зверху, null внизу; +12 pagination + 4 PO тести)
+
+### Bug #599 — MEDIUM backend / semantic filter miss — `getSchedule` включає CLIENT-типу counterparty з від'ємним балансом як «постачальник до оплати»
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.ts:200-212` (`payableAccounts` findMany).
+- **Симптом:** якщо клієнт має prepayment refund pending (SettlementAccount.balance<0 для CLIENT-типу) — цей клієнт з'явиться у **графіку оплат ПОСТАЧАЛЬНИКАМ** як строка з payable=|balance|. Наразі приховано випадково: в тестовій org єдиний такий запис (`TestClient E2E-Detail` з balance=-400) вже soft-deleted → filter `counterparty: { deletedAt: null }` його виключає. Але тільки-но CLIENT з від'ємним балансом активний — потрапляє у шахматку оплат ПОСТАЧАЛЬНИКУ, з CLIENT-іменем у колонці «Постачальник».
+- **Root cause:** query фільтрує `balance: { lt: 0 }` + `counterparty.deletedAt: null`, але НЕ фільтрує `counterparty.type ∈ { SUPPLIER, BOTH }`. Схема:
+  ```prisma
+  enum CounterpartyType { CLIENT SUPPLIER BOTH }
+  ```
+  Для СТО типовий контрагент — CLIENT (машина у ремонті) або SUPPLIER (постачальник запчастин); BOTH — рідкість (напр. авто-магазин що і послуги надає, і сам замовляє). Схема «оплати постачальнику» операційно = SUPPLIER або BOTH.
+- **Виявлено:** ручний trace через reports.settlements (198 rows) → знайдено `TestClient E2E-Detail (type=CLIENT, balance=-400)` серед negative-balance списку → перевірка чому не потрапив у schedule → deleted → інакше потрапив би. Sanity check коду `payableAccounts` where-clause підтвердив missing type-filter.
+- **Fix:** додати `counterparty: { deletedAt: null, type: { in: ['SUPPLIER', 'BOTH'] } }` у `payableAccounts` findMany. Виключає з схеми оплат постачальникам будь-які клієнтські прописи. Аналогічний filter логічно потрібен на `contracts` query (creditLimit тільки для SUPPLIER/BOTH), але там `contractType: 'PURCHASE'` вже неявно виключає CLIENT (PURCHASE-договір з клієнтом семантично неможливий, хоч API не заборонить).
+- **Severity:** MEDIUM — semantic contamination графіка. Не корупція, не крашить. Але фінансовий звіт з невірною категоризацією = довіра ↓ («чому клієнт у списку постачальників?»). Latent bug — активується коли реальний клієнт має prepayment refund pending; для demo-org замаскований soft-delete.
+- **Де ще шукати:** будь-який `settlementAccount.findMany` де фінансовий домен — supplier vs client — вимагає розмежування:
+  - reports.settlements: legitimate mixed (обидва бажані у звіті) — не чіпати.
+  - supplier-payments.getSchedule: **потрібен filter** — Bug #599.
+  - клієнтські прайси/платежі/картки — те саме дзеркало для CLIENT-only endpoints.
+- **Регресія-guard:** новий тест у `supplier-payments.service.spec.ts`: `getSchedule` мокає `settlementAccount.findMany` — перевірити що where.counterparty містить `type: { in: ['SUPPLIER', 'BOTH'] }`.
+- **Статус:** [x] ВИПРАВЛЕНО (додано `type: { in: ['SUPPLIER','BOTH'] }` у payableAccounts findMany where.counterparty)
+
+### Bug #600 — LOW docs / stale invariant claim — docstring `getSchedule` каже «графік і звіт завжди узгоджені», але це неправда за наявності deleted counterparty з debt
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.ts:132-137` (JSDoc блок над `getSchedule`).
+- **Симптом:** doc-string обіцяє: «АВТОРИТЕТНЕ джерело — SettlementAccount.balance (те саме, що звіт «Взаєморозрахунки»)». Live-перевірка: schedule totals.total = 1600 (лише FDGD), звіт `reports.settlements` totalCredit = 2000 (FDGD 1600 + TestClient soft-deleted 400). Divergence 400. Root: schedule фільтрує `counterparty.deletedAt: null`, звіт — ні. Оба поведінки виправдані окремо (schedule ховає orphan, звіт агрегує усі accounts), але заявлена інваріант «завжди узгоджені» — фактично не виконується. Розробник читає docstring → покладається на claim → пізніше несподівано отримує divergence bug-report від бухгалтерії.
+- **Root cause:** commit 2aea04e4 змінив підхід (payable=balance замість ΣPO) і додав filter deleted-supplier, але docstring не оновлений під filter.
+- **Fix:** переписати docstring: «АВТОРИТЕТНЕ джерело — SettlementAccount.balance для АКТИВНИХ counterparty (deletedAt IS NULL). Для звіту «Взаєморозрахунки» — той самий balance, але БЕЗ фільтра deleted → divergence на суму боргів видалених counterparty». Це також задокументувати як trade-off (не bug, не потребує фіксу звіту).
+- **Severity:** LOW — docs-only, не впливає на runtime. Але важливий: невірна інваріант документація призводить до недовіри до звіту у нових розробників.
+- **Де ще шукати:** grep docstrings з «завжди узгоджені» або «дзеркалить» — перевіряти проти реальних filter-різниць. Особливо для звітів/агрегатів де filter deleted не симетричний.
+- **Регресія-guard:** не потрібно — docs-only fix.
+- **Статус:** [x] ВИПРАВЛЕНО (docstring getSchedule переписаний: divergence зі звітом задокументований як trade-off)
+
+## Session 2026-08-30 — FULL /sto-tester Цикл 2/3 — HEAD c8057635
+
+Другий FULL цикл після Cycle 1 (Bugs #592-#595 виправлені у HEAD d5d58af7 + /simplify
+розширив у c8057635 + /sto-optimize у a5fc685e). Baseline перед сесією: tsc api+web 0,
+API vitest 992/992, Web vitest 488/488. Всі 4 Cycle-1 [x]-баги ПЕРЕВІРЕНО у коді:
+kyivToday/addDaysKyiv у purchase-orders.service.spec.ts:836, useCreateSupplierPayment
+у SupplierPaymentCreateModal.tsx:20+113, IsDateString у supplier-payments.dto.ts:231+236,
+renderWithQueryClient з query-utils імпортується у SupplierPaymentCreateModal.test.tsx +
+DocumentCreateModals.test.tsx.
+
+### Bug #596 — LOW frontend / broken deep-link — `/supplier-payments/[id]` → PO page з `?highlight=<id>` — приймач не обробляє параметр
+
+- **Файл:** `apps/web/src/app/(app)/supplier-payments/[id]/PageClient.tsx:188`
+  (кнопка «покажи PO» у полі «Замовлення постачальнику»).
+- **Симптом:** користувач відкриває картку оплати → клікає номер PO → відкривається
+  список `/purchase-orders` **без будь-якої візуальної відмітки** на бажаному замовленні.
+  Кнопка виглядає як deep-link (стрілка ExternalLink), але фактично лише перекидає у
+  голий список — користувач бачить сотні PO і має шукати вручну.
+- **Root cause:** сторінка SP-детально пушить у router URL з query param `?highlight=<poId>`,
+  але `apps/web/src/app/(app)/purchase-orders/page.tsx` не читає цей параметр —
+  `grep -rn "highlight" apps/web/src/app` дає РІВНО 1 match (той самий push).
+  Приймач ігнорує → deep-link мертвий. Ціль контракту зрозуміла з коду (open PO for
+  view/edit), але PO page має лише edit-modal через клік на рядок (`setEditingPOId`) —
+  URL-driven open не реалізовано.
+- **Виявлено:** статичний scan `?highlight=` пар писача/читача у full-project search
+  (Крок 1 §1.3 frontend routing). Пара «writer 1 / reader 0» = broken feature contract.
+- **Fix:** (а) SP-детально: `?highlight=` → `?open=` (семантика «відкрий deep-link на цей id»);
+  (б) `/purchase-orders/page.tsx`: у useEffect при монтуванні читаємо `searchParams.get('open')`,
+  якщо є і UUID-валідний — `setEditingPOId(id)` + `params.delete('open') + router.replace` щоб
+  refresh не спамив модалку. Одразу відкривається редагування конкретного PO. Ідемпотентно
+  (deep-link з history/bookmark працює однаково). Дзеркалить наявний pattern «active tab»
+  через URL param у тій самій сторінці (line 134).
+- **Severity:** LOW — не data corruption, не crash; broken UX-feature. Однак «кнопка яка
+  нічого не робить» — release-blocker для UX polish (користувач втрачає довіру до deep-links).
+- **Де ще шукати:** будь-який `router.push('/<page>?<param>=...')` де таргет-сторінка не
+  має `searchParams.get('<param>')` handler. Grep-guard: для кожного `router.push` з
+  query param — знайти `.get('<param>')` у target-сторінці. Якщо 0 → broken deep-link.
+- **Регресія-guard:** оновити BUG-checklist у §1.3 (нижче, крок 7 self-improvement).
+- **Статус:** [x] виправлено.
+
+## Session 2026-08-20 — Code review feat/supplier-payments
+
+### Bug #593 — HIGH frontend / cache-shape conflict / same key, two shapes
+
+- **Сигнал:** знайдено code review (high effort). `SupplierPaymentCreateModal` ділить
+  sessionStorage-ключі `cache:bank-accounts` / `cache:cash-registers` з `/ndi`
+  `BankAccountsTab` та `CashRegistersTab`, АЛЕ використовував **несумісну форму**:
+  таби пишуть/читають `{ items: [...] }`, а модалка — **голий масив**.
+- **Файл:** `apps/web/src/components/ui/SupplierPaymentCreateModal.tsx:88-106`.
+- **Root cause:** дві сторони пишуть різні форми у той самий ключ. Коли таб записав
+  `{ items }`, а модалка читає `getCached<BankAccount[]>(...)` → отримує об'єкт (truthy) →
+  `setBanks({items:[...]})` кладе не-масив у state. Якщо фоновий `apiFetch('/bank-accounts')`
+  падає (offline — first-class сценарій offline-first ERP; `.catch(() => {})` ковтає),
+  і користувач перемикає джерело на «Банківський рахунок» → `banks.map(...)` → crash.
+  Зворотний бік: модалка пише голий масив → `cachedBa.items` у табі = undefined → кеш
+  тихо ігнорується. Це той самий клас що Bug #592, переспливлий у новий компонент.
+- **Fix:** модалка тепер читає `{ items }` з `Array.isArray(cached.items)` guard і пише
+  `{ items }` (той самий контракт що таби + API-відповідь). Плюс два супутні:
+  - auto-select single source тепер спрацьовує РАЗ на джерело (через `autoSelectedRef`),
+    а не після кожного рендера → перестав перевибирати щойно очищене поле «— Оберіть —».
+- **Регресія-guard:** новий `SupplierPaymentCreateModal.test.tsx` (3 кейси): { items }-форма
+  з таба + offline не крашиться, голий масив не крашиться, модалка пише канонічну { items }.
+- **Severity:** HIGH — crash модалки оплати постачальнику при спільному кеші + offline.
+- **Де ще шукати:** будь-які два компоненти що ділять `cache:*` ключ але пишуть різну форму.
+  Довгостроково — валідувати/нормалізувати форму у самому `ref-cache.ts:getCached`.
+- **Статус:** [x] виправлено.
+
+## Session 2026-07-04 — Runtime crash /ndi BankAccountsTab
+
+### Bug #592 — HIGH frontend / cache-shape drift / Runtime TypeError
+
+- **Сигнал:** `Cannot read properties of undefined (reading 'map')` у `BankAccountsTab`
+  (`NdiPageClient` → `/ndi`). Виникало при відкритті вкладки "Банківські рахунки" у Turbopack dev.
+- **Файл:** `apps/web/src/app/(app)/ndi/BankAccountsTab.tsx:48` (+ `:52`); той самий патерн у
+  `CashRegistersTab.tsx:41`, `CurrenciesTab.tsx:43`.
+- **Root cause:** `getCached('cache:bank-accounts')` / `getCached('cache:currencies')` повертає
+  розпарсений JSON з sessionStorage БЕЗ валідації форми (`ref-cache.ts:getCached` — сирий
+  `JSON.parse`). Якщо запис має стару/зіпсовану форму (`{ items: undefined }` від попереднього
+  білду, або голий масив замість `{ items }`), то `setBankAccounts(cached.items)` пише `undefined`
+  у state → синхронний перший рендер робить `bankAccounts.map(...)` на `undefined` → crash усього
+  NdiPageClient. Backend `/bank-accounts` та `/currencies` повертають коректний `{ items, total }` —
+  контракт правильний; проблема суто у незахищеному читанні кешу.
+- **Fix:** guard `Array.isArray(cached.items)` перед кожним `setX(cached.items)` у трьох табах.
+- **Регресія-guard:** новий `BankAccountsTab.test.tsx` (4 кейси): items=undefined, currencies
+  items=undefined, голий масив (стара форма), валідний кеш рендериться синхронно.
+- **Severity:** HIGH — crash усієї сторінки /ndi при зіпсованому кеші; жоден TS/unit не ловив
+  (кеш читається з runtime sessionStorage, форма не типізується на межі).
+- **Де ще шукати:** будь-який `getCached<{ items: X[] }>(...)` → `setX(cached.items)` без
+  `Array.isArray` guard. Довгостроково — валідувати форму у самому `getCached`.
+- **Статус:** [x] виправлено.
+
 ## Session 2026-06-20 — Massive E2E coverage expansion — HEAD bf2f78a6
 
 Знайшли через нові spec-файли (vehicles, profile, ndi, settings-sync, calendar-views, command-palette,
@@ -1278,3 +1519,770 @@ Sync/Review — 0 open issues (review 12/12 fixed, sync 0 mismatches).
   - `settings.dto.ts:287` — `workDays` cap 7 (enum-обмежений range 0-6)
   - `works.dto.ts:58` — `categoryIds` cap 100
 - **Verification:** `tsc --noEmit` clean, API 960/960 tests passed.
+
+---
+
+## Session 2026-07-03 — SupplierPayment feature sweep (гілка `feat/supplier-payments`, HEAD cd3c35d3)
+
+Baseline: API tsc 0 errors, Web tsc 0 errors, `supplier-payments.service.spec.ts` 10/10 passed.
+Scope: `apps/api/src/modules/supplier-payments/**`, `apps/web/src/app/(app)/supplier-payments/page.tsx`,
+`apps/web/src/components/ui/SupplierPaymentCreateModal.tsx`, `apps/web/src/hooks/api/useSupplierPayments.ts`.
+
+Static-analysis focus (business invariants за завданням):
+`confirm()` пише 1 PAYMENT settlement / documentType='SupplierPayment' / race-safe re-read;
+`cancel()` без settlement; sourceType↔BANK_ACCOUNT/CASH_REGISTER консистентність; CLIENT → 400;
+cross-supplier PO → 400; tenant isolation; CONFIRMED → non-editable / non-deletable; pagination cap; supplierId filter cross-tenant guard.
+
+### Bug #588 — HIGH backend / data integrity — `update()` дозволяє orphan `purchaseOrderId` при зміні `supplierId`
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.ts:201-305`
+- **Сценарій:** DRAFT SupplierPayment має `supplierId=S1, purchaseOrderId=PO1` (PO1 належить S1). Користувач шле `PATCH /supplier-payments/{id} { supplierId: S2 }` **без** `purchaseOrderId` у payload.
+  - Рядок 258: `dto.purchaseOrderId` undefined → PO-запит пропускається у `Promise.all`.
+  - Рядок 277: `if (dto.purchaseOrderId)` — false → cross-supplier guard `purchaseOrder.supplierId !== nextSupplierId` НЕ виконується.
+  - Рядок 294: `dto.purchaseOrderId !== undefined` — false → `purchaseOrderId` НЕ переписується.
+  - Результат: запис має `supplierId=S2` і `purchaseOrderId=PO1` (PO належить S1). Downstream `findOne` include повертає PO чужого постачальника → UX показує «Замовлення X (Постачальник S1)» на оплаті S2, звіти по заборгованостях S2 включають/виключають PO S1 залежно від join.
+- **Причина виникнення:** розробник валідує лише **новоприбулі** dto-поля (`if (dto.purchaseOrderId)`) — стандартний PATCH-патерн для незалежних полів. Але `supplierId` і `purchaseOrderId` — **paired FK**: PO валідне лише у контексті свого supplier. UI (`SupplierPaymentCreateModal.tsx:258,388`) правильно клірить пару у `onClear` супʼера і у `onSelect` пікера супʼера, але backend `update()` не має symmetric-guard → API-only client (Postman, sync, майбутній mobile) обходить UX-invariant.
+- **Виявлено:** ручний трейс `update()` проти сценарію «зміна лише supplierId» — не покрито ані існуючим `supplier-payments.service.spec.ts` (10 тестів на create/confirm/cancel/remove, 0 на update), ані `Bug #587` grep-checkslist. Тип bug-у — типова «paired FK state on update» (аналогічно Bug #191 style, але для business FK замість tenant orgId).
+- **Severity:** HIGH — silent data corruption (немає runtime error), долає auth-role (авторизований ACCOUNTANT робить). Не CRITICAL бо: (а) FSM-guard блокує mutation після CONFIRMED, (б) settlement/balance ще не написаний у DRAFT, (в) UI ховає невідповідність. Але звітність по заборгованостях постачальника може силентно розійтися; auto-sync у cloud підхопить corrupt row.
+- **Fix approach:** у `update()` селектнути поточний `purchaseOrderId` у першому `findFirst`; якщо `dto.supplierId` присутній і `dto.supplierId !== sp.supplierId` і `dto.purchaseOrderId === undefined` — примусово переписати `purchaseOrderId: null` у `data` (mirror UX auto-clear). Або: якщо існуючий `sp.purchaseOrderId` НЕ відповідає `nextSupplierId` — теж кинути `BadRequestException` (strict). Обираю auto-null (menu-friendly), бо `Modal.onSelect(supplier)` вже робить те саме на UI.
+- **Fix:** service.update — розширити select у prep-fetch на `purchaseOrderId` + `supplierId` (вже є), обчислити `supplierChanged = dto.supplierId != null && dto.supplierId !== sp.supplierId`, у data-payload: `if (supplierChanged && dto.purchaseOrderId === undefined) → purchaseOrderId: null`.
+- **Regression-guard:** новий кейс у `supplier-payments.service.spec.ts` — `update(): PATCH supplierId → PO orphan auto-cleared`.
+- **Статус:** [x] виправлено — `supplier-payments.service.ts:207-233` (prep select розширений `purchaseOrderId: true`, обчислено `shouldClearOrphanPO`, spread у data). 2 regression-тести додано: (a) supplier зміна з orphan PO → PO auto-null; (b) supplier зміна без PO у sp → data-payload НЕ містить purchaseOrderId (не пише зайвого no-op).
+- **Verification:** `pnpm --filter @sto/api exec tsc --noEmit` clean; `supplier-payments.service.spec.ts` 16/16 passed (10 старих + 6 нових).
+
+### Bug #589 — MEDIUM test / regression-coverage — прогалини у `supplier-payments.service.spec.ts`
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.spec.ts`
+- **Сигнал:** існуючий spec має 10 тестів для create/confirm/cancel/remove; `update()` НЕ покрито ніяк.
+- **Прогалини:**
+  1. `create()` з невідомим `bankAccountId` → 404 (NotFoundException) — незакрито.
+  2. `create()` з `purchaseOrderId` іншого постачальника → 400 — незакрито.
+  3. `update()`: PATCH на CONFIRMED → 400 — незакрито (guard існує).
+  4. `update()`: PATCH `sourceType=BANK_ACCOUNT` без `bankAccountId` → 400 — незакрито (guard існує через `assertSourceConsistency`).
+  5. `update()`: PATCH `supplierId` без `purchaseOrderId` → auto-clear PO (regression guard для Bug #588).
+- **Severity:** MEDIUM — code-side guards існують (окрім Bug #588), але без regression-тестів refactor може силенто зламати FSM/paired-FK invariants.
+- **Fix:** додати 5 нових `it(...)` кейсів у той самий describe-блок.
+- **Статус:** [x] виправлено — 6 нових `it(...)` додано у `supplier-payments.service.spec.ts` (bank-account NotFound, cross-supplier PO create → 400, update PATCH CONFIRMED → 400, update sourceType→BANK без bankAccountId → 400, Bug #588 auto-clear pair, Bug #588 no-op safety pair).
+- **Verification:** vitest 16/16 passed.
+
+---
+
+## Session 2026-07-03 (FULL /sto-tester) — SupplierPayment cross-resource invalidation gap (HEAD dd6fdb03)
+
+Baseline: TypeScript 0 errors (api/web/shared), API vitest 976/976 passed, Web vitest 471/471 passed, E2E 305/307 (2 flaky re-verified green), API health OK, dev server up.
+
+FULL-audit scope (feat/supplier-payments branch, ~15 files):
+
+- `apps/api/src/modules/supplier-payments/**`
+- `apps/web/src/hooks/api/useSupplierPayments.ts`
+- `apps/web/src/components/ui/SupplierPaymentCreateModal.tsx`
+- `apps/web/src/app/(app)/supplier-payments/page.tsx`
+- `packages/database/prisma/schema.prisma` + migrations `20260703100000_add_supplier_payment` / `20260703100001_seed_supplier_payment_doc_numbers`
+- `packages/shared/src/constants/statuses.ts` (SUPPLIER*PAYMENT_STATUS*\*)
+- `apps/web/src/lib/panel-schema.ts` (SUPPLIER_PAYMENT_PANEL_SCHEMA)
+
+Static-checks passed (0 bugs found у цих секціях):
+
+- §1.1 backend business logic: FSM DRAFT→CONFIRMED пише PAYMENT settlement у $transaction з re-read guard (Bug #412 pattern OK); documentType='SupplierPayment' консистентний; CLIENT-guard; cross-supplier PO guard; supplierId filter cross-tenant guard; source-type consistency; alternate-mutation endpoint audit — inne mutation відсутні; auto-create ignores OrganisationSettings — не застосовне (currency поки не читається); Bug #533 backfill migration присутня; Bug #319/320 isSystem — не застосовне (немає seed-керованих SupplierPayment).
+- §1.2 TypeScript: усі DTO мають декоратори (@IsUUID/@IsString/@IsNumber/@IsEnum), optional numeric поля мають @IsNumber+@Min, немає nested inner DTO без валідації, ParseUUIDPipe скрізь, Ukrainian exception messages, `syncVersion` не витікає у DTO (Prisma model → toDto без витоку).
+- §1.3 frontend: hook queryKey factory консистентний; local `SupplierPayment` interface відповідає backend DTO (одне джерело); cascade-clear FK у modal (`onClear` супʼера clears PO, `onSelect` супʼера clears PO); pattern Bug #499 (mutateAsync у try/catch) — все обгорнуто; dead state — не знайдено (usePaginatedList shared, немає осиротілих search/timeout ref); SSR-safe date — modal використовує `useState(() => kyivToday())` — OK.
+- §1.4 security: контролер за JwtAuthGuard+RolesGuard (OWNER/ADMIN/ACCOUNTANT) — публічних ендпоінтів немає; @IsArray немає у цих DTO (Bug #587 — не застосовне); @MaxLength — конвенція не enforce-иться проектом (13/N DTO мають — не supplier-payments-specific gap).
+- §1.5 backend test coverage: `supplier-payments.service.spec.ts` 16 тестів; regression-guards є для confirm PAYMENT semantics, race re-read у $tx, non-DRAFT reject, cross-supplier PO reject, sourceType consistency, Bug #588 auto-clear pair.
+- §1.7 a11y/i18n: усі placeholders/labels українською; buttons мають текст + leftIcon (aria-label не потрібен); дата DD.MM.YYYY через fmtDate.
+
+Виявлений gap:
+
+### Bug #590 — HIGH frontend / cache-staleness — `useConfirmSupplierPayment` не інвалідує `counterpartiesKeys.all`
+
+- **Файл:** `apps/web/src/hooks/api/useSupplierPayments.ts:91-101` (до фіксу)
+- **Симптом:** користувач створює DRAFT SupplierPayment на суму 5000 ₴ для постачальника A, потім тисне «Провести». Backend виконує `settlements.createTransaction({ counterpartyId: A, type: 'PAYMENT', amount: 5000 })` → `SettlementAccount.balance` постачальника A зменшується на 5000. Але React Query cache для counterparties не інвалідується → CRM/counterparties list та DetailPanel показують стару `balance` value до `staleTime=30_000ms`. Користувач бачить: «Провів оплату 5000 ₴ — але у CRM борг тільки що не змінився». Refresh допомагає, але викликає підозру щодо консистентності системи.
+- **Причина виникнення:** розробник міркує ізольовано «confirm SupplierPayment → refresh SupplierPayment list» — правильно, але **пропускає downstream side-effect** (settlement PAYMENT → balance). Той самий підхід уже виправлений у `useCreatePayment` (`useInvoices.ts:79-93`) з коментарем «Bug #245: без counterpartiesKeys.all CRM balance застаріває». Symmetric bug: mutation що триггерить `settlements.createTransaction` через **будь-який** endpoint має інвалідувати `counterpartiesKeys.all`.
+- **Виявлено:** ручний трейс `confirm()` → `settlements.createTransaction(PAYMENT)` → `settlementAccount.update({ balance: { increment: -5000 } })` → grep `counterpartiesKeys` у `useSupplierPayments.ts` — 0 matches. Порівняння з `useInvoices.ts:79-93` показало, що аналогічний confirm-like mutation вже має цей invalidate + inline коментар про Bug #245.
+- **Severity:** HIGH — silent UX staleness (не runtime error), впливає на всі ролі-permission-и що бачать CRM (OWNER/ADMIN/ACCOUNTANT), звіти по заборгованостях можуть використовувати стале value до 30s. Не CRITICAL бо: (а) backend консистентний — DB має правильний баланс; (б) через 30s cache протухне; (в) вручний refresh виправляє. Фіксується 4 рядки + regression-guard test.
+- **Fix approach:** додати `void qc.invalidateQueries({ queryKey: counterpartiesKeys.all })` у `onSuccess` `useConfirmSupplierPayment`. `useCancelSupplierPayment` — навмисно НЕ інвалідує counterparties, бо `cancel()` з DRAFT НЕ пише settlement (guard у backend) → balance не змінюється; зайвий refetch = CRM-noise у workflow. Додати inline-коментар про кожне рішення для документування invariant.
+- **Fix:**
+  - `useSupplierPayments.ts` — імпорт `counterpartiesKeys`; у `useConfirmSupplierPayment.onSuccess` додано `void qc.invalidateQueries({ queryKey: counterpartiesKeys.all })` + коментар «Bug #590: confirm() пише settlement PAYMENT → зменшує баланс постачальника».
+  - `useCancelSupplierPayment.onSuccess` — inline-коментар «cancel() з DRAFT НЕ пише settlement, тож counterparties балансу не чіпає. Явно НЕ інвалідовано щоб уникнути зайвих refetch на CRM.» (документування навмисної асиметрії).
+- **Regression-guard:** новий `apps/web/src/hooks/api/useSupplierPayments.test.tsx` (10 тестів, аналог `useInvoices.test.tsx`) з ключовим кейсом `useConfirmSupplierPayment (Bug #590 regression)` — assert що `invalidateQueries` було викликано з `counterpartiesKeys.all`; парний assert для `useCancelSupplierPayment` — що `counterpartiesKeys.all` **НЕ** був викликаний (documents intentional asymmetry).
+- **Статус:** [x] виправлено — `useSupplierPayments.ts` + 10 нових hook-тестів.
+- **Verification:** `tsc --noEmit` clean; `useSupplierPayments.test.tsx` 10/10 passed; full web vitest 481/481 passed (+10 vs baseline 471); full API vitest 976/976 passed (no regression).
+- **Де ще шукати:** будь-який FE hook що робить POST на backend endpoint, який всередині `$transaction` викликає `settlements.createTransaction` — має інвалідувати `counterpartiesKeys.all`. Кандидати: `useConfirmSupplierPayment` (fixed), `useCreatePayment` (fixed у #245), майбутні `useCreditNote`, `useRefund`, `useSupplierReturn` confirm-like мутації. Sanity-grep: `grep -rln "createTransaction" apps/api/src/modules/*/*.service.ts` для кожного service-метода знайти всі FE endpoint-и що його триггерять і у кожному відповідному хуку перевірити `counterpartiesKeys.all` invalidate.
+
+### Bug #591 — MEDIUM frontend test — брак `useSupplierPayments.test.tsx` (regression-guard для queryKey factory + cross-invalidation)
+
+- **Файл:** `apps/web/src/hooks/api/useSupplierPayments.test.tsx` (не існував до цієї сесії)
+- **Симптом:** усі analog-модулі (`useInvoices.test.tsx`, `useWorkOrders.test.tsx`, `useInventory.test.tsx`, `usePaginatedList.test.tsx`) мають hook-тести з full-coverage: queryKey factory shape, filter → URL query, enabled-gate, cross-resource invalidation (Bug #245 pattern). `useSupplierPayments.ts` — 0 тестів, тож refactor може силенто змінити queryKey shape (breaks page prefetch), забути `enabled: !!id` у useSupplierPayment (Bug #281 pattern), видалити counterpartiesKeys invalidate (Bug #590 регресія). Все проходить CI зеленим.
+- **Причина виникнення:** нова фіча була додана без парного hook spec — конвенція `usePaginatedList`-based hooks мати `.test.tsx` не enforce-иться CI-lint-ом.
+- **Severity:** MEDIUM (regression-risk gap) — не runtime bug, але блокуючий стан для safe refactor у майбутньому. Особливо коли Bug #590 fix одразу required його regression-guard.
+- **Fix:** створено `useSupplierPayments.test.tsx` з 10 тестами:
+  - `supplierPaymentsKeys factory` × 4 (all/lists/list-filter-key/detail)
+  - `useSupplierPayments (list)` × 2 (enabled-gate без employee, filter → URL query includes page/status/supplierId/q/dateFrom/dateTo)
+  - `useCreateSupplierPayment` × 1 (POST + invalidate supplierPaymentsKeys.all)
+  - `useConfirmSupplierPayment (Bug #590 regression)` × 1 (POST + invalidate supplierPayments.all + detail(id) + **counterpartiesKeys.all**)
+  - `useCancelSupplierPayment` × 1 (POST + invalidate supplierPayments.all + detail(id) + assert **NOT** invalidates counterparties)
+  - `useDeleteSupplierPayment` × 1 (DELETE + invalidate supplierPaymentsKeys.all)
+- **Статус:** [x] виправлено — 10 нових тестів у `useSupplierPayments.test.tsx` 10/10 passed.
+- **Verification:** див. Bug #590 verification block (той самий run).
+- **Де ще шукати:** усі майбутні нові `use<X>.ts` hooks що використовують `usePaginatedList` або запускають cross-resource side-effects — потребують парний `.test.tsx`. Grep: `for f in apps/web/src/hooks/api/use*.ts; do t="${f%.ts}.test.tsx"; [ -f "$t" ] || echo "MISSING TEST: $f"; done`. Не enforce на CI поки — це рекомендація для sto-review checklist.
+
+### Підсумок сесії
+
+- **Знайдено:** 2 баги (HIGH: 1, MEDIUM: 1)
+- **Виправлено:** 2/2
+- **Baseline після сесії:** TypeScript 0 errors (api/web/shared), API vitest 976/976, Web vitest **481/481** (+10 vs baseline), E2E 305/307 (2 flaky known), dev server up.
+- **Крок 7 — self-improvement:** Bug #590 патерн — «FE mutation що триггерить `settlements.createTransaction` → ОБОВ'ЯЗКОВО інвалідувати counterpartiesKeys.all» — вже задокументовано у SKILL.md як частина Bug #210-#212 підходу (§1.3 «React Query cross-resource invalidation»). Bug #591 патерн — «новий `use<X>.ts` hook без парного `use<X>.test.tsx`» — рекомендація для sto-review checklist. Обидва — розширення існуючих підходів, не новий тип; SKILL.md залишається без змін окрім додавання explicit `use*Payment*` reference у §1.3.
+
+---
+
+## Session 2026-08-30 (FULL /sto-tester, HEAD 05acaae4) — baseline reds + SP create-path cache staleness
+
+Цикл 1/3 повного `/sto-tester` над усім проєктом. Фокус: supplier-payments (getSchedule шахматка, PO paymentDate auto-fill), але з повним статичним аналізом §1.1–§1.7 по всьому коду.
+
+**Baseline на старті:**
+
+- TypeScript API: 0 errors
+- TypeScript Web: 0 errors
+- API vitest: **991/992** (❌ 1 test failed — baseline red)
+- Web vitest: **484/488** (❌ 4 tests failed — baseline red)
+- Останній commit: `05acaae4 docs(memory): record review cycle 1 findings`
+
+Три baseline reds — усі release-blocker, виправлені у пріоритеті ПЕРЕД статичним аналізом.
+
+---
+
+### Bug #592 — HIGH test / DST-aware Kyiv timezone — `purchase-orders.service.spec.ts:834` порівнює impl-Kyiv-дату з test-UTC-датою → падає у 3-годинному вікні на кордоні днів
+
+- **Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.spec.ts:774-835` (тест «receive повне → авто paymentDate = сьогодні + contract.paymentDeferDays»)
+- **Симптом:** API vitest baseline **991/992** — 1 test падає з `expected '2026-09-09' to be '2026-09-08'`. Помилка з'являється лише коли тест запускається у ~3-годинному вікні між UTC-північчю (00:00 UTC) і Kyiv-північчю (00:00 EEST = 21:00 UTC попереднього дня). Днем — passes; вночі (та сама сесія в якій ми тестуємо) — падає. Робить baseline flaky release-blocker.
+- **Причина виникнення:** тест обчислював `expected` через `const expected = new Date(); expected.setUTCDate(expected.getUTCDate() + 10);` — це **UTC-арифметика** з UTC-day-boundary. Реалізація `receive()` використовує `addDaysKyiv(kyivToday(), defer)` — **Kyiv-арифметика** з Kyiv-day-boundary. На кордоні днів Kyiv (наприклад 30 серпня 00:01 EEST = 29 серпня 21:01 UTC) — `kyivToday()` = "2026-08-30", `new Date().toISOString()` = "2026-08-29T21:01:...". Різниця 1 день → assert падає. Це рівно `feedback_dst_kyiv.md` пастка з MEMORY.md.
+- **Виявлено:** baseline `pnpm --filter @sto/api test --run` → 1 failure. Grep error message в output файлі → знайдено конкретне assert рядок 834.
+- **Severity:** HIGH — release-blocker baseline (ховає майбутні регресії у тому ж модулі; тестер-сесії неможливі, поки baseline червоний). Не CRITICAL бо: (а) production не зачеплений (impl-код правильний, тільки тест хибний); (б) фіксується 1 рядком; (в) flaky характер обмежує impact до ~3h/добу.
+- **Fix:** імпортовано `kyivToday, addDaysKyiv` з `../../common/utils/kyiv-date` у spec-файл; `const expected = new Date(); expected.setUTCDate(...)` → `const expected = addDaysKyiv(kyivToday(), 10)`. Додано inline-коментар що пояснює чому UTC-арифметика неправильна для перевірки Kyiv-дати.
+- **Статус:** [x] виправлено
+- **Verification:** `pnpm --filter @sto/api exec vitest run purchase-orders.service.spec.ts` → 41/41 passed. Повний API vitest → 992/992 passed.
+- **Де шукати ще:** будь-який `*.spec.ts` що асертить дату отриману через impl `kyivToday()/addDaysKyiv/kyivOffsetMs()` — має теж використовувати ті самі утиліти (не `new Date()`/`setUTCDate`). Grep: `grep -rn "setUTCDate\|toISOString().slice(0, 10)" apps/api/src --include="*.spec.ts"` — для кожного знайти чи impl-порівняння використовує Kyiv-timezone утиліту.
+
+---
+
+### Bug #593 — HIGH test / QueryClientProvider absent — 4 web tests fail після React Query migration `SupplierPaymentCreateModal`
+
+- **Файли:**
+  - `apps/web/src/components/ui/__tests__/SupplierPaymentCreateModal.test.tsx` (3 tests failed)
+  - `apps/web/src/components/ui/__tests__/DocumentCreateModals.test.tsx` (1 test failed — `PurchaseOrderCreateModal — regression / Bug #460`)
+- **Симптом:** Web vitest baseline **484/488** — 4 tests падають з `Error: No QueryClient set, use QueryClientProvider to set one` у `useUpdateSupplierPayment` (line 134 `useQueryClient()`). Stack пояснює каскад: `PurchaseOrderCreateModal` транзитивно рендерить `SupplierPaymentCreateModal` (кнопка «Оплата постачальнику», line 1917) → SP modal з commit `7e6bfab9` (Manual editing / pay-from-purchase-order) додав `useUpdateSupplierPayment` hook → без QCProvider обгортки будь-який `render()` крашиться.
+- **Причина виникнення:** commit `7e6bfab9` мігрував SP modal з raw `apiFetch` на React Query hooks (`useUpdateSupplierPayment`, `useSupplierPayment`). Існуючі тести (написані ДО міграції) не оновлені: використовували `render(<SupplierPaymentCreateModal .../>)` без QueryClientProvider обгортки, бо старий компонент не мав RQ hooks. Класичний Bug #429 патерн: `vi.mock/shared lib НЕ оновлений після refactor-extract`, але замість `vi.mock` — сам wrapper components.
+- **Виявлено:** baseline `pnpm --filter @sto/web exec vitest run` → 4 failures у 2 файлах. Full stack trace → `useUpdateSupplierPayment src/hooks/api/useSupplierPayments.ts:134:14` → grep import у SP modal → нещодавня міграція на RQ у commit 7e6bfab9.
+- **Severity:** HIGH — release-blocker baseline (весь `SupplierPaymentCreateModal.test.tsx` + `DocumentCreateModals.test.tsx PO test` мовчки перестали покривати регресії). Особливо критично для Bug #460 регресія-guard: якщо PO modal почне POST-ити `lines` окремо (замість body), test не спрацює бо він раніше падає на mount.
+- **Fix:**
+  - `SupplierPaymentCreateModal.test.tsx`: додано `renderWithQueryClient(ui)` helper з свіжим `QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })`; замінено всі 3 `render(<SupplierPaymentCreateModal .../>)` виклики на `renderWithQueryClient(...)`. Додано inline-коментар що пояснює регресію-source (commit 7e6bfab9).
+  - `DocumentCreateModals.test.tsx`: аналогічний `renderWithQueryClient` helper; замінено `render(<PurchaseOrderCreateModal .../>)` (line 105). Тести InvoiceCreateModal/StockDocumentCreateModal не змінені — вони не використовують RQ hooks і не рендерять SP modal транзитивно (перевірено grep).
+- **Статус:** [x] виправлено
+- **Verification:** `pnpm --filter @sto/web exec vitest run SupplierPaymentCreateModal DocumentCreateModals` → 6/6 passed.
+- **Де шукати ще:** будь-який компонент з `useMutation`/`useQuery`/`useQueryClient` — його `*.test.tsx` мусить обгортати `render()` у `QueryClientProvider`. Sanity-grep для нових міграцій на RQ hook: `git log --oneline -- <component-file>` → знайти commit-міграцію → `git show <commit> --stat` → перевірити чи `*.test.tsx` файли оновлені. Також transitive: parent modal що рендерить child з RQ hooks (як `PurchaseOrderCreateModal` → `SupplierPaymentCreateModal` тут).
+
+---
+
+### Bug #594 — HIGH frontend / cache-staleness — `SupplierPaymentCreateModal` create-path bypasses `useCreateSupplierPayment` hook → new payment не з'являється у списку до staleTime=30s
+
+- **Файл:** `apps/web/src/components/ui/SupplierPaymentCreateModal.tsx:264-268` (create branch в `handleSave`)
+- **Симптом:** користувач створює нову DRAFT оплату (нове створення, не редагування) → toast «Оплату створено» показується → модалка закривається → **список у `/supplier-payments` не оновлюється до 30 секунд** (React Query `staleTime=30_000` у usePaginatedList). Не CRITICAL бо: (а) через 30s стане свіжо; (б) вручний refresh (F5) виправляє; (в) `onSaved={() => setPage(1)}` перезаписує page state — але якщо page вже 1, RQ не перезапитує сам себе без invalidate. UX-плутанина: користувач думає що створення провалилось.
+- **Причина виникнення:** commit `7e6bfab9` мігрував **UPDATE**-path з raw `apiFetch` на `useUpdateSupplierPayment` hook (`updateMut.mutateAsync` — line 262). CREATE-path у той самий commit залишився з raw `await apiFetch('/supplier-payments', { method: 'POST', body: ... })` (line 265) → пропущено пару. Hook `useCreateSupplierPayment` існує у `useSupplierPayments.ts:119` і має правильний `onSuccess: invalidate supplierPaymentsKeys.all`. Симетрична асиметрія — update тепер інвалідує, create — ні.
+- **Виявлено:** ручний trace SP modal `handleSave` → line 262 `updateMut.mutateAsync` (OK) vs line 265 `apiFetch('/supplier-payments', {method:'POST',...})` (raw). Grep `useCreateSupplierPayment` у SP modal → 0 matches (не імпортовано). Grep у `useSupplierPayments.ts:119` → hook exists з invalidate.
+- **Severity:** HIGH — silent UX gap що виглядає як «створення провалилось». Впливає на всі OWNER/ADMIN/ACCOUNTANT ролі. Не CRITICAL бо самовиправляється через 30s.
+- **Fix:** імпортовано `useCreateSupplierPayment` у SP modal; додано `const createMut = useCreateSupplierPayment();`; у `handleSave` create-branch замінено raw `apiFetch(...)` на `await createMut.mutateAsync(payload)`. Оновлено `useCallback` deps: додано `createMut`. Payload shape вже точно відповідає `CreateSupplierPaymentInput` (той самий об'єкт).
+- **Статус:** [x] виправлено
+- **Verification:** tsc clean; full web vitest → 488/488 passed (Крок 4).
+- **Де шукати ще:** канонічний Bug #499 варіант — mutation hook існує, але компонент використовує raw apiFetch у одному з branch-ів (типово: refactor мігрує only-update АБО only-create, забуває інший path). Grep: для кожного `use*(Create|Update|Delete|Confirm|Cancel)*Payment*` hook у `apps/web/src/hooks/api/` — знайти usage у components → у component-у грепнути парний raw `apiFetch(url-із-hook, ...)` — matches = bug. Особливо парний Bug #591 регресія-gap: `useSupplierPayments.test.tsx` тестує `useCreateSupplierPayment` (line 100-114), АЛЕ немає компонент-тесту що SP modal-у РЕАЛЬНО використовує цей hook у create-flow.
+
+---
+
+### Bug #595 — MEDIUM backend / DTO validation — `SupplierPaymentScheduleQueryDto` використовує `@Matches(YMD_RE)` замість `@IsDateString()` → приймає невалідні дати типу `"2026-99-99"` → silent empty result замість 400
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.dto.ts:226,230` (`from!: string; to!: string;`)
+- **Симптом:** `GET /supplier-payments/schedule?from=2026-99-99&to=2026-99-99` повертає **200 з порожнім `{ dates: [], suppliers: [], totals: {...} }`**. Валідація приймає рядок бо `^\d{4}-\d{2}-\d{2}$` матчиться; `new Date('2026-99-99T00:00:00.000Z')` → `Invalid Date`; `windowDays = NaN`; `NaN > 100` false → passes cap; loop `for (let d = new Date(fromDate); d <= toDate; ...)` — Invalid Date порівняння повертає false → loop skipped → empty dates. Користувач/UI отримує "немає боргів" замість "400 неправильна дата".
+- **Причина виникнення:** розробник використав `@Matches(YMD_RE)` для швидкого regex-guard, не помітивши що YMD-регекс не перевіряє semantics (місяць 1-12, день 1-31). `@IsDateString()` з class-validator валідує через `new Date()` parseable + strict-mode.
+- **Виявлено:** semantic trace `getSchedule()` з невалідним from → `windowDays = NaN` → loop empty. Знайдено при перевірці Krok 1 §1.2 «Nullable/Invalid-date DTO input».
+- **Severity:** MEDIUM — silent empty result вводить в оману (user думає боргів нема, а насправді 400 сховане). Не HIGH бо: (а) валідні дати з UI (через date-picker) — коректні; (б) DoS-vector обмежений (кап 100 днів все ще діє при NaN false-negative); (в) якщо frontend відправить invalid date — user first bug report → швидко фіксується.
+- **Fix:** `@Matches(YMD_RE)` → `@IsDateString({ strict: true })` + `@Matches(YMD_RE, {message: '... має бути у форматі YYYY-MM-DD'})` (комбо: strict date + YMD-only shape, бо `@IsDateString` дозволяє також ISO-8601 datetime `"2026-08-30T00:00:00Z"`, а нам потрібен лише YYYY-MM-DD). YMD_RE лишається як user-friendly error-повідомлення.
+- **Статус:** [x] виправлено
+- **Verification:** tsc clean; повний API vitest → 992/992.
+- **Де шукати ще:** усі DTO що приймають YMD-дату як параметр — має бути `@IsDateString` (не тільки `@Matches`). Grep: `grep -rn "@Matches.*\\\\d{4}\\.*\\\\d{2}\\.*\\\\d{2}" apps/api/src/modules --include="*.dto.ts"` — для кожного match додати `@IsDateString`. Спеціально: query DTO для date-window endpoints (reports, calendar, schedule, dashboard) — silent empty result особливо небезпечний для звітів.
+
+---
+
+## Session 2026-08-30 (targeted e2e stabilisation, HEAD e7855af0) — 2 pre-existing seed-brittle E2E tests
+
+Виправлено два стабільно червоних e2e-тести, не пов'язані з поточною фічею supplier-payments. Обидва — класичний seed-brittle pattern: тест припускає стан БД (наявність ESTIMATE наряду, поточну дату), якого немає у поточному оточенні. Fix: тест сам сідить/готує передумову, не покладається на seed.
+
+### Bug #572 — HIGH e2e / seed-brittle / date-filter mismatch — `estimate-share.spec.ts:208` «work-order modal in ESTIMATE status shows Друк / Поділитись / SMS buttons»
+
+- **Файл:** `apps/web/e2e/estimate-share.spec.ts:208-271` (тест сам), `apps/web/src/app/(app)/work-orders/page.tsx:225-226` (defaults `dateFrom/dateTo = kyivToday()`), `apps/api/src/modules/work-orders/work-orders.service.ts:488-615` (`clone()` не встановлює `documentDate` → PostgreSQL `@default(now())` у сервер-TZ (UTC у Docker)).
+- **Симптом:** `getByRole('row').filter({ hasText: /Кошторис/ }).first()` не знаходиться (timeout 30s). `beforeAll` успішно сідить ESTIMATE через clone+transition (лог: `🔍 seededEstimateWoId: 66f89e6e-...`), але UI показує «Нарядів не знайдено» бо дата-фільтр 30.08.2026–30.08.2026 (Kyiv-today), а клонована WO має `documentDate = now()` у UTC = 29.08.2026 (тест зараз запускається о 21:40 UTC = 00:40 Kyiv 30-го).
+- **Причина виникнення:** `WorkOrder.documentDate DateTime @default(now()) @db.Date` у Prisma; `now()` виконується на сервері (UTC у Docker), а UI фільтр захардкоджений на Kyiv-today. Три години на добу (00:00-03:00 Kyiv) UTC-дата ≠ Kyiv-дата, і будь-який щойно створений/клонований наряд у це вікно невидимий на дефолтному view. Sibling-тест (Bug #401 у line 179-206) вже задокументував це у коментарі «фільтр по даті за замовчуванням приховує seed-наряди ≠ today» але workaround через backend замість UI.
+- **Виявлено:** прямий запуск `npx playwright test estimate-share.spec.ts:208 --workers=1 --retries=0` → screenshot показує date filter 30.08.2026 і «Нарядів не знайдено». Cross-reference з коментарем Bug #401 підтвердив root cause.
+- **Fix:** У ТЕСТІ:
+  1. `seedEstimateWorkOrder()` тепер повертає `{ id, number }` (не тільки id).
+  2. Перед пошуком row очистити обидва date-input (`fill('')` → `press('Escape')`) — це видаляє фільтр (DatePickerInput.handleInputChange:114 викликає `onChange('')`).
+  3. Замість `filter({ hasText: /Кошторис/ })` — пошук за точним номером наряду через search-box (`getByRole('textbox', { name: /Пошук за номером/i }).fill(number)`) → таблиця звужується до 1 row → стабільно.
+- **Severity:** HIGH — тест був стабільно червоний у поточному оточенні (репродукується 100%), блокував будь-який зелений run.
+- **Verification:** `npx playwright test estimate-share.spec.ts:214 --workers=1 --retries=0` → `1 passed (2.5s)`. Повний файл: 4/4 passed. Комбінований run обох spec: 9/9 passed.
+- **Де шукати ще:** будь-який e2e-тест що (а) сідить дані через API + `new Date()` документ і (б) очікує їх на UI без явного очищення date-фільтру. Grep: `grep -rn "dateFrom.*kyivToday\|documentDate.*now" apps/api/src/modules --include="*.service.ts"` — усі сутності з `@default(now()) @db.Date` вразливі. UI списки з дефолтним `dateFrom=kyivToday()`: work-orders, purchase-orders, stock-documents, invoices, supplier-payments (перевірити кожен).
+- **Статус:** [x] виправлено
+
+### Bug #573 — HIGH e2e / DST-aware timezone — `crud-calendar-slot.spec.ts:32` «створити слот через API → перевірити в timeline»
+
+- **Файл:** `apps/web/e2e/crud-calendar-slot.spec.ts:60-90` (тест сам), `apps/web/src/app/(app)/calendar/useCalendarState.ts:243` (`if (!date) setDate(toDateString(new Date()))` — Kyiv date), `apps/api/src/modules/calendar/calendar.service.ts:65-146` (`findSlots` фільтрує по Kyiv-window через `kyivOffsetMs`).
+- **Симптом:** `page.locator('[data-calendar-slot]').first()` не з'являється (timeout 15s). API POST повертає 201, але GET /calendar/slots?date=<Kyiv-today> не бачить слот.
+- **Причина виникнення:** тест використовував `const today = new Date().toISOString().split('T')[0]` (UTC-дата), а фронт-календар defaults на `toDateString(new Date())` через `Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' })` (Kyiv-дата). У вікні 00:00-03:00 Kyiv (сумарний = 21:00-24:00 UTC у літньому DST) UTC-дата на добу менша → слот створюється на попередню Kyiv-добу, календар відкритий на поточну Kyiv-добу → слот не рендериться. Плюс: у слот-часі `${today}T07:00:00Z` (07:00 UTC = 10:00 Kyiv +3) є ще одна DST-passtka — у зимі це 09:00 Kyiv, тобто зсув фіксований, а вікно робочого дня defaults 8-18 Kyiv.
+- **Виявлено:** прямий запуск тесту (17.5s timeout), API-diagnostic через curl підтвердив: POST успішний, GET /calendar/slots?date=<Kyiv-today> повертає слот, але frontend показує Aug 30 (Kyiv) а слот на Aug 29 UTC = Aug 29 Kyiv.
+- **Fix:** У ТЕСТІ додати hoisted helper `kyivWallToUtcIso(kyivDate, kyivHour, kyivMinute)` що конвертує Kyiv wall-clock → UTC ISO через двоетапний Intl-round-trip (DST-safe: обчислює реальний offset для конкретного моменту, не hardcoded +2/+3). `today` → `kyivToday` через `Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' })` — той самий алгоритм що у frontend `toDateString`. Iteration змінена з UTC 07-13h на Kyiv wall-clock 10-16h (робочі години defaults).
+- **Severity:** HIGH — тест був стабільно червоний у вікні 00:00-03:00 Kyiv (5% робочого часу), + завжди червоний якщо CI runner у не-Kyiv TZ.
+- **Verification:** `npx playwright test crud-calendar-slot.spec.ts:32 --workers=1 --retries=0` → `1 passed (2.4s)`. Повний файл: 5/5 passed. Комбінований run обох spec: 9/9 passed.
+- **Де шукати ще:** усі e2e-тести що (а) створюють time-based ресурс (calendar slot, work-order plannedAt, invoice paidAt, transaction date, booking timeslot) через API з `new Date().toISOString()` і (б) перевіряють його на UI що відображає у Kyiv-локалі. Grep: `grep -rn "toISOString.*split.*T.*0\|new Date().*toISOString.*calendar\|Intl.*Europe/Kyiv" apps/web/e2e --include="*.ts"`. Патерн загальний: **e2e тест НІКОЛИ не змішує UTC-arithmetic з Kyiv-UI без явного round-trip через Intl.DateTimeFormat**.
+- **Статус:** [x] виправлено
+
+---
+
+## Session 2026-08-30 (FULL /sto-tester, HEAD e02c1288, feat/supplier-payments, цикл 3/3) — regression-guard gap
+
+Третій (фінальний) цикл /sto-tester по всьому проєкту. Baseline перед сесією зелений (tsc 0/0, API 992/992, Web 488/488). Виявлено 1 real bug (MEDIUM regression-guard gap для `getSchedule` cross-field guards + `totals.byDate` single-pass aggregator).
+
+### Bug #597 — MEDIUM test coverage / regression-guard gap — `getSchedule()` cross-field guards + `totals.byDate` single-pass agg без тестів
+
+- **Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.ts:148-341` (impl), `apps/api/src/modules/supplier-payments/supplier-payments.service.spec.ts` (spec — 3 gaps).
+- **Симптом:** три business-guards / інваріанти існують у коді, але не мають парних тестів. Це патерн Bug #416: guard-у-коді + zero-test = наступний refactor (типово "цей блок дублює перевірку вище" або "спростимо") видаляє guard без падіння CI → регресія у прод.
+  1. **`from > to` cross-field guard (line 151)** — `throw BadRequestException('Дата "від" не може бути пізнішою за дату "до"')`. Без цього перевернутий діапазон тихо створює порожнє вікно, весь bucketing логіки ламається (usв PO → planned/overdue).
+  2. **`windowDays > 100` cap (line 159)** — `throw BadRequestException('Вікно графіка не може перевищувати 100 днів')`. Захист від DoS/memory: 10 000+ днів на некоректному вводі роздула би відповідь до MB.
+  3. **`totals.byDate` single-pass aggregator (lines 317-332, optimize cycle 2)** — новий алгоритм замінив 3 послідовні `reduce()` + вкладений `for/reduce` на одну for-of прохід з локальними акумуляторами. Тільки `totals.total` перевіряється у suite (2 місця); `totals.byDate` — жодного assert. Якщо refactor зіпсує aggregator (наприклад забуде `totalsByDate[d] = (totalsByDate[d] ?? 0) + r.byDate[d]` і зробить просто `= r.byDate[d]` — overwrite замість sum), тести пройдуть green, але UI покаже неправильні totals у footer.
+- **Причина виникнення:** сесії feature-розробки (реалізація getSchedule) додали тільки happy-path тести (byDate mapping, credit limit, unlinked payments). Guards і new aggregator додані пізніше (Cycle 1 review для guards, Cycle 2 optimize для aggregator) БЕЗ парного тесту-регресії. Класична gap-family для «додав захист / оптимізацію → забув test». Спорідене з Bug #416 (Serializable inner re-check test) — точно той самий принцип.
+- **Виявлено:** grep у SP service spec:
+  - `grep -n "from > to\|100 днів\|BadRequest.*Дата\|BadRequest.*Вікно" supplier-payments.service.spec.ts` → 0 matches (guards без тестів).
+  - `grep -n "totals.byDate" supplier-payments.service.spec.ts` → 0 matches (aggregator без тестів). Тільки `totals.total` перевіряється у 2 місцях.
+- **Severity:** MEDIUM — regression risk, не immediate bug (impl зараз працює). Не HIGH бо: (а) impl-код правильний зараз; (б) UI не blocked. Не LOW бо: (в) 3 guard-и × заповнений час до наступного refactor-y = висока ймовірність silent regression; (г) `totals.byDate` — user-visible у UI footer, помилка одразу помітна.
+- **Fix:** 4 нові `it(...)` кейси у `supplier-payments.service.spec.ts`:
+  1. `getSchedule(): from > to → BadRequestException, БЕЗ DB-виклику` — перевіряє guard + що жоден Prisma-виклик не був зроблений (rejects.toThrow + `expect(findMany).not.toHaveBeenCalled()`).
+  2. `getSchedule(): вікно > 100 днів → BadRequestException, БЕЗ DB-виклику` — 2026-01-01..2026-04-30 (119 днів) → 400.
+  3. `getSchedule(): windowDays на межі 100 → OK, DB викликано` — 2026-01-01..2026-04-10 (99+0.999→round=100) → passes strict `> 100`. Якщо guard стане `>= 100` (typo) — тест червоний.
+  4. `getSchedule(): totals.byDate агрегує суми з усіх постачальників по датам` — 2 постачальники, 3 PO у 2 дати → перевіряє sum aggregation (не overwrite), відсутність зайвих empty-колонок у totals, sanity-check grand total.
+- **Статус:** [x] виправлено — `supplier-payments.service.spec.ts` +4 tests. Spec повний: 34/34 passed (було 30).
+- **Verification:** `pnpm --filter @sto/api exec vitest run supplier-payments.service.spec` → 34/34 passed. Повний API vitest → 996/996 (992 + 4 нових).
+- **Де шукати ще:** будь-який service-метод що (а) додає cross-field-validation guard (throw у perceived-invalid комбо параметрів) АБО (б) додає single-pass aggregator який замінює multi-pass reduce (як тут — optimize cycle 2), АЛЕ БЕЗ парного `*.spec.ts` тесту. Grep: `grep -rn "throw new BadRequestException" apps/api/src/modules --include="*.service.ts" -B1` — знайти guards, потім grep у парному spec за унікальним фрагментом error-повідомлення. 0 matches у spec → gap. Особливо для recently-refactored сервісів (свіжий commit `perf(optimize):` або `simplify:`).
+
+---
+
+## Session 2026-09-01 (targeted /sto-tester, HEAD 03a93799, feat/supplier-payments) — restore-endpoints (галка «Показувати видалені»)
+
+Цілеспрямований прогін по фічі "showDeleted-toggle + restore vehicles/contracts" (c30c22bd + 03a93799). Baseline перед сесією: API tsc 0/0, Web tsc 0/0, counterparties+vehicles specs 41/41. Знайдено 3 real bugs (HIGH: orphan-refs at restore) + 2 test-coverage gaps.
+
+### Bug #601 — HIGH data-integrity / restore створює orphan reference — vehicles.restore() не перевіряє parent garage
+
+- **Файл:** apps/api/src/modules/vehicles/vehicles.service.ts:77-88 (restore()).
+- **Симптом:** Live: POST /vehicles/{id} -> DELETE /vehicles/{id} -> DELETE /counterparties/{cpId}/garages/{gid} -> POST /vehicles/{id}/restore повертає 201 з deletedAt:null та customerGarageId:<soft-deleted garage>. Vehicle тепер посилається на видалений гараж. GET /vehicles?counterpartyId=... (filter customerGarage.deletedAt:null) не бачить його — користувач вважає що restore зламано, а з БД перспективи авто «зомбі», доступне лише через прямий GET /vehicles/{id}.
+- **Причина виникнення:** restore() скопіювала pattern з brands.service.restore (updateMany where:{id,orgId,NOT:{deletedAt:null}}) — там немає FK на soft-delete-able parent. Vehicle завжди належить CustomerGarage, а гараж може бути soft-deleted окремо (removeGarage у counterparties.service.ts:244-288 не cascade-soft-deletes vehicles). Асиметрія: create() захищає (if (!garage) throw NotFoundException), restore() — ні.
+- **Виявлено:** живий сценарій через curl (див. вище). Grep restore у vehicles.service.ts — updateMany без парного garage-check.
+- **Fix:** restore() перед atomic updateMany додає prep-check через findFirst({id,orgId, customerGarage:{deletedAt:null, counterparty:{deletedAt:null}}}) із include garage.counterparty — якщо не знайдено АЛЕ Vehicle сам існує (з чи без deletedAt) → distinguisher: якщо vehicle не існує/чужа org — 404 як зараз; якщо garage soft-deleted → BadRequestException з friendly-text. Мінімум — валідація замість silent orphan.
+- **Severity:** HIGH — data corruption через public API. UI-friendly фейл (restore повертає 201, авто зникає з списку) підриває довіру до фічі.
+- **Де шукати ще:** будь-який restore() метод на моделі з required FK до parent що теж soft-delete-able. Grep: grep -rn "async restore" apps/api/src/modules --include="\*.service.ts" — для кожного знайти FK у schema.prisma; якщо parent має deletedAt DateTime? → відсутній guard = bug.
+- **Статус:** [x] виправлено
+
+### Bug #602 — HIGH data-integrity — vehicles.restore() не перевіряє parent counterparty
+
+- **Файл:** apps/api/src/modules/vehicles/vehicles.service.ts:77-88.
+- **Симптом:** Live: DELETE /vehicles/{vid} -> DELETE /counterparties/{cpId} (не cascade-soft-deletes vehicles/garages) -> POST /vehicles/{vid}/restore -> 201. Vehicle воскрес у CP що не існує з бізнес-точки. GET /counterparties/{cpId} -> 404, але vehicle досі referenced.
+- **Причина виникнення:** див. Bug #601 — той самий pattern (restore без grandparent-check). Тут chain vehicle -> garage -> counterparty з двома рівнями deletedAt.
+- **Виявлено:** живий curl-сценарій.
+- **Fix:** Об'єднано з Bug #601 в один pre-check: findFirst із nested where customerGarage:{deletedAt:null, counterparty:{deletedAt:null}}.
+- **Severity:** HIGH.
+- **Статус:** [x] виправлено
+
+### Bug #603 — HIGH data-integrity — restoreContract() не перевіряє parent counterparty
+
+- **Файл:** apps/api/src/modules/counterparties/counterparties.service.ts:322-340 (restoreContract).
+- **Симптом:** Live: створити SUPPLIER (auto-PURCHASE #1) -> додати PURCHASE #2 -> DELETE contracts/#2 -> DELETE counterparties/{cpId} -> POST /counterparties/{cpId}/contracts/{#2}/restore -> 201, contract воскрес, але GET /counterparties/{cpId}/contracts -> 404. Contract у limbo: deletedAt:null, counterparty.deletedAt:not-null.
+- **Причина виникнення:** асиметрія з findContracts (line 304-308: findFirst({id,orgId,deletedAt:null}) guard) — той метод відмовляє показувати список для soft-deleted CP, але restore пропускає без будь-якої CP-check. Guards читання != guards запису.
+- **Виявлено:** живий curl-сценарій.
+- **Fix:** restoreContract() перед updateMany — prep-check counterparty.findFirst({id,orgId,deletedAt:null}) -> 404 якщо не активний. Дзеркалить пре-check findContracts/createContract/updateContract/removeContract.
+- **Severity:** HIGH.
+- **Де шукати ще:** усі restore\* методи над child-агрегатами.
+- **Статус:** [x] виправлено
+
+### Bug #604 — MEDIUM test-coverage — counterparties.contract.spec.ts serviceMock не містить restoreContract
+
+- **Файл:** apps/api/src/modules/counterparties/counterparties.contract.spec.ts:11-24.
+- **Симптом:** serviceMock перелічує 12 методів (findAll..removeContract) без restoreContract. Новий controller endpoint POST /:id/contracts/:contractId/restore викликає this.service.restoreContract — mock повертає undefined. Будь-який тест на restore-endpoint отримає TypeError: Cannot read properties of undefined.
+- **Причина виникнення:** новий endpoint додано у контроллер, але test-mock зафіксований у sibling spec — легко забути. Partial mock через Test.createTestingModule providers.useValue не type-safe.
+- **Виявлено:** grep restoreContract у test files -> 0 matches.
+- **Fix:** Додати restoreContract: vi.fn() до serviceMock (+ тести — Bug #605).
+- **Severity:** MEDIUM — не блокує зараз, але guarantees future test failure.
+- **Статус:** [x] виправлено
+
+### Bug #605 — MEDIUM test-coverage — restore endpoints без жодного автотесту
+
+- **Файл:** відсутні тести. vehicles.service.spec.ts не існує; counterparties.service.spec.ts без restoreContract; contract spec без restore endpoint.
+- **Симптом:** grep restoreContract|vehicles._restore|restoreVehicle у apps/api/src/\*\*/_.spec.ts -> 0 matches. Два нових endpoints без regression-guard. Класичний патерн SKILL Bug #478-#480 (нове enum без regression), Bug #532-#536 (constructor DI drift без spec-update). Refactor що видалить NOT:{deletedAt:null} з updateMany-where або спрощення що зніме parent-check — пройде CI зеленим і поламає fic Bug #601/#602/#603.
+- **Причина виникнення:** feature-розробка (c30c22bd) + review-fix (03a93799) — фокус на code-shape, не тестах.
+- **Виявлено:** grep -rn restore apps/api/src/modules/{counterparties,vehicles} --include=\*.spec.ts -> 0.
+- **Fix:** Додано регресійне покриття:
+  1. counterparties.service.spec.ts +6 it(...) для restoreContract — Bug #603 CP-guard, double-restore 404, cross-CP-path 404, orgId у where (tenant), isPrimary=false у data, DTO shape.
+  2. NEW vehicles.service.spec.ts — з 0 -> 8 tests: restore() happy/double/deleted-garage/deleted-CP/cross-tenant, findAll(showDeleted) shape (2 тести), remove() atomic updateMany.
+  3. counterparties.contract.spec.ts +1 it(...) для POST /restore + restoreContract: vi.fn() (fix Bug #604).
+- **Severity:** MEDIUM.
+- **Де шукати ще:** grep @Post.\*restore у controllers -> для кожного мін. 3 тести у sibling spec.
+- **Статус:** [x] виправлено
+
+## Session 2026-09-02 (targeted /sto-tester, HEAD 450e2a24, feat/supplier-payments) — FIFO/COGS підключення (commit 19f81ccb)
+
+Живе тестування ФІНАНСОВОЇ зміни: партійне списання (FIFO/LIFO/FEFO/AVG_COST) + COGS у WorkOrderPart.batchCostPrice + TRANSFER cost carry + reconcile міграція. 10 сценаріїв через curl:
+
+1. **LIFO live** — WRITEOFF 5 бере найновішу партію @120 → rem 10→5. ✅
+2. **FEFO live** — з null-expiry обома партіями → fallback createdAt asc → rem @100: 10→7. ✅
+3. **AVG_COST live** — weighted 108.33; фізично FIFO спадає @100: 7→5. ✅
+4. **Shortage guard** — WRITEOFF 100 при available=10 → 400 «Недостатньо товару». Партії та StockItem не змінилися. ✅
+5. **TRANSFER cost carry** (single-batch) — 5 з @100 → target отримує batch costPrice=100 (НЕ salePrice=200). ✅
+6. **TRANSFER span** — 5 з @40+@60 → target 1 batch costPrice=48 (weighted). ✅
+7. **WO COMPLETED single-batch** — batchCostPrice=120, batchId=<uuid>, StockMovement.WRITEOFF.batchId=<uuid>, BatchConsumption.documentLineId=part.id. ✅
+8. **WO span** — costPrice=58 (weighted 3×50+2×70)/5, batchId=NULL, 2 BatchConsumption. ✅
+9. **RESERVATION** не чіпає партії (reserved=3, remaining незмінні). ✅
+10. **Partial multi-writeoff одної партії** двічі — batch @50 rem: 10→7→3. ✅
+11. **supplier-return** живий — @70 rem 1→0, batch inactive. ✅
+12. **Reconcile міграція idempotent** — no-op при чистій БД (18 consumptions до/після). ✅
+13. **Reconcile deficit** — штучний +100 → FIFO доспоживає до інваріанту (rem back to 5). ✅
+14. **Глобальний інваріант Σremaining==StockItem.quantity** — 0 mismatches по всіх org/good/warehouse. ✅
+
+Регресія: усе OK. Тести реальних сценаріїв усі зелені. Знайдено 3 **coverage gap** баги (тестова інфраструктура, не runtime):
+
+### Bug #609 — HIGH test-coverage — writeOffPartsAndCharge batchCostPrice/batchId writeback без regression-guard
+
+- **Файл:** apps/api/src/modules/work-orders/work-orders.service.ts:885-908 (writeOffPartsAndCharge); apps/api/src/modules/work-orders/work-orders.service.spec.ts (0 tests для методу).
+- **Симптом:** commit 19f81ccb додає CRITICAL логіку: після inventory.createMovement(WRITEOFF) → якщо weightedCostPrice != null, записує WorkOrderPart.batchCostPrice + batchId. Без цього WorkOrderPart залишиться з costPrice=null → звіт рентабельності показує NULL cost → маржа неточна. Refactor який видалить блок `if (writeoff.weightedCostPrice != null) { db.workOrderPart.update({...}) }` пройде CI зеленим — існують тільки live-E2E (повільні + потребують БД).
+- **Причина виникнення:** нова інтеграція складна (4 sync-writes: RESERVATION_RELEASE → WRITEOFF → WorkOrderPart.update → SettlementsService.createTransaction). Пропущений test-plan.
+- **Виявлено:** grep `batchCostPrice.*update\|weightedCostPrice.*data:` у work-orders.service.spec.ts → 0 matches.
+- **Fix:** додано 5 нових тестів у `describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId writeback')`:
+  1. single-batch → part.batchCostPrice + part.batchId проставляються.
+  2. span >1 batch → batchCostPrice=weighted, batchId=NULL.
+  3. weightedCostPrice=null → workOrderPart.update НЕ викликається.
+  4. multiple parts → кожен окремий update із власним costPrice.
+  5. WRITEOFF не передає price (собівартість з партій, не ціна продажу).
+- **Severity:** HIGH — фінансова точність рентабельності залежить від цього write-back.
+- **Де шукати ще:** будь-який `createMovement(WRITEOFF)` виклик де caller зберігає `weightedCostPrice` — перевірити наявність парного `<row>.update` тесту.
+- **Статус:** [x] виправлено
+
+### Bug #610 — HIGH test-coverage — TRANSFER cost-carry (src.weightedCostPrice → target.price) без regression-guard
+
+- **Файл:** apps/api/src/modules/stock-documents/stock-documents.service.ts:350-374 (SEQUENTIAL WRITEOFF+RECEIPT у TRANSFER); stock-documents.service.spec.ts не мала тесту для TRANSFER-path.
+- **Симптом:** commit 19f81ccb змінив TRANSFER з Promise.all на SEQUENTIAL: src=await createMovement(WRITEOFF) → target createMovement(RECEIPT, price=src.weightedCostPrice ?? baseArgs.price). Без цього target partia створювалася з salePrice/0 замість реальної FIFO cost джерела. Регресія (повернення до Promise.all): цільові партії з ціною продажу → cost-carry зламаний → рентабельність недостовірна для товарів переміщених між складами.
+- **Причина виникнення:** оригінальна Promise.all-версія оптимізована на швидкість, але не враховувала що target price МАЄ бути FIFO cost джерела (щоб рентабельність з target warehouse рахувалася від правильної собівартості).
+- **Виявлено:** grep `TRANSFER.*weightedCostPrice\|src\.weightedCostPrice` у stock-documents.service.spec.ts → 0 matches. Verified live: TRANSFER 5×@40 → target batch cost=40 (не salePrice=100 з lines.price).
+- **Fix:** додано 2 нових тести:
+  1. TRANSFER передає src.weightedCostPrice=42 у target.price (НЕ baseArgs.price=100).
+  2. TRANSFER fallback: коли weightedCostPrice=null → target.price = baseArgs.price.
+- **Severity:** HIGH — рентабельність multi-склад бізнесу.
+- **Статус:** [x] виправлено
+
+### Bug #611 — MEDIUM test-coverage — LIFO/FEFO/FIFO orderBy без regression-guard у batch.service.spec
+
+- **Файл:** apps/api/src/modules/inventory/batch.service.ts:180-185 (consumeBatch orderBy switch); batch.service.spec.ts — тільки AVG_COST і FIFO happy-path, без LIFO/FEFO.
+- **Симптом:** switch за costMethod у consumeBatch: LIFO=[createdAt:desc], FEFO=[expiryDate:asc nulls:last, createdAt:asc], FIFO=[createdAt:asc]. Refactor який поміняє asc↔desc або видалить nulls:last пройде CI зеленим (у батчах з null expiry FEFO стає FIFO — silent regression).
+- **Причина виникнення:** costMethod було FIFO-only довший час; LIFO/FEFO/AVG_COST додано пізніше без парного unit-тесту (existed lookup only у AVG_COST path).
+- **Виявлено:** grep `LIFO\|FEFO` у batch.service.spec.ts → 0 matches (тільки AVG_COST).
+- **Fix:** додано 3 тести до `describe('consumeBatch')`:
+  1. LIFO orderBy = [createdAt:desc].
+  2. FEFO orderBy = [expiryDate:asc nulls:last, createdAt:asc].
+  3. FIFO orderBy = [createdAt:asc].
+- **Severity:** MEDIUM — silent regression у cost-method за замовчуванням для клієнтів з не-FIFO налаштуваннями.
+- **Де шукати ще:** будь-який `switch (costMethod)` / `switch (paymentMethod)` / `switch (docType)` map з різними orderBy/filter — перевірити регресійне покриття кожної гілки.
+- **Статус:** [x] виправлено
+
+## Session 2026-09-02 (targeted /sto-tester, HEAD 184b257a, feat/supplier-payments) — фінансові інваріанти циклу 1
+
+**Контекст:** review щойно виправив Critical AVG_COST sentinel batchId='' → UUID FK 500 (commit 184b257a). Bug hunt циклу 1 сфокусований на 5 фінансово-чутливих інваріантах:
+
+1. Партійне FIFO/FEFO/LIFO/AVG списання — Σ remainingQty(active) == StockItem.quantity, span, all-or-nothing.
+2. Supplier balance sign (BALANCE_SIGN 8 типів).
+3. FIFO-графік оплат постачальнику.
+4. TRANSFER cost-carry.
+5. AVG_COST edge-cases (інші sentinel-подібні місця).
+
+**Baseline:** API tsc 0, Web tsc 0, API tests 1059 passed / 73 files, Web tests 488 passed / 45 files.
+
+**Знайдено нових багів:** 0.
+
+**Причина 0 багів:** усі 5 фокус-областей уже покриті:
+
+- AVG_COST sentinel — 2 use-site (inventory.service.ts:248, work-orders.service.ts:905) обидва з truthy-guard `consumed[0].batchId` (порожній рядок falsy → skip UUID FK write).
+- Bug #609–#611 нещодавно додали regression-guards для FIFO/COGS підключення + LIFO/FEFO orderBy + TRANSFER cost-carry.
+- Bug #606–#608 покрили BALANCE_SIGN exhaustive check + supplier balance UI sign consistency.
+- Bug #597–#600 покрили FIFO schedule window + payable=|balance| + type filter SUPPLIER/BOTH.
+- Bug #191 + Bug #232 патерни guardyють tenant/update-path invariants.
+
+**Додано** (regression-guard, не bug-fix):
+
+### Bug #612 — MEDIUM test-coverage — партійні + фінансові інваріанти без property-based regression-guard
+
+- **Файл:** apps/api/src/modules/inventory/batch.invariants.spec.ts (новий, 24 тести).
+- **Симптом:** 5 фінансових інваріантів (FIFO span, cost-method порядок, all-or-nothing нестачі, AVG_COST sentinel форма, single-vs-span batchId fixation, FIFO-графік bucket-сума, кредит-ліміт зменшення з planned→dates-desc→overdue, BALANCE_SIGN supplier cycle, TRANSFER cost-carry `??` vs `||`) працюють РАЗОМ у коді, але кожен окремий unit-тест ловить лише одну гілку — cross-invariant regression пройде CI зеленим.
+- **Причина виникнення:** прицільні unit-тести пишуться під конкретний Bug #N; property-based інваріанти доводять що після БУДЬ-ЯКОЇ послідовності операцій балансовий інваріант тримається — не залежить від фантазії тест-автора.
+- **Виявлено:** grep у batch.service.spec.ts — тільки `it()` example-based тести, жодного `fc.property`. Аналогічно inventory.invariants.spec.ts має тільки stockItem-level інваріанти, не batch-level.
+- **Fix:** новий файл `batch.invariants.spec.ts` з 4 `describe`-блоками (24 property-based тести, 500 numRuns default):
+  1. **BatchService — consume invariants** (10 тестів): Σ consumed == qty; масовий баланс (Σ before − after == qty); нема партій у мінус; remainingQty=0 → isActive=false; FIFO/LIFO order; нестача → error БЕЗ мутації (all-or-nothing); AVG_COST sentinel форма; single-vs-span розрізнення; cross-method Σ==qty.
+  2. **SupplierPayments.getSchedule — FIFO invariants** (5 тестів): Σ bucket-сум == payable; надлишок → overdue; FIFO строгий порядок закриття PO; кредит-ліміт зменшення з planned→dates-desc→overdue; ліміт ≥ payable → усе 0.
+  3. **BALANCE_SIGN — supplier cycle invariants** (5 тестів): SUPPLIER_CHARGE → balance=-X; повний цикл → 0; payable = max(0, -balance); частковий цикл (X−Y) з X>Y; SUPPLIER_REFUND має ТОЙ САМИЙ знак що SUPPLIER_PAYMENT (регресія — refund з чужим знаком = зростання боргу).
+  4. **StockDocument TRANSFER — cost-carry invariant** (4 тести): weightedCostPrice != null → target.price = weightedCostPrice; null → fallback; **0 (free sample) → 0 через `??`** (документує, що `||` дасть fallback — БАГ, `??` не дасть).
+- **Severity:** MEDIUM (regression-guard, не активний баг).
+- **Де шукати ще:** будь-який фінансово-чутливий обчислювальний блок з ≥3 гілок (switch по type/enum, багатоетапне вирахування) — додавати property-based invariants до відповідного \*.invariants.spec.ts.
+- **Статус:** [x] виправлено (guard додано, всі 24 тести PASS з першого запуску — інваріанти тримаються).
+
+## Session 2026-09-02 (targeted /sto-tester CYCLE 2, HEAD e0385776, feat/supplier-payments) — concurrent race + mid-life switch
+
+**Контекст:** Bug hunt циклу 2 — ДРУГИЙ незалежний прохід після повного циклу 1 (AVG_COST sentinel fix + 24 property invariants + FIFO cost carry). Фокус: те що цикл-1 не покрив — real concurrency, mid-life switch, defensive DB layer.
+
+**Baseline (перед fix):** API tsc 0, Web tsc 0, API tests 1083 passed / 74 files, Web tests 488 passed / 45 files.
+
+**Знайдено нових багів:** 2 CRITICAL + 1 MEDIUM regression-guard.
+
+### Bug #613 — HIGH concurrency — createMovement WRITEOFF/RESERVATION_RELEASE та consumeBatch без row-lock захисту → quantity/remainingQty можуть стати від'ємними
+
+- **Файл:** apps/api/src/modules/inventory/inventory.service.ts:118-140 (pre-check), :187-204 (upsert без post-check); apps/api/src/modules/inventory/batch.service.ts:219-238 (безумовний decrement).
+- **Симптом:** Два concurrent WRITEOFF того самого товару обидва проходять pre-check `available >= |qty|` (читання stale snapshot). Postgres serialize упсерт рядково через row-lock, але **сам pre-check** уже виконаний з застарілими даними → другий tx декрементує `quantity` до -N БЕЗ помилки (немає CHECK constraint на quantity>=0). Аналогічно у `consumeBatch`: `stockBatch.update({ decrement: take })` виконується безумовно → `remainingQty=-N`. **Інваріант `quantity>=0 && remainingQty>=0` силентно ламається** при 2 одночасних наряди/розхід того самого запчастини (реалістичний сценарій СТО з 2 механіками).
+- **Причина виникнення:** Prisma default = Read Committed; row-lock блокує тільки послідовний UPDATE, але не «pre-check → update» ланцюг. Оригінальний дизайн вважав що весь потік у $transaction захищений — але isolation Read Committed **не** серіалізує read+write. Немає CHECK constraint у міграціях (перевірено: grep CHECK.\*remainingQty = 0 matches).
+- **Виявлено:** grep `isolationLevel|Serializable` у `apps/api/src/modules/inventory` = 0 matches. Порівняння з `invoices.service.ts` (має Serializable + inner re-check для `createFromWorkOrder` — Bug #412) — inventory hot-path НЕ має аналогічного захисту.
+- **Fix:**
+  1. **inventory.service.ts:187-217** — `stockItem.upsert(...).select({ quantity, reserved })` + post-check `if (upserted.quantity < 0) throw` / `if (upserted.reserved < 0) throw`. Виконується всередині $tx → throw викликає rollback всього ланцюга (WRITEOFF + consumeBatch + settlements). Простіше за Serializable + менше SSI overhead для звичайних sequential cases.
+  2. **batch.service.ts:219-247** — замінено `stockBatch.update({ decrement })` на `stockBatch.updateMany({ where: { id, remainingQty: { gte: take } }, data: { decrement } })`. Conditional update: якщо інший tx уже задекрементив між findMany і updateMany → `count=0` → throw «Партію змінено іншою транзакцією». Атомарний check + decrement на рівні Postgres.
+  3. **inventory.service.spec.ts** — 3 нових regression-тести у `describe('Bug #613 — concurrent WRITEOFF race-condition guard')`: WRITEOFF race → throw; RESERVATION_RELEASE race → throw; happy-path → OK.
+  4. **batch.service.spec.ts** — 2 нових regression-тести: updateMany з правильним where filter (не update); race-lost count=0 → throw.
+  5. **batch.invariants.spec.ts** — 2 нових property-based тести (Bug #613 secure section): 2 concurrent tx симуляція → totalConsumed <= initial ∀ (initial, take); guard остаточно не негативний.
+- **Severity:** HIGH — фізичний склад ламається без сигналу; downstream: неправильний COGS у нарядах (від'ємна собівартість), balance у settlements неузгоджений, при скасуванні наряду returnToBatch ще більше ламає.
+- **Де шукати ще:** будь-який write-path де pre-check → upsert/update виконується у Read Committed без row-lock контракту: `settlementAccount.balance` (Bug #412 закрив invoice-flow, але sequences у intra-org можуть бути); `cashRegister.balance`; `bankAccount.balance`; `deliveryOrder.receivedQty`. Grep: `findFirst({ select: { quantity }}) → upsert/update({ increment/decrement })` без $tx isolation.
+- **Статус:** [x] виправлено
+
+### Bug #614 — MEDIUM test-coverage — mid-life switch costMethod (FIFO → AVG_COST → LIFO) без property-based інваріантного тесту
+
+- **Файл:** apps/api/src/modules/inventory/batch.invariants.spec.ts — до fix'у тільки FIFO/LIFO/FEFO/AVG-sentinel окремо, без mixed sequences.
+- **Симптом:** organisation.costMethod може змінитись у середині життя існуючих партій (адмін переключив у налаштуваннях). Ключове: AVG_COST шлях у `InventoryService.createMovement` викликає `consumeBatch(..., 'FIFO', ...)` (рядок 227) — тобто **фізичний декремент завжди FIFO** незалежно від lookup-режиму. Немає property-based тесту що після довільної послідовності `[{FIFO, WRITEOFF}, {AVG, WRITEOFF}, {LIFO, WRITEOFF}]` інваріант `Σ remainingQty(active) == initial - Σ consumed` тримається. Refactor який випадково зробить `consumeBatch(..., 'AVG_COST', ...)` у AVG-branch (return sentinel замість фізичного декременту) пройде unit CI зеленим — інваріант зламається у runtime у клієнта що переключився на AVG.
+- **Причина виникнення:** окремі costMethod-тести пишуться під конкретний Bug #N; mixed-sequence property invariant вимагає розуміння всього design contract «AVG_COST commit path декрементує FIFO».
+- **Виявлено:** grep `describe.*mid-life|switch.*costMethod` у `batch.invariants.spec.ts` — 0 matches. Огляд `describe`-блоків показав тільки single-method тести.
+- **Fix:** новий describe-блок `BatchService — mid-life costMethod switch invariants (Bug #614)` з 3 property-based тестами:
+  1. Послідовні WRITEOFF з різним costMethod → `finalSum === initialSum - totalConsumed`.
+  2. Після серії mid-life switch: жодна партія у мінус + isActive узгоджено з remainingQty.
+  3. AVG_COST у commit path декрементує FIFO (модель контракту з рядка 227).
+- **Severity:** MEDIUM (regression-guard, не активний баг).
+- **Де шукати ще:** будь-який `switch (costMethod)` / `switch (mode)` де 1 гілка робить lookup-only без мутації, інша — write-side effects. Різний write-path у різних гілках = потенційний drift при mid-life switch config.
+- **Статус:** [x] виправлено
+
+### Bug #615 — LOW technical-debt — inventory.service.ts:158-173 RECEIPT з batch.createFromReceipt всередині upsert-flow без row-lock захисту від concurrent RECEIPT
+
+- **Файл:** apps/api/src/modules/inventory/inventory.service.ts:158-173.
+- **Симптом:** Одночасні `POST /stock-items/receipt` для того самого товару → обидва створять окремий StockBatch (unique constraint на `orgId+goodId+warehouseId+batchNumber` — але `batchNumber` часто null → унікальність не гарантована). Не CRITICAL: створення нових партій — append-only, не порушує інваріант. Але **дубль-партія з тим же costPrice, без batchNumber** — забруднення FIFO-порядку (2 партії з createdAt дуже близько → непередбачувано яка перша).
+- **Причина виникнення:** RECEIPT не має pre-check на існуючу партію (create-only, без merge-logic).
+- **Виявлено:** аналіз createFromReceipt — не робить upsert на batch, просто create. Прийнятно для current-day usage (унікальний batchNumber на partition).
+- **Fix:** не потрібен — це defensive concern, не bug. Задокументовано у docstring `createFromReceipt`.
+- **Severity:** LOW (technical debt).
+- **Де шукати ще:** будь-який create-only endpoint де concurrent request може створити дублікат semantic entity.
+- **Статус:** [x] задокументовано (без коду)
+
+**Підсумок циклу 2:**
+
+- Знайдено: 2 real багів (1 HIGH concurrency + 1 MEDIUM test-coverage gap) + 1 LOW documented.
+- Виправлено: 2 з 3 (LOW не потребував коду).
+- Додано тестів: +10 (3 inventory.service.spec + 2 batch.service.spec + 5 batch.invariants.spec).
+- API tests: 1083 → 1093 (+10). Web tests: 488 (без змін). TSC: 0 errors.
+- Ключовий висновок: цикл 1 покрив semantic invariants (Σ, sign, FIFO order), цикл 2 покрив operational invariants (concurrency race, mid-life switch, defensive DB layer).
+
+## Session 2026-09-02 (targeted /sto-tester CYCLE 3 фінальний, HEAD 47e26321, feat/supplier-payments) — жива верифікація DB-механізмів
+
+**Мета:** підтвердити стабільність механізмів, доданих циклами 1-2, через **живу перевірку в БД** (не unit mocks).
+
+**Метод:** ad-hoc probe-скрипт `packages/database/prisma/cycle3-live-probe.ts` (не в suite, видалений після циклу) виконав 7 перевірок проти живої dev БД. Дані для перевірки: 8 stock_items × реальні партії + 222 settlement_accounts (11 non-zero).
+
+**Результати живих проб:**
+
+1. ✅ `stock_items.quantity < 0` INSERT rejected by `stock_items_quantity_nonneg` (23514 check_violation) — DB CHECK живий.
+2. ✅ `stock_items.reserved < 0` INSERT rejected by same CHECK.
+3. ✅ `stock_items UPDATE quantity=-1` rejected by CHECK — не тільки INSERT-guard, а й UPDATE (Postgres CHECK застосовується на обидва).
+4. ✅ `stock_batches.remainingQty < 0` INSERT rejected by `stock_batches_remaining_nonneg`.
+5. ✅ **Rollback semantic:** `$transaction(async tx => { tx.stockMovement.create(...); tx.$executeRaw INSERT stock_items(-99999); })` → CHECK throws → tx rollback → StockMovement count unchanged. Атомарність тримається навіть при змішаному ORM+raw шляху всередині tx. Це дзеркалить прод-сценарій «WRITEOFF race-guard throw» після post-upsert check.
+6. ✅ **Inventory invariant sweep:** `Σ remainingQty(active) == StockItem.quantity` для 8 живих (goodId, warehouseId) пар — 0 mismatches. Реальні партії з реальних RECEIPT/WRITEOFF операцій.
+7. ✅ **Settlement invariant sweep:** `balance == Σ signed(tx)` для 222 акаунтів (11 non-zero) — 0 mismatches. Врахований повний sign-map (CHARGE+1, PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE−1, SUPPLIER_CHARGE−1, SUPPLIER_PAYMENT/SUPPLIER_REFUND+1). Джерело правди — `BALANCE_SIGN` у `settlements.service.ts`; єдиний recompute-споживач (`settlements-account.service.ts:136`) використовує ту саму мапу → drift неможливий.
+
+**Regression guards зелені:** `batch.invariants.spec` 29/29 + `settlements.invariants.spec` 13/13 + `supplier-payments.service.spec` 37/37 + `purchase-orders.service.spec` 45/45.
+
+**Знайдено нових багів:** 0 активних. Один спостережувальний артефакт (probe-скрипт спочатку використовував неповний sign-map без SUPPLIER\_\* типів → хибний false-positive) → **це підказка про тестерський pattern:** живі агрегати-переклад semantics (`BALANCE_SIGN`, `WORK_ORDER_TRANSITIONS`) слід читати з коду, не хардкодити в probe. Патерн зафіксований у SKILL нижче.
+
+**Підсумок фінального циклу 3:**
+
+- Знайдено активних багів: **0** — очікувана конвергенція (як і після циклу 2 без нових findings).
+- Тести без змін: API 1095/1095 ✅ | Web 488/488 ✅ | TSC api/web/shared 0 errors ✅.
+- Живі проби додали **empirical evidence** до unit-guards: DB CHECK constraints реально ловлять row, rollback реально спрацьовує, invariant реально тримається на живих даних а не тільки на мок-масивах.
+- Конвергенція трьох циклів: цикл 1 → semantic invariants (Σ, sign, FIFO), цикл 2 → operational invariants (concurrency, mid-life switch, DB layer), цикл 3 → **live evidence** що механізми ЦИКЛУ 2 працюють у продакшн-подібному середовищі.
+
+## Session 2026-09-03 — /sto-tester bug hunt: Report Builder (feat/supplier-payments)
+
+### Bug #617 — Report Builder: `include`+`select` конфлікт для parent-leaf + parent.child.leaf
+
+**Severity:** CRITICAL — будь-який звіт з комбінацією `X.leaf` та `X.subrel.leaf` у columns/groupBy повертає 400 `PrismaClientValidationError` (mute-ковтається http-exception.filter як "Некоректні дані запиту" без стек-логу).
+
+**Файл:** `apps/api/src/modules/report-builder/report-query.builder.ts` → `mergeIncludePath()`.
+
+**Симптом (жива проба):**
+
+```bash
+curl POST /api/reports/builder/run -d '{"config":{"entity":"workOrderPart","columns":["good.name","good.brand.name"],"groupBy":["good.name","good.brand.name"],"aggregations":[{"field":"amount","agg":"SUM"}]}}'
+→ {"statusCode":400,"message":"Некоректні дані запиту"}
+```
+
+**Причина:**
+`mergeIncludePath` для `good.name` створювала `{ good: { select: { name: true } } }`, а потім для `good.brand.name` — `{ good: { select: {...}, include: { brand: {...} } } }`. Prisma не приймає `include`+`select` на одному рівні → `PrismaClientValidationError` → http-exception.filter → 400 без деталей.
+
+**Приховувалось:** unit-тест `include-merge спільних префіксів` перевіряв ЛИШЕ shape об'єкта (не робив живий findMany), тому був "green by shape / red by runtime". Класична пастка "structural test without live guard".
+
+**Уражені комбінації (реальні у registry):**
+
+- `workOrderPart`: `good.name` + `good.brand.name` (обидва groupable=true, high probability)
+- `workOrderPart`: `workOrder.number` + `workOrder.counterparty.type` (те саме)
+- `purchaseOrderLine`: `purchaseOrder.number` + `purchaseOrder.supplier.companyName`
+
+**Фікс:** переведено relation-branch на **чистий `select` без `include`** — Prisma-canonical форма для nested-select. Схема:
+
+```js
+{ good: { select: { name: true, brand: { select: { name: true } } } } }
+```
+
+Кореневий `include` збережено (щоб не тягнути ВСІ скалярні поля кореневої моделі у select).
+
+**Regression guards:** оновлений `report-query.builder.spec.ts` — 2 тести під `Bug #617`:
+
+1. `include-merge спільних префіксів (good.name + good.brand.name)` — перевіряє відсутність `good.include`, наявність `good.select` з обома leaf-ами.
+2. `multi-hop (workOrder.number + workOrder.counterparty.companyName)` — той самий патерн, глибший relation.
+
+**Живе підтвердження після фіксу:** інваріант консистентності Σ(листкові aggregates) == grandTotal тримається до 6 знаків після коми у 8 сценаріях (workOrder gb=1/2/3, workOrderPart gb=1/3/5, purchaseOrderLine gb=2):
+
+| Entity            | groupBy                                       | SUM_amount grand | Σ leaf     | diff     |
+| ----------------- | --------------------------------------------- | ---------------- | ---------- | -------- |
+| workOrder         | 1 (status)                                    | 30478.0000       | 30478.0000 | 0.000000 |
+| workOrder         | 3 (status,priority,counterparty.type)         | 30478.0000       | 30478.0000 | 0.000000 |
+| workOrderPart     | 3 (brand.name→good.name→warehouse.name)       | 3700.0000        | 3700.0000  | 0.000000 |
+| workOrderPart     | 5 (brand→good→warehouse→wo.number→wo.cp.type) | 3700.0000        | 3700.0000  | 0.000000 |
+| purchaseOrderLine | 2 (supplier→brand.name), SUM vatAmount        | 26760.6000       | 26760.6000 | 0.000000 |
+
+- [x] виправлено
+
+### Bug #618 — Report Builder: `PrismaClientValidationError` конвертується у 400 без стек-логу (тестерська DX)
+
+**Severity:** LOW — не user-facing баг, але серйозна пастка для розробників тестів/фронта.
+
+**Файл:** `apps/api/src/common/filters/http-exception.filter.ts` (рядок 90-93).
+
+**Симптом:** будь-який Prisma-запит з невалідним include-shape повертає `{"statusCode":400,"message":"Некоректні дані запиту"}` — без стек-трейса, без указання поля, без збереження exception.message. Розробник не знає, ЩО саме Prisma не прийняла (в моєму випадку — 15 хвилин на діагностику Bug #617).
+
+**Причина:** `mapPrismaErrorToHttp` мапить `PrismaClientKnownRequestError` з логуванням, але `PrismaClientValidationError` (для якого немає код-мапи) — сухий 400 без stack-логу. Логіка припускає "це помилка користувача, не серверна", але у 100% випадків це помилка **білдера серверного коду** (клієнт передає лише config через DTO-whitelist).
+
+**Фікс не робив** — сфокусувався на первопричині (Bug #617). Але залишаю як candidat для окремого коміту з логуванням `exception.message` (не всього stack) на рівні `warn` — це дасть майбутнім тестерам одразу текст типу "Please either use `include` or `select`, but not both at the same time".
+
+**Фікс (додано у тому ж прогоні):** у `catch` для `PrismaClientValidationError` додано `logger.warn` з `${method} ${url}: ${lastLineOfPrismaMessage}`. `lastLine` — бо Prisma кладе фактичну причину у ОСТАННІЙ непорожній рядок повідомлення (перед ним header з "Invalid `prisma.X.findMany()`" + пуста лінія + пояснення).
+
+**Regression guard:** `http-exception.filter.spec.ts` → `Bug #618: PrismaClientValidationError логується як warn з останнім рядком повідомлення` — симулює реальний Prisma-текст, перевіряє warn-виклик з правильним URL + суттю.
+
+- [x] виправлено
+
+---
+
+## Session 2026-09-03 — Report Builder pivot-модель: live bug hunt (feat/supplier-payments після 7ce451f9)
+
+Проведено ЖИВЕ curl-тестування через `/api/reports/builder/run` (admin@sto.local) з фокусом на консистентність, детальні рядки, авто-SUM, сортування, знакову quantity, date-агрегати. Всі 9 сутностей повертають 200. Інваріант Σ(листкові aggregates) == grandTotal тримається до 1e-6 у 1/2/N-рівневих group by. Знайдено 2 логічні баги (нижче), обидва — семантичні.
+
+### Bug #619 — Report Builder: SUM_quantity для `stockMovement` включає RESERVATION/RESERVATION_RELEASE — псує «нетто» фізичного руху
+
+**Severity:** HIGH — числовий результат SUM неправдивий у сценарії з активним резервуванням; лейбл «Кількість (нетто)» обіцяє фізичне нетто.
+
+**Файл:** `apps/api/src/modules/report-builder/report-aggregator.ts:63-75` (`numericValue`), `report-registry.ts:962-971` (поле `stockMovement.quantity`).
+
+**Симптом (live-репро):**
+
+```
+POST /reports/builder/run { entity:"stockMovement", columns:["quantity"], groupBy:["type"] }
+grandTotals: { SUM_quantity: 37 }
+- RECEIPT count=23 SUM=+122
+- WRITEOFF count=13 SUM=-65
+- RESERVATION count=3 SUM=-10   ← НЕПРАВИЛЬНО: raw stored positive, aggregator примусово негативує
+- RESERVATION_RELEASE count=3 SUM=-10   ← НЕПРАВИЛЬНО: raw stored negative, aggregator НЕ обробляє → залишається негативним
+```
+
+Фізичний нетто-рух за даними = RECEIPT(+122) + WRITEOFF(−65) + RESERVATION(0, не чіпає фізичне) + RESERVATION_RELEASE(0, теж не чіпає) = **+57**.  
+Репортер каже: **+37**. Різниця −20 = «привид» від RESERVATION/RESERVATION_RELEASE, які не є фізичними рухами (див. `inventory.service.ts:187-190`: `quantityDelta = 0` для обох).
+
+**Причина:**
+
+1. Реєстр каже `signedByType: 'type'` для quantity, але код у `numericValue`:
+   ```ts
+   if (typeVal === 'WRITEOFF' || typeVal === 'RESERVATION') n = -Math.abs(n);
+   ```
+   RESERVATION_RELEASE НЕ у списку → бере raw (стор. −5) → залишається негативним.
+   RESERVATION у списку → форсовано негативує raw (стор. +5) → віддає −5.
+2. Але **обидва типи не впливають на фізичний stockItem.quantity** — їх SUM у нетто взагалі не має рахуватися.
+
+**Виправлення (мінімально-безпечне):** у `numericValue` для полів з `signedByType` виключити RESERVATION і RESERVATION_RELEASE з обчислення (повертати `null` — таке ж значення пропускається у reduce). Для WRITEOFF залишити `-Math.abs(n)` як backstop до сирих позитивів у seed. RECEIPT/TRANSFER/OPENING_BALANCE — беруться as-is (їхній знак уже правильний з сервісу).
+
+**Regression guard:** `report-aggregator.spec.ts` → додано 3 тести:
+
+- `Bug #619: signedByType SUM(quantity) виключає RESERVATION/RESERVATION_RELEASE` (табличний з очікуваним фізичним нетто +10 замість −2);
+- `Bug #619: WRITEOFF з випадково додатним raw теж стає негативним (backstop)`;
+- `Bug #619: групування по type — RESERVATION/RESERVATION_RELEASE бакети мають SUM=0` (бакети та grandTotal).
+
+**Live-підтвердження:** після фіксу — `POST /reports/builder/run stockMovement.quantity groupBy=[type]` → grandTotal +57 (було +37 — фантомні −20 від RESERVATION+RESERVATION_RELEASE зникли), RESERVATION/RESERVATION_RELEASE бакети = 0.
+
+- [x] виправлено
+
+### Bug #620 — Report Builder frontend: MIN/MAX для дати рендериться як гроші, коли поле не в `columns`
+
+**Severity:** HIGH — user-facing візуальний баг: замість дати "01.06.2026" користувач бачить "1 780 963 200 000,00 грн".
+
+**Файл:** `apps/web/src/app/(app)/reports/ReportBuilder.tsx:653-674` (`fmtAggValue`).
+
+**Симптом (live-репро):**
+
+```
+POST /reports/builder/run { entity:"invoice", columns:["number"], groupBy:[], aggregations:[{field:"documentDate",agg:"MIN"}] }
+Response:
+  columns: [{key:"number", label:"Номер", type:"scalar"}]  ← БЕЗ documentDate
+  aggregations: [{field:"documentDate", agg:"MIN"}]
+  grandTotals: { MIN_documentDate: 1780963200000 }
+```
+
+Frontend `fmtAggValue('MIN_documentDate', 1780963200000, cols=[{key:'number',...}])`:
+
+1. Не COUNT\_ → пропускає гілку fmtInt.
+2. `fieldKey='documentDate'`.
+3. `cols.find(c => c.key === 'documentDate')` → **undefined** (documentDate НЕ у columns).
+4. `colType = undefined` → fallback → **`fmtMoney(1780963200000)`** → «1 780 963 200 000,00 грн».
+
+**Причина:** резолвер типу поля дивиться лише у `cols` (список показаних колонок), а поле-агрегат може бути ВНЕ колонок. Backend не віддає тип поля у `aggregations`.
+
+**Виправлення:** розширити контракт `aggregations` у відповіді бекенда — додати `type` і `label` для кожного агрегованого поля (з `getField(entity, field)`). Frontend `fmtAggValue` спочатку шукає у `aggregations`, потім (для сумісності) у `cols`. Це:
+
+- ізолює логіку рендеру від складу `columns`;
+- заразом дає label для tooltip/заголовка колонки-агрегату (додатковий бонус).
+
+Backend зміна не ламає існуючих клієнтів (додає поля до існуючих items).
+
+**Виправлення (реалізовано):**
+
+1. `report-builder.service.ts` — новий інтерфейс `ReportAggEnriched extends ReportAggInput { type, label }`; у `run()` після `effectiveAggregations` — map на entity.fields → додає `type` і `label`. `ReportRunResult.aggregations` тепер `ReportAggEnriched[]`.
+2. `apps/web/src/hooks/api/useReportBuilder.ts` — додано `ReportAggEnriched`, `ReportRunResult.aggregations` — це `ReportAggEnriched[]`.
+3. `ReportBuilder.tsx` — `fmtAggValue(alias, value, cols, aggregations?)` — резолвить тип поля СПОЧАТКУ з `aggregations` (source of truth), потім fallback на `cols`; `fmtAggValue` тепер `export`. `aggAliasLabel` — так само (label з aggregations першим, потім columns, потім fieldKey). `GroupRows` приймає `aggregations` пропом (передано з двох call-site: tfoot grand + tree cells).
+
+**Regression guard:** `report-builder.service.spec.ts` (новий) → 2 тести:
+
+- `effectiveAggregations додає авто-SUM тільки для числових колонок без явного agg`;
+- `Bug #620: контракт enrichment — MIN documentDate → {type:'date',label:'Дата'}`.
+
+**Live-підтвердження:** `POST /reports/builder/run { entity:"invoice", columns:["number"], aggregations:[{field:"documentDate",agg:"MIN"}]}` → `aggregations: [{field:"documentDate",agg:"MIN",type:"date",label:"Дата"}]` (було `[{field,agg}]` без типу → фронт рендерив як гроші).
+
+- [x] виправлено
+
+---
+
+## Session 2026-09-01 (targeted /sto-tester, HEAD 03a93799, feat/supplier-payments) — restore-endpoints (галка «Показувати видалені»)
+
+Цілеспрямований прогін по фічі "showDeleted-toggle + restore vehicles/contracts" (c30c22bd + 03a93799). Baseline перед сесією: API tsc 0/0, Web tsc 0/0, counterparties+vehicles specs 41/41. Знайдено 3 real bugs (HIGH: orphan-refs at restore) + 2 test-coverage gaps.
+
+### Bug #601 — HIGH data-integrity / restore створює orphan reference — vehicles.restore() не перевіряє parent garage
+
+- **Файл:** apps/api/src/modules/vehicles/vehicles.service.ts:77-88 (restore()).
+- **Симптом:** Live: POST /vehicles/{id} -> DELETE /vehicles/{id} -> DELETE /counterparties/{cpId}/garages/{gid} -> POST /vehicles/{id}/restore повертає 201 з deletedAt:null та customerGarageId:<soft-deleted garage>. Vehicle тепер посилається на видалений гараж. GET /vehicles?counterpartyId=... (filter customerGarage.deletedAt:null) не бачить його — користувач вважає що restore зламано, а з БД перспективи авто «зомбі», доступне лише через прямий GET /vehicles/{id}.
+- **Причина виникнення:** restore() скопіювала pattern з brands.service.restore (updateMany where:{id,orgId,NOT:{deletedAt:null}}) — там немає FK на soft-delete-able parent. Vehicle завжди належить CustomerGarage, а гараж може бути soft-deleted окремо (removeGarage у counterparties.service.ts:244-288 не cascade-soft-deletes vehicles). Асиметрія: create() захищає (if (!garage) throw NotFoundException), restore() — ні.
+- **Виявлено:** живий сценарій через curl (див. вище). Grep restore у vehicles.service.ts — updateMany без парного garage-check.
+- **Fix:** restore() перед atomic updateMany додає prep-check через findFirst({id,orgId, customerGarage:{deletedAt:null, counterparty:{deletedAt:null}}}) із include garage.counterparty — якщо не знайдено АЛЕ Vehicle сам існує (з чи без deletedAt) → distinguisher: якщо vehicle не існує/чужа org — 404 як зараз; якщо garage soft-deleted → BadRequestException з friendly-text. Мінімум — валідація замість silent orphan.
+- **Severity:** HIGH — data corruption через public API. UI-friendly фейл (restore повертає 201, авто зникає з списку) підриває довіру до фічі.
+- **Де шукати ще:** будь-який restore() метод на моделі з required FK до parent що теж soft-delete-able. Grep: grep -rn "async restore" apps/api/src/modules --include="\*.service.ts" — для кожного знайти FK у schema.prisma; якщо parent має deletedAt DateTime? → відсутній guard = bug.
+- **Статус:** [x] виправлено
+
+### Bug #602 — HIGH data-integrity — vehicles.restore() не перевіряє parent counterparty
+
+- **Файл:** apps/api/src/modules/vehicles/vehicles.service.ts:77-88.
+- **Симптом:** Live: DELETE /vehicles/{vid} -> DELETE /counterparties/{cpId} (не cascade-soft-deletes vehicles/garages) -> POST /vehicles/{vid}/restore -> 201. Vehicle воскрес у CP що не існує з бізнес-точки. GET /counterparties/{cpId} -> 404, але vehicle досі referenced.
+- **Причина виникнення:** див. Bug #601 — той самий pattern (restore без grandparent-check). Тут chain vehicle -> garage -> counterparty з двома рівнями deletedAt.
+- **Виявлено:** живий curl-сценарій.
+- **Fix:** Об'єднано з Bug #601 в один pre-check: findFirst із nested where customerGarage:{deletedAt:null, counterparty:{deletedAt:null}}.
+- **Severity:** HIGH.
+- **Статус:** [x] виправлено
+
+### Bug #603 — HIGH data-integrity — restoreContract() не перевіряє parent counterparty
+
+- **Файл:** apps/api/src/modules/counterparties/counterparties.service.ts:322-340 (restoreContract).
+- **Симптом:** Live: створити SUPPLIER (auto-PURCHASE #1) -> додати PURCHASE #2 -> DELETE contracts/#2 -> DELETE counterparties/{cpId} -> POST /counterparties/{cpId}/contracts/{#2}/restore -> 201, contract воскрес, але GET /counterparties/{cpId}/contracts -> 404. Contract у limbo: deletedAt:null, counterparty.deletedAt:not-null.
+- **Причина виникнення:** асиметрія з findContracts (line 304-308: findFirst({id,orgId,deletedAt:null}) guard) — той метод відмовляє показувати список для soft-deleted CP, але restore пропускає без будь-якої CP-check. Guards читання != guards запису.
+- **Виявлено:** живий curl-сценарій.
+- **Fix:** restoreContract() перед updateMany — prep-check counterparty.findFirst({id,orgId,deletedAt:null}) -> 404 якщо не активний. Дзеркалить пре-check findContracts/createContract/updateContract/removeContract.
+- **Severity:** HIGH.
+- **Де шукати ще:** усі restore\* методи над child-агрегатами.
+- **Статус:** [x] виправлено
+
+### Bug #604 — MEDIUM test-coverage — counterparties.contract.spec.ts serviceMock не містить restoreContract
+
+- **Файл:** apps/api/src/modules/counterparties/counterparties.contract.spec.ts:11-24.
+- **Симптом:** serviceMock перелічує 12 методів (findAll..removeContract) без restoreContract. Новий controller endpoint POST /:id/contracts/:contractId/restore викликає this.service.restoreContract — mock повертає undefined. Будь-який тест на restore-endpoint отримає TypeError: Cannot read properties of undefined.
+- **Причина виникнення:** новий endpoint додано у контроллер, але test-mock зафіксований у sibling spec — легко забути. Partial mock через Test.createTestingModule providers.useValue не type-safe.
+- **Виявлено:** grep restoreContract у test files -> 0 matches.
+- **Fix:** Додати restoreContract: vi.fn() до serviceMock (+ тести — Bug #605).
+- **Severity:** MEDIUM — не блокує зараз, але guarantees future test failure.
+- **Статус:** [x] виправлено
+
+### Bug #605 — MEDIUM test-coverage — restore endpoints без жодного автотесту
+
+- **Файл:** відсутні тести. vehicles.service.spec.ts не існує; counterparties.service.spec.ts без restoreContract; contract spec без restore endpoint.
+- **Симптом:** grep restoreContract|vehicles._restore|restoreVehicle у apps/api/src/\*\*/_.spec.ts -> 0 matches. Два нових endpoints без regression-guard. Класичний патерн SKILL Bug #478-#480 (нове enum без regression), Bug #532-#536 (constructor DI drift без spec-update). Refactor що видалить NOT:{deletedAt:null} з updateMany-where або спрощення що зніме parent-check — пройде CI зеленим і поламає fic Bug #601/#602/#603.
+- **Причина виникнення:** feature-розробка (c30c22bd) + review-fix (03a93799) — фокус на code-shape, не тестах.
+- **Виявлено:** grep -rn restore apps/api/src/modules/{counterparties,vehicles} --include=\*.spec.ts -> 0.
+- **Fix:** Додано регресійне покриття:
+  1. counterparties.service.spec.ts +6 it(...) для restoreContract — Bug #603 CP-guard, double-restore 404, cross-CP-path 404, orgId у where (tenant), isPrimary=false у data, DTO shape.
+  2. NEW vehicles.service.spec.ts — з 0 -> 8 tests: restore() happy/double/deleted-garage/deleted-CP/cross-tenant, findAll(showDeleted) shape (2 тести), remove() atomic updateMany.
+  3. counterparties.contract.spec.ts +1 it(...) для POST /restore + restoreContract: vi.fn() (fix Bug #604).
+- **Severity:** MEDIUM.
+- **Де шукати ще:** grep @Post.\*restore у controllers -> для кожного мін. 3 тести у sibling spec.
+- **Статус:** [x] виправлено
+
+### Bug #606 — LOW UX — ZoneBtn «Г»: повторний клік по вже-активному полі при 5/5 кидає misleading toast «Максимум 5 рівнів групування»
+
+- **Файл:** apps/web/src/app/(app)/reports/ReportBuilder.tsx:205-217 (addToZone, зона groupBy).
+- **Симптом:** groupBy заповнено до ліміту (5/5). Поле уже в списку → кнопка «Г» на його чіпі показує `active` (bg-primary). Користувач тисне повторно (наприклад, помилково) → toast.warning «Максимум 5 рівнів групування». Але поле уже є, дійсний ліміт не порушений, повідомлення підриває довіру («сказано максимум — а видалити нема як окрім X»).
+- **Причина виникнення:** порядок гардів у addToZone: спершу перевіряється `groupBy.length >= 5`, лише потім `!groupBy.includes(key)`. Правильно навпаки — «вже додано» коротшить перед лімітом. Автор скопіював послідовність з drop-only варіанту де drop за визначенням не буває на вже-активному чіпі (перетягуєш з палітри).
+- **Виявлено:** статичний аналіз addToZone після коміту bbaa84e2 «клік-кнопки К/Г/Ф» — новий шлях (клік на чіпі палітри при active-стані) відкриває сценарій який drop-варіант не мав. Також дзеркальна проблема у filters-гілці (`!f.filterable` кидає toast для не-фільтрованого повторного кліку — теоретично не досяжно, бо `disabled={!f.filterable}`, але для послідовності виправлено).
+- **Fix:** У addToZone поставити `includes(key)` РАНІШЕ за інші гарди для zone=`groupBy` і `filters`:
+  ```ts
+  if (zone === 'groupBy') {
+    if (groupBy.includes(key)) return; // no-op — вже є
+    if (!f.groupable) return toast.warning('Це поле не можна групувати');
+    if (groupBy.length >= 5) return toast.warning('Максимум 5 рівнів групування');
+    setGroupBy([...groupBy, key]);
+  }
+  ```
+- **Severity:** LOW — не втрата даних, не блокер, але дратуюча UX-неточність у щойно доданому UI.
+- **Регресія:** E2E тест `Bug #606: повторний клік «Г» на вже-активному полі при 5/5 — без toast «Максимум»` у report-builder.spec.ts — додає 5 groupBy, повторно тисне Г на «Статус», перевіряє відсутність toast та збереження лічильника «Групування (5/5)».
+- **Де шукати ще:** будь-який inline-add helper де є гард «ліміт + унікальність» — перевірити порядок: unique-check коротшить перед limit-check.
+- **Статус:** [x] виправлено
+
+---
+
+## Session 2026-09-04 — Report Builder «підказка групування + приховано колонку Кількість=1» (915ab374 / 2319d550, feat/supplier-payments)
+
+Скоуп: `ReportBuilder.tsx` (банер-підказка коли groupBy порожній; `showCount=hasGroups` ховає колонку «Кількість» у плоскому режимі) + `report-builder.spec.ts` (+1 E2E).
+
+**Результат: 0 багів у продакшн-коді.** Статичний аналіз + жива DOM-перевірка (Playwright) 5 фокус-сценаріїв — усе коректно.
+
+### Верифіковано (немає багів)
+
+1. **Плоский режим** (лише колонки, без груп): колонка «Кількість» ВІДСУТНЯ у thead / body-рядку / tfoot одночасно (`showCount=false` gated ідентично у 4 місцях). Live-DOM: `headCols == firstBodyRowCols == footCols` (2/2/2) — вирівнювання не з'їхало. Банер `role="status"` видимий, перша th = «№».
+2. **Grouped режим** (є Г-поля): колонка «Кількість» ПРИСУТНЯ рівно 1 раз, `node.count` рендериться у кожному груповому рядку, leaf-рядок має парний `<td/>`-placeholder → 0 drift. Банер ВІДСУТНІЙ. Перша th = «Група». Live-DOM cols консистентні.
+3. **Порожня вибірка** (0 рядків, flat): `colSpan={totalCols}` = `1 + cols + (showCount?1:0) + aggAliases` — правильний, «Немає даних» на всю ширину. Grouped-empty (0 груп) не показує «Немає даних» — але це ПРЕ-існуюча поведінка (умова `!hasGroups` була до цих комітів), не регресія scope.
+4. **Змішаний** (колонки + групи + агрегації): усі гілки рендерингу узгоджені; footer показує `grandTotals[a]` навіть у flat-режимі.
+5. **Export CSV/XLSX**: header `['Група','Кількість',...aggAliases]` завжди самодостатній; flat-body = `['Усього', rowCount, ...grandTotals]` (2+aggAliases), totals ідентичні → колонкова консистентність збережена. UI-зміна `showCount` НЕ впливає на export (export завжди тримає «Кількість» — правильно). Не зламано.
+
+Тести: TSC web ✅ 0, Web vitest ✅ 495/495, E2E report-builder ✅ 6/6.
+
+### Покращення тесту (LOW — test-hardening, не код-баг)
+
+- **Файл:** `apps/web/e2e/report-builder.spec.ts` — тест «колонки без групування → підказка».
+- **Проблема:** коментар тесту стверджував «колонки Кількість немає», але цього НЕ асертив — регресія що повертає count-колонку у flat-режимі пройшла б мовчки.
+- **Fix:** додано асерти: `thead th` з текстом «Кількість» = 0; перша th = «№»; `thead == перший body-рядок == tfoot` за к-стю клітинок. Commit `3d8cdee4`.
+- **Статус:** [x] виправлено

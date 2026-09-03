@@ -53,13 +53,16 @@ import {
 const SPLIT_DAY_START_H = 8;
 const SPLIT_DAY_END_H = 20;
 
+// sto-optimize (cycle 3/3): pure module-level constant — was recomputed on every calcEndAt() call
+// (called on each keystroke in "Тривалість" input under real-time normoHours conversion).
+const WORK_END_MIN = SPLIT_DAY_END_H * 60;
+
 /**
  * Given totalMin (start + normoHours in minutes), returns the display HH:mm for the "Кінець" field.
  * When totalMin overflows SPLIT_DAY_END_H (20:00), the end time is day-2 SPLIT_DAY_START_H + overflowMin.
  * When within the same day, returns the direct HH:mm.
  */
 function calcEndAt(totalMin: number): string {
-  const WORK_END_MIN = SPLIT_DAY_END_H * 60;
   const raw = Math.round(totalMin / 15) * 15; // snap to 15-min grid
   if (raw > WORK_END_MIN) {
     const overflowMin = raw - WORK_END_MIN;
@@ -342,8 +345,11 @@ export function CalendarSlotModal({
   };
 
   const saveWizardStep1 = async () => {
-    if (!newCp.firstName && !newCp.lastName && !newCp.companyName) {
-      setCpWizardError("Вкажіть ім'я або назву компанії");
+    // Дзеркалить cross-field name-guard беку (counterparties.service.hasCounterpartyName):
+    // whitespace-only не рахується як назва — інакше backend поверне 400 із загальним
+    // повідомленням, і користувач не побачить inline-помилки.
+    if (!newCp.firstName.trim() && !newCp.lastName.trim() && !newCp.companyName.trim()) {
+      setCpWizardError('Вкажіть назву компанії або ім’я/прізвище контрагента');
       return;
     }
     setSavingCp(true);

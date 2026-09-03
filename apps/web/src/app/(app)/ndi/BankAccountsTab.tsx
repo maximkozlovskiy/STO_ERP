@@ -44,11 +44,11 @@ export default function BankAccountsTab() {
     setLoadingBa(true);
 
     const cachedBa = getCached<{ items: BankAccount[] }>('cache:bank-accounts');
-    if (cachedBa) {
+    if (cachedBa && Array.isArray(cachedBa.items)) {
       setBankAccounts(cachedBa.items);
     }
     const cachedCurrencies = getCached<{ items: Currency[] }>('cache:currencies');
-    if (cachedCurrencies) {
+    if (cachedCurrencies && Array.isArray(cachedCurrencies.items)) {
       setCurrencies(cachedCurrencies.items);
     }
     const cachedBranches = getCached<BranchInfo[]>('cache:branches');

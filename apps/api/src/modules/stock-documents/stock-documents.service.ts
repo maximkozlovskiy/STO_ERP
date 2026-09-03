@@ -3,7 +3,7 @@ import { DocumentType, Prisma, StockDocumentType, StockMovementType } from '@pri
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { calculatePagination } from '../../common/utils/pagination';
+import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -29,6 +29,13 @@ const MOVEMENT_TYPES: Partial<Record<StockDocumentType, StockMovementType>> = {
   WRITEOFF: StockMovementType.WRITEOFF,
   OPENING_BALANCE: StockMovementType.OPENING_BALANCE,
   RECEIPT: StockMovementType.RECEIPT,
+};
+
+// sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
+// re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/INV_SORT_FIELDS/WO_SORT/PO_SORT.
+const SD_SORT_FIELDS: Record<string, string> = {
+  documentDate: 'documentDate',
+  createdAt: 'createdAt',
 };
 
 @Injectable()
@@ -65,12 +72,7 @@ export class StockDocumentsService {
     }
 
     const { skip, take } = calculatePagination({ page, limit });
-    const SD_SORT: Record<string, string> = {
-      documentDate: 'documentDate',
-      createdAt: 'createdAt',
-    };
-    const sortField = SD_SORT[sortBy ?? ''] ?? 'createdAt';
-    const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
+    const orderBy = buildSortOrderBy(SD_SORT_FIELDS, sortBy, sortDir);
     // Bug review (sto-optimize 2026-06-05): lines не використовуються у table-cells списку,
     // лише `doc.lines.length` у комірці «Позицій». DetailPanel рендериться для ОДНОГО
     // вибраного doc і завантажується lazily через GET /stock-documents/:id (findOne уже
@@ -81,7 +83,7 @@ export class StockDocumentsService {
         where,
         skip,
         take,
-        orderBy: { [sortField]: sortOrder },
+        orderBy,
         include: {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
@@ -325,7 +327,7 @@ export class StockDocumentsService {
           // (не справжній паралелізм) — але це безпечно для race-конкуренції stockItem upsert
           // (Postgres serialize ON CONFLICT під тим самим connection).
           await Promise.all(
-            doc.lines.map(line => {
+            doc.lines.map(async line => {
               const lineUnitId = line.good?.unitId ?? null;
               // persist resolved UoM — extracted to avoid duplication in both branches.
               // defense-in-depth: include orgId у where (узгоджено з PO.receive
@@ -346,29 +348,31 @@ export class StockDocumentsService {
                 unitOfMeasureId: lineUnitId,
               };
               if (doc.type === 'TRANSFER') {
-                return Promise.all([
-                  this.inventory.createMovement(
-                    orgId,
-                    {
-                      ...baseArgs,
-                      warehouseId: doc.warehouseId,
-                      type: 'WRITEOFF',
-                      quantity: -line.quantity,
-                    },
-                    tx,
-                  ),
-                  this.inventory.createMovement(
-                    orgId,
-                    {
-                      ...baseArgs,
-                      warehouseId: doc.targetWarehouseId!,
-                      type: 'RECEIPT',
-                      quantity: line.quantity,
-                    },
-                    tx,
-                  ),
-                  maybeUpdateUom,
-                ]);
+                // ПОСЛІДОВНО (не Promise.all): спершу writeoff зі складу-джерела списує партії
+                // FIFO і повертає собівартість; цільова партія створюється з ЦІЄЮ собівартістю
+                // (перенос cost, не ціна продажу). Fallback baseArgs.price якщо консюм порожній.
+                const src = await this.inventory.createMovement(
+                  orgId,
+                  {
+                    ...baseArgs,
+                    warehouseId: doc.warehouseId,
+                    type: 'WRITEOFF',
+                    quantity: -line.quantity,
+                  },
+                  tx,
+                );
+                await this.inventory.createMovement(
+                  orgId,
+                  {
+                    ...baseArgs,
+                    warehouseId: doc.targetWarehouseId!,
+                    type: 'RECEIPT',
+                    quantity: line.quantity,
+                    price: src.weightedCostPrice ?? baseArgs.price,
+                  },
+                  tx,
+                );
+                return maybeUpdateUom;
               }
               const quantity = doc.type === 'WRITEOFF' ? -line.quantity : line.quantity;
               return Promise.all([

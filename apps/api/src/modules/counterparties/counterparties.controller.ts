@@ -117,8 +117,12 @@ export class CounterpartiesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Договори контрагента' })
   @ApiResponse({ status: 200, type: [ContractResponseDto] })
-  findContracts(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findContracts(orgId, id);
+  findContracts(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('showDeleted') showDeleted?: string,
+  ) {
+    return this.service.findContracts(orgId, id, showDeleted === 'true');
   }
 
   @Post(':id/contracts')
@@ -155,5 +159,17 @@ export class CounterpartiesController {
     @Param('contractId', ParseUUIDPipe) contractId: string,
   ) {
     return this.service.removeContract(orgId, id, contractId);
+  }
+
+  @Post(':id/contracts/:contractId/restore')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Відновити видалений договір' })
+  @ApiResponse({ status: 201, type: ContractResponseDto })
+  restoreContract(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('contractId', ParseUUIDPipe) contractId: string,
+  ) {
+    return this.service.restoreContract(orgId, id, contractId);
   }
 }

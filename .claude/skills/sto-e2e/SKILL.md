@@ -6,7 +6,7 @@ description: >
   Ключове правило: тест падає = щось зламано → знайти ЩО і виправити, а не
   обійти. Використовує MCP для інспекції живого DOM. Запускай: /sto-e2e після
   змін у frontend або для перевірки регресій.
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 bypassPermissions: true
 ---
 

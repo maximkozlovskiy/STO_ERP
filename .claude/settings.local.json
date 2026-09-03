@@ -222,7 +222,12 @@
       "Bash(cmd /c \"npx prisma migrate dev --name add_vat_amounts\")",
       "Bash(New-Item -ItemType Directory -Force \"e:\\\\Git\\\\STO ERP\\\\packages\\\\database\\\\prisma\\\\migrations\\\\20260619130000_add_brand_synonyms\")",
       "Bash(Out-Null)",
-      "Bash(Write-Output \"created\")"
+      "Bash(Write-Output \"created\")",
+      "Bash(sort -t'#' -k2 -n)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); items=d.get\\('items',d\\) if isinstance\\(d,dict\\) else d; print\\('count:', len\\(items\\), '| first:', items[0].get\\('id'\\) if items else 'NONE'\\)\")",
+      "Bash(ls -la \"C:\\\\Users\\\\m.kozlovskiy\\\\.claude\\\\plans\\\\\" 2>/dev/null | grep -E '\\\\.\\(md|txt\\)$' | tail -1 || echo \"No active plans\")",
+      "Read(//c/Users/m.kozlovskiy/.claude/plans\" 2>/dev/null | grep -E '/**)",
+      "PowerShell($d = \\(Get-Command docker -ErrorAction SilentlyContinue\\); if \\($d\\) { \"docker: $\\($d.Source\\)\"; docker ps --format '{{.Names}}' 2>&1 | Out-String } else { \"docker CLI not in PATH\" })"
     ],
     "additionalDirectories": [
       "e:\\Git\\STO ERP\\.claude",

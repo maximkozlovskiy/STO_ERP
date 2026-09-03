@@ -4,7 +4,8 @@ import { formatPersonName } from '@sto/shared';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
-import { calculatePagination } from '../../common/utils/pagination';
+import { sumLineTotals } from '../../common/utils/vat';
+import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { throwIfSerializationConflict } from '../../common/utils/prisma-errors';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -29,6 +30,15 @@ const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
   PAID: [],
   OVERDUE: [InvoiceStatus.PAID, InvoiceStatus.CANCELLED],
   CANCELLED: [],
+};
+
+// sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
+// re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/WO_SORT/PO_SORT/SD_SORT.
+const INV_SORT_FIELDS: Record<string, string> = {
+  documentDate: 'documentDate',
+  createdAt: 'createdAt',
+  dueDate: 'dueDate',
+  amount: 'amount',
 };
 
 @Injectable()
@@ -79,20 +89,13 @@ export class InvoicesService {
     }
 
     const { skip, take } = calculatePagination({ page, limit });
-    const INV_SORT: Record<string, string> = {
-      documentDate: 'documentDate',
-      createdAt: 'createdAt',
-      dueDate: 'dueDate',
-      amount: 'amount',
-    };
-    const sortField = INV_SORT[sortBy ?? ''] ?? 'createdAt';
-    const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
+    const orderBy = buildSortOrderBy(INV_SORT_FIELDS, sortBy, sortDir);
     const [items, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
         skip,
         take,
-        orderBy: { [sortField]: sortOrder },
+        orderBy,
         include: {
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           workOrder: { select: { number: true } },
@@ -331,10 +334,8 @@ export class InvoicesService {
 
     // Pre-compute VAT totals from original's lines so the cloned invoice ships consistent
     // totalWithoutVat/totalVat/totalWithVat; Prisma defaults leave them at 0 while
-    // lines[].priceWithVat has real values.
-    const totalWithoutVat = original.lines.reduce((s, l) => s + Number(l.priceWithoutVat), 0);
-    const totalVat = original.lines.reduce((s, l) => s + Number(l.vatAmount), 0);
-    const totalWithVat = original.lines.reduce((s, l) => s + Number(l.priceWithVat), 0);
+    // lines[].priceWithVat has real values. sumLineTotals — спільний single-pass суматор.
+    const { totalWithoutVat, totalVat, totalWithVat } = sumLineTotals(original.lines);
 
     // Clone must NOT inherit workOrderId: the same WO would accumulate duplicate invoices
     // and the WO→Invoice 1:1 invariant breaks (auto-invoice on completion creates a 3rd).
@@ -694,9 +695,7 @@ export class InvoicesService {
             await tx.invoiceLine.createMany({ data: lineData });
           }
 
-          const totalWithoutVat = lineData.reduce((s, l) => s + l.priceWithoutVat, 0);
-          const totalVat = lineData.reduce((s, l) => s + l.vatAmount, 0);
-          const totalWithVat = lineData.reduce((s, l) => s + l.priceWithVat, 0);
+          const { totalWithoutVat, totalVat, totalWithVat } = sumLineTotals(lineData);
           await tx.invoice.update({
             where: { id: existing.id, orgId },
             data: { totalWithoutVat, totalVat, totalWithVat, amount: totalWithVat },

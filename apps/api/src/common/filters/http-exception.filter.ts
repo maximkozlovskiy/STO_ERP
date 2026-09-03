@@ -88,9 +88,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
         );
       }
     } else if (exception instanceof Prisma.PrismaClientValidationError) {
-      // Validation error — як правило, неправильні дані від клієнта
+      // Validation error — фактично ЗАВЖДИ помилка серверного білдера-запитів
+      // (клієнт передає лише DTO-whitelisted поля). Bug #618: попередньо ковтали
+      // exception.message → 15 хв діагностики Bug #617 замість 1 хв на "Please either
+      // use `include` or `select`, but not both at the same time". Тепер логуємо `warn`
+      // із першим рядком повідомлення Prisma (без stack — не критично, не 500).
       status = HttpStatus.BAD_REQUEST;
       message = 'Некоректні дані запиту';
+      const firstLine = String(exception.message ?? '')
+        .split('\n')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .pop(); // Prisma кладе фактичну причину у ОСТАННІЙ непорожній рядок
+      this.logger.warn(
+        `PrismaClientValidationError on ${request.method} ${request.url}: ${firstLine ?? '(no message)'}`,
+      );
     } else {
       // Unhandled (non-HTTP) exception — завжди 500
       this.logger.error(

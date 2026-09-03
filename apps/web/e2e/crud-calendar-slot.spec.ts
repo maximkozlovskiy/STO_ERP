@@ -59,15 +59,46 @@ test.describe('Календар — слоти', () => {
 
     // Bug #571 follow-up #2: одного ліфта недостатньо — на ньому може вже бути слот
     // на обраний час. Перебираємо комбінації lift × hour доки не знайдемо вільну.
-    // Час: 07:00-13:00 UTC = 10:00-16:00 Kyiv (робочий день).
-    const today = new Date().toISOString().split('T')[0];
+    // Bug #573: раніше `today` брався як UTC date (new Date().toISOString().split('T')[0])
+    // і слот створювався на UTC-день, а календар за замовчуванням відкриває Kyiv-день
+    // (Intl з timeZone: 'Europe/Kyiv'). Після півночі UTC (03:00 Kyiv) дати розходяться —
+    // слот на 2026-08-29T07:00Z (Kyiv 10:00 29-го) не з'являється на view 30-го.
+    // Fix: беремо Kyiv-дату (як frontend) і будуємо UTC ISO так, щоб слот
+    // попадав на 10:00-16:00 Kyiv саме на цю Kyiv-дату (DST-safe через Intl).
+    const kyivToday = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(
+      new Date(),
+    );
+
+    /**
+     * Convert Kyiv wall-clock (date + hour) → UTC ISO string.
+     * Handles DST correctly: computes the actual offset for that specific moment.
+     */
+    function kyivWallToUtcIso(kyivDate: string, kyivHour: number, kyivMinute = 0): string {
+      // Start with a naive UTC guess at the same wall clock.
+      const guess = new Date(
+        `${kyivDate}T${String(kyivHour).padStart(2, '0')}:${String(kyivMinute).padStart(2, '0')}:00Z`,
+      );
+      // Ask "what hour would this moment be in Kyiv?" — the difference is the offset.
+      const kyivHourOfGuess = parseInt(
+        new Intl.DateTimeFormat('en-US', {
+          timeZone: 'Europe/Kyiv',
+          hour: 'numeric',
+          hour12: false,
+        }).format(guess),
+        10,
+      );
+      // If guess Kyiv-hour is 13 and we wanted 10, shift UTC back 3h.
+      const shiftMs = (kyivHour - kyivHourOfGuess) * 3_600_000;
+      return new Date(guess.getTime() + shiftMs).toISOString();
+    }
 
     let slot: { id: string; [k: string]: unknown } | null = null;
     let lastError: unknown = null;
     outer: for (const liftId of data.liftIds) {
-      for (let h = 7; h <= 13; h++) {
-        const startAt = `${today}T${String(h).padStart(2, '0')}:00:00.000Z`;
-        const endAt = `${today}T${String(h).padStart(2, '0')}:30:00.000Z`;
+      for (let h = 10; h <= 16; h++) {
+        // Kyiv 10:00-16:00 — робочий день (workStartHour=8, workEndHour=18 defaults).
+        const startAt = kyivWallToUtcIso(kyivToday, h, 0);
+        const endAt = kyivWallToUtcIso(kyivToday, h, 30);
         const res = await page.evaluate(
           async ({ token, liftId, counterpartyId, startAt, endAt }) => {
             const r = await fetch('http://localhost:3000/api/calendar/slots', {

@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
-import { kyivToday } from '../../common/utils/kyiv-date';
+import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
-import { calculatePagination } from '../../common/utils/pagination';
+import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
@@ -49,6 +49,19 @@ const PO_TRANSITIONS: Record<POStatus, POStatus[]> = {
   RECEIVED: [],
   CANCELLED: [],
 };
+
+// sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
+// re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/INV_SORT_FIELDS/WO_SORT/SD_SORT_FIELDS.
+const PO_SORT_FIELDS: Record<string, string> = {
+  documentDate: 'documentDate',
+  createdAt: 'createdAt',
+  totalAmount: 'totalAmount',
+  paymentDate: 'paymentDate',
+};
+// Bug #598 — nullable-fields: PurchaseOrder.paymentDate є nullable → без explicit
+// `nulls: 'last'` DESC-sort виносить сотні PO з null paymentDate наверх (Postgres default).
+// Set hoisted на module-level разом з whitelist — жодного повторного alloc на request.
+const PO_NULLABLE_SORT_FIELDS: ReadonlySet<string> = new Set(['paymentDate']);
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -103,19 +116,19 @@ export class PurchaseOrdersService {
     }
 
     const { skip, take } = calculatePagination({ page, limit });
-    const PO_SORT: Record<string, string> = {
-      documentDate: 'documentDate',
-      createdAt: 'createdAt',
-      totalAmount: 'totalAmount',
-    };
-    const sortField = PO_SORT[sortBy ?? ''] ?? 'createdAt';
-    const sortOrder = sortDir === 'asc' ? 'asc' : 'desc';
+    const orderBy = buildSortOrderBy(
+      PO_SORT_FIELDS,
+      sortBy,
+      sortDir,
+      'createdAt',
+      PO_NULLABLE_SORT_FIELDS,
+    );
     const [items, total] = await Promise.all([
       this.prisma.purchaseOrder.findMany({
         where,
         skip,
         take,
-        orderBy: { [sortField]: sortOrder },
+        orderBy,
         // Lines omitted from list — loaded on demand via findOne (avoids 1000 rows × 20 POs).
         // contract included so list shows contractNumber (toDto maps it).
         include: {
@@ -128,8 +141,33 @@ export class PurchaseOrdersService {
       this.prisma.purchaseOrder.count({ where }),
     ]);
 
+    // outstanding по PO поточної сторінки: totalAmount − Σ CONFIRMED SupplierPayment.
+    // Один groupBy на сторінку (≤200 PO) — для бейджа «Днів до оплати» у списку купівлі
+    // (показується лише де є реальний залишок боргу). Патерн-еталон — getSchedule.
+    const poIds = items.map(i => i.id);
+    const paidByPo = new Map<string, number>();
+    if (poIds.length > 0) {
+      const grouped = await this.prisma.supplierPayment.groupBy({
+        by: ['purchaseOrderId'],
+        where: {
+          orgId,
+          deletedAt: null,
+          status: 'CONFIRMED',
+          purchaseOrderId: { in: poIds },
+        },
+        _sum: { amount: true },
+      });
+      for (const g of grouped) {
+        if (g.purchaseOrderId) paidByPo.set(g.purchaseOrderId, Number(g._sum.amount ?? 0));
+      }
+    }
+
     return {
-      items: items.map(item => this.toDto(item as Parameters<typeof this.toDto>[0])),
+      items: items.map(item => {
+        const dto = this.toDto(item as Parameters<typeof this.toDto>[0]);
+        dto.outstanding = Math.max(0, dto.totalAmount - (paidByPo.get(item.id) ?? 0));
+        return dto;
+      }),
       total,
       page,
       limit: take,
@@ -224,6 +262,7 @@ export class PurchaseOrdersService {
             totalAmount,
             totalVat,
             documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
+            paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
           },
         });
         if (computedLines.length) {
@@ -371,6 +410,9 @@ export class PurchaseOrdersService {
             totalAmount,
             ...(totalVat !== undefined ? { totalVat } : {}),
             documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
+            ...(dto.paymentDate !== undefined
+              ? { paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null }
+              : {}),
           },
           include: {
             supplier: { select: { firstName: true, lastName: true, companyName: true } },
@@ -427,6 +469,9 @@ export class PurchaseOrdersService {
           take: 1000,
           include: { good: { select: { unitId: true } } },
         },
+        // Для авто-обчислення дати оплати (RECEIVED): дата + днів відтермінування договору.
+        // deletedAt потрібен щоб уникнути «freeze» відтермінування з архівного договору.
+        contract: { select: { paymentDeferDays: true, deletedAt: true } },
       },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
@@ -477,8 +522,12 @@ export class PurchaseOrdersService {
     // NB: Prisma всередині $transaction виконує DB-операції послідовно (один pinned connection),
     // тож Promise.all дає лише JS-overhead-economy. receivedAmount акумулюємо через map → reduce
     // (уникаємо shared mutable у async callbacks).
+    //
+    // sto-optimize (2026-08-30): bucket-by-id Map замість Array.find() у циклі →
+    // O(N+M) замість O(N×M). Помітно на PO з 100+ ліній (10_000 порівнянь → 200).
+    const lineById = new Map(po.lines.map(l => [l.id, l]));
     const activeLines = dto.lines
-      .map(recv => ({ recv, line: po.lines.find(l => l.id === recv.lineId) }))
+      .map(recv => ({ recv, line: lineById.get(recv.lineId) }))
       .filter(
         (x): x is { recv: (typeof dto.lines)[0]; line: NonNullable<typeof x.line> } =>
           !!x.line && x.recv.receivedQty > 0,
@@ -537,7 +586,9 @@ export class PurchaseOrdersService {
             orgId,
             {
               counterpartyId: po.supplierId,
-              type: 'CHARGE',
+              // SUPPLIER_CHARGE (−1): отримали товар → МИ винні постачальнику (balance↓).
+              // НЕ CHARGE — той дає +1 (клієнтська семантика «нам винні»).
+              type: 'SUPPLIER_CHARGE',
               amount: receivedAmount,
               documentType: 'PurchaseOrder',
               documentId: id,
@@ -558,7 +609,23 @@ export class PurchaseOrdersService {
           : anyReceived
             ? PurchaseOrderStatus.PARTIAL
             : po.status;
-        await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
+
+        // Авто-заповнення планової дати оплати при повному отриманні (RECEIVED),
+        // якщо поле ще порожнє і АКТИВНИЙ (не soft-deleted) договір має відтермінування:
+        // paymentDate = сьогодні + paymentDeferDays. Ручне значення не перезаписуємо.
+        // Prisma не фільтрує relation include за deletedAt автоматично → перевіряємо явно,
+        // інакше «фризимо» відтермінування з архівного договору.
+        const defer =
+          po.contract && po.contract.deletedAt == null ? po.contract.paymentDeferDays : null;
+        const shouldSetPaymentDate =
+          newStatus === PurchaseOrderStatus.RECEIVED && !po.paymentDate && defer != null;
+        await tx.purchaseOrder.update({
+          where: { id, orgId },
+          data: {
+            status: newStatus,
+            ...(shouldSetPaymentDate ? { paymentDate: addDaysKyiv(kyivToday(), defer) } : {}),
+          },
+        });
       },
       { timeout: 30_000 }, // large PO (hundreds of lines) × createMovement with batch tracking
     );
@@ -752,6 +819,7 @@ export class PurchaseOrdersService {
     totalVat?: import('@prisma/client').Prisma.Decimal | null;
     notes: string | null;
     documentDate?: Date | null;
+    paymentDate?: Date | null;
     pricedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -803,6 +871,7 @@ export class PurchaseOrdersService {
       totalVat: Number(po.totalVat ?? 0),
       notes: po.notes ?? null,
       documentDate: po.documentDate ? po.documentDate.toISOString().slice(0, 10) : null,
+      paymentDate: po.paymentDate ? po.paymentDate.toISOString().slice(0, 10) : null,
       pricedAt: po.pricedAt instanceof Date ? po.pricedAt.toISOString() : (po.pricedAt ?? null),
       linesCount: po._count?.lines ?? po.lines?.length ?? 0,
       deletedAt: po.deletedAt instanceof Date ? po.deletedAt.toISOString() : (po.deletedAt ?? null),

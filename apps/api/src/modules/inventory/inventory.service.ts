@@ -5,9 +5,10 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { Prisma, StockMovementType } from '@prisma/client';
+import { Prisma, StockMovementType, BatchCostMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { BatchService } from './batch.service';
+import { BatchService, BatchConsumeResult } from './batch.service';
+import { SettingsService } from '../settings/settings.service';
 import { kyivOffsetMs } from '../../common/utils/kyiv-date';
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -36,18 +37,37 @@ export interface CreateMovementDto {
   unitOfMeasureId?: string | null;
 }
 
+/**
+ * Результат руху залишків. Для розходу (quantity<0, не reservation) містить списані партії
+ * та зважену собівартість (COGS) — викликач (наряд) фіксує її у WorkOrderPart.batchCostPrice.
+ */
+export interface CreateMovementResult {
+  movementId: string;
+  consumed: BatchConsumeResult[];
+  weightedCostPrice: number | null;
+}
+
+/** Зважена собівартість (COGS) зі списаних партій: Σ(qty×costPrice)/Σqty; null якщо нічого. */
+function weightedFromConsumed(consumed: BatchConsumeResult[]): number | null {
+  const totalQty = consumed.reduce((s, c) => s + c.quantity, 0);
+  if (totalQty <= 0) return null;
+  const totalCost = consumed.reduce((s, c) => s + c.quantity * c.costPrice, 0);
+  return totalCost / totalQty;
+}
+
 @Injectable()
 export class InventoryService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => BatchService)) private readonly batchService: BatchService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   async createMovement(
     orgId: string,
     dto: CreateMovementDto,
     tx?: Prisma.TransactionClient,
-  ): Promise<void> {
+  ): Promise<CreateMovementResult> {
     if (dto.quantity === 0) throw new BadRequestException('Кількість не може бути нульовою');
     if (!Number.isFinite(dto.quantity)) {
       throw new BadRequestException('Невірне значення кількості');
@@ -58,7 +78,18 @@ export class InventoryService {
     if (dto.type === 'RESERVATION_RELEASE' && dto.quantity > 0) {
       throw new BadRequestException("Зняття резерву: кількість повинна бути від'ємною");
     }
-    const db = tx ?? this.prisma;
+
+    // Атомарність: createMovement робить кілька залежних записів (StockMovement +
+    // StockBatch/consumeBatch + StockItem upsert + BatchConsumption). Якщо викликач не
+    // передав tx — самообгортаємось у $transaction, інакше throw (race-guard/нестача)
+    // лишив би частину записів без rollback (напр. orphan BatchConsumption). Усі поточні
+    // прод-викликачі передають tx; це backstop для майбутніх/службових викликів.
+    if (!tx) {
+      return this.prisma.$transaction(innerTx => this.createMovement(orgId, dto, innerTx), {
+        timeout: 15_000,
+      });
+    }
+    const db = tx;
 
     // RECEIPT with quantity > 0 always creates a StockBatch. If price is absent (typical for
     // TRANSFER or inventory-receipt), fall back to good.purchasePrice, otherwise 0 (free samples).
@@ -164,7 +195,7 @@ export class InventoryService {
           ? dto.quantity // negative → decreases reserved
           : 0;
 
-    await db.stockItem.upsert({
+    const upserted = await db.stockItem.upsert({
       where: {
         orgId_goodId_warehouseId: { orgId, goodId: dto.goodId, warehouseId: dto.warehouseId },
       },
@@ -181,7 +212,83 @@ export class InventoryService {
         quantity: quantityDelta,
         reserved: Math.max(0, reservedDelta),
       },
+      select: { quantity: true, reserved: true },
     });
+
+    // Bug #613 — race-guard: pre-check (рядок 118) читає STALE snapshot, тож два concurrent
+    // WRITEOFF обидва проходять → row-locked upsert може лишити від'ємне значення. Post-check
+    // читає підсумок ROW-LOCKED значення → throw → rollback усього $transaction. DB CHECK
+    // (20260902210000) — джерело-правди backstop; ці throw дають локалізоване повідомлення.
+    // Гейтимо за знаком дельти — на RECEIPT/RESERVATION приріст не може стати від'ємним.
+    if (quantityDelta < 0 && upserted.quantity < 0) {
+      throw new BadRequestException('Недостатньо товару на складі (concurrent WRITEOFF)');
+    }
+    if (reservedDelta < 0 && upserted.reserved < 0) {
+      throw new BadRequestException(
+        "Резерв не може стати від'ємним (concurrent RESERVATION_RELEASE)",
+      );
+    }
+
+    // Партійне списання (COGS) для фізичного розходу: quantityDelta<0 (WRITEOFF/TRANSFER-out).
+    // RESERVATION/RESERVATION_RELEASE не чіпають фізичну кількість → партій не торкаються.
+    // Consume в тій самій tx, ПІСЛЯ upsert StockItem → інваріант Σ remainingQty == quantity
+    // тримається за конструкцією. Метод списання (FIFO/FEFO/LIFO/AVG) — з налаштувань org.
+    let consumed: BatchConsumeResult[] = [];
+    let weightedCostPrice: number | null = null;
+    if (quantityDelta < 0) {
+      const costMethod = await this.resolveCostMethod(orgId);
+      const consumeQty = Math.abs(quantityDelta);
+      if (costMethod === 'AVG_COST') {
+        // AVG_COST: собівартість = зважена середня ДО списання; фізичний декремент партій —
+        // FIFO (щоб remainingQty спадав і не ламав інваріант; protected AVG-return не чіпаємо).
+        weightedCostPrice = await this.batchService.getAvgCost(orgId, dto.goodId, dto.warehouseId);
+        consumed = await this.batchService.consumeBatch(
+          orgId,
+          dto.goodId,
+          dto.warehouseId,
+          consumeQty,
+          dto.documentType ?? 'StockMovement',
+          dto.documentId ?? movement.id,
+          dto.documentLineId,
+          'FIFO',
+          db as Prisma.TransactionClient,
+        );
+      } else {
+        consumed = await this.batchService.consumeBatch(
+          orgId,
+          dto.goodId,
+          dto.warehouseId,
+          consumeQty,
+          dto.documentType ?? 'StockMovement',
+          dto.documentId ?? movement.id,
+          dto.documentLineId,
+          costMethod,
+          db as Prisma.TransactionClient,
+        );
+        weightedCostPrice = weightedFromConsumed(consumed);
+      }
+      // Проставити batchId у рух коли списано рівно з однієї реальної партії (для трасування).
+      // AVG_COST-агрегат → consumed[0].batchId === null (span теж не single) → пропускаємо.
+      const singleBatchId = consumed.length === 1 ? consumed[0].batchId : null;
+      if (singleBatchId) {
+        await db.stockMovement.update({
+          where: { id: movement.id },
+          data: { batchId: singleBatchId },
+        });
+      }
+    }
+
+    return { movementId: movement.id, consumed, weightedCostPrice };
+  }
+
+  /** costMethod з налаштувань org (Redis-кешовано у SettingsService); fallback FIFO. */
+  private async resolveCostMethod(orgId: string): Promise<BatchCostMethod> {
+    try {
+      const settings = await this.settingsService.getOrganisationSettings(orgId);
+      return settings.costMethod ?? 'FIFO';
+    } catch {
+      return 'FIFO';
+    }
   }
 
   async getStockLevel(

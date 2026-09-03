@@ -6,7 +6,7 @@ description: >
   fetches that could be parallel, bundle size, React re-renders, missing cache.
   Finds, fixes, and commits all issues automatically.
   Invoke: /sto-optimize
-model: claude-opus-4-7
+model: claude-opus-4-8
 bypassPermissions: true
 ---
 
@@ -34,15 +34,11 @@ bypassPermissions: true
 ## Крок 0 — Контекст
 
 ```bash
-# Визначити scope (останні зміни або повний аудит)
-git diff HEAD --name-only | head -30
-
-# Прочитати стан проєкту
-cat MemoryManual.md | head -50
+git diff HEAD --name-only | head -30   # scope
+cat MemoryManual.md | head -50          # стан проєкту
 ```
 
-Визнач агрегати зі scope → читай відповідні дос'є (`docs/objects/<entity>.md`).
-Дос'є містять існуючі індекси, відомі N+1 патерни та кеш-патерни специфічні для агрегату.
+Визнач агрегати зі scope → читай дос'є (`docs/objects/<entity>.md`): існуючі індекси, відомі N+1 та кеш-патерни для агрегату.
 
 **Lookup:** `WorkOrder→work-order.md` | `Invoice→invoice.md` | `PurchaseOrder→purchase-order.md` | `Good→good.md` | `Counterparty→counterparty.md` | `CalendarSlot→calendar.md` | `StockItem→inventory.md`
 
@@ -517,20 +513,9 @@ docker exec stoerp-postgres-1 psql -U sto -d sto_erp -c "SELECT indexname FROM p
 
 ## Крок 4 — Виправлення
 
-Для кожної знайденої проблеми:
+Для кожної проблеми: прочитай файл → мінімальний точковий фікс → `pnpm --filter <package> exec tsc --noEmit` (0 errors) → якщо schema.prisma змінена: `cd packages/database && npx prisma db push --skip-generate`.
 
-1. Прочитай файл
-2. Застосуй мінімальний точковий фікс
-3. `pnpm --filter <package> exec tsc --noEmit` — 0 errors
-4. Якщо зміна в schema.prisma → `cd packages/database && npx prisma db push --skip-generate`
-
-**Пріоритет фіксів:**
-
-1. N+1 та waterfall (найбільший impact)
-2. Відсутні індекси (migration)
-3. Послідовні → паралельні запити
-4. Cache miss
-5. Bundle/memo (найменший ризик)
+**Пріоритет:** (1) N+1 та waterfall; (2) відсутні індекси; (3) sequential→parallel; (4) cache miss; (5) bundle/memo (найменший ризик).
 
 ---
 
@@ -539,7 +524,6 @@ docker exec stoerp-postgres-1 psql -U sto -d sto_erp -c "SELECT indexname FROM p
 ```bash
 pnpm --filter @sto/api exec tsc --noEmit
 pnpm --filter @sto/web exec tsc --noEmit --incremental false
-
 git add apps/ packages/
 git commit -m "perf(optimize): <коротко що виправлено>"
 ```
@@ -548,318 +532,369 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 
 ## Крок 6 — Оновити MemoryManual.md
 
-Оновити:
-
-```markdown
-## Останній commit
-
-<hash> <message>
-Дата: YYYY-MM-DD
-
-## Поточний стан проєкту
-
-TypeScript: ✅ 0 errors
-```
+`## Останній commit` → `<hash> <message>` + `Дата`; `## Поточний стан` → `TypeScript: ✅ 0 errors`.
 
 ---
 
 ## Крок 7 — Самовдосконалення скіла (ОБОВ'ЯЗКОВО після кожної ітерації)
 
-Після кожного запуску — запитай себе:
+Запитай себе: **"Цей патерн вже покритий чеклістом? Чи є новий тип неефективності вперше?"**
 
-> **"Цей патерн вже покритий чеклістом? Чи є новий тип неефективності що я виявив вперше?"**
+**Записуй** новий: тип неефективності (анти-патерн) · контекстний сигнал (grep/структура/назва) · причину виникнення · наслідок (запити/ms/kB).
+**Не записуй:** конкретні файли/рядки · готові шаблони коду (для цього Кроки 1-3) · те що вже в чеклісті.
 
-### Що записувати
-
-**Записуй** якщо знайшов:
-
-- Новий **тип неефективності** якого не було в чеклісті (новий анти-патерн)
-- Новий **контекстний сигнал** — ознаку за якою можна автоматично виявляти проблему (grep, структура, назва)
-- **Причину** чому проблема виникла — це допомагає передбачити де шукати наступного разу
-- **Наслідок** — що реально покращилось (кількість запитів, ms, kB) — для калібрування пріоритетів
-
-**Не записуй:**
-
-- Конкретні файли, функції, рядки коду (вони змінюються)
-- Готові фікси або шаблони коду (для цього є Кроки 1-3)
-- Речі які вже є в чеклісті
-
-### Формат запису
-
-Після кожної ітерації — оновлювати секцію **"Накопичені підходи"** нижче:
+**Формат запису** у секцію "Накопичені підходи":
 
 ```
-### [Дата] — [Тип проблеми] — [Де зустрічається]
-
-**Сигнал:** ознака за якою можна знайти автоматично
-**Причина виникнення:** чому розробники так пишуть (зрозуміло, але неефективно)
-**Підхід до виявлення:** загальний принцип пошуку, не grep
-**Підхід до фіксу:** загальний принцип рішення, не код
-**Реальний impact:** що змінилось після фіксу
-**Де шукати ще:** суміжні місця де той самий патерн може повторитись
+### [Дата] — [Тип] — [Де]
+**Сигнал:** ознака для авто-пошуку   **Причина виникнення:** чому так пишуть
+**Підхід до виявлення:** принцип пошуку   **Підхід до фіксу:** принцип рішення
+**Реальний impact:** що змінилось   **Де шукати ще:** суміжні місця
 ```
 
-### Як оновлювати чекліст
-
-Якщо новий патерн **підтверджений у коді** (не гіпотетичний):
-
-1. Додати в відповідний розділ (Крок 1 / Крок 2 / Крок 3) новий підрозділ з grep-командою
-2. Додати до "Що вже оптимізовано" після фіксу
-3. Коміт: `docs(skills): add <pattern> to sto-optimize`
+**Оновлення чекліста** (якщо патерн підтверджений у коді): додати grep-підрозділ у Крок 1/2/3 + запис у "Накопичені підходи" → коміт `docs(skills): add <pattern> to sto-optimize`.
 
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-02 (cycle 2) — Concurrency-guard `.select` на upsert НЕ додає RTT — Prisma UPDATE ... RETURNING одним statement
+
+**Сигнал:** post-check `if (upserted.quantity < 0) throw` після `db.stockItem.upsert({..., select: {quantity, reserved}})` як race-захист. Prisma `upsert({select})` компілюється у `INSERT ... ON CONFLICT ... UPDATE ... RETURNING` — ОДИН statement; `.select` лише звужує returning-shape, НЕ додає окремий SELECT. Concurrency-guard безкоштовний по DB RTT (лишається 2 JS `if`).
+**Сигнал-grep:** `grep -B5 -A5 "\.upsert\(" apps/api/src/modules/ --include="*.service.ts" | grep -E "\.select:|select: \{"`. Якщо після upsert є `if (result.X < 0) throw` — це guard, НЕ окремий RTT. НЕ пропонувати "злити select з upsert".
+**Причина виникнення:** інтуїція «select — окремий query» з `findFirst({select})`. Для write ops (upsert/create/update/delete) Prisma завжди повертає row (`RETURNING`); `.select` — це проекція returning-shape.
+**Підхід до виявлення/фіксу:** перед пропозицією "збенефічити upsert" — перевірити фактичний SQL (EXPLAIN / `prisma:query`). Для write ops `.select` безкоштовний. Це анти-паттерн: НЕ виправляти те що не зламане; **impact null** — документувати щоб не втратити цикл.
+**Де шукати ще:** будь-який concurrency-fix що додає `.select` до upsert/update/create + post-check. Якщо PR message каже «post-check ЧЕРЕЗ додатковий select» — pushback з реальним SQL.
+
+---
+
+### 2026-09-02 (cycle 2) — Conditional-decrement через `updateMany + WHERE guard-col + count check` — race-safe безкоштовно, PK lookup O(1)
+
+**Сигнал:** hot-path counter декремент (`stockBatch.remainingQty`, `stockItem.quantity`, `bankAccount.balance`, `remainingAllocation`) під concurrent write: read snapshot → decrement може дати negative без row-lock. Fix без блокуючого lock: `updateMany({where: {id, guardCol: {gte: take}}, data: {decrement}})` + `if (count === 0) throw`. При race інший tx декрементив між findMany і updateMany → guardCol < take → updateMany скіпає row → count=0 → throw → $tx rollback.
+**Сигнал-grep:** для кожного `.update({where:{id}, data:{X:{decrement:qty}}})` на counter-таблиці (StockBatch, StockItem, Account, Wallet, Reservation) під polling — переписати у `updateMany({where:{id, X:{gte:qty}}, data:{X:{decrement:qty}}})` + count-check. НЕ додає RTT (count у тому ж response).
+**Причина виникнення:** Prisma default isolation = ReadCommitted → row-lock тримається лише на statement, не між findMany + update. 2 read-и бачать той самий remainingQty → double decrement → negative.
+**Підхід до виявлення:** counter-decrement у append/consume/reserve/allocate методах без conditional where; особливо у `while (remaining > 0)` циклах (consumeBatch, drainQueue, allocatePayments).
+**Підхід до фіксу:** `.update → .updateMany({where:{id, counter:{gte:take}}})`. `if (updated.count === 0) throw` → $tx rollback. По PK id → primary index, heap re-filter counter, O(1). Не потрібно Serializable isolation.
+**Де шукати ще:** StockBatch.remainingQty (fixed), StockItem.quantity (fixed), Invoice/Payment.remainingAllocation, Reservation.remainingQty, Voucher.remainingUses, Wallet.balance. Будь-який monotonic counter що може стати negative під race.
+
+---
+
+### 2026-09-02 (cycle 2) — `Object.values(obj).reduce()` після filter-loop → накопичувати суму під час фільтрації, один прохід
+
+**Сигнал:** заповнюється `byX[key] = value` (з умовою `if (value > threshold)`), потім `total = Object.values(byX).reduce((s,v)=>s+v, 0)`. Два проходи. У `.map(supplier => {...})` × 50 suppliers = 50 Object.values-arrays + 50 closures. Merge у один цикл: `if (value > threshold) { byX[key] = value; sum += value; }`.
+**Сигнал-grep:** `grep -rn "Object\.values\([a-zA-Z]\+\)\.reduce" apps/api/src/modules/ --include="*.service.ts"`. Cross-check: чи `Object.values.reduce` йде ПІСЛЯ циклу що будував той самий об'єкт з умовою.
+**Причина виникнення:** декларативний стиль (1) заповнити мапу, (2) `total = sum of values`. У hot-path tight-loop N alloc + N iter per каскад.
+**Підхід до виявлення/фіксу:** `.reduce()` де джерело — щойно побудований об'єкт (for/of у попередніх 5-10 рядках) → `let sumX = 0` перед loop, `sumX += v` у циклі (під тією ж filter-умовою), замінити `Object.values.reduce` на прямий `sumX`.
+**Реальний impact:** 50 suppliers × ~20 dates: 50 alloc arrays + 1000 reduce iter → 0. GC pressure знижений, sustained p95 saving.
+**Де шукати ще:** aggregation-service getSchedule/getSummary/getReport що будує `byX={}` з filter-inserts + `Object.values.reduce` для total; report generators, dashboard tiles, PDF summary. Родич — `.forEach(x=>acc[k]=v) + Object.values(acc).reduce`.
+
+---
+
+### 2026-09-02 (cycle 2) — Три `.reduce()` підряд по одному масиву → merge у single-pass for-of з 3+ accumulators
+
+**Сигнал:** `const A = lineData.reduce(s+priceWithoutVat); const B = lineData.reduce(s+vatAmount); const C = lineData.reduce(s+priceWithVat)`. Три проходи × 3 closure. 100 рядків: 300 iter → 100 iter + 0 closure. Розширення "multi-scan reduce" (2026-08-30) для DTO/save.
+**Сигнал-grep:** `grep -rn "reduce.*=>.*reduce" apps/api/src/modules/`; або 2-3 підряд рядки `const \w+ = \w+\.reduce(...)`.
+**Причина виникнення:** кожна формула окремо для читабельності. У save-path (invoice clone, WO save, PO recompute) — hot-path з polling/typing.
+**Підхід до виявлення/фіксу:** для service-method що будує DTO/persist entity — consecutive `.reduce()` на тому самому array (≥2 з різними extracts) → `let A=0; let B=0; let C=0; for (const l of lines) { A += Number(l.a); ... }`. Не merge коли reduce мають різні seed/transform (average, product, fold) — тільки sums.
+**Реальний impact:** 100-line invoice: 300→100 iter. p95 gain 0.1-0.5ms/call.
+**Де шукати ще:** invoice clone/updateInvoiceFromWO, PO recomputeTotals, WO recalcTotals, stock-document totals, receipt-doc save, supplier-return totals. Будь-який entity з lines що після build-loop збирає multiple sum totals.
+
+---
+
+### 2026-09-02 — Compound-index sort-tail miss на INTERNAL paginated hot-path helper — WHERE-префікс покритий, ORDER BY-column НЕ у tail → external sort per page
+
+**Сигнал:** append-only child-table (StockBatch, StockMovement, AuditLog, BatchConsumption) читається з paginated service-helper (не HTTP) через `findMany({where: {orgId, fk1, fk2, bool_flag: true, remainingQty: {gt:0}}, orderBy: {createdAt}, take: PAGE})` у `while (remaining > 0)`. WHERE-equality покрито `(orgId, fk1, fk2, bool_flag)`, але sort-column (`createdAt`) НЕ у tail → **external sort** на КОЖНІЙ сторінці. Під polling (кожен WRITEOFF/WO-COMPLETED/TRANSFER-out) — sustained CPU, невидимо у single-call. Родич "Public hot-path multi-field WHERE" (2026-06-20), але для INTERNAL helper з sort у tight loop.
+**Сигнал-grep:** `findMany({...orderBy: {createdAt|expiryDate|documentDate}, take:...})` всередині циклу (`while`/`for`/`.map(async)`). Якщо WHERE = усе equality + sort = один column → потрібен `(orgId, ...equality_cols, sort_col)`. Cross-check schema.prisma: `(orgId, fk1, fk2, bool_flag)` БЕЗ tail `createdAt` = drift. Особливо consumeBatch/returnToBatch/processQueue/drainOutbox.
+**Причина виникнення:** compound-index створювався під CRUD (`findFirst` без orderBy — покриває повністю). Пізніша pagination-feature додала `orderBy` — "WHERE вже покритий → швидко". EXPLAIN `Sort` node видно тільки при профілюванні.
+**Підхід до фіксу:** migration `CREATE INDEX IF NOT EXISTS ... ON <table> (orgId, ...equality_FK у порядку selectivity, low-card bool_flag, sort_col ОСТАННІМ)`. B-tree покриває asc+desc одним index. НЕ додавати range-cols (`remainingQty > 0`) — heap re-filter. Дзеркалити у `@@index([...])`.
+**Реальний impact:** stock_batches 10-50k/org, consumeBatch кожні 100мс: per-page sort ~1-3мс → index-order scan ~0.2-0.5мс × N pages. Sustained percentile saving + звільняє shared_buffers.
+**Де шукати ще:** consumeBatch (FIFO/LIFO), drainOutbox, processQueue, auditLog cleanup, reconciliation act, notifications dispatch. Checkpoint при feat що додає paginated internal helper — index на `(where_cols, sort_col)` майже завжди відсутній якщо index створювався під CRUD-list без orderBy.
+
+---
+
+### 2026-08-30 (cycle 3/3) — Sibling-drift audit: після нового hot-path fix одразу пройтись по ВСІХ sibling-services/components і зафіксувати у той же коміт
+
+**Сигнал:** попередній цикл фіксив один hot-path патерн (напр. SP*SORT_FIELDS у одному CRUD-модулі), але наступний grep біжить тільки по нещодавно зміненому файлі. Sibling-модулі (invoices/WO/PO/SD — усі мають `findAll(sortBy?)` з `SORT: Record<string,string>` у body) лишаються не-міграцованими (copy-paste-legacy). Пропущений цикл-2 фікс → цикл-3 фіксить ще 4 sibling.
+**Сигнал-grep:** після кожного perf-фіксу — виконувати ІДЕНТИЧНИЙ grep-signature (той що знайшов original) на ВСІХ файлах шару, не тільки git-diff-scope. Приклад: `grep -rn "^\s\+const [A-Z*]\+: Record<" apps/api/src/modules/ --include="_.service.ts"`дає повний список drift. Той самий підхід для frontend`EMPTY\__` літералів у body.
+**Причина виникнення:** розробники копіюють CRUD-модулі один з одного; sort-whitelist "в body бо тільки тут" переноситься з файлу в файл. Perf-audit цикл N рухається fresh по recent changes — legacy код не отримує аудиту automatically. Треба явно EXTEND scope grep-у.
+**Підхід до виявлення/фіксу:** після "hoist alloc from body" fix — grep-signature на ВСІХ файлах directory; hits тепер vs до = має бути N-1; якщо >1 — усі fixed у той самий atomic commit. Prefix консистентний (`<MODULE>_SORT_FIELDS`, `<MODULE>\_INCLUDE`). Commit body перераховує всі sibling. НЕ merge у shared const якщо семантика різна (invoices sort by dueDate vs PO by totalAmount) — merge тільки copy-paste identical.
+**Реальний impact:** цикл-3 фіксив 8 sibling-drifts за прохід (5 sort-fields + 1 balance-sign + 2 calendar shapes). Без sibling-audit — O(N) circular repetition; atomic protocol = 1 pass, O(1) commits.
+**Де шукати ще:** ЛЮБИЙ perf pattern — після fix у 1-му модулі extend grep на весь directory. Особливо: sort-whitelists (10+ CRUD services), Prisma include/select shapes у mutations, EMPTY__/DEFAULT\__ літерали, frontend regex constants, balance/status/discriminator maps.
+
+---
+
+### 2026-08-30 — Sort-field whitelist Record/tuple-array declared INSIDE service `findAll` body — re-allocated on every list request under polling
+
+**Сигнал:** `findAll(sortBy?, sortDir?)` містить `const SORT_FIELDS: Record<string, string> = {...}` (або tuple/enum-labels) у тілі функції. Кожен list-запит (polling 30s + filter/pagination + tab switch) → alloc заново. Frontend-варіант: той самий Record у `visibleColumns.map(col => {...})` callback (N×render amplification). Той самий підпис для tuple-arrays — static filter options `[['', 'Всі'], ...]` у body.
+**Сигнал-grep:** backend `grep -rn "^\s\+const [A-Z_]\{3,\}: Record<" apps/api/src/modules/ --include="*.service.ts"` (indent-guard забирає module-level). Frontend `grep -rn "^\s\+const [A-Z_]\{3,\}: (Record|Array|\{)" apps/web/src/app/ --include="*.tsx"` + `grep -rn "\.map(.*=> {[\s\S]{0,200}const [A-Z_]" apps/web/src/` (inside-map). Regex-версія — `grep -rn "^\s\+const [A-Z_]\+_RE = /" apps/web/src/`.
+**Причина виникнення:** whitelist ставлять поруч з єдиним споживачем ("одне місце правди"). Не помічають: (a) backend service метод request-scoped, не JIT-optimized як tight loop; (b) React re-runs body top-to-bottom; (c) inside `.map()` — N× amplification. Compilation-time constants семантично identical до module-level.
+**Підхід до виявлення/фіксу:** для public `findAll`/`findMany` — перші 20-30 рядків, `const [A-Z_]+: (Record|Array|readonly) = {...}` з literal values → hoist на module-level з owner-prefix (`SP_SORT_FIELDS`, `INV_SORT_FIELDS`; regex `PO_UUID_RE`). Замінити callsite-refs. НЕ виносити коли: whitelist depends on reactive prop / useMemo-subresult / містить closure-scope callbacks.
+**Реальний impact:** backend 1 hash+4 strings/call → 0. Frontend inside `.map()`: typing 20 chars @ 7 columns × 20 renders = 140 alloc → 0. Regex compile переноситься з render у module load.
+**Де шукати ще:** будь-який `findAll`/`findMany`/`search`/`filter` — sort-whitelists, filter-key allowlists, field-alias maps. Frontend SORTABLE Records inside `.map()`; error-message Records у validate(); regex у effect body. Checkpoint при feat що додає sortable колонку / list endpoint.
+
+---
+
+### 2026-08-30 — Multi-scan reduce accumulator у aggregation service — суперSet of 2026-06-17 twin-scan для 3+ reduce з різними semantics
+
+**Сигнал:** aggregation service (getSchedule/getSummary/getReport/getBalances) після compute-loop будує totals через 3+ `.reduce()` на тому самому масиві (`suppliers`/`entities`/`lines`) + loop-with-reduce на 2-му вимірі (`dates` × per-date reduce). Розширення "twin-scan reduce" (2026-06-17) на report-hot-path з двовимірною aggregation.
+**Сигнал-grep:** `const \w+ = \{[\s\S]{0,300}\.reduce\([\s\S]{0,200}\.reduce\([\s\S]{0,200}\.reduce\(` (3+ reduce у object-літерал); або `for (const \w+ of \w+) {[\s\S]{0,100}reduce\(` (reduce у for-of, N×D). Підтверджуючий: `if (sum > 0) totals.byDate[d] = sum` після reduce.
+**Причина виникнення:** кожна формула окремо для читабельності (overdue-sum, planned-sum, per-date-sum). N-times passes; специфічно для report з 2+ вимірами (суб'єкт × горизонт).
+**Підхід до фіксу:** single-pass for-of з локальними `let`-акумуляторами; для двовимірного — nested for-in по inner keys (plain object швидший для string keys); post-loop prune порожніх buckets; preserve `?? 0` undefined-handling.
+**Реальний impact:** getSchedule 50 suppliers × 20 dates: 1150 iter + 23 closures → ~500-800 ops + 0 closures. ~50% CPU у totals, 100% closure-alloc elimination.
+**Де шукати ще:** `get{Schedule|Summary|Report|Balances|Statistics}` з двовимірним output (suppliers×dates, customers×months, branches×status). `{items, totals}` → totals завжди кандидат. Checkpoint при feat з 3+ агрегатами у response.
+
+---
+
+### 2026-08-30 — Aggregation-endpoint фільтрує reference-таблицю за discriminator-ом що не є FK — базовий `(orgId, fkId, deletedAt)` не покриває, потрібен `(orgId, discriminator, deletedAt)` окремо
+
+**Сигнал:** aggregation-метод (`getSchedule`/`getSummary`/`getBalances`/`getReport`) читає reference-таблицю (contracts, price-lists, warranties, categories, rates) не через FK, а через SEMANTIC-discriminator: `where: {orgId, contractType: 'PURCHASE', creditLimit: {not: null}, deletedAt: null}` — жодного FK-id. Базовий `(orgId, fkId, deletedAt)` (під CRUD-list) НЕ активується → Postgres звужує лише по orgId + heap re-filter. Fetched у Promise.all, час maskується, але polling staleTime=30s × N users. feat-commit додає endpoint БЕЗ супутньої migration.
+**Сигнал-grep:** для service-методу з `Promise.all([...])` з ≥2 findMany/groupBy — виписати WHERE-shape кожного. Для reference-таблиці (Contract, PriceList, Rate, Warranty, Category) перевірити чи є `(orgId, ...discriminators, deletedAt)` де discriminators = літерал-value fields, не FK. Якщо index-и лише `(orgId, fkId, deletedAt)` + `(orgId, syncVersion)` → drift.
+**Причина виникнення:** reference-index створювався під "показати X-и цього Y-а" (CRUD). Нова feature читає cross-cutting ("всі PURCHASE-контракти org-а") — WHERE ортогональний до CRUD-index. EXPLAIN: `Bitmap Heap Scan` з `Filter:` по discriminator, або `Seq Scan`.
+**Підхід до фіксу:** migration `CREATE INDEX IF NOT EXISTS "<table>_orgId_<discriminator>_deletedAt_idx"` — discriminator у leftmost position ПІСЛЯ orgId (селективність спадно: contractType раніше ніж isPrimary), deletedAt останнім. НЕ включати `creditLimit: {not: null}` (heap re-filter швидший за partial index). Дзеркалити у `@@index`. Одна migration для всіх reference-tables (atomic).
+**Реальний impact:** counterparty_contracts 1000/org, polling 30s: bitmap heap scan ≈5-15ms → index-narrow ≈0.5-2ms. Endpoint fetch-ає ~5-10 reference-tables → sum 20-100ms P50. Найбільший win під cold cache.
+**Де шукати ще:** aggregation/report/schedule метод з Promise.all що читає reference через discriminator: SupplierPayment.getSchedule (contractType), Report.getPricing (isActive+scope), Report.getWarranties (status+expiring), Dashboard.getSummary (rates by currency), Inventory.getLowStock (category+isActive). Checkpoint при feat що додає `get{Schedule|Summary|Report|Balances}`.
+
+---
+
+### 2026-08-30 — Reverse-FK axis miss на child-table що не має власного CRUD-endpoint — indexed тільки прямий FK, нема compound з orgId+reverse-fk+deletedAt
+
+**Сигнал:** child-table "документ-attachment" (SupplierPayment, InvoiceLine, StockBatch, WorkOrderPart) до parent (PO, Invoice, SD, WO) читається 3 способами: (1) `findAll(parentId=?)`, (2) Prisma nested include `where: {<childFk>: {in: [...]}}`, (3) `groupBy` з `<childFk>: null`. Existing indexes покривають self-CRUD (`orgId,deletedAt`; `orgId,ownerFkId,createdAt`; `orgId,status,createdAt`) але НЕ `(orgId, <parentFkId>, deletedAt)`. Причина: parentFkId був nullable optional discriminator при створенні, не primary access path.
+**Сигнал-grep:** для child-table з nullable FK на parent (`purchaseOrderId String? @db.Uuid`, ...) — перевірити чи є `@@index([orgId, <parentFkId>, deletedAt])`. Якщо нема — grep service за (a) `findAll(...parentId?)`, (b) `where: {<childFk>: null | {in:[...]}}`, (c) parent-service include `<childCollection>`. Хоча б один з (a)(b)(c) → drift.
+**Причина виникнення:** child-generator створює index під self-CRUD. Parent detail-view + aggregation додаються пізніше; Prisma nested include автоматично генерує `WHERE parentFkId IN (...)` — розробник не бачить query.
+**Підхід до фіксу:** `(orgId, <parentFkId>, deletedAt)` — orgId, parentFkId (equality-narrow), deletedAt (low-card). Не додавати createdAt (include-и без orderBy). Не partial index — nested include використовує `IN`, не `IS NOT NULL`.
+**Реальний impact:** supplier_payments 10k/org, PO деталь: seq-scan ≈15-30ms → index-narrow ≈1-3ms. Prisma include у getSchedule (500 PO × 3-5 payments): N+1-like heap-lookups → clean index seek.
+**Де шукати ще:** child-модель з nullable FK на parent-документ + власним controller: StockBatch.stockDocumentId, WarrantyClaim.workOrderId, Attachment.entityId (polymorphic). Checkpoint при новій child-моделі — index у ту саму migration. Bonus: `groupBy` з `<childFk>: null` майже завжди triggerить drift.
+
+---
+
 ### 2026-06-20 — Public hot-path multi-field WHERE без супутнього compound B-tree — `(equality_cols, range_col)` index що ставить equality columns першими
 
-**Сигнал:** service-метод що сидить на public-endpoint критичному TTFB-path (наприклад `BookingService.getAvailability()` — публічний widget без auth, throttle стоїть але кеша немає) робить `findMany` з multi-field WHERE — типово 3-5 equality predicates (`orgId`, `branchId`, `status='CONFIRMED'`, `deletedAt IS NULL`) + 1 range predicate (`requestedDate: { gte, lte }`). На таблиці є кілька B-tree індексів, але кожен покриває лише ПРЕФІКС цього WHERE (`(orgId, status, deletedAt)`, `(orgId, deletedAt, createdAt)`) — branchId equality + requestedDate range лишаються per-row heap re-filter після index-narrow. Trgm-патерн (2026-06-19) описує GIN drift для search OR clauses; Reverse-FK index miss (2026-06-09) описує forward-FK foreign columns без supporting indexa; цей патерн — про **compound B-tree drift** для public hot-path WHERE з mix equality+range. Симптом у git diff/blame: feature-PR що додає public-facing widget endpoint (бронювання, share-link availability, status-check) не супроводжується migration з компаундним B-tree індексом — розробник покладається на існуючий single-column tenant-guard index, не задумується що equality на additional discriminator (branchId/status) + range scan (date window) — це окрема query shape.
-**Сигнал-grep:** для кожного public-route controller (`@Throttle` без `@UseGuards(JwtAuthGuard)`, або method у controller без `@ApiBearerAuth()`) — знайти service-метод що викликається; зчитати `where: { ... }` у його `findMany`/`findFirst`/`count`. Виписати equality columns (literal value or scoped param) + range columns (operator `gte`/`lte`/`lt`/`gt`/`in` з масивом >1). Cross-check existing `@@index([...])` declarations: чи перші N equality columns збігаються з ОДНИМ index, у потрібному порядку (equality перші, range останнім)? Якщо ні — drift. Підтверджуючий сигнал: коли запитати індекс EXPLAIN ANALYZE, видно `Bitmap Index Scan` з `Filter:` що містить branchId/status/requestedDate predicates — це і є heap re-filter ознака.
-**Причина виникнення:** B-tree indexes у Prisma `@@index([a, b, c])` мають "leftmost prefix matching" semantics — query з WHERE на `(a, b)` без `c` використовує перші 2 колонки. Але query з WHERE на `(a, c)` БЕЗ `b` НЕ покриває index — Postgres повертається до index-only-on-`a` + heap filter. Розробник додає новий equality discriminator (наприклад branchId) у public endpoint бо це природна логіка (показати слоти для КОНКРЕТНОЇ філії); забуває що цей discriminator має бути у compound index у leftmost-prefix position ПЕРЕД range column. Sibling-pattern: при писанні tenant-aware service-методу розробник копіює existing `where: { orgId, deletedAt: null }` template — це покривається `(orgId, deletedAt)` базовим індексом; нові discriminators додаються "поверх" без перевірки compound coverage. Public hot-path особливо ризикований: throttling маскує проблему (не дає переповнити DB), але кожен legitimate request все одно платить за heap filter.
-**Підхід до виявлення:** для кожного public/throttled service-методу: (1) виписати full WHERE shape (всі equality columns + всі range/in columns); (2) знайти у schema.prisma всі `@@index([...])` declarations на цій таблиці; (3) для кожного index перевірити чи ВСІ equality columns у WHERE присутні у leftmost-prefix positions index-у; (4) якщо range column є — він має бути ОСТАННІМ у компаундному індексі (Postgres B-tree може робити range scan тільки на last index column після equality narrow). Якщо жоден existing index не задовольняє — drift. Cross-check: подивитись у git log на migration history таблиці — якщо WHERE shape змінювалась з часом (нові discriminators додавалися), ймовірно один з feat-commits не додав супутню migration. Особливо: модулі з recently-added public endpoints (`booking`, `estimates/share`, `invoice-public`, `quote-share`) — checkpoint при перегляді.
-**Підхід до фіксу:** окрема migration `YYYYMMDDHHMMSS_add_<table>_<descriptor>_index/migration.sql` з `CREATE INDEX IF NOT EXISTS "<table>_<col1>_<col2>_<col3>_<rangecol>_idx" ON <table> (<col1>, <col2>, <col3>, <rangecol>);`. Порядок колонок: (1) tenant-guard першим (orgId/orgId+branchId — найбільш selectivе на enterprise multi-tenant); (2) додаткові equality discriminators у порядку SELECTIVITY (status з 5 значеннями — після branchId з 50 значеннями); (3) range column ОСТАННІМ (Postgres B-tree fundamentals). НЕ включати `deletedAt` у leftmost prefix якщо вже є tenant-guard equality (deletedAt має cardinality 2 — marginal selectivity, marginal index size win). Дзеркало у `schema.prisma` через `@@index([col1, col2, col3, rangecol])` — Prisma DSL підтримує compound B-tree (на відміну від GIN trgm), тримати schema-as-source-of-truth для drift detection у наступних cycles. IF NOT EXISTS для idempotency (re-run safety).
-**Реальний impact:** для `booking_requests` з 5k confirmed records на org, getAvailability hot-path: bitmap heap scan на (orgId, status, deletedAt)-narrowed subset з branchId+date heap filter ≈5-15ms → single index-range scan ≈0.5-2ms. Multiplexed по public widget mount-rate: customer-facing booking widget зазвичай тригериться у landing-flow (~30% bounce rate, ~70% повторні mount при date-picker swap) — економія на peak hours ~10ms × 100s mounts/min = sub-perceptible латентність → одно-цифровий ms percentile. Найбільший win: під cold cache (Postgres restart, evict) — full heap scan would dominate, тепер index-only-scan уникає це.
-**Де шукати ще:** будь-який public/throttled endpoint що читає filtered list — `BookingService.getAvailability`, `EstimatesService.findByShareToken` + downstream lists (parts/lines uoms), public CalendarSlot lookups, `quote-share` availability. Завжди checkpoint при feature що додає 4+ field WHERE на public path — discriminator може бути новим (branchId), но index ще покриває старий префікс. Перевіряти при кожному PR що додає `@Throttle` декоратор у controller — це сигнал public-path; разом має йти migration з compound index якщо WHERE використовує >2 equality колонки + range. Smell test: якщо EXPLAIN ANALYZE показує `Filter:` rows-removed >0 на public endpoint — drift існує.
+**Сигнал:** public-endpoint TTFB-path (напр. `BookingService.getAvailability()` — widget без auth, throttle є, кеша нема) робить `findMany` з multi-field WHERE — 3-5 equality (`orgId`, `branchId`, `status='CONFIRMED'`, `deletedAt IS NULL`) + 1 range (`requestedDate: {gte, lte}`). Existing B-tree indexes покривають лише ПРЕФІКС (`(orgId, status, deletedAt)`) — branchId equality + requestedDate range лишаються heap re-filter. Compound B-tree drift для public hot-path з mix equality+range.
+**Сигнал-grep:** для public-route controller (`@Throttle` без `@UseGuards(JwtAuthGuard)` / без `@ApiBearerAuth()`) — зчитати `where` у findMany/findFirst/count; виписати equality cols + range cols (`gte`/`lte`/`in`>1). Cross-check `@@index([...])`: чи перші N equality збігаються з ОДНИМ index у порядку (equality перші, range останнім)? EXPLAIN: `Bitmap Index Scan` з `Filter:` = heap re-filter.
+**Причина виникнення:** B-tree leftmost-prefix: WHERE на `(a, c)` без `b` НЕ покриває `(a, b, c)`. Розробник додає новий equality discriminator (branchId) без розуміння що він має бути перед range column. Throttling маскує проблему, але кожен legitimate request платить за heap filter.
+**Підхід до фіксу:** migration `CREATE INDEX IF NOT EXISTS ... ON <table> (tenant-guard orgId[+branchId], equality discriminators у порядку selectivity, range column ОСТАННІМ)`. НЕ включати `deletedAt` у leftmost prefix при наявному tenant-guard (cardinality 2). Дзеркалити у `@@index`.
+**Реальний impact:** booking_requests 5k/org, getAvailability: bitmap heap scan ≈5-15ms → index-range scan ≈0.5-2ms. Найбільший win під cold cache.
+**Де шукати ще:** public/throttled endpoint з filtered list — getAvailability, findByShareToken + downstream lists, public CalendarSlot, quote-share. Checkpoint при feature з 4+ field WHERE на public path; при кожному новому `@Throttle` декораторі з >2 equality + range. Smell test: EXPLAIN `Filter:` rows-removed >0 на public endpoint.
 
 ---
 
 ### 2026-06-20 — Ordered sub-sequence + independent cross-table write всередині `$transaction` — wrap sub-sequence у async IIFE, Promise.all з незалежним write
 
-**Сигнал:** service `update()`/`replace()` метод усередині `$transaction` робить замінy дочірньої колекції (tiers/lines/parts/items) через "delete → create" pattern: `await tx.child.deleteMany({where: {parentId}})` + `await tx.child.createMany({data: [...]})`. ОДРАЗУ ПІСЛЯ цього — `await tx.parent.updateMany({where: {id, orgId}, data: scalarFields})` що пише у БАТЬКІВСЬКУ таблицю (інша таблиця, інший primary key, не залежить від результатів tier-операцій). 3 sequential `await` (`deleteMany → createMany → updateMany`) → 3 RTT. Tier sequence МУСИТЬ бути ordered (create після delete, інакше дублікати/конфлікти PK), але main updateMany ОРТОГОНАЛЬНИЙ — пише у іншу таблицю, не читає результат жодної з tier-операцій. Симптом у git diff: оптимізаційна migration paterна "Disjoint-set updateMany pairs" (2026-06-12) застосована тільки до DOUBLE-updateMany на ОДНІЙ таблиці; цей патерн — variant для TRIPLE-await де sub-sequence ordered, але hat-операція незалежна.
-**Сигнал-grep:** `\$transaction\(\s*async tx => \{[\s\S]{0,200}await tx\.\w+\.deleteMany[\s\S]{0,300}await tx\.\w+\.createMany[\s\S]{0,300}await tx\.\w+\.updateMany`. Підтверджуюча ознака: перші дві операції на одній таблиці (наприклад `pricingRuleTier`), третя — на ІНШІЙ (`pricingRule`). Якщо всі три на одній таблиці — НЕ цей патерн (write-write на same table з різним PK може бути safe, але потребує окремого аналізу).
-**Причина виникнення:** "delete-then-create" замінювач дочірньої колекції написаний linear-стилем — розробник інтуїтивно ставить main `update()` ПОСЛЕ tier-replace бо "tiers і main fields — це одна логічна транзакція". Не помічає що main update read-залежить ТІЛЬКИ від `id`+`orgId` (синхронно у scope), не від результату tier-операцій. Patтерн "Disjoint-set updateMany pairs" (2026-06-12) описує 2-операційний випадок (два updateMany на одній таблиці з disjoint WHERE) — інтуїтивно не екстраполюється на 3-операційний випадок з ordered-internal sub-sequence. Розробник не задумується "чи tier-replace блокує updateMany?" — це невинне виглядаюче sequential.
-**Підхід до виявлення:** при перегляді service-методу `update()`/`replace()` з $transaction — для кожного блоку `await tx.X.deleteMany → await tx.X.createMany` перевірити чи наступний await ПИШЕ у іншу таблицю. Якщо так — кандидат на refactor "wrap delete+create як async IIFE → Promise.all з main update". Cross-check: подивитись чи main `updateMany` має where clause що залежить ТІЛЬКИ від синхронно-доступних (id, orgId) — не від результату tier-операцій (наприклад totalAmount розраховане з createMany результату — НЕ кандидат, ordered required).
-**Підхід до фіксу:** обернути ordered sub-sequence у async IIFE: `const tierWork = (async () => { await tx.child.deleteMany(...); if (data.length > 0) await tx.child.createMany(...); })();`. Окремо створити неchained `tx.parent.updateMany(...)` promise — БЕЗ await (це Prisma Promise, виконується at-await або at-then). `await Promise.all([tierWork, mainUpdate])`. Після цього `findFirstOrThrow` (re-read для DTO) лишається останнім — потребує що ВСІ writes завершені. Race-safe бо два promise пишуть у РІЗНІ таблиці на одній pinned $tx connection. Не змішувати з case коли main update залежить від сумарного `tierTotal` обчисленого з нового tiers — там ordered required.
-**Реальний impact:** pricing-rules.update() з зміною tiers + main fields: 3 sequential `await` всередині $tx → 2 RTT (`Promise.all` блок + final `findFirstOrThrow`). На SaaS з масовим оновленням rule-конфігів (бек-офісний bulk-edit) — 33% time-save на update. Локально (single-tenant) — менший impact, але звільняє pool connection швидше.
-**Де шукати ще:** будь-який service-метод що замінює дочірню колекцію (`children: [...]` у DTO) разом з оновленням parent-scalars — invoice.update (lines + totals), workOrder.update (parts + notes), stockDocument.update (lines + warehouseId), purchaseOrder.update (lines + supplierId), bookingRequest.update (slots + status). Завжди шукати TRIPLE await pattern `delete + create + parent.update` де перші два на дочірній таблиці, третій на батьківській. Особлива увага коли в commit-діффі видно нову feature ("додано tier-edit у форму") — backend update метод майже завжди copy-paste з legacy sequential шаблону.
+**Сигнал:** `update()`/`replace()` у `$transaction` замінює дочірню колекцію (tiers/lines/parts): `await tx.child.deleteMany` + `await tx.child.createMany`, ОДРАЗУ ПІСЛЯ — `await tx.parent.updateMany({where: {id, orgId}, data: scalars})` (інша таблиця, не залежить від tier-операцій). 3 sequential await → 3 RTT. Tier-sequence МУСИТЬ бути ordered (create після delete), але main updateMany ОРТОГОНАЛЬНИЙ. Variant "Disjoint-set updateMany pairs" (2026-06-12) для TRIPLE-await з ordered sub-sequence.
+**Сигнал-grep:** `\$transaction\(\s*async tx => \{[\s\S]{0,200}await tx\.\w+\.deleteMany[\s\S]{0,300}await tx\.\w+\.createMany[\s\S]{0,300}await tx\.\w+\.updateMany`. Перші дві операції на одній таблиці (childTier), третя на ІНШІЙ (parent). Якщо всі три на одній — НЕ цей патерн.
+**Причина виникнення:** linear-стиль; main update read-залежить ТІЛЬКИ від `id`+`orgId` (sync у scope), не від tier-результату.
+**Підхід до фіксу:** обернути ordered sub-sequence у async IIFE: `const tierWork = (async () => { await tx.child.deleteMany(...); if (data.length) await tx.child.createMany(...); })();`; окремо `tx.parent.updateMany(...)` БЕЗ await; `await Promise.all([tierWork, mainUpdate])`; final `findFirstOrThrow` останнім. Race-safe (РІЗНІ таблиці). НЕ коли main update залежить від `tierTotal` з нового tiers (ordered required).
+**Реальний impact:** pricing-rules.update() з tiers + main: 3 await → 2 RTT (33% на bulk-edit).
+**Де шукати ще:** service-метод що замінює дочірню колекцію + оновлює parent-scalars — invoice.update (lines+totals), workOrder.update (parts+notes), stockDocument.update (lines+warehouseId), PO.update (lines+supplierId), bookingRequest.update (slots+status). TRIPLE await `delete + create + parent.update` де перші два на child, третій на parent.
 
 ---
 
 ### 2026-06-19 — Trgm index drift у search OR clause — нова/прогаяна колонка у `where.OR = [{ a contains }, { b contains }, { c contains }]` без парного `idx_X_col_trgm`
 
-**Сигнал:** service-метод `findAll(query)` має `where.OR = [{ colA: { contains: q, mode: 'insensitive' }}, { colB: { contains: q, mode: 'insensitive' }}, { colC: { contains: q, mode: 'insensitive' }}]` (типово 2-5 OR-гілок). Один або кілька стовпців покриті GIN trgm індексами (`idx_X_colA_trgm`, `idx_X_colB_trgm`), але як мінімум один стовпець — НІ. Найчастіше це happens після: (1) batch trgm-міграції що додавала покриття для перших 2-3 стовпців ("важливих"), потім третій-четвертий стовпець залишився обділеним; (2) пізніша feature додала ще одну OR-гілку (наприклад `internalCode`) без супутньої міграції-індексу; (3) перейменування стовпця між міграціями (старий `barcode` лишився, новий not yet). На запит з `q=value` Postgres звужує по tenant-guard index (`orgId+deletedAt`), потім робить per-row `LIKE` на не-індексованих стовпцях OR. Симптом — у git diff видно `feat(X)` commit що додає search predicate або новий filtered column без супутньої `CREATE INDEX ... gin_trgm_ops` лінії.
-**Сигнал-grep:** для кожної таблиці з search — порівняти dirext `where.OR` columns vs existing `idx_X_*_trgm` indexes. Для модуля `goods`: search columns `[name, sku, barcode]`, existing trgm = `[name, sku]` → drift на `barcode`.
-**Причина виникнення:** trgm-міграції зазвичай batched один раз ("додати пошук по таблицям X/Y/Z") і не reаудиту-ються при кожній feature. Розробник що додає нову search column ("давайте додамо barcode у пошук") або новий filter column бачить що search працює (бо tenant-guard index ще звужує) — не помічає що план фолбекає на seq+LIKE на non-trgm column. Cycle-N gap частий: одна search column отримала trgm у feat-commit (`name`/`sku` отримали свій), наступна додалась пізніше БЕЗ окремої trgm-міграції. Patterns `Reverse-FK index miss` (2026-06-09) та `Detail-include vs list-include` (2026-05-30) обидва підкреслюють що нові feature commits майже завжди забувають про супутні індекси — це специфічна форма того ж патерну для пошуку.
-**Підхід до виявлення:** для service-методу з search — зчитати ВСІ колонки у `where.OR` array. Для кожної — `grep "_<column>_trgm" packages/database/prisma/migrations/`. Якщо відсутній — drift. Cross-check: подивитись чи pg*trgm extension вмикнутий у попередніх міграціях (якщо ні — окремий fix додати `CREATE EXTENSION IF NOT EXISTS pg_trgm`). Особливо обережно з recently-added FE polish features (наприклад "secondary line у каталозі показує internalCode") — якщо UI рендерить, backend часто додає search-by-X пізніше; drift гарантовано.
-**Підхід до фіксу:** окрема migration-папка `YYYYMMDDHHMMSS_add*<table>_<column>\_trgm_index/migration.sql`з`CREATE INDEX IF NOT EXISTS "idx_<table>_<column>\_trgm" ON <table> USING gin ("<column>" gin_trgm_ops);`. IF NOT EXISTS для idempotency (re-run safety). Не торкатися Prisma schema — GIN-trgm не expressed у Prisma DSL (тільки B-tree через `@@index`). Коментар у SQL пояснює яка OR-гілка покривається. Якщо drift у >1 column — одна migration з кількома CREATE INDEX рядками (атомарна група, простіше rollback). Не плодити покриття для стовпців що НЕ в WHERE — GIN trgm дорогий на write (≈30% INSERT overhead), додавати лише коли є реальна OR-гілка.
-**Реальний impact:** для `goods`з 50k рядків на org,`q=ART-001`(barcode hit): seqscan на (orgId+deletedAt)-narrowed subset ≈10-50мс → trgm bitmap-scan ≈1-3мс. Малий impact індивідуально, але search-by-barcode — це primary lookup path для barcode scanner у GoodPickerModal/POS workflow — кожен сканбар реактивно тригерить fetch. Сумарно по робочому дню СТО — десятки тисяч сканів.
-**Де шукати ще:** для КОЖНОЇ моделі з search OR predicate (Good, Counterparty, WorkOrder, Invoice, PurchaseOrder, StockDocument, Employee, Vehicle) — порівняти`where.OR` колонки vs existing trgm indexes. Особливо: WorkOrder.findAll() OR=[number, counterparty.companyName/firstName/lastName] — counterparty join columns мають свої trgm (`idx_counterparties_\*\_trgm`); WorkOrder.number — `idx_work_orders_number_trgm`. Перевірити чи кожна search column має парний індекс. Checkpoint при кожному PR що додає search column: разом з code-change має бути migration-change.
+**Сигнал:** `findAll(query)` має `where.OR = [{colA: {contains: q, mode: 'insensitive'}}, {colB: ...}, {colC: ...}]` (2-5 OR-гілок). Деякі cols покриті GIN trgm (`idx_X_colA_trgm`), але мінімум один — НІ. Після: batch trgm-міграції для "важливих" cols, або пізніша feature додала OR-гілку (`internalCode`) без index. Postgres звужує по `orgId+deletedAt`, потім per-row `LIKE` на non-trgm col.
+**Сигнал-grep:** для таблиці з search — порівняти `where.OR` columns vs existing `idx_X_*_trgm`. `goods`: search `[name, sku, barcode]`, trgm = `[name, sku]` → drift на `barcode`. Per column: `grep "_<column>_trgm" packages/database/prisma/migrations/`.
+**Причина виникнення:** trgm-міграції batched один раз, не re-аудиту-ються. Нова search column працює (tenant-guard index звужує), але план фолбекає на seq+LIKE.
+**Підхід до фіксу:** migration `CREATE INDEX IF NOT EXISTS "idx_<table>_<column>_trgm" ON <table> USING gin ("<column>" gin_trgm_ops);`. Cross-check `pg_trgm` extension (якщо нема — `CREATE EXTENSION IF NOT EXISTS pg_trgm`). НЕ у Prisma schema (GIN не expressed у DSL). Drift у >1 column → одна migration з кількома CREATE INDEX. НЕ плодити для non-WHERE cols (GIN ≈30% INSERT overhead).
+**Реальний impact:** goods 50k/org, `q=ART-001` (barcode): seqscan ≈10-50мс → trgm bitmap ≈1-3мс. Barcode scanner у GoodPicker/POS — десятки тисяч сканів/день.
+**Де шукати ще:** для КОЖНОЇ моделі з search OR (Good, Counterparty, WorkOrder, Invoice, PO, SD, Employee, Vehicle) — порівняти OR колонки vs trgm indexes. WorkOrder.findAll OR=[number, counterparty.*] — counterparty join cols мають свої trgm. Checkpoint при PR що додає search column.
 
 ---
 
 ### 2026-06-17 — Twin-scan `reduce()` у backend mutation-hot-path recalc/aggregate helper — single-pass `for…of` з двома акумуляторами
 
-**Сигнал:** service-helper `recalcTotals` / `recomputeAggregates` / `applyDocBalances` (викликається з кожного create/update/delete по child rows — addLine, updateLine, removeLine, addPart, updatePart, removePart, тобто 6+ entry-points у service) робить `findMany({ select: { amount, normo, actual, price } })` потім ДВА окремих `.reduce()` по тому ж масиву: один для `totalLabor = SUM(amount)`, другий для `totalActualLabor = SUM((actualHours ?? normoHours) × price)`. Frontend-варіант цього патерну (Twin-scan reduce у tfoot/footer, 2026-06-11) — про React render-rate; backend-варіант — про per-mutation CPU/GC у hot path. Симптоми: array.reduce викликається 2+ рази підряд з тим самим джерелом + різними accumulator-семантиками. У git diff видно formula change з `SUM(amount)` на `SUM((actualHours ?? normoHours) × price)` — розробник додає НОВУ reduce поряд зі старою бо "семантика інша", не задумується що дві формули можна виконати у одному проході.
-**Grep:** `lines\.reduce\([\s\S]{0,200}\);[\s\S]{0,300}lines\.reduce\(` АБО `\w+\.reduce\([^)]+\);[\s\S]{0,300}\w+\.reduce\(` (де перший і другий `\w+` — той самий identifier у тому ж scope). Підтверджуючий сигнал: aggregate замість одного — два, кожен має різний accumulator. Допоміжний — наявність `findMany` ВИЩЕ з `select` що містить точно ті поля що читаються обома reduce-ами.
-**Причина виникнення:** коли формула totals змінюється (наприклад totalAmount тепер залежить від actualHours, а не normoHours), розробник додає НОВУ reduce поряд зі старою замість того щоб модифікувати існуючу. Декларативний "одна reduce — одна формула" патерн виглядає чисто. Backend-mode хибне відчуття безпеки: "це викликається 1 раз на mutation, не варто оптимізувати". Реально — recalcTotals викликається у кожному з 6+ mutation entry-points (addLine, updateLine, removeLine, addPart, updatePart, removePart, transition writes); WO з 50 лініями = 100 reduce iterations на кожен mutation × 6 типів операцій = 600 wasted ops при кожному масовому редагуванні. Plus двойний прохід по масиву Decimals означає 2× Number() casts (Prisma Decimal → Number alloc).
-**Підхід до виявлення:** при перегляді service-помічника типу `recalc*` / `recompute*` / `apply*` — перевірити чи є array.reduce. Якщо є — порахувати скільки reduce-ів по тому ж масиву. >1 → кандидат на single-pass. Якщо ОДИН — перевірити чи інший aggregate (`forEach` / `for-of`) НЕ читає той самий масив поряд. Cross-check: у git blame коли була формула single → twin? Якщо нещодавно (feat commit changes formula) — ймовірно знаходимось у вікні де старий reduce лишився, а новий додався без merge. Перевіряти кожен helper що читає N child rows і пише M aggregate fields — там завжди є ризик twin-scan.
-**Підхід до фіксу:** один `for (const x of array) { acc1 += ...; acc2 += ...; }` блок із локальними `let acc1 = 0; let acc2 = 0;` ПЕРЕД циклом. Семантично еквівалентно, але half CPU + half GC pressure для Decimal→Number casts. Також додати `take: N` ліміт у findMany якщо немає захисту (recalc/recompute helpers особливо ризиковані — addLine/addPart endpoints зазвичай без ArrayMaxSize). Захисний поріг має співпадати з upper bound інших bulk reads у тому ж service (reserveParts/releaseReservations/тощо — типово 1000). Альтернативний шлях: якщо різні reduce-и пишуть у DIFFERENT child collections (lines vs parts), не зливати — кожен collection один-прохід ще раз.
-**Реальний impact:** на WO з 50 рядками: 100 reduce iterations + 100 Number() casts на mutation → 50 iterations + 50 casts. На повний edit-сеансі (10 mutations) — економія 500 iterations + 500 allocs. Незначно у мс per-request, але прибирає двойний прохід з hot path mutation потоку (де latency має значення для UX інспекторів механіка що швидко додають рядки). Cross-cutting: те саме поліпшення для invoices.recalcTotals, stock-document.recompute, purchase-order.recalc — всі мають симетричні reduce-pairs.
-**Де шукати ще:** будь-який helper `recalc*` / `recompute*` / `applyTotals*` / `refreshAggregates*` у service-шарі — work-orders, invoices, stock-documents, purchase-orders, supplier-returns, estimates. Якщо у моделі є aggregate fields (totalLabor + totalActualLabor, totalAmount + totalVat, totalDiscount + totalNet) — helper що їх перераховує МАЙЖЕ ЗАВЖДИ робить parallel reduce-и які можна злити. Особливо — checkpoint при додаванні нового aggregate field: коли feat commit додає `totalActualLabor` поряд з `totalLabor`, recalcTotals переписаний у naive twin-scan стилі.
+**Сигнал:** service-helper `recalcTotals`/`recomputeAggregates`/`applyDocBalances` (з 6+ mutation entry-points — addLine/updateLine/removeLine/addPart/...) робить `findMany({select})` потім ДВА `.reduce()` по тому ж масиву (`totalLabor = SUM(amount)`; `totalActualLabor = SUM((actualHours ?? normoHours) × price)`). Backend-варіант "Twin-scan reduce у tfoot" (2026-06-11) — per-mutation CPU/GC у hot path.
+**Grep:** `\w+\.reduce\([^)]+\);[\s\S]{0,300}\w+\.reduce\(` (той самий identifier). Допоміжний: `findMany` ВИЩЕ з `select` що містить поля обох reduce.
+**Причина виникнення:** формула змінилась → нова reduce поряд зі старою. Хибне "1 раз на mutation". Реально: WO з 50 лініями × 6 mutation типів = 600 wasted ops; +2× Number() casts (Decimal→Number alloc).
+**Підхід до фіксу:** один `for (const x of array) { acc1 += ...; acc2 += ...; }` з `let acc1=0; let acc2=0;` перед циклом. Half CPU + half GC. Додати `take: N` у findMany (recalc endpoints без ArrayMaxSize; поріг = bulk-read upper bound service, ~1000). Не зливати reduce у DIFFERENT collections (lines vs parts).
+**Реальний impact:** WO 50 рядків: 100 iter + 100 casts → 50+50. Edit-сеанс 10 mutations: -500 iter + -500 allocs.
+**Де шукати ще:** helper `recalc*`/`recompute*`/`applyTotals*`/`refreshAggregates*` — WO, invoices, SD, PO, supplier-returns, estimates. Моделі з aggregate-парами (totalLabor+totalActualLabor, totalAmount+totalVat, totalDiscount+totalNet) — recalc майже завжди twin-scan. Checkpoint при додаванні нового aggregate field.
 
 ---
 
 ### 2026-06-17 — Sequential post-token `wo + org + uoms` lookup у public share-endpoint — `findFirst(token) → findFirst(org)` `→ findMany(uoms)` ланцюг 3 RTT, merge tail-pair у Promise.all
 
-**Сигнал:** public read-endpoint що знаходить агрегат через share-token (estimate-share, invoice-public, document-view) має класичний 3-step ланцюг: (1) `findFirst({ where: { shareToken } })` — гідрує `wo` з orgId+parts.unitOfMeasureId, (2) `findFirst({ where: { id: wo.orgId } })` — гідрує `org` (name/logoUrl для рендеру), (3) `findMany({ where: { id: { in: uomIds } } })` — гідрує `uoms` (shortName для кожної парт). Перші 2 не паралелізовані бо `org.id = wo.orgId` (залежність), але 2+3 паралельні бо обидва залежать ТІЛЬКИ від `wo`. Sequential 3 RTT де можна 2 RTT (token-lookup + Promise.all([org, uoms])). У git diff видно цей патерн у findByShareToken + getEstimateData симетрично: коли один з них оптимізується, другий лишається не зачеплений (sibling-drift, 2026-06-15 Form/modal totals pattern).
-**Grep:** `findFirst\([^)]+shareToken[\s\S]{0,1500}await this\.prisma\.organisation\.findFirst[\s\S]{0,500}await this\.prisma\.\w+\.findMany\(` — pattern token-lookup → sequential org → sequential children lookup. Перевіряти багатоповторні export-endpoint-и (PDF/XLSX/DOCX) які кожен викликає shared data-builder helper — економія множиться по числу формат-варіантів.
-**Причина виникнення:** при first-pass реалізації share-endpoint розробник пише послідовно бо "спочатку треба знати чи wo існує (404 інакше), потім тягнути все інше". Token-validation як first guard — semantically правильно. Але після першого if-throw blocks подальші lookups стають незалежні — це не очевидно при copy-paste. Patterns "tier merger" що документувались для tenant-guard + FK-validation (counterparty + branch) не екстраполюються інтуїтивно на "post-guard hydration" sibling lookups (org + uoms) — інша природа queries (один scalar, один array), легко пропустити що теж кандидат на merger.
-**Підхід до виявлення:** для кожного public-token endpoint (`findBy*Token`, `getPublicView`, `getEstimateData`) — після `if (!entity) throw NotFound` перевірити кожен наступний await. Якщо є 2+ незалежні await (одночасно НЕ читають вихід попереднього у where-clauses) — кандидат на Promise.all merger. Особливо: один з них `findFirst({ where: { id: entity.someFkId } })` (singular hydration) + інший `findMany({ where: { id: { in: entity.childrenIds } } })` (collection hydration) — типова pair. Cross-check: якщо є sibling-helper (`getEstimateData` поряд з `findByShareToken`) — він майже завжди має такий же sequential patterns (copy-paste evolve без cross-sync).
-**Підхід до фіксу:** виlift `const uomIds = wo.X.map(c => c.fkId).filter(...)` ПЕРЕД Promise.all (фіксує input для children-lookup); `const [org, uoms] = await Promise.all([findFirst(org), uomIds.length > 0 ? findMany(uoms) : Promise.resolve([] as typeof PlaceholderType[])])`. Ternary з `Promise.resolve([])` зберігає skip-RTT behavior коли uoms empty. Звузити TYPE-asserted placeholder до точного shape що повертає findMany select — TS зрозуміє union без widening. Map-fill loop виносити ПІСЛЯ Promise.all (uniform розподіл, легко читати). НЕ зливати з token-lookup (це pre-guard) — fail-fast 404 семантика залишається першим step.
-**Реальний impact:** share-endpoint TTFB: ~3 × P50_RTT (Postgres ~5ms кожен) = ~15ms → ~10ms (33% save). Multiplexed по 3 export-формат (PDF/XLSX/DOCX) — total saved RTT/day на high-traffic share-link = N_shares × 3 × 5ms = N_shares × 15ms aggregate. На public endpoint (без auth, цільовий user-flow клієнта) це різниця між "snappy" і "slightly laggy" preview-link. Для batch send-estimate-SMS workflow (1 share-link → 3-5 хв до open у клієнта → PDF download) — share-window TTL коротший, lookups cold (cache miss).
-**Де шукати ще:** будь-який public read-endpoint що знаходить агрегат через share-token або public-id — work-orders.findByShareToken / estimate-export.getEstimateData / invoice-public.findByToken / document-view.getByPublicId / pricing-list-share.findByToken. Завжди парний паттерн: коли один з них оптимізовано, sibling-helper (інший виконуючий ту саму бізнес-логіку) майже завжди лишається sequential через copy-paste evolve. Перевіряти КОЖНУ пару `findBy*Token + getExport*` / `findBy*Token + buildPublicDto*` — sibling-sync mandatory.
+**Сигнал:** public share-token endpoint (estimate-share, invoice-public, document-view) має 3-step ланцюг: (1) `findFirst({where: {shareToken}})` → `wo`, (2) `findFirst({where: {id: wo.orgId}})` → `org`, (3) `findMany({where: {id: {in: uomIds}}})` → `uoms`. Перші 2 sequential (org.id=wo.orgId), але 2+3 паралельні (обидва залежать ТІЛЬКИ від wo). 3 RTT де можна 2. Sibling-drift: findByShareToken ↔ getEstimateData.
+**Grep:** `findFirst\([^)]+shareToken[\s\S]{0,1500}await this\.prisma\.organisation\.findFirst[\s\S]{0,500}await this\.prisma\.\w+\.findMany\(`. Перевіряти export-endpoint-и (PDF/XLSX/DOCX) що викликають shared data-builder.
+**Причина виникнення:** послідовно бо "спочатку 404-guard, потім все інше". Після if-throw подальші lookups незалежні — не очевидно при copy-paste.
+**Підхід до фіксу:** виlift `const uomIds = wo.X.map(c => c.fkId).filter(...)` ПЕРЕД; `const [org, uoms] = await Promise.all([findFirst(org), uomIds.length ? findMany(uoms) : Promise.resolve([] as ...)])`. Map-fill loop ПІСЛЯ. НЕ зливати з token-lookup (pre-guard).
+**Реальний impact:** TTFB ~15ms → ~10ms (33%). × 3 export-формати. Cold cache (share-window TTL короткий).
+**Де шукати ще:** public read через share-token/public-id — findByShareToken, getEstimateData, invoice-public.findByToken, document-view.getByPublicId, pricing-list-share. Парний паттерн: коли один оптимізовано, sibling майже завжди лишається sequential. Перевіряти КОЖНУ пару `findBy*Token + getExport*`/`+ buildPublicDto*`.
 
 ---
 
 ### 2026-06-16 — Settings/config read-endpoint без Redis cache при high-mount-frequency UI-патерні — sibling settings.X методи мають cache, новий тонкий getter (work-hours/feature-flags/quick-config) НЕ має
 
-**Сигнал:** service-метод (`getWorkHours`/`getFeatureFlags`/`getQuickConfig`) повертає тонке value-object (1-2 scalar fields) з findFirst на settings/config таблиці. Викликається з useEffect `[]` у компоненті-вкладці (Calendar/Dashboard/PriceListPicker) → DB hit на КОЖЕН mount у сесії. Sibling-методи у тому самому service (`getOrganisationSettings`, `getBranchSettings`) уже мають Redis cache 300s з invalidation в update-methods, але новий тонкий getter додавався у naked стилі ("він же тонкий, switch один findFirst — навіщо cache?"). Симптом: у git diff видно invalidation методи (`invalidateOrgCache`, `invalidateBranchCache`) поряд з новим getter без власної інвалідації.
-**Grep:** `async get\w+\(orgId.*\): Promise<\{[^}]*Hour\|Days\|Mode\|Enabled` БЕЗ `redis\.get` поряд + `private readonly redis` у constructor → кеш є але не використовується у новому методі. Підтверджуючий сигнал — у `updateBranchSettings`/`updateOrganisationSettings` є `await this.invalidate*Cache()` calls, але вони ОДИНОЧНІ — нових invalidate\*Cache не додавалось коли getter був представлений.
-**Причина виникнення:** новий feature додає тонкий read endpoint для специфічного UI потоку (calendar grid potrebує тільки work hours, не full BranchSettings). Розробник копіює findFirst pattern з sibling-getter, але не помічає що у sibling є `try { cached = await redis.get } catch {}` обгортка — code-block виглядає як "boilerplate", легко пропустити. Сам endpoint називається "дешевим" (single field) — інтуїтивно не вартий cache. Реально: викликається з mount-effect що тригериться 5-20 раз на сесію (calendar tab toggle, modal re-open, navigation back/forward).
-**Підхід до виявлення:** при перегляді settings.service.ts (або analogous config-service) — порівняти всі public get-методи: чи мають вони патерн `cacheKey + redis.get + JSON.parse + fallback + redis.set + TTL`? Якщо у service є один getter без cache при наявності RedisService у constructor — кандидат на додавання. Перевірити викликаюче UI (mount frequency) у компоненті: useEffect `[]` → точно треба cache. useEffect `[id]` де id рідко змінюється → теж треба.
-**Підхід до фіксу:** (1) Додати окрему cacheKey + TTL constant (`WORK_HOURS_TTL_SECONDS = 60` — коротший за головний settings бо work-hours можуть бути terra-incognita-quick-change). (2) Wrap: `try { const cached = await this.redis.get(key); if (cached) return JSON.parse(cached) } catch {}` → query → `try { await this.redis.set(key, JSON.stringify(result), 'EX', TTL) } catch {}`. (3) Додати `invalidateXCache(orgId)` метод. (4) У відповідному update-методі (наприклад `updateBranchSettings`) додати conditional invalidation тільки коли relevant fields (workStartTime/workEndTime) реально змінилися у dto — інакше плодиш cache misses при PATCH-ах інших полів. (5) Cache scope (orgId vs orgId+branchId) має відповідати actual scope значення — якщо метод повертає org-wide config, ключ orgId-only.
-**Реальний impact:** Calendar mount: 1 DB findFirst з orderBy за nested relation (`branch.createdAt`) → 1 Redis GET. Per orgId / per 60s: ~5-20 mount events stay у cache → 1 DB hit замість 5-20. На SaaS з 50+ org-ів полегшує DB connection pressure у peak-години (ранкова навігація операторів). У single-tenant deployment — instant calendar mount замість cold-DB вікна.
-**Де шукати ще:** будь-який settings/config service (settings.service.ts, app-config.service.ts, infrastructure.service.ts) з тонкими getter-ами для specifіc UI потоків — UI-features, dashboard-config, quick-stats, notification-defaults, theme-config, default-warehouse. Особливо суміжно — checkpoint для нових features: коли додаєш UI-вкладку що читає `GET /settings/X` — додай інвалідацію поряд з кешем у тому самому commit (інакше cycle-N gap у наступному оптимізаційному раунді).
+**Сигнал:** `getWorkHours`/`getFeatureFlags`/`getQuickConfig` повертає тонке value-object з findFirst на settings/config. Викликається з useEffect `[]` у вкладці (Calendar/Dashboard/PriceListPicker) → DB hit на КОЖЕН mount. Sibling-методи (`getOrganisationSettings`, `getBranchSettings`) уже мають Redis cache 300s з invalidation, але новий тонкий getter — naked ("він же тонкий, навіщо cache?").
+**Grep:** `async get\w+\(orgId.*\): Promise<\{[^}]*Hour\|Days\|Mode\|Enabled` БЕЗ `redis\.get` поряд + `private readonly redis` у constructor. Підтверджуючий: у `updateBranchSettings`/`updateOrganisationSettings` є `invalidate*Cache()`, але нових не додавалось.
+**Причина виникнення:** copy findFirst з sibling, але `try { redis.get } catch {}` обгортка виглядає як boilerplate, пропущена. Endpoint "дешевий" — але тригериться 5-20 раз/сесію (tab toggle, modal re-open, nav back/forward).
+**Підхід до фіксу:** (1) cacheKey + TTL (`WORK_HOURS_TTL = 60`, коротший бо quick-change); (2) `try { cached = redis.get(key); if (cached) return JSON.parse } catch {}` → query → `try { redis.set(key, ..., 'EX', TTL) } catch {}`; (3) `invalidateXCache(orgId)`; (4) у update-методі — conditional invalidation ТІЛЬКИ коли relevant fields (workStartTime/End) змінились у dto; (5) cache scope (orgId vs orgId+branchId) = actual scope.
+**Реальний impact:** Calendar mount: findFirst з nested orderBy → Redis GET. Per 60s: 1 DB hit замість 5-20.
+**Де шукати ще:** settings/config service (settings.service, app-config.service, infrastructure.service) з тонкими getter-ами — UI-features, dashboard-config, quick-stats, notification-defaults, theme-config, default-warehouse. Checkpoint: нова UI-вкладка що читає `GET /settings/X` → додати інвалідацію поряд з кешем у той самий commit.
 
 ---
 
 ### 2026-06-16 — Nested loop `outerList.find(o => innerList.some(i => i.fkField === o.id && intervalOverlap(i, slot)))` у hot-path availability/conflict-detection — bucket inner list by FK у Map<fkValue, []> один раз + pre-parse Date→Ms у числа
 
-**Сигнал:** service-метод (booking.getAvailability, calendar conflict-check, scheduling helpers) генерує candidate window list (timeslots, dates, intervals) і для КОЖНОГО елемента window-у викликає `outerArr.find(outer => !innerArr.some(inner => inner.fk === outer.id && new Date(inner.startAt) < window.end && new Date(inner.endAt) > window.start))`. Той самий патерн на frontend — `bookings.map(b => lifts.find(lift => !calSlots.some(s => s.liftId === lift.id && ...)))`. Структура: outer collection (N=5-50 lifts/branches/employees), inner collection (M=100-500 slots/movements/transactions) фільтрується по FK + interval overlap. Outer цикл (T=20-50 candidate windows) множить вартість на T×N×M. Plus кожен interval check робить `new Date(inner.X)` allocation — alloc-heavy hot path.
+**Сигнал:** service-метод (booking.getAvailability, calendar conflict-check, scheduling) генерує candidate windows і для КОЖНОГО викликає `outerArr.find(outer => !innerArr.some(inner => inner.fk === outer.id && new Date(inner.startAt) < window.end && new Date(inner.endAt) > window.start))`. Frontend: `bookings.map(b => lifts.find(lift => !calSlots.some(s => s.liftId === lift.id && ...)))`. Outer T=20-50 × inner N=5-50 × M=100-500 = T×N×M + `new Date()` alloc-heavy hot path.
 **Grep:** `\.find\([^)]+=>\s*!\w+\.some\(` АБО `\.find\([^)]+=>\s*\w+\.some\([^)]+\w+Id === \w+\.id[\s\S]{0,200}new Date\(`
-**Причина виникнення:** код виглядає декларативно ("знайди вільний lift" = "find lift where no slot overlaps") — читабельний, легко reasoning. Розробник не задумується про N×M складність бо колекції здаються малими у dev (5 lifts, 10 slots). Production з 50 lifts × 500 slots × 20 timeslots раптом стає 500_000 ops + 10_000 Date allocs per request. `new Date(string)` всередині .some() — частий приховуваний винуватець: один find() з 50 elements внутрішнього циклу — 100 Date allocations.
-**Підхід до виявлення:** при перегляді service-методу що повертає availability/conflicts/free-resource list — знайти `.find()` АБО `.filter()` у outer циклі ЯКЩО predicate робить `.some()`/`.find()` по другому масиву з FK-equality match. Якщо є — кандидат на bucket-by-FK. Особливо: predicate з `new Date(stringField) < end && new Date(stringField) > start` — додатковий сигнал alloc-heavy hot path. Frontend еквівалент: useMemo-обернений booking-to-lift assignment, або render-time `.find()` у map-loop.
-**Підхід до фіксу:** двофазна трансформація: (1) **Bucket inner array by FK у Map<fkValue, []>** перед outer циклом — `const bucketByFk = new Map(); for (const i of innerArr) { if (!i.fk) continue; const arr = bucketByFk.get(i.fk); if (arr) arr.push(i); else bucketByFk.set(i.fk, [i]); }`. O(M) one-time setup. (2) **Pre-parse Date→Ms numbers** під час bucket-побудови — `const parsed = { startMs: new Date(i.startAt).getTime(), endMs: new Date(i.endAt).getTime() }; arr.push(parsed)`. Один Date.parse() per inner element замість T×N×Date.parse(). (3) У predicate замість `.some()` — explicit for-loop з числовим порівнянням: `const busy = bucketByFk.get(outer.id); if (!busy) return true; for (const p of busy) { if (p.startMs < windowEndMs && p.endMs > windowStartMs) return false; } return true;`. Семантично еквівалентно, але O(T × N × avg(M/N)) замість O(T × N × M) + 0 Date allocs у hot loop.
-**Реальний impact:** booking.getAvailability з 50 lifts × 500 busy slots × 20 timeslots: ~500_000 ops + ~10_000 Date allocations per request → ~10_000 ops + ~1000 Date allocations (50× CPU, 10× GC pressure reduction). На public endpoint (без auth, високий RPS) це різниця між survivable і lock-up. Frontend еквівалент (useCalendarState.load): кожна зміна date перебудовує асигнацію bookings → ріжемо blocking time у main thread.
-**Де шукати ще:** будь-який scheduling/availability/conflict-detection код — calendar (slot conflicts), booking (free resource picking), inventory (FIFO/LIFO batch selection з overlapping reservations), settlements (period transactions overlap), pricing rules (overlapping date ranges). Frontend: useMemo-обернутий filtered subset де outer.map → inner.find/.some з FK match. Завжди перевіряти чи inner-collection парситься з string→Date inside hot loop — це індикатор додаткового виграшу.
+**Причина виникнення:** декларативно ("find lift where no slot overlaps"). Колекції малі у dev (5 lifts, 10 slots); production 50 lifts × 500 slots × 20 timeslots = 500_000 ops + 10_000 Date allocs.
+**Підхід до фіксу:** (1) bucket inner array by FK у `Map<fkValue, []>` перед outer циклом (O(M) setup, `if (!i.fk) continue; get/push else set`); (2) pre-parse Date→Ms під час bucket (`startMs: new Date(i.startAt).getTime()`) — один parse per inner замість T×N×; (3) у predicate замість `.some()` — explicit for-loop з числовим порівнянням (`busy = bucketByFk.get(outer.id); for (const p of busy) if (p.startMs < windowEndMs && p.endMs > windowStartMs) return false`). O(T×N×avg(M/N)) + 0 Date allocs.
+**Реальний impact:** 50 lifts × 500 slots × 20 timeslots: ~500_000 ops + ~10_000 allocs → ~10_000 ops + ~1000 (50× CPU, 10× GC). Frontend: ріжемо blocking time у main thread.
+**Де шукати ще:** scheduling/availability/conflict — calendar slot conflicts, booking free-resource, inventory FIFO/LIFO з overlapping reservations, settlements period overlap, pricing overlapping ranges. Frontend: useMemo filtered subset де outer.map → inner.find/.some з FK. Перевіряти string→Date inside hot loop.
 
 ---
 
 ### 2026-06-16 — `useMemo<T[]>(() => [], [])` всередині компонента для stable-empty-array placeholder — module-level const замінює без зміни семантики
 
-**Сигнал:** компонент має `const EMPTY_X = useMemo<X[]>(() => [], [])` (або з `useMemo(() => new Map(), [])`) — empty-collection placeholder для default fallback (`slotsByLift.get(id) ?? EMPTY_X`). useMemo з deps `[]` повертає той самий ref між render-ами поточного mount, але на КОЖНОМУ mount створює новий `[]`. Семантично identity-stable між render-ами одного mount; alloc на mount без потреби.
-**Grep:** `useMemo<\w+\[\]>\(\(\) => \[\], \[\]\)` АБО `useMemo\(\(\) => new Map\(\), \[\]\)` АБО `useMemo\(\(\) => new Set\(\), \[\]\)`
-**Причина виникнення:** розробник пам'ятає правило "literal `[]` у JSX → нова reference кожен render → memo дочірніх скидаються". Інтуїтивно тягне useMemo. Не задумується що empty collection — стале значення; для нього достаточно module-level const (один alloc на entire app lifetime, не на mount).
-**Підхід до виявлення:** grep по useMemo з `() => []`/`() => new Map()` deps `[]`. Якщо колекція ніколи не модифікується (frozen-empty placeholder) — кандидат на module-level. Якщо ж замість деструктурування з deps використовується нова empty-collection при певних умовах (наприклад dynamic-import or feature-flag fallback) — лишити useMemo.
-**Підхід до фіксу:** просто перенести: `const EMPTY_BOOKINGS: BookingSlot[] = [];` на module-level (поза функцією-компонентом). Видалити рядок `const EMPTY_X = useMemo(...)` всередині. Identity-стабільність зберігається (та сама reference на всі mounts всіх instances). Якщо колекція використовується між модулями — export const.
-**Реальний impact:** на mount компонента: -1 alloc (`[]`) + -1 useMemo hook slot. Незначно у мс, але "чистіше" — empty-collection не є реактивним значенням, не потребує hook infrastructure. Особливо корисно у списках/grids що часто re-mount-яться (calendar day toggle, modal open/close).
-**Де шукати ще:** усі компоненти з `EMPTY_*`/`DEFAULT_*` через useMemo `[]` — calendar widgets, DetailPanel containers, EntityPickerField fallback states, useReducer initial empties. Часто симптом copy-paste з реальної useMemo-обгорненої колекції.
+**Сигнал:** `const EMPTY_X = useMemo<X[]>(() => [], [])` (або `useMemo(() => new Map(), [])`) — empty-collection placeholder (`slotsByLift.get(id) ?? EMPTY_X`). useMemo `[]` стабільний між render-ами mount, але alloc новий `[]` на КОЖНОМУ mount без потреби.
+**Grep:** `useMemo<\w+\[\]>\(\(\) => \[\], \[\]\)` АБО `useMemo\(\(\) => new (Map|Set)\(\), \[\]\)`
+**Причина виникнення:** пам'ятають "literal `[]` у JSX → нова ref → memo скидається", тягнуть useMemo. Empty collection — стале значення; достатньо module-level const.
+**Підхід до фіксу:** перенести `const EMPTY_BOOKINGS: BookingSlot[] = [];` на module-level, видалити useMemo. Identity стабільна на всі mounts. Не чіпати якщо нова empty-collection при умовах (dynamic-import/feature-flag).
+**Реальний impact:** -1 alloc + -1 hook slot на mount. Корисно у grids що часто re-mount (calendar toggle, modal).
+**Де шукати ще:** `EMPTY_*`/`DEFAULT_*` через useMemo `[]` — calendar widgets, DetailPanel, EntityPickerField fallback, useReducer initial empties.
 
 ---
 
 ### 2026-06-15 — Collapsible-header `chips` массив у form-modal: inline IIFE `headerCollapsed ? [supplierDisplay, refList.find(...).name, contractNumber].filter(Boolean) : []` всередині render — recompute на КОЖЕН typing keystroke у inner Input
 
-**Сигнал:** form-modal (PurchaseOrderCreateModal, StockDocumentCreateModal, CreateWorkOrderModal) має collapsible header з `headerChips` = масив бейджів що зʼявляються коли header згорнутий. Розробник пише inline: `const headerChips = headerCollapsed ? [supplierDisplay || null, form.warehouseId ? warehouses.find(w => w.id === form.warehouseId)?.name ?? null : null, contractNumber ? \`Дог. ${contractNumber}\` : null].filter(Boolean) : [];` ПЕРЕД return-блоком. На КОЖЕН render (зокрема `setForm(...)` після typing у Input "Примітки") масив пересоздається, `warehouses.find()` робить O(N) скан, `.filter()` алокує новий array. Якщо колекція `warehouses` дорога (хоча зазвичай малі ~5-20 елементів) — це 3-5× O(N) на typing.
-**Grep:** `const \w+Chips = \w+Collapsed \?[\s\S]{0,400}\.find\([\s\S]{0,200}\.filter\(Boolean\)` АБО `^\s*const \w+ = .*\? \[\s*$`блоки де array будується inline з`.find()`всередині елементів.
-**Причина виникнення:** "chips — це похідне від collapsed state" виглядає як inline-обчислення, не потребує useMemo. Розробник інтуїтивно ставить декларацію поруч з JSX де chips рендеряться. Не помічає що Inputs у тому ж компоненті фірять`setForm(...)`на кожен keystroke → re-render → headerChips recompute → новий array identity →`.map(chip => <span key={chip}>...)`теж recompute (key-based DOM diff лишається стабільним, але React-reconciler все одно витрачає JS overhead на порівняння).
-**Підхід до виявлення:** при перегляді form-modal шукати JSX-attr`<HeaderToggle headerChips={headerChips} />`АБО`{headerChips.map(...)}`. Простежити decl `headerChips`— якщо inline ternary з`.find()`всередині → recomputed на render. Перевірити чи Modal містить controlled Input/Textarea що фірять`setForm`/`setNotes` — підтверджує ризик. Особливо коли header містить supplier/warehouse/contract — три ref-data lookups.
-**Підхід до фіксу:** двофазний refactor: (1) Підняти reference-data Map (`warehouseById = useMemo(() => new Map(warehouses.map(w => [w.id, w])), [warehouses])`) — O(1) lookup замість O(N) find. (2) `useMemo`навколо`headerChips`з deps`[headerCollapsed, supplierDisplay, form.warehouseId, warehouseById, contractNumber]`. Тепер chips identity-стабільні поки collapsed або одне з реактивних полів не зміниться → typing у `notes` не тригерить chips recompute → no JSX-children identity-thrash для child Header strip.
-**Реальний impact:** PurchaseOrderCreateModal має ~50 fields/inputs у формі; typing у "Примітки" зазвичай 20-50 keystrokes. Кожен setForm: 50 keystrokes × 3 ref-list-find + 3 elem alloc + 1 array alloc → 250-300 wasted ops on collapse-strip per editing session. Незначно у мс, але важлива чистота для majority render-frequency components (controlled forms + chip displays).
-**Де шукати ще:** будь-який form-modal/edit-page з collapsible header (всі великі creation modals: WO, Invoice, Estimate, PO, SD, SR, BookingRequest). Той самий патерн діє для breadcrumb-strips, tag-displays, "Recent items" widgets у sidebar — будь-яких inline array-builders з reference-data lookups.
+**Сигнал:** form-modal (PO/SD/WO Create) має collapsible header з `headerChips` inline перед return: `const headerChips = headerCollapsed ? [supplierDisplay, form.warehouseId ? warehouses.find(w => w.id === ...)?.name : null, contractNumber ? ...].filter(Boolean) : [];`. На КОЖЕН render (typing у "Примітки" → setForm) масив пересоздається, `warehouses.find()` O(N), `.filter()` alloc.
+**Grep:** `const \w+Chips = \w+Collapsed \?[\s\S]{0,400}\.find\([\s\S]{0,200}\.filter\(Boolean\)`
+**Причина виникнення:** "chips — похідне від collapsed" виглядає як inline. Не помічають що Inputs фірять setForm на keystroke → chips recompute → JSX-children identity-thrash.
+**Підхід до фіксу:** (1) reference-Map `warehouseById = useMemo(() => new Map(warehouses.map(w => [w.id, w])), [warehouses])` (O(1)); (2) `useMemo` навколо headerChips з deps `[headerCollapsed, supplierDisplay, form.warehouseId, warehouseById, contractNumber]`.
+**Реальний impact:** typing у "Примітки" 20-50 keystrokes × 3 find + allocs → 250-300 wasted ops/сесію.
+**Де шукати ще:** form-modal з collapsible header (WO, Invoice, Estimate, PO, SD, SR, BookingRequest); breadcrumb-strips, tag-displays, "Recent items" — inline array-builders з ref-data lookups.
 
 ---
 
 ### 2026-06-15 — Form/modal totals `reduce(...)` поза useMemo — викликається на КОЖЕН render навіть коли lines не змінились (typing у unrelated Input)
 
-**Сигнал:** form-modal з табличкою рядків (lines/items/parts/products) має footer/total: `const total = totalFromLines(lines);` АБО inline `const total = lines.reduce((s, l) => s + qty * price, 0);` без useMemo. Поряд є кілька controlled Inputs (notes/date/supplier) що фірять setState на typing. Кожен render → total recompute O(N) reduce навіть коли lines незмінні. PurchaseOrderCreateModal вже мав memo на total. SupplierReturnCreateModal — НІ (наслідок copy-paste-evolve розриву). На малих listах (5-10 lines) impact мізерний, але це регресія консистенції — паралельні components мають консистентну memo-ізацію.
-**Grep:** `const total = \w+\(\w+\);$` АБО `const total = \w+\.reduce\([\s\S]{0,300}\);[\s\S]{0,100}return \(` (без `useMemo`/`useCallback` між decl і use).
-**Причина виникнення:** модалки створюються через copy-paste старшого компонента, потім розходяться у розвитку. Один отримує `useMemo` під час оптимізаційного циклу, інший лишається з inline-call. При наступному перегляді розробник дивиться на `const total = ...` рядок і не задумується "коли це викликається?" — приймає як cheap.
-**Підхід до виявлення:** при перегляді form-modal знайти `const total = ` (або `Total`/`subtotal`/`sum`/`amount` decl). Перевірити чи помічений `useMemo`. Якщо ні — простежити чи lines у parent-state. Якщо так — потенціал для memo. Перевірка кросс-component консистентності: коли paired-file (similar modal) має memo, інший має inline call — fix the inconsistency.
-**Підхід до фіксу:** `const total = useMemo(() => totalFromLines(lines), [lines]);` АБО якщо total потребує VAT/discount — single-pass `useMemo(() => { let total = 0; let vat = 0; for (const l of lines) {...}; return { total, vat }; }, [lines])` (див. також 2026-06-11 Twin-scan reduce у tfoot/footer pattern). Header chips/derived strings слідують тій самій парадигмі.
-**Реальний impact:** typing у "Примітки" поля з 10-рядковою таблицею: 30 keystrokes × 10 reduce iterations = 300 wasted ops per editing session. На великих документах (100+ позицій) — 3000 wasted iterations. Мінорно у мс, важливо як консистентність патерну.
-**Де шукати ще:** парні modal-компоненти що були copy-pasted один з одного: PurchaseOrderCreateModal ↔ SupplierReturnCreateModal, EstimateModal ↔ InvoiceModal, StockDocumentCreateModal ↔ ReceiveModal, CreateWorkOrderModal ↔ EditWorkOrderModal. Завжди перевіряти кросс-консистентність memo після рефакторингу одного з пари.
+**Сигнал:** form-modal з табличкою рядків має `const total = totalFromLines(lines);` АБО inline `lines.reduce(...)` без useMemo. Поряд controlled Inputs (notes/date) → setState на typing → total recompute O(N) навіть коли lines незмінні. PO CreateModal мав memo, SupplierReturn — НІ (copy-paste-evolve розрив). Регресія консистенції.
+**Grep:** `const total = \w+\(\w+\);$` АБО `const total = \w+\.reduce\([\s\S]{0,300}\);[\s\S]{0,100}return \(` (без useMemo між decl і use).
+**Причина виникнення:** copy-paste; один отримав useMemo у циклі, інший лишився inline. `const total = ...` приймається як cheap.
+**Підхід до фіксу:** `const total = useMemo(() => totalFromLines(lines), [lines])`; якщо VAT/discount — single-pass `useMemo(() => { let total=0; let vat=0; for (const l of lines) {...}; return {total, vat}; }, [lines])` (2026-06-11 twin-scan).
+**Реальний impact:** typing 30 keystrokes × 10 lines = 300 wasted ops; 100+ позицій → 3000.
+**Де шукати ще:** парні modal copy-pasted: PO CreateModal ↔ SupplierReturn, Estimate ↔ Invoice, SD Create ↔ Receive, WO Create ↔ Edit. Перевіряти memo-консистентність після рефакторингу одного з пари.
 
 ---
 
 ### 2026-06-15 — Row-handler async function inline `const X = async (item) => {...}` без useCallback у list-page → inline arrow `onClick={() => void markX(item)}` для КОЖНОГО з 20 рядків → нова arrow identity на render
 
-**Сигнал:** list-page (purchase-orders, stock-documents, work-orders, counterparties) має 5-10 row-handlers: `handleTransition`, `markDeleted`, `applyPricing`, `loadDetail`, `openReceive`. Усі — `const X = async (po: PurchaseOrder, ...) => {...}` БЕЗ useCallback. У `.map(po => <TableRow><button onClick={() => void markDeleted(po)}>...)` — inline arrow recreated × 20 rows × кожен render. Поки що рядки НЕ memo-узовані (нема React.memo на TableRow), тож impact obscured. Але це гальмує майбутнє введення memo. Симптом: при switching tabs/typing у global filters парент re-renders → всі 20 button onClicks мають нові references → React fiber-reconciler треба порівняти props у всі 20 cells.
-**Grep:** `const handle\w+ = async \([^)]+\) => \{` без `useCallback` навколо у list-page файлах. Парено з `onClick=\{\(\) => void handle\w+\(\w+\)\}` у `.map()`.
-**Причина виникнення:** list-page файли великі (300-1500 LOC). Розробник пише handler швидко як `const = async` бо це менше boilerplate ніж `const = useCallback(async, [...])`. Усвідомлення приходить пізно — коли треба ввести memoized TableRow і виявляється що props identity нестабільна.
-**Підхід до виявлення:** при перегляді list-page файлу шукати ВСІ `const handle\w+ = async`. Кожен такий handler який використовується у row-render-context (всередині `.map()` через inline arrow або direct prop) — кандидат на useCallback. Стратегія повна: усі row-handlers одночасно, не точково. Опір "але я не memo-узую row" — false economy, useCallback дешевий і готує файл для майбутніх змін.
-**Підхід до фіксу:** обгорнути кожен handler у useCallback з мінімальними deps: `useCallback(async (po) => {...}, [confirm, queryClient])`. Для handler-ів що залежать від іншого handler-а (наприклад `openReceive → loadDetail`) — порядок declaration важливий: спершу залежний handler з useCallback, потім зовнішній з useCallback що включає його в deps. Якщо handler використовує функцію типу `load` (recreated кожен render) — eslint-disable-next-line з коментарем чому це OK (semantically той самий load, identity-change irrelevant for click-time closure).
-**Реальний impact:** stable button onClick identities дозволяють у майбутньому ввести `memo(TableRow)` без identity-thrash → 20 row re-renders → 0 коли selection/filter не зачіпає row. Зараз без memo на TableRow impact ≈ 0мс, але це інвестиція у наступний рефакторинг.
-**Де шукати ще:** усі list-page файли (catalog/inventory/work-orders/invoices/counterparties/employees тощо). Уніфікувати стиль: ВСІ async row-handlers — useCallback. Workflow: один pass на файл, не точково.
+**Сигнал:** list-page має 5-10 row-handlers (`handleTransition`, `markDeleted`, `loadDetail`) як `const X = async (po) => {...}` БЕЗ useCallback. У `.map(po => <button onClick={() => void markDeleted(po)}>)` — inline arrow × 20 rows × render. Гальмує майбутнє введення memo(TableRow).
+**Grep:** `const handle\w+ = async \([^)]+\) => \{` без useCallback + `onClick=\{\(\) => void handle\w+\(\w+\)\}` у `.map()`.
+**Причина виникнення:** великі файли (300-1500 LOC); `const = async` менше boilerplate. Усвідомлення пізно — коли треба memo(TableRow).
+**Підхід до фіксу:** useCallback з мінімальними deps `useCallback(async (po) => {...}, [confirm, queryClient])`. Для handler→handler (openReceive→loadDetail) — порядок declaration (залежний перший). Якщо use `load` (recreated) — eslint-disable з коментарем (identity irrelevant для click-time closure). Стратегія: усі row-handlers одночасно, один pass на файл.
+**Реальний impact:** stable onClick → майбутній memo(TableRow) без identity-thrash (20 re-renders → 0). Зараз ≈0мс, інвестиція.
+**Де шукати ще:** усі list-page (catalog/inventory/WO/invoices/counterparties/employees). ВСІ async row-handlers — useCallback.
 
 ---
 
 ### 2026-06-15 — Branching ternary `cond ? findFirst(validate-by-id) : findFirst(auto-pick-by-criteria)` всередині Promise.all — single optional FK з двома різними query shapes у одному слоті
 
-**Сигнал:** create-сервіс приймає optional FK (contractId/employeeId/branchId) з двома гілками логіки: (A) якщо клієнт надав ID — validate що entity належить scope (orgId + parentEntityFK + type-discriminator), (B) якщо не надав — auto-pick "primary" entity за критерієм (isPrimary=true OR createdAt min/max). Колишній код пише `let entityId = dto.X ?? null; if (entityId) { const provided = await ..findFirst({where:exact-id}); ... } else { const auto = await ..findFirst({where:criteria, orderBy:...}); entityId = auto?.id ?? null; }` ПІСЛЯ Promise.all для основних FK guards (supplier/warehouse). Sequential `if/else` додає 1 RTT навіть коли основні FK guards проходять миттєво.
+**Сигнал:** create-сервіс приймає optional FK (contractId) з двома гілками ПІСЛЯ Promise.all основних guards: (A) `if (dto.X) findFirst({where:exact-id})` (validate), (B) `else findFirst({where:criteria, orderBy})` (auto-pick primary). Sequential if/else додає 1 RTT.
 **Grep:** `let \w+Id = dto\.\w+Id \?\? null;[\s\S]{0,500}if \(\w+Id\) \{[\s\S]{0,300}findFirst[\s\S]{0,300}\} else \{[\s\S]{0,300}findFirst[\s\S]{0,300}orderBy`
-**Причина виникнення:** код виглядає лінійно "якщо дано — провалідуємо, не дано — авто-вибір". Розробник інтуїтивно поза Promise.all сприймає це як "розрізнення логіки" (різні where/orderBy). Не помічає що предикати обох гілок відомі синхронно з DTO + scalars (counterpartyId=dto.supplierId, типу контракту). Жодна гілка не залежить від результату supplier-guard у Promise.all.
-**Підхід до виявлення:** при перегляді create()/update() сервісу шукати `if (dto.X) {...validate...} else {...auto-pick...}` БЛОК ПІСЛЯ Promise.all для FK guards. Перевіряти чи обидві гілки findFirst мають синхронно-доступні where-предикати (lookup-by-id або lookup-by-criteria). Якщо так — мерджити у Promise.all як третій ternary-slot.
-**Підхід до фіксу:** трирядковий refactor: (1) Додати тернарку `const hasContractId = !!dto.X;` ДО Promise.all (фіксує гілку). (2) Виlift тернарку у Promise.all: `hasContractId ? findFirst({where:exact-id}) : findFirst({where:criteria, orderBy:...})`. (3) Post-Promise.all: `if (hasContractId && !contract) throw NotFound; const contractId = hasContractId ? (contract as {id:string}).id : (contract?.id ?? null);` — типобезпека через cast у validate-branch (NotFound уже забезпечує не-null). Throw order збережено.
-**Реальний impact:** PO create() з contractId переданим: 3 RTT → 2 RTT (33% time-save). Без contractId — 3 RTT → 2 RTT (auto-pick parallel з supplier/warehouse). На high-RPS endpoint це звільняє Prisma connection швидше.
-**Де шукати ще:** будь-який create()/addX() сервісу що приймає optional FK з auto-pick fallback (primary contract, default warehouse, primary employee, default branch, primary bank account, default currency). Особливо коли поверх стоїть "Auto-pick optional FK резолюція ПІСЛЯ паrallel FK guards" pattern — він описує єдину гілку (auto-pick), цей — описує обидві гілки (validate + auto-pick) у тому самому слоті.
+**Причина виникнення:** лінійне "дано→validate, ні→auto-pick". Обидві гілки мають синхронно-доступні предикати (dto+scalars), не залежать від supplier-guard.
+**Підхід до фіксу:** (1) `const hasContractId = !!dto.X;` ДО Promise.all; (2) виlift тернарку у Promise.all `hasContractId ? findFirst(exact-id) : findFirst(criteria, orderBy)`; (3) post: `if (hasContractId && !contract) throw NotFound; const contractId = hasContractId ? (contract as {id:string}).id : (contract?.id ?? null)`.
+**Реальний impact:** PO create() 3 RTT → 2 RTT (33%), з contractId чи без.
+**Де шукати ще:** create()/addX() з optional FK + auto-pick fallback (primary contract, default warehouse/branch/currency, primary employee/bank-account). Розширення "Auto-pick optional FK ПІСЛЯ parallel guards" на обидві гілки у тому слоті.
 
 ---
 
 ### 2026-06-15 — Sequential `findFirst (tenant guard) → create + update` пара у $transaction де create і update пишуть у РІЗНІ таблиці але читають той самий entity.id зі scope — settlements/payments/balance-update триплет
 
-**Сигнал:** сервіс-метод (settlements.createTransaction, account-update, balance-mutate) має шаблон: `const account = await db.X.findFirst({where:tenant guard}); if (!account) throw; await db.Y.create({data:{settlementAccountId: account.id, ...}}); await db.X.update({where:{id: account.id}, data:{balance: {increment: delta}}})`. Sequential `create` (append-only event-log row) + `update` (mutate aggregate balance) — обидва читають `account.id` зі scope, не залежать один від одного. Між create і update РІЗНІ таблиці (SettlementTransaction vs SettlementAccount), різні primary keys. У Postgres-tx на одному pinned connection writes resolve concurrently.
+**Сигнал:** сервіс (settlements.createTransaction, balance-mutate): `const account = await db.X.findFirst({tenant guard}); if (!account) throw; await db.Y.create({settlementAccountId: account.id}); await db.X.update({where:{id: account.id}, data:{balance:{increment: delta}}})`. Sequential create (event-log) + update (aggregate balance) — обидва читають лише `account.id`, РІЗНІ таблиці. Writes resolve concurrently на pinned tx connection.
 **Grep:** `await \w+\.\w+\.findFirst[\s\S]{0,200}await \w+\.\w+\.create\([\s\S]{0,400}await \w+\.\w+\.update\(`
-**Причина виникнення:** сервіс-метод читається як event-log paтterн (create-event → mutate-aggregate). Розробник інтуїтивно ставить update ПІСЛЯ create — "спочатку записати подію, потім оновити баланс". Реально: і create і update залежать ТІЛЬКИ від account.id (read once у findFirst), порядок між ними не має значення для бізнес-семантики (балансовий increment атомарний у $transaction). Бесь sequential pattern — лише JS-event-loop overhead.
-**Підхід до виявлення:** у service-методі знайти триплет `findFirst + create + update` де: (1) findFirst — tenant guard з `select: {id: true}` (або вузький projection), (2) create читає лише `.id` зі scope, (3) update читає лише `.id` зі scope. Якщо так — кандидат на post-guard Promise.all. Інша евристика: якщо метод приймає типу "create event + mutate aggregate" → майже завжди фіксуємо.
-**Підхід до фіксу:** (1) Якщо є sync pre-compute (наприклад `balanceDelta` через if-else по type-enum) — підняти ДО $transaction для fail-fast на unknown enum. (2) Усередині $transaction: `findFirst` залишити sequential (entity мусить існувати), потім `await Promise.all([X.create(...), X.update(...)])`. (3) Звузити findFirst до `select: { id: true }` якщо інші поля не використовуються.
-**Реальний impact:** settlement.createTransaction викликається на: WO COMPLETED (1× в потоці), invoice PAID (1×), payment.create (1×). На 100 WO/day з PO receive + WO complete + invoice + payment ~4 settlement.createTransaction/WO × 100 WO = 400 викликів/day → 400 RTT saved/day. Малий impact індивідуально, але на high-volume SaaS суттєвий.
-**Де шукати ще:** будь-який append-only event-log + aggregate-mutate тandem: payment.create + invoice.balanceDue.decrement, stock-movement.create + stock-item.quantity.increment, audit-event.create + entity.update. Особлива увага: якщо create та update пишуть у ту саму таблицю → ОБЕРЕЖНО (race-condition можливий навіть на pinned connection якщо updateMany torgує одним рядком), завжди писати у РІЗНІ таблиці.
+**Причина виникнення:** event-log паттерн "спочатку подія, потім баланс". Порядок не має значення (increment атомарний у $tx).
+**Підхід до фіксу:** (1) sync pre-compute (`balanceDelta` по type-enum) ДО $transaction (fail-fast); (2) findFirst sequential, потім `await Promise.all([X.create(...), X.update(...)])`; (3) `select: {id: true}`.
+**Реальний impact:** settlement.createTransaction на WO COMPLETED/invoice PAID/payment.create. 100 WO/day × ~4 → 400 RTT saved/day.
+**Де шукати ще:** append-only event-log + aggregate-mutate: payment.create + invoice.balanceDue.decrement, stock-movement.create + stock-item.quantity.increment, audit-event.create + entity.update. ОБЕРЕЖНО коли create+update у ту саму таблицю (race) — завжди РІЗНІ таблиці.
 
 ---
 
 ### 2026-06-15 — Chunked bulk-update loop `for (const u of chunk) await tx.X.update(...)` у $transaction де input plan МОЖЕ мати duplicate PK — Promise.all + Map-dedup last-wins
 
-**Сигнал:** bulk-pricing/bulk-import-сервіс (applyRule, applyPricing з PO/xlsx) будує `plan: {goodId, newPrice, ...}[]` через ітерацію по lines/rows, потім `for (let i = 0; i < plan.length; i += CHUNK) { await $transaction(async tx => { for (const u of chunk) await tx.X.update({where: {id: u.goodId}, data:...}) }) }`. Sequential `tx.X.update` у chunk пишуть disjoint PK rows (різні goodId) — кандидат на Promise.all. АЛЕ: коли plan будується з джерела де ОДИН товар може з'явитися кілька разів (PO має кілька ліній того ж goodId за різну ціну, xlsx import має multi-SKU lookup на той самий good) — sequential loop неявно мав last-write-wins семантику. Promise.all на duplicate goodId викликає race-condition: невизначено, яка з двох конкуруючих update перемагає. Окремо: priceHistory.createMany усередині того ж chunk теж пише по N рядків — N duplicates у audit log.
+**Сигнал:** bulk-pricing/import (applyRule, applyPricing з PO/xlsx) будує `plan: {goodId, ...}[]` по lines/rows, потім `for (i += CHUNK) { $transaction(tx => for (const u of chunk) await tx.X.update({where: {id: u.goodId}})) }`. Disjoint PK → кандидат на Promise.all. АЛЕ: коли plan з джерела де ОДИН товар з'являється кілька разів (PO кілька ліній того ж goodId; xlsx multi-SKU→той самий good) — sequential loop мав last-write-wins; Promise.all на duplicate PK = race-condition.
 **Grep:** `for \(const \w+ of chunk\) \{[\s\S]{0,200}await tx\.\w+\.(update|updateMany)`
-**Причина виникнення:** chunked bulk pattern — стандартна оптимізація проти ловлі великих транзакцій. Sequential await читається безпечно ("обережно, по одному"). Розробник не задумувався чи входи унікальні — plan accumulator проходить через ввід "rows/lines" які можуть мати дублі.
-**Підхід до виявлення:** для кожного chunked bulk-update loop у $transaction — простежити походження plan accumulator. Якщо `plan` будується з `findMany(table).map(...)` де table має unique PK — дублі неможливі (safe to Promise.all). Якщо `plan` будується з `for (const line of parent.lines) plan.push({goodId: line.goodId, ...})` — duplicates можливі коли parent має >1 line з тим самим FK. Те саме для xlsx/csv import: дві row з різним SKU можуть резолвити в той самий good.
-**Підхід до фіксу:** spec-аналіз джерела plan ДО Promise.all: (1) Якщо джерело гарантує unique PK (findMany результат, IDs з Set) — просто Promise.all (race-safe бо disjoint writes). (2) Якщо джерело МОЖЕ мати duplicate PK — `const deduped = Array.from(new Map(plan.map(u => [u.pkField, u])).values())` ДО Promise.all. Map last-wins зберігає старий sequential semantic ("остання спроба перемагає"). priceHistory.createMany (audit log) сам по собі тепер пише унікальні рядки — це позитивний side-effect (не дублює N записів аудиту на одну зміну).
-**Реальний impact:** chunk=100, N=10 chunks → 1000 sequential `await` мікрозадач event-loop → 10 batches of Promise.all (100 microtasks per batch resolved у єдиній мікротасці). У Prisma $transaction справжнього паралелізму немає (pinned connection serializes SQL), але економія JS-event-loop overhead помітна на великих listах (1000+ goods).
-**Де шукати ще:** будь-який chunked update loop у $transaction для bulk operations: pricing rules, list pricing import, bulk discount apply, mass status change, cleanup workers. Особлива увага коли plan будується з parent.lines/parent.children (можливі дублі) vs з findMany результату (PK-unique).
+**Причина виникнення:** chunked bulk pattern; sequential "по одному" безпечно. Розробник не задумувався чи входи унікальні (plan з rows/lines).
+**Підхід до фіксу:** аналіз джерела plan ДО Promise.all: (1) unique PK (findMany.map, IDs з Set) → просто Promise.all; (2) МОЖЕ мати duplicate PK → `const deduped = Array.from(new Map(plan.map(u => [u.pkField, u])).values())` ДО Promise.all (Map last-wins). priceHistory.createMany теж пише унікальні рядки (позитивний side-effect).
+**Реальний impact:** chunk=100 × 10 → 1000 sequential await → 10 batches Promise.all. Prisma serializes SQL, але JS-event-loop overhead помітний на 1000+ goods.
+**Де шукати ще:** chunked update loop у $transaction: pricing rules, list import, bulk discount, mass status change, cleanup workers. Увага коли plan з parent.lines (дублі) vs findMany (PK-unique).
 
 ---
 
 ### 2026-06-15 — Inventory-mutation helper + parent-line metadata update — sequential await пара у per-line $transaction loop де writes ідуть у РІЗНІ таблиці (cross-table side-effect helper vs scalar column update)
 
-**Сигнал:** service-метод що applies effect документу (PO receive(), SD transition(CONFIRMED), WO complete) має `await this.prisma.$transaction(async tx => { for (const line of doc.lines) { await this.inventory.createMovement(...) ; await tx.purchaseOrderLine.update({ ...UoM persist... }) ; ... } })`. Перший await — high-level helper що внутрішньо пише у >1 таблиць (StockMovement + StockBatch + StockItem upsert + ...). Другий — узкоспеціалізований `tx.X.update({ where: { id: line.id, ...}, data: { unitOfMeasureId, receivedQty: { increment } } })` що пише у parent line row. Sequential await блокує — кожен RTT × N ліній множиться. Для TRANSFER-документів додатково має 2 послідовних `createMovement` (writeoff source warehouse → receipt target warehouse) — disjoint StockItem keys, race-safe.
+**Сигнал:** service applies effect документу (PO receive, SD CONFIRMED, WO complete): `$transaction(tx => for (const line of doc.lines) { await inventory.createMovement(...); await tx.purchaseOrderLine.update({unitOfMeasureId, receivedQty: {increment}}) })`. createMovement пише у StockMovement/StockBatch/StockItem (`orgId+goodId+warehouseId`), parentLine.update у PurchaseOrderLine (`id+orgId`) — НЕ перетинаються. Sequential × N ліній. TRANSFER має 2 createMovement (writeoff→receipt, disjoint keys).
 **Grep:** `for \(const \w+ of \w+\.lines\) \{[\s\S]{0,500}await this\.inventory\.createMovement[\s\S]{0,300}await tx\.\w+Line\.update`
-**Причина виникнення:** helper-методи (`inventory.createMovement`, `settlements.createTransaction`) виглядають "важкими" — розробник інтуїтивно ставить їх sequential. Parent-line `update` бачиться як "продовження тієї ж операції" — інтуїція "це треба робити після того, як движение створено". Реально: `createMovement` пише в `StockMovement`/`StockBatch`/`StockItem` (composite key `orgId+goodId+warehouseId`), `parentLine.update` пише в `PurchaseOrderLine` (composite key `id+orgId`). НЕ перетинаються — Postgres резолвить writes на тій самій tx connection concurrently без deadlock.
-**Підхід до виявлення:** при перегляді `$transaction` callback з `for (const line of doc.lines)` — для кожної пари await перевірити чи writes ідуть у РІЗНІ таблиці. Якщо так — Promise.all. Особливо звертати увагу на helper-методи (`inventory.X`, `settlements.X`, `pricing.X`) бо їхні внутрішні writes ховаються від огляду — потрібно знати схему side-effects helper'у.
-**Підхід до фіксу:** `await Promise.all([inventory.createMovement(...), tx.parentLine.update(...)])`. Conditional UoM update — `lineUnitId ? tx.parentLine.update(...) : Promise.resolve()` зберігає тип Promise<unknown>. Для TRANSFER — все три (writeoff + receipt + UoM update) у Promise.all, бо source/target warehouses disjoint. Loop-carried state (receivedAmount += ..., results.push) лишається post-await — ітерації сериальні (правильно), всередині — concurrent.
-**Реальний impact:** на PO receive() з 10 partial-receive lines: 10×2=20 sequential RTTs → 10×1=10 parallel-pair RTTs (50% time-save). На SD CONFIRMED transition з 5 lines: 10 RTTs → 5 RTTs. На TRANSFER: 15 RTTs → 5 RTTs.
-**Де шукати ще:** будь-який `service.X(...)` що applies side-effects з документу на inventory/settlements/queue: invoice payment apply (line-update + payment-record-create), credit note refund (line-update + settlement-create), WO complete (createMovement per part + part.update), receive po (createMovement + line.update + settlement.createTransaction в кінці), credit-charge reversal у CRM.
+**Причина виникнення:** helper "важкий" → sequential; parentLine.update "продовження". Реально writes у різні composite keys, concurrent без deadlock.
+**Підхід до фіксу:** `await Promise.all([inventory.createMovement(...), tx.parentLine.update(...)])`. Conditional UoM: `lineUnitId ? tx.parentLine.update(...) : Promise.resolve()`. TRANSFER: writeoff+receipt+UoM у Promise.all. Loop-carried (receivedAmount +=, results.push) post-await.
+**Реальний impact:** PO receive() 10 lines: 20 RTT → 10 (50%). SD CONFIRMED 5 lines: 10→5. TRANSFER: 15→5.
+**Де шукати ще:** service що applies side-effects на inventory/settlements/queue: invoice payment apply (line-update + payment-create), credit note refund, WO complete (createMovement + part.update), PO receive (+settlement.createTransaction), credit-charge reversal.
 
 ---
 
 ### 2026-06-15 — N-FK guards у update() з conditional шляхами (if dto.X) — третій FK validation з cross-dependency на dto.supplierId/effective entity
 
-**Сигнал:** PATCH/update service-метод приймає DTO де декілька FK (`dto.supplierId`, `dto.warehouseId`, `dto.contractId`) — всі optional. Розробник пише три послідовних `if (dto.X) { const X = await prisma.X.findFirst({...}); if (!X) throw NotFound }` блоків (validation для кожного FK). Іноді останній FK має cross-dependency на попередній — `effectiveSupplierId = dto.supplierId ?? po.supplierId` для contract validation. Конкретний симптом: 3 послідовних findFirst де перші два повністю незалежні, а третій залежить лише від dto-state і поточного rec (поточного `po.supplierId`), НЕ від результату попередніх findFirst.
+**Сигнал:** update() приймає DTO з кількома optional FK (`dto.supplierId`, `dto.warehouseId`, `dto.contractId`). Три послідовних `if (dto.X) { const X = await findFirst({...}); if (!X) throw }`. Останній FK може мати cross-dependency `effectiveSupplierId = dto.supplierId ?? po.supplierId` — але це scalar lookup, НЕ блокування на результат попереднього findFirst.
 **Grep:** `update\(orgId.*dto.*\)[\s\S]{0,200}if \(dto\.\w+Id\) \{[\s\S]{0,300}findFirst[\s\S]{0,300}if \(dto\.\w+Id\) \{[\s\S]{0,300}findFirst`
-**Причина виникнення:** код виглядає лінійно "захищаємо кожен FK окремо" — це безпечно і легко read. Conditional шляхи (`if (dto.X)`) інтуїтивно сприймаються як "не треба чіпати якщо не передано". Cross-dependency на `effectiveSupplierId` маскує що contract validation НЕ блокована результатом supplier validation — третій запит лише читає `dto.supplierId ?? po.supplierId` (скаляр у scope).
-**Підхід до виявлення:** при перегляді update()/patch() — зчитати ВСІ FK validation блоки і запитати "які з них дійсно потребують результату попереднього?". Cross-dependent FK (наприклад contract validation через `dto.supplierId ?? po.supplierId`) — ЦЕ НЕ блокування на результат findFirst, це scalar lookup. Все три у Promise.all валідно якщо предикат лежить у dto/existing-rec (доступний синхронно).
-**Підхід до фіксу:** обчислити `effectiveXxxId = dto.xxxId ?? po.xxxId` синхронно ДО Promise.all. У Promise.all — три тернарки `dto.X ? findFirst({...}) : Promise.resolve(null)`. ПІСЛЯ awaits — guard `if (dto.X && !result) throw NotFound` (порядок не страждає: throw кидається з першої проблеми, всі запити вже виконані). Якщо є post-processing (наприклад `newContractId = contract.id`), він йде після всіх throw-блоків — той самий fast-fail контракт що sequential pattern.
-**Реальний impact:** на update() запит що змінює супplier+warehouse+contract в одному PATCH (типова форма "edit all fields у DRAFT") — 3 sequential RTT → 1 parallel RTT = 67% time-save. На SaaS з 50+ org-ів полегшує shared connection pressure при concurrent edits.
-**Де шукати ще:** будь-який update()/patch() сервісу що приймає optional FK + cross-dependent third lookup — invoice.update (counterpartyId+warehouseId+priceListId), workOrder.update (vehicleId+counterpartyId+contractId+liftId), stockDocument.update (warehouseId+targetWarehouseId+contractId якщо буде).
+**Причина виникнення:** "захищаємо кожен FK окремо". Cross-dependency `effectiveSupplierId` маскує що contract validation читає лише `dto.supplierId ?? po.supplierId` (скаляр у scope).
+**Підхід до фіксу:** `effectiveXxxId = dto.xxxId ?? po.xxxId` синхронно ДО Promise.all. У Promise.all три тернарки `dto.X ? findFirst({...}) : Promise.resolve(null)`. ПІСЛЯ — guard `if (dto.X && !result) throw NotFound`.
+**Реальний impact:** update() supplier+warehouse+contract у одному PATCH: 3 RTT → 1 (67%).
+**Де шукати ще:** update()/patch() з optional FK + cross-dependent third lookup — invoice.update (counterpartyId+warehouseId+priceListId), workOrder.update (vehicleId+counterpartyId+contractId+liftId), stockDocument.update.
 
 ---
 
 ### 2026-06-14 — Detail-panel/Drawer/Modal будівник через IIFE `(() => { const build = ...; return <Panel tabs={selectedItem ? build(selectedItem) : undefined} /> })()` у тілі parent list-page — tabs object identity рекреюється на КОЖЕН render
 
-**Сигнал:** list-page має secondary panel (DetailPanel/Drawer/Modal/Slide-over) з вкладеним tabs масивом будуваним у JSX-тілі parent через IIFE `(() => { const buildX = (item) => [...]; return <Panel tabs={selectedItem ? buildX(selectedItem) : undefined} configFields={schemaToConfigFields(SCHEMA, panelConfig.config)} ... /> })()`. tabs array і configFields пересоздаються при КОЖНОМУ render parent — навіть якщо selectedItem не мінявся. Якщо у panel.useEffect deps містять onClose/tabs identity (типовий case у Modal/keydown listeners) → ефект re-fires → `addEventListener`/`removeEventListener` чашка + Input focus у inner controls (наприклад редагування minStock) скидається.
-**Grep:** `\{\(\(\) =>` у JSX-тілі великих компонентів (>300 LoC) поряд з `<DetailPanel|<Modal|<Drawer|<SlidePanel`.
-**Причина виникнення:** натуральна реакція коли "tabs залежать від selectedItem" — інлайн закриття дає миттєвий доступ до state без props drilling. IIFE здається легким — "lambda всередині JSX, нічого не коштує". Реально: tabs.content включає вкладений `<Input value={minStockVal} onChange={e => onChangeX(e.target.value)} />` де onChange — inline arrow, recreated на render → memo дочірніх не зловить identity-stable і re-render піде каскадом до Modal/keydown effects.
-**Підхід до виявлення:** при перегляді list-page файлу шукати IIFE pattern перед `<Panel tabs={...} />`. Перевіряти що (1) tabs будуються динамічно, (2) контент tabs має controlled Input/Select (особливо minStock-edit, deviceId-pick, password-set). Якщо хоча б одне виконано — потенційний focus-loss бажано перевірити вручну у DevTools profiler.
-**Підхід до фіксу:** двофазний refactor: (1) Винести у memo-компонент `XDetailPanel` на module-level з explicit props (selectedItem, editingX, onCloseX, onSaveX, panelConfig...). (2) Всередині — `const tabs = useMemo(() => { ... }, [selectedItem, editingX, ...])`. configFields теж useMemo з deps на `panelConfig.config`. (3) У parent — всі handlers через useCallback (onCloseDetail, onStartEditX, onSaveX...). Type для panelConfig prop — `ReturnType<typeof useDetailPanelConfig>` (alias на module-level для перевикористання).
-**Реальний impact:** typing у parent search debounce: кожен render → tabs identity stable → Modal.useEffect skips re-add listener → Input focus у edit-mode не зривається. Subjective UX (Input focus loss) > мс.
-**Де шукати ще:** будь-яка list-page з DetailPanel/Drawer/Modal збудованим inline (counterparties, work-orders, invoices, purchase-orders, stock-documents — всі мають "edit field у panel" pattern). Особливо ризиковано при поєднанні з debounce-search у parent.
+**Сигнал:** list-page має secondary panel з tabs масивом у JSX-тілі через IIFE `(() => { const buildX = item => [...]; return <Panel tabs={selectedItem ? buildX(selectedItem) : undefined} configFields={schemaToConfigFields(...)} /> })()`. tabs+configFields пересоздаються на КОЖЕН render навіть коли selectedItem не мінявся. Якщо panel.useEffect deps містять onClose/tabs identity → re-fires → addEventListener/removeEventListener + Input focus скидається.
+**Grep:** `\{\(\(\) =>` у JSX-тілі >300 LoC компонентів поряд з `<DetailPanel|<Modal|<Drawer|<SlidePanel`.
+**Причина виникнення:** inline закриття дає доступ до state без props drilling. IIFE "нічого не коштує", але tabs.content має controlled `<Input onChange={inline arrow}>` → каскад re-render до Modal/keydown effects.
+**Підхід до фіксу:** (1) memo-компонент `XDetailPanel` на module-level з explicit props (selectedItem, editingX, onCloseX, onSaveX, panelConfig); (2) всередині `const tabs = useMemo(() => {...}, [selectedItem, editingX, ...])`, configFields теж useMemo; (3) parent handlers через useCallback. panelConfig type — `ReturnType<typeof useDetailPanelConfig>`.
+**Реальний impact:** typing у parent debounce → tabs identity stable → Input focus не зривається. Subjective UX > мс.
+**Де шукати ще:** list-page з DetailPanel/Drawer/Modal inline (counterparties, WO, invoices, PO, SD — "edit field у panel"). Ризиковано з debounce-search у parent.
 
 ---
 
 ### 2026-06-14 — Новий list/report endpoint з date sort без covering index — `findMany({orderBy: createdAt, take})` сканує таблицю seqscan коли existing index не покриває WHERE pattern
 
-**Сигнал:** новий feature додає endpoint що робить `findMany({where: {orgId, [optionalCol1], [optionalCol2], [createdAt range]}, orderBy: {createdAt}, take: N})` на high-write append-only таблицю (StockMovement, AuditLog, Notification, BatchConsumption). Існуючі індекси покривають типові паттерни старих endpoint-ів (наприклад `(orgId, warehouseId, createdAt)`), але новий endpoint має more permissive WHERE — `warehouseId` тепер optional, або filter тільки по `goodId`. Postgres вимагає leading-cols match для index seek — якщо `warehouseId` IS NULL у WHERE, index `(orgId, warehouseId, createdAt)` не вибирається → seqscan + external sort на take:N рядках.
-**Grep:** `findMany.*orderBy.*createdAt` + `take: \d{3,}` + перевірити `grep "@@index" packages/database/prisma/schema.prisma` на таблиці. Якщо найкращий індекс має >1 col перед `createdAt` що ця query не фільтрує — гап.
-**Причина виникнення:** старі індекси проектувались під старі endpoint-и. Новий звітний endpoint часто має ширшу area (all-warehouses, all-goods, by-date). Розробник пише `findMany` стандартно, не задумуючись про explain.
-**Підхід до виявлення:** при review-of-perf — спершу зібрати усі WHERE patterns для конкретної таблиці (grep по `prisma.X.findMany` + наступні рядки `where:` block). Для кожного унікального set фільтрів — перевірити чи існує index що (a) має `orgId` (tenant guard) як leading col, (b) включає sortKey у tail, (c) optional cols вкладені у середині (порядок: фікс → optional → sort).
-**Підхід до фіксу:** додати COVERING index у форматі `@@index([orgId, sortKey])` для unfiltered case + `@@index([orgId, optionalCol, sortKey])` для кожного типового фільтру. Не плодити надлишкові — Postgres може брати prefix існуючого `(a,b,c,d)` як `(a,b,c)` index, тому додаємо тільки коли prefix не покриває. У commit-message — explain trace (current plan: seqscan; expected: index scan).
-**Реальний impact:** для звітного endpoint з take:3000 на таблиці 100k-500k рядків — seqscan ~150-300мс → index scan ~5-15мс. На SaaS з 50+ org-ів полегшує shared connection pressure.
-**Де шукати ще:** після кожного нового report/list endpoint (особливо append-only models: StockMovement, AuditLog, BatchConsumption, Notification, WorkOrderStatusLog) — grep `@@index` поверх таблиці і compare з actual WHERE patterns у service.
+**Сигнал:** новий endpoint робить `findMany({where: {orgId, [optionalCol1], [createdAt range]}, orderBy: {createdAt}, take: N})` на append-only таблицю (StockMovement, AuditLog, Notification, BatchConsumption). Existing index `(orgId, warehouseId, createdAt)`, але новий WHERE more permissive (warehouseId optional). Postgres вимагає leading-cols match — warehouseId IS NULL → index не вибирається → seqscan + external sort.
+**Grep:** `findMany.*orderBy.*createdAt` + `take: \d{3,}` + `grep "@@index" packages/database/prisma/schema.prisma`. Якщо найкращий index має >1 col перед `createdAt` що query не фільтрує — гап.
+**Причина виникнення:** старі індекси під старі endpoint-и; новий звітний має ширшу area (all-warehouses, by-date).
+**Підхід до фіксу:** covering `@@index([orgId, sortKey])` для unfiltered + `@@index([orgId, optionalCol, sortKey])` для типового фільтру. Не плодити надлишкові (Postgres бере prefix). Commit-message з explain trace.
+**Реальний impact:** take:3000 на 100k-500k рядків: seqscan ~150-300мс → index scan ~5-15мс.
+**Де шукати ще:** після нового report/list endpoint на append-only models (StockMovement, AuditLog, BatchConsumption, Notification, WorkOrderStatusLog) — compare `@@index` з actual WHERE.
 
 ---
 
 ### 2026-06-14 — Sequential `await tx.X.update(...); await tx.Y.create(...)` у loop-карриджних батч-операціях — Promise.all всередині ітерації без злому loop-carried стану
 
-**Сигнал:** loop `for (const x of batches) { ... await db.X.update(...); await db.Y.create(...); remaining -= take; }` — два writes на ту саму ітерацію не залежать один від одного (update на batchId, create нового batchConsumption), але loop-carried state (`remaining`, `consumed`, etc.) лишається сериально. Sequential await ВСЕРЕДИНІ ітерації коштує зайвий RTT, multiply на N-iter.
+**Сигнал:** `for (const x of batches) { await db.X.update(...); await db.Y.create(...); remaining -= take; }` — два writes на ітерацію не залежать (update на batchId, create batchConsumption), але loop-carried state (`remaining`) сериальний. Sequential await всередині ітерації × N-iter.
 **Grep:** `for \(const .* of .*\)\s*\{[\s\S]{0,300}await .*\.\w+\.update[\s\S]{0,200}await .*\.\w+\.create`
-**Причина виникнення:** "update partition, потім create consumption record" виглядає як sequential business event — update partition повертає void, create отримує partition.id з batch object у scope. Розробник не помічає що результат update нікуди не йде.
-**Підхід до виявлення:** при перегляді циклу — для кожного `await db.X.action(...)` всередині запитати "чи наступний рядок читає РЕЗУЛЬТАТ цієї операції?". Якщо ні (void return або просто `await` без destructure) — кандидат на `Promise.all` ВСЕРЕДИНІ ітерації. Loop-carried state (`remaining`, accumulators) лишається outside Promise.all → ітерації між собою сериальні (правильно), всередині — parallel (виграш).
-**Підхід до фіксу:** `await Promise.all([db.X.update({...}), db.Y.create({...})])`. Запити йдуть на одну Prisma connection concurrently — race-safe бо різні таблиці/різні primary keys. Loop-carried mutations (`remaining -= take`, `results.push`) лишаються post-await — ітерації сериальні. Той самий патерн працює для `findFirst(tenant guard) → update + create` де update + create незалежні від результату findFirst (лише від `.id`/`.foreignKey` поля).
-**Реальний impact:** на consumeBatch (FIFO/LIFO) з 5 partitions: 5×2=10 sequential RTTs → 5×1=5 parallel-pair RTTs (50% time-save для DB roundtrips). Аналогічно для returnToBatch у WO cancellation з 10 parts → 10 RTT економії.
-**Де шукати ще:** будь-який batch-consume/release/return loop у inventory.service, batch.service, work-orders.service; також settlement reconciliation (debt-update + transaction-create), invoice payment apply (line-update + payment-record-create).
+**Причина виникнення:** "update partition, потім create record"; update void, create бере partition.id зі scope. Результат update нікуди не йде.
+**Підхід до фіксу:** `await Promise.all([db.X.update({...}), db.Y.create({...})])` (race-safe, різні таблиці). Loop-carried (`remaining -= take`, `results.push`) post-await. Той самий для `findFirst → update + create` де update+create залежать лише від `.id`.
+**Реальний impact:** consumeBatch 5 partitions: 10 RTT → 5 (50%). returnToBatch 10 parts → 10 RTT.
+**Де шукати ще:** batch-consume/release/return у inventory/batch/work-orders.service; settlement reconciliation, invoice payment apply.
 
 ---
 
 ### 2026-06-12 — Disjoint-set `tx.X.updateMany()` pairs всередині `$transaction` callback — Promise.all замість sequential await
 
-**Сигнал:** service-метод (sync/refresh/cascade-update) всередині `await this.prisma.$transaction(async tx => { ... })` робить 2+ послідовні `await tx.X.updateMany({where:A,data:...})` потім `await tx.X.updateMany({where:B,data:...})` де A і B — DISJOINT row sets (різні значення FK/предикату, не перетинаються). Наприклад: одна оновлює children-rows (`parentSlotId: { not: null }`), інша parent (`parentSlotId: null`). Sequential await блокує — кожен write коштує 1 RTT + DB execution time. Симптом у git diff: дві updateMany підряд з різним `where` але однаковою mutation-семантикою.
+**Сигнал:** sync/refresh/cascade-update у `$transaction` робить 2+ послідовні `await tx.X.updateMany({where:A})` потім `await tx.X.updateMany({where:B})` де A і B DISJOINT (напр. children `parentSlotId: {not: null}` vs parent `parentSlotId: null`). Sequential = 2 RTT.
 **Grep:** `await tx\.\w+\.updateMany[\s\S]{0,300}await tx\.\w+\.updateMany`
-**Причина виникнення:** розробник пише код «зрозуміло-сильно» — спочатку soft-delete A, потім update B. Sequential reads легко рознести у Promise.all (немає ризику), але `updateMany` виглядає «небезпечніше» через схожість з sync logic.
-**Підхід до виявлення:** при перегляді $transaction callback зчитати ВСІ `await tx.X.Y(...)` що йдуть підряд → перевірити чи кожен реально залежить від попереднього результату. Якщо результат не читається або where-clauses disjoint → кандидат на Promise.all.
-**Підхід до фіксу:** `const [, result2] = await Promise.all([tx.X.updateMany({where:A,data:...}), tx.X.updateMany({where:B,data:...})])`. Prisma підтримує parallel queries всередині interactive tx — обидва запити йдуть на одну connection concurrently. Race-safe бо WHERE disjoint. Той самий патерн діє для tenant-guard + parentSlot lookup (раніше workOrder.findFirst поза tx, потім parentSlot всередині tx — об'єднати в `Promise.all([tx.workOrder.findFirst, tx.calendarSlot.findFirst])` всередині tx; 404 throw скасовує tx без mutation cost).
-**Реальний impact:** sync endpoints ~30% швидші у hot path — 2 sequential round-trips → 1 parallel. На 100-RPS endpoint це ~50ms loop savings.
-**Де шукати ще:** будь-який cascade-update / sync / refresh / propagate / `markAsX` метод; bulk soft-delete після status transition; refresh-totals helpers які одночасно скидають кеш і оновлюють агрегат.
+**Причина виникнення:** "soft-delete A, потім update B"; updateMany виглядає "небезпечніше" за розноску у Promise.all.
+**Підхід до фіксу:** `const [, r2] = await Promise.all([tx.X.updateMany({where:A}), tx.X.updateMany({where:B})])`. Prisma parallel queries у interactive tx на одну connection. Race-safe (WHERE disjoint). Той самий для tenant-guard + parentSlot lookup у tx (404 throw скасовує tx без mutation cost).
+**Реальний impact:** sync ~30% швидші (2 RTT → 1). 100-RPS: ~50ms savings.
+**Де шукати ще:** cascade-update/sync/refresh/propagate/`markAsX`; bulk soft-delete після transition; refresh-totals helpers.
 
 ---
 
 ### 2026-06-12 — `kyivToday()`/date helper всередині render `.map()` callback — lift у useMemo на рівень компонента
 
-**Сигнал:** компонент-сторінка (dashboard, reports, calendar widgets) має `array.map(item => { const todayKyiv = kyivToday(); const isOverdue = item.date < todayKyiv; ... })` — `kyivToday()` (module-level helper що робить `new Date() + Intl.format()`) викликається у тілі callback `.map()`. На 8-row список — 8× `new Date() + Intl.format()` per render. Helper сам по собі «cheap» (module-level Intl singleton), але кумулятивно вартість росте з row count + ререндер-частотою.
+**Сигнал:** `array.map(item => { const todayKyiv = kyivToday(); const isOverdue = item.date < todayKyiv; ... })` — `kyivToday()` (`new Date() + Intl.format()`) у тілі `.map()`. 8-row → 8× per render.
 **Grep:** `\.map\([^)]*=>\s*\{[^}]*kyivToday\(\)|\.map\([^)]*=>\s*\{[^}]*Date\.now\(\)`
-**Причина виникнення:** kyivToday() виглядає як константа («сьогодні»), розробник інтуїтивно ставить її у map-body де відбувається порівняння. Виносити "сьогодні" поза map здається передчасним.
-**Підхід до виявлення:** при перегляді render `.map()` callback — шукати виклики helpers `kyivToday()/now()/Date.now()/new Date()`. Якщо результат функції не залежить від `item` — це по суті константа на render → lift up.
-**Підхід до фіксу:** `const todayKyiv = useMemo(() => kyivToday(), [])` на компонент-рівні над JSX. Deps `[]` (eslint-disable-next-line react-hooks/exhaustive-deps з коментарем — mount-stable, якщо UX flow не перетинає опівніч у одній page-сесії). Якщо потрібен auto-refresh — `useState` + `useEffect` interval. Це також виправляє pure-render порушення: значення може фактично змінитись між викликами всередині одного render (race з timer).
-**Реальний impact:** 8-row dashboard render: 8× new Date() + Intl.format() → 1× на компонент. Незначно у мс, але важлива чистота render для majior render frequency components (dashboards з 15s polling, table cells у great-длinm scroll).
-**Де шукати ще:** будь-яка date-helper функція з `new Date()` всередині — kyivNow, kyivToday, isoToday, todayMs, dateNow; також `Date.now()`, `new Date()` direct; reports/audit/maintenance lists з порівнянням `item.date < today`. Той самий патерн діє для `formatXyz` helpers що мають Intl singleton всередині (cheap але per-row alloc).
+**Причина виникнення:** kyivToday() виглядає як константа; ставлять у map-body де порівняння.
+**Підхід до фіксу:** `const todayKyiv = useMemo(() => kyivToday(), [])` над JSX (deps `[]` + eslint-disable з коментарем mount-stable). Auto-refresh → useState + useEffect interval. Також fix pure-render (race з timer).
+**Реальний impact:** 8-row dashboard: 8× → 1×. Чистота для high-render-frequency (15s polling, table cells).
+**Де шукати ще:** date-helper з `new Date()` — kyivNow, kyivToday, isoToday, todayMs; `Date.now()`, `new Date()` direct; reports/audit lists з `item.date < today`. Той самий для `formatXyz` з Intl singleton.
 
 ---
 

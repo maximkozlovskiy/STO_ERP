@@ -30,7 +30,7 @@ import {
   ClipboardList,
 } from 'lucide-react';
 
-export type NavSection = 'top' | 'documents' | 'reports' | 'refs' | 'settings';
+export type NavSection = 'top' | 'documents' | 'settlements' | 'reports' | 'refs' | 'settings';
 
 export interface NavItem {
   href: string;
@@ -48,6 +48,7 @@ export interface NavGroup {
 export const NAV_SECTION_LABELS: Record<NavSection, string> = {
   top: '',
   documents: 'Документи',
+  settlements: 'Взаєморозрахунки',
   reports: 'Звіти',
   refs: 'Довідники',
   settings: 'Налаштування',
@@ -64,9 +65,18 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
 
   // ─── Документи ────────────────────────────────────────────────────
   { href: '/work-orders', label: 'Наряди', icon: Wrench, section: 'documents' },
-  { href: '/invoices', label: 'Рахунки', icon: Receipt, section: 'documents' },
   { href: '/purchase-orders', label: 'Купівля', icon: ShoppingCart, section: 'documents' },
   { href: '/stock-documents', label: 'Документи складу', icon: FileText, section: 'documents' },
+
+  // ─── Взаєморозрахунки ─────────────────────────────────────────────
+  { href: '/invoices', label: 'Рахунки клієнтам', icon: Receipt, section: 'settlements' },
+  {
+    href: '/supplier-payments',
+    label: 'Оплати постачальникам',
+    icon: Wallet,
+    section: 'settlements',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
+  },
 
   // ─── Звіти ────────────────────────────────────────────────────────
   // /settlements — вкладка всередині /reports (не окремий пункт меню)
@@ -146,7 +156,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
  * Автогенерується з MASTER_NAV_ITEMS — не редагувати вручну.
  */
 export const NAV_GROUPS: NavGroup[] = (() => {
-  const order: NavSection[] = ['top', 'documents', 'reports', 'refs', 'settings'];
+  const order: NavSection[] = ['top', 'documents', 'settlements', 'reports', 'refs', 'settings'];
   return order
     .map(section => ({
       label: NAV_SECTION_LABELS[section] || undefined,

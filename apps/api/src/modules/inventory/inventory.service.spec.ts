@@ -3,29 +3,55 @@ import { BadRequestException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { InventoryService } from './inventory.service';
 import { BatchService } from './batch.service';
+import { SettingsService } from '../settings/settings.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 describe('InventoryService.createMovement guards', () => {
   let service: InventoryService;
   let prisma: {
     stockItem: { findFirst: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
-    stockMovement: { create: ReturnType<typeof vi.fn> };
+    stockMovement: { create: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
     good: { findFirst: ReturnType<typeof vi.fn> };
+    $transaction: ReturnType<typeof vi.fn>;
   };
-  let batchService: { createFromReceipt: ReturnType<typeof vi.fn> };
+  let batchService: {
+    createFromReceipt: ReturnType<typeof vi.fn>;
+    consumeBatch: ReturnType<typeof vi.fn>;
+    getAvgCost: ReturnType<typeof vi.fn>;
+  };
+  let settingsService: { getOrganisationSettings: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     prisma = {
-      stockItem: { findFirst: vi.fn(), upsert: vi.fn().mockResolvedValue({}) },
-      stockMovement: { create: vi.fn().mockResolvedValue({ id: 'mov-1' }) },
+      // Bug #613: upsert selects { quantity, reserved } for post-check guard.
+      // Дефолтний повернення — валідні ненегативні (щоб happy-path не тригерив throw).
+      stockItem: {
+        findFirst: vi.fn(),
+        upsert: vi.fn().mockResolvedValue({ quantity: 100, reserved: 0 }),
+      },
+      stockMovement: {
+        create: vi.fn().mockResolvedValue({ id: 'mov-1' }),
+        update: vi.fn().mockResolvedValue({}),
+      },
       good: { findFirst: vi.fn().mockResolvedValue({ purchasePrice: null }) },
+      // Bug #613 no-tx self-wrap: createMovement без tx re-enter через $transaction.
+      // Passthrough — callback дістає той самий мок (той самий tx-контекст у тесті).
+      $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
     };
-    batchService = { createFromReceipt: vi.fn().mockResolvedValue({}) };
+    batchService = {
+      createFromReceipt: vi.fn().mockResolvedValue({}),
+      consumeBatch: vi.fn().mockResolvedValue([]),
+      getAvgCost: vi.fn().mockResolvedValue(0),
+    };
+    settingsService = {
+      getOrganisationSettings: vi.fn().mockResolvedValue({ costMethod: 'FIFO' }),
+    };
     const module = await Test.createTestingModule({
       providers: [
         InventoryService,
         { provide: PrismaService, useValue: prisma },
         { provide: BatchService, useValue: batchService },
+        { provide: SettingsService, useValue: settingsService },
       ],
     }).compile();
     service = module.get(InventoryService);
@@ -70,6 +96,22 @@ describe('InventoryService.createMovement guards', () => {
     await expect(
       service.createMovement('org-1', dto({ type: 'RESERVATION_RELEASE', quantity: -5 })),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  // Bug #613 (cycle 2 code-review): виклик без tx має самообгортатись у $transaction,
+  // щоб throw (race/нестача) не лишив orphan-записів (StockMovement/StockItem/BatchConsumption).
+  it('createMovement без tx re-enter через $transaction (атомарність)', async () => {
+    await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10, price: 50 }));
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('createMovement з tx НЕ обгортається повторно у $transaction', async () => {
+    await service.createMovement(
+      'org-1',
+      dto({ type: 'RECEIPT', quantity: 10, price: 50 }),
+      prisma as never,
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('RECEIPT збільшує quantity і не торкається reserved', async () => {
@@ -155,6 +197,85 @@ describe('InventoryService.createMovement guards', () => {
     );
   });
 
+  // Партійне списання (COGS) — головний фікс: WRITEOFF викликає consumeBatch з costMethod
+  // з налаштувань і повертає зважену собівартість.
+  it('WRITEOFF викликає consumeBatch з costMethod із налаштувань + повертає weightedCostPrice', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
+    settingsService.getOrganisationSettings.mockResolvedValue({ costMethod: 'FIFO' });
+    // FIFO span: 10×100 + 5×120 = 1600 → weighted 106.67
+    batchService.consumeBatch.mockResolvedValue([
+      { batchId: 'b1', quantity: 10, costPrice: 100 },
+      { batchId: 'b2', quantity: 5, costPrice: 120 },
+    ]);
+    const res = await service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -15 }));
+    expect(batchService.consumeBatch).toHaveBeenCalledWith(
+      'org-1',
+      'good-1',
+      'wh-1',
+      15,
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      'FIFO',
+      expect.anything(),
+    );
+    expect(res.weightedCostPrice).toBeCloseTo(1600 / 15, 5);
+    expect(res.consumed).toHaveLength(2);
+    // batchId у рух НЕ проставляється при span (2 партії)
+    expect(prisma.stockMovement.update).not.toHaveBeenCalled();
+  });
+
+  it('WRITEOFF single-batch → проставляє batchId у stockMovement', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
+    batchService.consumeBatch.mockResolvedValue([{ batchId: 'b1', quantity: 5, costPrice: 100 }]);
+    const res = await service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -5 }));
+    expect(res.weightedCostPrice).toBe(100);
+    expect(prisma.stockMovement.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { batchId: 'b1' } }),
+    );
+  });
+
+  it('AVG_COST: weightedCostPrice = getAvgCost, партії все одно списуються FIFO (інваріант)', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
+    settingsService.getOrganisationSettings.mockResolvedValue({ costMethod: 'AVG_COST' });
+    batchService.getAvgCost.mockResolvedValue(110);
+    batchService.consumeBatch.mockResolvedValue([{ batchId: 'b1', quantity: 5, costPrice: 100 }]);
+    const res = await service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -5 }));
+    expect(res.weightedCostPrice).toBe(110); // з getAvgCost, не з партій
+    // фізичний декремент партій — FIFO (щоб remainingQty спадав)
+    expect(batchService.consumeBatch).toHaveBeenCalledWith(
+      'org-1',
+      'good-1',
+      'wh-1',
+      5,
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      'FIFO',
+      expect.anything(),
+    );
+  });
+
+  it('RECEIPT НЕ викликає consumeBatch (лише розхід списує партії)', async () => {
+    await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10, price: 100 }));
+    expect(batchService.consumeBatch).not.toHaveBeenCalled();
+  });
+
+  // Regression-guard: AVG_COST branch у BatchService.consumeBatch повертає агрегат
+  // {batchId: null, quantity, costPrice: avgCost} (не одна конкретна партія).
+  // `const singleBatchId = consumed.length===1 ? consumed[0].batchId : null; if (singleBatchId)`
+  // → update пропускається, коли batchId===null (порожній рядок раніше пробивав
+  // StockMovement.batchId :: uuid → "invalid input syntax for type uuid").
+  it('AVG_COST агрегат batchId=null НЕ викликає stockMovement.update (uuid guard)', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
+    settingsService.getOrganisationSettings.mockResolvedValue({ costMethod: 'AVG_COST' });
+    batchService.getAvgCost.mockResolvedValue(110);
+    // AVG_COST branch повертає [{batchId: null, ...}] — дзеркалимо реальний контракт.
+    batchService.consumeBatch.mockResolvedValue([{ batchId: null, quantity: 5, costPrice: 110 }]);
+    await service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -5 }));
+    expect(prisma.stockMovement.update).not.toHaveBeenCalled();
+  });
+
   // Bug #238: defense-in-depth tenant guard for caller-supplied unitOfMeasureId
   describe('Bug #238: unitOfMeasureId tenant guard', () => {
     const OWN_UOM = '11111111-1111-4111-8111-111111111111';
@@ -205,6 +326,43 @@ describe('InventoryService.createMovement guards', () => {
       });
     });
   });
+
+  // ─── Bug #613 — post-upsert race-condition guards ──────────────────────────
+  // Regression-guard для defensive-checks у createMovement (Bug #613): pre-check
+  // available>=|qty| читає STALE snapshot без row-lock — два concurrent WRITEOFF
+  // того самого товару обидва проходять pre-check, потім Postgres serialize upsert
+  // рядково → другий залишає quantity=-N. Post-check ПІСЛЯ upsert ловить негатив і
+  // throws → $transaction rollback. Без guard: silent quantity<0 у StockItem.
+  describe('Bug #613 — concurrent WRITEOFF race-condition guard', () => {
+    it('WRITEOFF з concurrent race (upsert повернув quantity<0) → BadRequestException', async () => {
+      prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 0 });
+      // Симулюємо race: pre-check бачить 10, але між pre-check і upsert інший tx
+      // задекрементив до 0, і наш decrement -10 записав -10 у row-lock послідовності.
+      prisma.stockItem.upsert.mockResolvedValueOnce({ quantity: -10, reserved: 0 });
+      await expect(
+        service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -10 })),
+      ).rejects.toThrow(/Недостатньо товару.*concurrent/i);
+    });
+
+    it('RESERVATION_RELEASE з concurrent race (reserved<0 після upsert) → BadRequestException', async () => {
+      prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 5 });
+      prisma.stockItem.upsert.mockResolvedValueOnce({ quantity: 10, reserved: -1 });
+      await expect(
+        service.createMovement('org-1', dto({ type: 'RESERVATION_RELEASE', quantity: -5 })),
+      ).rejects.toThrow(/Резерв не може стати від/i);
+    });
+
+    it('happy-path (upsert повернув quantity>=0, reserved>=0) → без throw', async () => {
+      prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 0 });
+      prisma.stockItem.upsert.mockResolvedValueOnce({ quantity: 0, reserved: 0 });
+      batchService.consumeBatch.mockResolvedValueOnce([
+        { batchId: 'b1', quantity: 10, costPrice: 50 },
+      ]);
+      await expect(
+        service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -10 })),
+      ).resolves.toBeDefined();
+    });
+  });
 });
 
 // ─── Bug #455: byDocument() / byBatch() unit specs ────────────────────────────
@@ -231,6 +389,10 @@ describe('InventoryService.byDocument()', () => {
         InventoryService,
         { provide: PrismaService, useValue: prisma },
         { provide: BatchService, useValue: { createFromReceipt: vi.fn() } },
+        {
+          provide: SettingsService,
+          useValue: { getOrganisationSettings: vi.fn().mockResolvedValue({ costMethod: 'FIFO' }) },
+        },
       ],
     }).compile();
     service = module.get(InventoryService);
@@ -419,6 +581,10 @@ describe('InventoryService.byBatch()', () => {
         InventoryService,
         { provide: PrismaService, useValue: prisma },
         { provide: BatchService, useValue: { createFromReceipt: vi.fn() } },
+        {
+          provide: SettingsService,
+          useValue: { getOrganisationSettings: vi.fn().mockResolvedValue({ costMethod: 'FIFO' }) },
+        },
       ],
     }).compile();
     service = module.get(InventoryService);

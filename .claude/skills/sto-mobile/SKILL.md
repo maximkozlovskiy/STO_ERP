@@ -2,7 +2,7 @@
 name: sto-mobile
 description: >
   Create Expo/React Native screens and features for STO ERP mechanic tablet app. Use when the user says "мобільний екран", "планшет механіка", "expo", "react native", or building the mobile layer. Produces Feature-Sliced Design structure with offline support via WatermelonDB, TanStack Query, and Expo Router.
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 bypassPermissions: true
 ---
 
@@ -20,6 +20,7 @@ bypassPermissions: true
 ## Context
 
 The mobile app is used by **mechanics on tablets** in the workshop. Key requirements:
+
 - Works offline (weak WiFi in bays)
 - Shows mechanic's personal work queue
 - Timer per work line
@@ -276,6 +277,7 @@ export function BarcodeScanner({ onScanned }: Props) {
 ## Ukrainian UI & Windows Dev Notes for Mobile
 
 ### Ukrainian Strings in React Native
+
 ```typescript
 // features/work-queue/ui/WorkQueueScreen.tsx — all Ukrainian
 <Text style={styles.title}>Моя черга</Text>
@@ -288,6 +290,7 @@ import { WORK_ORDER_STATUS_LABELS } from '@sto/shared';
 ```
 
 ### Ukrainian Date/Time in Mobile
+
 ```typescript
 import { format } from 'date-fns';
 import { uk } from 'date-fns/locale';
@@ -301,21 +304,19 @@ format(new Date(), 'EEEE', { locale: uk });
 ```
 
 ### Ukrainian Alert/Confirm Dialogs
+
 ```typescript
 import { Alert } from 'react-native';
 
 // Always Ukrainian
-Alert.alert(
-  'Підтвердження',
-  'Ви впевнені, що хочете завершити роботу?',
-  [
-    { text: 'Скасувати', style: 'cancel' },
-    { text: 'Завершити', onPress: handleComplete },
-  ]
-);
+Alert.alert('Підтвердження', 'Ви впевнені, що хочете завершити роботу?', [
+  { text: 'Скасувати', style: 'cancel' },
+  { text: 'Завершити', onPress: handleComplete },
+]);
 ```
 
 ### Testing on Windows (Physical Tablet Recommended)
+
 ```powershell
 # Expo Go on Android tablet — easiest setup on Windows
 pnpm --filter @sto/mobile start
@@ -332,6 +333,7 @@ pnpm --filter @sto/mobile start
 ```
 
 ### Cyrillic Input on Tablet
+
 ```typescript
 // React Native handles Cyrillic keyboard natively on Android
 // Ensure TextInput has correct keyboard type:

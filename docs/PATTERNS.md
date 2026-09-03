@@ -363,3 +363,191 @@ COST_TIER: знайти тір де `costMin <= costPrice < costMax`; `costMax I
 | `PurchaseOrderCreateModal` | замовлення постачальнику                               |
 | `InvoiceCreateModal`       | рахунок                                                |
 | `StockDocumentCreateModal` | документ складу                                        |
+
+---
+
+# Мета-патерни (наскрізні архітектурні принципи)
+
+> Не «де файл», а «ЧОМУ так писати». Кожен підкріплений реальним багом, який виникав при
+> порушенні. Формат: **суть → еталон file:line → який КЛАС багів ловить → grep-детектор**.
+
+## BACKEND
+
+### MP-B1. Single-source-of-truth для знаку/константи-осі
+
+Доменна вісь (знак, мапа міток) визначається ОДИН раз, `export`-ується; споживачі імпортують,
+а не дублюють inline. Фронт-дзеркала явно позначаються коментарем «дзеркалить …».
+
+- **Еталон:** `settlements.service.ts:25` `export const BALANCE_SIGN: Record<...>`; переюз у
+  `settlements-account.service.ts:133` (reconciliation act) замість власного CASE.
+- **Сімейство:** `*_SORT_FIELDS` (module-level allow-list у кожному findAll: PO/SP/INV/WO/SD),
+  FSM-осі `work-orders.fsm.ts:16-52` (`CLOSED_STATUSES`/`STATUS_LABELS`, «Mirrors @sto/shared»).
+- **Клас багів:** розсинхрон осі — та сама цифра фарбується різними кольорами / знак балансу
+  різниться між списком і карткою (Bug #606 — 5 копій осі знаку balance).
+- **Детектор:** `type ==?= 'CHARGE'|'PAYMENT'`, inline `balance > 0 ?` поза utils/settlements;
+  локальний `const BALANCE...` замість import.
+
+### MP-B2. Централізація мутацій через ЄДИНУ точку
+
+Інваріантні мутації — ЛИШЕ через один метод; побічні ефекти вбудовані ВСЕРЕДИНІ, не поряд.
+
+- **Еталони (CLAUDE.md):** залишки → `InventoryService.createMovement` (партійне списання
+  вбудоване туди ж, після `stockItem.upsert`, у тій самій tx); баланс →
+  `SettlementsService.createTransaction`; FSM → `WorkOrdersService.transition`.
+- **Клас багів:** «мертвий код» — метод написаний, протестований, але не викликається з
+  централізованої точки → залишок/баланс розходиться з журналом (партійне списання
+  `consumeBatch` — 0 викликів до 2026-09-02).
+- **Детектор:** прямі `prisma.stockItem.update(`, `settlementAccount.update(`,
+  `workOrder.update({...status`, `.delete(` поза відповідним service.
+
+### MP-B3. Tenant isolation (orgId) + soft-delete скрізь
+
+Кожен запит фільтрується `orgId`; `deletedAt: null` за замовчуванням; restore — atomic
+`updateMany({ NOT: { deletedAt: null } })`; mutation-update перевіряє `result.count === 0`.
+
+- **Еталони:** `counterparties.service.ts:361` (restore-atomic, «еталон brands»),
+  `settings.service.ts` (updateMany з `count===0` guard).
+- **Клас багів:** Bug #607 — reports не фільтрував soft-deleted CP → видалені у звіті + 404 на deep-link.
+- **Детектор:** `findMany`/`findFirst` без `orgId`; `.update({ where: { id }` (без orgId); `prisma.X.delete(`.
+
+### MP-B4. Async tenant-guard після await
+
+Після кожного `await` у handler звіряємо live-id (ref) / captured `idAtStart` ПЕРЕД `setState`
+(фронт) або cross-tenant guard (бек) — інакше stale-response потрапляє в чужий контекст.
+
+- **Еталон:** `CounterpartyEditModal.tsx` `cpIdAtStart` + `currentCpIdRef`; бек-дзеркало —
+  `inventory.service.ts:87` UoM-guard («FK enforces global existence, not orgId»).
+- **Клас багів:** race при швидкому перемиканні — відповідь на старий fetch перезаписує новий контекст.
+- **Детектор:** `await apiFetch` → `setState` без `if (...Ref.current !== ...AtStart) return`.
+
+### MP-B5. Configuration over Hardcode
+
+Параметри з БД (`OrganisationSettings`/`BranchSettings`), не magic numbers; читання через
+`SettingsService.get*` (Redis-кеш + offline-fallback через try/catch).
+
+- **Еталон:** `inventory.service.ts:resolveCostMethod` → `getOrganisationSettings`, `?? 'FIFO'`;
+  `settings.service.ts:32` (cache-key, TTL, catch при Redis-down = offline-first).
+- **Клас багів:** захардкоджений costMethod/dueDays ігнорує налаштування org (перемикач «Метод
+  списання партій» був у UI, але код його не читав).
+- **Детектор:** числові літерали `invoiceDueDays`/`slotDurationMinutes`; `'FIFO'`/`'AVG_COST'`
+  захардкоджені поза resolveCostMethod.
+
+### MP-B6. Cross-field валідація на ВСІХ entry-points
+
+Guard на беку (canonical) + ІДЕНТИЧНИЙ guard на КОЖНІЙ frontend-точці, що б'є в endpoint;
+дзеркало має ту саму семантику (`.trim()`).
+
+- **Еталон:** `counterparties.service.ts:hasCounterpartyName` (create + update-merged); фронт-дзеркала
+  CounterpartyEditModal + CalendarSlotModal (обидва з `.trim()`).
+- **Клас багів:** другий entry-point без дзеркала шле невалідний payload / guard без trim пропускає whitespace.
+- **Детектор:** `grep POST /counterparties` (усі відправники) → звірити наявність guard з `.trim()`.
+
+### MP-B7. Enum-axis розширення
+
+Новий enum-value → додати в exhaustive `Record<Enum, ...>` (compile-check ловить пропуск);
+НЕ `Partial<Record>`. + runtime-assert exhaustiveness у spec.
+
+- **Еталон:** `settlements.service.ts:25` `Record<SettlementTransactionType, 1|-1>` (коментар:
+  «Record not Partial — новий enum-value → compile-error»); `settlements.invariants.spec.ts`
+  (forEach по `Object.values(enum)` + expect на кожен ключ).
+- **Клас багів:** `Partial<Record>` → новий enum без запису = runtime exception у проді (блокує
+  фінансову операцію).
+- **Детектор:** `Partial<Record<` для sign/label/transition-мап; inline списки типів.
+
+### MP-B8. Міграції ручні SQL (БД offline)
+
+Enum `ADD VALUE` — ОКРЕМА міграція перед використанням (PG-constraint); backfill ідемпотентний
+recompute (не «переворот»); `syncVersion++` для реплік; reconcile з BACKUP.
+
+- **Еталон:** `20260902120000_add_supplier_settlement_types` (лише ADD VALUE) → окремо
+  `20260902120100_backfill_...` (re-type по documentType + `balance=Σ signed(tx)` + syncVersion++).
+- **Клас багів:** `ADD VALUE` + DML з новим value в одній транзакції → PG помилка; неідемпотентний
+  backfill ламає при повторному прогоні.
+- **Детектор:** `ADD VALUE` + INSERT/UPDATE у тому ж migration.sql.
+
+### MP-B9. Гарячий шлях: hoisting алокацій + sibling-drift audit
+
+`SORT_FIELDS`/`INCLUDE`/`SELECT` — на module-level (одна алокація), не в тіло `findAll`/`transition`
+(polling). Після оптимізації одного findAll — grep ВСІХ однотипних сервісів (sibling-drift).
+
+- **Еталон:** `SLOT_INCLUDE`/`CONFLICT_SELECT` (calendar), `PO_LINE_GOOD_INCLUDE`, narrow-select у transition.
+- **Клас багів:** re-allocation select/include на polling-ендпоінтах; overfetch relation-ів;
+  drift — один findAll оптимізували, «брати» лишили.
+- **Детектор:** inline `include:`/`select:` у тілі findAll; `take: 1000`.
+
+### MP-B10. Атомарність фінансових інваріантів
+
+Consume + decrement в ОДНІЙ `$transaction` (інваріант тримається за конструкцією); FIFO span —
+while-пагінація з guard проти нескінченного циклу; append-only логи (audit trail); explicit timeout.
+
+- **Еталон:** `batch.service.ts:consumeBatch` (while-пагінація + `progressed` guard + throw при
+  нестачі), викликається ПІСЛЯ `stockItem.upsert` → `Σ remainingQty == quantity`;
+  `settlements.createTransaction` (Promise.all transaction+account у $transaction).
+- **Клас багів:** partial state (списали з партії, рух не створився); втрата audit trail.
+
+---
+
+## FRONTEND
+
+### MP-F1. onSaved контракт + модалка lifecycle
+
+create→edit транзиція через `onSaved(cp, isNew)`; tenant-guard по live-ref; reqRef stale-drop
+(bump при close, discard in-flight); dirty-form confirm.
+
+- **Еталон:** `CounterpartyEditModal` (isNew→edit-режим); reqRef stale-drop — `GoodPickerModal.tsx:52`
+  (`reqId !== reqRef.current` return, bump при close).
+- **Клас багів:** stale-response від попереднього модала перезаписує новий; setState після unmount.
+
+### MP-F2. Схема-driven UI
+
+`COLUMNS`-масив + `panel-schema` + `useListPage` → toggle/reorder/rename/панель автоматично, без
+хардкоду полів у JSX.
+
+- **Еталон:** `useListPage.ts` (композитний хук); споживач `counterparties/page.tsx` (`CRM_COLUMNS`
+  - `COUNTERPARTY_PANEL_SCHEMA` + `buildPanelFields`).
+- **Клас багів:** хардкод `<th>`/`<td>` → toggle/reorder не працюють; drift список↔панель.
+
+### MP-F3. Skip-first-run / hydration у toggle-useEffect
+
+Persist-стан: SSR-safe дефолт у `useState`, гідратація з localStorage в ОКРЕМОМУ effect
+(deps=[pageKey], `typeof window === 'undefined' return`); persist лише в user-actions, не в effect.
+Skip-first-run ref скидається на зміну parent-id.
+
+- **Еталон:** `useTableColumns.ts:48-74` (hydrate-effect окремо, persist у toggle/reorder).
+- **Клас багів:** effect що пише дефолт назад → цикл/скидання вибору; дубль-fetch при зміні parent-id
+  (skip-first-run ref не скинутий на CP-switch).
+
+### MP-F4. Спільний хелпер після 3-ї копії
+
+Третя inline-копія логіки → винести в `lib/utils`.
+
+- **Еталон (`lib/utils.ts`):** `settlementBalanceTone` (Bug #606), `displayCounterpartyName` (Bug #139),
+  `daysUntil` (4 IIFE), `UUID_RE`, `calcVatTotals`, `toIdMap`.
+- **Клас багів:** N копій евристики розходяться (одну виправили, інші ні).
+- **Детектор:** повтори `balance > 0 ?`, inline `[lastName, firstName].join`, inline UUID-regex поза utils.
+
+### MP-F5. SSR-safe today
+
+`useState(0|null)` + `useEffect(() => setTodayMs(Date.now()), [])` замість `new Date()` у render;
+`daysUntil(date, nowMs)` повертає null коли `!nowMs` — SSR-safe за конструкцією.
+
+- **Еталон:** `counterparties/[id]/PageClient.tsx` (`todayMs`) + `ExpiryBadge`; 17+ споживачів.
+- **Клас багів:** `new Date()` у render → server≠client → hydration mismatch, бейджі «expired/soon» мигають.
+- **Детектор:** `new Date()`/`Date.now()` у render-body (не в effect/handler).
+
+---
+
+## Зведення grep-детекторів (для CI / review)
+
+| Патерн                   | Сигнал порушення                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------- |
+| MP-B1/B7 SOT осі         | `type ==?= 'CHARGE'\|'PAYMENT'`; `Partial<Record<`                                    |
+| MP-B2 Централізація      | `prisma.stockItem.update(`, `settlementAccount.update(`, `.delete(` поза service      |
+| MP-B3 Tenant/soft-delete | `findFirst`/`findMany` без `orgId`; `where:{id}` в update                             |
+| MP-B4/F1 Async guard     | `await apiFetch` → `setState` без `Ref.current !== …AtStart`                          |
+| MP-B5 Config             | magic `invoiceDueDays`/`'FIFO'` поза settings                                         |
+| MP-B6 Cross-field        | POST-точки без дзеркального guard + `.trim()`                                         |
+| MP-B8 Міграції           | `ADD VALUE` + DML в одному файлі                                                      |
+| MP-B9 Hot-path           | inline `include:`/`select:` у findAll; `take: 1000`                                   |
+| MP-B10 Sentinel UUID FK  | in-band `''`-sentinel у `@db.Uuid` — тип має бути `string \| null`, не порожній рядок |
+| MP-F5 SSR today          | `new Date()`/`Date.now()` у render-body                                               |

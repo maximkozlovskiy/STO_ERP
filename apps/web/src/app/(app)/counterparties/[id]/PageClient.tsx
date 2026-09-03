@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
-import { cn, daysUntil } from '@/lib/utils';
+import { cn, daysUntil, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { AnimatedBody } from '@/components/ui/modal';
 import { fmtMoney, fmtInt, fmtDate, kyivToday } from '@/lib/format';
 import {
@@ -198,6 +198,13 @@ function Field({ label, value }: { label: string; value: string | null | undefin
     </div>
   );
 }
+
+// Транзакційні знаки/кольори у вкладці «Розрахунки». Джерело правди — бекове BALANCE_SIGN
+// (apps/api/.../settlements.service.ts). BALANCE_UP = +1 (баланс росте); CHARGE_LIKE =
+// нарахування (колір destructive). SUPPLIER_CHARGE (=−1, destructive) відсутній у BALANCE_UP —
+// без нього отримання товару від постачальника малювалось би як «+», хоча зменшує баланс.
+const BALANCE_UP_TX_TYPES = new Set(['CHARGE', 'SUPPLIER_PAYMENT', 'SUPPLIER_REFUND']);
+const CHARGE_LIKE_TX_TYPES = new Set(['CHARGE', 'SUPPLIER_CHARGE']);
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -1299,11 +1306,11 @@ export default function CounterpartyCardPage() {
               <p
                 className={cn(
                   'text-xl font-bold',
-                  cp.balance < 0
-                    ? 'text-destructive'
-                    : cp.balance > 0
-                      ? 'text-success'
-                      : 'text-muted-foreground',
+                  // Bug #606: тип-aware тон (див. settlementBalanceTone у lib/utils).
+                  // Було: <0=red|>0=success (лише supplier-first) → інвертувало
+                  // колір для клієнтської переплати (CLIENT balance<0 → red = «проблема»
+                  // замість warning) і показувало клієнтський борг (CLIENT>0) як «success».
+                  settlementBalanceToneClass(settlementBalanceTone(cp.balance, cp.type)),
                 )}
               >
                 {fmtMoney(cp.balance)} ₴
@@ -1328,14 +1335,14 @@ export default function CounterpartyCardPage() {
                   <span
                     className={cn(
                       'text-sm font-semibold',
-                      ['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'].includes(t.type)
-                        ? 'text-success'
-                        : 'text-destructive-text',
+                      // Колір за семантикою (як у SettlementsTabContent): нарахування (наш борг/клієнт
+                      // винен) → destructive; оплата/повернення → success.
+                      CHARGE_LIKE_TX_TYPES.has(t.type) ? 'text-destructive-text' : 'text-success',
                     )}
                   >
-                    {['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE'].includes(t.type)
-                      ? '-'
-                      : '+'}
+                    {/* Знак = дзеркало бекового BALANCE_SIGN. +1: CHARGE, SUPPLIER_PAYMENT, SUPPLIER_REFUND;
+                        −1: PAYMENT, PREPAYMENT, REFUND, CREDIT_NOTE, SUPPLIER_CHARGE. */}
+                    {BALANCE_UP_TX_TYPES.has(t.type) ? '+' : '-'}
                     {fmtMoney(Math.abs(t.amount))} ₴
                   </span>
                 </div>

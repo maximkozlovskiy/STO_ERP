@@ -40,6 +40,9 @@ export interface PurchaseOrder {
   linesCount: number;
   lines: POLine[];
   documentDate?: string | null;
+  paymentDate?: string | null;
+  /** Залишок боргу по PO (лише у списку findAll). */
+  outstanding?: number;
   pricedAt?: string | null;
   createdAt: string;
   updatedAt: string;

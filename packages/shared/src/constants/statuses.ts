@@ -230,6 +230,31 @@ export const SUPPLIER_RETURN_STATUS_BADGE: Record<string, BadgeVariant> = {
   CANCELLED: 'destructive',
 };
 
+// ─── Supplier Payments ────────────────────────────────────────────────────────
+
+export const SUPPLIER_PAYMENT_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Чернетка',
+  CONFIRMED: 'Проведено',
+  CANCELLED: 'Скасовано',
+};
+
+export const SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS: Record<string, string> = {
+  DRAFT: 'Чернетка — оплату оформлено, ще не проведено',
+  CONFIRMED: 'Проведено — борг перед постачальником зменшено на суму оплати',
+  CANCELLED: 'Скасовано — оплату анульовано',
+};
+
+export const SUPPLIER_PAYMENT_STATUS_BADGE: Record<string, BadgeVariant> = {
+  DRAFT: 'secondary',
+  CONFIRMED: 'success',
+  CANCELLED: 'destructive',
+};
+
+export const PAYMENT_SOURCE_TYPE_LABELS: Record<string, string> = {
+  BANK_ACCOUNT: 'Банк',
+  CASH_REGISTER: 'Каса',
+};
+
 // ─── Stock Documents ──────────────────────────────────────────────────────────
 
 export const STOCK_DOC_STATUS_LABELS: Record<string, string> = {
@@ -270,6 +295,28 @@ export const STOCK_DOC_TYPE_LABELS: Record<string, string> = {
   WRITEOFF: 'Списання',
   RECEIPT: 'Оприбуткування',
   OPENING_BALANCE: 'Поч. залишки',
+};
+
+/** StockMovementType — усі 6 значень руху (STOCK_DOC_TYPE_LABELS покриває лише 4 документні). */
+export const STOCK_MOVEMENT_TYPE_LABELS: Record<string, string> = {
+  RECEIPT: 'Прихід',
+  WRITEOFF: 'Списання',
+  TRANSFER: 'Переміщення',
+  RESERVATION: 'Резервування',
+  RESERVATION_RELEASE: 'Зняття резерву',
+  OPENING_BALANCE: 'Поч. залишки',
+};
+
+/** SettlementTransactionType — 8 типів транзакцій взаєморозрахунків. */
+export const SETTLEMENT_TX_TYPE_LABELS: Record<string, string> = {
+  CHARGE: 'Нарахування',
+  PAYMENT: 'Оплата',
+  PREPAYMENT: 'Передоплата',
+  REFUND: 'Повернення',
+  CREDIT_NOTE: 'Кредит-нота',
+  SUPPLIER_CHARGE: 'Нарахування (постач.)',
+  SUPPLIER_PAYMENT: 'Оплата постачальнику',
+  SUPPLIER_REFUND: 'Повернення постачальнику',
 };
 
 export const STOCK_DOC_TYPE_BADGE: Record<string, BadgeVariant> = {

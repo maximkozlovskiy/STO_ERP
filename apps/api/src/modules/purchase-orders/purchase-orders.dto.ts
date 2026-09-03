@@ -57,6 +57,12 @@ export class CreatePurchaseOrderDto {
   @IsDateString()
   documentDate?: string;
 
+  @ApiPropertyOptional({ description: 'Планова дата оплати постачальнику (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  paymentDate?: string;
+
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
   @IsOptional()
   @IsArray()
@@ -98,6 +104,12 @@ export class UpdatePurchaseOrderDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   documentDate?: string;
+
+  @ApiPropertyOptional({ description: 'Планова дата оплати постачальнику (YYYY-MM-DD)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsDateString()
+  paymentDate?: string;
 
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
   @IsOptional()
@@ -165,6 +177,11 @@ export class PurchaseOrderResponseDto {
   @ApiProperty() totalVat!: number;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
+  @ApiPropertyOptional({ description: 'Планова дата оплати' }) paymentDate?: string | null;
+  @ApiPropertyOptional({
+    description: 'Залишок боргу по PO (totalAmount − Σ CONFIRMED оплат); лише у списку',
+  })
+  outstanding?: number;
   @ApiPropertyOptional({ description: 'Дата останнього розцінення' }) pricedAt?: string | null;
   @ApiProperty() linesCount!: number;
   @ApiProperty({ type: [PurchaseOrderLineResponseDto] }) lines!: PurchaseOrderLineResponseDto[];
@@ -209,10 +226,10 @@ export class PurchaseOrderQueryDto {
 
   @ApiPropertyOptional({
     description: 'Поле сортування',
-    enum: ['documentDate', 'createdAt', 'totalAmount'],
+    enum: ['documentDate', 'createdAt', 'totalAmount', 'paymentDate'],
   })
   @IsOptional()
-  @IsIn(['documentDate', 'createdAt', 'totalAmount'])
+  @IsIn(['documentDate', 'createdAt', 'totalAmount', 'paymentDate'])
   sortBy?: string;
 
   @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })

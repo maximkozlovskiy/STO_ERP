@@ -91,6 +91,25 @@ const SERVICES_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boo
 ];
 const SERVICES_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(SERVICES_COLUMNS.map(c => c.key));
 
+// sto-optimize (cycle 3/3): EMPTY_* row templates hoisted from component body.
+// Immutable literals — used as initial state for newWorkRow/newGoodRow after row-clear/close.
+// Prev: re-allocated on EVERY render (typing у search / opening modal / picker interactions).
+// Widened types (не `as const`) — setState spread-update перевизначає окремі поля.
+const EMPTY_WORK_ROW: {
+  workId: string;
+  workName: string;
+  normoHours: number;
+  price: number;
+  quantity: number;
+} = { workId: '', workName: '', normoHours: 1, price: 0, quantity: 1 };
+const EMPTY_GOOD_ROW: {
+  goodId: string;
+  goodName: string;
+  unit: string;
+  salePrice: number;
+  quantity: number;
+} = { goodId: '', goodName: '', unit: '', salePrice: 0, quantity: 1 };
+
 // ─── Services Tab ─────────────────────────────────────────────────────────────
 
 export default function ServicesTab() {
@@ -113,8 +132,6 @@ export default function ServicesTab() {
   const [editGoods, setEditGoods] = useState<
     Array<{ goodId: string; goodName: string; unit: string; salePrice: number; quantity: number }>
   >([]);
-  const EMPTY_WORK_ROW = { workId: '', workName: '', normoHours: 1, price: 0, quantity: 1 };
-  const EMPTY_GOOD_ROW = { goodId: '', goodName: '', unit: '', salePrice: 0, quantity: 1 };
   const [showWorkInput, setShowWorkInput] = useState(false);
   const [newWorkRow, setNewWorkRow] = useState(EMPTY_WORK_ROW);
   const [showGoodInput, setShowGoodInput] = useState(false);

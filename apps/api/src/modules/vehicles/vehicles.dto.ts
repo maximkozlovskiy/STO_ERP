@@ -91,6 +91,8 @@ export class VehicleResponseDto {
   @ApiPropertyOptional() inspectionExpiry?: string | null;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
+  @ApiPropertyOptional({ description: 'Проставлене коли авто soft-deleted' })
+  deletedAt?: string | null;
 }
 
 // в”Ђв”Ђв”Ђ VehicleNode в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ

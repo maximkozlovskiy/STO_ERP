@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
@@ -16,6 +16,8 @@ import {
 } from '@/hooks/api/usePurchaseOrders';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { inventoryKeys } from '@/hooks/api/useInventory';
+import { supplierPaymentsKeys } from '@/hooks/api/useSupplierPayments';
+import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -71,9 +73,10 @@ import {
   type BadgeVariant,
 } from '@sto/shared';
 import { toast } from '@/lib/toast';
-import { cn } from '@/lib/utils';
+import { cn, UUID_RE, daysUntil } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
+import { ExpiryBadge } from '@/components/ui/expiry-badge';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 
@@ -100,6 +103,8 @@ const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> =
   { key: 'status', label: 'Статус', defaultVisible: true },
   { key: 'amount', label: 'Сума', defaultVisible: true },
   { key: 'date', label: 'Дата документа', defaultVisible: true },
+  { key: 'paymentDate', label: 'Дата оплати', defaultVisible: true },
+  { key: 'payDue', label: 'Днів до оплати', defaultVisible: true },
   { key: 'priced', label: 'Розцінено', defaultVisible: true },
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
@@ -113,6 +118,17 @@ const COLUMNS_SR: Array<{ key: string; label: string; defaultVisible?: boolean }
   { key: 'date', label: 'Дата документа', defaultVisible: true },
 ];
 const COLUMNS_SR_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS_SR.map(c => c.key));
+
+// Опції фільтра статусу — повністю статичні (PO_STATUS_LABELS — імпортована константа).
+// Раніше створювались у тілі компонента на кожен render разом з рядками StatusPill.
+const PO_STATUS_FILTER_OPTIONS: Array<[string, string]> = [
+  ['', 'Всі'],
+  ['DRAFT', PO_STATUS_LABELS['DRAFT']],
+  ['ORDERED', PO_STATUS_LABELS['ORDERED']],
+  ['PARTIAL', PO_STATUS_LABELS['PARTIAL']],
+  ['RECEIVED', PO_STATUS_LABELS['RECEIVED']],
+  ['CANCELLED', PO_STATUS_LABELS['CANCELLED']],
+];
 
 interface SrFilters extends Record<string, unknown> {
   status: string;
@@ -143,6 +159,17 @@ function PurchaseOrdersPageClient() {
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
+
+  // Прийом PO (receive) має побічні ефекти на кількох агрегатах: RECEIPT-рух →
+  // inventory (залишки); settlement CHARGE + авто paymentDate → supplier-payments
+  // (шахматка) і counterparties (баланс). Інвалідуємо всі одразу, щоб не чекати 30s
+  // staleTime. Єдине місце правди — викликається з receive-handler і edit-modal onSaved.
+  const invalidatePoReceiptCaches = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+    queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+    queryClient.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+    queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
+  }, [queryClient]);
 
   const {
     page,
@@ -177,6 +204,14 @@ function PurchaseOrdersPageClient() {
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
   const { sort: poSort, toggle: togglePoSort } = useSortState('createdAt', 'desc');
+
+  // SSR-safe «сьогодні» для бейджа «Днів до оплати» (уникає hydration mismatch).
+  const [today, setToday] = useState<Date | null>(null);
+  useEffect(() => setToday(new Date()), []);
+  // sto-optimize: nowMs — один раз per render батька замість `today?.getTime() ?? 0`
+  // для КОЖНОГО рядка PO у map (20-50 рядків). У ExpiryBadge та daysUntil передаємо
+  // primitive number — стабільна ідентичність, дружня до memo.
+  const nowMs = useMemo(() => today?.getTime() ?? 0, [today]);
 
   // React Query hooks
   const {
@@ -239,6 +274,23 @@ function PurchaseOrdersPageClient() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
+
+  // Bug #596: deep-link `?open=<poId>` — відкриває edit-modal для конкретного PO
+  // (напр. з /supplier-payments/[id] «покажи замовлення»). Читаємо ОДНОРАЗОВО з URL,
+  // очищуємо параметр щоб refresh не спамив модалку, і на mount якщо UUID валідний —
+  // виставляємо editingPOId. Дзеркалить URL-driven pattern активної вкладки (line 134).
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (openId && UUID_RE.test(openId)) {
+      setEditingPOId(openId);
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('open');
+      router.replace(params.toString() ? `?${params.toString()}` : '?', { scroll: false });
+    }
+    // Свідомо без залежності від searchParams: ефект має спрацювати РАЗ при монтуванні
+    // (deep-link з зовнішньої сторінки). Наступні пуші тієї ж сторінки — не reopen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Supplier returns — useListPage (columns, detail-panel, saved-filters)
   const {
@@ -426,10 +478,7 @@ function PurchaseOrdersPageClient() {
       });
       setShowReceive(null);
       dirty.resetDirty();
-      queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-      // RECEIPT створює stock movement → stockItem.quantity змінюється,
-      // тому inventory cache теж треба інвалідувати, інакше /inventory показує старі залишки
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+      invalidatePoReceiptCaches();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка прийому товару');
     } finally {
@@ -437,14 +486,7 @@ function PurchaseOrdersPageClient() {
     }
   };
 
-  const statuses: Array<[string, string]> = [
-    ['', 'Всі'],
-    ['DRAFT', STATUS_LABELS['DRAFT']],
-    ['ORDERED', STATUS_LABELS['ORDERED']],
-    ['PARTIAL', STATUS_LABELS['PARTIAL']],
-    ['RECEIVED', STATUS_LABELS['RECEIVED']],
-    ['CANCELLED', STATUS_LABELS['CANCELLED']],
-  ];
+  const statuses = PO_STATUS_FILTER_OPTIONS;
 
   return (
     <div className="page-fill p-4 md:p-6">
@@ -902,7 +944,7 @@ function PurchaseOrdersPageClient() {
                       </TableHead>
                     )}
                     {visibleColumns.map(col => {
-                      const sortable = ['date', 'amount'].includes(col.key);
+                      const sortable = ['date', 'amount', 'paymentDate'].includes(col.key);
                       const sortKey =
                         col.key === 'date'
                           ? 'documentDate'
@@ -1034,6 +1076,33 @@ function PurchaseOrdersPageClient() {
                                 {po.documentDate ? fmtDate(po.documentDate) : fmtDate(po.createdAt)}
                               </TableCell>
                             );
+                          if (col.key === 'paymentDate')
+                            return (
+                              <TableCell
+                                key="paymentDate"
+                                className="text-[13px] text-muted-foreground"
+                              >
+                                {po.paymentDate ? fmtDate(po.paymentDate) : '—'}
+                              </TableCell>
+                            );
+                          if (col.key === 'payDue') {
+                            // Бейдж лише де є реальний залишок боргу по PO.
+                            const dpd =
+                              (po.outstanding ?? 0) > 0 ? daysUntil(po.paymentDate, nowMs) : null;
+                            return (
+                              <TableCell key="payDue" className="text-[13px]">
+                                {dpd != null && (
+                                  <ExpiryBadge
+                                    date={po.paymentDate}
+                                    nowMs={nowMs}
+                                    expiredLabel={`Прострочено ${Math.abs(dpd)} дн.`}
+                                    soonLabel={`${dpd} дн.`}
+                                    soonDays={20}
+                                  />
+                                )}
+                              </TableCell>
+                            );
+                          }
                           if (col.key === 'priced')
                             return (
                               <TableCell key="priced" className="text-[13px]">
@@ -1101,9 +1170,7 @@ function PurchaseOrdersPageClient() {
         open={!!editingPOId}
         purchaseOrderId={editingPOId ?? undefined}
         onClose={() => setEditingPOId(null)}
-        onSaved={() => {
-          queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-        }}
+        onSaved={invalidatePoReceiptCaches}
       />
 
       {/* Receive modal */}

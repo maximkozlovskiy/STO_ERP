@@ -101,6 +101,7 @@ enum DocumentType {
   COMPLETION_ACT
   COUNTERPARTY_AGREEMENT
   GOOD_INTERNAL_CODE
+  SUPPLIER_PAYMENT
 }
 
 enum ContractType {
@@ -146,6 +147,12 @@ enum SettlementTransactionType {
   REFUND
   PREPAYMENT
   CREDIT_NOTE
+  // Постачальницькі типи — окрема семантика знаку (див. BALANCE_SIGN у settlements.service):
+  // ми отримали товар → ми винні (balance↓); заплатили/повернули → борг меншає (balance↑).
+  // Клієнтські CHARGE(+1)/PAYMENT(−1) НЕ можна переюзати — знак протилежний.
+  SUPPLIER_CHARGE
+  SUPPLIER_PAYMENT
+  SUPPLIER_REFUND
 }
 
 // ─── PHASE 17 ENUMS ──────────────────────────────────────
@@ -162,6 +169,17 @@ enum SupplierReturnStatus {
   DRAFT
   CONFIRMED
   CANCELLED
+}
+
+enum SupplierPaymentStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaymentSourceType {
+  BANK_ACCOUNT
+  CASH_REGISTER
 }
 
 enum InvoiceStatus {
@@ -300,11 +318,32 @@ model Organisation {
   exchangeRates         ExchangeRate[]
   bankAccounts          BankAccount[]
   cashRegisters         CashRegister[]
+  savedReports          SavedReport[]
   primaryBankAccount    BankAccount?           @relation("OrgPrimaryBankAccount", fields: [bankAccountId], references: [id])
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("organisations")
+}
+
+/// Збережена конфігурація звіту конструктора (report-builder). config — ReportConfig як JSON.
+model SavedReport {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  entity      String // ключ реєстру (валідність — на app-рівні при run)
+  config      Json
+  createdBy   String?   @db.Uuid
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("saved_reports")
 }
 
 model AuthAccount {
@@ -593,6 +632,7 @@ model Counterparty {
   loyaltyAccount     LoyaltyAccount?
   purchaseOrders     PurchaseOrder[]
   supplierReturns    SupplierReturn[]
+  supplierPayments   SupplierPayment[]
   invoices           Invoice[]
   workOrders         WorkOrder[]
   payments           Payment[]
@@ -630,6 +670,9 @@ model CounterpartyContract {
   purchaseOrders PurchaseOrder[]
 
   @@index([orgId, counterpartyId, deletedAt])
+  // sto-optimize (2026-08-30): hot-path getSchedule — filter by (orgId, contractType='PURCHASE'),
+  // не використовує counterpartyId — існуючий базовий індекс не покривав.
+  @@index([orgId, contractType, deletedAt])
   @@index([orgId, syncVersion])
   @@map("counterparty_contracts")
 }
@@ -1236,6 +1279,12 @@ model StockBatch {
   // (orgId, warehouseId, isActive, createdAt) не вибирається коли WHERE не має
   // isActive — Postgres вимагає leading-cols match.
   @@index([orgId, createdAt])
+  // sto-optimize (2026-09-02): hot-path BatchService.consumeBatch (FIFO/LIFO):
+  // WHERE (orgId, goodId, warehouseId, isActive) + ORDER BY createdAt asc/desc.
+  // Існуючий (orgId, goodId, warehouseId, isActive) не має createdAt — Postgres
+  // робить external sort на кожній сторінці PAGE=100 при кожному WRITEOFF/WO-COMPLETED.
+  // Migration: 20260902200000_add_batch_consume_hotpath_index
+  @@index([orgId, goodId, warehouseId, isActive, createdAt])
   @@map("stock_batches")
 }
 
@@ -1342,16 +1391,18 @@ model PurchaseOrder {
   totalVat     Decimal             @default(0) @db.Decimal(12, 2)
   notes        String?
   documentDate DateTime            @default(now()) @db.Date
+  paymentDate  DateTime?           @db.Date
   pricedAt     DateTime?
   syncVersion  BigInt              @default(0)
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   deletedAt    DateTime?
 
-  supplier  Counterparty          @relation(fields: [supplierId], references: [id])
-  warehouse Warehouse             @relation(fields: [warehouseId], references: [id])
-  contract  CounterpartyContract? @relation(fields: [contractId], references: [id])
-  lines     PurchaseOrderLine[]
+  supplier         Counterparty          @relation(fields: [supplierId], references: [id])
+  warehouse        Warehouse             @relation(fields: [warehouseId], references: [id])
+  contract         CounterpartyContract? @relation(fields: [contractId], references: [id])
+  lines            PurchaseOrderLine[]
+  supplierPayments SupplierPayment[]
 
   @@index([orgId, status, deletedAt])
   @@index([orgId, syncVersion])
@@ -1365,14 +1416,14 @@ model PurchaseOrderLine {
   orgId           String    @db.Uuid
   purchaseOrderId String    @db.Uuid
   goodId          String    @db.Uuid
-  quantity          Float
-  price             Decimal   @db.Decimal(12, 2)
-  vatRate           Decimal   @default(0) @db.Decimal(5, 2)
-  vatAmount         Decimal   @default(0) @db.Decimal(12, 2)
-  receivedQty       Float     @default(0)
-  pricedSalePrice   Decimal?  @db.Decimal(12, 2)
-  pricingRuleName   String?
-  unitOfMeasureId   String?   @db.Uuid
+  quantity        Float
+  price           Decimal   @db.Decimal(12, 2)
+  vatRate         Decimal   @default(0) @db.Decimal(5, 2)
+  vatAmount       Decimal   @default(0) @db.Decimal(12, 2)
+  receivedQty     Float     @default(0)
+  pricedSalePrice Decimal?  @db.Decimal(12, 2)
+  pricingRuleName String?
+  unitOfMeasureId String?   @db.Uuid
   syncVersion     BigInt    @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -1434,6 +1485,40 @@ model SupplierReturnLine {
   @@index([supplierReturnId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("supplier_return_lines")
+}
+
+model SupplierPayment {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String                @db.Uuid
+  supplierId      String                @db.Uuid
+  purchaseOrderId String?               @db.Uuid
+  sourceType      PaymentSourceType
+  bankAccountId   String?               @db.Uuid
+  cashRegisterId  String?               @db.Uuid
+  number          String
+  status          SupplierPaymentStatus @default(DRAFT)
+  amount          Decimal               @db.Decimal(12, 2)
+  method          String
+  notes           String?
+  documentDate    DateTime              @default(now()) @db.Date
+  syncVersion     BigInt                @default(0)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  deletedAt       DateTime?
+
+  supplier      Counterparty   @relation(fields: [supplierId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  bankAccount   BankAccount?   @relation(fields: [bankAccountId], references: [id])
+  cashRegister  CashRegister?  @relation(fields: [cashRegisterId], references: [id])
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, supplierId, createdAt])
+  @@index([orgId, status, createdAt])
+  // sto-optimize (2026-08-30): findAll(purchaseOrderId=?) + getSchedule nested include
+  // + groupBy(purchaseOrderId=null) — FK PO axis не було покрито.
+  @@index([orgId, purchaseOrderId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("supplier_payments")
 }
 
 model StockDocument {
@@ -2190,10 +2275,11 @@ model BankAccount {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  organisation   Organisation   @relation(fields: [orgId], references: [id])
-  currency       Currency       @relation(fields: [currencyId], references: [id])
-  branch         GarageBranch?  @relation(fields: [branchId], references: [id])
-  primaryForOrgs Organisation[] @relation("OrgPrimaryBankAccount")
+  organisation     Organisation      @relation(fields: [orgId], references: [id])
+  currency         Currency          @relation(fields: [currencyId], references: [id])
+  branch           GarageBranch?     @relation(fields: [branchId], references: [id])
+  primaryForOrgs   Organisation[]    @relation("OrgPrimaryBankAccount")
+  supplierPayments SupplierPayment[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -2211,9 +2297,10 @@ model CashRegister {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  organisation Organisation @relation(fields: [orgId], references: [id])
-  currency     Currency     @relation(fields: [currencyId], references: [id])
-  branch       GarageBranch @relation(fields: [branchId], references: [id])
+  organisation     Organisation      @relation(fields: [orgId], references: [id])
+  currency         Currency          @relation(fields: [currencyId], references: [id])
+  branch           GarageBranch      @relation(fields: [branchId], references: [id])
+  supplierPayments SupplierPayment[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])

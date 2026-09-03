@@ -33,6 +33,7 @@ test.use({ storageState: STORAGE_STATE_PATH });
 
 // Module-scoped seed state — initialized once for the file via beforeAll.
 let seededEstimateWoId: string | null = null;
+let seededEstimateWoNumber: string | null = null;
 let accessToken: string | null = null;
 
 /**
@@ -53,12 +54,14 @@ function readAdminToken(): string {
 
 /**
  * Seed an ESTIMATE work-order by cloning a DRAFT and transitioning it.
- * Returns the new WO id or null if no seed donor exists (truly empty DB).
+ * Returns { id, number } for the new WO or null if no seed donor exists.
+ * The number is needed so UI tests can locate the row by search
+ * (independent of date-filter defaults — see UI test below).
  */
 async function seedEstimateWorkOrder(
   ctx: APIRequestContext,
   token: string,
-): Promise<string | null> {
+): Promise<{ id: string; number: string } | null> {
   // 1. Pick a DRAFT donor to clone — must be soft-deletable later.
   const draftRes = await ctx.get(`${API_BASE}/api/work-orders?status=DRAFT&limit=1`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -74,7 +77,7 @@ async function seedEstimateWorkOrder(
     data: {},
   });
   if (!cloneRes.ok()) return null;
-  const clone = (await cloneRes.json()) as { id: string };
+  const clone = (await cloneRes.json()) as { id: string; number: string };
 
   // 3. Transition DRAFT → ESTIMATE.
   const transRes = await ctx.post(`${API_BASE}/api/work-orders/${clone.id}/transition`, {
@@ -89,7 +92,7 @@ async function seedEstimateWorkOrder(
     return null;
   }
 
-  return clone.id;
+  return { id: clone.id, number: clone.number };
 }
 
 /**
@@ -120,9 +123,11 @@ test.describe('Estimate share', () => {
     accessToken = readAdminToken();
     const ctx = await request.newContext();
     try {
-      seededEstimateWoId = await seedEstimateWorkOrder(ctx, accessToken);
-      // Seed race condition (Bug #538): give API time to persist WO before tests query it.
-      if (seededEstimateWoId) {
+      const seeded = await seedEstimateWorkOrder(ctx, accessToken);
+      if (seeded) {
+        seededEstimateWoId = seeded.id;
+        seededEstimateWoNumber = seeded.number;
+        // Seed race condition (Bug #538): give API time to persist WO before tests query it.
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     } finally {
@@ -138,6 +143,7 @@ test.describe('Estimate share', () => {
     } finally {
       await ctx.dispose();
       seededEstimateWoId = null;
+      seededEstimateWoNumber = null;
       accessToken = null;
     }
   });
@@ -247,17 +253,32 @@ test.describe('Estimate share', () => {
       await apiCtx.dispose();
     }
 
-    // Open work-orders page; click "Кошторис" status tab to filter ESTIMATE.
+    // Bug #572: /work-orders list defaults date filter to Kyiv-today, but seeded
+    // WO's documentDate is server-tz-now (near midnight the two dates diverge and
+    // the row is invisible). The Bug #401 sibling test already documented this
+    // brittleness. Fix: clear both date inputs AND search by exact WO number so
+    // we locate our specific row regardless of what else is in the DB.
     await page.goto('/work-orders');
     await page.getByRole('button', { name: /^Кошторис$/ }).click();
-    // Wait for the filter to apply — ensure table is reloaded with ESTIMATE items.
-    // Seed race: DB might not have synced yet, so wait longer and add retry loop.
+
+    // Clear "З" (dateFrom) and "По" (dateTo) — empty string triggers onChange('')
+    // in DatePickerInput which removes the filter.
+    const dateInputs = page.getByRole('textbox', { name: /ДД\.ММ\.РРРР/ });
+    const dateCount = await dateInputs.count();
+    for (let i = 0; i < dateCount; i++) {
+      await dateInputs.nth(i).fill('');
+      await dateInputs.nth(i).press('Escape');
+    }
+    // Close any open date picker popover.
+    await page.locator('h1:has-text("Наряди")').click({ force: true });
+
+    // Search by our seeded WO's exact number — narrows the table to a single row.
+    expect(seededEstimateWoNumber, 'seed must expose WO number').toBeTruthy();
+    await page.getByRole('textbox', { name: /Пошук за номером/i }).fill(seededEstimateWoNumber!);
+
+    // Wait for the debounced query to settle and the row to render.
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => undefined);
-    // Wait until the row with our work-order is visible.
-    const row = page
-      .getByRole('row')
-      .filter({ hasText: /Кошторис/ })
-      .first();
+    const row = page.getByRole('row').filter({ hasText: seededEstimateWoNumber! }).first();
     await expect(row).toBeVisible({ timeout: 30_000 });
     // Hover row to reveal the per-row action button ("Відкрити наряд") — pencil icon button.
     await row.hover();

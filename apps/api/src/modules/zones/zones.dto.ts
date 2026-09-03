@@ -12,17 +12,16 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
-import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
-
-// Accepts any UUID including nil UUID (00000000-...) used in seed data.
+// Shared regex accepts any UUID including nil UUID (00000000-...) used in seed data.
 // @IsUUID() from class-validator rejects nil UUIDs (version check fails).
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { UUID_REGEX } from '@sto/shared';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 // в”Ђв”Ђв”Ђ Zone DTOs в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateZoneDto {
   @ApiProperty()
-  @Matches(UUID_RE, { message: 'branchId must be a UUID' })
+  @Matches(UUID_REGEX, { message: 'branchId must be a UUID' })
   branchId!: string;
 
   @ApiProperty({ example: 'РњРµС…Р°РЅС–С‡РЅР° Р·РѕРЅР° Рђ' })
@@ -63,7 +62,7 @@ export class ZoneResponseDto {
 
 export class CreateLiftDto {
   @ApiProperty()
-  @Matches(UUID_RE, { message: 'zoneId must be a UUID' })
+  @Matches(UUID_REGEX, { message: 'zoneId must be a UUID' })
   zoneId!: string;
 
   @ApiProperty({ example: 'РџС–РґР№РѕРјРЅРёРє в„–1' })

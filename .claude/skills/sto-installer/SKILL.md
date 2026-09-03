@@ -2,7 +2,7 @@
 name: sto-installer
 description: >
   Build and maintain the Windows installer for STO ERP. Use when the user says "зроби інсталятор", "installer", "setup.exe", "розповсюдження", "встановлення на клієнта", "оновлення", "бекап", or working on installer/ directory. Covers: Inno Setup scripts, PowerShell automation, Docker image bundling, CI/CD pipeline for releases.
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 bypassPermissions: true
 ---
 
@@ -13,6 +13,7 @@ bypassPermissions: true
 Створити `.exe` файл, який дозволяє нетехнічному персоналу встановити STO ERP на звичайний ПК або сервер під Windows без будь-яких знань про Docker, Node.js або командний рядок.
 
 **Вимоги до installer:**
+
 - Один файл `.exe`, все включено (offline-ready)
 - Повне встановлення ≤ 15 хвилин
 - Не потребує інтернету після завантаження installer
