@@ -634,9 +634,27 @@ function FilterZone({
 }
 
 // ── Рендер результату (ієрархічна таблиця) ──────────────────────────────────────
-function fmtAggValue(alias: string, value: number | null): string {
+
+/**
+ * Форматує значення агрегату за alias і типом поля.
+ * MIN/MAX над датою → fmtDate (бекенд повертає Unix-мс від Prisma Date);
+ * COUNT → ціле число; решта (SUM/AVG/MIN/MAX числових/decimal) → fmtMoney.
+ */
+function fmtAggValue(
+  alias: string,
+  value: number | null,
+  cols?: { key: string; label: string; type: string }[],
+): string {
   if (value === null || value === undefined) return '—';
   if (alias.startsWith('COUNT_')) return String(value);
+  // Визначаємо тип поля за alias щоб відрізнити дати від чисел.
+  const us = alias.indexOf('_');
+  const fieldKey = us >= 0 ? alias.slice(us + 1) : '';
+  const colType = cols?.find(c => c.key === fieldKey)?.type;
+  if (colType === 'date') {
+    // Prisma повертає Date-об'єкт; numericValue() → Number(date) = Unix-мс.
+    return fmtDate(new Date(value).toISOString());
+  }
   return fmtMoney(value);
 }
 
@@ -776,7 +794,7 @@ function ResultView({
               </td>
               {aggAliases.map(a => (
                 <td key={a} className="text-right px-3 py-2 border-t border-border">
-                  {fmtAggValue(a, result.result.grandTotals[a])}
+                  {fmtAggValue(a, result.result.grandTotals[a], cols)}
                 </td>
               ))}
             </tr>
@@ -844,7 +862,7 @@ function GroupRows({
         <td className="text-right px-3 py-1.5 text-muted-foreground">{node.count}</td>
         {aggAliases.map(a => (
           <td key={a} className="text-right px-3 py-1.5">
-            {fmtAggValue(a, node.aggregates[a])}
+            {fmtAggValue(a, node.aggregates[a], cols)}
           </td>
         ))}
       </tr>
