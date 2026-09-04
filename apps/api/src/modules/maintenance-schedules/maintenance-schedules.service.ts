@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { addDaysKyiv } from '../../common/utils/kyiv-date';
 import {
   CreateMaintenanceScheduleDto,
   UpdateMaintenanceScheduleDto,
@@ -223,9 +224,9 @@ export class MaintenanceSchedulesService {
     intervalDays: number | null | undefined,
   ): Date | null {
     if (!lastDate || !intervalDays) return null;
-    const d = new Date(lastDate);
-    d.setDate(d.getDate() + intervalDays);
-    return d;
+    // CAL-M3: +днів у Kyiv-календарі (DST-aware), не через server-local setDate — інакше на межі
+    // доби/переходу DST дата наступного ТО зсувається на ±1 день. Уся система на Kyiv (kyiv-date).
+    return addDaysKyiv(new Date(lastDate), intervalDays);
   }
 
   private calcNextMileage(

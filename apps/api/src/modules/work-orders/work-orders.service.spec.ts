@@ -371,6 +371,8 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
         ),
         update: partUpdate,
       },
+      // WO-H1: writeOffPartsAndCharge re-reads totalAmount in-tx.
+      workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
       goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
     const inventory = { createMovement: inventoryCreateMovement } as unknown as InstanceType<
@@ -513,19 +515,18 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     });
     const prisma = {
       workOrderPart: {
-        findMany: vi
-          .fn()
-          .mockResolvedValue([
-            {
-              id: PART1_ID,
-              goodId: GOOD_ID,
-              warehouseId: WH_ID,
-              quantity: 20,
-              unitOfMeasureId: UOM_ID,
-            },
-          ]),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: PART1_ID,
+            goodId: GOOD_ID,
+            warehouseId: WH_ID,
+            quantity: 20,
+            unitOfMeasureId: UOM_ID,
+          },
+        ]),
         update: partUpdate,
       },
+      workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
       goodUoM: { findMany: goodUoMFindMany },
     } as unknown as PrismaService;
     const svc = new WorkOrdersService(

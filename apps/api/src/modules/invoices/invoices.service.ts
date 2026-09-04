@@ -3,7 +3,7 @@ import { InvoiceStatus, Prisma } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { safeCoeff } from '../../common/utils/math';
+import { safeCoeff, roundMoney } from '../../common/utils/math';
 import { sumLineTotals } from '../../common/utils/vat';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
@@ -457,9 +457,9 @@ export class InvoicesService {
       throw new NotFoundException('Одиницю виміру не знайдено для цього товару');
 
     const vatRate = dto.vatRate ?? 20;
-    const priceWithoutVat = dto.quantity * dto.unitPrice;
-    const vatAmount = priceWithoutVat * (vatRate / 100);
-    const priceWithVat = priceWithoutVat + vatAmount;
+    const priceWithoutVat = roundMoney(dto.quantity * dto.unitPrice);
+    const vatAmount = roundMoney(priceWithoutVat * (vatRate / 100));
+    const priceWithVat = roundMoney(priceWithoutVat + vatAmount);
 
     const line = await this.prisma.invoiceLine.create({
       data: {
@@ -517,8 +517,8 @@ export class InvoicesService {
     const quantity = dto.quantity ?? existing.quantity;
     const unitPrice = dto.unitPrice !== undefined ? dto.unitPrice : Number(existing.unitPrice);
     const vatRate = dto.vatRate !== undefined ? dto.vatRate : Number(existing.vatRate);
-    const priceWithoutVat = quantity * unitPrice;
-    const vatAmount = priceWithoutVat * (vatRate / 100);
+    const priceWithoutVat = roundMoney(quantity * unitPrice);
+    const vatAmount = roundMoney(priceWithoutVat * (vatRate / 100));
     const priceWithVat = priceWithoutVat + vatAmount;
 
     const updated = await this.prisma.invoiceLine.update({
@@ -586,9 +586,9 @@ export class InvoicesService {
       where: { invoiceId, orgId },
       _sum: { priceWithoutVat: true, vatAmount: true, priceWithVat: true },
     });
-    const totalWithoutVat = Number(result._sum.priceWithoutVat ?? 0);
-    const totalVat = Number(result._sum.vatAmount ?? 0);
-    const totalWithVat = Number(result._sum.priceWithVat ?? 0);
+    const totalWithoutVat = roundMoney(Number(result._sum.priceWithoutVat ?? 0));
+    const totalVat = roundMoney(Number(result._sum.vatAmount ?? 0));
+    const totalWithVat = roundMoney(Number(result._sum.priceWithVat ?? 0));
 
     await this.prisma.invoice.update({
       where: { id: invoiceId, orgId },
@@ -691,8 +691,8 @@ export class InvoicesService {
               // actualHours → invoice.amount розходилась з WO.totalAmount (totalActualLabor).
               const quantity = l.actualHours ?? l.normoHours;
               const unitPrice = Number(l.price);
-              const priceWithoutVat = quantity * unitPrice;
-              const vatAmount = priceWithoutVat * (DEFAULT_VAT / 100);
+              const priceWithoutVat = roundMoney(quantity * unitPrice);
+              const vatAmount = roundMoney(priceWithoutVat * (DEFAULT_VAT / 100));
               const priceWithVat = priceWithoutVat + vatAmount;
               return {
                 orgId,
@@ -709,8 +709,8 @@ export class InvoicesService {
               };
             }),
             ...wo.parts.map((p, i) => {
-              const priceWithoutVat = Number(p.quantity) * Number(p.price);
-              const vatAmount = priceWithoutVat * (DEFAULT_VAT / 100);
+              const priceWithoutVat = roundMoney(Number(p.quantity) * Number(p.price));
+              const vatAmount = roundMoney(priceWithoutVat * (DEFAULT_VAT / 100));
               const priceWithVat = priceWithoutVat + vatAmount;
               return {
                 orgId,

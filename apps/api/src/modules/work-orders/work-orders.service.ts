@@ -4,7 +4,7 @@ import { randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { safeCoeff } from '../../common/utils/math';
+import { safeCoeff, roundMoney } from '../../common/utils/math';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -942,7 +942,13 @@ export class WorkOrdersService {
         });
       }
     }
-    const chargeAmount = Number(wo.totalAmount ?? 0);
+    // WO-H1: сума боргу — з IN-TX re-read totalAmount (не зі stale pre-tx знімка wo). Concurrent
+    // addLine/updatePart міг змінити суму через recalcTotals між pre-tx read і цією транзакцією.
+    const freshWo = await db.workOrder.findFirst({
+      where: { id: wo.id, orgId },
+      select: { totalAmount: true },
+    });
+    const chargeAmount = roundMoney(Number(freshWo?.totalAmount ?? wo.totalAmount ?? 0));
     if (chargeAmount <= 0)
       throw new BadRequestException('Загальна сума наряду дорівнює нулю — завершення неможливе');
     await this.settlements.createTransaction(
@@ -997,7 +1003,7 @@ export class WorkOrdersService {
 
     const normoHours = dto.normoHours ?? work.normoHours;
     const price = dto.price !== undefined ? dto.price : Number(work.price);
-    const amount = normoHours * price;
+    const amount = roundMoney(normoHours * price);
 
     const line = await this.prisma.$transaction(
       async tx => {
@@ -1067,7 +1073,7 @@ export class WorkOrdersService {
 
     const normoHours = dto.normoHours ?? line.normoHours;
     const price = dto.price !== undefined ? dto.price : Number(line.price);
-    const amount = normoHours * price;
+    const amount = roundMoney(normoHours * price);
 
     const updated = await this.prisma.$transaction(
       async tx => {
@@ -1176,7 +1182,7 @@ export class WorkOrdersService {
     }
 
     const price = dto.price !== undefined ? dto.price : Number(good.salePrice);
-    const amount = dto.quantity * price;
+    const amount = roundMoney(dto.quantity * price);
 
     const part = await this.prisma.$transaction(
       async tx => {
@@ -1232,7 +1238,7 @@ export class WorkOrdersService {
 
     const quantity = dto.quantity ?? part.quantity;
     const price = dto.price !== undefined ? dto.price : Number(part.price);
-    const amount = quantity * price;
+    const amount = roundMoney(quantity * price);
 
     // Validate new unitOfMeasureId if provided
     let uomJunction: UomJunction | null = null;
@@ -1356,14 +1362,16 @@ export class WorkOrdersService {
           : (totalBase * vatRate) / 100
         : 0;
 
+    // WO-H2: квантуємо всі грошові суми до копійки перед записом у Decimal(12,2) —
+    // інакше float-дрейф дає Σ(рядки)≠total і невірну базу для CHARGE при COMPLETED.
     await tx.workOrder.update({
       where: { id: workOrderId, orgId },
       data: {
-        totalLabor,
-        totalActualLabor,
-        totalParts,
-        totalAmount: totalBase,
-        totalVat,
+        totalLabor: roundMoney(totalLabor),
+        totalActualLabor: roundMoney(totalActualLabor),
+        totalParts: roundMoney(totalParts),
+        totalAmount: roundMoney(totalBase),
+        totalVat: roundMoney(totalVat),
       },
     });
   }

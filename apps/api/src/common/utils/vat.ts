@@ -2,6 +2,7 @@
 // `as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'` casts. Prisma enum at runtime is a
 // string literal union that matches this local type.
 import type { VatMode } from '@prisma/client';
+import { roundMoney } from './math';
 
 interface LineVatResult {
   vatAmount: number;
@@ -9,6 +10,8 @@ interface LineVatResult {
   priceWithVat: number;
 }
 
+// FIN-H1/WO-H2: усі грошові результати квантуються до копійки (roundMoney) на кожному кроці —
+// інакше float-дрейф (60.059999…) псує Σ==total і priceWithoutVat+vatAmount≠priceWithVat.
 export function calcLineVat(
   price: number,
   qty: number,
@@ -16,23 +19,21 @@ export function calcLineVat(
   vatMode: VatMode,
 ): LineVatResult {
   if (vatMode === 'NONE' || vatRate === 0) {
-    return { vatAmount: 0, priceWithoutVat: price, priceWithVat: price };
+    return { vatAmount: 0, priceWithoutVat: roundMoney(price), priceWithVat: roundMoney(price) };
   }
   const sum = price * qty;
   if (vatMode === 'EXCLUSIVE') {
-    const vatAmount = (sum * vatRate) / 100;
     return {
-      vatAmount,
-      priceWithoutVat: price,
-      priceWithVat: price * (1 + vatRate / 100),
+      vatAmount: roundMoney((sum * vatRate) / 100),
+      priceWithoutVat: roundMoney(price),
+      priceWithVat: roundMoney(price * (1 + vatRate / 100)),
     };
   }
   // INCLUSIVE: ПДВ вже включено в ціну
-  const vatAmount = sum - sum / (1 + vatRate / 100);
   return {
-    vatAmount,
-    priceWithoutVat: price / (1 + vatRate / 100),
-    priceWithVat: price,
+    vatAmount: roundMoney(sum - sum / (1 + vatRate / 100)),
+    priceWithoutVat: roundMoney(price / (1 + vatRate / 100)),
+    priceWithVat: roundMoney(price),
   };
 }
 
@@ -53,7 +54,12 @@ export function sumLineTotals(
     totalVat += Number(l.vatAmount);
     totalWithVat += Number(l.priceWithVat);
   }
-  return { totalWithoutVat, totalVat, totalWithVat };
+  // Квантуємо підсумки — Σ float-значень теж дрейфує (напр. 0.1+0.2).
+  return {
+    totalWithoutVat: roundMoney(totalWithoutVat),
+    totalVat: roundMoney(totalVat),
+    totalWithVat: roundMoney(totalWithVat),
+  };
 }
 
 export function calcDocVat(
@@ -73,5 +79,9 @@ export function calcDocVat(
     totalWithoutVat += priceWithoutVat * l.qty;
     totalWithVat += priceWithVat * l.qty;
   }
-  return { totalVat, totalWithoutVat, totalWithVat };
+  return {
+    totalVat: roundMoney(totalVat),
+    totalWithoutVat: roundMoney(totalWithoutVat),
+    totalWithVat: roundMoney(totalWithVat),
+  };
 }
