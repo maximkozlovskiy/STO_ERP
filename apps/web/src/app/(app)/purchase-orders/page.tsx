@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
@@ -284,7 +284,7 @@ function PurchaseOrdersPageClient() {
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
 
-  // DetailPanel selection (orders tab only) — restored (Bug #496 fix wired это).
+  // DetailPanel selection (orders tab only) — відновлено, selection-state підключено (Bug #496).
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
 
   // configFields для DetailPanel — залежить лише від збереженого panelConfig.
@@ -362,20 +362,31 @@ function PurchaseOrdersPageClient() {
     [panelConfig.config],
   );
 
+  // Ref з id поточно вибраного PO — щоб toggle-логіка не залежала від стейл-замикання
+  // і щоб fetch не жив у state-updater (updater має бути чистим; StrictMode double-invoke
+  // інакше дублює GET).
+  const selectedPOIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedPOIdRef.current = selectedPO?.id ?? null;
+  }, [selectedPO]);
+
   // Вибір PO у панель: одразу показуємо дані зі списку, потім довантажуємо
   // повний PO (з позиціями — lines відсутні у list-відповіді). Дзеркалить
   // selectInvoice: toggle якщо клікнули по вже вибраному рядку.
   const selectPO = useCallback((po: PurchaseOrder) => {
-    setSelectedPO(prev => {
-      if (prev?.id === po.id) return null;
-      // fire-and-forget hydration — оновлює той самий рядок, якщо він ще вибраний
-      apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}`)
-        .then(full => setSelectedPO(cur => (cur?.id === po.id ? full : cur)))
-        .catch(() => {
-          /* лишаємо базові дані зі списку, якщо детальний запит впав */
-        });
-      return po;
-    });
+    if (selectedPOIdRef.current === po.id) {
+      selectedPOIdRef.current = null;
+      setSelectedPO(null);
+      return;
+    }
+    selectedPOIdRef.current = po.id;
+    setSelectedPO(po);
+    // Довантаження повного PO поза updater-ом — оновлює рядок, якщо він ще вибраний.
+    apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}`)
+      .then(full => setSelectedPO(cur => (cur?.id === po.id ? full : cur)))
+      .catch(() => {
+        /* лишаємо базові дані зі списку, якщо детальний запит впав */
+      });
   }, []);
 
   // Bug #596: deep-link `?open=<poId>` — відкриває edit-modal для конкретного PO
