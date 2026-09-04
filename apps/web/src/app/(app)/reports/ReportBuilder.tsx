@@ -1214,24 +1214,55 @@ function flattenTree(nodes: GroupNode[], aggAliases: string[], depth = 0): strin
   return rows;
 }
 
+/** Клітинка експорту для значення колонки: enum → переклад, дата → ДД.ММ.РРРР, число як є. */
+function exportCell(value: unknown, type: string, enumName?: string): string {
+  if (value === null || value === undefined) return '';
+  if (enumName) return enumLabel(enumName, value);
+  if (type === 'date') return fmtDate(String(value));
+  return String(value);
+}
+
 function exportReport(result: ReportRunResult, format: 'csv' | 'xlsx') {
   const aggAliases = Object.keys(result.result.grandTotals);
-  const header = ['Група', 'Кількість', ...aggAliases.map(a => aggAliasLabel(a, result))];
-  const body = result.groupBy.length
-    ? flattenTree(result.result.tree, aggAliases)
-    : [
-        [
-          'Усього',
-          String(result.result.rowCount),
-          ...aggAliases.map(a => String(result.result.grandTotals[a] ?? '')),
-        ],
-      ];
-  const totals = [
-    'Разом',
-    String(result.result.rowCount),
-    ...aggAliases.map(a => String(result.result.grandTotals[a] ?? '')),
-  ];
-  const rows = [header, ...body, totals];
+  let rows: string[][];
+
+  if (result.groupBy.length) {
+    // Групований режим — дерево груп (як на екрані), відступ = рівень ієрархії.
+    const header = ['Група', 'Кількість', ...aggAliases.map(a => aggAliasLabel(a, result))];
+    const body = flattenTree(result.result.tree, aggAliases);
+    const totals = [
+      'Разом',
+      String(result.result.rowCount),
+      ...aggAliases.map(a => String(result.result.grandTotals[a] ?? '')),
+    ];
+    rows = [header, ...body, totals];
+  } else {
+    // Плоский режим — СКЛЕЄНІ детальні рядки (ті самі, що на екрані), а не лише «Усього».
+    const cols = result.columns;
+    const detail = result.result.detailRows;
+    const showCount = detail.some(
+      r => typeof r.__mergedCount === 'number' && (r.__mergedCount as number) > 1,
+    );
+    const header = [
+      '№',
+      ...cols.map(c => c.label),
+      ...(showCount ? ['Склеєно'] : []),
+      ...aggAliases.map(a => aggAliasLabel(a, result)),
+    ];
+    const body = detail.map((row, i) => [
+      String(i + 1),
+      ...cols.map(c => exportCell(row[c.key], c.type, c.enumName)),
+      ...(showCount ? [String(typeof row.__mergedCount === 'number' ? row.__mergedCount : 1)] : []),
+      ...aggAliases.map(() => ''),
+    ]);
+    const totals = [
+      'Разом',
+      ...cols.map(() => ''),
+      ...(showCount ? [String(result.result.rowCount)] : []),
+      ...aggAliases.map(a => String(result.result.grandTotals[a] ?? '')),
+    ];
+    rows = [header, ...body, totals];
+  }
 
   if (format === 'csv') {
     const csv = rows
