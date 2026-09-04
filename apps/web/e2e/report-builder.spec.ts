@@ -67,6 +67,51 @@ test.describe('Конструктор звітів', () => {
     await expect(page.locator('button[aria-expanded]').first()).toBeVisible();
   });
 
+  test('після запуску палітра лишається (НЕ авто-згортається) — групування досяжне', async ({
+    page,
+  }) => {
+    // Регресія «досі не групується»: авто-згортання після Запустити ховало палітру з
+    // кнопками К/Г/Ф → користувач не міг згрупувати вже після першого запуску.
+    await page.goto('/reports?tab=builder');
+    await expect(page.locator('button:has-text("Конструктор")')).toBeVisible({ timeout: 20_000 });
+    await page.locator('select').first().selectOption('workOrder');
+    await expect(page.getByText(/Поля «Наряди»/)).toBeVisible({ timeout: 10_000 });
+
+    // Додати колонку й запустити (без групування) — раніше це авто-згортало палітру.
+    const priorityRow = page.locator('div[draggable="true"]:has-text("Пріоритет")').first();
+    await priorityRow.getByRole('button', { name: /колонк/i }).click();
+    await page.locator('button:has-text("Запустити")').click();
+    await page.getByText(/Результат · рядків/).waitFor({ timeout: 10_000 });
+
+    // Палітра ЛИШАЄТЬСЯ видимою після запуску → можна одразу згрупувати.
+    await expect(page.getByText(/Поля «Наряди»/)).toBeVisible();
+    const statusRow = page.locator('div[draggable="true"]:has-text("Статус")').first();
+    await statusRow.getByRole('button', { name: /групування/i }).click();
+    await page.locator('button:has-text("Запустити")').click();
+    await page.getByText(/Результат · рядків/).waitFor({ timeout: 10_000 });
+    await expect(page.locator('button[aria-expanded]').first()).toBeVisible();
+  });
+
+  test('згорнуті налаштування → компактна панель з поточним вибором (не порожньо)', async ({
+    page,
+  }) => {
+    await page.goto('/reports?tab=builder');
+    await expect(page.locator('button:has-text("Конструктор")')).toBeVisible({ timeout: 20_000 });
+    await page.locator('select').first().selectOption('workOrder');
+    await expect(page.getByText(/Поля «Наряди»/)).toBeVisible({ timeout: 10_000 });
+
+    const statusRow = page.locator('div[draggable="true"]:has-text("Статус")').first();
+    await statusRow.getByRole('button', { name: /групування/i }).click();
+
+    // Згорнути налаштування → компактна панель показує «Групування: Статус», палітра схована.
+    await page.locator('button:has-text("Згорнути")').click();
+    await expect(page.getByText(/Поля «Наряди»/)).toBeHidden();
+    await expect(page.getByText(/Групування:/)).toBeVisible();
+    // Клік по компактній панелі → розгортає назад.
+    await page.getByText(/Групування:/).click();
+    await expect(page.getByText(/Поля «Наряди»/)).toBeVisible();
+  });
+
   test('Bug #606: повторний клік «Г» на вже-активному полі при 5/5 — без toast «Максимум»', async ({
     page,
   }) => {

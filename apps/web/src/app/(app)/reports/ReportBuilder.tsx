@@ -278,8 +278,9 @@ export function ReportBuilder() {
     if (!columns.length && !groupBy.length) return toast.warning('Додайте хоча б одну колонку');
     try {
       setResult(await runMut.mutateAsync(buildConfig(sortOverride)));
-      // Після ручного запуску (не пересортування) — згорнути налаштування, звільнити місце.
-      if (sortOverride === undefined) setConfigCollapsed(true);
+      // НЕ згортати автоматично: авто-згортання ховало палітру з кнопками К/Г/Ф, тож
+      // користувач після запуску не міг згрупувати дані («досі не групується»). Згортання —
+      // лише вручну кнопкою «Згорнути».
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Помилка звіту');
     }
@@ -432,7 +433,36 @@ export function ReportBuilder() {
         <div className="text-muted-foreground text-sm py-10 text-center">
           Оберіть джерело даних, щоб почати конструювати звіт.
         </div>
-      ) : (
+      ) : null}
+
+      {/* Компактна панель коли налаштування згорнуті — показує поточний вибір і дозволяє
+          розгорнути назад. Без неї згорнутий стан ховав палітру → групування недосяжне. */}
+      {entity && configCollapsed && (
+        <button
+          type="button"
+          onClick={() => setConfigCollapsed(false)}
+          className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-surface px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+          title="Розгорнути налаштування звіту"
+        >
+          <span className="flex items-center gap-1.5 font-medium text-primary">
+            <ChevronDown className="size-4" /> Налаштування
+          </span>
+          <span className="text-muted-foreground">
+            Групування:{' '}
+            <span className="text-foreground">
+              {groupBy.length ? groupBy.map(k => fieldByKey.get(k)?.label ?? k).join(' → ') : '—'}
+            </span>
+          </span>
+          <span className="text-muted-foreground">
+            Колонки:{' '}
+            <span className="text-foreground">
+              {columns.length ? columns.map(k => fieldByKey.get(k)?.label ?? k).join(', ') : '—'}
+            </span>
+          </span>
+        </button>
+      )}
+
+      {entity && (
         <div
           className={cn(
             'grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4',
