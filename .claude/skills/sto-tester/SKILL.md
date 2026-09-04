@@ -270,6 +270,7 @@ grep -rn "prisma\.[a-zA-Z]*\.delete(" apps/api/src/modules/ --include="*.service
 - [ ] Всі `findFirst` / `findMany` мають `deletedAt: null` (окрім append-only моделей)
 - [ ] Append-only без `deletedAt`: `SettlementTransaction`, `StockMovement`, `Payment`, `WorkOrderLineEmployee`
 - [ ] Жодного `prisma.X.delete()` на бізнес-сутностях
+- [ ] **Remove-guard «блокувати якщо є пов'язані активні документи» — повнота набору relations (Bug #631):** будь-який `service.remove()`/`delete()` що додає guard типу «не видаляти якщо є активні наряди/замовлення/борг» — звірити ПОВНИЙ перелік document-relations сутності (schema `X[]` back-relations) проти списку `count()`-перевірок у guard. Частий split-coverage: перевіряють 2 з 3 однотипних document-relations. **Пастка balance-як-proxy:** SENT/OVERDUE/фінальні документи, що вже створили settlement-транзакцію, ловляться balance-guard-ом (`Number(balance)!==0`) непрямо → здається «покрито», АЛЕ DRAFT/чернетка того ж документа ще НЕ має транзакції → `balance=0` → провалюється крізь усі guard-и → осиротілий активний документ на soft-deleted parent. Grep: для кожного `count()` у `remove()` знайти всі `model X { ...  <Rel>[]  ...}` back-relations parent-моделі у schema (`sed -n '/^model Counterparty /,/^}/p' schema.prisma | grep -E "\[\]"`) → кожен document-подібний relation (WorkOrder/Invoice/PurchaseOrder/StockDocument) має власний count-guard з `status: { notIn: [<фінальні>] }`, НЕ покладатись на balance. Append-only (Payment/StockMovement) — не блокують. Fix: додати відсутній `count()` у той самий `Promise.all`, симетрично наявним. Severity MEDIUM (data-integrity + orphan-UX). Where else: `Counterparty.remove` (WO+PO+Invoice), `Vehicle.remove` (пов'язані WO), `Good.remove` (StockItem залишки), `Warehouse.remove` (StockItem), будь-який parent з kількома document-children.
 
 **Soft-delete + `@@unique` = P2002 при повторному створенні (Bug #152)**
 
@@ -1107,6 +1108,34 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-04 — Remove-guard «блокувати якщо є пов'язані активні документи» покриває не всі однотипні relations; balance-як-proxy маскує DRAFT-документи (Bug #631) — backend / data-integrity / orphan / MEDIUM
+
+**Сигнал:** `service.remove()` додає guard «не видаляти якщо є активні наряди/PO/борг» і перевіряє 2 з N однотипних document-relations. Balance-guard (`Number(balance)!==0`) присутній і здається універсальним «є борг → не можна», тому DRAFT/чернетка ще-без-транзакції документа (Invoice DRAFT, PO DRAFT) провалюється: `balance=0`, немає count-guard для цього типу → parent soft-видаляється → активний документ вказує на soft-deleted parent (осиротів у списку, зник з CRM). Live-сигнал: create parent → create DRAFT-документ (без send/transition) → DELETE parent → 204 (мало бути 400), а `GET /document/:id` → 200 з мертвим `parentId`.
+
+**Причина виникнення:** guard пишуть інкрементально «які документи спадають на думку» (наряди, замовлення), Invoice — клієнтський еквівалент PO — випадає. SENT/OVERDUE-рахунки непрямо ловляться balance-guard-ом (створили CHARGE), тому розробник вважає рахунки «покритими через баланс». Але DRAFT ще не має settlement-транзакції → `balance=0` → крізь усі guard-и. Плутанина: balance ловить committed-фінанси, НЕ open-но-ще-без-транзакції документи.
+
+**Підхід до виявлення:** для КОЖНОГО `count()` у `remove()`/`delete()` витягти повний перелік back-relations parent-моделі зі schema (`sed -n '/^model <Parent> /,/^}/p' schema.prisma | grep -E "\[\]"`) → кожен document-подібний relation (WorkOrder/Invoice/PurchaseOrder/StockDocument/SupplierReturn) має ВЛАСНИЙ count-guard з `status: { notIn: [<фінальні>] }`. Балансу НЕ достатньо (він ловить лише транзакційні документи). Append-only (Payment/StockMovement) не блокують. Live-проба з DRAFT-версією кожного document-типу.
+
+**Підхід до фіксу:** додати відсутній `count()` у той самий `Promise.all` симетрично наявним (`prisma.invoice.count({ where:{orgId, <fk>:id, deletedAt:null, status:{notIn:['PAID','CANCELLED']}} })`) + `if (n>0) throw BadRequestException(<укр>)`. Використати наявний index `(orgId, status, deletedAt)`. Regression-guard: spec з `<rel>.count.mockResolvedValueOnce(1) → BadRequest + updateMany не викликаний` + happy `=0 → delete` + перевірка `where.status = notIn [фінальні]`. Додати relation.count у prisma-mock (інакше happy-тест впаде на `undefined.count`).
+
+**Severity:** MEDIUM — data-integrity + orphan-UX, той самий клас що вже покриті relations; DRAFT менш критичні за committed, SENT/OVERDUE вже ловились balance-ом.
+
+**Де шукати ще:** `Counterparty.remove` (WO+PO+Invoice — тепер повний), `Vehicle.remove` (пов'язані активні WO), `Good.remove`/`Warehouse.remove` (StockItem залишки≠0), будь-який parent з кількома document-children + guard. Загальний принцип: guard-completeness = ПОВНИЙ набір relations, не підмножина; balance ≠ proxy для «є відкриті документи».
+
+### 2026-09-04 — Stale `dist/main` рецидив: запущений процес старший за rebuild → guard мовчки не спрацьовує на live попри зелений unit + свіжий dist-файл (verification-hygiene) — process / deployment / CRITICAL-для-верифікації
+
+**Сигнал:** live-проба нового guard/фіксу дає СТАРУ поведінку (VIN dup → 201 замість 400), хоча: (1) unit зелені, (2) tsc чистий, (3) `grep <guard-msg> dist/.../*.js` знаходить код у файлі dist на диску. Парадокс «код є, а не працює» = майже завжди stale-процес.
+
+**Причина виникнення:** `node dist/main` (не `nest start --watch`) завантажує JS у пам'ять один раз на старті і НЕ hot-reload-ить. Якщо dist перезібрано ПІСЛЯ старту процесу — файл на диску новий, процес у пам'яті старий. Друга сесія / попередній агент часто лишає працюючий `node dist/main`, а поточна сесія перезбирає, але не рестартить. Урок Хвиль 2-3, що повторюється.
+
+**Підхід до виявлення:** ПЕРЕД будь-якою live-верифікацією звірити StartTime процесу порту 3000 із часом останнього білду dist: `Get-CimInstance Win32_Process -Filter "ProcessId=<pid>"` (CommandLine + StartTime) vs `ls -la dist/main.js`. Якщо процес старший за dist → stale. Швидкий сигнал: guard-код у `dist/*.js` є (`grep -c`), але live дає стару поведінку.
+
+**Підхід до фіксу:** `pnpm --filter @sto/api build` → kill процесу порту 3000 (`Get-NetTCPConnection -LocalPort 3000 | Stop-Process -Force`) → `node dist/main` у фоні → чекати `/api/health`=200 → перелогінитись (токен міг протухнути) → повторити live-пробу. Після рестарту всі guard-и спрацьовують.
+
+**Severity:** не баг продукту — операційна пастка ВЕРИФІКАЦІЇ. Але критична: без рестарту тестер або (а) хибно рапортує «баг існує» на неіснуючий баг, або (б) хибно пропускає реальний баг (стара поведінка = «стара» ловить/не ловить не те). Unit-зелений + свіжий dist-файл ≠ deployed.
+
+**Де шукати ще:** будь-яка live/E2E-верифікація проти локального `node dist/main` (API) — завжди звіряти StartTime. Web dev-сервер (`next dev`) hot-reload-ить, тому менш вразливий, АЛЕ `.next` cache після route-group rename — окрема пастка (§0 Bug #291). Загальне правило: перед live-пробою — «чи запущений процес містить мій код?».
 
 ### 2026-09-04 — Concurrent double-submit у create-модалці обходить idempotency-ref: захист лише через `disabled={saving}`, без синхронного savingRef-guard (Bug #630) — frontend / concurrency / financial-integrity / HIGH
 
