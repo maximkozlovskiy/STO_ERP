@@ -215,8 +215,11 @@ export class CounterpartiesService {
         'Неможливо видалити контрагента з ненульовим балансом (є заборгованість)',
       );
     }
-    // Активні (не-фінальні) наряди / незакриті замовлення блокують видалення.
-    const [activeWo, openPo] = await Promise.all([
+    // Активні (не-фінальні) наряди / незакриті замовлення / відкриті рахунки блокують видалення.
+    // Bug #631: рахунки — той самий клас документів що наряди/PO. SENT/OVERDUE ловить balance-guard
+    // (вони створили CHARGE), АЛЕ DRAFT-рахунок ще не має транзакції → balance=0 → осиротів би на
+    // soft-deleted контрагента (лишається активним у списку рахунків з мертвим контрагентом).
+    const [activeWo, openPo, openInvoice] = await Promise.all([
       this.prisma.workOrder.count({
         where: {
           orgId,
@@ -233,12 +236,23 @@ export class CounterpartiesService {
           status: { notIn: ['RECEIVED', 'CANCELLED'] },
         },
       }),
+      this.prisma.invoice.count({
+        where: {
+          orgId,
+          counterpartyId: id,
+          deletedAt: null,
+          status: { notIn: ['PAID', 'CANCELLED'] },
+        },
+      }),
     ]);
     if (activeWo > 0) {
       throw new BadRequestException('Неможливо видалити: контрагент має активні наряди');
     }
     if (openPo > 0) {
       throw new BadRequestException('Неможливо видалити: контрагент має незакриті замовлення');
+    }
+    if (openInvoice > 0) {
+      throw new BadRequestException('Неможливо видалити: контрагент має відкриті рахунки');
     }
 
     // sto-optimize: atomic updateMany with compound where — no race window between guard and write.

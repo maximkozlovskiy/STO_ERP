@@ -4,6 +4,8 @@ import {
   kyivOffsetMs,
   isoToKyivLocalDateTime,
   localDateTimeToISO,
+  fmtMoney,
+  fmtInt,
 } from './format';
 
 /**
@@ -117,5 +119,43 @@ describe('isoToKyivLocalDateTime — UTC ISO → Kyiv local (Bug #436)', () => {
     const iso = '2026-01-15T07:00:00.000Z';
     const local = isoToKyivLocalDateTime(iso);
     expect(localDateTimeToISO(local)).toBe(iso);
+  });
+});
+
+/**
+ * Regression-guard для WEB-M9 — dashboard KPI грошей мають показувати копійки
+ * (fmtMoney → 2 знаки), а пробіг/кількість — цілим (fmtInt). До фіксу KPI
+ * використовував fmtInt і відкидав копійки (порушення локалі uk-UA).
+ * Assert-и по семантиці (2 знаки після коми vs без коми), не по exact-spacing
+ * (Intl uk-UA thousands separator — narrow no-break space, залежить від ICU).
+ */
+describe('fmtMoney vs fmtInt — kopiyka distinction (WEB-M9)', () => {
+  it('fmtMoney завжди 2 знаки після коми (копійки)', () => {
+    expect(fmtMoney(1250)).toMatch(/1[\s  ]?250,00$/);
+    expect(fmtMoney(1250.5)).toMatch(/,50$/);
+    expect(fmtMoney(1250.55)).toMatch(/,55$/);
+    expect(fmtMoney(0)).toBe('0,00');
+  });
+
+  it('fmtInt НЕ додає padding копійок (варіативна дробова частина)', () => {
+    // Дефолтний Intl('uk-UA') без maximumFractionDigits:0 → 0..3 знаки БЕЗ padding.
+    expect(fmtInt(1250)).not.toMatch(/,/); // ціле — без коми
+    expect(fmtInt(1250.5)).toMatch(/,5$/); // .5 → ,5 (НЕ ,50 — саме тут корінь WEB-M9)
+    expect(fmtInt(0)).toBe('0');
+  });
+
+  it('WEB-M9 суть: сума з .5 через fmtInt губить padding копійки', () => {
+    // 1250.5 грн має бути «...,50» (fmtMoney), а fmtInt дає «...,5».
+    // Саме тому KPI має бути fmtMoney, не fmtInt.
+    expect(fmtMoney(1250.5)).toMatch(/,50$/);
+    expect(fmtInt(1250.5)).not.toMatch(/,50$/);
+    expect(fmtMoney(1250.5)).not.toBe(fmtInt(1250.5));
+  });
+
+  it('null/undefined → «—» (обидва)', () => {
+    expect(fmtMoney(null)).toBe('—');
+    expect(fmtMoney(undefined)).toBe('—');
+    expect(fmtInt(null)).toBe('—');
+    expect(fmtInt(undefined)).toBe('—');
   });
 });

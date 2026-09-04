@@ -21,6 +21,7 @@ describe('CounterpartiesService', () => {
     counterparty: { findMany: any; count: any; findFirst: any; updateMany: any };
     workOrder: { count: any };
     purchaseOrder: { count: any };
+    invoice: { count: any };
     $transaction: ReturnType<typeof vi.fn>;
   };
 
@@ -37,6 +38,7 @@ describe('CounterpartiesService', () => {
       },
       workOrder: { count: vi.fn().mockResolvedValue(0) },
       purchaseOrder: { count: vi.fn().mockResolvedValue(0) },
+      invoice: { count: vi.fn().mockResolvedValue(0) },
       // findAll використовує $transaction([findMany, count]) — виконуємо масив як є
       $transaction: vi.fn().mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
@@ -154,10 +156,40 @@ describe('CounterpartiesService', () => {
       expect(prisma.counterparty.updateMany).not.toHaveBeenCalled();
     });
 
-    it('видаляє коли баланс 0 і немає активних документів', async () => {
+    it('кидає BadRequestException при незакритих замовленнях (PO)', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ settlementAccount: { balance: 0 } });
+      prisma.workOrder.count.mockResolvedValueOnce(0);
+      prisma.purchaseOrder.count.mockResolvedValueOnce(1);
+      await expect(service.remove('org-1', 'cp-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.counterparty.updateMany).not.toHaveBeenCalled();
+    });
+
+    // Bug #631: DRAFT-рахунок (balance=0, немає CHARGE) не ловився → осиротів би.
+    it('Bug #631: кидає BadRequestException при відкритих рахунках (DRAFT/SENT/OVERDUE)', async () => {
       prisma.counterparty.findFirst.mockResolvedValueOnce({ settlementAccount: { balance: 0 } });
       prisma.workOrder.count.mockResolvedValueOnce(0);
       prisma.purchaseOrder.count.mockResolvedValueOnce(0);
+      prisma.invoice.count.mockResolvedValueOnce(1);
+      await expect(service.remove('org-1', 'cp-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.counterparty.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('Bug #631: invoice.count гейтить лише non-final статуси (notIn PAID/CANCELLED)', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ settlementAccount: { balance: 0 } });
+      prisma.workOrder.count.mockResolvedValueOnce(0);
+      prisma.purchaseOrder.count.mockResolvedValueOnce(0);
+      prisma.invoice.count.mockResolvedValueOnce(0);
+      await service.remove('org-1', 'cp-1');
+      const where = prisma.invoice.count.mock.calls[0][0].where;
+      expect(where).toMatchObject({ orgId: 'org-1', counterpartyId: 'cp-1', deletedAt: null });
+      expect(where.status).toEqual({ notIn: ['PAID', 'CANCELLED'] });
+    });
+
+    it('видаляє коли баланс 0 і немає активних документів (наряди/PO/рахунки)', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ settlementAccount: { balance: 0 } });
+      prisma.workOrder.count.mockResolvedValueOnce(0);
+      prisma.purchaseOrder.count.mockResolvedValueOnce(0);
+      prisma.invoice.count.mockResolvedValueOnce(0);
       await service.remove('org-1', 'cp-1');
       expect(prisma.counterparty.updateMany).toHaveBeenCalledTimes(1);
     });
