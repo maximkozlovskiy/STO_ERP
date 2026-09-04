@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateWorkOrderSideEffects } from '@/lib/cache-invalidation';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -254,6 +256,7 @@ export default function WorkOrderCardPage() {
   // undefined = not yet loaded; null = loaded but no invoice; InvoiceRef = present.
   const [invoiceRef, setInvoiceRef] = useState<InvoiceRef | null | undefined>(undefined);
 
+  const queryClient = useQueryClient();
   const [transitioning, setTransitioning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -499,6 +502,9 @@ export default function WorkOrderCardPage() {
       );
       // transition returns WorkOrderResponseDto (no lines/parts) — merge with existing
       setWo(prev => (prev ? { ...prev, ...updated } : prev));
+      // WEB-H1: перехід рухає склад (writeoff) + баланс (CHARGE) → інвалідувати сусідні кеші
+      // (інвентар/взаєморозрахунки/звіти/дашборд), інакше інші вкладки застарілі.
+      invalidateWorkOrderSideEffects(queryClient);
       if (features.toastEnabled) toast.success(`Статус змінено: ${label}`);
     } catch (e: unknown) {
       // Rollback

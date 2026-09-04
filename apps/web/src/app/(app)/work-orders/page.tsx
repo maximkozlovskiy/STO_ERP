@@ -71,6 +71,7 @@ import { useListPage } from '@/hooks/useListPage';
 import { useInlineEdit } from '@/hooks/useInlineEdit';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
+import { invalidateWorkOrderSideEffects } from '@/lib/cache-invalidation';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtShortDateTime, kyivToday } from '@/lib/format';
 
@@ -385,7 +386,9 @@ function WorkOrdersPageInner() {
       const failed = results.length - succeeded;
 
       bulkSelect.clear();
-      queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+      // WEB-H1: перехід наряду (COMPLETED списує склад + CHARGE) → інвалідувати й інвентар,
+      // і взаєморозрахунки, і звіти/дашборд, не лише список нарядів.
+      invalidateWorkOrderSideEffects(queryClient);
 
       if (features.toastEnabled) {
         if (succeeded > 0 && failed === 0) {

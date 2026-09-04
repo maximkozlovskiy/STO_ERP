@@ -43,6 +43,7 @@ import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
+import { invalidateStockDocumentSideEffects } from '@/lib/cache-invalidation';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtDateTime, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
@@ -186,7 +187,9 @@ function StockDocumentsPageClient() {
   // regression guard — stable empty array reference.
   const docs = docsData?.items ?? (EMPTY_ITEMS as unknown as StockDoc[]);
   const total = docsData?.total ?? 0;
-  const invalidate = () => qc.invalidateQueries({ queryKey: stockDocsKeys.all });
+  // WEB-H2: підтвердження/скасування складського документа рухає залишки → інвалідувати й
+  // інвентар/звіти/дашборд, не лише список документів (інакше вкладка «Залишки» застаріла).
+  const invalidate = () => invalidateStockDocumentSideEffects(qc);
   // оголошуємо `load` поряд з invalidate, щоб handleBulkDelete/handleTransition/markDeleted
   // що його використовують посилались на вже визначену константу (а не на TDZ-trap при copy-paste у refactor).
   const load = invalidate;
