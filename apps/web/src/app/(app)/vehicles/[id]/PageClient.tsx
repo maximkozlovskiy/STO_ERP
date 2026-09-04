@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -151,19 +151,33 @@ export default function VehicleCardPage() {
   const [editError, setEditError] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
+  // Race guard: перемикання авто A→B (або паралельний load після мутації) не має
+  // дати повільнішій відповіді A перезаписати картку B. Фіксуємо requestId і
+  // застосовуємо setState лише поки він актуальний.
+  const loadReqRef = useRef(0);
   const load = () => {
+    const reqId = ++loadReqRef.current;
+    const ok = () => reqId === loadReqRef.current;
     Promise.all([
-      apiFetch<Vehicle>(`/vehicles/${id}`).then(setVehicle),
-      apiFetch<VehicleNode[]>(`/vehicles/${id}/nodes`).then(setNodes),
+      apiFetch<Vehicle>(`/vehicles/${id}`).then(v => {
+        if (ok()) setVehicle(v);
+      }),
+      apiFetch<VehicleNode[]>(`/vehicles/${id}/nodes`).then(n => {
+        if (ok()) setNodes(n);
+      }),
       apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${id}`)
-        .then(setSchedules)
+        .then(s => {
+          if (ok()) setSchedules(s);
+        })
         .catch((e: unknown) =>
           console.warn(
             '[Vehicle] maintenance-schedules load failed:',
             e instanceof Error ? e.message : e,
           ),
         ),
-    ]).catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
+    ]).catch((e: unknown) => {
+      if (ok()) setLoadError(e instanceof Error ? e.message : 'Помилка завантаження');
+    });
   };
   useEffect(() => {
     load();

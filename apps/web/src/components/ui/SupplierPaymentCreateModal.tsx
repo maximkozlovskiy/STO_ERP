@@ -94,6 +94,10 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [poPickerOpen, setPoPickerOpen] = useState(false);
   const mountedRef = useRef(true);
+  // Retry-safety: якщо create вже успішно створив оплату, але mutateAsync кинув
+  // помилку ПІСЛЯ commit-у (обрив на відповіді), повторний клік «Створити» не
+  // має створити ДРУГУ оплату. Зберігаємо id першого успіху та завершуємо форму.
+  const createdIdRef = useRef<string | null>(null);
   // Auto-select single source має спрацювати РАЗ на джерело (коли завантажився
   // список), а не після кожного рендера — інакше повторно вибирає щойно очищене
   // користувачем поле «— Оберіть —» і його неможливо лишити порожнім.
@@ -220,6 +224,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
     autoSelectedRef.current = { cash: false, bank: false };
     populatedRef.current = null;
     prefilledRef.current = false;
+    createdIdRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -266,9 +271,14 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
       if (isEdit) {
         await updateMut.mutateAsync({ id: paymentId!, data: payload });
         if (features.toastEnabled) toast.success('Оплату оновлено');
+      } else if (createdIdRef.current) {
+        // Оплату вже створено на попередній спробі (retry після обриву на
+        // відповіді) — не створюємо дубль, лише завершуємо форму.
+        if (features.toastEnabled) toast.success('Оплату створено');
       } else {
         // Bug #594: через хук — щоб onSuccess інвалідував supplierPaymentsKeys.all.
-        await createMut.mutateAsync(payload);
+        const created = await createMut.mutateAsync(payload);
+        createdIdRef.current = created.id;
         if (features.toastEnabled) toast.success('Оплату створено');
       }
       onSaved();

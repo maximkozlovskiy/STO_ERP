@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Download } from 'lucide-react';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -106,7 +106,12 @@ export function SettlementsTabContent() {
     [],
   );
 
+  // Race guard: при швидкому перемиканні A→B повільніша відповідь A не має
+  // перезаписати стан B. Фіксуємо requestId перед await, застосовуємо setState
+  // лише якщо він досі актуальний (reqRef не зрушив).
+  const loadCpReqRef = useRef(0);
   const loadCounterparty = useCallback(async (cp: Counterparty) => {
+    const reqId = ++loadCpReqRef.current;
     setSelected(cp);
     setBalance(null);
     setTransactions([]);
@@ -120,14 +125,16 @@ export function SettlementsTabContent() {
         ),
         apiFetch<RecAct[]>(`/counterparties/${cp.id}/reconciliation-acts`),
       ]);
+      if (reqId !== loadCpReqRef.current) return;
       setBalance(bal.balance);
       setTransactions(txs.items);
       setTxTotal(txs.total);
       setActs(actsData);
     } catch (e: unknown) {
+      if (reqId !== loadCpReqRef.current) return;
       setError(e instanceof Error ? e.message : 'Помилка завантаження даних');
     } finally {
-      setLoading(false);
+      if (reqId === loadCpReqRef.current) setLoading(false);
     }
   }, []);
 

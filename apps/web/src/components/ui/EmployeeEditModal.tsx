@@ -170,6 +170,10 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
   // Load reference data lazily when modal opens
   useEffect(() => {
     if (!open) return;
+    // Race guard: повторне відкриття/закриття під час in-flight fetch не має дати
+    // застарілій відповіді перезаписати актуальні довідники. setCache лишається
+    // безумовним (кеш — не стан компонента), setState — лише коли не cancelled.
+    let cancelled = false;
     const cZones = getCached<Zone[]>('cache:zones');
     const cLifts = getCached<Lift[]>('cache:lifts');
     const cCats = getCached<WorkCategory[]>('cache:work-categories');
@@ -185,15 +189,19 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
       apiFetch<WorkCategory[]>('/work-categories').catch(() => [] as WorkCategory[]),
       apiFetch<Branch[]>('/branches').catch(() => [] as Branch[]),
     ]).then(([z, l, c, b]) => {
-      setZones(z);
       setCache('cache:zones', z);
-      setLifts(l);
       setCache('cache:lifts', l);
-      setWorkCategories(c);
       setCache('cache:work-categories', c);
-      setBranches(b);
       setCache('cache:branches', b);
+      if (cancelled) return;
+      setZones(z);
+      setLifts(l);
+      setWorkCategories(c);
+      setBranches(b);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   // Reset form when employee changes

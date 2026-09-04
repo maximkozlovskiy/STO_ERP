@@ -11,7 +11,7 @@
 // Fix: модалка читає { items } з Array.isArray guard і пише { items } (той самий
 // контракт що таби + API-відповідь). Ці тести фіксують обидві сторони.
 
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 
 import { SupplierPaymentCreateModal } from '../SupplierPaymentCreateModal';
@@ -96,5 +96,77 @@ describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592
       expect(Array.isArray(parsed)).toBe(false);
       expect(Array.isArray(parsed.items)).toBe(true);
     });
+  });
+});
+
+// WEB-H3: подвійний submit після успішного create (обрив на відповіді) не має
+// створити ДРУГУ оплату. Guard: createdIdRef зберігає id першого успіху →
+// повторний клік «Створити оплату» пропускає POST /supplier-payments.
+describe('SupplierPaymentCreateModal — idempotency (WEB-H3)', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    window.sessionStorage.clear();
+  });
+  afterEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  it('retry після успішного create + провалу onSaved не створює дубль оплати', async () => {
+    apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
+      if (path === '/cash-registers')
+        return Promise.resolve({ items: [{ id: 'cr1', name: 'Каса №1' }], total: 1 });
+      if (path === '/bank-accounts') return Promise.resolve({ items: [], total: 0 });
+      if (path === '/payment-methods')
+        return Promise.resolve([{ code: 'CASH', name: 'Готівка', isActive: true }]);
+      if (path === '/supplier-payments' && opts?.method === 'POST')
+        return Promise.resolve({ id: 'sp1', number: 'SP-1' });
+      return Promise.resolve({ items: [], total: 0 });
+    });
+
+    // onSaved кидає на першому виклику (імітує обрив ПІСЛЯ commit-у), потім успішний.
+    let savedCalls = 0;
+    const onSaved = vi.fn(() => {
+      savedCalls += 1;
+      if (savedCalls === 1) throw new Error('обрив після коміту');
+    });
+
+    renderWithQueryClient(
+      <SupplierPaymentCreateModal
+        open
+        onClose={() => {}}
+        onSaved={onSaved}
+        prefill={{ supplierId: 'sup1', supplierName: 'Постачальник', amount: 100 }}
+      />,
+    );
+
+    // Дочекатись автовибору каси (єдина) + методу оплати.
+    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument());
+
+    const createBtn = screen.getByRole('button', { name: 'Створити оплату' }) as HTMLButtonElement;
+    // Кнопка активна лише коли supplierId заповнено (prefill) — дочекатись.
+    await waitFor(() => expect(createBtn.disabled).toBe(false));
+
+    // 1-й клік: POST створює оплату, onSaved кидає → помилка, createdIdRef=sp1.
+    fireEvent.click(createBtn);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+
+    const postCallsAfterFirst = apiFetchMock.mock.calls.filter(
+      c =>
+        c[0] === '/supplier-payments' &&
+        (c[1] as { method?: string } | undefined)?.method === 'POST',
+    ).length;
+    expect(postCallsAfterFirst).toBe(1);
+
+    // 2-й клік (retry): create пропускається (createdIdRef), onSaved успішний.
+    fireEvent.click(createBtn);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(2));
+
+    const postCallsAfterRetry = apiFetchMock.mock.calls.filter(
+      c =>
+        c[0] === '/supplier-payments' &&
+        (c[1] as { method?: string } | undefined)?.method === 'POST',
+    ).length;
+    // Друга оплата НЕ створена — POST усе ще один.
+    expect(postCallsAfterRetry).toBe(1);
   });
 });

@@ -164,6 +164,11 @@ export function InvoiceCreateModal({
   // рядки які користувач видалив локально (з UI). Без цього DELETE на бекенд не
   // йде і видалені рядки повертаються при наступному перезавантаженні модалки.
   const initialLineIdsRef = useRef<Set<string>>(new Set());
+  // Retry-safety: якщо POST /invoices вже створив рахунок, але наступний крок
+  // (POST /lines) провалився на обриві — повторний клік «Створити» не має
+  // створити ДРУГИЙ рахунок. Зберігаємо id першого успіху й дошиваємо лише
+  // ще-не-збережені рядки (їх видаляємо зі state після кожного успішного POST).
+  const createdInvoiceRef = useRef<{ id: string; number: string } | null>(null);
 
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
@@ -200,6 +205,7 @@ export function InvoiceCreateModal({
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
     initialLineIdsRef.current = new Set();
+    createdInvoiceRef.current = null;
     if (!isEditMode) {
       setForm({
         counterpartyId: '',
@@ -363,18 +369,25 @@ export function InvoiceCreateModal({
         const price = parseFloat(l.unitPrice) || 0;
         return s + qty * price;
       }, 0);
-      const inv = await apiFetch<{ id: string; number: string }>('/invoices', {
-        method: 'POST',
-        body: JSON.stringify({
-          counterpartyId: form.counterpartyId || undefined,
-          invoiceType: form.invoiceType || undefined,
-          amount: computedTotal >= 0.01 ? computedTotal : 0.01,
-          dueDate: form.dueDate || undefined,
-          documentDate: form.documentDate || undefined,
-          notes: form.notes || undefined,
-        }),
-      });
+      // Перевикористовуємо вже створений рахунок на retry, щоб не плодити дублі.
+      let inv = createdInvoiceRef.current;
+      if (!inv) {
+        inv = await apiFetch<{ id: string; number: string }>('/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            counterpartyId: form.counterpartyId || undefined,
+            invoiceType: form.invoiceType || undefined,
+            amount: computedTotal >= 0.01 ? computedTotal : 0.01,
+            dueDate: form.dueDate || undefined,
+            documentDate: form.documentDate || undefined,
+            notes: form.notes || undefined,
+          }),
+        });
+        createdInvoiceRef.current = inv;
+      }
 
+      // Після кожного успішного POST прибираємо рядок зі state — retry після
+      // mid-batch провалу НЕ задублює вже збережені рядки.
       for (const line of linesToPost) {
         await apiFetch(`/invoices/${inv.id}/lines`, {
           method: 'POST',
@@ -384,8 +397,10 @@ export function InvoiceCreateModal({
             unitPrice: parseFloat(line.unitPrice) || 0,
           }),
         });
+        setLines(prev => prev.filter(l => l._key !== line._key));
       }
 
+      createdInvoiceRef.current = null;
       if (features.toastEnabled) toast.success(`Рахунок ${inv.number} створено`);
       onSaved?.();
       onClose();
@@ -414,13 +429,18 @@ export function InvoiceCreateModal({
 
       // видалити рядки що були у початковому списку але користувач
       // прибрав через removeLine. Без цього бекенд лишає їх у БД.
+      // Retry-safety: після успішного DELETE прибираємо id зі snapshot-у, інакше
+      // повторний save після провалу наступного POST знову DELETE-не вже видалений
+      // рядок → 404.
       const currentIds = new Set(lines.map(l => l.id).filter(Boolean) as string[]);
       const removedIds = [...initialLineIdsRef.current].filter(id => !currentIds.has(id));
       for (const lineId of removedIds) {
         await apiFetch(`/invoices/${invoiceId}/lines/${lineId}`, { method: 'DELETE' });
+        initialLineIdsRef.current.delete(lineId);
       }
 
-      // Post new lines (those without id)
+      // Post new lines (those without id). Після успішного POST прибираємо рядок
+      // зі state (за _key) — retry не задублює вже збережені рядки.
       for (const line of lines.filter(l => !l.id)) {
         await apiFetch(`/invoices/${invoiceId}/lines`, {
           method: 'POST',
@@ -430,6 +450,7 @@ export function InvoiceCreateModal({
             unitPrice: parseFloat(line.unitPrice) || 0,
           }),
         });
+        setLines(prev => prev.filter(l => l._key !== line._key));
       }
 
       if (features.toastEnabled) toast.success('Рахунок збережено');

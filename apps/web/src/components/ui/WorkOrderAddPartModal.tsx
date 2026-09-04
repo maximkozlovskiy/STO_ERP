@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
@@ -148,8 +148,12 @@ export function WorkOrderAddPartModal({
     };
   }, [features.stockIndicatorEnabled, form.goodId, form.warehouseId]);
 
+  // Race guard: швидка зміна товару A→B не повинна дати повільнішій відповіді A
+  // (UoM-списку) перезаписати UoM обраного B.
+  const uomReqRef = useRef(0);
   const selectGood = useCallback(
     (item: Good) => {
+      const reqId = ++uomReqRef.current;
       setGoodDisplay(item.name);
       setForm(f => ({
         ...f,
@@ -160,13 +164,20 @@ export function WorkOrderAddPartModal({
       setGoodUoMs([]);
       dirty.markDirty();
       apiFetch<GoodUoM[]>(`/goods/${item.id}/uoms`)
-        .then(setGoodUoMs)
-        .catch(() => setGoodUoMs([]));
+        .then(uoms => {
+          if (reqId === uomReqRef.current) setGoodUoMs(uoms);
+        })
+        .catch(() => {
+          if (reqId === uomReqRef.current) setGoodUoMs([]);
+        });
     },
     [dirty],
   );
 
   const clearGood = useCallback(() => {
+    // bump reqRef: скасовуємо будь-яку in-flight UoM-відповідь, щоб вона не
+    // репопулювала список після очищення товару.
+    uomReqRef.current += 1;
     setForm(f => ({ ...f, goodId: '', price: '', unitOfMeasureId: '' }));
     setGoodDisplay('');
     setGoodUoMs([]);
