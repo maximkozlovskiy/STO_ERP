@@ -36,7 +36,7 @@ import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/
 import { PageSpinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
-import { fmtInt, fmtDate, kyivToday } from '@/lib/format';
+import { fmtInt, fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 
 interface MaintenanceSchedule {
   id: string;
@@ -98,10 +98,10 @@ interface LowStockItem {
   deficit: number;
 }
 
-// Thin proxy to lib/format singleton (module-level Intl.NumberFormat). Replaces
-// per-render `n.toLocaleString('uk-UA', {...})` × every KPI cell + map row.
+// WEB-M9: гроші показуємо з копійками (fmtMoney → «1 250,00»), не fmtInt — інакше KPI відкидає
+// копійки (порушення локалі uk-UA). fmtInt лишається для пробігу (км), не грошей.
 function fmt(n: number) {
-  return fmtInt(n) + ' ₴';
+  return fmtMoney(n) + ' ₴';
 }
 
 // Stable fallbacks для Bug #328 cascade prevention — `data?.rows ?? []` створював

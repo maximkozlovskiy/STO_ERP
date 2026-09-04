@@ -100,41 +100,42 @@ export function useDetailPanelConfig(pageKey: string) {
     [config],
   );
 
-  const toggleField = useCallback(
-    (fieldKey: string) => {
-      setConfig(prev => {
-        const next: PanelFieldConfig = {
-          ...prev,
-          hiddenFields: prev.hiddenFields.includes(fieldKey)
-            ? prev.hiddenFields.filter(k => k !== fieldKey)
-            : [...prev.hiddenFields, fieldKey],
-        };
-        try {
-          localStorage.setItem(storageKey, JSON.stringify(next));
-        } catch {
-          /* ignore */
-        }
-        savePref(next);
-        return next;
-      });
+  // WEB-M13: side-effect (localStorage + savePref PUT) винесено ПОЗА state-updater. Updater має
+  // бути чистим — під React StrictMode dev він викликається двічі, що дублювало PUT/запис.
+  const persist = useCallback(
+    (next: PanelFieldConfig) => {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      savePref(next);
     },
     [storageKey, savePref],
   );
 
+  const toggleField = useCallback(
+    (fieldKey: string) => {
+      // next обчислюється з поточного config (не в updater) → side-effect persist() один раз.
+      const next: PanelFieldConfig = {
+        ...config,
+        hiddenFields: config.hiddenFields.includes(fieldKey)
+          ? config.hiddenFields.filter(k => k !== fieldKey)
+          : [...config.hiddenFields, fieldKey],
+      };
+      setConfig(next);
+      persist(next);
+    },
+    [config, persist],
+  );
+
   const reorderFields = useCallback(
     (newOrder: string[]) => {
-      setConfig(prev => {
-        const next: PanelFieldConfig = { ...prev, fieldOrder: newOrder };
-        try {
-          localStorage.setItem(storageKey, JSON.stringify(next));
-        } catch {
-          /* ignore */
-        }
-        savePref(next);
-        return next;
-      });
+      const next: PanelFieldConfig = { ...config, fieldOrder: newOrder };
+      setConfig(next);
+      persist(next);
     },
-    [storageKey, savePref],
+    [config, persist],
   );
 
   const reset = useCallback(() => {

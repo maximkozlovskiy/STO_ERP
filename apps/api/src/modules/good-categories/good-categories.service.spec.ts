@@ -99,6 +99,28 @@ describe('GoodCategoriesService — business rules', () => {
       });
     });
 
+    it('MD-M2: parentId===id (сам собі батько) → BadRequestException', async () => {
+      prisma.goodCategory.findFirst
+        .mockResolvedValueOnce({ id: ID, isSystem: false }) // existing
+        .mockResolvedValueOnce({ id: ID }); // parent (=self)
+      await expect(service.update(ORG_ID, ID, { parentId: ID })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.goodCategory.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('MD-M2: перенос у власного нащадка → BadRequestException (цикл)', async () => {
+      prisma.goodCategory.findFirst
+        .mockResolvedValueOnce({ id: ID, isSystem: false }) // existing
+        .mockResolvedValueOnce({ id: PARENT_ID }); // parent існує
+      // getDescendantIds(ID): дерево ID → PARENT_ID (PARENT_ID є нащадком ID → цикл).
+      prisma.goodCategory.findMany.mockResolvedValueOnce([{ id: PARENT_ID, parentId: ID }]);
+      await expect(service.update(ORG_ID, ID, { parentId: PARENT_ID })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.goodCategory.updateMany).not.toHaveBeenCalled();
+    });
+
     it('дозволяє PATCH name на не-системній (custom) категорії', async () => {
       prisma.goodCategory.findFirst.mockResolvedValueOnce({ id: ID, isSystem: false });
       prisma.goodCategory.updateMany.mockResolvedValueOnce({ count: 1 });

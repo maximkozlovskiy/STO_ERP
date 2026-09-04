@@ -76,8 +76,23 @@ export class GoodCategoriesService {
     if (dto.parentId && !parent) throw new NotFoundException('Батьківську категорію не знайдено');
 
     // System categories cannot be renamed or re-parented — cosmetic fields (sortOrder) are allowed.
+    // Перевіряємо ПЕРЕД cycle-guard: системну категорію не переносять узагалі, зайвий обхід дерева.
     if (existing.isSystem && (dto.name !== undefined || dto.parentId !== undefined)) {
       throw new BadRequestException('Системну категорію не можна перейменовувати або переносити');
+    }
+
+    // MD-M2: захист від циклів у дереві. Без нього перенос категорії у власного нащадка
+    // (A→B→A) створює цикл → getDescendantIds при remove/toggleActive зациклюється (OOM/hang).
+    if (dto.parentId) {
+      if (dto.parentId === id) {
+        throw new BadRequestException('Категорія не може бути власним батьком');
+      }
+      const descendants = await this.getDescendantIds(orgId, id);
+      if (descendants.includes(dto.parentId)) {
+        throw new BadRequestException(
+          'Неможливо перенести категорію у власну підкатегорію (утворився б цикл)',
+        );
+      }
     }
 
     const result = await this.prisma.goodCategory.updateMany({
@@ -176,13 +191,20 @@ export class GoodCategoriesService {
       arr.push(c.id);
       childrenByParent.set(c.parentId, arr);
     }
+    // MD-M2 defense-in-depth: visited-set проти нескінченного обходу, якщо у БД уже існує цикл
+    // (legacy/seed/direct-SQL) — інакше while-стек зациклиться (OOM/hang).
     const result: string[] = [];
+    const visited = new Set<string>([parentId]);
     const stack = [parentId];
     while (stack.length) {
       const id = stack.pop()!;
       const children = childrenByParent.get(id) ?? [];
-      result.push(...children);
-      stack.push(...children);
+      for (const childId of children) {
+        if (visited.has(childId)) continue;
+        visited.add(childId);
+        result.push(childId);
+        stack.push(childId);
+      }
     }
     return result;
   }

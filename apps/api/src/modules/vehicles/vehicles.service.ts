@@ -48,20 +48,39 @@ export class VehiclesService {
       select: { id: true },
     });
     if (!garage) throw new NotFoundException('Гараж не знайдено');
+    // MD-H2: VIN — природний унікальний ключ авто (немає DB-констрейнта, лише @@index). Без
+    // перевірки один авто заводиться двічі → дублі в історії/пошуку по номеру.
+    await this.assertVinUnique(orgId, dto.vin, null);
     const item = await this.prisma.vehicle.create({ data: { ...dto, orgId } });
     return this.toDto(item);
   }
 
   async update(orgId: string, id: string, dto: UpdateVehicleDto): Promise<VehicleResponseDto> {
-    // sto-optimize: narrow tenant guard — full Vehicle row (15+ columns) read лише для
-    // 404 guard. Update нижче повертає актуальні дані. select:{id} зменшує wire payload.
     const existing = await this.prisma.vehicle.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
     if (!existing) throw new NotFoundException('Автомобіль не знайдено');
+    // MD-M5: UpdateVehicleDto НЕ містить customerGarageId (перенос гаража недоступний через update)
+    // → крос-тенант-перенос неможливий за побудовою, окремий guard не потрібен.
+    // MD-H2: VIN unique (виключаючи сам авто).
+    await this.assertVinUnique(orgId, dto.vin, id);
     const item = await this.prisma.vehicle.update({ where: { id, orgId }, data: dto });
     return this.toDto(item);
+  }
+
+  /** VIN унікальний у межах org серед активних авто (крім excludeId). Порожній VIN пропускається. */
+  private async assertVinUnique(
+    orgId: string,
+    vin: string | null | undefined,
+    excludeId: string | null,
+  ): Promise<void> {
+    if (!vin) return;
+    const clash = await this.prisma.vehicle.findFirst({
+      where: { orgId, vin, deletedAt: null, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
+      select: { id: true },
+    });
+    if (clash) throw new BadRequestException(`Автомобіль з VIN "${vin}" вже існує`);
   }
 
   async remove(orgId: string, id: string): Promise<void> {

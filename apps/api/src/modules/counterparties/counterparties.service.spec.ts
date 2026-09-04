@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { CounterpartiesService } from './counterparties.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -18,7 +18,9 @@ import { CounterpartyQueryDto } from './counterparties.dto';
 describe('CounterpartiesService', () => {
   let service: CounterpartiesService;
   let prisma: {
-    counterparty: { findMany: any; count: any; findFirst: any };
+    counterparty: { findMany: any; count: any; findFirst: any; updateMany: any };
+    workOrder: { count: any };
+    purchaseOrder: { count: any };
     $transaction: ReturnType<typeof vi.fn>;
   };
 
@@ -31,7 +33,10 @@ describe('CounterpartiesService', () => {
         findMany: vi.fn().mockResolvedValue([]),
         count: vi.fn().mockResolvedValue(0),
         findFirst: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
+      workOrder: { count: vi.fn().mockResolvedValue(0) },
+      purchaseOrder: { count: vi.fn().mockResolvedValue(0) },
       // findAll використовує $transaction([findMany, count]) — виконуємо масив як є
       $transaction: vi.fn().mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
@@ -131,6 +136,35 @@ describe('CounterpartiesService', () => {
     it('кидає NotFoundException якщо контрагента немає в org', async () => {
       prisma.counterparty.findFirst.mockResolvedValueOnce(null);
       await expect(service.findOne('org-1', 'cp-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  // MD-H1: remove-guard проти видалення контрагента з боргом / активними документами.
+  describe('remove — MD-H1 guard', () => {
+    it('кидає BadRequestException при ненульовому балансі', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ settlementAccount: { balance: 150 } });
+      await expect(service.remove('org-1', 'cp-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.counterparty.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('кидає BadRequestException при активних нарядах', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ settlementAccount: { balance: 0 } });
+      prisma.workOrder.count.mockResolvedValueOnce(2);
+      await expect(service.remove('org-1', 'cp-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.counterparty.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('видаляє коли баланс 0 і немає активних документів', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ settlementAccount: { balance: 0 } });
+      prisma.workOrder.count.mockResolvedValueOnce(0);
+      prisma.purchaseOrder.count.mockResolvedValueOnce(0);
+      await service.remove('org-1', 'cp-1');
+      expect(prisma.counterparty.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('кидає NotFound коли контрагента не знайдено', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce(null);
+      await expect(service.remove('org-1', 'missing')).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

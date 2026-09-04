@@ -203,9 +203,45 @@ export class CounterpartiesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
-    // where (id+orgId+deletedAt:null) — eliminates race window between guard and write,
-    // saves one round-trip per delete.
+    // MD-H1: не видаляти контрагента з непогашеним боргом або активними документами —
+    // інакше борг «зникає» зі списку, а наряди/PO осиротіють на soft-deleted контрагента.
+    const cp = await this.prisma.counterparty.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { settlementAccount: { select: { balance: true } } },
+    });
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (cp.settlementAccount && Number(cp.settlementAccount.balance) !== 0) {
+      throw new BadRequestException(
+        'Неможливо видалити контрагента з ненульовим балансом (є заборгованість)',
+      );
+    }
+    // Активні (не-фінальні) наряди / незакриті замовлення блокують видалення.
+    const [activeWo, openPo] = await Promise.all([
+      this.prisma.workOrder.count({
+        where: {
+          orgId,
+          counterpartyId: id,
+          deletedAt: null,
+          status: { notIn: ['ARCHIVED', 'CANCELLED'] },
+        },
+      }),
+      this.prisma.purchaseOrder.count({
+        where: {
+          orgId,
+          supplierId: id,
+          deletedAt: null,
+          status: { notIn: ['RECEIVED', 'CANCELLED'] },
+        },
+      }),
+    ]);
+    if (activeWo > 0) {
+      throw new BadRequestException('Неможливо видалити: контрагент має активні наряди');
+    }
+    if (openPo > 0) {
+      throw new BadRequestException('Неможливо видалити: контрагент має незакриті замовлення');
+    }
+
+    // sto-optimize: atomic updateMany with compound where — no race window between guard and write.
     const result = await this.prisma.counterparty.updateMany({
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },

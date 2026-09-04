@@ -222,4 +222,34 @@ describe('VehiclesService', () => {
       expect(call.select.customerGarage.select.deletedAt).toBe(true);
     });
   });
+
+  // MD-H2: VIN унікальний у межах org.
+  describe('create/update — VIN uniqueness (MD-H2)', () => {
+    it('create з дубль-VIN → BadRequestException', async () => {
+      prisma.customerGarage.findFirst.mockResolvedValueOnce({ id: 'g-1' });
+      prisma.vehicle.findFirst.mockResolvedValueOnce({ id: 'other' }); // VIN clash
+      await expect(
+        service.create('org-1', { customerGarageId: 'g-1', vin: 'WVWZZZ' } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.vehicle.create).not.toHaveBeenCalled();
+    });
+
+    it('create з унікальним VIN → створює', async () => {
+      prisma.customerGarage.findFirst.mockResolvedValueOnce({ id: 'g-1' });
+      prisma.vehicle.findFirst.mockResolvedValueOnce(null); // no clash
+      prisma.vehicle.create.mockResolvedValueOnce({ id: 'v-1', customerGarageId: 'g-1' });
+      await service.create('org-1', { customerGarageId: 'g-1', vin: 'UNIQUE1' } as never);
+      expect(prisma.vehicle.create).toHaveBeenCalledTimes(1);
+      // VIN-lookup виключає deletedAt (лише активні дублі).
+      const vinCall = prisma.vehicle.findFirst.mock.calls[0][0];
+      expect(vinCall.where).toMatchObject({ orgId: 'org-1', vin: 'UNIQUE1', deletedAt: null });
+    });
+
+    it('create без VIN → перевірка пропускається', async () => {
+      prisma.customerGarage.findFirst.mockResolvedValueOnce({ id: 'g-1' });
+      prisma.vehicle.create.mockResolvedValueOnce({ id: 'v-1', customerGarageId: 'g-1' });
+      await service.create('org-1', { customerGarageId: 'g-1' } as never);
+      expect(prisma.vehicle.create).toHaveBeenCalledTimes(1);
+    });
+  });
 });
