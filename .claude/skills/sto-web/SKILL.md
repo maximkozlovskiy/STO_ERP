@@ -306,6 +306,11 @@ export default function MyListPage() {
             onReset={resetConfig}
             hasCustomization={JSON.stringify(order) !== JSON.stringify(COLUMNS.map(c => c.key)) || Object.keys(customLabels).length > 0}
           />
+          {/* СТАНДАРТ: КОЖЕН список із DetailPanel МУСИТЬ мати DetailPanelToggle поряд із
+              ColumnsDropdown. enabled/toggle — з useListPage().detailPanel (або useDetailPanel(key)
+              для сторінок поза useListPage, напр. inventory). Без тогла користувач не може
+              сховати панель, а на deep-tab-сторінках (Купівля) панель мовчки зникає (Bug #496/#505). */}
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
           {/* Кнопка створення — без size=, конкретна назва (не "Додати") */}
           <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
             Назва об'єкта

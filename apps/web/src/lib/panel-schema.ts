@@ -182,8 +182,9 @@ export const PURCHASE_ORDER_PANEL_SCHEMA = [
   { key: 'totalAmount', label: 'Сума', type: 'money' },
   { key: 'linesCount', label: 'Позицій', type: 'number' },
   { key: 'documentDate', label: 'Дата документа', type: 'date' },
+  { key: 'paymentDate', label: 'Дата оплати', type: 'date' },
   { key: 'notes', label: 'Нотатки' },
-  { key: 'createdAt', label: 'Дата', type: 'date' },
+  { key: 'createdAt', label: 'Створено', type: 'date' },
 ] as const satisfies readonly PanelFieldDef<PurchaseOrder>[];
 
 export const SUPPLIER_PAYMENT_PANEL_SCHEMA = [

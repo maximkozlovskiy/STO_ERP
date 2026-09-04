@@ -47,6 +47,13 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
+import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
+import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
+import {
+  PURCHASE_ORDER_PANEL_SCHEMA,
+  buildPanelFields,
+  schemaToPanelConfigFields,
+} from '@/lib/panel-schema';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { useListPage } from '@/hooks/useListPage';
@@ -191,6 +198,8 @@ function PurchaseOrdersPageClient() {
       resetConfig,
     },
     dragProps,
+    detailPanel,
+    panelConfig,
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
@@ -274,6 +283,100 @@ function PurchaseOrdersPageClient() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
+
+  // DetailPanel selection (orders tab only) — restored (Bug #496 fix wired это).
+  const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+
+  // configFields для DetailPanel — залежить лише від збереженого panelConfig.
+  const panelConfigFields = useMemo(
+    () => schemaToPanelConfigFields(PURCHASE_ORDER_PANEL_SCHEMA, panelConfig.config),
+    [panelConfig.config],
+  );
+
+  // Побудова табів панелі — дзеркалить buildInvoiceTabs (schema-driven fields + Дії).
+  const buildPoTabs = useCallback(
+    (po: PurchaseOrder): DetailPanelTab[] => [
+      {
+        key: 'info',
+        label: 'Основне',
+        content: (
+          <div className="space-y-3">
+            {buildPanelFields(po, PURCHASE_ORDER_PANEL_SCHEMA, panelConfig.config, {
+              status: v => (
+                <Badge
+                  variant={STATUS_BADGE[String(v)] ?? 'secondary'}
+                  tooltip={PO_STATUS_DESCRIPTIONS[String(v)]}
+                >
+                  {STATUS_LABELS[String(v)] ?? String(v)}
+                </Badge>
+              ),
+            }).map(f => (
+              <PanelField
+                key={f.key}
+                fieldKey={f.key}
+                label={f.label}
+                value={f.value}
+                hidden={f.hidden}
+              />
+            ))}
+            <div className="pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => setEditingPOId(po.id)}
+              >
+                Відкрити замовлення
+              </Button>
+            </div>
+          </div>
+        ),
+      },
+      {
+        key: 'lines',
+        label: 'Позиції',
+        content:
+          po.lines.length === 0 ? (
+            <p className="text-[13px] text-muted-foreground">Немає позицій</p>
+          ) : (
+            <div className="space-y-2">
+              {po.lines.map((line, i) => (
+                <div
+                  key={line.id ?? i}
+                  className="rounded-lg border border-border px-3 py-2 text-[13px]"
+                >
+                  <p className="font-medium text-foreground">{line.goodName ?? '—'}</p>
+                  <p className="text-muted-foreground text-[12px] mt-0.5">
+                    {line.quantity} {line.unitShortName ?? line.unit ?? ''} × {fmtMoney(line.price)}{' '}
+                    ₴{' = '}
+                    <span className="text-foreground font-medium">
+                      {fmtMoney(line.amount ?? line.quantity * line.price)} ₴
+                    </span>
+                  </p>
+                </div>
+              ))}
+            </div>
+          ),
+      },
+    ],
+    [panelConfig.config],
+  );
+
+  // Вибір PO у панель: одразу показуємо дані зі списку, потім довантажуємо
+  // повний PO (з позиціями — lines відсутні у list-відповіді). Дзеркалить
+  // selectInvoice: toggle якщо клікнули по вже вибраному рядку.
+  const selectPO = useCallback((po: PurchaseOrder) => {
+    setSelectedPO(prev => {
+      if (prev?.id === po.id) return null;
+      // fire-and-forget hydration — оновлює той самий рядок, якщо він ще вибраний
+      apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}`)
+        .then(full => setSelectedPO(cur => (cur?.id === po.id ? full : cur)))
+        .catch(() => {
+          /* лишаємо базові дані зі списку, якщо детальний запит впав */
+        });
+      return po;
+    });
+  }, []);
 
   // Bug #596: deep-link `?open=<poId>` — відкриває edit-modal для конкретного PO
   // (напр. з /supplier-payments/[id] «покажи замовлення»). Читаємо ОДНОРАЗОВО з URL,
@@ -429,6 +532,7 @@ function PurchaseOrdersPageClient() {
         return;
       try {
         await apiFetch(`/purchase-orders/${po.id}`, { method: 'DELETE' });
+        setSelectedPO(prev => (prev?.id === po.id ? null : prev));
         queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
         toast.success('Замовлення позначено на видалення');
       } catch (e: unknown) {
@@ -908,7 +1012,7 @@ function PurchaseOrdersPageClient() {
                   Object.keys(customLabels).length > 0
                 }
               />
-              {/* Bug #505: DetailPanelToggle видалено — DetailPanel було видалено у Bug #496 fix, toggle лишився без consumer-а. */}
+              <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
               <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
                 Замовлення
               </Button>
@@ -1002,11 +1106,16 @@ function PurchaseOrdersPageClient() {
                         key={po.id}
                         className={cn(
                           'group transition-colors cursor-pointer',
+                          selectedPO?.id === po.id && detailPanel.enabled && 'bg-primary/5',
                           bulkSelect.isSelected(po.id) && 'bg-primary/5',
                           po.deletedAt && 'opacity-60',
                         )}
                         onClick={() => {
-                          setEditingPOId(po.id);
+                          if (detailPanel.enabled) {
+                            selectPO(po);
+                          } else {
+                            setEditingPOId(po.id);
+                          }
                         }}
                       >
                         {features.bulkActionsEnabled && (
@@ -1146,8 +1255,17 @@ function PurchaseOrdersPageClient() {
               </Table>
             </div>
 
-            {/* DetailPanel removed — selection-state was never wired (Bug #496);
-               row click opens Edit modal via setEditingPOId. */}
+            <DetailPanel
+              open={!!selectedPO && detailPanel.enabled}
+              onClose={() => setSelectedPO(null)}
+              title={selectedPO?.number ?? ''}
+              subtitle={selectedPO?.supplierName}
+              tabs={selectedPO ? buildPoTabs(selectedPO) : undefined}
+              configFields={panelConfigFields}
+              onToggleField={panelConfig.toggleField}
+              onReorderFields={panelConfig.reorderFields}
+              onReset={panelConfig.reset}
+            />
           </div>
 
           {/* Pagination */}

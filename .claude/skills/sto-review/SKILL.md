@@ -620,8 +620,15 @@ done
 # Глобальний [data-state] селектор у globals.css без скоп-маркера — небезпечно
 # (Radix/HeadlessUI використовують data-state="open|closed" як публічний контракт)
 grep -nE "^\[data-state=" apps/web/src/app/globals.css | grep -v "data-animate"
+
+# СТАНДАРТ списків: сторінка з <DetailPanel> МУСИТЬ мати <DetailPanelToggle> (інакше
+# користувач не може сховати панель; на deep-tab-сторінках панель мовчки зникає — Bug #496/#505).
+for f in $(grep -rl "<DetailPanel\b" apps/web/src/app --include="*.tsx" | grep -v "detail-panel-toggle"); do
+  grep -q "DetailPanelToggle" "$f" || echo "MISSING TOGGLE: $f має DetailPanel без DetailPanelToggle"
+done
 ```
 
+- [ ] Список із `<DetailPanel>` → має `<DetailPanelToggle>` (enabled/toggle з `useListPage().detailPanel` або `useDetailPanel(key)`); row onClick і панель гейтяться `detailPanel.enabled`
 - [ ] `toast.X(...)` → `if (features.toastEnabled)`; fallback: `setError(msg)`
 - [ ] Bulk-мутації → `Promise.allSettled` + `bulkSelect.clear()` + `load()` у finally
 - [ ] `indeterminate` → `useRef` + `useEffect([dep])`, не inline `ref={el => el.indeterminate = x}`

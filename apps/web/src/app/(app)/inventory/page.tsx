@@ -35,7 +35,9 @@ import {
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
+import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
+import { useDetailPanel } from '@/hooks/useDetailPanel';
 import {
   STOCK_ITEM_PANEL_SCHEMA,
   buildPanelFields,
@@ -85,6 +87,8 @@ export default function InventoryPage() {
 
   const queryClient = useQueryClient();
   const panelConfig = useDetailPanelConfig('inventory-panel');
+  // Тогл бокової панелі — стандарт для всіх списків (enabled персиститься у localStorage).
+  const detailPanel = useDetailPanel('inventory');
 
   // View mode
   const [viewMode, setViewMode] = useState<ViewMode>('goods');
@@ -319,6 +323,13 @@ export default function InventoryPage() {
             Тільки з низьким залишком
           </label>
         )}
+
+        {/* Тогл бокової панелі — лише у режимі «Товари» (DetailPanel goods-only). */}
+        {viewMode === 'goods' && (
+          <div className="ml-auto">
+            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          </div>
+        )}
       </div>
 
       {/* Content area */}
@@ -380,11 +391,12 @@ export default function InventoryPage() {
                 {displayed.map(item => (
                   <TableRow
                     key={item.id}
-                    onClick={() => setSelectedItem(item)}
+                    onClick={() => detailPanel.enabled && setSelectedItem(item)}
                     className={cn(
-                      'group transition-colors cursor-pointer',
+                      'group transition-colors',
+                      detailPanel.enabled && 'cursor-pointer',
                       item.isLow && 'bg-warning-subtle/40',
-                      selectedItem?.id === item.id && 'bg-primary/5',
+                      selectedItem?.id === item.id && detailPanel.enabled && 'bg-primary/5',
                     )}
                   >
                     <TableCell className="font-medium text-foreground">
@@ -453,8 +465,8 @@ export default function InventoryPage() {
           )}
         </div>
 
-        {/* Detail panel — only in goods mode */}
-        {viewMode === 'goods' && (
+        {/* Detail panel — only in goods mode, and only when тогл увімкнено */}
+        {viewMode === 'goods' && detailPanel.enabled && (
           <InventoryDetailPanel
             selectedItem={selectedItem}
             onClose={handleCloseDetail}
