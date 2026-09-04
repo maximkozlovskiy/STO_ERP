@@ -2496,3 +2496,40 @@ Backend зміна не ламає існуючих клієнтів (додає
 - **Родина (той самий баг у 3 інших create-модалках, виправлено у тому ж заході):** аудит «Де шукати ще» одразу виявив, що `PurchaseOrderCreateModal.handleCreate`, `StockDocumentCreateModal.handleCreate` і `CreateWorkOrderModal.create` МАЮТЬ синхронний `savingRef`/`transitioningRef` (у `setSavingBoth`) і використовують guard `if (savingRef.current || transitioningRef.current) return` у своїх edit/transition-handler-ах — але create-handler цей guard НЕ застосовував (той самий gap, що Invoice). Ризик ідентичний HIGH: PO = дубльований борг постачальнику, StockDocument = дубльований рух складу, WorkOrder = дубльований наряд. Fix: додано `if (savingRef.current || transitioningRef.current) return` першим рядком кожного з трьох create-handler-ів. E2E happy-path (invoices 23/23, crud-work-order + inventory 15/15, PO create, stock-document 9/9) не зламано. Регресія-guard для PO/StockDoc/WO покладається на існуючі create-E2E + component-паттерн, доведений на Invoice/SupplierPayment (revert→2 POST).
 - **Де шукати ще:** будь-який async submit-handler, захищений лише `disabled={saving-state}` без синхронного `savingRef`-guard першим рядком. Grep: `apps/web/src/components/ui/*Modal.tsx` create/save-handlers — `setSaving(true)`/`setSavingBoth(true)` без парного `if (savingRef.current) return`. Idempotency-ref (`createdIdRef`) закриває retry-after-error, але НЕ concurrent double-submit — потрібні обидва механізми. ReconciliationAct (`SettlementsTabContent.handleCreateAct`) — raw apiFetch без savingRef, кандидат на майбутню перевірку.
 - **Статус:** [x] виправлено (усі 5 модалок: SupplierPayment + Invoice + PurchaseOrder + StockDocument + WorkOrder)
+
+---
+
+## Session 2026-09-04 — Хвиля 5 (фінальна) наскрізного аудиту LIVE-тестування (99ea2ce9 + b6277a8f + docs, main)
+
+> **Baseline:** api tsc 0, web tsc 0, shared tsc 0. Dev-сервери (API 3000 + web 3001) up. Playwright/Sentry MCP CONNECT_TIMEOUT → §5.4 fallback: прямі API-виклики (Python urllib, токен admin@sto.local) + unit/component.
+>
+> **КРИТИЧНА ОПЕРАЦІЙНА ЗНАХІДКА (stale dist, урок Хвиль 2-3, повторився):** запущений `dist/main` (PID стартував 20:27) був СТАРІШИЙ за перезбірку wave-5 (dist rebuilt 21:30). MD-H2 VIN-guard мовчки не спрацьовував на live (create dup VIN → 201 замість 400) попри коректний код + зелені unit + `assertVinUnique` у файлі dist на диску. `node dist/main` НЕ hot-reload-ить — процес у пам'яті тримає стару збірку. Fix: rebuild (`pnpm --filter @sto/api build`) + kill+restart процесу порту 3000 → усі guard-и запрацювали. **Урок: unit-зелений + свіжий dist-файл ≠ deployed; перевіряти StartTime процесу vs час білду ПЕРЕД будь-якою live-верифікацією.**
+>
+> **Фокус аудиту (5 фокус-пунктів завдання):**
+>
+> 1. **MD-H1 (counterparty remove guard) LIVE:** чистий CP (balance 0, немає активних) → 204; CP з активним DRAFT-нарядом → 400 «має активні наряди»; CP з незакритим PO (DRAFT) → 400 «має незакриті замовлення»; після CANCELLED WO → 204 (happy-регресія). **АЛЕ виявлено пропуск: DRAFT-рахунок не гейтився → Bug #631 (нижче).**
+> 2. **MD-H2 (Vehicle VIN unique) LIVE 7/7:** create VIN=A → 201; дубль VIN=A → 400; VIN=B → 201; update→дубль VIN=A → 400; update→власний VIN → 200 (self-exclude через `NOT:{id}`); порожній VIN → 201 (skip); 2× no-VIN → 201 (null не колізує).
+> 3. **MD-M2 (GoodCategory cycle-guard) LIVE 5/5:** self-parent A→A → 400 (не hang); перенос A→власний нащадок C → 400 «утворився б цикл» (не hang); A→B (теж нащадок) → 400; валідний reparent C→A → 200 (happy); rename → 200. visited-set + descendant-check коректні.
+> 4. **WEB-M9/M13 (component/unit):** M13 lost-update — `useDetailPanelConfig` 12/12 включно з новим тестом «два toggle в одному act() → обидва поля» (буга-версія дала б лише `['email']`). M9 dashboard fmtMoney — закрито test-gap: `format.test.ts` +4 guard-и (fmtMoney padding копійок vs fmtInt варіативний; ключ: `fmtMoney(1250.5)='...,50'` ≠ `fmtInt(1250.5)='...,5'`).
+> 5. **Регресії:** усі happy-path (звичайне видалення чистого CP, звичайне створення авто, нормальний reparent категорії) → PASS. API 1197→1200, web 499→503, tsc 0/0/0.
+
+### Bug #631 — MEDIUM — counterparty remove-guard (MD-H1) не блокує видалення при відкритому DRAFT-рахунку → осиротілий інвойс
+
+- **Файл:** `apps/api/src/modules/counterparties/counterparties.service.ts` (`remove()`).
+- **Симптом:** контрагент з відкритим DRAFT-рахунком (`balance=0`, немає активних нарядів/PO) успішно soft-видаляється (204). Інвойс лишається активним (`GET /invoices/:id` → 200), вказуючи на soft-deleted контрагента → осиротілий документ: активний рахунок для клієнта, якого більше немає у CRM-списку. **Live-відтворено:** create CLIENT → create DRAFT invoice (amount 500) → `DELETE /counterparties/:id` → 204 (мало бути 400).
+- **Причина виникнення:** MD-H1 guard був заявлений як захист «щоб документи не осиротіли», і покрив наряди (WorkOrder) + замовлення (PurchaseOrder) + баланс. Рахунки (Invoice) — той самий клас документів (клієнтський еквівалент PO), АЛЕ пропущені. SENT/OVERDUE-рахунки непрямо ловилися balance-guard-ом (вони створюють CHARGE → balance≠0), тому здавалось «покрито». Проте **DRAFT-рахунок ще не має settlement-транзакції → balance=0** → провалювався крізь усі три guard-и. Split-coverage: наряди/PO явно перевірені, рахунки — ні.
+- **Виявлено:** live-проба MD-H1 з DRAFT-рахунком (не покрита ані unit-тестами коміту, ані фокус-пунктом — тест балансу перевіряв лише SENT-шлях).
+- **Fix:** додано `this.prisma.invoice.count({ where: { orgId, counterpartyId: id, deletedAt: null, status: { notIn: ['PAID', 'CANCELLED'] } } })` у той самий `Promise.all` (симетрично WO/PO) → `if (openInvoice > 0) throw new BadRequestException('Неможливо видалити: контрагент має відкриті рахунки')`. `notIn PAID/CANCELLED` лишає DRAFT/SENT/OVERDUE як «відкриті». Index `(orgId, status, deletedAt)` вже існує → count ефективний.
+- **Severity:** MEDIUM — той самий клас orphan-багу, що вже покриті наряди/PO (data-integrity + CRM-UX), але DRAFT-рахунки менш критичні за committed-документи; SENT/OVERDUE вже ловились balance-guard-ом.
+- **Регресія-guard:** counterparties.service.spec.ts +3 (Bug #631: invoice.count>0 → BadRequest + updateMany не викликаний; invoice.count where = `notIn ['PAID','CANCELLED']`; happy invoice.count=0 → delete проходить) + PO-guard тест. Mock отримав `invoice.count`. API 1197→1200.
+- **Live-verified after fix:** DELETE CP з DRAFT invoice → 400 «має відкриті рахунки»; після invoice CANCELLED → 204 (happy).
+- **Де шукати ще:** будь-який `remove()`/`delete()` з guard «блокувати якщо є пов'язані активні документи» — звірити ПОВНИЙ набір document-relations сутності проти списку перевірок (частий split-coverage: перевіряють 2 з 3 типів). Для Counterparty relations: WorkOrder ✓, PurchaseOrder ✓, Invoice ✓ (тепер), Payment (append-only, не блокує), CalendarSlot (прямий запис — кандидат, але не документ-борг). Той самий принцип — Vehicle.remove (пов'язані WO), Good.remove (StockItem залишки).
+- **Статус:** [x] виправлено
+
+### Meta — WEB-M9 test-gap закрито (не окремий баг коду; test-integrity)
+
+- **Файл:** `apps/web/src/lib/format.test.ts`.
+- **Симптом:** WEB-M9 (dashboard KPI `fmtInt`→`fmtMoney`) не мав жодного unit-тесту що фіксує інваріант «гроші показуються з padding копійок». `format.test.ts` покривав лише date-функції; `fmtMoney`/`fmtInt` — 0 тестів.
+- **Причина виникнення:** одно-рядковий фікс (`fmtInt`→`fmtMoney`) вважався тривіальним. Але рефактор, що поверне `fmtInt` для грошей АБО прибере `minimumFractionDigits:2` з `MONEY_FMT`, пройшов би CI зеленим.
+- **Fix:** +4 regression-guard-и: `fmtMoney` завжди рівно 2 знаки (padding: `1250.5→'...,50'`, `0→'0,00'`); `fmtInt` варіативна дробова частина без padding (`1250.5→'...,5'`); ключовий інваріант WEB-M9 `fmtMoney(1250.5)≠fmtInt(1250.5)`; null/undefined→«—». Assert-и по семантиці (padding), не по exact-spacing (Intl uk-UA narrow-no-break-space залежить від ICU). Web tests +4.
+- **Статус:** [x] закрито (test-gap)
