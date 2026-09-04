@@ -181,6 +181,7 @@ grep -rn "settlementAccount\.update\|balance.*decrement\|balance.*increment" app
 
 - [ ] Жодного прямого `prisma.settlementAccount.update({ balance })` поза `SettlementsService`
 - [ ] `CHARGE` збільшує баланс; `PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE` — зменшують
+- [ ] **Bug #629: похідне money × дріб-коефіцієнт / reduce-Σ / різниця сум БЕЗ roundMoney, що покидає систему сирим (export/JSON).** Множення грошей на дріб (`Number(x) * RATIO`, напр. `LABOR_COST_RATIO=0.4` → `3520.30*0.4=1408.1200000000001`), Σ у JS-`reduce`, або різниця двох сум (`invoiced - purchases=66.77000000000001`) — гарантований/ймовірний IEEE-754 дрейф. Маскується `fmt()` на екрані, але **емітиться СИРИМ у CSV/XLSX/PDF-експорт (без fmtMoney — для XLSX number-детекту) і у JSON API-відповідь** (mobile/sync/зовнішні клієнти). Grep: `grep -rnE "Number\([^)]*\)\s*[*/]" apps/api/src/modules/{reports,completion-acts,xlsx}` + `grep -rnE "reduce\(\(s.*\+.*(amount|balance|revenue|total|cost|vat)"`. Для кожного — чи результат покидає систему (export/JSON)? Fix: `roundMoney()` на КОЖНЕ похідне money-поле (НЕ на %/count/hours). Live-guard: report endpoint з фракційними даними → `round(v*100)/100===v` для кожного money-поля. Severity LOW-MEDIUM (не stored/balance, але user-visible float у фіндокументі). Родич completion-acts PDF float (f7a935db). ⚠️ report-сервіси часто мають 0 unit-тестів → закрити test-gap разом із фіксом.
 
 #### Tenant Isolation
 
@@ -1089,6 +1090,20 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-04 — Похідне грошове значення × дріб-коефіцієнт (або reduce/різниця) БЕЗ roundMoney, що покидає систему сирим через export/JSON (Bug #629) — backend / money-precision / report-and-export / LOW-MEDIUM
+
+**Сигнал:** money-обчислення `Number(x) * RATIO` (де RATIO дробовий, напр. `LABOR_COST_RATIO=0.4`), або `reduce((s,r)=>s+r.money, 0)`, або різниця двох сум (`a - b`), результат якого повертається зі звіту/сервісу і потім **емітиться СИРИМ у CSV/XLSX/PDF-експорт або JSON API** — без roundMoney. На екрані маскується `fmt()`/`fmtMoney`, тому візуально «все ок», але у експортованому фінансовому документі (чи у відповіді API стороннім клієнтам) з'являється `1408.1200000000001` / `399.99600000000004` / `66.77000000000001`. Множення на дріб — ГАРАНТОВАНИЙ IEEE-754 дрейф (`3520.30 × 0.4`, `100.10 − 33.33`); Σ у JS-`reduce` дрейфує на певних комбінаціях (`0.1+0.2`); SQL `SUM(...)::float` теж повертає float. ПАСТКА: аудит хвилі округлення фокусується на DB-write і balance-feeding шляхах (стор/баланс) і легко пропускає «лише для перегляду» звіти — але звіти теж покидають систему через export, тож дрейф стає user-visible.
+
+**Причина виникнення:** розробник вважає звітні агрегати «display-only» («fmt на фронті округлить») → не квантує. Хвиля roundMoney квантує stored/balance шляхи, звіти лишаються поза скоупом. Насправді значення виходять сирими двома каналами: (1) CSV/XLSX-експорт емітить числове поле напряму (`rows.push([label, data.grossProfit, ...])`, без fmtMoney — бо для number-детекту XLSX потрібен raw), (2) JSON API-відповідь звіту споживається mobile/sync/зовнішніми клієнтами без гарантії форматування. fmt() на екрані — єдина точка округлення, і її недостатньо.
+
+**Підхід до виявлення:** grep множень/різниць/reduce грошей без roundMoney у сервісах, чий результат покидає систему: `grep -rnE "Number\([^)]*\)\s*[*/]" apps/api/src/modules/{reports,completion-acts,xlsx}` + `grep -rnE "reduce\(\(s.*\+.*(amount|balance|revenue|total|cost|price|vat)" ` + ручний огляд `a - b` де a,b гроші. Для КОЖНОГО кандидата: чи результат іде у `$queryRaw ::float`-суму, чи у `* ratio`, чи у JS-`reduce`? Потім трасувати споживача: чи frontend-експортер (`buildCsv`/`exportReport`/`page.tsx` rows) емітить це поле СИРИМ (без fmtMoney)? Live-проба: викликати report endpoint з даними, що дають фракційний labor/суму → перевірити `round(v*100)/100===v` для КОЖНОГО money-поля відповіді (реплікувати дрейф node-скриптом: `3520.30*0.4`).
+
+**Підхід до фіксу:** roundMoney на КОЖНЕ похідне грошове значення перед поверненням зі звіту/сервісу — множення×дріб, Σ-reduce, різницю сум. НЕ чіпати: `%`-показники (margin), лічильники (count), години (hours) — не гроші. Дзеркалить `sumLineTotals`/invoice `recalcTotals` патерн (`roundMoney(Σ)`). Regression-guard: unit-спец із фракційними входами що дають гарантований дрейф (`totalLabor:3520.3`→`totalCostLabor` `.toBe(1408.12)` не `1408.12000…001`; `net` `.toBe(66.77)`) + `has2Decimals()` helper на кожне money-поле. Якщо у сервісі 0 unit-тестів (частий випадок для reports) — це ще й test-gap, закрити разом.
+
+**Severity:** LOW-MEDIUM — не stored-value, не balance-мутація (тому не CRITICAL/HIGH), але user-visible: спотворене число у експортованому фінансовому документі + сирий float у JSON API. Класична «float-у-документі» (родич completion-acts PDF, який хвиля вже фіксила — але цей шлях пропустила).
+
+**Де шукати ще:** усі report-сервіси (revenue/vat/settlements/profitability/load/stock/work-orders); будь-який `* RATIO`/`* rate`/`/ divisor` на грошах (markup, знижки %, комісії, амортизація, COGS-оцінки); reduce-суми у звітах/дашбордах; різниці балансів/сум; frontend-експортери (`exportReport`, `buildCsv`, xlsx-генератори) що емітять числові поля БЕЗ fmtMoney — саме там backend-дрейф стає видимим. Родич Bug #621/#613 (money-precision клас), completion-acts PDF float (f7a935db).
 
 ### 2026-09-04 — DB-constraint error-mapping guard присутній у canonical write, відсутній у alternate-mutation endpoint → 500 замість 409 (Bug #628) — backend / error-mapping-symmetry / robustness / MEDIUM
 
