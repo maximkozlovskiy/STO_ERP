@@ -57,14 +57,28 @@ test.describe('Конструктор звітів', () => {
     await page.locator('select').first().selectOption('workOrder');
     await expect(page.getByText(/Поля «Наряди»/)).toBeVisible({ timeout: 10_000 });
 
+    // Bug #625: щоб групи мали детальні рядки (expandable drill-down), додаємо ще й колонку.
+    // Без колонки backend не повертає node.rows → групи disabled без aria-expanded, і
+    // page-level `button[aria-expanded].first()` матчив би «Згорнути»-тоггл, а не таблицю
+    // (слабкий асерт — пройшов би навіть при плоскому/порожньому результаті).
+    const sumRow = page.locator('div[draggable="true"]:has-text("Сума")').first();
+    await sumRow.getByRole('button', { name: /колонк/i }).click();
+
     // Клік «Г» (групування) на полі «Статус» через кнопку-літеру (не drag).
     const statusRow = page.locator('div[draggable="true"]:has-text("Статус")').first();
     await statusRow.getByRole('button', { name: /групування/i }).click();
 
     await page.locator('button:has-text("Запустити")').click();
     await page.getByText(/Результат · рядків/).waitFor({ timeout: 10_000 });
-    // Є групові рядки (aria-expanded) — тобто згруповано, а не плоский список.
-    await expect(page.locator('button[aria-expanded]').first()).toBeVisible();
+
+    // Справді згруповано (не плоский список): перша колонка заголовка — «Група», а не «№».
+    const table = page.locator('table').first();
+    await expect(table.locator('thead th').first()).toHaveText('Група');
+    // Групові рядки з aria-expanded саме У ТАБЛИЦІ (Bug #625 — scope до table, не page).
+    await expect(table.locator('button[aria-expanded]').first()).toBeVisible();
+    expect(await table.locator('button[aria-expanded]').count()).toBeGreaterThan(1);
+    // Банер «Групування не задано» ВІДСУТНІЙ (це grouped-режим).
+    await expect(page.getByText(/Групування не задано/)).toHaveCount(0);
   });
 
   test('після запуску палітра лишається (НЕ авто-згортається) — групування досяжне', async ({
@@ -89,7 +103,11 @@ test.describe('Конструктор звітів', () => {
     await statusRow.getByRole('button', { name: /групування/i }).click();
     await page.locator('button:has-text("Запустити")').click();
     await page.getByText(/Результат · рядків/).waitFor({ timeout: 10_000 });
-    await expect(page.locator('button[aria-expanded]').first()).toBeVisible();
+    // Bug #625: асертимо групування саме У ТАБЛИЦІ (Пріоритет-колонка вже додана вище →
+    // node.rows наявні → групи expandable). page-level матчив би «Згорнути»-тоггл.
+    const table = page.locator('table').first();
+    await expect(table.locator('thead th').first()).toHaveText('Група');
+    await expect(table.locator('button[aria-expanded]').first()).toBeVisible();
   });
 
   test('згорнуті налаштування → компактна панель з поточним вибором (не порожньо)', async ({
