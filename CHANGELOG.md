@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-09-04 — fix(review): roundMoney на решті грошових шляхів (аудит de35bf31)
+
+### f7a935db fix(review): roundMoney на решті грошових шляхів (completion-act PDF, PO/SR/loyalty/xlsx/reports)
+
+Аудит wave-3 (de35bf31): roundMoney коректний (half-away-from-zero, +1e-9 не ламає великі
+суми, від'ємні симетричні, Number.isFinite→0); WO-H1 in-tx re-read, addDaysKyiv, dateTo для
+@db.Date — усе коректно; подвійне округлення НЕ дає розходження Σ(рядки)↔total. **0 багів у коміті.**
+
+Закрито 9 залишкових un-rounded грошових результатів поза скоупом хвилі:
+
+- completion-acts: `amount` позиції + PDF total (юридичний акт) через roundMoney
+- invoices: 3× `priceWithVat = priceWithoutVat + vatAmount` (асиметрія з addLine)
+- purchase-orders: totalAmount/totalVat, **receivedAmount (живить SUPPLIER_CHARGE)**, display amount
+- supplier-returns: totalAmount (create+update) + display amount
+- loyalty: discountAmount; xlsx: import amount; reports: stock-value value + totalValue
+
+API tsc 0, тести 1183/1183.
+
 ## 2026-09-03 (c) — fix: конструктор звітів — фідбек користувача (5 проблем)
 
 - **Згортання панелей:** кнопка «Згорнути/Налаштування» + авто-згортання після «Запустити»,
