@@ -315,6 +315,21 @@ export class StockDocumentsService {
 
       await this.prisma.$transaction(
         async tx => {
+          // Ідемпотентність CONFIRM (анти-race/анти-retry): FSM-перевірка вище (рядок 309)
+          // читає STALE pre-tx статус. Без in-tx гейту два concurrent CONFIRM (double-click,
+          // повтор запиту після таймауту) обидва пройшли б FSM-check → ПОДВІЙНИЙ рух складу
+          // (подвійний WRITEOFF/RECEIPT/TRANSFER, залишки ×2). CAS `updateMany where status:DRAFT`
+          // ПЕРШИМ у tx: лише перший запит отримує count=1 (DRAFT→CONFIRMED атомарно row-locked),
+          // другий бачить count=0 → throw → rollback усіх side-effects. Дзеркалить
+          // supplier-payments.confirm CAS (FIN-C1) + work-orders.transition in-tx re-read (Хвиля 1).
+          const cas = await tx.stockDocument.updateMany({
+            where: { id, orgId, deletedAt: null, status: 'DRAFT' },
+            data: { status: 'CONFIRMED', confirmedAt: new Date(), confirmedBy: userId ?? null },
+          });
+          if (cas.count === 0) {
+            throw new BadRequestException('Статус документу змінився — повторіть дію');
+          }
+
           const movType = MOVEMENT_TYPES[doc.type];
           if (doc.type !== 'TRANSFER' && !movType)
             throw new BadRequestException(`Непідтримуваний тип документу: ${doc.type}`);
@@ -386,10 +401,8 @@ export class StockDocumentsService {
             }),
           );
 
-          await tx.stockDocument.update({
-            where: { id, orgId },
-            data: { status: 'CONFIRMED', confirmedAt: new Date(), confirmedBy: userId ?? null },
-          });
+          // Статус вже переведено CAS-ом на початку tx (DRAFT→CONFIRMED). Повторний update не
+          // потрібен — рухи складу вище виконались у тій самій tx після успішного CAS-гейту.
         },
         { timeout: 15_000 },
       ); // explicit 15s timeout: N rows × createMovement (StockMovement + upsert stockItem); exceeds Prisma default at ~50+ lines

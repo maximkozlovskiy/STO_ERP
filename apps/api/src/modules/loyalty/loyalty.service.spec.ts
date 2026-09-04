@@ -163,6 +163,7 @@ describe('LoyaltyService.earn', () => {
       },
       loyaltyTransaction: {
         create: vi.fn(),
+        findFirst: vi.fn().mockResolvedValue(null),
       },
       $transaction: vi.fn(async (cb: (tx: typeof prisma) => Promise<unknown>) => cb(prisma)),
     };
@@ -222,5 +223,50 @@ describe('LoyaltyService.earn', () => {
         data: expect.objectContaining({ type: 'EARN', points: 10 }),
       }),
     );
+  });
+
+  it('ідемпотентність: повторний job з тим самим documentId НЕ подвоює нарахування', async () => {
+    // BullMQ attempts=10: якщо tx закомітилась, але worker впав до ACK — job повториться.
+    // Без idempotency-guard баланс інкрементувався б удруге + дубль LoyaltyTransaction.
+    prisma.counterparty.findFirst.mockResolvedValue({ id: counterpartyId });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      loyaltyEnabled: true,
+      loyaltyEarnPer: 100,
+      loyaltyEarnPoints: 1,
+    });
+    // Симулюємо повторний запуск: EARN за цей документ вже існує.
+    prisma.loyaltyTransaction.findFirst.mockResolvedValueOnce({ id: 'existing-earn' });
+
+    await service.earn(orgId, counterpartyId, 1000, 'payment-1');
+
+    // Guard спрацював всередині tx → жодного інкременту балансу, жодного нового запису.
+    expect(prisma.loyaltyTransaction.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          accountId: 'acc-1',
+          type: 'EARN',
+          documentId: 'payment-1',
+        }),
+      }),
+    );
+    expect(prisma.loyaltyAccount.update).not.toHaveBeenCalled();
+    expect(prisma.loyaltyTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it('ідемпотентність: перше нарахування за documentId проходить (findFirst=null)', async () => {
+    prisma.counterparty.findFirst.mockResolvedValue({ id: counterpartyId });
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      loyaltyEnabled: true,
+      loyaltyEarnPer: 100,
+      loyaltyEarnPoints: 1,
+    });
+    prisma.loyaltyTransaction.findFirst.mockResolvedValueOnce(null); // ще не нараховано
+
+    await service.earn(orgId, counterpartyId, 1000, 'payment-2');
+
+    expect(prisma.loyaltyAccount.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { balance: { increment: 10 } } }),
+    );
+    expect(prisma.loyaltyTransaction.create).toHaveBeenCalledTimes(1);
   });
 });

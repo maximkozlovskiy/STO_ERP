@@ -20,13 +20,20 @@ export class OutboundWebhookProcessor extends WorkerHost {
   }
 
   async process(job: Job): Promise<void> {
-    const { endpointId, url, secret, event, payload } = job.data as {
+    const { endpointId, url, secret, event, payload, deliveryId } = job.data as {
       endpointId: string;
       url: string;
       secret: string;
       event: string;
       payload: unknown;
+      deliveryId?: string;
     };
+
+    // Idempotency key: stable across ALL retries of this job. Prefer the value
+    // pinned into the payload at dispatch time; fall back to the (stable) job id
+    // for jobs enqueued before this field existed. This is what the receiver
+    // dedups on so BullMQ retries never double-process an event.
+    const idempotencyKey = deliveryId ?? String(job.id ?? `${endpointId}:${event}`);
 
     // Defense-in-depth SSRF check at delivery time. The URL was validated
     // at create/update, but DNS rebinding or a stale endpoint config could still
@@ -55,6 +62,7 @@ export class OutboundWebhookProcessor extends WorkerHost {
     }
 
     const body = JSON.stringify({
+      id: idempotencyKey,
       event,
       payload,
       timestamp: new Date().toISOString(),
@@ -81,6 +89,12 @@ export class OutboundWebhookProcessor extends WorkerHost {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            // Idempotency key so the receiver can safely dedup retries (BullMQ
+            // re-delivers the same job on transient failures). Sent under two
+            // common header names for receiver convenience; both carry the same
+            // value that is also embedded (and HMAC-signed) in the body `id`.
+            'X-STO-Delivery-Id': idempotencyKey,
+            'Idempotency-Key': idempotencyKey,
             ...(signature ? { 'X-STO-Signature': `sha256=${signature}` } : {}),
           },
           body,

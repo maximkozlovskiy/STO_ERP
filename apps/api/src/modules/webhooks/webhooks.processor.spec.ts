@@ -26,16 +26,19 @@ interface WebhookJobData {
   secret: string;
   event: string;
   payload: unknown;
+  deliveryId?: string;
 }
 
-const makeJob = (data: Partial<WebhookJobData>, attemptsMade = 0): Job =>
+const makeJob = (data: Partial<WebhookJobData>, attemptsMade = 0, id = 'job-1'): Job =>
   ({
+    id,
     data: {
       endpointId: 'ep-1',
       url: 'https://hooks.example.com/webhook',
       secret: '',
       event: 'WO_STATUS_CHANGED',
       payload: { id: 'wo-1', status: 'COMPLETED' },
+      deliveryId: 'del-abc',
       ...data,
     },
     attemptsMade,
@@ -211,6 +214,52 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
       // Original HTTP 500 error must still surface for BullMQ retry — the DB
       // logging failure is swallowed by its own try/catch.
       await expect(processor.process(makeJob({}))).rejects.toThrow(/HTTP 500/);
+    });
+  });
+
+  describe('idempotency key (retry dedup)', () => {
+    it('шле stable X-STO-Delivery-Id + Idempotency-Key з payload.deliveryId', async () => {
+      fetchSpy.mockResolvedValueOnce(new Response('ok', { status: 200 }));
+      await processor.process(makeJob({ deliveryId: 'del-xyz' }));
+
+      const [, init] = fetchSpy.mock.calls[0];
+      const headers = (init as RequestInit).headers as Record<string, string>;
+      expect(headers['X-STO-Delivery-Id']).toBe('del-xyz');
+      expect(headers['Idempotency-Key']).toBe('del-xyz');
+    });
+
+    it('той самий deliveryId → той самий ключ на ретраях (attemptsMade зростає, ключ стабільний)', async () => {
+      fetchSpy.mockResolvedValueOnce(new Response('boom', { status: 500 }));
+      await expect(processor.process(makeJob({ deliveryId: 'del-stable' }, 3))).rejects.toThrow();
+      const [, init1] = fetchSpy.mock.calls[0];
+      const h1 = (init1 as RequestInit).headers as Record<string, string>;
+
+      fetchSpy.mockResolvedValueOnce(new Response('ok', { status: 200 }));
+      await processor.process(makeJob({ deliveryId: 'del-stable' }, 4));
+      const [, init2] = fetchSpy.mock.calls[1];
+      const h2 = (init2 as RequestInit).headers as Record<string, string>;
+
+      // Both attempts of the same dispatch carry the identical idempotency key,
+      // so a receiver can dedup — retries never double-process.
+      expect(h1['Idempotency-Key']).toBe('del-stable');
+      expect(h2['Idempotency-Key']).toBe('del-stable');
+    });
+
+    it('embed id у підписане тіло (HMAC покриває id)', async () => {
+      fetchSpy.mockResolvedValueOnce(new Response('ok', { status: 200 }));
+      await processor.process(makeJob({ deliveryId: 'del-body', secret: 'k' }));
+      const [, init] = fetchSpy.mock.calls[0];
+      const sentBody = JSON.parse((init as RequestInit).body as string) as { id: string };
+      expect(sentBody.id).toBe('del-body');
+    });
+
+    it('fallback на job.id коли deliveryId відсутній (старі jobs у черзі)', async () => {
+      fetchSpy.mockResolvedValueOnce(new Response('ok', { status: 200 }));
+      // deliveryId explicitly stripped to simulate a job enqueued before the field existed.
+      await processor.process(makeJob({ deliveryId: undefined }, 0, 'legacy-job-42'));
+      const [, init] = fetchSpy.mock.calls[0];
+      const headers = (init as RequestInit).headers as Record<string, string>;
+      expect(headers['X-STO-Delivery-Id']).toBe('legacy-job-42');
     });
   });
 

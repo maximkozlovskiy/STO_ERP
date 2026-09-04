@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
+import { randomUUID } from 'crypto';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { validatePublicUrl } from '../../common/utils/url-guard';
@@ -152,8 +153,14 @@ export class WebhooksService {
     // so sequential await serialised N×(net RTT). Promise.all collapses to one
     // batch of concurrent writes (Bull internally pipelines).
     await Promise.all(
-      endpoints.map(ep =>
-        this.webhookQueue.add(
+      endpoints.map(ep => {
+        // Stable per-dispatch idempotency key. Generated ONCE here and carried in the
+        // job payload, so every BullMQ retry of the same job re-sends the SAME id.
+        // The receiver can dedup on it → retries after a network blip / remote 5xx do
+        // not process the event twice. Must NOT be derived from job.id inside the
+        // processor (BullMQ can re-add a job with a new id on some failure paths).
+        const deliveryId = randomUUID();
+        return this.webhookQueue.add(
           'deliver',
           {
             endpointId: ep.id,
@@ -161,6 +168,7 @@ export class WebhooksService {
             secret: ep.secret,
             event,
             payload: data,
+            deliveryId,
           },
           {
             // Offline-first: ≥10 retries with exponential backoff so transient
@@ -170,8 +178,8 @@ export class WebhooksService {
             removeOnComplete: 100,
             removeOnFail: 200,
           },
-        ),
-      ),
+        );
+      }),
     );
   }
 }

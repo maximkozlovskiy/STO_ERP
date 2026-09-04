@@ -260,7 +260,17 @@ export class SyncService {
         }
       }
       if (existing) {
-        await model.update({ where: { id: rec.id, orgId }, data: { deletedAt: new Date() } });
+        // LWW for tombstones too: a DELETE that arrives out of order (older
+        // syncVersion than what the server already has) must NOT clobber a newer
+        // server-side edit — otherwise a stale mobile delete silently erases data
+        // the operator changed on the web afterwards. Apply the soft-delete only
+        // when the incoming version is strictly newer.
+        const existingVersion = BigInt(
+          (existing as { syncVersion?: bigint | number | string }).syncVersion ?? 0,
+        );
+        if (BigInt(rec.syncVersion) > existingVersion) {
+          await model.update({ where: { id: rec.id, orgId }, data: { deletedAt: new Date() } });
+        }
       }
       return;
     }

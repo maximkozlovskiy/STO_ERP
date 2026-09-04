@@ -221,5 +221,70 @@ describe('Sync — HTTP Contract', () => {
       expect(body.accepted).toBe(0);
       expect(body.conflicts).toBe(1);
     });
+
+    it('DELETE calendar_slot зі СТАРІШИМ syncVersion не клобберить новіший серверний запис (LWW tombstone)', async () => {
+      // Server already has version 10; a stale client DELETE at version 5 must be
+      // ignored — otherwise a late mobile delete silently erases a newer web edit.
+      prismaMock.calendarSlot.findFirst.mockResolvedValueOnce({
+        id: '660e8400-e29b-41d4-a716-446655440111',
+        syncVersion: 10n,
+        deletedAt: null,
+        workOrderId: null,
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/sync/push',
+        payload: {
+          records: [
+            {
+              table: 'calendar_slots',
+              id: '660e8400-e29b-41d4-a716-446655440111',
+              operation: 'DELETE',
+              syncVersion: 5,
+              payload: {},
+            },
+          ],
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      const body = res.json() as { accepted: number; conflicts: number };
+      // The record is accepted (no error) but the soft-delete is NOT applied.
+      expect(body.accepted).toBe(1);
+      expect(prismaMock.calendarSlot.update).not.toHaveBeenCalled();
+    });
+
+    it('DELETE calendar_slot з НОВІШИМ syncVersion застосовує soft-delete', async () => {
+      prismaMock.calendarSlot.findFirst.mockResolvedValueOnce({
+        id: '660e8400-e29b-41d4-a716-446655440222',
+        syncVersion: 3n,
+        deletedAt: null,
+        workOrderId: null,
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/sync/push',
+        payload: {
+          records: [
+            {
+              table: 'calendar_slots',
+              id: '660e8400-e29b-41d4-a716-446655440222',
+              operation: 'DELETE',
+              syncVersion: 9,
+              payload: {},
+            },
+          ],
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(prismaMock.calendarSlot.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ deletedAt: expect.any(Date) }),
+        }),
+      );
+    });
   });
 });

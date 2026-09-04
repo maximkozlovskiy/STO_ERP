@@ -150,6 +150,20 @@ export class LoyaltyService {
     });
     await this.prisma.$transaction(
       async tx => {
+        // Idempotency guard: earn() runs from a BullMQ job with attempts=10. If the tx
+        // commits but the worker dies before ACK (or the same payment is enqueued twice),
+        // BullMQ replays the job → without this check the balance would be incremented
+        // AGAIN and a duplicate LoyaltyTransaction created (подвійне нарахування за один
+        // документ). We anchor idempotency on the source document: one EARN per
+        // (account, document). Documents-less earns (documentId == null) have no anchor
+        // and are treated as always-new (rare manual accrual path).
+        if (documentId) {
+          const existing = await tx.loyaltyTransaction.findFirst({
+            where: { accountId: acc.id, type: 'EARN', documentId },
+            select: { id: true },
+          });
+          if (existing) return; // already accrued for this document — skip
+        }
         await tx.loyaltyAccount.update({
           where: { id: acc.id },
           data: { balance: { increment: points } },

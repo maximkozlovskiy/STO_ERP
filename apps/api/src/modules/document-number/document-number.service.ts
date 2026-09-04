@@ -57,10 +57,15 @@ export class DocumentNumberService {
         const now = new Date();
         const [currentYear, currentMonth] = KYIV_YEAR_MONTH_FMT.format(now).split('-').map(Number);
 
-        const needsYearlyReset =
-          cfg.resetPeriod === 'YEARLY' &&
-          cfg.lastResetYear !== null &&
-          cfg.lastResetYear !== currentYear;
+        // NULL lastResetYear means the counter has never been anchored to a period.
+        // For a YEARLY/MONTHLY config that must be treated as "needs reset" so the
+        // FIRST number of the current period starts at 1 — otherwise a config with a
+        // non-zero currentSeq (legacy import, admin-set start seq) would keep
+        // incrementing across the year boundary instead of restarting.
+        // The old `cfg.lastResetYear !== null &&` guard on YEARLY made it asymmetric
+        // with MONTHLY (which already resets on NULL) and left such configs never
+        // resetting per year.
+        const needsYearlyReset = cfg.resetPeriod === 'YEARLY' && cfg.lastResetYear !== currentYear;
 
         const needsMonthlyReset =
           cfg.resetPeriod === 'MONTHLY' &&

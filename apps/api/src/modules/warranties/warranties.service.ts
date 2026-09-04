@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { addDaysKyiv } from '../../common/utils/kyiv-date';
 import {
   CreateWarrantyDto,
   ClaimWarrantyDto,
@@ -141,8 +142,13 @@ export class WarrantiesService {
     if (!wo || !wo.counterpartyId) return;
     if (existing) return; // idempotent
 
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + warrantyDays);
+    // Kyiv-calendar date arithmetic: `new Date().setDate(...)` uses the SERVER's local
+    // calendar day. On a UTC (or any non-Kyiv) server the warranty end-date drifts by the
+    // TZ offset — a WO completed at 23:30 Kyiv would count from the previous UTC day.
+    // addDaysKyiv resolves the Kyiv calendar day first, then adds days via UTC arithmetic
+    // (DST-safe). warrantyDays comes from OrganisationSettings.defaultWarrantyDays (config,
+    // not hardcoded) — passed in by the caller.
+    const expiresAt = addDaysKyiv(new Date(), warrantyDays);
 
     await this.prisma.warranty.create({
       data: {

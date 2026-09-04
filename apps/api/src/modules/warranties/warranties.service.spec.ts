@@ -152,3 +152,68 @@ describe('WarrantiesService.claim', () => {
     expect(prisma.warranty.updateMany).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Регресія: `autoCreate` рахує `expiresAt` через `addDaysKyiv` (Kyiv-календар),
+ * а НЕ через `new Date().setDate(getDate()+days)` (server-local календар).
+ * На UTC-сервері стара реалізація зсувала день завершення гарантії на TZ-offset.
+ */
+describe('WarrantiesService.autoCreate — Kyiv-дата expiresAt', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let service: WarrantiesService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  const orgId = 'org-1';
+  const workOrderId = 'wo-1';
+
+  beforeEach(async () => {
+    prisma = {
+      workOrder: { findFirst: vi.fn() },
+      warranty: { findFirst: vi.fn(), create: vi.fn() },
+    };
+    const module = await Test.createTestingModule({
+      providers: [WarrantiesService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get(WarrantiesService);
+  });
+
+  // Дзеркалить addDaysKyiv: Kyiv-календарна дата (sv-SE) + N днів через UTC-опівніч.
+  const expectedKyivExpiry = (days: number): Date => {
+    const ymd = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
+    const d = new Date(ymd + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + days);
+    return new Date(d.toISOString().slice(0, 10));
+  };
+
+  it('expiresAt = Kyiv-сьогодні + warrantyDays (UTC-опівніч), warrantyDays з БД', async () => {
+    prisma.workOrder.findFirst.mockResolvedValueOnce({
+      id: workOrderId,
+      number: 'WO-42',
+      counterpartyId: 'cp-1',
+    });
+    prisma.warranty.findFirst.mockResolvedValueOnce(null); // idempotent — ще не створено
+    prisma.warranty.create.mockResolvedValueOnce({ id: 'wty-new' });
+
+    const warrantyDays = 90;
+    await service.autoCreate(orgId, workOrderId, warrantyDays);
+
+    expect(prisma.warranty.create).toHaveBeenCalledTimes(1);
+    const createArgs = prisma.warranty.create.mock.calls[0][0];
+    expect(createArgs.data.expiresAt.getTime()).toBe(expectedKyivExpiry(warrantyDays).getTime());
+    expect(createArgs.data.orgId).toBe(orgId);
+    expect(createArgs.data.counterpartyId).toBe('cp-1');
+  });
+
+  it('ідемпотентність: гарантія по наряду вже існує → create НЕ викликаний', async () => {
+    prisma.workOrder.findFirst.mockResolvedValueOnce({
+      id: workOrderId,
+      number: 'WO-42',
+      counterpartyId: 'cp-1',
+    });
+    prisma.warranty.findFirst.mockResolvedValueOnce({ id: 'existing-wty' });
+
+    await service.autoCreate(orgId, workOrderId, 90);
+
+    expect(prisma.warranty.create).not.toHaveBeenCalled();
+  });
+});

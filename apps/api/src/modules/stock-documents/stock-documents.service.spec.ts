@@ -198,10 +198,10 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
     });
     expect(dtoArg.quantity).toBeGreaterThan(0);
 
-    // Інваріант 4: документ переведено у CONFIRMED.
-    expect(prisma.stockDocument.update).toHaveBeenCalledWith(
+    // Інваріант 4: документ переведено у CONFIRMED через CAS-гейт (updateMany where status:DRAFT).
+    expect(prisma.stockDocument.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: DOC_ID, orgId: ORG },
+        where: { id: DOC_ID, orgId: ORG, deletedAt: null, status: 'DRAFT' },
         data: expect.objectContaining({
           status: 'CONFIRMED',
           confirmedBy: 'user-1',
@@ -538,5 +538,92 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
       type: StockMovementType.RECEIPT,
       price: 55, // fallback до baseArgs.price
     });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // CONFIRM idempotency: CAS-гейт проти concurrent/retry подвійного руху складу
+  //
+  // FSM-check у transition() читає STALE pre-tx статус (findFirst ПОЗА $transaction).
+  // Без in-tx CAS `updateMany where status:DRAFT` два concurrent CONFIRM (double-click,
+  // retry після таймауту) обидва пройшли б FSM-check і кожен створив би повний набір
+  // StockMovement → залишки ×2. CAS гарантує: лише перший запит row-locked переводить
+  // DRAFT→CONFIRMED (count=1); другий бачить count=0 → throw → rollback усіх side-effects.
+  // Дзеркалить supplier-payments.confirm (FIN-C1) + work-orders.transition (Хвиля 1).
+  // ──────────────────────────────────────────────────────────────────────
+  it('CONFIRM: CAS-гейт спрацьовує ПЕРЕД рухами складу (updateMany where status:DRAFT перший у tx)', async () => {
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПТ-2026-0009',
+      type: StockDocumentType.RECEIPT,
+      status: 'DRAFT',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: null,
+      lines: [{ id: LINE_ID, goodId: GOOD_ID, quantity: 4, price: 100, good: { unitId: null } }],
+    });
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПТ-2026-0009',
+      type: StockDocumentType.RECEIPT,
+      status: 'CONFIRMED',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: null,
+      notes: null,
+      documentDate: new Date(),
+      confirmedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      branch: { name: 'Філія 1' },
+      warehouse: { name: 'Склад 1' },
+      targetWarehouse: null,
+      lines: [],
+    });
+
+    // Track invocation order: CAS updateMany МУСИТЬ передувати createMovement.
+    const order: string[] = [];
+    prisma.stockDocument.updateMany.mockImplementationOnce(() => {
+      order.push('cas');
+      return Promise.resolve({ count: 1 });
+    });
+    inventory.createMovement.mockImplementationOnce(() => {
+      order.push('movement');
+      return Promise.resolve({ movementId: 'm1', consumed: [], weightedCostPrice: null });
+    });
+
+    await service.transition(ORG, DOC_ID, 'CONFIRMED', 'user-1');
+
+    expect(order[0]).toBe('cas');
+    expect(order).toContain('movement');
+    expect(prisma.stockDocument.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: DOC_ID, orgId: ORG, deletedAt: null, status: 'DRAFT' },
+        data: expect.objectContaining({ status: 'CONFIRMED' }),
+      }),
+    );
+  });
+
+  it('CONFIRM (concurrent/retry): CAS count=0 → BadRequestException, ЖОДНОГО руху складу', async () => {
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПТ-2026-0010',
+      type: StockDocumentType.RECEIPT,
+      status: 'DRAFT', // pre-tx snapshot стверджує DRAFT (stale)
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: null,
+      lines: [{ id: LINE_ID, goodId: GOOD_ID, quantity: 4, price: 100, good: { unitId: null } }],
+    });
+    // Інший concurrent запит уже забрав DRAFT → CAS цього запиту не знаходить рядок.
+    prisma.stockDocument.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(service.transition(ORG, DOC_ID, 'CONFIRMED', 'user-1')).rejects.toThrow(
+      BadRequestException,
+    );
+    // КРИТИЧНО: жодного руху складу — інакше залишки подвоїлися б.
+    expect(inventory.createMovement).not.toHaveBeenCalled();
   });
 });

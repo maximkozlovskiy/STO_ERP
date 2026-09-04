@@ -181,8 +181,14 @@ export class CompletionActsService {
           throw new BadRequestException('Підписати можна лише чернетку акту');
         }
 
-        await tx.completionAct.update({
-          where: { id, orgId },
+        // Ідемпотентність sign (анти-race/анти-retry): findFirst вище — plain SELECT під
+        // READ COMMITTED (без блокування), тож два concurrent sign() обидва бачать DRAFT →
+        // подвійний WO→INVOICED перехід + подвійна спроба auto-invoice. CAS
+        // `updateMany where status:DRAFT` row-locked атомарно переводить DRAFT→SIGNED: лише
+        // перший запит отримує count=1, другий count=0 → throw → rollback. Дзеркалить
+        // supplier-payments.confirm (FIN-C1) + stock-documents.transition CAS.
+        const cas = await tx.completionAct.updateMany({
+          where: { id, orgId, deletedAt: null, status: CompletionActStatus.DRAFT },
           data: {
             status: CompletionActStatus.SIGNED,
             signedAt: new Date(),
@@ -191,6 +197,9 @@ export class CompletionActsService {
             notes: dto.notes ?? null,
           },
         });
+        if (cas.count === 0) {
+          throw new BadRequestException('Статус акту змінився — повторіть дію');
+        }
 
         if (act.workOrder?.status === 'COMPLETED') {
           await tx.workOrder.update({
