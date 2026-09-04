@@ -5,6 +5,23 @@
 
 ---
 
+## 2026-09-04 — fix(tester): Bug #629 — квантування похідних грошей у звітах (Хвиля 3 LIVE-аудит)
+
+### eefa72ec fix(tester): Bug #629 — квантування похідних грошей у звітах (roundMoney)
+
+Хвиля 3 LIVE-аудит (de35bf31+f7a935db): усі 6 фокус-пунктів PASS — roundMoney (38 edge),
+Σ==total (LIVE invoice 100.10×3×20→360.36 узгоджено), WO-H1 CHARGE (LIVE 144=in-tx re-read),
+PO receivedAmount→SUPPLIER_CHARGE (LIVE 99.99 exact), addDaysKyiv (6 DST-кейсів), регресії
+(255 money-тестів + усі VAT-режими). **1 баг знайдено поза скоупом хвилі:**
+
+- `reports.service` похідні гроші БЕЗ roundMoney: `totalCostLabor=totalLabor×0.4`
+  (3520.30×0.4=1408.1200000000001), Σ-reduce (revenue/workOrders/settlements totals),
+  різниця vat.net — float-дрейф, маскується fmt() на екрані, але просочується СИРИМ у
+  CSV-експорт «Рентабельність» + JSON API. Fix: roundMoney на кожне похідне money-поле.
+- Test-gap: reports.service.spec.ts (5 тестів; раніше 0 unit на весь ReportsService).
+- SKILL.md: +§1.1 checklist (#629) + approach «money×дріб/reduce/різниця сирим у export/JSON».
+- API tsc 0, тести 1183→1188.
+
 ## 2026-09-04 — fix(review): roundMoney на решті грошових шляхів (аудит de35bf31)
 
 ### f7a935db fix(review): roundMoney на решті грошових шляхів (completion-act PDF, PO/SR/loyalty/xlsx/reports)
