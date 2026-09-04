@@ -1214,8 +1214,14 @@ function flattenTree(nodes: GroupNode[], aggAliases: string[], depth = 0): strin
   return rows;
 }
 
-/** Клітинка експорту для значення колонки: enum → переклад, дата → ДД.ММ.РРРР, число як є. */
+/**
+ * Клітинка експорту для значення колонки: enum → переклад, boolean → Так/Ні,
+ * дата → ДД.ММ.РРРР, число як є (raw, щоб XLSX детектив ss:Type="Number").
+ * Мусить давати ТІ САМІ лейбли, що й fmtCell на екрані (окрім числового форматування,
+ * яке в експорті лишається сирим навмисно) — інакше розбіжність екран↔файл.
+ */
 function exportCell(value: unknown, type: string, enumName?: string): string {
+  if (type === 'boolean' && typeof value === 'boolean') return value ? 'Так' : 'Ні';
   if (value === null || value === undefined) return '';
   if (enumName) return enumLabel(enumName, value);
   if (type === 'date') return fmtDate(String(value));
