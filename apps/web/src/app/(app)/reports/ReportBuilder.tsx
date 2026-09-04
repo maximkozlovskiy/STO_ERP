@@ -971,8 +971,12 @@ function ResultView({
                 </th>
               ))}
               {showCount && (
-                <th className="text-right font-medium px-3 py-2 border-b border-border">
-                  Кількість
+                <th className="text-right font-medium px-3 py-2 border-b border-border whitespace-nowrap">
+                  {/* У плоскому режимі колонка рахує СКІЛЬКИ рядків склеєно (mergeDetailRows) —
+                      назва «Склеєно», щоб не збігатися з користувацькою колонкою даних «Кількість»
+                      (напр. quantity), яка стоїть поруч і має інший сенс (сума). У режимі груп —
+                      це кількість записів у групі (node.count), історична назва «Кількість». */}
+                  {hasGroups ? 'Кількість' : 'Склеєно'}
                 </th>
               )}
               {aggAliases.map(a => {
