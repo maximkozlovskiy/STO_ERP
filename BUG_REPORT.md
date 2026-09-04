@@ -3,6 +3,32 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-09-04 — Хвиля 2 наскрізного аудиту LIVE-верифікація (FIN-C1/C2 + CAL-C1) — HEAD f27df90d (main)
+
+Жива перевірка 3 CRITICAL фіксів коміту `dc026ca6` (`fix(audit-wave2)`) + тесту `48847c7a` (payments CAS). Playwright/Sentry MCP недоступні (CONNECT_TIMEOUT) → верифікація прямими API-викликами (`admin@sto.local`) + Prisma-пробники БД. **КРИТИЧНА ОПЕРАЦІЙНА ЗНАХІДКА:** запущений `dist/main` API був **застарілою збіркою** (стартував ДО останнього білду) → FIN-C2 CHARGE мовчки НЕ спрацьовував на живому SEND, хоча код і юніт-тести коректні. Після rebuild+restart усе PASS. Урок: перед live-верифікацією фіксу ЗАВЖДИ перезбирати+перезапускати `dist/main` (unit-зелений ≠ deployed).
+
+**Baseline:** api tsc 0 ✅ · shared/web tsc 0 ✅ · API vitest 1176→1178/1178 ✅ (80 suites; +2 Bug #628 guards). Міграція `20260904120000_add_calendar_slot_exclusion` застосована (finished_at 16:06), btree_gist встановлено, constraint `calendar_slots_no_overlap` присутній.
+
+**CAL-C1 (EXCLUDE проти подвійного бронювання) — LIVE PASS ✅.**
+
+- DB-рівень (Prisma direct): два пересічні слоти на той самий `(orgId, liftId)` → другий кидає **23P01** з `calendar_slots_no_overlap` (INSERT). Дотичний слот `[12:00,13:00)` після `[10:00,12:00)` → створюється ОК (half-open `[)`, дотик ≠ конфлікт). UPDATE у пересічний інтервал → теж **23P01** (constraint діє і на UPDATE, не лише INSERT — критично для Bug #628 нижче).
+- API-рівень: `POST /calendar/slots` пересічний слот → app-probe ловить першим → **400** «Підйомник вже зайнятий на цей час». Concurrent race (2 одночасні POST) → рівно **1 слот створено (201)**, другий **400**, **НЕ 500, НЕ два слоти**. Прибрано за собою (0 залишкових 2027-слотів).
+
+**FIN-C1 (ідемпотентність оплати, CAS) — LIVE PASS ✅.** Standalone-рахунок SENT (333) → 2 concurrent `POST /payments` → рівно **1 CREATED (201)**, другий **400** «Рахунок уже оплачено (паралельна операція)» (CAS `updateMany where status:'SENT'` count=0 → throw → rollback). Рівно **1 Payment** посилається на рахунок (без double-spend). Статус рахунку → **PAID**. Послідовна повторна оплата PAID-рахунку → **400** «Рахунок у статусі "PAID" — оплата неможлива». Юніт-специ `payments.service.spec.ts` (3 тести) зелені.
+
+**FIN-C2 (standalone-рахунок DRAFT→SENT створює CHARGE) — LIVE PASS ✅ (після rebuild).** Standalone-рахунок (workOrderId=null, 500) → SEND → баланс контрагента **+500** (транзакція `CHARGE 500 Invoice` реально записана); оплата 500 → баланс повертається до вихідного, `PAYMENT 500 Payment` (net-zero). Транзакції звірено через `/counterparties/:id/transactions`. Баланс тест-контрагента відновлено до вихідного (2876) компенсуючою транзакцією.
+
+**Регресії — LIVE PASS ✅.** Звичайне бронювання слоту без конфлікту → 201. Invoice FSM happy-path DRAFT→SENT→(оплата)→PAID → 201/201, статус PAID, net-zero баланс.
+
+**Bug #628 [x] виправлено — MEDIUM (robustness, backend/calendar): `syncWorkOrderSlots` не конвертував EXCLUDE-порушення (23P01) на UPDATE парент-слота у 409 → generic 500.**
+
+- **Файл:** `apps/api/src/modules/calendar/calendar.service.ts` — `syncWorkOrderSlots()` (~рядок 598).
+- **Симптом:** `createSlot()` і `updateSlot()` обгортають свій `$transaction` у `try/catch` → `throwIfExclusionConflict(err, 'calendar_slots_no_overlap', ...)` (CAL-C1 backstop). Третій метод що мутує `startAt/endAt` на lift-bound слоті — `syncWorkOrderSlots` (alternate-mutation endpoint `PATCH /calendar/slots/by-work-order/:workOrderId`) — повертав `$transaction` напряму без try/catch. EXCLUDE-констрейнт перевіряється і на UPDATE (доведено live: UPDATE у пересічний інтервал → 23P01), тож concurrent race що обійшов app-probe (findFirst на stale-snapshot) → 23P01 → неперехоплена raw-помилка → **generic 500** «Внутрішня помилка» + Sentry-шум замість охайного 409 UA.
+- **Природа:** gap у самому CAL-C1 фіксі — обгорнули 2 з 3 slot-мутуючих методів, пропустили alternate-mutation endpoint. SKILL §1.1 «Alternate-mutation endpoint обходить canonical guards» (#403) — той самий клас (тут пропущено error-mapping guard, не business-guard: business-conflict-probe у sync уже є з Bug #444).
+- **Severity:** MEDIUM (не втрата даних — constraint фізично блокує дубль у ВСІХ випадках; лише UX/observability: 500 замість 409, зайвий Sentry-alert). Не регресія коміту у сенсі втрати цілісності — цілісність тримається; ця гілка просто не мала friendly-конверсії.
+- **Fix:** обгорнуто `syncWorkOrderSlots` `$transaction` у `try/catch` → `throwIfExclusionConflict(err, 'calendar_slots_no_overlap', 'Підйомник уже зайнятий на цей час (паралельне бронювання)')`, симетрично `createSlot`/`updateSlot`. TS: `throwIfExclusionConflict: never` → tsc бачить catch як non-returning → `result` гарантовано assigned (tsc 0).
+- **Регресія-guards:** +2 у `calendar.service.spec.ts`: (1) `$transaction` кидає 23P01-shaped Error → `rejects ConflictException`; (2) не-exclusion помилка (`connection reset`) → пробрасується as-is (не маскується під 409).
+
 ## Session 2026-09-04 — Хвиля 1 наскрізного аудиту LIVE-верифікація (WO-C1/C2/C3 + MD-C1) — HEAD 86df8cd0 (main)
 
 Жива перевірка 3 CRITICAL фіксів логіки складу коміту `88bfec4f` (`fix(audit-wave1)`). Playwright/Sentry MCP недоступні (CONNECT_TIMEOUT) → верифікація через прямі API-виклики (Python urllib) з реальним токеном `admin@sto.local`, + Prisma-пробники стану БД. Dev-стек уже піднято (docker: Postgres 5432, Redis 6379; API 3000; web 3001). API перезібрано з поточного джерела (`dist/main`) і перезапущено для чистої верифікації.

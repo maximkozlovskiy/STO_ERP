@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { CalendarService } from './calendar.service';
 
 // Lightweight regression-guard tests for syncWorkOrderSlots:
@@ -200,6 +200,49 @@ describe('CalendarService.syncWorkOrderSlots', () => {
       expect(result).toEqual({ updated: 1 });
       // Тільки один findFirst (parentSlot lookup) — conflict probe пропущений.
       expect(prisma._txCalendarSlot.findFirst).toHaveBeenCalledTimes(1);
+    });
+
+    // Bug #628 regression-guard: syncWorkOrderSlots (alternate-mutation endpoint) UPDATE-ить
+    // startAt/endAt парент-слота — це перевіряється EXCLUDE-констрейнтом так само як INSERT.
+    // Concurrent race, що обійшов app-probe (findFirst на stale-snapshot), ловиться DB → 23P01.
+    // createSlot()/updateSlot() конвертують це у 409, а sync раніше пропускав → generic 500.
+    it('Bug #628: конвертує EXCLUDE-порушення (23P01) на UPDATE парента у 409 ConflictException', async () => {
+      const prisma = buildPrismaMock({
+        parentSlot: { id: 'parent-1', liftId, employeeId: null },
+        conflictingSlot: null, // app-probe пропускає (stale snapshot) — DB ловить
+        updatedCount: 1,
+      });
+      // $transaction кидає raw 23P01 (як Postgres при UPDATE у пересічний інтервал).
+      const exclusionErr = new Error(
+        'exclusion_violation ... constraint "calendar_slots_no_overlap" ... SQLSTATE 23P01',
+      );
+      prisma.$transaction = vi.fn().mockRejectedValue(exclusionErr);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      await expect(
+        service.syncWorkOrderSlots(orgId, workOrderId, {
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('Bug #628: не-exclusion помилка пробрасується as-is (не маскується під 409)', async () => {
+      const prisma = buildPrismaMock({
+        parentSlot: { id: 'parent-1', liftId, employeeId: null },
+        conflictingSlot: null,
+        updatedCount: 1,
+      });
+      const otherErr = new Error('connection reset');
+      prisma.$transaction = vi.fn().mockRejectedValue(otherErr);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      await expect(
+        service.syncWorkOrderSlots(orgId, workOrderId, {
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        }),
+      ).rejects.toThrow('connection reset');
     });
 
     it('успішно оновлює коли немає конфлікту (default mock)', async () => {

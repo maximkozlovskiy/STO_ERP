@@ -595,75 +595,89 @@ export class CalendarService {
     // Strategy: update ONLY the parent slot (parentSlotId IS NULL) to the new range, and soft-delete
     // any continuation children — the user can recreate them via the calendar UI if needed.
     // This keeps the invariant: each WO has 1 canonical anchor slot after sync.
-    return this.prisma.$transaction(
-      async tx => {
-        // sto-optimize: tenant guard + parentSlot lookup are independent reads — run in parallel
-        // to save 1 RTT. Both are needed before any mutation: workOrder for 404 guard,
-        // parentSlot for conflict OR clause. Promise.all inside $transaction
-        // executes both queries on the same Prisma connection concurrently.
-        const [workOrder, parentSlot] = await Promise.all([
-          // Tenant-isolation guard: without this check cross-tenant workOrderId silently
-          // returns { updated: 0 } instead of 404 → enumeration probe vector (attacker with
-          // valid JWT from another org can verify existence of WO-IDs).
-          tx.workOrder.findFirst({
-            where: { id: workOrderId, orgId, deletedAt: null },
-            select: { id: true },
-          }),
-          // Need parentSlot's liftId/employeeId for the conflict OR clause.
-          tx.calendarSlot.findFirst({
-            where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
-            select: { id: true, liftId: true, employeeId: true },
-          }),
-        ]);
-        if (!workOrder) throw new NotFoundException('Наряд не знайдено');
+    let result: { updated: number };
+    try {
+      result = await this.prisma.$transaction(
+        async tx => {
+          // sto-optimize: tenant guard + parentSlot lookup are independent reads — run in parallel
+          // to save 1 RTT. Both are needed before any mutation: workOrder for 404 guard,
+          // parentSlot for conflict OR clause. Promise.all inside $transaction
+          // executes both queries on the same Prisma connection concurrently.
+          const [workOrder, parentSlot] = await Promise.all([
+            // Tenant-isolation guard: without this check cross-tenant workOrderId silently
+            // returns { updated: 0 } instead of 404 → enumeration probe vector (attacker with
+            // valid JWT from another org can verify existence of WO-IDs).
+            tx.workOrder.findFirst({
+              where: { id: workOrderId, orgId, deletedAt: null },
+              select: { id: true },
+            }),
+            // Need parentSlot's liftId/employeeId for the conflict OR clause.
+            tx.calendarSlot.findFirst({
+              where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
+              select: { id: true, liftId: true, employeeId: true },
+            }),
+          ]);
+          if (!workOrder) throw new NotFoundException('Наряд не знайдено');
 
-        // Conflict check vs OTHER WO slots on same lift/employee. This alternate mutation
-        // endpoint must replicate the guard from createSlot()/updateSlot() — without it,
-        // moving WO planned dates can silently overlap another WO's slot → broken capacity invariant.
-        //
-        // If no parent slot exists or has no resources, the conflict probe is a no-op.
-        if (parentSlot && (parentSlot.liftId || parentSlot.employeeId)) {
-          const orConflicts: Array<{ liftId?: string; employeeId?: string }> = [];
-          if (parentSlot.liftId) orConflicts.push({ liftId: parentSlot.liftId });
-          if (parentSlot.employeeId) orConflicts.push({ employeeId: parentSlot.employeeId });
+          // Conflict check vs OTHER WO slots on same lift/employee. This alternate mutation
+          // endpoint must replicate the guard from createSlot()/updateSlot() — without it,
+          // moving WO planned dates can silently overlap another WO's slot → broken capacity invariant.
+          //
+          // If no parent slot exists or has no resources, the conflict probe is a no-op.
+          if (parentSlot && (parentSlot.liftId || parentSlot.employeeId)) {
+            const orConflicts: Array<{ liftId?: string; employeeId?: string }> = [];
+            if (parentSlot.liftId) orConflicts.push({ liftId: parentSlot.liftId });
+            if (parentSlot.employeeId) orConflicts.push({ employeeId: parentSlot.employeeId });
 
-          const conflict = await tx.calendarSlot.findFirst({
-            where: {
-              orgId,
-              deletedAt: null,
-              workOrderId: { not: workOrderId },
-              startAt: { lt: endAt },
-              endAt: { gt: startAt },
-              OR: orConflicts,
-            },
-            select: { id: true, liftId: true, employeeId: true },
-          });
-          if (conflict) {
-            if (parentSlot.liftId && conflict.liftId === parentSlot.liftId) {
-              throw new BadRequestException('Підйомник вже зайнятий на цей час');
+            const conflict = await tx.calendarSlot.findFirst({
+              where: {
+                orgId,
+                deletedAt: null,
+                workOrderId: { not: workOrderId },
+                startAt: { lt: endAt },
+                endAt: { gt: startAt },
+                OR: orConflicts,
+              },
+              select: { id: true, liftId: true, employeeId: true },
+            });
+            if (conflict) {
+              if (parentSlot.liftId && conflict.liftId === parentSlot.liftId) {
+                throw new BadRequestException('Підйомник вже зайнятий на цей час');
+              }
+              throw new BadRequestException('Співробітник вже зайнятий на цей час');
             }
-            throw new BadRequestException('Співробітник вже зайнятий на цей час');
           }
-        }
 
-        // sto-optimize: child soft-delete + parent update оперують над DISJOINT row sets
-        // (parentSlotId IS NOT NULL vs IS NULL) — independent writes. Promise.all дає одну
-        // round-trip замість двох. Race-safe — обидва updateMany scope-овані orgId+workOrderId.
-        const deletedAt = new Date();
-        const [, parentResult] = await Promise.all([
-          tx.calendarSlot.updateMany({
-            where: { orgId, workOrderId, parentSlotId: { not: null }, deletedAt: null },
-            data: { deletedAt },
-          }),
-          tx.calendarSlot.updateMany({
-            where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
-            data: { startAt, endAt },
-          }),
-        ]);
-        return { updated: parentResult.count };
-      },
-      { timeout: TRANSACTION_TIMEOUT_MS },
-    );
+          // sto-optimize: child soft-delete + parent update оперують над DISJOINT row sets
+          // (parentSlotId IS NOT NULL vs IS NULL) — independent writes. Promise.all дає одну
+          // round-trip замість двох. Race-safe — обидва updateMany scope-овані orgId+workOrderId.
+          const deletedAt = new Date();
+          const [, parentResult] = await Promise.all([
+            tx.calendarSlot.updateMany({
+              where: { orgId, workOrderId, parentSlotId: { not: null }, deletedAt: null },
+              data: { deletedAt },
+            }),
+            tx.calendarSlot.updateMany({
+              where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
+              data: { startAt, endAt },
+            }),
+          ]);
+          return { updated: parentResult.count };
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      );
+    } catch (err) {
+      // CAL-C1 backstop: UPDATE парент-слота на новий {startAt, endAt} перевіряється EXCLUDE-
+      // констрейнтом так само як INSERT. Concurrent race, що обійшов app-probe вище (findFirst на
+      // stale-snapshot), ловиться DB → 23P01. Конвертуємо у 409 UA замість generic 500 —
+      // симетрично createSlot()/updateSlot() (раніше цей alternate-mutation endpoint пропускав це).
+      throwIfExclusionConflict(
+        err,
+        'calendar_slots_no_overlap',
+        'Підйомник уже зайнятий на цей час (паралельне бронювання)',
+      );
+    }
+    return result;
   }
 
   async removeSlot(orgId: string, id: string): Promise<void> {
