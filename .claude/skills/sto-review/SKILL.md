@@ -294,6 +294,12 @@ grep -rnE "\{\s*\.\.\.e\s*,\s*target:\s*\{\s*\.\.\.e\.target" apps/web/src/ --in
 # parent-id (counterparty/tab/entity) main useEffect І toggle useEffect обидва фаєрять
 # fetch → дубль-запит + гонка (реф `true` з попередньої сесії парента).
 grep -rnE "(Loaded|Mounted|Inited|SkipFirst)Ref\s*=\s*useRef\(false\)" apps/web/src/ --include="*.tsx"
+
+# Side-effect (apiFetch/fetch) ВСЕРЕДИНІ state-updater `setX(prev => { ...apiFetch...; return ... })`
+# — updater має бути ЧИСТИМ; React StrictMode double-invoke updater у dev → дубль-GET.
+# Toggle-select handler (клік по вже-вибраному → закрити) не має жити в updater.
+grep -rnE "set[A-Z][A-Za-z]*\((prev|cur|p)\s*=>" apps/web/src/app apps/web/src/components --include="*.tsx" -A4 \
+  | grep -E "apiFetch|apiBlobFetch|fetch\(" | head -10
 ```
 
 - [ ] `addEventListener` → `return () => removeEventListener`
@@ -309,6 +315,7 @@ grep -rnE "(Loaded|Mounted|Inited|SkipFirst)Ref\s*=\s*useRef\(false\)" apps/web/
 - [ ] Pair `setTimeout` + `rAF` для анімації → обидва id у refs; cleanup у dedicated unmount-effect
 - [ ] `<Input>` wrapper з mask → НЕ `{ ...e, target: {...e.target, value: X} }` (ламає SyntheticEvent прототип); мутувати `e.target.value` напряму
 - [ ] Skip-first-run ref (`*LoadedRef`) у toggle-useEffect → батьківський (parent-key) useEffect ЯКИЙ ФАЄРИТЬ ПРИ ЗМІНІ CP/entity-id повинен скидати `ref.current = false` (інакше дубль-fetch при switch — main + toggle обидва фаєрять на новий id); ref-декларація перед useEffect що її використовує (уникнення TDZ якщо refactor пересуне блоки)
+- [ ] Side-effect (`apiFetch`/`fetch`) НЕ всередині state-updater `setX(prev => {...})` — updater має бути чистим; StrictMode double-invoke дублює запит. Sample bug (audit 6405c3a9): `selectPO` робив довантаження повного PO у `setSelectedPO(prev => { apiFetch(...); return po })` для toggle-логіки. Fix: fetch ПОЗА updater; toggle-рішення (клік по вже-вибраному → закрити) через синх `selectedIdRef` (sync-ується `useEffect([selected])`), не через читання `prev` у самому updater-і
 
 #### §3.2 Backend
 
