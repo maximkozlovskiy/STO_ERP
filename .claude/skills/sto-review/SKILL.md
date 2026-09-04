@@ -673,6 +673,7 @@ done
 - [ ] Inline IIFE `{(() => {...})()}` → іменована функція; pointless wrapper навколо `.map()` → прибрати IIFE
 - [ ] "Прострочено/скоро" badge → `<ExpiryBadge>` + `daysUntil()`, не inline `Math.ceil(.../86_400_000)`
 - [ ] Однаковий helper 2+ рази → `lib/utils.ts`
+- [ ] **Export/render parity (екран↔файл):** окремий `exportCell`/`toCsvCell` helper поруч із екранним `fmtCell`/`renderCell` → мусить давати ТІ САМІ лейбли для КОЖНОГО `type` (enum, boolean, date). Grep обидва, порівняй гілки по-типах: пропущена гілка = мовчазна розбіжність. Sample bug (audit e4f2ed2e): `exportCell` не мав `boolean`-гілки → boolean-колонка (`isActive`/«Активна») експортувалась `String(true)`→"true"/"false" (англ.), екран через `fmtCell` давав «Так/Ні». Fix: додати відсутні type-гілки, дзеркалячи екранний форматер. Виняток — числове форматування: у файлі число лишається сирим (raw) для XLSX `ss:Type=Number`, це прийнятна різниця (значення те саме, лише без grouping/decimals), НЕ розбіжність лейблів. Grep: `grep -nE "function (export|toCsv|toXlsx)[A-Za-z]*Cell" apps/web/src` → для кожного знайти парний `fmtCell/renderCell` і звірити switch по type
 
 ---
 
