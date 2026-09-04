@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../inventory/pricing.service';
 import { deduplicateBy } from '../../common/utils/array';
+import { roundMoney } from '../../common/utils/math';
 
 export interface GoodRow {
   sku?: string;
@@ -643,7 +644,7 @@ export class XlsxService {
         seenGoodIds.add(good.id);
 
         const existingId = existingByGoodId.get(good.id);
-        const amount = row.quantity * row.price;
+        const amount = roundMoney(row.quantity * row.price);
 
         if (existingId) {
           updatesPlan.push({

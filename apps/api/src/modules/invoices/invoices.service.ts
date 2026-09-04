@@ -519,7 +519,7 @@ export class InvoicesService {
     const vatRate = dto.vatRate !== undefined ? dto.vatRate : Number(existing.vatRate);
     const priceWithoutVat = roundMoney(quantity * unitPrice);
     const vatAmount = roundMoney(priceWithoutVat * (vatRate / 100));
-    const priceWithVat = priceWithoutVat + vatAmount;
+    const priceWithVat = roundMoney(priceWithoutVat + vatAmount);
 
     const updated = await this.prisma.invoiceLine.update({
       where: { id: lineId },
@@ -693,7 +693,7 @@ export class InvoicesService {
               const unitPrice = Number(l.price);
               const priceWithoutVat = roundMoney(quantity * unitPrice);
               const vatAmount = roundMoney(priceWithoutVat * (DEFAULT_VAT / 100));
-              const priceWithVat = priceWithoutVat + vatAmount;
+              const priceWithVat = roundMoney(priceWithoutVat + vatAmount);
               return {
                 orgId,
                 invoiceId: existing.id,
@@ -711,7 +711,7 @@ export class InvoicesService {
             ...wo.parts.map((p, i) => {
               const priceWithoutVat = roundMoney(Number(p.quantity) * Number(p.price));
               const vatAmount = roundMoney(priceWithoutVat * (DEFAULT_VAT / 100));
-              const priceWithVat = priceWithoutVat + vatAmount;
+              const priceWithVat = roundMoney(priceWithoutVat + vatAmount);
               return {
                 orgId,
                 invoiceId: existing.id,

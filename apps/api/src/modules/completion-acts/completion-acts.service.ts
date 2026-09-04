@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { CompletionActStatus } from '@prisma/client';
 import { formatPersonName, formatVehicleLabel, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { roundMoney } from '../../common/utils/math';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { PdfService } from '../pdf/pdf.service';
@@ -300,7 +301,7 @@ export class CompletionActsService {
     const vehicleLabel = formatVehicleLabel(act.workOrder?.vehicle);
 
     const builtLines = this.buildLines(act.workOrder);
-    const total = builtLines.reduce((s, l) => s + l.amount, 0);
+    const total = roundMoney(builtLines.reduce((s, l) => s + l.amount, 0));
 
     return this.pdf.generateCompletionActPdf({
       org: { name: org?.name ?? 'СТО', edrpou: null, address: null },
@@ -356,7 +357,9 @@ export class CompletionActsService {
         description: l.work?.name ?? 'Робота',
         quantity,
         unitPrice,
-        amount: quantity * unitPrice,
+        // roundMoney: юридичний PDF-документ — рядок і сумарний total НЕ мають нести
+        // float-дрейф (quantity×price = 60.0599…). Дзеркалить invoices/WO recalc-стандарт.
+        amount: roundMoney(quantity * unitPrice),
         workId: l.workId,
       });
     }

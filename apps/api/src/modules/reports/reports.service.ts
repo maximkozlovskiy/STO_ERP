@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { roundMoney } from '../../common/utils/math';
 import { formatPersonName } from '@sto/shared';
 
 // Module-level Intl singleton — locale-data init is the dominant cost; both
@@ -225,7 +226,7 @@ export class ReportsService {
         quantity: i.quantity,
         reserved: i.reserved,
         available: i.quantity - i.reserved,
-        value: i.quantity * Number(i.good.salePrice),
+        value: roundMoney(i.quantity * Number(i.good.salePrice)),
       })),
       movements: movements.map(m => ({
         type: m.type,
@@ -234,7 +235,9 @@ export class ReportsService {
         documentType: m.documentType,
         createdAt: m.createdAt,
       })),
-      totalValue: stockItems.reduce((s, i) => s + i.quantity * Number(i.good.salePrice), 0),
+      totalValue: roundMoney(
+        stockItems.reduce((s, i) => s + i.quantity * Number(i.good.salePrice), 0),
+      ),
     };
   }
 

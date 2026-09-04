@@ -3,7 +3,7 @@ import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 import { assertFsmTransition } from '../../common/utils/fsm';
-import { safeCoeff } from '../../common/utils/math';
+import { safeCoeff, roundMoney } from '../../common/utils/math';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -246,8 +246,8 @@ export class PurchaseOrdersService {
       const { vatAmount } = calcLineVat(l.price, l.quantity, vatRate, vatMode);
       return { ...l, vatRate, vatAmount };
     });
-    const totalAmount = computedLines.reduce((s, l) => s + l.quantity * l.price, 0);
-    const totalVat = computedLines.reduce((s, l) => s + l.vatAmount, 0);
+    const totalAmount = roundMoney(computedLines.reduce((s, l) => s + l.quantity * l.price, 0));
+    const totalVat = roundMoney(computedLines.reduce((s, l) => s + l.vatAmount, 0));
 
     const po = await this.prisma.$transaction(
       async tx => {
@@ -374,9 +374,11 @@ export class PurchaseOrdersService {
       return { ...l, vatRate, vatAmount };
     });
     const totalAmount = computedLines
-      ? computedLines.reduce((s, l) => s + l.quantity * l.price, 0)
+      ? roundMoney(computedLines.reduce((s, l) => s + l.quantity * l.price, 0))
       : Number(po.totalAmount);
-    const totalVat = computedLines ? computedLines.reduce((s, l) => s + l.vatAmount, 0) : undefined;
+    const totalVat = computedLines
+      ? roundMoney(computedLines.reduce((s, l) => s + l.vatAmount, 0))
+      : undefined;
 
     const updated = await this.prisma.$transaction(
       async tx => {
@@ -533,9 +535,10 @@ export class PurchaseOrdersService {
           !!x.line && x.recv.receivedQty > 0,
       );
 
-    const receivedAmount = activeLines.reduce(
-      (sum, { recv, line }) => sum + recv.receivedQty * Number(line.price),
-      0,
+    // roundMoney: receivedAmount живить SUPPLIER_CHARGE (борг постачальнику) — грошовий
+    // результат перед createTransaction має бути квантований до копійки (не float-дрейф).
+    const receivedAmount = roundMoney(
+      activeLines.reduce((sum, { recv, line }) => sum + recv.receivedQty * Number(line.price), 0),
     );
 
     await this.prisma.$transaction(
@@ -902,7 +905,7 @@ export class PurchaseOrdersService {
         coefficient: safeCoeff(l.good?.unitOfMeasure?.coefficient),
         quantity: l.quantity,
         price: Number(l.price),
-        amount: l.quantity * Number(l.price),
+        amount: roundMoney(l.quantity * Number(l.price)),
         vatRate: Number(l.vatRate ?? 0),
         vatAmount: Number(l.vatAmount ?? 0),
         receivedQty: l.receivedQty,

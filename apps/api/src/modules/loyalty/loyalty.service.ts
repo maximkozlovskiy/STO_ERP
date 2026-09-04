@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { roundMoney } from '../../common/utils/math';
 
 @Injectable()
 export class LoyaltyService {
@@ -191,7 +192,8 @@ export class LoyaltyService {
     ]);
     if (!cp) throw new NotFoundException('Контрагента не знайдено');
     const redeemRate = Number(settings?.loyaltyRedeemRate ?? 1);
-    const discountAmount = points * redeemRate;
+    // roundMoney: знижка у грн (points × дробовий redeemRate) — грошовий результат до копійки.
+    const discountAmount = roundMoney(points * redeemRate);
 
     // Atomic check-and-decrement guards against double-spend when two redeem
     // requests race. We use `updateMany` with `balance >= points` so the SQL
