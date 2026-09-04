@@ -171,6 +171,70 @@ describe('StockDocumentCreateModal — regression', () => {
   });
 });
 
+// ─── WEB-H3: double-submit guard ────────────────────────────────────────────
+
+describe('InvoiceCreateModal — WEB-H3 double-submit', () => {
+  it('два click-и в одному tick створюють РІВНО 1 рахунок (POST /invoices ×1)', async () => {
+    let resolvePost: () => void = () => {};
+    apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/counterparties'))
+        return Promise.resolve({
+          items: [{ id: 'cp1', firstName: 'Клієнт', lastName: null, companyName: 'ТОВ' }],
+        });
+      if (path === '/invoices' && init?.method === 'POST')
+        return new Promise(res => {
+          resolvePost = () => res({ id: 'inv-1', number: 'INV-001' });
+        });
+      if (typeof path === 'string' && /^\/invoices\/[^/]+\/lines$/.test(path))
+        return Promise.resolve({});
+      return Promise.resolve({ items: [] });
+    });
+
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    render(<InvoiceCreateModal open onClose={onClose} onSaved={onSaved} />);
+
+    // Обрати контрагента через inline-combobox picker (активує «Створити рахунок»).
+    const combo = (await screen.findByPlaceholderText('Пошук контрагента…')) as HTMLInputElement;
+    await act(async () => {
+      await userEvent.type(combo, 'ТОВ');
+    });
+    // Дочекатись debounce (300ms) + результату dropdown.
+    const option = await screen.findByText('ТОВ', {}, { timeout: 2000 });
+    await act(async () => {
+      await userEvent.click(option);
+    });
+
+    const createBtn = (await screen.findByRole('button', {
+      name: /Створити рахунок/,
+    })) as HTMLButtonElement;
+    await waitFor(() => expect(createBtn.disabled).toBe(false));
+
+    // Два нативні click-и в ОДНОМУ синхронному блоці (React не встигає flush-нути
+    // disabled між ними) — без синхронного savingRef guard це дало б 2 POST /invoices.
+    await act(async () => {
+      createBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      createBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      resolvePost();
+    });
+
+    await waitFor(() => {
+      const posts = apiFetchMock.mock.calls.filter(
+        ([path, init]) =>
+          path === '/invoices' && (init as RequestInit | undefined)?.method === 'POST',
+      );
+      expect(posts.length).toBeGreaterThanOrEqual(1);
+    });
+    const posts = apiFetchMock.mock.calls.filter(
+      ([path, init]) =>
+        path === '/invoices' && (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(posts).toHaveLength(1);
+  });
+});
+
 // ─── Bug #461 ─────────────────────────────────────────────────────────────────
 
 describe('InvoiceCreateModal — regression', () => {

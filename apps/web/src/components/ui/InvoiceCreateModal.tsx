@@ -349,6 +349,13 @@ export function InvoiceCreateModal({
   const canEdit = isEditMode ? currentStatus === 'DRAFT' : true;
 
   const handleCreate = async () => {
+    // WEB-H3: синхронний guard проти concurrent double-submit. `disabled={saving}`
+    // спирається на re-render React МІЖ подіями кліку; два click-и в одному tick
+    // (швидкий double-click / синтетичні події) обидва входять до застосування
+    // disabled → 2 POST /invoices (2 рахунки). savingRef фліпається синхронно у
+    // setSavingBoth → другий вхід одразу повертається. createdInvoiceRef не рятує
+    // бо виставляється лише ПІСЛЯ await першого POST /invoices.
+    if (savingRef.current || transitioningRef.current) return;
     setSavingBoth(true);
     setError('');
     try {

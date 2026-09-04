@@ -393,6 +393,8 @@ export function StockDocumentCreateModal({
   const canEdit = isEditMode ? currentStatus === 'DRAFT' : true;
 
   const handleCreate = async () => {
+    // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit (див. Invoice/PO).
+    if (savingRef.current || transitioningRef.current) return;
     if (!form.branchId || !form.warehouseId) {
       setError('Оберіть філію та склад');
       return;

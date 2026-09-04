@@ -1105,6 +1105,9 @@ export function CreateWorkOrderModal({
   const createdWoRef = useRef<CreatedWorkOrder | null>(null);
 
   const create = async () => {
+    // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit. Два click-и в
+    // одному tick інакше створять 2 наряди до застосування disabled={saving}.
+    if (savingRef.current || transitioningRef.current) return;
     // warn user if half-typed row would be silently dropped (data loss).
     // Pre-check BEFORE setSaving so the button stays enabled and the warning is visible.
     const hasHalfLine = !!newLine.workId && !newLine.employeeId;

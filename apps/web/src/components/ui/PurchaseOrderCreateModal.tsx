@@ -667,6 +667,11 @@ export function PurchaseOrderCreateModal({
   const canEdit = isEditMode ? currentStatus === 'DRAFT' : true;
 
   const handleCreate = async () => {
+    // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit. `disabled={saving}`
+    // спирається на re-render React МІЖ подіями кліку; два click-и в одному tick обидва
+    // входять до застосування disabled → 2 POST /purchase-orders. savingRef фліпається
+    // синхронно у setSavingBoth → другий вхід одразу повертається.
+    if (savingRef.current || transitioningRef.current) return;
     if (!form.supplierId || !form.warehouseId) {
       setError('Оберіть постачальника та склад');
       return;

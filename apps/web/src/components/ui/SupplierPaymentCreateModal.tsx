@@ -86,6 +86,13 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
   const [documentDate, setDocumentDate] = useState(() => kyivToday());
 
   const [saving, setSaving] = useState(false);
+  // Синхронний re-entrancy guard: `disabled={saving}` спирається на re-render React
+  // МІЖ подіями кліку — але два click-и, доставлені в ОДНОМУ tick (дуже швидкий
+  // double-click / синтетичні події / Enter-repeat), обидва входять у handleSave до
+  // того як disabled застосується → 2 POST /supplier-payments (2 оплати). createdIdRef
+  // не рятує бо виставляється лише ПІСЛЯ await першого POST. Ref фліпається синхронно
+  // на першому вході → другий вхід одразу повертається (WEB-H3 double-submit).
+  const savingRef = useRef(false);
   const [error, setError] = useState('');
 
   const [banks, setBanks] = useState<BankAccount[]>([]);
@@ -225,6 +232,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
     populatedRef.current = null;
     prefilledRef.current = false;
     createdIdRef.current = null;
+    savingRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -232,6 +240,8 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
   }, [open, resetForm]);
 
   const handleSave = useCallback(async () => {
+    // WEB-H3: синхронний guard проти concurrent double-submit (див. savingRef).
+    if (savingRef.current) return;
     if (!supplierId) {
       setError('Оберіть постачальника');
       return;
@@ -255,6 +265,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
       return;
     }
     setError('');
+    savingRef.current = true;
     setSaving(true);
     const payload = {
       supplierId,
@@ -288,6 +299,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [

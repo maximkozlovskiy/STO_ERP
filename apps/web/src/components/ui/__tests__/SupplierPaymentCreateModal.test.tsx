@@ -11,7 +11,7 @@
 // Fix: модалка читає { items } з Array.isArray guard і пише { items } (той самий
 // контракт що таби + API-відповідь). Ці тести фіксують обидві сторони.
 
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 
 import { SupplierPaymentCreateModal } from '../SupplierPaymentCreateModal';
@@ -168,5 +168,56 @@ describe('SupplierPaymentCreateModal — idempotency (WEB-H3)', () => {
     ).length;
     // Друга оплата НЕ створена — POST усе ще один.
     expect(postCallsAfterRetry).toBe(1);
+  });
+
+  // WEB-H3 double-submit: два click-и, доставлені в ОДНОМУ tick (дуже швидкий
+  // double-click / синтетичні події / Enter-repeat), не мають створити дві оплати.
+  // `disabled={saving}` спирається на re-render React МІЖ подіями — а тут обидва
+  // click-и входять у handleSave до застосування disabled. Гейт — синхронний
+  // savingRef.current (fireEvent flush-ить між кліками → потрібен нативний dispatch).
+  it('два нативні click-и в одному tick створюють РІВНО 1 оплату', async () => {
+    let resolvePost: () => void = () => {};
+    apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
+      if (path === '/cash-registers')
+        return Promise.resolve({ items: [{ id: 'cr1', name: 'Каса №1' }], total: 1 });
+      if (path === '/bank-accounts') return Promise.resolve({ items: [], total: 0 });
+      if (path === '/payment-methods')
+        return Promise.resolve([{ code: 'CASH', name: 'Готівка', isActive: true }]);
+      if (path === '/supplier-payments' && opts?.method === 'POST')
+        return new Promise(res => {
+          resolvePost = () => res({ id: 'sp1', number: 'SP-1' });
+        });
+      return Promise.resolve({ items: [], total: 0 });
+    });
+
+    renderWithQueryClient(
+      <SupplierPaymentCreateModal
+        open
+        onClose={() => {}}
+        onSaved={() => {}}
+        prefill={{ supplierId: 'sup1', supplierName: 'Постачальник', amount: 100 }}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument());
+    const btn = screen.getByRole('button', { name: 'Створити оплату' }) as HTMLButtonElement;
+    await waitFor(() => expect(btn.disabled).toBe(false));
+
+    // Два нативні click-и в ОДНОМУ синхронному блоці — React не встигає flush-нути
+    // disabled між ними (fireEvent це замаскував би своїм sync-flush).
+    await act(async () => {
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      resolvePost();
+    });
+
+    const posts = apiFetchMock.mock.calls.filter(
+      c =>
+        c[0] === '/supplier-payments' &&
+        (c[1] as { method?: string } | undefined)?.method === 'POST',
+    ).length;
+    expect(posts).toBe(1);
   });
 });
