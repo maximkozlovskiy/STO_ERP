@@ -3,6 +3,7 @@ import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 import { counterpartiesKeys } from './useCounterparties';
+import { purchaseOrdersKeys } from './usePurchaseOrders';
 
 export type PaymentSourceType = 'BANK_ACCOUNT' | 'CASH_REGISTER';
 
@@ -179,6 +180,10 @@ export function useCreateSupplierPayment() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+      // Створення оплати (навіть DRAFT) впливає на залишок боргу по PO
+      // (outstanding у списку PurchaseOrders) — інвалідуємо, інакше PO-список
+      // показує застарілий outstanding до staleTime.
+      void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
     },
   });
 }
@@ -211,6 +216,9 @@ export function useConfirmSupplierPayment() {
       // та баланси у dossier показують застарілий баланс до staleTime=30s без
       // цього invalidate. Дзеркалить useCreatePayment (Bug #245).
       void qc.invalidateQueries({ queryKey: counterpartiesKeys.all });
+      // confirm() зменшує залишок боргу по PO (outstanding у списку) — без цього
+      // PO-список показує застарілий outstanding до staleTime.
+      void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
     },
   });
 }

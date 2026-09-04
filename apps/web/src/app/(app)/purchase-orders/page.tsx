@@ -15,9 +15,7 @@ import {
   PurchaseOrder,
 } from '@/hooks/api/usePurchaseOrders';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
-import { inventoryKeys } from '@/hooks/api/useInventory';
-import { supplierPaymentsKeys } from '@/hooks/api/useSupplierPayments';
-import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
+import { invalidatePurchaseSideEffects } from '@/lib/cache-invalidation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -172,10 +170,7 @@ function PurchaseOrdersPageClient() {
   // (шахматка) і counterparties (баланс). Інвалідуємо всі одразу, щоб не чекати 30s
   // staleTime. Єдине місце правди — викликається з receive-handler і edit-modal onSaved.
   const invalidatePoReceiptCaches = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-    queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-    queryClient.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
-    queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
+    invalidatePurchaseSideEffects(queryClient);
   }, [queryClient]);
 
   const {
@@ -520,7 +515,9 @@ function PurchaseOrdersPageClient() {
       const succeeded = results.filter(r => r.status === 'fulfilled').length;
       const failed = results.length - succeeded;
       bulkSelect.clear();
-      queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+      // Видалення PO може стосуватися вже отриманого замовлення (реверс RECEIPT +
+      // CHARGE) → інвалідуємо повний набір side-effects, а не лише список PO.
+      invalidatePurchaseSideEffects(queryClient);
       if (features.toastEnabled) {
         if (succeeded > 0 && failed === 0) toast.success(`Видалено ${succeeded} замовлень`);
         else if (succeeded > 0)
@@ -555,7 +552,8 @@ function PurchaseOrdersPageClient() {
       try {
         await apiFetch(`/purchase-orders/${po.id}`, { method: 'DELETE' });
         setSelectedPO(prev => (prev?.id === po.id ? null : prev));
-        queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+        // Отримане PO при видаленні реверсить склад/баланс → повний side-effects набір.
+        invalidatePurchaseSideEffects(queryClient);
         toast.success('Замовлення позначено на видалення');
       } catch (e: unknown) {
         toast.error(e instanceof Error ? e.message : 'Помилка видалення');

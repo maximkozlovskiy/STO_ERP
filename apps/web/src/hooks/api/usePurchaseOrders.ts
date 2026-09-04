@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
+import { inventoryKeys } from './useInventory';
 
 export interface POLine {
   id?: string;
@@ -90,6 +91,11 @@ export function useApplyPricing() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch(`/purchase-orders/${id}/apply-pricing`, { method: 'POST' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+      // apply-pricing проставляє pricedSalePrice на товари/партії → «Залишки»
+      // (inventory) показують застарілу ціну продажу до staleTime без цього.
+      void qc.invalidateQueries({ queryKey: inventoryKeys.all });
+    },
   });
 }
