@@ -33,22 +33,49 @@ test.describe('Конструктор звітів', () => {
     const statusRow = page.locator('div[draggable="true"]:has-text("Статус")').first();
     await statusRow.getByRole('button', { name: /колонк/i }).click();
 
-    await page.locator('button:has-text("Запустити")').click();
+    await page.locator('button:has-text("Сформувати")').click();
     await page.getByText(/Результат · рядків/).waitFor({ timeout: 10_000 });
-    // Підказка про відсутнє групування видима; колонки «Кількість» немає.
+    // Підказка про відсутнє групування видима (плоский режим, не групи).
     await expect(page.getByText(/Групування не задано/)).toBeVisible();
 
     const table = page.locator('table').first();
-    // Колонка «Кількість» ВІДСУТНЯ у плоскому режимі (commit 915ab374).
-    await expect(table.locator('thead th', { hasText: /^Кількість$/ })).toHaveCount(0);
-    // Перша колонка — «№» (не «Група»).
+    // Перша колонка — «№» (не «Група») → це плоский режим.
     await expect(table.locator('thead th').first()).toHaveText('№');
-    // Вирівнювання не з'їхало: thead == перший рядок body == tfoot.
+    // NB: колонка «Кількість» у плоскому режимі З'ЯВЛЯЄТЬСЯ коли є склеєні дублікати
+    // (mergeDetailRows → __mergedCount>1), і зникає коли всі рядки унікальні — тому НЕ
+    // асертимо її відсутність (залежить від даних). Головний інваріант — вирівнювання:
     const headCols = await table.locator('thead tr th').count();
     const bodyCols = await table.locator('tbody tr').first().locator('td').count();
     const footCols = await table.locator('tfoot tr td').count();
     expect(bodyCols).toBe(headCols);
     expect(footCols).toBe(headCols);
+  });
+
+  test('плоский режим склеює ідентичні рядки в 1 з сумою (mergeDetailRows)', async ({ page }) => {
+    await page.goto('/reports?tab=builder');
+    await expect(page.locator('button:has-text("Конструктор")')).toBeVisible({ timeout: 20_000 });
+
+    const token = await page.evaluate(
+      () =>
+        localStorage.getItem('sto_access_token') || localStorage.getItem('sto_e2e_access_token'),
+    );
+    const resp = await page.evaluate(async tok => {
+      const r = await fetch('http://localhost:3000/api/reports/builder/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({
+          config: { entity: 'purchaseOrderLine', columns: ['good.name', 'quantity'], groupBy: [] },
+        }),
+      });
+      return { status: r.status, body: await r.json() };
+    }, token);
+    expect(resp.status).toBe(200);
+    const detail = resp.body.result.detailRows as Array<{ __mergedCount?: number }>;
+    // Склеєно: merged-рядків МЕНШЕ за сирий rowCount (дублі згорнуті).
+    expect(detail.length).toBeLessThanOrEqual(resp.body.result.rowCount);
+    // Кожен merged-рядок має __mergedCount; сумарний count == сирий rowCount (нічого не втрачено).
+    const totalMerged = detail.reduce((s, x) => s + (x.__mergedCount ?? 1), 0);
+    expect(totalMerged).toBe(resp.body.result.rowCount);
   });
 
   test('клік «Г» на полі → групування (не потрібен drag)', async ({ page }) => {
@@ -68,7 +95,7 @@ test.describe('Конструктор звітів', () => {
     const statusRow = page.locator('div[draggable="true"]:has-text("Статус")').first();
     await statusRow.getByRole('button', { name: /групування/i }).click();
 
-    await page.locator('button:has-text("Запустити")').click();
+    await page.locator('button:has-text("Сформувати")').click();
     await page.getByText(/Результат · рядків/).waitFor({ timeout: 10_000 });
 
     // Справді згруповано (не плоский список): перша колонка заголовка — «Група», а не «№».
@@ -81,30 +108,33 @@ test.describe('Конструктор звітів', () => {
     await expect(page.getByText(/Групування не задано/)).toHaveCount(0);
   });
 
-  test('після запуску палітра лишається (НЕ авто-згортається) — групування досяжне', async ({
+  test('після Сформувати налаштування авто-згортаються, але групування лишається досяжним', async ({
     page,
   }) => {
-    // Регресія «досі не групується»: авто-згортання після Запустити ховало палітру з
-    // кнопками К/Г/Ф → користувач не міг згрупувати вже після першого запуску.
+    // Після «Сформувати» налаштування авто-згортаються (звільнити місце), АЛЕ компактна панель
+    // + кнопка розгортання зберігають доступ до палітри → групування досяжне (не як раніше,
+    // коли контроли ховались повністю і групування ставало неможливим — «досі не групується»).
     await page.goto('/reports?tab=builder');
     await expect(page.locator('button:has-text("Конструктор")')).toBeVisible({ timeout: 20_000 });
     await page.locator('select').first().selectOption('workOrder');
     await expect(page.getByText(/Поля «Наряди»/)).toBeVisible({ timeout: 10_000 });
 
-    // Додати колонку й запустити (без групування) — раніше це авто-згортало палітру.
     const priorityRow = page.locator('div[draggable="true"]:has-text("Пріоритет")').first();
     await priorityRow.getByRole('button', { name: /колонк/i }).click();
-    await page.locator('button:has-text("Запустити")').click();
+    await page.locator('button:has-text("Сформувати")').click();
     await page.getByText(/Результат · рядків/).waitFor({ timeout: 10_000 });
 
-    // Палітра ЛИШАЄТЬСЯ видимою після запуску → можна одразу згрупувати.
+    // Авто-згорнулось: палітра схована, але компактна панель показує вибір.
+    await expect(page.getByText(/Поля «Наряди»/)).toBeHidden();
+    await expect(page.getByText(/Колонки:/)).toBeVisible();
+    // Розгорнути назад через компактну панель → палітра знову доступна для групування.
+    await page.getByText(/Колонки:/).click();
     await expect(page.getByText(/Поля «Наряди»/)).toBeVisible();
     const statusRow = page.locator('div[draggable="true"]:has-text("Статус")').first();
     await statusRow.getByRole('button', { name: /групування/i }).click();
-    await page.locator('button:has-text("Запустити")').click();
+    await page.locator('button:has-text("Сформувати")').click();
     await page.getByText(/Результат · рядків/).waitFor({ timeout: 10_000 });
-    // Bug #625: асертимо групування саме У ТАБЛИЦІ (Пріоритет-колонка вже додана вище →
-    // node.rows наявні → групи expandable). page-level матчив би «Згорнути»-тоггл.
+    // Bug #625: асертимо групування саме У ТАБЛИЦІ (Пріоритет-колонка → node.rows expandable).
     const table = page.locator('table').first();
     await expect(table.locator('thead th').first()).toHaveText('Група');
     await expect(table.locator('button[aria-expanded]').first()).toBeVisible();

@@ -41,7 +41,7 @@ describe('report-aggregator', () => {
     expect(r.detailRows).toEqual([]); // includeRows не заданий → детальних немає
   });
 
-  it('includeRows без групування → плоскі детальні рядки (проєкція columns)', () => {
+  it('includeRows без групування → плоскі детальні рядки (унікальні — по 1, з __mergedCount)', () => {
     const rows = [
       part({ amount: 100, goodName: 'Гальма' }),
       part({ amount: 200, goodName: 'Масло' }),
@@ -52,10 +52,33 @@ describe('report-aggregator', () => {
       woPart,
     );
     expect(r.tree).toEqual([]);
+    // Унікальні рядки (різний good.name) → по одному, кожен з __mergedCount=1.
     expect(r.detailRows).toEqual([
-      { amount: 100, 'good.name': 'Гальма' },
-      { amount: 200, 'good.name': 'Масло' },
+      { amount: 100, 'good.name': 'Гальма', __mergedCount: 1 },
+      { amount: 200, 'good.name': 'Масло', __mergedCount: 1 },
     ]);
+  });
+
+  it('плоский режим склеює ІДЕНТИЧНІ рядки в 1 з сумою (mergeDetailRows)', () => {
+    // 3 рядки з однаковим good.name → 1 merged-рядок, amount підсумовано, __mergedCount=3.
+    const rows = [
+      part({ amount: 5, goodName: 'Dup' }),
+      part({ amount: 5, goodName: 'Dup' }),
+      part({ amount: 5, goodName: 'Dup' }),
+      part({ amount: 7, goodName: 'Інший' }),
+    ];
+    const r = aggregate(
+      rows,
+      { groupBy: [], columns: ['good.name', 'amount'], includeRows: true },
+      woPart,
+    );
+    expect(r.detailRows).toEqual([
+      { 'good.name': 'Dup', amount: 15, __mergedCount: 3 },
+      { 'good.name': 'Інший', amount: 7, __mergedCount: 1 },
+    ]);
+    // Сумарний __mergedCount == сирий rowCount (нічого не загублено).
+    const total = r.detailRows.reduce((s, x) => s + (x.__mergedCount as number), 0);
+    expect(total).toBe(r.rowCount);
   });
 
   it('includeRows з групуванням → детальні рядки на листі', () => {

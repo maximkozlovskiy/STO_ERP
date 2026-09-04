@@ -278,9 +278,10 @@ export function ReportBuilder() {
     if (!columns.length && !groupBy.length) return toast.warning('Додайте хоча б одну колонку');
     try {
       setResult(await runMut.mutateAsync(buildConfig(sortOverride)));
-      // НЕ згортати автоматично: авто-згортання ховало палітру з кнопками К/Г/Ф, тож
-      // користувач після запуску не міг згрупувати дані («досі не групується»). Згортання —
-      // лише вручну кнопкою «Згорнути».
+      // Після ручного «Сформувати» — авто-згортати налаштування (звільнити місце під звіт).
+      // Безпечно: згорнутий стан тепер показує компактну панель з вибором + кнопкою розгортання
+      // (не ховає контроли повністю, як раніше — тоді групування ставало недосяжним).
+      if (sortOverride === undefined) setConfigCollapsed(true);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Помилка звіту');
     }
@@ -331,7 +332,7 @@ export function ReportBuilder() {
   }
 
   return (
-    <div className="flex flex-col gap-4 py-4">
+    <div className="flex flex-1 min-h-0 flex-col gap-4 py-4">
       {/* Ряд керування */}
       <div className="flex flex-wrap items-center gap-3">
         <select
@@ -365,7 +366,7 @@ export function ReportBuilder() {
               />
             </div>
             <Button onClick={() => run()} disabled={runMut.isPending}>
-              <Play className="size-4" /> Запустити
+              <Play className="size-4" /> Сформувати
             </Button>
             <Button variant="outline" onClick={() => setSaveOpen(true)}>
               <Save className="size-4" /> Зберегти
@@ -920,14 +921,19 @@ function ResultView({
   const aggAliases = result.aggregations.map(a => `${a.agg}_${a.field}`);
   const cols = result.columns; // детальні колонки
   const hasGroups = result.groupBy.length > 0;
-  // «Кількість» — це count рядків у групі; у плоскому режимі (без груп) завжди 1 → шум, ховаємо.
-  const showCount = hasGroups;
+  // У плоскому режимі рядки склеєні (mergeDetailRows) → «Кількість» = скільки сирих рядків
+  // склеєно (__mergedCount). Показуємо колонку якщо групи АБО якщо є склеювання (count>1
+  // хоч в одному рядку — інакше distinct-1 не інформативний, ховаємо).
+  const flatHasMerge = result.result.detailRows.some(
+    r => typeof r.__mergedCount === 'number' && r.__mergedCount > 1,
+  );
+  const showCount = hasGroups || flatHasMerge;
   // Ширина labelу першої колонки + всі детальні колонки + (count?) + агрегати.
   const totalCols = 1 + cols.length + (showCount ? 1 : 0) + aggAliases.length;
 
   return (
-    <div className="rounded-xl border border-border bg-surface overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary">
+    <div className="flex flex-1 min-h-0 flex-col rounded-xl border border-border bg-surface overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary shrink-0">
         <span className="text-sm font-medium">
           Результат · рядків: {result.result.rowCount}
           {result.result.truncated && ' (обрізано до 5000 — звузьте період)'}
@@ -936,7 +942,7 @@ function ResultView({
       {!hasGroups && (
         <div
           role="status"
-          className="flex items-start gap-2 px-4 py-2 border-b border-border bg-amber-50 text-amber-900 text-[12.5px] dark:bg-amber-950/40 dark:text-amber-200"
+          className="flex items-start gap-2 px-4 py-2 border-b border-border bg-amber-50 text-amber-900 text-[12.5px] shrink-0 dark:bg-amber-950/40 dark:text-amber-200"
         >
           <span aria-hidden>ℹ️</span>
           <span>
@@ -946,7 +952,7 @@ function ResultView({
           </span>
         </div>
       )}
-      <div className="overflow-auto max-h-[60vh]">
+      <div className="flex-1 min-h-0 overflow-auto">
         <table className="w-full text-[13px] tabular-nums border-collapse">
           <thead className="sticky top-0 bg-secondary text-muted-foreground">
             <tr>
@@ -1027,6 +1033,11 @@ function ResultView({
                         {fmtCell(row[c.key], c.type, c.enumName)}
                       </td>
                     ))}
+                    {showCount && (
+                      <td className="text-right px-3 py-1.5 text-muted-foreground">
+                        {typeof row.__mergedCount === 'number' ? row.__mergedCount : 1}
+                      </td>
+                    )}
                     {aggAliases.map(a => (
                       <td key={a} className="text-right px-3 py-1.5 text-muted-foreground">
                         —

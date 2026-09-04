@@ -241,6 +241,44 @@ function projectRows(rows: Row[], columns: string[], entity: ReportEntityDef): D
   });
 }
 
+const NUMERIC_COL_TYPES = new Set(['number', 'decimal']);
+
+/**
+ * Склеювання ідентичних детальних рядків (плоский режим, без groupBy): рядки з однаковими
+ * значеннями ВСІХ нечислових колонок згортаються в один; числові колонки підсумовуються
+ * (з урахуванням signedByType — через numericValue, як у SUM). Так список 334× «Dup1 ×5»
+ * стає одним рядком «Dup1 · 1670». Для рядків без числових колонок — це звичайний distinct.
+ * `mergedCount` — скільки сирих рядків склеєно (рендериться у колонці «Кількість»).
+ */
+function mergeDetailRows(rows: Row[], columns: string[], entity: ReportEntityDef): DetailRow[] {
+  const numericCols = columns.filter(k => NUMERIC_COL_TYPES.has(getField(entity, k).type));
+  const dimCols = columns.filter(k => !NUMERIC_COL_TYPES.has(getField(entity, k).type));
+  const buckets = new Map<string, { row: DetailRow; count: number }>();
+
+  for (const r of rows) {
+    const dimVals = dimCols.map(k => {
+      const fld = getField(entity, k);
+      return String(getPath(r, fld.prismaPath) ?? '∅');
+    });
+    const key = dimVals.join(' ');
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      const row: DetailRow = {};
+      for (const k of dimCols) row[k] = getPath(r, getField(entity, k).prismaPath) ?? null;
+      for (const k of numericCols) row[k] = 0;
+      bucket = { row, count: 0 };
+      buckets.set(key, bucket);
+    }
+    for (const k of numericCols) {
+      const v = numericValue(r, entity, k);
+      if (v !== null) (bucket.row[k] as number) += v;
+    }
+    bucket.count += 1;
+  }
+
+  return Array.from(buckets.values()).map(b => ({ ...b.row, __mergedCount: b.count }));
+}
+
 /**
  * Плоскі rows[] + config → ієрархічне дерево (≤5 рівнів) + детальні рядки + grand totals.
  * grandTotals — НЕЗАЛЕЖНИЙ прохід по всій вибірці (для AVG це НЕ середнє груп — SQL-семантика).
@@ -275,11 +313,12 @@ export function aggregate(
     sortAlias,
     sortDir,
   );
-  // Без групування — детальні рядки на верхньому рівні (плоска таблиця записів).
-  // Пропускаємо коли columns=[] — інакше отримали б N порожніх об'єктів (шум у мережі).
+  // Без групування — детальні рядки на верхньому рівні. Ідентичні рядки СКЛЕЮЮТЬСЯ
+  // (mergeDetailRows): однакові за нечисловими колонками → один рядок, числові підсумовуються
+  // (список 334× «Dup1 ×5» → «Dup1 · 1670»). Пропускаємо коли columns=[] — інакше шум порожніх.
   const detailRows =
     config.groupBy.length === 0 && includeRows && columns.length > 0
-      ? projectRows(rows, columns, entity)
+      ? mergeDetailRows(rows, columns, entity)
       : [];
 
   return {
