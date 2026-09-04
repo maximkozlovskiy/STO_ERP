@@ -216,19 +216,33 @@ export class WorkOrdersService {
     if (!wo) throw new NotFoundException('Наряд не знайдено');
 
     // Batch-fetch GoodUoM coefficients for parts that have unitOfMeasureId set.
-    const uomIds = wo.parts
-      .map(p => (p as { unitOfMeasureId?: string | null }).unitOfMeasureId)
-      .filter((id): id is string => !!id);
-    const goodUoMMap: Record<
+    // WO-C3: part.unitOfMeasureId — FK на UnitOfMeasure.id, тож lookup за парою
+    // (unitOfMeasureId, goodId), не за GoodUoM.id. Раніше збіг був неможливий → обрана
+    // одиниця виміру не показувалась (тихо падала на базову).
+    const partUomPairs = wo.parts
+      .map(p => ({
+        uomId: (p as { unitOfMeasureId?: string | null }).unitOfMeasureId,
+        goodId: (p as { goodId: string }).goodId,
+      }))
+      .filter((x): x is { uomId: string; goodId: string } => !!x.uomId);
+    const goodUoMMap = new Map<
       string,
-      { id: string; coefficient: number; unitOfMeasure: { shortName: string } }
-    > = {};
-    if (uomIds.length > 0) {
+      { coefficient: number; unitOfMeasure: { shortName: string } }
+    >();
+    if (partUomPairs.length > 0) {
       const goodUoMs = await this.prisma.goodUoM.findMany({
-        where: { id: { in: uomIds } },
-        select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
+        where: {
+          unitOfMeasureId: { in: partUomPairs.map(x => x.uomId) },
+          goodId: { in: partUomPairs.map(x => x.goodId) },
+        },
+        select: {
+          unitOfMeasureId: true,
+          goodId: true,
+          coefficient: true,
+          unitOfMeasure: { select: { shortName: true } },
+        },
       });
-      for (const u of goodUoMs) goodUoMMap[u.id] = u;
+      for (const u of goodUoMs) goodUoMMap.set(`${u.goodId}|${u.unitOfMeasureId}`, u);
     }
 
     return {
@@ -236,11 +250,12 @@ export class WorkOrdersService {
       lines: wo.lines.map(l => this.toLineDto(l)),
       parts: wo.parts.map(p => {
         const uomId = (p as { unitOfMeasureId?: string | null }).unitOfMeasureId;
+        const goodId = (p as { goodId: string }).goodId;
         return this.toPartDto(
           {
             ...p,
             unitOfMeasureId: uomId,
-            goodUoM: uomId ? (goodUoMMap[uomId] ?? null) : null,
+            goodUoM: uomId ? (goodUoMMap.get(`${goodId}|${uomId}`) ?? null) : null,
           },
           userRole,
         );
@@ -685,7 +700,10 @@ export class WorkOrdersService {
           );
         }
 
-        if (newStatus === 'IN_PROGRESS') {
+        // Резервувати ЛИШЕ при першому вході у IN_PROGRESS (з APPROVED). ON_HOLD зберігає
+        // резерв (RESERVATION_ACTIVE_STATUSES), тож ON_HOLD→IN_PROGRESS НЕ має резервувати
+        // повторно — інакше кожен цикл пауза/повернення подвоює reserved (WO-C1, фантомна нестача).
+        if (newStatus === 'IN_PROGRESS' && wo.status === 'APPROVED') {
           await this.reserveParts(orgId, id, userId, tx);
         }
 
@@ -1570,20 +1588,25 @@ export class WorkOrdersService {
   ): Promise<Record<string, number>> {
     const uomIds = parts.map(p => p.unitOfMeasureId).filter((id): id is string => !!id);
     if (uomIds.length === 0) return {};
+    // WO-C2: WorkOrderPart.unitOfMeasureId — це FK на UnitOfMeasure.id (addPart зберігає
+    // uomJunction.unitOfMeasureId), а НЕ GoodUoM.id (PK). Тож коефіцієнт беремо з GoodUoM за
+    // парою (unitOfMeasureId, goodId) — унікальною у @@unique([orgId,goodId,unitOfMeasureId]).
+    // Раніше lookup йшов по GoodUoM.id → мапа завжди порожня → coeff=1 → невірні кількості.
+    const goodIds = parts.map(p => p.goodId);
     const uoms = await (db as typeof this.prisma).goodUoM.findMany({
-      where: { id: { in: uomIds } },
-      select: { id: true, coefficient: true },
+      where: { unitOfMeasureId: { in: uomIds }, goodId: { in: goodIds } },
+      select: { unitOfMeasureId: true, goodId: true, coefficient: true },
     });
-    const uomCoeffById: Record<string, number> = Object.fromEntries(
-      uoms.map(u => [u.id, u.coefficient]),
+    // Ключ = goodId|unitOfMeasureId (коефіцієнт специфічний для товару).
+    const coeffByGoodUom = new Map<string, number>(
+      uoms.map(u => [`${u.goodId}|${u.unitOfMeasureId}`, u.coefficient]),
     );
     const result: Record<string, number> = {};
     for (const part of parts) {
       if (part.unitOfMeasureId) {
         // DTO @Min(0.000001) blocks coefficient=0 on write-path, but legacy/seed/direct-SQL
-        // data may have 0. `?? 1` does NOT catch 0 (nullish coalescing fires only on null/undefined).
-        // safeCoeff() handles 0/NaN/negative.
-        result[part.id] = safeCoeff(uomCoeffById[part.unitOfMeasureId]);
+        // data may have 0. safeCoeff() handles 0/NaN/negative/undefined → 1.
+        result[part.id] = safeCoeff(coeffByGoodUom.get(`${part.goodId}|${part.unitOfMeasureId}`));
       }
     }
     return result;
@@ -1609,8 +1632,8 @@ export class WorkOrdersService {
         unitOfMeasure: { shortName: string; coefficient: number } | null;
         brand?: { name: string } | null;
       } | null;
-      // Populated when unitOfMeasureId is set — per-good GoodUoM record
-      goodUoM?: { id: string; coefficient: number; unitOfMeasure: { shortName: string } } | null;
+      // Populated when unitOfMeasureId is set — per-good GoodUoM record (id not needed for DTO).
+      goodUoM?: { coefficient: number; unitOfMeasure: { shortName: string } } | null;
     },
     // §2.1 Auth: костПрайс маскується для ролей не в COST_PRICE_VISIBLE_ROLES.
     // Default = undefined → не показувати (fail-closed). Усі mutation-endpoints
@@ -1728,6 +1751,7 @@ export class WorkOrdersService {
           take: 500,
           select: {
             id: true,
+            goodId: true,
             quantity: true,
             price: true,
             amount: true,
@@ -1745,7 +1769,11 @@ export class WorkOrdersService {
     // від wo (orgId + parts.unitOfMeasureId), один від одного — ні. Раніше:
     // sequential 2 RTT після головного findFirst. Тепер: 1 RTT паралельно.
     // На public endpoint (share-token, без auth) це 50% TTFB save.
+    // WO-C3: lookup за (unitOfMeasureId, goodId), не за GoodUoM.id (part.unitOfMeasureId = FK на
+    // UnitOfMeasure.id). Раніше збіг був неможливий → у публічному кошторисі показувалась базова
+    // одиниця замість обраної.
     const uomIds = wo.parts.map(p => p.unitOfMeasureId).filter((x): x is string => !!x);
+    const partGoodIds = wo.parts.map(p => p.goodId);
     const [org, goodUoMs] = await Promise.all([
       this.prisma.organisation.findFirst({
         where: { id: wo.orgId },
@@ -1753,13 +1781,24 @@ export class WorkOrdersService {
       }),
       uomIds.length > 0
         ? this.prisma.goodUoM.findMany({
-            where: { id: { in: uomIds } },
-            select: { id: true, unitOfMeasure: { select: { shortName: true } } },
+            where: { unitOfMeasureId: { in: uomIds }, goodId: { in: partGoodIds } },
+            select: {
+              unitOfMeasureId: true,
+              goodId: true,
+              unitOfMeasure: { select: { shortName: true } },
+            },
           })
-        : Promise.resolve([] as { id: string; unitOfMeasure: { shortName: string } }[]),
+        : Promise.resolve(
+            [] as {
+              unitOfMeasureId: string;
+              goodId: string;
+              unitOfMeasure: { shortName: string };
+            }[],
+          ),
     ]);
     const uomMap: Record<string, string> = {};
-    for (const u of goodUoMs) uomMap[u.id] = u.unitOfMeasure.shortName;
+    for (const u of goodUoMs)
+      uomMap[`${u.goodId}|${u.unitOfMeasureId}`] = u.unitOfMeasure.shortName;
 
     const cp = wo.counterparty;
     const counterpartyName =
@@ -1799,7 +1838,7 @@ export class WorkOrdersService {
         goodName: p.good?.name,
         quantity: p.quantity,
         unitShortName:
-          (p.unitOfMeasureId && uomMap[p.unitOfMeasureId]) ??
+          (p.unitOfMeasureId && uomMap[`${p.goodId}|${p.unitOfMeasureId}`]) ??
           p.good?.unitOfMeasure?.shortName ??
           p.good?.unit,
         price: Number(p.price),

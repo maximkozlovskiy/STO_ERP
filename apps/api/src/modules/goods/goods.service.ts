@@ -180,10 +180,37 @@ export class GoodsService {
   }
 
   async restore(orgId: string, id: string, userRole?: string): Promise<GoodResponseDto> {
+    // MD-C1: SKU/internalCode унікальні лише логікою сервісу (немає DB-констрейнта, лише @@index).
+    // Поки товар був soft-deleted, інший активний товар міг зайняти той самий SKU. Restore без
+    // цієї перевірки → два активні товари з однаковим артикулом. Дзеркалить guard у units/brands.
+    const deleted = await this.prisma.good.findFirst({
+      where: { id, orgId, NOT: { deletedAt: null } },
+      select: { sku: true, internalCode: true },
+    });
+    if (!deleted) throw new NotFoundException('Видалений товар не знайдено');
+    if (deleted.sku) {
+      const clash = await this.prisma.good.findFirst({
+        where: { orgId, sku: deleted.sku, deletedAt: null, NOT: { id } },
+        select: { id: true },
+      });
+      if (clash)
+        throw new ConflictException(
+          `Неможливо відновити: активний товар з артикулом "${deleted.sku}" вже існує`,
+        );
+    }
+    if (deleted.internalCode) {
+      const codeClash = await this.prisma.good.findFirst({
+        where: { orgId, internalCode: deleted.internalCode, deletedAt: null, NOT: { id } },
+        select: { id: true },
+      });
+      if (codeClash)
+        throw new ConflictException(
+          `Неможливо відновити: активний товар з кодом "${deleted.internalCode}" вже існує`,
+        );
+    }
+
     // Defense-in-depth: atomic updateMany with full compound where (sto-review pattern
-    // 2026-05-30). Combines existence + tenant + "currently-deleted" assertion into one
-    // statement. include is fetched separately via findFirstOrThrow (updateMany does not
-    // support include).
+    // 2026-05-30). Combines existence + tenant + "currently-deleted" assertion into one statement.
     const result = await this.prisma.good.updateMany({
       where: { id, orgId, NOT: { deletedAt: null } },
       data: { deletedAt: null },

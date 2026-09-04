@@ -62,6 +62,7 @@ function makePrismaForPublicShare(opts: { hasUoMIds: boolean; partsCount?: numbe
     ],
     parts: Array.from({ length: opts.partsCount ?? 1 }, (_, i) => ({
       id: `part-${i + 1}`,
+      goodId: `good-${i + 1}`,
       quantity: 1,
       price: 250,
       amount: 250,
@@ -285,9 +286,10 @@ describe('WorkOrdersService.findByShareToken — public DTO leak guards', () => 
     await service.findByShareToken(TOKEN);
 
     expect(goodUoMFindMany).toHaveBeenCalledTimes(1);
-    // Перевіряємо що передано саме потрібні uomIds (порядок — за parts[]).
+    // WO-C3: lookup за (unitOfMeasureId, goodId), не за GoodUoM.id. Порядок — за parts[].
     const callArgs = (goodUoMFindMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(callArgs.where.id.in).toEqual(['uom-1', 'uom-2']);
+    expect(callArgs.where.unitOfMeasureId.in).toEqual(['uom-1', 'uom-2']);
+    expect(callArgs.where.goodId.in).toEqual(['good-1', 'good-2']);
   });
 
   // ─── 4. NotFound on bad token (sanity) ──────────────────────────────────

@@ -16,6 +16,7 @@ describe('GoodsService', () => {
   let prisma: {
     good: {
       findFirst: any;
+      findFirstOrThrow: any;
       findMany: any;
       count: any;
       create: any;
@@ -66,6 +67,7 @@ describe('GoodsService', () => {
     prisma = {
       good: {
         findFirst: vi.fn(),
+        findFirstOrThrow: vi.fn().mockResolvedValue(goodRow),
         findMany: vi.fn(),
         count: vi.fn(),
         create: vi.fn().mockResolvedValue(goodRow),
@@ -182,6 +184,35 @@ describe('GoodsService', () => {
         }),
       );
       expect(prisma.good.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // MD-C1: restore не має воскрешати товар, якщо активний дубль SKU/internalCode вже існує
+  // (SKU лише @@index, без DB-констрейнта → потрібен guard у сервісі, як у units/brands).
+  describe('restore — SKU/internalCode conflict guard (MD-C1)', () => {
+    it('кидає ConflictException коли активний товар з тим самим SKU існує', async () => {
+      prisma.good.findFirst
+        .mockResolvedValueOnce({ sku: 'OIL', internalCode: 'T-000001' }) // deleted good
+        .mockResolvedValueOnce({ id: 'other-active' }); // active SKU clash
+      await expect(service.restore('org-1', 'good-1')).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.good.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('відновлює коли конфлікту немає', async () => {
+      prisma.good.findFirst
+        .mockResolvedValueOnce({ sku: 'OIL', internalCode: 'T-000001' }) // deleted good
+        .mockResolvedValueOnce(null) // no SKU clash
+        .mockResolvedValueOnce(null); // no internalCode clash
+      prisma.good.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.good.findFirstOrThrow.mockResolvedValueOnce(goodRow);
+      const res = await service.restore('org-1', 'good-1');
+      expect(res.id).toBe('good-1');
+      expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('кидає NotFound коли видалений товар не знайдено', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(null);
+      await expect(service.restore('org-1', 'missing')).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

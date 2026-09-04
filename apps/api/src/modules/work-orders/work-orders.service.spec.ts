@@ -158,6 +158,48 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
     // update НЕ викликано — guard спрацював до фінального write і до writeOffPartsAndCharge.
     expect(update).not.toHaveBeenCalled();
   });
+
+  // WO-C1: ON_HOLD→IN_PROGRESS НЕ має резервувати повторно (резерв уже активний з першого
+  // входу). reserveParts читає workOrderPart.findMany — якщо він викликаний, резерв запущено.
+  function makeTransitionPrisma(preStatus: string) {
+    const partsFindMany = vi.fn().mockResolvedValue([]);
+    const base = {
+      id: WO_ID,
+      orgId: ORG,
+      number: 'WO-1',
+      outMileage: null,
+      vehicleId: 'v',
+      repairCategory: null,
+      counterpartyId: 'c',
+      totalAmount: 0,
+    };
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce({ ...base, status: preStatus }) // pre-tx
+      .mockResolvedValueOnce({ status: preStatus }) // in-tx guard
+      .mockResolvedValue({ ...base, status: 'IN_PROGRESS', vehicle: null, counterparty: null });
+    const prisma = {
+      workOrder: {
+        findFirst,
+        update: vi.fn().mockResolvedValue({ ...base, status: 'IN_PROGRESS' }),
+      },
+      workOrderPart: { findMany: partsFindMany },
+      $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
+    } as unknown as PrismaService;
+    return { prisma, partsFindMany };
+  }
+
+  it('WO-C1: APPROVED→IN_PROGRESS резервує (reserveParts викликано)', async () => {
+    const { prisma, partsFindMany } = makeTransitionPrisma('APPROVED');
+    await makeService(prisma).transition(ORG, WO_ID, 'IN_PROGRESS' as never);
+    expect(partsFindMany).toHaveBeenCalled();
+  });
+
+  it('WO-C1: ON_HOLD→IN_PROGRESS НЕ резервує повторно (reserveParts НЕ викликано)', async () => {
+    const { prisma, partsFindMany } = makeTransitionPrisma('ON_HOLD');
+    await makeService(prisma).transition(ORG, WO_ID, 'IN_PROGRESS' as never);
+    expect(partsFindMany).not.toHaveBeenCalled();
+  });
 });
 
 describe('WorkOrdersService.update — query shape (Bug #350 follow-up)', () => {
@@ -448,6 +490,73 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
         data: { batchCostPrice: 130, batchId: null },
       }),
     );
+  });
+
+  // WO-C2 regression: коефіцієнт GoodUoM резолвиться за (unitOfMeasureId, goodId), не за
+  // GoodUoM.id. part.quantity у не-базовій одиниці (упаковка) ділиться на coeff → база на склад.
+  it('WO-C2: coeff з GoodUoM за (unitOfMeasureId,goodId) → baseQty = quantity/coeff', async () => {
+    const UOM_ID = '77777777-7777-4777-8777-777777777777'; // UnitOfMeasure.id (як зберігає addPart)
+    const partUpdate = vi.fn().mockResolvedValue({});
+    const goodUoMFindMany = vi.fn().mockResolvedValue([
+      // Ключ lookup — unitOfMeasureId+goodId; coefficient=10 (упаковка=10 базових).
+      { unitOfMeasureId: UOM_ID, goodId: GOOD_ID, coefficient: 10 },
+    ]);
+    const createMovement = vi.fn().mockImplementation((_, dto) => {
+      if (dto.type === 'RESERVATION_RELEASE') {
+        return Promise.resolve({ movementId: 'm-rel', consumed: [], weightedCostPrice: null });
+      }
+      return Promise.resolve({
+        movementId: 'm-wo',
+        consumed: [{ batchId: BATCH1_ID, quantity: 2, costPrice: 50 }],
+        weightedCostPrice: 50,
+      });
+    });
+    const prisma = {
+      workOrderPart: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            {
+              id: PART1_ID,
+              goodId: GOOD_ID,
+              warehouseId: WH_ID,
+              quantity: 20,
+              unitOfMeasureId: UOM_ID,
+            },
+          ]),
+        update: partUpdate,
+      },
+      goodUoM: { findMany: goodUoMFindMany },
+    } as unknown as PrismaService;
+    const svc = new WorkOrdersService(
+      prisma,
+      { createMovement } as never,
+      { createTransaction: vi.fn() } as never,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (svc as any).writeOffPartsAndCharge(
+      'org-1',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
+      'user-1',
+      undefined,
+    );
+    // Lookup йде за unitOfMeasureId (не за GoodUoM.id).
+    expect(goodUoMFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ unitOfMeasureId: { in: [UOM_ID] } }),
+      }),
+    );
+    // 20 / coeff(10) = 2 базових одиниці у WRITEOFF (а не 20 без коефіцієнта).
+    const writeoffCall = createMovement.mock.calls.find(c => c[1].type === 'WRITEOFF');
+    expect(writeoffCall?.[1].quantity).toBe(-2);
   });
 
   it('weightedCostPrice=null → workOrderPart.update НЕ викликається (не перезаписує NULL)', async () => {
