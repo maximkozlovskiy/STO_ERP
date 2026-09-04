@@ -2281,6 +2281,27 @@ grep -n "parentChanged\|supplierChanged" apps/api/src/modules/<resource>/<resour
 
 ---
 
+### 2026-09-04 — Toggle-close selection не скидається при disable → панель недосяжна після re-enable (Bug #624) — frontend / UI / Bug #310-#311 sub-pattern
+
+**Сигнал:** список з DetailPanelToggle І з toggle-close логікою вибору (клік по вже-вибраному рядку → закрити панель) через `selectedXIdRef`. При вимиканні тогла код скидає лише ВИДИМІСТЬ (`open={... && enabled}`), але `selectedX`/ref лишаються. Після re-enable клік по ТОМУ Ж рядку → `selectX` бачить `ref.current === row.id` → toggle-close → `setSelectedX(null)` замість відкриття → мовчазний no-op (панель не з'являється при активному тоглі). tsc/unit green — це runtime UX desync, ловиться ЛИШЕ E2E off→on-цикл-кліком або скріншотом.
+**Grep:**
+
+```bash
+# списки з ref-based toggle-close selection
+grep -rnE "selected[A-Z]\w*IdRef" apps/web/src/app --include="*.tsx"
+grep -rnE "if \(selected\w*Ref\.current === .*\.id\)" apps/web/src/app --include="*.tsx"
+# для кожного: чи є useEffect що скидає selection коли !enabled? якщо ні → bug
+grep -rn "if (!.*\.enabled)" apps/web/src/app/**/page.tsx   # має існувати парний reset
+```
+
+**Причина виникнення:** selection-toggle-close і visibility-gate (`enabled`) — ДВА незалежні джерела правди про «чи показувати панель». Розробник гейтить видимість, але забуває що ref-based toggle-close тепер бачить стейл-вибір. Асиметрія: `open` реагує на `enabled`, а `selectX` — ні.
+**Підхід до виявлення:** E2E-цикл для КОЖНОГО списку з toggle-close: клік рядка (панель) → тогл off → тогл on → клік ТОГО Ж рядка → панель має відкритись. Не покривається `toHaveCount` (DetailPanel width-collapse лишає контент у DOM; overflow-hidden не робить дочірні «hidden» для Playwright — assert через aria-label стану тогла + реальну поведінку кліку, або скрін).
+**Підхід до фіксу:** `useEffect(() => { if (!enabled) { selectedXIdRef.current = null; setSelectedX(null); } }, [enabled])` — при disable синхронно скидаємо ОБА (ref + state), щоб re-enable починав із чистого аркуша.
+**Severity:** MEDIUM (feature недосяжна для last-selected row після disable→enable; обхід неочевидний).
+**Де шукати ще:** будь-який список де selection persist окремо від enabled-toggle І має клік-по-вибраному=закрити (purchase-orders — єдиний зараз; при копіюванні patтерну на invoices/stock-documents перевірити reset). Родич: Playwright `toBeVisible` дає false-positive на `w-0 overflow-hidden` контенті (width-collapse панелі) — асертити стан, не count.
+
+---
+
 ### 2026-06-02 — Multi-module sprint: pattern dilution між модулями (Bug #306) — backend
 
 **Сигнал:** sprint додає soft-delete до N модулів — деякі пропускають `@@unique` partial filter або resurrection pattern.

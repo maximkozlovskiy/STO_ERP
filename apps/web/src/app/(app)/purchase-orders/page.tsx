@@ -370,6 +370,17 @@ function PurchaseOrdersPageClient() {
     selectedPOIdRef.current = selectedPO?.id ?? null;
   }, [selectedPO]);
 
+  // Bug #624: коли тогл вимикають, скидаємо вибір. Інакше selectedPO/ref лишаються
+  // від попередньої сесії панелі → після повторного вмикання клік по ТОМУ Ж рядку
+  // спрацьовує як toggle-close (selectPO бачить selectedPOIdRef===po.id) і панель
+  // не відкривається (мовчазний no-op). Дзеркалить SKILL Bug #310-#311.
+  useEffect(() => {
+    if (!detailPanel.enabled) {
+      selectedPOIdRef.current = null;
+      setSelectedPO(null);
+    }
+  }, [detailPanel.enabled]);
+
   // Вибір PO у панель: одразу показуємо дані зі списку, потім довантажуємо
   // повний PO (з позиціями — lines відсутні у list-відповіді). Дзеркалить
   // selectInvoice: toggle якщо клікнули по вже вибраному рядку.

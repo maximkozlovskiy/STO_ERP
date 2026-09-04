@@ -2331,3 +2331,32 @@ Backend зміна не ламає існуючих клієнтів (додає
 - **Severity:** MEDIUM — regression-guard gap.
 - **Де шукати ще:** будь-яка epsilon/float-квантизація у розрахунках (vat.ts, batch, settlements) без тесту саме на дробовий/float-drift кейс.
 - **Статус:** [x] виправлено
+
+## Session 2026-09-04 — DetailPanelToggle-стандарт списків (6405c3a9 + 3fd7d5fb, main): Купівля + Склад
+
+> Живе тестування (Playwright CLI, dev-сервери 3000/3001 up) DetailPanelToggle як стандарту:
+> Купівля → «Замовлення» (відновлено DetailPanel + selection-state, Bug #496) і Склад → «Товари».
+> **Baseline до сесії: web tsc 0, vitest 495/495.** Головний фікс — реальне підключення selection —
+> LIVE-верифіковано скріншотом: клік по рядку PO → панель з номером·постачальником·вкладкою «Позиції»
+> (товар, `5 шт × 100,00 ₴ = 500,00 ₴`) + кнопкою «Відкрити замовлення». НЕ orphan (Bug #496). Pencil →
+> edit-modal (stopPropagation) ✓. Склад: тогл лише goods-mode, панель гейтиться enabled ✓. Персистентність
+> localStorage ✓. E2E тогл off→on цикл виявив Bug #624 (нижче). Раніше E2E для панелі PO/inventory не було —
+> додано `e2e/detail-panel-toggle.spec.ts` (3 тести, зелені).
+
+### Bug #624 — MEDIUM UX — Купівля: після вимкнення+повторного вмикання тогла клік по тому ж рядку не відкриває панель (orphan selection)
+
+- **Файл:** `apps/web/src/app/(app)/purchase-orders/page.tsx` (selection-state PO — `selectedPO`/`selectedPOIdRef`).
+- **Симптом:** Live E2E: (1) тогл увімкнено, клік по рядку PO → панель відкривається ✓; (2) тогл ВИМКНУТИ → панель зникає з екрана (DetailPanel колапсує у `w-0`), але `selectedPO` лишається non-null, `selectedPOIdRef.current === po.id`; (3) тогл знову УВІМКНУТИ; (4) клік по ТОМУ Ж рядку → **панель не відкривається** (мовчазний no-op). Скрін підтвердив: тогл у активному стані, таблиця на всю ширину, панелі немає. Користувач має клікнути ІНШИЙ рядок або клікнути двічі.
+- **Причина виникнення:** `selectPO` має toggle-close-логіку (клік по вже-вибраному рядку → закрити панель) через `selectedPOIdRef`. При вимиканні тогла код скидав лише видимість (`open={... && detailPanel.enabled}`), але НЕ сам `selectedPO`/ref. Тож після повторного вмикання ref усе ще вказує на останній PO → `selectPO(po)` бачить `selectedPOIdRef.current === po.id` → інтерпретує як «клік по вибраному» → `setSelectedPO(null)` замість відкриття. Класичний desync «highlight/selection без enabled-gate» (сімейство SKILL Bug #310-#311, Bug #496). inventory НЕ уражений — там клік просто `setSelectedItem(item)` без toggle-close, тож re-set відкриває панель.
+- **Виявлено:** новий `e2e/detail-panel-toggle.spec.ts`, крок 4 (тогл on → клік того ж рядка → очікувано «Відкрити замовлення» visible) падав; підтверджено скріншотом test-failed (панель відсутня при активному тоглі).
+- **Fix:** `useEffect(() => { if (!detailPanel.enabled) { selectedPOIdRef.current = null; setSelectedPO(null); } }, [detailPanel.enabled])` — при вимиканні тогла скидаємо вибір (і ref, і state). Після повторного вмикання клік по будь-якому рядку (включно з попереднім) відкриває панель як для свіжого вибору. Дзеркалить SKILL-фікс Bug #310-#311 (`if (!enabled) setSelected(null)`).
+- **Severity:** MEDIUM — feature (панель) стає тимчасово недосяжною після disable→enable циклу для останнього-вибраного рядка; обхід (клік іншого рядка) неочевидний → UX confusion.
+- **Регресія-guard:** `e2e/detail-panel-toggle.spec.ts` крок 3-4 — тогл off (edit-modal при кліку) → тогл on → клік того ж рядка → «Відкрити замовлення» visible. Падає якщо reset прибрати.
+- **Де шукати ще:** будь-який список із toggle-close selection (`selectedXIdRef` + клік-по-вибраному=закрити) де enabled/visibility персиститься окремо від selection — grep `selected[A-Z]\w*IdRef` та `if (selected\w*Ref.current === .*id)`. Наразі лише purchase-orders має цей ref-toggle патерн; invoices/supplier-payments теж мають selectX toggle — перевірено: там selection скидається/панель завжди enabled (немає тогла), тож не уражені.
+- **Статус:** [x] виправлено
+
+### E2E gap (не баг) — відсутнє покриття DetailPanelToggle для Купівлі/Складу
+
+- **Симптом:** 11 списків мали DetailPanelToggle, але жоден E2E не перевіряв базовий user-path (тогл → клік рядка → панель; тогл off → без панелі; персистентність). `purchase-orders-receive.spec.ts` лише виставляв LS-ключ щоб тестувати receive-flow.
+- **Fix:** доданий `e2e/detail-panel-toggle.spec.ts` — 3 тести: (1) Купівля: тогл видимий → клік → панель з даними → off (edit-modal) → on → знову панель → LS='true'; (2) pencil → edit-modal НЕ панель; (3) Склад: тогл лише goods-mode → off → LS='false'.
+- **Статус:** [x] покрито
