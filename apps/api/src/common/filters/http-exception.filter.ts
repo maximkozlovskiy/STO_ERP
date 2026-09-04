@@ -53,6 +53,27 @@ function mapPrismaErrorToHttp(
   }
 }
 
+/**
+ * Fastify-рівнева помилка розбору запиту (FastifyError). Ловимо ТІЛЬКИ ті, що несуть
+ * клієнтський 4xx `statusCode` і `code` починається з `FST_ERR_CTP_` (content-type-parser:
+ * порожнє тіло, malformed JSON, непідтримуваний media type). Не чіпаємо 5xx-FastifyError
+ * (справжні серверні збої) — вони мають лишатись 500 + Sentry.
+ */
+function isFastifyClientError(
+  e: unknown,
+): e is { code: string; statusCode: number; message: string } {
+  if (typeof e !== 'object' || e === null) return false;
+  const code = (e as { code?: unknown }).code;
+  const statusCode = (e as { statusCode?: unknown }).statusCode;
+  return (
+    typeof code === 'string' &&
+    code.startsWith('FST_ERR_CTP_') &&
+    typeof statusCode === 'number' &&
+    statusCode >= 400 &&
+    statusCode < 500
+  );
+}
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
@@ -102,6 +123,20 @@ export class HttpExceptionFilter implements ExceptionFilter {
         .pop(); // Prisma кладе фактичну причину у ОСТАННІЙ непорожній рядок
       this.logger.warn(
         `PrismaClientValidationError on ${request.method} ${request.url}: ${firstLine ?? '(no message)'}`,
+      );
+    } else if (isFastifyClientError(exception)) {
+      // Bug #627: Fastify content-type-parser / request помилки (FST_ERR_CTP_*) —
+      // напр. `Body cannot be empty when content-type is set to 'application/json'`
+      // для bodyless POST (/transition, /restore) з заголовком Content-Type: application/json,
+      // або malformed JSON. Fastify кидає FastifyError зі своїм `statusCode` (4xx) ДО хендлера,
+      // тож він не є HttpException → раніше провалювався у 500 «Внутрішня помилка сервера»
+      // + шум у Sentry. Мапимо у чистий 4xx БЕЗ Sentry alert (як Prisma-коди вище).
+      // Веб-клієнт вже не шле Content-Type без тіла (api-client.ts), але сервер має бути
+      // стійким незалежно від клієнта (mobile/sync/зовнішні інтеграції).
+      status = exception.statusCode;
+      message = 'Некоректний запит: перевірте тіло та Content-Type';
+      this.logger.warn(
+        `Fastify request error ${exception.code} on ${request.method} ${request.url}`,
       );
     } else {
       // Unhandled (non-HTTP) exception — завжди 500

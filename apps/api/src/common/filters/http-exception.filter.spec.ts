@@ -190,6 +190,68 @@ describe('HttpExceptionFilter', () => {
     });
   });
 
+  describe('Bug #627: Fastify content-type-parser помилки → 4xx (не 500)', () => {
+    it('FST_ERR_CTP_EMPTY_JSON_BODY (bodyless POST + application/json) → 400 без Sentry', () => {
+      const { host, reply } = makeHost('POST', '/api/goods/abc/restore');
+      const warnSpy = vi
+        .spyOn((filter as unknown as { logger: { warn: (msg: string) => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn((filter as unknown as { logger: { error: (msg: string) => void } }).logger, 'error')
+        .mockImplementation(() => undefined);
+      const fastifyErr = Object.assign(
+        new Error("Body cannot be empty when content-type is set to 'application/json'"),
+        { code: 'FST_ERR_CTP_EMPTY_JSON_BODY', statusCode: 400 },
+      );
+      filter.catch(fastifyErr, host);
+
+      expect(reply.status).toHaveBeenCalledWith(400);
+      expect(reply.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusCode: 400,
+          message: expect.stringContaining('Некоректний запит'),
+        }),
+      );
+      // warn (не error) → без Sentry-шуму
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it('FST_ERR_CTP_INVALID_MEDIA_TYPE (415) → зберігає свій statusCode', () => {
+      const { host, reply } = makeHost('POST', '/api/goods');
+      const fastifyErr = Object.assign(new Error('Unsupported Media Type'), {
+        code: 'FST_ERR_CTP_INVALID_MEDIA_TYPE',
+        statusCode: 415,
+      });
+      filter.catch(fastifyErr, host);
+
+      expect(reply.status).toHaveBeenCalledWith(415);
+    });
+
+    it('FastifyError з 5xx statusCode → лишається 500 (справжній серверний збій)', () => {
+      const { host, reply } = makeHost('POST', '/api/goods');
+      const fastifyErr = Object.assign(new Error('Internal parser failure'), {
+        code: 'FST_ERR_CTP_BODY_TOO_LARGE',
+        statusCode: 500,
+      });
+      filter.catch(fastifyErr, host);
+
+      // guard вимагає 4xx → 5xx падає у Unhandled гілку (500)
+      expect(reply.status).toHaveBeenCalledWith(500);
+    });
+
+    it('звичайний Error з code що НЕ FST_ERR_CTP_* → 500 (не плутати з Node errno)', () => {
+      const { host, reply } = makeHost();
+      const nodeErr = Object.assign(new Error('connect ECONNREFUSED'), {
+        code: 'ECONNREFUSED',
+        statusCode: 400,
+      });
+      filter.catch(nodeErr, host);
+
+      expect(reply.status).toHaveBeenCalledWith(500);
+    });
+  });
+
   describe('Unhandled exceptions', () => {
     it('звичайний Error → 500 з generic повідомленням', () => {
       const { host, reply } = makeHost();
