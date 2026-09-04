@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-09-04 — fix(review): WEB-M13 lost-update у useDetailPanelConfig (аудит audit-wave5)
+
+### b6277a8f fix(review): WEB-M13 lost-update у useDetailPanelConfig (value-based setState)
+
+Аудит коміту 99ea2ce9 (audit-wave5). Перевірено КОРЕКТНІСТЬ 5 пунктів — 4 бездоганні
+(MD-H1 FK/статуси, MD-H2 VIN excludeId/empty-skip, MD-M2 isSystem-order/visited-set/self-parent,
+WEB-M9 fmtMoney/fmtInt). **1 регресія знайдена/виправлена:**
+
+- WEB-M13: перехід `setConfig(prev=>next)` → `setConfig(next)` з `config` у замиканні
+  (deps [config,persist]) увів lost-update — два швидкі toggle в одному tick (до re-render)
+  читали стейл-`config`, другий губив зміну першого. Обмін дубль-PUT (StrictMode) на втрату
+  даних. Fix: `configRef.current` тримає останній config; мутатори читають/пишуть ref
+  синхронно → чейнінг; persist() лишається поза updater (StrictMode-фікс збережено).
+- +1 регрес-тест (2 toggle в одному act() → обидва поля; буга-версія давала лише один).
+- tsc web/api 0, web 498→499, affected API 65/65.
+
+---
+
 ## 2026-09-04 — fix(tester): Bug #629 — квантування похідних грошей у звітах (Хвиля 3 LIVE-аудит)
 
 ### eefa72ec fix(tester): Bug #629 — квантування похідних грошей у звітах (roundMoney)
