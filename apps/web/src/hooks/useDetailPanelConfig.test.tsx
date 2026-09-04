@@ -133,6 +133,39 @@ describe('useDetailPanelConfig', () => {
     expect(result.current.config.hiddenFields).toEqual([]);
   });
 
+  it('WEB-M13: два toggleField в одному tick (до re-render) не губить перший (lost-update)', async () => {
+    const { result } = renderHook(() => useDetailPanelConfig('crm'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    apiFetchMock.mockClear();
+    apiFetchMock.mockResolvedValue(undefined);
+
+    // Обидва виклики в ОДНОМУ act() — між ними React не re-render-ить, тож captured
+    // `config` був би стейл. Правильна реалізація читає configRef.current → чейнінг.
+    act(() => {
+      result.current.toggleField('phone');
+      result.current.toggleField('email');
+    });
+
+    // Обидва поля мають потрапити у hiddenFields; при value-based-setState зі стейл-config
+    // тут було б лише ['email'] (перший toggle загублений).
+    expect(result.current.config.hiddenFields).toEqual(['phone', 'email']);
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
+      hiddenFields: string[];
+    };
+    expect(stored.hiddenFields).toEqual(['phone', 'email']);
+    // Останній PUT несе обидва поля.
+    expect(apiFetchMock).toHaveBeenLastCalledWith(
+      API_PATH,
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          key: 'detail_panel_crm',
+          value: { hiddenFields: ['phone', 'email'], fieldOrder: [] },
+        }),
+      }),
+    );
+  });
+
   it('reset очищує hiddenFields, видаляє localStorage і викликає PUT з порожнім value', async () => {
     apiFetchMock.mockResolvedValueOnce({
       key: 'detail_panel_crm',

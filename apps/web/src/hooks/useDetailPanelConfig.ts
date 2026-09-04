@@ -13,6 +13,13 @@ export function useDetailPanelConfig(pageKey: string) {
   const [config, setConfig] = useState<PanelFieldConfig>({ hiddenFields: [], fieldOrder: [] });
   const [loading, setLoading] = useState(true);
 
+  // WEB-M13: ref завжди тримає ОСТАННІЙ config. Мутатори (toggleField/reorderFields) читають
+  // `next` із цього ref, а не із captured-у-замиканні `config` — інакше два швидкі кліки в одному
+  // tick (до re-render) читали б стейл-config → другий губив би зміну першого (lost-update
+  // value-based setState). Ref оновлюється синхронно у мутаторі, тож послідовні виклики чейняться.
+  const configRef = useRef(config);
+  configRef.current = config;
+
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -116,30 +123,35 @@ export function useDetailPanelConfig(pageKey: string) {
 
   const toggleField = useCallback(
     (fieldKey: string) => {
-      // next обчислюється з поточного config (не в updater) → side-effect persist() один раз.
+      // next обчислюється з configRef.current (найсвіжіший стан, не stale-замикання) → два кліки
+      // в одному tick чейняться коректно; side-effect persist() один раз (поза state-updater).
+      const cur = configRef.current;
       const next: PanelFieldConfig = {
-        ...config,
-        hiddenFields: config.hiddenFields.includes(fieldKey)
-          ? config.hiddenFields.filter(k => k !== fieldKey)
-          : [...config.hiddenFields, fieldKey],
+        ...cur,
+        hiddenFields: cur.hiddenFields.includes(fieldKey)
+          ? cur.hiddenFields.filter(k => k !== fieldKey)
+          : [...cur.hiddenFields, fieldKey],
       };
+      configRef.current = next; // синхронно — наступний виклик у тому ж tick бачить цю зміну
       setConfig(next);
       persist(next);
     },
-    [config, persist],
+    [persist],
   );
 
   const reorderFields = useCallback(
     (newOrder: string[]) => {
-      const next: PanelFieldConfig = { ...config, fieldOrder: newOrder };
+      const next: PanelFieldConfig = { ...configRef.current, fieldOrder: newOrder };
+      configRef.current = next;
       setConfig(next);
       persist(next);
     },
-    [config, persist],
+    [persist],
   );
 
   const reset = useCallback(() => {
     const empty: PanelFieldConfig = { hiddenFields: [], fieldOrder: [] };
+    configRef.current = empty; // тримаємо ref у синхроні (мутатори читають звідси)
     if (mountedRef.current) setConfig(empty);
     try {
       localStorage.removeItem(storageKey);
