@@ -602,8 +602,25 @@ grep -rnE "new (ResizeObserver|IntersectionObserver|MutationObserver|Performance
     fi
   done
 done
+
+# Bug #630 — concurrent double-submit у create-модалці: submit-handler захищений ЛИШЕ
+# `disabled={saving}` без синхронного savingRef-guard першим рядком.
+# `disabled` спирається на re-render React МІЖ подіями кліку → два click-и в одному tick
+# (швидкий double-click / синтетичні події / Enter-repeat) обидва входять до застосування
+# disabled → 2 POST → 2 документи. Idempotency-ref (createdIdRef/createdInvoiceRef) НЕ рятує
+# (виставляється лише ПІСЛЯ await першого POST — другий click вже пройшов).
+grep -rln "const handleCreate\|const handleSave\|const create =\|async function handleCreate" apps/web/src/components/ui --include="*Modal.tsx" | while read f; do
+  # модалка має savingRef АБО лише disabled={saving}? і чи create-handler гейтить на savingRef?
+  if grep -qE "setSaving(Both)?\(true\)" "$f" && ! grep -qE "if \(saving(Ref|_?ref)?\.current" "$f"; then
+    echo "DOUBLE-SUBMIT RISK (no savingRef guard at all): $f"
+  fi
+done
+# Точніша перевірка (ручна): для КОЖНОГО create/save async-handler переконатись, що ПЕРШИЙ
+# рядок = `if (savingRef.current [|| transitioningRef.current]) return;` ПЕРЕД будь-яким await.
+# Модалка може мати savingRef і використовувати його у edit/transition-handler, АЛЕ забути у create.
 ```
 
+- [ ] **Concurrent double-submit у create/save-модалці (Bug #630):** будь-який async submit-handler (`handleCreate`/`handleSave`/`create`) у `apps/web/src/components/ui/*Modal.tsx`, що пише документ, МАЄ синхронний re-entrancy guard `if (savingRef.current [|| transitioningRef.current]) return;` **першим рядком, ПЕРЕД будь-яким `await`**. `disabled={saving}` НЕдостатньо — він спирається на re-render React МІЖ подіями кліку; два click-и в одному event-loop tick (швидкий double-click, синтетичні події a11y-інструментів, Enter-repeat на сфокусованій кнопці) обидва входять у handler до застосування disabled → 2 POST → 2 документи (фінансовий ризик: подвійний борг/списання). Idempotency-ref (`createdIdRef`/`createdInvoiceRef`) закриває ЛИШЕ retry-після-обриву (виставляється після await першого POST), НЕ concurrent double-submit — потрібні ОБИДВА механізми. `savingRef.current` фліпається СИНХРОННО (у `setSaving`/`setSavingBoth`) → другий вхід одразу повертається. Grep: див. блок вище. **Пастка:** модалка часто ВЖЕ має `savingRef` (у `setSavingBoth`) і гейтить edit/transition-handler, але забуває create-шлях — split-coverage. Регресія-guard: component-тест з **нативним** подвійним `dispatchEvent(new MouseEvent('click'))` × 2 у одному `act()` (НЕ `fireEvent.click` × 2 — воно flush-ить стан між кліками і маскує баг → хибно-зелений 1 POST); assert рівно 1 POST; верифікувати revert→2 / fix→1. Severity HIGH для фінансово-облікових документів (SupplierPayment/Invoice/PurchaseOrder/StockDocument/WorkOrder), MEDIUM для інших. Where else: усі create-модалки + `SettlementsTabContent.handleCreateAct` (raw apiFetch без savingRef).
 - [ ] Кожен list-fetch в `useEffect` має: `let cancelled=false` + `return () => {cancelled=true}`; `setLoading(true)` перед; `.finally(() => !cancelled && setLoading(false))`; `.catch((e) => !cancelled && setError(...))`; у JSX `{loading && <Spinner/>}` + `{!loading && items.length===0 && <Empty/>}`
 - [ ] `new Date()` у render path → `useState<Date|null>(null)` + `useEffect(() => setToday(new Date()), [])`
 - [ ] `key={i}` у списках де можлива re-order/filter → `key={item.id}` або stable derived key
@@ -1090,6 +1107,20 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-04 — Concurrent double-submit у create-модалці обходить idempotency-ref: захист лише через `disabled={saving}`, без синхронного savingRef-guard (Bug #630) — frontend / concurrency / financial-integrity / HIGH
+
+**Сигнал:** create/save async-handler у `*Modal.tsx`, що робить `setSaving(true)` → `await POST`, а кнопка захищена ЛИШЕ `disabled={saving}`. Idempotency-ref (`createdIdRef`/`createdInvoiceRef`) присутній «для WEB-H3», але виставляється ПІСЛЯ await першого POST. `fireEvent.click` × 2 у тесті дає 1 POST (хибно-зелений) — а нативний `dispatchEvent(new MouseEvent('click'))` × 2 в одному `act()` дає 2 POST. Модалка часто ВЖЕ має `savingRef` (у `setSavingBoth`) і гейтить edit/transition-handler, але create-шлях цей guard пропускає.
+
+**Причина виникнення:** `disabled={saving}` покладається на re-render React МІЖ подіями кліку — вірно для двох ОКРЕМИХ фізичних кліків (окремі tasks, flush між ними), але НЕ для двох подій в одному event-loop tick (швидкий double-click, синтетичні події a11y-інструментів, Enter-repeat на сфокусованій кнопці, автоматизація). Розробник вважає, що idempotency-ref закриває «подвійний клік», але той ref захищає лише RETRY-після-обриву (клік користувача ПІСЛЯ помилки), не concurrent-вхід. Два механізми плутаються: retry-safety ≠ re-entrancy-safety.
+
+**Підхід до виявлення:** для КОЖНОГО create/save async-handler у `apps/web/src/components/ui/*Modal.tsx` перевірити, що ПЕРШИЙ рядок (ПЕРЕД будь-яким await) = `if (savingRef.current [|| transitioningRef.current]) return;`. Grep-детектор: модалки з `setSaving(Both)?(true)` без жодного `if (savingRef.current` = точно вразливі; модалки з savingRef, але без guard у create-шляху — split-coverage (перевірити вручну кожен handler). Component-проба: рендер модалки у submittable-стан → `await act(async () => { btn.dispatchEvent(click); btn.dispatchEvent(click); })` → assert рівно 1 POST. `fireEvent` НЕ підходить (маскує).
+
+**Підхід до фіксу:** синхронний re-entrancy guard першим рядком handler-а. Якщо `savingRef` вже є (через `setSavingBoth` що фліпає ref синхронно) — додати `if (savingRef.current || transitioningRef.current) return;`. Якщо немає — завести `const savingRef = useRef(false)`, фліпати `savingRef.current = true` ПЕРЕД `setSaving(true)`, reset у `finally` + `resetForm`. Ref фліпається СИНХРОННО → другий вхід одразу повертається, ще до await. Idempotency-ref лишається (retry-safety) — це два ортогональні механізми. Regression-guard: нативний подвійний dispatch, верифікований revert→2 POST / fix→1 POST.
+
+**Severity:** HIGH для фінансово-облікових документів (SupplierPayment=подвійний борг постачальнику, Invoice=подвійний рахунок, PurchaseOrder=подвійне замовлення, StockDocument=подвійний рух складу, WorkOrder=подвійний наряд); MEDIUM для нефінансових. Ймовірність нижча за retry-кейс (потрібні два click-и в одному tick), але не нульова, а наслідок — дубльований фінансовий документ.
+
+**Де шукати ще:** усі create-модалки (`*CreateModal.tsx`), особливо ті, що мають `setSavingBoth` — перевірити, що ВСІ handler-и (create + edit + transition), а не лише частина, гейтять на savingRef. `SettlementsTabContent.handleCreateAct` — raw apiFetch без savingRef взагалі (кандидат). Backend-двійник: Bug #412 (Serializable $tx для «1 active per parent») — frontend-guard і backend-unique-index/Serializable доповнюють один одного (defense-in-depth: клієнт відсікає домінантний кейс, БД — істинно-паралельний з двох вкладок/адмінів).
 
 ### 2026-09-04 — Похідне грошове значення × дріб-коефіцієнт (або reduce/різниця) БЕЗ roundMoney, що покидає систему сирим через export/JSON (Bug #629) — backend / money-precision / report-and-export / LOW-MEDIUM
 
