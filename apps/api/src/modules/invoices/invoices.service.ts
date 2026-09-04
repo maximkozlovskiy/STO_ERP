@@ -11,6 +11,7 @@ import { throwIfSerializationConflict } from '../../common/utils/prisma-errors';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
+import { SettlementsService } from '../settlements/settlements.service';
 import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import {
   CreateInvoiceDto,
@@ -47,6 +48,7 @@ export class InvoicesService {
     private readonly prisma: PrismaService,
     private readonly docNumbers: DocumentNumberService,
     private readonly pdf: PdfService,
+    private readonly settlements: SettlementsService,
   ) {}
 
   async findAll(
@@ -284,17 +286,52 @@ export class InvoicesService {
     return this.toDto(updated);
   }
 
-  async transition(orgId: string, id: string, newStatus: InvStatus): Promise<InvoiceResponseDto> {
-    // sto-optimize: status-only projection — FSM transition потребує лише поточний статус.
+  async transition(
+    orgId: string,
+    id: string,
+    newStatus: InvStatus,
+    userId?: string,
+  ): Promise<InvoiceResponseDto> {
     const inv = await this.prisma.invoice.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { status: true },
+      select: { status: true, workOrderId: true, counterpartyId: true, amount: true },
     });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
 
     assertFsmTransition(INV_TRANSITIONS, inv.status as InvStatus, newStatus);
 
-    await this.prisma.invoice.update({ where: { id, orgId }, data: { status: newStatus } });
+    // FIN-C2: борг (CHARGE) для STANDALONE-рахунку (без наряду) створюється при виставленні
+    // (DRAFT→SENT). WO-рахунок НЕ чіпаємо — там CHARGE вже нараховано при COMPLETED наряду
+    // (інакше подвійний борг). Оплата пізніше зробить PAYMENT → net-zero. У тій самій tx +
+    // CAS-перехід (status:DRAFT у where) проти подвійного CHARGE при concurrent transition.
+    const chargesStandaloneOnSend =
+      inv.status === InvoiceStatus.DRAFT &&
+      newStatus === InvoiceStatus.SENT &&
+      inv.workOrderId === null;
+
+    await this.prisma.$transaction(async tx => {
+      const moved = await tx.invoice.updateMany({
+        where: { id, orgId, status: inv.status, deletedAt: null },
+        data: { status: newStatus },
+      });
+      if (moved.count === 0) {
+        throw new BadRequestException('Статус рахунку змінився — повторіть дію');
+      }
+      if (chargesStandaloneOnSend) {
+        await this.settlements.createTransaction(
+          orgId,
+          {
+            counterpartyId: inv.counterpartyId,
+            type: 'CHARGE',
+            amount: Number(inv.amount),
+            documentType: 'Invoice',
+            documentId: id,
+            createdBy: userId,
+          },
+          tx,
+        );
+      }
+    });
     return this.findOne(orgId, id);
   }
 

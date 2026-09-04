@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { throwIfExclusionConflict } from '../../common/utils/prisma-errors';
 import {
   CreateCalendarSlotDto,
   UpdateCalendarSlotDto,
@@ -247,93 +248,109 @@ export class CalendarService {
 
     // SLOT_INCLUDE hoisted to module-level (sto-optimize cycle 3/3).
 
-    const slots = await this.prisma.$transaction(
-      async tx => {
-        // Conflict check for slot1 interval (+ slot2 interval if split) — all in parallel.
-        const [conflict1, empConflict1, conflict2, empConflict2] = await Promise.all([
-          dto.liftId
-            ? tx.calendarSlot.findFirst({
-                where: {
-                  orgId,
-                  liftId: dto.liftId,
-                  deletedAt: null,
-                  OR: [{ startAt: { lt: slot1End }, endAt: { gt: startAt } }],
-                },
-                select: { id: true },
-              })
-            : Promise.resolve(null),
-          dto.employeeId
-            ? tx.calendarSlot.findFirst({
-                where: {
-                  orgId,
-                  employeeId: dto.employeeId,
-                  deletedAt: null,
-                  OR: [{ startAt: { lt: slot1End }, endAt: { gt: startAt } }],
-                },
-                select: { id: true },
-              })
-            : Promise.resolve(null),
-          isSplit && dto.liftId
-            ? tx.calendarSlot.findFirst({
-                where: {
-                  orgId,
-                  liftId: dto.liftId,
-                  deletedAt: null,
-                  OR: [{ startAt: { lt: slot2End! }, endAt: { gt: slot2Start! } }],
-                },
-                select: { id: true },
-              })
-            : Promise.resolve(null),
-          isSplit && dto.employeeId
-            ? tx.calendarSlot.findFirst({
-                where: {
-                  orgId,
-                  employeeId: dto.employeeId,
-                  deletedAt: null,
-                  OR: [{ startAt: { lt: slot2End! }, endAt: { gt: slot2Start! } }],
-                },
-                select: { id: true },
-              })
-            : Promise.resolve(null),
-        ]);
-        if (dto.liftId && conflict1)
-          throw new BadRequestException('Підйомник вже зайнятий на цей час');
-        if (dto.employeeId && empConflict1)
-          throw new BadRequestException('Співробітник вже зайнятий на цей час');
-        if (dto.liftId && conflict2)
-          throw new BadRequestException('Підйомник вже зайнятий на наступний день');
-        if (dto.employeeId && empConflict2)
-          throw new BadRequestException('Співробітник вже зайнятий на наступний день');
+    let slots;
+    try {
+      slots = await this.prisma.$transaction(
+        async tx => {
+          // Conflict check for slot1 interval (+ slot2 interval if split) — all in parallel.
+          const [conflict1, empConflict1, conflict2, empConflict2] = await Promise.all([
+            dto.liftId
+              ? tx.calendarSlot.findFirst({
+                  where: {
+                    orgId,
+                    liftId: dto.liftId,
+                    deletedAt: null,
+                    OR: [{ startAt: { lt: slot1End }, endAt: { gt: startAt } }],
+                  },
+                  select: { id: true },
+                })
+              : Promise.resolve(null),
+            dto.employeeId
+              ? tx.calendarSlot.findFirst({
+                  where: {
+                    orgId,
+                    employeeId: dto.employeeId,
+                    deletedAt: null,
+                    OR: [{ startAt: { lt: slot1End }, endAt: { gt: startAt } }],
+                  },
+                  select: { id: true },
+                })
+              : Promise.resolve(null),
+            isSplit && dto.liftId
+              ? tx.calendarSlot.findFirst({
+                  where: {
+                    orgId,
+                    liftId: dto.liftId,
+                    deletedAt: null,
+                    OR: [{ startAt: { lt: slot2End! }, endAt: { gt: slot2Start! } }],
+                  },
+                  select: { id: true },
+                })
+              : Promise.resolve(null),
+            isSplit && dto.employeeId
+              ? tx.calendarSlot.findFirst({
+                  where: {
+                    orgId,
+                    employeeId: dto.employeeId,
+                    deletedAt: null,
+                    OR: [{ startAt: { lt: slot2End! }, endAt: { gt: slot2Start! } }],
+                  },
+                  select: { id: true },
+                })
+              : Promise.resolve(null),
+          ]);
+          if (dto.liftId && conflict1)
+            throw new BadRequestException('Підйомник вже зайнятий на цей час');
+          if (dto.employeeId && empConflict1)
+            throw new BadRequestException('Співробітник вже зайнятий на цей час');
+          if (dto.liftId && conflict2)
+            throw new BadRequestException('Підйомник вже зайнятий на наступний день');
+          if (dto.employeeId && empConflict2)
+            throw new BadRequestException('Співробітник вже зайнятий на наступний день');
 
-        const slotData = {
-          orgId,
-          liftId: dto.liftId ?? null,
-          employeeId: dto.employeeId ?? null,
-          workOrderId: dto.workOrderId ?? null,
-          counterpartyId: dto.counterpartyId ?? null,
-          vehicleId: dto.vehicleId ?? null,
-          notes: dto.notes ?? null,
-          status: dto.status ?? CalendarSlotStatus.BOOKED,
-          type: dto.type ?? CalendarSlotType.WORK,
-        };
+          const slotData = {
+            orgId,
+            liftId: dto.liftId ?? null,
+            employeeId: dto.employeeId ?? null,
+            workOrderId: dto.workOrderId ?? null,
+            counterpartyId: dto.counterpartyId ?? null,
+            vehicleId: dto.vehicleId ?? null,
+            notes: dto.notes ?? null,
+            status: dto.status ?? CalendarSlotStatus.BOOKED,
+            type: dto.type ?? CalendarSlotType.WORK,
+          };
 
-        const created1 = await tx.calendarSlot.create({
-          data: { ...slotData, startAt, endAt: slot1End },
-          include: SLOT_INCLUDE,
-        });
+          const created1 = await tx.calendarSlot.create({
+            data: { ...slotData, startAt, endAt: slot1End },
+            include: SLOT_INCLUDE,
+          });
 
-        if (!isSplit) return [created1];
+          if (!isSplit) return [created1];
 
-        const created2 = await tx.calendarSlot.create({
-          data: { ...slotData, startAt: slot2Start!, endAt: slot2End!, parentSlotId: created1.id },
-          include: SLOT_INCLUDE,
-        });
+          const created2 = await tx.calendarSlot.create({
+            data: {
+              ...slotData,
+              startAt: slot2Start!,
+              endAt: slot2End!,
+              parentSlotId: created1.id,
+            },
+            include: SLOT_INCLUDE,
+          });
 
-        return [created1, created2];
-        // Explicit 5s timeout: 2 conflict checks + 1-2 creates — well below Prisma default 30s.
-      },
-      { timeout: TRANSACTION_TIMEOUT_MS },
-    );
+          return [created1, created2];
+          // Explicit 5s timeout: 2 conflict checks + 1-2 creates — well below Prisma default 30s.
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      );
+    } catch (err) {
+      // CAL-C1 backstop: DB EXCLUDE-constraint зловив пересічний слот, який обійшов app-probe
+      // (concurrent booking). Конвертуємо у 409 UA замість generic 500.
+      throwIfExclusionConflict(
+        err,
+        'calendar_slots_no_overlap',
+        'Підйомник уже зайнятий на цей час (паралельне бронювання)',
+      );
+    }
 
     return { slots: slots.map(s => this.toDto(s)) };
   }
@@ -408,76 +425,85 @@ export class CalendarService {
 
     const employeeId = dto.employeeId !== undefined ? dto.employeeId : existing.employeeId;
 
-    const updated = await this.prisma.$transaction(
-      async tx => {
-        // Lift- + employee-conflict checks незалежні — паралелимо.
-        // Narrow projection (select id) — потрібен лише факт існування.
-        const [conflict, empConflict] = await Promise.all([
-          liftId
-            ? tx.calendarSlot.findFirst({
-                where: {
-                  orgId,
-                  liftId,
-                  deletedAt: null,
-                  NOT: { id },
-                  OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
-                },
-                select: { id: true },
-              })
-            : Promise.resolve(null),
-          employeeId
-            ? tx.calendarSlot.findFirst({
-                where: {
-                  orgId,
-                  employeeId,
-                  deletedAt: null,
-                  NOT: { id },
-                  OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
-                },
-                select: { id: true },
-              })
-            : Promise.resolve(null),
-        ]);
-        if (liftId && conflict) {
-          throw new BadRequestException('Підйомник вже зайнятий на цей час');
-        }
-        if (employeeId && empConflict) {
-          throw new BadRequestException('Співробітник вже зайнятий на цей час');
-        }
+    let updated;
+    try {
+      updated = await this.prisma.$transaction(
+        async tx => {
+          // Lift- + employee-conflict checks незалежні — паралелимо.
+          // Narrow projection (select id) — потрібен лише факт існування.
+          const [conflict, empConflict] = await Promise.all([
+            liftId
+              ? tx.calendarSlot.findFirst({
+                  where: {
+                    orgId,
+                    liftId,
+                    deletedAt: null,
+                    NOT: { id },
+                    OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
+                  },
+                  select: { id: true },
+                })
+              : Promise.resolve(null),
+            employeeId
+              ? tx.calendarSlot.findFirst({
+                  where: {
+                    orgId,
+                    employeeId,
+                    deletedAt: null,
+                    NOT: { id },
+                    OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
+                  },
+                  select: { id: true },
+                })
+              : Promise.resolve(null),
+          ]);
+          if (liftId && conflict) {
+            throw new BadRequestException('Підйомник вже зайнятий на цей час');
+          }
+          if (employeeId && empConflict) {
+            throw new BadRequestException('Співробітник вже зайнятий на цей час');
+          }
 
-        return tx.calendarSlot.update({
-          where: { id, orgId },
-          data: {
-            ...(dto.liftId !== undefined && { liftId: dto.liftId }),
-            ...(dto.employeeId !== undefined && { employeeId: dto.employeeId }),
-            ...(dto.workOrderId !== undefined && { workOrderId: dto.workOrderId }),
-            ...(dto.counterpartyId !== undefined && { counterpartyId: dto.counterpartyId }),
-            ...(dto.vehicleId !== undefined && { vehicleId: dto.vehicleId }),
-            startAt,
-            endAt,
-            ...(dto.notes !== undefined && { notes: dto.notes }),
-          },
-          include: {
-            counterparty: {
-              select: { firstName: true, lastName: true, companyName: true, phone: true },
+          return tx.calendarSlot.update({
+            where: { id, orgId },
+            data: {
+              ...(dto.liftId !== undefined && { liftId: dto.liftId }),
+              ...(dto.employeeId !== undefined && { employeeId: dto.employeeId }),
+              ...(dto.workOrderId !== undefined && { workOrderId: dto.workOrderId }),
+              ...(dto.counterpartyId !== undefined && { counterpartyId: dto.counterpartyId }),
+              ...(dto.vehicleId !== undefined && { vehicleId: dto.vehicleId }),
+              startAt,
+              endAt,
+              ...(dto.notes !== undefined && { notes: dto.notes }),
             },
-            vehicle: { select: { make: true, model: true, licensePlate: true } },
-            workOrder: {
-              select: {
-                number: true,
-                status: true,
-                counterpartyId: true,
-                counterparty: {
-                  select: { firstName: true, lastName: true, companyName: true, phone: true },
+            include: {
+              counterparty: {
+                select: { firstName: true, lastName: true, companyName: true, phone: true },
+              },
+              vehicle: { select: { make: true, model: true, licensePlate: true } },
+              workOrder: {
+                select: {
+                  number: true,
+                  status: true,
+                  counterpartyId: true,
+                  counterparty: {
+                    select: { firstName: true, lastName: true, companyName: true, phone: true },
+                  },
+                  vehicle: { select: { make: true, model: true, licensePlate: true } },
                 },
-                vehicle: { select: { make: true, model: true, licensePlate: true } },
               },
             },
-          },
-        });
-      },
-      { timeout: TRANSACTION_TIMEOUT_MS },
-    );
+          });
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      );
+    } catch (err) {
+      throwIfExclusionConflict(
+        err,
+        'calendar_slots_no_overlap',
+        'Підйомник уже зайнятий на цей час (паралельне бронювання)',
+      );
+    }
 
     return this.toDto(updated);
   }

@@ -91,6 +91,33 @@ export class PaymentsService {
 
     const payment = await this.prisma.$transaction(
       async tx => {
+        // FIN-C1: ідемпотентність оплати. Перевірку статусу інвойсу й перехід SENT→PAID робимо
+        // ПЕРШИМИ і через compare-and-swap (updateMany з status:'SENT' у where). Два concurrent
+        // create бачать SENT на stale-read, але лише ОДИН updateMany змінить count=1 — другий
+        // отримає count=0 → throw → rollback (без другого Payment/PAYMENT-settlement/чека).
+        if (dto.invoiceId) {
+          const inv = await tx.invoice.findFirst({
+            where: { id: dto.invoiceId, orgId, deletedAt: null },
+            select: { status: true, workOrderId: true },
+          });
+          if (inv) {
+            if (inv.status !== 'SENT')
+              throw new BadRequestException(`Рахунок у статусі "${inv.status}" — оплата неможлива`);
+            // Cross-reference guard: рахунок має належати вказаному наряду.
+            if (dto.workOrderId && inv.workOrderId && inv.workOrderId !== dto.workOrderId) {
+              throw new BadRequestException('Рахунок не належить до вказаного наряду');
+            }
+            // CAS: атомарний перехід SENT→PAID. count=0 → інший конкурентний платіж уже провів.
+            const paid = await tx.invoice.updateMany({
+              where: { id: dto.invoiceId, orgId, status: 'SENT', deletedAt: null },
+              data: { status: 'PAID' },
+            });
+            if (paid.count === 0) {
+              throw new BadRequestException('Рахунок уже оплачено (паралельна операція)');
+            }
+          }
+        }
+
         const created = await tx.payment.create({
           data: {
             orgId,
@@ -118,26 +145,6 @@ export class PaymentsService {
           },
           tx,
         );
-
-        if (dto.invoiceId) {
-          // sto-optimize: only status + workOrderId guards consulted; full row not needed.
-          const inv = await tx.invoice.findFirst({
-            where: { id: dto.invoiceId, orgId, deletedAt: null },
-            select: { status: true, workOrderId: true },
-          });
-          if (inv) {
-            if (inv.status !== 'SENT')
-              throw new BadRequestException(`Рахунок у статусі "${inv.status}" — оплата неможлива`);
-            // Guard against cross-reference: invoice must belong to the same work order
-            if (dto.workOrderId && inv.workOrderId && inv.workOrderId !== dto.workOrderId) {
-              throw new BadRequestException('Рахунок не належить до вказаного наряду');
-            }
-            await tx.invoice.update({
-              where: { id: dto.invoiceId, orgId },
-              data: { status: 'PAID' },
-            });
-          }
-        }
 
         if (dto.workOrderId) {
           await tx.workOrder.update({

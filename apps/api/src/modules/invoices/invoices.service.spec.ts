@@ -5,6 +5,7 @@ import { InvoicesService } from './invoices.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
+import { SettlementsService } from '../settlements/settlements.service';
 
 /**
  * Bug #413: Service-level spec для guards що додані review-фіксами #403, #406, #407, #412.
@@ -17,6 +18,7 @@ describe('InvoicesService — business logic guards', () => {
       findFirst: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
     };
     invoiceLine: {
       deleteMany: ReturnType<typeof vi.fn>;
@@ -28,6 +30,7 @@ describe('InvoicesService — business logic guards', () => {
   };
   let docNumbers: { next: ReturnType<typeof vi.fn> };
   let pdf: { generateInvoicePdf: ReturnType<typeof vi.fn> };
+  let settlementsMock: { createTransaction: ReturnType<typeof vi.fn> };
 
   const ORG = 'org-1';
   const WO_ID = '11111111-1111-4111-8111-111111111111';
@@ -35,7 +38,7 @@ describe('InvoicesService — business logic guards', () => {
 
   beforeEach(async () => {
     prisma = {
-      invoice: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+      invoice: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
       invoiceLine: { deleteMany: vi.fn(), createMany: vi.fn() },
       workOrder: { findFirst: vi.fn() },
       counterparty: { findFirst: vi.fn() },
@@ -46,6 +49,7 @@ describe('InvoicesService — business logic guards', () => {
     };
     docNumbers = { next: vi.fn().mockResolvedValue('INV-2026-0001') };
     pdf = { generateInvoicePdf: vi.fn() };
+    settlementsMock = { createTransaction: vi.fn() };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -53,6 +57,7 @@ describe('InvoicesService — business logic guards', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DocumentNumberService, useValue: docNumbers },
         { provide: PdfService, useValue: pdf },
+        { provide: SettlementsService, useValue: settlementsMock },
       ],
     }).compile();
     service = module.get(InvoicesService);
@@ -412,6 +417,84 @@ describe('InvoicesService — business logic guards', () => {
           }),
         }),
       );
+    });
+  });
+
+  // FIN-C2: standalone-рахунок (workOrderId=null) при DRAFT→SENT створює CHARGE; WO-рахунок — ні
+  // (там CHARGE вже при COMPLETED наряду). CAS-перехід (updateMany status:DRAFT) проти дублю.
+  describe('transition — FIN-C2 CHARGE для standalone на DRAFT→SENT', () => {
+    const CP_ID = '33333333-3333-4333-8333-333333333333';
+    // findOne (в кінці transition) робить власний findFirst з include — даємо мінімальний валідний.
+    const findOneRow = {
+      id: INV_ID,
+      orgId: ORG,
+      number: 'INV-1',
+      status: 'SENT',
+      amount: 500,
+      workOrderId: null,
+      counterpartyId: CP_ID,
+      documentDate: new Date('2026-01-01'),
+      dueDate: null,
+      deletedAt: null,
+      totalWithoutVat: 0,
+      totalVat: 0,
+      totalWithVat: 500,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      counterparty: { firstName: null, lastName: null, companyName: 'ТОВ' },
+      workOrder: null,
+      lines: [],
+    };
+
+    it('standalone DRAFT→SENT → createTransaction(CHARGE) з сумою рахунку', async () => {
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'DRAFT',
+          workOrderId: null,
+          counterpartyId: CP_ID,
+          amount: 500,
+        })
+        .mockResolvedValue(findOneRow); // findOne
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+      await service.transition(ORG, INV_ID, 'SENT' as never, 'user-1');
+      expect(settlementsMock.createTransaction).toHaveBeenCalledWith(
+        ORG,
+        expect.objectContaining({
+          counterpartyId: CP_ID,
+          type: 'CHARGE',
+          amount: 500,
+          documentType: 'Invoice',
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('WO-рахунок DRAFT→SENT → CHARGE НЕ створюється (уникнення подвійного боргу)', async () => {
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'DRAFT',
+          workOrderId: WO_ID,
+          counterpartyId: CP_ID,
+          amount: 500,
+        })
+        .mockResolvedValue({ ...findOneRow, workOrderId: WO_ID });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+      await service.transition(ORG, INV_ID, 'SENT' as never, 'user-1');
+      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
+    });
+
+    it('CAS: updateMany count=0 (статус змінився паралельно) → throw, CHARGE не створюється', async () => {
+      prisma.invoice.findFirst.mockResolvedValueOnce({
+        status: 'DRAFT',
+        workOrderId: null,
+        counterpartyId: CP_ID,
+        amount: 500,
+      });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.transition(ORG, INV_ID, 'SENT' as never, 'user-1')).rejects.toThrow(
+        /змінився/,
+      );
+      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
     });
   });
 });
