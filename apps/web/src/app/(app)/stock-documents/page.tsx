@@ -3,7 +3,7 @@
 import { Suspense, useState, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { useStockDocuments, stockDocsKeys } from '@/hooks/api/useStockDocuments';
+import { useStockDocuments } from '@/hooks/api/useStockDocuments';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Plus, FileText, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
