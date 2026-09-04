@@ -441,6 +441,7 @@ export function ReportBuilder() {
         <button
           type="button"
           onClick={() => setConfigCollapsed(false)}
+          aria-expanded={false}
           className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-surface px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
           title="Розгорнути налаштування звіту"
         >
