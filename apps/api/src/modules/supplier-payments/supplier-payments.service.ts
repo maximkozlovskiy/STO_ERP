@@ -889,4 +889,99 @@ export class SupplierPaymentsService {
       deletedAt: sp.deletedAt instanceof Date ? sp.deletedAt.toISOString() : (sp.deletedAt ?? null),
     };
   }
+
+  // ─── Linked Documents ──────────────────────────────────
+
+  async getLinkedDocuments(orgId: string, spId: string) {
+    // Preload щоб дістати FK (purchaseOrderId/supplierId/bankAccountId/cashRegisterId).
+    // Не знайдено / чужий orgId → порожні секції без throw (дзеркало WorkOrdersService).
+    const sp = await this.prisma.supplierPayment.findFirst({
+      where: { id: spId, orgId, deletedAt: null },
+      select: {
+        purchaseOrderId: true,
+        supplierId: true,
+        bankAccountId: true,
+        cashRegisterId: true,
+      },
+    });
+    if (!sp) {
+      return { purchaseOrder: [], counterparty: [], account: [] };
+    }
+
+    const [purchaseOrder, counterparty, bankAccount, cashRegister] = await Promise.all([
+      sp.purchaseOrderId
+        ? this.prisma.purchaseOrder.findFirst({
+            where: { id: sp.purchaseOrderId, orgId, deletedAt: null },
+            select: { id: true, number: true, status: true, totalAmount: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.counterparty.findFirst({
+        where: { id: sp.supplierId, orgId, deletedAt: null },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          companyName: true,
+          phone: true,
+        },
+      }),
+      sp.bankAccountId
+        ? this.prisma.bankAccount.findFirst({
+            where: { id: sp.bankAccountId, orgId, deletedAt: null },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve(null),
+      sp.cashRegisterId
+        ? this.prisma.cashRegister.findFirst({
+            where: { id: sp.cashRegisterId, orgId, deletedAt: null },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    // §13 API Contract: Prisma Decimal → number у DTO.
+    const account = bankAccount
+      ? [{ id: bankAccount.id, name: bankAccount.name, kind: 'bank' as const }]
+      : cashRegister
+        ? [{ id: cashRegister.id, name: cashRegister.name, kind: 'cash' as const }]
+        : [];
+
+    return {
+      purchaseOrder: purchaseOrder
+        ? [{ ...purchaseOrder, totalAmount: Number(purchaseOrder.totalAmount) }]
+        : [],
+      counterparty: counterparty ? [counterparty] : [],
+      account,
+    };
+  }
+
+  async getLinkedCounts(orgId: string, ids: string[]) {
+    if (!ids.length) return {};
+
+    // supplier завжди присутній (NOT NULL), account присутній якщо bank або cash заданий.
+    const payments = await this.prisma.supplierPayment.findMany({
+      where: { id: { in: ids }, orgId, deletedAt: null },
+      select: {
+        id: true,
+        purchaseOrderId: true,
+        supplierId: true,
+        bankAccountId: true,
+        cashRegisterId: true,
+      },
+    });
+
+    const result: Record<string, { purchaseOrder: number; counterparty: number; account: number }> =
+      {};
+    for (const id of ids) {
+      result[id] = { purchaseOrder: 0, counterparty: 0, account: 0 };
+    }
+    payments.forEach(sp => {
+      const bucket = result[sp.id];
+      if (!bucket) return;
+      bucket.purchaseOrder = sp.purchaseOrderId ? 1 : 0;
+      bucket.counterparty = sp.supplierId ? 1 : 0;
+      bucket.account = sp.bankAccountId || sp.cashRegisterId ? 1 : 0;
+    });
+    return result;
+  }
 }

@@ -25,6 +25,7 @@ import {
   SupplierPaymentQueryDto,
   SupplierPaymentScheduleQueryDto,
   SupplierPaymentScheduleDocumentsQueryDto,
+  LinkedCountsDto,
 } from './supplier-payments.dto';
 import { BadRequestException } from '@nestjs/common';
 
@@ -111,6 +112,24 @@ export class SupplierPaymentsController {
   @ApiOperation({ summary: 'Скасувати оплату' })
   cancel(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.cancel(orgId, id);
+  }
+
+  // ─── Linked Documents ─────────────────────────────────
+  // Специфічні маршрути ПЕРЕД @Get(':id') — Fastify route ordering
+
+  @Get(':id/linked-documents')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: "Пов'язані документи оплати (замовлення, контрагент, рахунок)" })
+  getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getLinkedDocuments(orgId, id);
+  }
+
+  @Post('linked-counts')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Кількість пов'язаних документів для списку оплат (batch)" })
+  getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
+    return this.service.getLinkedCounts(orgId, dto.ids);
   }
 
   @Get(':id')

@@ -1,8 +1,13 @@
-import { BadRequestException } from '@nestjs/common';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import { Test } from '@nestjs/testing';
+import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { SupplierPaymentsController } from './supplier-payments.controller';
+import { SupplierPaymentsService } from './supplier-payments.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import {
   SupplierPaymentScheduleDocumentsQueryDto,
   SupplierPaymentScheduleQueryDto,
@@ -99,5 +104,162 @@ describe('SupplierPaymentsController — schedule/documents contract', () => {
   it('ні date, ні target → BadRequestException', () => {
     expect(() => controller.getScheduleDocuments(ORG, q({}))).toThrow(BadRequestException);
     expect(service.getScheduleDocuments).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Linked documents (Phase B backend) — full HTTP contract ─────────────
+const linkedServiceMock = {
+  create: vi.fn(),
+  findAll: vi.fn(),
+  getSchedule: vi.fn(),
+  getScheduleDocuments: vi.fn(),
+  confirm: vi.fn(),
+  cancel: vi.fn(),
+  findOne: vi.fn(),
+  update: vi.fn(),
+  remove: vi.fn(),
+  getLinkedDocuments: vi.fn(),
+  getLinkedCounts: vi.fn(),
+};
+
+let jwtAllow = true;
+const mockJwtGuard = {
+  canActivate: vi.fn().mockImplementation(ctx => {
+    if (!jwtAllow) return false;
+    const req = ctx.switchToHttp().getRequest();
+    req.user = { id: 'emp-1', orgId: 'org-1', role: 'ACCOUNTANT' };
+    return true;
+  }),
+};
+const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
+
+describe('SupplierPayments — linked-documents HTTP Contract', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      controllers: [SupplierPaymentsController],
+      providers: [{ provide: SupplierPaymentsService, useValue: linkedServiceMock }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
+      .compile();
+
+    app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
+    );
+    await app.init();
+    await (app as NestFastifyApplication).getHttpAdapter().getInstance().ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    jwtAllow = true;
+    vi.clearAllMocks();
+  });
+
+  const VALID_UUID = '11111111-1111-4111-8111-111111111111';
+
+  describe('GET /supplier-payments/:id/linked-documents', () => {
+    it('повертає 200 і делегує (orgId, id)', async () => {
+      linkedServiceMock.getLinkedDocuments.mockResolvedValueOnce({
+        purchaseOrder: [],
+        counterparty: [],
+        account: [],
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/supplier-payments/${VALID_UUID}/linked-documents`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(linkedServiceMock.getLinkedDocuments).toHaveBeenCalledWith('org-1', VALID_UUID);
+    });
+
+    it('повертає 400 для не-UUID id', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/supplier-payments/not-uuid/linked-documents',
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    // Route ordering: :id/linked-documents НЕ має бути перехоплений @Get(':id').
+    it('route ordering: linked-documents не ловиться :id (findOne НЕ викликаний)', async () => {
+      linkedServiceMock.getLinkedDocuments.mockResolvedValueOnce({
+        purchaseOrder: [],
+        counterparty: [],
+        account: [],
+      });
+      await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/supplier-payments/${VALID_UUID}/linked-documents`,
+      });
+      expect(linkedServiceMock.getLinkedDocuments).toHaveBeenCalledTimes(1);
+      expect(linkedServiceMock.findOne).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /supplier-payments/linked-counts', () => {
+    it('повертає 200 і делегує (orgId, ids)', async () => {
+      linkedServiceMock.getLinkedCounts.mockResolvedValueOnce({});
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/supplier-payments/linked-counts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ids: [VALID_UUID] }),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(linkedServiceMock.getLinkedCounts).toHaveBeenCalledWith('org-1', [VALID_UUID]);
+    });
+
+    it('повертає 400 для порожнього масиву (ArrayMinSize)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/supplier-payments/linked-counts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ids: [] }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 для 501 id (ArrayMaxSize)', async () => {
+      const ids = Array.from({ length: 501 }, () => VALID_UUID);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/supplier-payments/linked-counts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ids }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 для non-UUID елемента', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/supplier-payments/linked-counts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ids: ['not-a-uuid'] }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    // Route ordering: POST /linked-counts не має вимагати UUID :id.
+    it('route ordering: linked-counts не ловиться POST :id', async () => {
+      linkedServiceMock.getLinkedCounts.mockResolvedValueOnce({});
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/supplier-payments/linked-counts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ids: [VALID_UUID] }),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(linkedServiceMock.getLinkedCounts).toHaveBeenCalledTimes(1);
+    });
   });
 });

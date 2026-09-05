@@ -22,6 +22,8 @@ const serviceMock = {
   transition: vi.fn(),
   receive: vi.fn(),
   applyPricing: vi.fn(),
+  getLinkedDocuments: vi.fn(),
+  getLinkedCounts: vi.fn(),
 };
 
 let jwtAllow = true;
@@ -485,6 +487,102 @@ describe('PurchaseOrders — HTTP Contract', () => {
         payload: { status: 'ORDERED' },
       });
       expect(res.statusCode).toBe(404);
+    });
+  });
+
+  // ─── Linked documents (Phase B backend) ────────────────────
+  describe('GET /purchase-orders/:id/linked-documents', () => {
+    it('повертає 200 і делегує (orgId, id)', async () => {
+      serviceMock.getLinkedDocuments.mockResolvedValueOnce({
+        supplierPayments: [],
+        counterparty: [],
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/purchase-orders/${VALID_UUID}/linked-documents`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.getLinkedDocuments).toHaveBeenCalledWith('org-1', VALID_UUID);
+    });
+
+    it('повертає 400 для не-UUID id', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/purchase-orders/not-uuid/linked-documents',
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    // Route ordering: :id/linked-documents НЕ має бути перехоплений @Get(':id').
+    it('route ordering: linked-documents не ловиться :id (findOne НЕ викликаний)', async () => {
+      serviceMock.getLinkedDocuments.mockResolvedValueOnce({
+        supplierPayments: [],
+        counterparty: [],
+      });
+      await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/purchase-orders/${VALID_UUID}/linked-documents`,
+      });
+      expect(serviceMock.getLinkedDocuments).toHaveBeenCalledTimes(1);
+      expect(serviceMock.findOne).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /purchase-orders/linked-counts', () => {
+    it('повертає 200 і делегує (orgId, ids)', async () => {
+      serviceMock.getLinkedCounts.mockResolvedValueOnce({});
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/purchase-orders/linked-counts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ids: [VALID_UUID] }),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.getLinkedCounts).toHaveBeenCalledWith('org-1', [VALID_UUID]);
+    });
+
+    it('повертає 400 для порожнього масиву (ArrayMinSize)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/purchase-orders/linked-counts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ids: [] }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 для 501 id (ArrayMaxSize)', async () => {
+      const ids = Array.from({ length: 501 }, () => VALID_UUID);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/purchase-orders/linked-counts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ids }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('повертає 400 для non-UUID елемента', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/purchase-orders/linked-counts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ids: ['not-a-uuid'] }),
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    // Route ordering: POST /linked-counts не має вимагати UUID :id.
+    it('route ordering: linked-counts не ловиться POST :id', async () => {
+      serviceMock.getLinkedCounts.mockResolvedValueOnce({});
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/purchase-orders/linked-counts',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ ids: [VALID_UUID] }),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.getLinkedCounts).toHaveBeenCalledTimes(1);
     });
   });
 });

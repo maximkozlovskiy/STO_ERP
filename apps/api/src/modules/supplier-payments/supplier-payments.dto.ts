@@ -10,6 +10,9 @@ import {
   IsNumberString,
   IsIn,
   Matches,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -310,4 +313,15 @@ export class SupplierPaymentScheduleDocumentDto {
   outstanding!: number;
   @ApiProperty({ description: 'Сума боргу, «налита» на цей PO (після кредит-ліміту)' })
   allocated!: number;
+}
+
+// ─── Linked documents (batch counts) ────────────────────────
+// §2.3 Input validation: обмежуємо batch до page-size+запас, відкидаємо non-UUID.
+export class LinkedCountsDto {
+  @ApiProperty({ type: [String], description: 'UUID документів (макс. 500)' })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  ids!: string[];
 }

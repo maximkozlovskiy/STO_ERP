@@ -917,4 +917,83 @@ export class PurchaseOrdersService {
       updatedAt: po.updatedAt instanceof Date ? po.updatedAt.toISOString() : po.updatedAt,
     };
   }
+
+  // ─── Linked Documents ──────────────────────────────────
+
+  async getLinkedDocuments(orgId: string, poId: string) {
+    // Preload щоб дістати supplierId (для секції counterparty). Не знайдено /
+    // чужий orgId → порожні секції без throw (дзеркало WorkOrdersService).
+    const po = await this.prisma.purchaseOrder.findFirst({
+      where: { id: poId, orgId, deletedAt: null },
+      select: { supplierId: true },
+    });
+    if (!po) {
+      return { supplierPayments: [], counterparty: [] };
+    }
+
+    // §3.2/§7.1: take: N — захист від OOM при патологічних обсягах.
+    const TAKE = 500;
+    const [supplierPayments, counterparty] = await Promise.all([
+      this.prisma.supplierPayment.findMany({
+        where: { purchaseOrderId: poId, orgId, deletedAt: null },
+        select: {
+          id: true,
+          number: true,
+          amount: true,
+          method: true,
+          status: true,
+          documentDate: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: TAKE,
+      }),
+      this.prisma.counterparty.findFirst({
+        where: { id: po.supplierId, orgId, deletedAt: null },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          companyName: true,
+          phone: true,
+        },
+      }),
+    ]);
+
+    // §13 API Contract: Prisma Decimal → number у DTO.
+    return {
+      supplierPayments: supplierPayments.map(sp => ({ ...sp, amount: Number(sp.amount) })),
+      counterparty: counterparty ? [counterparty] : [],
+    };
+  }
+
+  async getLinkedCounts(orgId: string, ids: string[]) {
+    if (!ids.length) return {};
+
+    const [supplierPayments, orders] = await Promise.all([
+      this.prisma.supplierPayment.groupBy({
+        by: ['purchaseOrderId'],
+        where: { purchaseOrderId: { in: ids }, orgId, deletedAt: null },
+        _count: { id: true },
+      }),
+      // supplier присутність: 1 findMany на всі id (PO завжди має supplierId → 1).
+      this.prisma.purchaseOrder.findMany({
+        where: { id: { in: ids }, orgId, deletedAt: null },
+        select: { id: true, supplierId: true },
+      }),
+    ]);
+
+    const result: Record<string, { supplierPayments: number; counterparty: number }> = {};
+    for (const id of ids) {
+      result[id] = { supplierPayments: 0, counterparty: 0 };
+    }
+    supplierPayments.forEach(r => {
+      if (r.purchaseOrderId && result[r.purchaseOrderId]) {
+        result[r.purchaseOrderId].supplierPayments = r._count.id;
+      }
+    });
+    orders.forEach(po => {
+      if (result[po.id]) result[po.id].counterparty = po.supplierId ? 1 : 0;
+    });
+    return result;
+  }
 }

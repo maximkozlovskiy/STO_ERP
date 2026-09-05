@@ -962,4 +962,88 @@ export class InvoicesService {
       createdAt: l.createdAt instanceof Date ? l.createdAt.toISOString() : l.createdAt,
     };
   }
+
+  // ─── Linked Documents ──────────────────────────────────
+
+  async getLinkedDocuments(orgId: string, invoiceId: string) {
+    // Один preload щоб дістати workOrderId/counterpartyId (потрібні для двох з трьох
+    // секцій). Якщо рахунку немає (або чужий orgId) — повертаємо порожні секції без throw
+    // (дзеркало WorkOrdersService.getLinkedDocuments — семантика "нема зв'язків").
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, orgId, deletedAt: null },
+      select: { workOrderId: true, counterpartyId: true },
+    });
+    if (!invoice) {
+      return { workOrder: [], payments: [], counterparty: [] };
+    }
+
+    // §3.2/§7.1: take: N — захист від OOM при патологічних обсягах (десятки часткових оплат).
+    const TAKE = 500;
+    const [workOrder, payments, counterparty] = await Promise.all([
+      invoice.workOrderId
+        ? this.prisma.workOrder.findFirst({
+            where: { id: invoice.workOrderId, orgId, deletedAt: null },
+            select: { id: true, number: true, status: true },
+          })
+        : Promise.resolve(null),
+      // Payment — append-only модель без deletedAt (schema.prisma: model Payment).
+      this.prisma.payment.findMany({
+        where: { invoiceId, orgId },
+        select: { id: true, amount: true, method: true, createdAt: true, notes: true },
+        orderBy: { createdAt: 'desc' },
+        take: TAKE,
+      }),
+      this.prisma.counterparty.findFirst({
+        where: { id: invoice.counterpartyId, orgId, deletedAt: null },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          companyName: true,
+          phone: true,
+        },
+      }),
+    ]);
+
+    // §13 API Contract: Prisma Decimal → number у DTO.
+    return {
+      workOrder: workOrder ? [workOrder] : [],
+      payments: payments.map(p => ({ ...p, amount: Number(p.amount) })),
+      counterparty: counterparty ? [counterparty] : [],
+    };
+  }
+
+  async getLinkedCounts(orgId: string, ids: string[]) {
+    if (!ids.length) return {};
+
+    const [invoices, payments] = await Promise.all([
+      // workOrder + counterparty присутність: 1 findMany на всі id.
+      this.prisma.invoice.findMany({
+        where: { id: { in: ids }, orgId, deletedAt: null },
+        select: { id: true, workOrderId: true, counterpartyId: true },
+      }),
+      // payments — groupBy по invoiceId (Payment без deletedAt).
+      this.prisma.payment.groupBy({
+        by: ['invoiceId'],
+        where: { invoiceId: { in: ids }, orgId },
+        _count: { id: true },
+      }),
+    ]);
+
+    const result: Record<string, { workOrder: number; payments: number; counterparty: number }> =
+      {};
+    for (const id of ids) {
+      result[id] = { workOrder: 0, payments: 0, counterparty: 0 };
+    }
+    invoices.forEach(inv => {
+      const bucket = result[inv.id];
+      if (!bucket) return;
+      bucket.workOrder = inv.workOrderId ? 1 : 0;
+      bucket.counterparty = inv.counterpartyId ? 1 : 0;
+    });
+    payments.forEach(r => {
+      if (r.invoiceId && result[r.invoiceId]) result[r.invoiceId].payments = r._count.id;
+    });
+    return result;
+  }
 }

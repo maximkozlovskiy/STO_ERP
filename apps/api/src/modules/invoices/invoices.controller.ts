@@ -29,6 +29,7 @@ import {
   CreateInvoiceLineDto,
   UpdateInvoiceLineDto,
   InvoiceQueryDto,
+  LinkedCountsDto,
 } from './invoices.dto';
 
 @ApiTags('Invoices')
@@ -54,6 +55,24 @@ export class InvoicesController {
       query.sortBy,
       query.sortDir,
     );
+  }
+
+  // ─── Linked Documents ─────────────────────────────────
+  // Специфічні маршрути ПЕРЕД @Get(':id') — Fastify route ordering
+
+  @Get(':id/linked-documents')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @ApiOperation({ summary: "Пов'язані документи рахунку (наряд, оплати, контрагент)" })
+  getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getLinkedDocuments(orgId, id);
+  }
+
+  @Post('linked-counts')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Кількість пов'язаних документів для списку рахунків (batch)" })
+  getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
+    return this.service.getLinkedCounts(orgId, dto.ids);
   }
 
   @Get(':id')

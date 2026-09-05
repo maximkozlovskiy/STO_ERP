@@ -25,6 +25,7 @@ import {
   ReceivePurchaseOrderDto,
   TransitionPurchaseOrderDto,
   PurchaseOrderQueryDto,
+  LinkedCountsDto,
 } from './purchase-orders.dto';
 
 @ApiTags('Purchase Orders')
@@ -50,6 +51,24 @@ export class PurchaseOrdersController {
       query.sortBy,
       query.sortDir,
     );
+  }
+
+  // ─── Linked Documents ─────────────────────────────────
+  // Специфічні маршрути ПЕРЕД @Get(':id') — Fastify route ordering
+
+  @Get(':id/linked-documents')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: "Пов'язані документи замовлення (оплати, контрагент)" })
+  getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getLinkedDocuments(orgId, id);
+  }
+
+  @Post('linked-counts')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Кількість пов'язаних документів для списку замовлень (batch)" })
+  getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
+    return this.service.getLinkedCounts(orgId, dto.ids);
   }
 
   @Get(':id')

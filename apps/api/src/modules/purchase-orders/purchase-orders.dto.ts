@@ -11,6 +11,7 @@ import {
   ValidateIf,
   IsEnum,
   ArrayMaxSize,
+  ArrayMinSize,
   IsDateString,
   IsBooleanString,
 } from 'class-validator';
@@ -251,4 +252,15 @@ export class PurchaseOrderQueryDto {
   @Min(1)
   @Max(200)
   limit: number = 20;
+}
+
+// ─── Linked documents (batch counts) ────────────────────────
+// §2.3 Input validation: обмежуємо batch до page-size+запас, відкидаємо non-UUID.
+export class LinkedCountsDto {
+  @ApiProperty({ type: [String], description: 'UUID документів (макс. 500)' })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  ids!: string[];
 }

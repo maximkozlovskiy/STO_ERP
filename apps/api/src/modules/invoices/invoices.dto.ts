@@ -9,6 +9,9 @@ import {
   IsDateString,
   IsEnum,
   IsBooleanString,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -213,4 +216,18 @@ export class InvoiceQueryDto {
   @Min(1)
   @Max(200)
   limit: number = 20;
+}
+
+// ─── Linked documents (batch counts) ────────────────────────
+// §2.3 Input validation: без DTO @Body() приймав довільний JSON → DoS-вектор
+// (мільйон IDs у where: { in: [...] } спричиняє важкий B-tree lookup) + потенційно
+// non-UUID значення доходили до Prisma. ArrayMaxSize обмежує batch до page-size+запас.
+
+export class LinkedCountsDto {
+  @ApiProperty({ type: [String], description: 'UUID документів (макс. 500)' })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  ids!: string[];
 }
