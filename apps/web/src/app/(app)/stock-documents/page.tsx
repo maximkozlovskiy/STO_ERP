@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useCallback, useMemo } from 'react';
+import { Suspense, useState, useCallback, useMemo, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useStockDocuments } from '@/hooks/api/useStockDocuments';
@@ -44,7 +44,7 @@ import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { invalidateStockDocumentSideEffects } from '@/lib/cache-invalidation';
-import { cn } from '@/lib/utils';
+import { cn, UUID_RE } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtDateTime, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
 
@@ -198,6 +198,20 @@ function StockDocumentsPageClient() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState<StockDoc | null>(null);
+
+  // Deep-link `?open=<docId>` — відкриває edit-modal конкретного складського документа
+  // (напр. з панелі «пов'язані документи» іншого документа). Читаємо ОДНОРАЗОВО на mount,
+  // валідуємо UUID, чистимо param щоб refresh не спамив модалку. Дзеркалить PO (Bug #596).
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (openId && UUID_RE.test(openId)) {
+      setEditingDocId(openId);
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('open');
+      router.replace(params.toString() ? `?${params.toString()}` : '?', { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Open the standalone detail Modal (FSM buttons, full table).
   // List endpoint omits `lines` (perf: -20K line rows per page) — fetch full doc

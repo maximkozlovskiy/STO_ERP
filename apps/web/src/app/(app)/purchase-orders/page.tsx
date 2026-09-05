@@ -405,10 +405,15 @@ function PurchaseOrdersPageClient() {
   // виставляємо editingPOId. Дзеркалить URL-driven pattern активної вкладки (line 134).
   useEffect(() => {
     const openId = searchParams.get('open');
-    if (openId && UUID_RE.test(openId)) {
-      setEditingPOId(openId);
+    const openReturnId = searchParams.get('openReturn');
+    if ((openId && UUID_RE.test(openId)) || (openReturnId && UUID_RE.test(openReturnId))) {
+      if (openId && UUID_RE.test(openId)) setEditingPOId(openId);
+      // openReturn=<id> — deep-link до повернення постачальнику (окремий param, бо
+      // supplier-return не має власного списку — живе на цій сторінці).
+      if (openReturnId && UUID_RE.test(openReturnId)) setSrEditId(openReturnId);
       const params = new URLSearchParams(searchParams.toString());
       params.delete('open');
+      params.delete('openReturn');
       router.replace(params.toString() ? `?${params.toString()}` : '?', { scroll: false });
     }
     // Свідомо без залежності від searchParams: ефект має спрацювати РАЗ при монтуванні

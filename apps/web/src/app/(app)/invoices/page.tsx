@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Suspense, useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Receipt, Search, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react';
@@ -58,7 +59,7 @@ import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
-import { cn } from '@/lib/utils';
+import { cn, UUID_RE } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
 
@@ -119,11 +120,13 @@ const INVOICE_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(INVOICE_COLUMNS.map(c =
 // Рахунок «активний» (термін оплати ще горить), поки не оплачений/скасований.
 const INVOICE_INACTIVE_STATUSES = new Set(['PAID', 'CANCELLED']);
 
-export default function InvoicesPage() {
+function InvoicesPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -195,6 +198,20 @@ export default function InvoicesPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+
+  // Deep-link `?open=<invoiceId>` — відкриває edit-modal конкретного рахунку (напр. з
+  // панелі «пов'язані документи» наряду). Читаємо ОДНОРАЗОВО на mount, валідуємо UUID,
+  // чистимо param щоб refresh не спамив модалку. Дзеркалить PO (Bug #596).
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (openId && UUID_RE.test(openId)) {
+      setEditingInvoiceId(openId);
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('open');
+      router.replace(params.toString() ? `?${params.toString()}` : '?', { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [showPayment, setShowPayment] = useState<InvoiceWithOptionals | null>(null);
 
   const [payMethods, setPayMethods] = useState<{ code: string; name: string }[]>([]);
@@ -960,5 +977,14 @@ export default function InvoicesPage() {
       </Modal>
       <ConfirmDialog {...dialogProps} />
     </div>
+  );
+}
+
+// Suspense-обгортка для useSearchParams (Next.js static-export вимога).
+export default function InvoicesPage() {
+  return (
+    <Suspense fallback={null}>
+      <InvoicesPageInner />
+    </Suspense>
   );
 }
