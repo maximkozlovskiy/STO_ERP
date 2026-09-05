@@ -5,6 +5,27 @@
 
 ---
 
+## 2026-09-05 — fix(review): UI-гейтинг isSystem для валют/методів оплати (аудит 635c8816)
+
+### 9af68c61 fix(review): UI-гейтинг isSystem для валют і методів оплати
+
+Аудит коміту 635c8816 (audit-round3: isSystem-захист Currency + PaymentMethodConfig).
+Бекенд + міграція + seed + 9 тестів — **повністю коректні** (backfill codes = seed,
+міграція ідемпотентна й безпечна на наявних/soft-deleted даних; guards блокують delete +
+rename/code системних, лишають NBU/isActive/requiresFiscal; resurrection зберігає
+isSystem; таблиці поза sync). **1 IMPORTANT знайдено/виправлено:**
+
+- Коміт заявляв «UI гейтить delete/edit», але frontend interfaces не містили isSystem і
+  UI нічого не гейтив: кнопка delete UAH/Готівки активна; PATCH незміненого name/code
+  системного запису → 400 (guard перевіряє `!== undefined`, не факт зміни).
+- Fix: +isSystem?:boolean у ndi/types.ts Currency + ndi|settings/shared.ts PaymentMethod;
+  CurrenciesTab+PaymentsTab (ndi) — badge, delete прихований, name(+code) disabled,
+  save не надсилає заблоковані поля для системних; toggle isActive лишається;
+  settings/PaymentsTab (dead) — дзеркалено body-omit. Дзеркалить UnitsTab.
+- tsc web/api/shared 0; API currencies+payment specs 12/12.
+
+---
+
 ## 2026-09-04 — fix(review): WEB-M13 lost-update у useDetailPanelConfig (аудит audit-wave5)
 
 ### b6277a8f fix(review): WEB-M13 lost-update у useDetailPanelConfig (value-based setState)
