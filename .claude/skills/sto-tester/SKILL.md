@@ -2904,6 +2904,10 @@ grep -rn "if (!.*\.enabled)" apps/web/src/app/**/page.tsx   # має існув�
 
 **Grep:** `grep -rn "isSystem\s*Boolean" packages/database/prisma/schema.prisma` → для кожної моделі → `service.update`: `if (existing.isSystem && dto.name !== undefined) throw`.
 **Severity:** HIGH (system seed corrupted via API).
+**Coverage-gap (2026-09-05 — split-coverage):** guard був у UnitOfMeasure/WorkCategory/GoodCategory, АЛЕ відсутній у Currency + PaymentMethodConfig — той самий клас seed-master-data без захисту. Сигнал: у `schema.prisma` є `isSystem` НЕ на всіх seed-таблицях, або seed промарковано `isSystem:true` але `service.remove/update` не читає це поле. **Grep-пара:** `grep -rn "isSystem: true" packages/database/prisma/seed.ts` (які моделі мають системні seed-рядки) звірити проти `grep -rln "existing.isSystem" apps/api/src/modules` (які service мають guard) — різниця = незахищені. **Міграція-нюанс:** нова `isSystem`-колонка потребує backfill наявних seed-рядків (`UPDATE ... SET isSystem=true WHERE code IN (...)`), інакше вже-розгорнуті БД лишаються без захисту (DEFAULT false). Live-verify: GET повертає isSystem у кожному item; DELETE/PATCH-name системного→400.
+
+**Frontend-coupling (2026-09-05 — «reject-if-present» guard тригерить false-400):** guard `if (dto.name !== undefined) throw` реджектить НАЯВНІСТЬ поля, не зміну. Frontend що PATCH-ить назад **незмінений** immutable-field системного запису (типовий edit-form який серіалізує весь стан) отримає спурінний 400. **Фікс на фронті — ОМІТити immutable-поля з PATCH-body для системного запису, не лише `disabled` input:** `body = { ...(isSystem ? {} : { name, code }), ...editableFields }`. Просто `disabled` на input недостатньо — стан форми все одно містить старе значення і потрапляє у body. Сигнал у component-тесті/live: PATCH системного з UI лише-косметичної зміни→400 попри disabled-поля. Дзеркалити omit і у dead/sibling-файлах (settings vs ndi drift).
+**Де шукати ще:** будь-яка модель з seed + `isSystem` (TaxRate, DocumentNumberConfig, NotificationTemplate, PaymentMethodConfig, Currency, UnitOfMeasure, Work/GoodCategory) → guard у service + frontend-omit у її Tab-компоненті.
 
 ---
 
