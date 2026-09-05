@@ -5,6 +5,34 @@
 
 ---
 
+## 2026-09-05 — feat: «Пов'язані документи» для всіх документів + навігація (Phases A–B)
+
+Розширення фічі «пов'язані документи» (раніше лише у Наряді) на всі документи +
+можливість переходити до пов'язаного документа. Фазами A→B→C→D.
+
+**Phase A — фундамент** (commits 5433f932-контекст, далі):
+
+- Узагальнено `LinkedDocumentsPanel` → config-driven (`config`+`entityId`); кожна
+  сутність постачає `LinkedEntityConfig {fetchPath, sections[{key,title,icon,mapRow}]}`.
+- NEW `lib/linked-nav.ts` (`useLinkedNav`): навігація routed ([id]) для WO/SP/Counterparty,
+  deep-link `?open=<id>` для модальних (invoices/PO/stock), `?openReturn=` для supplier-return.
+- NEW `lib/linked-configs.tsx`: `workOrderLinkedConfig` (дзеркало 1:1) + Phase-B конфіги.
+- **Фікс латентного 404**: клік по рахунку у панелі → `/invoices?open=<id>` замість
+  window.open на неіснуючий `/invoices/:id`.
+- Deep-link `?open=`/`?openReturn=` додано у invoices (Suspense-wrap)/stock-documents/PO.
+
+**Phase B — Invoice / PurchaseOrder / SupplierPayment** (прямі-FK, найбільша цінність):
+
+- Backend (commit 00449f17): `GET :id/linked-documents` + `POST linked-counts` у 3 модулях,
+  дзеркалить WO (orgId+deletedAt, take:500, Decimal→Number, groupBy zero-init counts,
+  route-ordering перед `:id`, `LinkedCountsDto {ids}`). Payment без deletedAt (append-only).
+  Форми: Invoice `{workOrder,payments,counterparty}`, PO `{supplierPayments,counterparty}`,
+  SP `{purchaseOrder,counterparty,account}`. Тести: invoices 47, PO 79, SP 62.
+- Frontend: конфіги (commit ffada58e) + badge-колонка «Зв'язки» у списках + вкладка/попап.
+
+**Phase C** (Counterparty реляційні вкладки) і **Phase D** (схема StockDoc/SupplierReturn
+FK) — заплановані далі.
+
 ## 2026-09-05 — feat(web): UX-фічі списків/модалок (Подання, індикатори, guard, клавіатура, дублювання)
 
 ### 15d54839 fix(tester): Bugs #637-#640 (QA-ланцюг UX-фіч)
