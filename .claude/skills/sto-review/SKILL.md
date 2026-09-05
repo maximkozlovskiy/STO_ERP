@@ -468,6 +468,7 @@ grep -rn "ALTER TYPE.*ADD VALUE" packages/database/prisma/migrations/ | tail -5
 - [ ] Кожне нове FK поле → `@@index([orgId, fkId])`
 - [ ] `@@index([orgId, syncVersion])` для sync-ready таблиць
 - [ ] `prisma.$transaction` при зміні ≥ 2 таблиць
+- [ ] **`getLinkedCounts` liveness == detail** (Bug #A/#641): count пов'язаних сутностей мусить gate FK на живості (`findMany` живих реф-id + `Set`-membership), бо парний `getLinkedDocuments` фільтрує `deletedAt:null`; безумовне `? 1 : 0` / `= 1` розсинхронить badge з панеллю коли реф soft-deleted (FK `ON DELETE SET NULL` не спрацьовує на soft-delete). Grep: `grep -rn "getLinkedCounts" apps/api/src/modules --include="*.service.ts"`
 
 ---
 
@@ -1299,6 +1300,13 @@ grep -rnE "cursor-pointer" apps/web/src/ --include="*.tsx" -B3 -A3 | grep -B3 -A
 
 **Фікс:** module-level `function activateOnKey(onClick) { return e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }; }` → `role="button" tabIndex={0} onKeyDown={activateOnKey(handler)}` + `focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary`. Для `<tr>` — `aria-label="Відкрити X"`. Опціональний handler → всі 3 атрибути conditional (`clickable ? 0 : undefined`).
 **Severity:** IMPORTANT — WCAG fail; latent regression у кожній новій heatmap/шахматка UI.
+
+### 2026-09-06 — getLinkedCounts рахує FK-наявність, detail фільтрує deletedAt:null → count!=detail — §6/§13
+
+**Сигнал:** новий `getLinkedCounts(orgId, ids)` рахує пов'язані сутності за самою наявністю FK (`X.purchaseOrderId ? 1 : 0`, обов'язковий FK → `1`), тоді як парний `getLinkedDocuments` робить `findFirst({ deletedAt: null })` і повертає `[]` коли реф soft-deleted. FK `ON DELETE SET NULL` спрацьовує ЛИШЕ при hard-delete → soft-delete лишає FK вказувати на мертвий рядок → badge показує «1», панель порожня (Bug #A/#641 count!=detail). Канонічний патерн у `invoices.getLinkedCounts` (коментар «Bug #A») уже це кодифікує; нові модулі (stock-documents/supplier-returns) його пропускали.
+**Grep:** `grep -rn "getLinkedCounts" apps/api/src/modules --include="*.service.ts"` → для кожного: чи є `findMany` живих реф-id (PO/warehouse/counterparty) + `Set`-membership перед інкрементом, чи безумовне `? 1 : 0` / `= 1`. Обов'язковий FK (`warehouseId`/`supplierId`) ≠ живий → теж gate через liveness.
+**Фікс:** зібрати унікальні реф-id → `findMany({ where: { id: { in: [...] }, orgId, deletedAt: null }, select: { id: true } })` → `new Set(...)` → `refId && liveSet.has(refId) ? 1 : 0` (дзеркалить invoices). +spec: soft-deleted реф → count=0.
+**Severity:** IMPORTANT — badge/панель розсинхрон; німа degradation (лише коли реф soft-deleted поки документ на нього посилається).
 
 ## Карта секцій (quick reference)
 
