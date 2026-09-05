@@ -30,6 +30,18 @@
   SP `{purchaseOrder,counterparty,account}`. Тести: invoices 47, PO 79, SP 62.
 - Frontend: конфіги (commit ffada58e) + badge-колонка «Зв'язки» у списках + вкладка/попап.
 
+**QA-ланцюг** (sync→review→tester):
+
+- sync: 0 розбіжностей (endpoints/keys/counts/roles/deep-links усі збігаються).
+- review: 0 проблем (orgId+soft-delete, zero-init counts, Decimal→Number, hook-order, a11y).
+- tester: **Bug #641 (MEDIUM, виправлено)** — `getLinkedCounts` рахував за наявністю FK,
+  а `getLinkedDocuments` фільтрує `deletedAt:null` → soft-deleted контрагент/рахунок/PO
+  (досяжно: delete-guard блокує лише _відкриті_ документи, тож PAID-рахунок може
+  посилатися на видаленого контрагента) давав badge «1» над порожньою секцією. Fix:
+  counts рахують лише живі записи (batched findMany deletedAt:null, без N+1). Commit 2ad6318f.
+  Bug #642 (LOW) — mount-once `?open=` не реоткриває модалку при self-navigation на ту саму
+  сторінку; наразі недосяжно (жоден конфіг так не навігує) → задокументовано як known-limit.
+
 **Phase C** (Counterparty реляційні вкладки) і **Phase D** (схема StockDoc/SupplierReturn
 FK) — заплановані далі.
 
