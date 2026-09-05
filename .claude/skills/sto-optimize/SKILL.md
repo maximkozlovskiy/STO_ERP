@@ -535,6 +535,25 @@ grep -n "@@index\|@relation\|model " packages/database/prisma/schema.prisma
 Ім'я PG-індексу = `<mappedTable>_orgId_<fk>_idx`. Звірити `@@map`, бо одна назва колонки
 (`invoiceId`) живе і в parent-lines, і в append-only payments — легко «побачити» чужий індекс.
 
+### 3.4 Dashboard/summary aggregate по append-only таблиці — WHERE без owningFk, а індекс веде owningFk (leftmost-prefix miss)
+
+> Пастка: «є `(orgId, fk, createdAt)` — прикрито». Ні: якщо dashboard-гілка не подає
+> `fk`, leading-col між orgId і createdAt вбиває прикриття → org-wide scan.
+
+```bash
+# aggregate/count у dashboard/summary/reports по транзакційних append-only таблицях
+grep -rn "\.aggregate(\|\.count(" apps/api/src/modules/dashboard/ apps/api/src/modules/reports/ --include="*.service.ts" -A6 | grep -v spec
+
+# Для кожного: WHERE = (orgId, type|status: '<літерал>', createdAt-range) БЕЗ owningFk?
+# Звірити зі schema: чи Є @@index що ПОЧИНАЄТЬСЯ (orgId, <той discriminator>, ...)?
+grep -n "@@index" packages/database/prisma/schema.prisma
+```
+
+**Фікс:** covering `@@index([orgId, <discriminator>, createdAt])` — discriminator (equality)
+leftmost після orgId, createdAt (range) останнім. Additive `CREATE INDEX IF NOT EXISTS`.
+НЕ дублювати якщо discriminator уже leading-col наявного індексу. Кеш дашборду (25s) НЕ
+знімає потреби — при великому орзі scan болить кожен SSE-інтервал × N users.
+
 ---
 
 ## Крок 4 — Виправлення
@@ -583,6 +602,18 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-06 — Cached/SSE dashboard-tile aggregate по append-only high-volume таблиці фільтрує по non-FK discriminator+date, а існуючий composite index веде leading-FK якого ця гілка НЕ подає (leftmost-prefix miss)
+
+**Сигнал:** тонкий dashboard-tile (getSummary «виручка сьогодні»/«лічильник за сьогодні») робить `X.aggregate({ where: { orgId, type|status: '<літерал>', createdAt: { gte: dayStart } }, _sum })` по append-only high-volume таблиці (settlement_transactions, payments, stock_movements, audit_events, loyalty_transactions). Ця гілка НЕ подає `settlementAccountId`/`<owningFk>`, але ЄДИНИЙ composite-індекс на таблиці — `(orgId, <owningFk>, createdAt)` (створений під per-account paginated list). B-tree leftmost-prefix: `<owningFk>` стоїть перед `createdAt` і не заданий → індекс не вибирається → org-wide scan по orgId-префіксу + heap-filter type+createdAt. Кеш (Redis 25s) + `withTimeout(8s)` маскують проблему у dev-БД (майже порожня), але при реальних обсягах (сотні тисяч транз/орг) кожен SSE-інтервал × кожен активний користувач = повний scan.
+**Сигнал-grep:** для кожного `*.aggregate/count` у dashboard/summary-сервісі виписати WHERE-shape. Якщо таблиця append-only (без deletedAt) І WHERE = `(orgId, <літерал-discriminator>, createdAt-range)` БЕЗ owningFk → звірити зі schema: чи Є `@@index` що починається `(orgId, <discriminator>, ...)`? Пастка: наявний `(orgId, <owningFk>, createdAt)` виглядає «релевантним» (є і orgId, і createdAt), але leading-FK між ними вбиває прикриття цієї гілки.
+**Причина виникнення:** composite-індекс проектувався під головний use-case (per-account/per-parent paginated list із sort по createdAt). Пізніший dashboard-tile читає ту саму таблицю під ортогональним кутом (org-wide зріз за period+discriminator) — owningFk відсутній, тож leading-col індексу не активується. Дашборд «дешевий бо кешований» → аудит його пропускає.
+**Підхід до виявлення:** append-only/transactional таблиця + dashboard/summary aggregate + WHERE без owningFk = червоний прапорець. НЕ довіряти наявному `(orgId, fk, createdAt)` — перевірити чи leading-cols WHERE-гілки збігаються з ПРЕФІКСОМ індексу (equality-cols першими, range останнім).
+**Підхід до фіксу:** covering `@@index([orgId, <discriminator>, createdAt])` — discriminator (equality) leftmost після orgId, createdAt (range) tail → single index-range scan, `_sum`/`count` без heap re-filter. Additive `CREATE INDEX IF NOT EXISTS`. Zero-risk. НЕ дублювати якщо discriminator сам є leading-col наявного індексу.
+**Реальний impact:** dashboard-tile aggregate: org-wide scan (O всі-транз-орг) → index-range scan (O транз-за-день-типу). Sustained per-SSE-interval × N users saving; найбільший win під cold cache / великий орг.
+**Де шукати ще:** будь-який dashboard/summary/KPI-tile що aggregate/count-ить append-only таблицю за (тип|статус) + createdAt-window: settlement_transactions (type=PAYMENT — fixed), payments (method), stock_movements (type), audit_events (action), loyalty_transactions (type). Checkpoint при новому dashboard-tile що читає транзакційну таблицю.
+
+---
 
 ### 2026-09-06 — FK-колонка з `@relation` але без `@@index` — batched `groupBy(fk IN [...])` у linked-counts фічі
 
