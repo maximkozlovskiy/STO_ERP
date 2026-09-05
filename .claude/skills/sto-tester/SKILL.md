@@ -1119,6 +1119,20 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-05 — Unsaved-guard baseline через `setTimeout(0)` + АСИНХРОННИЙ авто-populate дефолту → false-positive «незбережені зміни» на незайманій формі — frontend / trust-erosion / HIGH
+
+**Сигнал:** модалка з dirty-guard озброює baseline через `const t = setTimeout(() => { baselineReadyRef.current = true; }, 0)`, а dirty-детектор — `useEffect(() => { if (!open || !baselineReadyRef.current) return; dirty.markDirty(); }, [form, lines, ...])`. Одночасно існує async авто-вибір дефолту: `useEffect(() => { if (warehouses.length === 1) setForm(f => f.warehouseId ? f : {...f, warehouseId: warehouses[0].id}); }, [warehouses])` де `warehouses`/`branches` приходять з `apiFetch('/warehouses')`. Симптом: відкрити create-модалку з РІВНО одним складом/філією, нічого не чіпати, Escape → спливає діалог «Є незбережені зміни» (Bug #639). Grep: `grep -rlE "baselineReadyRef|setTimeout\(\s*\(\)\s*=>\s*\{\s*baselineReadyRef" apps/web/src/components/ui/*Modal*.tsx` перетнути з `grep -lE "length === 1|length !== 1" ` (модалки з авто-вибором) + перевірити чи авто-вибірне поле є у deps dirty-детектора.
+
+**Причина виникнення:** розробник припускає, що весь початковий стан осідає в межах першого setState-батчу (тому `setTimeout(0)` вистачає). Але reference-дані (склади/філії/ПДВ) вантажаться окремим async-запитом, який резолвиться ПІЗНІШЕ за 0ms-таймер. Програмна установка дефолту тоді неможливо відрізнити від правки користувача — детектор бачить лише «поле у deps змінилось».
+
+**Підхід до виявлення:** для КОЖНОЇ create/edit-модалки з `useDirtyForm` + baseline-ефектом написати component-тест: замокати reference-fetch на РІВНО 1 елемент (щоб спрацював авто-вибір), `render(open)`, зачекати осідання (`await new Promise(r=>setTimeout(r,60))` — довше за ланцюг load→auto-select→re-render), `fireEvent.keyDown(document,{key:'Escape'})`, асертити `onClose` викликано 1× І `queryByText('Є незбережені зміни')` відсутній. Дискримінація: revert skip-фіксу → тест падає (діалог спливає). Парний тест «змінив поле → діалог Є» ловить протилежний false-negative.
+
+**Підхід до фіксу:** зафіксувати САМЕ програмну зміну ref-прапорцем (`autoWarehouseRef`/`autoBranchRef`/`autoDefaultsRef`), який встановлюється в авто-вибірному ефекті ЛИШЕ коли `baselineReadyRef.current === true` (тобто дефосів пізно). Dirty-детектор пропускає рівно цю зміну (`if (auto !== null && field === auto) { auto = null; return; }`) — один раз, споживаючи ref. Скидати ref у reset-ефекті (`baselineReadyRef.current = false; autoXRef.current = null;`). НЕ переозброювати baseline через новий `setTimeout` у cleanup-ефекті: cleanup при re-run ефекту (напр. `warehouseId` у deps) скасує pending-таймер і вимкне guard узагалі.
+
+**Severity:** HIGH — не ламає дані, але руйнує довіру: guard кричить «вовки» на кожному відкритті модалки з єдиним складом → користувачі привчаються сліпо тиснути «Покинути», і РЕАЛЬНІ незбережені зміни втрачаються.
+
+**Де шукати ще:** усі модалки з async авто-populate дефолтів ПІСЛЯ baseline-таймера — не лише склад/філія, а й авто-вибір єдиного ПДВ, валюти, каси, автомобіля клієнта; будь-який `useEffect([refData], () => setForm(...))` де refData з fetch. InvoiceCreateModal безпечна (лише синхронні дефолти) — критерій імунітету: чи є async-populate поля, що входить у deps dirty-детектора.
+
 ### 2026-09-05 — Component-тест sync-ref-guard через `userEvent.click`×2 (або `fireEvent`×2) — ХИБНО-ЗЕЛЕНИЙ: гейтом стає `disabled={loading}`, не тестований ref — frontend / test-integrity / MEDIUM
 
 **Сигнал:** component-тест «подвійний клік → 1 POST» що імітує double-submit через `userEvent.click(btn)` двічі (або `void user.click(); void user.click()` у `act`), АБО через `fireEvent.click(btn)` двічі. Тест ПРОХОДИТЬ навіть коли синхронний `savingRef`-guard видалено з handler-а. Причина: `userEvent`/`fireEvent` обгортають КОЖЕН клік у власний `act()`/pointer-чергу з мікротасками → React встигає re-renderнути й виставити `disabled={saving||loading}` на `<Button>` МІЖ кліками → другий клік не доходить до handler-а незалежно від ref. Тобто фактичним гейтом у тесті є async `disabled={loading}`, а не тестований sync-ref. Тест нічого не гарантує: рефактор, що прибере ref-guard, пройде CI зеленим.
@@ -1145,7 +1159,7 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 **Severity:** HIGH — silent duplicate master-data (контрагент/товар/співробітник), для Employee дубль login-акаунта (безпека). User-visible, псує CRM/номенклатуру/settlement-звіти.
 
-**Де шукати ще:** усі `*Modal.tsx` / inline-форми з submit-POST; той самий клас — будь-який `onClick`-handler що робить mutation і покладається лише на `disabled={loading}` (не sync-ref). Кандидати поза модалками: quick-add форми, bulk-action кнопки, share/print-token генерація.
+**Де шукати ще:** усі `*Modal.tsx` / inline-форми з submit-POST; той самий клас — будь-який `onClick`-handler що робить mutation і покладається лише на `disabled={loading}` (не sync-ref). Кандидати поза модалками: quick-add форми, bulk-action кнопки, share/print-token генерація, **row-action-хендлери у списках** (`clone`/`duplicate`/`archive`/`markDeleted` у `page.tsx` з `disabled={xxxId === row.id}` де `xxxId`=`useState`). Bug #637: clone-дія у списку нарядів гейтилась лише `useState cloningId` → 2 POST /clone на native-click×2. Grep: `grep -rnE "disabled=\{[a-zA-Z]+Id === " apps/web/src/app/**/page.tsx` + звірити чи handler має sync-ref-guard. **Тепер є переюзабельний хук `apps/web/src/hooks/useSubmitGuard.ts`** (`guard.run(async fn)` з sync `inFlightRef`) — фіксити row-actions через нього замість inline-ref.
 
 ### 2026-09-05 — Backend-агрегат змішує `Σ(round(x))` і `round(Σ(x))` для тієї самої величини → розходження на копійку між denorm-полями — backend / money-precision / LOW
 

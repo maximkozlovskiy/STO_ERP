@@ -2609,3 +2609,99 @@ Backend зміна не ламає існуючих клієнтів (додає
 - **Severity:** HIGH — фінансовий + інвентарний вплив (подвійне резервування спотворює доступний залишок).
 - **Регресія-guard:** структурно ідентичний #635 (той самий native-click клас; #635-тест — представник WO-add класу). Guard верифіковано статично (tsc 0, grep no-risk).
 - **Статус:** [x] виправлено
+
+---
+
+## Session 2026-09-05 — Bug hunt UX-фіч Ф1/Ф4/Ф5/Ф6/Ф8 (5433f932 + 911590ca, feat/supplier-payments)
+
+Полювання на баги 6 UX-фіч (усі web/frontend). Playwright/Sentry MCP недоступні
+(connection timeout) — fallback на unit/component-тести + reasoning. Code review вже
+пройшов з 0 issues; ці баги знайдено ТЕСТАМИ + аналізом race-станів.
+
+### Bug #637 (HIGH) — Ф8 «Створити на основі»: double-submit clone (async useState guard)
+
+- **Файл:** `apps/web/src/app/(app)/work-orders/page.tsx` (`handleClone`)
+- **Сигнал:** guard = `if (cloningId) return` + `disabled={cloningId === wo.id}`, де
+  `cloningId` — `useState`. Клас багів #630/#632-636.
+- **Причина:** `useState` оновлюється лише на НАСТУПНОМУ ре-рендері. Два синхронних
+  native `.click()` в одному tick обидва читають `cloningId === null` до перемалювання
+  → обидва проходять guard → 2 POST `/work-orders/:id/clone` → 2 наряди-дублі.
+- **Fix:** новий переюзабельний хук `useSubmitGuard` (синхронний `inFlightRef`);
+  `handleClone` = `cloneGuard.run(async () => {...})`. `cloningId` лишено для
+  disabled/візуалу, але guard тепер синхронний.
+- **Нові файли:** `apps/web/src/hooks/useSubmitGuard.ts` +
+  `apps/web/src/hooks/__tests__/useSubmitGuard.test.tsx` (3 тести, вкл. дискримінуючий
+  vulnerable-харнес що шле 2 виклики).
+- **Дискримінація:** ручний revert хука на `useState` → guarded-тест падає (timeout,
+  бо 2-й клік не заблоковано); ref-версія проходить.
+- **Severity:** HIGH — дублювання документів (наряди з позиціями).
+- **Статус:** [x] виправлено
+
+### Bug #638 (MEDIUM) — Ф6 Ctrl+Enter у вкладених модалках: подвоєння submit не покрите тестом
+
+- **Файл:** `apps/web/src/components/ui/modal.tsx` (панель scope-check) +
+  `__tests__/modal.test.tsx`
+- **Сигнал:** дві вкладені модалки (create + picker поверх) обидві слухають `document`
+  на keydown; scope-перевірка `panelRef.contains(target)` є, але НЕ покрита тестом —
+  найтонша частина фічі лишалась неперевіреною.
+- **Причина:** без scope-перевірки Ctrl+Enter із фокусом у дитині спрацював би і в
+  дитині, і в батькові → подвійний submit.
+- **Fix:** код був коректний; додано 2 регресія-тести (фокус у дитині → лише дитина;
+  фокус у батькові → лише батько).
+- **Дискримінація:** ручний revert scope-check → nested-тест падає (parentSubmit
+  спрацьовує при фокусі в дитині).
+- **Severity:** MEDIUM — потенційний подвійний submit; тепер закрито тестом.
+- **Статус:** [x] виправлено (додано покриття)
+
+### Bug #639 (HIGH) — Ф5 Unsaved-guard false positive: async авто-вибір складу/філії позначає чисту форму брудною
+
+- **Файли:** `SupplierReturnCreateModal.tsx`, `PurchaseOrderCreateModal.tsx`,
+  `StockDocumentCreateModal.tsx`, `CreateWorkOrderModal.tsx`
+- **Сигнал:** baseline dirty-детекції озброюється через `setTimeout(0)`. Але
+  `/warehouses` і `/branches` вантажаться АСИНХРОННО, і авто-вибір єдиного складу/філії
+  осідає ПІЗНІШЕ за таймер.
+- **Причина:** програмний `setWarehouseId/setBranchId` після озброєння базлайну
+  тригерить dirty-детектор → `markDirty()` → форма хибно брудна. Користувач відкриває
+  модалку, НІЧОГО не чіпає, тисне Escape → спливає діалог «Є незбережені зміни».
+  (InvoiceCreateModal безпечна — лише синхронні дефолти.)
+- **Fix:** `autoWarehouseRef`/`autoBranchRef`/`autoDefaultsRef` фіксують САМЕ програмний
+  авто-вибір (лише якщо base вже озброєний); dirty-детектор пропускає рівно цю зміну
+  один раз, скидаючи ref. Ручна зміна поля згодом (значення ≠ auto) нормально позначає
+  форму брудною.
+- **Нові тести:** `SupplierReturnDirtyGuard.test.tsx` (2: clean→no dialog, dirty→dialog),
+  `DocumentDirtyGuard.test.tsx` (PO + Stock single-warehouse).
+- **Дискримінація:** ручний revert skip-блоку у кожній модалці → clean-тест падає
+  (діалог спливає на незайманій формі).
+- **Severity:** HIGH — руйнує довіру до unsaved-guard (кричить «вовки» на кожному
+  відкритті модалки з єдиним складом → користувачі привчаються ігнорувати діалог).
+- **Де ще шукати:** будь-яка модалка з async авто-populate дефолтів ПІСЛЯ baseline-таймера.
+- **Статус:** [x] виправлено (4 модалки)
+
+### Bug #640 (LOW) — Ф1 rename «фільтр»→«подання» застосований непослідовно + стейл-тест
+
+- **Файли:** `saved-filters-bar.tsx`, `__tests__/saved-filters-bar.test.tsx`
+- **Сигнал:** повний web-suite червоний — 9 падінь у `saved-filters-bar.test.tsx`
+  (пре-існуюча регресія коміту 5433f932, не від моїх змін — підтверджено stash-baseline).
+- **Причина:** rename на «подання» застосовано частково: `SavedFiltersBar` → «подання»
+  скрізь, але `SaveFilterButton` placeholder лишився «Назва фільтру...» (title вже
+  «Зберегти подання» — MIXED термінологія). Тест не оновлено під rename взагалі.
+- **Fix:** `SaveFilterButton` placeholder → «Назва подання...»; тест оновлено на нову
+  термінологію (Немає збережених подань / Видалити подання / Назва подання... /
+  title «Зберегти подання»).
+- **Severity:** LOW — UX-консистентність термінології + зелений suite.
+- **Статус:** [x] виправлено
+
+### Верифіковано БЕЗ багів
+
+- **Bug #1 (Saved Views round-trip):** застосування filter-only presetа лишає колонки/
+  сорт без змін — це НАВМИСНИЙ back-compat (коментар у коді), не баг. activeSavedFilterId
+  коректний. `setVisible` фільтрує невідомі ключі й відхиляє порожній набір.
+- **Bug #4 (row-status mapping):** invoices `active` виключає PAID/CANCELLED,
+  `balanceDue = amount - paidAmount`; PO виключає RECEIVED/CANCELLED, `paymentDate` +
+  `outstanding`. Off-by-one/wrong-field відсутні.
+
+### Підсумок
+
+TypeScript web: 0. Web-suite: 55 файлів / 540 тестів зелені (було 531/9-fail).
+Нові тести: +7 (useSubmitGuard 3, modal nested 2, SupplierReturnDirtyGuard 2,
+DocumentDirtyGuard 2) — усі дискримінуючі (доведено ручним revert-ом).

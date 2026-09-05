@@ -254,6 +254,10 @@ export function PurchaseOrderCreateModal({
   // Базлайн для dirty-детекції: стає true після того, як початковий стан
   // (reset/load) осів; лише ПІСЛЯ цього зміни form/lines позначають форму брудною.
   const baselineReadyRef = useRef(false);
+  // Bug #639: id складу, встановленого програмним авто-вибором (єдиний склад, вантажиться
+  // асинхронно). Dirty-детектор пропускає рівно цю зміну, щоб не позначати чисту форму
+  // брудною, коли авто-вибір осідає ПІСЛЯ озброєння базлайну. null → скипу немає.
+  const autoWarehouseRef = useRef<string | null>(null);
 
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
@@ -325,9 +329,16 @@ export function PurchaseOrderCreateModal({
   }, [open]);
 
   // Auto-select single warehouse (runs both on cache hit and after fetch resolves)
+  // Bug #639: якщо авто-вибір осідає ПІСЛЯ озброєння базлайну — позначаємо його як
+  // програмну зміну (autoWarehouseRef), щоб dirty-детектор її пропустив і не показав
+  // хибний діалог «незбережені зміни» на незайманій формі.
   useEffect(() => {
     if (warehouses.length === 1) {
-      setForm(f => (f.warehouseId ? f : { ...f, warehouseId: warehouses[0].id }));
+      setForm(f => {
+        if (f.warehouseId) return f;
+        if (baselineReadyRef.current) autoWarehouseRef.current = warehouses[0].id;
+        return { ...f, warehouseId: warehouses[0].id };
+      });
     }
   }, [warehouses]);
 
@@ -337,6 +348,7 @@ export function PurchaseOrderCreateModal({
     // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
     // доки початковий стан (create-reset нижче або edit-load) не осів.
     baselineReadyRef.current = false;
+    autoWarehouseRef.current = null;
     dirty.resetDirty();
     setActivePOId(purchaseOrderIdProp);
     setError('');
@@ -370,8 +382,14 @@ export function PurchaseOrderCreateModal({
   }, [open, purchaseOrderIdProp, isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Dirty-детектор: будь-яка зміна form/lines ПІСЛЯ осідання базлайну → форма брудна.
+  // Bug #639: пропускаємо рівно одну програмну зміну — авто-вибір єдиного складу, що
+  // осів після базлайну (form.warehouseId щойно став auto-значенням). Спрацьовує раз.
   useEffect(() => {
     if (!open || !baselineReadyRef.current) return;
+    if (autoWarehouseRef.current !== null && form.warehouseId === autoWarehouseRef.current) {
+      autoWarehouseRef.current = null;
+      return;
+    }
     dirty.markDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, lines, open]);

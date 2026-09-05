@@ -107,6 +107,50 @@ describe('Modal', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
+  // Bug #638 (audit 2026-09-05): дві вкладені модалки (create + picker поверх нього)
+  // ОБИДВІ слухають document на keydown. Без scope-перевірки `panelRef.contains(target)`
+  // Ctrl+Enter із фокусом у ДИТИНІ спрацював би ДВІЧІ — раз у дитині, раз у батькові
+  // (батько теж бачить подію на document) → подвійний submit. panelRef має відсікти
+  // батька: target у дитячій панелі не належить батьківській панелі.
+  it('Ctrl+Enter у вкладеній модалці НЕ подвоює submit — спрацьовує лише активна панель', async () => {
+    const parentSubmit = vi.fn();
+    const childSubmit = vi.fn();
+    render(
+      <>
+        <Modal open onClose={vi.fn()} onSubmit={parentSubmit} title="Батьківська">
+          <input aria-label="поле-батька" />
+        </Modal>
+        <Modal open onClose={vi.fn()} onSubmit={childSubmit} title="Дитяча">
+          <input aria-label="поле-дитини" />
+        </Modal>
+      </>,
+    );
+    // Фокус у дитячій панелі → Ctrl+Enter.
+    screen.getByLabelText('поле-дитини').focus();
+    await userEvent.keyboard('{Control>}{Enter}{/Control}');
+    expect(childSubmit).toHaveBeenCalledTimes(1);
+    expect(parentSubmit).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl+Enter із фокусом у батьківській панелі не чіпає дитячу', async () => {
+    const parentSubmit = vi.fn();
+    const childSubmit = vi.fn();
+    render(
+      <>
+        <Modal open onClose={vi.fn()} onSubmit={parentSubmit} title="Батьківська">
+          <input aria-label="поле-батька" />
+        </Modal>
+        <Modal open onClose={vi.fn()} onSubmit={childSubmit} title="Дитяча">
+          <input aria-label="поле-дитини" />
+        </Modal>
+      </>,
+    );
+    screen.getByLabelText('поле-батька').focus();
+    await userEvent.keyboard('{Control>}{Enter}{/Control}');
+    expect(parentSubmit).toHaveBeenCalledTimes(1);
+    expect(childSubmit).not.toHaveBeenCalled();
+  });
+
   it('виклик onClose при кліку на backdrop', async () => {
     const onClose = vi.fn();
     render(

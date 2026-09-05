@@ -148,6 +148,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   // Базлайн для dirty-детекції: стає true після того, як початковий стан
   // (reset/load) осів; лише ПІСЛЯ цього зміни полів/lines позначають форму брудною.
   const baselineReadyRef = useRef(false);
+  // Bug #639: id складу, встановленого програмним авто-вибором (єдиний склад). Dirty-
+  // детектор пропускає рівно цю зміну, щоб не позначати чисту форму брудною. null → немає.
+  const autoWarehouseRef = useRef<string | null>(null);
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
     setSaving(v);
@@ -200,8 +203,19 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   // Auto-select single warehouse — Bug #550: guard with !editId, інакше race з
   // edit-fetch робить flicker (auto-select встановлює перший склад, потім edit-data
   // перезаписує правильним warehouseId з API).
+  //
+  // Bug #639: /warehouses вантажиться АСИНХРОННО — цей auto-select спрацьовує ПІЗНІШЕ
+  // за setTimeout(0), що озброює dirty-базлайн. Програмна установка warehouseId тоді
+  // хибно позначала чисту форму брудною (Escape без жодної правки → діалог «незбережені
+  // зміни»). Прапорець autoWarehouseRef фіксує САМЕ цю програмну зміну, щоб dirty-детектор
+  // її пропустив (див. нижче) — не чіпаючи арм-таймер (його cleanup при re-run ефекту
+  // скасовував би переозброєння й вимикав guard узагалі).
   useEffect(() => {
     if (warehouses.length === 1 && !warehouseId && !editId) {
+      // Скип потрібен лише якщо базлайн УЖЕ озброєний (авто-вибір осів пізніше за
+      // setTimeout(0)). Якщо базлайн ще не готовий — зміна природно ввійде у чистий
+      // знімок, скип не потрібен (і був би шкідливим — з'їв би першу ручну правку).
+      if (baselineReadyRef.current) autoWarehouseRef.current = warehouses[0].id;
       setWarehouseId(warehouses[0].id);
     }
   }, [warehouses, warehouseId, editId]);
@@ -255,6 +269,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
     // доки початковий стан (create-defaults або edit-load) не осів.
     baselineReadyRef.current = false;
+    autoWarehouseRef.current = null;
     dirty.resetDirty();
     if (!editId) {
       // Create-режим: стан вже містить reset-defaults (resetForm на попереднє закриття);
@@ -269,8 +284,16 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   }, [open, editId]);
 
   // Dirty-детектор: будь-яка зміна редагованих полів/lines ПІСЛЯ осідання базлайну → брудна.
+  // Bug #639: одна конкретна програмна зміна — авто-вибір єдиного складу, що осів ПІСЛЯ
+  // базлайну — пропускається (autoWarehouseRef), щоб не позначати чисту форму брудною.
+  // Спрацьовує рівно раз: після пропуску ref скидається, тож РУЧНА зміна складу згодом
+  // (або будь-яке інше поле) вже нормально позначає форму брудною.
   useEffect(() => {
     if (!open || !baselineReadyRef.current) return;
+    if (autoWarehouseRef.current !== null && warehouseId === autoWarehouseRef.current) {
+      autoWarehouseRef.current = null;
+      return;
+    }
     dirty.markDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supplierId, supplierName, warehouseId, notes, documentDate, lines, open]);

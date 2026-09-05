@@ -13,9 +13,9 @@ function makePreset(id: string, name: string, status = 'IN_PROGRESS'): SavedFilt
 }
 
 describe('SavedFiltersBar', () => {
-  it('показує підказку коли немає збережених фільтрів і не відкритий save dialog', () => {
+  it('показує підказку коли немає збережених подань і не відкритий save dialog', () => {
     render(<SavedFiltersBar<F> saved={[]} onApply={vi.fn()} onSave={vi.fn()} onRemove={vi.fn()} />);
-    expect(screen.getByText('Немає збережених фільтрів')).toBeInTheDocument();
+    expect(screen.getByText('Немає збережених подань')).toBeInTheDocument();
   });
 
   it('рендерить кожен пресет з його іменем', () => {
@@ -65,7 +65,7 @@ describe('SavedFiltersBar', () => {
         onRemove={onRemove}
       />,
     );
-    const removeBtn = screen.getByRole('button', { name: /Видалити фільтр "A"/ });
+    const removeBtn = screen.getByRole('button', { name: /Видалити подання "A"/ });
     await userEvent.click(removeBtn);
     expect(onRemove).toHaveBeenCalledWith('p1');
   });
@@ -73,14 +73,14 @@ describe('SavedFiltersBar', () => {
   it('клік "Зберегти" відкриває input', async () => {
     render(<SavedFiltersBar<F> saved={[]} onApply={vi.fn()} onSave={vi.fn()} onRemove={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: /Зберегти/ }));
-    expect(screen.getByPlaceholderText('Назва фільтру...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Назва подання...')).toBeInTheDocument();
   });
 
   it('Enter у input викликає onSave з trimmed name', async () => {
     const onSave = vi.fn();
     render(<SavedFiltersBar<F> saved={[]} onApply={vi.fn()} onSave={onSave} onRemove={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: /Зберегти/ }));
-    const input = screen.getByPlaceholderText('Назва фільтру...');
+    const input = screen.getByPlaceholderText('Назва подання...');
     await userEvent.type(input, '  Мій фільтр  ');
     await userEvent.keyboard('{Enter}');
     expect(onSave).toHaveBeenCalledWith('Мій фільтр');
@@ -90,7 +90,7 @@ describe('SavedFiltersBar', () => {
     const onSave = vi.fn();
     render(<SavedFiltersBar<F> saved={[]} onApply={vi.fn()} onSave={onSave} onRemove={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: /Зберегти/ }));
-    const input = screen.getByPlaceholderText('Назва фільтру...');
+    const input = screen.getByPlaceholderText('Назва подання...');
     await userEvent.type(input, '   ');
     await userEvent.keyboard('{Enter}');
     expect(onSave).not.toHaveBeenCalled();
@@ -99,12 +99,12 @@ describe('SavedFiltersBar', () => {
   it('Escape у input закриває save dialog', async () => {
     render(<SavedFiltersBar<F> saved={[]} onApply={vi.fn()} onSave={vi.fn()} onRemove={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: /Зберегти/ }));
-    const input = screen.getByPlaceholderText('Назва фільтру...');
+    const input = screen.getByPlaceholderText('Назва подання...');
     expect(input).toBeInTheDocument();
     // Focus the input directly — autofocus setTimeout(30) is unreliable in jsdom.
     input.focus();
     await userEvent.keyboard('{Escape}');
-    expect(screen.queryByPlaceholderText('Назва фільтру...')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Назва подання...')).not.toBeInTheDocument();
   });
 
   // ─── hideSaveButton prop — інверсна-логіка регресії (Bug #194) ─────────────
@@ -122,7 +122,7 @@ describe('SavedFiltersBar', () => {
     expect(screen.queryByRole('button', { name: /Зберегти/ })).not.toBeInTheDocument();
   });
 
-  it('hideSaveButton=true приховує "Немає збережених фільтрів" hint навіть при saved=[]', () => {
+  it('hideSaveButton=true приховує "Немає збережених подань" hint навіть при saved=[]', () => {
     render(
       <SavedFiltersBar<F>
         saved={[]}
@@ -132,7 +132,7 @@ describe('SavedFiltersBar', () => {
         hideSaveButton
       />,
     );
-    expect(screen.queryByText('Немає збережених фільтрів')).not.toBeInTheDocument();
+    expect(screen.queryByText('Немає збережених подань')).not.toBeInTheDocument();
   });
 
   it('hideSaveButton=true залишає preset-кнопки і remove-кнопки видимими', () => {
@@ -149,7 +149,7 @@ describe('SavedFiltersBar', () => {
     );
     expect(screen.getByRole('button', { name: 'Активні' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Завершені' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Видалити фільтр "Активні"/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Видалити подання "Активні"/ })).toBeInTheDocument();
     // sanity: inline save кнопка прихована
     expect(screen.queryByRole('button', { name: /^Зберегти$/ })).not.toBeInTheDocument();
   });
@@ -158,19 +158,19 @@ describe('SavedFiltersBar', () => {
 // ─── SaveFilterButton — новий standalone icon-only компонент (Bug #193) ──────
 
 describe('SaveFilterButton', () => {
-  it('за замовчуванням рендерить icon-кнопку з title="Зберегти фільтр" (a11y)', () => {
+  it('за замовчуванням рендерить icon-кнопку з title="Зберегти подання" (a11y)', () => {
     render(<SaveFilterButton onSave={vi.fn()} />);
     const btn = screen.getByRole('button');
-    expect(btn).toHaveAttribute('title', 'Зберегти фільтр');
+    expect(btn).toHaveAttribute('title', 'Зберегти подання');
     expect(btn).toHaveAttribute('type', 'button');
     // input ще не показано
-    expect(screen.queryByPlaceholderText('Назва фільтру...')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Назва подання...')).not.toBeInTheDocument();
   });
 
   it('клік по icon-кнопці відкриває inline-input', async () => {
     render(<SaveFilterButton onSave={vi.fn()} />);
     await userEvent.click(screen.getByRole('button'));
-    expect(screen.getByPlaceholderText('Назва фільтру...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Назва подання...')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Зберегти' })).toBeInTheDocument();
   });
 
@@ -178,21 +178,21 @@ describe('SaveFilterButton', () => {
     const onSave = vi.fn();
     render(<SaveFilterButton onSave={onSave} />);
     await userEvent.click(screen.getByRole('button'));
-    const input = screen.getByPlaceholderText('Назва фільтру...');
+    const input = screen.getByPlaceholderText('Назва подання...');
     await userEvent.type(input, '  Мій фільтр  ');
     await userEvent.keyboard('{Enter}');
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave).toHaveBeenCalledWith('Мій фільтр');
     // Після успішного save — input закривається, icon-кнопка повертається
-    expect(screen.queryByPlaceholderText('Назва фільтру...')).not.toBeInTheDocument();
-    expect(screen.getByRole('button')).toHaveAttribute('title', 'Зберегти фільтр');
+    expect(screen.queryByPlaceholderText('Назва подання...')).not.toBeInTheDocument();
+    expect(screen.getByRole('button')).toHaveAttribute('title', 'Зберегти подання');
   });
 
   it('клік по кнопці "Зберегти" викликає onSave з trimmed name', async () => {
     const onSave = vi.fn();
     render(<SaveFilterButton onSave={onSave} />);
     await userEvent.click(screen.getByRole('button'));
-    const input = screen.getByPlaceholderText('Назва фільтру...');
+    const input = screen.getByPlaceholderText('Назва подання...');
     await userEvent.type(input, 'Назва');
     await userEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
     expect(onSave).toHaveBeenCalledWith('Назва');
@@ -202,7 +202,7 @@ describe('SaveFilterButton', () => {
     const onSave = vi.fn();
     render(<SaveFilterButton onSave={onSave} />);
     await userEvent.click(screen.getByRole('button'));
-    const input = screen.getByPlaceholderText('Назва фільтру...');
+    const input = screen.getByPlaceholderText('Назва подання...');
     // Кнопка "Зберегти" disabled коли input порожній
     const saveBtn = screen.getByRole('button', { name: 'Зберегти' });
     expect(saveBtn).toBeDisabled();
@@ -217,22 +217,22 @@ describe('SaveFilterButton', () => {
     const onSave = vi.fn();
     render(<SaveFilterButton onSave={onSave} />);
     await userEvent.click(screen.getByRole('button'));
-    const input = screen.getByPlaceholderText('Назва фільтру...');
+    const input = screen.getByPlaceholderText('Назва подання...');
     input.focus();
     await userEvent.type(input, 'Деяка назва');
     await userEvent.keyboard('{Escape}');
-    expect(screen.queryByPlaceholderText('Назва фільтру...')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Назва подання...')).not.toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
     // Re-open — поле має бути порожнє (name скинутий)
     await userEvent.click(screen.getByRole('button'));
-    const input2 = screen.getByPlaceholderText('Назва фільтру...');
+    const input2 = screen.getByPlaceholderText('Назва подання...');
     expect(input2).toHaveValue('');
   });
 
   it('кнопка X закриває inline-input і скидає name', async () => {
     render(<SaveFilterButton onSave={vi.fn()} />);
     await userEvent.click(screen.getByRole('button'));
-    const input = screen.getByPlaceholderText('Назва фільтру...');
+    const input = screen.getByPlaceholderText('Назва подання...');
     await userEvent.type(input, 'Тест');
     // X кнопка — друга button після "Зберегти"
     const buttons = screen.getAllByRole('button');
@@ -241,7 +241,7 @@ describe('SaveFilterButton', () => {
     const xBtn = buttons.find(b => b.querySelector('svg'));
     expect(xBtn).toBeTruthy();
     await userEvent.click(xBtn as HTMLElement);
-    expect(screen.queryByPlaceholderText('Назва фільтру...')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Назва подання...')).not.toBeInTheDocument();
   });
 
   it('className з пропсу застосовується до icon-кнопки', () => {

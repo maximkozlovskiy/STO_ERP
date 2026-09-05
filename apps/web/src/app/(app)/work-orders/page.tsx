@@ -54,6 +54,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
+import { useSubmitGuard } from '@/hooks/useSubmitGuard';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { TableContainer } from '@/components/ui/table-container';
@@ -503,25 +504,30 @@ function WorkOrdersPageInner() {
   };
 
   // «Створити на основі»: бекенд POST /clone копіює позиції (роботи/запчастини)
-  // у новий DRAFT-наряд із новим номером/датами. Guard проти подвійного кліку —
-  // cloningId тримає id наряду, що дублюється.
+  // у новий DRAFT-наряд із новим номером/датами. cloningId тримає id наряду, що
+  // дублюється (для disabled + індикатора). Синхронний guard проти подвійного
+  // кліку — через useSubmitGuard: `cloningId` (useState) оновлюється лише на
+  // наступному ре-рендері, тож два синхронних кліки в ОДНОМУ tick обидва пройшли б
+  // `if (cloningId) return` до перемалювання → 2 POST /clone (2 наряди-дублі).
+  // Ref у guard фліпається синхронно (клас багів #630 / #632-636).
   const [cloningId, setCloningId] = useState<string | null>(null);
-  const handleClone = async (wo: WorkOrder) => {
-    if (cloningId) return;
-    setCloningId(wo.id);
-    try {
-      const cloned = await apiFetch<{ id: string }>(`/work-orders/${wo.id}/clone`, {
-        method: 'POST',
-      });
-      queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
-      if (features.toastEnabled) toast.success('Наряд створено на основі');
-      setEditWoId(cloned.id);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка дублювання');
-    } finally {
-      setCloningId(null);
-    }
-  };
+  const cloneGuard = useSubmitGuard();
+  const handleClone = (wo: WorkOrder) =>
+    cloneGuard.run(async () => {
+      setCloningId(wo.id);
+      try {
+        const cloned = await apiFetch<{ id: string }>(`/work-orders/${wo.id}/clone`, {
+          method: 'POST',
+        });
+        queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+        if (features.toastEnabled) toast.success('Наряд створено на основі');
+        setEditWoId(cloned.id);
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : 'Помилка дублювання');
+      } finally {
+        setCloningId(null);
+      }
+    });
 
   const totalPages = Math.ceil(total / limit);
 

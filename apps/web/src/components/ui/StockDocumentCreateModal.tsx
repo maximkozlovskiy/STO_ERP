@@ -184,6 +184,11 @@ export function StockDocumentCreateModal({
   // Базлайн для dirty-детекції: стає true після того, як початковий стан
   // (reset/load) осів; лише ПІСЛЯ цього зміни form/lines позначають форму брудною.
   const baselineReadyRef = useRef(false);
+  // Bug #639: pending програмні авто-вибори (єдиний branch/warehouse вантажаться
+  // асинхронно). Dirty-детектор пропускає зміну, доки form.branchId/warehouseId
+  // збігаються з цими авто-значеннями — щоб не позначати чисту форму брудною, коли
+  // авто-вибір осідає ПІСЛЯ озброєння базлайну. Спорожняється по мірі споживання.
+  const autoDefaultsRef = useRef<{ branchId?: string; warehouseId?: string }>({});
 
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
@@ -240,6 +245,7 @@ export function StockDocumentCreateModal({
     // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
     // доки початковий стан (create-reset нижче або edit-load) не осів.
     baselineReadyRef.current = false;
+    autoDefaultsRef.current = {};
     dirty.resetDirty();
     setError('');
     setStatusMenuOpen(false);
@@ -268,8 +274,22 @@ export function StockDocumentCreateModal({
   }, [open, stockDocumentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Dirty-детектор: будь-яка зміна form/lines ПІСЛЯ осідання базлайну → форма брудна.
+  // Bug #639: пропускаємо програмні авто-вибори branch/warehouse, що осіли після
+  // базлайну. Кожне авто-значення споживається один раз; ручна зміна цих полів згодом
+  // (значення відрізняється від збереженого auto) уже нормально позначає форму брудною.
   useEffect(() => {
     if (!open || !baselineReadyRef.current) return;
+    const auto = autoDefaultsRef.current;
+    let consumed = false;
+    if (auto.branchId !== undefined && form.branchId === auto.branchId) {
+      delete auto.branchId;
+      consumed = true;
+    }
+    if (auto.warehouseId !== undefined && form.warehouseId === auto.warehouseId) {
+      delete auto.warehouseId;
+      consumed = true;
+    }
+    if (consumed) return;
     dirty.markDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, lines, open]);
@@ -328,15 +348,25 @@ export function StockDocumentCreateModal({
   }, [showLineInput]);
 
   // Auto-select single branch/warehouse
+  // Bug #639: якщо авто-вибір осідає ПІСЛЯ базлайну — фіксуємо його як програмну зміну
+  // (autoDefaultsRef), щоб dirty-детектор пропустив і не показав хибний діалог.
   useEffect(() => {
     if (branches.length === 1) {
-      setForm(f => (f.branchId ? f : { ...f, branchId: branches[0].id }));
+      setForm(f => {
+        if (f.branchId) return f;
+        if (baselineReadyRef.current) autoDefaultsRef.current.branchId = branches[0].id;
+        return { ...f, branchId: branches[0].id };
+      });
     }
   }, [branches]);
 
   useEffect(() => {
     if (warehouses.length === 1) {
-      setForm(f => (f.warehouseId ? f : { ...f, warehouseId: warehouses[0].id }));
+      setForm(f => {
+        if (f.warehouseId) return f;
+        if (baselineReadyRef.current) autoDefaultsRef.current.warehouseId = warehouses[0].id;
+        return { ...f, warehouseId: warehouses[0].id };
+      });
     }
   }, [warehouses]);
 

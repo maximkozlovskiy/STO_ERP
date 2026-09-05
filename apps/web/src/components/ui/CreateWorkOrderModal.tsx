@@ -404,6 +404,10 @@ export function CreateWorkOrderModal({
   // Базлайн для dirty-детекції: стає true після того, як початковий стан
   // (reset/load) осів; лише ПІСЛЯ цього зміни form/lines/parts позначають форму брудною.
   const baselineReadyRef = useRef(false);
+  // Bug #639: id філії, встановленої програмним async авто-вибором (єдина філія
+  // вантажиться асинхронно). Dirty-детектор пропускає рівно цю зміну, щоб не позначати
+  // чисту форму брудною, коли авто-вибір осідає ПІСЛЯ озброєння базлайну. null → скипу немає.
+  const autoBranchRef = useRef<string | null>(null);
   // track initial planned dates loaded from WO so we can detect
   // whether they actually changed before prompting the calendar-sync dialog.
   // Without this every save() — even one that only touches description or
@@ -643,6 +647,7 @@ export function CreateWorkOrderModal({
     // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
     // доки початковий стан (create-reset нижче або edit-load) не осів.
     baselineReadyRef.current = false;
+    autoBranchRef.current = null;
     dirty.resetDirty();
     setError('');
     setStatusMenuOpen(false);
@@ -707,8 +712,14 @@ export function CreateWorkOrderModal({
   }, [open, workOrderId]);
 
   // Dirty-детектор: будь-яка зміна form/lines/parts ПІСЛЯ осідання базлайну → форма брудна.
+  // Bug #639: пропускаємо одну програмну зміну — async авто-вибір єдиної філії, що осів
+  // після базлайну (form.branchId щойно став auto-значенням). Спрацьовує рівно раз.
   useEffect(() => {
     if (!open || !baselineReadyRef.current) return;
+    if (autoBranchRef.current !== null && form.branchId === autoBranchRef.current) {
+      autoBranchRef.current = null;
+      return;
+    }
     dirty.markDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, lines, parts, open]);
@@ -837,7 +848,13 @@ export function CreateWorkOrderModal({
   // (2) modal reopens when branches are already cached (branches dep unchanged).
   useEffect(() => {
     if (!open || isEditMode || branches.length !== 1) return;
-    setForm(f => (f.branchId ? f : { ...f, branchId: branches[0].id }));
+    setForm(f => {
+      if (f.branchId) return f;
+      // Bug #639: авто-вибір після базлайну → фіксуємо як програмну зміну, щоб
+      // dirty-детектор її пропустив (інакше хибний діалог «незбережені зміни»).
+      if (baselineReadyRef.current) autoBranchRef.current = branches[0].id;
+      return { ...f, branchId: branches[0].id };
+    });
   }, [branches, open, isEditMode]);
 
   // Auto-select first warehouse for new parts when warehouses load

@@ -167,7 +167,7 @@ export function SaveFilterButton({ onSave, className }: SaveFilterButtonProps) {
               setName('');
             }
           }}
-          placeholder="Назва фільтру..."
+          placeholder="Назва подання..."
           className="h-8 px-2.5 rounded-lg border border-primary text-[12px] bg-surface text-foreground outline-none w-36 transition-all"
         />
         <button
