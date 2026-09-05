@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ContractType, CounterpartyType, LegalForm, Prisma } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { calculatePagination } from '../../common/utils/pagination';
+import { initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import {
@@ -812,19 +813,13 @@ export class CounterpartiesService {
       }
     >
   > {
-    const result: Record<
-      string,
-      {
-        invoices: number;
-        purchaseOrders: number;
-        supplierPayments: number;
-        supplierReturns: number;
-      }
-    > = {};
-    if (ids.length === 0) return result;
-    for (const id of ids) {
-      result[id] = { invoices: 0, purchaseOrders: 0, supplierPayments: 0, supplierReturns: 0 };
-    }
+    if (ids.length === 0) return {};
+    const result = initCountsMap(ids, [
+      'invoices',
+      'purchaseOrders',
+      'supplierPayments',
+      'supplierReturns',
+    ] as const);
 
     const [inv, po, sp, sr] = await Promise.all([
       this.prisma.invoice.groupBy({

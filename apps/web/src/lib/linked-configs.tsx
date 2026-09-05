@@ -172,35 +172,46 @@ function workOrderSection(nav: LinkedNav) {
   };
 }
 
+/** Секція «Рахунки» — однаковий рядок у work-order та картці контрагента.
+ * Різниться лише `secondary`: наряд показує дату документа, картка контрагента — суму. */
+function invoiceSection(
+  nav: LinkedNav,
+  { secondaryField = 'date' }: { secondaryField?: 'date' | 'amount' } = {},
+) {
+  return {
+    key: 'invoices',
+    title: 'Рахунки',
+    icon: Receipt,
+    mapRow: (row: LinkedInvoiceRow) => ({
+      id: row.id,
+      primary: `Рахунок ${row.number}`,
+      secondary:
+        secondaryField === 'amount'
+          ? `${fmt(row.amount)} ₴`
+          : row.documentDate
+            ? fmtDate(row.documentDate)
+            : undefined,
+      badge: invoiceStatusBadge(row.status),
+      preview: {
+        title: `Рахунок ${row.number}`,
+        rows: [
+          { label: 'Статус', value: INVOICE_STATUS_LABELS[row.status] ?? row.status },
+          { label: 'Сума', value: `${fmt(row.amount)} ₴` },
+          ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
+        ],
+      },
+      navigate: () => nav.toInvoice(row.id),
+    }),
+  };
+}
+
 // ─── WorkOrder config (behavior-preserving дзеркало старої панелі) ──
 
 export function workOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
   return {
     fetchPath: id => `/work-orders/${id}/linked-documents`,
     sections: [
-      {
-        key: 'invoices',
-        title: 'Рахунки',
-        icon: Receipt,
-        mapRow: (row: LinkedInvoiceRow) => ({
-          id: row.id,
-          primary: `Рахунок ${row.number}`,
-          secondary: row.documentDate ? fmtDate(row.documentDate) : undefined,
-          badge: invoiceStatusBadge(row.status),
-          preview: {
-            title: `Рахунок ${row.number}`,
-            rows: [
-              {
-                label: 'Статус',
-                value: INVOICE_STATUS_LABELS[row.status] ?? row.status,
-              },
-              { label: 'Сума', value: `${fmt(row.amount)} ₴` },
-              ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
-            ],
-          },
-          navigate: () => nav.toInvoice(row.id),
-        }),
-      },
+      invoiceSection(nav),
       {
         key: 'payments',
         title: 'Оплати',
@@ -410,12 +421,20 @@ interface LinkedSupplierReturnRow {
 
 // ─── StockDocument / SupplierReturn shared section-builders ─
 
-/** Секція «Замовлення постачальнику» — джерело документа (RECEIPT/OPENING/повернення). */
-function purchaseOrderSourceSection(nav: LinkedNav) {
+/** Секція «Замовлення постачальнику» — джерело документа (RECEIPT/OPENING/повернення).
+ * key/icon параметризовані: більшість конфігів беруть FK-single `purchaseOrder`
+ * з ClipboardList; картка контрагента показує список `purchaseOrders` з ShoppingCart. */
+function purchaseOrderSourceSection(
+  nav: LinkedNav,
+  {
+    key = 'purchaseOrder',
+    icon = ClipboardList,
+  }: { key?: string; icon?: typeof ClipboardList } = {},
+) {
   return {
-    key: 'purchaseOrder',
+    key,
     title: 'Замовлення постачальнику',
-    icon: ClipboardList,
+    icon,
     mapRow: (row: LinkedPurchaseOrderRow) => ({
       id: row.id,
       primary: `Замовлення ${row.number}`,
@@ -441,11 +460,16 @@ interface LinkedWarehouseRow {
   name: string;
 }
 
-/** Секція «Склад» — довідник, без власної сторінки → read-only preview. */
-function warehouseSection() {
+/** Секція «Склад(и)» — довідник, без власної сторінки → read-only preview.
+ * key/title параметризовані: stock-document має 1-2 склади в секції «Склади»,
+ * supplier-return — один «Склад». mapRow однаковий. */
+function warehouseSection({
+  key = 'warehouse',
+  title = 'Склад',
+}: { key?: string; title?: string } = {}) {
   return {
-    key: 'warehouse',
-    title: 'Склад',
+    key,
+    title,
     icon: Warehouse,
     mapRow: (row: LinkedWarehouseRow) => ({
       id: row.id,
@@ -463,16 +487,7 @@ export function stockDocumentLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
     fetchPath: id => `/stock-documents/${id}/linked-documents`,
     sections: [
       purchaseOrderSourceSection(nav),
-      {
-        key: 'warehouses',
-        title: 'Склади',
-        icon: Warehouse,
-        mapRow: (row: LinkedWarehouseRow) => ({
-          id: row.id,
-          primary: row.name,
-          preview: { title: row.name, rows: [] },
-        }),
-      },
+      warehouseSection({ key: 'warehouses', title: 'Склади' }),
     ],
   };
 }
@@ -490,48 +505,8 @@ export function counterpartyLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
   return {
     fetchPath: id => `/counterparties/${id}/linked-documents`,
     sections: [
-      {
-        key: 'invoices',
-        title: 'Рахунки',
-        icon: Receipt,
-        mapRow: (row: LinkedInvoiceRow) => ({
-          id: row.id,
-          primary: `Рахунок ${row.number}`,
-          secondary: `${fmt(row.amount)} ₴`,
-          badge: invoiceStatusBadge(row.status),
-          preview: {
-            title: `Рахунок ${row.number}`,
-            rows: [
-              { label: 'Статус', value: INVOICE_STATUS_LABELS[row.status] ?? row.status },
-              { label: 'Сума', value: `${fmt(row.amount)} ₴` },
-              ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
-            ],
-          },
-          navigate: () => nav.toInvoice(row.id),
-        }),
-      },
-      {
-        key: 'purchaseOrders',
-        title: 'Замовлення постачальнику',
-        icon: ShoppingCart,
-        mapRow: (row: LinkedPurchaseOrderRow) => ({
-          id: row.id,
-          primary: `Замовлення ${row.number}`,
-          secondary: `${fmt(row.totalAmount)} ₴`,
-          badge: {
-            label: PO_STATUS_LABELS[row.status] ?? row.status,
-            className: 'bg-secondary text-muted-foreground',
-          },
-          preview: {
-            title: `Замовлення ${row.number}`,
-            rows: [
-              { label: 'Статус', value: PO_STATUS_LABELS[row.status] ?? row.status },
-              { label: 'Сума', value: `${fmt(row.totalAmount)} ₴` },
-            ],
-          },
-          navigate: () => nav.toPurchaseOrder(row.id),
-        }),
-      },
+      invoiceSection(nav, { secondaryField: 'amount' }),
+      purchaseOrderSourceSection(nav, { key: 'purchaseOrders', icon: ShoppingCart }),
       {
         key: 'supplierPayments',
         title: 'Оплати постачальнику',

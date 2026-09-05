@@ -8,6 +8,7 @@ import { sumLineTotals } from '../../common/utils/vat';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { throwIfSerializationConflict } from '../../common/utils/prisma-errors';
+import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
@@ -1035,8 +1036,8 @@ export class InvoicesService {
     // на нього посилається PAID-рахунок (delete-guard блокує лише відкриті рахунки).
     // Без цієї перевірки badge показував би «1 контрагент», а панель — порожню секцію.
     // workOrder-ів у списку рахунків мало посилань → одна findMany на живі workOrderId.
-    const woIds = [...new Set(invoices.map(i => i.workOrderId).filter((x): x is string => !!x))];
-    const cpIds = [...new Set(invoices.map(i => i.counterpartyId).filter((x): x is string => !!x))];
+    const woIds = uniqueDefinedIds(invoices.map(i => i.workOrderId));
+    const cpIds = uniqueDefinedIds(invoices.map(i => i.counterpartyId));
     const [liveWo, liveCp] = await Promise.all([
       woIds.length
         ? this.prisma.workOrder.findMany({
@@ -1054,11 +1055,7 @@ export class InvoicesService {
     const liveWoSet = new Set(liveWo.map(w => w.id));
     const liveCpSet = new Set(liveCp.map(c => c.id));
 
-    const result: Record<string, { workOrder: number; payments: number; counterparty: number }> =
-      {};
-    for (const id of ids) {
-      result[id] = { workOrder: 0, payments: 0, counterparty: 0 };
-    }
+    const result = initCountsMap(ids, ['workOrder', 'payments', 'counterparty'] as const);
     invoices.forEach(inv => {
       const bucket = result[inv.id];
       if (!bucket) return;

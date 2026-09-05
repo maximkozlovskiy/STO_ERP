@@ -6,6 +6,7 @@ import { kyivToday } from '../../common/utils/kyiv-date';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
+import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -492,9 +493,8 @@ export class StockDocumentsService {
     orgId: string,
     ids: string[],
   ): Promise<Record<string, { purchaseOrder: number; warehouses: number }>> {
-    const result: Record<string, { purchaseOrder: number; warehouses: number }> = {};
-    if (ids.length === 0) return result;
-    for (const id of ids) result[id] = { purchaseOrder: 0, warehouses: 0 };
+    if (ids.length === 0) return {};
+    const result = initCountsMap(ids, ['purchaseOrder', 'warehouses'] as const);
 
     const docs = await this.prisma.stockDocument.findMany({
       where: { id: { in: ids }, orgId, deletedAt: null },
@@ -504,12 +504,8 @@ export class StockDocumentsService {
     // Bug #A/#641: count має відповідати detail (getLinkedDocuments фільтрує deletedAt:null).
     // Наявність FK ≠ наявність живого запису: PO/склад можна soft-delete-нути поки документ
     // на них посилається. Без liveness-перевірки badge показував би більше, ніж панель.
-    const poIds = [...new Set(docs.map(d => d.purchaseOrderId).filter((x): x is string => !!x))];
-    const whIds = [
-      ...new Set(
-        docs.flatMap(d => [d.warehouseId, d.targetWarehouseId]).filter((x): x is string => !!x),
-      ),
-    ];
+    const poIds = uniqueDefinedIds(docs.map(d => d.purchaseOrderId));
+    const whIds = uniqueDefinedIds(docs.flatMap(d => [d.warehouseId, d.targetWarehouseId]));
     const [livePo, liveWh] = await Promise.all([
       poIds.length
         ? this.prisma.purchaseOrder.findMany({

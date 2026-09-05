@@ -5,6 +5,7 @@ import { kyivToday } from '../../common/utils/kyiv-date';
 import { roundMoney } from '../../common/utils/math';
 import { calculatePagination } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
+import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -516,12 +517,8 @@ export class SupplierReturnsService {
     orgId: string,
     ids: string[],
   ): Promise<Record<string, { purchaseOrder: number; counterparty: number; warehouse: number }>> {
-    const result: Record<
-      string,
-      { purchaseOrder: number; counterparty: number; warehouse: number }
-    > = {};
-    if (ids.length === 0) return result;
-    for (const id of ids) result[id] = { purchaseOrder: 0, counterparty: 0, warehouse: 0 };
+    if (ids.length === 0) return {};
+    const result = initCountsMap(ids, ['purchaseOrder', 'counterparty', 'warehouse'] as const);
 
     const returns = await this.prisma.supplierReturn.findMany({
       where: { id: { in: ids }, orgId, deletedAt: null },
@@ -532,9 +529,9 @@ export class SupplierReturnsService {
     // Наявність FK ≠ наявність живого запису: PO/постачальника/склад можна soft-delete-нути
     // поки повернення на них посилається. Без liveness-перевірки badge показував би «1»,
     // а панель — порожню секцію.
-    const poIds = [...new Set(returns.map(r => r.purchaseOrderId).filter((x): x is string => !!x))];
-    const supIds = [...new Set(returns.map(r => r.supplierId))];
-    const whIds = [...new Set(returns.map(r => r.warehouseId))];
+    const poIds = uniqueDefinedIds(returns.map(r => r.purchaseOrderId));
+    const supIds = uniqueDefinedIds(returns.map(r => r.supplierId));
+    const whIds = uniqueDefinedIds(returns.map(r => r.warehouseId));
     const [livePo, liveSup, liveWh] = await Promise.all([
       poIds.length
         ? this.prisma.purchaseOrder.findMany({

@@ -8,6 +8,7 @@ import {
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
+import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -974,16 +975,10 @@ export class SupplierPaymentsService {
     // PO / контрагента / рахунку). Наявність FK ≠ наявність живого запису: постачальника,
     // банк-рахунок чи касу можна soft-delete-нути поки на них посилається проведена оплата.
     // Без live-перевірки badge показував би «1», а відповідна секція панелі — порожньо.
-    const poIds = [
-      ...new Set(payments.map(p => p.purchaseOrderId).filter((x): x is string => !!x)),
-    ];
-    const cpIds = [...new Set(payments.map(p => p.supplierId).filter((x): x is string => !!x))];
-    const bankIds = [
-      ...new Set(payments.map(p => p.bankAccountId).filter((x): x is string => !!x)),
-    ];
-    const cashIds = [
-      ...new Set(payments.map(p => p.cashRegisterId).filter((x): x is string => !!x)),
-    ];
+    const poIds = uniqueDefinedIds(payments.map(p => p.purchaseOrderId));
+    const cpIds = uniqueDefinedIds(payments.map(p => p.supplierId));
+    const bankIds = uniqueDefinedIds(payments.map(p => p.bankAccountId));
+    const cashIds = uniqueDefinedIds(payments.map(p => p.cashRegisterId));
     const [livePo, liveCp, liveBank, liveCash] = await Promise.all([
       poIds.length
         ? this.prisma.purchaseOrder.findMany({
@@ -1015,11 +1010,7 @@ export class SupplierPaymentsService {
     const liveBankSet = new Set(liveBank.map(x => x.id));
     const liveCashSet = new Set(liveCash.map(x => x.id));
 
-    const result: Record<string, { purchaseOrder: number; counterparty: number; account: number }> =
-      {};
-    for (const id of ids) {
-      result[id] = { purchaseOrder: 0, counterparty: 0, account: 0 };
-    }
+    const result = initCountsMap(ids, ['purchaseOrder', 'counterparty', 'account'] as const);
     payments.forEach(sp => {
       const bucket = result[sp.id];
       if (!bucket) return;

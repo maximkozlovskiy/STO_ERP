@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useCallback, useMemo, useEffect } from 'react';
+import { Suspense, useState, useCallback, useMemo } from 'react';
 import type { ElementType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SupplierPaymentScheduleTab } from './SupplierPaymentScheduleTab';
@@ -22,7 +22,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useRequireAuth } from '@/lib/auth';
 import { useDebounce } from '@/hooks/useDebounce';
 import { apiFetch } from '@/lib/api-client';
-import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
+import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
 import { supplierPaymentLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import {
@@ -224,16 +224,6 @@ function SupplierPaymentsPageInner() {
     enabled: itemIds.length > 0,
     staleTime: 30_000,
   });
-
-  // Escape closes the linked-documents popup (§14 a11y).
-  useEffect(() => {
-    if (!linkedDocPopupId) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLinkedDocPopupId(null);
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [linkedDocPopupId]);
 
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(items);
 
@@ -900,46 +890,13 @@ function SupplierPaymentsPageInner() {
         onSaved={() => setEditingId(null)}
       />
 
-      {/* Linked documents popup. Escape handled by document-level listener above (§14 a11y). */}
       {linkedDocPopupId && (
-        <div
-          className="fixed inset-0 z-50 bg-black/30"
-          onClick={() => setLinkedDocPopupId(null)}
-          role="presentation"
-        >
-          <div
-            className="absolute right-4 top-1/2 -translate-y-1/2 w-90 max-h-[80vh] overflow-y-auto bg-background rounded-xl shadow-2xl border border-border p-4"
-            onClick={e => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Пов'язані документи оплати"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-sm">Пов&apos;язані документи</h2>
-              <button
-                onClick={() => setLinkedDocPopupId(null)}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="Закрити"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M1 1L13 13M13 1L1 13"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-            </div>
-            <LinkedDocumentsPanel config={linkedConfig} entityId={linkedDocPopupId} />
-          </div>
-        </div>
+        <LinkedDocumentsPopup
+          entityId={linkedDocPopupId}
+          config={linkedConfig}
+          onClose={() => setLinkedDocPopupId(null)}
+          ariaLabel="Пов'язані документи оплати"
+        />
       )}
 
       <ConfirmDialog {...dialogProps} />

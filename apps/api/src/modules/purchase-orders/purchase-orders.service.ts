@@ -6,6 +6,7 @@ import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff, roundMoney } from '../../common/utils/math';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
+import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -985,7 +986,7 @@ export class PurchaseOrdersService {
     // Bug #A: count має відповідати detail. Постачальника можна soft-delete-нути поки
     // на нього посилається RECEIVED-замовлення (delete-guard блокує лише незакриті PO).
     // Без перевірки живого контрагента badge показував би «1», а панель — порожньо.
-    const supplierIds = [...new Set(orders.map(o => o.supplierId).filter((x): x is string => !!x))];
+    const supplierIds = uniqueDefinedIds(orders.map(o => o.supplierId));
     const liveSuppliers = supplierIds.length
       ? await this.prisma.counterparty.findMany({
           where: { id: { in: supplierIds }, orgId, deletedAt: null },
@@ -994,10 +995,7 @@ export class PurchaseOrdersService {
       : [];
     const liveSupplierSet = new Set(liveSuppliers.map(c => c.id));
 
-    const result: Record<string, { supplierPayments: number; counterparty: number }> = {};
-    for (const id of ids) {
-      result[id] = { supplierPayments: 0, counterparty: 0 };
-    }
+    const result = initCountsMap(ids, ['supplierPayments', 'counterparty'] as const);
     supplierPayments.forEach(r => {
       if (r.purchaseOrderId && result[r.purchaseOrderId]) {
         result[r.purchaseOrderId].supplierPayments = r._count.id;
