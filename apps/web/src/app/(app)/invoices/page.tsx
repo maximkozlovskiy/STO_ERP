@@ -57,6 +57,7 @@ import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
+import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
@@ -115,6 +116,9 @@ const INVOICE_COLUMNS: Array<{ key: string; label: string; defaultVisible?: bool
 ];
 const INVOICE_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(INVOICE_COLUMNS.map(c => c.key));
 
+// Рахунок «активний» (термін оплати ще горить), поки не оплачений/скасований.
+const INVOICE_INACTIVE_STATUSES = new Set(['PAID', 'CANCELLED']);
+
 export default function InvoicesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
 
@@ -156,6 +160,11 @@ export default function InvoicesPage() {
   const [error, setError] = useState('');
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
+  // nowMs — стабільний timestamp для row-status рейки (обчислюється на клієнті після mount).
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, []);
   const { sort: invSort, toggle: toggleInvSort } = useSortState('createdAt', 'desc');
 
   // React Query — main data
@@ -731,109 +740,128 @@ export default function InvoicesPage() {
                 </TableRow>
               )}
               {!loading &&
-                invoices.map(inv => (
-                  <TableRow
-                    key={inv.id}
-                    onClick={() => {
-                      setEditingInvoiceId(inv.id);
-                    }}
-                    className={cn(
-                      'group transition-colors cursor-pointer',
-                      inv.deletedAt && 'opacity-60',
-                      selectedInv?.id === inv.id && detailPanel.enabled && 'bg-primary/5',
-                      bulkSelect.isSelected(inv.id) && 'bg-primary/5',
-                    )}
-                  >
-                    {features.bulkActionsEnabled && (
-                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={bulkSelect.isSelected(inv.id)}
-                          onChange={() => bulkSelect.toggle(inv.id)}
-                          className="h-3.5 w-3.5 rounded border-border"
-                          aria-label={`Вибрати рахунок ${inv.number}`}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleColumns.map(col => {
-                      if (col.key === 'number')
-                        return (
-                          <TableCell key="number" className="font-medium text-[13px]">
-                            {inv.number}
-                          </TableCell>
-                        );
-                      if (col.key === 'counterparty')
-                        return (
-                          <TableCell key="counterparty" className="text-[13px]">
-                            {inv.counterpartyName ?? '—'}
-                          </TableCell>
-                        );
-                      if (col.key === 'workOrder')
-                        return (
-                          <TableCell key="workOrder" className="text-[13px] text-muted-foreground">
-                            {(inv as InvoiceWithOptionals).workOrderNumber ?? '—'}
-                          </TableCell>
-                        );
-                      if (col.key === 'status')
-                        return (
-                          <TableCell key="status">
-                            <Badge
-                              variant={STATUS_BADGE[inv.status] ?? 'secondary'}
-                              tooltip={INVOICE_STATUS_DESCRIPTIONS[inv.status]}
+                invoices.map(inv => {
+                  const rowTone = rowStatusTone(
+                    {
+                      dueDate: inv.dueDate,
+                      active: !INVOICE_INACTIVE_STATUSES.has(inv.status),
+                      balanceDue: (inv.amount ?? 0) - (inv.paidAmount ?? 0),
+                    },
+                    nowMs,
+                  );
+                  const toneTitle = rowStatusLabel(rowTone);
+                  return (
+                    <TableRow
+                      key={inv.id}
+                      title={toneTitle}
+                      onClick={() => {
+                        setEditingInvoiceId(inv.id);
+                      }}
+                      className={cn(
+                        'group transition-colors cursor-pointer',
+                        rowStatusBorderClass(rowTone),
+                        inv.deletedAt && 'opacity-60',
+                        selectedInv?.id === inv.id && detailPanel.enabled && 'bg-primary/5',
+                        bulkSelect.isSelected(inv.id) && 'bg-primary/5',
+                      )}
+                    >
+                      {features.bulkActionsEnabled && (
+                        <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={bulkSelect.isSelected(inv.id)}
+                            onChange={() => bulkSelect.toggle(inv.id)}
+                            className="h-3.5 w-3.5 rounded border-border"
+                            aria-label={`Вибрати рахунок ${inv.number}`}
+                          />
+                        </TableCell>
+                      )}
+                      {visibleColumns.map(col => {
+                        if (col.key === 'number')
+                          return (
+                            <TableCell key="number" className="font-medium text-[13px]">
+                              {inv.number}
+                            </TableCell>
+                          );
+                        if (col.key === 'counterparty')
+                          return (
+                            <TableCell key="counterparty" className="text-[13px]">
+                              {inv.counterpartyName ?? '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'workOrder')
+                          return (
+                            <TableCell
+                              key="workOrder"
+                              className="text-[13px] text-muted-foreground"
                             >
-                              {STATUS_LABELS[inv.status]}
-                            </Badge>
-                          </TableCell>
-                        );
-                      if (col.key === 'amount')
-                        return (
-                          <TableCell key="amount" className="text-right font-semibold text-[13px]">
-                            {fmt(inv.amount)}
-                          </TableCell>
-                        );
-                      if (col.key === 'documentDate')
-                        return (
-                          <TableCell
-                            key="documentDate"
-                            className="text-[13px] text-muted-foreground"
-                          >
-                            {inv.documentDate ? fmtDate(inv.documentDate) : '—'}
-                          </TableCell>
-                        );
-                      if (col.key === 'dueDate')
-                        return (
-                          <TableCell key="dueDate" className="text-[13px] text-muted-foreground">
-                            {inv.dueDate ? fmtDate(inv.dueDate) : '—'}
-                          </TableCell>
-                        );
-                      return null;
-                    })}
-                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          title="Відкрити деталі"
-                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                          onClick={() => selectInvoice(inv)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        {!inv.deletedAt && (
+                              {(inv as InvoiceWithOptionals).workOrderNumber ?? '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'status')
+                          return (
+                            <TableCell key="status">
+                              <Badge
+                                variant={STATUS_BADGE[inv.status] ?? 'secondary'}
+                                tooltip={INVOICE_STATUS_DESCRIPTIONS[inv.status]}
+                              >
+                                {STATUS_LABELS[inv.status]}
+                              </Badge>
+                            </TableCell>
+                          );
+                        if (col.key === 'amount')
+                          return (
+                            <TableCell
+                              key="amount"
+                              className="text-right font-semibold text-[13px]"
+                            >
+                              {fmt(inv.amount)}
+                            </TableCell>
+                          );
+                        if (col.key === 'documentDate')
+                          return (
+                            <TableCell
+                              key="documentDate"
+                              className="text-[13px] text-muted-foreground"
+                            >
+                              {inv.documentDate ? fmtDate(inv.documentDate) : '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'dueDate')
+                          return (
+                            <TableCell key="dueDate" className="text-[13px] text-muted-foreground">
+                              {inv.dueDate ? fmtDate(inv.dueDate) : '—'}
+                            </TableCell>
+                          );
+                        return null;
+                      })}
+                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            title="Позначити на видалення"
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => void markDeleted(inv)}
+                            title="Відкрити деталі"
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                            onClick={() => selectInvoice(inv)}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          {!inv.deletedAt && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="Позначити на видалення"
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => void markDeleted(inv)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
         </div>

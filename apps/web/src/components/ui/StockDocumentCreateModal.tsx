@@ -18,6 +18,8 @@ import {
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { cn } from '@/lib/utils';
@@ -149,6 +151,7 @@ export function StockDocumentCreateModal({
 }: StockDocumentCreateModalProps) {
   const isEditMode = !!stockDocumentId;
   const features = useUiFeatures();
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const { minimizeModal } = useTabBarContext();
 
   const [form, setForm] = useState({
@@ -178,6 +181,9 @@ export function StockDocumentCreateModal({
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
+  // Базлайн для dirty-детекції: стає true після того, як початковий стан
+  // (reset/load) осів; лише ПІСЛЯ цього зміни form/lines позначають форму брудною.
+  const baselineReadyRef = useRef(false);
 
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
@@ -231,6 +237,10 @@ export function StockDocumentCreateModal({
   // Reset on open
   useEffect(() => {
     if (!open) return;
+    // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
+    // доки початковий стан (create-reset нижче або edit-load) не осів.
+    baselineReadyRef.current = false;
+    dirty.resetDirty();
     setError('');
     setStatusMenuOpen(false);
     setHeaderCollapsed(false);
@@ -248,8 +258,21 @@ export function StockDocumentCreateModal({
         notes: '',
         documentDate: kyivToday(),
       });
+      // Create-режим: базлайн готовий після того, як цей setState-батч застосується.
+      const t = setTimeout(() => {
+        baselineReadyRef.current = true;
+      }, 0);
+      return () => clearTimeout(t);
     }
-  }, [open, stockDocumentId]);
+    // Edit-режим: базлайн вмикається у load-ефекті після успішного завантаження.
+  }, [open, stockDocumentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Dirty-детектор: будь-яка зміна form/lines ПІСЛЯ осідання базлайну → форма брудна.
+  useEffect(() => {
+    if (!open || !baselineReadyRef.current) return;
+    dirty.markDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, lines, open]);
 
   // Load document in edit mode
   useEffect(() => {
@@ -289,6 +312,10 @@ export function StockDocumentCreateModal({
       .finally(() => {
         if (cancelled) return;
         setLoading(false);
+        // Базлайн готовий після осідання завантаженого стану (наступний тік).
+        setTimeout(() => {
+          baselineReadyRef.current = true;
+        }, 0);
       });
     return () => {
       cancelled = true;
@@ -427,6 +454,7 @@ export function StockDocumentCreateModal({
       });
 
       if (features.toastEnabled) toast.success(`Документ ${doc.number} створено`);
+      dirty.resetDirty();
       onSaved?.(doc);
       onClose();
     } catch (e: unknown) {
@@ -459,6 +487,7 @@ export function StockDocumentCreateModal({
       });
 
       if (features.toastEnabled) toast.success('Документ збережено');
+      dirty.resetDirty();
       onSaved?.();
       onClose();
     } catch (e: unknown) {
@@ -468,9 +497,11 @@ export function StockDocumentCreateModal({
     }
   };
 
-  const handleModalClose = useCallback(() => {
+  const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
+    if (!(await dirty.confirmClose())) return;
     onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose]);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -492,6 +523,7 @@ export function StockDocumentCreateModal({
       <Modal
         open={open}
         onClose={handleModalClose}
+        onSubmit={isEditMode ? handleSave : handleCreate}
         title={isEditMode ? 'Складський документ' : 'Новий складський документ'}
         size="content"
         hideClose
@@ -1043,6 +1075,7 @@ export function StockDocumentCreateModal({
           setGoodSearchOpen(false);
         }}
       />
+      <DirtyConfirmDialog {...dirty.dialogProps} />
     </>
   );
 }

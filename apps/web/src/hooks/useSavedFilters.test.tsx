@@ -80,6 +80,59 @@ describe('useSavedFilters', () => {
     expect(result.current.saved).toEqual([]);
   });
 
+  // ─── Feature 1: Saved Views (filters + columns + order + sort) ─────────────
+
+  it('save з extra зберігає columns/order/sort у пресеті й localStorage', () => {
+    const { result } = renderHook(() => useSavedFilters<F>('test'));
+    let preset!: { id: string; columns?: string[]; order?: string[]; sort?: unknown };
+    act(() => {
+      preset = result.current.save(
+        'Подання',
+        { status: 'IN_PROGRESS' },
+        {
+          columns: ['number', 'status'],
+          order: ['status', 'number'],
+          sort: { field: 'number', dir: 'asc' },
+        },
+      );
+    });
+    expect(preset.columns).toEqual(['number', 'status']);
+    expect(preset.order).toEqual(['status', 'number']);
+    expect(preset.sort).toEqual({ field: 'number', dir: 'asc' });
+    const stored = JSON.parse(localStorage.getItem(KEY) ?? '[]') as Array<{
+      columns?: string[];
+      sort?: unknown;
+    }>;
+    expect(stored[0].columns).toEqual(['number', 'status']);
+    expect(stored[0].sort).toEqual({ field: 'number', dir: 'asc' });
+  });
+
+  it('save без extra не додає view-полів (back-compat формат)', () => {
+    const { result } = renderHook(() => useSavedFilters<F>('test'));
+    let preset!: Record<string, unknown>;
+    act(() => {
+      preset = result.current.save('Лише фільтр', { status: 'X' }) as unknown as Record<
+        string,
+        unknown
+      >;
+    });
+    expect('columns' in preset).toBe(false);
+    expect('order' in preset).toBe(false);
+    expect('sort' in preset).toBe(false);
+  });
+
+  it('back-compat: старий запис без columns/sort гідратується без помилок', () => {
+    // Запис у старому форматі (лише id/name/filters/createdAt).
+    localStorage.setItem(
+      KEY,
+      JSON.stringify([{ id: 'old', name: 'Старий', filters: { status: 'X' }, createdAt: 1 }]),
+    );
+    const { result } = renderHook(() => useSavedFilters<F>('test'));
+    expect(result.current.saved).toHaveLength(1);
+    expect(result.current.saved[0].columns).toBeUndefined();
+    expect(result.current.saved[0].sort).toBeUndefined();
+  });
+
   it('різні pageKey мають незалежне сховище', () => {
     const { result: a } = renderHook(() => useSavedFilters<F>('page-a'));
     const { result: b } = renderHook(() => useSavedFilters<F>('page-b'));

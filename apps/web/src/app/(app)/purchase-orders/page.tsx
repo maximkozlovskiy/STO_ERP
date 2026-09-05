@@ -78,6 +78,7 @@ import {
   type BadgeVariant,
 } from '@sto/shared';
 import { toast } from '@/lib/toast';
+import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
 import { cn, UUID_RE, daysUntil } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
@@ -113,6 +114,9 @@ const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> =
   { key: 'priced', label: 'Розцінено', defaultVisible: true },
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
+
+// Замовлення «активне» (дата оплати ще горить), поки не отримане/скасоване.
+const PO_INACTIVE_STATUSES = new Set(['RECEIVED', 'CANCELLED']);
 
 const COLUMNS_SR: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
   { key: 'number', label: 'Номер', defaultVisible: true },
@@ -1121,156 +1125,171 @@ function PurchaseOrdersPageClient() {
                     </TableRow>
                   )}
                   {!loading &&
-                    orders.map(po => (
-                      <TableRow
-                        key={po.id}
-                        className={cn(
-                          'group transition-colors cursor-pointer',
-                          selectedPO?.id === po.id && detailPanel.enabled && 'bg-primary/5',
-                          bulkSelect.isSelected(po.id) && 'bg-primary/5',
-                          po.deletedAt && 'opacity-60',
-                        )}
-                        onClick={() => {
-                          if (detailPanel.enabled) {
-                            selectPO(po);
-                          } else {
-                            setEditingPOId(po.id);
-                          }
-                        }}
-                      >
-                        {features.bulkActionsEnabled && (
-                          <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={bulkSelect.isSelected(po.id)}
-                              onChange={() => bulkSelect.toggle(po.id)}
-                              className="h-3.5 w-3.5 rounded border-border"
-                              aria-label={`Вибрати замовлення ${po.number}`}
-                            />
-                          </TableCell>
-                        )}
-                        {visibleColumns.map(col => {
-                          if (col.key === 'number')
-                            return (
-                              <TableCell key="number" className="font-medium text-[13px]">
-                                {po.number}
-                                {po.deletedAt && (
-                                  <Badge
-                                    variant="destructive"
-                                    className="ml-2 text-[10px] px-1 py-0"
-                                  >
-                                    видалено
-                                  </Badge>
-                                )}
-                              </TableCell>
-                            );
-                          if (col.key === 'supplier')
-                            return (
-                              <TableCell key="supplier" className="text-[13px]">
-                                {po.supplierName ?? '—'}
-                              </TableCell>
-                            );
-                          if (col.key === 'warehouse')
-                            return (
-                              <TableCell
-                                key="warehouse"
-                                className="text-[13px] text-muted-foreground"
-                              >
-                                {po.warehouseName ?? '—'}
-                              </TableCell>
-                            );
-                          if (col.key === 'status')
-                            return (
-                              <TableCell key="status">
-                                <Badge
-                                  variant={STATUS_BADGE[po.status] ?? 'secondary'}
-                                  tooltip={PO_STATUS_DESCRIPTIONS[po.status]}
+                    orders.map(po => {
+                      const rowTone = rowStatusTone(
+                        {
+                          dueDate: po.paymentDate,
+                          active: !PO_INACTIVE_STATUSES.has(po.status),
+                          balanceDue: po.outstanding,
+                        },
+                        nowMs,
+                      );
+                      const toneTitle = rowStatusLabel(rowTone);
+                      return (
+                        <TableRow
+                          key={po.id}
+                          title={toneTitle}
+                          className={cn(
+                            'group transition-colors cursor-pointer',
+                            rowStatusBorderClass(rowTone),
+                            selectedPO?.id === po.id && detailPanel.enabled && 'bg-primary/5',
+                            bulkSelect.isSelected(po.id) && 'bg-primary/5',
+                            po.deletedAt && 'opacity-60',
+                          )}
+                          onClick={() => {
+                            if (detailPanel.enabled) {
+                              selectPO(po);
+                            } else {
+                              setEditingPOId(po.id);
+                            }
+                          }}
+                        >
+                          {features.bulkActionsEnabled && (
+                            <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={bulkSelect.isSelected(po.id)}
+                                onChange={() => bulkSelect.toggle(po.id)}
+                                className="h-3.5 w-3.5 rounded border-border"
+                                aria-label={`Вибрати замовлення ${po.number}`}
+                              />
+                            </TableCell>
+                          )}
+                          {visibleColumns.map(col => {
+                            if (col.key === 'number')
+                              return (
+                                <TableCell key="number" className="font-medium text-[13px]">
+                                  {po.number}
+                                  {po.deletedAt && (
+                                    <Badge
+                                      variant="destructive"
+                                      className="ml-2 text-[10px] px-1 py-0"
+                                    >
+                                      видалено
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                              );
+                            if (col.key === 'supplier')
+                              return (
+                                <TableCell key="supplier" className="text-[13px]">
+                                  {po.supplierName ?? '—'}
+                                </TableCell>
+                              );
+                            if (col.key === 'warehouse')
+                              return (
+                                <TableCell
+                                  key="warehouse"
+                                  className="text-[13px] text-muted-foreground"
                                 >
-                                  {STATUS_LABELS[po.status]}
-                                </Badge>
-                              </TableCell>
-                            );
-                          if (col.key === 'amount')
-                            return (
-                              <TableCell
-                                key="amount"
-                                className="text-right font-semibold text-[13px]"
-                              >
-                                {fmtMoney(po.totalAmount)} ₴
-                              </TableCell>
-                            );
-                          if (col.key === 'date')
-                            return (
-                              <TableCell key="date" className="text-[13px] text-muted-foreground">
-                                {po.documentDate ? fmtDate(po.documentDate) : fmtDate(po.createdAt)}
-                              </TableCell>
-                            );
-                          if (col.key === 'paymentDate')
-                            return (
-                              <TableCell
-                                key="paymentDate"
-                                className="text-[13px] text-muted-foreground"
-                              >
-                                {po.paymentDate ? fmtDate(po.paymentDate) : '—'}
-                              </TableCell>
-                            );
-                          if (col.key === 'payDue') {
-                            // Бейдж лише де є реальний залишок боргу по PO.
-                            const dpd =
-                              (po.outstanding ?? 0) > 0 ? daysUntil(po.paymentDate, nowMs) : null;
-                            return (
-                              <TableCell key="payDue" className="text-[13px]">
-                                {dpd != null && (
-                                  <ExpiryBadge
-                                    date={po.paymentDate}
-                                    nowMs={nowMs}
-                                    expiredLabel={`Прострочено ${Math.abs(dpd)} дн.`}
-                                    soonLabel={`${dpd} дн.`}
-                                    soonDays={20}
-                                  />
-                                )}
-                              </TableCell>
-                            );
-                          }
-                          if (col.key === 'priced')
-                            return (
-                              <TableCell key="priced" className="text-[13px]">
-                                {po.pricedAt ? (
-                                  <span className="text-success font-medium">Так</span>
-                                ) : (
-                                  <span className="text-muted-foreground">Ні</span>
-                                )}
-                              </TableCell>
-                            );
-                          return null;
-                        })}
-                        <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              title="Редагувати"
-                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                              onClick={() => setEditingPOId(po.id)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            {!po.deletedAt && (
+                                  {po.warehouseName ?? '—'}
+                                </TableCell>
+                              );
+                            if (col.key === 'status')
+                              return (
+                                <TableCell key="status">
+                                  <Badge
+                                    variant={STATUS_BADGE[po.status] ?? 'secondary'}
+                                    tooltip={PO_STATUS_DESCRIPTIONS[po.status]}
+                                  >
+                                    {STATUS_LABELS[po.status]}
+                                  </Badge>
+                                </TableCell>
+                              );
+                            if (col.key === 'amount')
+                              return (
+                                <TableCell
+                                  key="amount"
+                                  className="text-right font-semibold text-[13px]"
+                                >
+                                  {fmtMoney(po.totalAmount)} ₴
+                                </TableCell>
+                              );
+                            if (col.key === 'date')
+                              return (
+                                <TableCell key="date" className="text-[13px] text-muted-foreground">
+                                  {po.documentDate
+                                    ? fmtDate(po.documentDate)
+                                    : fmtDate(po.createdAt)}
+                                </TableCell>
+                              );
+                            if (col.key === 'paymentDate')
+                              return (
+                                <TableCell
+                                  key="paymentDate"
+                                  className="text-[13px] text-muted-foreground"
+                                >
+                                  {po.paymentDate ? fmtDate(po.paymentDate) : '—'}
+                                </TableCell>
+                              );
+                            if (col.key === 'payDue') {
+                              // Бейдж лише де є реальний залишок боргу по PO.
+                              const dpd =
+                                (po.outstanding ?? 0) > 0 ? daysUntil(po.paymentDate, nowMs) : null;
+                              return (
+                                <TableCell key="payDue" className="text-[13px]">
+                                  {dpd != null && (
+                                    <ExpiryBadge
+                                      date={po.paymentDate}
+                                      nowMs={nowMs}
+                                      expiredLabel={`Прострочено ${Math.abs(dpd)} дн.`}
+                                      soonLabel={`${dpd} дн.`}
+                                      soonDays={20}
+                                    />
+                                  )}
+                                </TableCell>
+                              );
+                            }
+                            if (col.key === 'priced')
+                              return (
+                                <TableCell key="priced" className="text-[13px]">
+                                  {po.pricedAt ? (
+                                    <span className="text-success font-medium">Так</span>
+                                  ) : (
+                                    <span className="text-muted-foreground">Ні</span>
+                                  )}
+                                </TableCell>
+                              );
+                            return null;
+                          })}
+                          <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
                               <Button
+                                type="button"
                                 variant="ghost"
                                 size="icon-sm"
-                                title="Позначити на видалення"
-                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                                onClick={() => void markDeleted(po)}
+                                title="Редагувати"
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                                onClick={() => setEditingPOId(po.id)}
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Pencil className="h-3.5 w-3.5" />
                               </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                              {!po.deletedAt && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  title="Позначити на видалення"
+                                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                                  onClick={() => void markDeleted(po)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                 </TableBody>
               </Table>
             </div>

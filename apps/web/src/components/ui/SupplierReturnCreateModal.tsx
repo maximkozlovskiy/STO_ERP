@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName, cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
@@ -121,6 +123,7 @@ interface Props {
 
 export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Props) {
   const features = useUiFeatures();
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const isEdit = !!editId;
 
   // ── Document state ─────────────────────────────────────────────────────────
@@ -142,6 +145,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   // вхід одразу повертається. Симетрія з Invoice/PO/Stock/WorkOrder модалками.
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
+  // Базлайн для dirty-детекції: стає true після того, як початковий стан
+  // (reset/load) осів; лише ПІСЛЯ цього зміни полів/lines позначають форму брудною.
+  const baselineReadyRef = useRef(false);
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
     setSaving(v);
@@ -214,7 +220,14 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         setDocumentDate(data.documentDate ?? kyivToday());
         setLines((data.lines ?? []).map(lineFromApi));
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!mountedRef.current) return;
+        // Базлайн готовий після осідання завантаженого стану (наступний тік).
+        setTimeout(() => {
+          baselineReadyRef.current = true;
+        }, 0);
+      });
   }, [open, editId]);
 
   // ── Reset ──────────────────────────────────────────────────────────────────
@@ -235,6 +248,32 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   useEffect(() => {
     if (!open) resetForm();
   }, [open, resetForm]);
+
+  // Baseline для dirty-детекції на відкриття модалки.
+  useEffect(() => {
+    if (!open) return;
+    // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
+    // доки початковий стан (create-defaults або edit-load) не осів.
+    baselineReadyRef.current = false;
+    dirty.resetDirty();
+    if (!editId) {
+      // Create-режим: стан вже містить reset-defaults (resetForm на попереднє закриття);
+      // базлайн готовий на наступному тіку.
+      const t = setTimeout(() => {
+        baselineReadyRef.current = true;
+      }, 0);
+      return () => clearTimeout(t);
+    }
+    // Edit-режим: базлайн вмикається у load-ефекті після успішного завантаження.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editId]);
+
+  // Dirty-детектор: будь-яка зміна редагованих полів/lines ПІСЛЯ осідання базлайну → брудна.
+  useEffect(() => {
+    if (!open || !baselineReadyRef.current) return;
+    dirty.markDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supplierId, supplierName, warehouseId, notes, documentDate, lines, open]);
 
   // ── Status transitions ─────────────────────────────────────────────────────
   // Backend FSM is linear-forward: DRAFT → CONFIRMED or DRAFT → CANCELLED; both terminal.
@@ -368,6 +407,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         await apiFetch('/supplier-returns', { method: 'POST', body: JSON.stringify(payload) });
         if (features.toastEnabled) toast.success('Повернення створено');
       }
+      dirty.resetDirty();
       onSaved();
       onClose();
     } catch (e) {
@@ -393,9 +433,11 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   // close-guard: під час save/transition Escape/backdrop не мають закривати модалку
   // (інакше in-flight запит лишається без UI, а повторне відкриття бачить stale-стан).
   // Симетрія з Invoice/PO/Stock/WorkOrder модалками.
-  const handleModalClose = useCallback(() => {
+  const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
+    if (!(await dirty.confirmClose())) return;
     onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -414,6 +456,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       <Modal
         open={open}
         onClose={handleModalClose}
+        onSubmit={handleSave}
         title={title}
         size="content"
         hideClose
@@ -878,6 +921,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           )
         }
       />
+      <DirtyConfirmDialog {...dirty.dialogProps} />
     </>
   );
 }

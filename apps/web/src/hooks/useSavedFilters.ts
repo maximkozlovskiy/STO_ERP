@@ -2,11 +2,36 @@
 
 import { useState, useCallback, useEffect } from 'react';
 
+/** Знімок сортування таблиці для збереженого подання. */
+export interface SavedSortState {
+  field: string;
+  dir: 'asc' | 'desc';
+}
+
+/**
+ * Збережене «подання» списку. Історично називалось «фільтр», тому тип лишається
+ * SavedFilter (back-compat зі старими localStorage-записами), але тепер може нести
+ * повний знімок вигляду: фільтри + видимі колонки + порядок колонок + сортування.
+ * Усі view-поля опційні — старі записи без них застосовуються як раніше.
+ */
 export interface SavedFilter<T extends Record<string, unknown>> {
   id: string;
   name: string;
   filters: T;
   createdAt: number;
+  /** Ключі видимих колонок на момент збереження. */
+  columns?: string[];
+  /** Порядок колонок на момент збереження. */
+  order?: string[];
+  /** Сортування на момент збереження. */
+  sort?: SavedSortState | null;
+}
+
+/** Додаткові view-поля, що передаються у save() поряд із фільтрами. */
+export interface SavedViewExtra {
+  columns?: string[];
+  order?: string[];
+  sort?: SavedSortState | null;
 }
 
 /**
@@ -48,12 +73,15 @@ export function useSavedFilters<T extends Record<string, unknown>>(pageKey: stri
   }, [read]);
 
   const save = useCallback(
-    (name: string, filters: T) => {
+    (name: string, filters: T, extra?: SavedViewExtra) => {
       const preset: SavedFilter<T> = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         name,
         filters,
         createdAt: Date.now(),
+        ...(extra?.columns ? { columns: extra.columns } : {}),
+        ...(extra?.order ? { order: extra.order } : {}),
+        ...(extra?.sort !== undefined ? { sort: extra.sort } : {}),
       };
       setSaved(prev => {
         const next = [...prev, preset];

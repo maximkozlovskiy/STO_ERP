@@ -18,6 +18,8 @@ import {
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { displayCounterpartyName, cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
@@ -131,7 +133,11 @@ export function InvoiceCreateModal({
 }: InvoiceCreateModalProps) {
   const isEditMode = !!invoiceId;
   const features = useUiFeatures();
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const { minimizeModal } = useTabBarContext();
+  // Базлайн для dirty-детекції: стає true після того, як початковий стан
+  // (reset/load) осів; лише ПІСЛЯ цього зміни form/lines позначають форму брудною.
+  const baselineReadyRef = useRef(false);
 
   const [form, setForm] = useState({
     counterpartyId: '',
@@ -194,6 +200,10 @@ export function InvoiceCreateModal({
   // Reset on open
   useEffect(() => {
     if (!open) return;
+    // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
+    // доки початковий стан (create-reset нижче або edit-load) не осів.
+    baselineReadyRef.current = false;
+    dirty.resetDirty();
     setError('');
     setStatusMenuOpen(false);
     setHeaderCollapsed(false);
@@ -215,8 +225,22 @@ export function InvoiceCreateModal({
         notes: '',
       });
       setCounterpartyDisplay('');
+      // Create-режим: базлайн готовий після того, як цей setState-батч застосується.
+      const t = setTimeout(() => {
+        baselineReadyRef.current = true;
+      }, 0);
+      return () => clearTimeout(t);
     }
+    // Edit-режим: базлайн вмикається у load-ефекті після успішного завантаження.
   }, [open, invoiceId]);
+
+  // Dirty-детектор: будь-яка зміна form/lines ПІСЛЯ осідання базлайну → форма брудна.
+  // Замінює десятки точкових dirty.markDirty() у onChange (Invoice — велика модалка).
+  useEffect(() => {
+    if (!open || !baselineReadyRef.current) return;
+    dirty.markDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, lines, open]);
 
   // Load invoice data in edit mode
   useEffect(() => {
@@ -256,6 +280,10 @@ export function InvoiceCreateModal({
       .finally(() => {
         if (cancelled) return;
         setLoading(false);
+        // Базлайн готовий після осідання завантаженого стану (наступний тік).
+        setTimeout(() => {
+          baselineReadyRef.current = true;
+        }, 0);
       });
     return () => {
       cancelled = true;
@@ -461,6 +489,7 @@ export function InvoiceCreateModal({
       }
 
       if (features.toastEnabled) toast.success('Рахунок збережено');
+      dirty.resetDirty();
       onSaved?.();
       onClose();
     } catch (e: unknown) {
@@ -470,9 +499,11 @@ export function InvoiceCreateModal({
     }
   };
 
-  const handleModalClose = useCallback(() => {
+  const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
+    if (!(await dirty.confirmClose())) return;
     onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose]);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -491,6 +522,7 @@ export function InvoiceCreateModal({
       <Modal
         open={open}
         onClose={handleModalClose}
+        onSubmit={handleSave}
         title={isEditMode ? 'Рахунок-фактура' : 'Новий рахунок'}
         size="content"
         hideClose
@@ -1026,6 +1058,7 @@ export function InvoiceCreateModal({
           setCpPickerOpen(false);
         }}
       />
+      <DirtyConfirmDialog {...dirty.dialogProps} />
     </>
   );
 }

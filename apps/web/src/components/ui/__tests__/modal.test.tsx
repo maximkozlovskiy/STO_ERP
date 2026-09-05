@@ -53,6 +53,60 @@ describe('Modal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  // ─── Ctrl+Enter → onSubmit (Feature 6: keyboard в модалках) ────────────────
+  //
+  // keyboardShortcutsEnabled приходить з useUiFeatures; у jsdom без токена
+  // повертаються DEFAULTS (keyboardShortcutsEnabled: true), тож хендлер активний.
+
+  it('Ctrl+Enter викликає onSubmit рівно один раз', async () => {
+    const onSubmit = vi.fn();
+    render(
+      <Modal open onClose={vi.fn()} onSubmit={onSubmit} title="Тест">
+        <input aria-label="поле" />
+      </Modal>,
+    );
+    const input = screen.getByLabelText('поле');
+    input.focus();
+    await userEvent.keyboard('{Control>}{Enter}{/Control}');
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('Cmd+Enter (metaKey) також викликає onSubmit', async () => {
+    const onSubmit = vi.fn();
+    render(
+      <Modal open onClose={vi.fn()} onSubmit={onSubmit} title="Тест">
+        <input aria-label="поле" />
+      </Modal>,
+    );
+    screen.getByLabelText('поле').focus();
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}');
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('Enter без модифікатора НЕ викликає onSubmit', async () => {
+    const onSubmit = vi.fn();
+    render(
+      <Modal open onClose={vi.fn()} onSubmit={onSubmit} title="Тест">
+        <input aria-label="поле" />
+      </Modal>,
+    );
+    screen.getByLabelText('поле').focus();
+    await userEvent.keyboard('{Enter}');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('без onSubmit Ctrl+Enter — no-op (не кидає)', async () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Тест">
+        <input aria-label="поле" />
+      </Modal>,
+    );
+    screen.getByLabelText('поле').focus();
+    await userEvent.keyboard('{Control>}{Enter}{/Control}');
+    // Немає падіння — тест зелений, якщо ми дійшли сюди.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
   it('виклик onClose при кліку на backdrop', async () => {
     const onClose = vi.fn();
     render(

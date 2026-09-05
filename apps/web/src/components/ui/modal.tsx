@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAnimatedPresence } from '@/hooks/useAnimatedPresence';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
 
 type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'content';
 
@@ -32,6 +33,12 @@ interface ModalProps {
   extraHeaderActions?: ReactNode;
   /** Extra content rendered below the title row, inside the header border */
   headerContent?: ReactNode;
+  /**
+   * Ctrl+Enter (Cmd+Enter на mac) — «зберегти» без миші. Викликається лише коли
+   * features.keyboardShortcutsEnabled увімкнено. Хендлер сам вирішує, чи форма
+   * валідна/не в процесі збереження (тобто безпечно повторний виклик).
+   */
+  onSubmit?: () => void;
 }
 
 // Pixel max-width per size — used for smooth CSS transition via inline style
@@ -142,21 +149,45 @@ export function Modal({
   hideClose,
   extraHeaderActions,
   headerContent,
+  onSubmit,
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
   const { visible, state } = useAnimatedPresence(open);
+  const { keyboardShortcutsEnabled } = useUiFeatures();
+  // Тримаємо onSubmit у ref, щоб keydown-ефект не переприв'язувався на кожен ре-рендер
+  // (onSubmit зазвичай — інлайн-стрілка, нова ідентичність щоразу).
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
   // Bug fix (sto-tester): unique title id per Modal instance — without useId() multiple
   // nested modals (e.g. CreateInvoiceModal opening SearchPickerModal) shared the same
   // `id="modal-title"`, causing aria-labelledby ID collision: ALL dialogs adopted the
   // FIRST h2 with that ID as their accessible name. E2E tests filtering by accessible
   // name (`dialog "Оберіть товар"`) matched the wrong modal.
   const titleId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      // Ctrl+Enter / Cmd+Enter → submit. Гейт на прапорець + наявність хендлера.
+      // Скоуп на ЦЮ модалку: подія має походити з її панелі — інакше вкладені
+      // модалки (обидві слухають document) подвоюють submit.
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key === 'Enter' &&
+        keyboardShortcutsEnabled &&
+        onSubmitRef.current
+      ) {
+        const target = e.target as Node | null;
+        if (target && panelRef.current && !panelRef.current.contains(target)) return;
+        e.preventDefault();
+        onSubmitRef.current();
+      }
     },
-    [onClose],
+    [onClose, keyboardShortcutsEnabled],
   );
 
   useEffect(() => {
@@ -193,6 +224,7 @@ export function Modal({
 
       {/* Panel — анімується через [data-state] у globals.css */}
       <div
+        ref={panelRef}
         className={cn(
           'relative z-10 w-full rounded-xl bg-surface',
           'shadow-xl border border-border',

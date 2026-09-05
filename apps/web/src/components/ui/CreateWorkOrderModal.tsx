@@ -25,6 +25,8 @@ import { useTabBarContext } from '@/contexts/TabBarContext';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConflictCheck } from '@/hooks/useConflictCheck';
 import { useConfirm } from '@/hooks/useConfirm';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -399,6 +401,9 @@ export function CreateWorkOrderModal({
   // Refs ensure handleModalClose sees sync state, not stale closure.
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
+  // Базлайн для dirty-детекції: стає true після того, як початковий стан
+  // (reset/load) осів; лише ПІСЛЯ цього зміни form/lines/parts позначають форму брудною.
+  const baselineReadyRef = useRef(false);
   // track initial planned dates loaded from WO so we can detect
   // whether they actually changed before prompting the calendar-sync dialog.
   // Without this every save() — even one that only touches description or
@@ -438,6 +443,7 @@ export function CreateWorkOrderModal({
   const [linkedDocsCounts, setLinkedDocsCounts] = useState<LinkedDocumentsCounts | null>(null);
   const [activeTab, setActiveTab] = useState<'main' | 'documents'>('main');
   const features = useUiFeatures();
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const {
     conflict: calConflict,
     check: checkConflict,
@@ -634,6 +640,10 @@ export function CreateWorkOrderModal({
   // фактичні дані WO-B.
   useEffect(() => {
     if (!open) return;
+    // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
+    // доки початковий стан (create-reset нижче або edit-load) не осів.
+    baselineReadyRef.current = false;
+    dirty.resetDirty();
     setError('');
     setStatusMenuOpen(false);
     setLinkedDocsCounts(null);
@@ -685,8 +695,23 @@ export function CreateWorkOrderModal({
       loadVehicles(prefill.counterpartyId, prefill.vehicleId);
       loadContracts(prefill.counterpartyId);
     }
+    if (!isEditMode) {
+      // Create-режим: базлайн готовий після того, як цей setState-батч застосується.
+      const t = setTimeout(() => {
+        baselineReadyRef.current = true;
+      }, 0);
+      return () => clearTimeout(t);
+    }
+    // Edit-режим: базлайн вмикається у load-ефекті після успішного завантаження.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, workOrderId]);
+
+  // Dirty-детектор: будь-яка зміна form/lines/parts ПІСЛЯ осідання базлайну → форма брудна.
+  useEffect(() => {
+    if (!open || !baselineReadyRef.current) return;
+    dirty.markDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, lines, parts, open]);
 
   // Edit mode — load existing WO data when modal opens or workOrderId changes.
   // Cancellation guard: at TabBar restore time, the user can click tab B while A's
@@ -770,6 +795,10 @@ export function CreateWorkOrderModal({
       .finally(() => {
         if (cancelled) return;
         setEditModeLoading(false);
+        // Базлайн готовий після осідання завантаженого стану (наступний тік).
+        setTimeout(() => {
+          baselineReadyRef.current = true;
+        }, 0);
       });
     return () => {
       cancelled = true;
@@ -1200,6 +1229,7 @@ export function CreateWorkOrderModal({
       }
 
       createdWoRef.current = null;
+      dirty.resetDirty();
       onCreated?.(wo);
       onClose();
     } catch (e: unknown) {
@@ -1400,6 +1430,7 @@ export function CreateWorkOrderModal({
           }
         }
       }
+      dirty.resetDirty();
       onUpdated?.();
       onClose();
     } catch (e: unknown) {
@@ -1771,10 +1802,12 @@ export function CreateWorkOrderModal({
   // повинні бути у deps. Stable identity → Modal keydown listener не перевідв'язується
   // при кожному flip saving/transitioning (раніше re-attach на START + END кожного
   // save/transition; зараз лише при зміні onClose у parent).
-  const handleModalClose = useCallback(() => {
+  const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
+    if (!(await dirty.confirmClose())) return;
     setActiveTab('main');
     onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose]);
 
   // Column header widths (shared between table header and input row grid)
@@ -1783,6 +1816,7 @@ export function CreateWorkOrderModal({
       <Modal
         open={open}
         onClose={handleModalClose}
+        onSubmit={isEditMode ? save : create}
         title={isEditMode ? 'Наряд на роботу' : 'Новий наряд'}
         size="content"
         hideClose
@@ -3608,6 +3642,7 @@ export function CreateWorkOrderModal({
         </div>
       )}
       <ConfirmDialog {...confirmDialogProps} />
+      <DirtyConfirmDialog {...dirty.dialogProps} />
     </>
   );
 }

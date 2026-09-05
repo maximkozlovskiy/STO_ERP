@@ -50,7 +50,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
       ) : (
         !saveOpen &&
         !hideSaveButton && (
-          <span className="text-[12px] text-muted-foreground">Немає збережених фільтрів</span>
+          <span className="text-[12px] text-muted-foreground">Немає збережених подань</span>
         )
       )}
 
@@ -73,7 +73,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
             type="button"
             onClick={() => onRemove(preset.id)}
             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity p-0.5 rounded text-muted-foreground hover:text-destructive"
-            aria-label={`Видалити фільтр "${preset.name}"`}
+            aria-label={`Видалити подання "${preset.name}"`}
           >
             <X className="h-3 w-3" />
           </button>
@@ -91,7 +91,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
                 if (e.key === 'Enter') handleSave();
                 if (e.key === 'Escape') setSaveOpen(false);
               }}
-              placeholder="Назва фільтру..."
+              placeholder="Назва подання..."
               className="h-7 px-2 rounded-md border border-primary text-[12px] bg-surface text-foreground outline-none w-36"
             />
             <button
@@ -196,7 +196,7 @@ export function SaveFilterButton({ onSave, className }: SaveFilterButtonProps) {
     <button
       type="button"
       onClick={() => setOpen(true)}
-      title="Зберегти фільтр"
+      title="Зберегти подання"
       className={cn(
         'h-8 w-8 flex items-center justify-center rounded-lg border border-border',
         'text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors',

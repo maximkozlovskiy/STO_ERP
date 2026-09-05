@@ -22,6 +22,8 @@ import {
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName, cn } from '@/lib/utils';
@@ -180,6 +182,7 @@ export function PurchaseOrderCreateModal({
   const purchaseOrderId = activePOId;
   const isEditMode = !!activePOId;
   const features = useUiFeatures();
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const { minimizeModal } = useTabBarContext();
 
   const [form, setForm] = useState({
@@ -248,6 +251,9 @@ export function PurchaseOrderCreateModal({
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
+  // Базлайн для dirty-детекції: стає true після того, як початковий стан
+  // (reset/load) осів; лише ПІСЛЯ цього зміни form/lines позначають форму брудною.
+  const baselineReadyRef = useRef(false);
 
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
@@ -328,6 +334,10 @@ export function PurchaseOrderCreateModal({
   // Reset on open
   useEffect(() => {
     if (!open) return;
+    // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
+    // доки початковий стан (create-reset нижче або edit-load) не осів.
+    baselineReadyRef.current = false;
+    dirty.resetDirty();
     setActivePOId(purchaseOrderIdProp);
     setError('');
     setStatusMenuOpen(false);
@@ -350,8 +360,21 @@ export function PurchaseOrderCreateModal({
         paymentDate: '',
       });
       setSupplierDisplay('');
+      // Create-режим: базлайн готовий після того, як цей setState-батч застосується.
+      const t = setTimeout(() => {
+        baselineReadyRef.current = true;
+      }, 0);
+      return () => clearTimeout(t);
     }
+    // Edit-режим: базлайн вмикається у load-ефекті після успішного завантаження.
   }, [open, purchaseOrderIdProp, isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Dirty-детектор: будь-яка зміна form/lines ПІСЛЯ осідання базлайну → форма брудна.
+  useEffect(() => {
+    if (!open || !baselineReadyRef.current) return;
+    dirty.markDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, lines, open]);
 
   // Load PO data in edit mode
   const loadPo = useCallback(
@@ -397,7 +420,13 @@ export function PurchaseOrderCreateModal({
           if (!silent) setError(e instanceof Error ? e.message : 'Помилка завантаження замовлення');
         })
         .finally(() => {
-          if (!silent) setLoading(false);
+          if (!silent) {
+            setLoading(false);
+            // Базлайн готовий після осідання завантаженого стану (наступний тік).
+            setTimeout(() => {
+              baselineReadyRef.current = true;
+            }, 0);
+          }
         });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -703,6 +732,9 @@ export function PurchaseOrderCreateModal({
       });
 
       if (features.toastEnabled) toast.success(`Замовлення ${po.number} створено`);
+      // Створено успішно — форма чиста; блокуємо dirty-детектор до завершення reload.
+      dirty.resetDirty();
+      baselineReadyRef.current = false;
       onSaved?.();
       // Не закриваємо — переходимо в edit mode щоб можна було одразу додавати товари
       setActivePOId(po.id);
@@ -746,6 +778,7 @@ export function PurchaseOrderCreateModal({
       });
 
       if (features.toastEnabled) toast.success('Замовлення збережено');
+      dirty.resetDirty();
       onSaved?.();
       onClose();
     } catch (e: unknown) {
@@ -755,9 +788,11 @@ export function PurchaseOrderCreateModal({
     }
   };
 
-  const handleModalClose = useCallback(() => {
+  const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
+    if (!(await dirty.confirmClose())) return;
     onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose]);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -877,6 +912,7 @@ export function PurchaseOrderCreateModal({
       <Modal
         open={open}
         onClose={handleModalClose}
+        onSubmit={isEditMode ? handleSave : handleCreate}
         title={isEditMode ? poNumber || 'Замовлення' : 'Нове замовлення постачальнику'}
         size="content"
         hideClose
@@ -1925,6 +1961,7 @@ export function PurchaseOrderCreateModal({
         onClose={() => setPaymentOpen(false)}
         onSaved={() => setPaymentOpen(false)}
       />
+      <DirtyConfirmDialog {...dirty.dialogProps} />
     </>
   );
 }

@@ -64,6 +64,7 @@ import {
   schemaToPanelConfigFields,
 } from '@/lib/panel-schema';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
+import { type SavedFilter } from '@/hooks/useSavedFilters';
 import { InlineEditCell, InlineViewCell } from '@/components/ui/inline-edit-cell';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
@@ -72,6 +73,7 @@ import { useInlineEdit } from '@/hooks/useInlineEdit';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { invalidateWorkOrderSideEffects } from '@/lib/cache-invalidation';
+import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtShortDateTime, kyivToday } from '@/lib/format';
 
@@ -149,6 +151,9 @@ function isOverdue(dueDateIso: string, nowMs: number): boolean {
   return due.getTime() < nowMs;
 }
 
+// Наряд «активний» (дедлайн ще горить), поки не в термінальному/оплаченому статусі.
+const WO_INACTIVE_STATUSES = new Set(['CANCELLED', 'ARCHIVED', 'PAID']);
+
 // Module-level constants — стабільні референси між рендерами, замість per-render
 // allocate у useMemo. WO_COLUMNS_DEFAULT_KEYS_JSON знімає `JSON.stringify(map())`
 // з кожного render (hasCustomization comparison у toolbar).
@@ -204,6 +209,7 @@ function WorkOrdersPageInner() {
       order,
       customLabels,
       toggle: toggleCol,
+      setVisible: setVisibleCols,
       reorder,
       renameColumn,
       resetConfig,
@@ -225,7 +231,7 @@ function WorkOrdersPageInner() {
   const debouncedSearch = useDebounce(search);
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
-  const { sort: woSort, toggle: toggleWoSort } = useSortState('createdAt', 'desc');
+  const { sort: woSort, toggle: toggleWoSort, set: setWoSort } = useSortState('createdAt', 'desc');
   // Default to "my orders" for MECHANICs — initialized lazily after employee loads
   const [myOrders, setMyOrders] = useState(false);
   const myOrdersInitRef = useRef(false);
@@ -304,7 +310,7 @@ function WorkOrdersPageInner() {
   const searchParams = useSearchParams();
 
   const applyFilter = useCallback(
-    (preset: { id: string; filters: WOFilters }) => {
+    (preset: SavedFilter<WOFilters>) => {
       setStatusFilter(preset.filters.statusFilter ?? '');
       setCategoryFilter(preset.filters.categoryFilter ?? '');
       setSearch(preset.filters.search ?? '');
@@ -312,25 +318,38 @@ function WorkOrdersPageInner() {
       setMyOrders(preset.filters.myOrders ?? false);
       setDateFrom(preset.filters.dateFrom ?? '');
       setDateTo(preset.filters.dateTo ?? '');
+      // View-частина подання: колонки + порядок + сортування (back-compat —
+      // старі записи без цих полів не чіпають поточний вигляд).
+      if (preset.order && preset.order.length > 0) reorder(preset.order);
+      if (preset.columns && preset.columns.length > 0) setVisibleCols(preset.columns);
+      if (preset.sort) setWoSort(preset.sort.field, preset.sort.dir);
       resetPage();
       setActiveSavedFilterId(preset.id);
     },
-    [setShowDeleted, resetPage, setActiveSavedFilterId],
+    [setShowDeleted, resetPage, setActiveSavedFilterId, reorder, setVisibleCols, setWoSort],
   );
 
   const handleSaveFilter = useCallback(
     (name: string) => {
-      const preset = saveFilter(name, {
-        statusFilter,
-        categoryFilter,
-        search,
-        showDeleted,
-        myOrders,
-        dateFrom,
-        dateTo,
-      });
+      const preset = saveFilter(
+        name,
+        {
+          statusFilter,
+          categoryFilter,
+          search,
+          showDeleted,
+          myOrders,
+          dateFrom,
+          dateTo,
+        },
+        {
+          columns: [...colVisible],
+          order,
+          sort: { field: woSort.sortBy, dir: woSort.sortDir },
+        },
+      );
       setActiveSavedFilterId(preset.id);
-      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+      if (features.toastEnabled) toast.success(`Подання "${name}" збережено`);
     },
     [
       saveFilter,
@@ -341,6 +360,10 @@ function WorkOrdersPageInner() {
       myOrders,
       dateFrom,
       dateTo,
+      colVisible,
+      order,
+      woSort.sortBy,
+      woSort.sortDir,
       features.toastEnabled,
     ],
   );
@@ -801,252 +824,269 @@ function WorkOrdersPageInner() {
               )}
 
               {!loading &&
-                orders.map((wo: WorkOrder) => (
-                  <TableRow
-                    key={wo.id}
-                    onClick={() =>
-                      detailPanel.enabled && setSelectedWO(prev => (prev?.id === wo.id ? null : wo))
-                    }
-                    className={cn(
-                      'group transition-colors',
-                      detailPanel.enabled && 'cursor-pointer',
-                      wo.deletedAt && 'opacity-60',
-                      selectedWO?.id === wo.id && detailPanel.enabled && 'bg-primary/5',
-                      bulkSelect.isSelected(wo.id) && 'bg-primary/5',
-                    )}
-                  >
-                    {features.bulkActionsEnabled && (
-                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={bulkSelect.isSelected(wo.id)}
-                          onChange={() => bulkSelect.toggle(wo.id)}
-                          className="h-3.5 w-3.5 rounded border-border"
-                          aria-label={`Вибрати наряд ${wo.number}`}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleColumns.map(col => {
-                      if (col.key === 'number')
-                        return (
-                          <TableCell key="number">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-[13px] font-semibold text-primary">
-                                  {wo.number}
-                                </span>
-                              </div>
-                              {wo.repairCategory && (
-                                <p className="text-[11px] text-muted-foreground">
-                                  {CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
-                                </p>
-                              )}
-                            </div>
-                          </TableCell>
-                        );
-                      if (col.key === 'client')
-                        return (
-                          <TableCell key="client">
-                            <p className="text-[13px] font-medium text-foreground">
-                              {wo.counterpartyName ?? '—'}
-                            </p>
-                            <p className="text-[12px] text-muted-foreground mt-0.5">
-                              {wo.vehicleSummary ?? '—'}
-                            </p>
-                          </TableCell>
-                        );
-                      if (col.key === 'status')
-                        return (
-                          <TableCell key="status">
-                            <Badge
-                              variant={STATUS_BADGE[wo.status] ?? 'secondary'}
-                              dot
-                              tooltip={STATUS_DESCRIPTIONS[wo.status]}
-                            >
-                              {STATUS_LABELS[wo.status] ?? wo.status}
-                            </Badge>
-                          </TableCell>
-                        );
-                      if (col.key === 'lift')
-                        return (
-                          <TableCell key="lift" className="text-[13px] text-muted-foreground">
-                            {wo.liftName ?? '—'}
-                          </TableCell>
-                        );
-                      if (col.key === 'priority')
-                        return (
-                          <TableCell key="priority" onClick={e => e.stopPropagation()}>
-                            {inlineEdit.isEditing(wo.id, 'priority') ? (
-                              <select
-                                defaultValue={inlineEdit.editing?.value ?? wo.priority ?? ''}
-                                onChange={e => {
-                                  void inlineEdit.commitEdit(e.target.value).catch(() => {});
-                                }}
-                                onBlur={() => inlineEdit.cancelEdit()}
-                                onKeyDown={e => {
-                                  if (e.key === 'Escape') inlineEdit.cancelEdit();
-                                }}
-                                disabled={inlineEdit.saving}
-                                autoFocus
-                                className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
-                              >
-                                {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
-                                  <option key={v} value={v}>
-                                    {l}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <InlineViewCell
-                                value={wo.priority ?? ''}
-                                enabled={features.inlineEditEnabled}
-                                onClick={() =>
-                                  wo.priority &&
-                                  inlineEdit.startEdit(wo.id, 'priority', wo.priority)
-                                }
-                              >
-                                {wo.priority && (
-                                  <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
-                                    {PRIORITY_LABELS[wo.priority] ?? wo.priority}
-                                  </Badge>
-                                )}
-                              </InlineViewCell>
-                            )}
-                          </TableCell>
-                        );
-                      if (col.key === 'amount') {
-                        // Plannedness check: actualHours рівні normoHours → suma нічого не «прокинула».
-                        // totalParts однакові для actual та planned, тож порівнюємо лише labor-частку.
-                        const hasActual = Math.abs(wo.totalActualLabor - wo.totalLabor) >= 0.01;
-                        const plannedAmount = wo.totalLabor + wo.totalParts;
-                        return (
-                          <TableCell key="amount" className="tabular-nums text-right">
-                            <div className="font-medium text-foreground">
-                              {fmtMoney(wo.totalAmount)}
-                            </div>
-                            {hasActual && (
-                              <div className="text-[11px] text-muted-foreground line-through">
-                                {fmtMoney(plannedAmount)}
-                              </div>
-                            )}
-                          </TableCell>
-                        );
+                orders.map((wo: WorkOrder) => {
+                  const rowTone = rowStatusTone(
+                    {
+                      dueDate: wo.dueDate,
+                      active: !WO_INACTIVE_STATUSES.has(wo.status),
+                      balanceDue: (wo.totalAmount ?? 0) - (wo.paidAmount ?? 0),
+                    },
+                    nowMs,
+                  );
+                  const toneTitle = rowStatusLabel(rowTone);
+                  return (
+                    <TableRow
+                      key={wo.id}
+                      title={toneTitle}
+                      onClick={() =>
+                        detailPanel.enabled &&
+                        setSelectedWO(prev => (prev?.id === wo.id ? null : wo))
                       }
-                      if (col.key === 'documentDate')
-                        return (
-                          <TableCell
-                            key="documentDate"
-                            className="text-[13px] text-muted-foreground"
-                          >
-                            {wo.documentDate ? fmtDate(wo.documentDate) : '—'}
-                          </TableCell>
-                        );
-                      if (col.key === 'plannedAt')
-                        return (
-                          <TableCell key="plannedAt" className="text-muted-foreground text-[12px]">
-                            {wo.plannedAt ? fmtShortDateTime(wo.plannedAt) : '—'}
-                          </TableCell>
-                        );
-                      if (col.key === 'dueDate')
-                        return (
-                          <TableCell
-                            key="dueDate"
-                            className="text-[12px]"
-                            onClick={e => e.stopPropagation()}
-                          >
-                            {inlineEdit.isEditing(wo.id, 'dueDate') ? (
-                              <InlineEditCell
-                                value={wo.dueDate ? wo.dueDate.slice(0, 10) : ''}
-                                saving={inlineEdit.saving}
-                                onCommit={v => {
-                                  void inlineEdit.commitEdit(v).catch(() => {});
-                                }}
-                                onCancel={inlineEdit.cancelEdit}
-                                type="date"
-                                className="w-36"
-                              />
-                            ) : (
-                              <InlineViewCell
-                                value={wo.dueDate ?? ''}
-                                enabled={features.inlineEditEnabled}
-                                onClick={() =>
-                                  inlineEdit.startEdit(
-                                    wo.id,
-                                    'dueDate',
-                                    wo.dueDate ? wo.dueDate.slice(0, 10) : '',
-                                  )
-                                }
-                              >
-                                {wo.dueDate ? (
-                                  <span
-                                    className={cn(
-                                      'font-medium',
-                                      isOverdue(wo.dueDate, nowMs)
-                                        ? 'text-warning'
-                                        : 'text-muted-foreground',
-                                    )}
-                                  >
-                                    {fmtDate(wo.dueDate)}
+                      className={cn(
+                        'group transition-colors',
+                        rowStatusBorderClass(rowTone),
+                        detailPanel.enabled && 'cursor-pointer',
+                        wo.deletedAt && 'opacity-60',
+                        selectedWO?.id === wo.id && detailPanel.enabled && 'bg-primary/5',
+                        bulkSelect.isSelected(wo.id) && 'bg-primary/5',
+                      )}
+                    >
+                      {features.bulkActionsEnabled && (
+                        <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={bulkSelect.isSelected(wo.id)}
+                            onChange={() => bulkSelect.toggle(wo.id)}
+                            className="h-3.5 w-3.5 rounded border-border"
+                            aria-label={`Вибрати наряд ${wo.number}`}
+                          />
+                        </TableCell>
+                      )}
+                      {visibleColumns.map(col => {
+                        if (col.key === 'number')
+                          return (
+                            <TableCell key="number">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-[13px] font-semibold text-primary">
+                                    {wo.number}
                                   </span>
-                                ) : (
-                                  <span className="text-muted-foreground">—</span>
+                                </div>
+                                {wo.repairCategory && (
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
+                                  </p>
                                 )}
-                              </InlineViewCell>
-                            )}
-                          </TableCell>
-                        );
-                      if (col.key === 'linkedDocs') {
-                        const counts = linkedCounts[wo.id];
-                        return (
-                          <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
-                            <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-                              {DOC_COUNTERS.map(({ field, Icon, label }) => {
-                                const n = counts?.[field];
-                                if (!n) return null;
-                                return (
-                                  <button
-                                    key={field}
-                                    onClick={() => setLinkedDocPopupId(wo.id)}
-                                    className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                    title={`${label}: ${n}`}
-                                  >
-                                    <Icon size={13} />
-                                    <span>{n}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </TableCell>
-                        );
-                      }
-                      return null;
-                    })}
-                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          title="Відкрити наряд"
-                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                          onClick={() => setEditWoId(wo.id)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        {!wo.deletedAt && (
+                              </div>
+                            </TableCell>
+                          );
+                        if (col.key === 'client')
+                          return (
+                            <TableCell key="client">
+                              <p className="text-[13px] font-medium text-foreground">
+                                {wo.counterpartyName ?? '—'}
+                              </p>
+                              <p className="text-[12px] text-muted-foreground mt-0.5">
+                                {wo.vehicleSummary ?? '—'}
+                              </p>
+                            </TableCell>
+                          );
+                        if (col.key === 'status')
+                          return (
+                            <TableCell key="status">
+                              <Badge
+                                variant={STATUS_BADGE[wo.status] ?? 'secondary'}
+                                dot
+                                tooltip={STATUS_DESCRIPTIONS[wo.status]}
+                              >
+                                {STATUS_LABELS[wo.status] ?? wo.status}
+                              </Badge>
+                            </TableCell>
+                          );
+                        if (col.key === 'lift')
+                          return (
+                            <TableCell key="lift" className="text-[13px] text-muted-foreground">
+                              {wo.liftName ?? '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'priority')
+                          return (
+                            <TableCell key="priority" onClick={e => e.stopPropagation()}>
+                              {inlineEdit.isEditing(wo.id, 'priority') ? (
+                                <select
+                                  defaultValue={inlineEdit.editing?.value ?? wo.priority ?? ''}
+                                  onChange={e => {
+                                    void inlineEdit.commitEdit(e.target.value).catch(() => {});
+                                  }}
+                                  onBlur={() => inlineEdit.cancelEdit()}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Escape') inlineEdit.cancelEdit();
+                                  }}
+                                  disabled={inlineEdit.saving}
+                                  autoFocus
+                                  className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
+                                >
+                                  {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
+                                    <option key={v} value={v}>
+                                      {l}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <InlineViewCell
+                                  value={wo.priority ?? ''}
+                                  enabled={features.inlineEditEnabled}
+                                  onClick={() =>
+                                    wo.priority &&
+                                    inlineEdit.startEdit(wo.id, 'priority', wo.priority)
+                                  }
+                                >
+                                  {wo.priority && (
+                                    <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
+                                      {PRIORITY_LABELS[wo.priority] ?? wo.priority}
+                                    </Badge>
+                                  )}
+                                </InlineViewCell>
+                              )}
+                            </TableCell>
+                          );
+                        if (col.key === 'amount') {
+                          // Plannedness check: actualHours рівні normoHours → suma нічого не «прокинула».
+                          // totalParts однакові для actual та planned, тож порівнюємо лише labor-частку.
+                          const hasActual = Math.abs(wo.totalActualLabor - wo.totalLabor) >= 0.01;
+                          const plannedAmount = wo.totalLabor + wo.totalParts;
+                          return (
+                            <TableCell key="amount" className="tabular-nums text-right">
+                              <div className="font-medium text-foreground">
+                                {fmtMoney(wo.totalAmount)}
+                              </div>
+                              {hasActual && (
+                                <div className="text-[11px] text-muted-foreground line-through">
+                                  {fmtMoney(plannedAmount)}
+                                </div>
+                              )}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'documentDate')
+                          return (
+                            <TableCell
+                              key="documentDate"
+                              className="text-[13px] text-muted-foreground"
+                            >
+                              {wo.documentDate ? fmtDate(wo.documentDate) : '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'plannedAt')
+                          return (
+                            <TableCell
+                              key="plannedAt"
+                              className="text-muted-foreground text-[12px]"
+                            >
+                              {wo.plannedAt ? fmtShortDateTime(wo.plannedAt) : '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'dueDate')
+                          return (
+                            <TableCell
+                              key="dueDate"
+                              className="text-[12px]"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {inlineEdit.isEditing(wo.id, 'dueDate') ? (
+                                <InlineEditCell
+                                  value={wo.dueDate ? wo.dueDate.slice(0, 10) : ''}
+                                  saving={inlineEdit.saving}
+                                  onCommit={v => {
+                                    void inlineEdit.commitEdit(v).catch(() => {});
+                                  }}
+                                  onCancel={inlineEdit.cancelEdit}
+                                  type="date"
+                                  className="w-36"
+                                />
+                              ) : (
+                                <InlineViewCell
+                                  value={wo.dueDate ?? ''}
+                                  enabled={features.inlineEditEnabled}
+                                  onClick={() =>
+                                    inlineEdit.startEdit(
+                                      wo.id,
+                                      'dueDate',
+                                      wo.dueDate ? wo.dueDate.slice(0, 10) : '',
+                                    )
+                                  }
+                                >
+                                  {wo.dueDate ? (
+                                    <span
+                                      className={cn(
+                                        'font-medium',
+                                        isOverdue(wo.dueDate, nowMs)
+                                          ? 'text-warning'
+                                          : 'text-muted-foreground',
+                                      )}
+                                    >
+                                      {fmtDate(wo.dueDate)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </InlineViewCell>
+                              )}
+                            </TableCell>
+                          );
+                        if (col.key === 'linkedDocs') {
+                          const counts = linkedCounts[wo.id];
+                          return (
+                            <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
+                              <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
+                                {DOC_COUNTERS.map(({ field, Icon, label }) => {
+                                  const n = counts?.[field];
+                                  if (!n) return null;
+                                  return (
+                                    <button
+                                      key={field}
+                                      onClick={() => setLinkedDocPopupId(wo.id)}
+                                      className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                      title={`${label}: ${n}`}
+                                    >
+                                      <Icon size={13} />
+                                      <span>{n}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </TableCell>
+                          );
+                        }
+                        return null;
+                      })}
+                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            title="Позначити на видалення"
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => void markDeleted(wo)}
+                            title="Відкрити наряд"
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                            onClick={() => setEditWoId(wo.id)}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          {!wo.deletedAt && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="Позначити на видалення"
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => void markDeleted(wo)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
         </TableContainer>

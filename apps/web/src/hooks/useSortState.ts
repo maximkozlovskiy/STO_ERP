@@ -19,5 +19,10 @@ export function useSortState(defaultBy: string, defaultDir: SortDir = 'desc') {
     );
   }, []);
 
-  return { sort, toggle };
+  // Пряме встановлення (застосування збереженого «подання»).
+  const set = useCallback((sortBy: string, sortDir: SortDir) => {
+    setSort({ sortBy, sortDir });
+  }, []);
+
+  return { sort, toggle, set };
 }

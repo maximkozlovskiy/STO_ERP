@@ -105,6 +105,26 @@ export function useTableColumns(pageKey: string, columns: ColumnDef[]) {
     [pageKey],
   );
 
+  // Bulk-set visible columns and persist — used коли застосовуємо збережене
+  // «подання» (Saved View), що несе повний набір видимих колонок за раз.
+  // Ігнорує ключі, яких немає у defaultKeys (back-compat зі старими подання),
+  // і не дозволяє порожній набір (лишає попередній, як і toggle).
+  const setVisible = useCallback(
+    (keys: string[]) => {
+      const known = new Set(defaultKeys);
+      const filtered = keys.filter(k => known.has(k));
+      if (filtered.length === 0) return;
+      const next = new Set(filtered);
+      setVisibleKeys(next);
+      try {
+        window.localStorage.setItem(LS_VISIBLE(pageKey), JSON.stringify([...next]));
+      } catch {
+        /* ignore */
+      }
+    },
+    [pageKey, defaultKeys],
+  );
+
   // Reorder and persist — called by ColumnsDropdown after drag
   const reorder = useCallback(
     (newOrder: string[]) => {
@@ -172,6 +192,7 @@ export function useTableColumns(pageKey: string, columns: ColumnDef[]) {
     order,
     customLabels,
     toggle,
+    setVisible,
     reorder,
     renameColumn,
     resetConfig,
