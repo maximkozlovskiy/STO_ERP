@@ -7,6 +7,29 @@
 
 ## 2026-09-05 — feat(web): UX-фічі списків/модалок (Подання, індикатори, guard, клавіатура, дублювання)
 
+### 15d54839 fix(tester): Bugs #637-#640 (QA-ланцюг UX-фіч)
+
+Bug hunt по 6 UX-фічах — 4 баги знайдено й виправлено (0 CRITICAL / 2 HIGH / 1 MEDIUM /
+1 LOW), усі з дискримінуючими регрес-тестами:
+
+- **#637 (HIGH) clone double-submit** — `handleClone` у списку нарядів був гейтований лише
+  `useState cloningId`: два синхронні кліки в один тік читали `null` до ре-рендеру → 2 POST
+  `/clone` → 2 дублі. Fix: новий hook `useSubmitGuard` (`inFlightRef` синхронний). Тест
+  native `.click()`×2 + vulnerable-harness.
+- **#639 (HIGH) dirty-guard false positive** — baseline озброюється `setTimeout(0)`, але
+  async-завантаження `/warehouses`+`/branches` та авто-вибір єдиного складу лендяться ПІСЛЯ
+  → програмний `setWarehouseId` трипив dirty-детектор → фальшивий діалог «незбережені зміни»
+  на чистій формі. 4 модалки (SupplierReturn/PO/Stock/WorkOrder; Invoice імунний). Fix:
+  `autoWarehouseRef`/`autoBranchRef`/`autoDefaultsRef` пропускають рівно цей auto-select.
+- **#638 (MEDIUM) nested Ctrl+Enter** — scope-check коректний, але не покритий; +2 stacked-modal
+  регрес-тести.
+- **#640 (LOW)** — «фільтр»→«подання» rename був неконсистентний (SaveFilterButton placeholder);
+  виправлено + оновлено stale-тест.
+
+Web ✅ 540/540, tsc web 0. Self-improvement: sto-tester SKILL — новий патерн async-default
+dirty-guard false-positive + розширено double-submit «де шукати ще» (list-row handlers +
+useSubmitGuard).
+
 ### 911590ca feat(web): «Створити на основі» у рядку списку нарядів (Ф8)
 
 Дія-дублювання прямо зі списку work-orders через наявний `POST /work-orders/:id/clone`
