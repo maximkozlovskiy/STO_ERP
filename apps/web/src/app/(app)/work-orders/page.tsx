@@ -523,7 +523,8 @@ function WorkOrdersPageInner() {
         if (features.toastEnabled) toast.success('Наряд створено на основі');
         setEditWoId(cloned.id);
       } catch (e: unknown) {
-        toast.error(e instanceof Error ? e.message : 'Помилка дублювання');
+        if (features.toastEnabled)
+          toast.error(e instanceof Error ? e.message : 'Помилка дублювання');
       } finally {
         setCloningId(null);
       }
