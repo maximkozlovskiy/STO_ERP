@@ -615,11 +615,11 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ### 2026-08-30 (cycle 3/3) — Sibling-drift audit: після нового hot-path fix одразу пройтись по ВСІХ sibling-services/components і зафіксувати у той же коміт
 
 **Сигнал:** попередній цикл фіксив один hot-path патерн (напр. SP*SORT_FIELDS у одному CRUD-модулі), але наступний grep біжить тільки по нещодавно зміненому файлі. Sibling-модулі (invoices/WO/PO/SD — усі мають `findAll(sortBy?)` з `SORT: Record<string,string>` у body) лишаються не-міграцованими (copy-paste-legacy). Пропущений цикл-2 фікс → цикл-3 фіксить ще 4 sibling.
-**Сигнал-grep:** після кожного perf-фіксу — виконувати ІДЕНТИЧНИЙ grep-signature (той що знайшов original) на ВСІХ файлах шару, не тільки git-diff-scope. Приклад: `grep -rn "^\s\+const [A-Z*]\+: Record<" apps/api/src/modules/ --include="_.service.ts"`дає повний список drift. Той самий підхід для frontend`EMPTY\__` літералів у body.
+**Сигнал-grep:** після кожного perf-фіксу — виконувати ІДЕНТИЧНИЙ grep-signature (той що знайшов original) на ВСІХ файлах шару, не тільки git-diff-scope. Приклад: `grep -rn "^\s\+const [A-Z*]\+: Record<" apps/api/src/modules/ --include="\_.service.ts"`дає повний список drift. Той самий підхід для frontend`EMPTY\_\_` літералів у body.
 **Причина виникнення:** розробники копіюють CRUD-модулі один з одного; sort-whitelist "в body бо тільки тут" переноситься з файлу в файл. Perf-audit цикл N рухається fresh по recent changes — legacy код не отримує аудиту automatically. Треба явно EXTEND scope grep-у.
-**Підхід до виявлення/фіксу:** після "hoist alloc from body" fix — grep-signature на ВСІХ файлах directory; hits тепер vs до = має бути N-1; якщо >1 — усі fixed у той самий atomic commit. Prefix консистентний (`<MODULE>_SORT_FIELDS`, `<MODULE>\_INCLUDE`). Commit body перераховує всі sibling. НЕ merge у shared const якщо семантика різна (invoices sort by dueDate vs PO by totalAmount) — merge тільки copy-paste identical.
+**Підхід до виявлення/фіксу:** після "hoist alloc from body" fix — grep-signature на ВСІХ файлах directory; hits тепер vs до = має бути N-1; якщо >1 — усі fixed у той самий atomic commit. Prefix консистентний (`<MODULE>\_SORT_FIELDS`, `<MODULE>\_INCLUDE`). Commit body перераховує всі sibling. НЕ merge у shared const якщо семантика різна (invoices sort by dueDate vs PO by totalAmount) — merge тільки copy-paste identical.
 **Реальний impact:** цикл-3 фіксив 8 sibling-drifts за прохід (5 sort-fields + 1 balance-sign + 2 calendar shapes). Без sibling-audit — O(N) circular repetition; atomic protocol = 1 pass, O(1) commits.
-**Де шукати ще:** ЛЮБИЙ perf pattern — після fix у 1-му модулі extend grep на весь directory. Особливо: sort-whitelists (10+ CRUD services), Prisma include/select shapes у mutations, EMPTY__/DEFAULT\__ літерали, frontend regex constants, balance/status/discriminator maps.
+**Де шукати ще:** ЛЮБИЙ perf pattern — після fix у 1-му модулі extend grep на весь directory. Особливо: sort-whitelists (10+ CRUD services), Prisma include/select shapes у mutations, EMPTY\_\_/DEFAULT\_\_ літерали, frontend regex constants, balance/status/discriminator maps.
 
 ---
 
@@ -1684,5 +1684,28 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 
 **Сигнал:** composable hook (типу `useCachedRefData`) робить `const cached = getCached(cacheKey)` як
 **Фікс:** `const [state, setState] = useState<T>(() => getCached<T>(cacheKey) ?? fallback)`. Парні `useState` що залежать від того самого read — переписати кожен як окремий lazy initializer (з вкладеним...
+
+---
+
+### 2026-09-05 — Subscribing-hook у base/wrapper компоненті → фан-аут window-listeners × N інстансів (Modal, ListRow, Cell)
+
+**Сигнал:** глобально-використовуваний примітив UI (`Modal`, `Popover`, `Row`, `Cell`, `Tooltip`) починає викликати hook, що у своїх `useEffect` робить `window.addEventListener` (3+ подій) та/або тримає власний `useState`-subscription (типу `useUiFeatures`, `useMediaQuery`, `useOnlineStatus`). Такий примітив інстанціюється десятки разів на сторінці — часто в **закритому** стані (модалка рендерить `null`, але hooks усе одно виконуються ДО `if (!open) return null`). Кожен інстанс тепер прив'язує N idle-listeners + окрему підписку. Особливо небезпечно: батьківський великий компонент (create-modal) ВЖЕ викликав той самий hook напряму → тепер **подвійна підписка** на кожну модалку (6 listeners замість 3, 2 mount-fetch).
+**Сигнал-grep:** порівняти `git show <base>~1:<Modal-file> | grep useXxx` з поточним — якщо subscribing-hook доданий у base-компонент, і `grep -rln "useXxx()" apps/web/src | wc -l` показує багато call-sites → фан-аут. Плюс: чи base-компонент тримає інстанси при `open=false` (hooks над early-return `null`).
+**Причина виникнення:** зручно централізувати feature-flag/keyboard-shortcut у base Modal замість дублювати у кожній конкретній модалці. Але base інстанціюється значно частіше (ConfirmDialog, picker, nested).
+**Підхід до виявлення:** (1) hook над early-return у широко-інстанційованому примітиві; (2) той самий hook викликається і в батьку, і в base (дубль); (3) event-listener effects з `[]` deps (не re-bind, але фіксований per-instance cost).
+**Підхід до фіксу (обережно — може міняти поведінку):** значення потрібне лише для опційної фічі (Ctrl+Enter гейтиться на `onSubmit`) → або лишити (idle-listeners дешеві, спрацьовують рідко — login/logout/settings), або звузити підписку lightweight-селектором що біндить listener лише коли фіча активна. НЕ робити conditional hook. Якщо hook робить `invalidateCache()` у кожному listener → N subscribers = thundering-herd на event (кожен null-ить `pending` перед наступним read → 2+ fetch). Часто вердикт: **marginal, документувати як observation**, не чіпати (ризик зачепити крихку логіку заради µs).
+**Реальний impact:** зазвичай marginal (idle-listeners, рідкісні події) — але кількісно: ~3-9 зайвих window-listeners на сторінку з кількома always-mounted модалками; подвійні підписки у 5 великих модалках.
+**Де шукати ще:** будь-який `components/ui/*` примітив (Modal/Popover/Sheet/Drawer/Tooltip/Menu) що набув subscribing-hook; `useMediaQuery`/`useOnlineStatus`/`useUiFeatures`/`useTheme` у list-row чи cell компонентах.
+
+---
+
+### 2026-09-05 — Дисципліна «не оптимізувати marginal per-row алокацію у чистому хелпері» (page-limit малий, Date/obj дешеві)
+
+**Сигнал:** чистий per-row хелпер (типу `rowStatusTone(input, nowMs)`) створює `new Date(nowMs)`/`new Date(iso)` або дрібний обʼєкт на КОЖЕН виклик, і виклик — у `.map()` списку. Спокуса «підняти» константу з тіла хелпера. АЛЕ: page-limit зазвичай 20-50 рядків, `new Date()` коштує десятки нс → сумарно µs на рендер. Хоістинг всередину pure-хелпера ламає його чистоту/сигнатуру й додає ризик заради невимірного виграшу.
+**Сигнал-grep:** `new Date(` у файлі `lib/*.ts` що імпортується у `.map()` списку. Перевірити page-limit (`defaultLimit`) — якщо ≤ ~100 і алокація дрібна → marginal.
+**Причина виникнення:** механічне застосування правила «hoist per-row allocation» без урахування масштабу (N рядків) та вартості операції.
+**Підхід до виявлення/фіксу:** спершу оцінити N × cost. Хоістити варто лише коли: (а) алокація важка (`new Intl.*Format` — locale-data init, ~µs-ms кожна), АБО (б) N великий (virtualized-list 1000+, calendar-grid). Для дрібних Date/obj при N≤100 — **observation, не фікс**. Реальний хоістинг-виграш є у Intl-форматерах (Крок 2.8), не у `new Date`.
+**Реальний impact:** null (свідомо не чіпати) — документувати щоб наступний цикл не «виправляв» те саме повторно.
+**Де шукати ще:** будь-який `lib/format.ts`/`lib/*-status.ts`/`lib/*-badge.ts` хелпер у `.map()`; відрізняти дешевий `new Date`/spread від дорогого `new Intl.*Format`/`.toLocaleString()` (останні — реальні кандидати).
 
 ---
