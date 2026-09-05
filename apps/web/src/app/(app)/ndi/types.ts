@@ -15,6 +15,8 @@ export interface Currency {
   internationalName?: string | null;
   nbuFetchEnabled: boolean;
   nbuMarkupPercent?: number | null;
+  // Системна валюта (UAH) — сервер блокує видалення та зміну коду/назви (currencies.service).
+  isSystem?: boolean;
 }
 
 export interface ExchangeRate {

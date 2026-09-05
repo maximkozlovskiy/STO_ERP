@@ -93,9 +93,12 @@ export default function CurrenciesTab() {
     setCurrencyErrors({});
     setSavingCurrency(true);
     try {
+      // Для системної валюти сервер блокує зміну name/code (currencies.service isSystem-guard).
+      // Не надсилаємо ці поля при редагуванні системної — інакше PATCH з незміненими name/code
+      // все одно спрацьовує guard (перевіряє !== undefined) → 400. Доступні лише NBU-поля.
+      const isSystemEdit = !!editingCurrency?.isSystem;
       const body = {
-        name: currencyForm.name.trim(),
-        code: currencyForm.code.trim(),
+        ...(isSystemEdit ? {} : { name: currencyForm.name.trim(), code: currencyForm.code.trim() }),
         symbol: currencyForm.symbol.trim() || undefined,
         fullName: currencyForm.fullName.trim() || undefined,
         internationalName: currencyForm.internationalName.trim() || undefined,
@@ -216,6 +219,11 @@ export default function CurrenciesTab() {
                   {c.code}
                   {c.symbol ? ` (${c.symbol})` : ''}
                 </span>
+                {c.isSystem && (
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground bg-muted rounded px-1.5 py-0.5">
+                    Системна
+                  </span>
+                )}
               </div>
               {c.fullName && <p className="text-xs text-muted-foreground mt-0.5">{c.fullName}</p>}
             </div>
@@ -239,13 +247,15 @@ export default function CurrenciesTab() {
               >
                 <Pencil className="w-4 h-4" />
               </button>
-              <button
-                aria-label="Видалити валюту"
-                onClick={() => void deleteCurrency(c.id)}
-                className="text-destructive/70 hover:text-destructive transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              {!c.isSystem && (
+                <button
+                  aria-label="Видалити валюту"
+                  onClick={() => void deleteCurrency(c.id)}
+                  className="text-destructive/70 hover:text-destructive transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -267,11 +277,18 @@ export default function CurrenciesTab() {
         }
       >
         <div className="space-y-4">
+          {editingCurrency?.isSystem && (
+            <p className="text-xs text-muted-foreground">
+              Системну валюту не можна перейменовувати або змінювати код. Доступні лише налаштування
+              курсу НБУ.
+            </p>
+          )}
           <Input
             label="Назва"
             required
             value={currencyForm.name}
             errorMessage={currencyErrors.name}
+            disabled={editingCurrency?.isSystem}
             onChange={e => {
               setCurrencyForm({ ...currencyForm, name: e.target.value });
               if (currencyErrors.name) setCurrencyErrors(p => ({ ...p, name: undefined }));
@@ -283,6 +300,7 @@ export default function CurrenciesTab() {
             required
             value={currencyForm.code}
             errorMessage={currencyErrors.code}
+            disabled={editingCurrency?.isSystem}
             onChange={e => {
               setCurrencyForm({ ...currencyForm, code: e.target.value.toUpperCase() });
               if (currencyErrors.code) setCurrencyErrors(p => ({ ...p, code: undefined }));

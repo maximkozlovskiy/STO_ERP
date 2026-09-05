@@ -43,6 +43,9 @@ export interface PaymentMethod {
   isActive: boolean;
   sortOrder: number;
   requiresFiscal: boolean;
+  // Системний метод (Готівка/Картка/…) — сервер блокує видалення та перейменування
+  // (payment-methods.service). isActive/sortOrder лишаються редагованими за org.
+  isSystem?: boolean;
 }
 
 export interface NotificationTemplate {

@@ -61,10 +61,11 @@ export default function PaymentsTab() {
     if (!editPayment) return;
     setSavingPayment(true);
     try {
+      // Системний метод: сервер блокує зміну name (payment-methods.service isSystem-guard).
       const updated = await apiFetch<PaymentMethod>(`/payment-methods/${editPayment.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          name: editPaymentForm.name,
+          ...(editPayment.isSystem ? {} : { name: editPaymentForm.name }),
           requiresFiscal: editPaymentForm.requiresFiscal,
         }),
       });

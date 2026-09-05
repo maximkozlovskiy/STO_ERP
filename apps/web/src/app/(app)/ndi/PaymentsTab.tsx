@@ -61,10 +61,13 @@ export default function PaymentsTab() {
     if (!editPayment) return;
     setSavingPayment(true);
     try {
+      // Системний метод: сервер блокує зміну name (payment-methods.service isSystem-guard),
+      // requiresFiscal лишається редагованим. Не надсилаємо name — інакше незмінений name
+      // все одно спрацьовує guard (!== undefined) → 400.
       const updated = await apiFetch<PaymentMethod>(`/payment-methods/${editPayment.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          name: editPaymentForm.name,
+          ...(editPayment.isSystem ? {} : { name: editPaymentForm.name }),
           requiresFiscal: editPaymentForm.requiresFiscal,
         }),
       });
@@ -172,7 +175,14 @@ export default function PaymentsTab() {
         {payments.map(pm => (
           <div key={pm.id} className="flex items-center justify-between px-5 py-4">
             <div>
-              <p className="text-sm font-medium text-foreground">{pm.name}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-foreground">{pm.name}</p>
+                {pm.isSystem && (
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground bg-muted rounded px-1.5 py-0.5">
+                    Системний
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {pm.code}
                 {pm.requiresFiscal ? ' · фіскальний' : ''}
@@ -200,12 +210,14 @@ export default function PaymentsTab() {
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
-              <button
-                onClick={() => void deletePaymentMethod(pm.id)}
-                className="p-1 text-destructive/70 hover:text-destructive hover:bg-destructive/10 rounded"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              {!pm.isSystem && (
+                <button
+                  onClick={() => void deletePaymentMethod(pm.id)}
+                  className="p-1 text-destructive/70 hover:text-destructive hover:bg-destructive/10 rounded"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -228,11 +240,18 @@ export default function PaymentsTab() {
           }
         >
           <div className="space-y-4">
+            {editPayment.isSystem && (
+              <p className="text-xs text-muted-foreground">
+                Системний метод оплати не можна перейменовувати. Доступне лише налаштування
+                фіскалізації.
+              </p>
+            )}
             <Input
               label="Назва"
               value={editPaymentForm.name}
               onChange={e => setEditPaymentForm(f => ({ ...f, name: e.target.value }))}
               required
+              disabled={editPayment.isSystem}
               className="h-8 text-[13px]"
             />
             <label className="flex items-center gap-2 cursor-pointer">
