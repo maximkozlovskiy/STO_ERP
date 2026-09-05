@@ -3,12 +3,26 @@
 import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import type { ElementType } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useQueryClient } from '@tanstack/react-query';
-import { Plus, ShoppingCart, Search, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import {
+  Plus,
+  ShoppingCart,
+  Search,
+  Eye,
+  EyeOff,
+  Pencil,
+  Trash2,
+  Wallet,
+  User,
+} from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
+import { purchaseOrderLinkedConfig } from '@/lib/linked-configs';
+import { useLinkedNav } from '@/lib/linked-nav';
 import {
   usePurchaseOrders,
   purchaseOrdersKeys,
@@ -112,11 +126,33 @@ const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> =
   { key: 'paymentDate', label: 'Дата оплати', defaultVisible: true },
   { key: 'payDue', label: 'Днів до оплати', defaultVisible: true },
   { key: 'priced', label: 'Розцінено', defaultVisible: true },
+  { key: 'linkedDocs', label: "Зв'язки", defaultVisible: true },
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
 
 // Замовлення «активне» (дата оплати ще горить), поки не отримане/скасоване.
 const PO_INACTIVE_STATUSES = new Set(['RECEIVED', 'CANCELLED']);
+
+// ─── Пов'язані документи (badge column) ────────────────────
+// Ключі секцій дзеркалять backend purchase-orders.getLinkedCounts (supplierPayments/counterparty).
+type LinkedCountsEntry = {
+  supplierPayments: number;
+  counterparty: number;
+};
+type LinkedCountsField = keyof LinkedCountsEntry;
+type LinkedCountsMap = Record<string, LinkedCountsEntry>;
+
+// Stable empty fallback — module-level frozen reference avoids fresh {} per render.
+const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMap;
+
+const DOC_COUNTERS: Array<{
+  field: LinkedCountsField;
+  Icon: ElementType;
+  label: string;
+}> = [
+  { field: 'supplierPayments', Icon: Wallet, label: 'Оплати' },
+  { field: 'counterparty', Icon: User, label: 'Контрагент' },
+];
 
 const COLUMNS_SR: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
   { key: 'number', label: 'Номер', defaultVisible: true },
@@ -242,6 +278,34 @@ function PurchaseOrdersPageClient() {
   const total = queryData?.total ?? 0;
   const totalPages = Math.ceil(total / limit) || 1;
 
+  // Пов'язані документи — nav + config + popup state + batched counts.
+  const linkedNav = useLinkedNav();
+  const linkedConfig = useMemo(() => purchaseOrderLinkedConfig(linkedNav), [linkedNav]);
+  const [linkedDocPopupId, setLinkedDocPopupId] = useState<string | null>(null);
+
+  const orderIds = useMemo(() => orders.map(o => o.id).sort(), [orders]);
+
+  const { data: linkedCounts = EMPTY_LINKED_COUNTS } = useQuery<LinkedCountsMap>({
+    queryKey: [...purchaseOrdersKeys.all, 'linked-counts', orderIds],
+    queryFn: () =>
+      apiFetch<LinkedCountsMap>('/purchase-orders/linked-counts', {
+        method: 'POST',
+        body: JSON.stringify({ ids: orderIds }),
+      }),
+    enabled: orderIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  // Escape closes the linked-documents popup (§14 a11y).
+  useEffect(() => {
+    if (!linkedDocPopupId) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLinkedDocPopupId(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [linkedDocPopupId]);
+
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(orders);
 
   const applyFilter = useCallback(
@@ -357,8 +421,13 @@ function PurchaseOrdersPageClient() {
             </div>
           ),
       },
+      {
+        key: 'links',
+        label: "Зв'язки",
+        content: <LinkedDocumentsPanel config={linkedConfig} entityId={po.id} />,
+      },
     ],
-    [panelConfig.config],
+    [panelConfig.config, linkedConfig],
   );
 
   // Ref з id поточно вибраного PO — щоб toggle-логіка не залежала від стейл-замикання
@@ -1265,6 +1334,30 @@ function PurchaseOrdersPageClient() {
                                   )}
                                 </TableCell>
                               );
+                            if (col.key === 'linkedDocs') {
+                              const counts = linkedCounts[po.id];
+                              return (
+                                <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
+                                  <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
+                                    {DOC_COUNTERS.map(({ field, Icon, label }) => {
+                                      const n = counts?.[field];
+                                      if (!n) return null;
+                                      return (
+                                        <button
+                                          key={field}
+                                          onClick={() => setLinkedDocPopupId(po.id)}
+                                          className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                          title={`${label}: ${n}`}
+                                        >
+                                          <Icon size={13} />
+                                          <span>{n}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </TableCell>
+                              );
+                            }
                             return null;
                           })}
                           <TableCell className="text-right" onClick={e => e.stopPropagation()}>
@@ -1409,6 +1502,48 @@ function PurchaseOrdersPageClient() {
         }}
         editId={srEditId}
       />
+
+      {/* Linked documents popup. Escape handled by document-level listener above (§14 a11y). */}
+      {linkedDocPopupId && (
+        <div
+          className="fixed inset-0 z-50 bg-black/30"
+          onClick={() => setLinkedDocPopupId(null)}
+          role="presentation"
+        >
+          <div
+            className="absolute right-4 top-1/2 -translate-y-1/2 w-90 max-h-[80vh] overflow-y-auto bg-background rounded-xl shadow-2xl border border-border p-4"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Пов'язані документи замовлення"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-sm">Пов&apos;язані документи</h2>
+              <button
+                onClick={() => setLinkedDocPopupId(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Закрити"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M1 1L13 13M13 1L1 13"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <LinkedDocumentsPanel config={linkedConfig} entityId={linkedDocPopupId} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

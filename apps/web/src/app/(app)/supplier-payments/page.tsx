@@ -1,13 +1,30 @@
 'use client';
 
-import { Suspense, useState, useCallback, useMemo } from 'react';
+import { Suspense, useState, useCallback, useMemo, useEffect } from 'react';
+import type { ElementType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SupplierPaymentScheduleTab } from './SupplierPaymentScheduleTab';
-import { Plus, Wallet, Search, Eye, EyeOff, Trash2, Check, Ban, Pencil } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import {
+  Plus,
+  Wallet,
+  Search,
+  Eye,
+  EyeOff,
+  Trash2,
+  Check,
+  Ban,
+  Pencil,
+  ClipboardList,
+  User,
+  Landmark,
+} from 'lucide-react';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useRequireAuth } from '@/lib/auth';
 import { useDebounce } from '@/hooks/useDebounce';
 import { apiFetch } from '@/lib/api-client';
+import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
+import { supplierPaymentLinkedConfig } from '@/lib/linked-configs';
+import { useLinkedNav } from '@/lib/linked-nav';
 import {
   useSupplierPayments,
   useConfirmSupplierPayment,
@@ -83,8 +100,32 @@ const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> =
   { key: 'amount', label: 'Сума', defaultVisible: true },
   { key: 'date', label: 'Дата', defaultVisible: true },
   { key: 'status', label: 'Статус', defaultVisible: true },
+  { key: 'linkedDocs', label: "Зв'язки", defaultVisible: true },
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
+
+// ─── Пов'язані документи (badge column) ────────────────────
+// Ключі секцій дзеркалять backend supplier-payments.getLinkedCounts (purchaseOrder/counterparty/account).
+type LinkedCountsEntry = {
+  purchaseOrder: number;
+  counterparty: number;
+  account: number;
+};
+type LinkedCountsField = keyof LinkedCountsEntry;
+type LinkedCountsMap = Record<string, LinkedCountsEntry>;
+
+// Stable empty fallback — module-level frozen reference avoids fresh {} per render.
+const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMap;
+
+const DOC_COUNTERS: Array<{
+  field: LinkedCountsField;
+  Icon: ElementType;
+  label: string;
+}> = [
+  { field: 'purchaseOrder', Icon: ClipboardList, label: 'Замовлення' },
+  { field: 'counterparty', Icon: User, label: 'Контрагент' },
+  { field: 'account', Icon: Landmark, label: 'Рахунок' },
+];
 
 // Whitelist сортовних колонок → поле бекенду (SP_SORT_FIELDS у service). Module-level:
 // раніше об'єкт створювався всередині visibleColumns.map() — тобто на кожен render
@@ -165,6 +206,34 @@ function SupplierPaymentsPageInner() {
   const items = data?.items ?? (EMPTY_ITEMS as unknown as SupplierPayment[]);
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  // Пов'язані документи — nav + config + popup state + batched counts.
+  const linkedNav = useLinkedNav();
+  const linkedConfig = useMemo(() => supplierPaymentLinkedConfig(linkedNav), [linkedNav]);
+  const [linkedDocPopupId, setLinkedDocPopupId] = useState<string | null>(null);
+
+  const itemIds = useMemo(() => items.map(i => i.id).sort(), [items]);
+
+  const { data: linkedCounts = EMPTY_LINKED_COUNTS } = useQuery<LinkedCountsMap>({
+    queryKey: [...supplierPaymentsKeys.all, 'linked-counts', itemIds],
+    queryFn: () =>
+      apiFetch<LinkedCountsMap>('/supplier-payments/linked-counts', {
+        method: 'POST',
+        body: JSON.stringify({ ids: itemIds }),
+      }),
+    enabled: itemIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  // Escape closes the linked-documents popup (§14 a11y).
+  useEffect(() => {
+    if (!linkedDocPopupId) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLinkedDocPopupId(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [linkedDocPopupId]);
 
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(items);
 
@@ -394,6 +463,30 @@ function SupplierPaymentsPageInner() {
             </Badge>
           </TableCell>
         );
+      case 'linkedDocs': {
+        const counts = linkedCounts[sp.id];
+        return (
+          <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
+            <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
+              {DOC_COUNTERS.map(({ field, Icon, label }) => {
+                const n = counts?.[field];
+                if (!n) return null;
+                return (
+                  <button
+                    key={field}
+                    onClick={() => setLinkedDocPopupId(sp.id)}
+                    className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                    title={`${label}: ${n}`}
+                  >
+                    <Icon size={13} />
+                    <span>{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </TableCell>
+        );
+      }
       default:
         return null;
     }
@@ -806,6 +899,48 @@ function SupplierPaymentsPageInner() {
         onClose={() => setEditingId(null)}
         onSaved={() => setEditingId(null)}
       />
+
+      {/* Linked documents popup. Escape handled by document-level listener above (§14 a11y). */}
+      {linkedDocPopupId && (
+        <div
+          className="fixed inset-0 z-50 bg-black/30"
+          onClick={() => setLinkedDocPopupId(null)}
+          role="presentation"
+        >
+          <div
+            className="absolute right-4 top-1/2 -translate-y-1/2 w-90 max-h-[80vh] overflow-y-auto bg-background rounded-xl shadow-2xl border border-border p-4"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Пов'язані документи оплати"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-sm">Пов&apos;язані документи</h2>
+              <button
+                onClick={() => setLinkedDocPopupId(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Закрити"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M1 1L13 13M13 1L1 13"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <LinkedDocumentsPanel config={linkedConfig} entityId={linkedDocPopupId} />
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog {...dialogProps} />
     </div>

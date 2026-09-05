@@ -1,10 +1,25 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import type { ElementType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Receipt, Search, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import {
+  Plus,
+  Receipt,
+  Search,
+  Eye,
+  EyeOff,
+  Pencil,
+  Trash2,
+  ClipboardList,
+  CreditCard,
+  User,
+} from 'lucide-react';
+import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
+import { invoiceLinkedConfig } from '@/lib/linked-configs';
+import { useLinkedNav } from '@/lib/linked-nav';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -114,11 +129,36 @@ const INVOICE_COLUMNS: Array<{ key: string; label: string; defaultVisible?: bool
   { key: 'documentDate', label: 'Дата документа', defaultVisible: true },
   { key: 'amount', label: 'Сума', defaultVisible: true },
   { key: 'dueDate', label: 'Термін оплати', defaultVisible: true },
+  { key: 'linkedDocs', label: "Зв'язки", defaultVisible: true },
 ];
 const INVOICE_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(INVOICE_COLUMNS.map(c => c.key));
 
 // Рахунок «активний» (термін оплати ще горить), поки не оплачений/скасований.
 const INVOICE_INACTIVE_STATUSES = new Set(['PAID', 'CANCELLED']);
+
+// ─── Пов'язані документи (badge column) ────────────────────
+// Ключі секцій дзеркалять backend invoices.getLinkedCounts (workOrder/payments/counterparty).
+// workOrder та counterparty — 0|1, payments — реальна кількість. Бейдж лише при >0.
+type LinkedCountsEntry = {
+  workOrder: number;
+  payments: number;
+  counterparty: number;
+};
+type LinkedCountsField = keyof LinkedCountsEntry;
+type LinkedCountsMap = Record<string, LinkedCountsEntry>;
+
+// Stable empty fallback — module-level frozen reference avoids fresh {} per render.
+const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMap;
+
+const DOC_COUNTERS: Array<{
+  field: LinkedCountsField;
+  Icon: ElementType;
+  label: string;
+}> = [
+  { field: 'workOrder', Icon: ClipboardList, label: 'Наряд' },
+  { field: 'payments', Icon: CreditCard, label: 'Оплати' },
+  { field: 'counterparty', Icon: User, label: 'Контрагент' },
+];
 
 function InvoicesPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
@@ -170,6 +210,10 @@ function InvoicesPageInner() {
   }, []);
   const { sort: invSort, toggle: toggleInvSort } = useSortState('createdAt', 'desc');
 
+  const linkedNav = useLinkedNav();
+  const linkedConfig = useMemo(() => invoiceLinkedConfig(linkedNav), [linkedNav]);
+  const [linkedDocPopupId, setLinkedDocPopupId] = useState<string | null>(null);
+
   // React Query — main data
   const {
     data: queryData,
@@ -190,6 +234,31 @@ function InvoicesPageInner() {
   const invoices = queryData?.items ?? (EMPTY_ITEMS as unknown as Invoice[]);
   const total = queryData?.total ?? 0;
   const totalPages = Math.ceil(total / limit) || 1;
+
+  // Stable sorted ID list — prevents useQuery refiring on reference-only changes.
+  const invoiceIds = useMemo(() => invoices.map(i => i.id).sort(), [invoices]);
+
+  // Batched пов'язані-документи лічильники для колонки «Зв'язки».
+  const { data: linkedCounts = EMPTY_LINKED_COUNTS } = useQuery<LinkedCountsMap>({
+    queryKey: [...invoicesKeys.all, 'linked-counts', invoiceIds],
+    queryFn: () =>
+      apiFetch<LinkedCountsMap>('/invoices/linked-counts', {
+        method: 'POST',
+        body: JSON.stringify({ ids: invoiceIds }),
+      }),
+    enabled: invoiceIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  // Escape closes the linked-documents popup (§14 a11y — overlay onKeyDown не спрацьовує без focus).
+  useEffect(() => {
+    if (!linkedDocPopupId) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLinkedDocPopupId(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [linkedDocPopupId]);
 
   // Bulk select — after invoices is declared so items ref is stable
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(invoices);
@@ -567,6 +636,11 @@ function InvoicesPageInner() {
           </div>
         ),
     },
+    {
+      key: 'links',
+      label: "Зв'язки",
+      content: <LinkedDocumentsPanel config={linkedConfig} entityId={inv.id} />,
+    },
   ];
 
   return (
@@ -850,6 +924,30 @@ function InvoicesPageInner() {
                               {inv.dueDate ? fmtDate(inv.dueDate) : '—'}
                             </TableCell>
                           );
+                        if (col.key === 'linkedDocs') {
+                          const counts = linkedCounts[inv.id];
+                          return (
+                            <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
+                              <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
+                                {DOC_COUNTERS.map(({ field, Icon, label }) => {
+                                  const n = counts?.[field];
+                                  if (!n) return null;
+                                  return (
+                                    <button
+                                      key={field}
+                                      onClick={() => setLinkedDocPopupId(inv.id)}
+                                      className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                      title={`${label}: ${n}`}
+                                    >
+                                      <Icon size={13} />
+                                      <span>{n}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </TableCell>
+                          );
+                        }
                         return null;
                       })}
                       <TableCell className="text-right" onClick={e => e.stopPropagation()}>
@@ -976,6 +1074,48 @@ function InvoicesPageInner() {
         )}
       </Modal>
       <ConfirmDialog {...dialogProps} />
+
+      {/* Linked documents popup. Escape handled by document-level listener above (§14 a11y). */}
+      {linkedDocPopupId && (
+        <div
+          className="fixed inset-0 z-50 bg-black/30"
+          onClick={() => setLinkedDocPopupId(null)}
+          role="presentation"
+        >
+          <div
+            className="absolute right-4 top-1/2 -translate-y-1/2 w-90 max-h-[80vh] overflow-y-auto bg-background rounded-xl shadow-2xl border border-border p-4"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Пов'язані документи рахунку"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-sm">Пов&apos;язані документи</h2>
+              <button
+                onClick={() => setLinkedDocPopupId(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Закрити"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M1 1L13 13M13 1L1 13"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <LinkedDocumentsPanel config={linkedConfig} entityId={linkedDocPopupId} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

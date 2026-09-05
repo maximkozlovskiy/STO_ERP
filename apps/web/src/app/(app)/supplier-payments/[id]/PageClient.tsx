@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/lib/auth';
 import { Check, Ban, Trash2, ExternalLink, Pencil } from 'lucide-react';
 import { SupplierPaymentCreateModal } from '@/components/ui/SupplierPaymentCreateModal';
+import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
+import { supplierPaymentLinkedConfig } from '@/lib/linked-configs';
+import { useLinkedNav } from '@/lib/linked-nav';
 import {
   useSupplierPayment,
   useConfirmSupplierPayment,
@@ -52,6 +55,9 @@ export default function SupplierPaymentCardPage() {
   const cancelMut = useCancelSupplierPayment();
   const deleteMut = useDeleteSupplierPayment();
   const [editOpen, setEditOpen] = useState(false);
+
+  const linkedNav = useLinkedNav();
+  const linkedConfig = useMemo(() => supplierPaymentLinkedConfig(linkedNav), [linkedNav]);
 
   const handleConfirm = async (payment: SupplierPayment) => {
     const ok = await confirm({
@@ -206,6 +212,14 @@ export default function SupplierPaymentCardPage() {
           <Field label="Оновлено" value={fmtShortDateTime(sp.updatedAt)} />
           {sp.deletedAt && <Field label="Видалено" value={fmtShortDateTime(sp.deletedAt)} />}
         </div>
+      </div>
+
+      {/* Зв'язки — пов'язані документи (замовлення / контрагент / рахунок) */}
+      <div className="bg-surface rounded-xl border border-border p-5">
+        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+          Зв&apos;язки
+        </p>
+        <LinkedDocumentsPanel config={linkedConfig} entityId={sp.id} />
       </div>
 
       {/* Дії */}
