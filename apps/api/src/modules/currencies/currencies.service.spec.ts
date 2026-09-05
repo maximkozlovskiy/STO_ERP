@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { CurrenciesService } from './currencies.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,8 +10,10 @@ describe('CurrenciesService.create', () => {
   let prisma: {
     currency: {
       findFirst: ReturnType<typeof vi.fn>;
+      findFirstOrThrow: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
     };
   };
   let cache: {
@@ -44,8 +46,10 @@ describe('CurrenciesService.create', () => {
     prisma = {
       currency: {
         findFirst: vi.fn(),
+        findFirstOrThrow: vi.fn().mockResolvedValue(row()),
         create: vi.fn().mockResolvedValue(row()),
         update: vi.fn().mockResolvedValue(row()),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const module = await Test.createTestingModule({
@@ -86,5 +90,38 @@ describe('CurrenciesService.create', () => {
     prisma.currency.findFirst.mockResolvedValueOnce(null); // no row at all
     await service.create('org-1', { name: 'Долар', code: 'USD' });
     expect(prisma.currency.create).toHaveBeenCalledTimes(1);
+  });
+
+  // isSystem-guard (audit round 3 gap): базову валюту (UAH) не можна видалити/перейменувати.
+  describe('remove/update — isSystem guard', () => {
+    it('remove системної валюти → BadRequestException, без soft-delete', async () => {
+      prisma.currency.findFirst.mockResolvedValueOnce({ isSystem: true });
+      await expect(service.remove('org-1', 'c-uah')).rejects.toThrow(BadRequestException);
+      expect(prisma.currency.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('remove звичайної валюти → soft-delete', async () => {
+      prisma.currency.findFirst.mockResolvedValueOnce({ isSystem: false });
+      await service.remove('org-1', 'c-usd');
+      expect(prisma.currency.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('update code/name системної валюти → BadRequestException', async () => {
+      prisma.currency.findFirst
+        .mockResolvedValueOnce({ code: 'UAH', isSystem: true }) // existing
+        .mockResolvedValueOnce(null); // duplicate-check
+      await expect(service.update('org-1', 'c-uah', { name: 'Інша' })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.currency.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('update NBU-налаштувань системної валюти → дозволено', async () => {
+      prisma.currency.findFirst
+        .mockResolvedValueOnce({ code: 'UAH', isSystem: true }) // existing
+        .mockResolvedValueOnce(null); // duplicate-check (no code in dto)
+      await service.update('org-1', 'c-uah', { nbuFetchEnabled: true });
+      expect(prisma.currency.updateMany).toHaveBeenCalledTimes(1);
+    });
   });
 });

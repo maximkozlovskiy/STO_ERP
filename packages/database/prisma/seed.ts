@@ -85,7 +85,7 @@ async function main() {
   // ─── Default Currency (UAH) ──────────────────────────────
   await prisma.currency.upsert({
     where: { orgId_code: { orgId: ORG_ID, code: 'UAH' } },
-    update: {},
+    update: { isSystem: true },
     create: {
       orgId: ORG_ID,
       code: 'UAH',
@@ -93,6 +93,7 @@ async function main() {
       fullName: 'Гривня',
       internationalName: 'Ukrainian Hryvnia',
       symbol: '₴',
+      isSystem: true,
     },
   });
   console.warn('  Currency: UAH (Гривня)');
@@ -137,8 +138,8 @@ async function main() {
   for (const pm of paymentMethods) {
     await prisma.paymentMethodConfig.upsert({
       where: { orgId_code: { orgId: ORG_ID, code: pm.code } },
-      update: {},
-      create: { orgId: ORG_ID, isActive: true, ...pm },
+      update: { isSystem: true },
+      create: { orgId: ORG_ID, isActive: true, isSystem: true, ...pm },
     });
   }
   console.warn('  PaymentMethods: 5 записів');

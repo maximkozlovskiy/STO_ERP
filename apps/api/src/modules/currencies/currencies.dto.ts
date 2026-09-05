@@ -101,6 +101,7 @@ export class CurrencyResponseDto {
   @ApiPropertyOptional() internationalName?: string | null;
   @ApiProperty() code!: string;
   @ApiPropertyOptional() symbol?: string | null;
+  @ApiProperty() isSystem!: boolean;
   @ApiProperty() nbuFetchEnabled!: boolean;
   @ApiPropertyOptional() nbuMarkupPercent?: number | null;
   @ApiProperty() createdAt!: string;

@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import {
@@ -68,19 +73,32 @@ export class PaymentMethodsService {
     // Narrow tenant guard — full DTO load марний бо update сам повертає item.
     const existing = await this.prisma.paymentMethodConfig.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, isSystem: true },
     });
     if (!existing) throw new NotFoundException('Метод оплати не знайдено');
+    // Системний метод (Готівка/Картка/…) не можна перейменовувати; isActive/sortOrder
+    // (деактивація/порядок) лишаються за org (дзеркалить units isSystem — косметика дозволена).
+    // code у UpdatePaymentMethodDto відсутній → змінити код неможливо за побудовою.
+    if (existing.isSystem && dto.name !== undefined) {
+      throw new BadRequestException('Системний метод оплати не можна перейменовувати');
+    }
     const item = await this.prisma.paymentMethodConfig.update({ where: { id, orgId }, data: dto });
     await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
-    // where (id+orgId+deletedAt:null). -1 RTT per delete.
-    const result = await this.prisma.paymentMethodConfig.updateMany({
+    // Системний метод оплати не можна видалити.
+    const existing = await this.prisma.paymentMethodConfig.findFirst({
       where: { id, orgId, deletedAt: null },
+      select: { isSystem: true },
+    });
+    if (!existing) throw new NotFoundException('Метод оплати не знайдено');
+    if (existing.isSystem) {
+      throw new BadRequestException('Системний метод оплати не можна видалити');
+    }
+    const result = await this.prisma.paymentMethodConfig.updateMany({
+      where: { id, orgId, deletedAt: null, isSystem: false },
       data: { deletedAt: new Date() },
     });
     if (result.count === 0) throw new NotFoundException('Метод оплати не знайдено');
@@ -93,6 +111,7 @@ export class PaymentMethodsService {
     code: string;
     name: string;
     isActive: boolean;
+    isSystem: boolean;
     sortOrder: number;
     requiresFiscal: boolean;
     updatedAt: Date;
@@ -103,6 +122,7 @@ export class PaymentMethodsService {
       code: item.code,
       name: item.name,
       isActive: item.isActive,
+      isSystem: item.isSystem,
       sortOrder: item.sortOrder,
       requiresFiscal: item.requiresFiscal,
       updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,

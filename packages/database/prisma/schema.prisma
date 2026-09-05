@@ -1700,6 +1700,7 @@ model PaymentMethodConfig {
   code           String
   name           String
   isActive       Boolean   @default(true)
+  isSystem       Boolean   @default(false)
   sortOrder      Int       @default(0)
   requiresFiscal Boolean   @default(false)
   syncVersion    BigInt    @default(0)
@@ -2220,6 +2221,7 @@ model Currency {
   internationalName String?
   code              String
   symbol            String?
+  isSystem          Boolean   @default(false)
   nbuFetchEnabled   Boolean   @default(false)
   nbuMarkupPercent  Decimal?  @db.Decimal(6, 2)
   syncVersion       BigInt    @default(0)

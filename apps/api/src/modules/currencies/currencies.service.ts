@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { CreateCurrencyDto, CurrencyResponseDto, UpdateCurrencyDto } from './currencies.dto';
@@ -71,7 +76,7 @@ export class CurrenciesService {
     const [existing, duplicate] = await Promise.all([
       this.prisma.currency.findFirst({
         where: { id, orgId, deletedAt: null },
-        select: { code: true },
+        select: { code: true, isSystem: true },
       }),
       dto.code
         ? this.prisma.currency.findFirst({
@@ -81,6 +86,11 @@ export class CurrenciesService {
         : Promise.resolve(null),
     ]);
     if (!existing) throw new NotFoundException('Валюту не знайдено');
+    // Системну валюту (UAH) не можна перейменовувати/змінювати код; NBU-налаштування (fetch/markup)
+    // лишаються редагованими (операційні, не ідентичність). Дзеркалить units isSystem-guard.
+    if (existing.isSystem && (dto.code !== undefined || dto.name !== undefined)) {
+      throw new BadRequestException('Системну валюту не можна перейменовувати або змінювати код');
+    }
     if (dto.code && dto.code !== existing.code && duplicate) {
       throw new ConflictException(`Валюта з кодом "${dto.code}" вже існує`);
     }
@@ -97,9 +107,17 @@ export class CurrenciesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
-    // Defense-in-depth: atomic soft-delete via updateMany (sto-review pattern 2026-05-30).
-    const result = await this.prisma.currency.updateMany({
+    // Системну валюту (UAH) не можна видаляти. Guard через окремий cheap read + compound where.
+    const existing = await this.prisma.currency.findFirst({
       where: { id, orgId, deletedAt: null },
+      select: { isSystem: true },
+    });
+    if (!existing) throw new NotFoundException('Валюту не знайдено');
+    if (existing.isSystem) {
+      throw new BadRequestException('Системну валюту не можна видалити');
+    }
+    const result = await this.prisma.currency.updateMany({
+      where: { id, orgId, deletedAt: null, isSystem: false },
       data: { deletedAt: new Date() },
     });
     if (result.count === 0) throw new NotFoundException('Валюту не знайдено');
@@ -114,6 +132,7 @@ export class CurrenciesService {
     internationalName: string | null;
     code: string;
     symbol: string | null;
+    isSystem: boolean;
     nbuFetchEnabled: boolean;
     nbuMarkupPercent: import('@prisma/client').Prisma.Decimal | null;
     createdAt: Date;
@@ -127,6 +146,7 @@ export class CurrenciesService {
       internationalName: item.internationalName,
       code: item.code,
       symbol: item.symbol,
+      isSystem: item.isSystem,
       nbuFetchEnabled: item.nbuFetchEnabled,
       nbuMarkupPercent: item.nbuMarkupPercent != null ? Number(item.nbuMarkupPercent) : null,
       createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,

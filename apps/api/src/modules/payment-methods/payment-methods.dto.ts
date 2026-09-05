@@ -58,6 +58,7 @@ export class PaymentMethodResponseDto {
   @ApiProperty() code!: string;
   @ApiProperty() name!: string;
   @ApiProperty() isActive!: boolean;
+  @ApiProperty() isSystem!: boolean;
   @ApiProperty() sortOrder!: number;
   @ApiProperty() requiresFiscal!: boolean;
   @ApiProperty() updatedAt!: string;
