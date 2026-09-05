@@ -8,93 +8,61 @@ import type {
   ReactNode,
   RefObject,
 } from 'react';
-import { Receipt, CreditCard, Calendar, Shield, X, ExternalLink, AlertCircle } from 'lucide-react';
+import { X, ExternalLink, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
-import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { INVOICE_STATUS_LABELS } from '@sto/shared';
 
-// ─── Types ────────────────────────────────────────────────
+// ─── Generic config-driven API ────────────────────────────
+//
+// Раніше панель була жорстко прив'язана до наряду (WorkOrder). Тепер вона
+// config-driven: кожна сутність (наряд, рахунок, замовлення, оплата, контрагент…)
+// постачає `LinkedEntityConfig` зі своїм fetch-URL і набором секцій; кожен рядок
+// секції мапиться у `LinkedSectionItem` з опційною навігацією `navigate?()`.
+// Спільні примітиви (DocSection/SectionRow/PreviewPopup) лишились незмінними.
 
-interface LinkedInvoice {
+/** Один рядок у секції пов'язаних документів. */
+export interface LinkedSectionItem {
   id: string;
-  number: string;
-  status: string;
-  amount: string | number;
-  documentDate: string | null;
+  primary: string;
+  secondary?: string;
+  badge?: { label: string; className: string };
+  /** Вміст прев'ю-попапа (key/value рядки). */
+  preview: { title: string; rows: Array<{ label: string; value: ReactNode }> };
+  /** Перехід до документа (deep-link). undefined → кнопки «Відкрити» немає. */
+  navigate?: () => void;
 }
 
-interface LinkedPayment {
-  id: string;
-  amount: string | number;
-  method: string;
-  createdAt: string;
-  notes: string | null;
+/** Опис однієї секції: як її назвати, якою іконкою і як мапити рядки відповіді. */
+export interface LinkedSectionConfig {
+  /** Ключ секції — збігається з ключем у відповіді backend та у counts-мапі. */
+  key: string;
+  title: string;
+  icon: ElementType;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mapRow: (row: any) => LinkedSectionItem;
 }
 
-interface LinkedCalendarSlot {
-  id: string;
-  startAt: string;
-  endAt: string;
-  status: string;
-  employeeId: string | null;
-  notes: string | null;
-  lift: { name: string } | null;
+/** Конфіг сутності: звідки тягнути linked-documents і які секції рендерити. */
+export interface LinkedEntityConfig {
+  /** Напр. (id) => `/invoices/${id}/linked-documents`. */
+  fetchPath: (entityId: string) => string;
+  sections: LinkedSectionConfig[];
 }
 
-interface LinkedWarranty {
-  id: string;
-  expiresAt: string;
-  description: string;
-  claimedAt: string | null;
-  createdAt: string;
-}
+/** Кількість елементів у кожній секції (для badge-лічильників списку/вкладки). */
+export type LinkedDocumentsCounts = Record<string, number>;
 
-interface LinkedDocuments {
-  invoices: LinkedInvoice[];
-  payments: LinkedPayment[];
-  calendarSlots: LinkedCalendarSlot[];
-  warranties: LinkedWarranty[];
-}
-
-type PreviewType =
-  | { kind: 'invoice'; item: LinkedInvoice }
-  | { kind: 'payment'; item: LinkedPayment }
-  | { kind: 'slot'; item: LinkedCalendarSlot }
-  | { kind: 'warranty'; item: LinkedWarranty };
-
-// ─── Helpers ──────────────────────────────────────────────
-
-// sto-optimize: thin proxy для DTO значень (Prisma Decimal може приходити як string).
-// fmtMoney використовує module-level Intl.NumberFormat singleton — без per-call alloc.
-function fmt(n: string | number) {
-  return fmtMoney(Number(n));
-}
-
-const SLOT_STATUS_LABELS: Record<string, string> = {
-  AVAILABLE: 'Вільний',
-  BOOKED: 'Заброньовано',
-  BLOCKED: 'Заблоковано',
-};
-
-const INVOICE_STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-secondary text-muted-foreground',
-  SENT: 'bg-info-subtle text-info-text',
-  PAID: 'bg-success-subtle text-success',
-  // Must match INVOICE_STATUS_BADGE['OVERDUE'] = 'warning' — use warning, not destructive.
-  // OVERDUE is a state waiting for payment, not an error; red (destructive) is misleading.
-  OVERDUE: 'bg-warning-subtle text-warning-text',
-  CANCELLED: 'bg-secondary text-muted-foreground',
-};
+/** Форма відповіді backend: { [sectionKey]: Row[] }. */
+type LinkedDocumentsResponse = Record<string, unknown[]>;
 
 // ─── Preview Popup ─────────────────────────────────────────
 
 function PreviewPopup({
-  preview,
+  item,
   anchorRef,
   onClose,
 }: {
-  preview: PreviewType;
+  item: LinkedSectionItem;
   anchorRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
 }) {
@@ -102,7 +70,7 @@ function PreviewPopup({
   const [style, setStyle] = useState<CSSProperties>({ opacity: 0 });
 
   // useLayoutEffect — synchronous DOM measurement to avoid flash at (0,0) before reposition.
-  // Включаємо `preview` у deps: коли користувач відкриває preview іншого рядка без
+  // Включаємо `item` у deps: коли користувач відкриває preview іншого рядка без
   // попереднього закриття, anchorRef.current змінюється — компонент перепозиціонується.
   // Тільки [anchorRef] (стабільний ref) → ефект ніколи не перезапускався → попап
   // залишався у позиції першого відкритого рядка (IMPORTANT bug).
@@ -114,10 +82,10 @@ function PreviewPopup({
     const top = spaceBelow > popupH + 8 ? rect.bottom + 8 : rect.top - popupH - 8;
     const left = Math.min(rect.left, window.innerWidth - 320 - 16);
     setStyle({ top, left: Math.max(8, left), opacity: 1 });
-  }, [anchorRef, preview]);
+  }, [anchorRef, item]);
 
   // Capture + stopImmediatePropagation: PreviewPopup може рендеритися всередині
-  // батьківського <Modal> (work-orders Documents tab), який теж слухає Esc на document.
+  // батьківського <Modal> (напр. вкладка «Документи»), який теж слухає Esc на document.
   // Без capture-фази Esc закрив би одразу і preview, і весь модал.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -147,10 +115,24 @@ function PreviewPopup({
           <X size={14} />
         </button>
 
-        {preview.kind === 'invoice' && <InvoicePreview item={preview.item} onClose={onClose} />}
-        {preview.kind === 'payment' && <PaymentPreview item={preview.item} />}
-        {preview.kind === 'slot' && <SlotPreview item={preview.item} />}
-        {preview.kind === 'warranty' && <WarrantyPreview item={preview.item} />}
+        <div className="font-semibold mb-3 pr-5">{item.preview.title}</div>
+        <div className="space-y-0">
+          {item.preview.rows.map((r, i) => (
+            <PreviewRow key={i} label={r.label} value={r.value} />
+          ))}
+        </div>
+        {item.navigate && (
+          <button
+            onClick={() => {
+              item.navigate?.();
+              onClose();
+            }}
+            className="mt-4 flex items-center gap-1.5 text-primary hover:underline text-[12px] font-medium"
+          >
+            <ExternalLink size={13} />
+            Відкрити
+          </button>
+        )}
       </div>
     </>
   );
@@ -161,99 +143,6 @@ function PreviewRow({ label, value }: { label: string; value: ReactNode }) {
     <div className="flex justify-between gap-2 py-1 border-b border-border last:border-0">
       <span className="text-muted-foreground shrink-0">{label}</span>
       <span className="text-right font-medium">{value}</span>
-    </div>
-  );
-}
-
-function InvoicePreview({ item, onClose }: { item: LinkedInvoice; onClose: () => void }) {
-  return (
-    <div>
-      <div className="font-semibold mb-3 pr-5">Рахунок {item.number}</div>
-      <div className="space-y-0">
-        <PreviewRow
-          label="Статус"
-          value={
-            <span
-              className={cn(
-                'px-2 py-0.5 rounded-full text-[11px]',
-                INVOICE_STATUS_COLORS[item.status] ?? 'bg-secondary text-muted-foreground',
-              )}
-            >
-              {INVOICE_STATUS_LABELS[item.status] ?? item.status}
-            </span>
-          }
-        />
-        <PreviewRow label="Сума" value={`${fmt(item.amount)} ₴`} />
-        {item.documentDate && <PreviewRow label="Дата" value={fmtDate(item.documentDate)} />}
-      </div>
-      <button
-        onClick={() => {
-          window.open(`/invoices/${item.id}`, '_blank');
-          onClose();
-        }}
-        className="mt-4 flex items-center gap-1.5 text-primary hover:underline text-[12px] font-medium"
-      >
-        <ExternalLink size={13} />
-        Відкрити рахунок
-      </button>
-    </div>
-  );
-}
-
-function PaymentPreview({ item }: { item: LinkedPayment }) {
-  const METHOD_LABELS: Record<string, string> = {
-    CASH: 'Готівка',
-    CARD: 'Картка',
-    TRANSFER: 'Переказ',
-    ONLINE: 'Онлайн',
-  };
-  return (
-    <div>
-      <div className="font-semibold mb-3 pr-5">Оплата</div>
-      <div className="space-y-0">
-        <PreviewRow label="Сума" value={`${fmt(item.amount)} ₴`} />
-        <PreviewRow label="Метод" value={METHOD_LABELS[item.method] ?? item.method} />
-        <PreviewRow label="Дата" value={fmtDateTime(item.createdAt)} />
-        {item.notes && <PreviewRow label="Примітка" value={item.notes} />}
-      </div>
-    </div>
-  );
-}
-
-function SlotPreview({ item }: { item: LinkedCalendarSlot }) {
-  return (
-    <div>
-      <div className="font-semibold mb-3 pr-5">Запис у календарі</div>
-      <div className="space-y-0">
-        <PreviewRow label="Початок" value={fmtDateTime(item.startAt)} />
-        <PreviewRow label="Кінець" value={fmtDateTime(item.endAt)} />
-        <PreviewRow label="Статус" value={SLOT_STATUS_LABELS[item.status] ?? item.status} />
-        {item.lift && <PreviewRow label="Підйомник" value={item.lift.name} />}
-        {item.notes && <PreviewRow label="Примітка" value={item.notes} />}
-      </div>
-    </div>
-  );
-}
-
-function WarrantyPreview({ item }: { item: LinkedWarranty }) {
-  const isExpired = new Date(item.expiresAt) < new Date();
-  return (
-    <div>
-      <div className="font-semibold mb-3 pr-5">Гарантія</div>
-      <div className="space-y-0">
-        <PreviewRow
-          label="Дійсна до"
-          value={
-            <span className={isExpired ? 'text-destructive' : ''}>
-              {fmtDate(item.expiresAt)}
-              {isExpired ? ' (прострочена)' : ''}
-            </span>
-          }
-        />
-        <PreviewRow label="Виписано" value={fmtDate(item.createdAt)} />
-        {item.claimedAt && <PreviewRow label="Звернення" value={fmtDate(item.claimedAt)} />}
-        {item.description && <PreviewRow label="Опис" value={item.description} />}
-      </div>
     </div>
   );
 }
@@ -321,60 +210,68 @@ function SectionRow({
 
 // ─── Main Component ────────────────────────────────────────
 
-export interface LinkedDocumentsCounts {
-  invoices: number;
-  payments: number;
-  calendarSlots: number;
-  warranties: number;
-}
-
 export function LinkedDocumentsPanel({
-  workOrderId,
+  config,
+  entityId,
   refreshKey,
   onLoad,
 }: {
-  workOrderId: string;
+  config: LinkedEntityConfig;
+  entityId: string;
   // parent інкрементує key після створення/refresh пов'язаного документу
   // → useEffect deps тригерять fetch без unmount/remount, стале UI не показується.
   refreshKey?: number;
   onLoad?: (counts: LinkedDocumentsCounts) => void;
 }) {
-  const [data, setData] = useState<LinkedDocuments | null>(null);
+  // Мапимо сирі рядки у section→items[] один раз після завантаження.
+  const [sections, setSections] = useState<Array<{
+    key: string;
+    title: string;
+    icon: ElementType;
+    items: LinkedSectionItem[];
+  }> | null>(null);
   const [loading, setLoading] = useState(true);
   // окремий error-state, інакше backend помилку 500/timeout не відрізнити
   // від справжнього empty-state ("Пов'язаних документів немає") — користувач отримує
   // false reassurance.
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [preview, setPreview] = useState<PreviewType | null>(null);
+  const [preview, setPreview] = useState<LinkedSectionItem | null>(null);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
 
-  // Скидаємо preview перед новим fetch.
+  // config зазвичай module-level constant (стабільний), але тримаємо у ref, щоб
+  // fetch-ефект залежав лише від entityId/refreshKey (як раніше), а не від identity config.
+  const configRef = useRef(config);
+  configRef.current = config;
+  const onLoadRef = useRef(onLoad);
+  onLoadRef.current = onLoad;
+
   useEffect(() => {
-    // Race-guard: користувач швидко перемикає workOrderId → стара відповідь не має
+    // Race-guard: користувач швидко перемикає entityId → стара відповідь не має
     // перезаписувати стан від нового запиту (§3.1).
     let cancelled = false;
+    const cfg = configRef.current;
     setLoading(true);
     setError(null);
     setPreview(null);
-    apiFetch<LinkedDocuments>(`/work-orders/${workOrderId}/linked-documents`)
+    apiFetch<LinkedDocumentsResponse>(cfg.fetchPath(entityId))
       .then(d => {
-        if (!cancelled) {
-          setData(d);
-          setError(null);
-          onLoad?.({
-            invoices: d.invoices.length,
-            payments: d.payments.length,
-            calendarSlots: d.calendarSlots.length,
-            warranties: d.warranties.length,
-          });
-        }
+        if (cancelled) return;
+        const mapped = cfg.sections.map(s => {
+          const rows = Array.isArray(d[s.key]) ? d[s.key] : [];
+          return { key: s.key, title: s.title, icon: s.icon, items: rows.map(s.mapRow) };
+        });
+        setSections(mapped);
+        setError(null);
+        const counts: LinkedDocumentsCounts = {};
+        for (const s of mapped) counts[s.key] = s.items.length;
+        onLoadRef.current?.(counts);
       })
       .catch((e: unknown) => {
         if (!cancelled) {
-          // не «приховувати» error під empty-state. Залишаємо data null —
+          // не «приховувати» error під empty-state. Залишаємо sections null —
           // render-логіка покаже банер з повідомленням і Retry-кнопкою.
-          setData(null);
+          setSections(null);
           setError(e instanceof Error ? e.message : 'Не вдалось завантажити пов’язані документи');
         }
       })
@@ -384,11 +281,11 @@ export function LinkedDocumentsPanel({
     return () => {
       cancelled = true;
     };
-  }, [workOrderId, refreshKey, retryKey]);
+  }, [entityId, refreshKey, retryKey]);
 
-  const openPreview = (e: ReactMouseEvent<HTMLButtonElement>, p: PreviewType) => {
+  const openPreview = (e: ReactMouseEvent<HTMLButtonElement>, item: LinkedSectionItem) => {
     anchorRef.current = e.currentTarget;
-    setPreview(p);
+    setPreview(item);
   };
 
   if (loading) {
@@ -422,13 +319,9 @@ export function LinkedDocumentsPanel({
     );
   }
 
-  if (!data) return null;
+  if (!sections) return null;
 
-  const total =
-    data.invoices.length +
-    data.payments.length +
-    data.calendarSlots.length +
-    data.warranties.length;
+  const total = sections.reduce((sum, s) => sum + s.items.length, 0);
 
   if (total === 0) {
     return (
@@ -441,76 +334,29 @@ export function LinkedDocumentsPanel({
   return (
     <>
       <div className="flex flex-col gap-3">
-        <DocSection icon={Receipt} title="Рахунки" count={data.invoices.length}>
-          {data.invoices.map(inv => (
-            <SectionRow
-              key={inv.id}
-              icon={Receipt}
-              primary={`Рахунок ${inv.number}`}
-              secondary={inv.documentDate ? fmtDate(inv.documentDate) : undefined}
-              badge={{
-                label: INVOICE_STATUS_LABELS[inv.status] ?? inv.status,
-                className:
-                  INVOICE_STATUS_COLORS[inv.status] ?? 'bg-secondary text-muted-foreground',
-              }}
-              onClick={e => openPreview(e, { kind: 'invoice', item: inv })}
-            />
-          ))}
-        </DocSection>
-
-        <DocSection icon={CreditCard} title="Оплати" count={data.payments.length}>
-          {data.payments.map(p => (
-            <SectionRow
-              key={p.id}
-              icon={CreditCard}
-              primary={`${fmt(p.amount)} ₴`}
-              secondary={fmtDateTime(p.createdAt)}
-              onClick={e => openPreview(e, { kind: 'payment', item: p })}
-            />
-          ))}
-        </DocSection>
-
-        <DocSection icon={Calendar} title="Записи календаря" count={data.calendarSlots.length}>
-          {data.calendarSlots.map(s => (
-            <SectionRow
-              key={s.id}
-              icon={Calendar}
-              primary={fmtDateTime(s.startAt)}
-              secondary={s.lift ? s.lift.name : undefined}
-              badge={{
-                label: SLOT_STATUS_LABELS[s.status] ?? s.status,
-                className:
-                  s.status === 'BOOKED'
-                    ? 'bg-info-subtle text-info-text'
-                    : s.status === 'BLOCKED'
-                      ? 'bg-destructive-subtle text-destructive'
-                      : 'bg-success-subtle text-success',
-              }}
-              onClick={e => openPreview(e, { kind: 'slot', item: s })}
-            />
-          ))}
-        </DocSection>
-
-        <DocSection icon={Shield} title="Гарантії" count={data.warranties.length}>
-          {data.warranties.map(w => (
-            <SectionRow
-              key={w.id}
-              icon={Shield}
-              primary={w.description || 'Гарантія'}
-              secondary={`Дійсна до ${fmtDate(w.expiresAt)}`}
-              badge={
-                w.claimedAt
-                  ? { label: 'Звернення', className: 'bg-warning-subtle text-warning' }
-                  : undefined
-              }
-              onClick={e => openPreview(e, { kind: 'warranty', item: w })}
-            />
-          ))}
-        </DocSection>
+        {sections.map(section => (
+          <DocSection
+            key={section.key}
+            icon={section.icon}
+            title={section.title}
+            count={section.items.length}
+          >
+            {section.items.map(item => (
+              <SectionRow
+                key={item.id}
+                icon={section.icon}
+                primary={item.primary}
+                secondary={item.secondary}
+                badge={item.badge}
+                onClick={e => openPreview(e, item)}
+              />
+            ))}
+          </DocSection>
+        ))}
       </div>
 
       {preview && (
-        <PreviewPopup preview={preview} anchorRef={anchorRef} onClose={() => setPreview(null)} />
+        <PreviewPopup item={preview} anchorRef={anchorRef} onClose={() => setPreview(null)} />
       )}
     </>
   );

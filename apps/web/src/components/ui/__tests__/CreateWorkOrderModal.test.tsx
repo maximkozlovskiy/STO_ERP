@@ -9,6 +9,20 @@ vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
+// LinkedDocumentsPanel «Документи» tab uses useLinkedNav()→useRouter; jsdom має no app router.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/',
+}));
+
 // Mock ref-cache — return null so we always hit apiFetch path.
 vi.mock('@/lib/ref-cache', () => ({
   getCached: () => null,

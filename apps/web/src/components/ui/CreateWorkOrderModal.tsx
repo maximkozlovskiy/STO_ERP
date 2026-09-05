@@ -60,6 +60,8 @@ import {
   LinkedDocumentsPanel,
   type LinkedDocumentsCounts,
 } from '@/components/ui/LinkedDocumentsPanel';
+import { workOrderLinkedConfig } from '@/lib/linked-configs';
+import { useLinkedNav } from '@/lib/linked-nav';
 
 interface Branch {
   id: string;
@@ -446,6 +448,8 @@ export function CreateWorkOrderModal({
   const [linkedDocsRefreshKey, setLinkedDocsRefreshKey] = useState(0);
   const [linkedDocsCounts, setLinkedDocsCounts] = useState<LinkedDocumentsCounts | null>(null);
   const [activeTab, setActiveTab] = useState<'main' | 'documents'>('main');
+  const linkedNav = useLinkedNav();
+  const linkedConfig = useMemo(() => workOrderLinkedConfig(linkedNav), [linkedNav]);
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const {
@@ -2146,7 +2150,8 @@ export function CreateWorkOrderModal({
         {/* Вкладка "Документи" */}
         {activeTab === 'documents' && workOrderId && (
           <LinkedDocumentsPanel
-            workOrderId={workOrderId}
+            config={linkedConfig}
+            entityId={workOrderId}
             refreshKey={linkedDocsRefreshKey}
             onLoad={setLinkedDocsCounts}
           />

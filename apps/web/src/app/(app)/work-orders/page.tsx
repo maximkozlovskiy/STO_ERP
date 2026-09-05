@@ -21,6 +21,8 @@ import {
   Shield,
 } from 'lucide-react';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
+import { workOrderLinkedConfig } from '@/lib/linked-configs';
+import { useLinkedNav } from '@/lib/linked-nav';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { useWorkOrders, workOrdersKeys, WorkOrder } from '@/hooks/api/useWorkOrders';
@@ -194,6 +196,9 @@ function WorkOrdersPageInner() {
   useEffect(() => {
     setNowMs(Date.now());
   }, []);
+
+  const linkedNav = useLinkedNav();
+  const linkedConfig = useMemo(() => workOrderLinkedConfig(linkedNav), [linkedNav]);
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -1203,7 +1208,7 @@ function WorkOrdersPageInner() {
                 </svg>
               </button>
             </div>
-            <LinkedDocumentsPanel workOrderId={linkedDocPopupId} />
+            <LinkedDocumentsPanel config={linkedConfig} entityId={linkedDocPopupId} />
           </div>
         </div>
       )}
