@@ -509,6 +509,32 @@ docker exec stoerp-postgres-1 psql -U sto -d sto_erp -c "SELECT indexname FROM p
 
 **Фікс:** `CREATE INDEX IF NOT EXISTS idx_X_col_trgm ON X USING gin (col gin_trgm_ops);`
 
+### 3.3 FK-колонка з `@relation` але БЕЗ `@@index` (Postgres не індексує FK автоматично)
+
+> Пастка: «це ж relation, точно проіндексовано». Ні — PG створює індекс лише під PK і
+> UNIQUE, під FK-constraint — ніколи. Легко пропустити коли нова cross-document фіча
+> (linked-counts, «пов'язані документи», reverse-lookup) додає `groupBy`/`findMany` по
+> `fkColumn: { in: [...] }` на таблицю де цей FK досі фільтрувався лише поодинці.
+
+```bash
+# Для кожного batched IN-query по FK у linked/counts методах — виписати таблицю+колонку
+grep -rn "groupBy\|findMany" apps/api/src/modules/ --include="*.service.ts" -A3 \
+  | grep -E "Id: \{ in:|Id: \{ *in:" | grep -v spec | head -20
+
+# Взяти модель у schema.prisma → перевірити що для цього FK Є @@index з ним у ПРЕФІКСІ
+# (не плутати індекс дочірньої таблиці з таким самим іменем колонки — звірити @@map!)
+grep -n "@@index\|@relation\|model " packages/database/prisma/schema.prisma
+```
+
+**Особливо небезпечно:** append-only таблиці без `deletedAt` (Payment, AuditLog, рухи) —
+для них навіть простого `(orgId, fk)` індексу часто немає, бо історично FK читали
+поодинці (recalc, single-record). Batched `IN`-груп-бай → org-wide scan.
+
+**Фікс:** covering `@@index([orgId, <fk>])` (+`, <sortKey>` якщо є `orderBy`; для чистого
+`_count` groupBy sortKey не потрібен) + additive `CREATE INDEX IF NOT EXISTS` migration.
+Ім'я PG-індексу = `<mappedTable>_orgId_<fk>_idx`. Звірити `@@map`, бо одна назва колонки
+(`invoiceId`) живе і в parent-lines, і в append-only payments — легко «побачити» чужий індекс.
+
 ---
 
 ## Крок 4 — Виправлення
@@ -557,6 +583,24 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-06 — FK-колонка з `@relation` але без `@@index` — batched `groupBy(fk IN [...])` у linked-counts фічі
+
+**Сигнал:** нова cross-document фіча («пов'язані документи»/linked-counts) додає `payment.groupBy({by:['invoiceId'], where:{invoiceId:{in:[...до 500]}, orgId}})` на КОЖНУ сторінку списку. FK `payments.invoiceId` мав лише `@relation` (FK-constraint) — жодного `@@index`. Postgres НЕ індексує FK автоматично (тільки PK+UNIQUE) → groupBy ішов org-wide scan по `(orgId, createdAt)` з per-row `invoiceId IN` фільтром = O(N) по всіх оплатах орг. на кожен показ списку.
+**Сигнал-grep:** у linked/counts-методах виписати кожен batched `<fk>Id: { in: [...] }` → знайти модель у schema.prisma → перевірити що `<fk>` стоїть у ПРЕФІКСІ якогось `@@index`. Пастка: та сама назва колонки (`invoiceId`) живе і в `invoice_lines` (де індекс Є), і в append-only `payments` (де немає) — звірити `@@map`, а не назву індексу.
+**Причина виникнення:** «це relation, точно проіндексовано». Історично FK читали поодинці (recalc, single-record findMany) — seq-scan прийнятний; append-only таблиці (Payment, рухи, audit) без `deletedAt` часто взагалі не мали жодного FK-індексу. Batched-`IN` під новий feature — перший запит де це болить.
+**Підхід до виявлення:** для кожного нового `groupBy`/`findMany` по `fk IN` — НЕ вірити що FK індексований, звірити зі schema напряму. Append-only (без deletedAt) — червоний прапорець.
+**Підхід до фіксу:** covering `@@index([orgId, <fk>])` (+sortKey лише якщо є `orderBy`; для `_count` groupBy не треба) + additive `CREATE INDEX IF NOT EXISTS "<map>_orgId_<fk>_idx"`. Zero-risk, поведінка незмінна.
+**Реальний impact:** groupBy стає index-only; прибирає O(всі-оплати-орг) scan на кожен list-render списку рахунків. **Де шукати ще:** усі append-only/join таблиці з nullable FK на документ під linked-counts — Payment.workOrderId (індекс Є), Payment.invoiceId (був відсутній), будь-яка нова audit/log/movement таблиця що потрапляє у reverse-lookup.
+
+---
+
+### 2026-09-06 — linked-counts useQuery стріляє навіть коли колонка «Зв'язки» прихована — keyed лише на ids, не на visibleColumns (marginal, observation)
+
+**Сигнал:** список-сторінка має toggleable колонку `linkedDocs`/«Зв'язки» + окремий `useQuery(queryKey:[...,'linked-counts', ids], enabled: ids.length>0)`. `enabled` не враховує чи колонка видима → POST /linked-counts виконується навіть коли користувач сховав колонку через ColumnsDropdown. **impact marginal:** запит однаково потрібен для вкладки «Документи» detail-панелі (badge-и там теж), staleTime:30s кешує, тіло легке (лише лічильники) → зазвичай НЕ фіксимо. Записано щоб не «відкривати» вкол��-фікс повторно кожен цикл.
+**Якщо все ж фіксити (тільки коли counts НЕ потрібні деінде):** додати `&& colVisible.includes('linkedDocs')` (або еквівалент) у `enabled`. Не робити якщо ті самі counts живлять detail-панель/popup — інакше badge зникне у панелі.
+
+---
 
 ### 2026-09-02 (cycle 2) — Concurrency-guard `.select` на upsert НЕ додає RTT — Prisma UPDATE ... RETURNING одним statement
 
