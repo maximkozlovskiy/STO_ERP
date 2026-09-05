@@ -637,8 +637,8 @@ describe('StockDocumentsService — linked documents (Phase D3)', () => {
   let service: StockDocumentsService;
   let prisma: {
     stockDocument: { findFirst: any; findMany: any };
-    purchaseOrder: { findFirst: any };
-    warehouse: { findFirst: any };
+    purchaseOrder: { findFirst: any; findMany: any };
+    warehouse: { findFirst: any; findMany: any };
   };
 
   const ORG = 'org-1';
@@ -650,8 +650,8 @@ describe('StockDocumentsService — linked documents (Phase D3)', () => {
   beforeEach(async () => {
     prisma = {
       stockDocument: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
-      purchaseOrder: { findFirst: vi.fn() },
-      warehouse: { findFirst: vi.fn() },
+      purchaseOrder: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
+      warehouse: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     };
     const module = await Test.createTestingModule({
       providers: [
@@ -724,7 +724,18 @@ describe('StockDocumentsService — linked documents (Phase D3)', () => {
 
   it('getLinkedCounts: purchaseOrder=1 коли purchaseOrderId задано; warehouses=2 для TRANSFER (count == detail)', async () => {
     prisma.stockDocument.findMany.mockResolvedValueOnce([
-      { id: DOC_ID, purchaseOrderId: PO_ID, targetWarehouseId: TARGET_WAREHOUSE_ID },
+      {
+        id: DOC_ID,
+        purchaseOrderId: PO_ID,
+        warehouseId: WAREHOUSE_ID,
+        targetWarehouseId: TARGET_WAREHOUSE_ID,
+      },
+    ]);
+    // Bug #A/#641 liveness: PO + обидва склади живі → count == detail.
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([{ id: PO_ID }]);
+    prisma.warehouse.findMany.mockResolvedValueOnce([
+      { id: WAREHOUSE_ID },
+      { id: TARGET_WAREHOUSE_ID },
     ]);
     const res = await service.getLinkedCounts(ORG, [DOC_ID]);
     expect(res[DOC_ID]).toEqual({ purchaseOrder: 1, warehouses: 2 });
@@ -733,6 +744,22 @@ describe('StockDocumentsService — linked documents (Phase D3)', () => {
         where: expect.objectContaining({ orgId: ORG, deletedAt: null }),
       }),
     );
+  });
+
+  it('getLinkedCounts: soft-deleted PO/склад → count=0 (count == detail, Bug #A/#641)', async () => {
+    prisma.stockDocument.findMany.mockResolvedValueOnce([
+      {
+        id: DOC_ID,
+        purchaseOrderId: PO_ID,
+        warehouseId: WAREHOUSE_ID,
+        targetWarehouseId: TARGET_WAREHOUSE_ID,
+      },
+    ]);
+    // PO і target-склад soft-deleted (не повертаються liveness-запитом); живий лише джерело.
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([]);
+    prisma.warehouse.findMany.mockResolvedValueOnce([{ id: WAREHOUSE_ID }]);
+    const res = await service.getLinkedCounts(ORG, [DOC_ID]);
+    expect(res[DOC_ID]).toEqual({ purchaseOrder: 0, warehouses: 1 });
   });
 });
 

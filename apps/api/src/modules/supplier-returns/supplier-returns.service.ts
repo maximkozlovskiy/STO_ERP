@@ -525,15 +525,45 @@ export class SupplierReturnsService {
 
     const returns = await this.prisma.supplierReturn.findMany({
       where: { id: { in: ids }, orgId, deletedAt: null },
-      select: { id: true, purchaseOrderId: true },
+      select: { id: true, purchaseOrderId: true, supplierId: true, warehouseId: true },
     });
+
+    // Bug #A/#641: count має відповідати detail (getLinkedDocuments фільтрує deletedAt:null).
+    // Наявність FK ≠ наявність живого запису: PO/постачальника/склад можна soft-delete-нути
+    // поки повернення на них посилається. Без liveness-перевірки badge показував би «1»,
+    // а панель — порожню секцію.
+    const poIds = [...new Set(returns.map(r => r.purchaseOrderId).filter((x): x is string => !!x))];
+    const supIds = [...new Set(returns.map(r => r.supplierId))];
+    const whIds = [...new Set(returns.map(r => r.warehouseId))];
+    const [livePo, liveSup, liveWh] = await Promise.all([
+      poIds.length
+        ? this.prisma.purchaseOrder.findMany({
+            where: { id: { in: poIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      supIds.length
+        ? this.prisma.counterparty.findMany({
+            where: { id: { in: supIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      whIds.length
+        ? this.prisma.warehouse.findMany({
+            where: { id: { in: whIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const livePoSet = new Set(livePo.map(p => p.id));
+    const liveSupSet = new Set(liveSup.map(s => s.id));
+    const liveWhSet = new Set(liveWh.map(w => w.id));
 
     for (const r of returns) {
       if (!result[r.id]) continue;
-      result[r.id].purchaseOrder = r.purchaseOrderId ? 1 : 0;
-      // supplierId/warehouseId є обов'язковими полями SupplierReturn — завжди 1.
-      result[r.id].counterparty = 1;
-      result[r.id].warehouse = 1;
+      result[r.id].purchaseOrder = r.purchaseOrderId && livePoSet.has(r.purchaseOrderId) ? 1 : 0;
+      result[r.id].counterparty = liveSupSet.has(r.supplierId) ? 1 : 0;
+      result[r.id].warehouse = liveWhSet.has(r.warehouseId) ? 1 : 0;
     }
 
     return result;

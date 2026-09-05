@@ -498,14 +498,42 @@ export class StockDocumentsService {
 
     const docs = await this.prisma.stockDocument.findMany({
       where: { id: { in: ids }, orgId, deletedAt: null },
-      select: { id: true, purchaseOrderId: true, targetWarehouseId: true },
+      select: { id: true, purchaseOrderId: true, warehouseId: true, targetWarehouseId: true },
     });
+
+    // Bug #A/#641: count має відповідати detail (getLinkedDocuments фільтрує deletedAt:null).
+    // Наявність FK ≠ наявність живого запису: PO/склад можна soft-delete-нути поки документ
+    // на них посилається. Без liveness-перевірки badge показував би більше, ніж панель.
+    const poIds = [...new Set(docs.map(d => d.purchaseOrderId).filter((x): x is string => !!x))];
+    const whIds = [
+      ...new Set(
+        docs.flatMap(d => [d.warehouseId, d.targetWarehouseId]).filter((x): x is string => !!x),
+      ),
+    ];
+    const [livePo, liveWh] = await Promise.all([
+      poIds.length
+        ? this.prisma.purchaseOrder.findMany({
+            where: { id: { in: poIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      whIds.length
+        ? this.prisma.warehouse.findMany({
+            where: { id: { in: whIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const livePoSet = new Set(livePo.map(p => p.id));
+    const liveWhSet = new Set(liveWh.map(w => w.id));
 
     for (const d of docs) {
       if (!result[d.id]) continue;
-      result[d.id].purchaseOrder = d.purchaseOrderId ? 1 : 0;
-      // Джерело завжди присутнє (warehouseId обов'язкове поле) + ціль для TRANSFER.
-      result[d.id].warehouses = 1 + (d.targetWarehouseId ? 1 : 0);
+      result[d.id].purchaseOrder = d.purchaseOrderId && livePoSet.has(d.purchaseOrderId) ? 1 : 0;
+      // Джерело + ціль (TRANSFER) — кожен рахується лише якщо живий (дзеркалить detail).
+      const sourceLive = liveWhSet.has(d.warehouseId) ? 1 : 0;
+      const targetLive = d.targetWarehouseId && liveWhSet.has(d.targetWarehouseId) ? 1 : 0;
+      result[d.id].warehouses = sourceLive + targetLive;
     }
 
     return result;

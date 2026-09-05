@@ -462,9 +462,9 @@ describe('SupplierReturnsService — linked documents (Phase D3)', () => {
   let service: SupplierReturnsService;
   let prisma: {
     supplierReturn: { findFirst: any; findMany: any };
-    purchaseOrder: { findFirst: any };
-    counterparty: { findFirst: any };
-    warehouse: { findFirst: any };
+    purchaseOrder: { findFirst: any; findMany: any };
+    counterparty: { findFirst: any; findMany: any };
+    warehouse: { findFirst: any; findMany: any };
   };
 
   const ORG = 'org-1';
@@ -476,9 +476,9 @@ describe('SupplierReturnsService — linked documents (Phase D3)', () => {
   beforeEach(async () => {
     prisma = {
       supplierReturn: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
-      purchaseOrder: { findFirst: vi.fn() },
-      counterparty: { findFirst: vi.fn() },
-      warehouse: { findFirst: vi.fn() },
+      purchaseOrder: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
+      counterparty: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
+      warehouse: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     };
     const module = await Test.createTestingModule({
       providers: [
@@ -561,8 +561,19 @@ describe('SupplierReturnsService — linked documents (Phase D3)', () => {
     expect(res['sr-2']).toBeDefined();
   });
 
-  it('getLinkedCounts: purchaseOrder=1 коли purchaseOrderId задано; counterparty/warehouse завжди 1 (count == detail)', async () => {
-    prisma.supplierReturn.findMany.mockResolvedValueOnce([{ id: SR_ID, purchaseOrderId: PO_ID }]);
+  it('getLinkedCounts: purchaseOrder=1 коли purchaseOrderId задано; counterparty/warehouse=1 коли живі (count == detail)', async () => {
+    prisma.supplierReturn.findMany.mockResolvedValueOnce([
+      {
+        id: SR_ID,
+        purchaseOrderId: PO_ID,
+        supplierId: SUPPLIER_ID_LOCAL,
+        warehouseId: WAREHOUSE_ID_LOCAL,
+      },
+    ]);
+    // Bug #A/#641 liveness: PO + постачальник + склад живі → count == detail.
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([{ id: PO_ID }]);
+    prisma.counterparty.findMany.mockResolvedValueOnce([{ id: SUPPLIER_ID_LOCAL }]);
+    prisma.warehouse.findMany.mockResolvedValueOnce([{ id: WAREHOUSE_ID_LOCAL }]);
     const res = await service.getLinkedCounts(ORG, [SR_ID]);
     expect(res[SR_ID]).toEqual({ purchaseOrder: 1, counterparty: 1, warehouse: 1 });
     expect(prisma.supplierReturn.findMany).toHaveBeenCalledWith(
@@ -570,6 +581,23 @@ describe('SupplierReturnsService — linked documents (Phase D3)', () => {
         where: expect.objectContaining({ orgId: ORG, deletedAt: null }),
       }),
     );
+  });
+
+  it('getLinkedCounts: soft-deleted PO/постачальник/склад → count=0 (count == detail, Bug #A/#641)', async () => {
+    prisma.supplierReturn.findMany.mockResolvedValueOnce([
+      {
+        id: SR_ID,
+        purchaseOrderId: PO_ID,
+        supplierId: SUPPLIER_ID_LOCAL,
+        warehouseId: WAREHOUSE_ID_LOCAL,
+      },
+    ]);
+    // Нічого не живе (усі soft-deleted) → усі count=0.
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([]);
+    prisma.counterparty.findMany.mockResolvedValueOnce([]);
+    prisma.warehouse.findMany.mockResolvedValueOnce([]);
+    const res = await service.getLinkedCounts(ORG, [SR_ID]);
+    expect(res[SR_ID]).toEqual({ purchaseOrder: 0, counterparty: 0, warehouse: 0 });
   });
 });
 
