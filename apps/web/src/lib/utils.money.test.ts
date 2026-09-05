@@ -25,7 +25,7 @@ describe('roundMoney — дзеркало backend math.ts', () => {
   });
 });
 
-describe('calcVatTotals — per-line rounding == backend calcLineVat+sum', () => {
+describe('calcVatTotals — дзеркало backend work-orders recalcTotals', () => {
   it('Σ рядків квантується (немає float-дрейфу у total)', () => {
     // 0.1 + 0.2 = 0.30000000000000004 у сирому float; roundMoney лікує це.
     const { total, vat } = calcVatTotals(
@@ -39,17 +39,21 @@ describe('calcVatTotals — per-line rounding == backend calcLineVat+sum', () =>
     expect(vat).toBe(0);
   });
 
-  it('VAT округлюється per-line ПЕРЕД сумуванням (дзеркало calcLineVat)', () => {
-    // Кожен рядок: sum=0.625, VAT@20% = 0.125 → roundMoney → 0.13 (half-away).
-    // Backend теж округлює per-line: Σ = 0.13 + 0.13 = 0.26 (не raw 0.25).
-    const { vat } = calcVatTotals(
+  it('VAT рахується на агрегованій базі (дзеркало recalcTotals, НЕ per-line)', () => {
+    // recalcTotals: totalBase = Σ(per-line rounded), потім vat = roundMoney(base*rate/100)
+    // ОДИН раз. Per-line-квантування ПДВ дало б preview на копійку більше за saved amount.
+    // 3×2.525@20%: total = roundMoney(2.525)*3 = 2.53*3 = 7.59; vat = roundMoney(7.59*0.2)
+    // = roundMoney(1.518) = 1.52 (per-line дало б 0.51*3 = 1.53 → розходження з backend).
+    const { total, vat } = calcVatTotals(
       [
-        { qty: 1, price: 0.625 },
-        { qty: 1, price: 0.625 },
+        { qty: 1, price: 2.525 },
+        { qty: 1, price: 2.525 },
+        { qty: 1, price: 2.525 },
       ],
       20,
     );
-    expect(vat).toBe(0.26);
+    expect(total).toBe(7.59);
+    expect(vat).toBe(1.52);
   });
 
   it('пропускає рядки з undefined qty/price', () => {

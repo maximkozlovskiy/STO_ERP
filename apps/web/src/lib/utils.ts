@@ -114,23 +114,28 @@ export function roundMoney(value: number): number {
 /**
  * Single-pass VAT + total computation for line/part rows.
  *
- * Квантує КОЖЕН рядок через roundMoney ПЕРЕД сумуванням, а потім і сам підсумок —
- * дзеркалить backend `calcLineVat`+`sumLineTotals` (VAT рахується й округлюється per-line,
- * далі підсумовується). Без per-line-квантування raw-float Σ у tfoot розходився з
- * бекендовим amount на копійку (WO-H2 / FIN-H1).
+ * ЄДИНИЙ споживач — CreateWorkOrderModal (preview у tfoot). Тому квантування МУСИТЬ
+ * дзеркалити backend `work-orders.service.ts:recalcTotals`, а не `calcLineVat`:
+ *   • total  = Σ(roundMoney(qty × price))  — per-line rounded amounts складаються
+ *              (backend `l.amount` вже округлений per-line у addLine/addPart → totalLabor).
+ *   • vat    = roundMoney(base × vatRate/100)  — ПДВ рахується ОДИН раз на агрегованій
+ *              (вже округленій) базі, EXCLUSIVE-режим. НЕ per-line: recalcTotals робить
+ *              `(totalBase * vatRate)/100` над сумою, тож per-line-квантування ПДВ дало б
+ *              preview на копійку більше за збережений amount (напр. 3×2.525@20%: per-line
+ *              Σ=1.53, aggregate=1.52 → preview≠saved). WO-H2 / FIN-H1.
+ * `base` — вже roundMoney(total), тож повторний roundMoney лишає його стабільним.
  */
 export function calcVatTotals(
   rows: { qty: number | undefined; price: number | undefined }[],
   vatRate: number,
 ): { total: number; vat: number } {
   let total = 0;
-  let vat = 0;
   for (const r of rows) {
     if (r.qty != null && r.price != null) {
-      const sum = roundMoney(r.qty * r.price);
-      total += sum;
-      if (vatRate > 0) vat += roundMoney((r.qty * r.price * vatRate) / 100);
+      total += roundMoney(r.qty * r.price);
     }
   }
-  return { total: roundMoney(total), vat: roundMoney(vat) };
+  const base = roundMoney(total);
+  const vat = vatRate > 0 ? roundMoney((base * vatRate) / 100) : 0;
+  return { total: base, vat };
 }
