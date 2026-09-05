@@ -22,7 +22,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { BookingService } from './booking.service';
-import { CreateBookingRequestDto } from './booking.dto';
+import { CreateBookingRequestDto, ConfirmBookingDto } from './booking.dto';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -110,8 +110,14 @@ export class BookingController {
   @ApiBearerAuth()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Підтвердити заявку' })
-  confirm(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: { orgId: string }) {
-    return this.service.confirm(user.orgId, id);
+  confirm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { orgId: string },
+    // CAL-H3/H4: optional body — when a slotId is supplied it is validated against the org
+    // before the request is confirmed. Omitting the body preserves the previous behaviour.
+    @Body() dto?: ConfirmBookingDto,
+  ) {
+    return this.service.confirm(user.orgId, id, dto?.slotId);
   }
 
   @Delete(':id')

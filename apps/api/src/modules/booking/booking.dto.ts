@@ -52,9 +52,13 @@ export class CreateBookingRequestDto {
 }
 
 export class ConfirmBookingDto {
-  @ApiProperty()
+  // CAL-H3/H4: optional so existing confirm calls (no body) keep working. When supplied, the
+  // service validates the slot belongs to the caller's org before confirming. Full occupancy
+  // of the chosen lift is a TODO (needs BookingRequest→lift link — see BookingService.confirm).
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsUUID()
-  slotId!: string;
+  slotId?: string;
 }
 
 export class AvailabilitySlotDto {

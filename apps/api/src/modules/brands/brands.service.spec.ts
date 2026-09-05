@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { BrandsService } from './brands.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { CacheService } from '../../redis/cache.service';
@@ -175,5 +176,76 @@ describe('BrandsService.syncSynonyms — resurrection (Bug §5.2)', () => {
       where: { id: { in: ['syn-oem'] } },
       data: { deletedAt: null, brandId: BRAND_A },
     });
+  });
+});
+
+// ─── Regression spec — restore() MD-C1 parity guard ────────────────────────────
+//
+// `@@unique([orgId, name])` НЕ має partial `WHERE deletedAt IS NULL`, тож активний
+// бренд із такою ж назвою зробив би restore() джерелом P2002 → 500. Guard читає
+// name видаленого рядка та відхиляє restore охайним 409, якщо активний дубль існує.
+function makeRestoreMocks() {
+  return {
+    prisma: {
+      brand: {
+        findFirst: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findFirstOrThrow: vi.fn(),
+      },
+    },
+    cache: { get: vi.fn().mockResolvedValue(null), set: vi.fn(), del: vi.fn() },
+  };
+}
+
+describe('BrandsService.restore — active-name-duplicate guard (MD-C1 parity)', () => {
+  let mocks: ReturnType<typeof makeRestoreMocks>;
+  let service: BrandsService;
+
+  beforeEach(() => {
+    mocks = makeRestoreMocks();
+    service = new BrandsService(
+      mocks.prisma as unknown as PrismaService,
+      mocks.cache as unknown as CacheService,
+    );
+  });
+
+  it('активний дубль назви → ConflictException, updateMany НЕ викликається', async () => {
+    // deleted row з назвою "Bosch"
+    mocks.prisma.brand.findFirst
+      .mockResolvedValueOnce({ name: 'Bosch' }) // deleted lookup
+      .mockResolvedValueOnce({ id: 'active-dup' }); // active duplicate
+
+    await expect(service.restore(ORG, BRAND_A)).rejects.toThrow(ConflictException);
+    // Проти старого коду (без guard) updateMany викликався б і впав би у P2002 → цей assert падає.
+    expect(mocks.prisma.brand.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('немає активного дубля → restore проходить (updateMany викликається)', async () => {
+    mocks.prisma.brand.findFirst
+      .mockResolvedValueOnce({ name: 'Bosch' }) // deleted lookup
+      .mockResolvedValueOnce(null); // no active duplicate
+    mocks.prisma.brand.findFirstOrThrow.mockResolvedValueOnce({
+      id: BRAND_A,
+      orgId: ORG,
+      name: 'Bosch',
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      synonyms: [],
+    });
+
+    await service.restore(ORG, BRAND_A);
+
+    expect(mocks.prisma.brand.updateMany).toHaveBeenCalledWith({
+      where: { id: BRAND_A, orgId: ORG, NOT: { deletedAt: null } },
+      data: { deletedAt: null },
+    });
+  });
+
+  it('видаленого рядка немає → NotFoundException', async () => {
+    mocks.prisma.brand.findFirst.mockResolvedValueOnce(null); // no deleted row
+
+    await expect(service.restore(ORG, BRAND_A)).rejects.toThrow(NotFoundException);
+    expect(mocks.prisma.brand.updateMany).not.toHaveBeenCalled();
   });
 });

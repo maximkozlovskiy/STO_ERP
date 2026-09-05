@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { WarehouseType, Prisma } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -121,6 +126,23 @@ export class WarehousesService {
       select: { id: true, isMain: true },
     });
     if (!existing) throw new NotFoundException('Склад не знайдено');
+
+    // Cascade guard (MD-H1 class): не видаляти склад із ненульовими залишками
+    // або резервом. Без цього soft-delete складу лишає осиротілі StockItem
+    // (quantity/reserved > 0) — залишки «зникають» зі списків активних складів,
+    // але рядки лишаються у БД, а рухи/резерви посилаються на мертвий склад.
+    const stockWithBalance = await this.prisma.stockItem.findFirst({
+      where: {
+        orgId,
+        warehouseId: id,
+        deletedAt: null,
+        OR: [{ quantity: { not: 0 } }, { reserved: { not: 0 } }],
+      },
+      select: { id: true },
+    });
+    if (stockWithBalance) {
+      throw new BadRequestException('Неможливо видалити: на складі є ненульові залишки або резерв');
+    }
 
     await this.prisma.$transaction(
       async tx => {

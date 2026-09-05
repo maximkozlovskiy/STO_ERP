@@ -25,6 +25,23 @@ export class SetupService {
 
     const result = await this.prisma.$transaction(
       async tx => {
+        // TOCTOU guard: isAlreadyInitialized() у init()/controller — це count() ПОЗА
+        // транзакцією. Два concurrent POST /setup/init (обидва в межах Throttle 3/хв)
+        // могли пройти перевірку count=0 і кожен створити ПОВНУ організацію+власника —
+        // бо кожна tx має власний org.id, тож @@unique([orgId,email]) на AuthAccount
+        // НЕ ловить дубль (orgId різні). Наслідок: дві Organisation, два OWNER — зламаний
+        // single-tenant first-run інваріант.
+        //
+        // Fix: xact-advisory-lock серіалізує bootstrap. Другий виклик блокується до
+        // COMMIT першого, після чого re-check count() всередині tx бачить org=1 → 400.
+        // Lock авто-звільняється в кінці tx. Локальний Postgres → offline-safe.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('sto-erp:setup:init'))`;
+
+        const already = await tx.organisation.count();
+        if (already > 0) {
+          throw new BadRequestException('Систему вже налаштовано');
+        }
+
         const org = await tx.organisation.create({
           data: {
             name: dto.orgName,

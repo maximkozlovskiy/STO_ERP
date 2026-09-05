@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { WarehousesService } from './warehouses.service';
@@ -8,7 +8,12 @@ import { CacheService } from '../../redis/cache.service';
 
 describe('WarehousesService — isMain invariant', () => {
   let service: WarehousesService;
-  let prisma: { warehouse: any; garageBranch: any; $transaction: ReturnType<typeof vi.fn> };
+  let prisma: {
+    warehouse: any;
+    garageBranch: any;
+    stockItem: any;
+    $transaction: ReturnType<typeof vi.fn>;
+  };
   let cache: {
     get: ReturnType<typeof vi.fn>;
     set: ReturnType<typeof vi.fn>;
@@ -33,6 +38,9 @@ describe('WarehousesService — isMain invariant', () => {
       },
       garageBranch: {
         findFirst: vi.fn(),
+      },
+      stockItem: {
+        findFirst: vi.fn().mockResolvedValue(null),
       },
       $transaction: vi
         .fn()
@@ -243,6 +251,40 @@ describe('WarehousesService — isMain invariant', () => {
       prisma.warehouse.findFirst.mockResolvedValueOnce(null);
       await expect(service.remove('org-1', 'w-missing')).rejects.toThrow(NotFoundException);
       expect(prisma.warehouse.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('remove — cascade guard: ненульові залишки (MD-H1 клас)', () => {
+    it('блокує видалення складу з quantity/reserved > 0 → BadRequestException, БЕЗ soft-delete', async () => {
+      prisma.warehouse.findFirst.mockResolvedValueOnce({ id: 'w-1', isMain: false });
+      // на складі є StockItem із ненульовим залишком
+      prisma.stockItem.findFirst.mockResolvedValueOnce({ id: 'si-1' });
+
+      await expect(service.remove('org-1', 'w-1')).rejects.toThrow(BadRequestException);
+
+      // Проти старого коду (без guard) updateMany викликався б → падіння цього assert.
+      expect(prisma.warehouse.updateMany).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      // guard шукає саме ненульові рядки цього складу
+      expect(prisma.stockItem.findFirst).toHaveBeenCalledWith({
+        where: {
+          orgId: 'org-1',
+          warehouseId: 'w-1',
+          deletedAt: null,
+          OR: [{ quantity: { not: 0 } }, { reserved: { not: 0 } }],
+        },
+        select: { id: true },
+      });
+    });
+
+    it('дозволяє видалення складу з нульовими залишками (guard повертає null)', async () => {
+      prisma.warehouse.findFirst.mockResolvedValueOnce({ id: 'w-empty', isMain: false });
+      prisma.stockItem.findFirst.mockResolvedValueOnce(null);
+      prisma.warehouse.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.remove('org-1', 'w-empty');
+
+      expect(prisma.warehouse.updateMany).toHaveBeenCalled();
     });
   });
 });

@@ -118,18 +118,23 @@ export class CalendarService {
     const start = new Date(new Date(`${date}T00:00:00Z`).getTime() - kyivOffset);
     const end = new Date(new Date(`${date}T23:59:59.999Z`).getTime() - kyivOffset);
 
+    // CAL-C2: half-open OVERLAP, not CONTAINMENT. Containment (`startAt>=start AND endAt<=end`)
+    // silently DROPS slots that cross the day boundary: a split-day continuation that starts the
+    // previous evening, or any slot straddling midnight, is invisible in the day view → the calendar
+    // shows a free lift that is actually occupied. Mirror the app-overlap probe used by checkConflicts()
+    // and createSlot(): a slot intersects [start, end) iff `startAt < end AND endAt > start`.
     const where: {
       orgId: string;
       deletedAt: null;
-      startAt: { gte: Date };
-      endAt: { lte: Date };
+      startAt: { lt: Date };
+      endAt: { gt: Date };
       lift?: { zone: { branchId: string; orgId: string } };
       employeeId?: string;
     } = {
       orgId,
       deletedAt: null,
-      startAt: { gte: start },
-      endAt: { lte: end },
+      startAt: { lt: end },
+      endAt: { gt: start },
     };
     if (branchId) where.lift = { zone: { branchId, orgId } };
     if (employeeId) where.employeeId = employeeId;

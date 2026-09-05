@@ -290,6 +290,13 @@ export class BookingService {
     if (Number.isNaN(requestedAt.getTime())) {
       throw new BadRequestException('Невірний формат дати');
     }
+    // CAL-H2: public widget must not accept a booking in the past. Without this the
+    // widget (or a curl bypass) can create requests for yesterday, cluttering the
+    // reception queue and firing an SMS for a date that already passed.
+    // Compared as absolute instants — Date already carries the client-supplied offset.
+    if (requestedAt.getTime() < Date.now()) {
+      throw new BadRequestException('Дата запису не може бути в минулому');
+    }
     const workStart = branchSettings?.workStartTime ?? '09:00';
     const workEnd = branchSettings?.workEndTime ?? '18:00';
     const workDaysRaw = branchSettings?.workDays;
@@ -368,7 +375,25 @@ export class BookingService {
     return { items: items.map(r => this.toDto(r)), total };
   }
 
-  async confirm(orgId: string, id: string): Promise<BookingRequestResponseDto> {
+  async confirm(orgId: string, id: string, slotId?: string): Promise<BookingRequestResponseDto> {
+    // CAL-H3/H4 (conservative slice): a confirmed BookingRequest currently blocks the requested
+    // HH:MM across ALL lifts (getAvailability() blocks by time, not by liftId — BookingRequest has
+    // no liftId column). The full fix — materialise a CalendarSlot on a concrete lift at confirm
+    // time and free the other lifts — needs a schema change (BookingRequest→liftId / a link to the
+    // created slot) and is out of scope for a non-breaking patch.
+    // TODO(CAL-H3/H4): on confirm, create a CalendarSlot(status=BOOKED) on the chosen lift+time from
+    //   `slotId` and persist the link, so only that lift is occupied instead of the whole time band.
+    // Conservative part we CAN do safely: if a caller passes `slotId`, validate it is a real,
+    // non-deleted slot in THIS org (rejects cross-tenant / stale slot ids) before confirming —
+    // no behaviour change when `slotId` is omitted (current controller path).
+    if (slotId) {
+      const slot = await this.prisma.calendarSlot.findFirst({
+        where: { id: slotId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!slot) throw new NotFoundException('Слот не знайдено');
+    }
+
     // Defense-in-depth: scope by orgId у where (sto-review pattern 2026-05-30
     // soft-delete update without orgId). updateMany is atomic on the compound key.
     const result = await this.prisma.bookingRequest.updateMany({

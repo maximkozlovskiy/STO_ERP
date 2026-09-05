@@ -44,6 +44,24 @@ export class BrandsService {
   }
 
   async restore(orgId: string, id: string): Promise<BrandResponseDto> {
+    // MD-C1 parity guard: `@@unique([orgId, name])` НЕ має partial `WHERE deletedAt
+    // IS NULL`, тож активний бренд із такою ж назвою зробив би restore() джерелом
+    // P2002 → 500 замість охайного 409. Через API це майже недосяжно (create()
+    // воскрешає soft-deleted рядок замість створення дубля), але захищає від
+    // ручних SQL/сідів і тримає паритет із units.restore().
+    const deleted = await this.prisma.brand.findFirst({
+      where: { id, orgId, NOT: { deletedAt: null } },
+      select: { name: true },
+    });
+    if (!deleted) throw new NotFoundException('Видалений бренд не знайдено');
+    const activeDuplicate = await this.prisma.brand.findFirst({
+      where: { orgId, name: deleted.name, deletedAt: null, NOT: { id } },
+      select: { id: true },
+    });
+    if (activeDuplicate)
+      throw new ConflictException(
+        'Активний бренд з такою назвою вже існує — відновлення неможливе',
+      );
     // Defense-in-depth: atomic updateMany with full compound where (sto-review pattern
     // 2026-05-30). One statement asserts (id, orgId, currently-deleted) — eliminates
     // the race window between separate findFirst + update().

@@ -63,15 +63,42 @@ describe('BookingService', () => {
   });
 
   describe('create', () => {
-    // Bug #514: requestedDate має потрапляти у робоче вікно (09:00..18:00 Kyiv,
-    // workDays default [1..5]). 2026-06-01 — понеділок; 12:00+03:00 (літо DST)
-    // зберігається як 09:00Z → 12:00 Kyiv. Дефолтний BranchSettings = workStart 09:00,
-    // workEnd 18:00, workDays [1..5] — 12:00 потрапляє у вікно.
+    // CAL-H2: create() тепер відхиляє минулі дати, тому тестові дати мусять бути у
+    // МАЙБУТНЬОМУ (інакше happy-path падав би з часом). Обчислюємо наступний робочий/вихідний
+    // день динамічно (>=30 днів наперед), зберігаючи Kyiv-локальний час.
+    // Bug #514: requestedDate має потрапляти у робоче вікно (09:00..18:00 Kyiv, workDays [1..5]).
+    // `12:00` local Kyiv (через `+02:00` зимовий або `+03:00` літній offset нижче) — усередині вікна.
+    const kyivOffsetLiteral = (d: Date): string => {
+      // "+02:00" або "+03:00" залежно від DST на дату — щоб `12:00` було Kyiv-локальним.
+      const str = d.toLocaleString('en-US', { timeZone: 'Europe/Kyiv', hour12: false });
+      const offMin = (new Date(str + ' UTC').getTime() - d.getTime()) / 60_000;
+      const sign = offMin >= 0 ? '+' : '-';
+      const h = String(Math.floor(Math.abs(offMin) / 60)).padStart(2, '0');
+      return `${sign}${h}:00`;
+    };
+    // Наступна дата з ISO-weekday `iso` (1=Mon..7=Sun), щонайменше 30 днів наперед.
+    const futureDateForWeekday = (iso: number, hhmm = '12:00'): string => {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() + 30);
+      // рухаємось уперед доки ISO-weekday у Kyiv не збігається
+      for (let i = 0; i < 7; i++) {
+        const wd = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Kyiv' })).getDay();
+        const isoWd = wd === 0 ? 7 : wd;
+        if (isoWd === iso) break;
+        d.setUTCDate(d.getUTCDate() + 1);
+      }
+      const ymd = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(d);
+      const probe = new Date(`${ymd}T${hhmm}:00Z`);
+      return `${ymd}T${hhmm}:00.000${kyivOffsetLiteral(probe)}`;
+    };
+    const futureMonday = futureDateForWeekday(1); // робочий день, 12:00 Kyiv
+    const futureSunday = futureDateForWeekday(7); // вихідний (workDays [1..5])
+
     const validDto = {
       branchId,
       clientName: 'Іван Тестовий',
       clientPhone: '+380501234567',
-      requestedDate: '2026-06-01T12:00:00+03:00',
+      requestedDate: futureMonday,
     };
 
     // Helper — mock branchSettings.findUnique з дефолтними робочими годинами.
@@ -192,9 +219,9 @@ describe('BookingService', () => {
       prisma.work.count.mockResolvedValueOnce(0);
       mockDefaultWorkingHours();
 
-      // 2026-06-07 — неділя; workDays default [1..5] не включає 7.
+      // Майбутня неділя; workDays default [1..5] не включає 7. (CAL-H2: має бути у майбутньому.)
       await expect(
-        service.create(orgId, { ...validDto, requestedDate: '2026-06-07T12:00:00+03:00' }),
+        service.create(orgId, { ...validDto, requestedDate: futureSunday }),
       ).rejects.toBeInstanceOf(BadRequestException);
 
       expect(prisma.bookingRequest.create).not.toHaveBeenCalled();
@@ -206,9 +233,12 @@ describe('BookingService', () => {
       prisma.work.count.mockResolvedValueOnce(0);
       mockDefaultWorkingHours();
 
-      // 06:00+03:00 = 06:00 Kyiv — поза [09:00, 18:00)
+      // Майбутній робочий день, 06:00 Kyiv — поза [09:00, 18:00). (CAL-H2: у майбутньому.)
       await expect(
-        service.create(orgId, { ...validDto, requestedDate: '2026-06-01T06:00:00+03:00' }),
+        service.create(orgId, {
+          ...validDto,
+          requestedDate: futureDateForWeekday(1, '06:00'),
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
 
       expect(prisma.bookingRequest.create).not.toHaveBeenCalled();
@@ -219,12 +249,30 @@ describe('BookingService', () => {
       prisma.work.count.mockResolvedValueOnce(0);
       mockDefaultWorkingHours();
 
-      // 19:00 Kyiv — поза [09:00, 18:00)
+      // Майбутній робочий день, 19:00 Kyiv — поза [09:00, 18:00). (CAL-H2: у майбутньому.)
       await expect(
-        service.create(orgId, { ...validDto, requestedDate: '2026-06-01T19:00:00+03:00' }),
+        service.create(orgId, {
+          ...validDto,
+          requestedDate: futureDateForWeekday(1, '19:00'),
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
 
       expect(prisma.bookingRequest.create).not.toHaveBeenCalled();
+    });
+
+    // CAL-H2: public widget (or curl bypass) must not create a booking in the past.
+    it('CAL-H2: requestedDate у минулому → BadRequestException; booking НЕ створюється', async () => {
+      prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
+      prisma.work.count.mockResolvedValueOnce(0);
+      mockDefaultWorkingHours();
+
+      // Явно минула дата (2020) — Monday 12:00, робочі години ОК, але у минулому.
+      await expect(
+        service.create(orgId, { ...validDto, requestedDate: '2020-06-01T12:00:00+03:00' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(prisma.bookingRequest.create).not.toHaveBeenCalled();
+      expect(notifications.send).not.toHaveBeenCalled();
     });
 
     it('Bug #514: fallback workDays [1..5] коли BranchSettings.workDays=null', async () => {
@@ -356,6 +404,62 @@ describe('BookingService', () => {
 
       await expect(service.confirm(orgId, bookingId)).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.bookingRequest.findFirstOrThrow).not.toHaveBeenCalled();
+    });
+
+    // CAL-H3/H4 (conservative slice): коли передано slotId — він валідується проти org
+    // ДО підтвердження. Без slotId — стара поведінка (жодного запиту calendarSlot).
+    it('CAL-H3/H4: slotId відсутній → calendarSlot НЕ запитується (стара поведінка)', async () => {
+      prisma.calendarSlot = { findFirst: vi.fn() };
+      prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.bookingRequest.findFirstOrThrow.mockResolvedValueOnce({
+        id: bookingId,
+        status: 'CONFIRMED',
+        clientName: 'Тест',
+        clientPhone: '+380501234567',
+        requestedDate: new Date(),
+        branchId,
+        notes: null,
+        createdAt: new Date(),
+      });
+
+      await service.confirm(orgId, bookingId);
+      expect(prisma.calendarSlot.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('CAL-H3/H4: slotId з чужої org / неіснуючий → NotFoundException; booking НЕ підтверджується', async () => {
+      const slotId = '44444444-4444-4444-8444-444444444444';
+      prisma.calendarSlot = { findFirst: vi.fn().mockResolvedValueOnce(null) };
+      prisma.bookingRequest.updateMany = vi.fn();
+
+      await expect(service.confirm(orgId, bookingId, slotId)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      // Валідація слота передує updateMany — заявка не підтверджується.
+      expect(prisma.bookingRequest.updateMany).not.toHaveBeenCalled();
+      expect(prisma.calendarSlot.findFirst).toHaveBeenCalledWith({
+        where: { id: slotId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+    });
+
+    it('CAL-H3/H4: валідний slotId у org → підтвердження проходить', async () => {
+      const slotId = '55555555-5555-4555-8555-555555555555';
+      prisma.calendarSlot = { findFirst: vi.fn().mockResolvedValueOnce({ id: slotId }) };
+      prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.bookingRequest.findFirstOrThrow.mockResolvedValueOnce({
+        id: bookingId,
+        status: 'CONFIRMED',
+        clientName: 'Тест',
+        clientPhone: '+380501234567',
+        requestedDate: new Date(),
+        branchId,
+        notes: null,
+        createdAt: new Date(),
+      });
+
+      const result = await service.confirm(orgId, bookingId, slotId);
+      expect(result.status).toBe('CONFIRMED');
+      expect(prisma.bookingRequest.updateMany).toHaveBeenCalledTimes(1);
     });
   });
 

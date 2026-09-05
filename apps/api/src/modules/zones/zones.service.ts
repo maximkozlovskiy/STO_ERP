@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { LiftStatus, LiftType, ZoneType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
@@ -83,6 +83,19 @@ export class ZonesService {
   }
 
   async removeZone(orgId: string, id: string): Promise<void> {
+    // Cascade guard (MD-H1 class): не видаляти зону, у якій ще є активні підйомники.
+    // Без цього soft-delete зони лишає осиротілі Lift (lift.zoneId → мертва зона):
+    // підйомники далі показуються у findAllLifts, на них посилаються CalendarSlot і
+    // наряди, а користувач втрачає можливість керувати ними через UI зони.
+    const activeLift = await this.prisma.lift.findFirst({
+      where: { orgId, zoneId: id, deletedAt: null },
+      select: { id: true },
+    });
+    if (activeLift) {
+      throw new BadRequestException(
+        'Неможливо видалити: у зоні є активні підйомники. Спочатку видаліть або перенесіть їх',
+      );
+    }
     // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
     // where (id+orgId+deletedAt:null). -1 RTT per delete; race-safe.
     const result = await this.prisma.zone.updateMany({

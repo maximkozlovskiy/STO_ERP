@@ -214,6 +214,27 @@ export class EmployeesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    // Cascade guard (MD-H1 class): не звільняти співробітника, у якого є рядки
+    // нарядів у активному (не термінальному) стані. Без цього soft-delete лишає
+    // виконавця, прив'язаного до відкритих нарядів, — робота «зникає» з довідника
+    // персоналу, але наряд далі посилається на мертвого механіка (осиротіла ланка).
+    // Термінальні статуси (ARCHIVED/CANCELLED) не блокують — узгоджено з MD-H1
+    // (counterparty), де історичні документи не заважають видаленню.
+    const activeLine = await this.prisma.workOrderLine.findFirst({
+      where: {
+        orgId,
+        employeeId: id,
+        deletedAt: null,
+        workOrder: { deletedAt: null, status: { notIn: ['ARCHIVED', 'CANCELLED'] } },
+      },
+      select: { id: true },
+    });
+    if (activeLine) {
+      throw new BadRequestException(
+        'Неможливо видалити: співробітник призначений на активні наряди',
+      );
+    }
+
     // Cascade soft-delete to AuthAccount — otherwise `findUnique({ orgId_email })` in the next
     // create() finds an active AuthAccount (from the deleted Employee) and throws 409.
     // The resurrection pattern in create() expects a soft-deleted AuthAccount → must mark both atomically.

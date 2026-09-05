@@ -144,6 +144,43 @@ describe('CalendarService.syncWorkOrderSlots', () => {
     expect(result).toEqual({ updated: 0 });
   });
 
+  // CAL-C2 regression-guard: findSlots must use half-open OVERLAP, not CONTAINMENT.
+  // Containment (`startAt>=dayStart AND endAt<=dayEnd`) silently drops slots that cross the
+  // day boundary (split-day continuation from the previous evening, or a slot straddling
+  // midnight) → the calendar shows a lift as free while it is actually occupied.
+  describe('findSlots — CAL-C2 overlap (not containment)', () => {
+    it('запитує слоти через half-open OVERLAP (startAt<end AND endAt>start), не CONTAINMENT', async () => {
+      const findMany = vi.fn().mockResolvedValue([]);
+      const prisma = { calendarSlot: { findMany } };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+
+      await service.findSlots('org-1', '2026-06-15', 'ADMIN');
+
+      expect(findMany).toHaveBeenCalledTimes(1);
+      const where = findMany.mock.calls[0][0].where;
+      // OVERLAP: startAt is bounded from ABOVE (lt), endAt from BELOW (gt).
+      expect(where.startAt).toHaveProperty('lt');
+      expect(where.endAt).toHaveProperty('gt');
+      // Regression: NOT the old containment shape.
+      expect(where.startAt).not.toHaveProperty('gte');
+      expect(where.endAt).not.toHaveProperty('lte');
+    });
+
+    it('MECHANIC гілка теж використовує OVERLAP where', async () => {
+      const findMany = vi.fn().mockResolvedValue([]);
+      const prisma = { calendarSlot: { findMany } };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+
+      await service.findSlots('org-1', '2026-06-15', 'MECHANIC');
+
+      const where = findMany.mock.calls[0][0].where;
+      expect(where.startAt).toHaveProperty('lt');
+      expect(where.endAt).toHaveProperty('gt');
+    });
+  });
+
   // Bug #444 regression-guard: alternate-mutation endpoint (syncWorkOrderSlots)
   // має повторити conflict check що робить canonical createSlot()/updateSlot().
   // Інакше move planned hours може silently overlap слот іншого наряду на тому
