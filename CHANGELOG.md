@@ -42,8 +42,14 @@
   Bug #642 (LOW) — mount-once `?open=` не реоткриває модалку при self-navigation на ту саму
   сторінку; наразі недосяжно (жоден конфіг так не навігує) → задокументовано як known-limit.
 
-**Phase C** (Counterparty реляційні вкладки) і **Phase D** (схема StockDoc/SupplierReturn
-FK) — заплановані далі.
+**Phase C — Counterparty** (commit aa152fb7): вкладка «Документи» у деталі контрагента —
+рахунки / замовлення постачальнику / оплати постачальнику / повернення постачальнику з
+переходом. Backend `GET counterparties/:id/linked-documents` + `getLinkedCounts` (4 секції,
+orgId+deletedAt:null, Decimal→Number, groupBy deletedAt:null — count==detail). Тести:
+service +4, contract +2 (route-ordering, non-UUID 400).
+
+**Phase D** (схема StockDoc/SupplierReturn FK + PO-пікер у create) — окреме рішення
+(FK будуть NULL без create-flow; найважча, найменша цінність).
 
 ## 2026-09-05 — feat(web): UX-фічі списків/модалок (Подання, індикатори, guard, клавіатура, дублювання)
 
