@@ -2920,3 +2920,69 @@ Playwright MCP DOWN — лише unit/service/contract + reasoning.
 
 **Тести:** API `src/common` + 6 модулів — 512 зелених. Web (linked-configs + Panel + Popup) —
 41 зелений. tsc API=0, web=0. Нові тести: +10 (api) +19+8 (web) = +37.
+
+---
+
+## Session 2026-09-06 — E2E regression triage: dirty-guard false-positive (value-based rewrite) + stale tests
+
+Контекст: 7 failing + 2 flaky Playwright тести після фічі «пов'язані документи» + Ф5/Ф6 модалок.
+Кореневих багів у коді — 2 (обидва CRITICAL клас UX-блокер: чисту форму не можна закрити).
+Решта — застарілі тести (поведінка навмисно змінилась). 2 flaky — pre-existing timing, не баги.
+
+### Bug #644 — [CRITICAL] Хибний dirty-guard: чиста create-модалка не закривається по Escape
+
+**Симптом (E2E):** `invoices.spec.ts:127`, `stock-documents.spec.ts:153`, `work-orders.spec.ts:73`
+— відкрити create-модалку, НІЧОГО не ввести, натиснути Escape → діалог «Є незбережені зміни»
+спливає на чистій формі; зовнішня модалка лишається `data-state="open"`, `not.toBeVisible` таймаутить.
+
+**Root cause:** dirty-детекція озброювалась через `baselineReadyRef=false` + `setTimeout(0)→true`.
+`setTimeout(0)` — macrotask, а React 18 відкладає flush passive-ефектів; ре-рендер (async
+`useUiFeatures`/`useTabBarContext`/reset-setState) віддавав `form` НОВИЙ reference ПІСЛЯ того,
+як таймер виставив baseline=true → dirty-ефект `[form, lines, open]` спрацьовував → `markDirty()`
+на формі, де НІЧОГО не змінилось за значенням. InvoiceCreateModal не мав авто-вибору, тож
+старий `autoDefaultsRef`-скіп (Bug #639) його не покривав — і все одно false-dirty.
+
+**Fix:** value-based dirty-детекція. `useDirtyForm` отримав `captureBaseline(snapshot)` +
+`syncDirty(snapshot)`; модалки серіалізують значущі поля (`JSON.stringify({...form, lines})`) і
+порівнюють знімки. Reference-only churn більше не dirty; гонки macrotask/microtask усунено.
+Застосовано в 5 модалках: Invoice, StockDocument, PurchaseOrder, SupplierReturn, CreateWorkOrder.
+Файли: `hooks/useDirtyForm.ts`, 5× `components/ui/*CreateModal.tsx` (+ `CreateWorkOrderModal.tsx`).
+
+### Bug #645 — [CRITICAL] Edit-режим: базлайн захоплювався на ПОРОЖНІЙ формі → форма одразу dirty
+
+**Симптом (E2E):** `purchase-orders-receive.spec.ts:143` — прийняти товари, Escape → PO-модалка
+не закривається (діалог «Є незбережені зміни»), backdrop перехоплює наступні кліки → таймаут.
+
+**Root cause (виявлено після фіксу #644):** гейт захоплення базлайну в edit-режимі був
+`if (isEditMode && loading) return`. Але `loading` стартує як `false`, а baseline-ефект у
+Invoice/StockDoc/WorkOrder визначено ПЕРЕД load-ефектом (який синхронно робить `setLoading(true)`).
+Passive-ефекти біжать у порядку оголошення → baseline-ефект бачив `loading=false` і захоплював
+базлайн на ПОРОЖНІЙ формі; завантажені дані згодом → snapshot ≠ базлайн → форма dirty з відкриття.
+
+**Fix:** явний `editLoaded` state, що виставляється `true` лише у `.finally` після завершення
+першого завантаження; гейт `if (isEditMode && !editLoaded) return`. Не залежить від порядку
+ефектів. Застосовано в Invoice, StockDocument, PurchaseOrder, SupplierReturn, CreateWorkOrder.
+
+### Застарілі тести (поведінка навмисно змінилась — оновлено тест, не код)
+
+- **`crud-work-order.spec.ts:110`** — заповнює опис «Тест» (форма стає БРУДНОЮ навмисно), Escape.
+  Ф5 unsaved-guard тепер коректно показує «Є незбережені зміни». Тест оновлено: підтвердити «Покинути».
+- **`crud-counterparty.spec.ts:10, :65, :114`** — після Save картка НЕ закривається, а перемикається
+  в edit-режим (commit 9d61dfaa «картка лишається відкритою в edit-режимі»). Тести оновлено:
+  дочекатись заголовка «Редагування контрагента», потім Escape (форма чиста → закривається).
+- **`crud-purchase-order.spec.ts:241, :336`** — клік по рядку відкриває БОКОВУ ПАНЕЛЬ, а не
+  edit-модалку, бо `DetailPanelToggle` стандартно УВІМКНЕНИЙ (commit 6405c3a9/5433f932). Тести
+  оновлено: спершу вимкнути панель (aria-label «Сховати бокову панель»), тоді клік → edit-модалка.
+
+### Flaky (pre-existing timing, не баги, не мого сеансу)
+
+- `status-tooltip.spec.ts:5`, `supplier-payments.spec.ts:304` — пройшли без змін (dev rate-limit/timing).
+- `work-orders.spec.ts:95`, `crud-work-order.spec.ts:191` — flaky на full-run, зелені на retry (seed/timing).
+
+### Регресійні тести
+
+- `DocumentDirtyGuard.test.tsx` +1: InvoiceCreateModal чиста форма → Escape без діалогу
+  (покриває клас #644 для модалки БЕЗ авто-вибору, який старі тести пропускали).
+
+**Результат:** Playwright full suite — **325 passed, 0 failed, 0 flaky**. Unit (5 модальних
+файлів) — 21 зелений. tsc web=0, api=0.
