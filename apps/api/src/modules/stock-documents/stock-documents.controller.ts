@@ -25,6 +25,7 @@ import {
   TransitionStockDocumentDto,
   DocTransitionStatus,
   StockDocumentQueryDto,
+  LinkedCountsDto,
 } from './stock-documents.dto';
 
 @ApiTags('Stock Documents')
@@ -50,6 +51,22 @@ export class StockDocumentsController {
       query.sortBy,
       query.sortDir,
     );
+  }
+
+  // Оголошено ПЕРЕД @Get(':id') — інакше Fastify матчить 'linked-documents' як :id.
+  @Get(':id/linked-documents')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: "Пов'язані документи складського документа (замовлення, склади)" })
+  getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getLinkedDocuments(orgId, id);
+  }
+
+  @Post('linked-counts')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Кількість пов'язаних документів для списку (batch)" })
+  getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
+    return this.service.getLinkedCounts(orgId, dto.ids);
   }
 
   @Get(':id')

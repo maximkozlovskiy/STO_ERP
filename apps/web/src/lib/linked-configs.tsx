@@ -11,6 +11,7 @@ import {
   Landmark,
   ShoppingCart,
   RotateCcw,
+  Warehouse,
 } from 'lucide-react';
 import {
   INVOICE_STATUS_LABELS,
@@ -405,6 +406,84 @@ interface LinkedSupplierReturnRow {
   status: string;
   totalAmount: string | number;
   documentDate: string | null;
+}
+
+// ─── StockDocument / SupplierReturn shared section-builders ─
+
+/** Секція «Замовлення постачальнику» — джерело документа (RECEIPT/OPENING/повернення). */
+function purchaseOrderSourceSection(nav: LinkedNav) {
+  return {
+    key: 'purchaseOrder',
+    title: 'Замовлення постачальнику',
+    icon: ClipboardList,
+    mapRow: (row: LinkedPurchaseOrderRow) => ({
+      id: row.id,
+      primary: `Замовлення ${row.number}`,
+      secondary: `${fmt(row.totalAmount)} ₴`,
+      badge: {
+        label: PO_STATUS_LABELS[row.status] ?? row.status,
+        className: 'bg-secondary text-muted-foreground',
+      },
+      preview: {
+        title: `Замовлення ${row.number}`,
+        rows: [
+          { label: 'Статус', value: PO_STATUS_LABELS[row.status] ?? row.status },
+          { label: 'Сума', value: `${fmt(row.totalAmount)} ₴` },
+        ],
+      },
+      navigate: () => nav.toPurchaseOrder(row.id),
+    }),
+  };
+}
+
+interface LinkedWarehouseRow {
+  id: string;
+  name: string;
+}
+
+/** Секція «Склад» — довідник, без власної сторінки → read-only preview. */
+function warehouseSection() {
+  return {
+    key: 'warehouse',
+    title: 'Склад',
+    icon: Warehouse,
+    mapRow: (row: LinkedWarehouseRow) => ({
+      id: row.id,
+      primary: row.name,
+      preview: { title: row.name, rows: [] },
+    }),
+  };
+}
+
+// ─── StockDocument config ──────────────────────────────────
+// warehouses[] — 1 (джерело) або 2 (джерело+ціль для TRANSFER) рядки одної секції.
+
+export function stockDocumentLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
+  return {
+    fetchPath: id => `/stock-documents/${id}/linked-documents`,
+    sections: [
+      purchaseOrderSourceSection(nav),
+      {
+        key: 'warehouses',
+        title: 'Склади',
+        icon: Warehouse,
+        mapRow: (row: LinkedWarehouseRow) => ({
+          id: row.id,
+          primary: row.name,
+          preview: { title: row.name, rows: [] },
+        }),
+      },
+    ],
+  };
+}
+
+// ─── SupplierReturn config ─────────────────────────────────
+
+export function supplierReturnLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
+  return {
+    fetchPath: id => `/supplier-returns/${id}/linked-documents`,
+    sections: [purchaseOrderSourceSection(nav), counterpartySection(nav), warehouseSection()],
+  };
 }
 
 export function counterpartyLinkedConfig(nav: LinkedNav): LinkedEntityConfig {

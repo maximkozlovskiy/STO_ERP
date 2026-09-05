@@ -428,6 +428,73 @@ export class StockDocumentsService {
     });
   }
 
+  // ─── Пов'язані документи ─────────────────────────────────────────────────
+  // Документи, пов'язані зі складським документом: замовлення-джерело (RECEIPT/OPENING)
+  // + склади (джерело + призначення для TRANSFER). Дзеркалить Counterparty/Invoice-патерн
+  // (orgId + deletedAt:null, Decimal→Number, zero-init counts — Bug #641 lesson: count == detail).
+
+  async getLinkedDocuments(orgId: string, id: string) {
+    const doc = await this.prisma.stockDocument.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { purchaseOrderId: true, warehouseId: true, targetWarehouseId: true },
+    });
+    if (!doc) {
+      return { purchaseOrder: [], warehouses: [] };
+    }
+
+    const [purchaseOrder, sourceWarehouse, targetWarehouse] = await Promise.all([
+      doc.purchaseOrderId
+        ? this.prisma.purchaseOrder.findFirst({
+            where: { id: doc.purchaseOrderId, orgId, deletedAt: null },
+            select: { id: true, number: true, status: true, totalAmount: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.warehouse.findFirst({
+        where: { id: doc.warehouseId, orgId, deletedAt: null },
+        select: { id: true, name: true },
+      }),
+      doc.targetWarehouseId
+        ? this.prisma.warehouse.findFirst({
+            where: { id: doc.targetWarehouseId, orgId, deletedAt: null },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    return {
+      purchaseOrder: purchaseOrder
+        ? [{ ...purchaseOrder, totalAmount: Number(purchaseOrder.totalAmount) }]
+        : [],
+      warehouses: [
+        ...(sourceWarehouse ? [sourceWarehouse] : []),
+        ...(targetWarehouse ? [targetWarehouse] : []),
+      ],
+    };
+  }
+
+  async getLinkedCounts(
+    orgId: string,
+    ids: string[],
+  ): Promise<Record<string, { purchaseOrder: number; warehouses: number }>> {
+    const result: Record<string, { purchaseOrder: number; warehouses: number }> = {};
+    if (ids.length === 0) return result;
+    for (const id of ids) result[id] = { purchaseOrder: 0, warehouses: 0 };
+
+    const docs = await this.prisma.stockDocument.findMany({
+      where: { id: { in: ids }, orgId, deletedAt: null },
+      select: { id: true, purchaseOrderId: true, targetWarehouseId: true },
+    });
+
+    for (const d of docs) {
+      if (!result[d.id]) continue;
+      result[d.id].purchaseOrder = d.purchaseOrderId ? 1 : 0;
+      // Джерело завжди присутнє (warehouseId обов'язкове поле) + ціль для TRANSFER.
+      result[d.id].warehouses = 1 + (d.targetWarehouseId ? 1 : 0);
+    }
+
+    return result;
+  }
+
   private toDto(doc: {
     id: string;
     orgId: string;

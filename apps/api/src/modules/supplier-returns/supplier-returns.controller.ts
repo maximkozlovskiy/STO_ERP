@@ -23,6 +23,7 @@ import {
   CreateSupplierReturnDto,
   UpdateSupplierReturnDto,
   SupplierReturnQueryDto,
+  LinkedCountsDto,
 } from './supplier-returns.dto';
 
 @ApiTags('Supplier Returns')
@@ -55,6 +56,14 @@ export class SupplierReturnsController {
     );
   }
 
+  @Post('linked-counts')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Кількість пов'язаних документів для списку повернень (batch)" })
+  getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
+    return this.service.getLinkedCounts(orgId, dto.ids);
+  }
+
   // Specific sub-routes BEFORE :id (Fastify route ordering rule)
   @Post(':id/confirm')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
@@ -74,6 +83,14 @@ export class SupplierReturnsController {
   @ApiOperation({ summary: 'Скасувати повернення' })
   cancel(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.cancel(orgId, id);
+  }
+
+  // Оголошено ПЕРЕД @Get(':id') — інакше Fastify матчить 'linked-documents' як :id.
+  @Get(':id/linked-documents')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
+  @ApiOperation({ summary: "Пов'язані документи повернення (замовлення, постачальник, склад)" })
+  getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getLinkedDocuments(orgId, id);
   }
 
   @Get(':id')

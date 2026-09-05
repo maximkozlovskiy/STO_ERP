@@ -457,6 +457,73 @@ export class SupplierReturnsService {
     }
   }
 
+  // ─── Пов'язані документи ─────────────────────────────────────────────────
+  // Документи, пов'язані з поверненням: замовлення-джерело, постачальник, склад.
+  // Дзеркалить Counterparty/Invoice-патерн (orgId + deletedAt:null, Decimal→Number,
+  // zero-init counts — Bug #641 lesson: count має рахувати те саме, що бачить detail).
+
+  async getLinkedDocuments(orgId: string, id: string) {
+    const sr = await this.prisma.supplierReturn.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { purchaseOrderId: true, supplierId: true, warehouseId: true },
+    });
+    if (!sr) {
+      return { purchaseOrder: [], counterparty: [], warehouse: [] };
+    }
+
+    const [purchaseOrder, counterparty, warehouse] = await Promise.all([
+      sr.purchaseOrderId
+        ? this.prisma.purchaseOrder.findFirst({
+            where: { id: sr.purchaseOrderId, orgId, deletedAt: null },
+            select: { id: true, number: true, status: true, totalAmount: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.counterparty.findFirst({
+        where: { id: sr.supplierId, orgId, deletedAt: null },
+        select: { id: true, firstName: true, lastName: true, companyName: true, phone: true },
+      }),
+      this.prisma.warehouse.findFirst({
+        where: { id: sr.warehouseId, orgId, deletedAt: null },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    return {
+      purchaseOrder: purchaseOrder
+        ? [{ ...purchaseOrder, totalAmount: Number(purchaseOrder.totalAmount) }]
+        : [],
+      counterparty: counterparty ? [counterparty] : [],
+      warehouse: warehouse ? [warehouse] : [],
+    };
+  }
+
+  async getLinkedCounts(
+    orgId: string,
+    ids: string[],
+  ): Promise<Record<string, { purchaseOrder: number; counterparty: number; warehouse: number }>> {
+    const result: Record<
+      string,
+      { purchaseOrder: number; counterparty: number; warehouse: number }
+    > = {};
+    if (ids.length === 0) return result;
+    for (const id of ids) result[id] = { purchaseOrder: 0, counterparty: 0, warehouse: 0 };
+
+    const returns = await this.prisma.supplierReturn.findMany({
+      where: { id: { in: ids }, orgId, deletedAt: null },
+      select: { id: true, purchaseOrderId: true },
+    });
+
+    for (const r of returns) {
+      if (!result[r.id]) continue;
+      result[r.id].purchaseOrder = r.purchaseOrderId ? 1 : 0;
+      // supplierId/warehouseId є обов'язковими полями SupplierReturn — завжди 1.
+      result[r.id].counterparty = 1;
+      result[r.id].warehouse = 1;
+    }
+
+    return result;
+  }
+
   private toDto(sr: {
     id: string;
     orgId: string;

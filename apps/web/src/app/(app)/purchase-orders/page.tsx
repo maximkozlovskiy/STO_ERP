@@ -17,11 +17,13 @@ import {
   Trash2,
   Wallet,
   User,
+  ClipboardList,
+  Warehouse,
 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
-import { purchaseOrderLinkedConfig } from '@/lib/linked-configs';
+import { purchaseOrderLinkedConfig, supplierReturnLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import {
   usePurchaseOrders,
@@ -84,6 +86,7 @@ const SupplierReturnCreateModal = dynamic(
 import {
   useSupplierReturns,
   useDeleteSupplierReturn,
+  supplierReturnsKeys,
   type SupplierReturn,
 } from '@/hooks/api/useSupplierReturns';
 import {
@@ -161,8 +164,23 @@ const COLUMNS_SR: Array<{ key: string; label: string; defaultVisible?: boolean }
   { key: 'status', label: 'Статус', defaultVisible: true },
   { key: 'amount', label: 'Сума', defaultVisible: true },
   { key: 'date', label: 'Дата документа', defaultVisible: true },
+  { key: 'linkedDocs', label: "Зв'язки", defaultVisible: true },
 ];
 const COLUMNS_SR_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS_SR.map(c => c.key));
+
+// Ключі секцій дзеркалять backend supplier-returns.getLinkedCounts
+// (purchaseOrder/counterparty/warehouse).
+type SrLinkedCountsEntry = { purchaseOrder: number; counterparty: number; warehouse: number };
+type SrLinkedCountsField = keyof SrLinkedCountsEntry;
+type SrLinkedCountsMap = Record<string, SrLinkedCountsEntry>;
+
+const EMPTY_SR_LINKED_COUNTS: SrLinkedCountsMap = Object.freeze({}) as SrLinkedCountsMap;
+
+const DOC_COUNTERS_SR: Array<{ field: SrLinkedCountsField; Icon: ElementType; label: string }> = [
+  { field: 'purchaseOrder', Icon: ClipboardList, label: 'Замовлення' },
+  { field: 'counterparty', Icon: User, label: 'Постачальник' },
+  { field: 'warehouse', Icon: Warehouse, label: 'Склад' },
+];
 
 // Опції фільтра статусу — повністю статичні (PO_STATUS_LABELS — імпортована константа).
 // Раніше створювались у тілі компонента на кожен render разом з рядками StatusPill.
@@ -561,6 +579,33 @@ function PurchaseOrdersPageClient() {
   const srItems = srData?.items ?? ([] as SupplierReturn[]);
   const deleteSupplierReturn = useDeleteSupplierReturn();
 
+  // Пов'язані документи (SR) — окремий popup state/config від PO (різні секції).
+  const srLinkedConfig = useMemo(() => supplierReturnLinkedConfig(linkedNav), [linkedNav]);
+  const [srLinkedDocPopupId, setSrLinkedDocPopupId] = useState<string | null>(null);
+
+  const srIds = useMemo(() => srItems.map(s => s.id).sort(), [srItems]);
+
+  const { data: srLinkedCounts = EMPTY_SR_LINKED_COUNTS } = useQuery<SrLinkedCountsMap>({
+    queryKey: [...supplierReturnsKeys.all, 'linked-counts', srIds],
+    queryFn: () =>
+      apiFetch<SrLinkedCountsMap>('/supplier-returns/linked-counts', {
+        method: 'POST',
+        body: JSON.stringify({ ids: srIds }),
+      }),
+    enabled: srIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  // Escape closes the SR linked-documents popup (§14 a11y).
+  useEffect(() => {
+    if (!srLinkedDocPopupId) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSrLinkedDocPopupId(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [srLinkedDocPopupId]);
+
   const [saving, setSaving] = useState(false);
 
   const [receiveLines, setReceiveLines] = useState<{ lineId: string; receivedQty: string }[]>([]);
@@ -957,6 +1002,30 @@ function PurchaseOrdersPageClient() {
                                 {sr.documentDate ? fmtDate(sr.documentDate) : '—'}
                               </TableCell>
                             );
+                          if (col.key === 'linkedDocs') {
+                            const counts = srLinkedCounts[sr.id];
+                            return (
+                              <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
+                                <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
+                                  {DOC_COUNTERS_SR.map(({ field, Icon, label }) => {
+                                    const n = counts?.[field];
+                                    if (!n) return null;
+                                    return (
+                                      <button
+                                        key={field}
+                                        onClick={() => setSrLinkedDocPopupId(sr.id)}
+                                        className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                        title={`${label}: ${n}`}
+                                      >
+                                        <Icon size={13} />
+                                        <span>{n}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </TableCell>
+                            );
+                          }
                           return null;
                         })}
                         <TableCell className="w-16" onClick={e => e.stopPropagation()}>
@@ -1541,6 +1610,48 @@ function PurchaseOrdersPageClient() {
               </button>
             </div>
             <LinkedDocumentsPanel config={linkedConfig} entityId={linkedDocPopupId} />
+          </div>
+        </div>
+      )}
+
+      {/* Linked documents popup (SR). Escape handled by document-level listener above (§14 a11y). */}
+      {srLinkedDocPopupId && (
+        <div
+          className="fixed inset-0 z-50 bg-black/30"
+          onClick={() => setSrLinkedDocPopupId(null)}
+          role="presentation"
+        >
+          <div
+            className="absolute right-4 top-1/2 -translate-y-1/2 w-90 max-h-[80vh] overflow-y-auto bg-background rounded-xl shadow-2xl border border-border p-4"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Пов'язані документи повернення"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-sm">Пов&apos;язані документи</h2>
+              <button
+                onClick={() => setSrLinkedDocPopupId(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Закрити"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M1 1L13 13M13 1L1 13"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <LinkedDocumentsPanel config={srLinkedConfig} entityId={srLinkedDocPopupId} />
           </div>
         </div>
       )}

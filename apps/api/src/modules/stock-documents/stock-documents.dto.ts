@@ -10,6 +10,7 @@ import {
   ValidateNested,
   IsEnum,
   ArrayMaxSize,
+  ArrayMinSize,
   IsDateString,
   IsBooleanString,
 } from 'class-validator';
@@ -191,4 +192,17 @@ export class StockDocumentQueryDto {
   @Min(1)
   @Max(200)
   limit: number = 20;
+}
+
+// ─── Linked documents (batch counts) ────────────────────────
+// Дзеркалить invoices.dto.ts LinkedCountsDto — anti-DoS: без @Body() DTO довільний
+// JSON (мільйон IDs у where: { in: [...] }) спричиняє важкий B-tree lookup.
+
+export class LinkedCountsDto {
+  @ApiProperty({ type: [String], description: 'UUID документів (макс. 500)' })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  ids!: string[];
 }

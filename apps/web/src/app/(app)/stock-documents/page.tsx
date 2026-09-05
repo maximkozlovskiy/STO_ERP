@@ -1,13 +1,26 @@
 'use client';
 
 import { Suspense, useState, useCallback, useMemo, useEffect } from 'react';
+import type { ElementType } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
-import { useStockDocuments } from '@/hooks/api/useStockDocuments';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useStockDocuments, stockDocsKeys } from '@/hooks/api/useStockDocuments';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
-import { Plus, FileText, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
+import {
+  Plus,
+  FileText,
+  Eye,
+  EyeOff,
+  Trash2,
+  Pencil,
+  ClipboardList,
+  Warehouse,
+} from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
+import { stockDocumentLinkedConfig } from '@/lib/linked-configs';
+import { useLinkedNav } from '@/lib/linked-nav';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -106,8 +119,23 @@ const COLUMNS: Array<{ key: string; label: string }> = [
   { key: 'status', label: 'Статус' },
   { key: 'lines', label: 'Позицій' },
   { key: 'date', label: 'Дата документа' },
+  { key: 'linkedDocs', label: "Зв'язки" },
 ];
 const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
+
+// ─── Пов'язані документи (badge column) ────────────────────
+// Ключі секцій дзеркалять backend stock-documents.getLinkedCounts (purchaseOrder/warehouses).
+type LinkedCountsEntry = { purchaseOrder: number; warehouses: number };
+type LinkedCountsField = keyof LinkedCountsEntry;
+type LinkedCountsMap = Record<string, LinkedCountsEntry>;
+
+// Stable empty fallback — module-level frozen reference avoids fresh {} per render.
+const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMap;
+
+const DOC_COUNTERS: Array<{ field: LinkedCountsField; Icon: ElementType; label: string }> = [
+  { field: 'purchaseOrder', Icon: ClipboardList, label: 'Замовлення' },
+  { field: 'warehouses', Icon: Warehouse, label: 'Склади' },
+];
 
 // Filter tab arrays derived from shared constants — single source of truth.
 // Adding a new type to STOCK_DOC_TYPE_LABELS automatically appears as a tab.
@@ -187,6 +215,37 @@ function StockDocumentsPageClient() {
   // regression guard — stable empty array reference.
   const docs = docsData?.items ?? (EMPTY_ITEMS as unknown as StockDoc[]);
   const total = docsData?.total ?? 0;
+
+  // Пов'язані документи — nav + config + popup state + batched counts.
+  const linkedNav = useLinkedNav();
+  const linkedConfig = useMemo(() => stockDocumentLinkedConfig(linkedNav), [linkedNav]);
+  const [linkedDocPopupId, setLinkedDocPopupId] = useState<string | null>(null);
+
+  // Stable sorted ID list — prevents useQuery from refiring when React Query returns a
+  // new array reference for identical data (e.g. background refetch with no changes).
+  const docIds = useMemo(() => docs.map(d => d.id).sort(), [docs]);
+
+  const { data: linkedCounts = EMPTY_LINKED_COUNTS } = useQuery<LinkedCountsMap>({
+    queryKey: [...stockDocsKeys.all, 'linked-counts', docIds],
+    queryFn: () =>
+      apiFetch<LinkedCountsMap>('/stock-documents/linked-counts', {
+        method: 'POST',
+        body: JSON.stringify({ ids: docIds }),
+      }),
+    enabled: docIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  // Escape closes the linked-documents popup (§14 a11y — document-level listener,
+  // onKeyDown на overlay <div> не спрацьовує без tabIndex/focus).
+  useEffect(() => {
+    if (!linkedDocPopupId) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLinkedDocPopupId(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [linkedDocPopupId]);
   // WEB-H2: підтвердження/скасування складського документа рухає залишки → інвалідувати й
   // інвентар/звіти/дашборд, не лише список документів (інакше вкладка «Залишки» застаріла).
   const invalidate = () => invalidateStockDocumentSideEffects(qc);
@@ -646,6 +705,30 @@ function StockDocumentsPageClient() {
                             {doc.documentDate ? fmtDate(doc.documentDate) : fmtDate(doc.createdAt)}
                           </TableCell>
                         );
+                      if (col.key === 'linkedDocs') {
+                        const counts = linkedCounts[doc.id];
+                        return (
+                          <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
+                            <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
+                              {DOC_COUNTERS.map(({ field, Icon, label }) => {
+                                const n = counts?.[field];
+                                if (!n) return null;
+                                return (
+                                  <button
+                                    key={field}
+                                    onClick={() => setLinkedDocPopupId(doc.id)}
+                                    className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                    title={`${label}: ${n}`}
+                                  >
+                                    <Icon size={13} />
+                                    <span>{n}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </TableCell>
+                        );
+                      }
                       return null;
                     })}
                     <TableCell className="text-right" onClick={e => e.stopPropagation()}>
@@ -800,10 +883,59 @@ function StockDocumentsPageClient() {
                 Підтверджено: {fmtDateTime(showDetail.confirmedAt)}
               </p>
             )}
+
+            <div>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                Пов&apos;язані документи
+              </h3>
+              <LinkedDocumentsPanel config={linkedConfig} entityId={showDetail.id} />
+            </div>
           </div>
         )}
       </Modal>
       <ConfirmDialog {...dialogProps} />
+
+      {/* Linked documents popup (список). Escape handled by document-level listener above (§14 a11y). */}
+      {linkedDocPopupId && (
+        <div
+          className="fixed inset-0 z-50 bg-black/30"
+          onClick={() => setLinkedDocPopupId(null)}
+          role="presentation"
+        >
+          <div
+            className="absolute right-4 top-1/2 -translate-y-1/2 w-90 max-h-[80vh] overflow-y-auto bg-background rounded-xl shadow-2xl border border-border p-4"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Пов'язані документи складського документа"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-sm">Пов&apos;язані документи</h2>
+              <button
+                onClick={() => setLinkedDocPopupId(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Закрити"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M1 1L13 13M13 1L1 13"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <LinkedDocumentsPanel config={linkedConfig} entityId={linkedDocPopupId} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
