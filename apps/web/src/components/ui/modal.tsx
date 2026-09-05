@@ -8,6 +8,7 @@ import {
   useId,
   type ReactNode,
   type CSSProperties,
+  type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
@@ -135,6 +136,44 @@ export function AnimatedBody({
   );
 }
 
+// Ctrl+Enter / Cmd+Enter → submit. Винесено в окремий компонент, який монтується
+// ЛИШЕ коли Modal отримав onSubmit — так `useUiFeatures()` (3 window-listeners +
+// можливий fetch) не викликається у кожній модалці (пікери/ConfirmDialog без
+// onSubmit його не платять). Escape лишається у base Modal для всіх.
+function ModalSubmitKeys({
+  open,
+  onSubmit,
+  panelRef,
+}: {
+  open: boolean;
+  onSubmit: () => void;
+  panelRef: RefObject<HTMLDivElement | null>;
+}) {
+  const { keyboardShortcutsEnabled } = useUiFeatures();
+  // onSubmit у ref — keydown-ефект не переприв'язується на кожен ре-рендер
+  // (onSubmit зазвичай інлайн-стрілка, нова ідентичність щоразу).
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
+
+  useEffect(() => {
+    if (!open || !keyboardShortcutsEnabled) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        // Скоуп на ЦЮ модалку: подія має походити з її панелі — інакше вкладені
+        // модалки (обидві слухають document) подвоюють submit.
+        const target = e.target as Node | null;
+        if (target && panelRef.current && !panelRef.current.contains(target)) return;
+        e.preventDefault();
+        onSubmitRef.current();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open, keyboardShortcutsEnabled, panelRef]);
+
+  return null;
+}
+
 export function Modal({
   open,
   onClose,
@@ -153,11 +192,6 @@ export function Modal({
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
   const { visible, state } = useAnimatedPresence(open);
-  const { keyboardShortcutsEnabled } = useUiFeatures();
-  // Тримаємо onSubmit у ref, щоб keydown-ефект не переприв'язувався на кожен ре-рендер
-  // (onSubmit зазвичай — інлайн-стрілка, нова ідентичність щоразу).
-  const onSubmitRef = useRef(onSubmit);
-  onSubmitRef.current = onSubmit;
   // Bug fix (sto-tester): unique title id per Modal instance — without useId() multiple
   // nested modals (e.g. CreateInvoiceModal opening SearchPickerModal) shared the same
   // `id="modal-title"`, causing aria-labelledby ID collision: ALL dialogs adopted the
@@ -168,26 +202,9 @@ export function Modal({
 
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-        return;
-      }
-      // Ctrl+Enter / Cmd+Enter → submit. Гейт на прапорець + наявність хендлера.
-      // Скоуп на ЦЮ модалку: подія має походити з її панелі — інакше вкладені
-      // модалки (обидві слухають document) подвоюють submit.
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        e.key === 'Enter' &&
-        keyboardShortcutsEnabled &&
-        onSubmitRef.current
-      ) {
-        const target = e.target as Node | null;
-        if (target && panelRef.current && !panelRef.current.contains(target)) return;
-        e.preventDefault();
-        onSubmitRef.current();
-      }
+      if (e.key === 'Escape') onClose();
     },
-    [onClose, keyboardShortcutsEnabled],
+    [onClose],
   );
 
   useEffect(() => {
@@ -237,6 +254,7 @@ export function Modal({
           transition: `max-width 280ms ${TRANSITION}`,
         }}
       >
+        {onSubmit && <ModalSubmitKeys open={open} onSubmit={onSubmit} panelRef={panelRef} />}
         {/* Header */}
         {(title || !hideClose || headerContent) && (
           <div className="px-6 pt-5 pb-4 border-b border-border shrink-0">
