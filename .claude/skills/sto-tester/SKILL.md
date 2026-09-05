@@ -272,6 +272,8 @@ grep -rn "prisma\.[a-zA-Z]*\.delete(" apps/api/src/modules/ --include="*.service
 - [ ] Жодного `prisma.X.delete()` на бізнес-сутностях
 - [ ] **Remove-guard «блокувати якщо є пов'язані активні документи» — повнота набору relations (Bug #631):** будь-який `service.remove()`/`delete()` що додає guard типу «не видаляти якщо є активні наряди/замовлення/борг» — звірити ПОВНИЙ перелік document-relations сутності (schema `X[]` back-relations) проти списку `count()`-перевірок у guard. Частий split-coverage: перевіряють 2 з 3 однотипних document-relations. **Пастка balance-як-proxy:** SENT/OVERDUE/фінальні документи, що вже створили settlement-транзакцію, ловляться balance-guard-ом (`Number(balance)!==0`) непрямо → здається «покрито», АЛЕ DRAFT/чернетка того ж документа ще НЕ має транзакції → `balance=0` → провалюється крізь усі guard-и → осиротілий активний документ на soft-deleted parent. Grep: для кожного `count()` у `remove()` знайти всі `model X { ...  <Rel>[]  ...}` back-relations parent-моделі у schema (`sed -n '/^model Counterparty /,/^}/p' schema.prisma | grep -E "\[\]"`) → кожен document-подібний relation (WorkOrder/Invoice/PurchaseOrder/StockDocument) має власний count-guard з `status: { notIn: [<фінальні>] }`, НЕ покладатись на balance. Append-only (Payment/StockMovement) — не блокують. Fix: додати відсутній `count()` у той самий `Promise.all`, симетрично наявним. Severity MEDIUM (data-integrity + orphan-UX). Where else: `Counterparty.remove` (WO+PO+Invoice), `Vehicle.remove` (пов'язані WO), `Good.remove` (StockItem залишки), `Warehouse.remove` (StockItem), будь-який parent з kількома document-children.
 
+- [ ] **count/detail консистентність за soft-delete (Bug #641):** будь-яка пара «summary-badge count» + «detail-list» на ті самі зв'язки (класика: `getLinkedCounts` vs `getLinkedDocuments`) — count МУСИТЬ мати ідентичний WHERE до detail. Пастка: count зроблено дешево через `row.fkId ? 1 : 0` (лічить наявність FK-скаляра з батька), а detail тягне referenced-запис з `deletedAt: null` → коли referenced soft-deleted, а FK лишився, badge показує «1» над порожньою секцією. Досяжно, якщо delete-guard referenced-сутності блокує лише за відкритими документами (контрагента можна видалити під PAID-рахунком / RECEIVED-PO). Grep: `grep -rnE "\.[a-zA-Z]*Id \? 1 : 0" apps/api/src/modules/**/*.service.ts | grep -iE "count"` → кожен такий лічильник перехресно з detail-методом: чи фільтрує detail referenced по `deletedAt:null`? Fix: зібрати унікальні FK, одним `findMany({id:{in},orgId,deletedAt:null})` на тип дістати живий набір, зарахувати «1» лише якщо `liveSet.has(fkId)` (батч, без N+1). Тести: soft-deleted ref→count=0 (дискримінатор), duplicate ids (keyed by id), cross-org (нулі), zero-count id (present у мапі). Severity MEDIUM. Where else: `_count` у list-DTO vs include у detail; лічильники активних договорів/гаражів/авто; dashboard-плитки з іншим WHERE ніж сторінка.
+
 **Soft-delete + `@@unique` = P2002 при повторному створенні (Bug #152)**
 
 ```bash
@@ -1118,6 +1120,27 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-05 — count/detail розходяться: badge-лічильник рахує зв'язок за наявністю FK, а detail-endpoint фільтрує `deletedAt: null` → «1» над порожньою секцією (Bug #641) — backend / consistency / MEDIUM
+
+**Сигнал:** пара методів «summary-count» + «detail-list» для одних і тих самих зв'язків, де count зроблено дешевше за detail. Count: `bucket.counterparty = row.counterpartyId ? 1 : 0` (лічить наявність **FK-скаляра**, взятого з `findMany` самої сутності). Detail: `this.prisma.counterparty.findFirst({ where: { id, orgId, deletedAt: null } })` (тягне **сам referenced-запис** з soft-delete фільтром) → `counterparty ? [row] : []`. Розходження проявляється щойно referenced-запис (контрагент / банк-рахунок / каса / пов'язаний документ) soft-deleted, а FK у батьку лишився: badge показує «1», панель — порожньо. Grep-детектор:
+
+```bash
+# методи-лічильники, що зараховують «1» за наявністю FK-скаляра (без live-перевірки referenced-запису)
+grep -rnE "= [a-zA-Z]+\.[a-zA-Z]*Id \? 1 : 0|Id \|\| [a-zA-Z]+\.[a-zA-Z]*Id \? 1 : 0" apps/api/src/modules/**/*.service.ts | grep -iE "count|Count"
+# перетнути з detail-методом того ж модуля: чи фільтрує він referenced-запис по deletedAt:null?
+grep -rn "getLinked\|LinkedCounts\|LinkedDocuments" apps/api/src/modules/**/*.service.ts
+```
+
+**Причина виникнення:** оптимізація N+1 — щоб не тягнути кожен referenced-запис заради лічильника, розробник бере FK-скаляр із вже-завантаженого батька (`select: { counterpartyId: true }`) і зараховує «є зв'язок = FK не null». Припущення «FK не null ⇒ referenced-запис живий» хибне за soft-delete-моделі: FK лишається, а запис може бути `deletedAt != null`. Особливо досяжно, якщо delete-guard referenced-сутності блокує видалення лише за **відкритими** документами (напр. counterparty можна видалити під PAID-рахунком / RECEIVED-PO) — тоді жива посилка на мертвий запис штатна.
+
+**Підхід до виявлення:** будь-де, де існують ДВА endpoint-и на ті самі зв'язки (badge-count + detail-panel), написати service-тест: FK присутній (`findMany` батька повертає `counterpartyId`), але `referenced.findMany({deletedAt:null})` повертає `[]` (soft-deleted) → асертити `count === 0` (щоб дорівнювало порожній detail-секції). Дискримінатор: revert фіксу (`FK ? 1 : 0`) → тест дає `1`, падає. Правило: **count МУСИТЬ дзеркалити ті самі WHERE-фільтри, що й detail** (orgId + deletedAt:null + status-фільтри). Плюс edge-тести: duplicate ids (map keyed by id — не подвоюється), cross-org ids (findMany scoped by orgId → нулі, витоку нема), zero-count id (пре-fill `for (const id of ids) result[id]={...0}` → присутній, не absent → frontend badge не крешить на undefined).
+
+**Підхід до фіксу:** у лічильнику зібрати унікальні FK (`[...new Set(rows.map(r=>r.fkId).filter(Boolean))]`), одним `findMany({ where:{ id:{in}, orgId, deletedAt:null }, select:{id:true} })` на КОЖЕН тип referenced-запису дістати живий набір, зарахувати «1» лише якщо `liveSet.has(fkId)`. Батч через `Promise.all` — без N+1 (K запитів на K типів секцій, не на N рядків). Ключ у тому, щоб summary й detail мали **єдину definition «зв'язок існує»**.
+
+**Severity:** MEDIUM — не корупція даних, але UX-неконсистентність, що підриває довіру до лічильників (badge бреше). За гіршого сценарію ховає, що документ осиротів на мертвий довідник.
+
+**Де шукати ще:** будь-яка пара summary-badge + detail-list на один агрегат: `getLinkedCounts`/`getLinkedDocuments` (invoices/PO/supplier-payments/work-orders); `_count` у list-DTO проти реального include у detail; лічильники «активних договорів/гаражів/авто» контрагента; dashboard-плитки що рахують `X.count({where})` з іншим набором фільтрів ніж сторінка-деталізація. Загальний інваріант: **лічильник і список, які мають узгоджуватись, зобов'язані мати ідентичний WHERE.**
 
 ### 2026-09-05 — Unsaved-guard baseline через `setTimeout(0)` + АСИНХРОННИЙ авто-populate дефолту → false-positive «незбережені зміни» на незайманій формі — frontend / trust-erosion / HIGH
 
