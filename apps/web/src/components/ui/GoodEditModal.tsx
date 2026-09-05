@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Barcode, Package, TrendingUp } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -123,6 +123,14 @@ export function GoodEditModal({
   // ── Form state ─────────────────────────────────────────────────────────────
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  // WEB-H3 (Bug #634, клас Bug #630): синхронний guard проти concurrent double-submit.
+  // `<Button loading={saving}>` вимикається лише ПІСЛЯ re-render React між кліками;
+  // два кліки в одному tick → 2 POST /goods (дублікат товару). Ref фліпається синхронно.
+  const savingRef = useRef(false);
+  const setSavingBoth = (v: boolean) => {
+    savingRef.current = v;
+    setSaving(v);
+  };
   const [error, setError] = useState('');
 
   // ── Supplier picker (CounterpartyEditModal) ────────────────────────────────
@@ -204,6 +212,7 @@ export function GoodEditModal({
 
   // ── Save (create or update) ────────────────────────────────────────────────
   const save = async () => {
+    if (savingRef.current) return;
     if (form.purchasePrice) {
       const pp = Number(form.purchasePrice);
       if (!Number.isFinite(pp) || pp < 0) {
@@ -218,7 +227,7 @@ export function GoodEditModal({
         return;
       }
     }
-    setSaving(true);
+    setSavingBoth(true);
     setError('');
     try {
       const payload = {
@@ -253,7 +262,7 @@ export function GoodEditModal({
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
     } finally {
-      setSaving(false);
+      setSavingBoth(false);
     }
   };
 

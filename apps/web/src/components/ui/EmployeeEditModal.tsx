@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { EMPLOYEE_STATUS_LABELS, EMPLOYEE_ROLE_LABELS } from '@sto/shared';
@@ -152,6 +152,15 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  // WEB-H3 (Bug #633, клас Bug #630): синхронний guard проти concurrent double-submit.
+  // save() робить кілька послідовних POST (employee + auth-account) — подвійний клік
+  // у одному tick дав би дубль співробітника + дубль auth-акаунта. Ref фліпається
+  // синхронно ДО React state-flush, `loading={saving}` вимикає кнопку лише пізніше.
+  const savingRef = useRef(false);
+  const setSavingBoth = (v: boolean) => {
+    savingRef.current = v;
+    setSaving(v);
+  };
   const [error, setError] = useState('');
 
   // Reference data
@@ -307,6 +316,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
   };
 
   const save = async () => {
+    if (savingRef.current) return;
     setError('');
     if (!isEdit && form.grantAccess) {
       // trim перед перевіркою — інакше whitespace-only '   ' проходить
@@ -327,7 +337,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     }
     const rateScheme = buildRateScheme();
     if (!rateScheme) return;
-    setSaving(true);
+    setSavingBoth(true);
     try {
       const payload = {
         firstName: form.firstName,
@@ -383,7 +393,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка збереження');
     } finally {
-      setSaving(false);
+      setSavingBoth(false);
     }
   };
 

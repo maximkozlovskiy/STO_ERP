@@ -138,6 +138,15 @@ export function CounterpartyEditModal({
   // ── Form ─────────────────────────────────────────────────────────────────────
   const [editTab, setEditTab] = useState<'main' | 'vehicles' | 'contracts' | 'work-orders'>('main');
   const [saving, setSaving] = useState(false);
+  // WEB-H3 (Bug #632, клас Bug #630): синхронний guard проти concurrent double-submit.
+  // `<Button loading={saving}>` вимикається лише ПІСЛЯ re-render React між кліками;
+  // два кліки в одному tick інакше обидва входять до create()/update() → 2 POST
+  // /counterparties (дублікат контрагента). Ref фліпається синхронно ДО state-flush.
+  const savingRef = useRef(false);
+  const setSavingBoth = (v: boolean) => {
+    savingRef.current = v;
+    setSaving(v);
+  };
   const [error, setError] = useState('');
   const [form, setForm] = useState({
     type: 'CLIENT',
@@ -406,11 +415,12 @@ export function CounterpartyEditModal({
   }, [dirty, onClose]);
 
   const create = async () => {
+    if (savingRef.current) return;
     if (!hasCounterpartyName(form)) {
       setError('Вкажіть назву компанії або ім’я/прізвище контрагента');
       return;
     }
-    setSaving(true);
+    setSavingBoth(true);
     setError('');
     try {
       const created = await apiFetch<CounterpartyForModal>('/counterparties', {
@@ -436,17 +446,18 @@ export function CounterpartyEditModal({
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
     } finally {
-      setSaving(false);
+      setSavingBoth(false);
     }
   };
 
   const update = async () => {
+    if (savingRef.current) return;
     if (!counterparty) return;
     if (!hasCounterpartyName(form)) {
       setError('Вкажіть назву компанії або ім’я/прізвище контрагента');
       return;
     }
-    setSaving(true);
+    setSavingBoth(true);
     setError('');
     try {
       const updated = await apiFetch<CounterpartyForModal>(`/counterparties/${counterparty.id}`, {
@@ -469,7 +480,7 @@ export function CounterpartyEditModal({
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
     } finally {
-      setSaving(false);
+      setSavingBoth(false);
     }
   };
 

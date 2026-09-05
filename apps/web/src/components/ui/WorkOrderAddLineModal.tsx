@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { Modal } from '@/components/ui/modal';
@@ -54,6 +54,14 @@ export function WorkOrderAddLineModal({
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  // WEB-H3 (Bug #635, клас Bug #630): синхронний guard проти concurrent double-submit.
+  // Кнопка «Додати» disabled лише за !workId/!employeeId (не saving) → два same-tick кліки
+  // → 2× POST /lines → дубль роботи (подвійне нарахування праці). Ref фліпається синхронно.
+  const savingRef = useRef(false);
+  const setSavingBoth = (v: boolean) => {
+    savingRef.current = v;
+    setSaving(v);
+  };
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -85,7 +93,8 @@ export function WorkOrderAddLineModal({
   }, [dirty, onClose]);
 
   const handleAdd = async () => {
-    setSaving(true);
+    if (savingRef.current) return;
+    setSavingBoth(true);
     setError('');
     try {
       await apiFetch(`/work-orders/${workOrderId}/lines`, {
@@ -108,7 +117,7 @@ export function WorkOrderAddLineModal({
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
-      setSaving(false);
+      setSavingBoth(false);
     }
   };
 

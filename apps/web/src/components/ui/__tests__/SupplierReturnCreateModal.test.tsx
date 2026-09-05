@@ -8,7 +8,6 @@
 //   синхронно у setSavingBoth/setTransitioningBoth → другий вхід одразу повертається.
 
 import { render, screen, waitFor, act } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 import { SupplierReturnCreateModal } from '../SupplierReturnCreateModal';
@@ -80,14 +79,18 @@ describe('SupplierReturnCreateModal — double-submit guard (Bug #630 / WEB-H3)'
     render(<SupplierReturnCreateModal open onClose={() => {}} onSaved={() => {}} editId="sr1" />);
 
     // Дочекатись завантаження документа (кнопка «Підтвердити» зʼявляється лише коли lines>0).
-    const confirmBtn = await screen.findByRole('button', { name: 'Підтвердити' });
+    const confirmBtn = (await screen.findByRole('button', {
+      name: 'Підтвердити',
+    })) as HTMLButtonElement;
 
-    // Два синхронних кліки в одному tick — імітація double-click / синтетичних подій.
-    const user = userEvent.setup();
-    await act(async () => {
-      void user.click(confirmBtn);
-      void user.click(confirmBtn);
-    });
+    // Два синхронних native-кліки в ОДНОМУ tick через HTMLElement.click().
+    // ⚠️ НЕ userEvent.click: userEvent проганяє власну pointer-event чергу з мікротасками
+    // → React встигає re-renderнути й виставити disabled={transitioning} МІЖ кліками →
+    // тест був би хибно-зеленим (проходив би і БЕЗ savingRef-guard). Native .click() ×2 у
+    // одному синхронному блоці: React batch-ить state → re-render лише ПІСЛЯ обох → саме
+    // transitioningRef (синхронний) блокує другий вхід у doTransition. Відтворює реальну race.
+    confirmBtn.click();
+    confirmBtn.click();
 
     // Дати мікротаскам відпрацювати.
     await waitFor(() => {

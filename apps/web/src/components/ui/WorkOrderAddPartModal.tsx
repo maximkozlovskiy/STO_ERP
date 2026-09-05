@@ -100,6 +100,14 @@ export function WorkOrderAddPartModal({
 
   const [form, setForm] = useState({ ...EMPTY_FORM, warehouseId: initialWarehouseId });
   const [saving, setSaving] = useState(false);
+  // WEB-H3 (Bug #636, клас Bug #630): синхронний guard проти concurrent double-submit.
+  // Кнопка «Додати» disabled лише за !goodId/!warehouseId/!quantity (не saving) → два
+  // same-tick кліки → 2× POST /parts → дубль запчастини + подвійне резервування залишку.
+  const savingRef = useRef(false);
+  const setSavingBoth = (v: boolean) => {
+    savingRef.current = v;
+    setSaving(v);
+  };
   const [error, setError] = useState('');
   const [goodDisplay, setGoodDisplay] = useState('');
   const [goodUoMs, setGoodUoMs] = useState<GoodUoM[]>([]);
@@ -201,7 +209,8 @@ export function WorkOrderAddPartModal({
   }, [dirty, onClose]);
 
   const handleAdd = async () => {
-    setSaving(true);
+    if (savingRef.current) return;
+    setSavingBoth(true);
     setError('');
     try {
       await apiFetch(`/work-orders/${workOrderId}/parts`, {
@@ -223,7 +232,7 @@ export function WorkOrderAddPartModal({
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
-      setSaving(false);
+      setSavingBoth(false);
     }
   };
 
