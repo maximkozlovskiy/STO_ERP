@@ -1786,6 +1786,12 @@ model Payment {
   @@index([orgId, counterpartyId, createdAt])
   // For unfiltered list (no counterpartyId): orgId + createdAt DESC + take
   @@index([orgId, createdAt])
+  // sto-optimize (2026-09-06): invoices.getLinkedCounts робить groupBy(by: invoiceId,
+  // where invoiceId IN [...до 500], orgId) на КОЖНУ сторінку списку рахунків. FK
+  // payments.invoiceId мав лише FK-constraint (Postgres не індексує FK автоматично) →
+  // org-wide seq/index-only scan по orgId + per-row invoiceId filter. Covering index
+  // по (orgId, invoiceId) робить groupBy index-only.
+  @@index([orgId, invoiceId])
   @@map("payments")
 }
 
