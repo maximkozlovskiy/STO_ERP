@@ -3,10 +3,6 @@ import { apiFetch, setToken } from './api';
 
 const TOKEN_KEY = 'sto_access_token';
 
-export function getToken(): string | null {
-  return null; // synchronous stub — use loadToken() on startup
-}
-
 export async function loadToken(): Promise<string | null> {
   const token = await SecureStore.getItemAsync(TOKEN_KEY);
   if (token) setToken(token);

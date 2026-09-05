@@ -1,4 +1,4 @@
-import { getToken } from './auth';
+import { getAccessToken } from './api';
 import { Platform } from 'react-native';
 
 const BASE_URL = Platform.select({
@@ -17,7 +17,7 @@ export async function uploadWorkOrderPhoto(
   uri: string,
   filename: string,
 ): Promise<UploadedPhoto> {
-  const token = getToken();
+  const token = getAccessToken();
   const formData = new FormData();
   formData.append('file', {
     uri,
