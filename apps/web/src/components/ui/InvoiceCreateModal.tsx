@@ -135,9 +135,6 @@ export function InvoiceCreateModal({
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const { minimizeModal } = useTabBarContext();
-  // Базлайн для dirty-детекції: стає true після того, як початковий стан
-  // (reset/load) осів; лише ПІСЛЯ цього зміни form/lines позначають форму брудною.
-  const baselineReadyRef = useRef(false);
 
   const [form, setForm] = useState({
     counterpartyId: '',
@@ -175,6 +172,10 @@ export function InvoiceCreateModal({
   // створити ДРУГИЙ рахунок. Зберігаємо id першого успіху й дошиваємо лише
   // ще-не-збережені рядки (їх видаляємо зі state після кожного успішного POST).
   const createdInvoiceRef = useRef<{ id: string; number: string } | null>(null);
+  // Value-based dirty-детекція: чи вже захоплено «чистий» базлайн.
+  const baselineCapturedRef = useRef(false);
+  // Edit-режим: true після завершення першого завантаження (гейт базлайну).
+  const [editLoaded, setEditLoaded] = useState(false);
 
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
@@ -197,13 +198,31 @@ export function InvoiceCreateModal({
     return () => document.removeEventListener('mousedown', handler);
   }, [statusMenuOpen]);
 
+  // Серіалізований відбиток значущих полів форми. Value-based dirty-детекція
+  // порівнює цей рядок із базлайном — тому ре-рендер, що дає form/lines новий
+  // reference з тими самими значеннями, НЕ породжує хибний «Є незбережені зміни».
+  const formSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        counterpartyId: form.counterpartyId,
+        invoiceType: form.invoiceType,
+        dueDate: form.dueDate,
+        documentDate: form.documentDate,
+        notes: form.notes,
+        lines: lines.map(l => ({
+          description: l.description,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+        })),
+      }),
+    [form, lines],
+  );
+
   // Reset on open
   useEffect(() => {
     if (!open) return;
-    // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
-    // доки початковий стан (create-reset нижче або edit-load) не осів.
-    baselineReadyRef.current = false;
     dirty.resetDirty();
+    setEditLoaded(false);
     setError('');
     setStatusMenuOpen(false);
     setHeaderCollapsed(false);
@@ -225,22 +244,32 @@ export function InvoiceCreateModal({
         notes: '',
       });
       setCounterpartyDisplay('');
-      // Create-режим: базлайн готовий після того, як цей setState-батч застосується.
-      const t = setTimeout(() => {
-        baselineReadyRef.current = true;
-      }, 0);
-      return () => clearTimeout(t);
     }
-    // Edit-режим: базлайн вмикається у load-ефекті після успішного завантаження.
+    // Базлайн (create або edit) захоплюється у окремому ефекті нижче після
+    // осідання стану — value-based, тому без setTimeout-гонки.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, invoiceId]);
 
-  // Dirty-детектор: будь-яка зміна form/lines ПІСЛЯ осідання базлайну → форма брудна.
-  // Замінює десятки точкових dirty.markDirty() у onChange (Invoice — велика модалка).
+  // Захоплення базлайну + dirty-детекція (value-based).
+  // Create: базлайн — перший snapshot після reset (порожня форма).
+  // Edit: базлайн — snapshot ПІСЛЯ завершення завантаження (editLoaded=true).
+  // `loading` стартує як false, тож гейтимо на явному editLoaded, інакше базлайн
+  // захопиться на порожній формі до старту load-ефекту, а завантажені дані згодом
+  // хибно позначать форму брудною.
   useEffect(() => {
-    if (!open || !baselineReadyRef.current) return;
-    dirty.markDirty();
+    if (!open) {
+      baselineCapturedRef.current = false;
+      return;
+    }
+    if (isEditMode && !editLoaded) return;
+    if (!baselineCapturedRef.current) {
+      baselineCapturedRef.current = true;
+      dirty.captureBaseline(formSnapshot);
+      return;
+    }
+    dirty.syncDirty(formSnapshot);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, lines, open]);
+  }, [open, isEditMode, editLoaded, formSnapshot]);
 
   // Load invoice data in edit mode
   useEffect(() => {
@@ -280,10 +309,9 @@ export function InvoiceCreateModal({
       .finally(() => {
         if (cancelled) return;
         setLoading(false);
-        // Базлайн готовий після осідання завантаженого стану (наступний тік).
-        setTimeout(() => {
-          baselineReadyRef.current = true;
-        }, 0);
+        // Позначаємо завантаження завершеним — value-based ефект захопить базлайн
+        // на фактично завантажених даних (не на порожній формі).
+        setEditLoaded(true);
       });
     return () => {
       cancelled = true;

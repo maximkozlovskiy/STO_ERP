@@ -196,14 +196,19 @@ export function StockDocumentCreateModal({
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
-  // Базлайн для dirty-детекції: стає true після того, як початковий стан
-  // (reset/load) осів; лише ПІСЛЯ цього зміни form/lines позначають форму брудною.
-  const baselineReadyRef = useRef(false);
-  // Bug #639: pending програмні авто-вибори (єдиний branch/warehouse вантажаться
-  // асинхронно). Dirty-детектор пропускає зміну, доки form.branchId/warehouseId
-  // збігаються з цими авто-значеннями — щоб не позначати чисту форму брудною, коли
-  // авто-вибір осідає ПІСЛЯ озброєння базлайну. Спорожняється по мірі споживання.
-  const autoDefaultsRef = useRef<{ branchId?: string; warehouseId?: string }>({});
+  // Value-based dirty-детекція: базлайн — серіалізований відбиток «чистої» форми.
+  // Замінює крихкий baselineReadyRef + setTimeout(0) (гонка macrotask-прапорця з
+  // відкладеним flush passive-ефектів React → хибний «Є незбережені зміни» на
+  // чистій формі). baselineCapturedRef — чи вже захоплено початковий базлайн.
+  const baselineCapturedRef = useRef(false);
+  // Bug #639: авто-вибір єдиного branch/warehouse — програмна зміна значень
+  // (не дія користувача). Ефект авто-вибору піднімає цей прапорець, і наступний
+  // прогін dirty-детектора згортає нове значення у базлайн замість dirty.
+  const rebaselineRef = useRef(false);
+  // Edit-режим: true після завершення першого завантаження (гейт базлайну).
+  // `loading` стартує як false, тож без цього базлайн міг би захопитись на порожній
+  // формі до старту load-ефекту, а завантажені дані згодом хибно позначили б dirty.
+  const [editLoaded, setEditLoaded] = useState(false);
 
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
@@ -254,13 +259,39 @@ export function StockDocumentCreateModal({
       .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження складів'));
   }, [open]);
 
+  // Серіалізований відбиток значущих полів. Value-based dirty-детекція порівнює
+  // цей рядок із базлайном — ре-рендер із новим reference, але тими самими
+  // значеннями, НЕ позначає форму брудною.
+  const formSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        type: form.type,
+        branchId: form.branchId,
+        warehouseId: form.warehouseId,
+        targetWarehouseId: form.targetWarehouseId,
+        purchaseOrderId: form.purchaseOrderId,
+        notes: form.notes,
+        documentDate: form.documentDate,
+        lines: lines.map(l => ({
+          goodId: l.goodId,
+          quantity: l.quantity,
+          price: l.price,
+        })),
+      }),
+    [form, lines],
+  );
+
   // Reset on open
   useEffect(() => {
-    if (!open) return;
-    // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
-    // доки початковий стан (create-reset нижче або edit-load) не осів.
-    baselineReadyRef.current = false;
-    autoDefaultsRef.current = {};
+    if (!open) {
+      baselineCapturedRef.current = false;
+      rebaselineRef.current = false;
+      setEditLoaded(false);
+      return;
+    }
+    baselineCapturedRef.current = false;
+    rebaselineRef.current = false;
+    setEditLoaded(false);
     dirty.resetDirty();
     setError('');
     setStatusMenuOpen(false);
@@ -281,35 +312,32 @@ export function StockDocumentCreateModal({
         notes: '',
         documentDate: kyivToday(),
       });
-      // Create-режим: базлайн готовий після того, як цей setState-батч застосується.
-      const t = setTimeout(() => {
-        baselineReadyRef.current = true;
-      }, 0);
-      return () => clearTimeout(t);
     }
-    // Edit-режим: базлайн вмикається у load-ефекті після успішного завантаження.
-  }, [open, stockDocumentId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Dirty-детектор: будь-яка зміна form/lines ПІСЛЯ осідання базлайну → форма брудна.
-  // Bug #639: пропускаємо програмні авто-вибори branch/warehouse, що осіли після
-  // базлайну. Кожне авто-значення споживається один раз; ручна зміна цих полів згодом
-  // (значення відрізняється від збереженого auto) уже нормально позначає форму брудною.
-  useEffect(() => {
-    if (!open || !baselineReadyRef.current) return;
-    const auto = autoDefaultsRef.current;
-    let consumed = false;
-    if (auto.branchId !== undefined && form.branchId === auto.branchId) {
-      delete auto.branchId;
-      consumed = true;
-    }
-    if (auto.warehouseId !== undefined && form.warehouseId === auto.warehouseId) {
-      delete auto.warehouseId;
-      consumed = true;
-    }
-    if (consumed) return;
-    dirty.markDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, lines, open]);
+  }, [open, stockDocumentId]);
+
+  // Value-based dirty-детекція + захоплення базлайну.
+  // Create: базлайн — перший snapshot після reset (порожня форма). Далі кожна
+  // зміна значень порівнюється з базлайном. Програмні авто-вибори branch/warehouse
+  // згортаються у базлайн окремими ефектами нижче (rebaselineRef), доки форма
+  // ще чиста. Edit: базлайн захоплюється після завершення завантаження.
+  useEffect(() => {
+    if (!open) return;
+    if (isEditMode && !editLoaded) return;
+    if (!baselineCapturedRef.current) {
+      baselineCapturedRef.current = true;
+      dirty.captureBaseline(formSnapshot);
+      return;
+    }
+    if (rebaselineRef.current) {
+      // Програмна зміна (авто-вибір) поки форма чиста → пересуваємо базлайн, не dirty.
+      rebaselineRef.current = false;
+      dirty.captureBaseline(formSnapshot);
+      return;
+    }
+    dirty.syncDirty(formSnapshot);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isEditMode, editLoaded, formSnapshot]);
 
   // Load document in edit mode
   useEffect(() => {
@@ -351,10 +379,9 @@ export function StockDocumentCreateModal({
       .finally(() => {
         if (cancelled) return;
         setLoading(false);
-        // Базлайн готовий після осідання завантаженого стану (наступний тік).
-        setTimeout(() => {
-          baselineReadyRef.current = true;
-        }, 0);
+        // Позначаємо завантаження завершеним — value-based ефект захопить базлайн
+        // на фактично завантажених даних (не на порожній формі).
+        setEditLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -367,13 +394,13 @@ export function StockDocumentCreateModal({
   }, [showLineInput]);
 
   // Auto-select single branch/warehouse
-  // Bug #639: якщо авто-вибір осідає ПІСЛЯ базлайну — фіксуємо його як програмну зміну
-  // (autoDefaultsRef), щоб dirty-детектор пропустив і не показав хибний діалог.
+  // Bug #639: авто-вибір — програмна зміна. Якщо базлайн уже захоплено, піднімаємо
+  // rebaselineRef, і dirty-детектор згорне це значення у базлайн (не dirty).
   useEffect(() => {
     if (branches.length === 1) {
       setForm(f => {
         if (f.branchId) return f;
-        if (baselineReadyRef.current) autoDefaultsRef.current.branchId = branches[0].id;
+        if (baselineCapturedRef.current) rebaselineRef.current = true;
         return { ...f, branchId: branches[0].id };
       });
     }
@@ -383,7 +410,7 @@ export function StockDocumentCreateModal({
     if (warehouses.length === 1) {
       setForm(f => {
         if (f.warehouseId) return f;
-        if (baselineReadyRef.current) autoDefaultsRef.current.warehouseId = warehouses[0].id;
+        if (baselineCapturedRef.current) rebaselineRef.current = true;
         return { ...f, warehouseId: warehouses[0].id };
       });
     }

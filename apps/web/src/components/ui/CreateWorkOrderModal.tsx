@@ -403,13 +403,20 @@ export function CreateWorkOrderModal({
   // Refs ensure handleModalClose sees sync state, not stale closure.
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
-  // Базлайн для dirty-детекції: стає true після того, як початковий стан
-  // (reset/load) осів; лише ПІСЛЯ цього зміни form/lines/parts позначають форму брудною.
-  const baselineReadyRef = useRef(false);
-  // Bug #639: id філії, встановленої програмним async авто-вибором (єдина філія
-  // вантажиться асинхронно). Dirty-детектор пропускає рівно цю зміну, щоб не позначати
-  // чисту форму брудною, коли авто-вибір осідає ПІСЛЯ озброєння базлайну. null → скипу немає.
-  const autoBranchRef = useRef<string | null>(null);
+  // Value-based dirty-детекція: базлайн — серіалізований відбиток «чистої» форми.
+  // Замінює крихкий baselineReadyRef + setTimeout(0) (гонка macrotask-прапорця з
+  // відкладеним flush passive-ефектів React → хибний «Є незбережені зміни» на
+  // чистій формі). baselineCapturedRef — чи вже захоплено початковий базлайн.
+  const baselineCapturedRef = useRef(false);
+  // Bug #639: async авто-вибір єдиної філії — програмна зміна. Ефект авто-вибору
+  // піднімає цей прапорець, і наступний прогін dirty-детектора згортає нове значення
+  // у базлайн замість dirty.
+  const rebaselineRef = useRef(false);
+  // Edit-режим: true після завершення першого завантаження (гейт базлайну).
+  // `editModeLoading` стартує як false, а load-ефект визначено ПІСЛЯ baseline-ефекту,
+  // тож без цього прапорця базлайн захопився б на порожній формі, а завантажені дані
+  // згодом хибно позначили б dirty.
+  const [editLoaded, setEditLoaded] = useState(false);
   // track initial planned dates loaded from WO so we can detect
   // whether they actually changed before prompting the calendar-sync dialog.
   // Without this every save() — even one that only touches description or
@@ -647,11 +654,15 @@ export function CreateWorkOrderModal({
   // скидає transient UI до neutral baseline, потім edit-mode useEffect завантажує
   // фактичні дані WO-B.
   useEffect(() => {
-    if (!open) return;
-    // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
-    // доки початковий стан (create-reset нижче або edit-load) не осів.
-    baselineReadyRef.current = false;
-    autoBranchRef.current = null;
+    if (!open) {
+      baselineCapturedRef.current = false;
+      rebaselineRef.current = false;
+      setEditLoaded(false);
+      return;
+    }
+    baselineCapturedRef.current = false;
+    rebaselineRef.current = false;
+    setEditLoaded(false);
     dirty.resetDirty();
     setError('');
     setStatusMenuOpen(false);
@@ -704,29 +715,57 @@ export function CreateWorkOrderModal({
       loadVehicles(prefill.counterpartyId, prefill.vehicleId);
       loadContracts(prefill.counterpartyId);
     }
-    if (!isEditMode) {
-      // Create-режим: базлайн готовий після того, як цей setState-батч застосується.
-      const t = setTimeout(() => {
-        baselineReadyRef.current = true;
-      }, 0);
-      return () => clearTimeout(t);
-    }
-    // Edit-режим: базлайн вмикається у load-ефекті після успішного завантаження.
+    // Базлайн (create або edit) захоплюється value-based ефектом нижче після
+    // осідання стану — без setTimeout-гонки.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, workOrderId]);
 
-  // Dirty-детектор: будь-яка зміна form/lines/parts ПІСЛЯ осідання базлайну → форма брудна.
-  // Bug #639: пропускаємо одну програмну зміну — async авто-вибір єдиної філії, що осів
-  // після базлайну (form.branchId щойно став auto-значенням). Спрацьовує рівно раз.
+  // Серіалізований відбиток значущих полів. Value-based dirty-детекція порівнює
+  // цей рядок із базлайном — ре-рендер із новим reference, але тими самими
+  // значеннями, НЕ позначає форму брудною.
+  const formSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        form,
+        lines: lines.map(l => ({
+          workId: l.workId,
+          employeeId: l.employeeId,
+          normoHours: l.normoHours,
+          actualHours: l.actualHours,
+          price: l.price,
+        })),
+        parts: parts.map(p => ({
+          goodId: p.goodId,
+          warehouseId: p.warehouseId,
+          quantity: p.quantity,
+          price: p.price,
+          unitOfMeasureId: p.unitOfMeasureId,
+        })),
+      }),
+    [form, lines, parts],
+  );
+
+  // Value-based dirty-детекція + захоплення базлайну.
+  // Create: базлайн — перший snapshot після reset (з prefill). Edit: після
+  // завершення завантаження (editLoaded=true). Bug #639: async авто-вибір
+  // єдиної філії — програмна зміна; ефект авто-вибору піднімає rebaselineRef, і тут
+  // нове значення згортається у базлайн замість dirty.
   useEffect(() => {
-    if (!open || !baselineReadyRef.current) return;
-    if (autoBranchRef.current !== null && form.branchId === autoBranchRef.current) {
-      autoBranchRef.current = null;
+    if (!open) return;
+    if (isEditMode && !editLoaded) return;
+    if (!baselineCapturedRef.current) {
+      baselineCapturedRef.current = true;
+      dirty.captureBaseline(formSnapshot);
       return;
     }
-    dirty.markDirty();
+    if (rebaselineRef.current) {
+      rebaselineRef.current = false;
+      dirty.captureBaseline(formSnapshot);
+      return;
+    }
+    dirty.syncDirty(formSnapshot);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, lines, parts, open]);
+  }, [open, isEditMode, editLoaded, formSnapshot]);
 
   // Edit mode — load existing WO data when modal opens or workOrderId changes.
   // Cancellation guard: at TabBar restore time, the user can click tab B while A's
@@ -810,10 +849,9 @@ export function CreateWorkOrderModal({
       .finally(() => {
         if (cancelled) return;
         setEditModeLoading(false);
-        // Базлайн готовий після осідання завантаженого стану (наступний тік).
-        setTimeout(() => {
-          baselineReadyRef.current = true;
-        }, 0);
+        // Позначаємо завантаження завершеним — value-based ефект захопить базлайн
+        // на фактично завантажених даних (не на порожній формі).
+        setEditLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -854,9 +892,9 @@ export function CreateWorkOrderModal({
     if (!open || isEditMode || branches.length !== 1) return;
     setForm(f => {
       if (f.branchId) return f;
-      // Bug #639: авто-вибір після базлайну → фіксуємо як програмну зміну, щоб
-      // dirty-детектор її пропустив (інакше хибний діалог «незбережені зміни»).
-      if (baselineReadyRef.current) autoBranchRef.current = branches[0].id;
+      // Bug #639: авто-вибір після базлайну → програмна зміна; піднімаємо
+      // rebaselineRef, щоб dirty-детектор згорнув її у базлайн (не dirty).
+      if (baselineCapturedRef.current) rebaselineRef.current = true;
       return { ...f, branchId: branches[0].id };
     });
   }, [branches, open, isEditMode]);

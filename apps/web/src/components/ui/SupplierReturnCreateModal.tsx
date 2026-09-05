@@ -156,12 +156,17 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   // вхід одразу повертається. Симетрія з Invoice/PO/Stock/WorkOrder модалками.
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
-  // Базлайн для dirty-детекції: стає true після того, як початковий стан
-  // (reset/load) осів; лише ПІСЛЯ цього зміни полів/lines позначають форму брудною.
-  const baselineReadyRef = useRef(false);
-  // Bug #639: id складу, встановленого програмним авто-вибором (єдиний склад). Dirty-
-  // детектор пропускає рівно цю зміну, щоб не позначати чисту форму брудною. null → немає.
-  const autoWarehouseRef = useRef<string | null>(null);
+  // Value-based dirty-детекція: базлайн — серіалізований відбиток «чистої» форми.
+  // Замінює крихкий baselineReadyRef + setTimeout(0) (гонка macrotask-прапорця з
+  // відкладеним flush passive-ефектів React → хибний «Є незбережені зміни» на
+  // чистій формі). baselineCapturedRef — чи вже захоплено початковий базлайн.
+  const baselineCapturedRef = useRef(false);
+  // Bug #639: async авто-вибір єдиного складу — програмна зміна. Ефект авто-вибору
+  // піднімає цей прапорець, і наступний прогін dirty-детектора згортає нове значення
+  // у базлайн замість dirty.
+  const rebaselineRef = useRef(false);
+  // Edit-режим: true після завершення завантаження — гейт для захоплення базлайну.
+  const [editLoaded, setEditLoaded] = useState(false);
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
     setSaving(v);
@@ -224,10 +229,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   // скасовував би переозброєння й вимикав guard узагалі).
   useEffect(() => {
     if (warehouses.length === 1 && !warehouseId && !editId) {
-      // Скип потрібен лише якщо базлайн УЖЕ озброєний (авто-вибір осів пізніше за
-      // setTimeout(0)). Якщо базлайн ще не готовий — зміна природно ввійде у чистий
-      // знімок, скип не потрібен (і був би шкідливим — з'їв би першу ручну правку).
-      if (baselineReadyRef.current) autoWarehouseRef.current = warehouses[0].id;
+      // Bug #639: авто-вибір — програмна зміна; піднімаємо rebaselineRef, щоб
+      // dirty-детектор згорнув нове значення у базлайн (не dirty).
+      if (baselineCapturedRef.current) rebaselineRef.current = true;
       setWarehouseId(warehouses[0].id);
     }
   }, [warehouses, warehouseId, editId]);
@@ -251,10 +255,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       .catch(() => {})
       .finally(() => {
         if (!mountedRef.current) return;
-        // Базлайн готовий після осідання завантаженого стану (наступний тік).
-        setTimeout(() => {
-          baselineReadyRef.current = true;
-        }, 0);
+        // Позначаємо завантаження завершеним — value-based ефект захопить базлайн.
+        setEditLoaded(true);
       });
   }, [open, editId]);
 
@@ -279,40 +281,57 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     if (!open) resetForm();
   }, [open, resetForm]);
 
-  // Baseline для dirty-детекції на відкриття модалки.
+  // Baseline reset на відкриття модалки.
   useEffect(() => {
-    if (!open) return;
-    // Форма ще не брудна: скидаємо прапорець і блокуємо dirty-детектор доти,
-    // доки початковий стан (create-defaults або edit-load) не осів.
-    baselineReadyRef.current = false;
-    autoWarehouseRef.current = null;
-    dirty.resetDirty();
-    if (!editId) {
-      // Create-режим: стан вже містить reset-defaults (resetForm на попереднє закриття);
-      // базлайн готовий на наступному тіку.
-      const t = setTimeout(() => {
-        baselineReadyRef.current = true;
-      }, 0);
-      return () => clearTimeout(t);
+    if (!open) {
+      baselineCapturedRef.current = false;
+      rebaselineRef.current = false;
+      setEditLoaded(false);
+      return;
     }
-    // Edit-режим: базлайн вмикається у load-ефекті після успішного завантаження.
+    baselineCapturedRef.current = false;
+    rebaselineRef.current = false;
+    setEditLoaded(false);
+    dirty.resetDirty();
+    // Базлайн (create або edit) захоплюється value-based ефектом нижче.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editId]);
 
-  // Dirty-детектор: будь-яка зміна редагованих полів/lines ПІСЛЯ осідання базлайну → брудна.
-  // Bug #639: одна конкретна програмна зміна — авто-вибір єдиного складу, що осів ПІСЛЯ
-  // базлайну — пропускається (autoWarehouseRef), щоб не позначати чисту форму брудною.
-  // Спрацьовує рівно раз: після пропуску ref скидається, тож РУЧНА зміна складу згодом
-  // (або будь-яке інше поле) вже нормально позначає форму брудною.
+  // Серіалізований відбиток значущих полів. Value-based dirty-детекція порівнює
+  // цей рядок із базлайном — ре-рендер із новим reference НЕ позначає форму брудною.
+  const formSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        supplierId,
+        warehouseId,
+        purchaseOrderId,
+        notes,
+        documentDate,
+        lines: lines.map(l => ({ goodId: l.goodId, quantity: l.quantity, price: l.price })),
+      }),
+    [supplierId, warehouseId, purchaseOrderId, notes, documentDate, lines],
+  );
+
+  // Value-based dirty-детекція + захоплення базлайну.
+  // Create: базлайн — перший snapshot після reset. Edit: після editLoaded=true.
+  // Bug #639: async авто-вибір єдиного складу — програмна зміна; rebaselineRef
+  // згортає її у базлайн замість dirty.
   useEffect(() => {
-    if (!open || !baselineReadyRef.current) return;
-    if (autoWarehouseRef.current !== null && warehouseId === autoWarehouseRef.current) {
-      autoWarehouseRef.current = null;
+    if (!open) return;
+    if (isEdit && !editLoaded) return;
+    if (!baselineCapturedRef.current) {
+      baselineCapturedRef.current = true;
+      dirty.captureBaseline(formSnapshot);
       return;
     }
-    dirty.markDirty();
+    if (rebaselineRef.current) {
+      rebaselineRef.current = false;
+      dirty.captureBaseline(formSnapshot);
+      return;
+    }
+    dirty.syncDirty(formSnapshot);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supplierId, supplierName, warehouseId, purchaseOrderId, notes, documentDate, lines, open]);
+  }, [open, isEdit, editLoaded, formSnapshot]);
 
   // ── Status transitions ─────────────────────────────────────────────────────
   // Backend FSM is linear-forward: DRAFT → CONFIRMED or DRAFT → CANCELLED; both terminal.
