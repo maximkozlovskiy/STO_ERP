@@ -13,6 +13,7 @@
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
+import { InvoiceCreateModal } from '../InvoiceCreateModal';
 import { PurchaseOrderCreateModal } from '../PurchaseOrderCreateModal';
 import { StockDocumentCreateModal } from '../StockDocumentCreateModal';
 import { renderWithQueryClient } from '../../../__tests__/query-utils';
@@ -41,7 +42,17 @@ vi.mock('@/lib/ref-cache', () => ({
 }));
 
 vi.mock('@/hooks/useUiFeatures', () => ({
-  useUiFeatures: () => ({ toastEnabled: false, unsavedGuardEnabled: true }),
+  useUiFeatures: () => ({
+    toastEnabled: false,
+    unsavedGuardEnabled: true,
+    keyboardShortcutsEnabled: false,
+  }),
+}));
+
+// InvoiceCreateModal reads the TabBar context (minimize-to-tab). Provide a stub so
+// the modal mounts standalone in jsdom.
+vi.mock('@/contexts/TabBarContext', () => ({
+  useTabBarContext: () => ({ minimizeModal: vi.fn() }),
 }));
 
 vi.mock('@/lib/format', async () => ({
@@ -70,6 +81,38 @@ describe('PurchaseOrderCreateModal — unsaved-guard baseline (Ф5, Bug #639)', 
 
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/warehouses'));
     // Дати авто-вибору осісти (async load → auto-select → re-render).
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 60));
+    });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Є незбережені зміни')).not.toBeInTheDocument();
+  });
+});
+
+describe('InvoiceCreateModal — unsaved-guard baseline (Ф5, value-based)', () => {
+  // Регресія до value-based dirty-детекції (E2E invoices.spec.ts:127 «модалка не
+  // закривається по Escape»). InvoiceCreateModal НЕ має авто-вибору, тож старий
+  // autoDefaultsRef-скіп його не покривав — і все одно чиста форма позначалась
+  // брудною: ре-рендер (async useUiFeatures/useTabBar) давав `form` новий reference
+  // ПІСЛЯ setTimeout(0)-базлайну → markDirty → хибний діалог «Є незбережені зміни».
+  // Value-based порівняння знімків усуває цей клас: reference-only churn не dirty.
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path.startsWith('/counterparties')) return Promise.resolve({ items: [] });
+      return Promise.resolve({ items: [] });
+    });
+  });
+
+  it('чиста форма (нічого не введено) → Escape закриває без діалогу «Є незбережені зміни»', async () => {
+    const onClose = vi.fn();
+    renderWithQueryClient(<InvoiceCreateModal open onClose={onClose} onSaved={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText('Новий рахунок')).toBeInTheDocument());
+    // Дати всім async-ре-рендерам (features/context/reset) осісти.
     await act(async () => {
       await new Promise(r => setTimeout(r, 60));
     });

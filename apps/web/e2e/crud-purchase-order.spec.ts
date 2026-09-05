@@ -299,6 +299,14 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
 
+    // DetailPanelToggle стандартно УВІМКНЕНИЙ (commit 6405c3a9/5433f932): клік по рядку
+    // тоді відкриває бокову панель, а не edit-модалку. Щоб перевірити edit-модалку —
+    // спершу вимикаємо бокову панель (aria-label «Сховати бокову панель» коли увімкнена).
+    const panelToggle = page.getByRole('button', { name: 'Сховати бокову панель' });
+    if (await panelToggle.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await panelToggle.click();
+    }
+
     // Клік на комірку з номером PO (перша td з checkbox має stopPropagation якщо bulk enabled,
     // комірки з кнопками дій теж мають stopPropagation — а number cell завжди propagate)
     await row.locator(`td:has-text("${po.number}")`).first().click();
@@ -380,6 +388,14 @@ test.describe('Замовлення постачальнику — CRUD', () => 
 
     const row = page.locator(`table tbody tr:has-text("${po.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
+
+    // DetailPanelToggle стандартно УВІМКНЕНИЙ (commit 6405c3a9): клік по рядку тоді
+    // відкриває бокову панель, а не edit-модалку. Вимикаємо панель, щоб рядок відкрив
+    // edit-модалку (aria-label «Сховати бокову панель» коли увімкнена).
+    const panelToggle = page.getByRole('button', { name: 'Сховати бокову панель' });
+    if (await panelToggle.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await panelToggle.click();
+    }
     await row.locator(`td:has-text("${po.number}")`).first().click();
 
     const modal = page.locator('[role="dialog"]').first();

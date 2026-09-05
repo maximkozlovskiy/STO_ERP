@@ -32,6 +32,14 @@ test.describe('CRM — CRUD контрагента', () => {
     const saveBtn = modal.locator('button:has-text("Зберегти")');
     await expect(saveBtn).toBeEnabled({ timeout: 5_000 });
     await saveBtn.click();
+    // Після створення картка НЕ закривається — перемикається в edit-режим
+    // (commit 9d61dfaa: «картка лишається відкритою в edit-режимі», з'являються
+    // вкладки Авто/Договори/Історія). Дочекатись переходу заголовка, потім закрити
+    // (форма чиста після save → Escape без діалогу «незбережені зміни»).
+    await expect(modal.locator('h2:has-text("Редагування контрагента")')).toBeVisible({
+      timeout: 10_000,
+    });
+    await page.keyboard.press('Escape');
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
     // Пошук щоб знайти новий запис (список може бути пагінований)
@@ -77,6 +85,12 @@ test.describe('CRM — CRUD контрагента', () => {
     const saveBtn = modal.locator('button:has-text("Зберегти")');
     await expect(saveBtn).toBeEnabled({ timeout: 5_000 });
     await saveBtn.click();
+    // Після створення картка НЕ закривається — перемикається в edit-режим
+    // (commit 9d61dfaa). Дочекатись переходу заголовка, потім закрити (форма чиста).
+    await expect(modal.locator('h2:has-text("Редагування контрагента")')).toBeVisible({
+      timeout: 10_000,
+    });
+    await page.keyboard.press('Escape');
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
     // Пошук щоб знайти новий запис
@@ -116,6 +130,11 @@ test.describe('CRM — CRUD контрагента', () => {
     const saveBtn = modal.locator('button:has-text("Зберегти")');
     await expect(saveBtn).toBeEnabled({ timeout: 5_000 });
     await saveBtn.click();
+    // Після створення картка перемикається в edit-режим (commit 9d61dfaa) — закриваємо.
+    await expect(modal.locator('h2:has-text("Редагування контрагента")')).toBeVisible({
+      timeout: 10_000,
+    });
+    await page.keyboard.press('Escape');
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
     // Пошук щоб знайти запис у пагінованому списку

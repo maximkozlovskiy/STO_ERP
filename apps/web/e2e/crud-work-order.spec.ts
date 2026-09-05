@@ -127,7 +127,13 @@ test.describe('Наряди — CRUD', () => {
     await modal.getByPlaceholder('Заміна масла, колодок...').fill('Тест');
     await expect(modal.locator('button:has-text("Створити наряд")')).toBeDisabled();
 
+    // Ф5 unsaved-guard: заповнення опису робить форму брудною, тож Escape тепер
+    // показує діалог «Є незбережені зміни» (замість миттєвого закриття). Це навмисна
+    // поведінка — підтверджуємо «Покинути», після чого модалка закривається.
     await page.keyboard.press('Escape');
+    const discardDialog = page.getByRole('dialog').filter({ hasText: 'Є незбережені зміни' });
+    await expect(discardDialog).toBeVisible({ timeout: 5_000 });
+    await discardDialog.getByRole('button', { name: 'Покинути' }).click();
     await expect(modal).not.toBeVisible({ timeout: 5_000 });
   });
 });
