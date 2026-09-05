@@ -1030,6 +1030,30 @@ export class InvoicesService {
       }),
     ]);
 
+    // Bug #A: count має відповідати detail (getLinkedDocuments фільтрує deletedAt:null).
+    // Наявність FK ≠ наявність живого запису: контрагента можна soft-delete-нути поки
+    // на нього посилається PAID-рахунок (delete-guard блокує лише відкриті рахунки).
+    // Без цієї перевірки badge показував би «1 контрагент», а панель — порожню секцію.
+    // workOrder-ів у списку рахунків мало посилань → одна findMany на живі workOrderId.
+    const woIds = [...new Set(invoices.map(i => i.workOrderId).filter((x): x is string => !!x))];
+    const cpIds = [...new Set(invoices.map(i => i.counterpartyId).filter((x): x is string => !!x))];
+    const [liveWo, liveCp] = await Promise.all([
+      woIds.length
+        ? this.prisma.workOrder.findMany({
+            where: { id: { in: woIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      cpIds.length
+        ? this.prisma.counterparty.findMany({
+            where: { id: { in: cpIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const liveWoSet = new Set(liveWo.map(w => w.id));
+    const liveCpSet = new Set(liveCp.map(c => c.id));
+
     const result: Record<string, { workOrder: number; payments: number; counterparty: number }> =
       {};
     for (const id of ids) {
@@ -1038,8 +1062,8 @@ export class InvoicesService {
     invoices.forEach(inv => {
       const bucket = result[inv.id];
       if (!bucket) return;
-      bucket.workOrder = inv.workOrderId ? 1 : 0;
-      bucket.counterparty = inv.counterpartyId ? 1 : 0;
+      bucket.workOrder = inv.workOrderId && liveWoSet.has(inv.workOrderId) ? 1 : 0;
+      bucket.counterparty = inv.counterpartyId && liveCpSet.has(inv.counterpartyId) ? 1 : 0;
     });
     payments.forEach(r => {
       if (r.invoiceId && result[r.invoiceId]) result[r.invoiceId].payments = r._count.id;

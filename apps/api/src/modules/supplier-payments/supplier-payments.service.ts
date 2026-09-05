@@ -970,6 +970,51 @@ export class SupplierPaymentsService {
       },
     });
 
+    // Bug #A: count має відповідати detail (getLinkedDocuments фільтрує deletedAt:null для
+    // PO / контрагента / рахунку). Наявність FK ≠ наявність живого запису: постачальника,
+    // банк-рахунок чи касу можна soft-delete-нути поки на них посилається проведена оплата.
+    // Без live-перевірки badge показував би «1», а відповідна секція панелі — порожньо.
+    const poIds = [
+      ...new Set(payments.map(p => p.purchaseOrderId).filter((x): x is string => !!x)),
+    ];
+    const cpIds = [...new Set(payments.map(p => p.supplierId).filter((x): x is string => !!x))];
+    const bankIds = [
+      ...new Set(payments.map(p => p.bankAccountId).filter((x): x is string => !!x)),
+    ];
+    const cashIds = [
+      ...new Set(payments.map(p => p.cashRegisterId).filter((x): x is string => !!x)),
+    ];
+    const [livePo, liveCp, liveBank, liveCash] = await Promise.all([
+      poIds.length
+        ? this.prisma.purchaseOrder.findMany({
+            where: { id: { in: poIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      cpIds.length
+        ? this.prisma.counterparty.findMany({
+            where: { id: { in: cpIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      bankIds.length
+        ? this.prisma.bankAccount.findMany({
+            where: { id: { in: bankIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      cashIds.length
+        ? this.prisma.cashRegister.findMany({
+            where: { id: { in: cashIds }, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const livePoSet = new Set(livePo.map(x => x.id));
+    const liveCpSet = new Set(liveCp.map(x => x.id));
+    const liveBankSet = new Set(liveBank.map(x => x.id));
+    const liveCashSet = new Set(liveCash.map(x => x.id));
+
     const result: Record<string, { purchaseOrder: number; counterparty: number; account: number }> =
       {};
     for (const id of ids) {
@@ -978,9 +1023,12 @@ export class SupplierPaymentsService {
     payments.forEach(sp => {
       const bucket = result[sp.id];
       if (!bucket) return;
-      bucket.purchaseOrder = sp.purchaseOrderId ? 1 : 0;
-      bucket.counterparty = sp.supplierId ? 1 : 0;
-      bucket.account = sp.bankAccountId || sp.cashRegisterId ? 1 : 0;
+      bucket.purchaseOrder = sp.purchaseOrderId && livePoSet.has(sp.purchaseOrderId) ? 1 : 0;
+      bucket.counterparty = sp.supplierId && liveCpSet.has(sp.supplierId) ? 1 : 0;
+      const accountLive =
+        (sp.bankAccountId && liveBankSet.has(sp.bankAccountId)) ||
+        (sp.cashRegisterId && liveCashSet.has(sp.cashRegisterId));
+      bucket.account = accountLive ? 1 : 0;
     });
     return result;
   }

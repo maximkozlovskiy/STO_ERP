@@ -1558,3 +1558,82 @@ describe('PurchaseOrdersService.findAll — sortBy=paymentDate nulls-last (Bug #
     expect(findManyOrderBy()).toEqual({ createdAt: 'desc' });
   });
 });
+
+// ─── Bug #A + edge inputs: getLinkedCounts / getLinkedDocuments ──────────────
+describe('PurchaseOrdersService — linked-documents edge cases', () => {
+  let service: PurchaseOrdersService;
+  let prisma: {
+    purchaseOrder: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
+    supplierPayment: { findMany: ReturnType<typeof vi.fn>; groupBy: ReturnType<typeof vi.fn> };
+    counterparty: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
+  };
+
+  const ORG = 'org-1';
+  const OTHER = 'org-2';
+  const P = '11111111-1111-4111-8111-111111111111';
+  const SUP = '55555555-5555-4555-8555-555555555555';
+
+  beforeEach(async () => {
+    prisma = {
+      purchaseOrder: { findFirst: vi.fn(), findMany: vi.fn() },
+      supplierPayment: { findMany: vi.fn(), groupBy: vi.fn() },
+      counterparty: { findFirst: vi.fn(), findMany: vi.fn() },
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        PurchaseOrdersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: InventoryService, useValue: {} },
+        { provide: SettlementsService, useValue: {} },
+        { provide: DocumentNumberService, useValue: {} },
+        { provide: PricingService, useValue: {} },
+        { provide: SettingsService, useValue: {} },
+      ],
+    }).compile();
+    service = module.get(PurchaseOrdersService);
+  });
+
+  it('getLinkedCounts: zero-count id → присутній з усіма нулями', async () => {
+    prisma.supplierPayment.groupBy.mockResolvedValue([]);
+    prisma.purchaseOrder.findMany.mockResolvedValue([{ id: P, supplierId: SUP }]);
+    prisma.counterparty.findMany.mockResolvedValue([{ id: SUP }]);
+    const res = await service.getLinkedCounts(ORG, [P]);
+    expect(res[P]).toEqual({ supplierPayments: 0, counterparty: 1 });
+  });
+
+  it('getLinkedCounts: duplicate ids keyed by id, лічильник коректний', async () => {
+    prisma.supplierPayment.groupBy.mockResolvedValue([{ purchaseOrderId: P, _count: { id: 2 } }]);
+    prisma.purchaseOrder.findMany.mockResolvedValue([{ id: P, supplierId: SUP }]);
+    prisma.counterparty.findMany.mockResolvedValue([{ id: SUP }]);
+    const res = await service.getLinkedCounts(ORG, [P, P]);
+    expect(Object.keys(res)).toEqual([P]);
+    expect(res[P]).toEqual({ supplierPayments: 2, counterparty: 1 });
+  });
+
+  it('getLinkedCounts: cross-org → нулі, orgId у where', async () => {
+    prisma.supplierPayment.groupBy.mockResolvedValue([]);
+    prisma.purchaseOrder.findMany.mockResolvedValue([]);
+    prisma.counterparty.findMany.mockResolvedValue([]);
+    const res = await service.getLinkedCounts(OTHER, [P]);
+    expect(res[P]).toEqual({ supplierPayments: 0, counterparty: 0 });
+    expect(prisma.supplierPayment.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ orgId: OTHER }) }),
+    );
+  });
+
+  it('Bug #A: soft-deleted постачальник → counterparty count=0', async () => {
+    prisma.supplierPayment.groupBy.mockResolvedValue([]);
+    prisma.purchaseOrder.findMany.mockResolvedValue([{ id: P, supplierId: SUP }]);
+    prisma.counterparty.findMany.mockResolvedValue([]); // SUP soft-deleted
+    const res = await service.getLinkedCounts(ORG, [P]);
+    // Дискримінатор: старий код давав counterparty:1 (po.supplierId ? 1 : 0).
+    expect(res[P].counterparty).toBe(0);
+  });
+
+  it('getLinkedDocuments: cross-org id → порожні секції', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValue(null);
+    const res = await service.getLinkedDocuments(OTHER, P);
+    expect(res).toEqual({ supplierPayments: [], counterparty: [] });
+    expect(prisma.supplierPayment.findMany).not.toHaveBeenCalled();
+  });
+});

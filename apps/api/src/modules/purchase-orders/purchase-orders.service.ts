@@ -982,6 +982,18 @@ export class PurchaseOrdersService {
       }),
     ]);
 
+    // Bug #A: count має відповідати detail. Постачальника можна soft-delete-нути поки
+    // на нього посилається RECEIVED-замовлення (delete-guard блокує лише незакриті PO).
+    // Без перевірки живого контрагента badge показував би «1», а панель — порожньо.
+    const supplierIds = [...new Set(orders.map(o => o.supplierId).filter((x): x is string => !!x))];
+    const liveSuppliers = supplierIds.length
+      ? await this.prisma.counterparty.findMany({
+          where: { id: { in: supplierIds }, orgId, deletedAt: null },
+          select: { id: true },
+        })
+      : [];
+    const liveSupplierSet = new Set(liveSuppliers.map(c => c.id));
+
     const result: Record<string, { supplierPayments: number; counterparty: number }> = {};
     for (const id of ids) {
       result[id] = { supplierPayments: 0, counterparty: 0 };
@@ -992,7 +1004,9 @@ export class PurchaseOrdersService {
       }
     });
     orders.forEach(po => {
-      if (result[po.id]) result[po.id].counterparty = po.supplierId ? 1 : 0;
+      if (result[po.id]) {
+        result[po.id].counterparty = po.supplierId && liveSupplierSet.has(po.supplierId) ? 1 : 0;
+      }
     });
     return result;
   }

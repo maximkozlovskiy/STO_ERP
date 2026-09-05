@@ -2705,3 +2705,97 @@ Backend зміна не ламає існуючих клієнтів (додає
 TypeScript web: 0. Web-suite: 55 файлів / 540 тестів зелені (було 531/9-fail).
 Нові тести: +7 (useSubmitGuard 3, modal nested 2, SupplierReturnDirtyGuard 2,
 DocumentDirtyGuard 2) — усі дискримінуючі (доведено ручним revert-ом).
+
+## Session 2026-09-05 — «пов'язані документи» (Phases A+B) bug hunt
+
+Scope: commits cb9a8e6c, 52b3937f, 00449f17, ffada58e, b5feebeb (feature «пов'язані документи»).
+Sync-agent + review-agent пройшли CLEAN. Ця сесія шукала БАГИ, що вони пропустили,
+через service/component-тести + edge-case reasoning. Playwright MCP недоступний
+(CONNECT_TIMEOUT) — використано unit/service/component + міркування.
+
+### Bug #641 — count/detail неузгодженість для soft-deleted зв'язків у getLinkedCounts
+
+- [x] виправлено
+- **Severity:** MEDIUM
+- **Область:** backend — invoices / purchase-orders / supplier-payments `getLinkedCounts`
+- **Файли:**
+  - `apps/api/src/modules/invoices/invoices.service.ts` (getLinkedCounts)
+  - `apps/api/src/modules/purchase-orders/purchase-orders.service.ts` (getLinkedCounts)
+  - `apps/api/src/modules/supplier-payments/supplier-payments.service.ts` (getLinkedCounts)
+
+**Опис.** `getLinkedCounts` рахував наявність зв'язку за наявністю FK
+(`inv.counterpartyId ? 1 : 0`, `po.supplierId ? 1 : 0`, `bankAccountId ? 1 : 0`),
+тоді як `getLinkedDocuments` тягне сам запис з фільтром `deletedAt: null`. Через це
+badge-лічильник і вміст панелі розходилися: коли пов'язаний контрагент / банк-рахунок /
+каса / PO був **soft-deleted**, badge показував «1», а секція панелі — порожньо.
+
+**Досяжність (не гіпотетична).** Delete-guard контрагента
+(`counterparties.service.ts` remove) блокує видалення лише за **відкритими** документами
+(WO не ARCHIVED/CANCELLED, PO не RECEIVED/CANCELLED, Invoice не PAID/CANCELLED).
+Отже контрагента МОЖНА soft-delete-нути, поки на нього посилається PAID-рахунок або
+RECEIVED-замовлення → badge «1 контрагент» над порожньою секцією. Банк-рахунок/касу
+теж можна soft-delete-нути під проведеною оплатою.
+
+**Фікс.** `getLinkedCounts` тепер робить по одному `findMany({ deletedAt: null })` на
+множину унікальних FK (workOrder/counterparty у invoices; supplier у PO;
+PO/counterparty/bankAccount/cashRegister у supplier-payments) і зараховує «1» лише
+якщо запис реально живий — дзеркалить фільтр `getLinkedDocuments`. Додаткові запити
+батчуються через `{ id: { in: [...unique] } }` + `Promise.all` (без N+1).
+
+**Регресійні тести (дискримінуючі, доведено ручним revert-ом):**
+
+- invoices.service.spec.ts — «Bug #A: soft-deleted контрагент → count=0»
+- purchase-orders.service.spec.ts — «Bug #A: soft-deleted постачальник → counterparty count=0»
+- supplier-payments.service.spec.ts — «Bug #A: soft-deleted bank account → account count=0»,
+  «Bug #A: soft-deleted постачальник → counterparty count=0»
+
+### Перевірені пункти завдання, де БАГІВ НЕ ЗНАЙДЕНО (guard-тести додано)
+
+1. **getLinkedCounts edge inputs** — duplicate ids (map keyed by id → ОК),
+   cross-org ids (findMany scoped by orgId → нулі, витоку нема), zero-count id
+   (`for (const id of ids)` префілить усі нулі → id присутній, не absent).
+   Frontend badge `linkedCounts[inv.id]` + `counts?.[field]` — optional chaining,
+   `undefined` не крешить (invoices/page.tsx:928-933). Guard-тести додано.
+2. **Cross-org getLinkedDocuments** — preload `findFirst({ orgId })` → null →
+   порожні секції, чужі дані не тягнуться. Тести на всі 3 модулі.
+3. **Deep-link edge cases** — non-UUID/порожнє → `UUID_RE.test` фейлить → no-op;
+   валідний неіснуючий UUID → модалка відкривається, `apiFetch` 404 → error-банер
+   у модалці (InvoiceCreateModal.tsx:276,774), не креш; `params.delete('open')`
+   зберігає інші параметри (напр. `tab=returns`); `open`+`openReturn` одночасно на
+   PO — обидві модалки відкриваються (не креш, легкий UX-нюанс — прийнятно).
+4. **Panel missing/extra section key** — `Array.isArray(d[s.key]) ? ... : []` →
+   відсутній ключ = порожня секція; невідомий зайвий ключ ігнорується (ітеруються
+   лише `config.sections`). Component-тести додано (missing / null / extra / empty {}).
+5. **SupplierPayment account section** — без bank і без cash → `account: []` (не креш);
+   soft-deleted bank account → `findFirst({ deletedAt:null })` = null → `account: []`.
+   Тести додано.
+
+### Bug #642 (KNOWN LIMITATION, не фікситься зараз) — same-page ?open= self-nav не спрацьовує
+
+- [ ] відомий ліміт (рішення: документувати, НЕ фіксити)
+- **Severity:** LOW
+- **Область:** frontend — deep-link mount-once ефект (invoices / purchase-orders / stock-documents page.tsx)
+
+**Опис.** Deep-link ефект `?open=<id>` навмисно має `[]` deps + eslint-disable
+(«читаємо ОДНОРАЗОВО на mount»). Якщо користувач уже на сторінці списку і
+`router.push('/invoices?open=<id>')` веде на ТУ САМУ сторінку — компонент не
+ремонтується, ефект не перезапускається → модалка не відкриється (лише зміниться URL).
+
+**Чому НЕ фіксимо зараз.** Проаналізовано всі поточні config-шляхи навігації:
+жоден не веде з панелі на `?open=` ВЛАСНОЇ сторінки. invoices-панель навігує до
+WorkOrder(routed)/payments(no-nav)/Counterparty(routed) — нема invoice→invoice.
+PO-панель → SupplierPayment(routed)/Counterparty(routed) — нема PO→PO. SP-панель →
+PurchaseOrder(`?open=`, ІНША сторінка)/Counterparty(routed) — SP використовує routed
+`/supplier-payments/[id]`, не `?open=`. Тобто баг **латентний, наразі недосяжний**.
+Якщо в майбутньому з'явиться config, що навігує на `?open=` тієї ж сторінки —
+ефект треба переробити (реагувати на `searchParams`, або прямий setter коли вже
+на сторінці). Занотовано, щоб наступна сесія не переоткрила як «новий» баг.
+
+### Підсумок
+
+TypeScript: API ✅ / web ✅ / shared ✅ (0 помилок).
+API-suite (3 модулі): 6 файлів / 206 тестів зелені (було 188 → +18).
+Web-suite: 56 файлів / 550 тестів зелені (було 55/540 → +1 файл linked-nav, +14 тестів
+панелі та nav; чисті).
+Виправлено багів: 1 (Bug #641, MEDIUM). Задокументовано ліміт: 1 (Bug #642, LOW).
+Playwright MCP: недоступний (CONNECT_TIMEOUT) — покрито service/component/unit + reasoning.

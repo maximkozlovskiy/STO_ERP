@@ -194,4 +194,56 @@ describe('LinkedDocumentsPanel — config-driven + navigation (Bugs #409, #414, 
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
   });
+
+  // ─── Edge: неповна / надлишкова форма відповіді backend ──────────────
+  it('секція відсутня у відповіді (backend опустив ключ) → порожня секція, не crash', async () => {
+    const onLoad = vi.fn();
+    // Відповідь БЕЗ ключа `payments` взагалі. Array.isArray(undefined) === false → [].
+    apiFetchMock.mockResolvedValueOnce({
+      invoices: [{ id: 'inv-1', number: 'INV-1', status: 'DRAFT', amount: 100 }],
+    });
+    render(<LinkedDocumentsPanel config={testConfig} entityId={WO_ID} onLoad={onLoad} />);
+    await waitFor(() => expect(screen.getByText(/INV-1/)).toBeInTheDocument());
+    // Секція «Оплати» (count 0) не рендериться (DocSection count===0 → null).
+    expect(screen.queryByText(/Оплати/)).not.toBeInTheDocument();
+    // counts мапа має ОБИДВА ключі конфігу, payments = 0 (не undefined).
+    expect(onLoad).toHaveBeenCalledWith({ invoices: 1, payments: 0 });
+  });
+
+  it('секція = не-масив (backend прислав null/об’єкт) → трактується як порожня, не crash', async () => {
+    const onLoad = vi.fn();
+    // payments: null — Array.isArray(null) === false → [] (без .map crash).
+    apiFetchMock.mockResolvedValueOnce({
+      invoices: [{ id: 'inv-1', number: 'INV-1', status: 'DRAFT', amount: 100 }],
+      payments: null,
+    });
+    render(<LinkedDocumentsPanel config={testConfig} entityId={WO_ID} onLoad={onLoad} />);
+    await waitFor(() => expect(screen.getByText(/INV-1/)).toBeInTheDocument());
+    expect(onLoad).toHaveBeenCalledWith({ invoices: 1, payments: 0 });
+  });
+
+  it('надлишковий невідомий ключ у відповіді → ігнорується (рендеряться лише секції конфігу)', async () => {
+    apiFetchMock.mockResolvedValueOnce({
+      invoices: [{ id: 'inv-1', number: 'INV-1', status: 'DRAFT', amount: 100 }],
+      payments: [],
+      // ключ якого немає у config.sections — має бути повністю проігнорований
+      calendarSlots: [{ id: 'slot-1', startAt: '2026-01-01T10:00:00Z' }],
+      totallyUnexpected: [{ id: 'x' }],
+    });
+    render(<LinkedDocumentsPanel config={testConfig} entityId={WO_ID} />);
+    await waitFor(() => expect(screen.getByText(/INV-1/)).toBeInTheDocument());
+    // Жодного сліду невідомих секцій.
+    expect(screen.queryByText(/Записи календаря/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/slot-1/)).not.toBeInTheDocument();
+  });
+
+  it('усі ключі відсутні (порожній об’єкт) → empty state, onLoad з усіма нулями', async () => {
+    const onLoad = vi.fn();
+    apiFetchMock.mockResolvedValueOnce({});
+    render(<LinkedDocumentsPanel config={testConfig} entityId={WO_ID} onLoad={onLoad} />);
+    await waitFor(() =>
+      expect(screen.getByText(/Пов'язаних документів немає/)).toBeInTheDocument(),
+    );
+    expect(onLoad).toHaveBeenCalledWith({ invoices: 0, payments: 0 });
+  });
 });

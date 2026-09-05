@@ -498,3 +498,97 @@ describe('InvoicesService — business logic guards', () => {
     });
   });
 });
+
+// ─── Bug #A + edge inputs: getLinkedCounts / getLinkedDocuments ──────────────
+describe('InvoicesService — linked-documents edge cases', () => {
+  let service: InvoicesService;
+  let prisma: {
+    invoice: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
+    workOrder: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
+    counterparty: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
+    payment: { findMany: ReturnType<typeof vi.fn>; groupBy: ReturnType<typeof vi.fn> };
+  };
+
+  const ORG = 'org-1';
+  const OTHER_ORG = 'org-2';
+  const A = '11111111-1111-4111-8111-111111111111';
+  const B = '22222222-2222-4222-8222-222222222222';
+  const WO = '33333333-3333-4333-8333-333333333333';
+  const CP = '44444444-4444-4444-8444-444444444444';
+
+  beforeEach(async () => {
+    prisma = {
+      invoice: { findFirst: vi.fn(), findMany: vi.fn() },
+      workOrder: { findFirst: vi.fn(), findMany: vi.fn() },
+      counterparty: { findFirst: vi.fn(), findMany: vi.fn() },
+      payment: { findMany: vi.fn(), groupBy: vi.fn() },
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        InvoicesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DocumentNumberService, useValue: { next: vi.fn() } },
+        { provide: PdfService, useValue: {} },
+        { provide: SettlementsService, useValue: {} },
+      ],
+    }).compile();
+    service = module.get(InvoicesService);
+  });
+
+  it('getLinkedCounts: zero-count id присутній у мапі з усіма нулями (не absent)', async () => {
+    prisma.invoice.findMany.mockResolvedValue([{ id: A, workOrderId: null, counterpartyId: null }]);
+    prisma.payment.groupBy.mockResolvedValue([]);
+    prisma.workOrder.findMany.mockResolvedValue([]);
+    prisma.counterparty.findMany.mockResolvedValue([]);
+
+    const res = await service.getLinkedCounts(ORG, [A]);
+    expect(res[A]).toEqual({ workOrder: 0, payments: 0, counterparty: 0 });
+  });
+
+  it('getLinkedCounts: duplicate ids у запиті не ламають мапу (keyed by id)', async () => {
+    prisma.invoice.findMany.mockResolvedValue([{ id: A, workOrderId: WO, counterpartyId: CP }]);
+    prisma.payment.groupBy.mockResolvedValue([{ invoiceId: A, _count: { id: 3 } }]);
+    prisma.workOrder.findMany.mockResolvedValue([{ id: WO }]);
+    prisma.counterparty.findMany.mockResolvedValue([{ id: CP }]);
+
+    const res = await service.getLinkedCounts(ORG, [A, A, A]);
+    expect(Object.keys(res)).toEqual([A]);
+    expect(res[A]).toEqual({ workOrder: 1, payments: 3, counterparty: 1 });
+  });
+
+  it('getLinkedCounts: cross-org id → всі нулі, чужі дані не протікають', async () => {
+    // findMany scoped by orgId → чужий рахунок не повертається.
+    prisma.invoice.findMany.mockResolvedValue([]);
+    prisma.payment.groupBy.mockResolvedValue([]);
+    prisma.workOrder.findMany.mockResolvedValue([]);
+    prisma.counterparty.findMany.mockResolvedValue([]);
+
+    const res = await service.getLinkedCounts(OTHER_ORG, [A, B]);
+    expect(res[A]).toEqual({ workOrder: 0, payments: 0, counterparty: 0 });
+    expect(res[B]).toEqual({ workOrder: 0, payments: 0, counterparty: 0 });
+    // orgId дійсно у where групуючого запиту
+    expect(prisma.invoice.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ orgId: OTHER_ORG }) }),
+    );
+  });
+
+  it('Bug #A: soft-deleted контрагент → count=0 (відповідає порожній detail-секції)', async () => {
+    // FK присутній, але counterparty.findMany (deletedAt:null) НЕ повертає його.
+    prisma.invoice.findMany.mockResolvedValue([{ id: A, workOrderId: WO, counterpartyId: CP }]);
+    prisma.payment.groupBy.mockResolvedValue([]);
+    prisma.workOrder.findMany.mockResolvedValue([{ id: WO }]);
+    prisma.counterparty.findMany.mockResolvedValue([]); // CP soft-deleted → не в живому наборі
+
+    const res = await service.getLinkedCounts(ORG, [A]);
+    // Дискримінатор: старий код давав counterparty:1 (inv.counterpartyId ? 1 : 0).
+    expect(res[A].counterparty).toBe(0);
+    expect(res[A].workOrder).toBe(1);
+  });
+
+  it('getLinkedDocuments: cross-org id → порожні секції, не чужі дані', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(null); // findFirst orgId-scoped → null
+    const res = await service.getLinkedDocuments(OTHER_ORG, A);
+    expect(res).toEqual({ workOrder: [], payments: [], counterparty: [] });
+    expect(prisma.payment.findMany).not.toHaveBeenCalled();
+  });
+});
