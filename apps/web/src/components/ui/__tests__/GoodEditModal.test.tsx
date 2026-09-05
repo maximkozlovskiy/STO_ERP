@@ -6,11 +6,12 @@
 //   входили до save() → 2 POST /goods (дублікат товару). Тепер `if (savingRef.current) return`
 //   першим рядком save() + ref фліпається синхронно у setSavingBoth.
 //
-// ⚠️ ТЕСТ-ІНТЕГРІТІ: використовуємо fireEvent.click ДВІЧІ СИНХРОННО (без await між ними),
+// ⚠️ ТЕСТ-ІНТЕГРІТІ: native HTMLElement.click() ×2 СИНХРОННО (без await/act між ними),
 // щоб обидва click-и потрапили в один tick ДО re-render React. userEvent.click (навіть void)
-// проганяє власну pointer-event чергу з мікротасками → React встигає re-renderнути між
-// кліками → disabled={loading} блокує другий клік і БЕЗ ref-guard (хибно-зелений тест).
-// fireEvent синхронний → відтворює реальну race, яку лікує саме savingRef.
+// І fireEvent.click обгортають кожен клік у власний act()/pointer-чергу → React встигає
+// re-renderнути й виставити disabled={loading} між кліками → другий клік блокується БЕЗ
+// ref-guard теж → хибно-зелений тест. Native .click()×2 відтворює реальну race, яку лікує
+// саме синхронний savingRef. Дискримінацію доведено: revert guard → «expected 2 to be 1».
 
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';

@@ -610,10 +610,20 @@ done
 # (швидкий double-click / синтетичні події / Enter-repeat) обидва входять до застосування
 # disabled → 2 POST → 2 документи. Idempotency-ref (createdIdRef/createdInvoiceRef) НЕ рятує
 # (виставляється лише ПІСЛЯ await першого POST — другий click вже пройшов).
-grep -rln "const handleCreate\|const handleSave\|const create =\|async function handleCreate" apps/web/src/components/ui --include="*Modal.tsx" | while read f; do
-  # модалка має savingRef АБО лише disabled={saving}? і чи create-handler гейтить на savingRef?
+grep -rln "const handleCreate\|const handleSave\|const create =\|const save = async\|const update = async\|async function handleCreate" apps/web/src/components/ui --include="*Modal.tsx" | while read f; do
+  # модалка має savingRef АБО лише disabled={saving}? і чи save/create-handler гейтить на savingRef?
   if grep -qE "setSaving(Both)?\(true\)" "$f" && ! grep -qE "if \(saving(Ref|_?ref)?\.current" "$f"; then
     echo "DOUBLE-SUBMIT RISK (no savingRef guard at all): $f"
+  fi
+done
+# КОВЕРІДЖ: перевіряти НЕ ЛИШЕ великі документні модалки, а Й edit-модалки довідників
+# (Counterparty/Employee/Good/Unit/Brand/Category). Bug #632-#634: submit-кнопка
+# `<Button onClick={save} loading={saving} disabled={!field}>` — `disabled` БЕЗ saving →
+# гейт лише async (loading через re-render), same-tick race незахищений → дубль master-data.
+grep -rln "loading={saving}" apps/web/src/components/ui --include="*Modal.tsx" | while read f; do
+  # кнопка має loading={saving} але disabled БЕЗ saving/loading і немає savingRef → vulnerable
+  if grep -qE "disabled=\{![^}]*\}" "$f" && ! grep -qE "if \(saving(Ref)?\.current" "$f"; then
+    echo "DOUBLE-SUBMIT RISK (loading-only gate, no sync ref): $f"
   fi
 done
 # Точніша перевірка (ручна): для КОЖНОГО create/save async-handler переконатись, що ПЕРШИЙ
@@ -621,7 +631,7 @@ done
 # Модалка може мати savingRef і використовувати його у edit/transition-handler, АЛЕ забути у create.
 ```
 
-- [ ] **Concurrent double-submit у create/save-модалці (Bug #630):** будь-який async submit-handler (`handleCreate`/`handleSave`/`create`) у `apps/web/src/components/ui/*Modal.tsx`, що пише документ, МАЄ синхронний re-entrancy guard `if (savingRef.current [|| transitioningRef.current]) return;` **першим рядком, ПЕРЕД будь-яким `await`**. `disabled={saving}` НЕдостатньо — він спирається на re-render React МІЖ подіями кліку; два click-и в одному event-loop tick (швидкий double-click, синтетичні події a11y-інструментів, Enter-repeat на сфокусованій кнопці) обидва входять у handler до застосування disabled → 2 POST → 2 документи (фінансовий ризик: подвійний борг/списання). Idempotency-ref (`createdIdRef`/`createdInvoiceRef`) закриває ЛИШЕ retry-після-обриву (виставляється після await першого POST), НЕ concurrent double-submit — потрібні ОБИДВА механізми. `savingRef.current` фліпається СИНХРОННО (у `setSaving`/`setSavingBoth`) → другий вхід одразу повертається. Grep: див. блок вище. **Пастка:** модалка часто ВЖЕ має `savingRef` (у `setSavingBoth`) і гейтить edit/transition-handler, але забуває create-шлях — split-coverage. Регресія-guard: component-тест з **нативним** подвійним `dispatchEvent(new MouseEvent('click'))` × 2 у одному `act()` (НЕ `fireEvent.click` × 2 — воно flush-ить стан між кліками і маскує баг → хибно-зелений 1 POST); assert рівно 1 POST; верифікувати revert→2 / fix→1. Severity HIGH для фінансово-облікових документів (SupplierPayment/Invoice/PurchaseOrder/StockDocument/WorkOrder), MEDIUM для інших. Where else: усі create-модалки + `SettlementsTabContent.handleCreateAct` (raw apiFetch без savingRef).
+- [ ] **Concurrent double-submit у create/save-модалці (Bug #630, #632-#634):** будь-який async submit-handler (`handleCreate`/`handleSave`/`create`/`save`/`update`) у `apps/web/src/components/ui/*Modal.tsx`, що пише **документ АБО master-data** (не лише «великі» документні модалки — Й edit-модалки довідників Counterparty/Employee/Good/Unit/Brand/Category), МАЄ синхронний re-entrancy guard `if (savingRef.current [|| transitioningRef.current]) return;` **першим рядком, ПЕРЕД будь-яким `await`**. Особливий сигнал edit-модалок: кнопка `<Button onClick={save} loading={saving} disabled={!field}>` — `disabled` БЕЗ `saving` → гейт лише async (loading через re-render) → same-tick дубль (Bug #632 контрагент, #633 співробітник+auth-акаунт, #634 товар). `disabled={saving}` НЕдостатньо — він спирається на re-render React МІЖ подіями кліку; два click-и в одному event-loop tick (швидкий double-click, синтетичні події a11y-інструментів, Enter-repeat на сфокусованій кнопці) обидва входять у handler до застосування disabled → 2 POST → 2 документи (фінансовий ризик: подвійний борг/списання). Idempotency-ref (`createdIdRef`/`createdInvoiceRef`) закриває ЛИШЕ retry-після-обриву (виставляється після await першого POST), НЕ concurrent double-submit — потрібні ОБИДВА механізми. `savingRef.current` фліпається СИНХРОННО (у `setSaving`/`setSavingBoth`) → другий вхід одразу повертається. Grep: див. блок вище. **Пастка:** модалка часто ВЖЕ має `savingRef` (у `setSavingBoth`) і гейтить edit/transition-handler, але забуває create-шлях — split-coverage. Регресія-guard: component-тест з **нативним** подвійним `(btn as HTMLButtonElement).click(); btn.click();` — двічі СИНХРОННО в одному блоці БЕЗ `await`/`act`-обгортки між кліками (НЕ `userEvent.click`×2 і НЕ `fireEvent.click`×2 — обидва обгортають кожен клік у act()/pointer-чергу і flush-ять стан між кліками → `disabled={loading}` стає гейтом → хибно-зелений 1 POST навіть без ref-guard). Ввід у поля — `fireEvent.change` (синхронний). Розрулити in-flight POST у фінальному `await act(async () => resolve())`. assert рівно 1 POST; **ОБОВ'ЯЗКОВО верифікувати дискримінацію: revert guard→FAIL «expected 2 to be 1» / fix→PASS** (інакше тест хибно-зелений — див. Meta 2026-09-05). Severity HIGH для фінансово-облікових документів (SupplierPayment/Invoice/PurchaseOrder/StockDocument/WorkOrder), MEDIUM для інших. Where else: усі create-модалки + `SettlementsTabContent.handleCreateAct` (raw apiFetch без savingRef).
 - [ ] Кожен list-fetch в `useEffect` має: `let cancelled=false` + `return () => {cancelled=true}`; `setLoading(true)` перед; `.finally(() => !cancelled && setLoading(false))`; `.catch((e) => !cancelled && setError(...))`; у JSX `{loading && <Spinner/>}` + `{!loading && items.length===0 && <Empty/>}`
 - [ ] `new Date()` у render path → `useState<Date|null>(null)` + `useEffect(() => setToday(new Date()), [])`
 - [ ] `key={i}` у списках де можлива re-order/filter → `key={item.id}` або stable derived key
@@ -1108,6 +1118,48 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-05 — Component-тест sync-ref-guard через `userEvent.click`×2 (або `fireEvent`×2) — ХИБНО-ЗЕЛЕНИЙ: гейтом стає `disabled={loading}`, не тестований ref — frontend / test-integrity / MEDIUM
+
+**Сигнал:** component-тест «подвійний клік → 1 POST» що імітує double-submit через `userEvent.click(btn)` двічі (або `void user.click(); void user.click()` у `act`), АБО через `fireEvent.click(btn)` двічі. Тест ПРОХОДИТЬ навіть коли синхронний `savingRef`-guard видалено з handler-а. Причина: `userEvent`/`fireEvent` обгортають КОЖЕН клік у власний `act()`/pointer-чергу з мікротасками → React встигає re-renderнути й виставити `disabled={saving||loading}` на `<Button>` МІЖ кліками → другий клік не доходить до handler-а незалежно від ref. Тобто фактичним гейтом у тесті є async `disabled={loading}`, а не тестований sync-ref. Тест нічого не гарантує: рефактор, що прибере ref-guard, пройде CI зеленим.
+
+**Причина виникнення:** інтуїтивно «клікнув двічі → перевірив кількість POST». Але `disabled={loading}` і `savingRef` захищають ДВА РІЗНІ вікна: `disabled` — коли між кліками БУВ re-render (async, повільний double-click); `savingRef` — коли обидва кліки в ОДНОМУ tick ДО re-render (native fast double-click, синтетичні/програмні події). `userEvent`/`fireEvent`-choreography потрапляє лише у перше вікно, тож тестує НЕ те, що фіксили.
+
+**Підхід до виявлення:** для кожного double-submit component-тесту перевірити ДИСКРИМІНАЦІЮ: тимчасово видалити ref-guard з handler-а → тест МУСИТЬ впасти («expected 2 to be 1»). Якщо лишається зеленим — хибний. Grep: `grep -rnE "user\.click|fireEvent\.click" apps/web/src/**/__tests__/*double*|*submit*` + будь-який тест що асертить «POST рівно 1×» після ≥2 кліків. Правило baseline (Крок 0): shipped double-submit тест без доказу дискримінації = недовірений.
+
+**Підхід до фіксу:** відтворити реальний same-tick race через `(btn as HTMLButtonElement).click(); btn.click();` — native `HTMLElement.click()` двічі СИНХРОННО в одному блоці (без `await`/`act`-обгортки між ними). React batch-ить state-updates → re-render лише ПІСЛЯ обох кліків → гейтом стає саме синхронний ref. Розрулити in-flight promise у фінальному `await act(async () => resolve())` (прибирає act()-warning). Ввід у поля — `fireEvent.change` (синхронний), не `user.type`. Завжди довести дискримінацію (fail без guard) перед комітом.
+
+**Severity:** MEDIUM (test-integrity) — код-фікс може бути коректним, але його регресія-захист відсутній; майбутній рефактор мовчки знімає guard.
+
+**Де шукати ще:** усі `*Modal.test.tsx` з double-submit/double-click; той самий принцип для будь-якого sync-vs-async guard (debounce-ref, request-token ref, idempotency createdRef) — тест мусить бити САМЕ синхронне вікно.
+
+### 2026-09-05 — Split-coverage double-submit guard: аудит покрив «великі» модалки, edit-модалки довідників пропущені → дубль master-data (WEB-H3 / Bug #630 class) — frontend / data-integrity / HIGH
+
+**Сигнал:** submit-кнопка модалки `<Button onClick={save} loading={saving} disabled={!field}>` де `disabled` НЕ містить `saving`/`||loading`-еквіваленту як синхронного гейта, а `save()`/`create()`/`update()` мають `setSaving(true)` БЕЗ `if (savingRef.current) return` першим рядком. Два same-tick кліки → 2× POST → дубль сутності (контрагент/співробітник/товар; для Employee ще й дубль auth-акаунта). `<Button>` внутрішньо ставить `disabled={disabled||loading}`, але це async-гейт (після re-render) — не рятує same-tick.
+
+**Причина виникнення:** попередній double-submit аудит охопив «великі» документні модалки (WorkOrder/PO/Stock/Invoice/SupplierReturn), а edit-модалки довідників (Counterparty/Employee/Good) вважались «простими» і випали зі scope. Класичний split-coverage: фіксять N зі списку, лишають M «схожих але менш помітних».
+
+**Підхід до виявлення:** grep-pair по ВСІХ модалках: `for f in apps/web/src/components/ui/*Modal.tsx; do echo "$f: guards=$(grep -cE 'savingRef|createdRef|transitioningRef|submittingRef' $f) posts=$(grep -cE "method: '(POST|PATCH)'" $f); done` → будь-яка модалка з POST/PATCH і 0 guard-refs = кандидат. Перехресно: чи `disabled=` кнопки містить `saving`? Якщо гейт лише `loading={saving}` (async) — vulnerable.
+
+**Підхід до фіксу:** `savingRef = useRef(false)` + `setSavingBoth(v){savingRef.current=v; setSaving(v)}`; `if (savingRef.current) return` ПЕРШИМ рядком кожного save-handler-а; `finally { setSavingBoth(false) }`. Симетрія з уже-виправленими модалками. Regression-guard: native-click×2 дискримінуючий тест (див. підхід вище).
+
+**Severity:** HIGH — silent duplicate master-data (контрагент/товар/співробітник), для Employee дубль login-акаунта (безпека). User-visible, псує CRM/номенклатуру/settlement-звіти.
+
+**Де шукати ще:** усі `*Modal.tsx` / inline-форми з submit-POST; той самий клас — будь-який `onClick`-handler що робить mutation і покладається лише на `disabled={loading}` (не sync-ref). Кандидати поза модалками: quick-add форми, bulk-action кнопки, share/print-token генерація.
+
+### 2026-09-05 — Backend-агрегат змішує `Σ(round(x))` і `round(Σ(x))` для тієї самої величини → розходження на копійку між denorm-полями — backend / money-precision / LOW
+
+**Сигнал:** сервіс що рахує кілька denormalized money-полів з одних per-line значень різними стратегіями квантування: одне поле = `roundMoney(Σ l.amount)` де `l.amount` вже `roundMoney(qty×price)` (per-line rounded sum), інше = `roundMoney(Σ (qty×price raw))` (raw sum then round). Приклад: WO `recalcTotals` — `totalLabor = roundMoney(Σ roundMoney(nh×price))`, але `totalAmount = roundMoney(Σ raw(nh×price))` через `totalActualLabor`. При per-line-дрейфі 3×2.525 → totalLabor=7.59, totalAmount=7.58 (копійка). FE-preview що дзеркалить одне поле не збігається з іншим. Frontend `calcVatTotals` mirror-ить `totalLabor` (per-line), але CHARGE-база при COMPLETED бере `totalAmount` (raw-sum).
+
+**Причина виникнення:** дві формули пишуться у різний час / різними фічами (`totalLabor` — з базового WO, `totalActualLabor`/`totalAmount` — додано VAT-фічею), кожна «логічна» окремо, але для однакового кейсу (actualHours=null) мали б дати рівний результат. Ніхто не звірив per-line-round vs aggregate-round на дробових копійках.
+
+**Підхід до виявлення:** у сервісі з ≥2 money-полями з тих самих компонентів — перевірити чи ВСІ використовують ОДНУ стратегію (або всі `Σ(round)`, або всі `round(Σ)`). Числова симуляція: 3 рядки з ціною що дає дробову половину-копійки (×.525) → порівняти поля попарно. Frontend-preview, що претендує «== backend по копійку», звіряти проти КОЖНОГО поля, яке він нібито дзеркалить, І проти поля, що реально йде у фін-операцію (CHARGE/Invoice).
+
+**Підхід до фіксу:** обрати ОДНУ канонічну стратегію для величини (STO ERP-конвенція: per-line `amount` округлюється при записі рядка → агрегат = `Σ(round)`, тобто `totalActualLabor` мав би теж сумувати округлені per-line, а не raw). Або задокументувати навмисну різницю (planned per-line vs actual raw). Regression-guard: unit що асертить `totalLabor === totalAmount` коли `actualHours === null` для всіх рядків.
+
+**Severity:** LOW — розбіжність ≤1 коп, проявляється лише коли actualHours=null І per-line-rounding дрейфує; не stored-corruption (обидва округлені), але user-visible preview≠charge. НЕ блокер, кандидат на окремий бек-фікс.
+
+**Де шукати ще:** будь-який `recalc*`/`*Totals`/aggregate-сервіс (Invoice recalc, PO totals, StockDocument, CompletionAct) — grep `grep -rnE "roundMoney\(.*reduce|\+= Number\(.*price\)" apps/api/src/modules` → перевірити консистентність round-стратегії між полями.
 
 ### 2026-09-05 — Read-фільтр діапазону дати використовує CONTAINMENT замість OVERLAP → рядки що перетинають межу вікна мовчки зникають (CAL-C2) — backend / data-visibility / HIGH
 

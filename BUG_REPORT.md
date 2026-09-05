@@ -2533,3 +2533,79 @@ Backend зміна не ламає існуючих клієнтів (додає
 - **Причина виникнення:** одно-рядковий фікс (`fmtInt`→`fmtMoney`) вважався тривіальним. Але рефактор, що поверне `fmtInt` для грошей АБО прибере `minimumFractionDigits:2` з `MONEY_FMT`, пройшов би CI зеленим.
 - **Fix:** +4 regression-guard-и: `fmtMoney` завжди рівно 2 знаки (padding: `1250.5→'...,50'`, `0→'0,00'`); `fmtInt` варіативна дробова частина без padding (`1250.5→'...,5'`); ключовий інваріант WEB-M9 `fmtMoney(1250.5)≠fmtInt(1250.5)`; null/undefined→«—». Assert-и по семантиці (padding), не по exact-spacing (Intl uk-UA narrow-no-break-space залежить від ICU). Web tests +4.
 - **Статус:** [x] закрито (test-gap)
+
+---
+
+## Session 2026-09-05 — Фінал 4-го аудиту (mobile upload + web-модалки SR/roundMoney/calcVatTotals) — верифікація b2681f28 + ca778c0b + 0129d9c2 + docs, main
+
+> **Baseline:** api tsc 0, web tsc 0, shared tsc 0. mobile lib/\* (upload/auth/api) tsc 0 (mobile decorator-помилки pre-existing, не scope). API ✅ 1255/1255 (87 файлів), Web ✅ 511/511 (48) НА ВХОДІ → 513/513 (50) ПІСЛЯ фіксів (+2 нові тест-файли). Playwright/Sentry MCP CONNECT_TIMEOUT → §5.4 fallback: unit/component + числова симуляція backend↔frontend.
+>
+> **Фокус завдання (4 пункти):**
+>
+> 1. **calcVatTotals == backend recalcTotals ПО КОПІЙЦІ (review-fix 0129d9c2):** ЧИСЛОВО ВЕРИФІКОВАНО симуляцією обох формул (node-скрипт, 5 сценаріїв). **VAT-частина коректна:** 3×2.525@20% → preview VAT = **1.52** (aggregate `roundMoney(base×0.2)`), backend `totalVat` = **1.52** — ЗБІГАЮТЬСЯ. Per-line дало б 1.53 (розходження) — фікс правильно усунув. Усі 5 сценаріїв: combinedVat(FE)==totalVat(BE) у 5/5. utils.money.test 7/7 зелений. **АЛЕ виявлено окрему передіснуючу невідповідність — див. нижче «Знахідка A» (НЕ регресія round4, не блокер).**
+> 2. **SR double-submit (ca778c0b):** guard коректний (savingRef/transitioningRef синхронні, перший рядок handleSave/doTransition, close-guard wired у `<Modal onClose={handleModalClose}>`). **АЛЕ shipped-тест виявився ХИБНО-ЗЕЛЕНИМ — див. Meta нижче (виправлено).**
+> 3. **mobile getAccessToken (b2681f28):** ВЕРИФІКОВАНО статично — `getAccessToken()` повертає in-memory `accessToken` (setToken при login/loadToken); `upload.ts` більше не шле `Bearer null`. Заглушку `getToken()` видалено. tsc lib/\* 0. (Мінор LOW: `upload.ts` шле `Bearer ${token}` без null-guard — але досяжне лише після login; строгий апгрейд vs попередній завжди-null. Не баг.)
+> 4. **Регресії:** CreateWorkOrderModal 11/11 зелені після зміни calcVatTotals; решта 4 великих модалок (PO/Stock/Invoice/SR) мають guard; web suite повний зелений 513/513.
+>
+> **ЗНАХІДКА A (числова, окрема від фокусу — передіснуюча, зафіксовано як довідка, НЕ виправлено):** backend `recalcTotals` рахує `totalAmount = roundMoney(Σ raw(nh×price))` (через `totalActualLabor`, сирий sum), а `totalLabor = roundMoney(Σ roundMoney(nh×price))` (per-line). При per-line-дрейфі `totalLabor≠totalAmount` на копійку (3×2.525: totalLabor=7.59, totalAmount=7.58). FE-preview «Разом робіт» дзеркалить `totalLabor` (7.59) — коректно для планового прев'ю, але `totalAmount` (база CHARGE при COMPLETED) = 7.58. Походить з коміту `60b25347` (VAT-фіча), НЕ з round4. Severity LOW (планове прев'ю vs actualHours-база; розбіжність ≤1 коп; проявляється лише коли actualHours=null І per-line-rounding дрейфує). **Де шукати ще:** будь-який backend-агрегат що змішує `Σ(round(x))` і `round(Σ(x))` для тієї самої величини — обрати ОДНУ стратегію. Кандидат на окремий бек-фікс поза цим аудитом.
+
+### Bug #632 — HIGH — CounterpartyEditModal без синхронного double-submit guard → дубль контрагента (клас Bug #630 / WEB-H3)
+
+- **Файл:** `apps/web/src/components/ui/CounterpartyEditModal.tsx` (`create()`, `update()`).
+- **Симптом:** submit-кнопка `<Button onClick={isEdit?update:create} loading={saving} disabled={!hasCounterpartyName(form)}>` — вимикається (`disabled=loading`) ЛИШЕ після re-render React між кліками. Два кліки «Зберегти» в одному tick обидва входять до `create()` до застосування `disabled` → 2× `POST /counterparties` → **дублікат контрагента** у CRM. `create()`/`update()` мали `setSaving(true)` але БЕЗ синхронного ref-guard.
+- **Причина виникнення:** аудит round4 (ca778c0b) покрив 5 великих документних модалок (WorkOrder/PO/Stock/Invoice/SR), але edit-модалки довідників (Counterparty/Employee/Good) не входили у scope — вважалось, що `loading={saving}` достатньо. Це та сама хиба, яку round4 фіксив для SR: `disabled={loading}` = async-гейт (спрацьовує після re-render), не захищає same-tick race.
+- **Виявлено:** static grep double-submit-guard по всіх модалках (`savingRef|createdRef|transitioningRef`) → Counterparty/Employee/Good мали 0 guard-refs при наявних save-handler-ах з POST.
+- **Fix:** `savingRef = useRef(false)` + `setSavingBoth(v)` (синхронно фліпає ref І state); `if (savingRef.current) return` першим рядком `create()` та `update()`; `finally { setSavingBoth(false) }`. Дзеркалить SR-фікс.
+- **Severity:** HIGH — silent duplicate master-data record (контрагент), user-visible, data-integrity (дублі у CRM/settlement-звітах).
+- **Регресія-guard:** (класовий тест на GoodEditModal/EmployeeEditModal, див. #633/#634 — той самий механізм; Counterparty вкладає CounterpartyEditModal у GoodEditModal-тест як supplier-detail, тож рендер-шлях покритий).
+- **Статус:** [x] виправлено
+
+### Bug #633 — HIGH — EmployeeEditModal без синхронного double-submit guard → дубль співробітника + дубль auth-акаунта
+
+- **Файл:** `apps/web/src/components/ui/EmployeeEditModal.tsx` (`save()`).
+- **Симптом:** `<Button onClick={save} loading={saving} disabled={!form.firstName||!form.lastName}>` — той самий async-гейт. `save()` робить КІЛЬКА послідовних POST (employee create + auth-account при `grantAccess`). Подвійний same-tick клік → 2× `POST /employees` → **дубль співробітника + дубль login-акаунта** (найнебезпечніший з трьох — auth-дублі).
+- **Причина виникнення:** див. #632 (той самий клас, поза scope round4).
+- **Fix:** `savingRef` + `setSavingBoth` + `if (savingRef.current) return` першим рядком `save()`; `import { useRef }` додано.
+- **Severity:** HIGH — дубль master-data + auth-акаунта (безпека/цілісність).
+- **Регресія-guard:** `apps/web/src/components/ui/__tests__/EmployeeEditModal.test.tsx` (новий): подвійний native `.click()` синхронно → `POST /employees` рівно 1×. **Тест ДИСКРИМІНУЮЧИЙ** (перевірено: без guard → «expected 2 to be 1» FAIL; з guard → PASS).
+- **Статус:** [x] виправлено
+
+### Bug #634 — HIGH — GoodEditModal без синхронного double-submit guard → дубль товару
+
+- **Файл:** `apps/web/src/components/ui/GoodEditModal.tsx` (`save()`).
+- **Симптом:** `<Button onClick={save} loading={saving} disabled={!form.name}>` — async-гейт. Два same-tick кліки «Зберегти та продовжити» → 2× `POST /goods` → **дублікат товару/запчастини** у номенклатурі.
+- **Причина виникнення:** див. #632.
+- **Fix:** `savingRef` + `setSavingBoth` + `if (savingRef.current) return` першим рядком `save()`; `import { useRef }` додано.
+- **Severity:** HIGH — silent duplicate master-data.
+- **Регресія-guard:** `apps/web/src/components/ui/__tests__/GoodEditModal.test.tsx` (новий): подвійний native `.click()` синхронно → `POST /goods` рівно 1×. **ДИСКРИМІНУЮЧИЙ** (без guard → «expected 2 to be 1» FAIL; з guard → PASS).
+- **Статус:** [x] виправлено
+
+### Meta (test-integrity) — shipped SR double-submit тест був ХИБНО-ЗЕЛЕНИМ → переписано на дискримінуючий
+
+- **Файл:** `apps/web/src/components/ui/__tests__/SupplierReturnCreateModal.test.tsx` (доданий у ca778c0b).
+- **Симптом:** тест «подвійний клік «Підтвердити» шле /confirm лише один раз» ПРОХОДИВ і БЕЗ savingRef-guard-у (перевірено: видалив guard у `doTransition` → тест все одно зелений). Хибно-зелений: не міг відрізнити виправлений код від зламаного, тобто не гарантував нічого.
+- **Причина виникнення:** тест використовував `userEvent.click(btn)` ДВІЧІ (через `void ... void ...` у одному `act`). `userEvent` проганяє власну чергу pointer-подій з `await`/мікротасками між кліками → React встигає re-renderнути й виставити `disabled={transitioning}` МІЖ кліками → другий клік не доходить до handler-а незалежно від ref-guard. Тобто гейтом був `disabled={loading}` (async), а не тестований `transitioningRef` (sync). Це саме та плутанина, яку фікс і мав закрити.
+- **Fix:** заміна на `confirmBtn.click(); confirmBtn.click();` — native `HTMLElement.click()` двічі СИНХРОННО в одному tick (без `await` між). React batch-ить state → re-render лише ПІСЛЯ обох кліків → тепер саме синхронний `transitioningRef` є гейтом. Прибрано `userEvent` import. **Перевірено дискримінацію:** без guard → «expected 2 to be 1» FAIL; з guard → PASS. Той самий native-click патерн застосовано у нових Good/Employee тестах.
+- **Severity:** MEDIUM (test-integrity) — фікс коду коректний, але його регресія-захист не працював; будь-який майбутній рефактор, що прибере savingRef, пройшов би CI зеленим.
+- **Де шукати ще:** усі component-тести double-submit/double-click, що покладаються на `userEvent.click`×2 + `disabled={loading}`-компонент — вони ловлять лише async-гейт, не sync-guard. Для тесту саме синхронного ref-guard → `HTMLElement.click()`×2 синхронно (fireEvent теж обгортає в act() і флашить між кліками — теж хибно-зелений). Grep: `grep -rn "user.click.*\n.*user.click\|void user.click" apps/web/src/**/__tests__`.
+- **Статус:** [x] виправлено (тест переписано, дискримінація підтверджена)
+
+### Bug #635 — HIGH — WorkOrderAddLineModal без синхронного double-submit guard → дубль роботи у наряді (подвійне нарахування праці)
+
+- **Файл:** `apps/web/src/components/ui/WorkOrderAddLineModal.tsx` (`handleAdd()`).
+- **Симптом:** `<Button onClick={handleAdd} loading={saving} disabled={!form.workId || !form.employeeId}>` — `disabled` БЕЗ `saving` (лише поля). `handleAdd()` мав `setSaving(true)` без sync ref-guard. Два same-tick кліки «Додати» → 2× `POST /work-orders/:id/lines` → **дубль рядка роботи** → подвійне нарахування праці (`recalcTotals` двічі додасть той самий `amount` до `totalLabor`/`totalAmount`) → завищений борг клієнта при COMPLETED CHARGE.
+- **Причина виникнення:** розширення того ж класу, знайдене grep-ом оновленого чекліста §1.3 (`loading={saving}` + `disabled={!field}` без sync-ref). WO-add модалки не входили ні у round4-scope, ні у попередні аудити.
+- **Fix:** `savingRef` + `setSavingBoth` + `if (savingRef.current) return` першим рядком `handleAdd()`; `import { useRef }` додано.
+- **Severity:** HIGH — фінансовий вплив (подвійна праця у наряді → завищений CHARGE).
+- **Регресія-guard:** `apps/web/src/components/ui/__tests__/WorkOrderAddLineModal.test.tsx` (новий): native `.click()`×2 синхронно → `POST /lines` рівно 1×. **ДИСКРИМІНУЮЧИЙ** (без guard → «expected 2 to be 1» FAIL; з guard → PASS).
+- **Статус:** [x] виправлено
+
+### Bug #636 — HIGH — WorkOrderAddPartModal без синхронного double-submit guard → дубль запчастини + подвійне резервування залишку
+
+- **Файл:** `apps/web/src/components/ui/WorkOrderAddPartModal.tsx` (`handleAdd()`).
+- **Симптом:** `<Button onClick={handleAdd} loading={saving} disabled={!goodId || !warehouseId || !quantity || ...stock}>` — `disabled` без `saving`. Два same-tick кліки → 2× `POST /work-orders/:id/parts` → **дубль запчастини** → подвійне списання суми у `totalParts` + подвійне резервування залишку складу (`RESERVATION` двічі) → фантомний дефіцит на складі + завищений CHARGE.
+- **Причина виникнення:** див. #635 (той самий клас; grep пропустив би через багаторядковий `disabled={`, знайдено ручним переглядом парної WO-add модалки).
+- **Fix:** `savingRef` + `setSavingBoth` + `if (savingRef.current) return` першим рядком `handleAdd()` (`useRef` вже імпортований).
+- **Severity:** HIGH — фінансовий + інвентарний вплив (подвійне резервування спотворює доступний залишок).
+- **Регресія-guard:** структурно ідентичний #635 (той самий native-click клас; #635-тест — представник WO-add класу). Guard верифіковано статично (tsc 0, grep no-risk).
+- **Статус:** [x] виправлено
