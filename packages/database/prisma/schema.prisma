@@ -1829,6 +1829,15 @@ model SettlementTransaction {
   // WHERE settlementAccountId/orgId + ORDER BY createdAt DESC + sometimes BETWEEN periodFrom/periodTo.
   @@index([orgId, settlementAccountId, createdAt])
   @@index([orgId, documentType, documentId])
+  // sto-optimize (2026-09-06): dashboard.getSummary "виручка сьогодні" робить
+  // aggregate({ where: { orgId, type: 'PAYMENT', createdAt: { gte: todayStart } }, _sum: amount }).
+  // Ця гілка НЕ фільтрує по settlementAccountId → існуючий (orgId, settlementAccountId, createdAt)
+  // не вибирається (leftmost-prefix miss на settlementAccountId), (orgId, documentType, documentId) —
+  // нерелевантний. Дашборд опитується SSE кожні 30s (кеш 25s) для КОЖНОГО активного користувача,
+  // а settlement_transactions — append-only high-volume (кожен charge/payment/prepayment по всіх
+  // контрагентах). Без цього індексу aggregate робить org-wide scan + heap-filter type+createdAt.
+  // Covering (orgId, type, createdAt): type=equality → leftmost, createdAt=range → tail → index-range scan.
+  @@index([orgId, type, createdAt])
   @@map("settlement_transactions")
 }
 
