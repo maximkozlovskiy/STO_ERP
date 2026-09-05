@@ -1403,6 +1403,8 @@ model PurchaseOrder {
   contract         CounterpartyContract? @relation(fields: [contractId], references: [id])
   lines            PurchaseOrderLine[]
   supplierPayments SupplierPayment[]
+  stockDocuments   StockDocument[]
+  supplierReturns  SupplierReturn[]
 
   @@index([orgId, status, deletedAt])
   @@index([orgId, syncVersion])
@@ -1442,26 +1444,29 @@ model PurchaseOrderLine {
 model SupplierReturn {
   id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId        String               @db.Uuid
-  supplierId   String               @db.Uuid
-  warehouseId  String               @db.Uuid
-  number       String
-  status       SupplierReturnStatus @default(DRAFT)
-  totalAmount  Decimal              @default(0) @db.Decimal(12, 2)
-  notes        String?
-  documentDate DateTime             @default(now()) @db.Date
-  syncVersion  BigInt               @default(0)
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-  deletedAt    DateTime?
+  supplierId      String               @db.Uuid
+  warehouseId     String               @db.Uuid
+  purchaseOrderId String?              @db.Uuid  // джерело-замовлення повернення; nullable
+  number          String
+  status          SupplierReturnStatus @default(DRAFT)
+  totalAmount     Decimal              @default(0) @db.Decimal(12, 2)
+  notes           String?
+  documentDate    DateTime             @default(now()) @db.Date
+  syncVersion     BigInt               @default(0)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  deletedAt       DateTime?
 
-  supplier  Counterparty         @relation(fields: [supplierId], references: [id])
-  warehouse Warehouse            @relation(fields: [warehouseId], references: [id])
-  lines     SupplierReturnLine[]
+  supplier      Counterparty         @relation(fields: [supplierId], references: [id])
+  warehouse     Warehouse            @relation(fields: [warehouseId], references: [id])
+  purchaseOrder PurchaseOrder?       @relation(fields: [purchaseOrderId], references: [id])
+  lines         SupplierReturnLine[]
 
   @@index([orgId, status, deletedAt])
   @@index([orgId, syncVersion])
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
+  @@index([orgId, purchaseOrderId, deletedAt, createdAt])
   @@map("supplier_returns")
 }
 
@@ -1530,6 +1535,7 @@ model StockDocument {
   status            StockDocumentStatus @default(DRAFT)
   warehouseId       String              @db.Uuid
   targetWarehouseId String?             @db.Uuid
+  purchaseOrderId   String?             @db.Uuid  // джерело-замовлення (для RECEIPT/OPENING); nullable
   notes             String?
   confirmedAt       DateTime?
   confirmedBy       String?             @db.Uuid
@@ -1542,6 +1548,7 @@ model StockDocument {
   branch          GarageBranch        @relation(fields: [branchId], references: [id])
   warehouse       Warehouse           @relation("SourceWarehouse", fields: [warehouseId], references: [id])
   targetWarehouse Warehouse?          @relation("TargetWarehouse", fields: [targetWarehouseId], references: [id])
+  purchaseOrder   PurchaseOrder?      @relation(fields: [purchaseOrderId], references: [id])
   lines           StockDocumentLine[]
 
   @@index([orgId, status, deletedAt])
@@ -1549,6 +1556,7 @@ model StockDocument {
   @@index([orgId, syncVersion])
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
+  @@index([orgId, purchaseOrderId, deletedAt, createdAt])
   @@map("stock_documents")
 }
 
