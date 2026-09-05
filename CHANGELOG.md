@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-09-05 — feat(web): UX-фічі списків/модалок (Подання, індикатори, guard, клавіатура, дублювання)
+
+### 911590ca feat(web): «Створити на основі» у рядку списку нарядів (Ф8)
+
+Дія-дублювання прямо зі списку work-orders через наявний `POST /work-orders/:id/clone`
+(копіює позиції у новий DRAFT-наряд, новий номер, actualHours скинуто). Після clone —
+відкриває копію в edit-модалці + інвалідує список; guard `cloningId` проти подвійного кліку.
+Ф8 вже була для Invoice (список «Дублювати») і WorkOrder detail — цей коміт додає швидкий
+доступ зі списку. PO/Stock не мають clone-endpoint (поза скоупом).
+
+### 5433f932 feat(web): UX подання/індикатори/guard/клавіатура
+
+6 узгоджених UX-фіч для списків документів/об'єктів і модалок:
+
+- **Ф1 Збережені Подання** — `SavedFilter` тепер несе `columns+order+sort` (back-compat зі
+  старими записами; guard на `undefined`). `useTableColumns.setVisible()` + `useSortState.set()`
+  для відновлення вигляду. work-orders save/apply знімає й відновлює повний вигляд.
+  `SavedFiltersBar` перейменовано на «подання» (UI-текст).
+- **Ф4 Кольорові індикатори рядка** — новий `lib/row-status.ts` (чиста, enum-агностична
+  `rowStatusTone → overdue/today/debt/none` + `border-class`; `none`=прозора рамка зберігає
+  вирівнювання). Застосовано у work-orders/invoices/purchase-orders. supplier-payments
+  пропущено — немає дедлайну/балансу (рейка була б інертна).
+- **Ф5 Unsaved-guard** у 5 великих create-модалках (WorkOrder/Invoice/PO/Stock/SupplierReturn):
+  `useDirtyForm` через baseline-ефект (mark-on-change після осідання стану) замість десятків
+  точкових markDirty; `confirmClose` у `onClose`; `resetDirty` на save-success.
+- **Ф6 Ctrl+Enter/Cmd+Enter → submit** у `modal.tsx` (гейт `keyboardShortcutsEnabled`, scoped
+  на панель проти подвоєння у вкладених модалках; onSubmit у ref). `onSubmit` прокинуто у
+  5 модалок (`isEditMode ? save : create` — відповідає видимій кнопці).
+- **Ф7 Вкладка «Зв'язки»** — вже присутня: WorkOrder-модалка має вкладку «Документи»
+  (LinkedDocumentsPanel + count-badges), Counterparty detail — реляційні вкладки. Інші
+  сутності не мають linked-documents endpoint (бекенд-скоуп, поза UX-поліруванням).
+- **Ф8 «Створити на основі»** — див. 911590ca (WO список) + наявні Invoice/WO-detail.
+
+Тести: row-status 10, useSavedFilters +3 (view round-trip + back-compat), modal +4
+(Ctrl/Cmd+Enter, no-modifier, no-op). Наявні double-submit тести модалок зелені. tsc web 0.
+
+---
+
 ## 2026-09-05 — fix(review): UI-гейтинг isSystem для валют/методів оплати (аудит 635c8816)
 
 ### 9af68c61 fix(review): UI-гейтинг isSystem для валют і методів оплати
