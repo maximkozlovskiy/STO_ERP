@@ -60,6 +60,16 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+0129d9c2  fix(review): calcVatTotals — VAT на агрегованій базі (дзеркало WO recalcTotals), не per-line.
+          — Ревʼю audit-round4 (b2681f28 mobile + ca778c0b web-модалки): 1 РЕАЛЬНА проблема, виправлено.
+          — ca778c0b зробив calcVatTotals квантувати ПДВ per-line (посилаючись на invoices/PO calcLineVat),
+            але ЄДИНИЙ споживач — CreateWorkOrderModal, а backend work-orders recalcTotals рахує ПДВ ОДИН раз
+            на агрегованій базі. 3×2.525@20%: preview vat=1.53 vs saved vat=1.52 → preview≠saved (той самий баг).
+          — Fix: total=Σ(roundMoney(qty×price)); vat=roundMoney(base×rate/100) на агрегованій базі. Тест оновлено.
+          — Перевірено ЧИСТО: mobile getAccessToken() = той самий in-memory accessToken (getToken видалено, 0 споживачів);
+            SR double-submit savingRef/transitioningRef guard ПЕРЕД await + reset у finally + handleModalClose; crypto.randomUUID SSR-safe.
+          — web tsc 0, web тести 511/511 (11 WO regression включно).
+
 3a4094e8  review(audit-round3): аудит коміту 3a4094e8 (8 логічних багів) — 0 нових проблем, усі 6 фіксів верифіковано КОРЕКТНИМИ.
           — setup TOCTOU: pg_advisory_xact_lock ПЕРЕД in-tx re-check count(); $executeRaw tagged-tmpl (не Unsafe);
             re-check під READ COMMITTED бачить закомічену org 1-го; happy-path не зламано. Spec РЕАЛЬНИЙ (create not.called при count=1).
