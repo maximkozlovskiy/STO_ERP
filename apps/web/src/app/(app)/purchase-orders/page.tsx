@@ -24,7 +24,7 @@ import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { purchaseOrderLinkedConfig, supplierReturnLinkedConfig } from '@/lib/linked-configs';
-import { useLinkedNav } from '@/lib/linked-nav';
+import { useLinkedNav, resolvePurchaseOrdersDeepLink } from '@/lib/linked-nav';
 import {
   usePurchaseOrders,
   purchaseOrdersKeys,
@@ -96,7 +96,7 @@ import {
 } from '@sto/shared';
 import { toast } from '@/lib/toast';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
-import { cn, UUID_RE, daysUntil } from '@/lib/utils';
+import { cn, daysUntil } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
 import { ExpiryBadge } from '@/components/ui/expiry-badge';
@@ -491,13 +491,20 @@ function PurchaseOrdersPageClient() {
   // очищуємо параметр щоб refresh не спамив модалку, і на mount якщо UUID валідний —
   // виставляємо editingPOId. Дзеркалить URL-driven pattern активної вкладки (line 134).
   useEffect(() => {
-    const openId = searchParams.get('open');
-    const openReturnId = searchParams.get('openReturn');
-    if ((openId && UUID_RE.test(openId)) || (openReturnId && UUID_RE.test(openReturnId))) {
-      if (openId && UUID_RE.test(openId)) setEditingPOId(openId);
+    const { openPurchaseOrderId, openSupplierReturnId, srModalShouldOpen } =
+      resolvePurchaseOrdersDeepLink(k => searchParams.get(k));
+    if (openPurchaseOrderId || openSupplierReturnId) {
+      if (openPurchaseOrderId) setEditingPOId(openPurchaseOrderId);
       // openReturn=<id> — deep-link до повернення постачальнику (окремий param, бо
       // supplier-return не має власного списку — живе на цій сторінці).
-      if (openReturnId && UUID_RE.test(openReturnId)) setSrEditId(openReturnId);
+      // Модалка SR — ОДИН інстанс з open={srCreateOpen} + editId={srEditId}; тож треба
+      // виставити ОБИДВА (як роблять row-click-и). Без setSrCreateOpen(true) editId
+      // виставляється, але open лишається false → модалка ніколи не відкривається
+      // (deep-link мертвий) — тому srModalShouldOpen явно керує open.
+      if (openSupplierReturnId) {
+        setSrEditId(openSupplierReturnId);
+        if (srModalShouldOpen) setSrCreateOpen(true);
+      }
       const params = new URLSearchParams(searchParams.toString());
       params.delete('open');
       params.delete('openReturn');

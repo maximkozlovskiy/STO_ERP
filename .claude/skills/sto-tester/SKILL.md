@@ -1121,6 +1121,28 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-06 — deep-link виставляє лише `editId`, але модалка керується ОКРЕМИМ `open`-прапорцем того самого інстансу → deep-link мертвий (модалка не відкривається) — frontend / dead-feature / HIGH
+
+**Сигнал:** сторінка-список має ОДИН інстанс модалки з `open={xCreateOpen}` + `editId={xEditId}` (два незалежні state). Усі «нормальні» точки відкриття (row-click, кнопки) виставляють ОБИДВА (`setXEditId(id); setXCreateOpen(true)`), а mount-once deep-link ефект (`?open=`/`?openReturn=`) — ЛИШЕ `setXEditId(id)`. Наслідок: `editId` виставлено, `open` лишається `false` → модалка ніколи не відкривається (тихо: URL змінюється, нічого не рендериться). Grep-детектор:
+
+```bash
+# знайти модалки з роздільними open+editId на одному інстансі
+grep -rnE "open=\{[a-zA-Z]+CreateOpen\}" apps/web/src/app/**/page.tsx
+# для кожної — перевірити чи deep-link ефект виставляє ОБИДВА setter-и
+grep -rnE "searchParams.get\('open|openReturn'\)" apps/web/src/app/**/page.tsx
+# у тілі ефекту має бути і setXEditId, і setXCreateOpen(true) — інакше баг
+```
+
+**Причина виникнення:** аналогія з іншою модалкою, що ПРАЦЮЄ через deep-link, вводить в оману. Напр. StockDoc `?open=` працює, бо має ДВА окремі інстанси модалки (`open={showCreate}` для create + `open={!!editingDocId}` для edit — editId сам є open-джерелом). Розробник копіює «виставляю editId — і все» на модалку з ЄДИНИМ інстансом, де `open` — окремий boolean, не похідний від editId. Sync/review це не ловлять: endpoint-контракт цілий, типи збігаються, а intra-page state-coupling поза їхньою зоною; тестів на deep-link page-ефекти зазвичай нема.
+
+**Підхід до виявлення:** винести чистий розбір deep-link у helper `resolveXDeepLink(get) → { openId, ..., modalShouldOpen }` де `modalShouldOpen` явно = «open теж треба true, не лише editId». Тест: `?openReturn=<uuid>` → `modalShouldOpen===true`. Дискримінатор: ментальний відкат (`modalShouldOpen:false`) → тест падає. Це обходить неможливість легко відрендерити гігантську page.tsx у RTL — тестуємо рішення про стан, а не весь компонент. Правило-інваріант: **якщо модалка керується `open` + `editId` роздільно, КОЖНА точка відкриття (row-click І deep-link) зобов'язана виставити обидва.**
+
+**Підхід до фіксу:** у deep-link ефекті виставити обидва setter-и (`setXEditId(id); setXCreateOpen(true)`), дзеркалячи row-click. Дублювання UUID-валідації прибрати у helper. Альтернатива (якщо архітектурно чистіше) — зробити `open={xCreateOpen || !!xEditId}`, але це змінює семантику close (обидва треба скидати) → менш безпечно за explicit-обидва.
+
+**Severity:** HIGH — цілий шлях навігації неробочий (мертва фіча), тихо: жодної помилки, лише «клік нічого не робить». Легко пропустити на demo, якщо тестили лише row-click-відкриття.
+
+**Де шукати ще:** усі сторінки-списки з `open={xCreateOpen}`-модалкою що приймає deep-link: purchase-orders (`?openReturn=` SR — цей баг), invoices/stock-documents (`?open=` — там ok, окремі інстанси, але перевіряти при рефакторі об'єднання інстансів). Загальний клас: будь-який роздільний `visible` + `selectedId` state, де кілька кодо-шляхів відкривають, а один забуває `visible=true`.
+
 ### 2026-09-05 — count/detail розходяться: badge-лічильник рахує зв'язок за наявністю FK, а detail-endpoint фільтрує `deletedAt: null` → «1» над порожньою секцією (Bug #641) — backend / consistency / MEDIUM
 
 **Сигнал:** пара методів «summary-count» + «detail-list» для одних і тих самих зв'язків, де count зроблено дешевше за detail. Count: `bucket.counterparty = row.counterpartyId ? 1 : 0` (лічить наявність **FK-скаляра**, взятого з `findMany` самої сутності). Detail: `this.prisma.counterparty.findFirst({ where: { id, orgId, deletedAt: null } })` (тягне **сам referenced-запис** з soft-delete фільтром) → `counterparty ? [row] : []`. Розходження проявляється щойно referenced-запис (контрагент / банк-рахунок / каса / пов'язаний документ) soft-deleted, а FK у батьку лишився: badge показує «1», панель — порожньо. Grep-детектор:

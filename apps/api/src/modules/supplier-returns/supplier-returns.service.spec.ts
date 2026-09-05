@@ -712,3 +712,101 @@ describe('SupplierReturnsService — create() з purchaseOrderId (Phase D2)', ()
     expect(prisma.supplierReturn.create).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Phase D2 — edit-path НЕ чіпає purchaseOrderId (FK-джерело зберігається).
+ * UpdateSupplierReturnDto навмисно НЕ має поля purchaseOrderId (create-only персистенція).
+ * Регресія: якщо update().data почне писати purchaseOrderId → редагування чернетки
+ * знулило б джерело-замовлення. Контракт: update().data НЕ містить ключа purchaseOrderId.
+ */
+describe('SupplierReturnsService — update() зберігає purchaseOrderId (Phase D2)', () => {
+  let service: SupplierReturnsService;
+  let updateData: Record<string, unknown> | undefined;
+  let prisma: {
+    supplierReturn: {
+      findFirst: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
+    };
+    supplierReturnLine: {
+      updateMany: ReturnType<typeof vi.fn>;
+      createMany: ReturnType<typeof vi.fn>;
+      findMany: ReturnType<typeof vi.fn>;
+    };
+    counterparty: { findFirst: ReturnType<typeof vi.fn> };
+    warehouse: { findFirst: ReturnType<typeof vi.fn> };
+    good: { findMany: ReturnType<typeof vi.fn> };
+    unitOfMeasure: { findMany: ReturnType<typeof vi.fn> };
+    $transaction: ReturnType<typeof vi.fn>;
+  };
+
+  const ORG = '00000000-0000-0000-0000-000000000001';
+  const SR_ID = '11111111-1111-4111-8111-111111111111';
+  const PO_ID = '99999999-9999-4999-8999-999999999999';
+
+  beforeEach(async () => {
+    updateData = undefined;
+    prisma = {
+      supplierReturn: {
+        findFirst: vi
+          .fn()
+          // update() pre-guard (status DRAFT)
+          .mockResolvedValueOnce({ id: SR_ID, status: SupplierReturnStatus.DRAFT })
+          // findOne() у кінці update
+          .mockResolvedValueOnce({
+            id: SR_ID,
+            orgId: ORG,
+            number: 'ПВП-20260615-000001',
+            status: SupplierReturnStatus.DRAFT,
+            supplierId: 's1',
+            warehouseId: 'w1',
+            purchaseOrderId: PO_ID, // ← FK лишається
+            totalAmount: 0,
+            notes: 'нове',
+            documentDate: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            supplier: { firstName: null, lastName: null, companyName: 'Acme' },
+            warehouse: { name: 'С1' },
+            purchaseOrder: { number: 'ЗП-2026-0007' },
+            lines: [],
+          }),
+        update: vi.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
+          updateData = args.data;
+          return Promise.resolve({});
+        }),
+      },
+      supplierReturnLine: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        createMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      counterparty: { findFirst: vi.fn() },
+      warehouse: { findFirst: vi.fn() },
+      good: { findMany: vi.fn().mockResolvedValue([]) },
+      unitOfMeasure: { findMany: vi.fn().mockResolvedValue([]) },
+      $transaction: vi.fn().mockImplementation((arg: unknown) => {
+        if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+        return Promise.resolve(arg);
+      }),
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        SupplierReturnsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: InventoryService, useValue: {} },
+        { provide: SettlementsService, useValue: {} },
+        { provide: DocumentNumberService, useValue: { next: vi.fn() } },
+      ],
+    }).compile();
+    service = module.get(SupplierReturnsService);
+  });
+
+  it('update() НЕ передає purchaseOrderId у data → FK зберігається; DTO повертає існуючий PO', async () => {
+    const res = await service.update(ORG, SR_ID, { notes: 'нове' } as never);
+
+    expect(updateData).toBeDefined();
+    expect(Object.prototype.hasOwnProperty.call(updateData!, 'purchaseOrderId')).toBe(false);
+    expect(res.purchaseOrderId).toBe(PO_ID);
+    expect(res.purchaseOrderNumber).toBe('ЗП-2026-0007');
+  });
+});

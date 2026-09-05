@@ -2799,3 +2799,83 @@ Web-suite: 56 файлів / 550 тестів зелені (було 55/540 → 
 панелі та nav; чисті).
 Виправлено багів: 1 (Bug #641, MEDIUM). Задокументовано ліміт: 1 (Bug #642, LOW).
 Playwright MCP: недоступний (CONNECT_TIMEOUT) — покрито service/component/unit + reasoning.
+
+## Session 2026-09-06 — «пов'язані документи» Phase D bug hunt (StockDoc + SupplierReturn PO-picker/FK, main)
+
+Скоуп: коміти 53c0e7b0 (DB +purchaseOrderId FK), 8d898757 (linked-documents SD+SR),
+6bd067f6 (PO-пікер у create), 8db8a589 (review-fix liveness getLinkedCounts).
+Sync — чисто; review — знайшов+пофіксив count/detail soft-delete (Bug #641/#A).
+Playwright MCP: недоступний (CONNECT_TIMEOUT) — покрито service/contract/unit + reasoning.
+
+### Bug #643 (ВИПРАВЛЕНО) — deep-link `?openReturn=<id>` не відкриває модалку повернення (мертвий deep-link)
+
+- [x] виправлено
+- **Severity:** HIGH (функціональний — цілий deep-link `toSupplierReturn` неробочий)
+- **Область:** frontend — `apps/web/src/app/(app)/purchase-orders/page.tsx` (deep-link ефект) + `apps/web/src/lib/linked-nav.ts`
+
+**Опис.** `useLinkedNav().toSupplierReturn(id)` пушить `/purchase-orders?openReturn=<id>`
+(linked-nav.ts:38). Сторінка замовлень читає param у mount-once ефекті і викликала
+ЛИШЕ `setSrEditId(openReturnId)`. Але SR-модалка на цій сторінці — ОДИН інстанс з
+`open={srCreateOpen}` + `editId={srEditId}` (page.tsx:1562). Усі row-click точки
+відкриття виставляють ОБИДВА (`setSrEditId(sr.id)` **і** `setSrCreateOpen(true)` —
+page.tsx:953-954, 1039-1040), а deep-link — лише перше. Наслідок: `srEditId`
+виставлявся, але `srCreateOpen` лишався `false` → **модалка ніколи не відкривалась**.
+Весь механізм навігації «показати повернення постачальнику» з панелей пов'язаних
+документів / інших сторінок був мертвий (тихо: URL змінювався, нічого не відкривалось).
+
+**Чому чейн пропустив.** Sync перевіряє API↔UI-контракт (endpoint існує, типи збігаються)
+— deep-link intra-page state coupling поза його зоною. Review дивився на count/detail
+liveness. Немає жодного тесту на PO-page deep-link. StockDoc `?open=` працює, бо там
+ДВА окремі інстанси модалки (`open={showCreate}` та `open={!!editingDocId}`) — тому
+аналогія «як у StockDoc» вводила в оману: SR має один інстанс, editId недостатньо.
+
+**Фікс.** (1) Винесено чистий розбір deep-link у `resolvePurchaseOrdersDeepLink()`
+(linked-nav.ts) → повертає `{openPurchaseOrderId, openSupplierReturnId, srModalShouldOpen}`.
+`srModalShouldOpen=true` явно каже сторінці відкрити модалку (не лише виставити editId).
+(2) Ефект тепер робить `setSrEditId(id); if (srModalShouldOpen) setSrCreateOpen(true)`.
+(3) Прибрано дубльований inline UUID-regex (`UUID_RE` з page більше не потрібен).
+
+**Тест (дискримінатор).** `apps/web/src/lib/__tests__/linked-nav.test.tsx` — новий
+describe `resolvePurchaseOrdersDeepLink`: `?openReturn=<uuid>` → `srModalShouldOpen===true`.
+Ментальний відкат (`srModalShouldOpen: false`) → 2 тести падають (verified).
+
+### Верифіковано без багів (нові дискримінуючі тести додані де були прогалини)
+
+- **Item 1 (count==detail).** Додано service-тести: не-TRANSFER → `warehouses=1`;
+  TRANSFER із soft-deleted ЛИШЕ target → `warehouses=1` (не 2). Разом з наявними
+  (TRANSFER=2, усе-deleted=0) count == detail в обидва боки. ✅
+- **Item 2 (PO-picker create round-trip).** Наявні service-тести SD+SR покривають:
+  валідний PO → персист+DTO(id+number); без PO → null; невалідний (чужа org/soft-deleted
+  → guard `where:{id,orgId,deletedAt:null}` дає null) → BadRequest, create НЕ викликається. ✅
+- **Item 3 (guard↔tx race).** ПРОАНАЛІЗОВАНО: PO-guard у create() виконується ПОЗА
+  `$transaction` (SD: рядки 134-162 до tx на 184; SR: 129-151 до create на 164). Якщо PO
+  soft-delete-нути МІЖ guard і insert — FK збережеться на soft-deleted PO. **Прийнятний
+  розрив** (task-confirmed): FK на рівні БД лишається валідним (рядок існує), а
+  getLinkedDocuments/getLinkedCounts обидва фільтрують `deletedAt:null` → stale-лінк
+  прихований в UI (count=0, detail порожній — узгоджено). НЕ фіксимо: перенесення guard
+  у tx дало б хибне відчуття безпеки (soft-delete не має каскаду), а вартість (зайвий
+  RTT у tx) не виправдана для латентного вікна ~мс. Занотовано.
+- **Item 4 (edit не нулить PO).** Додано service-тести SD+SR: `update().data` НЕ містить
+  ключа `purchaseOrderId` (Object.hasOwnProperty=false) → FK зберігається, DTO віддає
+  існуючий PO. Ментальний відкат (додати `purchaseOrderId:null` у update.data) → тест
+  падає (verified). UI: SR/SD create-modal показують PO read-only в edit (`disabled={!canEdit||isEdit}`). ✅
+- **Item 5 (dirty-guard + PO-picker + supplier-scope).** `purchaseOrderId` присутній у
+  dirty-deps SR-модалки (SupplierReturnCreateModal.tsx:315) і в `form`-об'єкті SD-модалки
+  → вибір PO позначає форму брудною. Baseline (нічого не чіпали → Escape без діалогу)
+  та field-change покриті наявним DirtyGuard-спеком. PO-picker супплаєр-скоуп:
+  `po.supplierId === supplierId` фільтр коректний — `PurchaseOrderResponseDto.supplierId`
+  повертається списком (перевірено dto+toDto:881). ✅
+- **Item 6 (linked-counts DoS/validation).** Повністю покрито contract-спеками обох
+  модулів: empty→400 (ArrayMinSize), 501→400 (ArrayMaxSize), non-UUID→400. Duplicate ids
+  → keyed once (loop `result[id]=…`); cross-org → 0 (findMany filter orgId, zero-init). ✅
+- **Item 7 (deep-link).** StockDoc `?open=` — окремий edit-інстанс, працює. SR `?openReturn=`
+  — БУВ зламаний → Bug #643 (виправлено). ✅
+
+### Підсумок
+
+TypeScript: API ✅ / web ✅ (0 помилок).
+API-suite (stock-documents + supplier-returns): 4 файли / 84 тести зелені (було 80 → +4:
+SD update-preservation +1, SD count item1 +2, SR update-preservation +1).
+Web-suite (app + linked-nav + dirty + create modals): 9 файлів / 47 тестів зелені
+(linked-nav +4 resolver-тести).
+Виправлено багів: 1 (Bug #643, HIGH). Проаналізовано/прийнято розрив: 1 (Item 3, guard↔tx race).

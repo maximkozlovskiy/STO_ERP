@@ -761,6 +761,37 @@ describe('StockDocumentsService — linked documents (Phase D3)', () => {
     const res = await service.getLinkedCounts(ORG, [DOC_ID]);
     expect(res[DOC_ID]).toEqual({ purchaseOrder: 0, warehouses: 1 });
   });
+
+  // Item 1 (sto-tester Phase D): не-TRANSFER документ → warehouses count == 1 (лише джерело),
+  // count == detail. getLinkedDocuments для того самого doc теж дає 1 склад (перевірено
+  // окремим detail-тестом вище). Дискримінатор проти регресії, де targetWarehouseId=null
+  // помилково рахувався б як 0 або джерело не рахувалось би.
+  it('getLinkedCounts: не-TRANSFER (targetWarehouseId=null) → warehouses=1 (лише живе джерело)', async () => {
+    prisma.stockDocument.findMany.mockResolvedValueOnce([
+      { id: DOC_ID, purchaseOrderId: null, warehouseId: WAREHOUSE_ID, targetWarehouseId: null },
+    ]);
+    prisma.warehouse.findMany.mockResolvedValueOnce([{ id: WAREHOUSE_ID }]);
+    const res = await service.getLinkedCounts(ORG, [DOC_ID]);
+    expect(res[DOC_ID]).toEqual({ purchaseOrder: 0, warehouses: 1 });
+  });
+
+  // Item 1: TRANSFER з живим джерелом+PO, але soft-deleted ЛИШЕ target → warehouses=1 (НЕ 2).
+  // Ізолює вплив target-liveness від PO/source (на відміну від змішаного тесту вище).
+  it('getLinkedCounts: TRANSFER із soft-deleted ЛИШЕ target-складом → warehouses=1 (не 2)', async () => {
+    prisma.stockDocument.findMany.mockResolvedValueOnce([
+      {
+        id: DOC_ID,
+        purchaseOrderId: PO_ID,
+        warehouseId: WAREHOUSE_ID,
+        targetWarehouseId: TARGET_WAREHOUSE_ID,
+      },
+    ]);
+    // PO живий, джерело живе, target soft-deleted (не в liveWhSet).
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([{ id: PO_ID }]);
+    prisma.warehouse.findMany.mockResolvedValueOnce([{ id: WAREHOUSE_ID }]);
+    const res = await service.getLinkedCounts(ORG, [DOC_ID]);
+    expect(res[DOC_ID]).toEqual({ purchaseOrder: 1, warehouses: 1 });
+  });
 });
 
 /**
@@ -887,5 +918,92 @@ describe('StockDocumentsService — create() з purchaseOrderId (Phase D2)', () 
       } as never),
     ).rejects.toThrow(BadRequestException);
     expect(prisma.stockDocument.create).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Phase D2 — edit-path НЕ чіпає purchaseOrderId (FK-джерело зберігається).
+ * UpdateStockDocumentDto навмисно НЕ має поля purchaseOrderId (create-only персистенція).
+ * Регресія: якщо хтось додасть purchaseOrderId у update().data (напр. копі-паст з create),
+ * PATCH без цього поля → Prisma отримає undefined → у поточному коді FK лишається, але
+ * якщо його поставлять як `purchaseOrderId: dto.purchaseOrderId ?? null` → редагування
+ * чернетки НУЛИТЬ джерело-замовлення. Цей тест фіксує контракт: update().data НЕ містить
+ * ключа purchaseOrderId взагалі.
+ */
+describe('StockDocumentsService — update() зберігає purchaseOrderId (Phase D2)', () => {
+  let service: StockDocumentsService;
+  let updateData: Record<string, unknown> | undefined;
+  let prisma: {
+    stockDocument: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    stockDocumentLine: {
+      updateMany: ReturnType<typeof vi.fn>;
+      createMany: ReturnType<typeof vi.fn>;
+    };
+    $transaction: ReturnType<typeof vi.fn>;
+  };
+
+  const ORG = 'org-1';
+  const DOC_ID = '11111111-1111-4111-8111-111111111111';
+  const PO_ID = '99999999-9999-4999-8999-999999999999';
+
+  beforeEach(async () => {
+    updateData = undefined;
+    prisma = {
+      stockDocument: {
+        findFirst: vi.fn().mockResolvedValue({ status: 'DRAFT' }),
+        update: vi.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
+          updateData = args.data;
+          return Promise.resolve({
+            id: DOC_ID,
+            orgId: ORG,
+            number: 'ПТ-2026-0001',
+            type: StockDocumentType.RECEIPT,
+            status: 'DRAFT',
+            branchId: 'b1',
+            warehouseId: 'w1',
+            targetWarehouseId: null,
+            purchaseOrderId: PO_ID, // ← FK лишається у поверненому рядку
+            notes: 'нове',
+            documentDate: new Date(),
+            confirmedAt: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            branch: { name: 'Ф1' },
+            warehouse: { name: 'С1' },
+            targetWarehouse: null,
+            purchaseOrder: { number: 'ЗП-2026-0007' },
+            lines: [],
+          });
+        }),
+      },
+      stockDocumentLine: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        createMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      $transaction: vi.fn().mockImplementation((arg: unknown) => {
+        if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+        return Promise.resolve(arg);
+      }),
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        StockDocumentsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: InventoryService, useValue: {} },
+        { provide: DocumentNumberService, useValue: { next: vi.fn() } },
+      ],
+    }).compile();
+    service = module.get(StockDocumentsService);
+  });
+
+  it('update() НЕ передає purchaseOrderId у data → FK зберігається; DTO повертає існуючий PO', async () => {
+    const res = await service.update(ORG, DOC_ID, { notes: 'нове' } as never);
+
+    // КРИТИЧНИЙ дискримінатор: update.data не має ключа purchaseOrderId (жодного нулювання).
+    expect(updateData).toBeDefined();
+    expect(Object.prototype.hasOwnProperty.call(updateData!, 'purchaseOrderId')).toBe(false);
+    // FK зберігся → DTO віддає існуюче джерело-замовлення.
+    expect(res.purchaseOrderId).toBe(PO_ID);
+    expect(res.purchaseOrderNumber).toBe('ЗП-2026-0007');
   });
 });

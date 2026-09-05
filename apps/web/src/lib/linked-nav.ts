@@ -22,6 +22,42 @@ export interface LinkedNav {
   toSupplierReturn: (id: string) => void;
 }
 
+/**
+ * Результат розбору deep-link параметрів на сторінці замовлень (purchase-orders).
+ * `openPurchaseOrderId` → відкрити edit-модалку PO; `openSupplierReturnId` → відкрити
+ * SR-модалку. SR-модалка на цій сторінці — ОДИН інстанс з `open` + `editId`, тож
+ * недостатньо виставити лише editId: `srModalShouldOpen` явно каже, що open теж
+ * має стати true (інакше editId виставлений, а модалка закрита → deep-link мертвий).
+ */
+export interface ResolvedDeepLink {
+  openPurchaseOrderId: string | null;
+  openSupplierReturnId: string | null;
+  /** SR-модалку треба відкрити (open=true), не лише виставити editId. */
+  srModalShouldOpen: boolean;
+}
+
+const DEEP_LINK_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Чистий розбір deep-link параметрів `?open=` (PO) та `?openReturn=` (SR) на сторінці
+ * замовлень. Валідні лише коректні UUID. Винесено з page.tsx, щоб зчеплення
+ * «editId + open» для SR-модалки було покрите unit-тестом (Bug: openReturn виставляв
+ * лише editId, модалка з open={srCreateOpen} лишалась закритою).
+ */
+export function resolvePurchaseOrdersDeepLink(
+  get: (key: string) => string | null,
+): ResolvedDeepLink {
+  const openId = get('open');
+  const openReturnId = get('openReturn');
+  const validOpen = openId && DEEP_LINK_UUID_RE.test(openId) ? openId : null;
+  const validReturn = openReturnId && DEEP_LINK_UUID_RE.test(openReturnId) ? openReturnId : null;
+  return {
+    openPurchaseOrderId: validOpen,
+    openSupplierReturnId: validReturn,
+    srModalShouldOpen: validReturn !== null,
+  };
+}
+
 export function useLinkedNav(): LinkedNav {
   const router = useRouter();
   return useMemo<LinkedNav>(
