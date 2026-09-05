@@ -1109,6 +1109,62 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-05 — Read-фільтр діапазону дати використовує CONTAINMENT замість OVERLAP → рядки що перетинають межу вікна мовчки зникають (CAL-C2) — backend / data-visibility / HIGH
+
+**Сигнал:** `findX(date)`/`listByDay`/будь-який read що будує UTC-вікно `[dayStart, dayEnd]` з календарної дати і фільтрує `where: { startAt: { gte: dayStart }, endAt: { lte: dayEnd } }` (CONTAINMENT — рядок повністю всередині вікна). Наслідок: запис що ПОЧИНАЄТЬСЯ до `dayStart` але закінчується всередині дня (split-day continuation, слот через опівніч, оренда/бронювання що триває кілька днів) — випадає з вибірки. UI показує ресурс вільним, хоча він зайнятий → double-booking. Live-сигнал: створити слот `startAt=D-1 21:00, endAt=D 06:00` → `GET ?date=D` НЕ повертає його (мало б).
+
+**Причина виникнення:** «слоти дня» інтуїтивно = «слоти що починаються й закінчуються в цей день», тож пишуть `gte dayStart AND lte dayEnd`. Це правильно для point-in-time подій (createdAt), але НЕ для інтервалів [startAt,endAt] що можуть тривати через межу. Той самий overlap-предикат що вже стоїть у conflict-probe (`checkConflicts`/`createSlot`) забувають продублювати у read-фільтрі.
+
+**Підхід до виявлення:** grep `grep -rnE "startAt: \{ (gte|gt):" apps/api/src/modules --include="*.service.ts"` — для кожного read по інтервальній моделі (CalendarSlot/BookingRequest/Reservation/Rental/будь-що з парою start/end) перевірити чи фільтр = half-open OVERLAP `startAt < end AND endAt > start`, а НЕ containment `startAt >= start AND endAt <= end`. Порівняти з conflict-probe того ж сервісу — вони мають бути ідентичні. Unit-сигнал: асертити форму `where.startAt` має ключ `lt` (не `gte`) і `where.endAt` має `gt` (не `lte`).
+
+**Підхід до фіксу:** замінити на half-open overlap: `where: { startAt: { lt: end }, endAt: { gt: start } }` (дотик межі не рахується конфліктом/входженням, `[start,end)`). Дзеркалити наявний conflict-probe. Regression-guard: unit що будує вибірку дня і асертить `where.startAt.lt` + `where.endAt.gt`; live-проба зі слотом що перетинає межу.
+
+**Severity:** HIGH — прихована зайнятість ресурсу → double-booking, порушення capacity-інваріанта; TS/unit зелені бо форма where синтаксично валідна.
+
+**Де шукати ще:** будь-яка інтервальна модель з date-window read — `BookingRequest` (getAvailability), майбутні `Rental`/`Reservation`/`Shift`/`MaintenanceWindow`; загальний принцип «інтервал ⇒ overlap, точка ⇒ containment».
+
+### 2026-09-05 — Cascade-remove-guard для master-data з FK-дітьми: soft-delete parent без перевірки активних дітей → осиротілі рядки (MD-H1 class) — backend / data-integrity / orphan / MEDIUM–HIGH
+
+**Сигнал:** `service.remove()` reference/master-data сутності (Warehouse/Zone/Employee/Lift/Brand/Category) робить atomic `updateMany({deletedAt})` БЕЗ prep-check на активних FK-дітей. Наслідок: parent зникає з активних списків, але діти (StockItem із залишком, Lift у зоні, WorkOrderLine з employeeId) далі посилаються на мертвий id → залишки «зникають», підйомник некерований через UI зони, робота вказує на видаленого механіка. Live-сигнал: create parent → create активну дитину → DELETE parent → 204 (мало 400), дитина лишається з мертвим `parentId`.
+
+**Причина виникнення:** master-data сприймається «просто довідник, видаляється вільно»; FK-зв'язки з операційними даними (StockItem.warehouseId, Lift.zoneId, WorkOrderLine.employeeId) не спадають на думку при написанні `remove()`. Симетрично Bug #631 (document-children counterparty), але тут діти — не документи, а операційні агрегати/залишки.
+
+**Підхід до виявлення:** для кожного `remove()`/`delete()` master-data сервісу знайти всі моделі з FK на цю сутність (`grep -rnE "<entity>Id\b" schema.prisma`) → кожна операційно-значуща дитина (з ненульовим станом: StockItem.quantity/reserved, активний Lift, WorkOrderLine у не-термінальному WO) потребує prep-guard `findFirst({where:{<fk>:id, orgId, deletedAt:null, <active-predicate>}})` → `throw BadRequestException(<укр>)` ПЕРЕД soft-delete. Термінальні стани (ARCHIVED/CANCELLED WO) не блокують — паритет із Bug #631.
+
+**Підхід до фіксу:** додати `findFirst` guard ПЕРЕД `$transaction`/`updateMany` (не всередині — щоб 400 віддавався до будь-якої мутації); повідомлення українською «Неможливо видалити: <причина>. Спочатку …». Для балансу — `OR: [{ quantity: { not: 0 } }, { reserved: { not: 0 } }]`. Regression-guard: spec з дитина-`findFirst.mockResolvedValueOnce({id}) → BadRequest + parent.updateMany.not.toHaveBeenCalled`; happy `null → updateMany`; count=0 → NotFound.
+
+**Severity:** MEDIUM (Zone/Lift/Employee — керованість/UX) до HIGH (Warehouse із залишком — фінансово-облікова цілісність).
+
+**Де шукати ще:** `Warehouse.remove` (StockItem≠0 — зроблено), `Zone.remove` (активний Lift — зроблено), `Employee.remove` (WorkOrderLine у активному WO — зроблено); ще перевірити `Lift.remove` (CalendarSlot майбутні), `GarageBranch.remove` (Warehouse/Zone/Employee), `UnitOfMeasure.remove` (GoodUoM), `WorkCategory.remove` (Work).
+
+### 2026-09-05 — TOCTOU: existence/uniqueness check через count() ПОЗА транзакцією → concurrent-запити обидва проходять (setup first-run) — backend / concurrency / HIGH
+
+**Сигнал:** `if (await isAlreadyInitialized()) throw` / будь-який `count()`/`findFirst()` prep-guard ПОЗА `$transaction`, після якого йде create повного агрегату. Класичний check-then-act: два одночасні запити обидва читають count=0, обидва створюють. Особливо небезпечно коли `@@unique` НЕ ловить дубль (у setup кожна tx має власний `org.id`, тож `@@unique([orgId,email])` на AuthAccount не спрацьовує — orgId різні). Наслідок: два повні tenant-и / два OWNER / зламаний single-instance інваріант. Throttle (3/хв) НЕ рятує — обидва в межах ліміту.
+
+**Причина виникнення:** guard і create написані окремо; «навряд чи хтось натисне двічі одночасно» — але curl-flood/подвійний сабміт/retry це відтворюють. Розробник покладається на `@@unique` як backstop, не помічаючи що ключ не покриває саме цей інваріант.
+
+**Підхід до виявлення:** grep `grep -rnE "await (this\.)?(isAlready|exists|count|findFirst)" apps/api/src/modules --include="*.service.ts"` — для кожного prep-guard перед create-агрегату перевірити: (а) чи він ПОЗА tx? (б) чи `@@unique` РЕАЛЬНО ловить дубль у concurrent-кейсі (не «схоже що ловить»)? Якщо унікальність не гарантована схемою — це TOCTOU. Unit-сигнал: mock де outer-count=0 але in-tx-count=1 → має бути 400 + create.not.toHaveBeenCalled.
+
+**Підхід до фіксу (offline-safe, локальний Postgres):** серіалізувати bootstrap через `tx.$executeRaw\`SELECT pg_advisory_xact_lock(hashtext('<унікальний-ключ>'))\``ПЕРШОЮ операцією у`$transaction`, ПОТІМ re-check `count()`ВСЕРЕДИНІ tx → 400. Другий запит блокується до COMMIT першого, після чого бачить count>0. Lock авто-звільняється в кінці tx. Для не-bootstrap кейсів — покладатись на DB`@@unique`+ ловити P2002 → 409 (якщо ключ дійсно покриває інваріант). Regression-guard: unit з`makePrisma(outer=0, inner=1)` → 400 + advisory-lock узятий×1 + create not called.
+
+**Severity:** HIGH — порушення критичних single-instance/uniqueness інваріантів; невідтворюване у звичайному тесті (потрібен concurrency-mock), тому unit з in-tx-count=1 обов'язковий.
+
+**Де шукати ще:** setup/init (зроблено); будь-який «create-if-not-exists» без DB-unique що покриває саме цей інваріант — first-org, singleton-settings, «перший X стає default», reserve-унікального-номера поза `SELECT FOR UPDATE`. Споріднено з §1.1 CAS-гейт для FSM (Хвиля 1) — той самий клас «read stale поза атомарним контекстом».
+
+### 2026-09-05 — Public endpoint приймає дату в минулому (booking) → сміття в черзі + SMS на минулу дату — backend / validation-completeness / MEDIUM
+
+**Сигнал:** public mutation-endpoint (booking/request, reservation, appointment) валідує формат дати (`@IsDateString`), робочі години, робочий день — але НЕ перевіряє що дата ≥ тепер. curl-bypass (або баг у віджеті) створює заявку на вчора → захаращує reception-чергу + тригерить SMS/notification на минулу дату.
+
+**Причина виникнення:** валідатори перевіряють «синтаксис + бізнес-вікно» (години/дні тижня), «не в минулому» здається обов'язком фронта — але public endpoint не може довіряти клієнту. Пропущений семантичний guard серед синтаксичних.
+
+**Підхід до виявлення:** для кожного public/no-auth endpoint що приймає майбутню дату (`requestedDate`/`scheduledAt`/`appointmentDate`) — перевірити наявність `if (new Date(dto.date).getTime() < Date.now()) throw`. Grep `grep -rnE "requestedDate|scheduledAt|appointmentDate|plannedAt" apps/api/src/modules --include="*.service.ts"` → зіставити з наявністю past-check. Порівнювати як абсолютні інстанти (Date вже несе client-offset), НЕ як локальні рядки.
+
+**Підхід до фіксу:** `if (requestedAt.getTime() < Date.now()) throw new BadRequestException('Дата запису не може бути в минулому')` серед інших guard-ів. Live-проба: past-дата→400, майбутня робоча→201.
+
+**Severity:** MEDIUM — operational-noise + витрати SMS-gateway, не corruption.
+
+**Де шукати ще:** booking.create (зроблено); будь-який public scheduler-endpoint, `POST /appointments`, `POST /reservations`, publiс WO-estimate-accept із датою.
+
 ### 2026-09-04 — Remove-guard «блокувати якщо є пов'язані активні документи» покриває не всі однотипні relations; balance-як-proxy маскує DRAFT-документи (Bug #631) — backend / data-integrity / orphan / MEDIUM
 
 **Сигнал:** `service.remove()` додає guard «не видаляти якщо є активні наряди/PO/борг» і перевіряє 2 з N однотипних document-relations. Balance-guard (`Number(balance)!==0`) присутній і здається універсальним «є борг → не можна», тому DRAFT/чернетка ще-без-транзакції документа (Invoice DRAFT, PO DRAFT) провалюється: `balance=0`, немає count-guard для цього типу → parent soft-видаляється → активний документ вказує на soft-deleted parent (осиротів у списку, зник з CRM). Live-сигнал: create parent → create DRAFT-документ (без send/transition) → DELETE parent → 204 (мало бути 400), а `GET /document/:id` → 200 з мертвим `parentId`.
