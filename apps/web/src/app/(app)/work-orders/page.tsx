@@ -13,6 +13,7 @@ import {
   Search,
   User,
   Pencil,
+  Copy,
   Trash2,
   Receipt,
   CreditCard,
@@ -498,6 +499,27 @@ function WorkOrdersPageInner() {
       toast.success('Наряд позначено на видалення');
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+    }
+  };
+
+  // «Створити на основі»: бекенд POST /clone копіює позиції (роботи/запчастини)
+  // у новий DRAFT-наряд із новим номером/датами. Guard проти подвійного кліку —
+  // cloningId тримає id наряду, що дублюється.
+  const [cloningId, setCloningId] = useState<string | null>(null);
+  const handleClone = async (wo: WorkOrder) => {
+    if (cloningId) return;
+    setCloningId(wo.id);
+    try {
+      const cloned = await apiFetch<{ id: string }>(`/work-orders/${wo.id}/clone`, {
+        method: 'POST',
+      });
+      queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+      if (features.toastEnabled) toast.success('Наряд створено на основі');
+      setEditWoId(cloned.id);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка дублювання');
+    } finally {
+      setCloningId(null);
     }
   };
 
@@ -1071,6 +1093,18 @@ function WorkOrdersPageInner() {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
+                          {!wo.deletedAt && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="Створити на основі"
+                              disabled={cloningId === wo.id}
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                              onClick={() => void handleClone(wo)}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           {!wo.deletedAt && (
                             <Button
                               variant="ghost"
