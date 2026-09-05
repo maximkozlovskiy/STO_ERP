@@ -83,10 +83,12 @@ const EMPTY_LINE: Omit<LocalLine, '_key'> = {
   price: '',
 };
 
-let lineKeyCounter = 0;
-function newKey() {
-  return `sr_line_${++lineKeyCounter}`;
-}
+// Crypto-randomUUID дає глобально-унікальні row-ключі без module-level лічильника
+// (який пережив би HMR/StrictMode і ризикував reuse). Симетрія з nextKey() інших модалок.
+const newKey = () =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `sr_line_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 
 function lineFromApi(l: SupplierReturnLine): LocalLine {
   return {
@@ -133,6 +135,21 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   // ── UI state ───────────────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  // WEB-H3 (Bug #630): синхронні ref-и проти concurrent double-submit. `disabled={saving}`
+  // спирається на re-render React МІЖ подіями кліку; два click-и в одному tick обидва
+  // входять до застосування disabled → 2 POST /supplier-returns (2 документи повернення)
+  // або подвійний confirm/cancel. Ref фліпається синхронно ДО React state-flush → другий
+  // вхід одразу повертається. Симетрія з Invoice/PO/Stock/WorkOrder модалками.
+  const savingRef = useRef(false);
+  const transitioningRef = useRef(false);
+  const setSavingBoth = (v: boolean) => {
+    savingRef.current = v;
+    setSaving(v);
+  };
+  const setTransitioningBoth = (v: boolean) => {
+    transitioningRef.current = v;
+    setTransitioning(v);
+  };
   const [error, setError] = useState('');
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [showLineInput, setShowLineInput] = useState(false);
@@ -230,7 +247,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const doTransition = useCallback(
     async (targetStatus: string) => {
       if (!editId) return;
-      setTransitioning(true);
+      // синхронний guard проти подвійного confirm/cancel (Bug #630 клас).
+      if (savingRef.current || transitioningRef.current) return;
+      setTransitioningBoth(true);
       setError('');
       try {
         const endpoint =
@@ -249,7 +268,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         setError(msg);
         if (features.toastEnabled) toast.error(msg);
       } finally {
-        setTransitioning(false);
+        setTransitioningBoth(false);
       }
     },
     [editId, features.toastEnabled, onSaved],
@@ -301,6 +320,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
 
   // ── Save ───────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
+    // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit —
+    // два click-и в одному tick інакше створять 2 документи повернення.
+    if (savingRef.current || transitioningRef.current) return;
     if (!supplierId) {
       setError('Оберіть постачальника');
       return;
@@ -320,7 +342,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       }
     }
     setError('');
-    setSaving(true);
+    setSavingBoth(true);
     try {
       const payload = {
         supplierId,
@@ -353,7 +375,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
-      setSaving(false);
+      setSavingBoth(false);
     }
   }, [
     supplierId,
@@ -367,6 +389,14 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     onSaved,
     onClose,
   ]);
+
+  // close-guard: під час save/transition Escape/backdrop не мають закривати модалку
+  // (інакше in-flight запит лишається без UI, а повторне відкриття бачить stale-стан).
+  // Симетрія з Invoice/PO/Stock/WorkOrder модалками.
+  const handleModalClose = useCallback(() => {
+    if (savingRef.current || transitioningRef.current) return;
+    onClose();
+  }, [onClose]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const isReadOnly = status !== 'DRAFT';
@@ -383,7 +413,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     <>
       <Modal
         open={open}
-        onClose={onClose}
+        onClose={handleModalClose}
         title={title}
         size="content"
         hideClose

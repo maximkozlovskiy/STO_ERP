@@ -98,7 +98,27 @@ export function settlementBalanceToneClass(tone: ReturnType<typeof settlementBal
   }
 }
 
-/** Single-pass VAT + total computation for line/part rows. */
+/**
+ * Округлення грошей до 2 знаків (копійки), half-away-from-zero (бухгалтерське).
+ * Дзеркалить backend `apps/api/src/common/utils/math.ts:roundMoney` — обидві сторони
+ * мають квантувати ІДЕНТИЧНО, інакше preview-сума у модалці розходиться з тим, що
+ * порахує бекенд (WO-H2 / FIN-H1: `300.3 * 0.2 = 60.059999…`, а `Σ(рядки)` дрейфує на копійку).
+ * `+1e-9` нейтралізує представлення на кшталт 1.005 → 1.00 замість 1.01.
+ */
+export function roundMoney(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const sign = value < 0 ? -1 : 1;
+  return (sign * Math.round(Math.abs(value) * 100 + 1e-9)) / 100;
+}
+
+/**
+ * Single-pass VAT + total computation for line/part rows.
+ *
+ * Квантує КОЖЕН рядок через roundMoney ПЕРЕД сумуванням, а потім і сам підсумок —
+ * дзеркалить backend `calcLineVat`+`sumLineTotals` (VAT рахується й округлюється per-line,
+ * далі підсумовується). Без per-line-квантування raw-float Σ у tfoot розходився з
+ * бекендовим amount на копійку (WO-H2 / FIN-H1).
+ */
 export function calcVatTotals(
   rows: { qty: number | undefined; price: number | undefined }[],
   vatRate: number,
@@ -107,10 +127,10 @@ export function calcVatTotals(
   let vat = 0;
   for (const r of rows) {
     if (r.qty != null && r.price != null) {
-      const sum = r.qty * r.price;
+      const sum = roundMoney(r.qty * r.price);
       total += sum;
-      if (vatRate > 0) vat += (sum * vatRate) / 100;
+      if (vatRate > 0) vat += roundMoney((r.qty * r.price * vatRate) / 100);
     }
   }
-  return { total, vat };
+  return { total: roundMoney(total), vat: roundMoney(vat) };
 }
