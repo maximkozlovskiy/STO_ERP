@@ -2879,3 +2879,44 @@ SD update-preservation +1, SD count item1 +2, SR update-preservation +1).
 Web-suite (app + linked-nav + dirty + create modals): 9 файлів / 47 тестів зелені
 (linked-nav +4 resolver-тести).
 Виправлено багів: 1 (Bug #643, HIGH). Проаналізовано/прийнято розрив: 1 (Item 3, guard↔tx race).
+
+## Session 2026-09-06 — Final bug hunt: "пов'язані документи" рефактор (867ff926, b085cf8d)
+
+**Scope:** shared `LinkedDocumentsPopup` + `common/utils/linked-counts.ts` helpers +
+parametrized `linked-configs.tsx` builders + payments `@@index([orgId,invoiceId])`.
+Playwright MCP DOWN — лише unit/service/contract + reasoning.
+
+**Результат: 0 нових багів.** Рефактор поведінко-зберігаючий; регресійні поверхні вже
+покриті наявними guard-тестами (Bug #A liveness-gating, count==detail). Закрито 3 прогалини
+в покритті тестами — усі з доведеною дискримінацією (mental revert → fail):
+
+- **Item 1 — `linked-counts.ts` без юніт-тесту.** Додано `apps/api/src/common/utils/linked-counts.spec.ts`
+  (10 тестів). `initCountsMap` дає НЕЗАЛЕЖНІ обʼєкти на кожен id (немає aliasing:
+  мутація result['a'].foo не тече в result['b'].foo — дискримінатор проти
+  `const zero={}; out[id]=zero`). `uniqueDefinedIds`: dedup + strip null/undefined/''.
+  Реалізація вже коректна (`Object.fromEntries` свіжий на кожен id) — тест як regression guard.
+- **Item 2 — builder behavior-parity без тесту.** Додано `apps/web/src/lib/__tests__/linked-configs.test.tsx`
+  (19 тестів). Перевіряє: invoiceSection secondary = DATE у наряді / AMOUNT у контрагента;
+  warehouseSection stock-doc key='warehouses'/'Склади' vs supplier-return default 'warehouse'/'Склад';
+  purchaseOrderSourceSection counterparty key='purchaseOrders' icon=ShoppingCart vs default
+  ClipboardList; усі navigate → правильний nav-метод; fetchPath кожного конфіга. Дискримінація
+  доведена: тимчасовий флип warehouseSection дефолту → 2 тести падають.
+- **Item 3/4 — `LinkedDocumentsPopup` без тесту.** Створено `apps/web/src/components/ui/__tests__/LinkedDocumentsPopup.test.tsx`
+  (8 тестів). Ключовий: **Escape викликає НАЙСВІЖІШИЙ onClose після ре-рендера** (bind-once
+  b085cf8d) — дискримінація доведена ЕМПІРИЧНО: revert `onCloseRef.current()` → `onClose()`
+  робить тест червоним (stale closure кличе старий колбек). Також: backdrop закриває / inner
+  клік — ні; close-X; cleanup на unmount; lifecycle entityId A→B → новий fetch; aria-label проп.
+
+**Перевірено (без змін коду, підтверджено коректним):**
+
+- Item 5 — count==detail після рефактора: supplier-payments (liveness-gated, Bug #A) і
+  counterparties (groupBy-only) обидва фільтрують `deletedAt:null` у count і detail. Наявні
+  spec-тести (SP: «soft-deleted bank → account=0», «soft-deleted постачальник → cp=0») —
+  дискримінуючі. FK-presence баг НЕ реінтродюсовано.
+- Item 6 — uniqueDefinedIds на non-nullable колонках (supplier-returns supplierId/warehouseId):
+  null-фільтр не змінює результат (усі значення присутні) — покрито тестом у linked-counts.spec.
+- Backdrop/close-X у попапі використовують `onClose` напряму (не ref) — коректно: event-handler
+  прив'язується свіжим на кожен render; лише document-listener у effect потребує ref.
+
+**Тести:** API `src/common` + 6 модулів — 512 зелених. Web (linked-configs + Panel + Popup) —
+41 зелений. tsc API=0, web=0. Нові тести: +10 (api) +19+8 (web) = +37.
