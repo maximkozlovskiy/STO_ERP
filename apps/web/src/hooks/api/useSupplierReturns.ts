@@ -24,6 +24,8 @@ export interface SupplierReturn {
   supplierName?: string;
   warehouseId: string;
   warehouseName?: string;
+  purchaseOrderId?: string | null;
+  purchaseOrderNumber?: string | null;
   totalAmount: number;
   notes: string | null;
   linesCount: number;

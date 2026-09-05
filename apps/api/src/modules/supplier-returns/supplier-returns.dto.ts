@@ -45,6 +45,12 @@ export class CreateSupplierReturnDto {
   @IsString()
   notes?: string;
 
+  @ApiPropertyOptional({ description: 'Замовлення постачальнику-джерело (опціонально)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  purchaseOrderId?: string;
+
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD), за замовчуванням — сьогодні' })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -115,6 +121,10 @@ export class SupplierReturnResponseDto {
   @ApiPropertyOptional() supplierName?: string;
   @ApiProperty() warehouseId!: string;
   @ApiPropertyOptional() warehouseName?: string;
+  @ApiPropertyOptional({ description: 'Замовлення постачальнику-джерело' })
+  purchaseOrderId?: string | null;
+  @ApiPropertyOptional({ description: 'Номер замовлення-джерела' })
+  purchaseOrderNumber?: string | null;
   @ApiProperty() totalAmount!: number;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() documentDate?: string | null;

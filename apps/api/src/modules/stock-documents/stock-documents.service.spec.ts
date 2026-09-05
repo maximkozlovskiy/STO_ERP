@@ -735,3 +735,130 @@ describe('StockDocumentsService — linked documents (Phase D3)', () => {
     );
   });
 });
+
+/**
+ * Phase D2 — опціональний PO-джерело у create(). Персистенція + FK-guard.
+ */
+describe('StockDocumentsService — create() з purchaseOrderId (Phase D2)', () => {
+  let service: StockDocumentsService;
+  let prisma: {
+    stockDocument: {
+      create: ReturnType<typeof vi.fn>;
+      findFirstOrThrow: ReturnType<typeof vi.fn>;
+    };
+    stockDocumentLine: { createMany: ReturnType<typeof vi.fn> };
+    garageBranch: { findFirst: ReturnType<typeof vi.fn> };
+    warehouse: { findFirst: ReturnType<typeof vi.fn> };
+    purchaseOrder: { findFirst: ReturnType<typeof vi.fn> };
+    $transaction: ReturnType<typeof vi.fn>;
+  };
+  let docNumbers: { next: ReturnType<typeof vi.fn> };
+
+  const ORG = 'org-1';
+  const DOC_ID = '11111111-1111-4111-8111-111111111111';
+  const BRANCH_ID = '22222222-2222-4222-8222-222222222222';
+  const WAREHOUSE_ID = '33333333-3333-4333-8333-333333333333';
+  const PO_ID = '99999999-9999-4999-8999-999999999999';
+
+  const buildReturnDoc = (purchaseOrderId: string | null) => ({
+    id: DOC_ID,
+    orgId: ORG,
+    number: 'ПТ-2026-0001',
+    type: StockDocumentType.RECEIPT,
+    status: 'DRAFT',
+    branchId: BRANCH_ID,
+    warehouseId: WAREHOUSE_ID,
+    targetWarehouseId: null,
+    purchaseOrderId,
+    notes: null,
+    documentDate: new Date(),
+    confirmedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    branch: { name: 'Філія 1' },
+    warehouse: { name: 'Склад 1' },
+    targetWarehouse: null,
+    purchaseOrder: purchaseOrderId ? { number: 'ЗП-2026-0007' } : null,
+    lines: [],
+  });
+
+  beforeEach(async () => {
+    prisma = {
+      stockDocument: { create: vi.fn(), findFirstOrThrow: vi.fn() },
+      stockDocumentLine: { createMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: BRANCH_ID }) },
+      warehouse: { findFirst: vi.fn().mockResolvedValue({ id: WAREHOUSE_ID }) },
+      purchaseOrder: { findFirst: vi.fn() },
+      $transaction: vi.fn().mockImplementation((arg: unknown) => {
+        if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+        return Promise.resolve(arg);
+      }),
+    };
+    docNumbers = { next: vi.fn().mockResolvedValue('ПТ-2026-0001') };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        StockDocumentsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: InventoryService, useValue: {} },
+        { provide: DocumentNumberService, useValue: docNumbers },
+      ],
+    }).compile();
+    service = module.get(StockDocumentsService);
+  });
+
+  it('create() з валідним purchaseOrderId → персистить purchaseOrderId у data + повертає у DTO', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ id: PO_ID });
+    prisma.stockDocument.create.mockResolvedValueOnce({ id: DOC_ID });
+    prisma.stockDocument.findFirstOrThrow.mockResolvedValueOnce(buildReturnDoc(PO_ID));
+
+    const res = await service.create(ORG, {
+      type: 'RECEIPT',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      purchaseOrderId: PO_ID,
+    } as never);
+
+    expect(prisma.purchaseOrder.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: PO_ID, orgId: ORG, deletedAt: null } }),
+    );
+    expect(prisma.stockDocument.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ purchaseOrderId: PO_ID }),
+      }),
+    );
+    expect(res.purchaseOrderId).toBe(PO_ID);
+    expect(res.purchaseOrderNumber).toBe('ЗП-2026-0007');
+  });
+
+  it('create() без purchaseOrderId → persist null; FK-guard не викликається', async () => {
+    prisma.stockDocument.create.mockResolvedValueOnce({ id: DOC_ID });
+    prisma.stockDocument.findFirstOrThrow.mockResolvedValueOnce(buildReturnDoc(null));
+
+    const res = await service.create(ORG, {
+      type: 'RECEIPT',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+    } as never);
+
+    expect(prisma.purchaseOrder.findFirst).not.toHaveBeenCalled();
+    expect(prisma.stockDocument.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ purchaseOrderId: null }) }),
+    );
+    expect(res.purchaseOrderId).toBeNull();
+  });
+
+  it('create() з невалідним purchaseOrderId (чужа org / soft-deleted) → BadRequestException', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      service.create(ORG, {
+        type: 'RECEIPT',
+        branchId: BRANCH_ID,
+        warehouseId: WAREHOUSE_ID,
+        purchaseOrderId: PO_ID,
+      } as never),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.stockDocument.create).not.toHaveBeenCalled();
+  });
+});

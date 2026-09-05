@@ -88,6 +88,7 @@ export class StockDocumentsService {
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
           targetWarehouse: { select: { name: true } },
+          purchaseOrder: { select: { number: true } },
           _count: { select: { lines: { where: { deletedAt: null } } } },
         },
       }),
@@ -104,6 +105,7 @@ export class StockDocumentsService {
         branch: { select: { name: true } },
         warehouse: { select: { name: true } },
         targetWarehouse: { select: { name: true } },
+        purchaseOrder: { select: { number: true } },
         lines: {
           where: { deletedAt: null },
           take: 1000,
@@ -129,7 +131,7 @@ export class StockDocumentsService {
     // Conditional target warehouse: tернарка зберігає типи й уникає зайвого RTT для TRANSFER.
     // sto-optimize: narrow projection — FK guards використовуються лише для існування 404,
     // решта полів (name/address/syncVersion/etc.) не читаються далі.
-    const [branch, warehouse, target] = await Promise.all([
+    const [branch, warehouse, target, purchaseOrder] = await Promise.all([
       this.prisma.garageBranch.findFirst({
         where: { id: dto.branchId, orgId, deletedAt: null },
         select: { id: true },
@@ -144,9 +146,20 @@ export class StockDocumentsService {
             select: { id: true },
           })
         : Promise.resolve(null),
+      // Опціональний FK-guard для замовлення-джерела: коли передано purchaseOrderId,
+      // воно має існувати у цій org (soft-delete aware). Пропускається якщо undefined.
+      dto.purchaseOrderId
+        ? this.prisma.purchaseOrder.findFirst({
+            where: { id: dto.purchaseOrderId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (!branch) throw new NotFoundException('Філію не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
+    if (dto.purchaseOrderId && !purchaseOrder) {
+      throw new BadRequestException('Замовлення не знайдено');
+    }
 
     if (dto.type === 'TRANSFER' && !dto.targetWarehouseId) {
       throw new BadRequestException('Для переміщення потрібен склад призначення');
@@ -176,6 +189,7 @@ export class StockDocumentsService {
             branchId: dto.branchId,
             warehouseId: dto.warehouseId,
             targetWarehouseId: dto.targetWarehouseId ?? null,
+            purchaseOrderId: dto.purchaseOrderId ?? null,
             type: dto.type,
             number,
             notes: dto.notes,
@@ -199,6 +213,7 @@ export class StockDocumentsService {
             branch: { select: { name: true } },
             warehouse: { select: { name: true } },
             targetWarehouse: { select: { name: true } },
+            purchaseOrder: { select: { number: true } },
             lines: {
               where: { deletedAt: null },
               take: 1000,
@@ -265,6 +280,7 @@ export class StockDocumentsService {
             branch: { select: { name: true } },
             warehouse: { select: { name: true } },
             targetWarehouse: { select: { name: true } },
+            purchaseOrder: { select: { number: true } },
             lines: {
               where: { deletedAt: null },
               take: 1000,
@@ -504,6 +520,7 @@ export class StockDocumentsService {
     branchId: string;
     warehouseId: string;
     targetWarehouseId: string | null;
+    purchaseOrderId?: string | null;
     notes: string | null;
     documentDate?: Date | null;
     confirmedAt: Date | null;
@@ -513,6 +530,7 @@ export class StockDocumentsService {
     branch: { name: string } | null;
     warehouse: { name: string } | null;
     targetWarehouse: { name: string } | null;
+    purchaseOrder?: { number: string } | null;
     // findAll → `_count.lines` тільки; findOne → повний `lines[]`. Обидва опціональні.
     lines?: Array<{
       id: string;
@@ -541,6 +559,8 @@ export class StockDocumentsService {
       warehouseName: doc.warehouse?.name,
       targetWarehouseId: doc.targetWarehouseId ?? null,
       targetWarehouseName: doc.targetWarehouse?.name ?? null,
+      purchaseOrderId: doc.purchaseOrderId ?? null,
+      purchaseOrderNumber: doc.purchaseOrder?.number ?? null,
       notes: doc.notes ?? null,
       confirmedAt:
         doc.confirmedAt instanceof Date ? doc.confirmedAt.toISOString() : (doc.confirmedAt ?? null),

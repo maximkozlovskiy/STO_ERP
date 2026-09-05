@@ -59,6 +59,14 @@ interface Good {
   purchasePrice: number | null;
 }
 
+interface PurchaseOrderRef {
+  id: string;
+  number: string;
+  status?: string;
+  supplierId?: string;
+  supplierName?: string;
+}
+
 interface LocalLine {
   _key: string;
   id?: string;
@@ -131,6 +139,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const [supplierId, setSupplierId] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
+  // Опціональне замовлення постачальнику-джерело (Phase D2). Персиститься лише при CREATE.
+  const [purchaseOrderId, setPurchaseOrderId] = useState('');
+  const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
   const [notes, setNotes] = useState('');
   const [documentDate, setDocumentDate] = useState(() => kyivToday());
   const [lines, setLines] = useState<LocalLine[]>([]);
@@ -168,6 +179,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [goodPickerOpen, setGoodPickerOpen] = useState(false);
+  const [poPickerOpen, setPoPickerOpen] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -230,6 +242,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         setSupplierId(data.supplierId);
         setSupplierName(data.supplierName ?? '');
         setWarehouseId(data.warehouseId);
+        setPurchaseOrderId(data.purchaseOrderId ?? '');
+        setPurchaseOrderNumber(data.purchaseOrderNumber ?? '');
         setNotes(data.notes ?? '');
         setDocumentDate(data.documentDate ?? kyivToday());
         setLines((data.lines ?? []).map(lineFromApi));
@@ -250,6 +264,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     setSupplierId('');
     setSupplierName('');
     setWarehouseId('');
+    setPurchaseOrderId('');
+    setPurchaseOrderNumber('');
     setNotes('');
     setDocumentDate(kyivToday());
     setLines([]);
@@ -296,7 +312,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     }
     dirty.markDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supplierId, supplierName, warehouseId, notes, documentDate, lines, open]);
+  }, [supplierId, supplierName, warehouseId, purchaseOrderId, notes, documentDate, lines, open]);
 
   // ── Status transitions ─────────────────────────────────────────────────────
   // Backend FSM is linear-forward: DRAFT → CONFIRMED or DRAFT → CANCELLED; both terminal.
@@ -409,6 +425,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       const payload = {
         supplierId,
         warehouseId,
+        // PO-джерело персиститься лише при CREATE (create-only, Phase D2).
+        ...(!isEdit && purchaseOrderId ? { purchaseOrderId } : {}),
         notes: notes || undefined,
         documentDate,
         lines: lines.map(l => ({
@@ -443,6 +461,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   }, [
     supplierId,
     warehouseId,
+    purchaseOrderId,
     notes,
     documentDate,
     lines,
@@ -645,6 +664,24 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                       </option>
                     ))}
                   </Select>
+                </div>
+
+                {/* Замовлення (джерело) — опціонально (Phase D2) */}
+                <div>
+                  <label className="block text-[13px] font-medium text-foreground mb-1">
+                    Замовлення (джерело)
+                  </label>
+                  <EntityPickerField
+                    display={purchaseOrderNumber}
+                    placeholder="Замовлення постачальнику (необовʼязково)…"
+                    className="h-8 text-[13px]"
+                    disabled={!canEdit || isEdit}
+                    onPick={() => setPoPickerOpen(true)}
+                    onClear={() => {
+                      setPurchaseOrderId('');
+                      setPurchaseOrderNumber('');
+                    }}
+                  />
                 </div>
 
                 {/* Опис */}
@@ -941,6 +978,34 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               _unit: g.unit ?? '',
               _price: g.purchasePrice ?? 0,
             })),
+          )
+        }
+      />
+
+      {/* Purchase-order (source) picker — опціонально. Список скоупиться до обраного
+          постачальника client-side, бо /purchase-orders не приймає ?supplierId=. */}
+      <SearchPickerModal
+        open={poPickerOpen}
+        onClose={() => setPoPickerOpen(false)}
+        onSelect={(item: { id: string; primary: string }) => {
+          setPurchaseOrderId(item.id);
+          setPurchaseOrderNumber(item.primary);
+          setPoPickerOpen(false);
+        }}
+        title="Оберіть замовлення (джерело)"
+        searchPlaceholder="Номер замовлення…"
+        emptyText="Замовлень не знайдено"
+        fetchItems={q =>
+          apiFetch<{ items: PurchaseOrderRef[] }>(
+            `/purchase-orders?q=${encodeURIComponent(q)}&limit=30`,
+          ).then(d =>
+            d.items
+              .filter(po => !supplierId || po.supplierId === supplierId)
+              .map(po => ({
+                id: po.id,
+                primary: po.number,
+                secondary: po.supplierName ?? undefined,
+              })),
           )
         }
       />

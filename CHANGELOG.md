@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-09-06 — feat: PO-пікер (джерело) у create StockDocument/SupplierReturn (Phase D2)
+
+Опціональний пікер «Замовлення (джерело)» у create-модалках StockDocument та
+SupplierReturn — заповнює нульовий FK `purchaseOrderId` (міграція 20260905130000).
+Додатково й опціонально: документ без PO створюється нормально.
+
+- **Backend DTO:** `CreateStockDocumentDto`/`CreateSupplierReturnDto` +
+  `@IsOptional() @IsUUID() purchaseOrderId?`; response DTO + `purchaseOrderId` +
+  `purchaseOrderNumber` (join `purchaseOrder.select.number`).
+- **Backend service:** `create()` персистить `purchaseOrderId: dto.purchaseOrderId ?? null`;
+  опц. FK-guard — коли задано, `purchaseOrder.findFirst` (orgId+deletedAt:null) інакше
+  `BadRequestException('Замовлення не знайдено')`. Guard пропускається якщо undefined.
+- **Frontend:** обидві модалки — `EntityPickerField` «Замовлення (джерело)» + окремий
+  `SearchPickerModal` (`/purchase-orders?q=&limit=30`). SR скоупить список до обраного
+  постачальника client-side (endpoint не приймає `?supplierId=`). Create-only: у edit
+  пікер disabled, номер лишається read-only. Dirty-детектор: SR — `purchaseOrderId` у deps;
+  StockDoc — id живе у `form` (вже покритий `[form,lines,open]`).
+- **Тести:** +3 service-spec на модуль (persist / null / invalid→BadRequest). API 78/78 у
+  двох модулях, web 9/9 (dirty-guard SR 2/2 + document 2/2 — чистий open не брудниться).
+
+---
+
 ## 2026-09-05 — feat: «Пов'язані документи» для всіх документів + навігація (Phases A–B)
 
 Розширення фічі «пов'язані документи» (раніше лише у Наряді) на всі документи +

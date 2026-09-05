@@ -83,6 +83,7 @@ export class SupplierReturnsService {
         include: {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },
+          purchaseOrder: { select: { number: true } },
           _count: { select: { lines: { where: { deletedAt: null } } } },
         },
       }),
@@ -103,6 +104,7 @@ export class SupplierReturnsService {
       include: {
         supplier: { select: { firstName: true, lastName: true, companyName: true } },
         warehouse: { select: { name: true } },
+        purchaseOrder: { select: { number: true } },
         lines: {
           where: { deletedAt: null },
           include: {
@@ -124,7 +126,7 @@ export class SupplierReturnsService {
   }
 
   async create(orgId: string, dto: CreateSupplierReturnDto): Promise<SupplierReturnResponseDto> {
-    const [supplier, warehouse] = await Promise.all([
+    const [supplier, warehouse, purchaseOrder] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: dto.supplierId, orgId, deletedAt: null },
         select: { id: true },
@@ -133,9 +135,20 @@ export class SupplierReturnsService {
         where: { id: dto.warehouseId, orgId, deletedAt: null },
         select: { id: true },
       }),
+      // Опціональний FK-guard для замовлення-джерела: коли передано purchaseOrderId,
+      // воно має існувати у цій org (soft-delete aware). Пропускається якщо undefined.
+      dto.purchaseOrderId
+        ? this.prisma.purchaseOrder.findFirst({
+            where: { id: dto.purchaseOrderId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (!supplier) throw new NotFoundException('Постачальника не знайдено');
     if (!warehouse) throw new NotFoundException('Склад не знайдено');
+    if (dto.purchaseOrderId && !purchaseOrder) {
+      throw new BadRequestException('Замовлення не знайдено');
+    }
 
     const lines = dto.lines ?? [];
     const dedupedLines = deduplicateBy(lines, l => l.goodId);
@@ -153,6 +166,7 @@ export class SupplierReturnsService {
         orgId,
         supplierId: dto.supplierId,
         warehouseId: dto.warehouseId,
+        purchaseOrderId: dto.purchaseOrderId ?? null,
         number,
         totalAmount,
         notes: dto.notes,
@@ -170,6 +184,7 @@ export class SupplierReturnsService {
       include: {
         supplier: { select: { firstName: true, lastName: true, companyName: true } },
         warehouse: { select: { name: true } },
+        purchaseOrder: { select: { number: true } },
         lines: {
           where: { deletedAt: null },
           include: {
@@ -531,6 +546,7 @@ export class SupplierReturnsService {
     status: SupplierReturnStatus;
     supplierId: string;
     warehouseId: string;
+    purchaseOrderId?: string | null;
     totalAmount: Prisma.Decimal | number;
     notes: string | null;
     documentDate: Date | null;
@@ -543,6 +559,7 @@ export class SupplierReturnsService {
       companyName: string | null;
     } | null;
     warehouse?: { name: string } | null;
+    purchaseOrder?: { number: string } | null;
     lines?: Array<{
       id: string;
       goodId: string;
@@ -570,6 +587,8 @@ export class SupplierReturnsService {
       supplierName,
       warehouseId: sr.warehouseId,
       warehouseName: sr.warehouse?.name,
+      purchaseOrderId: sr.purchaseOrderId ?? null,
+      purchaseOrderNumber: sr.purchaseOrder?.number ?? null,
       totalAmount: Number(sr.totalAmount),
       notes: sr.notes ?? null,
       documentDate: sr.documentDate ? sr.documentDate.toISOString().slice(0, 10) : null,

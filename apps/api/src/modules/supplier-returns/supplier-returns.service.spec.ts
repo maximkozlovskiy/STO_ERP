@@ -572,3 +572,115 @@ describe('SupplierReturnsService — linked documents (Phase D3)', () => {
     );
   });
 });
+
+/**
+ * Phase D2 — опціональний PO-джерело у create(). Персистенція + FK-guard.
+ */
+describe('SupplierReturnsService — create() з purchaseOrderId (Phase D2)', () => {
+  let service: SupplierReturnsService;
+  let prisma: {
+    supplierReturn: { create: ReturnType<typeof vi.fn> };
+    counterparty: { findFirst: ReturnType<typeof vi.fn> };
+    warehouse: { findFirst: ReturnType<typeof vi.fn> };
+    good: { findMany: ReturnType<typeof vi.fn> };
+    unitOfMeasure: { findMany: ReturnType<typeof vi.fn> };
+    purchaseOrder: { findFirst: ReturnType<typeof vi.fn> };
+  };
+  let docNumbers: { next: ReturnType<typeof vi.fn> };
+
+  const ORG = '00000000-0000-0000-0000-000000000001';
+  const SR_ID = '11111111-1111-4111-8111-111111111111';
+  const SUPPLIER_ID = '22222222-2222-4222-8222-222222222222';
+  const WAREHOUSE_ID = '33333333-3333-4333-8333-333333333333';
+  const PO_ID = '99999999-9999-4999-8999-999999999999';
+
+  const buildReturnDoc = (purchaseOrderId: string | null) => ({
+    id: SR_ID,
+    orgId: ORG,
+    number: 'ПВП-20260615-000001',
+    status: SupplierReturnStatus.DRAFT,
+    supplierId: SUPPLIER_ID,
+    warehouseId: WAREHOUSE_ID,
+    purchaseOrderId,
+    totalAmount: 0,
+    notes: null,
+    documentDate: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    supplier: { firstName: null, lastName: null, companyName: 'ТОВ Постач' },
+    warehouse: { name: 'Склад 1' },
+    purchaseOrder: purchaseOrderId ? { number: 'ЗП-2026-0007' } : null,
+    lines: [],
+  });
+
+  beforeEach(async () => {
+    prisma = {
+      supplierReturn: { create: vi.fn() },
+      counterparty: { findFirst: vi.fn().mockResolvedValue({ id: SUPPLIER_ID }) },
+      warehouse: { findFirst: vi.fn().mockResolvedValue({ id: WAREHOUSE_ID }) },
+      good: { findMany: vi.fn().mockResolvedValue([]) },
+      unitOfMeasure: { findMany: vi.fn().mockResolvedValue([]) },
+      purchaseOrder: { findFirst: vi.fn() },
+    };
+    docNumbers = { next: vi.fn().mockResolvedValue('ПВП-20260615-000001') };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        SupplierReturnsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: InventoryService, useValue: {} },
+        { provide: SettlementsService, useValue: {} },
+        { provide: DocumentNumberService, useValue: docNumbers },
+      ],
+    }).compile();
+    service = module.get(SupplierReturnsService);
+  });
+
+  it('create() з валідним purchaseOrderId → персистить purchaseOrderId + повертає у DTO', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ id: PO_ID });
+    prisma.supplierReturn.create.mockResolvedValueOnce(buildReturnDoc(PO_ID));
+
+    const res = await service.create(ORG, {
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      purchaseOrderId: PO_ID,
+    } as never);
+
+    expect(prisma.purchaseOrder.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: PO_ID, orgId: ORG, deletedAt: null } }),
+    );
+    expect(prisma.supplierReturn.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ purchaseOrderId: PO_ID }) }),
+    );
+    expect(res.purchaseOrderId).toBe(PO_ID);
+    expect(res.purchaseOrderNumber).toBe('ЗП-2026-0007');
+  });
+
+  it('create() без purchaseOrderId → persist null; FK-guard не викликається', async () => {
+    prisma.supplierReturn.create.mockResolvedValueOnce(buildReturnDoc(null));
+
+    const res = await service.create(ORG, {
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+    } as never);
+
+    expect(prisma.purchaseOrder.findFirst).not.toHaveBeenCalled();
+    expect(prisma.supplierReturn.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ purchaseOrderId: null }) }),
+    );
+    expect(res.purchaseOrderId).toBeNull();
+  });
+
+  it('create() з невалідним purchaseOrderId → BadRequestException; create не викликається', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      service.create(ORG, {
+        supplierId: SUPPLIER_ID,
+        warehouseId: WAREHOUSE_ID,
+        purchaseOrderId: PO_ID,
+      } as never),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.supplierReturn.create).not.toHaveBeenCalled();
+  });
+});

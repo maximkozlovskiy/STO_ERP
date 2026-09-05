@@ -47,6 +47,12 @@ export class CreateStockDocumentDto {
 
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 
+  @ApiPropertyOptional({ description: 'Замовлення постачальнику-джерело (опціонально)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  purchaseOrderId?: string;
+
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD), за замовчуванням — сьогодні' })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -115,6 +121,10 @@ export class StockDocumentResponseDto {
   @ApiPropertyOptional() warehouseName?: string;
   @ApiPropertyOptional() targetWarehouseId?: string | null;
   @ApiPropertyOptional() targetWarehouseName?: string | null;
+  @ApiPropertyOptional({ description: 'Замовлення постачальнику-джерело' })
+  purchaseOrderId?: string | null;
+  @ApiPropertyOptional({ description: 'Номер замовлення-джерела' })
+  purchaseOrderNumber?: string | null;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() confirmedAt?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;

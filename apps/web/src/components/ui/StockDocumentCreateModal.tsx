@@ -35,6 +35,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
+import { EntityPickerField } from '@/components/ui/entity-picker-field';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,13 @@ interface Good {
   unit: string | null;
 }
 
+interface PurchaseOrderRef {
+  id: string;
+  number: string;
+  status?: string;
+  supplierName?: string;
+}
+
 interface StockDocDetail {
   id: string;
   number: string;
@@ -64,6 +72,8 @@ interface StockDocDetail {
   branchId: string;
   warehouseId: string;
   targetWarehouseId?: string | null;
+  purchaseOrderId?: string | null;
+  purchaseOrderNumber?: string | null;
   notes?: string | null;
   documentDate?: string | null;
   lines?: StockDocLine[];
@@ -159,9 +169,14 @@ export function StockDocumentCreateModal({
     branchId: '',
     warehouseId: '',
     targetWarehouseId: '',
+    // Опціональне замовлення постачальнику-джерело (Phase D2). Персиститься лише при CREATE.
+    purchaseOrderId: '',
     notes: '',
     documentDate: kyivToday(),
   });
+  // Display-номер обраного PO (поза form: не бере участі у dirty-детекції, лише візуал).
+  const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
+  const [poPickerOpen, setPoPickerOpen] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
@@ -255,12 +270,14 @@ export function StockDocumentCreateModal({
     setLines([]);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
+    setPurchaseOrderNumber('');
     if (!isEditMode) {
       setForm({
         type: 'WRITEOFF',
         branchId: '',
         warehouseId: '',
         targetWarehouseId: '',
+        purchaseOrderId: '',
         notes: '',
         documentDate: kyivToday(),
       });
@@ -310,9 +327,11 @@ export function StockDocumentCreateModal({
           branchId: doc.branchId ?? '',
           warehouseId: doc.warehouseId ?? '',
           targetWarehouseId: doc.targetWarehouseId ?? '',
+          purchaseOrderId: doc.purchaseOrderId ?? '',
           notes: doc.notes ?? '',
           documentDate: doc.documentDate ? doc.documentDate.slice(0, 10) : kyivToday(),
         });
+        setPurchaseOrderNumber(doc.purchaseOrderNumber ?? '');
         setLines(
           (doc.lines ?? []).map(l => ({
             _key: nextKey(),
@@ -473,6 +492,7 @@ export function StockDocumentCreateModal({
           warehouseId: form.warehouseId,
           targetWarehouseId:
             form.type === 'TRANSFER' ? form.targetWarehouseId || undefined : undefined,
+          purchaseOrderId: form.purchaseOrderId || undefined,
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
           lines: (newLine.goodId ? [...lines, { ...newLine, _key: nextKey() }] : lines).map(l => ({
@@ -897,7 +917,25 @@ export function StockDocumentCreateModal({
                   )}
                 </div>
 
-                {/* Рядок 4: Примітки */}
+                {/* Рядок 4: Замовлення (джерело) — опціонально (Phase D2) */}
+                <div>
+                  <label className="block text-[13px] font-medium text-foreground mb-1">
+                    Замовлення (джерело)
+                  </label>
+                  <EntityPickerField
+                    display={purchaseOrderNumber}
+                    placeholder="Замовлення постачальнику (необовʼязково)…"
+                    className="h-8 text-[13px]"
+                    disabled={!canEdit || isEditMode}
+                    onPick={() => setPoPickerOpen(true)}
+                    onClear={() => {
+                      setForm(f => ({ ...f, purchaseOrderId: '' }));
+                      setPurchaseOrderNumber('');
+                    }}
+                  />
+                </div>
+
+                {/* Рядок 5: Примітки */}
                 <Input
                   label="Примітки"
                   value={form.notes}
@@ -1103,6 +1141,32 @@ export function StockDocumentCreateModal({
             unit: (item as GoodItem).unit ?? 'шт',
           }));
           setGoodSearchOpen(false);
+        }}
+      />
+
+      {/* Purchase-order (source) picker — опціонально. StockDocument не має поля
+          постачальника, тож просто перелічуємо останні замовлення. */}
+      <SearchPickerModal
+        open={poPickerOpen}
+        onClose={() => setPoPickerOpen(false)}
+        title="Оберіть замовлення (джерело)"
+        searchPlaceholder="Номер замовлення…"
+        emptyText="Замовлень не знайдено"
+        fetchItems={q =>
+          apiFetch<{ items: PurchaseOrderRef[] }>(
+            `/purchase-orders?q=${encodeURIComponent(q)}&limit=30`,
+          ).then(d =>
+            d.items.map(po => ({
+              id: po.id,
+              primary: po.number,
+              secondary: po.supplierName ?? undefined,
+            })),
+          )
+        }
+        onSelect={item => {
+          setForm(f => ({ ...f, purchaseOrderId: item.id }));
+          setPurchaseOrderNumber(item.primary);
+          setPoPickerOpen(false);
         }}
       />
       <DirtyConfirmDialog {...dirty.dialogProps} />

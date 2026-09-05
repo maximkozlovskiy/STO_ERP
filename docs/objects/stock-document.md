@@ -17,6 +17,7 @@ model StockDocument {
   status            StockDocumentStatus @default(DRAFT)
   warehouseId       String              @db.Uuid    // source warehouse
   targetWarehouseId String?             @db.Uuid    // тільки для TRANSFER
+  purchaseOrderId   String?             @db.Uuid    // опц. замовлення-джерело (Phase D2)
   notes             String?
   confirmedAt       DateTime?
   confirmedBy       String?             @db.Uuid
@@ -64,14 +65,14 @@ DRAFT → CONFIRMED
 
 ## API Endpoints (`/api/stock-documents`)
 
-| Метод  | URL                                   | Дія                                                                |
-| ------ | ------------------------------------- | ------------------------------------------------------------------ |
-| GET    | `/api/stock-documents`                | Список (фільтри: type, status, branchId, warehouseId, dateFrom/To) |
-| GET    | `/api/stock-documents/:id`            | Деталь з lines                                                     |
-| POST   | `/api/stock-documents`                | Створити (lines у body)                                            |
-| PATCH  | `/api/stock-documents/:id`            | Оновити (тільки DRAFT)                                             |
-| DELETE | `/api/stock-documents/:id`            | Soft-delete (тільки DRAFT)                                         |
-| POST   | `/api/stock-documents/:id/transition` | FSM перехід (DRAFT → CONFIRMED або CANCELLED)                      |
+| Метод  | URL                                   | Дія                                                                 |
+| ------ | ------------------------------------- | ------------------------------------------------------------------- |
+| GET    | `/api/stock-documents`                | Список (фільтри: type, status, branchId, warehouseId, dateFrom/To)  |
+| GET    | `/api/stock-documents/:id`            | Деталь з lines                                                      |
+| POST   | `/api/stock-documents`                | Створити (lines у body; опц. `purchaseOrderId` — джерело, Phase D2) |
+| PATCH  | `/api/stock-documents/:id`            | Оновити (тільки DRAFT)                                              |
+| DELETE | `/api/stock-documents/:id`            | Soft-delete (тільки DRAFT)                                          |
+| POST   | `/api/stock-documents/:id/transition` | FSM перехід (DRAFT → CONFIRMED або CANCELLED)                       |
 
 ---
 
@@ -92,6 +93,7 @@ DRAFT → CONFIRMED
 - Деdup рядків перед transition: `Set(lineIds)` — duplicate lineId → `BadRequestException`
 - Рухи у `Promise.all` (disjoint по `(goodId, warehouseId)` для WRITEOFF ↔ RECEIPT — safe)
 - `STOCK_DOC_TYPE_LABELS` у `@sto/shared` — додавати нові типи туди, не хардкодити на фронті
+- **PO-джерело (Phase D2):** `purchaseOrderId` — опціональний FK на замовлення постачальнику; задається лише при CREATE (пікер «Замовлення (джерело)» у модалці, у edit-режимі read-only). Guard: якщо передано — має існувати у org (`purchaseOrder.findFirst` orgId+deletedAt:null), інакше `BadRequestException('Замовлення не знайдено')`. Відповідь містить `purchaseOrderId` + `purchaseOrderNumber` (join). Документ без PO створюється нормально.
 - Tab-bar фільтр підхоплює нові типи автоматично через `Object.keys(STOCK_DOC_TYPE_LABELS)`
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
