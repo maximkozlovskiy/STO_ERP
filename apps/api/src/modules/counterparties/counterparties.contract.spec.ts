@@ -25,6 +25,8 @@ const serviceMock = {
   // додано у контроллер; без цього поля виклик у endpoint падає з
   // `TypeError: this.service.restoreContract is not a function`.
   restoreContract: vi.fn(),
+  // Phase C: пов'язані документи контрагента.
+  getLinkedDocuments: vi.fn(),
 };
 
 let jwtAllow = true;
@@ -154,6 +156,37 @@ describe('Counterparties — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(200);
       expect(Array.isArray(res.json())).toBe(true);
+    });
+  });
+
+  describe('GET :id/linked-documents (Phase C)', () => {
+    it('повертає 200 і делегує (orgId, id); НЕ перехоплюється роутом :id', async () => {
+      serviceMock.getLinkedDocuments.mockResolvedValueOnce({
+        invoices: [],
+        purchaseOrders: [],
+        supplierPayments: [],
+        supplierReturns: [],
+      });
+      serviceMock.findOne.mockClear();
+      jwtAllow = true;
+      const id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/counterparties/${id}/linked-documents`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.getLinkedDocuments).toHaveBeenCalledWith('org-1', id);
+      // Route-ordering: findOne (GET :id) не має спрацювати на цьому шляху.
+      expect(serviceMock.findOne).not.toHaveBeenCalled();
+    });
+
+    it('невалідний UUID → 400 (ParseUUIDPipe)', async () => {
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/counterparties/not-a-uuid/linked-documents',
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 

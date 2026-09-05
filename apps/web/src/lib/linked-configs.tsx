@@ -9,12 +9,15 @@ import {
   User,
   Wallet,
   Landmark,
+  ShoppingCart,
+  RotateCcw,
 } from 'lucide-react';
 import {
   INVOICE_STATUS_LABELS,
   WO_STATUS_LABELS,
   PO_STATUS_LABELS,
   SUPPLIER_PAYMENT_STATUS_LABELS,
+  SUPPLIER_RETURN_STATUS_LABELS,
 } from '@sto/shared';
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
@@ -387,6 +390,113 @@ export function supplierPaymentLinkedConfig(nav: LinkedNav): LinkedEntityConfig 
             rows: [{ label: 'Тип', value: row.kind === 'bank' ? 'Банківський рахунок' : 'Каса' }],
           },
           // Рахунок/каса — довідник, окремої навігації немає.
+        }),
+      },
+    ],
+  };
+}
+
+// ─── Counterparty config ───────────────────────────────────
+// Документи, у яких фігурує контрагент: рахунки / замовлення / оплати / повернення.
+
+interface LinkedSupplierReturnRow {
+  id: string;
+  number: string;
+  status: string;
+  totalAmount: string | number;
+  documentDate: string | null;
+}
+
+export function counterpartyLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
+  return {
+    fetchPath: id => `/counterparties/${id}/linked-documents`,
+    sections: [
+      {
+        key: 'invoices',
+        title: 'Рахунки',
+        icon: Receipt,
+        mapRow: (row: LinkedInvoiceRow) => ({
+          id: row.id,
+          primary: `Рахунок ${row.number}`,
+          secondary: `${fmt(row.amount)} ₴`,
+          badge: invoiceStatusBadge(row.status),
+          preview: {
+            title: `Рахунок ${row.number}`,
+            rows: [
+              { label: 'Статус', value: INVOICE_STATUS_LABELS[row.status] ?? row.status },
+              { label: 'Сума', value: `${fmt(row.amount)} ₴` },
+              ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
+            ],
+          },
+          navigate: () => nav.toInvoice(row.id),
+        }),
+      },
+      {
+        key: 'purchaseOrders',
+        title: 'Замовлення постачальнику',
+        icon: ShoppingCart,
+        mapRow: (row: LinkedPurchaseOrderRow) => ({
+          id: row.id,
+          primary: `Замовлення ${row.number}`,
+          secondary: `${fmt(row.totalAmount)} ₴`,
+          badge: {
+            label: PO_STATUS_LABELS[row.status] ?? row.status,
+            className: 'bg-secondary text-muted-foreground',
+          },
+          preview: {
+            title: `Замовлення ${row.number}`,
+            rows: [
+              { label: 'Статус', value: PO_STATUS_LABELS[row.status] ?? row.status },
+              { label: 'Сума', value: `${fmt(row.totalAmount)} ₴` },
+            ],
+          },
+          navigate: () => nav.toPurchaseOrder(row.id),
+        }),
+      },
+      {
+        key: 'supplierPayments',
+        title: 'Оплати постачальнику',
+        icon: Wallet,
+        mapRow: (row: LinkedSupplierPaymentRow) => ({
+          id: row.id,
+          primary: `${row.number} — ${fmt(row.amount)} ₴`,
+          secondary: row.documentDate ? fmtDate(row.documentDate) : undefined,
+          badge: {
+            label: SUPPLIER_PAYMENT_STATUS_LABELS[row.status] ?? row.status,
+            className: 'bg-secondary text-muted-foreground',
+          },
+          preview: {
+            title: `Оплата ${row.number}`,
+            rows: [
+              { label: 'Статус', value: SUPPLIER_PAYMENT_STATUS_LABELS[row.status] ?? row.status },
+              { label: 'Сума', value: `${fmt(row.amount)} ₴` },
+              { label: 'Метод', value: METHOD_LABELS[row.method] ?? row.method },
+            ],
+          },
+          navigate: () => nav.toSupplierPayment(row.id),
+        }),
+      },
+      {
+        key: 'supplierReturns',
+        title: 'Повернення постачальнику',
+        icon: RotateCcw,
+        mapRow: (row: LinkedSupplierReturnRow) => ({
+          id: row.id,
+          primary: `Повернення ${row.number}`,
+          secondary: `${fmt(row.totalAmount)} ₴`,
+          badge: {
+            label: SUPPLIER_RETURN_STATUS_LABELS[row.status] ?? row.status,
+            className: 'bg-secondary text-muted-foreground',
+          },
+          preview: {
+            title: `Повернення ${row.number}`,
+            rows: [
+              { label: 'Статус', value: SUPPLIER_RETURN_STATUS_LABELS[row.status] ?? row.status },
+              { label: 'Сума', value: `${fmt(row.totalAmount)} ₴` },
+              ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
+            ],
+          },
+          navigate: () => nav.toSupplierReturn(row.id),
         }),
       },
     ],

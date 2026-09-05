@@ -739,4 +739,124 @@ export class CounterpartiesService {
       createdAt: g.createdAt instanceof Date ? g.createdAt.toISOString() : g.createdAt,
     };
   }
+
+  // ─── Пов'язані документи ─────────────────────────────────────────────────
+  // Документи, у яких фігурує контрагент: рахунки, замовлення постачальнику,
+  // оплати постачальнику, повернення постачальнику. Дзеркалить WorkOrder-патерн
+  // (orgId + deletedAt:null, take:500, Decimal→Number).
+
+  async getLinkedDocuments(orgId: string, counterpartyId: string) {
+    const TAKE = 500;
+    // Guard існування (tenant-safe). Не знайдено → порожні секції (без throw).
+    const cp = await this.prisma.counterparty.findFirst({
+      where: { id: counterpartyId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!cp) {
+      return { invoices: [], purchaseOrders: [], supplierPayments: [], supplierReturns: [] };
+    }
+
+    const [invoices, purchaseOrders, supplierPayments, supplierReturns] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where: { counterpartyId, orgId, deletedAt: null },
+        select: { id: true, number: true, status: true, amount: true, documentDate: true },
+        orderBy: { createdAt: 'desc' },
+        take: TAKE,
+      }),
+      this.prisma.purchaseOrder.findMany({
+        where: { supplierId: counterpartyId, orgId, deletedAt: null },
+        select: { id: true, number: true, status: true, totalAmount: true, documentDate: true },
+        orderBy: { createdAt: 'desc' },
+        take: TAKE,
+      }),
+      this.prisma.supplierPayment.findMany({
+        where: { supplierId: counterpartyId, orgId, deletedAt: null },
+        select: {
+          id: true,
+          number: true,
+          status: true,
+          amount: true,
+          method: true,
+          documentDate: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: TAKE,
+      }),
+      this.prisma.supplierReturn.findMany({
+        where: { supplierId: counterpartyId, orgId, deletedAt: null },
+        select: { id: true, number: true, status: true, totalAmount: true, documentDate: true },
+        orderBy: { createdAt: 'desc' },
+        take: TAKE,
+      }),
+    ]);
+
+    return {
+      invoices: invoices.map(i => ({ ...i, amount: Number(i.amount) })),
+      purchaseOrders: purchaseOrders.map(p => ({ ...p, totalAmount: Number(p.totalAmount) })),
+      supplierPayments: supplierPayments.map(p => ({ ...p, amount: Number(p.amount) })),
+      supplierReturns: supplierReturns.map(r => ({ ...r, totalAmount: Number(r.totalAmount) })),
+    };
+  }
+
+  async getLinkedCounts(
+    orgId: string,
+    ids: string[],
+  ): Promise<
+    Record<
+      string,
+      {
+        invoices: number;
+        purchaseOrders: number;
+        supplierPayments: number;
+        supplierReturns: number;
+      }
+    >
+  > {
+    const result: Record<
+      string,
+      {
+        invoices: number;
+        purchaseOrders: number;
+        supplierPayments: number;
+        supplierReturns: number;
+      }
+    > = {};
+    if (ids.length === 0) return result;
+    for (const id of ids) {
+      result[id] = { invoices: 0, purchaseOrders: 0, supplierPayments: 0, supplierReturns: 0 };
+    }
+
+    const [inv, po, sp, sr] = await Promise.all([
+      this.prisma.invoice.groupBy({
+        by: ['counterpartyId'],
+        where: { counterpartyId: { in: ids }, orgId, deletedAt: null },
+        _count: { id: true },
+      }),
+      this.prisma.purchaseOrder.groupBy({
+        by: ['supplierId'],
+        where: { supplierId: { in: ids }, orgId, deletedAt: null },
+        _count: { id: true },
+      }),
+      this.prisma.supplierPayment.groupBy({
+        by: ['supplierId'],
+        where: { supplierId: { in: ids }, orgId, deletedAt: null },
+        _count: { id: true },
+      }),
+      this.prisma.supplierReturn.groupBy({
+        by: ['supplierId'],
+        where: { supplierId: { in: ids }, orgId, deletedAt: null },
+        _count: { id: true },
+      }),
+    ]);
+
+    for (const r of inv)
+      if (result[r.counterpartyId]) result[r.counterpartyId].invoices = r._count.id;
+    for (const r of po) if (result[r.supplierId]) result[r.supplierId].purchaseOrders = r._count.id;
+    for (const r of sp)
+      if (result[r.supplierId]) result[r.supplierId].supplierPayments = r._count.id;
+    for (const r of sr)
+      if (result[r.supplierId]) result[r.supplierId].supplierReturns = r._count.id;
+
+    return result;
+  }
 }

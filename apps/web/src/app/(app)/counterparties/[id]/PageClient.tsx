@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -15,6 +15,9 @@ import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { cn, daysUntil, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { AnimatedBody } from '@/components/ui/modal';
+import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
+import { counterpartyLinkedConfig } from '@/lib/linked-configs';
+import { useLinkedNav } from '@/lib/linked-nav';
 import { fmtMoney, fmtInt, fmtDate, kyivToday } from '@/lib/format';
 import {
   COUNTERPARTY_TYPE_LABELS,
@@ -146,6 +149,7 @@ type CrmTab =
   | 'contracts'
   | 'settlements'
   | 'work-orders'
+  | 'documents'
   | 'warranties'
   | 'loyalty';
 
@@ -156,6 +160,7 @@ const CRM_TABS: { key: CrmTab; label: string }[] = [
   { key: 'contracts', label: 'Договори' },
   { key: 'settlements', label: 'Взаєморозрахунки' },
   { key: 'work-orders', label: 'Наряди' },
+  { key: 'documents', label: 'Документи' },
   { key: 'warranties', label: 'Гарантії' },
   { key: 'loyalty', label: 'Лояльність' },
 ];
@@ -214,6 +219,8 @@ export default function CounterpartyCardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { confirm, dialogProps } = useConfirm();
+  const linkedNav = useLinkedNav();
+  const linkedConfig = useMemo(() => counterpartyLinkedConfig(linkedNav), [linkedNav]);
 
   const [cp, setCp] = useState<Counterparty | null>(null);
   const tab = (searchParams.get('tab') ?? 'info') as CrmTab;
@@ -1395,6 +1402,13 @@ export default function CounterpartyCardPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tab: Документи (пов'язані документи контрагента) */}
+      {tab === 'documents' && (
+        <div className="bg-surface rounded-xl border border-border p-5">
+          <LinkedDocumentsPanel config={linkedConfig} entityId={id} />
         </div>
       )}
 

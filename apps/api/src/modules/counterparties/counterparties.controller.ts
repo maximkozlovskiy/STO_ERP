@@ -46,6 +46,16 @@ export class CounterpartiesController {
     return this.service.findAll(orgId, query);
   }
 
+  // Оголошено ПЕРЕД @Get(':id') — інакше Fastify матчить 'linked-documents' як :id.
+  @Get(':id/linked-documents')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT')
+  @ApiOperation({
+    summary: "Пов'язані документи контрагента (рахунки, замовлення, оплати, повернення)",
+  })
+  getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getLinkedDocuments(orgId, id);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT')
   @ApiResponse({ status: 200, type: CounterpartyResponseDto })
