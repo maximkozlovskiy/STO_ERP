@@ -70,8 +70,29 @@ SupplierReturn — заповнює нульовий FK `purchaseOrderId` (мі�
 orgId+deletedAt:null, Decimal→Number, groupBy deletedAt:null — count==detail). Тести:
 service +4, contract +2 (route-ordering, non-UUID 400).
 
-**Phase D** (схема StockDoc/SupplierReturn FK + PO-пікер у create) — окреме рішення
-(FK будуть NULL без create-flow; найважча, найменша цінність).
+**Phase D — StockDocument + SupplierReturn** (повна, зі схемою):
+
+- D1 (commit 53c0e7b0): nullable FK `purchaseOrderId` + covering-індекси + reciprocal
+  relations; additive/idempotent; backfill неможливий (задокументовано).
+- D3+D4 (8d898757): backend linked-documents (StockDoc `{purchaseOrder,warehouses}`,
+  SR `{purchaseOrder,counterparty,warehouse}`) + badge-колонка/попап/секція + навігація.
+- D2 (6bd007f6): опційний PO-пікер (джерело) у create-модалках StockDoc/SupplierReturn;
+  персистить `purchaseOrderId` (create-only, FK-guard tenant-scoped); dirty-guard оновлено.
+
+**QA-ланцюг Phase D** (sync→review→tester):
+
+- sync: 0 розбіжностей.
+- review: **1 Important (виправлено, 8db8a589)** — `getLinkedCounts` рахував за наявністю
+  FK, а detail фільтрує deletedAt:null → soft-deleted PO/склад/постачальник давали badge
+  «1» над порожньою секцією (повтор Bug #641 у нових модулях). Fix: counts рахують лише
+  живі записи.
+- tester: **Bug #643 (HIGH, виправлено, 53e45efd)** — deep-link `?openReturn=<id>` виставляв
+  лише `editId`, але SR-модалка (`open={srCreateOpen}`) лишалась закрита → уся навігація до
+  повернень постачальнику з панелей була тихо неробоча. Fix: `resolvePurchaseOrdersDeepLink`
+  - ефект виставляє обидва setter-и. Item 3 (guard↔tx race при soft-delete PO) — прийнятний
+    розрив (UI ховає stale через deletedAt-фільтр).
+
+Тести: Web 554, linked-doc API-модулі 351, tsc api+web+shared 0.
 
 ## 2026-09-05 — feat(web): UX-фічі списків/модалок (Подання, індикатори, guard, клавіатура, дублювання)
 
