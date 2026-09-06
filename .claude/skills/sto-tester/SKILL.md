@@ -1129,6 +1129,33 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-06 — review-fix замінив хардкод-набір на metadata-driven gate (напр. `provider.templateChannels`), але regression-guard покрив не КОЖНУ гілку нового гейта — backend+frontend / coverage-gap / metadata-driven-gate / MEDIUM-HIGH
+
+**Сигнал:** commit виду `fix(review):` вводить нове поле-метадані на абстракції (`NotificationProvider.templateChannels`, `PaymentProvider.supportsRefund`, `DocType.requiresApproval`) як ЄДИНЕ джерело правди, ЗАМІНЮЮЧИ раніше захардкоджені set-и і на бекенді (`resolveConfig`/валідація), і на фронті (`needsExternalTemplate`/умовний рендер поля). Поле читається у 3+ місцях: (A) resolver-gate (`filter(c => registry.get(c.provider)?.templateChannels?.includes(c.channel))`), (B) upsert/write-guard (force-null/reject коли канал не в наборі), (C) UI-видимість поля + submit-payload, (D) registry `list()`-мапінг що віддає поле фронту (`?? []`). Тести часто покривають 1-2 «очевидні» гілки (positive-VIBER included, negative-turbosms excluded), а решту матриці — ні. Grep-детектор:
+
+```bash
+# нове metadata-поле-гейт у diff review-fix — скільки гілок і чи всі покриті?
+git log --oneline -8 | grep -iE "fix\(review\)|review-fix"
+grep -rnE "readonly \w+Channels\??:|readonly supports[A-Z]|\.\w+Channels\?\.includes\(|templateChannels" apps/api/src --include="*.ts" | grep -v spec
+# для КОЖНОГО місця читання поля — чи є парний тест на INCLUDED і на EXCLUDED гілку?
+# registry/list()-мапінг (`?? []`) — чи має власний spec проти РЕАЛЬНИХ impl? (моки list() не ловлять регрес мапінгу)
+ls apps/api/src/modules/<mod>/providers/*registry*.spec.ts   # часто відсутній
+# threading поля крізь processor у provider.send — чи є assert `send.mock.calls[0][0].<field>`?
+grep -n "<field>:" apps/api/src/modules/<mod>/*.processor.ts   # рядок є → потрібен guard
+# frontend: чи фікстура тесту має провайдера З metadata-полем? (часто лише legacy без нього)
+grep -n "templateChannels\|<field>" apps/web/src/**/*.test.tsx
+```
+
+**Причина виникнення:** розробник/рев'ювер вважає «замінив хардкод на метадані + додав тест на головний кейс → досить». Але суть гейта — саме матриця (channel × provider → in-set / out-of-set), і кожна комбінація — окрема тиха гілка: out-of-set inline-канал з випадковим template-id має бути ВИКЛЮЧЕНИЙ (інакше порожній send), in-set без template-id теж ВИКЛЮЧЕНИЙ (нема джерела тексту). Registry `list()`-мапінг (`?? []`) невидимий бо інші specs мокають `list()`, а не будують реальний registry. Threading поля у processor→send — один рядок, який refactor легко викидає. Frontend-фікстура лишається на старому провайдері без нового поля → уся metadata-гілка UI без покриття (типово sync-agent це і сигналить: «файл фікстурить лише legacy-провайдера»).
+
+**Підхід до виявлення:** для нового metadata-gate побудувати ПОВНУ матрицю і закрити guard на кожну клітинку: (1) in-set канал + метадані-джерело → INCLUDED; (2) in-set канал БЕЗ джерела → EXCLUDED; (3) out-of-set канал з випадково-присутнім метаданим → EXCLUDED (anti-empty/anti-wrong-op — це і є суть fix); (4) write-guard force-null/reject для out-of-set; (5) `list()`/registry-мапінг проти РЕАЛЬНИХ impl (не мок) — поле є, тип масив, out-of-set значення відсутнє; (6) threading крізь processor → `expect(send.mock.calls[0][0].<field>).toBe(...)`; (7) frontend: фікстура З metadata-полем → поле показ/схов за клітинкою матриці + submit-payload включає/виключає поле + prefill. Плюс empty-payload шлях (renderTemplate('')='' для template-каналу → send без крашу, без порожнього повідомлення).
+
+**Підхід до фіксу:** тести-only якщо логіка вірна (як тут — код двічі рев'юнуто, 0 функціональних багів). Новий `*registry*.spec.ts` проти реальних impl (не моків). Frontend: додати фікстуру з metadata-полем + `describe`-блок на всю матрицю (керувати `combobox`-select-ом каналу, асертити PATCH-body/DOM-видимість — тест падає якщо гейтинг зламано, не fake-green).
+
+**Severity:** MEDIUM-HIGH за blast-radius: сповіщення=MEDIUM (тихий порожній лист/пропущений канал), платіж/refund/approval-gate=HIGH. Frontend-гілка розрекламованої фічі (задати Viber/Telegram-шаблон) без покриття = HIGH (тихий регрес блокує налаштування).
+
+**Де шукати ще:** будь-який `readonly <x>Channels?`/`supports<X>`/`requires<X>` на provider/strategy/policy-абстракції; registry/factory `list()`-мапінг з `?? []`/`?? default`; будь-яке metadata-поле що ОДНОЧАСНО гейтить backend-resolver І frontend-видимість поля (симетрія BE↔FE, спорідн. Bug #401/#432); processor що пробрасує опційне поле у зовнішній `send`/`call`. Правило: review-fix «замінив хардкод-set на метадані» → матриця (варіант × канал) з guard на кожну клітинку, не лише diagonal.
+
 ### 2026-09-06 — Prisma `$extends` field-encryption (encrypt-on-write/decrypt-on-read) відвантажено з 0 інтеграційних тестів наскрізного циклу — backend / security / db / at-rest-crypto / HIGH (regression-guard для критичного класу)
 
 **Сигнал:** нове наскрізне at-rest шифрування секретів реалізоване як Prisma-розширення `$extends({ query: { $allModels: { $allOperations } } })` — мутує write-payload (`args.data/create/update`) на write і результат на read. Юніт-тести є ТІЛЬКИ на сам crypto-хелпер (`EncryptionService.encrypt/decrypt` round-trip у пам'яті), а на РОЗШИРЕННЯ (те, що дійсно біжить у продакшні) — 0. Unit-мок Prisma НЕ виконує `$allOperations`-hook і не б'є Postgres → CI зелений, хоч розширення може: не зашифрувати (encrypt no-op → plaintext-leak at-rest), не дешифрувати (provider отримає ciphertext → зламаний ланцюг), подвійно зашифрувати при lazy re-encrypt+upsert, або зламатись на композиції з іншим розширенням (`withFieldEncryption(withSyncVersion(client))` — порядок обгортання визначає хто мутує args першим). Grep-детектор:
