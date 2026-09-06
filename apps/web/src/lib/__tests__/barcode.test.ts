@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickScannedGood, looksLikeBarcode } from '@/lib/barcode';
+import { pickScannedGood } from '@/lib/barcode';
 
 const g = (id: string, barcode?: string | null, barcodes?: string[]) => ({
   id,
@@ -76,17 +76,5 @@ describe('pickScannedGood — scan-submit логіка', () => {
   it('contains-only + КІЛЬКА результатів без точного → null (не вгадуємо)', () => {
     const items = [g('a', '123456'), g('b', '129999')];
     expect(pickScannedGood(items, '12')).toBeNull();
-  });
-});
-
-describe('looksLikeBarcode', () => {
-  it('лише цифри ≥8 → true', () => {
-    expect(looksLikeBarcode('4820000000012')).toBe(true);
-    expect(looksLikeBarcode('12345678')).toBe(true);
-  });
-  it('короткі/з літерами → false', () => {
-    expect(looksLikeBarcode('1234567')).toBe(false); // 7 цифр
-    expect(looksLikeBarcode('ABC12345')).toBe(false);
-    expect(looksLikeBarcode('болт')).toBe(false);
   });
 });

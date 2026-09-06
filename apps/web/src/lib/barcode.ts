@@ -32,9 +32,3 @@ export function pickScannedGood<T extends ScannableGood>(items: T[], typed: stri
   // 3. Неоднозначно — не вгадуємо.
   return null;
 }
-
-/** Чи введене схоже на ШК (лише цифри, ≥8 символів) — для рішення робити exact-запит. */
-export function looksLikeBarcode(typed: string): boolean {
-  const t = typed.trim();
-  return t.length >= 8 && /^\d+$/.test(t);
-}

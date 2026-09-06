@@ -171,6 +171,19 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
     };
   }, []);
 
+  // Єдина точка вибору товару — і для кліку по рядку, і для Enter зі сканера.
+  // secondary дзеркалить sub-line у списку (internalCode + sku + ціна), щоб споживачі,
+  // що читають лише secondary, бачили консистентну метадату.
+  const selectGood = (item: GoodPickerItem) => {
+    const meta = [item.internalCode, item.sku].filter(Boolean).join(' · ');
+    onSelect({
+      ...item,
+      primary: item.name,
+      secondary: meta ? `${meta} · ${item.salePrice} ₴` : `${item.salePrice} ₴`,
+    });
+    onClose();
+  };
+
   return (
     <Modal open={open} onClose={onClose} title="Оберіть товар" size="lg">
       <div className="flex flex-col gap-3">
@@ -185,13 +198,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
             const picked = pickScannedGood(items, query);
             if (!picked) return;
             e.preventDefault();
-            const meta = [picked.internalCode, picked.sku].filter(Boolean).join(' · ');
-            onSelect({
-              ...picked,
-              primary: picked.name,
-              secondary: meta ? `${meta} · ${picked.salePrice} ₴` : `${picked.salePrice} ₴`,
-            });
-            onClose();
+            selectGood(picked);
           }}
         />
 
@@ -221,18 +228,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => {
-                        // secondary дзеркалить sub-line у списку — internalCode
-                        // (T-0000NN) + sku + price. Без нього майбутні споживачі що читають
-                        // лише `secondary` бачать неконсистентну метадату.
-                        const meta = [item.internalCode, item.sku].filter(Boolean).join(' · ');
-                        onSelect({
-                          ...item,
-                          primary: item.name,
-                          secondary: meta ? `${meta} · ${item.salePrice} ₴` : `${item.salePrice} ₴`,
-                        });
-                        onClose();
-                      }}
+                      onClick={() => selectGood(item)}
                       className={cn(
                         'w-full text-left px-3 py-2 rounded-lg border transition-colors',
                         selected
