@@ -1,8 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { NotificationChannel, NotificationEventType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationProviderRegistry } from './providers/provider-registry';
 
 export type NotificationEvent = NotificationEventType;
 
@@ -36,6 +37,7 @@ export class NotificationsService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly registry: NotificationProviderRegistry,
     @InjectQueue('sms') private readonly smsQueue: Queue,
   ) {}
 
@@ -207,6 +209,116 @@ export class NotificationsService {
       data: { body: dto.body, subject: dto.subject, isActive: dto.isActive },
     });
     return { ...updated, syncVersion: Number(updated.syncVersion) };
+  }
+
+  // ─── Провайдери та канали (Phase 3) ──────────────────────────────────────
+
+  /** Метадані зареєстрованих провайдерів (без кредів). */
+  listProviders() {
+    return this.registry.list();
+  }
+
+  /**
+   * Перевірка кредів провайдера: валідність токена + баланс. Тест-повідомлення НЕ шлемо.
+   * apiKey приходить з body (write-only) — ніколи не логується й не повертається назад.
+   */
+  async verifyProvider(code: string, apiKey: string, senderName?: string) {
+    const impl = this.registry.get(code);
+    if (!impl) throw new NotFoundException('Провайдер не знайдено');
+    return impl.verifyCredentials({ apiKey, senderName });
+  }
+
+  /**
+   * Канали філії (для UI-панелі). apiKey НІКОЛИ не повертається — лише прапорець hasApiKey.
+   */
+  async getBranchChannels(orgId: string, branchId: string) {
+    const rows = await this.prisma.notificationChannelConfig.findMany({
+      where: { orgId, branchId, deletedAt: null },
+      orderBy: { priority: 'asc' },
+      select: {
+        id: true,
+        channel: true,
+        provider: true,
+        enabled: true,
+        priority: true,
+        apiKey: true,
+        senderName: true,
+        updatedAt: true,
+      },
+      take: 20,
+    });
+    // Мапимо apiKey → hasApiKey (write-only секрет не виходить за межі бекенду).
+    return rows.map(({ apiKey, ...r }) => ({ ...r, hasApiKey: apiKey != null && apiKey !== '' }));
+  }
+
+  /**
+   * Upsert конфігу каналу філії. apiKey оновлюється лише якщо переданий (write-only:
+   * порожній/undefined → зберігаємо наявний ключ). Провайдер має підтримувати канал.
+   */
+  async upsertBranchChannel(
+    orgId: string,
+    branchId: string,
+    dto: {
+      channel: NotificationChannel;
+      provider: string;
+      enabled?: boolean;
+      priority?: number;
+      apiKey?: string;
+      senderName?: string;
+    },
+  ) {
+    // Валідація: філія в межах org.
+    const branch = await this.prisma.garageBranch.findFirst({
+      where: { id: branchId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!branch) throw new NotFoundException('Філію не знайдено');
+
+    // Валідація: провайдер існує і підтримує цей канал.
+    const impl = this.registry.get(dto.provider);
+    if (!impl) throw new BadRequestException('Невідомий провайдер');
+    if (!impl.channels.includes(dto.channel)) {
+      throw new BadRequestException(`Провайдер ${dto.provider} не підтримує канал ${dto.channel}`);
+    }
+
+    const existing = await this.prisma.notificationChannelConfig.findFirst({
+      where: { orgId, branchId, channel: dto.channel },
+      select: { id: true },
+    });
+
+    // apiKey: оновлюємо лише коли надіслано непорожнє значення (write-only).
+    const apiKeyPatch = dto.apiKey != null && dto.apiKey !== '' ? { apiKey: dto.apiKey } : {};
+
+    if (existing) {
+      const updated = await this.prisma.notificationChannelConfig.update({
+        where: { id: existing.id },
+        data: {
+          provider: dto.provider,
+          enabled: dto.enabled,
+          priority: dto.priority,
+          senderName: dto.senderName,
+          deletedAt: null, // reactivate якщо був soft-deleted
+          ...apiKeyPatch,
+        },
+        select: { id: true },
+      });
+      return { id: updated.id };
+    }
+
+    const created = await this.prisma.notificationChannelConfig.create({
+      data: {
+        orgId,
+        branchId,
+        channel: dto.channel,
+        provider: dto.provider,
+        enabled: dto.enabled ?? true,
+        priority: dto.priority ?? 0,
+        senderName: dto.senderName,
+        ...apiKeyPatch,
+      },
+      select: { id: true },
+    });
+    return { id: created.id };
   }
 
   private renderTemplate(template: string, vars: Record<string, unknown>): string {

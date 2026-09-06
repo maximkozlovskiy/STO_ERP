@@ -7,6 +7,7 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { type NotificationTemplate, EVENT_LABELS } from './shared';
+import NotificationProvidersPanel from './NotificationProvidersPanel';
 
 export default function NotificationsTab() {
   const currentFeatures = useUiFeatures();
@@ -57,6 +58,12 @@ export default function NotificationsTab() {
           {error}
         </div>
       )}
+
+      <NotificationProvidersPanel />
+
+      <div className="border-t border-border pt-6">
+        <h3 className="text-sm font-semibold text-foreground mb-3">Шаблони повідомлень</h3>
+      </div>
 
       <p className="text-sm text-muted-foreground">
         Використовуйте змінні у подвійних дужках: {'{{workOrderNumber}}'}, {'{{clientName}}'},{' '}
