@@ -283,6 +283,9 @@ export class PaymentsService {
             sourceType: resolvedSource.sourceType,
             bankAccountId: resolvedSource.bankAccountId,
             cashRegisterId: resolvedSource.cashRegisterId,
+            // Idempotency-лінк на онлайн-намір (Bug #688): @unique у БД відкидає повторний create
+            // того ж наміру (P2002) під час реконсиляції → жодного тихого double-charge.
+            onlinePaymentIntentId: dto.onlinePaymentIntentId ?? null,
             // QUEUED коли ставимо в чергу; null коли фіскалізація не застосовна до методу.
             fiscalStatus: willFiscalize ? 'QUEUED' : null,
           },

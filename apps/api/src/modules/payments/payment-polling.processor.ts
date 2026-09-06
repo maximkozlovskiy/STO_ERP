@@ -1,6 +1,7 @@
 import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MonobankClient } from './monobank.client';
 import { PaymentsService } from './payments.service';
@@ -157,20 +158,50 @@ export class PaymentPollingProcessor extends WorkerHost {
     reconcile: boolean,
   ): Promise<void> {
     try {
-      const payment = await this.payments.create(orgId, {
-        counterpartyId: intent.counterpartyId,
-        invoiceId: intent.invoiceId ?? undefined,
-        amount: Number(intent.amount),
-        method: 'monobank_qr',
+      // Idempotency (Bug #688): якщо попередній finalize створив Payment, але link-write
+      // (paymentId) упав, у БД уже є Payment із цим onlinePaymentIntentId. Не можна створювати
+      // другий (double-charge). Спершу шукаємо наявний по унікальному лінку — якщо є, лише
+      // до-лінковуємо paymentId (recovery «вікна збою» без дубля).
+      const existing = await this.prisma.payment.findFirst({
+        where: { orgId, onlinePaymentIntentId: intentId },
+        select: { id: true },
       });
+      const payment =
+        existing ??
+        (await this.payments.create(orgId, {
+          counterpartyId: intent.counterpartyId,
+          invoiceId: intent.invoiceId ?? undefined,
+          amount: Number(intent.amount),
+          method: 'monobank_qr',
+          onlinePaymentIntentId: intentId,
+        }));
       await this.prisma.onlinePaymentIntent.update({
         where: { id: intentId },
         data: { paymentId: payment.id, error: null },
       });
       this.logger.log(
-        `Онлайн-оплата ${intentId} → Payment ${payment.id}${reconcile ? ' (реконсиляція)' : ''}`,
+        `Онлайн-оплата ${intentId} → Payment ${payment.id}${
+          reconcile ? ' (реконсиляція)' : ''
+        }${existing ? ' (idempotent-relink)' : ''}`,
       );
     } catch (e) {
+      // P2002 на onlinePaymentIntentId → інший потік/попередня спроба вже створила Payment для
+      // цього наміру (гонка або повтор). Дістаємо наявний і лінкуємо — це успіх, не помилка.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const dup = await this.prisma.payment
+          .findFirst({
+            where: { orgId, onlinePaymentIntentId: intentId },
+            select: { id: true },
+          })
+          .catch(() => null);
+        if (dup) {
+          await this.prisma.onlinePaymentIntent
+            .update({ where: { id: intentId }, data: { paymentId: dup.id, error: null } })
+            .catch(() => undefined);
+          this.logger.log(`Онлайн-оплата ${intentId} → Payment ${dup.id} (dedup P2002-relink)`);
+          return;
+        }
+      }
       // Payment не створився після PAID-переходу — лишаємо PAID+error (гроші у gateway є).
       // НЕ відкочуємо PAID, щоб retry не подвоїв. Записуємо причину для касира/оператора.
       await this.prisma.onlinePaymentIntent

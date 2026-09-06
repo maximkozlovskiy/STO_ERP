@@ -265,4 +265,62 @@ describe('FiscalTab', () => {
 
     await waitFor(() => expect(licenseInput.value).toBe(''));
   });
+
+  // ─── monobank еквайринг (QR-оплата) — write-only токен ─────────────────────────
+  it('monobank: hasMonobankToken=true → placeholder «Збережено»; поле НЕ prefill', async () => {
+    baseMock({
+      fiscalEnabled: true,
+      checkboxApiUrl: null,
+      checkboxCashRegisterId: null,
+      monobankApiUrl: 'https://api.monobank.ua',
+      hasMonobankToken: true,
+    });
+    render(<FiscalTab />);
+    await screen.findByRole('switch');
+    const tokenInput = screen.getByLabelText('X-Token merchant') as HTMLInputElement;
+    await waitFor(() => expect(tokenInput.placeholder).toMatch(/Збережено/));
+    // write-only: значення НЕ підтягується з GET (лишається порожнім).
+    expect(tokenInput.value).toBe('');
+  });
+
+  it('monobank: порожній токен ОМІТ з PATCH (не затираємо збережений)', async () => {
+    baseMock({
+      fiscalEnabled: true,
+      checkboxApiUrl: null,
+      checkboxCashRegisterId: null,
+      hasMonobankToken: true,
+    });
+    const user = userEvent.setup();
+    render(<FiscalTab />);
+    await screen.findByRole('switch');
+    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() => {
+      const patch = findPatch();
+      expect(patch).toBeTruthy();
+      const body = JSON.parse(patch![1].body as string);
+      expect(body).not.toHaveProperty('monobankToken');
+    });
+  });
+
+  it('monobank: round-trip — введений токен + apiUrl → у PATCH; поле очищується', async () => {
+    baseMock({ fiscalEnabled: true, checkboxApiUrl: null, checkboxCashRegisterId: null });
+    const user = userEvent.setup();
+    render(<FiscalTab />);
+    await screen.findByRole('switch');
+
+    const tokenInput = screen.getByLabelText('X-Token merchant') as HTMLInputElement;
+    await user.type(tokenInput, 'MERCH-XYZ');
+    await user.type(screen.getByLabelText('API URL (необовʼязково)'), 'https://api.monobank.ua');
+    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => {
+      const patch = findPatch();
+      expect(patch).toBeTruthy();
+      const body = JSON.parse(patch![1].body as string);
+      expect(body.monobankToken).toBe('MERCH-XYZ');
+      expect(body.monobankApiUrl).toBe('https://api.monobank.ua');
+    });
+    // секрет-поле очищене після save.
+    await waitFor(() => expect(tokenInput.value).toBe(''));
+  });
 });

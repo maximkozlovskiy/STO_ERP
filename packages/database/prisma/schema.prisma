@@ -1886,6 +1886,11 @@ model Payment {
   sourceType      PaymentSourceType?
   bankAccountId   String?  @db.Uuid
   cashRegisterId  String?  @db.Uuid
+  // Лінк на онлайн-намір (QR monobank), з якого створено цей Payment. @unique = idempotency-guard:
+  // реконсиляція наміру (PAID але paymentId ще не залінковано) може повторити payments.create після
+  // збою link-write — унікальний констрейнт відкидає дубль (P2002), finalize знаходить наявний
+  // Payment по цьому полю і лінкує. null для звичайних (не-онлайн) платежів. Bug #688.
+  onlinePaymentIntentId String? @unique @db.Uuid
   syncVersion     BigInt   @default(0)
   createdAt       DateTime @default(now())
 

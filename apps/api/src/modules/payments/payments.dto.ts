@@ -36,6 +36,13 @@ export class CreatePaymentDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   cashRegisterId?: string;
+  // Внутрішнє: лінк на онлайн-намір (QR monobank). @unique у БД → idempotency-guard проти дубля
+  // Payment під час реконсиляції наміру (Bug #688). Не для публічного вводу (касир не задає).
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  onlinePaymentIntentId?: string;
 }
 
 export class PaymentResponseDto {
