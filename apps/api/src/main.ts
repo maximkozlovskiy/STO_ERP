@@ -71,6 +71,12 @@ async function bootstrap() {
     SwaggerModule.setup('api/docs', app, document);
   }
 
+  // Graceful shutdown: при docker stop / рестарті СТО-ПК (SIGTERM) NestJS запускає
+  // onModuleDestroy-хуки → Prisma закриває конекшени, BullMQ-воркери завершують
+  // поточні джоби й від'єднуються чисто. Без цього in-flight запити/джоби обриваються —
+  // критично для офлайн-черг (ПРРО/SMS з retry) на ПК, що часто вимикають.
+  app.enableShutdownHooks();
+
   const port = parseInt(process.env.PORT ?? '3000', 10);
   await app.listen(port, '0.0.0.0');
   const logger = new Logger('Bootstrap');
