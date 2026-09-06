@@ -177,7 +177,7 @@ export class PaymentsService {
         });
     }
 
-    if (counterparty.phone) {
+    if (counterparty.phone || counterparty.email) {
       // Bug fix: send() рано виходить без branchId → PAYMENT_RECEIVED раніше НІКОЛИ не слався.
       // Беремо branchId наряду; для standalone-оплати (без наряду) — найстаріша філія org
       // (дзеркалить followup.processor). Резолвимо лениво, лише якщо наряду немає.
