@@ -222,6 +222,12 @@ grep -rn "axios\|node-fetch\|https\.request\|http\.request" apps/api/src/modules
 # @Process без concurrency (IMPORTANT: без concurrency Bull default = 1, але для I/O процесорів
 # з мережевими викликами це означає серіалізацію: 100 jobs × 15s = 1500s стіни)
 grep -rn "@Process(" apps/api/src/ --include="*.processor.ts" | grep -v "concurrency\|spec"
+
+# .add() ПІСЛЯ закоміченої $transaction без .catch() — enqueue-fail валить успішну фінансову операцію
+# (offline-first: Redis-down = нормальний стан). Сигнал: `await this.Xqueue.add(` НЕ у ланцюгу .catch
+grep -rnE "await this\.[a-zA-Z]+[Qq]ueue\.add\(" apps/api/src/modules --include="*.service.ts" -A12 \
+  | grep -L "\.catch(" 2>/dev/null; \
+grep -rnE "await this\.[a-zA-Z]+[Qq]ueue\.add\(" apps/api/src/modules --include="*.service.ts"
 ```
 
 - [ ] Кожен `.add()` → `attempts ≥ 10`, `backoff: { type: 'exponential' }`
@@ -231,6 +237,7 @@ grep -rn "@Process(" apps/api/src/ --include="*.processor.ts" | grep -v "concurr
 - [ ] Процесори → `try/catch` + `throw err` (щоб BullMQ retry спрацював)
 - [ ] Ніяких прямих HTTP до зовнішніх API поза чергою
 - [ ] **`@Process(name)` → `@Process({ name, concurrency: N })`**: HTTP I/O → `3-5`, DB write → `3`, batch fan-out → `1`
+- [ ] **`.add()` ПІСЛЯ закоміченої `$transaction` → `.catch()` (non-blocking), НЕ голий `await`.** Коли фінансова/доменна операція вже закомічена (Payment+settlement+FSM), а enqueue йде ПІСЛЯ tx, голий `await queue.add()` при Redis-down кидає → HTTP 500 попри успішну операцію + сутність зависає у `QUEUED`/pending-статусі навічно (жодного job-а). Offline-first (CLAUDE.md §3: система не зупиняється без Redis). Fix: `.catch(async err => { logger.warn(...); await entity.update({ status → FAILED/термінальний, error: 'Черга недоступна' }) })` — дзеркалить сусідні non-blocking enqueue (`loyalty.queueEarn`, `notifications.send`). Grep: детектор вище. Severity: IMPORTANT (offline-first + stuck-status lifecycle hole)
 - [ ] **Зовнішній connection/transport/pool у provider (nodemailer `createTransport`, БД-конект, socket) → `close()`/`dispose()` у `finally`, НЕ лише на success-гілці.** Створити ресурс ДО `try`; закрити у `finally`. Інакше кинутий виклик (таймаут/auth-фейл/ECONNREFUSED) лишає сокет висіти → при `concurrency=N × attempts=10` десятки leaked-сокетів. Дзеркалить fetch-патерн `clearTimeout(timer)` у `finally` (§7 AbortController). Grep: `grep -rnE "createTransport|\.connect\(|new (Pool|Client)\(" apps/api/src/modules --include="*.ts" | grep -v spec` → для кожного перевірити, що парний `close()`/`end()`/`dispose()` стоїть у `finally`, а не лише перед `return`
 
 #### §2.6 Sentry
@@ -1309,6 +1316,13 @@ grep -rnE "cursor-pointer" apps/web/src/ --include="*.tsx" -B3 -A3 | grep -B3 -A
 **Grep:** `grep -rn "getLinkedCounts" apps/api/src/modules --include="*.service.ts"` → для кожного: чи є `findMany` живих реф-id (PO/warehouse/counterparty) + `Set`-membership перед інкрементом, чи безумовне `? 1 : 0` / `= 1`. Обов'язковий FK (`warehouseId`/`supplierId`) ≠ живий → теж gate через liveness.
 **Фікс:** зібрати унікальні реф-id → `findMany({ where: { id: { in: [...] }, orgId, deletedAt: null }, select: { id: true } })` → `new Set(...)` → `refId && liveSet.has(refId) ? 1 : 0` (дзеркалить invoices). +spec: soft-deleted реф → count=0.
 **Severity:** IMPORTANT — badge/панель розсинхрон; німа degradation (лише коли реф soft-deleted поки документ на нього посилається).
+
+### 2026-09-06 — queue.add() ПІСЛЯ закоміченої tx без .catch() → 500 на успішній операції + stuck QUEUED — §2.5/§10
+
+**Сигнал:** доменна/фінансова операція комітиться у `$transaction` (Payment+settlement+FSM), сутність отримує статус `QUEUED`/pending ВСЕРЕДИНІ tx, а enqueue робочого job-а йде голим `await this.Xqueue.add(...)` ПІСЛЯ commit — без `.catch()`. При Redis-down (нормальний offline-стан) `.add()` кидає → HTTP 500 повертається клієнту попри те що гроші/статус вже закомічені, І сутність зависає у `QUEUED` навічно (жодного job-а не поставлено → processor ніколи не переведе у DONE/FAILED). Сусідні enqueue у тому ж методі (`loyalty.queueEarn`, `notifications.send`) вже non-blocking через `.catch()` — новий enqueue пропустив цю конвенцію. (ПРРО Крок 1: `checkboxQueue.add` для фіскального чеку.)
+**Grep:** `grep -rnE "await this\.[a-zA-Z]+[Qq]ueue\.add\(" apps/api/src/modules --include="*.service.ts"` → для кожного перевірити чи виклик у ланцюгу `.catch(...)`; якщо enqueue ПІСЛЯ `$transaction` і голий — прапор.
+**Фікс:** `.catch(async err => { logger.warn('enqueue failed: ...'); await this.prisma.entity.update({ where: { id, orgId }, data: { status: TERMINAL_FAILED, error: 'Черга недоступна' } }).catch(() => undefined) })` — знімає stuck-статус + не валить успішну операцію. Плюс `removeOnFail: N` у опціях (bounded retention). Дзеркалить offline-first інваріант (CLAUDE.md §3).
+**Severity:** IMPORTANT — offline-first порушення (система стоїть без Redis) + lifecycle hole (навічно QUEUED); TS зелений, видно лише при Redis-down.
 
 ### 2026-09-06 — error-swallowing wrapper резолвиться → caller показує хибний success — §8.2
 
