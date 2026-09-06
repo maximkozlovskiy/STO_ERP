@@ -2,7 +2,8 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
-import { MonobankClient } from './monobank.client';
+import { PaymentGatewayRegistry } from './gateways/payment-gateway-registry';
+import { ProviderConfigService } from './provider-config.service';
 
 // Жорсткий wall-clock таймаут наміру (клієнт не оплатив → EXPIRED). 15 хв.
 const INTENT_TTL_MS = 15 * 60 * 1000;
@@ -34,7 +35,8 @@ export class OnlinePaymentService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly monobank: MonobankClient,
+    private readonly gateways: PaymentGatewayRegistry,
+    private readonly providerConfig: ProviderConfigService,
     @InjectQueue('payment-polling') private readonly pollQueue: Queue,
   ) {}
 
@@ -62,7 +64,7 @@ export class OnlinePaymentService {
       throw new BadRequestException(`Сума перевищує залишок (${remaining.toFixed(2)} грн)`);
     }
 
-    // Merchant-креди monobank з BranchSettings (гілка наряду або перша філія org).
+    // Активний платіжний шлюз філії (гілка наряду або перша філія org), з legacy-fallback.
     const branchId = invoice.workOrderId
       ? (
           await this.prisma.workOrder.findFirst({
@@ -71,19 +73,20 @@ export class OnlinePaymentService {
           })
         )?.branchId
       : undefined;
-    const bs = await this.prisma.branchSettings.findFirst({
-      where: branchId ? { orgId, branchId } : { orgId },
-      select: { monobankToken: true, monobankApiUrl: true },
-    });
-    if (!bs?.monobankToken) {
-      throw new BadRequestException('monobank еквайринг не налаштовано');
+    const active = await this.providerConfig.resolveActive(orgId, branchId, 'PAYMENT');
+    if (!active) {
+      throw new BadRequestException('Онлайн-оплату (еквайринг) не налаштовано');
+    }
+    const gateway = this.gateways.get(active.provider);
+    if (!gateway) {
+      throw new BadRequestException(`Невідомий платіжний шлюз: ${active.provider}`);
     }
 
     // Створюємо намір ПЕРШИМ (щоб reference був стабільним id), потім gateway-рахунок.
     const intent = await this.prisma.onlinePaymentIntent.create({
       data: {
         orgId,
-        gateway: 'monobank',
+        gateway: active.provider,
         amount,
         counterpartyId: invoice.counterpartyId,
         invoiceId: input.invoiceId,
@@ -95,11 +98,11 @@ export class OnlinePaymentService {
     });
 
     try {
-      const { gatewayInvoiceId, pageUrl } = await this.monobank.createInvoice(
-        bs.monobankApiUrl,
-        bs.monobankToken,
+      const { gatewayInvoiceId, checkoutUrl } = await gateway.createInvoice(
+        { apiUrl: active.apiUrl, credentials: active.credentials },
         { amountCents: Math.round(amount * 100), reference: intent.id },
       );
+      const pageUrl = checkoutUrl;
       const updated = await this.prisma.onlinePaymentIntent.update({
         where: { id: intent.id },
         data: { gatewayInvoiceId, pageUrl },
@@ -136,7 +139,7 @@ export class OnlinePaymentService {
         })
         .catch(() => undefined);
       throw new BadRequestException(
-        `monobank: не вдалося створити рахунок — ${e instanceof Error ? e.message : 'помилка'}`,
+        `${gateway.name}: не вдалося створити рахунок — ${e instanceof Error ? e.message : 'помилка'}`,
       );
     }
   }

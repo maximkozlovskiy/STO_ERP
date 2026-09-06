@@ -35,11 +35,14 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     };
     payment: { findFirst: ReturnType<typeof vi.fn> };
     workOrder: { findFirst: ReturnType<typeof vi.fn> };
-    branchSettings: { findFirst: ReturnType<typeof vi.fn> };
   };
-  let monobank: { getStatus: ReturnType<typeof vi.fn> };
+  let gatewayImpl: { getStatus: ReturnType<typeof vi.fn> };
+  let gateways: { get: ReturnType<typeof vi.fn> };
+  let providerConfig: { resolveByCode: ReturnType<typeof vi.fn> };
   let payments: { create: ReturnType<typeof vi.fn> };
   let pollQueue: { add: ReturnType<typeof vi.fn> };
+  // Аліас для читабельності старих assert-ів (тепер це gateway з registry).
+  let monobank: { getStatus: ReturnType<typeof vi.fn> };
 
   const ORG = 'org-1';
   const INTENT_ID = 'intent-1';
@@ -48,6 +51,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
 
   const paidIntentSnapshot = (over: Record<string, unknown> = {}) => ({
     status: 'PENDING',
+    gateway: 'monobank',
     gatewayInvoiceId: 'gw-1',
     expiresAt: new Date(Date.now() + 60_000),
     counterpartyId: CP_ID,
@@ -68,16 +72,26 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
       // За замовч. немає наявного Payment для наміру (перший finalize).
       payment: { findFirst: vi.fn().mockResolvedValue(null) },
       workOrder: { findFirst: vi.fn() },
-      branchSettings: {
-        findFirst: vi.fn().mockResolvedValue({ monobankToken: 'T', monobankApiUrl: null }),
-      },
     };
-    monobank = { getStatus: vi.fn() };
+    gatewayImpl = { getStatus: vi.fn() };
+    monobank = gatewayImpl; // старі assert-и звертаються до monobank.getStatus
+    gateways = { get: vi.fn().mockReturnValue(gatewayImpl) };
+    providerConfig = {
+      resolveByCode: vi
+        .fn()
+        .mockResolvedValue({
+          provider: 'monobank',
+          apiUrl: null,
+          credentials: { token: 'T' },
+          shiftMode: 'MANUAL',
+        }),
+    };
     payments = { create: vi.fn().mockResolvedValue({ id: 'pay-1' }) };
     pollQueue = { add: vi.fn().mockResolvedValue(undefined) };
     processor = new PaymentPollingProcessor(
       prisma as never,
-      monobank as never,
+      gateways as never,
+      providerConfig as never,
       payments as never,
       pollQueue as never,
     );
@@ -313,13 +327,13 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     expect(monobank.getStatus).not.toHaveBeenCalled();
   });
 
-  it('monobankToken зник → FAILED', async () => {
+  it('шлюз більше не налаштовано (config зник) → FAILED', async () => {
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot());
-    prisma.branchSettings.findFirst.mockResolvedValue({ monobankToken: null });
+    providerConfig.resolveByCode.mockResolvedValue(null);
     await processor.process(makeJob({ intentId: INTENT_ID, orgId: ORG }));
     expect(prisma.onlinePaymentIntent.updateMany).toHaveBeenCalledWith({
       where: { id: INTENT_ID, orgId: ORG, status: 'PENDING' },
-      data: { status: 'FAILED', error: 'monobank токен зник' },
+      data: { status: 'FAILED', error: 'Платіжний шлюз більше не налаштовано' },
     });
   });
 
@@ -337,7 +351,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     // MUTATION-VERIFY: якщо прибрати orgId з CAS where — крос-tenant intent був би переведений.
   });
 
-  it('workOrder-branch: branchSettings резолвиться по branchId наряду', async () => {
+  it('workOrder-branch: провайдер резолвиться по branchId наряду + intent.gateway', async () => {
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(
       paidIntentSnapshot({ workOrderId: 'wo-1' }),
     );
@@ -349,9 +363,12 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
       id: 'wo-1',
       orgId: ORG,
     });
-    expect(prisma.branchSettings.findFirst.mock.calls[0][0].where).toMatchObject({
-      orgId: ORG,
-      branchId: 'branch-9',
-    });
+    // resolveByCode(orgId, branchId, 'PAYMENT', intent.gateway)
+    expect(providerConfig.resolveByCode).toHaveBeenCalledWith(
+      ORG,
+      'branch-9',
+      'PAYMENT',
+      'monobank',
+    );
   });
 });

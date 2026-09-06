@@ -3,7 +3,8 @@ import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { MonobankClient } from './monobank.client';
+import { PaymentGatewayRegistry } from './gateways/payment-gateway-registry';
+import { ProviderConfigService } from './provider-config.service';
 import { PaymentsService } from './payments.service';
 
 interface PollJob {
@@ -32,7 +33,8 @@ export class PaymentPollingProcessor extends WorkerHost {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly monobank: MonobankClient,
+    private readonly gateways: PaymentGatewayRegistry,
+    private readonly providerConfig: ProviderConfigService,
     private readonly payments: PaymentsService,
     @InjectQueue('payment-polling') private readonly pollQueue: Queue,
   ) {
@@ -46,6 +48,7 @@ export class PaymentPollingProcessor extends WorkerHost {
       where: { id: intentId, orgId, deletedAt: null },
       select: {
         status: true,
+        gateway: true,
         gatewayInvoiceId: true,
         expiresAt: true,
         counterpartyId: true,
@@ -77,28 +80,24 @@ export class PaymentPollingProcessor extends WorkerHost {
       return;
     }
 
-    const bs = await this.prisma.branchSettings.findFirst({
-      where: intent.workOrderId
-        ? {
-            orgId,
-            branchId: (
-              await this.prisma.workOrder.findFirst({
-                where: { id: intent.workOrderId, orgId },
-                select: { branchId: true },
-              })
-            )?.branchId,
-          }
-        : { orgId },
-      select: { monobankToken: true, monobankApiUrl: true },
-    });
-    if (!bs?.monobankToken) {
-      await this.transition(intentId, orgId, 'FAILED', 'monobank токен зник');
+    // Резолвимо конкретний шлюз наміру (intent.gateway) + його креди per-branch (legacy-fallback).
+    const branchId = intent.workOrderId
+      ? (
+          await this.prisma.workOrder.findFirst({
+            where: { id: intent.workOrderId, orgId },
+            select: { branchId: true },
+          })
+        )?.branchId
+      : undefined;
+    const cfg = await this.providerConfig.resolveByCode(orgId, branchId, 'PAYMENT', intent.gateway);
+    const gateway = this.gateways.get(intent.gateway);
+    if (!cfg || !gateway) {
+      await this.transition(intentId, orgId, 'FAILED', 'Платіжний шлюз більше не налаштовано');
       return;
     }
 
-    const { status } = await this.monobank.getStatus(
-      bs.monobankApiUrl,
-      bs.monobankToken,
+    const { status } = await gateway.getStatus(
+      { apiUrl: cfg.apiUrl, credentials: cfg.credentials },
       intent.gatewayInvoiceId,
     );
 
@@ -150,6 +149,7 @@ export class PaymentPollingProcessor extends WorkerHost {
     intentId: string,
     orgId: string,
     intent: {
+      gateway: string;
       counterpartyId: string;
       invoiceId: string | null;
       amount: import('@prisma/client').Prisma.Decimal | number;
@@ -172,7 +172,8 @@ export class PaymentPollingProcessor extends WorkerHost {
           counterpartyId: intent.counterpartyId,
           invoiceId: intent.invoiceId ?? undefined,
           amount: Number(intent.amount),
-          method: 'monobank_qr',
+          // Спосіб оплати = <шлюз>_qr (monobank_qr / liqpay_qr) — узгоджено з PaymentMethodConfig.
+          method: `${intent.gateway}_qr`,
           onlinePaymentIntentId: intentId,
         }));
       await this.prisma.onlinePaymentIntent.update({
