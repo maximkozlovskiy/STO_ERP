@@ -181,6 +181,7 @@ grep -rn "settlementAccount\.update\|balance.*decrement\|balance.*increment" app
 
 - [ ] Жодного прямого `prisma.settlementAccount.update({ balance })` поза `SettlementsService`
 - [ ] `CHARGE` збільшує баланс; `PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE` — зменшують
+- [ ] **Bug #688 (CRITICAL money): reconcile/finalize-гілка створює money-запис без `@unique`-лінку на джерело → sequential double-create.** Async-confirm money-flow (QR/gateway) з наміром: CAS→PAID, потім окремий `payments.create`, потім окремий `intent.update({paymentId})`. Три write НЕ атомарні → якщо create вдався а link-write упав, намір лишається `PAID+paymentId=null` → наступний reconcile-poll робить `create` ВДРУГЕ = double-charge (jobId single-flight не рятує — вікно послідовне). Grep: `grep -rn "reconcile\|finalize\|paymentId.*null" apps/api/src/modules/**/*.processor.ts | grep -v spec` — для кожного money-`create` у такій гілці перевірити чи є (а) `@unique` колонка-лінок на джерело у money-таблиці, (б) pre-create `findFirst({orgId,<link>})` guard, (в) P2002-recovery. Fix: `@unique` лінок (additive nullable міграція) + pre-check + P2002→relink. Test+mutation: «create-succeeds-then-link-fails» → assert no second create (вимкнути pre-guard→падає). Severity CRITICAL (тихий double-charge, без cap).
 - [ ] **Bug #629: похідне money × дріб-коефіцієнт / reduce-Σ / різниця сум БЕЗ roundMoney, що покидає систему сирим (export/JSON).** Множення грошей на дріб (`Number(x) * RATIO`, напр. `LABOR_COST_RATIO=0.4` → `3520.30*0.4=1408.1200000000001`), Σ у JS-`reduce`, або різниця двох сум (`invoiced - purchases=66.77000000000001`) — гарантований/ймовірний IEEE-754 дрейф. Маскується `fmt()` на екрані, але **емітиться СИРИМ у CSV/XLSX/PDF-експорт (без fmtMoney — для XLSX number-детекту) і у JSON API-відповідь** (mobile/sync/зовнішні клієнти). Grep: `grep -rnE "Number\([^)]*\)\s*[*/]" apps/api/src/modules/{reports,completion-acts,xlsx}` + `grep -rnE "reduce\(\(s.*\+.*(amount|balance|revenue|total|cost|vat)"`. Для кожного — чи результат покидає систему (export/JSON)? Fix: `roundMoney()` на КОЖНЕ похідне money-поле (НЕ на %/count/hours). Live-guard: report endpoint з фракційними даними → `round(v*100)/100===v` для кожного money-поля. Severity LOW-MEDIUM (не stored/balance, але user-visible float у фіндокументі). Родич completion-acts PDF float (f7a935db). ⚠️ report-сервіси часто мають 0 unit-тестів → закрити test-gap разом із фіксом.
 
 #### Tenant Isolation
@@ -1139,6 +1140,27 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-07 — idempotency-лінк, що НЕ атомарний з money-write який він захищає → sequential re-entry double-create (reconcile/crash-recovery) — backend / money / CRITICAL
+
+**Сигнал:** external-gateway money-flow (QR-оплата, будь-який async confirm) із «наміром» (intent/order), що переходить у термінальний-оплачено-статус через CAS (`updateMany where status:PENDING → PAID, count===1`), а ПОТІМ окремим write створює доменний money-запис (`payments.create` → Payment+settlement+running-total) і **третім** write лінкує його назад у намір (`intent.update({paymentId})`). Часто є reconcile/crash-recovery гілка (review-fix): «якщо намір PAID але `paymentId==null` → створити money-запис знову» (щоб не втратити гроші після падіння між CAS і create). **Пастка:** три write НЕ атомарні. Якщо `create` закомітився, а `update({paymentId})` упав (транзієнт DB/Redis), намір лишається `PAID+paymentId=null` → наступний reconcile-poll бачить те саме → `create` ВДРУГЕ → **дубль Payment/settlement/running-total = тихий double-charge**. jobId single-flight НЕ рятує (вікно послідовне, не конкурентне). Сам reconcile-фікс, доданий щоб не ВТРАТИТИ гроші, вводить дзеркальний баг — ПОДВОЇТИ гроші. Grep-сигнал: money-запис у reconcile/finalize-гілці БЕЗ pre-create existence-guard і БЕЗ `@unique`-лінку на джерело.
+
+```bash
+# intent/order-driven money-create у processor/reconcile без унікального лінку:
+grep -rn "paymentId.*null\|reconcile\|finalize" apps/api/src/modules/**/*.processor.ts | grep -v spec
+# для КОЖНОГО money-create у такій гілці — чи є @unique колонка-лінок на source-намір?
+grep -rn "onlinePaymentIntentId\|@unique" packages/database/prisma/schema.prisma | grep -i "payment\|intent\|order"
+```
+
+**Причина виникнення:** розробник (і review-фікс) розмірковує лише про два стани збою — «впав ДО create» (треба reconcile, щоб довести гроші) — і пропускає третій: «create вдався, лінк-write упав». CAS + jobId-дедуп створюють хибне відчуття «рівно один раз»: вони справді боронять КОНКУРЕНТНИЙ подвій, але не ПОСЛІДОВНИЙ повтор коли стан-прапорець (`paymentId`) не відображає реально-створений запис. `payments.create` не має природного dedup-ключа на намір → ніщо не боронить другий INSERT.
+
+**Підхід до виявлення:** для КОЖНОЇ reconcile/finalize-гілки що створює money-запис — тест «create-succeeds-then-link-fails»: намір `PAID+paymentId=null`, а money-таблиця ВЖЕ містить запис для цього наміру → assert `create` НЕ викликано вдруге + наявний запис лише до-лінковано. Плюс «P2002 на create (гонка)» → дістає winner і лінкує, не термінальна помилка. **Mutation-verify:** вимкнути pre-create existence-guard (`existing = null && ...`) → double-create-тест МУСИТЬ впасти (це доводить що зелений тест ловить саме подвій). Також покрити: CAS `count===0` → no second create (конкурент); crash-recovery PAID+paymentId=null → create коли запису ще НЕМА (mutation: вимкнути reconcile-гілку → «гроші втрачено»-тест падає); idempotent PAID+paymentId set → no-op.
+
+**Підхід до фіксу:** додати `@unique` колонку-лінок на джерело у money-таблицю (`Payment.onlinePaymentIntentId String? @unique` — additive nullable, backward-compat міграція) → БД фізично боронить другий INSERT (P2002). У finalize: (1) pre-create `findFirst({orgId, <link>})` — якщо запис уже є (лінк-write минулого разу впав), лише до-лінковуй, create НЕ повторюй; (2) на `P2002` з create (гонка) — дістань winner і залінкуй (успіх, не помилка, не re-enqueue). Це закриває і послідовне вікно (pre-check), і конкурентне (unique-констрейнт). Money-таблиця з новим полем: перевір чи не секрет (ENCRYPTED_FIELDS) і що syncVersion-політика незмінна.
+
+**Severity:** CRITICAL — тихий double-charge клієнта, без cap-захисту (reconcile-шлях часто скидає лічильник спроб), виявляється лише звіркою gateway↔Payment.
+
+**Де шукати ще:** будь-який async-confirm money-flow із intent/order + окремим лінк-write: online-payments (monobank QR), майбутні card/apple-pay, ПРРО-чек↔Payment лінк, loyalty-earn↔Payment, будь-який BullMQ processor що робить `X.create` у reconcile/retry-гілці за станом-прапорцем. Спорідн.: review-fix 025bf77f (reconcile-гілка яка й породила вікно), Bug #688 (цей), FIN-C1 (CAS ідемпотентність але у ОДНІЙ транзакції — контраст: там безпечно бо create+CAS атомарні).
 
 ### 2026-09-06 — list-endpoint query-фільтри (date-range + enum) та retry-action відвантажені з 0 unit, поки create() добре покритий — backend / coverage-gap / HIGH
 
