@@ -6,7 +6,7 @@
 //   4. priority move in-flight guard — під час PATCH стрілки заблоковані (movingId).
 //   5. apiKey ніколи не показується у списку каналів (лише "без ключа" бейдж).
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
@@ -313,6 +313,175 @@ describe('NotificationProvidersPanel', () => {
       await user.selectOptions(screen.getByRole('combobox'), 'VIBER');
       const tplInput = (await screen.findByPlaceholderText('напр. 12345')) as HTMLInputElement;
       expect(tplInput.value).toBe('saved-tpl-7');
+    });
+  });
+
+  // ─── Ексклюзивна активація провайдера (feat/exclusive-provider) ──────────────
+  // Інваріант: активним може бути лише ОДИН провайдер. Картковий Switch активує
+  // провайдера ексклюзивно; канал іншого провайдера не можна увімкнути окремо;
+  // Switch активного провайдера/каналу — стан керується інваріантом.
+  describe('ексклюзивна активація', () => {
+    // Два провайдери на картках; конфіги каналів задаються тестом.
+    function twoProviderMock(channels: unknown[]) {
+      apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
+        if (path === '/branches') return Promise.resolve(BRANCHES);
+        if (path === '/notification-providers') return Promise.resolve([PROVIDERS[0], ESPUTNIK]);
+        if (path.startsWith('/notification-channels/')) {
+          if (opts?.method === 'POST') return Promise.resolve({ activeProvider: 'turbosms' });
+          if (opts?.method === 'PATCH') return Promise.resolve({ id: 'row-1' });
+          return Promise.resolve(channels);
+        }
+        return Promise.resolve({});
+      });
+    }
+
+    it('Switch на картці неактивного провайдера → POST /activate з {provider}', async () => {
+      // turbosms активний (SMS enabled). Активуємо esputnik (має налаштований канал).
+      twoProviderMock([
+        channelRow({ id: 'ch-sms', channel: 'SMS', provider: 'turbosms', enabled: true }),
+        channelRow({ id: 'ch-esp', channel: 'SMS', provider: 'esputnik', enabled: false }),
+      ]);
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+
+      const espSwitch = await screen.findByRole('switch', {
+        name: 'Активувати провайдера eSputnik',
+      });
+      expect(espSwitch).not.toBeDisabled();
+      await user.click(espSwitch);
+
+      await waitFor(() => {
+        const post = apiFetchMock.mock.calls.find(
+          c => c[0] === '/notification-channels/br-1/activate' && c[1]?.method === 'POST',
+        );
+        expect(post).toBeTruthy();
+        expect(JSON.parse(post![1].body as string)).toEqual({ provider: 'esputnik' });
+      });
+    });
+
+    it('Switch активного провайдера — disabled (немає повторної/зворотної активації)', async () => {
+      twoProviderMock([
+        channelRow({ id: 'ch-sms', channel: 'SMS', provider: 'turbosms', enabled: true }),
+      ]);
+      render(<NotificationProvidersPanel />);
+
+      const activeSwitch = await screen.findByRole('switch', {
+        name: 'Активувати провайдера TurboSMS',
+      });
+      // Чекаємо доки GET каналів долетить і activeProvider === 'turbosms' (isActive→disabled).
+      // Без waitFor асерт міг би спрацювати на першому рендері (channels ще порожні → не disabled).
+      await waitFor(() => expect(activeSwitch).toBeDisabled());
+      expect(activeSwitch).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('empty-state guard: активація провайдера БЕЗ каналів → НЕ POST + повідомлення налаштувати креди', async () => {
+      // turbosms активний; esputnik НЕ має жодного каналу у філії → guard блокує.
+      twoProviderMock([
+        channelRow({ id: 'ch-sms', channel: 'SMS', provider: 'turbosms', enabled: true }),
+      ]);
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+
+      const espSwitch = await screen.findByRole('switch', {
+        name: 'Активувати провайдера eSputnik',
+      });
+      await user.click(espSwitch);
+
+      // Повідомлення показане; activate НЕ надіслано.
+      await screen.findByText(/Спершу налаштуйте канал провайдера/);
+      const post = apiFetchMock.mock.calls.find(
+        c => c[0] === '/notification-channels/br-1/activate' && c[1]?.method === 'POST',
+      );
+      expect(post).toBeUndefined();
+    });
+
+    it('канал НЕактивного провайдера у списку — Switch disabled (не можна увімкнути 2-й провайдер)', async () => {
+      // turbosms активний (SMS enabled). esputnik-канал вимкнений і його provider ≠ active.
+      twoProviderMock([
+        channelRow({ id: 'ch-sms', channel: 'SMS', provider: 'turbosms', enabled: true }),
+        channelRow({ id: 'ch-esp', channel: 'VIBER', provider: 'esputnik', enabled: false }),
+      ]);
+      render(<NotificationProvidersPanel />);
+
+      // Канал esputnik VIBER — Switch у списку каналів заблокований.
+      const espChannelSwitch = await screen.findByRole('switch', {
+        name: /Увімкнути канал Viber/,
+      });
+      expect(espChannelSwitch).toBeDisabled();
+    });
+
+    it('канал іншого провайдера: disabled Switch блокує PATCH (клік по disabled — no-op)', async () => {
+      // Детермінований варіант: перевіряємо, що disabled Switch каналу неактивного
+      // провайдера НЕ шле PATCH. fireEvent.click по disabled button не викликає onClick
+      // (нативна семантика), тож жодного esputnik-PATCH не з'являється.
+      twoProviderMock([
+        channelRow({ id: 'ch-sms', channel: 'SMS', provider: 'turbosms', enabled: true }),
+        channelRow({ id: 'ch-esp', channel: 'VIBER', provider: 'esputnik', enabled: false }),
+      ]);
+      render(<NotificationProvidersPanel />);
+
+      const espChannelSwitch = await screen.findByRole('switch', { name: /Увімкнути канал Viber/ });
+      expect(espChannelSwitch).toBeDisabled();
+      fireEvent.click(espChannelSwitch); // no-op на disabled button
+
+      const patch = apiFetchMock.mock.calls.find(
+        c =>
+          c[0] === '/notification-channels/br-1' &&
+          c[1]?.method === 'PATCH' &&
+          (c[1].body as string).includes('esputnik'),
+      );
+      expect(patch).toBeUndefined();
+    });
+
+    it('вимкнення каналу АКТИВНОГО провайдера — дозволено (Switch enabled, PATCH enabled=false)', async () => {
+      // Активний turbosms з двома каналами; вимкнути один (звузити ланцюг) — дозволено.
+      twoProviderMock([
+        channelRow({
+          id: 'ch-sms',
+          channel: 'SMS',
+          provider: 'turbosms',
+          enabled: true,
+          priority: 0,
+        }),
+        channelRow({
+          id: 'ch-viber',
+          channel: 'VIBER',
+          provider: 'turbosms',
+          enabled: true,
+          priority: 1,
+        }),
+      ]);
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+
+      // Канал активного провайдера, enabled → Switch дозволяє вимкнення.
+      const smsSwitch = await screen.findByRole('switch', { name: /Вимкнути канал SMS/ });
+      expect(smsSwitch).not.toBeDisabled();
+      await user.click(smsSwitch);
+
+      await waitFor(() => {
+        const patch = apiFetchMock.mock.calls.find(
+          c => c[0] === '/notification-channels/br-1' && c[1]?.method === 'PATCH',
+        );
+        expect(patch).toBeTruthy();
+        expect(patch![1].body).toContain('"enabled":false');
+        expect(patch![1].body).toContain('"provider":"turbosms"');
+      });
+    });
+
+    it('канал вимкненого провайдера коли АКТИВНИЙ провайдер відсутній (нічого не enabled) → Switch НЕ disabled', async () => {
+      // activeProvider === null → жоден provider не активний → усі канали можна вмикати
+      // (перший click активує ланцюг цього провайдера). Guard тільки коли є active-provider.
+      twoProviderMock([
+        channelRow({ id: 'ch-sms', channel: 'SMS', provider: 'turbosms', enabled: false }),
+        channelRow({ id: 'ch-esp', channel: 'VIBER', provider: 'esputnik', enabled: false }),
+      ]);
+      render(<NotificationProvidersPanel />);
+
+      const smsSwitch = await screen.findByRole('switch', { name: /Увімкнути канал SMS/ });
+      const espSwitch = await screen.findByRole('switch', { name: /Увімкнути канал Viber/ });
+      expect(smsSwitch).not.toBeDisabled();
+      expect(espSwitch).not.toBeDisabled();
     });
   });
 });

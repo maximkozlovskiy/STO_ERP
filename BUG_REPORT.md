@@ -3252,3 +3252,25 @@ src/components/ui/__tests__` — 391 passed (37 files).
 - **externalTemplateId secret-safety** — `getBranchChannels` віддає externalTemplateId у GET (коментар «не секрет») — коректно (це ID шаблону, не креди); apiKey далі лише `hasApiKey`.
 
 **Результат:** 0 функціональних багів; 4 закриті coverage-gap (#653-#656). Нові/розширені тести: api +15 (service +3, processor +3, esputnik +3, новий registry spec +6), web +6 (eSputnik-гілка панелі). Підсумок: API notif 81→96 зелено (8 files), web panel 6→12 зелено. tsc api=0 / web=0. E2E пропущено (Playwright MCP DOWN — не блокер).
+
+---
+
+## Session 2026-09-06 — exclusive-provider-activation (ad304c88 + review-fix c441606f)
+
+Мета: bug-hunt фічі ексклюзивної активації провайдера. `activateProvider` (service) + POST `:branchId/activate` (controller) + review-fix панелі (per-channel gate, empty-state guard, disabled Switches) — мали 0 тестів. Backend/frontend перевірено на 5 edge-груп (валідація, cross-org leak, atomicity/exclusivity, empty-state idempotency, resolveConfig single-provider). Функціональних дефектів НЕ знайдено — реалізація і review-fix коректні; єдина прогалина — відсутнє покриття. Закрито.
+
+### Bug #657 (HIGH — coverage-gap) — `[x] виправлено`
+
+**Симптом:** `activateProvider(orgId, branchId, providerCode)` та endpoint POST `/notification-channels/:branchId/activate` не мали жодного тесту. Найгірший нерозкритий ризик — cross-org leak: якщо будь-який з двох `updateMany` втратить `orgId` у where (рефактор/copy-paste), активація в одній org масово вимкне/увімкне канали філії з тим самим branchId-значенням у ЧУЖІЙ org. Також без покриття: unknown-provider→400, branch-not-in-org→404, atomicity/exclusivity (рівно 1 провайдер enabled), «брудний» legacy-стан (2 провайдери enabled одночасно), empty-state idempotency (0 рядків → {activeProvider} без throw), soft-deleted канали не реактивуються.
+
+**Фікс:** три набори тестів.
+
+- `notifications.service.spec.ts` +9 (`describe activateProvider`, in-memory store моделює updateMany → перевіряє РЕАЛЬНИЙ кінцевий стан, не лише форму where): unknown→BadRequest (БД не чіпається); branch-not-in-org→NotFound (org-scoped findFirst); happy-path A→B лишає enabled ЛИШЕ B; legacy 2-enabled→активація лишає 1; обидва updateMany несуть orgId+branchId+deletedAt (both where-clauses); **cross-org: рядки org-2 з тим самим branchId/provider НЕ чіпаються**; soft-deleted не реактивується; empty-state (0 turbosms-каналів)→{activeProvider}, nothing enabled, no throw; порожнє сховище→no throw.
+- `notifications.channels.contract.spec.ts` (новий, 7, Fastify+ValidationPipe): happy-path {activeProvider}+orgId з JWT прокинутий; branchId не-UUID→400 (ParseUUIDPipe); body без provider→400; provider не рядок→400 (@IsString); whitelist відкидає зайві поля (orgId з body ігнор); сервіс-BadRequest→400; сервіс-NotFound→404.
+- `NotificationProvidersPanel.test.tsx` +7 (`describe ексклюзивна активація`): картковий Switch неактивного→POST /activate {provider}; Switch активного disabled+aria-checked; empty-state guard (провайдер без каналів)→НЕ POST + повідомлення «Спершу налаштуйте канал»; канал неактивного провайдера у списку→Switch disabled; спроба toggle каналу іншого провайдера→НЕ PATCH; вимкнення каналу активного провайдера→дозволено (PATCH enabled=false); activeProvider===null→усі канали enable-able.
+
+**Mutation-verified (не fake-green):** нейтралізація empty-state guard + per-channel `disabled` → 2 web-тести падають; видалення `orgId` з disable-updateMany → 2 backend-тести падають (cross-org + both-where). Тести реально ловлять регрес інваріантів.
+
+**Severity HIGH** (розрекламована ексклюзивність + tenant-isolation на масовому updateMany: тихий регрес = cross-org data corruption). **Де ще шукати:** будь-який сервіс з `$transaction([updateMany(...), updateMany(...)])` — перевіряти orgId у КОЖНОМУ where; будь-який фронтовий «ексклюзивний» toggle (активним лише 1) — гейт + empty-state guard + disabled-стан.
+
+**Результат:** 0 функціональних багів; 1 coverage-gap закрито. API notif 96→113 зелено (9 files: +9 service, +7 новий contract, +1 resolveConfig edge-5). Web panel 12→19 зелено. tsc api=0 / web=0. E2E пропущено (Playwright MCP DOWN — не блокер).
