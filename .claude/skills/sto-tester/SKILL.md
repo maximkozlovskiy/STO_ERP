@@ -767,6 +767,12 @@ git diff HEAD --name-only | grep "service.ts" | while read f; do
   [ -f "$spec" ] && echo "OK: $spec" || echo "MISSING spec: $spec"
 done
 
+# Новий external-API HTTP-клієнт/gateway з fetch — ЗАВЖДИ потребує власного spec (Bugs #683-#687).
+# Processor-spec мокає клієнт цілком → SSRF/timeout/auth-header/3xx/401 клієнта невидимі CI.
+for f in $(git diff HEAD --name-only | grep -E "client\.ts$|gateway\.ts$|provider\.ts$"); do
+  grep -q "fetch(\|axios\." "$f" 2>/dev/null && { [ -f "${f%.ts}.spec.ts" ] || echo "MISSING client spec (external-API): $f"; }
+done
+
 # Стала spec після рефактору — нова constructor-залежність не замокана у TestingModule
 # (NestJS DI fail "Nest can't resolve dependencies ... at index [N]")
 for svc in $(git log --oneline -10 --name-only | grep "service.ts$" | sort -u); do
@@ -3835,3 +3841,28 @@ grep -rn "PrismaClientValidationError" apps/api/src   # чи є logger.warn/erro
 **Підхід до фіксу:** дописати regression-guard на кожну непокриту гілку, **mutation-verify** дві найкритичніші: занейтралізувати gate (`willX = true`) → false/null-тести падають; прибрати `if (attemptsMade < attempts) return` → проміжний тест падає. Для enqueue-failure тесту переконатись що мок `$transaction` викликає callback (щоб `create` реально спрацював) і що `payment.update` теж мокнутий (щоб `.catch(()=>undefined)` не ковтав реальну помилку тесту). verify/external-call сервіс що повертає `{valid, ...}` — окремо асертити що **креди не в поверненому об'єкті** (`JSON.stringify(res)` не містить ключа) на success І error.
 **Severity:** HIGH для gate + enqueue-failure (фінансовий інваріант: помилкові чеки / завислий QUEUED); MEDIUM для skip-SKIPPED + anti-flicker (UX/observability, дані цілі).
 **Де шукати ще:** будь-який `@InjectQueue` з парним DB-status полем — `checkbox`/`fiscal`, `sms`/`notifications`, `webhooks`, `prro` (attempts=288), `loyalty.queueEarn`, `followup`. Особливо після коміту `feat(...): add <status>Status enum` + міграція `ALTER TYPE`. Парне з Bug #346 (idempotency — інша грань того ж processor).
+
+### 2026-09-06 — Тонкий external-API HTTP-клієнт (fetch-wrapper) відвантажується з 0 тестів; recipe mock-global-fetch + token-never-logged (Bugs #683-#687) — backend / external-api / security / test-gap (HIGH)
+
+**Сигнал:** новий `*.client.ts` / `*.gateway.ts` що інкапсулює всі виклики зовнішнього API (Checkbox/ПРРО/SMS/OAuth/postal) через `fetch()` — типово має SSRF-guard + `redirect:'manual'` + `AbortController` timeout + reject-3xx + auth-header (Bearer на одних методах, alternate header типу `X-License-Key` на sign-in). Комітиться з **0 тестів на цей файл** (unit-мок Prisma/Queue у parent-processor spec НЕ виконує цей код — fetch реальний). Парний lifecycle-сервіс (`*-shift.service`, token/session-менеджер) теж часто 0 тестів. Класична пастка: «клієнт — тонка обгортка, нема що тестувати» — але саме тут живуть security-інваріанти (SSRF-before-fetch, 3xx→reject, 401-mapping, timeout-abort) і auth-контракт (правильний header на правильному методі).
+
+**Причина виникнення:** розробник вважає HTTP-клієнт «тонким» (лише URL+headers+JSON), а processor-spec «покриває флоу». Але processor мокає весь клієнт (`{ sellReceipt: vi.fn() }`) → жоден рядок клієнта не біжить у CI. SSRF/timeout/error-mapping невидимі. Плюс токен, прочитаний клієнтом, легко протікає у лог parent-processor-а.
+
+**Підхід до виявлення:** `git diff` дає новий `*.client.ts`/`*.gateway.ts` з `fetch(` І нема `*.client.spec.ts` → gap. Grep `for f in $(git diff HEAD~N --name-only | grep -E 'client\.ts$|gateway\.ts$'); do [ -f "${f%.ts}.spec.ts" ] || echo "NO SPEC: $f"; done`. Так само для token/session-lifecycle сервіса (`ensureToken`/`refreshToken`/`signIn`).
+
+**Підхід до фіксу (recipe):**
+
+- **mock global fetch:** `vi.stubGlobal('fetch', fetchMock)` + helper `OK(body, status)` що повертає `{status, ok, text: () => Promise.resolve(JSON.stringify(body))}` (не повний Response). `afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); })`.
+- **auth-контракт per method:** асертити `fetchMock.mock.calls[0][1].headers` — Bearer=token на authed-викликах, alternate header (X-License-Key) на sign-in, І **`Authorization` undefined на sign-in** (щоб не переплутали). Правильний endpoint-URL кожного методу.
+- **SSRF-before-fetch:** для localhost/169.254-metadata/RFC1918/non-http URL → `expect(client.call(...)).rejects` + `expect(fetchMock).not.toHaveBeenCalled()` (доводить що guard ПЕРЕД fetch, не після).
+- **3xx→reject:** цикл по [300,301,307,308,399] → кожен reject (SSRF-tampering); + `redirect:'manual'` завжди у опціях; 401→спец-error-клас (для re-sign-in у processor).
+- **timeout:** happy-тест — `signal instanceof AbortSignal` у опціях; abort-тест — `fetchMock.mockImplementationOnce((_u,opts)=>new Promise((_,rej)=>opts.signal.addEventListener('abort',()=>rej(new DOMException('aborted','AbortError')))))` + `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync(TIMEOUT+1)`.
+- **cents/money конверсія:** `Math.round(amount*100)` з fraction-input (35.2→3520, не 3519) — anti-IEEE-754.
+- **token-never-logged:** у parent-processor spec замокати ВСІ рівні logger (`for lvl of ['log','debug','warn','error'] proc.logger[lvl]=(...a)=>logged.push(...a)`) → `expect(JSON.stringify(logged)).not.toContain(secretToken)` для success І для 401→refresh (обидва токени); sanity `logged.length>0`.
+- **секрет не у DTO:** `expect(JSON.stringify(dto)).not.toContain(secret)` + `expect(dto).not.toHaveProperty('<secretField>')` на КОЖНОМУ DTO-виводі (open/close/getCurrent).
+
+**Підхід до mutation-verify (token-lifecycle boundaries):** skew-межа кешу токена (`expiry > now+SKEW`) — тест «expiry рівно на межі → re-sign-in» + «expiry на +1ms за межею → кеш»; мутація `>`→`>=` валить перший (протухлий токен прийнявся б за валідний → 401-цикл). tenant-scope refresh (`updateMany where{id,orgId}`) — cross-org id→no-op→NotFound; мутація дропу orgId валить (безумовна інвалідація чужого токена). P2002-recovery — winner→OK + winner-null→rethrow (доводить що catch не ковтає безумовно).
+
+**Severity:** HIGH — external-API клієнт несе SSRF + auth + money + secret одночасно; 0 тестів = увесь клас невидимий CI. Token-log-leak — HIGH (секрет у production-логах).
+
+**Де шукати ще:** будь-який `*.client.ts`/`*.gateway.ts`/`*.provider.ts` з `fetch`/`axios` до зовнішнього хоста; token/session-lifecycle сервіси (`ensureX`/`refreshX`/`signIn`/`getValidToken`) з skew/expiry-логікою; парні processor-спеки що мокають клієнт цілком — перевірити чи клієнт має ВЛАСНИЙ spec. Парне з Bug #273 (SSRF paired defense), #652 (secret at-rest), #661-#664 (BullMQ status-FSM).

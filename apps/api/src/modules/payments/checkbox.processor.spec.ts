@@ -176,6 +176,52 @@ describe('CheckboxProcessor (ПРРО Крок 2 — sell у зміну)', () =>
     expect(paymentUpdate).not.toHaveBeenCalled();
   });
 
+  it('cashier access-token НІКОЛИ не потрапляє у лог (жоден рівень)', async () => {
+    // Секрет-token не повинен витікати у логи (спостережувані у продакшні). Мокаємо ВСІ рівні
+    // логера і доводимо, що жоден аргумент лог-виклику не містить значення токена.
+    ensureToken.mockResolvedValueOnce({
+      apiUrl: 'https://api.checkbox.ua',
+      token: 'SUPER-SECRET-TOKEN-xyz',
+    });
+    const logged: unknown[] = [];
+    const proc = processor as unknown as {
+      logger: { log: unknown; debug: unknown; warn: unknown; error: unknown };
+    };
+    for (const lvl of ['log', 'debug', 'warn', 'error'] as const) {
+      proc.logger[lvl] = (...a: unknown[]) => logged.push(...a);
+    }
+    await processor.process(makeJob());
+    const dump = JSON.stringify(logged);
+    expect(dump).not.toContain('SUPER-SECRET-TOKEN-xyz');
+    // sanity: щось усе-таки залоговано (success-лог), тобто перевірка не пуста
+    expect(logged.length).toBeGreaterThan(0);
+  });
+
+  it('401→refresh: token з refreshToken теж не логується', async () => {
+    ensureToken.mockResolvedValueOnce({
+      apiUrl: 'https://api.checkbox.ua',
+      token: 'first-tok-AAA',
+    });
+    refreshToken.mockResolvedValueOnce({
+      apiUrl: 'https://api.checkbox.ua',
+      token: 'refreshed-tok-BBB',
+    });
+    sellReceipt
+      .mockRejectedValueOnce(new CheckboxUnauthorizedError('401'))
+      .mockResolvedValueOnce({ fiscalReceiptId: 'fr-9' });
+    const logged: unknown[] = [];
+    const proc = processor as unknown as {
+      logger: { log: unknown; debug: unknown; warn: unknown; error: unknown };
+    };
+    for (const lvl of ['log', 'debug', 'warn', 'error'] as const) {
+      proc.logger[lvl] = (...a: unknown[]) => logged.push(...a);
+    }
+    await processor.process(makeJob());
+    const dump = JSON.stringify(logged);
+    expect(dump).not.toContain('first-tok-AAA');
+    expect(dump).not.toContain('refreshed-tok-BBB');
+  });
+
   describe('onFailed: FAILED лише на термінальній спробі', () => {
     it('проміжна спроба (attemptsMade < attempts) → payment.update НЕ викликано', async () => {
       await processor.onFailed(makeJob({}, 5), new Error('rej'));

@@ -206,6 +206,51 @@ describe('FiscalTab', () => {
     await waitFor(() => expect(screen.getByText('Немає звʼязку')).toBeInTheDocument());
   });
 
+  it('shiftMode: завантажене значення відображається у Select', async () => {
+    baseMock({
+      fiscalEnabled: true,
+      checkboxApiUrl: null,
+      checkboxCashRegisterId: null,
+      shiftMode: 'AUTO_OPEN',
+    });
+    render(<FiscalTab />);
+    await screen.findByRole('switch');
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('AUTO_OPEN'));
+  });
+
+  it('shiftMode: round-trip — зміна значення → у PATCH', async () => {
+    baseMock({
+      fiscalEnabled: true,
+      checkboxApiUrl: null,
+      checkboxCashRegisterId: null,
+      shiftMode: 'MANUAL',
+    });
+    const user = userEvent.setup();
+    render(<FiscalTab />);
+    await screen.findByRole('switch');
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('MANUAL'));
+
+    await user.selectOptions(select, 'AUTO_OPEN');
+    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => {
+      const patch = findPatch();
+      expect(patch).toBeTruthy();
+      const body = JSON.parse(patch![1].body as string);
+      expect(body.shiftMode).toBe('AUTO_OPEN');
+    });
+  });
+
+  it('shiftMode: дефолт MANUAL коли GET не повернув поле', async () => {
+    baseMock({ fiscalEnabled: true, checkboxApiUrl: null, checkboxCashRegisterId: null });
+    render(<FiscalTab />);
+    await screen.findByRole('switch');
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    expect(select.value).toBe('MANUAL');
+  });
+
   it('після успішного save секрет-поля очищуються', async () => {
     baseMock({ fiscalEnabled: true, checkboxApiUrl: null, checkboxCashRegisterId: null });
     const user = userEvent.setup();
