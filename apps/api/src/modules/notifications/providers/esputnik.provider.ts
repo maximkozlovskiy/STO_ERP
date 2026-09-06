@@ -42,15 +42,15 @@ export class EsputnikProvider implements NotificationProvider {
   private readonly logger = new Logger(EsputnikProvider.name);
 
   async send(params: SendParams): Promise<SendResult> {
-    const { channel, phone, message, creds, externalTemplateId } = params;
+    const { channel, recipient, message, creds, externalTemplateId } = params;
 
     try {
       if (channel === NotificationChannel.SMS) {
-        // Direct ad-hoc SMS — inline text.
+        // Direct ad-hoc SMS — inline text. recipient = телефон.
         const res = await this.fetchJson('POST', '/v1/message/sendsms', creds.apiKey, {
           from: creds.senderName ?? 'STO ERP',
           text: message,
-          phoneNumbers: [phone],
+          phoneNumbers: [recipient],
         });
         // sendsms повертає ідентифікатори/статуси; успіх = HTTP 2xx (fetchJson кидає на non-2xx).
         return {
@@ -71,7 +71,7 @@ export class EsputnikProvider implements NotificationProvider {
           'POST',
           `/v1/message/${encodeURIComponent(externalTemplateId)}/smartsend`,
           creds.apiKey,
-          { recipients: [{ locator: phone }] },
+          { recipients: [{ locator: recipient }] },
         );
         return { accepted: true, providerMessageId: this.extractMessageId(res) };
       }

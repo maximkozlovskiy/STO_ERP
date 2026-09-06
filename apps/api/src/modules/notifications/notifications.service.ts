@@ -7,13 +7,20 @@ import { NotificationProviderRegistry } from './providers/provider-registry';
 
 export type NotificationEvent = NotificationEventType;
 
-/** Один канал у fallback-ланцюзі: провайдер + креди + вже відрендерений текст. */
+/** Канали, отримувач яких — email (а не телефон). Для них locator береться з payload.email. */
+const EMAIL_CHANNELS = new Set<NotificationChannel>([NotificationChannel.EMAIL]);
+
+/** Один канал у fallback-ланцюзі: провайдер + креди + вже відрендерений текст + отримувач. */
 export interface ChannelStep {
   channel: NotificationChannel;
   provider: string;
   apiKey: string;
   senderName: string;
   message: string;
+  /** Тема (лише EMAIL); відрендерена. */
+  subject?: string;
+  /** Отримувач цього каналу: телефон (SMS/Viber/TG) або email (EMAIL). */
+  recipient: string;
   /** ID шаблону провайдера (eSputnik Viber/Telegram); null для inline-каналів. */
   externalTemplateId?: string;
 }
@@ -31,6 +38,8 @@ export interface NotificationConfig {
     senderName: string;
     /** Локальний inline-шаблон (для SMS/inline). Порожній для external-template каналів. */
     templateBody: string;
+    /** Тема-шаблон (лише EMAIL) ДО рендеру. */
+    templateSubject?: string;
     /** ID шаблону провайдера (eSputnik Viber/Telegram); null для inline-каналів. */
     externalTemplateId?: string;
   }[];
@@ -56,13 +65,16 @@ export class NotificationsService {
       this.logger.debug(`branchId не вказано для org=${orgId}, event=${event} — SMS пропущено`);
       return;
     }
+    // Отримувач залежить від каналу: телефон (SMS/Viber/TG) або email (EMAIL).
+    // Бейлимо лише якщо немає ЖОДНОГО адресата — sendWithConfig обере locator per-channel.
     const phone = typeof payload.phone === 'string' ? payload.phone : undefined;
-    if (!phone) return;
+    const email = typeof payload.email === 'string' ? payload.email : undefined;
+    if (!phone && !email) return;
 
     const config = await this.resolveConfig(orgId, branchId, event);
     if (!config) return;
 
-    await this.sendWithConfig(orgId, phone, config, payload, branchId, event);
+    await this.sendWithConfig(orgId, config, payload, branchId, event);
   }
 
   /**
@@ -102,10 +114,10 @@ export class NotificationsService {
       const wantedChannels = [...new Set(channelConfigs.map(c => c.channel))];
       const templates = await this.prisma.notificationTemplate.findMany({
         where: { orgId, eventType: event, channel: { in: wantedChannels }, isActive: true },
-        select: { channel: true, body: true },
+        select: { channel: true, body: true, subject: true }, // subject — для EMAIL
         take: 20, // bounded by @@unique([orgId,eventType,channel]) — take як defence-in-depth (§1)
       });
-      const byChannel = new Map(templates.map(t => [t.channel, t.body]));
+      const byChannel = new Map(templates.map(t => [t.channel, t]));
 
       // Канал придатний якщо має локальний inline-шаблон АБО (externalTemplateId І провайдер
       // реально шле цей канал через шаблон). Без перевірки провайдера inline-канал (SMS/TurboSMS
@@ -122,7 +134,8 @@ export class NotificationsService {
           provider: c.provider,
           apiKey: c.apiKey as string, // гарантовано not-null через where
           senderName: c.senderName ?? 'STO ERP',
-          templateBody: byChannel.get(c.channel) ?? '', // порожній для external-template каналів
+          templateBody: byChannel.get(c.channel)?.body ?? '', // порожній для external-template
+          templateSubject: byChannel.get(c.channel)?.subject ?? undefined,
           externalTemplateId: c.externalTemplateId ?? undefined,
         }));
 
@@ -169,30 +182,41 @@ export class NotificationsService {
 
   /**
    * Ставить у чергу fallback-ланцюг для одного отримувача (без DB-читань).
-   * Текст рендериться per-channel (Viber-шаблон може відрізнятись від SMS).
-   * Processor іде ланцюгом: chain[chainIndex] accepted → STOP; reject → наступний канал.
+   * Отримувач обирається per-channel з `vars`: телефон (SMS/Viber/TG) або email (EMAIL).
+   * Канал без відповідного адресата пропускається (напр. EMAIL без vars.email). Текст і тему
+   * рендеримо per-channel. Processor іде ланцюгом: chain[i] accepted → STOP; reject → наступний.
    */
   async sendWithConfig(
     orgId: string,
-    phone: string,
     config: NotificationConfig,
     vars: Record<string, unknown>,
     branchId?: string,
     event?: NotificationEvent,
   ): Promise<void> {
-    const chain: ChannelStep[] = config.channels.map(c => ({
-      channel: c.channel,
-      provider: c.provider,
-      apiKey: c.apiKey,
-      senderName: c.senderName,
-      message: this.renderTemplate(c.templateBody, vars),
-      externalTemplateId: c.externalTemplateId,
-    }));
+    const phone = typeof vars.phone === 'string' ? vars.phone : undefined;
+    const email = typeof vars.email === 'string' ? vars.email : undefined;
+
+    const chain: ChannelStep[] = config.channels
+      .map((c): ChannelStep | null => {
+        const recipient = EMAIL_CHANNELS.has(c.channel) ? email : phone;
+        if (!recipient) return null; // немає адресата для цього каналу → пропуск
+        return {
+          channel: c.channel,
+          provider: c.provider,
+          apiKey: c.apiKey,
+          senderName: c.senderName,
+          message: this.renderTemplate(c.templateBody, vars),
+          subject: c.templateSubject ? this.renderTemplate(c.templateSubject, vars) : undefined,
+          recipient,
+          externalTemplateId: c.externalTemplateId,
+        };
+      })
+      .filter((s): s is ChannelStep => s !== null);
     if (chain.length === 0) return;
 
     await this.smsQueue.add(
       'send-sms',
-      { orgId, branchId, event, phone, chain, chainIndex: 0 },
+      { orgId, branchId, event, chain, chainIndex: 0 },
       {
         attempts: 10,
         backoff: { type: 'exponential', delay: 60_000 },

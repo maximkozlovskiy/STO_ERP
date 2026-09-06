@@ -11,6 +11,7 @@ import { FollowUpProcessor } from './followup.processor';
 import { FollowUpScheduler } from './followup.scheduler';
 import { TurboSmsProvider } from './providers/turbosms.provider';
 import { EsputnikProvider } from './providers/esputnik.provider';
+import { EmailProvider } from './providers/email.provider';
 import { NotificationProviderRegistry } from './providers/provider-registry';
 
 @Global()
@@ -31,6 +32,7 @@ import { NotificationProviderRegistry } from './providers/provider-registry';
     FollowUpScheduler,
     TurboSmsProvider,
     EsputnikProvider,
+    EmailProvider,
     NotificationProviderRegistry,
   ],
   exports: [NotificationsService, NotificationProviderRegistry],

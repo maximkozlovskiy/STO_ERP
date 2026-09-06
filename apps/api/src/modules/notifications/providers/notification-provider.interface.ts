@@ -8,8 +8,14 @@ export interface ProviderCredentials {
 
 export interface SendParams {
   channel: NotificationChannel;
-  phone: string;
+  /**
+   * Отримувач (locator): телефон для SMS/Viber/Telegram, email-адреса для EMAIL.
+   * Тип визначається каналом.
+   */
+  recipient: string;
   message: string;
+  /** Тема (лише EMAIL; inline SMS/Viber/Telegram ігнорують). */
+  subject?: string;
   creds: ProviderCredentials;
   /**
    * ID готового шаблону в кабінеті провайдера. Потрібен для template-based каналів

@@ -12,6 +12,9 @@ interface ChannelStep {
   apiKey: string;
   senderName: string;
   message: string;
+  subject?: string;
+  /** Отримувач цього каналу: телефон (SMS/Viber/TG) або email (EMAIL). */
+  recipient: string;
   externalTemplateId?: string;
 }
 
@@ -19,16 +22,21 @@ interface SendSmsJob {
   orgId: string;
   branchId?: string;
   event?: NotificationEventType;
-  phone: string;
-  /** Впорядкований fallback-ланцюг каналів (priority ASC). */
+  /** Впорядкований fallback-ланцюг каналів (priority ASC); recipient — у кожному кроці. */
   chain: ChannelStep[];
   /** Позиція у ланцюзі для поточного job. Retry цього job повторює саме chain[chainIndex]. */
   chainIndex: number;
 }
 
-/** §2.4 PII: у логах показуємо лише останні 4 цифри телефону. */
-function maskPhone(phone: string): string {
-  return phone.length <= 4 ? '****' : `****${phone.slice(-4)}`;
+/** §2.4 PII: маскуємо отримувача у логах. Телефон → ****1234; email → a***@dom. */
+function maskRecipient(recipient: string): string {
+  const at = recipient.indexOf('@');
+  if (at > 0) {
+    const name = recipient.slice(0, at);
+    const domain = recipient.slice(at);
+    return `${name[0]}***${domain}`;
+  }
+  return recipient.length <= 4 ? '****' : `****${recipient.slice(-4)}`;
 }
 
 // Concurrency=3: кожна відправка — окремий зовнішній HTTP виклик (10s timeout).
@@ -55,7 +63,7 @@ export class SmsProcessor extends WorkerHost {
    *    chain[chainIndex] (chainIndex у job.data), не рестартуючи ланцюг з нуля.
    */
   async process(job: Job<SendSmsJob>): Promise<void> {
-    const { orgId, branchId, event, phone, chain, chainIndex } = job.data;
+    const { orgId, branchId, event, chain, chainIndex } = job.data;
     const step = chain?.[chainIndex];
     if (!step) {
       this.logger.warn(`SMS job без валідного кроку (chainIndex=${chainIndex}) — пропущено`);
@@ -65,7 +73,7 @@ export class SmsProcessor extends WorkerHost {
     const impl = this.registry.get(step.provider);
     if (!impl) {
       // Невідомий провайдер — конфіг-помилка, не транзієнт. Логуємо FAILED, пробуємо наступний.
-      await this.log(orgId, branchId, event, step, phone, 'FAILED', {
+      await this.log(orgId, branchId, event, step, 'FAILED', {
         error: `Невідомий провайдер "${step.provider}"`,
         attempt: job.attemptsMade + 1,
       });
@@ -75,26 +83,27 @@ export class SmsProcessor extends WorkerHost {
 
     const result = await impl.send({
       channel: step.channel,
-      phone,
+      recipient: step.recipient,
       message: step.message,
+      subject: step.subject,
       creds: { apiKey: step.apiKey, senderName: step.senderName },
       externalTemplateId: step.externalTemplateId,
     });
 
     if (result.accepted) {
-      await this.log(orgId, branchId, event, step, phone, 'SENT', {
+      await this.log(orgId, branchId, event, step, 'SENT', {
         providerMessageId: result.providerMessageId,
         attempt: job.attemptsMade + 1,
       });
       this.logger.log(
-        `${step.channel} надіслано на ${maskPhone(phone)} через ${step.provider} ` +
+        `${step.channel} надіслано на ${maskRecipient(step.recipient)} через ${step.provider} ` +
           `(id=${result.providerMessageId ?? '—'})`,
       );
       return;
     }
 
     // Відхилено провайдером — лог REJECTED і спроба наступного каналу.
-    await this.log(orgId, branchId, event, step, phone, 'REJECTED', {
+    await this.log(orgId, branchId, event, step, 'REJECTED', {
       error: result.error,
       attempt: job.attemptsMade + 1,
     });
@@ -103,7 +112,7 @@ export class SmsProcessor extends WorkerHost {
     if (hasNext) {
       this.logger.warn(
         `${step.channel} відхилено (${result.error ?? '—'}) → fallback на ` +
-          `${chain[chainIndex + 1].channel} для ${maskPhone(phone)}`,
+          `${chain[chainIndex + 1].channel} для ${maskRecipient(step.recipient)}`,
       );
       await this.tryNext(job);
       return;
@@ -136,7 +145,6 @@ export class SmsProcessor extends WorkerHost {
     branchId: string | undefined,
     event: NotificationEventType | undefined,
     step: ChannelStep,
-    phone: string,
     status: 'SENT' | 'REJECTED' | 'FAILED',
     extra: { providerMessageId?: string; error?: string; attempt?: number },
   ): Promise<void> {
@@ -149,7 +157,7 @@ export class SmsProcessor extends WorkerHost {
           eventType: event,
           channel: step.channel,
           provider: step.provider,
-          phone,
+          recipient: step.recipient,
           providerMessageId: extra.providerMessageId,
           status,
           error: extra.error,

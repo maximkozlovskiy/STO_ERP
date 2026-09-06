@@ -59,6 +59,7 @@ async function runChain(outcomes: Outcome[]): Promise<{
     apiKey: 'k',
     senderName: 'STO',
     message: `m-${i}`,
+    recipient: '380671112233',
   }));
 
   let visited = 0;
@@ -81,7 +82,6 @@ async function runChain(outcomes: Outcome[]): Promise<{
         orgId: 'o',
         branchId: 'b',
         event: 'WO_COMPLETED',
-        phone: '380671112233',
         chain,
         chainIndex: idx,
       },

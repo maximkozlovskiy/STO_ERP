@@ -721,7 +721,13 @@ export class WorkOrdersService {
           include: {
             vehicle: { select: { make: true, model: true, licensePlate: true } },
             counterparty: {
-              select: { firstName: true, lastName: true, companyName: true, phone: true },
+              select: {
+                firstName: true,
+                lastName: true,
+                companyName: true,
+                phone: true,
+                email: true,
+              },
             },
             branch: { select: { name: true } },
             contract: { select: { id: true, number: true } },
@@ -779,6 +785,7 @@ export class WorkOrdersService {
         .send(orgId, 'WO_COMPLETED', {
           branchId: updated.branchId,
           phone: updated.counterparty.phone,
+          email: updated.counterparty.email,
           workOrderNumber: updated.number,
           clientName: formatPersonName(
             updated.counterparty.lastName,
@@ -1870,7 +1877,7 @@ export class WorkOrdersService {
         totalAmount: true,
         vehicle: { select: { licensePlate: true, make: true, model: true } },
         counterparty: {
-          select: { phone: true, firstName: true, lastName: true, companyName: true },
+          select: { phone: true, email: true, firstName: true, lastName: true, companyName: true },
         },
       },
     });
@@ -1900,6 +1907,7 @@ export class WorkOrdersService {
     await this.notifications.send(orgId, 'WO_ESTIMATE_READY', {
       branchId: wo.branchId,
       phone: wo.counterparty.phone,
+      email: wo.counterparty.email,
       clientName,
       vehiclePlate,
       totalAmount: Number(wo.totalAmount).toFixed(2),

@@ -32,7 +32,7 @@ describe('EsputnikProvider', () => {
     fetchMock.mockResolvedValueOnce(okResponse({ id: 'sms-1' }));
     const res = await provider.send({
       channel: NotificationChannel.SMS,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: 'Привіт',
       creds: { apiKey: 'tok', senderName: 'STO' },
     });
@@ -49,7 +49,7 @@ describe('EsputnikProvider', () => {
   it('send VIBER без externalTemplateId → not accepted, fetch НЕ викликано', async () => {
     const res = await provider.send({
       channel: NotificationChannel.VIBER,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: 'x',
       creds: { apiKey: 'tok' },
     });
@@ -62,7 +62,7 @@ describe('EsputnikProvider', () => {
     fetchMock.mockResolvedValueOnce(okResponse({ id: 'v-1' }));
     const res = await provider.send({
       channel: NotificationChannel.VIBER,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: 'ignored-inline',
       creds: { apiKey: 'tok' },
       externalTemplateId: 'tpl-42',
@@ -78,7 +78,7 @@ describe('EsputnikProvider', () => {
     fetchMock.mockResolvedValueOnce(okResponse({ id: 'v-empty' }));
     const res = await provider.send({
       channel: NotificationChannel.VIBER,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: '', // renderTemplate('') === '' коли локального шаблону нема — текст у кабінеті eSputnik
       creds: { apiKey: 'tok' },
       externalTemplateId: 'tpl-empty',
@@ -98,7 +98,7 @@ describe('EsputnikProvider', () => {
     fetchMock.mockResolvedValueOnce(okResponse({ id: 'sms-tpl' }));
     const res = await provider.send({
       channel: NotificationChannel.SMS,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: 'реальний inline-текст',
       creds: { apiKey: 'tok', senderName: 'STO' },
       externalTemplateId: 'tpl-stray',
@@ -127,7 +127,7 @@ describe('EsputnikProvider', () => {
     fetchMock.mockResolvedValueOnce(okResponse({ id: 't-1' }));
     const res = await provider.send({
       channel: NotificationChannel.TELEGRAM,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: 'x',
       creds: { apiKey: 'tok' },
       externalTemplateId: 'tpl-9',
@@ -144,7 +144,7 @@ describe('EsputnikProvider', () => {
     } as Response);
     const res = await provider.send({
       channel: NotificationChannel.SMS,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: 'x',
       creds: { apiKey: 'bad' },
     });
@@ -156,7 +156,7 @@ describe('EsputnikProvider', () => {
     fetchMock.mockRejectedValueOnce(new Error('network down'));
     const res = await provider.send({
       channel: NotificationChannel.SMS,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: 'x',
       creds: { apiKey: 'tok' },
     });

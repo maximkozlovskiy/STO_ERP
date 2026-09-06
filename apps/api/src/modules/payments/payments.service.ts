@@ -72,7 +72,14 @@ export class PaymentsService {
     const [counterparty, workOrder] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: dto.counterpartyId, orgId, deletedAt: null },
-        select: { id: true, phone: true, firstName: true, lastName: true, companyName: true },
+        select: {
+          id: true,
+          phone: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          companyName: true,
+        },
       }),
       dto.workOrderId
         ? this.prisma.workOrder.findFirst({
@@ -187,6 +194,7 @@ export class PaymentsService {
         .send(orgId, 'PAYMENT_RECEIVED', {
           branchId,
           phone: counterparty.phone,
+          email: counterparty.email,
           amount: UAH_AMOUNT_FMT.format(dto.amount),
           clientName: formatPersonName(
             counterparty.lastName,

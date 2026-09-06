@@ -365,9 +365,8 @@ describe('NotificationsService.sendWithConfig', () => {
   it('рендерить шаблон per-канал і ставить ОДИН job з chainIndex=0', async () => {
     await service.sendWithConfig(
       'org-1',
-      '380671112233',
       config,
-      { clientName: 'Іван' },
+      { phone: '380671112233', clientName: 'Іван' },
       'br-1',
       'FOLLOWUP_REMINDER',
     );
@@ -378,6 +377,7 @@ describe('NotificationsService.sendWithConfig', () => {
     expect(data.chainIndex).toBe(0);
     expect(data.chain).toHaveLength(2);
     expect(data.chain[0].message).toBe('Вітаємо, Іван!');
+    expect(data.chain[0].recipient).toBe('380671112233'); // recipient обрано per-channel
     expect(data.chain[1].message).toBe('SMS Іван');
     // BullMQ: retry + removeOnFail (секрет apiKey у job.data не осідає назавжди)
     expect(opts.attempts).toBe(10);
@@ -388,9 +388,8 @@ describe('NotificationsService.sendWithConfig', () => {
   it('порожній config.channels → job НЕ ставиться (нема сенсу)', async () => {
     await service.sendWithConfig(
       'org-1',
-      '380671112233',
       { channels: [] },
-      {},
+      { phone: '380671112233' },
       'br-1',
       'X' as never,
     );
@@ -400,13 +399,50 @@ describe('NotificationsService.sendWithConfig', () => {
   it('невідома змінна шаблону → порожній рядок (не "undefined")', async () => {
     await service.sendWithConfig(
       'org-1',
-      '380671112233',
       { channels: [{ ...config.channels[0], templateBody: 'X {{missing}} Y' }] },
-      {},
+      { phone: '380671112233' },
       'br-1',
       'FOLLOWUP_REMINDER',
     );
     expect(queueAdd.mock.calls[0][1].chain[0].message).toBe('X  Y');
+  });
+
+  it('EMAIL-канал без vars.email → канал пропускається (нема адресата)', async () => {
+    await service.sendWithConfig(
+      'org-1',
+      {
+        channels: [{ ...config.channels[0], channel: NotificationChannel.EMAIL, provider: 'smtp' }],
+      },
+      { phone: '380671112233' }, // є телефон, але немає email
+      'br-1',
+      'FOLLOWUP_REMINDER',
+    );
+    expect(queueAdd).not.toHaveBeenCalled(); // EMAIL без email → chain порожній
+  });
+
+  it('EMAIL-канал з vars.email → recipient = email, subject відрендерено', async () => {
+    await service.sendWithConfig(
+      'org-1',
+      {
+        channels: [
+          {
+            channel: NotificationChannel.EMAIL,
+            provider: 'smtp',
+            apiKey: 'k',
+            senderName: 'STO',
+            templateBody: 'Тіло {{clientName}}',
+            templateSubject: 'Тема {{clientName}}',
+          },
+        ],
+      },
+      { email: 'a@b.com', clientName: 'Іван' },
+      'br-1',
+      'FOLLOWUP_REMINDER',
+    );
+    const step = queueAdd.mock.calls[0][1].chain[0];
+    expect(step.recipient).toBe('a@b.com');
+    expect(step.message).toBe('Тіло Іван');
+    expect(step.subject).toBe('Тема Іван');
   });
 });
 

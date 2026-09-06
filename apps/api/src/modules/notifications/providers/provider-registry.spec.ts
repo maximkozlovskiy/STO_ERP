@@ -3,6 +3,7 @@ import { NotificationChannel } from '@prisma/client';
 import { NotificationProviderRegistry } from './provider-registry';
 import { TurboSmsProvider } from './turbosms.provider';
 import { EsputnikProvider } from './esputnik.provider';
+import { EmailProvider } from './email.provider';
 
 /**
  * Реєстр провайдерів — джерело правди для UI (NotificationProvidersPanel читає
@@ -15,21 +16,32 @@ describe('NotificationProviderRegistry', () => {
   let registry: NotificationProviderRegistry;
 
   beforeEach(() => {
-    registry = new NotificationProviderRegistry(new TurboSmsProvider(), new EsputnikProvider());
+    registry = new NotificationProviderRegistry(
+      new TurboSmsProvider(),
+      new EsputnikProvider(),
+      new EmailProvider(),
+    );
   });
 
   it('get() повертає зареєстрований провайдер за кодом', () => {
     expect(registry.get('turbosms')?.code).toBe('turbosms');
     expect(registry.get('esputnik')?.code).toBe('esputnik');
+    expect(registry.get('smtp')?.code).toBe('smtp');
   });
 
   it('get() невідомий код → null (не кидає)', () => {
     expect(registry.get('nonexistent')).toBeNull();
   });
 
-  it('list() віддає обох провайдерів з метаданими', () => {
+  it('list() віддає всіх провайдерів з метаданими', () => {
     const list = registry.list();
-    expect(list.map(p => p.code).sort()).toEqual(['esputnik', 'turbosms']);
+    expect(list.map(p => p.code).sort()).toEqual(['esputnik', 'smtp', 'turbosms']);
+  });
+
+  it('list(): Email (smtp) — channels=[EMAIL], templateChannels порожній (inline)', () => {
+    const smtp = registry.list().find(p => p.code === 'smtp')!;
+    expect(smtp.channels).toEqual([NotificationChannel.EMAIL]);
+    expect(smtp.templateChannels).toEqual([]);
   });
 
   it('list(): eSputnik templateChannels = [VIBER, TELEGRAM], SMS НЕ входить (inline)', () => {

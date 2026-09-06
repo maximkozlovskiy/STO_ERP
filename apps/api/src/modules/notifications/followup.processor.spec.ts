@@ -170,9 +170,8 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     expect(notifications.sendWithConfig).toHaveBeenCalledTimes(1);
     expect(notifications.sendWithConfig).toHaveBeenCalledWith(
       'org-1',
-      '+380671234567',
       DEFAULT_SMS_CONFIG,
-      expect.objectContaining({ vehicleMake: 'Toyota' }),
+      expect.objectContaining({ phone: '+380671234567', vehicleMake: 'Toyota' }),
       'br-1',
       'FOLLOWUP_REMINDER',
     );
@@ -239,9 +238,8 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     expect(notifications.sendWithConfig).toHaveBeenCalledTimes(1);
     expect(notifications.sendWithConfig).toHaveBeenCalledWith(
       'org-1',
-      '+380777',
       DEFAULT_SMS_CONFIG,
-      expect.any(Object),
+      expect.objectContaining({ phone: '+380777' }),
       'br-1',
       'FOLLOWUP_REMINDER',
     );
@@ -347,9 +345,8 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     await processor.process(makeJob());
     expect(notifications.sendWithConfig).toHaveBeenCalledWith(
       'org-1',
-      '+380000',
       DEFAULT_SMS_CONFIG,
-      expect.objectContaining({ clientName: 'клієнте' }),
+      expect.objectContaining({ phone: '+380000', clientName: 'клієнте' }),
       'br-1',
       'FOLLOWUP_REMINDER',
     );

@@ -1736,7 +1736,7 @@ model NotificationLog {
   eventType         NotificationEventType
   channel           NotificationChannel
   provider          String
-  phone             String
+  recipient         String // отримувач: телефон (SMS/Viber/TG) або email (EMAIL)
   providerMessageId String?
   status            NotificationDeliveryStatus @default(QUEUED)
   error             String?

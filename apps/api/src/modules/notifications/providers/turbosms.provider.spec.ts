@@ -2,6 +2,7 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { NotificationChannel } from '@prisma/client';
 import { TurboSmsProvider } from './turbosms.provider';
 import { EsputnikProvider } from './esputnik.provider';
+import { EmailProvider } from './email.provider';
 import { NotificationProviderRegistry } from './provider-registry';
 
 /**
@@ -27,7 +28,7 @@ describe('TurboSmsProvider', () => {
     );
     const res = await provider.send({
       channel: NotificationChannel.SMS,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: 'Привіт',
       creds: { apiKey: 'tok', senderName: 'STO' },
     });
@@ -41,7 +42,7 @@ describe('TurboSmsProvider', () => {
     );
     const res = await provider.send({
       channel: NotificationChannel.SMS,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: 'Привіт',
       creds: { apiKey: 'bad' },
     });
@@ -55,7 +56,7 @@ describe('TurboSmsProvider', () => {
     );
     const res = await provider.send({
       channel: NotificationChannel.VIBER,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: 'Привіт у Viber',
       creds: { apiKey: 'tok', senderName: 'STO' },
     });
@@ -71,7 +72,7 @@ describe('TurboSmsProvider', () => {
     fetchMock.mockRejectedValueOnce(new Error('network down'));
     const res = await provider.send({
       channel: NotificationChannel.SMS,
-      phone: '380671112233',
+      recipient: '380671112233',
       message: 'x',
       creds: { apiKey: 'tok' },
     });
@@ -103,9 +104,11 @@ describe('NotificationProviderRegistry', () => {
     const registry = new NotificationProviderRegistry(
       new TurboSmsProvider(),
       new EsputnikProvider(),
+      new EmailProvider(),
     );
     expect(registry.get('turbosms')?.code).toBe('turbosms');
     expect(registry.get('esputnik')?.code).toBe('esputnik');
+    expect(registry.get('smtp')?.code).toBe('smtp');
     expect(registry.get('nonexistent')).toBeNull();
     const list = registry.list();
     expect(list).toEqual([
@@ -126,6 +129,12 @@ describe('NotificationProviderRegistry', () => {
         ],
         // eSputnik — Viber/Telegram лише через готовий шаблон (smartsend).
         templateChannels: [NotificationChannel.VIBER, NotificationChannel.TELEGRAM],
+      },
+      {
+        code: 'smtp',
+        name: 'Email (SMTP)',
+        channels: [NotificationChannel.EMAIL],
+        templateChannels: [], // email inline (тема+тіло з наших шаблонів)
       },
     ]);
   });

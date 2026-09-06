@@ -219,9 +219,9 @@ export class FollowUpProcessor extends WorkerHost {
       recipients.map(r =>
         this.notifications.sendWithConfig(
           orgId,
-          r.phone,
           smsConfig,
           {
+            phone: r.phone, // recipient обирається per-channel у sendWithConfig
             clientName: r.clientName,
             vehicleMake: r.vehicleMake,
             vehicleModel: r.vehicleModel,

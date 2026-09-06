@@ -25,16 +25,16 @@ export class TurboSmsProvider implements NotificationProvider {
   private readonly logger = new Logger(TurboSmsProvider.name);
 
   async send(params: SendParams): Promise<SendResult> {
-    const { channel, phone, message, creds } = params;
+    const { channel, recipient, message, creds } = params;
     const sender = creds.senderName ?? 'STO ERP';
 
     // Наш бекенд керує fallback-ланцюгом, тож шлемо кожен канал ОКРЕМО (без вбудованого
-    // viber-to-sms провайдера). SMS → {sms:{...}}, Viber → {viber:{...}}.
+    // viber-to-sms провайдера). SMS → {sms:{...}}, Viber → {viber:{...}}. recipient = телефон.
     let payload: Record<string, unknown>;
     if (channel === NotificationChannel.SMS) {
-      payload = { recipients: [phone], sms: { sender, text: message }, token: creds.apiKey };
+      payload = { recipients: [recipient], sms: { sender, text: message }, token: creds.apiKey };
     } else if (channel === NotificationChannel.VIBER) {
-      payload = { recipients: [phone], viber: { sender, text: message }, token: creds.apiKey };
+      payload = { recipients: [recipient], viber: { sender, text: message }, token: creds.apiKey };
     } else {
       return { accepted: false, error: `TurboSMS: канал ${channel} не підтримується` };
     }

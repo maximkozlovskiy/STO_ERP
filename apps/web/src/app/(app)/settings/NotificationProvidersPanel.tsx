@@ -64,6 +64,8 @@ export default function NotificationProvidersPanel() {
   const [apiKey, setApiKey] = useState('');
   const [senderName, setSenderName] = useState('');
   const [externalTemplateId, setExternalTemplateId] = useState('');
+  // SMTP-поля (для provider.code === 'smtp'): серіалізуються у JSON → apiKey перед PATCH.
+  const [smtp, setSmtp] = useState({ host: '', port: '587', secure: false, user: '', pass: '' });
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [savingCreds, setSavingCreds] = useState(false);
@@ -180,12 +182,28 @@ export default function NotificationProvidersPanel() {
     setCredsProvider(provider);
     setCredsChannel(firstChannel);
     setApiKey('');
+    setSmtp({ host: '', port: '587', secure: false, user: '', pass: '' }); // write-only, не prefill
     // senderName + externalTemplateId — prefill з наявного конфігу цього каналу (не секрети).
     const existing = channels.find(c => c.provider === provider.code && c.channel === firstChannel);
     setSenderName(existing?.senderName ?? '');
     setExternalTemplateId(existing?.externalTemplateId ?? '');
     setVerifyResult(null);
   };
+
+  // SMTP-провайдер зберігає креди JSON-ом у apiKey. Для решти — apiKey як є (токен).
+  const isSmtp = credsProvider?.code === 'smtp';
+  const buildApiKey = (): string => {
+    if (!isSmtp) return apiKey;
+    return JSON.stringify({
+      host: smtp.host,
+      port: Number(smtp.port) || 587,
+      secure: smtp.secure,
+      user: smtp.user,
+      pass: smtp.pass,
+    });
+  };
+  // Чи достатньо введено для збереження/перевірки (SMTP → host+user+pass; інші → apiKey).
+  const credsReady = isSmtp ? !!(smtp.host && smtp.user && smtp.pass) : !!apiKey;
 
   // Чи потрібне поле «ID шаблону» для обраного провайдера+каналу (template-based send).
   // Похідне від метаданих провайдера (provider.templateChannels) — без хардкоду на фронті.
@@ -206,7 +224,7 @@ export default function NotificationProvidersPanel() {
   const closeCreds = () => setCredsProvider(null);
 
   const verify = async () => {
-    if (!credsProvider || !apiKey) return;
+    if (!credsProvider || !credsReady) return;
     setVerifying(true);
     setVerifyResult(null);
     try {
@@ -214,7 +232,7 @@ export default function NotificationProvidersPanel() {
         `/notification-providers/${credsProvider.code}/verify`,
         {
           method: 'POST',
-          body: JSON.stringify({ apiKey, senderName: senderName || undefined }),
+          body: JSON.stringify({ apiKey: buildApiKey(), senderName: senderName || undefined }),
         },
       );
       setVerifyResult(res);
@@ -235,7 +253,7 @@ export default function NotificationProvidersPanel() {
       const ok = await patchChannel({
         channel: credsChannel,
         provider: credsProvider.code,
-        apiKey: apiKey || undefined,
+        apiKey: credsReady ? buildApiKey() : undefined, // write-only: лише коли введено
         senderName: senderName || undefined,
         externalTemplateId: needsExternalTemplate(credsProvider.code, credsChannel)
           ? externalTemplateId || undefined
@@ -428,7 +446,7 @@ export default function NotificationProvidersPanel() {
             <Button variant="outline" onClick={closeCreds}>
               Скасувати
             </Button>
-            <Button onClick={() => void saveCreds()} loading={savingCreds} disabled={!apiKey}>
+            <Button onClick={() => void saveCreds()} loading={savingCreds} disabled={!credsReady}>
               Зберегти
             </Button>
           </ModalFooter>
@@ -452,19 +470,65 @@ export default function NotificationProvidersPanel() {
                 </Select>
               </label>
             )}
+            {isSmtp ? (
+              <>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <Input
+                      label="SMTP-сервер"
+                      value={smtp.host}
+                      onChange={e => setSmtp(s => ({ ...s, host: e.target.value }))}
+                      placeholder="smtp.ukr.net"
+                    />
+                  </div>
+                  <Input
+                    label="Порт"
+                    type="number"
+                    value={smtp.port}
+                    onChange={e => setSmtp(s => ({ ...s, port: e.target.value }))}
+                    placeholder="587"
+                  />
+                </div>
+                <Input
+                  label="Користувач (логін)"
+                  value={smtp.user}
+                  onChange={e => setSmtp(s => ({ ...s, user: e.target.value }))}
+                  placeholder="sto@ukr.net"
+                  autoComplete="off"
+                />
+                <Input
+                  label="Пароль"
+                  type="password"
+                  value={smtp.pass}
+                  onChange={e => setSmtp(s => ({ ...s, pass: e.target.value }))}
+                  placeholder="••••••••"
+                  autoComplete="off"
+                />
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={smtp.secure}
+                    onChange={e => setSmtp(s => ({ ...s, secure: e.target.checked }))}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm text-foreground">TLS/SSL (порт 465)</span>
+                </label>
+              </>
+            ) : (
+              <Input
+                label="API-токен"
+                type="password"
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+                placeholder="Введіть токен провайдера"
+                autoComplete="off"
+              />
+            )}
             <Input
-              label="API-токен"
-              type="password"
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder="Введіть токен провайдера"
-              autoComplete="off"
-            />
-            <Input
-              label="Імʼя відправника (sender)"
+              label={isSmtp ? 'Відправник (From)' : 'Імʼя відправника (sender)'}
               value={senderName}
               onChange={e => setSenderName(e.target.value)}
-              placeholder="STO ERP"
+              placeholder={isSmtp ? 'СТО <sto@ukr.net>' : 'STO ERP'}
             />
             {needsExternalTemplate(credsProvider.code, credsChannel) && (
               <div>
@@ -487,7 +551,7 @@ export default function NotificationProvidersPanel() {
                 size="sm"
                 onClick={() => void verify()}
                 loading={verifying}
-                disabled={!apiKey}
+                disabled={!credsReady}
               >
                 Перевірити
               </Button>

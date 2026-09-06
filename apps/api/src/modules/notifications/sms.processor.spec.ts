@@ -31,6 +31,7 @@ describe('SmsProcessor (fallback engine)', () => {
     apiKey: 'tok',
     senderName: 'STO',
     message: `msg-${channel}`,
+    recipient: '380671112233',
   });
 
   const makeJob = (
@@ -42,7 +43,6 @@ describe('SmsProcessor (fallback engine)', () => {
         orgId: 'org-1',
         branchId: 'br-1',
         event: 'WO_COMPLETED',
-        phone: '380671112233',
         chain,
         chainIndex,
       },
@@ -157,6 +157,7 @@ describe('SmsProcessor (fallback engine)', () => {
       apiKey: 'tok',
       senderName: 'STO',
       message: '', // порожній inline-текст — джерело тексту у шаблоні провайдера
+      recipient: '380671112233',
       externalTemplateId: 'tpl-42',
     };
     send.mockResolvedValueOnce({ accepted: true, providerMessageId: 'v-1' });
@@ -178,6 +179,7 @@ describe('SmsProcessor (fallback engine)', () => {
       apiKey: 'tok',
       senderName: 'STO',
       message: '', // renderTemplate('') === '' — валідний стан для template-каналу
+      recipient: '380671112233',
       externalTemplateId: 'tpl-tg',
     };
     send.mockResolvedValueOnce({ accepted: true, providerMessageId: 't-1' });
@@ -195,15 +197,15 @@ describe('SmsProcessor (fallback engine)', () => {
     expect(send.mock.calls[0][0].externalTemplateId).toBeUndefined();
   });
 
-  it('PII: application-логи маскують телефон до останніх 4 цифр (повний номер лише у NotificationLog.phone)', async () => {
+  it('PII: application-логи маскують отримувача до останніх 4 цифр (повний — лише у NotificationLog.recipient)', async () => {
     const logSpy = vi.spyOn(processor['logger'], 'log');
     send.mockResolvedValueOnce({ accepted: true, providerMessageId: 'v-1' });
     await processor.process(makeJob(0));
     const line = logSpy.mock.calls.map(c => String(c[0])).join('\n');
     expect(line).toContain('****2233');
     expect(line).not.toContain('380671112233'); // повний номер не витікає у app-логи
-    // але у NotificationLog.phone зберігається повний номер (delivery-запис)
-    expect(logCreate.mock.calls[0][0].data.phone).toBe('380671112233');
+    // але у NotificationLog.recipient зберігається повний отримувач (delivery-запис)
+    expect(logCreate.mock.calls[0][0].data.recipient).toBe('380671112233');
     logSpy.mockRestore();
   });
 });
