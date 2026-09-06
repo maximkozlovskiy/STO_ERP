@@ -5,6 +5,43 @@
 
 ---
 
+## 2026-09-07 — fix(tester): QR-оплата monobank — Bug #688 double-charge idempotency-link
+
+### eabcc465 payments — Bug #688 (CRITICAL) idempotency-лінк проти double-charge + тести #689-#691
+
+Bug hunt фічі «QR-оплата monobank» (feat 7c08833c + sync 14c18a0e + review 025bf77f). 1 CRITICAL знайдено+виправлено + 4 test-gap закрито (усі нові файли фічі мали 0 тестів). API 1695/107files (+57), web 695/69files (+11).
+
+- **Bug #688 CRITICAL (money/double-charge)**: `finalizePayment` не був ідемпотентний до `payments.create`. Три write-и money-flow (CAS `PENDING→PAID` → `payments.create` → `intent.update({paymentId})`) не атомарні. Вікно: `create` комітиться, потім link-write `update({paymentId})` падає (транзієнт) → намір лишається `PAID+paymentId=null` → наступний reconcile-poll бачить те саме → `payments.create` ВДРУГЕ → дубль Payment + дубль settlement + подвійний `invoice.paidAmount` = тихий double-charge клієнта. `jobId` single-flight не рятує (вікно послідовне, не конкурентне). Іронія: сам review-fix reconcile-гілки (доданий щоб не втратити гроші після падіння) породив дзеркальний баг — подвоїти гроші.
+- **Fix**: `Payment.onlinePaymentIntentId String? @unique @db.Uuid` (additive nullable міграція `20260907000000_payment_online_intent_link`) → БД боронить другий INSERT (P2002). У `finalizePayment`: (1) pre-create `findFirst({orgId, onlinePaymentIntentId})` — якщо запис уже є, лише до-лінковуємо; (2) на P2002 (гонка) — дістаємо winner і лінкуємо. Mutation-verified вимкненням pre-guard.
+- **Test-gap**: #689 `monobank.client.spec` NEW 26 (createInvoice/getStatus-мапінг усіх 8 статусів, X-Token, SSRF, 3xx, timeout); #690 `online-payment.service.spec` NEW 13 (createIntent guards/ordering/no-poll-on-fail, getIntent без секретів); #691 `payment-polling.processor.spec` NEW 18 (CAS once-only, crash-recovery reconcile, terminal states, tenant); frontend `QrPaymentModal.test` NEW 8 + `FiscalTab` +3 (monobank write-only round-trip).
+- Verified CLEAN: MonobankClient (SSRF/3xx/timeout/X-Token/мапінг), createIntent-guards, CAS once-only + orgId, wall-clock-expiry без monobank-виклику, finalize cap MAX=360, токен write-only.
+
+### 99f5f513 skills — sto-tester: підхід «non-atomic idempotency-link double-create»
+
+- Новий детектор: після write-послідовності A→B→C де C — link-write, а reconcile-гілка перечитує стан і повторює A→C, перевіряти що A ідемпотентний (DB `@unique` guard + pre-check + P2002-recovery), інакше падіння між A і C → повторний A = дубль.
+
+### deploy — міграцію застосувати на проді
+
+`prisma migrate deploy` для `20260907000000_payment_online_intent_link` (additive: `ADD COLUMN onlinePaymentIntentId` nullable + `CREATE UNIQUE INDEX IF NOT EXISTS`).
+
+---
+
+## 2026-09-07 — feat(payments) + fix(review): QR-оплата monobank Acquiring (online payment)
+
+### 7c08833c payments/web — QR-оплата monobank (intent + QR + polling + auto-Payment)
+
+Онлайн-оплата рахунку через QR monobank Acquiring. Offline-first: клієнт сканує QR (monobank `pageUrl`) і платить на стороні monobank, сервер лише опитує `invoice/status` — 0 публічних endpoint, оминає NAT/webhook.
+
+- **Schema**: `enum OnlinePaymentStatus {PENDING PAID FAILED EXPIRED}`; `model OnlinePaymentIntent` (gateway/gatewayInvoiceId/pageUrl/amount/counterpartyId/invoiceId?/status/paymentId?/error?/expiresAt?); `BranchSettings +monobankToken (secret, encrypted) +monobankApiUrl`. Міграція `20260906240000_online_payment_intent` (+`requiresFiscal=true` для `monobank_qr`).
+- **Backend**: `MonobankClient` (createInvoice→pageUrl / getStatus→мапінг; SSRF+redirect:manual+3xx-reject+AbortController 10s); `OnlinePaymentService.createIntent` (invoice SENT/PARTIALLY_PAID, amount=залишок, overpay-guard, intent PENDING→monobank→enqueue poll `payment-poll-${id}`); `PaymentPollingProcessor` (self-re-enqueuing delayed poll, CAS PENDING→PAID → `payments.create` рівно раз, wall-clock expiry); `POST/GET /online-payments` (@Throttle 20/60s, roles OWNER/ADMIN/ACCOUNTANT/RECEPTIONIST).
+- **Frontend**: `useOnlinePayment` (create + poll refetchInterval 3000 gated on active); `QrPaymentModal` (`qrcode.react` QRCodeSVG); invoices-сторінка `method==='monobank_qr'` → «Показати QR».
+
+### 025bf77f payments — MONEY-CRITICAL: реконсиляція вікна збою CAS→Payment
+
+- **CRITICAL crash-window (silent money-loss)**: CAS комітить PAID, потім crash до `payments.create`/`paymentId`-write → наступний poll early-return на `status!==PENDING` → гроші в monobank, а Payment ніколи не створений. Fix: reconciliation-гілка (intent `PAID && paymentId==null` → `finalizePayment`), спільний `finalizePayment()`, jobId-deduped single-flight, `MAX_FINALIZE_ATTEMPTS=360` cap. Решта review CLEAN.
+
+---
+
 ## 2026-09-07 — fix(sync): QR-оплата monobank — polling gate stuck on initial status
 
 ### 14c18a0e payments/web — sync-check QR-оплати monobank (online-payment + monobank.client + useOnlinePayment + QrPaymentModal + FiscalTab)
