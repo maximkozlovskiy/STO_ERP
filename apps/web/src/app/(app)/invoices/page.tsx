@@ -511,6 +511,7 @@ function InvoicesPageInner() {
     ['', 'Всі'],
     ['DRAFT', STATUS_LABELS['DRAFT']],
     ['SENT', STATUS_LABELS['SENT']],
+    ['PARTIALLY_PAID', STATUS_LABELS['PARTIALLY_PAID']],
     ['PAID', STATUS_LABELS['PAID']],
     ['OVERDUE', STATUS_LABELS['OVERDUE']],
     ['CANCELLED', STATUS_LABELS['CANCELLED']],

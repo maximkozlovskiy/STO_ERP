@@ -37,6 +37,8 @@ function fmt(n: string | number): string {
 export const INVOICE_STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-secondary text-muted-foreground',
   SENT: 'bg-info-subtle text-info-text',
+  // Must match INVOICE_STATUS_BADGE['PARTIALLY_PAID'] = 'warning' — use warning, not destructive.
+  PARTIALLY_PAID: 'bg-warning-subtle text-warning-text',
   PAID: 'bg-success-subtle text-success',
   // Must match INVOICE_STATUS_BADGE['OVERDUE'] = 'warning' — use warning, not destructive.
   OVERDUE: 'bg-warning-subtle text-warning-text',
