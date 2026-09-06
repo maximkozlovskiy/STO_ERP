@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-09-06 — feat(api): provider-registry сповіщень + fix PAYMENT_RECEIVED (Phase 1a з фічі «мульти-канал»)
+
+### 12f4b145 provider-registry + PAYMENT_RECEIVED fix
+
+Перша фаза великої фічі «мульти-провайдер / мульти-канал сповіщень з fallback»
+(повний план: `~/.claude/plans/sleepy-spinning-zephyr.md`). Ця фаза — фундамент без
+зміни поведінки SMS:
+
+- NEW `notifications/providers/`: `NotificationProvider` interface, `TurboSmsProvider`
+  (SMS + `verifyCredentials` через /user/balance), `NotificationProviderRegistry`.
+- `sms.processor`: switch `provider==='turbosms'` → `registry.get(provider)` (extensible seam).
+- **Fix latent bug:** payments `PAYMENT_RECEIVED` не мав `branchId` → SMS про оплату НІКОЛИ
+  не слалась; тепер branchId = наряд.branchId або найстаріша філія org.
+- Тести: TurboSMS provider 7 + registry; parity notifications+payments 28/28. tsc api 0.
+
+**СТАТУС ФІЧІ — ПРИЗУПИНЕНО на Phase 1a.** Залишилось (робити з повним QA-ланцюгом
+після відновлення subagent-доступу — org тимчасово вимкнув Claude для subagent-моделі):
+
+- **Phase 2:** NotificationLog + NotificationChannelConfig (міграції) + Viber-канал у
+  TurboSmsProvider + fallback-engine (BullMQ chainIndex, send-result fallback).
+- **Phase 3:** UI-панель провайдерів у NotificationsTab + `POST /settings/notification-providers/:code/verify`
+  (токен+баланс) + creds-modal + пріоритет каналів (up/down) + Switch-примітив.
+- **Phase 4:** шифрування кредів at-rest (AES-256-GCM, ключ від інсталятора) — закриває H-2.
+
 ## 2026-09-06 — feat: PO-пікер (джерело) у create StockDocument/SupplierReturn (Phase D2)
 
 Опціональний пікер «Замовлення (джерело)» у create-модалках StockDocument та
