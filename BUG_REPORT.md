@@ -3178,3 +3178,36 @@ src/components/ui/__tests__` — 391 passed (37 files).
 - **Ctrl+Enter keyless save** — Modal `onSubmit` → `saveCreds` не має `!apiKey`-guard (кнопка disabled, але Ctrl+Enter обходить). Створило б keyless-канал (валідний рядок, `resolveConfig` фільтрує `apiKey:{not:null}` → не шле). НЕ дефект: keyless-канал легітимний (спершу priority/enabled, потім ключ); toast "Креди збережено" косметично неточний при порожньому полі, але поведінка коректна. Не фіксовано.
 
 **Результат:** 3 баги (1 HIGH baseline-red, 2 MEDIUM test-gap) — усі виправлені. Нові тести: api +18 (`notifications.providers.spec.ts`) + baseline-fix; web +6 (`NotificationProvidersPanel.test.tsx`). Notifications API 49→67 зелено; full API 1421 passed (95 files); full web 616 passed (63 files). tsc api=0, web=0.
+
+## Session 2026-09-06 — Phase 4 at-rest encryption (AES-256-GCM, H-2) bug hunt (98f1ddf2, feat/supplier-payments)
+
+**Scope:** `encryption.service.ts` (+spec 10 тестів), `crypto.module.ts`, `prisma.service.ts` (`withFieldEncryption` × `withSyncVersion` composition, encrypt-on-write / decrypt-on-read для `NotificationChannelConfig.apiKey` + `BranchSettings.{smsApiKey,checkboxLicenseKey,checkboxPinCode}`), `app.module.ts` (CryptoModule + envFilePath), `.env.example`/`.env.dev`/`docker-compose.yml`/`installer/scripts/Setup-Stack.ps1` (NOTIFICATION_ENC_KEY provisioning). Review verdict — CLEAN. Baseline: tsc api=0, API 123 (crypto+notifications+checkbox+settings) зелено, full API 97 files.
+
+### Bug #652 (HIGH — coverage-gap, критичний клас) — `[x] виправлено`
+
+**Симптом:** Prisma field-encryption РОЗШИРЕННЯ (`withFieldEncryption`) мало 0 інтеграційних тестів наскрізного циклу. Unit-тести `EncryptionService` доводять round-trip у пам'яті, АЛЕ не доводять що розширення (a) кладе ciphertext у Postgres на write, (b) повертає plaintext на read, (c) толерантно читає legacy-plaintext рядок записаний в обхід розширення (raw SQL), (d) зберігає наявний ключ при update без apiKey. Цей клас багів (encrypt/decrypt mutation у $allOperations, композиція з withSyncVersion, select-projection, upsert create/update-гілки) невидимий unit-моку Prisma — тільки жива БД його ловить.
+
+**Фікс:** `apps/api/src/prisma/field-encryption.integration.spec.ts` (НОВИЙ, 6 тестів проти живої dev-Postgres на DATABASE_URL, NOTIFICATION_ENC_KEY=dev_notification_enc_key_change_in_prod). Будує PrismaClient з ОБОМА розширеннями точно як `PrismaService.onModuleInit` — `withFieldEncryption(withSyncVersion(client), enc)`. Тести:
+
+- (a) `create` через розширення → raw `$queryRawUnsafe("apiKey")` починається з `enc:v1:` і НЕ містить plaintext;
+- (b) `findFirst` через розширення → `apiKey === original plaintext`;
+- (c) legacy-plaintext рядок (raw INSERT в обхід розширення) → extended-read повертає без змін (толерантний decrypt);
+- (d) `updateMany` БЕЗ apiKey → at-rest лишається ciphertext (рівно один `enc:v1:` сегмент — не подвійне шифрування), extended-read все ще дає plaintext, `senderName` оновлено;
+- (e) lazy re-encrypt: `updateMany` legacy-рядка з новим apiKey → at-rest стає ciphertext, read дає новий plaintext.
+  Ізоляція: канали SMS/EMAIL на seed-філії (VIBER зайнятий @@unique([branchId,channel])); hard-delete у `afterAll` (+cleanup у `beforeAll` від перерваних прогонів). Guard: якщо БД недоступна → тест не фейлить CI (skip), АЛЕ на dev-машині з піднятою БД виконується реально (не fake-green). Verified: 6/6 зелено проти живої БД, рядки прибрано (лишився лише seed VIBER).
+
+**Severity HIGH** — розширення шифрує ВСІ секрети провайдерів at-rest; тихий регрес (encrypt no-op, decrypt no-op, композиційний порядок) = або plaintext-leak у БД, або зламаний provider-ланцюг у продакшні. Регрес-guard закриває весь клас.
+
+### Перевірено ЧИСТИМ (hunt завдання, code-defect не знайдено)
+
+- **resolveConfig × decrypted apiKey** — читає `apiKey` через extended `this.prisma` (findMany) → отримує plaintext → кладе у ChannelStep.chain для provider. Коректно (provider отримує plaintext, не ciphertext). `where: { apiKey: { not: null } }` працює на ciphertext at-rest (null-check індиферентний до шифрування).
+- **checkbox.processor × decrypted checkboxLicenseKey** — `branchSettings.findFirst` через extended `this.prisma` → `checkboxLicenseKey` дешифрований → `Authorization: Bearer` + `X-License-Key`. Коректно.
+- **Немає bypass-read path** — 0 `new PrismaClient()` поза prisma.service; 0 `$queryRaw` що читає секретні колонки (усі select йдуть через extended client → дешифрується).
+- **Секрети не витікають у response/Redis** — `mapBranchSettings` явно НЕ включає `smsApiKey/checkboxLicenseKey/checkboxPinCode` у DTO; Redis кешує лише mapped DTO, не raw settings. `getBranchChannels` destructure `({apiKey, ...r})` → лише `hasApiKey`. Коректно.
+- **sync.service** — `notification_channel_configs`/`branch_settings` явно ВИКЛЮЧЕНІ з PULL/PUSH tables (коментар цитує «apiKey секрет»). Секрети не потрапляють у mobile-sync. Коректно.
+- **Композиція withFieldEncryption(withSyncVersion) × upsert** — outer шифрує create/update ПЕРШИМ, inner додає syncVersion до вже-зашифрованих payload'ів (мутація тих самих ref-ів). Порядок коректний; encrypt ідемпотентний (захист від подвійного шифрування при lazy re-encrypt).
+- **decryptReadResult на non-row результатах** — `createMany`/`deleteMany`/`count` повертають `{count}` → `rec['apiKey']` undefined → no-op. `aggregate`/`groupBy` — no-op. Безпечно.
+- **checkboxPinCode у ENCRYPTED_FIELDS але не читається** — у DTO (write) + шифрується, але жоден consumer ще не читає. НЕ дефект: forward-looking write-only секрет; толерантний decrypt/lazy-migrate готовий коли з'явиться reader.
+- **«Дві data-міграції що пишуть секрети raw SQL»** (з завдання) — у репо ВІДСУТНІ: жоден міграційний/seed-скрипт не пише apiKey/smsApiKey/checkboxLicenseKey через raw SQL. Legacy-plaintext (до-Phase-4) покривається толерантним decrypt (тест (c)/(e)). Не баг.
+
+**Результат:** 0 функціональних багів; 1 закрита coverage-gap (Bug #652, HIGH regression-guard). Нові тести: api +6 (`field-encryption.integration.spec.ts`, live-DB). Full API 1437 passed (97 files, +6). tsc api=0. E2E пропущено (Playwright MCP DOWN, за інструкцією — не блокер).

@@ -739,6 +739,11 @@ done
   - КОЖЕН `string[]` / `UUID[]` поле що зберігається у service-create-методі через `data: { ...dto, fkList: dto.field }` має ПЕРЕД create-викликом виконуватись tenant-FK guard `prisma.X.count({ where: { id: { in: dto.field }, orgId, deletedAt: null } })` з порівнянням `count === dto.field.length` (без guard — HIGH bug, cross-tenant linkage у БД)
   - КОЖЕН `@IsString()` поле без `@MaxLength` — anti-DoS gap
   - Якщо викликається external service (SMS, ПРРО) — queue з attempts ≥ 10 + exponential backoff (offline-first invariant)
+- [ ] **Secret at-rest via Prisma `$extends` (Bug #652):** якщо секрет (apiKey/licenseKey/pinCode/token) шифрується розширенням `withFieldEncryption` (encrypt-on-write/decrypt-on-read) — ОБОВ'ЯЗКОВО перевірити:
+  - (а) **Integration-тест наскрізного циклу проти живої БД** (не лише unit round-trip crypto-хелпера). Будувати клієнт ТОЧНО як `PrismaService.onModuleInit` (та сама композиція розширень, той самий порядок). Довести: raw `$queryRawUnsafe` колонки = `enc:v1:`+не містить plaintext; read через розширення = plaintext; legacy-plaintext рядок (raw INSERT) читається без змін; update без секрету не робить подвійне шифрування. Guard skip якщо БД down, але реально біжить коли є (не fake-green). uuid-bind у raw кастити `$1::uuid`.
+  - (б) **Consumer читає розшифроване:** кожен провайдер-виклик / external-API header що споживає секрет читає його через РОЗШИРЕНИЙ client (`this.prisma`), НЕ через `new PrismaClient()` чи `$queryRaw`. Grep: `grep -rn "new PrismaClient" apps/api/src --include="*.ts" | grep -v "spec\|prisma.service"` = 0; `grep -rniE "queryRaw.*(apiKey|licenseKey|pinCode|secret|token)" apps/api/src` (не spec) = 0.
+  - (в) **Секрет не витікає:** response-DTO-мапер / Redis-кеш / sync-експорт НЕ включають розшифроване поле (лише `hasX`-прапорець). Мапер має явно омітити секрет; sync PULL/PUSH tables мають виключати таблиці-носії секретів.
+  - (г) **`where`-фільтр на зашифрованій колонці** — лише null-checks (`{ not: null }`) валідні (індиферентні до шифрування); `equals/contains/startsWith/in` на ciphertext-колонці = завжди-промах (баг). Grep: `grep -rnE "(apiKey|smsApiKey|licenseKey|pinCode):\s*\{?\s*(equals|contains|startsWith|in)" apps/api/src --include="*.ts" | grep -v spec`.
 
 ---
 
@@ -1123,6 +1128,29 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-06 — Prisma `$extends` field-encryption (encrypt-on-write/decrypt-on-read) відвантажено з 0 інтеграційних тестів наскрізного циклу — backend / security / db / at-rest-crypto / HIGH (regression-guard для критичного класу)
+
+**Сигнал:** нове наскрізне at-rest шифрування секретів реалізоване як Prisma-розширення `$extends({ query: { $allModels: { $allOperations } } })` — мутує write-payload (`args.data/create/update`) на write і результат на read. Юніт-тести є ТІЛЬКИ на сам crypto-хелпер (`EncryptionService.encrypt/decrypt` round-trip у пам'яті), а на РОЗШИРЕННЯ (те, що дійсно біжить у продакшні) — 0. Unit-мок Prisma НЕ виконує `$allOperations`-hook і не б'є Postgres → CI зелений, хоч розширення може: не зашифрувати (encrypt no-op → plaintext-leak at-rest), не дешифрувати (provider отримає ciphertext → зламаний ланцюг), подвійно зашифрувати при lazy re-encrypt+upsert, або зламатись на композиції з іншим розширенням (`withFieldEncryption(withSyncVersion(client))` — порядок обгортання визначає хто мутує args першим). Grep-детектор:
+
+```bash
+# Prisma-розширення що мутує write/read payload — чи має ІНТЕГРАЦІЙНИЙ (live-DB) тест?
+grep -rnE "\\\$extends\(|\\\$allOperations|encryptWriteData|decryptReadResult" apps/api/src/prisma --include="*.ts"
+grep -rln "integration.spec\|\\\$queryRawUnsafe.*enc:v1" apps/api/src/prisma   # чи є парний live-тест?
+# consumer-пати секрету — чи читають через РОЗШИРЕНИЙ client (this.prisma), не raw?
+grep -rn "new PrismaClient" apps/api/src --include="*.ts" | grep -v "spec\|prisma.service"   # має бути 0
+grep -rniE "queryRaw.*(apiKey|smsApiKey|licenseKey|pinCode|secret|token)" apps/api/src --include="*.ts" | grep -v spec  # raw-read секрету = bypass дешифрування
+```
+
+**Причина виникнення:** розробник (і рев'ювер) вважає «crypto round-trip покрито юнітом → досить». Але баг живе не в crypto-хелпері, а на СТИКУ розширення×Prisma×Postgres: чи спрацював hook для КОЖНОЇ операції (create/update/upsert/updateMany/createMany), чи `select`-проєкція не обрізала поле, чи композиція розширень зберегла порядок, чи толерантний decrypt читає legacy-plaintext рядки (записані до фічі / raw SQL). Це невидиме юнітам за визначенням.
+
+**Підхід до виявлення:** для БУДЬ-ЯКОГО Prisma-розширення що трансформує дані — обов'язковий інтеграційний spec проти живої dev-БД (guard: skip якщо БД недоступна, АЛЕ реально біжить коли є — не fake-green). Будувати клієнт ТОЧНО як `PrismaService.onModuleInit` (та сама композиція розширень). Довести at-rest: read сирої колонки через `$queryRawUnsafe` = ciphertext (`enc:v1:` + не містить plaintext); read через розширення = plaintext; legacy-plaintext рядок (raw INSERT) читається без змін (толерантність); update без секрету зберігає наявний (не подвійне шифрування). Плюс статично: 0 `new PrismaClient()` поза service, 0 raw-read секретних колонок, response/cache-мапери НЕ включають секрет (лише `hasX`-прапорець).
+
+**Підхід до фіксу:** написати live-DB інтеграційний spec (test-only, код вірний). Ізоляція фікстур через unique-ключ (обійти `@@unique`), hard-delete у `afterAll`+`beforeAll`-cleanup. uuid-параметри у `$queryRawUnsafe` кастити явно (`$1::uuid`) — Postgres не інферить тип bind-параметра проти uuid-колонки (`42883 operator does not exist: uuid = text`).
+
+**Severity:** HIGH — розширення шифрує ВСІ секрети провайдерів at-rest; тихий регрес = plaintext-leak у БД АБО зламаний provider-ланцюг у продакшні. Regression-guard закриває весь клас одразу.
+
+**Де шукати ще:** будь-який `$extends` що мутує payload (soft-delete-фільтр, multi-tenant-scoping, syncVersion, audit-stamp, field-transform); будь-який at-rest crypto / masking / redaction на рівні ORM; consumer-паті секрету (provider-виклики, external-API headers) — чи читають через розширений client; response/cache/sync-експорт — чи не витікає розшифроване поле.
 
 ### 2026-09-06 — review-fix змінив DI-конструктор сервісу (+параметр), sibling `.spec` лишився на старій арності → hidden-red baseline (tsc зелений, runtime crash) — backend / hidden-red-baseline / HIGH (release-blocker)
 
