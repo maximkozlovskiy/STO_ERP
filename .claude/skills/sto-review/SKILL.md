@@ -1375,6 +1375,20 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Фікс:** обчислити результуючий статус **тією самою логікою що backend** (з тим самим epsilon для money): `const optimistic = newPaidTotal >= amount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID'`; оновити і похідні поля (`paidAmount`), щоб панель була консистентна до refetch.
 **Severity:** IMPORTANT — хибний UI-стан ховає потрібну дію (partial payment → кнопка «Оплатити» зникає); гроші-критичний UX.
 
+### 2026-09-06 — date-only `lte` фільтр = midnight UTC → виключає весь день `dateTo` — §5/§6
+
+**Сигнал:** where-фільтр діапазону дат по date-only рядку (`YYYY-MM-DD` від DatePicker): `createdAt.lte = new Date(opts.dateTo)`. `new Date('2026-09-06')` парситься як **midnight UTC** (00:00:00.000Z), тож `lte` виключає ВСІ рядки, зроблені пізніше 00:00 того ж дня — фільтр «до 06.09» не показує оплату о 10:00 06.09. Симетрично `gte = new Date(dateFrom)` коректний (початок дня), але залежить від TZ; краще фіксувати обидва явно. Еталон-реалізація вже є у `supplier-payments.service` (`+ 'T23:59:59.999Z'`).
+**Grep:** `grep -rnE "(lte|lt):\s*new Date\((opts\.|dto\.)?date[A-Za-z]*\)" apps/api/src/modules --include="*.service.ts"` — для кожного `lte: new Date(dateTo)` без `T23:59:59` перевірити чи вхід date-only.
+**Фікс:** `gte: new Date(dateFrom + 'T00:00:00.000Z')`, `lte: new Date(dateTo + 'T23:59:59.999Z')` (inclusive-of-full-day, UTC-стабільно, дзеркалить supplier-payments).
+**Severity:** IMPORTANT — silent correctness: фільтр «сьогодні»/«за період до X» мовчки губить весь останній день; не ловиться tsc.
+
+### 2026-09-06 — query-string фільтр каститься `as EnumType` без валідації → Prisma 500 — §2.3/§6
+
+**Сигнал:** `@Query('x') x?: string` (raw string, ValidationPipe не чіпає per-param query без DTO) каститься прямо у Prisma enum: `where.x = opts.x as Prisma...['x']`. Довільне значення (`?fiscalStatus=garbage`, `?status=FOO`) доходить до Prisma → відхиляється на рівні запиту → HTTP 500 (не-i18n, шум у Sentry) замість порожнього/400.
+**Grep:** `grep -rnE "where\.[a-zA-Z]+ = opts\.[a-zA-Z]+ as Prisma" apps/api/src/modules --include="*.service.ts"`; `grep -rnE "as Prisma\.[A-Za-z]+WhereInput\['" apps/api/src/modules --include="*.service.ts"`.
+**Фікс:** `const X_VALUES = new Set<string>(Object.values(SomeEnum));` (enum-driven, з `@prisma/client`) → `if (opts.x && X_VALUES.has(opts.x)) where.x = opts.x as ...;` — невідоме ігнорується (фільтр не застосовується), як для будь-якого нерозпізнаного query-параметра.
+**Severity:** IMPORTANT — 500 замість 400/порожнього; тривіальний DoS/шум через ручний query-параметр.
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
