@@ -35,6 +35,7 @@ export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Pro
     if (!open || !invoiceId) return;
     let cancelled = false;
     setIntent(null);
+    setLive(null);
     setError('');
     createIntent
       .mutateAsync({ invoiceId, amount })
@@ -50,9 +51,16 @@ export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, invoiceId, amount]);
 
-  const isPending = intent?.status === 'PENDING';
-  const { data: live } = useOnlineIntentStatus(intent?.id ?? null, open && isPending);
+  // Гейт полінгу має реагувати на ОСТАННІЙ відомий статус (live, коли вже прийшов), а не лише
+  // на статус зі створення наміру — інакше polling ніколи не зупиниться після PAID/FAILED/EXPIRED.
+  const [live, setLive] = useState<OnlineIntent | null>(null);
   const status = live?.status ?? intent?.status;
+  const isPending = status === 'PENDING';
+  const { data: polled } = useOnlineIntentStatus(intent?.id ?? null, open && isPending);
+
+  useEffect(() => {
+    if (polled) setLive(polled);
+  }, [polled]);
 
   // На PAID — сповістити батька (invalidate) один раз.
   useEffect(() => {
