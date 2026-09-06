@@ -105,4 +105,59 @@ describe('SmsProcessor (fallback engine)', () => {
     send.mockResolvedValueOnce({ accepted: true, providerMessageId: 'v-1' });
     await expect(processor.process(makeJob(0))).resolves.toBeUndefined();
   });
+
+  it('chainIndex поза межами (>= chain.length) → no-op, без send/log/throw', async () => {
+    await expect(processor.process(makeJob(2))).resolves.toBeUndefined();
+    expect(send).not.toHaveBeenCalled();
+    expect(logCreate).not.toHaveBeenCalled();
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('порожній chain → no-op, без крашу', async () => {
+    await expect(processor.process(makeJob(0, []))).resolves.toBeUndefined();
+    expect(send).not.toHaveBeenCalled();
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('MIXED: середній канал reject → наступний job; той accept → рівно 1 SENT + 1 REJECTED, без подвійної відправки', async () => {
+    // Job A (chainIndex=0, VIBER): reject → REJECTED + новий job chainIndex=1, без throw
+    send.mockResolvedValueOnce({ accepted: false, error: 'VIBER_DOWN' });
+    await processor.process(makeJob(0));
+    expect(queueAdd.mock.calls[0][1].chainIndex).toBe(1);
+    const rejectedCalls = logCreate.mock.calls.filter(c => c[0].data.status === 'REJECTED');
+    expect(rejectedCalls).toHaveLength(1);
+    expect(rejectedCalls[0][0].data.channel).toBe(NotificationChannel.VIBER);
+
+    // Job B (chainIndex=1, SMS): accept → SENT, СТОП
+    vi.clearAllMocks();
+    (registry.get as ReturnType<typeof vi.fn>).mockReturnValue({ send });
+    send.mockResolvedValueOnce({ accepted: true, providerMessageId: 's-1' });
+    await processor.process(makeJob(1));
+    expect(send).toHaveBeenCalledTimes(1); // жодної повторної відправки VIBER
+    const sentCalls = logCreate.mock.calls.filter(c => c[0].data.status === 'SENT');
+    expect(sentCalls).toHaveLength(1);
+    expect(sentCalls[0][0].data.channel).toBe(NotificationChannel.SMS);
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('RETRY: reject на ОСТАННЬОМУ каналі → throw; chainIndex у job.data незмінний (BullMQ повторить той самий канал)', async () => {
+    const job = makeJob(1);
+    send.mockResolvedValueOnce({ accepted: false, error: 'SMS_TIMEOUT' });
+    await expect(processor.process(job)).rejects.toThrow('SMS_TIMEOUT');
+    // chainIndex НЕ змінюється — retry повторить chain[1], не рестартує з 0 і не скіпне
+    expect(job.data.chainIndex).toBe(1);
+    expect(queueAdd).not.toHaveBeenCalled(); // без нового fallback-job
+  });
+
+  it('PII: application-логи маскують телефон до останніх 4 цифр (повний номер лише у NotificationLog.phone)', async () => {
+    const logSpy = vi.spyOn(processor['logger'], 'log');
+    send.mockResolvedValueOnce({ accepted: true, providerMessageId: 'v-1' });
+    await processor.process(makeJob(0));
+    const line = logSpy.mock.calls.map(c => String(c[0])).join('\n');
+    expect(line).toContain('****2233');
+    expect(line).not.toContain('380671112233'); // повний номер не витікає у app-логи
+    // але у NotificationLog.phone зберігається повний номер (delivery-запис)
+    expect(logCreate.mock.calls[0][0].data.phone).toBe('380671112233');
+    logSpy.mockRestore();
+  });
 });

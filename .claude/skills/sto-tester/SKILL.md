@@ -1124,6 +1124,28 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-06 — fallback/retry-engine: config-resolver (chain-builder) відвантажується з 0 unit-тестів, поки worker має часткові — backend / critical-test-gap / meta (severity бага = severity ланцюга)
+
+**Сигнал:** нова багатоканальна/багатокрокова async-машина (fallback-ланцюг сповіщень, retry-orchestrator, multi-provider payment fallback, saga-крок) розбита на дві частини: **(A) resolver/builder** — читає конфіг з БД і будує впорядкований ланцюг (`resolveConfig()`, `buildChain()`, `planSteps()`); **(B) worker/processor** — виконує один крок і вирішує accept-STOP / reject-next / retry. Тести є ТІЛЬКИ на (B) (бо він явно «двигун»), а (A) — де живуть УСІ edge-case'и (порожній ланцюг, NULL-креди відфільтровані where-запитом, крок без активного шаблону/провайдера тихо пропускається, ВСІ пропущені → повернути null=batch-abort, legacy-fallback backward-compat, priority-порядок) — має 0 прямих тестів. Grep-детектор:
+
+```bash
+# resolver-методи що будують ланцюг/план для async-двигуна — чи мають парний .spec?
+grep -rnE "async (resolve|build|plan)[A-Z]\w*\(" apps/api/src/modules --include="*.ts" | grep -v spec
+# для кожного: чи існує <module>.service.spec.ts що ВИКЛИКАЄ саме цей метод?
+# worker має spec (sms.processor.spec), а .service.spec (resolveConfig) відсутній → gap
+ls apps/api/src/modules/<mod>/*.spec.ts   # порахувати покриття resolver vs worker
+```
+
+**Причина виникнення:** «двигун» у голові розробника = processor (там видно accept/reject/retry-гілки), тож тести йдуть туди. Resolver сприймається як «просто SELECT + map» і здається тривіальним — але саме він містить мовчазні гілки-фільтри (`where apiKey:{not:null}`, `.filter(has-template)`, `length===0→null`, legacy-if) кожна з яких — окрема бізнес-вимога, що ламається тихо (0 sent, без throw, без логу-помилки). CI зелений бо worker-тести зелені.
+
+**Підхід до виявлення:** прогнати КОЖЕН edge-case ланцюга проти РЕАЛЬНОГО коду resolver'а (не припускати), потім закрити gap тестом-guard на кожну мовчазну гілку: (1) NULL-креди → відфільтровано where → або legacy, або null (без крашу); (2) крок без шаблону → тихо skip; (3) ВСІ кроки без шаблону → null (batch-abort, НЕ throw); (4) legacy-гілка коли конфіг-рядків 0 (backward-compat) — усі під-варіанти (enabled/disabled/no-key/no-template/no-row); (5) priority-порядок збережено. Плюс **property-based (fast-check) на processor-інваріанти**: для будь-якої послідовності accept/reject/unknown — max 1 SENT, stop-on-first-accept, throw ⟺ останній крок = транзієнт-reject, Σ(term-логів)=visited. 200 runs/property ловить композиційні діри, які приклад-тести пропускають.
+
+**Підхід до фіксу:** тести-only — фіксують поточну КОРЕКТНУ поведінку як регресію-guard (код не чіпати якщо логіка вірна). Якщо ж edge-case дає краш/подвійну-відправку/тихий-0 — то це вже реальний баг, фіксувати код + той самий тест стає дискримінуючим.
+
+**Severity:** meta. Сам gap = CRITICAL (ховає майбутню регресію у гроше-/сповіщення-критичному шляху), але знайдені дефекти можуть бути 0 (як тут). Оцінювати за blast-radius ланцюга: сповіщення=MEDIUM, платіж/склад=HIGH-CRITICAL.
+
+**Де шукати ще:** `notifications` (цей сеанс — resolveConfig), будь-який `*.processor.ts`+BullMQ з fallback/retry, multi-provider (payment/ПРРО/SMS) fallback, saga/outbox-кроки, `resolveConfig`/`buildPlan`/`nextStep`-патерн. Правило: якщо є `<x>.processor.spec.ts` але нема `<x>.service.spec.ts` а сервіс має resolve/build-метод — gap.
+
 ### 2026-09-06 — «перший-переможець» `.find()` для scan/lookup-збігу тихо бере не той запис при неоднозначному ТОЧНОМУ матчі — frontend / silent-wrong-pick / MEDIUM (HIGH якщо фін.документ)
 
 **Сигнал:** чиста resolver-функція (сканер ШК, code-lookup, «знайти за унікальним ключем») робить `items.find(it => it.key === typed)` і повертає перший збіг. Але ключ, який ПРИПУСКАЄТЬСЯ унікальним, у реальних даних може дублюватися (data-entry помилка: той самий ШК у головному `barcode` одного товару і в `barcodes[]` іншого; той самий SKU у двох рядках). `.find()` → тихо перший → у фінансовому документі (Invoice/StockDoc/PO/SR) оператор отримує «не той» товар, не помічаючи. Grep-детектор:

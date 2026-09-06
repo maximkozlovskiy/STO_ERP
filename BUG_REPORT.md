@@ -3097,3 +3097,37 @@ trim провідних/кінцевих, whitespace-only→undefined, норм�
 api +9 (3 barcode-DTO trim… власне 6 DTO + 3 service cross-org/exact). tsc web=0, api=0.
 Targeted: `@sto/api src/modules/goods` — 77 passed (4 files); `@sto/web src/lib
 src/components/ui/__tests__` — 391 passed (37 files).
+
+## Session 2026-09-06 — Multi-channel notifications Phase 2 fallback-engine bug hunt (e21bd702 + d76372fc)
+
+**Scope:** `apps/api/src/modules/notifications/` (notifications.service.ts resolveConfig/sendWithConfig, sms.processor.ts fallback-engine, turbosms.provider.ts, followup.processor.ts) + `packages/database/prisma` (NotificationChannelConfig + NotificationLog schema/migration/data-migration). E2E MCP DOWN — skipped, не блокував.
+
+**Baseline:** tsc api 0, notifications 27/27 зелено. Sync/review — не запускались (tester-сеанс).
+
+### Результат: 0 code-defect. Fallback-engine ЛОГІКА коректна по всіх edge-case із завдання.
+
+Прогнав кожен edge-case завдання проти реального коду — усі поводяться правильно:
+
+1. **Порожній ланцюг / chainIndex поза межами** — ЧИСТО. `process()`: `chain?.[chainIndex]` → `if(!step){warn;return}` (no-op, без send/log/throw). `sendWithConfig()`: `if(chain.length===0)return` до постановки job. Тести-guard додані.
+2. **config-рядок enabled=true але apiKey NULL** — ЧИСТО. `resolveConfig` where `apiKey:{not:null}` виключає рядок на рівні DB → не потрапляє у ланцюг; без legacy-рядків → повертає null, без крашу. Тест доданий.
+3. **Канал без активного шаблону** — ЧИСТО. `.filter(c=>byChannel.has(c.channel))` тихо відкидає; якщо всі відкинуті → `channels.length===0` → return null (batch-abort), без throw. Тести (skip-one + all-skipped→null) додані.
+4. **Legacy backward-compat** — ЧИСТО. `channelConfigs.length>0` gate; 0 рядків → читає BranchSettings.sms\* → одноканальний SMS. COALESCE провайдера/senderName коректний. Тести (enabled+key→SMS / disabled→null / no-key→null / no-template→null / no-row→null) додані.
+5. **BullMQ retry vs fallback на ОСТАННЬОМУ каналі** — ЧИСТО. Reject останнього → `hasNext=false` → `throw` → BullMQ retry повторює той самий job (chainIndex у job.data незмінний), НЕ рестарт з 0, НЕ skip. Тест перевіряє `job.data.chainIndex` незмінний після throw + жодного нового fallback-job.
+6. **Mixed: середній reject → наступний accept** — ЧИСТО. Рівно 1 REJECTED (VIBER) + 1 SENT (SMS), без подвійної відправки (accept робить `return` до tryNext). Тест перевіряє точні лічильники SENT/REJECTED per-channel.
+7. **NotificationLog write failure** — ЧИСТО. `log()` обгорнутий try/catch → `logger.error`, відправка не зривається. Був тест — залишено.
+8. **PII masking** — ЧИСТО. `maskPhone()` → `****<last4>` у app-логах (logger.log/warn); повний номер лише у `NotificationLog.phone` (delivery-запис, за дизайном). Тест перевіряє `****2233` присутній І `380671112233` ВІДСУТНІй у app-логах.
+9. **Data-migration idempotent** — ЧИСТО. `NOT EXISTS (branchId, channel)` guard відповідає `@@unique([branchId,channel])`; повторний запуск не вставляє дублі. `id`/`syncVersion`/`createdAt`/`deletedAt` — DEFAULT. Verified статично проти CREATE TABLE + unique index.
+
+### Meta-issue (закрито): CRITICAL test-coverage gap — resolveConfig 0 unit-тестів
+
+**Знахідка:** `resolveConfig()` — серце Phase 2 fallback-движка (весь config→chain→template resolve + legacy fallback) — мав **0 unit-тестів**. `sendWithConfig()` chain-construction + BullMQ-опції (attempts/removeOnFail — секрет apiKey у job.data) — теж без прямих тестів. Uncovered critical business-logic = defect за SKILL.md (закривати test-gap разом із перевіркою).
+
+**Фікс:** +22 тести:
+
+- `notifications.service.spec.ts` (НОВИЙ) — 14 тестів: resolveConfig (config-chain priority, enabled/apiKey/deletedAt where-фільтр, skip-no-template, all-skipped→null, apiKey-NULL→legacy, legacy 5 гілок, senderName default) + sendWithConfig (per-channel render, chainIndex=0, BullMQ opts attempts=10/removeOnFail=200, empty→no-job, missing-var→'').
+- `sms.processor.spec.ts` — +5: chainIndex-OOB no-op, empty-chain no-op, MIXED exactly 1 SENT+1 REJECTED, retry chainIndex незмінний, PII-masking (app-log masked / DB full).
+- `fallback-engine.invariants.spec.ts` (НОВИЙ, property-based fast-check@4.8.0, 600 runs) — I1 max 1 SENT, I2 stop-on-first-accept, I3 throw ⟺ last=provider-reject, I4 SENT+REJECTED/FAILED = visited.
+
+**Результат:** notifications 27→49 зелено (5 файлів). tsc api 0. Жодного коду сервісів/процесорів не змінено — лише додано тести-guard'и (фіксують поточну коректну поведінку проти регресій).
+
+**Прийнятий розрив (не баг):** data-migration не фільтрує `bs.deletedAt IS NULL` — soft-deleted BranchSettings з apiKey підняв би у config. Консистентно з `resolveConfig` legacy-гілкою (теж без deletedAt-фільтра на branchSettings); BranchSettings-видалення рідке. Не регресія цих комітів.
