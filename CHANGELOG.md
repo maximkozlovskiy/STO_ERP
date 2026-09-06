@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-09-06 — fix(review): EmailProvider transport.close() у finally (leak на error-path)
+
+### 53b62596 notifications — code review Email-канал + генералізація recipient
+
+Code review фічі «Email через SMTP (nodemailer) + генералізація recipient» (feat 0f4d3f4f + fix 82f505a3). 1 фікс (0 CRITICAL / 1 IMPORTANT resource-leak / 0 SUGGESTION); решта 8 напрямів CLEAN.
+
+- **IMPORTANT** `EmailProvider.send()`/`verifyCredentials()` закривали nodemailer-transport лише на success-гілці → кинутий `sendMail`/`verify` (SMTP timeout/auth-фейл/ECONNREFUSED) лишав TCP-сокет висіти; `concurrency=3 × attempts=10` = десятки leaked-сокетів. Fix: transport створюється ДО `try`, `close()` у `finally` на обох шляхах. +2 leak-guard тести.
+- CLEAN верифіковано: recipient per-channel (EMAIL→email, else→phone; wrong-locator неможливий; empty chain→no job); SMTP JSON у apiKey (JSON.parse толерантний, 0 injection, pass шифрується at-rest, не тече у GET/логи); maskRecipient без index-error; міграція idempotent rename; parity SMS/Viber/TG; offline timeouts 10s + BullMQ retry; tenant/укр/payments-guard phone||email; frontend openCreds скидає SMTP-стейт (0 stale pass), pass write-only.
+- Skill +§2.5 детектор «external-transport `close()` у finally». tsc api/web 0, notifications 126/126 (+2).
+
+---
+
 ## 2026-09-06 — fix(review): ексклюзивність провайдера — гейт per-channel Switch + empty-state guard + a11y
 
 ### c441606f notifications — інваріант «активний лише 1 провайдер»

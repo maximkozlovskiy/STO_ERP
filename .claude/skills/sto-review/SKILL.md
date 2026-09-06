@@ -231,6 +231,7 @@ grep -rn "@Process(" apps/api/src/ --include="*.processor.ts" | grep -v "concurr
 - [ ] Процесори → `try/catch` + `throw err` (щоб BullMQ retry спрацював)
 - [ ] Ніяких прямих HTTP до зовнішніх API поза чергою
 - [ ] **`@Process(name)` → `@Process({ name, concurrency: N })`**: HTTP I/O → `3-5`, DB write → `3`, batch fan-out → `1`
+- [ ] **Зовнішній connection/transport/pool у provider (nodemailer `createTransport`, БД-конект, socket) → `close()`/`dispose()` у `finally`, НЕ лише на success-гілці.** Створити ресурс ДО `try`; закрити у `finally`. Інакше кинутий виклик (таймаут/auth-фейл/ECONNREFUSED) лишає сокет висіти → при `concurrency=N × attempts=10` десятки leaked-сокетів. Дзеркалить fetch-патерн `clearTimeout(timer)` у `finally` (§7 AbortController). Grep: `grep -rnE "createTransport|\.connect\(|new (Pool|Client)\(" apps/api/src/modules --include="*.ts" | grep -v spec` → для кожного перевірити, що парний `close()`/`end()`/`dispose()` стоїть у `finally`, а не лише перед `return`
 
 #### §2.6 Sentry
 
