@@ -3,6 +3,36 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-09-06 — Bug hunt: scanner-race fix (6e46a21b) + /simplify (34027c5c) — range 17b9f19d..HEAD (main)
+
+Ціль: зламати фікс сканер-race (Enter флашить pending debounce → fetch свіжих → select) у 3 пікерах: `search-picker-modal.tsx` (PurchaseOrder/StockDocument/SupplierReturn), `GoodPickerModal.tsx`, `search-combobox.tsx` (WorkOrderAddPart). Playwright MCP DOWN (CONNECT_TIMEOUT) → unit/component + reasoning.
+
+**Baseline:** web tsc 0 ✅ · web vitest 129/129 (scan+lib+GoodPicker) ✅ у baseline. Пре-існуюча ФЛАКІ у `SupplierPaymentCreateModal.test.tsx` (поза scope, feat/supplier-payments): падає лише при спільному запуску з іншими файлами (leaked `[stock-totals] fetch failed` async-реджект бліде у сусідній тест), в ізоляції та при повторному повному прогоні — зелена (397/397). Не моя регресія, не в scope.
+
+**Вердикт по race-фіксу: СОЛІДНИЙ.** Логіка в усіх 3 файлах коректна — clearTimeout → null timeoutRef/debounceRef → fetch(query) свіжих → select зі СВІЖИХ результатів; guards (reqRef у GoodPicker, mountedRef у решти) покривають пізню резолюцію. Жоден `[query]`-effect не перепланує debounce після Enter-флашу (у search-combobox/search-picker debounce планується синхронно в onChange, не в effect; у GoodPicker `[query]`-effect уже відпрацював ДО Enter і на Enter не змінюється). Дискримінація доведена: revert flush-гілки → race-тести падають (нічого не вибирається).
+
+Перевірено по пунктах завдання:
+
+1. **Race-фікс працює** — ✅ Написано дискримінуючі component-тести (fake timers, fetch повертає сканований товар ЛИШЕ для точного query → доводить вибір зі свіжих, не stale). SearchCombobox + SearchPickerModal: Enter при PENDING debounce → flush+fetch+select товару `z`. Revert flush → падає.
+2. **Double-fetch/double-select** — ✅ Немає. Enter робить clearTimeout+null; жоден effect не переплановує. Тест «flush не лишає хвостового debounce»: після флашу `advanceTimersByTime(300)` → 0 зайвих fetch, рівно 1 select. reqRef/mountedRef дискардять пізню відповідь.
+3. **Enter без pending + stale items** — ⚠️ спостереження (не баг). Якщо debounce-таймер УЖЕ спрацював (timeoutRef null) але fetch ще in-flight, Enter йде fall-through `trySelect(items)`/`pickScannedGood(items)` за ще-stale items. Але: сканер друкує ШК+Enter <300ms → таймер не встиг спрацювати → flush-гілка. Ручний кейс (типнув, чекав ~300ms, Enter саме під час fetch) → `pickScannedGood` не знайде ШК у stale → null → без вибору → повторний Enter вибере коректно (no-op retry, не хибний вибір, бо потрібен точний ШК-збіг). Прийнятна деградація. Fall-through з уже-свіжими items покрито тестом.
+4. **Enter при помилці flush fetch** — ✅ catch показує error, без select, модал не закривається (SearchPickerModal тест `#4` перевіряє `network fail` текст + onClose НЕ викликано + onSelect НЕ викликано). SearchCombobox catch: setItems([]) + без select.
+5. **search-combobox pre-guard branch** — ✅ Нова гілка `activeIndex<0 && debounceRef.current` перед `if(!open||items.length===0)return`. Arrow-nav (activeIndex>=0) → гілка пропускається → нормальний handleSelect. Без scanSubmit → гілка не активна (тест `#5`: fetchItems НЕ викликаний, onSelect НЕ викликаний → стара поведінка для не-товарних comboboxes).
+6. **GoodPickerModal flush = ті самі goodCategoryIds** — ✅ Flush-гілка застосовує `collectDescendantIds(categories, selectedCatId)` як і debounced fetchGoods → category-filtered скан не фетчить unfiltered. Візуально звірено (identical params-білдинг).
+7. **reqRef race (2 швидкі Enter / Enter+close)** — ✅ GoodPicker: кожен flush робить `++reqRef.current`; `[open]`-effect на close теж бампає reqRef → stale flush-response дискардиться (`if(reqId!==reqRef.current)return`). SearchCombobox/PickerModal — mountedRef guard.
+
+### Bug #648 — Stale regression-guard тест документував ВИДАЛЕНУ (buggy) поведінку
+
+- **Файл:** `apps/web/src/components/ui/__tests__/search-combobox.scan.test.tsx` (тест «#6 guard: Enter ДО повернення fetch → scanSubmit НЕ викликається»)
+- **Severity:** MEDIUM (test-integrity — хибно-зелений guard приховує регресії race-фіксу)
+- **Проблема:** тест асертив СТАРУ поведінку («guard тихо ковтає Enter до відкриття списку, scanSubmit НЕ викликається») — саме те, що фікс 6e46a21b НАВМИСНО прибрав (тепер Enter флашить debounce). Тест проходив лише за таймінгом: flush-`.then` резолвиться ПІСЛЯ синхронної асерції (звідси «not wrapped in act(...)» warning). Guard який він описував (`if(!open||items.length===0)return`) фікс перемістив НИЖЧЕ flush-гілки → тест більше не дискримінує те, що заявляє, і закріплює прибраний баг як «правильну» поведінку.
+- **Фікс:** видалено stale тест; замінено на дискримінуючі scanner-race тести (flush+fetch+select, no-tail-debounce guard, error-path, no-scanSubmit fall-through). Додано `flushMicrotasks()` helper для коректної обробки flush-promise під fake timers.
+- **Статус:** [x] виправлено
+
+**Додано тести:** `search-combobox.scan.test.tsx` 3→6 (scanner-race flush, no-tail-debounce, error-path, no-scanSubmit; прибрано stale #6-guard). Новий `search-picker-modal.scan.test.tsx` — 5 (scanner-race flush, no-tail-debounce, #4 error-path+модал-лишається, fall-through свіжі items, no-scanSubmit). Дискримінація доведена revert-ом flush-гілки в обох файлах (2 та 3 падіння відповідно).
+
+**Результат:** web tsc 0 ✅ · scan+barcode+GoodPicker 30/30 ✅ · повний web vitest 397/397 ✅ (при повторному прогоні; флакі SupplierPayment поза scope). Функціональних багів у race-фіксі НЕ знайдено — фікс солідний. Знайдено 1 test-integrity баг (#648).
+
 ## Session 2026-09-04 — Хвиля 2 наскрізного аудиту LIVE-верифікація (FIN-C1/C2 + CAL-C1) — HEAD f27df90d (main)
 
 Жива перевірка 3 CRITICAL фіксів коміту `dc026ca6` (`fix(audit-wave2)`) + тесту `48847c7a` (payments CAS). Playwright/Sentry MCP недоступні (CONNECT_TIMEOUT) → верифікація прямими API-викликами (`admin@sto.local`) + Prisma-пробники БД. **КРИТИЧНА ОПЕРАЦІЙНА ЗНАХІДКА:** запущений `dist/main` API був **застарілою збіркою** (стартував ДО останнього білду) → FIN-C2 CHARGE мовчки НЕ спрацьовував на живому SEND, хоча код і юніт-тести коректні. Після rebuild+restart усе PASS. Урок: перед live-верифікацією фіксу ЗАВЖДИ перезбирати+перезапускати `dist/main` (unit-зелений ≠ deployed).
