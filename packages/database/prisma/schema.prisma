@@ -2463,7 +2463,10 @@ model CashShift {
 
   cashRegister CashRegister @relation(fields: [cashRegisterId], references: [id])
 
-  // Один OPEN на касу гарантуємо сервісом (не unique-індексом — CLOSED багато).
+  // Один OPEN на касу гарантуємо частковим unique-індексом на рівні БД (CLOSED багато, тому
+  // повний @@unique не годиться; Prisma не підтримує WHERE у @@unique → індекс живе у міграції:
+  // "cash_shifts_one_open_per_register_uq" WHERE status='OPEN' AND deletedAt IS NULL). Захищає від
+  // гонки findFirst-then-create у open() (у т.ч. AUTO_OPEN у processor concurrency:3).
   @@index([orgId, branchId, status])
   @@index([orgId, cashRegisterId, status])
   @@map("cash_shifts")

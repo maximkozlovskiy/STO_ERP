@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CheckboxClient } from './checkbox.client';
 
@@ -40,8 +41,11 @@ export class CashShiftService {
       include: { cashRegister: { select: { name: true } } },
     });
     if (!shift) return null;
+    // Скоупимо лічильник до філії цієї зміни (Payment → workOrder.branchId), інакше у мульти-
+    // філійній орг картка однієї каси показувала б QUEUED-чеки ВСІХ філій. Платежі без наряду
+    // (workOrderId=null) не належать жодній філії → у лічильник конкретної зміни не входять.
     const pendingReceipts = await this.prisma.payment.count({
-      where: { orgId, fiscalStatus: 'QUEUED' },
+      where: { orgId, fiscalStatus: 'QUEUED', workOrder: { branchId } },
     });
     return this.toDto(shift, pendingReceipts);
   }
@@ -87,20 +91,36 @@ export class CashShiftService {
     );
     const { checkboxShiftId } = await this.checkbox.openShift(apiUrl!, token.accessToken);
 
-    const shift = await this.prisma.cashShift.create({
-      data: {
-        orgId,
-        branchId,
-        cashRegisterId: register.id,
-        checkboxShiftId,
-        status: 'OPEN',
-        openedById: userId ?? null,
-        checkboxAccessToken: token.accessToken,
-        tokenExpiresAt: this.tokenExpiry(token.expiresAt),
-      },
-      include: { cashRegister: { select: { name: true } } },
-    });
-    return this.toDto(shift, 0);
+    try {
+      const shift = await this.prisma.cashShift.create({
+        data: {
+          orgId,
+          branchId,
+          cashRegisterId: register.id,
+          checkboxShiftId,
+          status: 'OPEN',
+          openedById: userId ?? null,
+          checkboxAccessToken: token.accessToken,
+          tokenExpiresAt: this.tokenExpiry(token.expiresAt),
+        },
+        include: { cashRegister: { select: { name: true } } },
+      });
+      return this.toDto(shift, 0);
+    } catch (e) {
+      // Гонка: паралельний open()/AUTO_OPEN уже створив OPEN-зміну на цій касі
+      // (partial unique "cash_shifts_one_open_per_register_uq"). Ми встигли зробити
+      // зайвий Checkbox openShift — але БД-рядок не дублюється. Повертаємо зміну-переможця,
+      // щоб processor (AUTO_OPEN) продовжив пробиття у неї, а не впав.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const winner = await this.prisma.cashShift.findFirst({
+          where: { orgId, cashRegisterId: register.id, status: 'OPEN', deletedAt: null },
+          orderBy: { openedAt: 'desc' },
+          include: { cashRegister: { select: { name: true } } },
+        });
+        if (winner) return this.toDto(winner, 0);
+      }
+      throw e;
+    }
   }
 
   /** Закрити зміну (Z-звіт). ensureToken → Checkbox closeShift → CLOSED. */
@@ -174,8 +194,10 @@ export class CashShiftService {
 
   /** Re-sign-in примусово (для processor при 401). */
   async refreshToken(orgId: string, shiftId: string): Promise<{ apiUrl: string; token: string }> {
-    await this.prisma.cashShift.update({
-      where: { id: shiftId },
+    // updateMany з orgId (не update by id) — tenant-scoped no-op якщо shiftId чужий (§2.2),
+    // а не безумовна інвалідація токена по глобальному id.
+    await this.prisma.cashShift.updateMany({
+      where: { id: shiftId, orgId },
       data: { tokenExpiresAt: new Date(0) }, // форсуємо протухлість → ensureToken re-sign-in
     });
     return this.ensureToken(orgId, shiftId);

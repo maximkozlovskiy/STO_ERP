@@ -41,6 +41,14 @@ CREATE INDEX IF NOT EXISTS "cash_shifts_orgId_branchId_status_idx"
 CREATE INDEX IF NOT EXISTS "cash_shifts_orgId_cashRegisterId_status_idx"
   ON "cash_shifts" ("orgId", "cashRegisterId", "status");
 
+-- Одна OPEN-зміна на касу — гарантуємо на рівні БД (не лише сервісом): findFirst-then-create
+-- у open() має гонку (двоє паралельних open, або AUTO_OPEN у processor з concurrency:3 для того
+-- самого branch без зміни) → два OPEN-рядки + два фіскальних shift-и у Checkbox. Частковий
+-- unique-індекс робить другий create() атомарно неможливим (P2002), сервіс мапить це на 409.
+CREATE UNIQUE INDEX IF NOT EXISTS "cash_shifts_one_open_per_register_uq"
+  ON "cash_shifts" ("cashRegisterId")
+  WHERE "status" = 'OPEN' AND "deletedAt" IS NULL;
+
 DO $$
 BEGIN
   IF NOT EXISTS (
