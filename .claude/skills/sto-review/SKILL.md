@@ -1396,6 +1396,13 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Фікс:** гілка реконсиляції на вході process(): `if (status==='PAID'){ if(linkId) return; await finalize(...); return }`. `finalize()` — спільний create+link для CAS-win і reconcile; на помилці re-enqueue (jobId-дедуп = single-flight, без лавини); лічильник `finalizeAttempts` у job.data з `MAX` стелею → далі PAID+error для ручного розбору. Idempotency: `linkId!=null → стоп`.
 **Severity:** CRITICAL — тиха втрата грошей (gateway отримав, обліку немає); tsc + happy-path тест мовчать.
 
+### 2026-09-07 — legacy/default-гілка резолвера повертає конфіг ЧУЖОГО kind (не-exhaustive if/else) — §2/§4
+
+**Сигнал:** резолвер конфіга (`legacyFromBranchSettings`/`resolveX`) має `if (kind === 'FISCAL') {...}` а далі БЕЗУМОВНИЙ «дефолт»-блок (PAYMENT), який виконується для будь-якого не-FISCAL kind. Коли додається новий kind у enum (`ProviderKind += DELIVERY`), він тихо потрапляє у PAYMENT-гілку → повертає креди/провайдера ЧУЖОГО kind (напр. monobank для DELIVERY). Латентно маскується коли consumer робить `registry.get(wrongProvider)=null` — але це витік конфіга чужого kind і ламається при будь-якому майбутньому збігу кодів провайдерів.
+**Grep:** `grep -rnE "if \(kind === '[A-Z]+'\)" apps/api/src/modules --include="*.service.ts" -A30` → перевірити, що для КОЖНОГО enum-значення є явна гілка АБО explicit `return null`; фінальний блок не має бути «catch-all» для одного конкретного kind. Тригер: enum з `ADD VALUE` у diff + резолвер що читає той enum.
+**Фікс:** явний guard перед «дефолт»-блоком: `if (kind !== 'PAYMENT') return null;` (легасі-колонок для нового kind не існує) — або exhaustive `switch (kind)` з `default: return null`.
+**Severity:** IMPORTANT — cross-kind config leak; tsc + happy-path (лише FISCAL/PAYMENT) мовчать, спливає лише при новому enum-значенні.
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
