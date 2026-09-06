@@ -169,6 +169,13 @@ enum ShiftMode {
   AUTO_OPEN // зміна авто-відкривається перед першим чеком (Z-звіт усе одно ручний)
 }
 
+enum OnlinePaymentStatus {
+  PENDING // намір створено, чекаємо підтвердження gateway (polling)
+  PAID // gateway підтвердив — Payment створено (paymentId заповнено)
+  FAILED // gateway відхилив
+  EXPIRED // клієнт не оплатив у відведений час
+}
+
 enum SettlementTransactionType {
   CHARGE
   PAYMENT
@@ -1684,6 +1691,8 @@ model BranchSettings {
   checkboxPinCode        String?
   checkboxCashRegisterId String?
   shiftMode              ShiftMode @default(MANUAL) // ручне vs авто-відкриття зміни
+  monobankToken          String? // X-Token merchant-еквайрингу monobank (шифрується at-rest)
+  monobankApiUrl         String? // база API monobank (не секрет)
   smsEnabled             Boolean  @default(false)
   smsProvider            String?
   smsApiKey              String?
@@ -1899,6 +1908,32 @@ model Payment {
   // по (orgId, invoiceId) робить groupBy index-only.
   @@index([orgId, invoiceId])
   @@map("payments")
+}
+
+// Намір онлайн-оплати (QR через monobank/LiqPay). Payment створюється ЛИШЕ коли gateway
+// підтвердив (polling PENDING→PAID через CAS). paymentId лінкує створений Payment (idempotency).
+model OnlinePaymentIntent {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId            String              @db.Uuid
+  gateway          String              @default("monobank")
+  gatewayInvoiceId String? // invoiceId у gateway
+  pageUrl          String? // сторінка оплати gateway (рендериться як QR)
+  amount           Decimal             @db.Decimal(12, 2)
+  counterpartyId   String              @db.Uuid
+  invoiceId        String?             @db.Uuid
+  workOrderId      String?             @db.Uuid
+  status           OnlinePaymentStatus @default(PENDING)
+  paymentId        String?             @db.Uuid // Payment, створений при PAID (idempotency-лінк)
+  error            String?
+  expiresAt        DateTime? // жорсткий wall-clock таймаут polling → EXPIRED
+  syncVersion      BigInt              @default(0)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  deletedAt        DateTime?
+
+  @@index([orgId, status])
+  @@index([orgId, createdAt])
+  @@map("online_payment_intents")
 }
 
 model SettlementAccount {

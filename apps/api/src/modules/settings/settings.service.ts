@@ -355,6 +355,8 @@ export class SettingsService {
     checkboxApiUrl: string | null;
     checkboxCashRegisterId: string | null;
     shiftMode?: string;
+    monobankApiUrl?: string | null;
+    monobankToken?: string | null;
     smsEnabled: boolean;
     smsProvider: string | null;
     smsSenderName: string | null;
@@ -371,6 +373,8 @@ export class SettingsService {
       checkboxApiUrl: s.checkboxApiUrl,
       checkboxCashRegisterId: s.checkboxCashRegisterId,
       shiftMode: s.shiftMode,
+      monobankApiUrl: s.monobankApiUrl ?? null,
+      hasMonobankToken: s.monobankToken != null && s.monobankToken !== '',
       smsEnabled: s.smsEnabled,
       smsProvider: s.smsProvider,
       smsSenderName: s.smsSenderName,

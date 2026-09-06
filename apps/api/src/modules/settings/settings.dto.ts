@@ -265,6 +265,16 @@ export class UpdateBranchSettingsDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  monobankToken?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  monobankApiUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsBoolean()
   smsEnabled?: boolean;
 
@@ -350,6 +360,8 @@ export class BranchSettingsResponseDto {
   @ApiPropertyOptional() checkboxApiUrl?: string | null;
   @ApiPropertyOptional() checkboxCashRegisterId?: string | null;
   @ApiPropertyOptional() shiftMode?: string;
+  @ApiPropertyOptional() monobankApiUrl?: string | null;
+  @ApiPropertyOptional() hasMonobankToken?: boolean; // токен write-only — лише прапорець наявності
   @ApiProperty() smsEnabled!: boolean;
   @ApiPropertyOptional() smsProvider?: string | null;
   @ApiPropertyOptional() smsSenderName?: string | null;

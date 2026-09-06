@@ -6,7 +6,7 @@ import { EncryptionService } from '../common/crypto/encryption.service';
 // список полів-секретів. Prisma-розширення шифрує їх на write і дешифрує на read.
 const ENCRYPTED_FIELDS: Record<string, string[]> = {
   NotificationChannelConfig: ['apiKey'],
-  BranchSettings: ['smsApiKey', 'checkboxLicenseKey', 'checkboxPinCode'],
+  BranchSettings: ['smsApiKey', 'checkboxLicenseKey', 'checkboxPinCode', 'monobankToken'],
   CashShift: ['checkboxAccessToken'],
 };
 

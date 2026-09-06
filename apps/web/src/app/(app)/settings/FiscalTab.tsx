@@ -19,6 +19,8 @@ interface FiscalSettings {
   checkboxApiUrl?: string | null;
   checkboxCashRegisterId?: string | null;
   shiftMode?: string;
+  monobankApiUrl?: string | null;
+  hasMonobankToken?: boolean;
 }
 
 interface VerifyResult {
@@ -37,9 +39,12 @@ export default function FiscalTab() {
   const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
   const [cashRegisterId, setCashRegisterId] = useState('');
   const [shiftMode, setShiftMode] = useState('MANUAL');
+  const [monobankApiUrl, setMonobankApiUrl] = useState('');
+  const [hasMonobankToken, setHasMonobankToken] = useState(false);
   // Секрети write-only: порожнє = «не змінювати». Не prefill з GET.
   const [licenseKey, setLicenseKey] = useState('');
   const [pinCode, setPinCode] = useState('');
+  const [monobankToken, setMonobankToken] = useState('');
   const [saving, setSaving] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
@@ -70,8 +75,11 @@ export default function FiscalTab() {
         setApiUrl(s.checkboxApiUrl || DEFAULT_API_URL);
         setCashRegisterId(s.checkboxCashRegisterId ?? '');
         setShiftMode(s.shiftMode ?? 'MANUAL');
+        setMonobankApiUrl(s.monobankApiUrl ?? '');
+        setHasMonobankToken(s.hasMonobankToken ?? false);
         setLicenseKey(''); // write-only — не prefill
         setPinCode('');
+        setMonobankToken('');
         setVerifyResult(null);
       })
       .catch((e: unknown) =>
@@ -94,9 +102,11 @@ export default function FiscalTab() {
         checkboxApiUrl: apiUrl || null,
         checkboxCashRegisterId: cashRegisterId || null,
         shiftMode,
+        monobankApiUrl: monobankApiUrl || null,
       };
       if (licenseKey) body.checkboxLicenseKey = licenseKey;
       if (pinCode) body.checkboxPinCode = pinCode;
+      if (monobankToken) body.monobankToken = monobankToken;
 
       await apiFetch(`/settings/branch/${selectedBranch}`, {
         method: 'PATCH',
@@ -104,6 +114,8 @@ export default function FiscalTab() {
       });
       setLicenseKey(''); // очистити секрет-поля після збереження
       setPinCode('');
+      if (monobankToken) setHasMonobankToken(true);
+      setMonobankToken('');
       if (currentFeatures.toastEnabled) toast.success('Налаштування збережено');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка збереження';
@@ -215,6 +227,25 @@ export default function FiscalTab() {
           Закриття зміни (Z-звіт) завжди ручне — на сторінці «Каса».
         </p>
       </label>
+
+      {/* monobank еквайринг (QR-оплата) */}
+      <div className="border-t border-border pt-4 space-y-3">
+        <h4 className="text-sm font-semibold text-foreground">monobank еквайринг (QR-оплата)</h4>
+        <Input
+          label="X-Token merchant"
+          type="password"
+          value={monobankToken}
+          onChange={e => setMonobankToken(e.target.value)}
+          placeholder={hasMonobankToken ? 'Збережено — введіть, щоб змінити' : 'Введіть X-Token'}
+          autoComplete="off"
+        />
+        <Input
+          label="API URL (необовʼязково)"
+          value={monobankApiUrl}
+          onChange={e => setMonobankApiUrl(e.target.value)}
+          placeholder="https://api.monobank.ua"
+        />
+      </div>
 
       <div className="flex items-center gap-3">
         <Button onClick={() => void save()} loading={saving}>

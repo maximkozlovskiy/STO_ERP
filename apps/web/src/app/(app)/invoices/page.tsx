@@ -36,6 +36,7 @@ import {
   INVOICE_TYPE_LABELS,
 } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
+import { QrPaymentModal } from '@/components/ui/QrPaymentModal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -274,6 +275,8 @@ function InvoicesPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [showPayment, setShowPayment] = useState<InvoiceWithOptionals | null>(null);
+  // QR-оплата (monobank): {invoiceId, amount} коли касир обрав QR-метод.
+  const [qrPay, setQrPay] = useState<{ invoiceId: string; amount?: number } | null>(null);
 
   const [payMethods, setPayMethods] = useState<{ code: string; name: string }[]>([]);
   const [payForm, setPayForm] = useState({ method: 'cash', amount: '', notes: '' });
@@ -1028,9 +1031,24 @@ function InvoicesPageInner() {
         onClose={() => setShowPayment(null)}
         title={showPayment ? `Реєстрація оплати по рахунку ${showPayment.number}` : ''}
         footer={
-          <Button onClick={handlePay} loading={saving} className="w-full">
-            Підтвердити оплату
-          </Button>
+          payForm.method === 'monobank_qr' ? (
+            <Button
+              onClick={() => {
+                if (!showPayment) return;
+                const rawAmt = parseFloat(payForm.amount);
+                const amt = payForm.amount && Number.isFinite(rawAmt) ? rawAmt : undefined;
+                setQrPay({ invoiceId: showPayment.id, amount: amt });
+                setShowPayment(null);
+              }}
+              className="w-full"
+            >
+              Показати QR
+            </Button>
+          ) : (
+            <Button onClick={handlePay} loading={saving} className="w-full">
+              Підтвердити оплату
+            </Button>
+          )
         }
       >
         {showPayment &&
@@ -1095,6 +1113,18 @@ function InvoicesPageInner() {
             );
           })()}
       </Modal>
+
+      {/* QR-оплата monobank */}
+      <QrPaymentModal
+        open={!!qrPay}
+        invoiceId={qrPay?.invoiceId ?? null}
+        amount={qrPay?.amount}
+        onClose={() => setQrPay(null)}
+        onPaid={() => {
+          queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+        }}
+      />
+
       <ConfirmDialog {...dialogProps} />
 
       {linkedDocPopupId && (
