@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-09-07 — fix(sync): QR-оплата monobank — polling gate stuck on initial status
+
+### 14c18a0e payments/web — sync-check QR-оплати monobank (online-payment + monobank.client + useOnlinePayment + QrPaymentModal + FiscalTab)
+
+Sync-check фічі «QR-оплата monobank» (online-payment.controller/service, monobank.client, useOnlinePayment.ts, QrPaymentModal.tsx, FiscalTab.tsx monobank-секція). 1 фікс (frontend), решта напрямів CLEAN.
+
+- **Fix**: `QrPaymentModal` гейтив polling (`useOnlineIntentStatus` enabled) через `isPending = intent?.status === 'PENDING'`, де `intent` — одноразовий стан зі створення наміру, ніколи не оновлюваний після PAID/FAILED/EXPIRED → полінг тривав безкінечно навіть після термінального статусу (всупереч задокументованому «на терміналі зупиняємось»). Fix: окремий `live` state зберігає останній polled статус; гейт і відображуваний `status` тепер похідні від `live ?? intent`; `live` скидається разом з `intent` при відкритті модалки/новому наміру.
+- CLEAN верифіковано: OnlineIntent (frontend) field-for-field = OnlineIntentDto (backend); apiFetch URLs POST/GET `/online-payments[/:id]` збігаються з контролером; **security round-trip** — `monobankToken` write-only, `mapBranchSettings` (спільний для GET і PATCH branch-settings) ніколи не повертає сирий токен, лише `hasMonobankToken:boolean`; `qrcode.react` встановлено і імпортується коректно; ролі POST/GET `/online-payments` (OWNER/ADMIN/ACCOUNTANT/RECEPTIONIST) збігаються з invoices-сторінкою; `monobank_qr` присутній у payment-methods seed і setup.service.
+- tsc api+web ✅ 0.
+
+---
+
 ## 2026-09-06 — fix(review): ПРРО Крок 2 — гонка double-OPEN + tenant-scope refreshToken + branch-scope pending
 
 ### b8747f15 payments — code review ПРРО Крок 2 (касова зміна + PIN-token + реальні чеки)
