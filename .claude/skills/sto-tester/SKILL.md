@@ -484,6 +484,8 @@ done
 - [ ] `toResponseDto()` — жоден Prisma model не повертається напряму
 - [ ] `syncVersion: Number(row.syncVersion)` у всіх DTO (Decimal/BigInt → Number)
 - [ ] `@Param(':id')` → `ParseUUIDPipe`
+- [ ] **date-only `@Query('dateTo')` → `lte` МУСИТЬ бути inclusive-of-day (Bug #678):** фронт шле `YYYY-MM-DD`; `new Date('2026-09-06')`=midnight UTC → голий `createdAt.lte = new Date(dateTo)` виключає всі записи того ж дня. Правильно `new Date(dateTo + 'T23:59:59.999Z')` (+ `dateFrom + 'T00:00:00.000Z'`). Grep: `grep -rn "lte.*new Date(.*dateTo\|lte.*new Date(opts" apps/api/src/modules/ | grep -v "T23:59:59"`. Тест: `findMany.mock.calls[0][0].where.createdAt.lte.toISOString()==='...T23:59:59.999Z'`.
+- [ ] **query-string enum-фільтр → `Set(Object.values(Enum)).has()` guard ПЕРЕД `as EnumType` (Bug #679):** `where.x = opts.x as EnumType` без валідації → `?x=garbage` доходить до Prisma → HTTP **500** (не-i18n). Правильно: enum-driven Set + `if (VALUES.has(opts.x)) where.x=...`, невідоме тихо ігнорується. Grep (з `-B1` бо guard часто на рядку вище присвоєння): `grep -rn -B1 "where\.\w* = opts\.\w* as \|as Prisma\.\w*WhereInput\['" apps/api/src/modules/ --include="*.service.ts"` → для КОЖНОГО match переконатись що рядок вище/поруч має `.has(` / `Object.values(` / `VALUES`; match без жодного guard-контексту = баг. Тест: garbage→`'x' in where===false` + `resolves` (no 500).
 - [ ] `throw new XxxException('...')` — повідомлення українською
 - [ ] `@IsUUID()` без версії ('all') відхиляє nil-UUID → у **тестах** для UUID-полів: `11111111-1111-4111-8111-111111111111` (v4 layout)
 - [ ] **JSON/Record DTO поля** (`Record<string, unknown>`, `object`, `Json`) → обов'язково `@IsObject()` або `@ValidateNested()`. Без декоратора `whitelist: true` знімає поле мовчки → `dto.value === undefined` → сервіс записує `undefined/null` у БД без помилки (Bug #182). Перевіряти: `grep -A2 "!: Record\|?: Record\|!: object\|?: object" *.dto.ts | grep -v "@Is"`
@@ -1131,6 +1133,23 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-06 — list-endpoint query-фільтри (date-range + enum) та retry-action відвантажені з 0 unit, поки create() добре покритий — backend / coverage-gap / HIGH
+
+**Сигнал:** фіча Фази-2 додає `findAll(opts)` з набором query-фільтрів (date-range, enum-eq, FK org-scoped) + `findOne` + action-метод (`retryFiscal`/`retryX`), а `.spec` покриває ЛИШЕ `create()` (грошовий happy/CAS). Класичний drift: складна create-логіка «заслуговує» тестів, а «простий» findAll/filter «очевидний» → 0 покриття саме на review-фіксах, які туди й лягли. Два підпатерни ловляться grep-детекторами:
+
+- **(A) date-only `lte` inclusive-of-day.** Фронт шле `YYYY-MM-DD`; `new Date('2026-09-06')` = **midnight UTC** → голий `createdAt.lte = new Date(dateTo)` виключає всі записи того ж дня (платіж о 15:00 не потрапляє у діапазон `dateTo=сьогодні`). Правильно: `new Date(dateTo + 'T23:59:59.999Z')` (і `dateFrom + 'T00:00:00.000Z'` для симетрії). Grep: `grep -rn "lte.*new Date([a-zA-Z].*dateTo\|lte.*new Date(opts" apps/api/src/modules/ | grep -v "T23:59:59"`.
+- **(B) query-string enum-cast без guard → 500.** `where.enumField = opts.x as EnumType` без валідації → `?x=garbage` каститься і доходить до Prisma → **HTTP 500 (не-i18n, шум у Sentry)**, а не тихе ігнорування як для будь-якого нерозпізнаного query-параметра. Правильно: `const VALUES = new Set(Object.values(EnumFromPrisma))` (enum-driven, без хардкоду) + `if (VALUES.has(opts.x)) where.x = opts.x`. Grep: `grep -rn "where\.\w* = opts\.\w* as \|as Prisma\.\w*WhereInput" apps/api/src/modules/ | grep -v "\.has("`.
+
+**Причина виникнення:** розробник вважає CRUD-list «тривіальним» і що ParseUUIDPipe/class-validator ловлять усе — але вони НЕ валідують `@Query('x') x?: string` вільні рядки (date, enum-як-string) що йдуть у сервіс сирими. `new Date('YYYY-MM-DD')` мовчазно дає midnight (виглядає «як дата»), а enum-cast компілюється (`as`), тож обидва проходять tsc+create-тести й падають лише на живому запиті з крайовим вводом.
+
+**Підхід до виявлення:** для КОЖНОГО нового list/filter-методу — дістати `where`, з яким викликано `findMany` (`prisma.X.findMany.mock.calls[0][0].where`), і асертити межі/фільтри напряму: `createdAt.lte.toISOString() === '...T23:59:59.999Z'`, `createdAt.gte === '...T00:00:00.000Z'`, enum valid→eq, `'none'`→`null` (IS NULL, ключ присутній), **garbage→`'x' in where === false` + `resolves` (no 500)**, FK org-scoped (валідний→where + findFirst orgId; чужа org→NotFound + findMany НЕ викликано), where завжди містить orgId, pagination clamp. Для retry/action-методу: усі guards (`receiptId set`→400 БЕЗ enqueue; `!=FAILED`→400; happy→update+queue.add; queue reject→`.catch` FAILED + resolves; cross-org→NotFound) + **порядок guards** (idempotency-guard ПЕРЕД status-guard). **Mutation-verify обидва review-фікси:** відкат `new Date(dateTo)` (midnight)→inclusivity-тест падає; прибрати `VALUES.has()`→garbage-тест падає.
+
+**Підхід до фіксу:** tests-only коли логіка вірна (0 функціональних дефектів, як #678-#682). Якщо grep-детектор (A)/(B) знайшов сирий cast/midnight lte у СЕРВІСІ без review-фіксу — це реальний баг (HIGH: пропущені записи / 500), фікс = дзеркалити sibling-сервіс (`supplier-payments.service` для date-range) + enum-Set guard.
+
+**Severity:** HIGH (A: тихо пропущені фіндокументи у звіті за день; B: 500 на публічному list-endpoint від тривіального query-параметра).
+
+**Де шукати ще:** будь-який `findAll` з `@Query` date-range або enum-status-фільтром: payments, supplier-payments, invoices, work-orders, stock-documents, purchase-orders, reports/builder. Спорідн.: sto-review f33edc2c (ті самі 2 детектори у review-чеклісті), Bug #595/#616 (date-only DTO semantic).
 
 ### 2026-09-06 — авторитетна denormalized-колонка з derived-Σ фолбеком у toDto + partial-payment CAS money-flow — backend / coverage-gap / HIGH-MEDIUM
 
