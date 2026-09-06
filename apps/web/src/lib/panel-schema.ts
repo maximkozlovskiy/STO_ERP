@@ -183,9 +183,31 @@ export const PURCHASE_ORDER_PANEL_SCHEMA = [
   { key: 'linesCount', label: 'Позицій', type: 'number' },
   { key: 'documentDate', label: 'Дата документа', type: 'date' },
   { key: 'paymentDate', label: 'Дата оплати', type: 'date' },
+  { key: 'trackingNumber', label: 'Накладна (ЕН)' },
+  { key: 'deliveryStatus', label: 'Доставка' },
   { key: 'notes', label: 'Нотатки' },
   { key: 'createdAt', label: 'Створено', type: 'date' },
 ] as const satisfies readonly PanelFieldDef<PurchaseOrder>[];
+
+/** Лейбли статусу доставки (укр.). */
+export const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Очікує',
+  IN_TRANSIT: 'У дорозі',
+  ARRIVED: 'На відділенні',
+  DELIVERED: 'Отримано',
+  RETURNED: 'Повернення',
+  NOT_FOUND: 'Не знайдено',
+};
+
+/** Варіант Badge статусу доставки. */
+export const DELIVERY_STATUS_BADGE: Record<string, string> = {
+  PENDING: 'secondary',
+  IN_TRANSIT: 'info',
+  ARRIVED: 'warning',
+  DELIVERED: 'success',
+  RETURNED: 'destructive',
+  NOT_FOUND: 'destructive',
+};
 
 export const SUPPLIER_PAYMENT_PANEL_SCHEMA = [
   { key: 'status', label: 'Статус', always: true },

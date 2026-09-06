@@ -42,6 +42,13 @@ export interface PurchaseOrder {
   lines: POLine[];
   documentDate?: string | null;
   paymentDate?: string | null;
+  /** Номер накладної доставки (ЕН). */
+  trackingNumber?: string | null;
+  /** Статус доставки (нормалізований): PENDING/IN_TRANSIT/ARRIVED/DELIVERED/RETURNED/NOT_FOUND. */
+  deliveryStatus?: string | null;
+  /** Сирий текст статусу служби доставки (тултип). */
+  deliveryStatusRaw?: string | null;
+  deliveryStatusUpdatedAt?: string | null;
   /** Залишок боргу по PO (лише у списку findAll). */
   outstanding?: number;
   pricedAt?: string | null;

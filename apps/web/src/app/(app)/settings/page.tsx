@@ -15,6 +15,7 @@ const FollowupTab = dynamic(() => import('./FollowupTab'), { ssr: false });
 const IntegrationsTab = dynamic(() => import('./IntegrationsTab'), { ssr: false });
 const DocumentsTab = dynamic(() => import('./DocumentsTab'), { ssr: false, loading: () => null });
 const FiscalTab = dynamic(() => import('./FiscalTab'), { ssr: false });
+const DeliveryTab = dynamic(() => import('./DeliveryTab'), { ssr: false });
 
 type Tab =
   | 'notifications'
@@ -25,7 +26,8 @@ type Tab =
   | 'followup'
   | 'integrations'
   | 'documents'
-  | 'fiscal';
+  | 'fiscal'
+  | 'delivery';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'numbers', label: 'Нумерація' },
@@ -36,6 +38,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'ui', label: 'Інтерфейс' },
   { key: 'followup', label: 'Нагадування' },
   { key: 'fiscal', label: 'Фіскалізація' },
+  { key: 'delivery', label: 'Доставка' },
   { key: 'integrations', label: 'Інтеграції' },
 ];
 
@@ -78,6 +81,7 @@ function SettingsPageClient() {
       {tab === 'integrations' && <IntegrationsTab />}
       {tab === 'documents' && <DocumentsTab />}
       {tab === 'fiscal' && <FiscalTab />}
+      {tab === 'delivery' && <DeliveryTab />}
     </div>
   );
 }

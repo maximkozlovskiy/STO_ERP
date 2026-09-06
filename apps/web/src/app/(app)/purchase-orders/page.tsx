@@ -68,6 +68,8 @@ import {
   PURCHASE_ORDER_PANEL_SCHEMA,
   buildPanelFields,
   schemaToPanelConfigFields,
+  DELIVERY_STATUS_LABELS,
+  DELIVERY_STATUS_BADGE,
 } from '@/lib/panel-schema';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
@@ -382,6 +384,21 @@ function PurchaseOrdersPageClient() {
                   {STATUS_LABELS[String(v)] ?? String(v)}
                 </Badge>
               ),
+              deliveryStatus: (v, record) =>
+                v ? (
+                  <Badge
+                    variant={
+                      (DELIVERY_STATUS_BADGE[String(v)] ?? 'secondary') as React.ComponentProps<
+                        typeof Badge
+                      >['variant']
+                    }
+                    tooltip={record.deliveryStatusRaw ?? undefined}
+                  >
+                    {DELIVERY_STATUS_LABELS[String(v)] ?? String(v)}
+                  </Badge>
+                ) : (
+                  '—'
+                ),
             }).map(f => (
               <PanelField
                 key={f.key}

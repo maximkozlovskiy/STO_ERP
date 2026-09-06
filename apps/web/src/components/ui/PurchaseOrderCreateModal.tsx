@@ -92,6 +92,7 @@ interface PODetail {
   notes?: string | null;
   documentDate?: string | null;
   paymentDate?: string | null;
+  trackingNumber?: string | null;
   lines?: POLine[];
 }
 
@@ -194,6 +195,7 @@ export function PurchaseOrderCreateModal({
     notes: '',
     documentDate: kyivToday(),
     paymentDate: '',
+    trackingNumber: '',
   });
   const [supplierDisplay, setSupplierDisplay] = useState('');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -362,6 +364,7 @@ export function PurchaseOrderCreateModal({
         notes: form.notes,
         documentDate: form.documentDate,
         paymentDate: form.paymentDate,
+        trackingNumber: form.trackingNumber,
         lines: lines.map(l => ({
           goodId: l.goodId,
           quantity: l.quantity,
@@ -403,6 +406,7 @@ export function PurchaseOrderCreateModal({
         notes: '',
         documentDate: kyivToday(),
         paymentDate: '',
+        trackingNumber: '',
       });
       setSupplierDisplay('');
     }
@@ -448,6 +452,7 @@ export function PurchaseOrderCreateModal({
             notes: po.notes ?? '',
             documentDate: po.documentDate ? po.documentDate.slice(0, 10) : kyivToday(),
             paymentDate: po.paymentDate ? po.paymentDate.slice(0, 10) : '',
+            trackingNumber: po.trackingNumber ?? '',
           });
           setSupplierDisplay(po.supplierName ?? '');
           setContractId(po.contractId ?? null);
@@ -785,6 +790,7 @@ export function PurchaseOrderCreateModal({
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
           paymentDate: form.paymentDate || undefined,
+          trackingNumber: form.trackingNumber || undefined,
           lines: linesPayload.length > 0 ? linesPayload : undefined,
         }),
       });
@@ -832,6 +838,8 @@ export function PurchaseOrderCreateModal({
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
           paymentDate: form.paymentDate || undefined,
+          // Порожнє → null (очистити ЕН і зупинити трекінг); непорожнє → встановити/оновити.
+          trackingNumber: form.trackingNumber ? form.trackingNumber : null,
           lines: allLines,
         }),
       });
@@ -1003,6 +1011,18 @@ export function PurchaseOrderCreateModal({
                   value={form.paymentDate}
                   onChange={v => setForm(f => ({ ...f, paymentDate: v }))}
                   disabled={!canEdit}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[13px] font-medium text-muted-foreground">Накладна (ЕН):</span>
+              <div className="w-44">
+                <Input
+                  value={form.trackingNumber}
+                  onChange={e => setForm(f => ({ ...f, trackingNumber: e.target.value }))}
+                  placeholder="напр. 204..."
+                  disabled={!canEdit}
+                  autoComplete="off"
                 />
               </div>
             </div>
