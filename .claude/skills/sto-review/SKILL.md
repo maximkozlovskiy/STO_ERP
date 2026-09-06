@@ -1330,6 +1330,22 @@ grep -rnE "const (patch|save|update|toggle)[A-Za-z]* = (async )?\(" apps/web/src
 **Фікс (3 шари):** (1) провайдер декларує які канали template-based — `readonly templateChannels?: NotificationChannel[]` (SSOT, віддається у `registry.list()` для UI); (2) upsert примусово `field = isTemplateChannel ? dto.field ?? null : null` (defence-in-depth проти прямого API); (3) resolve-фільтр: канал без локального шаблону придатний лише якщо `registry.get(provider)?.templateChannels?.includes(channel)`. Frontend derive `needsX` з `provider.templateChannels`, не хардкод-Set. +регрес: inline-канал зі stray-template-id → канал ВИКЛЮЧЕНО / поле=null.
 **Severity:** IMPORTANT — мовчазна порожня відправка на mis-config; TS зелений (поле опційне у всіх шарах).
 
+### 2026-09-06 — exclusivity-action + сусідній per-item toggle що мовчки ламає інваріант — §8.2/§5
+
+**Сигнал:** нова дія встановлює «ексклюзивно лише один X активний» (activate-provider, set-default-account, pin-single) через bulk-mutation (`updateMany others=false, updateMany chosen=true` / `$transaction`), АЛЕ у тому ж UI лишається старий per-item toggle (`Switch`/checkbox) що редагує те саме поле (`enabled`/`isDefault`) на БУДЬ-ЯКОМУ елементі. Юзер вмикає item іншої групи → інваріант «лише один» тихо порушено. Downstream-споживач (`resolveConfig` фільтрує `enabled:true` по ВСІХ) бере два → подвійна/невизначена поведінка. TS зелений (поле легітимне boolean).
+**Grep:**
+
+```bash
+# activate/setDefault/setPrimary поруч із per-item enabled/isDefault toggle у тому ж файлі
+grep -rlE "activate[A-Z]|setDefault|setPrimary|isExclusive|updateMany.*enabled" apps/web/src/app --include="*.tsx" \
+  | xargs grep -lE "toggle[A-Z]|onChange.*enabled|checked=\{" 2>/dev/null
+# derived «активний» через find(first-match) — маскує другий активний елемент
+grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z]+ \?\? null" apps/web/src --include="*.tsx"
+```
+
+**Фікс:** per-item toggle гейтить інваріант — увімкнути item можна лише якщо він у активній групі (`if (enable && item.group !== activeGroup) { setError(...); return; }`); toggle неактивної групи `disabled`. Вимкнути item активної групи (звузити) — дозволено. Активація іншої групи — лише через exclusivity-action. Empty-state guard на самій exclusivity-action: якщо група не має жодного item → bulk-mutation матчить 0 рядків = no-op + хибний success-toast → перевірити `items.some(i => i.group === chosen)` перед викликом.
+**Severity:** IMPORTANT — тихе порушення інваріанта; downstream бере два «ексклюзивні» → неоднозначна поведінка; UX хибний success на no-op.
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |

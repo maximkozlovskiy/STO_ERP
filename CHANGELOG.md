@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-09-06 — fix(review): ексклюзивність провайдера — гейт per-channel Switch + empty-state guard + a11y
+
+### c441606f notifications — інваріант «активний лише 1 провайдер»
+
+Code review фічі «ексклюзивна активація провайдера» (feat ad304c88). 3 фікси (0 CRITICAL / 2 IMPORTANT / 1 SUGGESTION); решта 7 напрямів CLEAN.
+
+- **IMPORTANT** інваріант ексклюзивності ламався per-channel Switch: `activateProvider` атомарно (array-form `$transaction`, обидва `updateMany` мають `orgId`+`branchId`+`deletedAt:null` — tenant-safe) встановлює «активний лише 1», але per-channel `toggleEnabled` міг увімкнути окремий канал ІНШОГО провайдера → `resolveConfig` (фільтр `enabled:true` по всіх провайдерах) взяв би два провайдери у fallback-ланцюг. Fix: `toggleEnabled` гейтить `enabled && c.provider !== activeProvider`; Switch каналу неактивного провайдера `disabled`.
+- **IMPORTANT** empty-state no-op: активація провайдера без жодного каналу → `updateMany` 0 рядків + хибний success-toast + Switch відскок. Fix: guard `channels.some(c=>c.provider===code)` перед POST.
+- **SUGGESTION** a11y: `role=button` картки провайдера `focus:ring`→`focus-visible:ring-inset` (§14, коміт 6c8eeff5).
+
+Верифіковано ЧИСТИМ: tenant-scope обох updateMany, атомарність array-form (0/2 active неможливо), activateProvider не торкається apiKey, Switch — сиблінг role=button (не nested-interactive), tabIndex+onKeyDown Enter&Space+aria-label (WCAG 2.1.1). tsc api/web 0.
+
+---
+
 ## 2026-09-06 — fix(review): Phase 3 «мульти-канал сповіщень» — atomic upsert + orgId-scope + UX
 
 ### ff0c009f notifications Phase 3 — atomic upsert, orgId-scope, verify guard, UX
