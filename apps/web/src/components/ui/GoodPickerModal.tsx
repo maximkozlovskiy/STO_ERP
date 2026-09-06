@@ -6,6 +6,7 @@ import { Modal } from './modal';
 import { Input } from './input';
 import { Spinner } from './spinner';
 import { cn } from '@/lib/utils';
+import { pickScannedGood } from '@/lib/barcode';
 import { CategoryTree, collectDescendantIds } from './category-tree';
 import type { CategoryNode } from './category-tree';
 
@@ -21,6 +22,8 @@ export interface GoodPickerItem {
   category?: string | null;
   unitId?: string | null;
   unitShortName?: string | null;
+  barcode?: string | null;
+  barcodes?: string[];
 }
 
 interface StockTotal {
@@ -172,10 +175,24 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
     <Modal open={open} onClose={onClose} title="Оберіть товар" size="lg">
       <div className="flex flex-col gap-3">
         <Input
-          placeholder="Пошук товару..."
+          placeholder="Пошук товару / штрих-код..."
           value={query}
           autoFocus
           onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => {
+            // Сканер ШК: Enter → авто-вибір за точним ШК або єдиним результатом.
+            if (e.key !== 'Enter') return;
+            const picked = pickScannedGood(items, query);
+            if (!picked) return;
+            e.preventDefault();
+            const meta = [picked.internalCode, picked.sku].filter(Boolean).join(' · ');
+            onSelect({
+              ...picked,
+              primary: picked.name,
+              secondary: meta ? `${meta} · ${picked.salePrice} ₴` : `${picked.salePrice} ₴`,
+            });
+            onClose();
+          }}
         />
 
         <div className="flex gap-0 min-h-0" style={{ height: '420px' }}>

@@ -32,6 +32,12 @@ interface SearchComboboxProps<T extends { id: string }> {
   errorMessage?: string;
   hint?: string;
   className?: string;
+  /**
+   * Scan-submit (сканер ШК): Enter БЕЗ попередньої стрілкової навігації. Отримує
+   * поточні результати + введений текст, повертає товар для авто-вибору або null.
+   * Опційний — без нього Enter@activeIndex<0 нічого не робить (стара поведінка).
+   */
+  scanSubmit?: (items: (T & ComboboxItem)[], typed: string) => (T & ComboboxItem) | null;
 }
 
 export function SearchCombobox<T extends { id: string }>({
@@ -47,6 +53,7 @@ export function SearchCombobox<T extends { id: string }>({
   errorMessage,
   hint,
   className,
+  scanSubmit,
 }: SearchComboboxProps<T>) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<(T & ComboboxItem)[]>([]);
@@ -148,6 +155,13 @@ export function SearchCombobox<T extends { id: string }>({
     } else if (e.key === 'Enter' && activeIndex >= 0) {
       e.preventDefault();
       handleSelect(items[activeIndex]);
+    } else if (e.key === 'Enter' && scanSubmit) {
+      // Сканер ШК: Enter без стрілкової навігації → авто-вибір за точним ШК / єдиним результатом.
+      const picked = scanSubmit(items, query);
+      if (picked) {
+        e.preventDefault();
+        handleSelect(picked);
+      }
     } else if (e.key === 'Escape') {
       setOpen(false);
     }

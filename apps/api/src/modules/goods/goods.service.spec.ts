@@ -633,4 +633,45 @@ describe('GoodsService', () => {
       expect(callArgs.where.deletedAt).toBeNull();
     });
   });
+
+  // Сканер ШК: пошук товару включає додаткові ШК (GoodBarcode[]), не лише Good.barcode.
+  describe('findAll — пошук за штрих-кодом', () => {
+    const q = (partial: Record<string, unknown> = {}) =>
+      ({ page: 1, limit: 20, ...partial }) as never;
+
+    it('?q= шукає і по name/sku/barcode, і по barcodes[] (точний матч, orgId)', async () => {
+      prisma.good.findMany.mockResolvedValueOnce([{ ...goodRow, barcodes: [{ barcode: '999' }] }]);
+      prisma.good.count.mockResolvedValueOnce(1);
+      const res = await service.findAll('org-1', q({ q: '999' }));
+      const where = prisma.good.findMany.mock.calls[0][0].where;
+      // OR має містити barcodes.some з orgId
+      const hasBarcodesSome = (where.OR as Array<Record<string, unknown>>).some(
+        c => 'barcodes' in c,
+      );
+      expect(hasBarcodesSome).toBe(true);
+      // toDto віддає barcodes як string[]
+      expect(res.items[0].barcodes).toEqual(['999']);
+    });
+
+    it('?barcode= (exact) шукає головний АБО додатковий ШК; фільтрує orgId', async () => {
+      prisma.good.findMany.mockResolvedValueOnce([goodRow]);
+      prisma.good.count.mockResolvedValueOnce(1);
+      await service.findAll('org-1', q({ barcode: '4820000000012' }));
+      const where = prisma.good.findMany.mock.calls[0][0].where;
+      expect(where.orgId).toBe('org-1');
+      expect(Array.isArray(where.OR)).toBe(true);
+      // одна з гілок — головний barcode, інша — barcodes.some
+      const branches = where.OR as Array<Record<string, unknown>>;
+      expect(branches.some(b => b.barcode === '4820000000012')).toBe(true);
+      expect(branches.some(b => 'barcodes' in b)).toBe(true);
+    });
+
+    it('include підтягує barcodes; toDto без barcodes → []', async () => {
+      prisma.good.findMany.mockResolvedValueOnce([goodRow]); // без barcodes у row
+      prisma.good.count.mockResolvedValueOnce(1);
+      const res = await service.findAll('org-1', q({ q: 'олива' }));
+      expect(prisma.good.findMany.mock.calls[0][0].include.barcodes).toBeDefined();
+      expect(res.items[0].barcodes).toEqual([]);
+    });
+  });
 });

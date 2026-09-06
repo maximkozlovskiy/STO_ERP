@@ -22,6 +22,11 @@ interface SearchPickerModalProps<T extends SearchPickerItem> {
   searchPlaceholder?: string;
   emptyText?: string;
   renderItem?: (item: T, selected: boolean) => ReactNode;
+  /**
+   * Сканер ШК: Enter у полі пошуку → авто-вибір товару (точний ШК-збіг або єдиний
+   * результат). Опційно — лише для товарних пікерів; інші споживачі не передають.
+   */
+  scanSubmit?: (items: T[], typed: string) => T | null;
 }
 
 export function SearchPickerModal<T extends SearchPickerItem>({
@@ -34,6 +39,7 @@ export function SearchPickerModal<T extends SearchPickerItem>({
   searchPlaceholder = 'Пошук...',
   emptyText = 'Нічого не знайдено',
   renderItem,
+  scanSubmit,
 }: SearchPickerModalProps<T>) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<T[]>([]);
@@ -118,6 +124,15 @@ export function SearchPickerModal<T extends SearchPickerItem>({
           onChange={e => {
             setQuery(e.target.value);
             search(e.target.value);
+          }}
+          onKeyDown={e => {
+            // Сканер ШК: Enter → авто-вибір за точним ШК або єдиним результатом.
+            if (e.key !== 'Enter' || !scanSubmit) return;
+            const picked = scanSubmit(items, query);
+            if (!picked) return;
+            e.preventDefault();
+            onSelect(picked);
+            handleClose();
           }}
         />
         {error && (

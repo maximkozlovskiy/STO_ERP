@@ -24,6 +24,7 @@ import { useTabBarContext } from '@/contexts/TabBarContext';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
+import { pickScannedGood } from '@/lib/barcode';
 import {
   STOCK_DOC_STATUS_LABELS,
   STOCK_DOC_STATUS_TRANSITIONS,
@@ -55,6 +56,8 @@ interface Good {
   name: string;
   sku: string | null;
   unit: string | null;
+  barcode?: string | null;
+  barcodes?: string[];
 }
 
 interface PurchaseOrderRef {
@@ -418,7 +421,11 @@ export function StockDocumentCreateModal({
 
   // ── Good picker ───────────────────────────────────────────────────────────
 
-  type GoodItem = SearchPickerItem & { unit?: string | null };
+  type GoodItem = SearchPickerItem & {
+    unit?: string | null;
+    barcode?: string | null;
+    barcodes?: string[];
+  };
 
   const fetchGoodItems = useCallback(async (q: string): Promise<GoodItem[]> => {
     const data = await apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=20`);
@@ -427,6 +434,8 @@ export function StockDocumentCreateModal({
       primary: g.name,
       secondary: g.sku ?? undefined,
       unit: g.unit,
+      barcode: g.barcode,
+      barcodes: g.barcodes,
     }));
   }, []);
 
@@ -1158,8 +1167,9 @@ export function StockDocumentCreateModal({
         onClose={() => setGoodSearchOpen(false)}
         title="Оберіть товар"
         fetchItems={fetchGoodItems}
-        searchPlaceholder="Назва, артикул…"
+        searchPlaceholder="Назва, артикул / штрих-код…"
         emptyText="Товарів не знайдено"
+        scanSubmit={(items, typed) => pickScannedGood(items, typed)}
         onSelect={item => {
           setNewLine(l => ({
             ...l,

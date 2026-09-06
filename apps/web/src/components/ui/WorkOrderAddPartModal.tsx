@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
+import { pickScannedGood } from '@/lib/barcode';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -21,6 +22,8 @@ interface Good {
   name: string;
   sku?: string;
   salePrice: number;
+  barcode?: string | null;
+  barcodes?: string[];
 }
 
 interface Warehouse {
@@ -258,6 +261,7 @@ export function WorkOrderAddPartModal({
                   r.items.map(g => ({ ...g, primary: g.name, secondary: g.sku })),
                 )
               }
+              scanSubmit={(items, typed) => pickScannedGood(items, typed)}
             />
           ) : (
             <div>

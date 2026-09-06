@@ -124,6 +124,8 @@ export class GoodResponseDto {
   @ApiPropertyOptional() goodCategoryId?: string | null;
   @ApiPropertyOptional() goodCategoryName?: string | null;
   @ApiPropertyOptional() barcode!: string | null;
+  /** Додаткові ШК (GoodBarcode[]) — для сканера/exact-match на фронті. */
+  @ApiPropertyOptional({ type: [String] }) barcodes?: string[];
   @ApiPropertyOptional() notes!: string | null;
   @ApiPropertyOptional({ enum: GoodType }) goodType?: GoodType | null;
   @ApiPropertyOptional() preferredSupplierId?: string | null;

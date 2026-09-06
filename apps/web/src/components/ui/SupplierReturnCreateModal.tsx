@@ -10,6 +10,7 @@ import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName, cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
+import { pickScannedGood } from '@/lib/barcode';
 import { SUPPLIER_RETURN_STATUS_LABELS } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -57,6 +58,8 @@ interface Good {
   sku: string | null;
   unit: string | null;
   purchasePrice: number | null;
+  barcode?: string | null;
+  barcodes?: string[];
 }
 
 interface PurchaseOrderRef {
@@ -975,6 +978,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           _sku?: string | null;
           _unit?: string;
           _price?: number;
+          barcode?: string | null;
+          barcodes?: string[];
         }) => {
           setNewLine(l => ({
             ...l,
@@ -987,6 +992,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           setGoodPickerOpen(false);
         }}
         title="Оберіть товар"
+        searchPlaceholder="Назва, артикул / штрих-код…"
+        scanSubmit={(items, typed) => pickScannedGood(items, typed)}
         fetchItems={q =>
           apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=30`).then(d =>
             d.items.map(g => ({
@@ -996,6 +1003,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               _sku: g.sku,
               _unit: g.unit ?? '',
               _price: g.purchasePrice ?? 0,
+              barcode: g.barcode,
+              barcodes: g.barcodes,
             })),
           )
         }

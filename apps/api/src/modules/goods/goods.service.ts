@@ -47,12 +47,19 @@ export class GoodsService {
       ...(query.showDeleted ? {} : { deletedAt: null }),
     };
     if (query.barcode) {
-      where.barcode = query.barcode;
+      // Exact-match для сканера: головний Good.barcode АБО будь-який із додаткових
+      // GoodBarcode[] (упаковки/аналоги). GoodBarcode без deletedAt (hard-delete) → фільтр orgId.
+      where.OR = [
+        { barcode: query.barcode },
+        { barcodes: { some: { barcode: query.barcode, orgId } } },
+      ];
     } else if (query.q) {
       where.OR = [
         { name: { contains: query.q, mode: 'insensitive' } },
         { sku: { contains: query.q, mode: 'insensitive' } },
         { barcode: { contains: query.q, mode: 'insensitive' } },
+        // Додаткові ШК (GoodBarcode[]) — точний матч (сканер дає повний код).
+        { barcodes: { some: { barcode: { equals: query.q }, orgId } } },
       ];
     }
     if (query.category) where.category = { contains: query.category, mode: 'insensitive' };
@@ -77,6 +84,7 @@ export class GoodsService {
           preferredSupplier: supplierSelect,
           goodCategory: goodCategorySelect,
           brand: brandSelect,
+          barcodes: { select: { barcode: true } },
         },
       }),
       this.prisma.good.count({ where }),
@@ -97,6 +105,7 @@ export class GoodsService {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
         goodCategory: { select: { id: true, name: true } },
         brand: { select: { name: true } },
+        barcodes: { select: { barcode: true } },
       },
     });
     if (!item) throw new NotFoundException('Товар не знайдено');
@@ -688,6 +697,7 @@ export class GoodsService {
       salePrice: import('@prisma/client').Prisma.Decimal;
       category: string | null;
       barcode: string | null;
+      barcodes?: { barcode: string }[];
       notes: string | null;
       goodType: import('@prisma/client').GoodType | null;
       preferredSupplierId: string | null;
@@ -723,6 +733,7 @@ export class GoodsService {
       goodCategoryId: item.goodCategoryId ?? null,
       goodCategoryName: item.goodCategory?.name ?? null,
       barcode: item.barcode ?? null,
+      barcodes: item.barcodes?.map(b => b.barcode) ?? [],
       notes: item.notes ?? null,
       goodType: item.goodType ?? null,
       preferredSupplierId: item.preferredSupplierId ?? null,

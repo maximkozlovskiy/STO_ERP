@@ -115,7 +115,7 @@ describe('GoodPickerModal — regression guards (Bugs #387, #388, #389)', () => 
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/good-categories'));
     await waitFor(() => expect(screen.getByText('Мастила')).toBeInTheDocument());
 
-    const input = screen.getByPlaceholderText('Пошук товару...');
+    const input = screen.getByPlaceholderText('Пошук товару / штрих-код...');
     await user.type(input, 'олива');
     expect(input).toHaveValue('олива');
 
@@ -125,7 +125,7 @@ describe('GoodPickerModal — regression guards (Bugs #387, #388, #389)', () => 
     rerender(<GoodPickerModal open onClose={vi.fn()} onSelect={vi.fn()} />);
 
     await waitFor(() => {
-      const newInput = screen.getByPlaceholderText('Пошук товару...');
+      const newInput = screen.getByPlaceholderText('Пошук товару / штрих-код...');
       expect(newInput).toHaveValue('');
     });
 

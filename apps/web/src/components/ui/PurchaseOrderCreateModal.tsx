@@ -28,6 +28,7 @@ import { useTabBarContext } from '@/contexts/TabBarContext';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName, cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
+import { pickScannedGood } from '@/lib/barcode';
 import { PO_STATUS_LABELS, PO_STATUS_TRANSITIONS, PO_STATUS_ACTION_LABELS } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/spinner';
@@ -74,6 +75,8 @@ interface Good {
   brandName?: string | null;
   unit: string | null;
   purchasePrice: number | null;
+  barcode?: string | null;
+  barcodes?: string[];
 }
 
 interface PODetail {
@@ -588,6 +591,8 @@ export function PurchaseOrderCreateModal({
     sku?: string | null;
     internalCode?: string | null;
     brandName?: string | null;
+    barcode?: string | null;
+    barcodes?: string[];
   };
 
   const fetchGoodItems = useCallback(async (q: string): Promise<GoodItem[]> => {
@@ -601,6 +606,8 @@ export function PurchaseOrderCreateModal({
       sku: g.sku,
       internalCode: g.internalCode ?? null,
       brandName: g.brandName ?? null,
+      barcode: g.barcode,
+      barcodes: g.barcodes,
     }));
   }, []);
 
@@ -1922,8 +1929,9 @@ export function PurchaseOrderCreateModal({
         onClose={() => setGoodSearchOpen(false)}
         title="Оберіть товар"
         fetchItems={fetchGoodItems}
-        searchPlaceholder="Назва, артикул…"
+        searchPlaceholder="Назва, артикул / штрих-код…"
         emptyText="Товарів не знайдено"
+        scanSubmit={(items, typed) => pickScannedGood(items, typed)}
         onSelect={item => {
           setNewLine(l => ({
             ...l,
