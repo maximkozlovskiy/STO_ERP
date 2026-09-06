@@ -60,6 +60,9 @@ function PaymentsPageInner() {
   const [method, setMethod] = useState('');
   const [fiscalStatus, setFiscalStatus] = useState('');
   const [methods, setMethods] = useState<{ code: string; name: string }[]>([]);
+  // Per-row retry state: retryFiscal.isPending спільний для всіх рядків → без цього
+  // клік по одній кнопці «Повторити» показав би loading на ВСІХ FAILED-кнопках одразу.
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const filters: PaymentsFilter = {
     page,
@@ -88,11 +91,14 @@ function PaymentsPageInner() {
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
   const onRetry = async (id: string) => {
+    setRetryingId(id);
     try {
       await retryFiscal.mutateAsync(id);
       toast.success('Фіскалізацію поставлено в чергу повторно');
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка повтору');
+    } finally {
+      setRetryingId(null);
     }
   };
 
@@ -198,7 +204,7 @@ function PaymentsPageInner() {
                           variant="outline"
                           size="sm"
                           onClick={() => void onRetry(p.id)}
-                          loading={retryFiscal.isPending}
+                          loading={retryingId === p.id}
                         >
                           <RotateCw className="h-3.5 w-3.5 mr-1" />
                           Повторити

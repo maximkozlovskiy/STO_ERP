@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectQueue } from '@nestjs/bullmq';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { Queue } from 'bullmq';
-import { Prisma } from '@prisma/client';
+import { Prisma, FiscalReceiptStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -13,6 +13,10 @@ import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './pa
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
 // Intl.NumberFormat under the hood per call. Used on every payment.create when SMS sent.
 const UAH_AMOUNT_FMT = new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2 });
+
+// Допустимі значення фіскального статусу для валідації query-фільтра (enum-driven — без
+// хардкоду рядків, автоматично підхоплює нові значення FiscalReceiptStatus).
+const FISCAL_STATUS_VALUES = new Set<string>(Object.values(FiscalReceiptStatus));
 
 // Спільний include для findAll/findOne: контрагент (ім'я) + назви рахунку-призначення.
 const PAYMENT_INCLUDE = {
@@ -62,17 +66,23 @@ export class PaymentsService {
       if (!cp) throw new NotFoundException('Контрагента не знайдено');
       where.counterpartyId = opts.counterpartyId;
     }
-    // Діапазон дат за createdAt (ISO-рядки від фронту).
+    // Діапазон дат за createdAt (date-only рядки YYYY-MM-DD від фронту).
+    // dateTo МУСИТЬ бути inclusive-of-full-day: `new Date('2026-09-06')` = midnight UTC →
+    // голий lte виключив би всі платежі, зроблені пізніше того ж дня. Розширюємо до кінця доби
+    // (дзеркалить supplier-payments.service: `new Date(dateTo + 'T23:59:59.999Z')`).
     if (opts.dateFrom || opts.dateTo) {
       const createdAt: Prisma.DateTimeFilter = {};
-      if (opts.dateFrom) createdAt.gte = new Date(opts.dateFrom);
-      if (opts.dateTo) createdAt.lte = new Date(opts.dateTo);
+      if (opts.dateFrom) createdAt.gte = new Date(opts.dateFrom + 'T00:00:00.000Z');
+      if (opts.dateTo) createdAt.lte = new Date(opts.dateTo + 'T23:59:59.999Z');
       where.createdAt = createdAt;
     }
     if (opts.method) where.method = opts.method;
     // fiscalStatus: 'none' → фіскалізація не застосовна (null); інакше eq на enum-значенні.
+    // Валідуємо проти enum ДО передачі у Prisma: невалідне значення (напр. ?fiscalStatus=garbage)
+    // Prisma відхиляє на рівні запиту → HTTP 500 (не-i18n, шум у Sentry). Ігноруємо невідоме
+    // значення (фільтр не застосовується), як для будь-якого нерозпізнаного query-параметра.
     if (opts.fiscalStatus === 'none') where.fiscalStatus = null;
-    else if (opts.fiscalStatus)
+    else if (opts.fiscalStatus && FISCAL_STATUS_VALUES.has(opts.fiscalStatus))
       where.fiscalStatus = opts.fiscalStatus as Prisma.PaymentWhereInput['fiscalStatus'];
 
     const skip = (safePage - 1) * safeLimit;
