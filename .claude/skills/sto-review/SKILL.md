@@ -1323,6 +1323,13 @@ grep -rnE "const (patch|save|update|toggle)[A-Za-z]* = (async )?\(" apps/web/src
 **Фікс:** wrapper повертає `boolean` (`return true`/`return false` у catch); caller гейтить `const ok = await wrapper(...); if (!ok) return;` перед success-toast/close. Ланцюг залежних мутацій — 2-й крок лише `if (ok)`; додати in-flight guard (`movingId`) проти конкурентних запусків.
 **Severity:** IMPORTANT — хибний UX-сигнал (juser думає що збережено) + часткова неконсистентність у dependent-write ланцюгах.
 
+### 2026-09-06 — provider-агностичне «template-id» поле → inline-канал шле ПОРОЖНІЙ текст — §5/§13
+
+**Сигнал:** нове опц. поле-джерело-контенту (`externalTemplateId`) зберігається per-config незалежно від провайдера, а resolve-фільтр зараховує канал придатним за самою наявністю поля: `filter(c => hasLocalTemplate(c) || c.externalTemplateId)`. Але поле консумить лише ЧАСТИНА провайдерів/каналів (eSputnik Viber/Telegram через smartsend); inline-провайдер (SMS усіх, TurboSMS Viber) ігнорує його й шле `message` — який для external-template каналу = `''` (renderTemplate('')). Результат: `sendsms {text:''}` / `viber {text:''}` — мовчазна порожня відправка. Прямий API-виклик в обхід UI записує template-id на inline-канал.
+**Grep:** `grep -rnE "\|\|\s*c\.(externalTemplateId|templateId|externalId)" apps/api/src/modules --include="*.service.ts"` — фільтр придатності що OR-иться на опц. поле без перевірки провайдера. Плюс: чи `templateBody: ... ?? ''` подається inline-провайдеру.
+**Фікс (3 шари):** (1) провайдер декларує які канали template-based — `readonly templateChannels?: NotificationChannel[]` (SSOT, віддається у `registry.list()` для UI); (2) upsert примусово `field = isTemplateChannel ? dto.field ?? null : null` (defence-in-depth проти прямого API); (3) resolve-фільтр: канал без локального шаблону придатний лише якщо `registry.get(provider)?.templateChannels?.includes(channel)`. Frontend derive `needsX` з `provider.templateChannels`, не хардкод-Set. +регрес: inline-канал зі stray-template-id → канал ВИКЛЮЧЕНО / поле=null.
+**Severity:** IMPORTANT — мовчазна порожня відправка на mis-config; TS зелений (поле опційне у всіх шарах).
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
