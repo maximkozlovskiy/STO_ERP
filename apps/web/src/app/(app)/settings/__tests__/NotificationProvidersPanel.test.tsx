@@ -39,6 +39,14 @@ vi.mock('@/lib/ref-cache', () => ({
 
 const BRANCHES = [{ id: 'br-1', name: 'Філія 1' }];
 const PROVIDERS = [{ code: 'turbosms', name: 'TurboSMS', channels: ['SMS', 'VIBER'] }];
+// eSputnik: SMS inline + VIBER/TELEGRAM за шаблоном (templateChannels — джерело правди
+// для показу поля «ID шаблону»; хардкод-сетів на фронті більше нема).
+const ESPUTNIK = {
+  code: 'esputnik',
+  name: 'eSputnik',
+  channels: ['SMS', 'VIBER', 'TELEGRAM'],
+  templateChannels: ['VIBER', 'TELEGRAM'],
+};
 
 function channelRow(over: Partial<Record<string, unknown>> = {}) {
   return {
@@ -178,5 +186,133 @@ describe('NotificationProvidersPanel', () => {
     const down = await screen.findByLabelText('Знизити пріоритет');
     expect(up).toBeDisabled();
     expect(down).toBeDisabled();
+  });
+
+  // ─── eSputnik: поле «ID шаблону» похідне від provider.templateChannels ────────
+  describe('eSputnik template-канали (needsExternalTemplate з метаданих)', () => {
+    // Мок з eSputnik-провайдером; за замовчуванням каналів у філії нема (prefill порожній).
+    function esputnikMock(channels: unknown[] = []) {
+      apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
+        if (path === '/branches') return Promise.resolve(BRANCHES);
+        if (path === '/notification-providers') return Promise.resolve([ESPUTNIK]);
+        if (path === '/notification-providers/esputnik/verify')
+          return Promise.resolve({ valid: true });
+        if (path.startsWith('/notification-channels/')) {
+          if (opts?.method === 'PATCH') return Promise.resolve({ id: 'row-1' });
+          return Promise.resolve(channels);
+        }
+        return Promise.resolve({});
+      });
+    }
+
+    it('перший канал SMS (inline) → поле «ID шаблону» НЕ показується', async () => {
+      esputnikMock();
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      // openCreds вибирає channels[0] === 'SMS'
+      await user.click(await screen.findByText('eSputnik'));
+      await screen.findByPlaceholderText('Введіть токен провайдера');
+      expect(screen.queryByPlaceholderText('напр. 12345')).not.toBeInTheDocument();
+    });
+
+    it("перемикання каналу на VIBER → поле «ID шаблону» З'ЯВЛЯЄТЬСЯ; назад на SMS → зникає", async () => {
+      esputnikMock();
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      await user.click(await screen.findByText('eSputnik'));
+      await screen.findByPlaceholderText('Введіть токен провайдера');
+
+      // Канал-Select показується (channels.length > 1). Обираємо VIBER.
+      const channelSelect = screen.getByRole('combobox');
+      await user.selectOptions(channelSelect, 'VIBER');
+      expect(await screen.findByPlaceholderText('напр. 12345')).toBeInTheDocument();
+
+      // Повертаємось на SMS — поле зникає (inline-канал).
+      await user.selectOptions(channelSelect, 'SMS');
+      await waitFor(() =>
+        expect(screen.queryByPlaceholderText('напр. 12345')).not.toBeInTheDocument(),
+      );
+    });
+
+    it('TELEGRAM → показується поле + підказка «лише підписаним отримувачам»', async () => {
+      esputnikMock();
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      await user.click(await screen.findByText('eSputnik'));
+      await screen.findByPlaceholderText('Введіть токен провайдера');
+
+      await user.selectOptions(screen.getByRole('combobox'), 'TELEGRAM');
+      expect(await screen.findByPlaceholderText('напр. 12345')).toBeInTheDocument();
+      expect(screen.getByText(/лише підписаним отримувачам/)).toBeInTheDocument();
+    });
+
+    it('save VIBER: PATCH містить externalTemplateId (template-канал)', async () => {
+      esputnikMock();
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      await user.click(await screen.findByText('eSputnik'));
+
+      const token = await screen.findByPlaceholderText('Введіть токен провайдера');
+      await user.type(token, 'esp-tok');
+      await user.selectOptions(screen.getByRole('combobox'), 'VIBER');
+      const tplInput = await screen.findByPlaceholderText('напр. 12345');
+      await user.type(tplInput, 'tpl-42');
+
+      await user.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+      await waitFor(() => {
+        const patch = apiFetchMock.mock.calls.find(
+          c => c[0] === '/notification-channels/br-1' && c[1]?.method === 'PATCH',
+        );
+        expect(patch).toBeTruthy();
+        const body = JSON.parse(patch![1].body as string);
+        expect(body.channel).toBe('VIBER');
+        expect(body.provider).toBe('esputnik');
+        expect(body.externalTemplateId).toBe('tpl-42');
+      });
+    });
+
+    it('save SMS: PATCH НЕ містить externalTemplateId (inline-канал → undefined)', async () => {
+      esputnikMock();
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      await user.click(await screen.findByText('eSputnik'));
+
+      const token = await screen.findByPlaceholderText('Введіть токен провайдера');
+      await user.type(token, 'esp-tok'); // канал лишається дефолтним SMS
+      await user.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+      await waitFor(() => {
+        const patch = apiFetchMock.mock.calls.find(
+          c => c[0] === '/notification-channels/br-1' && c[1]?.method === 'PATCH',
+        );
+        expect(patch).toBeTruthy();
+        const body = JSON.parse(patch![1].body as string);
+        expect(body.channel).toBe('SMS');
+        // needsExternalTemplate('esputnik','SMS') === false → поле не додається у dto.
+        expect(body).not.toHaveProperty('externalTemplateId');
+      });
+    });
+
+    it('prefill: відкриття кредів підтягує externalTemplateId наявного VIBER-каналу', async () => {
+      // Наявний VIBER-канал eSputnik з template-id → openCreds бере channels[0]===SMS,
+      // але при перемиканні на VIBER prefill має показати збережений tpl-id.
+      esputnikMock([
+        channelRow({
+          id: 'ch-viber',
+          channel: 'VIBER',
+          provider: 'esputnik',
+          externalTemplateId: 'saved-tpl-7',
+        }),
+      ]);
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      await user.click(await screen.findByText('eSputnik'));
+      await screen.findByPlaceholderText('Введіть токен провайдера');
+
+      await user.selectOptions(screen.getByRole('combobox'), 'VIBER');
+      const tplInput = (await screen.findByPlaceholderText('напр. 12345')) as HTMLInputElement;
+      expect(tplInput.value).toBe('saved-tpl-7');
+    });
   });
 });

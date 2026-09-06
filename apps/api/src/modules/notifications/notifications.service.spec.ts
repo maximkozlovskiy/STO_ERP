@@ -242,6 +242,68 @@ describe('NotificationsService.resolveConfig', () => {
 
     await expect(service.resolveConfig('org-1', 'br-1', 'WO_COMPLETED')).resolves.toBeNull();
   });
+
+  it('eSputnik VIBER БЕЗ externalTemplateId і без локального шаблону → канал ВИКЛЮЧЕНО (нема джерела тексту)', async () => {
+    channelConfigFindMany.mockResolvedValue([
+      cfgRow({
+        channel: NotificationChannel.VIBER,
+        provider: 'esputnik',
+        externalTemplateId: null, // template-провайдер, але шаблон НЕ вказано
+      }),
+    ]);
+    templateFindMany.mockResolvedValue([]); // локального шаблону теж нема
+    (registry.get as ReturnType<typeof vi.fn>).mockReturnValue({
+      code: 'esputnik',
+      templateChannels: [NotificationChannel.VIBER, NotificationChannel.TELEGRAM],
+    });
+
+    // Без externalTemplateId І без локального шаблону — жодного джерела тексту → пропуск → null.
+    await expect(service.resolveConfig('org-1', 'br-1', 'WO_COMPLETED')).resolves.toBeNull();
+  });
+
+  it('eSputnik SMS з externalTemplateId (випадково) але без локального шаблону → канал ВИКЛЮЧЕНО (SMS inline, не в templateChannels)', async () => {
+    channelConfigFindMany.mockResolvedValue([
+      cfgRow({
+        channel: NotificationChannel.SMS,
+        provider: 'esputnik',
+        externalTemplateId: 'tpl-stray', // template-id на inline SMS-каналі (обхід upsert-guard)
+      }),
+    ]);
+    templateFindMany.mockResolvedValue([]); // локального SMS-шаблону нема
+    (registry.get as ReturnType<typeof vi.fn>).mockReturnValue({
+      code: 'esputnik',
+      // SMS НЕ входить у templateChannels eSputnik → для SMS канал inline → потрібен локальний текст.
+      templateChannels: [NotificationChannel.VIBER, NotificationChannel.TELEGRAM],
+    });
+
+    // SMS inline: externalTemplateId ігнорується resolveConfig-ом → нема тексту → пропуск → null.
+    // (Інакше esputnik.send для SMS відправив би ПОРОЖНІЙ inline-текст.)
+    await expect(service.resolveConfig('org-1', 'br-1', 'WO_COMPLETED')).resolves.toBeNull();
+  });
+
+  it('eSputnik TELEGRAM з externalTemplateId без локального шаблону → канал ВКЛЮЧЕНО (template-channel)', async () => {
+    channelConfigFindMany.mockResolvedValue([
+      cfgRow({
+        channel: NotificationChannel.TELEGRAM,
+        provider: 'esputnik',
+        externalTemplateId: 'tpl-tg',
+      }),
+    ]);
+    templateFindMany.mockResolvedValue([]);
+    (registry.get as ReturnType<typeof vi.fn>).mockReturnValue({
+      code: 'esputnik',
+      templateChannels: [NotificationChannel.VIBER, NotificationChannel.TELEGRAM],
+    });
+
+    const cfg = await service.resolveConfig('org-1', 'br-1', 'WO_COMPLETED');
+    expect(cfg).not.toBeNull();
+    expect(cfg!.channels).toHaveLength(1);
+    expect(cfg!.channels[0]).toMatchObject({
+      channel: NotificationChannel.TELEGRAM,
+      externalTemplateId: 'tpl-tg',
+      templateBody: '',
+    });
+  });
 });
 
 describe('NotificationsService.sendWithConfig', () => {

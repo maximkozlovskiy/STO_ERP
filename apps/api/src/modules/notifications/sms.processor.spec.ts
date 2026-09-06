@@ -149,6 +149,52 @@ describe('SmsProcessor (fallback engine)', () => {
     expect(queueAdd).not.toHaveBeenCalled(); // без нового fallback-job
   });
 
+  it('externalTemplateId у step → проброшено у provider.send (template-based Viber/Telegram)', async () => {
+    // eSputnik VIBER: текст живе у шаблоні кабінету, message порожній, у send йде лише locator+tplId.
+    const templateStep = {
+      channel: NotificationChannel.VIBER,
+      provider: 'esputnik',
+      apiKey: 'tok',
+      senderName: 'STO',
+      message: '', // порожній inline-текст — джерело тексту у шаблоні провайдера
+      externalTemplateId: 'tpl-42',
+    };
+    send.mockResolvedValueOnce({ accepted: true, providerMessageId: 'v-1' });
+    await processor.process(makeJob(0, [templateStep]));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    const arg = send.mock.calls[0][0];
+    // Ключова регресія-guard: externalTemplateId ПОВИНЕН дійти до провайдера (інакше
+    // esputnik.send поверне accepted:false «потрібен ID шаблону» → тихий fallback/провал).
+    expect(arg.externalTemplateId).toBe('tpl-42');
+    expect(arg.channel).toBe(NotificationChannel.VIBER);
+    expect(arg.message).toBe(''); // порожній message не заважає template-send
+  });
+
+  it('empty-message template-канал accepted → SENT без крашу (smartsend ігнорує inline-текст)', async () => {
+    const templateStep = {
+      channel: NotificationChannel.TELEGRAM,
+      provider: 'esputnik',
+      apiKey: 'tok',
+      senderName: 'STO',
+      message: '', // renderTemplate('') === '' — валідний стан для template-каналу
+      externalTemplateId: 'tpl-tg',
+    };
+    send.mockResolvedValueOnce({ accepted: true, providerMessageId: 't-1' });
+    await expect(processor.process(makeJob(0, [templateStep]))).resolves.toBeUndefined();
+    expect(logCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'SENT', channel: NotificationChannel.TELEGRAM }),
+      }),
+    );
+  });
+
+  it('inline-канал (SMS) без externalTemplateId → provider.send отримує undefined (не порожній рядок примусово)', async () => {
+    send.mockResolvedValueOnce({ accepted: true, providerMessageId: 's-1' });
+    await processor.process(makeJob(0, [step(NotificationChannel.SMS)]));
+    expect(send.mock.calls[0][0].externalTemplateId).toBeUndefined();
+  });
+
   it('PII: application-логи маскують телефон до останніх 4 цифр (повний номер лише у NotificationLog.phone)', async () => {
     const logSpy = vi.spyOn(processor['logger'], 'log');
     send.mockResolvedValueOnce({ accepted: true, providerMessageId: 'v-1' });

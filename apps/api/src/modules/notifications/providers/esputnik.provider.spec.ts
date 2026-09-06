@@ -74,6 +74,55 @@ describe('EsputnikProvider', () => {
     expect(body).toEqual({ recipients: [{ locator: '380671112233' }] });
   });
 
+  it('send VIBER з externalTemplateId + ПОРОЖНІЙ message → smartsend лише locator (inline-текст ігнорується, без порожнього SMS)', async () => {
+    fetchMock.mockResolvedValueOnce(okResponse({ id: 'v-empty' }));
+    const res = await provider.send({
+      channel: NotificationChannel.VIBER,
+      phone: '380671112233',
+      message: '', // renderTemplate('') === '' коли локального шаблону нема — текст у кабінеті eSputnik
+      creds: { apiKey: 'tok' },
+      externalTemplateId: 'tpl-empty',
+    });
+    expect(res.accepted).toBe(true);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toContain('/v1/message/tpl-empty/smartsend');
+    const body = JSON.parse(opts.body as string);
+    // Порожній message НЕ потрапляє у payload (тіло — лише отримувач); жодного `text: ''`.
+    expect(body).toEqual({ recipients: [{ locator: '380671112233' }] });
+    expect(body).not.toHaveProperty('text');
+  });
+
+  it('send SMS з externalTemplateId (випадково) → все одно inline sendsms (tplId ігнорується для SMS)', async () => {
+    // Захист-у-глибину: навіть якщо externalTemplateId просочився у SMS-step, esputnik.send
+    // для SMS іде inline-гілкою (sendsms з message), НЕ template-smartsend.
+    fetchMock.mockResolvedValueOnce(okResponse({ id: 'sms-tpl' }));
+    const res = await provider.send({
+      channel: NotificationChannel.SMS,
+      phone: '380671112233',
+      message: 'реальний inline-текст',
+      creds: { apiKey: 'tok', senderName: 'STO' },
+      externalTemplateId: 'tpl-stray',
+    });
+    expect(res.accepted).toBe(true);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toContain('/v1/message/sendsms');
+    expect(url).not.toContain('smartsend');
+    const body = JSON.parse(opts.body as string);
+    expect(body).toEqual({
+      from: 'STO',
+      text: 'реальний inline-текст',
+      phoneNumbers: ['380671112233'],
+    });
+  });
+
+  it('templateChannels = [VIBER, TELEGRAM] (SMS inline — не входить)', () => {
+    expect(provider.templateChannels).toEqual([
+      NotificationChannel.VIBER,
+      NotificationChannel.TELEGRAM,
+    ]);
+    expect(provider.templateChannels).not.toContain(NotificationChannel.SMS);
+  });
+
   it('send TELEGRAM з externalTemplateId → smartsend', async () => {
     fetchMock.mockResolvedValueOnce(okResponse({ id: 't-1' }));
     const res = await provider.send({

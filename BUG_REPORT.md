@@ -3211,3 +3211,44 @@ src/components/ui/__tests__` — 391 passed (37 files).
 - **«Дві data-міграції що пишуть секрети raw SQL»** (з завдання) — у репо ВІДСУТНІ: жоден міграційний/seed-скрипт не пише apiKey/smsApiKey/checkboxLicenseKey через raw SQL. Legacy-plaintext (до-Phase-4) покривається толерантним decrypt (тест (c)/(e)). Не баг.
 
 **Результат:** 0 функціональних багів; 1 закрита coverage-gap (Bug #652, HIGH regression-guard). Нові тести: api +6 (`field-encryption.integration.spec.ts`, live-DB). Full API 1437 passed (97 files, +6). tsc api=0. E2E пропущено (Playwright MCP DOWN, за інструкцією — не блокер).
+
+## Session 2026-09-06 — eSputnik provider bug hunt (feat esputnik 1a6fe9ab + review-fix 8f20a0bf, feat/supplier-payments)
+
+**Scope:** `esputnik.provider.ts` (+spec 9→13 тестів), `provider-registry.ts` (+templateChannels у `list()`, новий spec), `notification-provider.interface.ts` (+`templateChannels?`), `notifications.service.ts` (`resolveConfig` template-channel gating + `upsertBranchChannel` force-null на inline), `sms.processor.ts` (`externalTemplateId` → provider.send), `schema.prisma`+migration (+TELEGRAM enum, +`externalTemplateId` column, applied), `NotificationProvidersPanel.tsx` (needsExternalTemplate з `provider.templateChannels`, хардкод-сети видалено). Baseline: tsc api=0 / web=0; API notif 81 зелено; web 616 зелено. Playwright MCP DOWN → E2E пропущено (не блокер).
+
+**Verdict — код КОРЕКТНИЙ (двічі рев'юнуто).** 0 функціональних багів. Знайдено 4 coverage-gap (test-gap = defect за SKILL) на load-bearing шляхах, які тихо зрегресували б без червоного тесту. Усі закрито.
+
+### Bug #653 (MEDIUM — coverage-gap) — `[x] виправлено`
+
+**Симптом:** `resolveConfig` template-channel gating (ядро review-fix 8f20a0bf) мав тести лише для 2 з 4 гілок: eSputnik VIBER+tplId → included; turbosms VIBER+tplId → excluded. Не покриті критичні гілки: (а) eSputnik VIBER БЕЗ externalTemplateId і без локального шаблону → має бути EXCLUDED (нема джерела тексту); (б) eSputnik SMS з випадковим externalTemplateId без локального шаблону → має бути EXCLUDED (SMS inline, НЕ у templateChannels — це і є суть review-fix, інакше пішов би порожній inline-SMS). Регрес у `filter`-предикаті (напр. втрата `templateChannels?.includes(c.channel)` → перевірка лише `!!externalTemplateId`) пройшов би CI зеленим.
+
+**Фікс:** `notifications.service.spec.ts` +3 кейси: eSputnik VIBER без tplId→null; eSputnik SMS+stray-tplId→null (verify review-fix тримається); eSputnik TELEGRAM+tplId→included (templateBody=''). **Severity MEDIUM** (гейтить порожній send; не втрата даних, але «мовчазний» лист без тексту / пропущений канал).
+
+### Bug #654 (MEDIUM — coverage-gap) — `[x] виправлено`
+
+**Симптом:** `sms.processor.process` пробрасує `externalTemplateId: step.externalTemplateId` у `impl.send()` — але жоден тест цього не перевіряв. Видалення цього поля з виклику send (типовий refactor «навіщо ще одне поле») → eSputnik VIBER/TELEGRAM отримав би `externalTemplateId=undefined` → `accepted:false «потрібен ID шаблону»` → тихий fallback/провал доставки. CI лишався б зеленим. Плюс не перевірено empty-message template-шлях (renderTemplate('')='' для template-каналу → send без крашу).
+
+**Фікс:** `sms.processor.spec.ts` +3 кейси: externalTemplateId проброшено у send (regression-guard); empty-message TELEGRAM template-канал accepted→SENT без крашу; inline SMS без tplId → send отримує `undefined` (не примусовий порожній рядок). **Severity MEDIUM** (тихий провал доставки template-каналів при регресі threading).
+
+### Bug #655 (MEDIUM — coverage-gap) — `[x] виправлено`
+
+**Симптом:** `NotificationProviderRegistry` мав 0 власних тестів. `list()` (мапить `templateChannels: p.templateChannels ?? []`) — єдине джерело правди для UI-показу поля «ID шаблону» І для бек-валідації. Регрес (втрата `?? []` → undefined ламає `.includes` на фронті; або зникнення поля з мапи) невидимий: інші specs мокають `registry.list`/`registry.get`, реальний registry × реальні провайдери не звірявся. Не перевірено інваріант «SMS eSputnik НЕ у templateChannels».
+
+**Фікс:** новий `providers/provider-registry.spec.ts` (6 тестів проти реальних `TurboSmsProvider`+`EsputnikProvider`): get() за кодом/null; list() обидва провайдери; eSputnik templateChannels=[VIBER,TELEGRAM] і SMS НЕ входить; TurboSMS templateChannels=[] (усі inline); templateChannels завжди масив. Плюс `esputnik.provider.spec.ts` +3: VIBER+empty message → smartsend лише `{recipients:[{locator}]}` без `text`; SMS+stray-tplId → все одно inline sendsms (не smartsend); `provider.templateChannels` контракт. **Severity MEDIUM** (регрес `list()` ламає і UI field-visibility, і бек-гейтинг одночасно).
+
+### Bug #656 (HIGH — coverage-gap, sync-agent-flagged) — `[x] виправлено`
+
+**Симптом:** `NotificationProvidersPanel.test.tsx` мав фікстуру ЛИШЕ turbosms (без `templateChannels`) → уся eSputnik-гілка `needsExternalTemplate` (похідна від `provider.templateChannels`, хардкод-сети видалено у review-fix) БЕЗ покриття. Не тестувалось: поле «ID шаблону» показується для VIBER/TELEGRAM, ховається для SMS, PATCH включає/виключає `externalTemplateId` за каналом, prefill наявного tpl-id. Регрес логіки видимості поля (напр. повернення хардкод-сету або зламаний `?.includes`) → користувач не зможе задати шаблон Viber АБО задасть tpl-id на SMS → не проходив би жоден тест. Sync-agent позначив саме цей файл.
+
+**Фікс:** `NotificationProvidersPanel.test.tsx` +6 кейсів (нова `describe` + eSputnik-фікстура з `templateChannels:['VIBER','TELEGRAM']`): SMS(default)→поле сховане; перемикання VIBER→поле з'являється, назад SMS→зникає; TELEGRAM→поле+підказка «лише підписаним»; save VIBER→PATCH.body має `externalTemplateId:'tpl-42'`; save SMS→PATCH.body БЕЗ `externalTemplateId`; prefill VIBER→показує збережений `saved-tpl-7`. Тести реальні (керують `combobox`-select-ом, асертять PATCH-body/DOM — падають якщо гейтинг зламано). **Severity HIGH** (розрекламована фіча: без покриття тихий регрес блокує налаштування Viber/Telegram-шаблонів).
+
+### Перевірено ЧИСТИМ (hunt завдання, code-defect не знайдено)
+
+- **resolveConfig 4-гілковий gating** — предикат коректний: локальний шаблон OR (externalTemplateId AND provider.templateChannels.includes(channel)). SMS eSputnik+tplId без локального шаблону → excluded (SMS не в templateChannels). turbosms VIBER+tplId → excluded (нема templateChannels). Немає empty-inline-send.
+- **upsertBranchChannel force-null** — `isTemplateChannel = impl.templateChannels?.includes(dto.channel) ?? false; externalTemplateId = isTemplateChannel ? (dto.externalTemplateId ?? null) : null`. SMS eSputnik+tplId → null; turbosms VIBER+tplId → null; eSputnik VIBER+tplId → stored. Defence-in-depth проти прямого API обходу UI. Вже покрито у notifications.providers.spec.ts (3 кейси).
+- **esputnik.send empty-message** — VIBER/TELEGRAM гілка НЕ використовує `message` (тіло smartsend = лише `{recipients:[{locator:phone}]}`) → renderTemplate('')='' не спричиняє порожнього SMS/крашу. SMS-гілка окрема (sendsms з message).
+- **TELEGRAM exhaustiveness** — провайдери використовують `if (channel===)` ланцюги з default-reject (не switch/Record) → новий enum value не «провалюється». Web `CHANNEL_LABELS` включає TELEGRAM. 0 exhaustiveness-gap.
+- **schema↔migration parity** — `20260906160000_esputnik_provider/migration.sql` існує: idempotent `ALTER TYPE ADD VALUE 'TELEGRAM'` (guard проти повтору) + `ADD COLUMN IF NOT EXISTS externalTemplateId TEXT`. Enum+column у schema.prisma присутні. Applied на dev.
+- **externalTemplateId secret-safety** — `getBranchChannels` віддає externalTemplateId у GET (коментар «не секрет») — коректно (це ID шаблону, не креди); apiKey далі лише `hasApiKey`.
+
+**Результат:** 0 функціональних багів; 4 закриті coverage-gap (#653-#656). Нові/розширені тести: api +15 (service +3, processor +3, esputnik +3, новий registry spec +6), web +6 (eSputnik-гілка панелі). Підсумок: API notif 81→96 зелено (8 files), web panel 6→12 зелено. tsc api=0 / web=0. E2E пропущено (Playwright MCP DOWN — не блокер).
