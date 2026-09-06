@@ -2,7 +2,8 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CheckboxClient, CheckboxUnauthorizedError } from './checkbox.client';
+import { FiscalUnauthorizedError } from './fiscal/fiscal-provider.interface';
+import { ProviderConfigService } from './provider-config.service';
 import { CashShiftService } from './cash-shift.service';
 
 interface FiscalReceiptJob {
@@ -22,7 +23,7 @@ export class CheckboxProcessor extends WorkerHost {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly checkbox: CheckboxClient,
+    private readonly providerConfig: ProviderConfigService,
     private readonly shifts: CashShiftService,
   ) {
     super();
@@ -43,14 +44,11 @@ export class CheckboxProcessor extends WorkerHost {
       return;
     }
 
-    const branchSettings = await this.prisma.branchSettings.findFirst({
-      where: branchId ? { orgId, branchId } : { orgId },
-      select: { fiscalEnabled: true, checkboxLicenseKey: true, shiftMode: true },
-    });
-
-    if (!branchSettings?.checkboxLicenseKey || !branchSettings?.fiscalEnabled) {
+    // Активний ПРРО-провайдер філії (config + legacy-fallback). null → ПРРО не налаштовано.
+    const active = await this.providerConfig.resolveActive(orgId, branchId, 'FISCAL');
+    if (!active) {
       // ПРРО вимкнено на філії → SKIPPED (не лишаємо QUEUED навічно). Не throw — це конфіг-стан.
-      this.logger.debug(`Checkbox не налаштовано для org=${orgId}, пропускаємо (SKIPPED)`);
+      this.logger.debug(`ПРРО не налаштовано для org=${orgId}, пропускаємо (SKIPPED)`);
       await this.prisma.payment
         .update({ where: { id: paymentId, orgId }, data: { fiscalStatus: 'SKIPPED' } })
         .catch(() => undefined);
@@ -66,7 +64,7 @@ export class CheckboxProcessor extends WorkerHost {
       ? await this.shifts.findOpenShift(orgId, effectiveBranchId)
       : null;
     if (!shift) {
-      if (branchSettings.shiftMode === 'AUTO_OPEN' && effectiveBranchId) {
+      if (active.shiftMode === 'AUTO_OPEN' && effectiveBranchId) {
         // Авто-режим: пробуємо відкрити зміну (sign-in+open). Помилка → throw → BullMQ retry.
         const opened = await this.shifts.open(orgId, effectiveBranchId).catch((e: unknown) => {
           throw new Error(`Авто-відкриття зміни не вдалось: ${e instanceof Error ? e.message : e}`);
@@ -79,17 +77,17 @@ export class CheckboxProcessor extends WorkerHost {
       }
     }
 
-    // Гарантуємо валідний cashier-token (refresh на expiry).
-    let { apiUrl, token } = await this.shifts.ensureToken(orgId, shift.id);
+    // Гарантуємо валідний cashier-token (refresh на expiry) + резолвлений провайдер зміни.
+    let { provider, cfg, token } = await this.shifts.ensureToken(orgId, shift.id);
 
     // Пробити чек; 401 → одноразовий re-sign-in → повтор.
     let result;
     try {
-      result = await this.checkbox.sellReceipt(apiUrl, token, { amount, method });
+      result = await provider.sellReceipt(cfg, token, { amount, method });
     } catch (e) {
-      if (e instanceof CheckboxUnauthorizedError) {
-        ({ apiUrl, token } = await this.shifts.refreshToken(orgId, shift.id));
-        result = await this.checkbox.sellReceipt(apiUrl, token, { amount, method });
+      if (e instanceof FiscalUnauthorizedError) {
+        ({ provider, cfg, token } = await this.shifts.refreshToken(orgId, shift.id));
+        result = await provider.sellReceipt(cfg, token, { amount, method });
       } else {
         throw e;
       }

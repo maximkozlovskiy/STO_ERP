@@ -4,6 +4,10 @@ import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
 import { CheckboxProcessor } from './checkbox.processor';
 import { CheckboxClient } from './checkbox.client';
+import { CheckboxProvider } from './fiscal/checkbox.provider';
+import { VchasnoProvider } from './fiscal/vchasno.provider';
+import { FiscalProviderRegistry } from './fiscal/fiscal-provider-registry';
+import { FiscalProvidersController } from './fiscal-providers.controller';
 import { CashShiftService } from './cash-shift.service';
 import { CashShiftController } from './cash-shift.controller';
 import { MonobankClient } from './monobank.client';
@@ -36,11 +40,15 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
     CashShiftController,
     OnlinePaymentController,
     PaymentGatewaysController,
+    FiscalProvidersController,
   ],
   providers: [
     PaymentsService,
     CheckboxProcessor,
     CheckboxClient,
+    CheckboxProvider,
+    VchasnoProvider,
+    FiscalProviderRegistry,
     CashShiftService,
     MonobankClient,
     MonobankGateway,

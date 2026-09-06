@@ -2,17 +2,18 @@ import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { Job } from 'bullmq';
 import { CheckboxProcessor } from './checkbox.processor';
-import { CheckboxClient, CheckboxUnauthorizedError } from './checkbox.client';
+import { FiscalUnauthorizedError } from './fiscal/fiscal-provider.interface';
+import { ProviderConfigService } from './provider-config.service';
 import { CashShiftService } from './cash-shift.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
- * ПРРО Крок 2 — processor пробиває чек у ВІДКРИТУ зміну через CheckboxClient (Bearer=cashier
- * access-token), а не license-key. Тести:
+ * ПРРО Крок 2/registry — processor пробиває чек у ВІДКРИТУ зміну через активний FiscalProvider
+ * (Bearer=cashier access-token), резолвлений з ensureToken(). Тести:
  *  - idempotency (fiscalReceiptId уже є → skip);
- *  - SKIPPED коли ПРРО вимкнено;
+ *  - SKIPPED коли ПРРО не налаштовано (resolveActive→null);
  *  - MANUAL без зміни → throw (чек чекає, лишається QUEUED); AUTO_OPEN → авто-open→sell;
- *  - 401 від sell → refreshToken → повтор;
+ *  - 401 (FiscalUnauthorizedError) від sell → refreshToken → повтор;
  *  - success → DONE; onFailed пише FAILED лише на термінальній спробі.
  */
 interface CheckboxJobData {
@@ -37,19 +38,25 @@ const makeJob = (data: Partial<CheckboxJobData> = {}, attemptsMade = 0): Job<Che
     opts: { attempts: 288 },
   }) as unknown as Job<CheckboxJobData>;
 
-describe('CheckboxProcessor (ПРРО Крок 2 — sell у зміну)', () => {
+describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
   let processor: CheckboxProcessor;
 
   const paymentFindFirst = vi.fn();
   const paymentUpdate = vi.fn().mockResolvedValue({});
-  const branchSettingsFindFirst = vi.fn();
   const prisma = {
     payment: { findFirst: paymentFindFirst, update: paymentUpdate },
-    branchSettings: { findFirst: branchSettingsFindFirst },
   } as unknown as PrismaService;
 
+  const resolveActive = vi.fn();
+  const providerConfig = { resolveActive } as unknown as ProviderConfigService;
+
+  // Активний провайдер (мок FiscalProvider) — sellReceipt зараз викликає processor.
   const sellReceipt = vi.fn();
-  const checkbox = { sellReceipt } as unknown as CheckboxClient;
+  const providerMock = { code: 'checkbox', sellReceipt };
+  const cfg = {
+    apiUrl: 'https://api.checkbox.ua',
+    credentials: { licenseKey: 'lic', pinCode: 'pin' },
+  };
 
   const findOpenShift = vi.fn();
   const open = vi.fn();
@@ -60,20 +67,21 @@ describe('CheckboxProcessor (ПРРО Крок 2 — sell у зміну)', () =>
   beforeEach(async () => {
     vi.clearAllMocks();
     paymentFindFirst.mockResolvedValue({ fiscalReceiptId: null }); // ще не фіскалізовано
-    branchSettingsFindFirst.mockResolvedValue({
-      fiscalEnabled: true,
-      checkboxLicenseKey: 'lic',
+    resolveActive.mockResolvedValue({
+      provider: 'checkbox',
+      apiUrl: cfg.apiUrl,
+      credentials: cfg.credentials,
       shiftMode: 'MANUAL',
     });
     findOpenShift.mockResolvedValue({ id: 'shift-1', checkboxShiftId: 'cbx-1' });
-    ensureToken.mockResolvedValue({ apiUrl: 'https://api.checkbox.ua', token: 'tok' });
+    ensureToken.mockResolvedValue({ provider: providerMock, cfg, token: 'tok' });
     sellReceipt.mockResolvedValue({ fiscalReceiptId: 'fr-1' });
 
     const module = await Test.createTestingModule({
       providers: [
         CheckboxProcessor,
         { provide: PrismaService, useValue: prisma },
-        { provide: CheckboxClient, useValue: checkbox },
+        { provide: ProviderConfigService, useValue: providerConfig },
         { provide: CashShiftService, useValue: shifts },
       ],
     }).compile();
@@ -93,12 +101,8 @@ describe('CheckboxProcessor (ПРРО Крок 2 — sell у зміну)', () =>
     expect(sellReceipt).not.toHaveBeenCalled();
   });
 
-  it('ПРРО вимкнено (fiscalEnabled=false) → SKIPPED, без sell', async () => {
-    branchSettingsFindFirst.mockResolvedValueOnce({
-      fiscalEnabled: false,
-      checkboxLicenseKey: 'lic',
-      shiftMode: 'MANUAL',
-    });
+  it('ПРРО не налаштовано (resolveActive→null) → SKIPPED, без sell', async () => {
+    resolveActive.mockResolvedValueOnce(null);
     await processor.process(makeJob());
     expect(sellReceipt).not.toHaveBeenCalled();
     expect(paymentUpdate).toHaveBeenCalledWith(
@@ -114,9 +118,10 @@ describe('CheckboxProcessor (ПРРО Крок 2 — sell у зміну)', () =>
   });
 
   it('AUTO_OPEN без зміни → авто-open → sell → DONE', async () => {
-    branchSettingsFindFirst.mockResolvedValueOnce({
-      fiscalEnabled: true,
-      checkboxLicenseKey: 'lic',
+    resolveActive.mockResolvedValueOnce({
+      provider: 'checkbox',
+      apiUrl: cfg.apiUrl,
+      credentials: cfg.credentials,
       shiftMode: 'AUTO_OPEN',
     });
     findOpenShift.mockResolvedValueOnce(null);
@@ -132,9 +137,10 @@ describe('CheckboxProcessor (ПРРО Крок 2 — sell у зміну)', () =>
   });
 
   it('AUTO_OPEN, open падає → throw (retry)', async () => {
-    branchSettingsFindFirst.mockResolvedValueOnce({
-      fiscalEnabled: true,
-      checkboxLicenseKey: 'lic',
+    resolveActive.mockResolvedValueOnce({
+      provider: 'checkbox',
+      apiUrl: cfg.apiUrl,
+      credentials: cfg.credentials,
       shiftMode: 'AUTO_OPEN',
     });
     findOpenShift.mockResolvedValueOnce(null);
@@ -143,24 +149,22 @@ describe('CheckboxProcessor (ПРРО Крок 2 — sell у зміну)', () =>
     expect(sellReceipt).not.toHaveBeenCalled();
   });
 
-  it('success: sell у зміну → DONE + fiscalReceiptId (Bearer=token, не license-key)', async () => {
+  it('success: sell у зміну через provider(cfg,token) → DONE + fiscalReceiptId', async () => {
     await processor.process(makeJob());
     expect(ensureToken).toHaveBeenCalledWith('org-1', 'shift-1');
-    expect(sellReceipt).toHaveBeenCalledWith('https://api.checkbox.ua', 'tok', {
-      amount: 100,
-      method: 'cash',
-    });
+    // provider.sellReceipt(cfg, token, {amount, method})
+    expect(sellReceipt).toHaveBeenCalledWith(cfg, 'tok', { amount: 100, method: 'cash' });
     expect(paymentUpdate).toHaveBeenCalledWith({
       where: { id: 'pay-1', orgId: 'org-1' },
       data: { fiscalReceiptId: 'fr-1', fiscalStatus: 'DONE', fiscalError: null },
     });
   });
 
-  it('401 від sell → refreshToken → повтор sell → DONE', async () => {
+  it('401 (FiscalUnauthorizedError) від sell → refreshToken → повтор sell → DONE', async () => {
     sellReceipt
-      .mockRejectedValueOnce(new CheckboxUnauthorizedError('401'))
+      .mockRejectedValueOnce(new FiscalUnauthorizedError('401'))
       .mockResolvedValueOnce({ fiscalReceiptId: 'fr-2' });
-    refreshToken.mockResolvedValueOnce({ apiUrl: 'https://api.checkbox.ua', token: 'tok2' });
+    refreshToken.mockResolvedValueOnce({ provider: providerMock, cfg, token: 'tok2' });
     await processor.process(makeJob());
     expect(refreshToken).toHaveBeenCalledWith('org-1', 'shift-1');
     expect(sellReceipt).toHaveBeenCalledTimes(2);
@@ -177,10 +181,9 @@ describe('CheckboxProcessor (ПРРО Крок 2 — sell у зміну)', () =>
   });
 
   it('cashier access-token НІКОЛИ не потрапляє у лог (жоден рівень)', async () => {
-    // Секрет-token не повинен витікати у логи (спостережувані у продакшні). Мокаємо ВСІ рівні
-    // логера і доводимо, що жоден аргумент лог-виклику не містить значення токена.
     ensureToken.mockResolvedValueOnce({
-      apiUrl: 'https://api.checkbox.ua',
+      provider: providerMock,
+      cfg,
       token: 'SUPER-SECRET-TOKEN-xyz',
     });
     const logged: unknown[] = [];
@@ -193,21 +196,14 @@ describe('CheckboxProcessor (ПРРО Крок 2 — sell у зміну)', () =>
     await processor.process(makeJob());
     const dump = JSON.stringify(logged);
     expect(dump).not.toContain('SUPER-SECRET-TOKEN-xyz');
-    // sanity: щось усе-таки залоговано (success-лог), тобто перевірка не пуста
     expect(logged.length).toBeGreaterThan(0);
   });
 
   it('401→refresh: token з refreshToken теж не логується', async () => {
-    ensureToken.mockResolvedValueOnce({
-      apiUrl: 'https://api.checkbox.ua',
-      token: 'first-tok-AAA',
-    });
-    refreshToken.mockResolvedValueOnce({
-      apiUrl: 'https://api.checkbox.ua',
-      token: 'refreshed-tok-BBB',
-    });
+    ensureToken.mockResolvedValueOnce({ provider: providerMock, cfg, token: 'first-tok-AAA' });
+    refreshToken.mockResolvedValueOnce({ provider: providerMock, cfg, token: 'refreshed-tok-BBB' });
     sellReceipt
-      .mockRejectedValueOnce(new CheckboxUnauthorizedError('401'))
+      .mockRejectedValueOnce(new FiscalUnauthorizedError('401'))
       .mockResolvedValueOnce({ fiscalReceiptId: 'fr-9' });
     const logged: unknown[] = [];
     const proc = processor as unknown as {

@@ -1,9 +1,11 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CheckboxClient } from './checkbox.client';
+import { FiscalProviderRegistry } from './fiscal/fiscal-provider-registry';
+import { ProviderConfigService } from './provider-config.service';
+import type { FiscalConfig } from './fiscal/fiscal-provider.interface';
 
-// Дефолтний час життя токена якщо Checkbox не повернув expires_at (консервативно — 50 хв).
+// Дефолтний час життя токена якщо провайдер не повернув expires_at (консервативно — 50 хв).
 const DEFAULT_TOKEN_TTL_MS = 50 * 60 * 1000;
 
 export interface CurrentShiftDto {
@@ -30,8 +32,21 @@ export class CashShiftService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly checkbox: CheckboxClient,
+    private readonly registry: FiscalProviderRegistry,
+    private readonly providerConfig: ProviderConfigService,
   ) {}
+
+  /** Резолвити активний ПРРО-провайдер філії (config + legacy-fallback) або кинути. */
+  private async resolveProvider(orgId: string, branchId: string) {
+    const active = await this.providerConfig.resolveActive(orgId, branchId, 'FISCAL');
+    if (!active) {
+      throw new BadRequestException('Фіскалізацію не налаштовано (провайдер/креди/увімкнення)');
+    }
+    const provider = this.registry.get(active.provider);
+    if (!provider) throw new BadRequestException(`Невідомий провайдер ПРРО: ${active.provider}`);
+    const cfg: FiscalConfig = { apiUrl: active.apiUrl, credentials: active.credentials };
+    return { provider, cfg };
+  }
 
   /** Поточна OPEN-зміна філії (+ лічильник QUEUED-чеків) або null. */
   async getCurrent(orgId: string, branchId: string): Promise<CurrentShiftDto | null> {
@@ -56,18 +71,8 @@ export class CashShiftService {
    * phantom-зміни: без checkboxShiftId чек не має куди пробитись).
    */
   async open(orgId: string, branchId: string, userId?: string): Promise<CurrentShiftDto> {
-    const bs = await this.prisma.branchSettings.findFirst({
-      where: { branchId, orgId },
-      select: {
-        fiscalEnabled: true,
-        checkboxApiUrl: true,
-        checkboxLicenseKey: true,
-        checkboxPinCode: true,
-      },
-    });
-    if (!bs?.fiscalEnabled || !bs.checkboxLicenseKey || !bs.checkboxPinCode) {
-      throw new BadRequestException('Фіскалізацію не налаштовано (ключ/PIN/увімкнення)');
-    }
+    const { provider, cfg } = await this.resolveProvider(orgId, branchId);
+
     // Локальна каса для зміни: беремо активну касу філії.
     const register = await this.prisma.cashRegister.findFirst({
       where: { orgId, branchId, deletedAt: null },
@@ -83,13 +88,8 @@ export class CashShiftService {
     });
     if (existing) throw new BadRequestException('Зміна вже відкрита');
 
-    const apiUrl = bs.checkboxApiUrl ?? undefined;
-    const token = await this.checkbox.signInPinCode(
-      apiUrl!,
-      bs.checkboxLicenseKey,
-      bs.checkboxPinCode,
-    );
-    const { checkboxShiftId } = await this.checkbox.openShift(apiUrl!, token.accessToken);
+    const token = await provider.signIn(cfg);
+    const { providerShiftId } = await provider.openShift(cfg, token.accessToken);
 
     try {
       const shift = await this.prisma.cashShift.create({
@@ -97,7 +97,8 @@ export class CashShiftService {
           orgId,
           branchId,
           cashRegisterId: register.id,
-          checkboxShiftId,
+          provider: provider.code,
+          checkboxShiftId: providerShiftId,
           status: 'OPEN',
           openedById: userId ?? null,
           checkboxAccessToken: token.accessToken,
@@ -132,8 +133,8 @@ export class CashShiftService {
     if (!shift) throw new NotFoundException('Зміну не знайдено');
     if (shift.status !== 'OPEN') throw new BadRequestException('Зміна вже закрита');
 
-    const { apiUrl, token } = await this.ensureToken(orgId, shift.id);
-    const { zReportId } = await this.checkbox.closeShift(apiUrl, token);
+    const { provider, cfg, token } = await this.ensureToken(orgId, shift.id);
+    const { zReportId } = await provider.closeShift(cfg, token);
 
     const updated = await this.prisma.cashShift.update({
       where: { id: shift.id },
@@ -145,34 +146,44 @@ export class CashShiftService {
 
   /**
    * Гарантує валідний cashier-token для зміни: якщо протух (tokenExpiresAt минув або немає) —
-   * re-sign-in і оновлює рядок. Використовується close() і processor-ом (sell). Повертає apiUrl+token.
+   * re-sign-in і оновлює рядок. Використовується close() і processor-ом (sell). Повертає
+   * резолвлений провайдер (за CashShift.provider) + його cfg + валідний токен.
    */
-  async ensureToken(orgId: string, shiftId: string): Promise<{ apiUrl: string; token: string }> {
+  async ensureToken(
+    orgId: string,
+    shiftId: string,
+  ): Promise<{
+    provider: import('./fiscal/fiscal-provider.interface').FiscalProvider;
+    cfg: FiscalConfig;
+    token: string;
+  }> {
     const shift = await this.prisma.cashShift.findFirst({
       where: { id: shiftId, orgId },
-      select: { branchId: true, checkboxAccessToken: true, tokenExpiresAt: true },
+      select: { branchId: true, provider: true, checkboxAccessToken: true, tokenExpiresAt: true },
     });
     if (!shift) throw new NotFoundException('Зміну не знайдено');
-    const bs = await this.prisma.branchSettings.findFirst({
-      where: { branchId: shift.branchId, orgId },
-      select: { checkboxApiUrl: true, checkboxLicenseKey: true, checkboxPinCode: true },
-    });
-    const apiUrl = bs?.checkboxApiUrl ?? 'https://api.checkbox.ua';
+
+    // Резолвимо КОНКРЕТНИЙ провайдер зміни (не «активний» — зміна могла відкритись іншим).
+    const active = await this.providerConfig.resolveByCode(
+      orgId,
+      shift.branchId,
+      'FISCAL',
+      shift.provider,
+    );
+    if (!active) {
+      throw new BadRequestException('Фіскалізацію не налаштовано — неможливо оновити токен');
+    }
+    const provider = this.registry.get(shift.provider);
+    if (!provider) throw new BadRequestException(`Невідомий провайдер ПРРО: ${shift.provider}`);
+    const cfg: FiscalConfig = { apiUrl: active.apiUrl, credentials: active.credentials };
 
     const valid =
       shift.checkboxAccessToken &&
       shift.tokenExpiresAt &&
       shift.tokenExpiresAt.getTime() > Date.now() + 30_000; // 30с запас
-    if (valid) return { apiUrl, token: shift.checkboxAccessToken! };
+    if (valid) return { provider, cfg, token: shift.checkboxAccessToken! };
 
-    if (!bs?.checkboxLicenseKey || !bs.checkboxPinCode) {
-      throw new BadRequestException('Фіскалізацію не налаштовано — неможливо оновити токен');
-    }
-    const token = await this.checkbox.signInPinCode(
-      apiUrl,
-      bs.checkboxLicenseKey,
-      bs.checkboxPinCode,
-    );
+    const token = await provider.signIn(cfg);
     await this.prisma.cashShift.update({
       where: { id: shiftId },
       data: {
@@ -180,7 +191,7 @@ export class CashShiftService {
         tokenExpiresAt: this.tokenExpiry(token.expiresAt),
       },
     });
-    return { apiUrl, token: token.accessToken };
+    return { provider, cfg, token: token.accessToken };
   }
 
   /** OPEN-зміна для філії (для processor). null якщо немає. */
@@ -193,7 +204,7 @@ export class CashShiftService {
   }
 
   /** Re-sign-in примусово (для processor при 401). */
-  async refreshToken(orgId: string, shiftId: string): Promise<{ apiUrl: string; token: string }> {
+  async refreshToken(orgId: string, shiftId: string) {
     // updateMany з orgId (не update by id) — tenant-scoped no-op якщо shiftId чужий (§2.2),
     // а не безумовна інвалідація токена по глобальному id.
     await this.prisma.cashShift.updateMany({
