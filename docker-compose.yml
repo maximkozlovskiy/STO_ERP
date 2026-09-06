@@ -9,7 +9,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER}']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -21,7 +21,7 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
 
   minio:
     image: minio/minio:RELEASE.2024-01-16T16-07-38Z
@@ -37,7 +37,7 @@ services:
       # always errors → minio never becomes healthy → api (depends_on service_healthy)
       # never starts → web+caddy cascade dead. Use the bundled `mc` client instead,
       # which is offline-safe and present in the server image.
-      test: ["CMD", "mc", "ready", "local"]
+      test: ['CMD', 'mc', 'ready', 'local']
       interval: 15s
 
   api:
@@ -53,6 +53,7 @@ services:
       MINIO_ENDPOINT: minio
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      NOTIFICATION_ENC_KEY: ${NOTIFICATION_ENC_KEY}
       NODE_ENV: production
       TZ: Europe/Kyiv
     healthcheck:
@@ -78,8 +79,8 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - '80:80'
+      - '443:443'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data

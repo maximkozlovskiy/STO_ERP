@@ -40,6 +40,10 @@ if (-not (Test-Path $envFile)) {
     $minioKey   = New-RandomBase64 -bytes 24
     $jwtAccess  = New-RandomBase64 -bytes 48
     $jwtRefresh = New-RandomBase64 -bytes 48
+    # Ключ шифрування секретів at-rest (SMS/ПРРО). Генерується ОДИН раз разом із .env;
+    # оскільки .env перевикористовується при оновленні (гілка else нижче), ключ ніколи
+    # не регенерується — інакше наявні зашифровані креди стануть недешифровними.
+    $encKey     = New-RandomBase64 -bytes 48
 
     @"
 # STO ERP — Production Environment
@@ -64,6 +68,8 @@ JWT_ACCESS_SECRET=$jwtAccess
 JWT_REFRESH_SECRET=$jwtRefresh
 JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=30d
+
+NOTIFICATION_ENC_KEY=$encKey
 
 NODE_ENV=production
 TZ=Europe/Kyiv

@@ -5,11 +5,13 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'crypto';
+import { resolve } from 'node:path';
 import {
   CORRELATION_ID_HEADER,
   CorrelationIdMiddleware,
 } from './common/middleware/correlation-id.middleware';
 import { PrismaModule } from './prisma/prisma.module';
+import { CryptoModule } from './common/crypto/crypto.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { RedisModule } from './redis/redis.module';
@@ -70,7 +72,15 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.dev', '.env'],
+      // Абсолютні шляхи від кореня монорепо + cwd-відносні (docker/prod). nest start --watch
+      // запускає dist/main з cwd=apps/api, де немає .env.dev — тож абсолютний шлях від
+      // __dirname гарантує завантаження кореневого env незалежно від cwd. Порядок = пріоритет.
+      envFilePath: [
+        '.env.dev',
+        '.env',
+        resolve(__dirname, '../../../.env.dev'),
+        resolve(__dirname, '../../../.env'),
+      ],
     }),
     BullModule.forRootAsync({
       inject: [ConfigService],
@@ -141,6 +151,7 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
         autoLogging: { ignore: req => req.url === '/api/health' },
       },
     }),
+    CryptoModule,
     PrismaModule,
     RedisModule,
     HealthModule,
