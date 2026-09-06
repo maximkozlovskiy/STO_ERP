@@ -224,22 +224,41 @@ export class PaymentsService {
     // Enqueue Checkbox fiscal receipt ЛИШЕ для методів з requiresFiscal (offline-first: retry
     // 288× = 24h). Без гейта чек ставився б на КОЖЕН платіж (готівка/безнал/бартер) → зайві
     // job-и + помилкові чеки. fiscalEnabled лишається downstream-гейтом у processor.
+    // Offline-first (CLAUDE.md §3): транзакція вже закомічена (платіж + settlement + інвойс→PAID).
+    // Якщо Redis недоступний, .add() кине — але фінансова операція вже успішна, тож НЕ валимо запит
+    // (дзеркалить loyalty.queueEarn нижче). Знімаємо платіж з QUEUED → FAILED, щоб він не завис
+    // навічно у QUEUED без жодного job-а; оператор побачить причину й зможе переставити чек.
+    // removeOnFail: 200 — bounded retention (конвенція sms/notifications/webhooks), інакше
+    // назавжди-невдалі job-и (attempts=288) осідають у Redis без обмеження.
     if (willFiscalize) {
-      await this.checkboxQueue.add(
-        'fiscal-receipt',
-        {
-          paymentId: payment.id,
-          orgId,
-          branchId: workOrder?.branchId ?? null,
-          amount: dto.amount,
-          method: dto.method,
-        },
-        {
-          attempts: 288,
-          backoff: { type: 'exponential', delay: 300_000 }, // 5 min initial
-          removeOnComplete: true,
-        },
-      );
+      await this.checkboxQueue
+        .add(
+          'fiscal-receipt',
+          {
+            paymentId: payment.id,
+            orgId,
+            branchId: workOrder?.branchId ?? null,
+            amount: dto.amount,
+            method: dto.method,
+          },
+          {
+            attempts: 288,
+            backoff: { type: 'exponential', delay: 300_000 }, // 5 min initial
+            removeOnComplete: true,
+            removeOnFail: 200,
+          },
+        )
+        .catch(async (err: unknown) => {
+          this.logger.warn(
+            `Не вдалось поставити фіскальний чек у чергу для платежу ${payment.id}: ${err instanceof Error ? err.message : err}`,
+          );
+          await this.prisma.payment
+            .update({
+              where: { id: payment.id, orgId },
+              data: { fiscalStatus: 'FAILED', fiscalError: 'Черга недоступна — чек не поставлено' },
+            })
+            .catch(() => undefined);
+        });
     }
 
     // Non-blocking loyalty earn: if queue is down, log warning, payment stands.
