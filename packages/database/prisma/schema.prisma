@@ -203,6 +203,7 @@ enum PaymentSourceType {
 enum InvoiceStatus {
   DRAFT
   SENT
+  PARTIALLY_PAID
   PAID
   OVERDUE
   CANCELLED
@@ -1782,6 +1783,13 @@ model PaymentMethodConfig {
   isSystem       Boolean   @default(false)
   sortOrder      Int       @default(0)
   requiresFiscal Boolean   @default(false)
+  // Дефолтний рахунок-призначення для цього методу (мапінг method→куди лягають гроші):
+  // напр. monobank_qr→BANK_ACCOUNT+моно-рахунок, cash→CASH_REGISTER+каса. Опційно; сервіс
+  // підставляє у Payment якщо DTO не задав явно. Без FK-relation — конфіг-підказка, валідується
+  // за org у сервісі при використанні.
+  defaultSourceType     PaymentSourceType?
+  defaultBankAccountId  String?   @db.Uuid
+  defaultCashRegisterId String?   @db.Uuid
   syncVersion    BigInt    @default(0)
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
@@ -1803,6 +1811,9 @@ model Invoice {
   workOrderId     String?       @db.Uuid
   number          String
   amount          Decimal       @db.Decimal(12, 2)
+  // Сплачена сума (сума всіх Payment цього рахунку). Часткова оплата: status=PARTIALLY_PAID
+  // поки paidAmount<amount, PAID коли paidAmount>=amount. Backfill: наявним PAID → paidAmount=amount.
+  paidAmount      Decimal       @default(0) @db.Decimal(12, 2)
   status          InvoiceStatus @default(DRAFT)
   dueDate         DateTime?
   invoiceType     String        @default("INVOICE")
@@ -1850,12 +1861,19 @@ model Payment {
   // метадані — сам платіж лишається незмінним).
   fiscalStatus    FiscalReceiptStatus?
   fiscalError     String?
+  // Рахунок-призначення: куди фізично лягли гроші (дзеркало SupplierPayment). null для старих
+  // рядків / коли не вказано. sourceType↔(bankAccountId|cashRegisterId) узгоджені у сервісі.
+  sourceType      PaymentSourceType?
+  bankAccountId   String?  @db.Uuid
+  cashRegisterId  String?  @db.Uuid
   syncVersion     BigInt   @default(0)
   createdAt       DateTime @default(now())
 
-  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
-  workOrder    WorkOrder?   @relation(fields: [workOrderId], references: [id])
-  invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
+  counterparty Counterparty  @relation(fields: [counterpartyId], references: [id])
+  workOrder    WorkOrder?    @relation(fields: [workOrderId], references: [id])
+  invoice      Invoice?      @relation(fields: [invoiceId], references: [id])
+  bankAccount  BankAccount?  @relation(fields: [bankAccountId], references: [id])
+  cashRegister CashRegister? @relation(fields: [cashRegisterId], references: [id])
 
   @@index([orgId, workOrderId])
   // Covering: list endpoint sorts by createdAt DESC + filters by counterpartyId.
@@ -2382,6 +2400,7 @@ model BankAccount {
   branch           GarageBranch?     @relation(fields: [branchId], references: [id])
   primaryForOrgs   Organisation[]    @relation("OrgPrimaryBankAccount")
   supplierPayments SupplierPayment[]
+  payments         Payment[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -2403,6 +2422,7 @@ model CashRegister {
   currency         Currency          @relation(fields: [currencyId], references: [id])
   branch           GarageBranch      @relation(fields: [branchId], references: [id])
   supplierPayments SupplierPayment[]
+  payments         Payment[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])

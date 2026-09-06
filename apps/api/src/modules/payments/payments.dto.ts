@@ -1,6 +1,7 @@
-import { IsUUID, IsOptional, IsNumber, Min, IsString, IsNotEmpty } from 'class-validator';
+import { IsUUID, IsOptional, IsNumber, Min, IsString, IsNotEmpty, IsIn } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PaymentSourceType } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreatePaymentDto {
@@ -20,6 +21,21 @@ export class CreatePaymentDto {
   @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
   @ApiProperty() @IsString() @IsNotEmpty() method!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+  // Рахунок-призначення (опц.): куди фізично лягли гроші. Якщо не задано — дефолт з methodConfig.
+  @ApiPropertyOptional({ enum: PaymentSourceType })
+  @IsOptional()
+  @IsIn(Object.values(PaymentSourceType))
+  sourceType?: PaymentSourceType;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  bankAccountId?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  cashRegisterId?: string;
 }
 
 export class PaymentResponseDto {
@@ -35,6 +51,9 @@ export class PaymentResponseDto {
   @ApiPropertyOptional() fiscalReceiptId?: string | null;
   @ApiPropertyOptional() fiscalStatus?: string | null;
   @ApiPropertyOptional() fiscalError?: string | null;
+  @ApiPropertyOptional() sourceType?: string | null;
+  @ApiPropertyOptional() bankAccountId?: string | null;
+  @ApiPropertyOptional() cashRegisterId?: string | null;
   @ApiProperty() createdAt!: string;
 }
 

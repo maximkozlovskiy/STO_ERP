@@ -87,14 +87,22 @@ export class PaymentsService {
             select: { branchId: true, status: true },
           })
         : Promise.resolve(null),
-      // Спосіб оплати — щоб знати, чи потребує фіскалізації (requiresFiscal). Невідомий метод
-      // → фіскалізацію НЕ ставимо (safe default: не фіскалізуємо сміття).
+      // Спосіб оплати: requiresFiscal (для ПРРО) + дефолтний рахунок-призначення (мапінг
+      // method→куди лягають гроші). Невідомий метод → фіскалізацію НЕ ставимо.
       this.prisma.paymentMethodConfig.findFirst({
         where: { orgId, code: dto.method, deletedAt: null },
-        select: { requiresFiscal: true },
+        select: {
+          requiresFiscal: true,
+          defaultSourceType: true,
+          defaultBankAccountId: true,
+          defaultCashRegisterId: true,
+        },
       }),
     ]);
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
+
+    // Рахунок-призначення: DTO задає явно, інакше дефолт з methodConfig. sourceType↔id узгоджені.
+    const resolvedSource = await this.resolveDestinationAccount(orgId, dto, methodConfig);
 
     // Pre-validate work order status before opening transaction to avoid partial commit.
     // Status was fetched in the parallel batch above — no extra query needed.
@@ -108,29 +116,39 @@ export class PaymentsService {
 
     const payment = await this.prisma.$transaction(
       async tx => {
-        // FIN-C1: ідемпотентність оплати. Перевірку статусу інвойсу й перехід SENT→PAID робимо
-        // ПЕРШИМИ і через compare-and-swap (updateMany з status:'SENT' у where). Два concurrent
-        // create бачать SENT на stale-read, але лише ОДИН updateMany змінить count=1 — другий
-        // отримає count=0 → throw → rollback (без другого Payment/PAYMENT-settlement/чека).
+        // Часткова оплата з захистом від переплати під concurrency (FIN-C1 еволюція):
+        // читаємо amount/paidAmount/status; валідуємо суму ≤ залишку; атомарно інкрементуємо
+        // paidAmount ЛИШЕ якщо paidAmount не змінився з-під нас (CAS через updateMany where
+        // paidAmount=прочитане). count=0 → конкурентний платіж змінив paidAmount → throw/rollback.
         if (dto.invoiceId) {
           const inv = await tx.invoice.findFirst({
             where: { id: dto.invoiceId, orgId, deletedAt: null },
-            select: { status: true, workOrderId: true },
+            select: { status: true, workOrderId: true, amount: true, paidAmount: true },
           });
           if (inv) {
-            if (inv.status !== 'SENT')
+            if (inv.status !== 'SENT' && inv.status !== 'PARTIALLY_PAID') {
               throw new BadRequestException(`Рахунок у статусі "${inv.status}" — оплата неможлива`);
-            // Cross-reference guard: рахунок має належати вказаному наряду.
+            }
             if (dto.workOrderId && inv.workOrderId && inv.workOrderId !== dto.workOrderId) {
               throw new BadRequestException('Рахунок не належить до вказаного наряду');
             }
-            // CAS: атомарний перехід SENT→PAID. count=0 → інший конкурентний платіж уже провів.
-            const paid = await tx.invoice.updateMany({
-              where: { id: dto.invoiceId, orgId, status: 'SENT', deletedAt: null },
-              data: { status: 'PAID' },
+            const invAmount = Number(inv.amount);
+            const prevPaid = Number(inv.paidAmount);
+            const remaining = invAmount - prevPaid;
+            if (dto.amount > remaining + 1e-9) {
+              throw new BadRequestException(
+                `Сума перевищує залишок за рахунком (${remaining.toFixed(2)} грн)`,
+              );
+            }
+            const newPaid = prevPaid + dto.amount;
+            const newStatus = newPaid >= invAmount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID';
+            // CAS: оновлюємо лише якщо paidAmount досі == prevPaid (не змінений конкурентом).
+            const updated = await tx.invoice.updateMany({
+              where: { id: dto.invoiceId, orgId, deletedAt: null, paidAmount: inv.paidAmount },
+              data: { paidAmount: newPaid, status: newStatus },
             });
-            if (paid.count === 0) {
-              throw new BadRequestException('Рахунок уже оплачено (паралельна операція)');
+            if (updated.count === 0) {
+              throw new BadRequestException('Рахунок змінено паралельною операцією — повторіть');
             }
           }
         }
@@ -144,6 +162,10 @@ export class PaymentsService {
             amount: dto.amount,
             method: dto.method,
             notes: dto.notes ?? null,
+            // Рахунок-призначення (куди фізично лягли гроші) — з DTO або дефолту methodConfig.
+            sourceType: resolvedSource.sourceType,
+            bankAccountId: resolvedSource.bankAccountId,
+            cashRegisterId: resolvedSource.cashRegisterId,
             // QUEUED коли ставимо в чергу; null коли фіскалізація не застосовна до методу.
             fiscalStatus: willFiscalize ? 'QUEUED' : null,
           },
@@ -274,6 +296,56 @@ export class PaymentsService {
     return this.toDto(payment);
   }
 
+  /**
+   * Резолвить рахунок-призначення платежу: DTO явно → інакше дефолт з methodConfig → інакше null.
+   * Валідує узгодженість sourceType↔id і що рахунок у межах org (не крос-tenant). Не кидає на
+   * відсутності рахунку (null — валідний стан), але кидає на невалідний/чужий рахунок.
+   */
+  private async resolveDestinationAccount(
+    orgId: string,
+    dto: CreatePaymentDto,
+    methodConfig: {
+      defaultSourceType?: 'BANK_ACCOUNT' | 'CASH_REGISTER' | null;
+      defaultBankAccountId?: string | null;
+      defaultCashRegisterId?: string | null;
+    } | null,
+  ): Promise<{
+    sourceType: 'BANK_ACCOUNT' | 'CASH_REGISTER' | null;
+    bankAccountId: string | null;
+    cashRegisterId: string | null;
+  }> {
+    // DTO має пріоритет; якщо жодного поля не задано — беремо дефолт methodConfig.
+    const sourceType = dto.sourceType ?? methodConfig?.defaultSourceType ?? null;
+    const bankAccountId =
+      dto.sourceType || dto.bankAccountId
+        ? (dto.bankAccountId ?? null)
+        : (methodConfig?.defaultBankAccountId ?? null);
+    const cashRegisterId =
+      dto.sourceType || dto.cashRegisterId
+        ? (dto.cashRegisterId ?? null)
+        : (methodConfig?.defaultCashRegisterId ?? null);
+
+    if (!sourceType) return { sourceType: null, bankAccountId: null, cashRegisterId: null };
+
+    if (sourceType === 'BANK_ACCOUNT') {
+      if (!bankAccountId) throw new BadRequestException('Не вказано банківський рахунок');
+      const acc = await this.prisma.bankAccount.findFirst({
+        where: { id: bankAccountId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!acc) throw new NotFoundException('Банківський рахунок не знайдено');
+      return { sourceType, bankAccountId, cashRegisterId: null };
+    }
+    // CASH_REGISTER
+    if (!cashRegisterId) throw new BadRequestException('Не вказано касу');
+    const reg = await this.prisma.cashRegister.findFirst({
+      where: { id: cashRegisterId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!reg) throw new NotFoundException('Касу не знайдено');
+    return { sourceType, bankAccountId: null, cashRegisterId };
+  }
+
   private toDto(p: {
     id: string;
     orgId: string;
@@ -286,6 +358,9 @@ export class PaymentsService {
     fiscalReceiptId: string | null;
     fiscalStatus?: string | null;
     fiscalError?: string | null;
+    sourceType?: string | null;
+    bankAccountId?: string | null;
+    cashRegisterId?: string | null;
     createdAt: Date;
     counterparty: {
       companyName: string | null;
@@ -308,6 +383,9 @@ export class PaymentsService {
       fiscalReceiptId: p.fiscalReceiptId ?? null,
       fiscalStatus: p.fiscalStatus ?? null,
       fiscalError: p.fiscalError ?? null,
+      sourceType: p.sourceType ?? null,
+      bankAccountId: p.bankAccountId ?? null,
+      cashRegisterId: p.cashRegisterId ?? null,
       createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
     };
   }

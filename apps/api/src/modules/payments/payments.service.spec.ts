@@ -92,7 +92,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     method: 'CASH',
   };
 
-  it('CAS count=0 (рахунок уже оплачено паралельно) → throw, БЕЗ payment.create та settlement', async () => {
+  it('CAS count=0 (paidAmount змінено паралельно) → throw, БЕЗ payment.create та settlement', async () => {
     prisma.counterparty.findFirst.mockResolvedValue({
       id: CP_ID,
       phone: null,
@@ -100,7 +100,13 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
       lastName: null,
       companyName: 'ТОВ',
     });
-    prisma.invoice.findFirst.mockResolvedValue({ status: 'SENT', workOrderId: null });
+    // amount 500 / paidAmount 0 → повна оплата 500; але CAS програє гонку (count=0).
+    prisma.invoice.findFirst.mockResolvedValue({
+      status: 'SENT',
+      workOrderId: null,
+      amount: 500,
+      paidAmount: 0,
+    });
     prisma.invoice.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(service.create(ORG, baseDto, 'user-1')).rejects.toThrow(BadRequestException);
@@ -110,7 +116,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     expect(checkboxQueue.add).not.toHaveBeenCalled();
   });
 
-  it('happy-path: CAS count=1 → updateMany(status:SENT→PAID) ПЕРЕД payment.create + settlement PAYMENT', async () => {
+  it('happy-path: CAS(paidAmount) count=1 → paidAmount+=amount, status→PAID ПЕРЕД create + settlement', async () => {
     prisma.counterparty.findFirst.mockResolvedValue({
       id: CP_ID,
       phone: null,
@@ -118,20 +124,24 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
       lastName: null,
       companyName: 'ТОВ',
     });
-    prisma.invoice.findFirst.mockResolvedValue({ status: 'SENT', workOrderId: null });
+    prisma.invoice.findFirst.mockResolvedValue({
+      status: 'SENT',
+      workOrderId: null,
+      amount: 500,
+      paidAmount: 0,
+    });
     prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
     prisma.payment.create.mockResolvedValue(createdPayment);
 
     await service.create(ORG, baseDto, 'user-1');
 
-    // CAS перехід атомарний: where містить status:'SENT'.
+    // CAS по paidAmount (не по status): where містить прочитаний paidAmount; повна оплата → PAID.
     expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: INV_ID, orgId: ORG, status: 'SENT' }),
-        data: { status: 'PAID' },
+        where: expect.objectContaining({ id: INV_ID, orgId: ORG, paidAmount: 0 }),
+        data: expect.objectContaining({ paidAmount: 500, status: 'PAID' }),
       }),
     );
-    // CAS передує create (порядок виклику): updateMany інвойсу раніше за payment.create.
     const casOrder = prisma.invoice.updateMany.mock.invocationCallOrder[0];
     const createOrder = prisma.payment.create.mock.invocationCallOrder[0];
     expect(casOrder).toBeLessThan(createOrder);
@@ -142,7 +152,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     );
   });
 
-  it('рахунок не у статусі SENT → throw ПЕРЕД CAS (без updateMany/create)', async () => {
+  it('часткова оплата: 200 з 500 → paidAmount=200, status=PARTIALLY_PAID', async () => {
     prisma.counterparty.findFirst.mockResolvedValue({
       id: CP_ID,
       phone: null,
@@ -150,7 +160,60 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
       lastName: null,
       companyName: 'ТОВ',
     });
-    prisma.invoice.findFirst.mockResolvedValue({ status: 'DRAFT', workOrderId: null });
+    prisma.invoice.findFirst.mockResolvedValue({
+      status: 'SENT',
+      workOrderId: null,
+      amount: 500,
+      paidAmount: 0,
+    });
+    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+    prisma.payment.create.mockResolvedValue(createdPayment);
+
+    await service.create(ORG, { ...baseDto, amount: 200 }, 'user-1');
+
+    expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ paidAmount: 200, status: 'PARTIALLY_PAID' }),
+      }),
+    );
+  });
+
+  it('переплата: сума > залишку → throw ПЕРЕД CAS (без updateMany/create)', async () => {
+    prisma.counterparty.findFirst.mockResolvedValue({
+      id: CP_ID,
+      phone: null,
+      firstName: null,
+      lastName: null,
+      companyName: 'ТОВ',
+    });
+    // залишок = 500−400 = 100; платіж 500 → переплата.
+    prisma.invoice.findFirst.mockResolvedValue({
+      status: 'PARTIALLY_PAID',
+      workOrderId: null,
+      amount: 500,
+      paidAmount: 400,
+    });
+
+    await expect(service.create(ORG, baseDto, 'user-1')).rejects.toThrow(/перевищує залишок/);
+    expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
+  });
+
+  it('рахунок у DRAFT → throw ПЕРЕД CAS (лише SENT/PARTIALLY_PAID приймають оплату)', async () => {
+    prisma.counterparty.findFirst.mockResolvedValue({
+      id: CP_ID,
+      phone: null,
+      firstName: null,
+      lastName: null,
+      companyName: 'ТОВ',
+    });
+    prisma.invoice.findFirst.mockResolvedValue({
+      status: 'DRAFT',
+      workOrderId: null,
+      amount: 500,
+      paidAmount: 0,
+    });
 
     await expect(service.create(ORG, baseDto, 'user-1')).rejects.toThrow(BadRequestException);
     expect(prisma.invoice.updateMany).not.toHaveBeenCalled();

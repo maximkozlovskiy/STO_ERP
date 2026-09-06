@@ -29,6 +29,9 @@ type InvStatus = InvoiceStatus;
 const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
   DRAFT: [InvoiceStatus.SENT, InvoiceStatus.CANCELLED],
   SENT: [InvoiceStatus.PAID, InvoiceStatus.CANCELLED],
+  // PARTIALLY_PAID виставляється автоматично частковим платежем; вручну можна дозакрити
+  // (PAID) або скасувати. Перехід у PARTIALLY_PAID роблять лише платежі, не FSM-endpoint.
+  PARTIALLY_PAID: [InvoiceStatus.PAID, InvoiceStatus.CANCELLED],
   PAID: [],
   OVERDUE: [InvoiceStatus.PAID, InvoiceStatus.CANCELLED],
   CANCELLED: [],
@@ -313,7 +316,12 @@ export class InvoicesService {
     await this.prisma.$transaction(async tx => {
       const moved = await tx.invoice.updateMany({
         where: { id, orgId, status: inv.status, deletedAt: null },
-        data: { status: newStatus },
+        // Ручний перехід у PAID синхронізує paidAmount=amount (щоб «залишок» був 0). Це
+        // статус-узгодження, а НЕ платіж — Payment/PAYMENT-settlement тут не створюються.
+        data:
+          newStatus === InvoiceStatus.PAID
+            ? { status: newStatus, paidAmount: inv.amount }
+            : { status: newStatus },
       });
       if (moved.count === 0) {
         throw new BadRequestException('Статус рахунку змінився — повторіть дію');
@@ -777,6 +785,7 @@ export class InvoicesService {
       counterpartyId: string;
       workOrderId: string | null;
       amount: Prisma.Decimal;
+      paidAmount?: Prisma.Decimal | null;
       totalWithoutVat: Prisma.Decimal;
       totalVat: Prisma.Decimal;
       totalWithVat: Prisma.Decimal;
@@ -815,9 +824,14 @@ export class InvoicesService {
     const cp = inv.counterparty;
     const counterpartyName =
       cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ');
-    const paidAmount = inv.payments
-      ? inv.payments.reduce((s, p) => s + Number(p.amount), 0)
-      : undefined;
+    // paidAmount — авторитетна колонка (оновлюється транзакційно при кожному платежі/ручному
+    // PAID). Фолбек на суму payments лише якщо колонки немає у вибірці (старий шлях).
+    const paidAmount =
+      inv.paidAmount != null
+        ? Number(inv.paidAmount)
+        : inv.payments
+          ? inv.payments.reduce((s, p) => s + Number(p.amount), 0)
+          : undefined;
     return {
       id: inv.id,
       orgId: inv.orgId,

@@ -130,6 +130,7 @@ export const WO_CATEGORY_LABELS: Record<string, string> = {
 export const INVOICE_STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Чернетка',
   SENT: 'Надіслано',
+  PARTIALLY_PAID: 'Частково оплачено',
   PAID: 'Оплачено',
   OVERDUE: 'Прострочено',
   CANCELLED: 'Скасовано',
@@ -138,6 +139,7 @@ export const INVOICE_STATUS_LABELS: Record<string, string> = {
 export const INVOICE_STATUS_BADGE: Record<string, BadgeVariant> = {
   DRAFT: 'secondary',
   SENT: 'default',
+  PARTIALLY_PAID: 'warning',
   PAID: 'success',
   OVERDUE: 'warning',
   CANCELLED: 'destructive',
@@ -148,6 +150,7 @@ export const INVOICE_STATUS_BADGE: Record<string, BadgeVariant> = {
 export const INVOICE_STATUS_DESCRIPTIONS: Record<string, string> = {
   DRAFT: 'Чернетка — рахунок створено, ще не надіслано клієнту',
   SENT: 'Надіслано — рахунок передано клієнту, очікується оплата',
+  PARTIALLY_PAID: 'Частково оплачено — отримано частину суми, є залишок',
   PAID: 'Оплачено — кошти отримано, розрахунок закрито',
   OVERDUE: 'Прострочено — термін оплати минув, потрібне нагадування',
   CANCELLED: 'Скасовано — рахунок анульовано',
@@ -156,6 +159,8 @@ export const INVOICE_STATUS_DESCRIPTIONS: Record<string, string> = {
 export const INVOICE_STATUS_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['SENT', 'CANCELLED'],
   SENT: ['PAID', 'CANCELLED'],
+  // PARTIALLY_PAID виставляється автоматично частковим платежем; вручну — дозакрити/скасувати.
+  PARTIALLY_PAID: ['PAID', 'CANCELLED'],
   OVERDUE: ['PAID', 'CANCELLED'],
   PAID: [],
   CANCELLED: [],

@@ -405,8 +405,10 @@ function InvoicesPageInner() {
 
   const handlePay = async () => {
     if (!showPayment) return;
+    // Порожнє поле = оплата залишку (amount − paidAmount), не всієї суми рахунку.
+    const remaining = Math.max(showPayment.amount - (showPayment.paidAmount ?? 0), 0);
     const rawAmt = parseFloat(payForm.amount);
-    const amt = !payForm.amount || !Number.isFinite(rawAmt) ? showPayment.amount : rawAmt;
+    const amt = !payForm.amount || !Number.isFinite(rawAmt) ? remaining : rawAmt;
     setSaving(true);
     try {
       await apiFetch<{ id: string }>('/payments', {
@@ -1019,50 +1021,67 @@ function InvoicesPageInner() {
           </Button>
         }
       >
-        {showPayment && (
-          <div className="space-y-4">
-            <div className="p-3 bg-info-subtle rounded-lg text-sm text-info-text">
-              Сума до оплати: <strong>{fmt(showPayment.amount)}</strong>
-            </div>
-            <Select
-              label="Метод оплати"
-              required
-              value={payForm.method}
-              onChange={e => setPayForm(f => ({ ...f, method: e.target.value }))}
-              className="h-8 text-[13px] py-0.5 px-2 pr-7"
-            >
-              {payMethods.length > 0 ? (
-                payMethods.map(m => (
-                  <option key={m.code} value={m.code}>
-                    {m.name}
-                  </option>
-                ))
-              ) : (
-                <>
-                  <option value="cash">Готівка</option>
-                  <option value="card_terminal">Термінал</option>
-                  <option value="bank_transfer">Банківський переказ</option>
-                </>
-              )}
-            </Select>
-            <Input
-              label="Сума, ₴"
-              type="number"
-              value={payForm.amount}
-              onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
-              placeholder={String(showPayment.amount)}
-              min="0.01"
-              step="0.01"
-              className="h-8 text-[13px]"
-            />
-            <Input
-              label="Примітки"
-              value={payForm.notes}
-              onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))}
-              className="h-8 text-[13px]"
-            />
-          </div>
-        )}
+        {showPayment &&
+          (() => {
+            const paid = showPayment.paidAmount ?? 0;
+            const remaining = Math.max(showPayment.amount - paid, 0);
+            return (
+              <div className="space-y-4">
+                <div className="p-3 bg-info-subtle rounded-lg text-sm text-info-text space-y-0.5">
+                  <div>
+                    Сума рахунку: <strong>{fmt(showPayment.amount)}</strong>
+                  </div>
+                  {paid > 0 && (
+                    <div>
+                      Уже оплачено: <strong>{fmt(paid)}</strong>
+                    </div>
+                  )}
+                  <div>
+                    Залишок до сплати: <strong>{fmt(remaining)}</strong>
+                  </div>
+                </div>
+                <Select
+                  label="Метод оплати"
+                  required
+                  value={payForm.method}
+                  onChange={e => setPayForm(f => ({ ...f, method: e.target.value }))}
+                  className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                >
+                  {payMethods.length > 0 ? (
+                    payMethods.map(m => (
+                      <option key={m.code} value={m.code}>
+                        {m.name}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="cash">Готівка</option>
+                      <option value="card_terminal">Термінал</option>
+                      <option value="bank_transfer">Банківський переказ</option>
+                    </>
+                  )}
+                </Select>
+                <Input
+                  label="Сума, ₴"
+                  type="number"
+                  value={payForm.amount}
+                  onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
+                  placeholder={String(remaining)}
+                  min="0.01"
+                  max={String(remaining)}
+                  step="0.01"
+                  hint="Порожнє поле = оплата залишку повністю"
+                  className="h-8 text-[13px]"
+                />
+                <Input
+                  label="Примітки"
+                  value={payForm.notes}
+                  onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))}
+                  className="h-8 text-[13px]"
+                />
+              </div>
+            );
+          })()}
       </Modal>
       <ConfirmDialog {...dialogProps} />
 
