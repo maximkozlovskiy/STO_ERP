@@ -107,10 +107,16 @@ export class NotificationsService {
       });
       const byChannel = new Map(templates.map(t => [t.channel, t.body]));
 
-      // Канал придатний якщо має АБО локальний inline-шаблон, АБО externalTemplateId
-      // (eSputnik Viber/Telegram — текст у шаблоні провайдера). Інакше пропускаємо → fallback.
+      // Канал придатний якщо має локальний inline-шаблон АБО (externalTemplateId І провайдер
+      // реально шле цей канал через шаблон). Без перевірки провайдера inline-канал (SMS/TurboSMS
+      // Viber) з випадково записаним externalTemplateId надіслав би ПОРОЖНІЙ inline-текст.
       const channels = channelConfigs
-        .filter(c => byChannel.has(c.channel) || c.externalTemplateId)
+        .filter(c => {
+          if (byChannel.has(c.channel)) return true; // локальний inline-шаблон є
+          if (!c.externalTemplateId) return false; // немає жодного джерела тексту
+          // externalTemplateId є — але зараховуємо лише якщо провайдер шле канал через шаблон.
+          return this.registry.get(c.provider)?.templateChannels?.includes(c.channel) ?? false;
+        })
         .map(c => ({
           channel: c.channel,
           provider: c.provider,
@@ -298,6 +304,14 @@ export class NotificationsService {
       throw new BadRequestException(`Провайдер ${dto.provider} не підтримує канал ${dto.channel}`);
     }
 
+    // externalTemplateId має сенс ЛИШЕ для template-based каналів провайдера (Viber/Telegram
+    // eSputnik). Для inline-каналів (SMS усіх провайдерів, TurboSMS Viber) записати шаблон →
+    // resolveConfig визнав би канал придатним, а inline-провайдер надіслав би ПОРОЖНІЙ текст.
+    // Тож на inline-каналах примусово скидаємо externalTemplateId у null (defence-in-depth:
+    // фронт уже не показує поле, але прямий API-виклик обходить UI).
+    const isTemplateChannel = impl.templateChannels?.includes(dto.channel) ?? false;
+    const externalTemplateId = isTemplateChannel ? (dto.externalTemplateId ?? null) : null;
+
     // apiKey: оновлюємо лише коли надіслано непорожнє значення (write-only).
     const apiKeyPatch = dto.apiKey != null && dto.apiKey !== '' ? { apiKey: dto.apiKey } : {};
 
@@ -311,7 +325,7 @@ export class NotificationsService {
         enabled: dto.enabled,
         priority: dto.priority,
         senderName: dto.senderName,
-        externalTemplateId: dto.externalTemplateId,
+        externalTemplateId,
         deletedAt: null, // reactivate якщо був soft-deleted
         ...apiKeyPatch,
       },
@@ -323,7 +337,7 @@ export class NotificationsService {
         enabled: dto.enabled ?? true,
         priority: dto.priority ?? 0,
         senderName: dto.senderName,
-        externalTemplateId: dto.externalTemplateId,
+        externalTemplateId,
         ...apiKeyPatch,
       },
       select: { id: true },

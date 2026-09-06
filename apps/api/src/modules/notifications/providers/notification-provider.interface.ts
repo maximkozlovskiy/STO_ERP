@@ -48,6 +48,13 @@ export interface NotificationProvider {
   readonly name: string;
   /** Канали, які цей провайдер уміє відправляти. */
   readonly channels: NotificationChannel[];
+  /**
+   * Канали, які цей провайдер шле ТІЛЬКИ за готовим шаблоном у своєму кабінеті
+   * (потребують externalTemplateId; inline-текст ігнорується). Напр. eSputnik Viber/Telegram.
+   * Пусто/відсутнє → усі канали inline (текст беруть з `message`). Джерело правди
+   * для того, які канали вимагають externalTemplateId — і бекенд-валідація, і UI.
+   */
+  readonly templateChannels?: NotificationChannel[];
 
   /** Відправити одне повідомлення обраним каналом. */
   send(params: SendParams): Promise<SendResult>;

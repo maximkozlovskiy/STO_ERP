@@ -18,6 +18,9 @@ interface ProviderMeta {
   code: string;
   name: string;
   channels: string[];
+  // Канали, що надсилаються за готовим шаблоном у кабінеті провайдера (потребують ID шаблону).
+  // Джерело правди — бекенд (provider.templateChannels), тож UI не хардкодить список.
+  templateChannels?: string[];
 }
 
 interface ChannelConfig {
@@ -46,11 +49,6 @@ const CHANNEL_LABELS: Record<string, string> = {
   EMAIL: 'Email',
   PUSH: 'Push',
 };
-
-// Канали, що надсилаються за готовим шаблоном у кабінеті провайдера (не inline-текст).
-// Для них потрібен externalTemplateId (напр. eSputnik Viber/Telegram через smartsend).
-const TEMPLATE_BASED_CHANNELS = new Set(['VIBER', 'TELEGRAM']);
-const TEMPLATE_PROVIDERS = new Set(['esputnik']);
 
 export default function NotificationProvidersPanel() {
   const currentFeatures = useUiFeatures();
@@ -177,8 +175,11 @@ export default function NotificationProvidersPanel() {
   };
 
   // Чи потрібне поле «ID шаблону» для обраного провайдера+каналу (template-based send).
-  const needsExternalTemplate = (providerCode: string, channel: string) =>
-    TEMPLATE_PROVIDERS.has(providerCode) && TEMPLATE_BASED_CHANNELS.has(channel);
+  // Похідне від метаданих провайдера (provider.templateChannels) — без хардкоду на фронті.
+  const needsExternalTemplate = (providerCode: string, channel: string) => {
+    const meta = providers.find(p => p.code === providerCode);
+    return meta?.templateChannels?.includes(channel) ?? false;
+  };
 
   // При зміні каналу в модалці — перечитати prefill (кожен канал має свій template-id).
   const onCredsChannelChange = (channel: string) => {

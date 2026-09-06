@@ -32,6 +32,12 @@ export class EsputnikProvider implements NotificationProvider {
     NotificationChannel.VIBER,
     NotificationChannel.TELEGRAM,
   ];
+  // Viber/Telegram — лише через готовий шаблон у кабінеті (smartsend); inline-текст ігнорується.
+  // SMS — inline (sendsms). Джерело правди для externalTemplateId-вимоги (бек-валідація + UI).
+  readonly templateChannels: NotificationChannel[] = [
+    NotificationChannel.VIBER,
+    NotificationChannel.TELEGRAM,
+  ];
 
   private readonly logger = new Logger(EsputnikProvider.name);
 

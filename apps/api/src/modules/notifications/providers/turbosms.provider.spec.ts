@@ -113,6 +113,8 @@ describe('NotificationProviderRegistry', () => {
         code: 'turbosms',
         name: 'TurboSMS',
         channels: [NotificationChannel.SMS, NotificationChannel.VIBER],
+        // turbosms — усі канали inline (текст inline), template-каналів немає.
+        templateChannels: [],
       },
       {
         code: 'esputnik',
@@ -122,6 +124,8 @@ describe('NotificationProviderRegistry', () => {
           NotificationChannel.VIBER,
           NotificationChannel.TELEGRAM,
         ],
+        // eSputnik — Viber/Telegram лише через готовий шаблон (smartsend).
+        templateChannels: [NotificationChannel.VIBER, NotificationChannel.TELEGRAM],
       },
     ]);
   });

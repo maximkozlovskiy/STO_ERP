@@ -300,6 +300,65 @@ describe('NotificationsService — Phase 3 providers/channels', () => {
       expect(arg.create.priority).toBe(0);
     });
 
+    // eSputnik-подібний provider: SMS inline + VIBER/TELEGRAM через шаблон (templateChannels).
+    const esputnik = {
+      code: 'esputnik',
+      name: 'eSputnik',
+      channels: [NotificationChannel.SMS, NotificationChannel.VIBER, NotificationChannel.TELEGRAM],
+      templateChannels: [NotificationChannel.VIBER, NotificationChannel.TELEGRAM],
+      verifyCredentials: vi.fn(),
+      send: vi.fn(),
+    };
+
+    it('externalTemplateId зберігається для template-каналу (eSputnik VIBER)', async () => {
+      branchFindFirst.mockResolvedValue({ id: 'br-1' });
+      registryGet.mockReturnValue(esputnik);
+      cfgUpsert.mockResolvedValue({ id: 'row-1' });
+
+      await service.upsertBranchChannel('org-1', 'br-1', {
+        channel: NotificationChannel.VIBER,
+        provider: 'esputnik',
+        externalTemplateId: 'tpl-42',
+      });
+
+      const arg = cfgUpsert.mock.calls[0][0];
+      expect(arg.update.externalTemplateId).toBe('tpl-42');
+      expect(arg.create.externalTemplateId).toBe('tpl-42');
+    });
+
+    it('externalTemplateId скидається у null для inline-каналу (eSputnik SMS) — anti empty-send', async () => {
+      branchFindFirst.mockResolvedValue({ id: 'br-1' });
+      registryGet.mockReturnValue(esputnik);
+      cfgUpsert.mockResolvedValue({ id: 'row-1' });
+
+      // Прямий API-виклик пробує записати template-id на inline SMS-канал (обхід UI).
+      await service.upsertBranchChannel('org-1', 'br-1', {
+        channel: NotificationChannel.SMS,
+        provider: 'esputnik',
+        externalTemplateId: 'tpl-stray',
+      });
+
+      const arg = cfgUpsert.mock.calls[0][0];
+      expect(arg.update.externalTemplateId).toBeNull();
+      expect(arg.create.externalTemplateId).toBeNull();
+    });
+
+    it('externalTemplateId скидається у null для inline-провайдера (turbosms VIBER без templateChannels)', async () => {
+      branchFindFirst.mockResolvedValue({ id: 'br-1' });
+      registryGet.mockReturnValue(turbosms); // без templateChannels → усі канали inline
+      cfgUpsert.mockResolvedValue({ id: 'row-1' });
+
+      await service.upsertBranchChannel('org-1', 'br-1', {
+        channel: NotificationChannel.VIBER,
+        provider: 'turbosms',
+        externalTemplateId: 'tpl-x',
+      });
+
+      const arg = cfgUpsert.mock.calls[0][0];
+      expect(arg.update.externalTemplateId).toBeNull();
+      expect(arg.create.externalTemplateId).toBeNull();
+    });
+
     it('atomic: два "create" на той самий (branchId,channel) резолвляться в update, не P2002', async () => {
       branchFindFirst.mockResolvedValue({ id: 'br-1' });
       registryGet.mockReturnValue(turbosms);

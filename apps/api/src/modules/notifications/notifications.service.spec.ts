@@ -201,6 +201,47 @@ describe('NotificationsService.resolveConfig', () => {
     const cfg = await service.resolveConfig('org-1', 'br-1', 'WO_COMPLETED');
     expect(cfg!.channels[0].senderName).toBe('STO ERP');
   });
+
+  // externalTemplateId: канал без локального шаблону придатний ЛИШЕ якщо провайдер шле його
+  // через шаблон (templateChannels). Інакше inline-провайдер надіслав би порожній текст.
+  it('externalTemplateId + template-провайдер (eSputnik VIBER) без локального шаблону → канал включено', async () => {
+    channelConfigFindMany.mockResolvedValue([
+      cfgRow({
+        channel: NotificationChannel.VIBER,
+        provider: 'esputnik',
+        externalTemplateId: 'tpl-42',
+      }),
+    ]);
+    templateFindMany.mockResolvedValue([]); // локального шаблону немає — текст у кабінеті eSputnik
+    (registry.get as ReturnType<typeof vi.fn>).mockReturnValue({
+      code: 'esputnik',
+      templateChannels: [NotificationChannel.VIBER, NotificationChannel.TELEGRAM],
+    });
+
+    const cfg = await service.resolveConfig('org-1', 'br-1', 'WO_COMPLETED');
+    expect(cfg).not.toBeNull();
+    expect(cfg!.channels).toHaveLength(1);
+    expect(cfg!.channels[0]).toMatchObject({
+      channel: NotificationChannel.VIBER,
+      externalTemplateId: 'tpl-42',
+      templateBody: '', // порожній — текст живе у шаблоні провайдера
+    });
+  });
+
+  it('externalTemplateId + inline-провайдер (turbosms VIBER) без локального шаблону → канал ВИКЛЮЧЕНО (anti empty-send)', async () => {
+    channelConfigFindMany.mockResolvedValue([
+      cfgRow({
+        channel: NotificationChannel.VIBER,
+        provider: 'turbosms',
+        externalTemplateId: 'tpl-x',
+      }),
+    ]);
+    templateFindMany.mockResolvedValue([]);
+    // turbosms не має templateChannels → VIBER для нього inline → канал не придатний.
+    (registry.get as ReturnType<typeof vi.fn>).mockReturnValue({ code: 'turbosms' });
+
+    await expect(service.resolveConfig('org-1', 'br-1', 'WO_COMPLETED')).resolves.toBeNull();
+  });
 });
 
 describe('NotificationsService.sendWithConfig', () => {
