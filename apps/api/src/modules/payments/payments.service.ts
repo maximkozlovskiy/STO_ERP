@@ -171,8 +171,21 @@ export class PaymentsService {
     }
 
     if (counterparty.phone) {
+      // Bug fix: send() рано виходить без branchId → PAYMENT_RECEIVED раніше НІКОЛИ не слався.
+      // Беремо branchId наряду; для standalone-оплати (без наряду) — найстаріша філія org
+      // (дзеркалить followup.processor). Резолвимо лениво, лише якщо наряду немає.
+      const branchId =
+        workOrder?.branchId ??
+        (
+          await this.prisma.garageBranch.findFirst({
+            where: { orgId, deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
+          })
+        )?.id;
       this.notifications
         .send(orgId, 'PAYMENT_RECEIVED', {
+          branchId,
           phone: counterparty.phone,
           amount: UAH_AMOUNT_FMT.format(dto.amount),
           clientName: formatPersonName(

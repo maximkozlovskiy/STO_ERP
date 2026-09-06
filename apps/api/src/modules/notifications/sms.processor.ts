@@ -1,6 +1,8 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
+import { NotificationChannel } from '@prisma/client';
+import { NotificationProviderRegistry } from './providers/provider-registry';
 
 interface SendSmsJob {
   orgId: string;
@@ -11,67 +13,46 @@ interface SendSmsJob {
   senderName: string;
 }
 
+/** §2.4 PII: у логах показуємо лише останні 4 цифри телефону. */
+function maskPhone(phone: string): string {
+  return phone.length <= 4 ? '****' : `****${phone.slice(-4)}`;
+}
+
 // Concurrency=3: кожна SMS — окремий зовнішній HTTP виклик (10s timeout).
 // Без concurrency черга з 30 SMS виконувалась би ~300s серійно.
-// 3 паралельних виклики до TurboSMS — безпечно (провайдер не має rate-limit per key).
 @Injectable()
 @Processor('sms', { concurrency: 3 })
 export class SmsProcessor extends WorkerHost {
   private readonly logger = new Logger(SmsProcessor.name);
 
+  constructor(private readonly registry: NotificationProviderRegistry) {
+    super();
+  }
+
   async process(job: Job<SendSmsJob>): Promise<void> {
     const { phone, message, provider, apiKey, senderName } = job.data;
 
-    if (provider === 'turbosms') {
-      await this.sendViaTurboSms(phone, message, apiKey, senderName);
-    } else {
-      this.logger.warn(`Невідомий SMS-провайдер: ${provider}`);
+    const impl = this.registry.get(provider);
+    if (!impl) {
+      // Невідомий провайдер — не ретраїмо (це конфіг-помилка, не транзієнт).
+      this.logger.warn(`SMS пропущено: невідомий провайдер "${provider}"`);
+      return;
     }
+
+    const result = await impl.send({
+      channel: NotificationChannel.SMS,
+      phone,
+      message,
+      creds: { apiKey, senderName },
+    });
+
+    if (!result.accepted) {
+      // Кидаємо → BullMQ retry (attempts:10, exp backoff). Провайдер відхилив/мережа впала.
+      throw new Error(result.error ?? 'SMS відхилено провайдером');
+    }
+
+    this.logger.log(
+      `SMS надіслано на ${maskPhone(phone)} через ${provider} (id=${result.providerMessageId ?? '—'})`,
+    );
   }
-
-  private async sendViaTurboSms(phone: string, message: string, apiKey: string, sender: string) {
-    // Offline-first invariant: external HTTP must NEVER hang the worker.
-    // Without a timeout a flaky TurboSMS endpoint (or no internet) blocks
-    // the SMS queue indefinitely — defeats the BullMQ retry-with-backoff design.
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10_000);
-    let response: Response;
-    try {
-      response = await fetch('https://api.turbosms.ua/message/send.json', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipients: [phone],
-          sms: { sender, text: message },
-          token: apiKey,
-        }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`TurboSMS error ${response.status}: ${err}`);
-    }
-
-    const result: unknown = await response.json();
-    // §2.4 PII: маскуємо телефон у логах (показуємо лише останні 4 цифри).
-    // pino.redact не покриває string-інтерполяцію в повідомленні логера;
-    // потрібно маскувати на сайті виклику.
-    this.logger.log(`SMS надіслано на ${maskPhone(phone)}: ${JSON.stringify(result)}`);
-  }
-}
-
-/**
- * Маскує телефон для логування: лишає лише останні 4 цифри.
- * +380501234567 → +***4567
- * 0501234567    → ***4567
- */
-function maskPhone(phone: string): string {
-  if (phone.length <= 4) return '****';
-  const visible = phone.slice(-4);
-  const prefix = phone.startsWith('+') ? '+' : '';
-  return `${prefix}***${visible}`;
 }

@@ -5,6 +5,8 @@ import { NotificationsController } from './notifications.controller';
 import { SmsProcessor } from './sms.processor';
 import { FollowUpProcessor } from './followup.processor';
 import { FollowUpScheduler } from './followup.scheduler';
+import { TurboSmsProvider } from './providers/turbosms.provider';
+import { NotificationProviderRegistry } from './providers/provider-registry';
 
 @Global()
 @Module({
@@ -13,7 +15,14 @@ import { FollowUpScheduler } from './followup.scheduler';
     BullModule.registerQueue({ name: 'followup' }),
   ],
   controllers: [NotificationsController],
-  providers: [NotificationsService, SmsProcessor, FollowUpProcessor, FollowUpScheduler],
-  exports: [NotificationsService],
+  providers: [
+    NotificationsService,
+    SmsProcessor,
+    FollowUpProcessor,
+    FollowUpScheduler,
+    TurboSmsProvider,
+    NotificationProviderRegistry,
+  ],
+  exports: [NotificationsService, NotificationProviderRegistry],
 })
 export class NotificationsModule {}
