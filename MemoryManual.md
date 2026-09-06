@@ -12,6 +12,7 @@
 Дата:       2026-09-07
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors  (+ prisma validate ✅)
+Latest review: 2026-09-07 (Auto, HEAD 025bf77f) — QR-оплата monobank: 1 Critical (crash-window CAS→Payment реконсиляція) виправлено, решта CLEAN
 Tests:      API 1638 зелено (104 files) | web 684 зелено (68 files) — після tester ПРРО Крок 2 (+56 API/+10 web)
 Sync-monobank: 2026-09-07 fix(sync) 14c18a0e — sync-check QR-оплати monobank (feat online-payment.controller/service + monobank.client + useOnlinePayment.ts + QrPaymentModal.tsx + FiscalTab monobank-секція). **1 фікс (frontend polling gate), решта CLEAN.** Bug: QrPaymentModal `isPending` рахувався від одноразового `intent.status` (виставляється лише при створенні наміру) — після PAID/FAILED/EXPIRED `isPending` лишався true назавжди → useOnlineIntentStatus продовжував опитувати кожні 3s безкінечно, всупереч задокументованій поведінці «на терміналі зупиняємось». Fix: гейт тепер реагує на останній відомий статус (`live ?? intent`), окремий `live` state оновлюється з polled-даних; скидається разом з `intent` при відкритті модалки/новому наміру. Верифіковано ЧИСТИМ: (1) OnlineIntent interface field-for-field = OnlineIntentDto {id,status,pageUrl,amount,paymentId,error}; (2) apiFetch POST /online-payments {invoiceId,amount?} + GET /online-payments/:id збігаються з контролером; (3) **security round-trip write-only токен** — BranchSettingsResponseDto/mapBranchSettings НІКОЛИ не повертає monobankToken (лише hasMonobankToken:boolean), і GET(getBranchSettings) і PATCH(updateBranchSettings) мапляться через той самий mapBranchSettings; FiscalTab FiscalSettings interface не має raw token-поля, шле monobankToken лише коли введено; (4) qrcode.react ^4.2.0 у apps/web/package.json + встановлено у node_modules, QRCodeSVG імпорт резолвиться; (5) roles на POST/GET /online-payments = OWNER/ADMIN/ACCOUNTANT/RECEPTIONIST, збігається з invoices-сторінкою; (6) monobank_qr є у payment-methods seed (seed.ts) і setup.service.ts → dropdown методів оплати його бачить. tsc api+web ✅ 0. Наступний QA: review+tester (запускає користувач, не запускав самостійно за інструкцією).
 Tester-prro2: 2026-09-06 bug-hunt ПРРО Крок 2 (feat 0cfa27d5 + review b8747f15) — 0 функціональних дефектів; 5 coverage-gap закрито (#683-#687): CheckboxClient.spec NEW 26 (mock fetch: SSRF-before-fetch/3xx-reject/401-map/timeout/Bearer-vs-X-License-Key/cents-round), CashShiftService.spec NEW 28 (open/close/ensureToken/refreshToken/getCurrent + P2002-recovery), processor token-never-logged +2, CashPage.spec NEW 7, FiscalTab shiftMode +3. Mutation-verified (окремими мутаціями): 30s-skew boundary (>≠>=), refreshToken orgId, getCurrent per-branch pendingReceipts. E2E пропущено (Playwright MCP DOWN).
@@ -102,6 +103,20 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+025bf77f  fix(review): QR-оплата — реконсиляція вікна збою CAS→Payment (MONEY-CRITICAL)
+          Дата: 2026-09-07. Review QR-оплати monobank (feat 14c18a0e). Знайдено 1 Critical (money),
+          решта CLEAN (once-only CAS, tenant-isolation, SSRF, write-only токен, throttle, ролі, i18n, TS 0).
+          CRITICAL fix (payment-polling.processor.ts): вікно збою CAS PENDING→PAID закомічено, потім
+          процес упав ДО payments.create (або create кинув, лишивши PAID+error БЕЗ re-enqueue) →
+          наступний poll робив early-return на status!==PENDING → Payment/settlement НЕ створювались
+          НІКОЛИ, хоча гроші у monobank реальні (тиха втрата платежу). Fix: гілка PAID+paymentId=null →
+          finalizePayment() (спільний create+link для CAS-win та reconcile); на помилці re-enqueue
+          (jobId-дедуп = single-flight, без лавини); MAX_FINALIZE_ATTEMPTS=360 (~30хв) стеля проти
+          вічного 5с-циклу при ПОСТІЙНІЙ помилці (рахунок переплачено паралельно) → PAID+error для
+          ручного розбору. Idempotency збережена (paymentId!=null→стоп). Підтверджено коректним:
+          двопоточний CAS→рівно один count=1; QR-шлях = manual invoice-payment шлях (обидва без
+          workOrderId, свідомо, INVOICEABLE=COMPLETED|INVOICED); FAILED intent без orphan-poll.
+
 <tester-prro-2>  test(tester): ПРРО Крок 2 — CheckboxClient + CashShiftService (0→нові spec) + token-log guard (Bugs #683-#687)
           Дата: 2026-09-06. Bug-hunt money/fiscal+security фічі ПРРО Крок 2 (feat 0cfa27d5 + review-fix b8747f15).
           0 функціональних дефектів — уся security/token/tenant-логіка коректна. 5 coverage-gap закрито:

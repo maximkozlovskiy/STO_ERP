@@ -1389,6 +1389,13 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Фікс:** `const X_VALUES = new Set<string>(Object.values(SomeEnum));` (enum-driven, з `@prisma/client`) → `if (opts.x && X_VALUES.has(opts.x)) where.x = opts.x as ...;` — невідоме ігнорується (фільтр не застосовується), як для будь-якого нерозпізнаного query-параметра.
 **Severity:** IMPORTANT — 500 замість 400/порожнього; тривіальний DoS/шум через ручний query-параметр.
 
+### 2026-09-07 — CAS-статус закомічено ПЕРЕД money-side-effect → crash-window без реконсиляції — §5
+
+**Сигнал:** money-flow робить `updateMany({where:{status:'PENDING'}, data:{status:'PAID'}})` (CAS-claim) → count===1 → окремим кроком `payments.create()` + запис лінка (`paymentId`). CAS і create — НЕ в одній транзакції (create має власну tx / зовн. виклики). Якщо процес падає МІЖ CAS і create (або create кидає, а код лишає PAID+error БЕЗ re-enqueue), наступний poll робить early-return на `status !== 'PENDING'` → Payment/settlement НЕ створюються НІКОЛИ, хоча гроші у gateway реальні → тиха втрата платежу. Гроші отримано, обліку немає.
+**Grep:** `grep -rnE "updateMany\(\{[^}]*status: 'PENDING'.*data: \{ status: 'PAID'" apps/api/src/modules --include="*.ts"` → для кожного CAS-claim перевірити: (1) чи є гілка `status==='PAID' && linkId===null` що ДОводить side-effect (реконсиляція), (2) чи re-enqueue-иться poll на невдалому create, (3) чи є стеля ретраїв проти вічного циклу при ПОСТІЙНІЙ помилці.
+**Фікс:** гілка реконсиляції на вході process(): `if (status==='PAID'){ if(linkId) return; await finalize(...); return }`. `finalize()` — спільний create+link для CAS-win і reconcile; на помилці re-enqueue (jobId-дедуп = single-flight, без лавини); лічильник `finalizeAttempts` у job.data з `MAX` стелею → далі PAID+error для ручного розбору. Idempotency: `linkId!=null → стоп`.
+**Severity:** CRITICAL — тиха втрата грошей (gateway отримав, обліку немає); tsc + happy-path тест мовчать.
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
