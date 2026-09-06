@@ -149,6 +149,17 @@ export class UpdateOrganisationSettingsDto {
   @Max(23)
   nbuFetchHour?: number;
 
+  @ApiPropertyOptional({
+    description: 'Інтервал опитування служби доставки (хв). clamp [5,1440].',
+    minimum: 5,
+    maximum: 1440,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(5)
+  @Max(1440)
+  deliveryPollIntervalMinutes?: number;
+
   @ApiPropertyOptional({ description: 'UI feature flags (partial update supported)' })
   @IsOptional()
   @IsObject()
@@ -325,6 +336,8 @@ export class OrganisationSettingsResponseDto {
     description: 'Р“РѕРґРёРЅР° Р°РІС‚РѕР·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РєСѓСЂСЃС–РІ РќР‘РЈ (0вЂ“23)',
   })
   nbuFetchHour!: number;
+  @ApiProperty({ description: 'Інтервал опитування служби доставки (хв)' })
+  deliveryPollIntervalMinutes!: number;
   @ApiProperty({ description: 'UI feature flags' }) uiFeatures!: UiFeatures;
   // B4: Loyalty
   @ApiProperty() loyaltyEnabled!: boolean;

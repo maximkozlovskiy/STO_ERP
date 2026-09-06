@@ -9,6 +9,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
+import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 
 // Bug #187 / #200: regression-захист для applyPricing
@@ -87,6 +88,10 @@ describe('PurchaseOrdersService.applyPricing', () => {
           useValue: {
             getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
           },
+        },
+        {
+          provide: DeliveryTrackingService,
+          useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();
@@ -411,6 +416,10 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
           useValue: {
             getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
           },
+        },
+        {
+          provide: DeliveryTrackingService,
+          useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();
@@ -1003,6 +1012,10 @@ describe('PurchaseOrdersService.update — contract resolution', () => {
             getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
           },
         },
+        {
+          provide: DeliveryTrackingService,
+          useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);
@@ -1227,6 +1240,10 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
           useValue: {
             getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
           },
+        },
+        {
+          provide: DeliveryTrackingService,
+          useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();
@@ -1492,6 +1509,10 @@ describe('PurchaseOrdersService.findAll — sortBy=paymentDate nulls-last (Bug #
             getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
           },
         },
+        {
+          provide: DeliveryTrackingService,
+          useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);
@@ -1588,6 +1609,10 @@ describe('PurchaseOrdersService — linked-documents edge cases', () => {
         { provide: DocumentNumberService, useValue: {} },
         { provide: PricingService, useValue: {} },
         { provide: SettingsService, useValue: {} },
+        {
+          provide: DeliveryTrackingService,
+          useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);

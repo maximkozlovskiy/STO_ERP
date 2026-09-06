@@ -180,6 +180,7 @@ enum OnlinePaymentStatus {
 enum ProviderKind {
   FISCAL // ПРРО: Checkbox, Вчасно.Каса
   PAYMENT // еквайринг/онлайн-оплата: monobank, LiqPay
+  DELIVERY // служба доставки/трекінг: Нова Пошта
 }
 
 enum SettlementTransactionType {
@@ -204,6 +205,17 @@ enum PurchaseOrderStatus {
   RECEIVED
   PARTIAL
   CANCELLED
+}
+
+// Нормалізований статус доставки (мапиться зі StatusCode служби доставки, напр. Нової Пошти).
+// Окремий від PurchaseOrderStatus (FSM закупівлі) — це стан фізичної доставки за накладною.
+enum DeliveryStatus {
+  PENDING // ЕН створено, очікує надходження у службу доставки
+  IN_TRANSIT // у дорозі / прямує до відділення
+  ARRIVED // прибув на відділення (готове до отримання)
+  DELIVERED // отримано (термінальний)
+  RETURNED // повернення / видалено (термінальний)
+  NOT_FOUND // накладну не знайдено у службі доставки (термінальний)
 }
 
 enum SupplierReturnStatus {
@@ -1436,6 +1448,11 @@ model PurchaseOrder {
   documentDate DateTime            @default(now()) @db.Date
   paymentDate  DateTime?           @db.Date
   pricedAt     DateTime?
+  // Доставка (трекінг за накладною служби доставки, напр. Нова Пошта). Незалежні від FSM закупівлі.
+  trackingNumber          String? // номер накладної (ЕН)
+  deliveryStatus          DeliveryStatus? // нормалізований статус (null поки ЕН не вказано)
+  deliveryStatusRaw       String? // сирий текст статусу служби доставки (для тултипа UI)
+  deliveryStatusUpdatedAt DateTime? // час останнього оновлення статусу доставки
   syncVersion  BigInt              @default(0)
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
@@ -1453,6 +1470,7 @@ model PurchaseOrder {
   @@index([orgId, syncVersion])
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
+  @@index([orgId, deliveryStatus, deletedAt])
   @@map("purchase_orders")
 }
 
@@ -1667,6 +1685,8 @@ model OrganisationSettings {
   followUpActive                   Boolean         @default(false)
   followUpDays                     Int             @default(90)
   nbuFetchHour                     Int             @default(12)
+  // Інтервал опитування служби доставки (хв). Читається polling-процесором (НЕ hardcoded). clamp [5,1440].
+  deliveryPollIntervalMinutes      Int             @default(30)
   uiFeatures                       Json            @default("{}")
   // B4: Loyalty program settings
   loyaltyEnabled                   Boolean         @default(false)

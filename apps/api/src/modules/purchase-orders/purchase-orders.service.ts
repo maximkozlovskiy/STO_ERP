@@ -14,6 +14,7 @@ import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
+import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { calcLineVat } from '../../common/utils/vat';
 import {
   CreatePurchaseOrderDto,
@@ -73,7 +74,15 @@ export class PurchaseOrdersService {
     private readonly docNumbers: DocumentNumberService,
     private readonly pricingService: PricingService,
     private readonly settingsService: SettingsService,
+    private readonly deliveryTracking: DeliveryTrackingService,
   ) {}
+
+  /** Нормалізує введений номер накладної: trim, порожнє → null. */
+  private normalizeTracking(raw: string | null | undefined): string | null {
+    if (raw == null) return null;
+    const t = raw.trim();
+    return t === '' ? null : t;
+  }
 
   async findAll(
     orgId: string,
@@ -240,6 +249,7 @@ export class PurchaseOrdersService {
       : (contract?.id ?? null);
 
     const number = await this.docNumbers.next(orgId, 'PURCHASE_ORDER');
+    const createTracking = this.normalizeTracking(dto.trackingNumber);
 
     const lines = dto.lines ?? [];
     const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
@@ -264,6 +274,10 @@ export class PurchaseOrdersService {
             totalVat,
             documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
             paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
+            // Доставка: якщо ЕН вказано при створенні — статус PENDING, далі опитуємо НП.
+            trackingNumber: createTracking,
+            deliveryStatus: createTracking ? 'PENDING' : null,
+            deliveryStatusUpdatedAt: createTracking ? new Date() : null,
           },
         });
         if (computedLines.length) {
@@ -296,6 +310,9 @@ export class PurchaseOrdersService {
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
 
+    // ЕН вказано при створенні → запускаємо опитування статусу доставки (offline-safe .catch усередині).
+    if (createTracking) await this.deliveryTracking.enqueueInitial(orgId, po.id);
+
     return this.toDto(po);
   }
 
@@ -309,11 +326,45 @@ export class PurchaseOrdersService {
     // contractId-валідації і виявити зміну постачальника, що потребує очищення стейл-контракту).
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { status: true, totalAmount: true, supplierId: true, contractId: true },
+      select: {
+        status: true,
+        totalAmount: true,
+        supplierId: true,
+        contractId: true,
+        trackingNumber: true,
+      },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
     if (po.status !== PurchaseOrderStatus.DRAFT)
       throw new BadRequestException('Редагувати можна лише чернетку');
+
+    // Доставка: обробляємо ЕН лише коли клієнт явно надіслав поле (undefined → не чіпати).
+    //  - непорожній новий ЕН (змінився)  → deliveryStatus=PENDING + запустити опитування;
+    //  - порожній/null                    → скинути ЕН і статус (poll-guard зупинить job);
+    //  - той самий ЕН                     → нічого не міняти (не рестартувати трекінг).
+    let trackingUpdate: Record<string, unknown> = {};
+    let enqueueTracking = false;
+    if (dto.trackingNumber !== undefined) {
+      const next = this.normalizeTracking(dto.trackingNumber);
+      if (next !== po.trackingNumber) {
+        if (next) {
+          trackingUpdate = {
+            trackingNumber: next,
+            deliveryStatus: 'PENDING',
+            deliveryStatusRaw: null,
+            deliveryStatusUpdatedAt: new Date(),
+          };
+          enqueueTracking = true;
+        } else {
+          trackingUpdate = {
+            trackingNumber: null,
+            deliveryStatus: null,
+            deliveryStatusRaw: null,
+            deliveryStatusUpdatedAt: null,
+          };
+        }
+      }
+    }
 
     // sto-optimize: всі 3 FK guards незалежні (supplier, warehouse, contract) — кожна
     // лише для NotFoundException-перевірки. Раніше sequential — кожен await блокував
@@ -416,6 +467,7 @@ export class PurchaseOrdersService {
             ...(dto.paymentDate !== undefined
               ? { paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null }
               : {}),
+            ...trackingUpdate,
           },
           include: {
             supplier: { select: { firstName: true, lastName: true, companyName: true } },
@@ -431,6 +483,9 @@ export class PurchaseOrdersService {
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
+
+    // Новий/змінений ЕН → запускаємо опитування статусу доставки (offline-safe усередині).
+    if (enqueueTracking) await this.deliveryTracking.enqueueInitial(orgId, id);
 
     return this.toDto(updated);
   }
@@ -839,6 +894,10 @@ export class PurchaseOrdersService {
     documentDate?: Date | null;
     paymentDate?: Date | null;
     pricedAt?: Date | null;
+    trackingNumber?: string | null;
+    deliveryStatus?: import('@prisma/client').DeliveryStatus | null;
+    deliveryStatusRaw?: string | null;
+    deliveryStatusUpdatedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
     deletedAt?: Date | null;
@@ -891,6 +950,12 @@ export class PurchaseOrdersService {
       documentDate: po.documentDate ? po.documentDate.toISOString().slice(0, 10) : null,
       paymentDate: po.paymentDate ? po.paymentDate.toISOString().slice(0, 10) : null,
       pricedAt: po.pricedAt instanceof Date ? po.pricedAt.toISOString() : (po.pricedAt ?? null),
+      trackingNumber: po.trackingNumber ?? null,
+      deliveryStatus: po.deliveryStatus ?? null,
+      deliveryStatusRaw: po.deliveryStatusRaw ?? null,
+      deliveryStatusUpdatedAt: po.deliveryStatusUpdatedAt
+        ? po.deliveryStatusUpdatedAt.toISOString()
+        : null,
       linesCount: po._count?.lines ?? po.lines?.length ?? 0,
       deletedAt: po.deletedAt instanceof Date ? po.deletedAt.toISOString() : (po.deletedAt ?? null),
       lines: (po.lines ?? []).map(l => ({

@@ -14,10 +14,11 @@ import {
   ArrayMinSize,
   IsDateString,
   IsBooleanString,
+  MaxLength,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PurchaseOrderStatus } from '@prisma/client';
+import { PurchaseOrderStatus, DeliveryStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class TransitionPurchaseOrderDto {
@@ -63,6 +64,12 @@ export class CreatePurchaseOrderDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   paymentDate?: string;
+
+  @ApiPropertyOptional({ description: 'Номер накладної доставки (ЕН). Заповнено → трекінг НП.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  trackingNumber?: string;
 
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
   @IsOptional()
@@ -111,6 +118,16 @@ export class UpdatePurchaseOrderDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   paymentDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'Номер накладної доставки (ЕН). ""/null → очистити; undefined → не чіпати',
+    nullable: true,
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(64)
+  trackingNumber?: string | null;
 
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
   @IsOptional()
@@ -179,6 +196,14 @@ export class PurchaseOrderResponseDto {
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiPropertyOptional({ description: 'Планова дата оплати' }) paymentDate?: string | null;
+  @ApiPropertyOptional({ description: 'Номер накладної доставки (ЕН)' })
+  trackingNumber?: string | null;
+  @ApiPropertyOptional({ enum: DeliveryStatus, description: 'Статус доставки (нормалізований)' })
+  deliveryStatus?: DeliveryStatus | null;
+  @ApiPropertyOptional({ description: 'Сирий текст статусу служби доставки' })
+  deliveryStatusRaw?: string | null;
+  @ApiPropertyOptional({ description: 'Час останнього оновлення статусу доставки' })
+  deliveryStatusUpdatedAt?: string | null;
   @ApiPropertyOptional({
     description: 'Залишок боргу по PO (totalAmount − Σ CONFIRMED оплат); лише у списку',
   })
