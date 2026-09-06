@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-09-07 — feat: registry провайдерів ПРРО (Checkbox+Вчасно) і еквайрингу (monobank+LiqPay) + вибір активного per-branch
+
+Дзеркалить provider-registry сповіщень для фіскалізації та еквайрингу: кілька провайдерів на філію, активний обирається ексклюзивно (лише 1 per kind). Секрети шифруються at-rest; legacy read-fallback на старі BranchSettings-колонки → вже-налаштовані філії працюють без міграції даних.
+
+### 9df90aad db — BranchProviderConfig (спільна схема)
+
+- `enum ProviderKind {FISCAL PAYMENT}`; `model BranchProviderConfig` (kind/provider/enabled/apiUrl/credentials/shiftMode, `@@unique([branchId,kind,provider])`); `CashShift +provider` (яким ПРРО-провайдером відкрито зміну).
+- `credentials` = JSON-рядок секретів, шифрується at-rest ЦІЛИМ полем (`ENCRYPTED_FIELDS['BranchProviderConfig']=['credentials']`); виключено з `PULL_TABLES`/`PUSH_SAFE_TABLES`.
+- Міграція `20260907120000` additive/idempotent (enum-guard, ADD COLUMN/CREATE TABLE IF NOT EXISTS, сід не-секретних конфігів з BranchSettings, `credentials NULL` → legacy-fallback).
+
+### a4729dd0 payments — registry платіжних шлюзів (monobank + LiqPay)
+
+- `PaymentGateway` interface + `PaymentGatewayRegistry`; `MonobankGateway` (обгортка parity) + `LiqpayGateway` (новий: data+signature SHA1, checkout-URL як QR, status action=status, SSRF/3xx/timeout).
+- `online-payment.service`/`payment-polling.processor` → `registry.get(intent.gateway)`; `intent.gateway` = активний шлюз (не хардкод); **money-critical CAS/Bug#688-idempotency/reconcile збережено ДОСЛІВНО**.
+- `PaymentGatewaysController` (list/verify/branch-config/activate); creds write-only.
+
+### 025d9f36 payments — registry провайдерів ПРРО (Checkbox + Вчасно.Каса)
+
+- `FiscalProvider` interface + `FiscalUnauthorizedError` (провайдер-агностичний); `CheckboxProvider` (обгортка parity) + `VchasnoProvider` (новий: Bearer-токен, shift/sell, SSRF/401).
+- `cash-shift.service`/`checkbox.processor` через registry; `CashShift.provider` фіксує чим відкрито; `ensureToken` резолвить `resolveByCode(shift.provider)` (не «активний»).
+- `ProviderConfigService` (resolveActive/resolveByCode + legacy-fallback + getBranchConfigs/upsert/activate); `FiscalProvidersController`.
+
+### 7c347330 web — панелі вибору активного провайдера + QR без хардкоду monobank
+
+- `ProviderRegistryPanel` (спільна, параметризована kind/endpoint) — картки, Switch ексклюзивної активації, модалка кредів write-only з verify; `FiscalTab` → дві панелі (ПРРО + еквайринг).
+- `QrPaymentModal` заголовок «QR-оплата» (працює для будь-якого шлюзу).
+
+### 5ef0dbd1 review + 6ab4e28d tester — money/security CLEAN + Bug #692 (CRITICAL)
+
+- **Review** (5ef0dbd1): 0 critical/important; усі 7 money/security-critical напрямів CLEAN; прибрано dead logger у LiqpayGateway.
+- **Tester** (6ab4e28d): **Bug #692 CRITICAL** — сід міграції створює `enabled=true` рядок з `credentials=NULL`, а `resolveActive` повертав його одразу без hasCreds-guard → не доходив до legacy-fallback де реальні секрети → після `prisma migrate deploy` тихий повний fiscal+money outage на вже-налаштованих філіях (зміна не відкривається, чек не б'ється, QR не створюється). Сигнал: асиметрія з `resolveByCode` (той мав guard). Fix: `resolveActive` падає у legacy-fallback для того ж провайдера при порожніх кредах. +12 тестів (#693-#695). API 1745.
+
+### deploy — застосувати на проді
+
+`prisma migrate deploy` для `20260907120000_branch_provider_config` (additive: enum, ADD COLUMN cash_shifts.provider, CREATE TABLE branch_provider_configs, сід не-секретних конфігів).
+
+---
+
 ## 2026-09-07 — fix(tester): QR-оплата monobank — Bug #688 double-charge idempotency-link
 
 ### eabcc465 payments — Bug #688 (CRITICAL) idempotency-лінк проти double-charge + тести #689-#691
