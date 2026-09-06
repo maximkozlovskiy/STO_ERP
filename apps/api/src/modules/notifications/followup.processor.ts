@@ -217,13 +217,20 @@ export class FollowUpProcessor extends WorkerHost {
     // N × 2 DB reads for the batch. Now: 0 DB reads in the fan-out loop.
     const results = await Promise.allSettled(
       recipients.map(r =>
-        this.notifications.sendWithConfig(orgId, r.phone, smsConfig, {
-          clientName: r.clientName,
-          vehicleMake: r.vehicleMake,
-          vehicleModel: r.vehicleModel,
-          licensePlate: r.licensePlate,
-          nextMaintenanceDate: r.nextMaintenanceDate,
-        }),
+        this.notifications.sendWithConfig(
+          orgId,
+          r.phone,
+          smsConfig,
+          {
+            clientName: r.clientName,
+            vehicleMake: r.vehicleMake,
+            vehicleModel: r.vehicleModel,
+            licensePlate: r.licensePlate,
+            nextMaintenanceDate: r.nextMaintenanceDate,
+          },
+          branch.id,
+          'FOLLOWUP_REMINDER',
+        ),
       ),
     );
 

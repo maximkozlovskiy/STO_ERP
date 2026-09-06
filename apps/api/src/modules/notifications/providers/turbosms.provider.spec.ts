@@ -48,15 +48,22 @@ describe('TurboSmsProvider', () => {
     expect(res.error).toBe('INVALID_TOKEN');
   });
 
-  it('send: непідтримуваний канал (Viber у Phase 1) → not accepted', async () => {
+  it('send VIBER: шле viber-payload (не sms), response_code 0 → accepted', async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse({ response_result: [{ response_code: 0, message_id: 'v-1' }] }),
+    );
     const res = await provider.send({
       channel: NotificationChannel.VIBER,
       phone: '380671112233',
-      message: 'x',
-      creds: { apiKey: 'tok' },
+      message: 'Привіт у Viber',
+      creds: { apiKey: 'tok', senderName: 'STO' },
     });
-    expect(res.accepted).toBe(false);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(res.accepted).toBe(true);
+    expect(res.providerMessageId).toBe('v-1');
+    // payload містить viber-обʼєкт, а не sms
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.viber).toEqual({ sender: 'STO', text: 'Привіт у Viber' });
+    expect(body.sms).toBeUndefined();
   });
 
   it('send: мережева помилка → accepted:false, error (не кидає)', async () => {
@@ -97,7 +104,11 @@ describe('NotificationProviderRegistry', () => {
     expect(registry.get('nonexistent')).toBeNull();
     const list = registry.list();
     expect(list).toEqual([
-      { code: 'turbosms', name: 'TurboSMS', channels: [NotificationChannel.SMS] },
+      {
+        code: 'turbosms',
+        name: 'TurboSMS',
+        channels: [NotificationChannel.SMS, NotificationChannel.VIBER],
+      },
     ]);
   });
 });

@@ -1,17 +1,33 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { NotificationEventType } from '@prisma/client';
+import { NotificationChannel, NotificationEventType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export type NotificationEvent = NotificationEventType;
 
-/** Pre-fetched SMS config shared across a batch of recipients in the same org+event. */
-export interface NotificationConfig {
+/** Один канал у fallback-ланцюзі: провайдер + креди + вже відрендерений текст. */
+export interface ChannelStep {
+  channel: NotificationChannel;
   provider: string;
   apiKey: string;
   senderName: string;
-  templateBody: string;
+  message: string;
+}
+
+/**
+ * Впорядкований fallback-ланцюг каналів (за пріоритетом) для однієї події+філії.
+ * Спільний для батчу отримувачів (текст рендериться per-recipient у sendWithConfig).
+ */
+export interface NotificationConfig {
+  /** Впорядковані enabled-канали (priority ASC). templateBody — шаблон ДО рендеру. */
+  channels: {
+    channel: NotificationChannel;
+    provider: string;
+    apiKey: string;
+    senderName: string;
+    templateBody: string;
+  }[];
 }
 
 @Injectable()
@@ -39,35 +55,65 @@ export class NotificationsService {
     const config = await this.resolveConfig(orgId, branchId, event);
     if (!config) return;
 
-    await this.sendWithConfig(orgId, phone, config, payload);
+    await this.sendWithConfig(orgId, phone, config, payload, branchId, event);
   }
 
   /**
-   * Fetch SMS config (branchSettings + template) once for a batch of recipients
-   * that share the same orgId, branchId and event type.
-   * Returns null if SMS is not configured or template is missing — batch should abort.
+   * Побудова fallback-ланцюга каналів для батчу отримувачів (спільний orgId+branchId+event).
+   * Повертає null якщо жоден канал не налаштований/немає шаблону — батч аборт.
    *
-   * Performance: follow-up processor sends to up to 2000 recipients/org.
-   * Without this, notifications.send() fetched branchSettings + template per recipient
-   * = 2 × 2000 = 4000 identical DB reads per daily tick. Now: 2 reads for the whole batch.
+   * Джерело каналів (з fallback на legacy):
+   *  1) NotificationChannelConfig — впорядковані enabled-канали (priority ASC). Кожному
+   *     каналу підбирається активний NotificationTemplate цього channel; без шаблону канал
+   *     тихо пропускається (fallback перескочить на наступний).
+   *  2) Legacy: якщо конфіг-рядків немає — читаємо BranchSettings.sms* як одноканальний
+   *     SMS-ланцюг (зворотна сумісність до data-migration).
+   *
+   * Perf: follow-up-процесор шле до 2000 отримувачів/org → читаємо конфіг+шаблони ОДИН раз
+   * на батч, не per-recipient.
    */
   async resolveConfig(
     orgId: string,
     branchId: string,
     event: NotificationEvent,
   ): Promise<NotificationConfig | null> {
-    // sto-optimize: narrow to the fields actually consumed downstream — SMS resolve
-    // runs on every notification (booking, follow-up batch up to 2000/day), wire
-    // payload shrinks from ~25 settings columns to 5 + 1 template body.
+    const channelConfigs = await this.prisma.notificationChannelConfig.findMany({
+      where: { orgId, branchId, enabled: true, deletedAt: null, apiKey: { not: null } },
+      orderBy: { priority: 'asc' },
+      select: { channel: true, provider: true, apiKey: true, senderName: true },
+    });
+
+    if (channelConfigs.length > 0) {
+      // Шаблони для всіх задіяних каналів — одним запитом.
+      const wantedChannels = [...new Set(channelConfigs.map(c => c.channel))];
+      const templates = await this.prisma.notificationTemplate.findMany({
+        where: { orgId, eventType: event, channel: { in: wantedChannels }, isActive: true },
+        select: { channel: true, body: true },
+      });
+      const byChannel = new Map(templates.map(t => [t.channel, t.body]));
+
+      const channels = channelConfigs
+        .filter(c => byChannel.has(c.channel))
+        .map(c => ({
+          channel: c.channel,
+          provider: c.provider,
+          apiKey: c.apiKey as string, // гарантовано not-null через where
+          senderName: c.senderName ?? 'STO ERP',
+          templateBody: byChannel.get(c.channel) as string,
+        }));
+
+      if (channels.length === 0) {
+        this.logger.debug(`Жодного каналу з шаблоном для org=${orgId}, event=${event}`);
+        return null;
+      }
+      return { channels };
+    }
+
+    // Legacy fallback — одноканальний SMS із BranchSettings.
     const [branchSettings, template] = await Promise.all([
       this.prisma.branchSettings.findFirst({
         where: { branchId, orgId },
-        select: {
-          smsEnabled: true,
-          smsApiKey: true,
-          smsProvider: true,
-          smsSenderName: true,
-        },
+        select: { smsEnabled: true, smsApiKey: true, smsProvider: true, smsSenderName: true },
       }),
       this.prisma.notificationTemplate.findFirst({
         where: { orgId, eventType: event, channel: 'SMS', isActive: true },
@@ -85,34 +131,43 @@ export class NotificationsService {
     }
 
     return {
-      provider: branchSettings.smsProvider ?? 'turbosms',
-      apiKey: branchSettings.smsApiKey,
-      senderName: branchSettings.smsSenderName ?? 'STO ERP',
-      templateBody: template.body,
+      channels: [
+        {
+          channel: NotificationChannel.SMS,
+          provider: branchSettings.smsProvider ?? 'turbosms',
+          apiKey: branchSettings.smsApiKey,
+          senderName: branchSettings.smsSenderName ?? 'STO ERP',
+          templateBody: template.body,
+        },
+      ],
     };
   }
 
   /**
-   * Enqueue a single SMS using pre-fetched config (no DB reads).
-   * Use after resolveConfig() when sending to many recipients with the same config.
+   * Ставить у чергу fallback-ланцюг для одного отримувача (без DB-читань).
+   * Текст рендериться per-channel (Viber-шаблон може відрізнятись від SMS).
+   * Processor іде ланцюгом: chain[chainIndex] accepted → STOP; reject → наступний канал.
    */
   async sendWithConfig(
     orgId: string,
     phone: string,
     config: NotificationConfig,
     vars: Record<string, unknown>,
+    branchId?: string,
+    event?: NotificationEvent,
   ): Promise<void> {
-    const message = this.renderTemplate(config.templateBody, vars);
+    const chain: ChannelStep[] = config.channels.map(c => ({
+      channel: c.channel,
+      provider: c.provider,
+      apiKey: c.apiKey,
+      senderName: c.senderName,
+      message: this.renderTemplate(c.templateBody, vars),
+    }));
+    if (chain.length === 0) return;
+
     await this.smsQueue.add(
       'send-sms',
-      {
-        orgId,
-        phone,
-        message,
-        provider: config.provider,
-        apiKey: config.apiKey,
-        senderName: config.senderName,
-      },
+      { orgId, branchId, event, phone, chain, chainIndex: 0 },
       {
         attempts: 10,
         backoff: { type: 'exponential', delay: 60_000 },

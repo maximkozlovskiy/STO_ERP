@@ -173,6 +173,8 @@ describe('FollowUpProcessor.handleSendReminders', () => {
       '+380671234567',
       DEFAULT_SMS_CONFIG,
       expect.objectContaining({ vehicleMake: 'Toyota' }),
+      'br-1',
+      'FOLLOWUP_REMINDER',
     );
     // resolveConfig — 1 раз на весь batch (не per-recipient)
     expect(notifications.resolveConfig).toHaveBeenCalledTimes(1);
@@ -240,6 +242,8 @@ describe('FollowUpProcessor.handleSendReminders', () => {
       '+380777',
       DEFAULT_SMS_CONFIG,
       expect.any(Object),
+      'br-1',
+      'FOLLOWUP_REMINDER',
     );
   });
 
@@ -346,6 +350,8 @@ describe('FollowUpProcessor.handleSendReminders', () => {
       '+380000',
       DEFAULT_SMS_CONFIG,
       expect.objectContaining({ clientName: 'клієнте' }),
+      'br-1',
+      'FOLLOWUP_REMINDER',
     );
   });
 

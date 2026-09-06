@@ -19,22 +19,28 @@ const HTTP_TIMEOUT_MS = 10_000;
 export class TurboSmsProvider implements NotificationProvider {
   readonly code = 'turbosms';
   readonly name = 'TurboSMS';
-  // Phase 1 — лише SMS (parity). Viber додається у Phase 2.
-  readonly channels: NotificationChannel[] = [NotificationChannel.SMS];
+  // TurboSMS уміє SMS і Viber (окремі payload-об'єкти у /message/send.json).
+  readonly channels: NotificationChannel[] = [NotificationChannel.SMS, NotificationChannel.VIBER];
 
   private readonly logger = new Logger(TurboSmsProvider.name);
 
   async send(params: SendParams): Promise<SendResult> {
     const { channel, phone, message, creds } = params;
-    if (channel !== NotificationChannel.SMS) {
-      return { accepted: false, error: `TurboSMS: канал ${channel} ще не підтримується` };
+    const sender = creds.senderName ?? 'STO ERP';
+
+    // Наш бекенд керує fallback-ланцюгом, тож шлемо кожен канал ОКРЕМО (без вбудованого
+    // viber-to-sms провайдера). SMS → {sms:{...}}, Viber → {viber:{...}}.
+    let payload: Record<string, unknown>;
+    if (channel === NotificationChannel.SMS) {
+      payload = { recipients: [phone], sms: { sender, text: message }, token: creds.apiKey };
+    } else if (channel === NotificationChannel.VIBER) {
+      payload = { recipients: [phone], viber: { sender, text: message }, token: creds.apiKey };
+    } else {
+      return { accepted: false, error: `TurboSMS: канал ${channel} не підтримується` };
     }
+
     try {
-      const res = await this.fetchJson('/message/send.json', {
-        recipients: [phone],
-        sms: { sender: creds.senderName ?? 'STO ERP', text: message },
-        token: creds.apiKey,
-      });
+      const res = await this.fetchJson('/message/send.json', payload);
       // TurboSMS: response_code 0/800 = OK; кожен recipient має message_id + response_status.
       const rec = Array.isArray(res?.response_result) ? res.response_result[0] : undefined;
       const okCodes = new Set([0, 800]);

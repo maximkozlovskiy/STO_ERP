@@ -63,3 +63,26 @@ BEGIN
       ON DELETE RESTRICT ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- Data-migration: наявні BranchSettings.sms* → рядок NotificationChannelConfig (SMS, priority 0).
+-- Idempotent: тільки для філій де ще немає SMS-конфігу і де SMS реально налаштовано (є apiKey).
+-- resolveConfig має read-time fallback на BranchSettings, тож це «підняття» legacy у нову
+-- таблицю щоб UF-панель показувала канал (не змінює поведінку відправки).
+INSERT INTO "notification_channel_configs"
+  ("orgId", "branchId", "channel", "provider", "enabled", "priority", "apiKey", "senderName", "updatedAt")
+SELECT
+  bs."orgId",
+  bs."branchId",
+  'SMS'::"NotificationChannel",
+  COALESCE(bs."smsProvider", 'turbosms'),
+  COALESCE(bs."smsEnabled", false),
+  0,
+  bs."smsApiKey",
+  bs."smsSenderName",
+  CURRENT_TIMESTAMP
+FROM "branch_settings" bs
+WHERE bs."smsApiKey" IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM "notification_channel_configs" ncc
+    WHERE ncc."branchId" = bs."branchId" AND ncc."channel" = 'SMS'::"NotificationChannel"
+  );
