@@ -48,6 +48,11 @@ const PULL_TABLES = [
   'warranties',
 ] as const;
 
+// Явно ВИКЛЮЧЕНІ з sync (не додавати до PULL_TABLES/PUSH_SAFE_TABLES):
+//  - notification_channel_configs: містить apiKey провайдера (секрет) — mobile не має бачити.
+//  - notification_logs: append-only журнал + phone (PII); мобільним клієнтам не потрібен.
+//  - branch_settings: smsApiKey (секрет).
+
 // Tables safe for push — excludes append-only logs and FSM-controlled models
 const PUSH_SAFE_TABLES = new Set([
   'counterparties',

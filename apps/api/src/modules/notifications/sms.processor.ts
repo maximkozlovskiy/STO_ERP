@@ -118,7 +118,13 @@ export class SmsProcessor extends WorkerHost {
     await this.smsQueue.add(
       'send-sms',
       { ...job.data, chainIndex: chainIndex + 1 },
-      { attempts: 10, backoff: { type: 'exponential', delay: 60_000 }, removeOnComplete: true },
+      {
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: true,
+        // §2.4: job.data.chain містить apiKey → обмежуємо утримання невдалих jobs у Redis.
+        removeOnFail: 200,
+      },
     );
   }
 

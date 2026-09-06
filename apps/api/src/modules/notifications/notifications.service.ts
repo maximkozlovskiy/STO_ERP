@@ -81,6 +81,7 @@ export class NotificationsService {
       where: { orgId, branchId, enabled: true, deletedAt: null, apiKey: { not: null } },
       orderBy: { priority: 'asc' },
       select: { channel: true, provider: true, apiKey: true, senderName: true },
+      take: 20, // bounded by @@unique([branchId,channel]) — take як defence-in-depth (§1)
     });
 
     if (channelConfigs.length > 0) {
@@ -89,6 +90,7 @@ export class NotificationsService {
       const templates = await this.prisma.notificationTemplate.findMany({
         where: { orgId, eventType: event, channel: { in: wantedChannels }, isActive: true },
         select: { channel: true, body: true },
+        take: 20, // bounded by @@unique([orgId,eventType,channel]) — take як defence-in-depth (§1)
       });
       const byChannel = new Map(templates.map(t => [t.channel, t.body]));
 
@@ -172,6 +174,10 @@ export class NotificationsService {
         attempts: 10,
         backoff: { type: 'exponential', delay: 60_000 },
         removeOnComplete: true,
+        // §2.4: job.data.chain містить apiKey у відкритому вигляді. Без removeOnFail
+        // невдалі jobs осідають у Redis назавжди → секрет живе безстроково + ріст пам'яті.
+        // Тримаємо обмежене вікно для діагностики (як webhooks queue).
+        removeOnFail: 200,
       },
     );
   }
