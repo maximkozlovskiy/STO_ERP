@@ -497,6 +497,191 @@ describe('InvoicesService — business logic guards', () => {
       expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
     });
   });
+
+  // ─── Session 2026-09-06: manual transition→PAID (money-model Phase 1) ─────
+  //
+  // Ручний перехід SENT/PARTIALLY_PAID → PAID синхронізує paidAmount=amount (щоб «залишок»
+  // = 0), АЛЕ не створює Payment/PAYMENT-settlement (це статус-узгодження, не платіж —
+  // задокументована поведінка). Без цих тестів рефактор що додав би createTransaction у
+  // PAID-гілку (подвійний облік грошей) пройшов би CI зеленим.
+  describe('transition — manual PAID sets paidAmount=amount, NO settlement (Bug #675)', () => {
+    const CP_ID = '33333333-3333-4333-8333-333333333333';
+    const findOneRow = {
+      id: INV_ID,
+      orgId: ORG,
+      number: 'INV-1',
+      status: 'PAID',
+      amount: 500,
+      paidAmount: 500,
+      workOrderId: null,
+      counterpartyId: CP_ID,
+      documentDate: new Date('2026-01-01'),
+      dueDate: null,
+      deletedAt: null,
+      totalWithoutVat: 0,
+      totalVat: 0,
+      totalWithVat: 500,
+      invoiceType: 'INVOICE',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      counterparty: { firstName: null, lastName: null, companyName: 'ТОВ' },
+      workOrder: null,
+      lines: [],
+    };
+
+    it('SENT→PAID: updateMany data містить paidAmount=amount + status=PAID, БЕЗ settlement', async () => {
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'SENT',
+          workOrderId: null,
+          counterpartyId: CP_ID,
+          amount: 500,
+        })
+        .mockResolvedValue(findOneRow);
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.transition(ORG, INV_ID, 'PAID' as never, 'user-1');
+
+      expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: INV_ID, orgId: ORG, status: 'SENT' }),
+          data: expect.objectContaining({ status: 'PAID', paidAmount: 500 }),
+        }),
+      );
+      // Ручний PAID — НЕ платіж: жодного PAYMENT-settlement.
+      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
+    });
+
+    it('PARTIALLY_PAID→PAID: paidAmount=amount (дозакриття залишку), БЕЗ settlement', async () => {
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'PARTIALLY_PAID',
+          workOrderId: null,
+          counterpartyId: CP_ID,
+          amount: 500,
+        })
+        .mockResolvedValue(findOneRow);
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.transition(ORG, INV_ID, 'PAID' as never, 'user-1');
+
+      expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'PAID', paidAmount: 500 }),
+        }),
+      );
+      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
+    });
+
+    it('non-PAID перехід (SENT→CANCELLED) НЕ пише paidAmount у data', async () => {
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'SENT',
+          workOrderId: null,
+          counterpartyId: CP_ID,
+          amount: 500,
+        })
+        .mockResolvedValue({ ...findOneRow, status: 'CANCELLED' });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.transition(ORG, INV_ID, 'CANCELLED' as never, 'user-1');
+
+      const call = prisma.invoice.updateMany.mock.calls[0][0];
+      expect(call.data).toEqual({ status: 'CANCELLED' });
+      expect(call.data).not.toHaveProperty('paidAmount');
+    });
+  });
+});
+
+// ─── Session 2026-09-06: toDto paidAmount column authority (Bug #676) ─────────
+//
+// toDto віддає РЕАЛЬНУ колонку paidAmount (авторитетну, транзакційно оновлювану), НЕ
+// суму payments. Фолбек на Σpayments лише коли колонки немає у вибірці (старий шлях).
+// PARTIALLY_PAID має коректно потрапляти у status відповіді.
+describe('InvoicesService — toDto paidAmount authority (Bug #676)', () => {
+  let service: InvoicesService;
+  let prisma: { invoice: { findFirst: ReturnType<typeof vi.fn> } };
+
+  const ORG = 'org-1';
+  const INV_ID = '22222222-2222-4222-8222-222222222222';
+
+  const baseInv = {
+    id: INV_ID,
+    orgId: ORG,
+    number: 'INV-1',
+    counterpartyId: 'c-1',
+    workOrderId: null,
+    invoiceType: 'INVOICE',
+    notes: null,
+    dueDate: null,
+    documentDate: new Date('2026-01-01'),
+    deletedAt: null,
+    totalWithoutVat: 0,
+    totalVat: 0,
+    totalWithVat: 500,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    counterparty: { firstName: null, lastName: null, companyName: 'ТОВ' },
+    workOrder: null,
+    lines: [],
+  };
+
+  beforeEach(async () => {
+    prisma = { invoice: { findFirst: vi.fn() } };
+    const module = await Test.createTestingModule({
+      providers: [
+        InvoicesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DocumentNumberService, useValue: { next: vi.fn() } },
+        { provide: PdfService, useValue: {} },
+        { provide: SettlementsService, useValue: {} },
+      ],
+    }).compile();
+    service = module.get(InvoicesService);
+  });
+
+  it('віддає paidAmount з колонки (200), навіть якщо Σpayments розходиться (999)', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({
+      ...baseInv,
+      status: 'PARTIALLY_PAID',
+      amount: 500,
+      paidAmount: 200, // авторитетна колонка
+      payments: [{ amount: 999 }], // навмисно розбіжна сума — НЕ має вплинути
+    });
+
+    const dto = await service.findOne(ORG, INV_ID);
+
+    expect(dto.paidAmount).toBe(200);
+    expect(dto.status).toBe('PARTIALLY_PAID');
+  });
+
+  it('фолбек на Σpayments лише коли колонки paidAmount немає у вибірці', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({
+      ...baseInv,
+      status: 'SENT',
+      amount: 500,
+      paidAmount: null, // колонка відсутня → фолбек
+      payments: [{ amount: 100 }, { amount: 50 }],
+    });
+
+    const dto = await service.findOne(ORG, INV_ID);
+
+    expect(dto.paidAmount).toBe(150);
+  });
+
+  it('paidAmount=0 (колонка є, ще нічого не оплачено) → 0, не undefined/фолбек', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({
+      ...baseInv,
+      status: 'SENT',
+      amount: 500,
+      paidAmount: 0,
+      payments: [{ amount: 777 }], // не має протекти
+    });
+
+    const dto = await service.findOne(ORG, INV_ID);
+
+    expect(dto.paidAmount).toBe(0);
+  });
 });
 
 // ─── Bug #A + edge inputs: getLinkedCounts / getLinkedDocuments ──────────────

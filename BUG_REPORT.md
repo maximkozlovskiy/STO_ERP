@@ -3385,3 +3385,26 @@ E2E пропущено (Playwright MCP DOWN — не блокер).
 Нові тести: API +30 (payments.service +5, checkbox.processor +6, settings.service +13 NEW, settings.contract +6), web +9 (FiscalTab NEW).
 Підсумок: API payments+settings 49→79 зелено (4 files); повна API-сюїта 1536 зелено (102 files); web 644 зелено (64 files). tsc api=0 / web=0.
 E2E пропущено (Playwright MCP DOWN — не блокер).
+
+## Session 2026-09-06 — Модель грошей Фаза 1 (feat 251845af + sync c81d8957 + review 113e4491, feat/supplier-payments)
+
+Зміни: resolveDestinationAccount (DTO explicit=строга/throw, methodConfig-default=degrade-to-null; org-scoped валідація рахунку) + часткова оплата CAS (read amount/paidAmount, allow SENT|PARTIALLY_PAID, reject overpay amount>remaining, CAS updateMany where paidAmount=read -> count=0 throw, PAID vs PARTIALLY_PAID; Payment.create+settlement у тій самій $transaction що й CAS); payments.dto +sourceType/bankAccountId/cashRegisterId; invoices INV_TRANSITIONS +PARTIALLY_PAID, manual PAID->paidAmount=amount, toDto prefers real paidAmount column; schema+migration (Payment FKs, Invoice.paidAmount, PaymentMethodConfig defaults, InvoiceStatus +PARTIALLY_PAID, backfill); shared statuses +PARTIALLY_PAID; web invoices/page.tsx, InvoiceCreateModal, linked-configs.
+
+Тип завдання: money-critical bug-hunt + закриття test-gap. **0 функціональних дефектів у коді** — реалізація коректна на всіх запитаних крайових випадках; load-bearing грошова логіка mutation-verified. Закрито 9 coverage-gap + 1 задокументована low-severity крайова неузгодженість.
+
+- [x] **Bug #668 (HIGH test-gap): часткова->повна послідовність + settlement-per-partial без покриття.** Додано дозакриття залишку з PARTIALLY_PAID-бази (300 при paid=200/500 -> paidAmount=500, PAID, CAS where несе прочитаний paidAmount=200) + «кожна часткова = рівно 1 PAYMENT-settlement своєї суми». Виправлено.
+- [x] **Bug #669 (HIGH test-gap): оплата РІВНО залишку -> PAID.** 100 при paid=400/500 -> PAID (межа newPaid>=amount-epsilon). Виправлено.
+- [x] **Bug #670 (HIGH test-gap): переплата з PARTIALLY_PAID-бази (300 при залишку 200) -> throw ПЕРЕД CAS/create.** Mutation-verify overpay guard: if(false && dto.amount>remaining) -> тест падає. Виправлено.
+- [x] **Bug #671 (HIGH test-gap): concurrency двох платежів (count=1 -> count=0) double-charge.** tx-callback mock: 1-й Payment+settlement, 2-й throw, create/createTransaction РІВНО 1 раз. Mutation-verify CAS-throw + CAS-where. Виправлено.
+- [x] **Bug #672 (HIGH test-gap): status-gate PAID/CANCELLED (лише DRAFT був).** PAID/CANCELLED -> throw, без updateMany/create/settlement. Виправлено.
+- [x] **Bug #673 (HIGH test-gap): resolveDestinationAccount CASH_REGISTER-шлях + explicit BANK valid->stored.** CASH valid->stored; CASH чужа/видалена->NotFound без Payment; BANK valid->stored. Виправлено.
+- [x] **Bug #674 (HIGH test-gap): explicit sourceType БЕЗ id -> 400; methodConfig=null -> null-джерело.** BANK/CASH без id -> 400 (fetch не викликано); config=null -> джерело null, платіж успішний. Виправлено.
+- [x] **Bug #675 (HIGH test-gap): manual PAID sets paidAmount=amount + НЕ створює settlement.** 3 тести (SENT->PAID, PARTIALLY_PAID->PAID, SENT->CANCELLED без paidAmount). Mutation-verify: прибрати paidAmount:inv.amount -> обидва PAID-тести падають. Виправлено.
+- [x] **Bug #676 (MEDIUM test-gap): toDto авторитетність колонки paidAmount.** колонка=200+payments=[999]->200+PARTIALLY_PAID; null->фолбек Sigma=150; 0+[777]->0. Виправлено.
+- [x] **Bug #677 (MEDIUM test-gap+refactor): FE optimistic-status/remaining review-fix без testable seam.** Винесено у lib/invoice-payment.ts (invoiceRemaining, optimisticInvoiceStatus), вжито у 3 місцях page.tsx. 10 тестів. Mutation-verify: прибрати +payAmount -> 5 падають. Виправлено.
+- [ ] **Note (LOW by-design): resolveDestinationAccount при DTO bankAccountId без sourceType + config default CASH_REGISTER** -> sourceType=CASH, гілка не бачить cashRegisterId -> 400 «Не вказано касу», bankAccountId ігнорується. Рідкісний misuse. Не блокер, не фіксується.
+
+**Результат:** 0 функціональних багів; #668-#677 закрито; load-bearing логіка mutation-verified. Backfill-міграція idempotent (ADD COLUMN IF NOT EXISTS, enum+FK guarded, backfill WHERE status=PAID AND paidAmount=0 no-op при re-run). FE<->BE PARTIALLY_PAID symmetry intact (shared INVOICE_STATUS_TRANSITIONS==BE INV_TRANSITIONS, badge=warning).
+Нові тести: API +19 (payments.service 12->25, invoices.service 25->31), web +10 (invoice-payment.ts NEW).
+Підсумок: API payments+invoices 81->100 зелено; web 644->654 зелено. tsc api=0/shared=0/web=0.
+E2E пропущено (Playwright MCP DOWN).

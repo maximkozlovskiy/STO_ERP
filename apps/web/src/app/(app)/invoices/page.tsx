@@ -77,6 +77,7 @@ import { toast } from '@/lib/toast';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
 import { cn, UUID_RE } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
+import { invoiceRemaining, optimisticInvoiceStatus } from '@/lib/invoice-payment';
 import { StatusPill } from '@/components/ui/status-pill';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
@@ -406,7 +407,7 @@ function InvoicesPageInner() {
   const handlePay = async () => {
     if (!showPayment) return;
     // Порожнє поле = оплата залишку (amount − paidAmount), не всієї суми рахунку.
-    const remaining = Math.max(showPayment.amount - (showPayment.paidAmount ?? 0), 0);
+    const remaining = invoiceRemaining(showPayment.amount, showPayment.paidAmount);
     const rawAmt = parseFloat(payForm.amount);
     const amt = !payForm.amount || !Number.isFinite(rawAmt) ? remaining : rawAmt;
     setSaving(true);
@@ -425,8 +426,11 @@ function InvoicesPageInner() {
       const newPaidTotal = (showPayment.paidAmount ?? 0) + amt;
       // Часткова оплата лишає рахунок PARTIALLY_PAID; повне покриття залишку → PAID.
       // Дзеркалить backend CAS (newPaid>=amount ? PAID : PARTIALLY_PAID) з тим самим epsilon.
-      const optimisticStatus =
-        newPaidTotal >= showPayment.amount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID';
+      const optimisticStatus = optimisticInvoiceStatus(
+        showPayment.amount,
+        showPayment.paidAmount,
+        amt,
+      );
       setShowPayment(null);
       setPayForm({ method: 'cash', amount: '', notes: '' });
       // Reflect the new status + paidAmount immediately in the open DetailPanel so the user
@@ -1032,7 +1036,7 @@ function InvoicesPageInner() {
         {showPayment &&
           (() => {
             const paid = showPayment.paidAmount ?? 0;
-            const remaining = Math.max(showPayment.amount - paid, 0);
+            const remaining = invoiceRemaining(showPayment.amount, showPayment.paidAmount);
             return (
               <div className="space-y-4">
                 <div className="p-3 bg-info-subtle rounded-lg text-sm text-info-text space-y-0.5">
