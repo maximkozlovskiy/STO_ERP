@@ -225,6 +225,7 @@ grep -rn "@Process(" apps/api/src/ --include="*.processor.ts" | grep -v "concurr
 ```
 
 - [ ] Кожен `.add()` → `attempts ≥ 10`, `backoff: { type: 'exponential' }`
+- [ ] **`.add()` де `job.data` містить секрет (apiKey/token/creds/пароль) → `removeOnFail: N`** (bounded). Без нього невдалі jobs осідають у Redis назавжди → секрет живе безстроково + ріст памʼяті. Grep: `grep -rn "\.add(" apps/api/src --include="*.ts" -A8 | grep -iE "apiKey|token|secret|creds|password" ` → перевірити наявність `removeOnFail` у тому ж блоці опцій
 - [ ] ПРРО: `attempts: 288`, `backoff: { delay: 300_000 }` (24 год)
 - [ ] SMS: `attempts: 10`, `backoff: { delay: 60_000 }`
 - [ ] Процесори → `try/catch` + `throw err` (щоб BullMQ retry спрацював)

@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-09-06 — fix(review): Phase 2 «мульти-канал сповіщень» — removeOnFail + take + sync-notes
+
+### d76372fc removeOnFail на SMS-чергах (apiKey у job.data) + take + sync-exclusion notes
+
+Code review Phase 2 (feat e21bd702 fallback-engine + Viber + NotificationLog, 39066748 schema).
+
+- **IMPORTANT:** `removeOnFail: 200` на обидва enqueue-сайти SMS-черги
+  (`notifications.service.sendWithConfig` + `sms.processor.tryNext`). `job.data.chain` несе
+  apiKey провайдера у відкритому вигляді — без removeOnFail невдалі jobs (останній канал
+  reject→throw після 10 ретраїв) залишались у Redis назавжди → секрет живе безстроково +
+  ріст памʼяті. Обмежене вікно як у webhooks-черзі.
+- `take: 20` на `notificationChannelConfig.findMany` + `notificationTemplate.findMany` у
+  `resolveConfig` (обмежені @@unique, §1 defence-in-depth).
+- `sync.service`: коментар про ВИКЛЮЧЕНІ з sync таблиці (notification_channel_configs=apiKey,
+  notification_logs=phone/append-only, branch_settings=smsApiKey) — щоб не потрапили у PULL_TABLES.
+
+Верифіковано ЧИСТИМ: fallback chainIndex-семантика (retry повторює саме chain[chainIndex],
+не рестартує з 0, не пропускає канали, no infinite-loop); orgId на всіх нових запитах;
+apiKey не тече у response/логи; повідомлення українською; N+1 у template-fetch відсутній.
+tsc api 0, notifications 27/27.
+
+---
+
 ## 2026-09-06 — feat(api): provider-registry сповіщень + fix PAYMENT_RECEIVED (Phase 1a з фічі «мульти-канал»)
 
 ### 12f4b145 provider-registry + PAYMENT_RECEIVED fix
