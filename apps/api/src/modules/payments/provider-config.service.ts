@@ -266,6 +266,10 @@ export class ProviderConfigService {
         shiftMode: bs.shiftMode,
       };
     }
+    // Легасі-колонки існують лише для FISCAL (checkbox) та PAYMENT (monobank). Для DELIVERY
+    // (та будь-якого майбутнього kind) немає старих колонок → null, інакше PAYMENT-гілка
+    // нижче помилково повернула б monobank-конфіг для DELIVERY (креди/провайдер чужого kind).
+    if (kind !== 'PAYMENT') return null;
     // PAYMENT
     if (!bs.monobankToken) return null;
     return {

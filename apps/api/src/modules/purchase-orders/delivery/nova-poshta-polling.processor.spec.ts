@@ -20,7 +20,7 @@ function makeJob(data: {
 describe('NovaPoshtaPollingProcessor', () => {
   let processor: NovaPoshtaPollingProcessor;
   let prisma: {
-    purchaseOrder: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    purchaseOrder: { findFirst: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
   };
   let providerConfig: { resolveActive: ReturnType<typeof vi.fn> };
   let providerImpl: { getStatus: ReturnType<typeof vi.fn> };
@@ -42,18 +42,16 @@ describe('NovaPoshtaPollingProcessor', () => {
     prisma = {
       purchaseOrder: {
         findFirst: vi.fn().mockResolvedValue(poRow()),
-        update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     providerConfig = {
-      resolveActive: vi
-        .fn()
-        .mockResolvedValue({
-          provider: 'novaposhta',
-          apiUrl: null,
-          credentials: { apiKey: 'K' },
-          shiftMode: 'MANUAL',
-        }),
+      resolveActive: vi.fn().mockResolvedValue({
+        provider: 'novaposhta',
+        apiUrl: null,
+        credentials: { apiKey: 'K' },
+        shiftMode: 'MANUAL',
+      }),
     };
     providerImpl = {
       getStatus: vi.fn().mockResolvedValue({ status: 'IN_TRANSIT', raw: 'у дорозі' }),
@@ -95,16 +93,16 @@ describe('NovaPoshtaPollingProcessor', () => {
     providerConfig.resolveActive.mockResolvedValue(null);
     await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG }));
     expect(providerImpl.getStatus).not.toHaveBeenCalled();
-    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
     expect(pollQueue.add).not.toHaveBeenCalled();
   });
 
   it('статус змінився → update PO (delivery-метадані) + re-enqueue з delay з налаштувань', async () => {
     providerImpl.getStatus.mockResolvedValue({ status: 'ARRIVED', raw: 'на відділенні' });
     await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG }));
-    // update лише delivery-полів (не status закупівлі), scoped orgId.
-    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
-      where: { id: PO, orgId: ORG },
+    // update лише delivery-полів (не status закупівлі), scoped orgId+deletedAt (race-safe).
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: PO, orgId: ORG, deletedAt: null },
       data: {
         deliveryStatus: 'ARRIVED',
         deliveryStatusRaw: 'на відділенні',
@@ -123,14 +121,14 @@ describe('NovaPoshtaPollingProcessor', () => {
   it('статус НЕ змінився → update НЕ викликається, але re-enqueue продовжується', async () => {
     providerImpl.getStatus.mockResolvedValue({ status: 'PENDING', raw: 'очікує' });
     await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG }));
-    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
     expect(pollQueue.add).toHaveBeenCalledTimes(1);
   });
 
   it('термінальний статус з опитування → update + СТОП (не re-enqueue)', async () => {
     providerImpl.getStatus.mockResolvedValue({ status: 'DELIVERED', raw: 'отримано' });
     await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG }));
-    expect(prisma.purchaseOrder.update).toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalled();
     expect(pollQueue.add).not.toHaveBeenCalled();
     // MUTATION-VERIFY: якби TERMINAL не зупиняв → pollQueue.add викликався б.
   });
@@ -138,7 +136,7 @@ describe('NovaPoshtaPollingProcessor', () => {
   it('транзієнтна помилка getStatus → re-enqueue (не зупиняємо трекінг)', async () => {
     providerImpl.getStatus.mockRejectedValue(new Error('НП timeout'));
     await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG }));
-    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
     expect(pollQueue.add).toHaveBeenCalledTimes(1);
     expect(pollQueue.add.mock.calls[0][1].pollAttempts).toBe(1);
   });

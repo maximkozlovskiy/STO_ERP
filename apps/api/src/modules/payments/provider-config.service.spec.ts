@@ -118,6 +118,18 @@ describe('ProviderConfigService', () => {
       expect(await svc.resolveActive(ORG, BRANCH, 'PAYMENT')).toBeNull();
     });
 
+    it('DELIVERY без конфіга → null навіть якщо є legacy monobankToken (немає легасі-колонок доставки)', async () => {
+      // Регресія: legacyFromBranchSettings мала PAYMENT-гілку як «дефолт» для будь-якого не-FISCAL
+      // kind → для DELIVERY помилково повертала monobank-конфіг чужого kind. Тепер kind!=='PAYMENT' → null.
+      prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        fiscalEnabled: false,
+        monobankToken: 'LEGACY-MONO',
+        monobankApiUrl: null,
+      });
+      expect(await svc.resolveActive(ORG, BRANCH, 'DELIVERY')).toBeNull();
+    });
+
     // ── Bug #692 (CRITICAL): enabled-конфіг БЕЗ кредів (сід-рядок міграції) → legacy-fallback ──
     it('Bug #692: enabled-конфіг з credentials=NULL (сід міграції) → legacy-fallback того ж провайдера (checkbox)', async () => {
       // Міграція сідить enabled=true checkbox-рядок з credentials=NULL; секрети ще у BranchSettings.

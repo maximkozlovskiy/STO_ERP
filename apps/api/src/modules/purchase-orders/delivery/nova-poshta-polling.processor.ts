@@ -91,8 +91,10 @@ export class NovaPoshtaPollingProcessor extends WorkerHost {
     // Оновлюємо статус лише якщо змінився (менше write-ів + коректний updatedAt).
     if (result.status !== po.deliveryStatus) {
       await this.prisma.purchaseOrder
-        .update({
-          where: { id: purchaseOrderId, orgId },
+        .updateMany({
+          // deletedAt:null у where — PO міг бути soft-deleted між read і write;
+          // updateMany з compound-фільтром просто зачепить 0 рядків (не резурект delivery-метадані).
+          where: { id: purchaseOrderId, orgId, deletedAt: null },
           data: {
             deliveryStatus: result.status,
             deliveryStatusRaw: result.raw.slice(0, 300),
