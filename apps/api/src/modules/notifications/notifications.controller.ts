@@ -42,6 +42,8 @@ class UpsertChannelDto {
   // apiKey write-only: передається лише при зміні; порожнє/відсутнє → зберігаємо наявний.
   @ApiPropertyOptional() @IsOptional() @IsString() apiKey?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() senderName?: string;
+  // ID шаблону провайдера (eSputnik Viber/Telegram). Не секрет.
+  @ApiPropertyOptional() @IsOptional() @IsString() externalTemplateId?: string;
 }
 
 @ApiTags('Notifications')

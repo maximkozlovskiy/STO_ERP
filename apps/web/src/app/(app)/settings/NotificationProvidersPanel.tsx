@@ -28,6 +28,7 @@ interface ChannelConfig {
   priority: number;
   hasApiKey: boolean;
   senderName: string | null;
+  externalTemplateId: string | null;
   updatedAt: string;
 }
 
@@ -41,9 +42,15 @@ interface VerifyResult {
 const CHANNEL_LABELS: Record<string, string> = {
   SMS: 'SMS',
   VIBER: 'Viber',
+  TELEGRAM: 'Telegram',
   EMAIL: 'Email',
   PUSH: 'Push',
 };
+
+// Канали, що надсилаються за готовим шаблоном у кабінеті провайдера (не inline-текст).
+// Для них потрібен externalTemplateId (напр. eSputnik Viber/Telegram через smartsend).
+const TEMPLATE_BASED_CHANNELS = new Set(['VIBER', 'TELEGRAM']);
+const TEMPLATE_PROVIDERS = new Set(['esputnik']);
 
 export default function NotificationProvidersPanel() {
   const currentFeatures = useUiFeatures();
@@ -58,6 +65,7 @@ export default function NotificationProvidersPanel() {
   const [credsChannel, setCredsChannel] = useState<string>('SMS');
   const [apiKey, setApiKey] = useState('');
   const [senderName, setSenderName] = useState('');
+  const [externalTemplateId, setExternalTemplateId] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [savingCreds, setSavingCreds] = useState(false);
@@ -107,6 +115,7 @@ export default function NotificationProvidersPanel() {
     priority?: number;
     apiKey?: string;
     senderName?: string;
+    externalTemplateId?: string;
   }): Promise<boolean> => {
     if (!selectedBranch) return false;
     try {
@@ -156,11 +165,28 @@ export default function NotificationProvidersPanel() {
   };
 
   const openCreds = (provider: ProviderMeta) => {
+    const firstChannel = provider.channels[0] ?? 'SMS';
     setCredsProvider(provider);
-    setCredsChannel(provider.channels[0] ?? 'SMS');
+    setCredsChannel(firstChannel);
     setApiKey('');
-    setSenderName('');
+    // senderName + externalTemplateId — prefill з наявного конфігу цього каналу (не секрети).
+    const existing = channels.find(c => c.provider === provider.code && c.channel === firstChannel);
+    setSenderName(existing?.senderName ?? '');
+    setExternalTemplateId(existing?.externalTemplateId ?? '');
     setVerifyResult(null);
+  };
+
+  // Чи потрібне поле «ID шаблону» для обраного провайдера+каналу (template-based send).
+  const needsExternalTemplate = (providerCode: string, channel: string) =>
+    TEMPLATE_PROVIDERS.has(providerCode) && TEMPLATE_BASED_CHANNELS.has(channel);
+
+  // При зміні каналу в модалці — перечитати prefill (кожен канал має свій template-id).
+  const onCredsChannelChange = (channel: string) => {
+    setCredsChannel(channel);
+    if (!credsProvider) return;
+    const existing = channels.find(c => c.provider === credsProvider.code && c.channel === channel);
+    setSenderName(existing?.senderName ?? '');
+    setExternalTemplateId(existing?.externalTemplateId ?? '');
   };
 
   const closeCreds = () => setCredsProvider(null);
@@ -197,6 +223,9 @@ export default function NotificationProvidersPanel() {
         provider: credsProvider.code,
         apiKey: apiKey || undefined,
         senderName: senderName || undefined,
+        externalTemplateId: needsExternalTemplate(credsProvider.code, credsChannel)
+          ? externalTemplateId || undefined
+          : undefined,
       });
       if (!ok) return; // помилка вже показана в patchChannel — не закриваємо модалку
       if (currentFeatures.toastEnabled) toast.success('Креди збережено');
@@ -334,7 +363,7 @@ export default function NotificationProvidersPanel() {
                 <span className="text-sm text-foreground">Канал</span>
                 <Select
                   value={credsChannel}
-                  onChange={e => setCredsChannel(e.target.value)}
+                  onChange={e => onCredsChannelChange(e.target.value)}
                   className="mt-1"
                 >
                   {credsProvider.channels.map(ch => (
@@ -359,6 +388,21 @@ export default function NotificationProvidersPanel() {
               onChange={e => setSenderName(e.target.value)}
               placeholder="STO ERP"
             />
+            {needsExternalTemplate(credsProvider.code, credsChannel) && (
+              <div>
+                <Input
+                  label="ID шаблону в кабінеті провайдера"
+                  value={externalTemplateId}
+                  onChange={e => setExternalTemplateId(e.target.value)}
+                  placeholder="напр. 12345"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {CHANNEL_LABELS[credsChannel]} у eSputnik надсилається за готовим шаблоном зі
+                  свого кабінету.{' '}
+                  {credsChannel === 'TELEGRAM' && 'Telegram — лише підписаним отримувачам.'}
+                </p>
+              </div>
+            )}
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"

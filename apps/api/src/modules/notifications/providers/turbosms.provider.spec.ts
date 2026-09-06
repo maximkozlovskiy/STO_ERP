@@ -1,6 +1,7 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { NotificationChannel } from '@prisma/client';
 import { TurboSmsProvider } from './turbosms.provider';
+import { EsputnikProvider } from './esputnik.provider';
 import { NotificationProviderRegistry } from './provider-registry';
 
 /**
@@ -98,9 +99,13 @@ describe('TurboSmsProvider', () => {
 });
 
 describe('NotificationProviderRegistry', () => {
-  it('get() повертає turbosms; невідомий → null; list() без кредів', () => {
-    const registry = new NotificationProviderRegistry(new TurboSmsProvider());
+  it('get() повертає turbosms/esputnik; невідомий → null; list() без кредів', () => {
+    const registry = new NotificationProviderRegistry(
+      new TurboSmsProvider(),
+      new EsputnikProvider(),
+    );
     expect(registry.get('turbosms')?.code).toBe('turbosms');
+    expect(registry.get('esputnik')?.code).toBe('esputnik');
     expect(registry.get('nonexistent')).toBeNull();
     const list = registry.list();
     expect(list).toEqual([
@@ -108,6 +113,15 @@ describe('NotificationProviderRegistry', () => {
         code: 'turbosms',
         name: 'TurboSMS',
         channels: [NotificationChannel.SMS, NotificationChannel.VIBER],
+      },
+      {
+        code: 'esputnik',
+        name: 'eSputnik',
+        channels: [
+          NotificationChannel.SMS,
+          NotificationChannel.VIBER,
+          NotificationChannel.TELEGRAM,
+        ],
       },
     ]);
   });

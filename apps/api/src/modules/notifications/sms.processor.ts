@@ -12,6 +12,7 @@ interface ChannelStep {
   apiKey: string;
   senderName: string;
   message: string;
+  externalTemplateId?: string;
 }
 
 interface SendSmsJob {
@@ -77,6 +78,7 @@ export class SmsProcessor extends WorkerHost {
       phone,
       message: step.message,
       creds: { apiKey: step.apiKey, senderName: step.senderName },
+      externalTemplateId: step.externalTemplateId,
     });
 
     if (result.accepted) {

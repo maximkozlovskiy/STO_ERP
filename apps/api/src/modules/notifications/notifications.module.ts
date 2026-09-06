@@ -10,6 +10,7 @@ import { SmsProcessor } from './sms.processor';
 import { FollowUpProcessor } from './followup.processor';
 import { FollowUpScheduler } from './followup.scheduler';
 import { TurboSmsProvider } from './providers/turbosms.provider';
+import { EsputnikProvider } from './providers/esputnik.provider';
 import { NotificationProviderRegistry } from './providers/provider-registry';
 
 @Global()
@@ -29,6 +30,7 @@ import { NotificationProviderRegistry } from './providers/provider-registry';
     FollowUpProcessor,
     FollowUpScheduler,
     TurboSmsProvider,
+    EsputnikProvider,
     NotificationProviderRegistry,
   ],
   exports: [NotificationsService, NotificationProviderRegistry],

@@ -139,6 +139,7 @@ enum NotificationChannel {
   SMS
   VIBER
   EMAIL
+  TELEGRAM
 }
 
 // Статус спроби доставки (per-канал). SENT = провайдер прийняв у чергу (accepted);
@@ -1710,6 +1711,9 @@ model NotificationChannelConfig {
   // apiKey тут — write-only на рівні API (response DTO його не повертає).
   apiKey      String?
   senderName  String?
+  // ID готового шаблону в кабінеті провайдера (напр. eSputnik Viber/Telegram через smartsend).
+  // Для inline-каналів (SMS усіх провайдерів) — null. НЕ секрет (не шифрується, віддається у GET).
+  externalTemplateId String?
   syncVersion BigInt              @default(0)
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt

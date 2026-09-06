@@ -14,6 +14,8 @@ export interface ChannelStep {
   apiKey: string;
   senderName: string;
   message: string;
+  /** ID шаблону провайдера (eSputnik Viber/Telegram); null для inline-каналів. */
+  externalTemplateId?: string;
 }
 
 /**
@@ -27,7 +29,10 @@ export interface NotificationConfig {
     provider: string;
     apiKey: string;
     senderName: string;
+    /** Локальний inline-шаблон (для SMS/inline). Порожній для external-template каналів. */
     templateBody: string;
+    /** ID шаблону провайдера (eSputnik Viber/Telegram); null для inline-каналів. */
+    externalTemplateId?: string;
   }[];
 }
 
@@ -82,7 +87,13 @@ export class NotificationsService {
     const channelConfigs = await this.prisma.notificationChannelConfig.findMany({
       where: { orgId, branchId, enabled: true, deletedAt: null, apiKey: { not: null } },
       orderBy: { priority: 'asc' },
-      select: { channel: true, provider: true, apiKey: true, senderName: true },
+      select: {
+        channel: true,
+        provider: true,
+        apiKey: true,
+        senderName: true,
+        externalTemplateId: true,
+      },
       take: 20, // bounded by @@unique([branchId,channel]) — take як defence-in-depth (§1)
     });
 
@@ -96,14 +107,17 @@ export class NotificationsService {
       });
       const byChannel = new Map(templates.map(t => [t.channel, t.body]));
 
+      // Канал придатний якщо має АБО локальний inline-шаблон, АБО externalTemplateId
+      // (eSputnik Viber/Telegram — текст у шаблоні провайдера). Інакше пропускаємо → fallback.
       const channels = channelConfigs
-        .filter(c => byChannel.has(c.channel))
+        .filter(c => byChannel.has(c.channel) || c.externalTemplateId)
         .map(c => ({
           channel: c.channel,
           provider: c.provider,
           apiKey: c.apiKey as string, // гарантовано not-null через where
           senderName: c.senderName ?? 'STO ERP',
-          templateBody: byChannel.get(c.channel) as string,
+          templateBody: byChannel.get(c.channel) ?? '', // порожній для external-template каналів
+          externalTemplateId: c.externalTemplateId ?? undefined,
         }));
 
       if (channels.length === 0) {
@@ -166,6 +180,7 @@ export class NotificationsService {
       apiKey: c.apiKey,
       senderName: c.senderName,
       message: this.renderTemplate(c.templateBody, vars),
+      externalTemplateId: c.externalTemplateId,
     }));
     if (chain.length === 0) return;
 
@@ -243,6 +258,7 @@ export class NotificationsService {
         priority: true,
         apiKey: true,
         senderName: true,
+        externalTemplateId: true, // не секрет — віддаємо у GET
         updatedAt: true,
       },
       take: 20,
@@ -265,6 +281,7 @@ export class NotificationsService {
       priority?: number;
       apiKey?: string;
       senderName?: string;
+      externalTemplateId?: string;
     },
   ) {
     // Валідація: філія в межах org.
@@ -294,6 +311,7 @@ export class NotificationsService {
         enabled: dto.enabled,
         priority: dto.priority,
         senderName: dto.senderName,
+        externalTemplateId: dto.externalTemplateId,
         deletedAt: null, // reactivate якщо був soft-deleted
         ...apiKeyPatch,
       },
@@ -305,6 +323,7 @@ export class NotificationsService {
         enabled: dto.enabled ?? true,
         priority: dto.priority ?? 0,
         senderName: dto.senderName,
+        externalTemplateId: dto.externalTemplateId,
         ...apiKeyPatch,
       },
       select: { id: true },

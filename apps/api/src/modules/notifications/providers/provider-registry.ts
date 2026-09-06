@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { NotificationProvider } from './notification-provider.interface';
 import { TurboSmsProvider } from './turbosms.provider';
+import { EsputnikProvider } from './esputnik.provider';
 
 /**
  * Реєстр провайдерів сповіщень. Додати нового провайдера = додати impl у конструктор.
@@ -12,8 +13,9 @@ export class NotificationProviderRegistry {
   private readonly logger = new Logger(NotificationProviderRegistry.name);
   private readonly providers = new Map<string, NotificationProvider>();
 
-  constructor(turbosms: TurboSmsProvider) {
+  constructor(turbosms: TurboSmsProvider, esputnik: EsputnikProvider) {
     this.register(turbosms);
+    this.register(esputnik);
   }
 
   private register(p: NotificationProvider): void {

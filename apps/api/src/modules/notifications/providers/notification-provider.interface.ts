@@ -11,6 +11,12 @@ export interface SendParams {
   phone: string;
   message: string;
   creds: ProviderCredentials;
+  /**
+   * ID готового шаблону в кабінеті провайдера. Потрібен для template-based каналів
+   * (eSputnik Viber/Telegram через smartsend). Inline-провайдери (TurboSMS, eSputnik SMS)
+   * ігнорують — текст беруть з `message`.
+   */
+  externalTemplateId?: string;
 }
 
 /** Результат спроби відправки — синхронний (accepted = провайдер прийняв у чергу). */
