@@ -97,15 +97,42 @@ describe('VchasnoProvider', () => {
     await expect(p.signIn({ apiUrl: null, credentials: {} })).rejects.toThrow(/API-токен/);
   });
 
-  it('sellReceipt: успішна відповідь → fiscalReceiptId (Bearer=token)', async () => {
-    const fetchMock = vi.fn(async (_url: string, opts: { headers: Record<string, string> }) => {
-      expect(opts.headers.Authorization).toBe('Bearer TOK');
-      return { status: 200, ok: true, text: async () => JSON.stringify({ id: 'v-fr-1' }) };
+  it('sellReceipt: успішна відповідь → fiscalReceiptId (Bearer=token) + cents=round(amount*100) без IEEE-754 дрейфу', async () => {
+    let sentBody: { goods: Array<{ price: number }>; payment: { type: string; value: number } } = {
+      goods: [{ price: 0 }],
+      payment: { type: '', value: 0 },
+    };
+    const fetchMock = vi.fn(
+      async (_url: string, opts: { headers: Record<string, string>; body: string }) => {
+        expect(opts.headers.Authorization).toBe('Bearer TOK');
+        sentBody = JSON.parse(opts.body);
+        return { status: 200, ok: true, text: async () => JSON.stringify({ id: 'v-fr-1' }) };
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      // 35.20 * 100 = 3520.0000000000005 у сирому JS → Math.round дає 3520 (без дрейфу).
+      const r = await p.sellReceipt(cfg, 'TOK', { amount: 35.2, method: 'card_terminal' });
+      expect(r.fiscalReceiptId).toBe('v-fr-1');
+      expect(sentBody.goods[0].price).toBe(3520);
+      expect(sentBody.payment.value).toBe(3520);
+      // method != 'cash' → CASHLESS.
+      expect(sentBody.payment.type).toBe('CASHLESS');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('sellReceipt: method=cash → payment.type=CASH', async () => {
+    let sentBody: { payment: { type: string } } = { payment: { type: '' } };
+    const fetchMock = vi.fn(async (_url: string, opts: { body: string }) => {
+      sentBody = JSON.parse(opts.body);
+      return { status: 200, ok: true, text: async () => JSON.stringify({ id: 'v' }) };
     });
     vi.stubGlobal('fetch', fetchMock);
     try {
-      const r = await p.sellReceipt(cfg, 'TOK', { amount: 250, method: 'card_terminal' });
-      expect(r.fiscalReceiptId).toBe('v-fr-1');
+      await p.sellReceipt(cfg, 'TOK', { amount: 10, method: 'cash' });
+      expect(sentBody.payment.type).toBe('CASH');
     } finally {
       vi.unstubAllGlobals();
     }

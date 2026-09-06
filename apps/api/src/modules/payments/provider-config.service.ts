@@ -57,12 +57,26 @@ export class ProviderConfigService {
       select: { provider: true, apiUrl: true, credentials: true, shiftMode: true },
     });
     if (cfg) {
-      return {
-        provider: cfg.provider,
-        apiUrl: cfg.apiUrl,
-        credentials: this.parseCreds(cfg.credentials),
-        shiftMode: cfg.shiftMode,
-      };
+      const parsed = this.parseCreds(cfg.credentials);
+      // Enabled-конфіг БЕЗ збережених кредів (напр. сід-рядок міграції з credentials=NULL):
+      // секрети ще лежать у старих BranchSettings-колонках. Не повертаємо порожні креди
+      // (провайдер кинув би «не задано ключ»), а падаємо у legacy-fallback ДЛЯ ТОГО Ж провайдера
+      // — так уже-налаштовані філії працюють до першого перезбереження кредів у новій формі.
+      if (this.hasCreds(parsed)) {
+        return {
+          provider: cfg.provider,
+          apiUrl: cfg.apiUrl,
+          credentials: parsed,
+          shiftMode: cfg.shiftMode,
+        };
+      }
+      const legacy = await this.legacyFromBranchSettings(orgId, branchId, kind);
+      // Legacy валідний лише якщо це той самий провайдер (checkbox/monobank за замовч.);
+      // інакше активовано провайдера, чиї креди ще не введено → не налаштовано.
+      if (legacy && legacy.provider === cfg.provider) {
+        return { ...legacy, apiUrl: cfg.apiUrl ?? legacy.apiUrl, shiftMode: cfg.shiftMode };
+      }
+      return null;
     }
 
     // 2. Legacy-fallback на BranchSettings (старі хардкод-колонки).

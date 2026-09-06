@@ -117,6 +117,182 @@ describe('ProviderConfigService', () => {
       prisma.branchSettings.findFirst.mockResolvedValue(null);
       expect(await svc.resolveActive(ORG, BRANCH, 'PAYMENT')).toBeNull();
     });
+
+    // ── Bug #692 (CRITICAL): enabled-конфіг БЕЗ кредів (сід-рядок міграції) → legacy-fallback ──
+    it('Bug #692: enabled-конфіг з credentials=NULL (сід міграції) → legacy-fallback того ж провайдера (checkbox)', async () => {
+      // Міграція сідить enabled=true checkbox-рядок з credentials=NULL; секрети ще у BranchSettings.
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'checkbox',
+        apiUrl: null,
+        credentials: null, // сід лишив NULL
+        shiftMode: 'AUTO_OPEN',
+      });
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        fiscalEnabled: true,
+        checkboxApiUrl: 'https://api.checkbox.ua',
+        checkboxLicenseKey: 'LEGACY-LIC',
+        checkboxPinCode: 'LEGACY-PIN',
+        checkboxCashRegisterId: 'CR',
+        shiftMode: 'MANUAL',
+      });
+      const r = await svc.resolveActive(ORG, BRANCH, 'FISCAL');
+      // Креди беруться з legacy (інакше провайдер кинув би «не задано ключ/PIN» → зміна не відкриється).
+      expect(r).not.toBeNull();
+      expect(r!.provider).toBe('checkbox');
+      expect(r!.credentials).toEqual({
+        licenseKey: 'LEGACY-LIC',
+        pinCode: 'LEGACY-PIN',
+        cashRegisterId: 'CR',
+      });
+      // apiUrl/shiftMode беруться з config-рядка (пріоритет нового над legacy).
+      expect(r!.shiftMode).toBe('AUTO_OPEN');
+      // MUTATION-VERIFY: без hasCreds-guard resolveActive повернув би credentials={} → signIn throw.
+    });
+
+    it('Bug #692: enabled-конфіг з credentials=NULL, PAYMENT monobank → legacy token', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'monobank',
+        apiUrl: null,
+        credentials: null,
+        shiftMode: 'MANUAL',
+      });
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        fiscalEnabled: false,
+        monobankToken: 'LEGACY-MONO',
+        monobankApiUrl: 'https://api.monobank.ua',
+      });
+      const r = await svc.resolveActive(ORG, BRANCH, 'PAYMENT');
+      expect(r!.credentials).toEqual({ token: 'LEGACY-MONO' });
+    });
+
+    it('Bug #692: enabled-конфіг без кредів, а legacy — ІНШИЙ провайдер → null (не плутати креди)', async () => {
+      // Активовано vchasno (config, creds порожні), а legacy = checkbox → креди checkbox НЕ підходять vchasno.
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'vchasno',
+        apiUrl: null,
+        credentials: null,
+        shiftMode: 'MANUAL',
+      });
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        fiscalEnabled: true,
+        checkboxLicenseKey: 'LIC',
+        checkboxPinCode: 'PIN',
+        shiftMode: 'MANUAL',
+      });
+      expect(await svc.resolveActive(ORG, BRANCH, 'FISCAL')).toBeNull();
+    });
+
+    it('branchId невідомий → бере будь-який enabled у org (без branchId у where)', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'liqpay',
+        apiUrl: null,
+        credentials: JSON.stringify({ publicKey: 'P', privateKey: 'S' }),
+        shiftMode: 'MANUAL',
+      });
+      await svc.resolveActive(ORG, undefined, 'PAYMENT');
+      expect(prisma.branchProviderConfig.findFirst.mock.calls[0][0].where).not.toHaveProperty(
+        'branchId',
+      );
+    });
+  });
+
+  // ── resolveByCode (для processor/зміни — конкретний провайдер, ігнорує enabled) ────────
+  describe('resolveByCode', () => {
+    it('config з кредами → повертає (НЕ фільтрує по enabled — зміна могла відкритись вимкненим)', async () => {
+      // Сценарій: зміна відкрита checkbox, потім активували vchasno → checkbox тепер enabled=false,
+      // але sell у стару зміну має йти checkbox-ом. resolveByCode НЕ фільтрує enabled.
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'checkbox',
+        apiUrl: null,
+        credentials: JSON.stringify({ licenseKey: 'L', pinCode: 'P' }),
+        shiftMode: 'MANUAL',
+      });
+      const r = await svc.resolveByCode(ORG, BRANCH, 'FISCAL', 'checkbox');
+      expect(r!.provider).toBe('checkbox');
+      expect(r!.credentials).toEqual({ licenseKey: 'L', pinCode: 'P' });
+      // where НЕ містить enabled.
+      expect(prisma.branchProviderConfig.findFirst.mock.calls[0][0].where).not.toHaveProperty(
+        'enabled',
+      );
+      expect(prisma.branchProviderConfig.findFirst.mock.calls[0][0].where).toMatchObject({
+        orgId: ORG,
+        kind: 'FISCAL',
+        provider: 'checkbox',
+      });
+    });
+
+    it('config БЕЗ кредів + legacy того ж провайдера → legacy креди', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'checkbox',
+        apiUrl: null,
+        credentials: null,
+        shiftMode: 'MANUAL',
+      });
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        fiscalEnabled: true,
+        checkboxLicenseKey: 'LEG-L',
+        checkboxPinCode: 'LEG-P',
+        shiftMode: 'MANUAL',
+      });
+      const r = await svc.resolveByCode(ORG, BRANCH, 'FISCAL', 'checkbox');
+      expect(r!.credentials).toEqual({ licenseKey: 'LEG-L', pinCode: 'LEG-P' });
+    });
+
+    it('немає config; legacy — ІНШИЙ провайдер (default checkbox), питаємо vchasno → null', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        fiscalEnabled: true,
+        checkboxLicenseKey: 'LIC',
+        shiftMode: 'MANUAL',
+      });
+      expect(await svc.resolveByCode(ORG, BRANCH, 'FISCAL', 'vchasno')).toBeNull();
+    });
+
+    it('немає config; legacy — той самий провайдер (checkbox) → legacy', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        fiscalEnabled: true,
+        checkboxApiUrl: null,
+        checkboxLicenseKey: 'LIC',
+        checkboxPinCode: 'PIN',
+        shiftMode: 'MANUAL',
+      });
+      const r = await svc.resolveByCode(ORG, BRANCH, 'FISCAL', 'checkbox');
+      expect(r!.provider).toBe('checkbox');
+    });
+  });
+
+  // ── parseCreds robustness ─────────────────────────────────────────────────────────
+  describe('parseCreds (битий JSON не валить)', () => {
+    it('битий credentials JSON → {} (getBranchConfigs не кидає, hasCredentials=false)', async () => {
+      prisma.branchProviderConfig.findMany.mockResolvedValue([
+        {
+          provider: 'checkbox',
+          enabled: true,
+          apiUrl: null,
+          shiftMode: 'MANUAL',
+          credentials: '{битий', // не валідний JSON
+        },
+      ]);
+      const res = await svc.getBranchConfigs(ORG, BRANCH, 'FISCAL');
+      expect(res[0].hasCredentials).toBe(false); // {} → нема кредів, не crash
+    });
+
+    it('битий JSON у resolveActive → падає у legacy (не crash)', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'monobank',
+        apiUrl: null,
+        credentials: 'not-json',
+        shiftMode: 'MANUAL',
+      });
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        fiscalEnabled: false,
+        monobankToken: 'MONO',
+        monobankApiUrl: null,
+      });
+      const r = await svc.resolveActive(ORG, BRANCH, 'PAYMENT');
+      expect(r!.credentials).toEqual({ token: 'MONO' });
+    });
   });
 
   describe('activate (ексклюзивність)', () => {
@@ -155,6 +331,20 @@ describe('ProviderConfigService', () => {
       await expect(svc.activate(ORG, BRANCH, 'PAYMENT', 'liqpay')).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+
+    it('kind-незалежність: активація FISCAL-провайдера НЕ чіпає PAYMENT-конфіги (kind у обох where)', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        id: 'c1',
+        credentials: JSON.stringify({ licenseKey: 'L', pinCode: 'P' }),
+      });
+      await svc.activate(ORG, BRANCH, 'FISCAL', 'checkbox');
+      // Обидва updateMany скоуплені kind='FISCAL' → monobank/liqpay (PAYMENT) не зачеплені.
+      const disableCall = prisma.branchProviderConfig.updateMany.mock.calls[0][0];
+      const enableCall = prisma.branchProviderConfig.updateMany.mock.calls[1][0];
+      expect(disableCall.where.kind).toBe('FISCAL');
+      expect(enableCall.where.kind).toBe('FISCAL');
+      // MUTATION-VERIFY: прибрати kind з where → активація ПРРО вимкнула б активний платіжний шлюз.
     });
 
     it('філія не в org → NotFound (branch-in-org guard)', async () => {
