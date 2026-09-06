@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectQueue } from '@nestjs/bullmq';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { Queue } from 'bullmq';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -12,6 +13,13 @@ import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './pa
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
 // Intl.NumberFormat under the hood per call. Used on every payment.create when SMS sent.
 const UAH_AMOUNT_FMT = new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2 });
+
+// Спільний include для findAll/findOne: контрагент (ім'я) + назви рахунку-призначення.
+const PAYMENT_INCLUDE = {
+  counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+  bankAccount: { select: { name: true } },
+  cashRegister: { select: { name: true } },
+} satisfies Prisma.PaymentInclude;
 
 @Injectable()
 export class PaymentsService {
@@ -28,26 +36,44 @@ export class PaymentsService {
 
   async findAll(
     orgId: string,
-    page = 1,
-    limit = 20,
-    counterpartyId?: string,
+    opts: {
+      page?: number;
+      limit?: number;
+      counterpartyId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      method?: string;
+      fiscalStatus?: string;
+    } = {},
   ): Promise<PaginatedPaymentsDto> {
     // DoS hardening: cap user-controlled pagination params.
     // payments grows monotonically (1 row per money operation); without cap
     // `?limit=999999` could OOM the API on long-running orgs.
-    const safeLimit = Math.min(Math.max(limit, 1), 200);
-    const safePage = Math.max(page, 1);
+    const safeLimit = Math.min(Math.max(opts.limit ?? 20, 1), 200);
+    const safePage = Math.max(opts.page ?? 1, 1);
 
-    const where: { orgId: string; counterpartyId?: string } = { orgId };
-    if (counterpartyId) {
+    const where: Prisma.PaymentWhereInput = { orgId };
+    if (opts.counterpartyId) {
       // Verify the counterparty belongs to this org to prevent cross-tenant data leaks
       const cp = await this.prisma.counterparty.findFirst({
-        where: { id: counterpartyId, orgId, deletedAt: null },
+        where: { id: opts.counterpartyId, orgId, deletedAt: null },
         select: { id: true },
       });
       if (!cp) throw new NotFoundException('Контрагента не знайдено');
-      where.counterpartyId = counterpartyId;
+      where.counterpartyId = opts.counterpartyId;
     }
+    // Діапазон дат за createdAt (ISO-рядки від фронту).
+    if (opts.dateFrom || opts.dateTo) {
+      const createdAt: Prisma.DateTimeFilter = {};
+      if (opts.dateFrom) createdAt.gte = new Date(opts.dateFrom);
+      if (opts.dateTo) createdAt.lte = new Date(opts.dateTo);
+      where.createdAt = createdAt;
+    }
+    if (opts.method) where.method = opts.method;
+    // fiscalStatus: 'none' → фіскалізація не застосовна (null); інакше eq на enum-значенні.
+    if (opts.fiscalStatus === 'none') where.fiscalStatus = null;
+    else if (opts.fiscalStatus)
+      where.fiscalStatus = opts.fiscalStatus as Prisma.PaymentWhereInput['fiscalStatus'];
 
     const skip = (safePage - 1) * safeLimit;
     const [items, total] = await Promise.all([
@@ -56,14 +82,95 @@ export class PaymentsService {
         skip,
         take: safeLimit,
         orderBy: { createdAt: 'desc' },
-        include: {
-          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-        },
+        include: PAYMENT_INCLUDE,
       }),
       this.prisma.payment.count({ where }),
     ]);
 
     return { items: items.map(item => this.toDto(item)), total, page: safePage, limit: safeLimit };
+  }
+
+  async findOne(orgId: string, id: string): Promise<PaymentResponseDto> {
+    const payment = await this.prisma.payment.findFirst({
+      where: { id, orgId },
+      include: PAYMENT_INCLUDE,
+    });
+    if (!payment) throw new NotFoundException('Платіж не знайдено');
+    return this.toDto(payment);
+  }
+
+  /**
+   * Повторна фіскалізація невдалого чеку. Дозволено ЛИШЕ для FAILED без fiscalReceiptId
+   * (idempotency: якщо чек уже пробито — receiptId заповнено — повтор заборонено, щоб не
+   * створити дубль). Скидає статус у QUEUED і ставить job у чергу (як create).
+   */
+  async retryFiscal(orgId: string, id: string): Promise<PaymentResponseDto> {
+    const payment = await this.prisma.payment.findFirst({
+      where: { id, orgId },
+      select: {
+        id: true,
+        fiscalStatus: true,
+        fiscalReceiptId: true,
+        method: true,
+        amount: true,
+        workOrderId: true,
+      },
+    });
+    if (!payment) throw new NotFoundException('Платіж не знайдено');
+    if (payment.fiscalReceiptId) {
+      throw new BadRequestException('Чек уже пробито — повтор не потрібен');
+    }
+    if (payment.fiscalStatus !== 'FAILED') {
+      throw new BadRequestException('Повтор можливий лише для чеків у статусі «Помилка»');
+    }
+
+    const branchId =
+      (payment.workOrderId
+        ? (
+            await this.prisma.workOrder.findFirst({
+              where: { id: payment.workOrderId, orgId },
+              select: { branchId: true },
+            })
+          )?.branchId
+        : undefined) ??
+      (
+        await this.prisma.garageBranch.findFirst({
+          where: { orgId, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+
+    await this.prisma.payment.update({
+      where: { id, orgId },
+      data: { fiscalStatus: 'QUEUED', fiscalError: null },
+    });
+
+    await this.checkboxQueue
+      .add(
+        'fiscal-receipt',
+        { paymentId: id, orgId, branchId, amount: Number(payment.amount), method: payment.method },
+        {
+          attempts: 288,
+          backoff: { type: 'exponential', delay: 300_000 },
+          removeOnComplete: true,
+          removeOnFail: 200,
+        },
+      )
+      .catch(async (err: unknown) => {
+        this.logger.warn(
+          `Черга недоступна — повторну фіскалізацію ${id} не поставлено: ${err instanceof Error ? err.message : err}`,
+        );
+        await this.prisma.payment
+          .update({
+            where: { id, orgId },
+            data: { fiscalStatus: 'FAILED', fiscalError: 'Черга недоступна — чек не поставлено' },
+          })
+          .catch(() => undefined);
+      });
+
+    return this.findOne(orgId, id);
   }
 
   async create(orgId: string, dto: CreatePaymentDto, userId?: string): Promise<PaymentResponseDto> {
@@ -169,9 +276,7 @@ export class PaymentsService {
             // QUEUED коли ставимо в чергу; null коли фіскалізація не застосовна до методу.
             fiscalStatus: willFiscalize ? 'QUEUED' : null,
           },
-          include: {
-            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-          },
+          include: PAYMENT_INCLUDE,
         });
 
         await this.settlements.createTransaction(
@@ -382,6 +487,8 @@ export class PaymentsService {
     sourceType?: string | null;
     bankAccountId?: string | null;
     cashRegisterId?: string | null;
+    bankAccount?: { name: string } | null;
+    cashRegister?: { name: string } | null;
     createdAt: Date;
     counterparty: {
       companyName: string | null;
@@ -391,6 +498,8 @@ export class PaymentsService {
   }): PaymentResponseDto {
     const cp = p.counterparty;
     const counterpartyName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName);
+    // Назва рахунку-призначення для UI (каса/банк). id лишаються для навігації/редагування.
+    const sourceName = p.bankAccount?.name ?? p.cashRegister?.name ?? null;
     return {
       id: p.id,
       orgId: p.orgId,
@@ -407,6 +516,7 @@ export class PaymentsService {
       sourceType: p.sourceType ?? null,
       bankAccountId: p.bankAccountId ?? null,
       cashRegisterId: p.cashRegisterId ?? null,
+      sourceName,
       createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
     };
   }

@@ -260,6 +260,29 @@ export const PAYMENT_SOURCE_TYPE_LABELS: Record<string, string> = {
   CASH_REGISTER: 'Каса',
 };
 
+// Фіскальний статус чеку (ПРРО) на Payment. null = фіскалізація не застосовна (метод без
+// requiresFiscal) — у UI показувати «—».
+export const FISCAL_STATUS_LABELS: Record<string, string> = {
+  QUEUED: 'У черзі',
+  DONE: 'Пробито',
+  FAILED: 'Помилка',
+  SKIPPED: 'Пропущено',
+};
+
+export const FISCAL_STATUS_BADGE: Record<string, BadgeVariant> = {
+  QUEUED: 'secondary',
+  DONE: 'success',
+  FAILED: 'destructive',
+  SKIPPED: 'secondary',
+};
+
+export const FISCAL_STATUS_DESCRIPTIONS: Record<string, string> = {
+  QUEUED: 'У черзі — чек очікує пробиття (офлайн-повтори до 24 год)',
+  DONE: 'Пробито — фіскальний чек створено',
+  FAILED: 'Помилка — не вдалося пробити чек після всіх спроб; можна повторити',
+  SKIPPED: 'Пропущено — фіскалізацію вимкнено на філії',
+};
+
 // ─── Stock Documents ──────────────────────────────────────────────────────────
 
 export const STOCK_DOC_STATUS_LABELS: Record<string, string> = {

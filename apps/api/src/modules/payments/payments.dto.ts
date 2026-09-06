@@ -54,6 +54,7 @@ export class PaymentResponseDto {
   @ApiPropertyOptional() sourceType?: string | null;
   @ApiPropertyOptional() bankAccountId?: string | null;
   @ApiPropertyOptional() cashRegisterId?: string | null;
+  @ApiPropertyOptional() sourceName?: string | null;
   @ApiProperty() createdAt!: string;
 }
 

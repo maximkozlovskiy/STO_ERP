@@ -19,6 +19,7 @@ import {
   FileText,
   Receipt,
   Wallet,
+  HandCoins,
   BarChart2,
   BookOpen,
   UserCog,
@@ -70,6 +71,13 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
 
   // ─── Взаєморозрахунки ─────────────────────────────────────────────
   { href: '/invoices', label: 'Рахунки клієнтам', icon: Receipt, section: 'settlements' },
+  {
+    href: '/payments',
+    label: 'Оплати клієнтів',
+    icon: HandCoins,
+    section: 'settlements',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
+  },
   {
     href: '/supplier-payments',
     label: 'Оплати постачальникам',
