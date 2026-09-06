@@ -141,6 +141,16 @@ enum NotificationChannel {
   EMAIL
 }
 
+// Статус спроби доставки (per-канал). SENT = провайдер прийняв у чергу (accepted);
+// REJECTED = провайдер відхилив (переходимо до наступного каналу у fallback);
+// FAILED = вичерпано ретраї/усі канали. QUEUED = у процесі.
+enum NotificationDeliveryStatus {
+  QUEUED
+  SENT
+  REJECTED
+  FAILED
+}
+
 enum SettlementTransactionType {
   CHARGE
   PAYMENT
@@ -383,6 +393,7 @@ model GarageBranch {
   zones            Zone[]
   warehouses       Warehouse[]
   branchSettings   BranchSettings?
+  notificationChannelConfigs NotificationChannelConfig[]
   workOrders       WorkOrder[]
   stockDocuments   StockDocument[]
   employeeBranches EmployeeBranch[]
@@ -1682,6 +1693,55 @@ model NotificationTemplate {
   // sto-optimize: @@index([orgId]) is redundant — @@unique([orgId, eventType, channel])
   // covers prefix lookups on (orgId).
   @@map("notification_templates")
+}
+
+// Конфіг каналу сповіщень per-філія: який провайдер, чи ввімкнено, пріоритет у
+// fallback-ланцюгу, і креди (write-only; Phase 4 — шифрування at-rest). Дозволяє N
+// каналів на філію з упорядкуванням: fallback пробує enabled-канали за зростанням priority.
+model NotificationChannelConfig {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String              @db.Uuid
+  branchId    String              @db.Uuid
+  channel     NotificationChannel
+  provider    String // код провайдера (NotificationProviderRegistry), напр. 'turbosms'
+  enabled     Boolean             @default(true)
+  priority    Int                 @default(0) // менше = раніше у fallback-ланцюгу
+  // Креди провайдера (apiKey/senderName тощо). Phase 4: шифрування at-rest.
+  // apiKey тут — write-only на рівні API (response DTO його не повертає).
+  apiKey      String?
+  senderName  String?
+  syncVersion BigInt              @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  deletedAt   DateTime?
+
+  branch GarageBranch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, channel])
+  @@index([orgId, branchId, enabled, priority])
+  @@map("notification_channel_configs")
+}
+
+// Журнал спроб доставки сповіщень — для fallback (знати, чи канал прийнято) та
+// спостережуваності. Append-only (немає deletedAt). Одна подія може мати кілька рядків
+// (по одному на канал у fallback-ланцюгу).
+model NotificationLog {
+  id                String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId             String                     @db.Uuid
+  branchId          String?                    @db.Uuid
+  eventType         NotificationEventType
+  channel           NotificationChannel
+  provider          String
+  phone             String
+  providerMessageId String?
+  status            NotificationDeliveryStatus @default(QUEUED)
+  error             String?
+  attempt           Int                        @default(1)
+  createdAt         DateTime                   @default(now())
+
+  @@index([orgId, createdAt])
+  @@index([orgId, eventType, channel])
+  @@map("notification_logs")
 }
 
 model TaxRate {
