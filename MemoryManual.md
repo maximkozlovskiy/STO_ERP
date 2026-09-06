@@ -99,6 +99,24 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+b8747f15  fix(review): ПРРО Крок 2 — partial unique OPEN-зміни + tenant-scoped refreshToken + branch-scoped pending
+          Дата: 2026-09-06. Review ПРРО Крок 2 (feat 0cfa27d5: CashShift + PIN-token + реальні чеки).
+          Токен at-rest ✅ — CashShift.checkboxAccessToken у ENCRYPTED_FIELDS (encrypt-on-write create+update,
+          decrypt-on-read через $extends незалежно від select); toDto НЕ повертає токен; ніде не логується.
+          checkboxPinCode/licenseKey читаються тільки для sign-in. SSRF ✅ (validatePublicUrl+redirect:manual+
+          AbortController 10s/15s+reject-3xx, дзеркало webhooks/settings). ЗНАЙДЕНО+ВИПРАВЛЕНО:
+          - IMPORTANT: гонка double-OPEN (open() findFirst-then-create без DB-constraint; критично для
+            AUTO_OPEN у processor concurrency:3 — два платежі одного branch без зміни відкривали ДВІ
+            фіскальні зміни у Checkbox). Fix: частковий unique cash_shifts_one_open_per_register_uq
+            (WHERE status=OPEN AND deletedAt IS NULL) + P2002-recovery у open() → повертає переможця.
+          - IMPORTANT: refreshToken update-by-id без orgId → updateMany з orgId (§2.2 no-op на чужий id).
+          - SUGGESTION: pendingReceipts count org-wide → скоуплено до branchId (Payment→workOrder.branchId).
+          ОЦІНЕНО-ПРИЙНЯТНО (без фіксу): ensureToken/refreshToken concurrency race — last-write-wins,
+          Checkbox видає новий токен per sign-in, старі валідні короткочасно → ідемпотентно, без корупції
+          (зайвий sign-in марний але не ламає); MANUAL no-shift throw→QUEUED, після 288×/24h без зміни →
+          FAILED (прийнятно, pendingReceipts на /cash сигналить касиру). TS: api ✅ 0 | web ✅ 0.
+          Tests: checkbox.processor 12/12.
+
 <review-money-phase1>  fix(review): money-model Phase 1 — degrade stale source-default + optimistic PARTIALLY_PAID
           Дата: 2026-09-06. Review моделі грошей Фаза 1 (feat 251845af + sync-fix c81d8957).
           FIN-C1 підтверджено: read(findFirst) + CAS(updateMany paidAmount=прочитане) + Payment.create

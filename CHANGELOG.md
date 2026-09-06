@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-09-06 — fix(review): ПРРО Крок 2 — гонка double-OPEN + tenant-scope refreshToken + branch-scope pending
+
+### b8747f15 payments — code review ПРРО Крок 2 (касова зміна + PIN-token + реальні чеки)
+
+Security-sensitive review фічі «CashShift + cashier PIN-token + реальні чеки Checkbox» (feat 0cfa27d5). 3 фікси (0 CRITICAL / 2 IMPORTANT / 1 SUGGESTION); криптографія токена, SSRF, offline, tenant, ролі — перевірено CLEAN.
+
+- **IMPORTANT** гонка double-OPEN: `open()` робив findFirst-then-create без DB-constraint. Під AUTO_OPEN у processor (concurrency:3) два платежі одного branch без відкритої зміни проходили guard одночасно → ДВІ OPEN-зміни + два фіскальних shift-и у Checkbox. Fix: частковий unique `cash_shifts_one_open_per_register_uq` (WHERE status='OPEN' AND deletedAt IS NULL) + P2002-recovery у `open()` → повертає зміну-переможця (processor продовжує у неї, не падає).
+- **IMPORTANT** `refreshToken` робив `update({ where: { id } })` без orgId (§2.2) → `updateMany({ id, orgId })` (tenant-scoped no-op на чужий shiftId, не безумовна інвалідація токена по глобальному id).
+- **SUGGESTION** `pendingReceipts` рахувався org-wide → скоуплено до branchId зміни (Payment→workOrder.branchId), інакше картка однієї каси показувала QUEUED-чеки всіх філій.
+- CLEAN верифіковано: токен at-rest шифрується (ENCRYPTED_FIELDS, encrypt create+update / decrypt-on-read через $extends незалежно від select), toDto НЕ повертає токен, ніде не логується; PIN/licenseKey тільки для sign-in; SSRF (validatePublicUrl+redirect:manual+AbortController 10s/15s+reject-3xx, дзеркало webhooks/settings); offline→throw без phantom-зміни; 401→refreshToken→retry-once; MANUAL no-shift→QUEUED-wait (не FAILED передчасно); ролі nav==controller==page; укр. Оцінено-прийнятно: ensureToken/refreshToken concurrency last-write-wins (Checkbox видає новий токен per sign-in — ідемпотентно, без корупції).
+- tsc api/web 0, checkbox.processor 12/12.
+
+---
+
 ## 2026-09-06 — fix(review): EmailProvider transport.close() у finally (leak на error-path)
 
 ### 53b62596 notifications — code review Email-канал + генералізація recipient
