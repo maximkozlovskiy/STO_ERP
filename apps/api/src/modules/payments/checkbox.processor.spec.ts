@@ -209,4 +209,90 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
+
+  // Bug #663 — фіскалізація вимкнена на філії → payment пишеться fiscalStatus:'SKIPPED', а не
+  // лишається QUEUED навічно. process() кидає на кожному провалі; SKIPPED — не помилка, а конфіг-
+  // стан, тому НЕ throw. Раніше skip-path не асертив ЗАПИС статусу (лише «fetch не викликано») →
+  // регресія що прибирає payment.update у skip-гілці пройшла б зеленою, лишаючи платіж у QUEUED.
+  describe('Bug #663: skip-path пише fiscalStatus:SKIPPED (не лишає QUEUED)', () => {
+    it('licenseKey відсутній → payment.update fiscalStatus:SKIPPED', async () => {
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        checkboxLicenseKey: null,
+        fiscalEnabled: true,
+        checkboxApiUrl: 'https://api.checkbox.ua',
+      });
+      await processor.process(makeJob({ paymentId: 'pay-skip-1' }));
+      expect(prisma.payment.update).toHaveBeenCalledWith({
+        where: { id: 'pay-skip-1', orgId: 'org-1' },
+        data: { fiscalStatus: 'SKIPPED' },
+      });
+    });
+
+    it('fiscalEnabled=false → payment.update fiscalStatus:SKIPPED', async () => {
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        checkboxLicenseKey: 'key-1',
+        fiscalEnabled: false,
+        checkboxApiUrl: 'https://api.checkbox.ua',
+      });
+      await processor.process(makeJob({ paymentId: 'pay-skip-2' }));
+      expect(prisma.payment.update).toHaveBeenCalledWith({
+        where: { id: 'pay-skip-2', orgId: 'org-1' },
+        data: { fiscalStatus: 'SKIPPED' },
+      });
+    });
+  });
+
+  // Bug #664 — anti-flicker guard у @OnWorkerEvent('failed'). FAILED пишеться ЛИШЕ коли вичерпано
+  // всі спроби (attemptsMade >= opts.attempts). На проміжному провалі статус лишається QUEUED
+  // (BullMQ ще ретраїтиме) — інакше він «мигав» би FAILED між ретраями. ОБИДВІ гілки покриті
+  // (mutation-verify: без `if (attemptsMade < attempts) return` проміжний провал писав би FAILED).
+  describe('Bug #664: onFailed пише FAILED лише на термінальній спробі', () => {
+    const failedJob = (over: { attemptsMade: number; attempts?: number }): Job<CheckboxJobData> =>
+      ({
+        data: { paymentId: 'pay-f', orgId: 'org-1', branchId: 'br-1', amount: 100, method: 'card' },
+        attemptsMade: over.attemptsMade,
+        opts: { attempts: over.attempts ?? 288 },
+      }) as unknown as Job<CheckboxJobData>;
+
+    it('проміжна спроба (attemptsMade < attempts) → payment.update НЕ викликано (лишається QUEUED)', async () => {
+      await processor.onFailed(failedJob({ attemptsMade: 5, attempts: 288 }), new Error('timeout'));
+      expect(prisma.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('термінальна спроба (attemptsMade >= attempts) → payment.update fiscalStatus:FAILED + fiscalError', async () => {
+      await processor.onFailed(
+        failedJob({ attemptsMade: 288, attempts: 288 }),
+        new Error('Checkbox API error 500: збій'),
+      );
+      expect(prisma.payment.update).toHaveBeenCalledWith({
+        where: { id: 'pay-f', orgId: 'org-1' },
+        data: { fiscalStatus: 'FAILED', fiscalError: 'Checkbox API error 500: збій' },
+      });
+    });
+
+    it('термінальна спроба з дефолтним opts.attempts=1 (attemptsMade=1) → FAILED', async () => {
+      // opts.attempts undefined → fallback 1; attemptsMade=1 → 1>=1 → термінальна.
+      const job = {
+        data: { paymentId: 'pay-d', orgId: 'org-1', branchId: null, amount: 50, method: 'cash' },
+        attemptsMade: 1,
+        opts: {},
+      } as unknown as Job<CheckboxJobData>;
+      await processor.onFailed(job, new Error('fail'));
+      expect(prisma.payment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'pay-d', orgId: 'org-1' },
+          data: expect.objectContaining({ fiscalStatus: 'FAILED' }),
+        }),
+      );
+    });
+
+    it('fiscalError обрізається до 500 символів', async () => {
+      const longMsg = 'x'.repeat(700);
+      await processor.onFailed(failedJob({ attemptsMade: 288, attempts: 288 }), new Error(longMsg));
+      const call = prisma.payment.update.mock.calls[0][0] as {
+        data: { fiscalError: string };
+      };
+      expect(call.data.fiscalError.length).toBe(500);
+    });
+  });
 });

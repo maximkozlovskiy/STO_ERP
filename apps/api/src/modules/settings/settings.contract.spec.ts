@@ -1,7 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -603,6 +603,93 @@ describe('Settings — HTTP Contract', () => {
         payload: { workEndTime: '08:00' },
       });
       expect(res.statusCode).toBe(400);
+    });
+  });
+
+  // Bug #666 (regression-guard): POST /settings/branch/:id/fiscal/verify — новий endpoint
+  // (feat(prro): Checkbox ПРРО Крок 1). Контракт: ParseUUIDPipe на branchId, VerifyFiscalDto
+  // (whitelist → зайві поля 400), делегує у service.verifyFiscal, повертає {valid,...}.
+  // fetch мокнутий — зовнішній виклик не робиться.
+  describe('Bug #666: POST /settings/branch/:id/fiscal/verify contract', () => {
+    const branchId = '11111111-1111-4111-8111-111111111111';
+    let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      prismaMock.garageBranch.findFirst.mockResolvedValue({ id: branchId });
+      prismaMock.branchSettings.findFirst = vi.fn().mockResolvedValue({
+        checkboxLicenseKey: 'stored',
+        checkboxApiUrl: 'https://api.checkbox.ua',
+      });
+      fetchSpy = vi.spyOn(global, 'fetch');
+    });
+
+    afterEach(() => {
+      fetchSpy.mockRestore();
+    });
+
+    it('POST з валідним body → 200 + {valid:true, cashRegisterName}', async () => {
+      fetchSpy.mockResolvedValue(
+        new Response(JSON.stringify({ results: [{ title: 'Каса №1' }] }), { status: 200 }),
+      );
+      const res = await app.inject({
+        method: 'POST',
+        url: `/settings/branch/${branchId}/fiscal/verify`,
+        payload: { apiUrl: 'https://api.checkbox.ua', licenseKey: 'k' },
+      });
+      expect(res.statusCode).toBe(201); // POST default success — Nest/Fastify
+      const body = res.json() as { valid: boolean; cashRegisterName?: string };
+      expect(body.valid).toBe(true);
+      expect(body.cashRegisterName).toBe('Каса №1');
+    });
+
+    it('POST без тіла (порожній) → бере збережений ключ → 201', async () => {
+      fetchSpy.mockResolvedValue(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+      const res = await app.inject({
+        method: 'POST',
+        url: `/settings/branch/${branchId}/fiscal/verify`,
+        payload: {},
+      });
+      expect(res.statusCode).toBe(201);
+      const body = res.json() as { valid: boolean };
+      expect(body.valid).toBe(true);
+    });
+
+    it('POST з невалідним UUID branchId → 400 (ParseUUIDPipe)', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/settings/branch/not-a-uuid/fiscal/verify`,
+        payload: { licenseKey: 'k' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('POST з зайвим полем → 400 (whitelist forbidNonWhitelisted)', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/settings/branch/${branchId}/fiscal/verify`,
+        payload: { licenseKey: 'k', evilField: 'x' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('POST з licenseKey не-рядком → 400 (@IsString)', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/settings/branch/${branchId}/fiscal/verify`,
+        payload: { licenseKey: 123 },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('невідома філія → 404', async () => {
+      prismaMock.garageBranch.findFirst.mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/settings/branch/${branchId}/fiscal/verify`,
+        payload: { licenseKey: 'k' },
+      });
+      expect(res.statusCode).toBe(404);
     });
   });
 });
