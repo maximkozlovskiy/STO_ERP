@@ -238,6 +238,26 @@ export default function NotificationProvidersPanel() {
 
   const sortedChannels = [...channels].sort((a, b) => a.priority - b.priority);
 
+  // Активний провайдер = той, чиї канали enabled (ексклюзивно, лише один). Похідне зі стану
+  // каналів — окреме поле не потрібне (resolveConfig уже фільтрує enabled:true).
+  const activeProvider = channels.find(c => c.enabled)?.provider ?? null;
+
+  const activateProvider = async (providerCode: string) => {
+    if (!selectedBranch || activeProvider === providerCode) return;
+    try {
+      await apiFetch(`/notification-channels/${selectedBranch}/activate`, {
+        method: 'POST',
+        body: JSON.stringify({ provider: providerCode }),
+      });
+      loadChannels(selectedBranch);
+      if (currentFeatures.toastEnabled) toast.success('Провайдера активовано');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Помилка активації';
+      setError(msg);
+      if (currentFeatures.toastEnabled) toast.error(msg);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -263,24 +283,55 @@ export default function NotificationProvidersPanel() {
         </div>
       )}
 
-      {/* Провайдери — клік відкриває модалку кредів */}
+      {/* Провайдери — клік по назві відкриває модалку кредів; Switch = ексклюзивна активація */}
       <div className="grid gap-2 sm:grid-cols-2">
-        {providers.map(p => (
-          <button
-            key={p.code}
-            type="button"
-            onClick={() => openCreds(p)}
-            className="flex items-center justify-between gap-2 bg-surface rounded-xl border border-border p-3 text-left hover:border-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <div>
-              <div className="text-sm font-medium text-foreground">{p.name}</div>
-              <div className="text-xs text-muted-foreground">
-                {p.channels.map(ch => CHANNEL_LABELS[ch] ?? ch).join(' · ')}
+        {providers.map(p => {
+          const isActive = activeProvider === p.code;
+          return (
+            <div
+              key={p.code}
+              className={cn(
+                'flex items-center justify-between gap-2 bg-surface rounded-xl border p-3 transition-colors',
+                isActive ? 'border-primary' : 'border-border',
+              )}
+            >
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => openCreds(p)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openCreds(p);
+                  }
+                }}
+                aria-label={`Налаштувати креди ${p.name}`}
+                className="flex flex-1 items-center gap-2 text-left cursor-pointer rounded focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div>
+                  <div className="text-sm font-medium text-foreground">{p.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {p.channels.map(ch => CHANNEL_LABELS[ch] ?? ch).join(' · ')}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-muted-foreground">
+                  {isActive ? 'Активний' : 'Вимкнено'}
+                </span>
+                <Switch
+                  checked={isActive}
+                  onChange={v => {
+                    if (v) void activateProvider(p.code);
+                  }}
+                  disabled={isActive}
+                  ariaLabel={`Активувати провайдера ${p.name}`}
+                />
               </div>
             </div>
-            <KeyRound className="h-4 w-4 text-muted-foreground" />
-          </button>
-        ))}
+          );
+        })}
         {providers.length === 0 && (
           <p className="text-muted-foreground text-sm">Провайдери не знайдено</p>
         )}

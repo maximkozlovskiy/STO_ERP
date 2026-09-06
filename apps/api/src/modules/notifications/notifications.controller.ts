@@ -31,6 +31,10 @@ class VerifyProviderDto {
   @ApiPropertyOptional() @IsOptional() @IsString() senderName?: string;
 }
 
+class ActivateProviderDto {
+  @ApiProperty() @IsString() provider!: string;
+}
+
 class UpsertChannelDto {
   @ApiProperty({ enum: NotificationChannel })
   @IsIn(Object.values(NotificationChannel))
@@ -123,5 +127,18 @@ export class NotificationChannelsController {
     @Body() dto: UpsertChannelDto,
   ) {
     return this.notifications.upsertBranchChannel(orgId, branchId, dto);
+  }
+
+  @Post(':branchId/activate')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({
+    summary: 'Активувати провайдера (ексклюзивно): канали інших провайдерів вимикаються',
+  })
+  activate(
+    @OrgContext() orgId: string,
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Body() dto: ActivateProviderDto,
+  ) {
+    return this.notifications.activateProvider(orgId, branchId, dto.provider);
   }
 }

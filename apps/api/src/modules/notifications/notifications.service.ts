@@ -345,6 +345,38 @@ export class NotificationsService {
     return { id: row.id };
   }
 
+  /**
+   * Ексклюзивна активація провайдера для філії: канали цього провайдера → enabled=true,
+   * канали ВСІХ інших провайдерів → enabled=false. Активним може бути лише один провайдер
+   * (усі його канали лишаються у fallback-ланцюзі за пріоритетом). Атомарно через $transaction.
+   */
+  async activateProvider(orgId: string, branchId: string, providerCode: string) {
+    // Провайдер має існувати у реєстрі.
+    if (!this.registry.get(providerCode)) {
+      throw new BadRequestException('Невідомий провайдер');
+    }
+    // Філія в межах org.
+    const branch = await this.prisma.garageBranch.findFirst({
+      where: { id: branchId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!branch) throw new NotFoundException('Філію не знайдено');
+
+    await this.prisma.$transaction([
+      // Вимкнути канали всіх інших провайдерів.
+      this.prisma.notificationChannelConfig.updateMany({
+        where: { orgId, branchId, deletedAt: null, provider: { not: providerCode } },
+        data: { enabled: false },
+      }),
+      // Увімкнути канали активного провайдера.
+      this.prisma.notificationChannelConfig.updateMany({
+        where: { orgId, branchId, deletedAt: null, provider: providerCode },
+        data: { enabled: true },
+      }),
+    ]);
+    return { activeProvider: providerCode };
+  }
+
   private renderTemplate(template: string, vars: Record<string, unknown>): string {
     return template.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars[key] ?? ''));
   }
