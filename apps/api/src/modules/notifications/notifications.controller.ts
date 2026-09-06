@@ -7,7 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   UseGuards,
-  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -91,6 +91,9 @@ export class NotificationProvidersController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: 'Перевірити креди провайдера (токен + баланс, без тест-SMS)' })
   verify(@Param('code') code: string, @Body() dto: VerifyProviderDto) {
+    // @Param не проходить ValidationPipe → guard проти надто довгого/битого коду
+    // (захист від log-pollution; далі code — лише ключ Map у registry.get).
+    if (!code || code.length > 64) throw new BadRequestException('Некоректний код провайдера');
     return this.notifications.verifyProvider(code, dto.apiKey, dto.senderName);
   }
 }

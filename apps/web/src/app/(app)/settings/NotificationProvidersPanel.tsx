@@ -61,6 +61,7 @@ export default function NotificationProvidersPanel() {
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [savingCreds, setSavingCreds] = useState(false);
+  const [movingId, setMovingId] = useState<string | null>(null);
 
   // Завантаження філій + провайдерів (одноразово).
   useEffect(() => {
@@ -98,6 +99,7 @@ export default function NotificationProvidersPanel() {
     if (selectedBranch) loadChannels(selectedBranch);
   }, [selectedBranch, loadChannels]);
 
+  // Повертає true при успіху — caller (saveCreds) не має показувати «збережено» на помилці.
   const patchChannel = async (dto: {
     channel: string;
     provider: string;
@@ -105,18 +107,20 @@ export default function NotificationProvidersPanel() {
     priority?: number;
     apiKey?: string;
     senderName?: string;
-  }) => {
-    if (!selectedBranch) return;
+  }): Promise<boolean> => {
+    if (!selectedBranch) return false;
     try {
       await apiFetch(`/notification-channels/${selectedBranch}`, {
         method: 'PATCH',
         body: JSON.stringify(dto),
       });
       loadChannels(selectedBranch);
+      return true;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка збереження';
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
+      return false;
     }
   };
 
@@ -124,22 +128,31 @@ export default function NotificationProvidersPanel() {
     void patchChannel({ channel: c.channel, provider: c.provider, enabled });
 
   // Пріоритет: обмін значеннями priority із сусідом (менший priority = вище у списку).
-  const move = (index: number, dir: -1 | 1) => {
+  // Два послідовні PATCH — щоб перший збій не лишив обидва канали з однаковим priority,
+  // другий PATCH виконуємо лише якщо перший успішний (інакше loadChannels уже показав
+  // реальний серверний стан + помилку).
+  const move = async (index: number, dir: -1 | 1) => {
+    if (movingId) return; // блокуємо конкурентні swap-и (уникаємо гонки priority)
     const sorted = [...channels].sort((a, b) => a.priority - b.priority);
     const target = sorted[index + dir];
     const current = sorted[index];
     if (!target || !current) return;
-    void patchChannel({
-      channel: current.channel,
-      provider: current.provider,
-      priority: target.priority,
-    }).then(() =>
-      patchChannel({
+    setMovingId(current.id);
+    try {
+      const ok = await patchChannel({
+        channel: current.channel,
+        provider: current.provider,
+        priority: target.priority,
+      });
+      if (!ok) return;
+      await patchChannel({
         channel: target.channel,
         provider: target.provider,
         priority: current.priority,
-      }),
-    );
+      });
+    } finally {
+      setMovingId(null);
+    }
   };
 
   const openCreds = (provider: ProviderMeta) => {
@@ -179,12 +192,13 @@ export default function NotificationProvidersPanel() {
     if (!credsProvider) return;
     setSavingCreds(true);
     try {
-      await patchChannel({
+      const ok = await patchChannel({
         channel: credsChannel,
         provider: credsProvider.code,
         apiKey: apiKey || undefined,
         senderName: senderName || undefined,
       });
+      if (!ok) return; // помилка вже показана в patchChannel — не закриваємо модалку
       if (currentFeatures.toastEnabled) toast.success('Креди збережено');
       closeCreds();
     } finally {
@@ -258,8 +272,8 @@ export default function NotificationProvidersPanel() {
                 <div className="flex flex-col">
                   <button
                     type="button"
-                    onClick={() => move(i, -1)}
-                    disabled={i === 0}
+                    onClick={() => void move(i, -1)}
+                    disabled={i === 0 || movingId !== null}
                     aria-label="Підняти пріоритет"
                     className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
                   >
@@ -267,8 +281,8 @@ export default function NotificationProvidersPanel() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => move(i, 1)}
-                    disabled={i === sortedChannels.length - 1}
+                    onClick={() => void move(i, 1)}
+                    disabled={i === sortedChannels.length - 1 || movingId !== null}
                     aria-label="Знизити пріоритет"
                     className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
                   >

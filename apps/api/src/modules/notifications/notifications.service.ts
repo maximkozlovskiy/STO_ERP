@@ -281,32 +281,23 @@ export class NotificationsService {
       throw new BadRequestException(`Провайдер ${dto.provider} не підтримує канал ${dto.channel}`);
     }
 
-    const existing = await this.prisma.notificationChannelConfig.findFirst({
-      where: { orgId, branchId, channel: dto.channel },
-      select: { id: true },
-    });
-
     // apiKey: оновлюємо лише коли надіслано непорожнє значення (write-only).
     const apiKeyPatch = dto.apiKey != null && dto.apiKey !== '' ? { apiKey: dto.apiKey } : {};
 
-    if (existing) {
-      const updated = await this.prisma.notificationChannelConfig.update({
-        where: { id: existing.id },
-        data: {
-          provider: dto.provider,
-          enabled: dto.enabled,
-          priority: dto.priority,
-          senderName: dto.senderName,
-          deletedAt: null, // reactivate якщо був soft-deleted
-          ...apiKeyPatch,
-        },
-        select: { id: true },
-      });
-      return { id: updated.id };
-    }
-
-    const created = await this.prisma.notificationChannelConfig.create({
-      data: {
+    // Atomic upsert по @@unique([branchId, channel]) — уникає findFirst-then-create гонки
+    // (два одночасні PATCH на той самий (branchId,channel) → інакше P2002/500 або дубль).
+    // branchId вже провалідовано як org-scoped вище, тож unique-ключ безпечний без orgId.
+    const row = await this.prisma.notificationChannelConfig.upsert({
+      where: { branchId_channel: { branchId, channel: dto.channel } },
+      update: {
+        provider: dto.provider,
+        enabled: dto.enabled,
+        priority: dto.priority,
+        senderName: dto.senderName,
+        deletedAt: null, // reactivate якщо був soft-deleted
+        ...apiKeyPatch,
+      },
+      create: {
         orgId,
         branchId,
         channel: dto.channel,
@@ -318,7 +309,7 @@ export class NotificationsService {
       },
       select: { id: true },
     });
-    return { id: created.id };
+    return { id: row.id };
   }
 
   private renderTemplate(template: string, vars: Record<string, unknown>): string {
