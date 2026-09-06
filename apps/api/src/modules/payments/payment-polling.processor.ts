@@ -8,9 +8,15 @@ import { PaymentsService } from './payments.service';
 interface PollJob {
   intentId: string;
   orgId: string;
+  // Лічильник спроб реконсиляції (PAID але Payment не створився). Обмежує ретраї, щоб
+  // ПОСТІЙНА помилка create (напр. рахунок переплачено паралельно) не крутилась вічно 5с-циклом.
+  finalizeAttempts?: number;
 }
 
 const POLL_INTERVAL_MS = 5_000;
+// Стеля спроб довести Payment до створення після PAID. ~ MAX × POLL_INTERVAL = ~30 хв опитувань.
+// Далі лишаємо PAID+error для ручного розбору касиром (гроші у gateway є, Payment треба вручну).
+const MAX_FINALIZE_ATTEMPTS = 360;
 
 /**
  * Опитує статус онлайн-наміру у gateway. Self-re-enqueue: поки pending — ставить себе знову з
@@ -33,7 +39,7 @@ export class PaymentPollingProcessor extends WorkerHost {
   }
 
   async process(job: Job<PollJob>): Promise<void> {
-    const { intentId, orgId } = job.data;
+    const { intentId, orgId, finalizeAttempts = 0 } = job.data;
 
     const intent = await this.prisma.onlinePaymentIntent.findFirst({
       where: { id: intentId, orgId, deletedAt: null },
@@ -45,10 +51,23 @@ export class PaymentPollingProcessor extends WorkerHost {
         invoiceId: true,
         amount: true,
         workOrderId: true,
+        paymentId: true,
       },
     });
     if (!intent) return; // видалено — стоп
-    if (intent.status !== 'PENDING') return; // уже термінальний — стоп
+
+    // РЕКОНСИЛЯЦІЯ (MONEY-CRITICAL): якщо намір уже PAID, але Payment так і не створено
+    // (paymentId=null) — це «вікно збою»: CAS PENDING→PAID закомітився, а потім процес упав
+    // ДО payments.create (або create кинув і ми лишили PAID+error). Гроші у monobank є, а
+    // Payment/settlement — ні. Без цього блоку наступний poll робив би early-return на
+    // `status !== PENDING` і Payment не створився б НІКОЛИ. jobId-дедуп (`payment-poll-<id>`)
+    // гарантує single-flight на намір → повторний create того ж наміру не подвоїться.
+    if (intent.status === 'PAID') {
+      if (intent.paymentId) return; // Payment уже є — намір повністю завершено, стоп
+      await this.finalizePayment(intentId, orgId, intent, finalizeAttempts, /* reconcile */ true);
+      return;
+    }
+    if (intent.status !== 'PENDING') return; // FAILED/EXPIRED — термінальний, стоп
     if (!intent.gatewayInvoiceId) return; // немає gateway-рахунку — нема що опитувати
 
     // Жорсткий wall-clock таймаут → EXPIRED (не опитуємо вічно).
@@ -89,31 +108,7 @@ export class PaymentPollingProcessor extends WorkerHost {
         data: { status: 'PAID' },
       });
       if (won.count === 0) return; // інший poll уже провів
-      try {
-        const payment = await this.payments.create(orgId, {
-          counterpartyId: intent.counterpartyId,
-          invoiceId: intent.invoiceId ?? undefined,
-          amount: Number(intent.amount),
-          method: 'monobank_qr',
-        });
-        await this.prisma.onlinePaymentIntent.update({
-          where: { id: intentId },
-          data: { paymentId: payment.id },
-        });
-        this.logger.log(`Онлайн-оплата ${intentId} → Payment ${payment.id}`);
-      } catch (e) {
-        // Payment не створився після PAID-переходу — лишаємо PAID+error (гроші у gateway є;
-        // касир розрулює вручну). НЕ відкочуємо PAID, щоб retry не подвоїв.
-        await this.prisma.onlinePaymentIntent
-          .update({
-            where: { id: intentId },
-            data: {
-              error: `Payment не створено: ${e instanceof Error ? e.message.slice(0, 400) : e}`,
-            },
-          })
-          .catch(() => undefined);
-        this.logger.error(`Онлайн-оплата ${intentId}: PAID, але Payment не створено`);
-      }
+      await this.finalizePayment(intentId, orgId, intent, finalizeAttempts, /* reconcile */ false);
       return;
     }
 
@@ -137,6 +132,82 @@ export class PaymentPollingProcessor extends WorkerHost {
         removeOnFail: 200,
       },
     );
+  }
+
+  /**
+   * Створює Payment для наміру, що вже переведений у PAID, і лінкує paymentId (idempotency).
+   * Виклик безпечний під single-flight (jobId-дедуп на намір): у будь-який момент активний
+   * лише один poll-job на intentId, тож повторний create того ж наміру не подвоїться.
+   *
+   * На помилці create (напр. invoice-overpay CAS відхилив, Redis/DB тимчасово недоступні) ми
+   * лишаємо PAID+error і ПЕРЕ-СТАВЛЯЄМО poll у чергу, щоб довести Payment до створення — гроші
+   * у gateway реальні, не можна лишати намір без Payment/settlement назавжди. jobId-дедуп
+   * (`payment-poll-<id>`) утримує рівно один job на намір, тож re-enqueue не створює лавину.
+   * @param reconcile лише для логів (true — відновлення після «вікна збою»).
+   */
+  private async finalizePayment(
+    intentId: string,
+    orgId: string,
+    intent: {
+      counterpartyId: string;
+      invoiceId: string | null;
+      amount: import('@prisma/client').Prisma.Decimal | number;
+    },
+    finalizeAttempts: number,
+    reconcile: boolean,
+  ): Promise<void> {
+    try {
+      const payment = await this.payments.create(orgId, {
+        counterpartyId: intent.counterpartyId,
+        invoiceId: intent.invoiceId ?? undefined,
+        amount: Number(intent.amount),
+        method: 'monobank_qr',
+      });
+      await this.prisma.onlinePaymentIntent.update({
+        where: { id: intentId },
+        data: { paymentId: payment.id, error: null },
+      });
+      this.logger.log(
+        `Онлайн-оплата ${intentId} → Payment ${payment.id}${reconcile ? ' (реконсиляція)' : ''}`,
+      );
+    } catch (e) {
+      // Payment не створився після PAID-переходу — лишаємо PAID+error (гроші у gateway є).
+      // НЕ відкочуємо PAID, щоб retry не подвоїв. Записуємо причину для касира/оператора.
+      await this.prisma.onlinePaymentIntent
+        .update({
+          where: { id: intentId },
+          data: {
+            error: `Payment не створено: ${e instanceof Error ? e.message.slice(0, 400) : e}`,
+          },
+        })
+        .catch(() => undefined);
+      // Продовжуємо ретраїти, поки Payment не буде створено (наступний poll піде гілкою
+      // реконсиляції PAID+paymentId=null). jobId-дедуп → рівно один job на намір, не лавина.
+      // Але з СТЕЛЕЮ: постійна помилка create (рахунок переплачено паралельно тощо) не має
+      // крутитись вічно — після MAX лишаємо PAID+error для ручного розбору касиром.
+      const next = finalizeAttempts + 1;
+      if (next > MAX_FINALIZE_ATTEMPTS) {
+        this.logger.error(
+          `Онлайн-оплата ${intentId}: PAID, Payment не створено за ${MAX_FINALIZE_ATTEMPTS} спроб — потрібен ручний розбір`,
+        );
+        return;
+      }
+      this.logger.error(
+        `Онлайн-оплата ${intentId}: PAID, але Payment не створено (спроба ${next}/${MAX_FINALIZE_ATTEMPTS})`,
+      );
+      await this.pollQueue
+        .add(
+          'poll',
+          { intentId, orgId, finalizeAttempts: next },
+          {
+            delay: POLL_INTERVAL_MS,
+            jobId: `payment-poll-${intentId}`,
+            removeOnComplete: true,
+            removeOnFail: 200,
+          },
+        )
+        .catch(() => undefined);
+    }
   }
 
   /** CAS-перехід у термінальний статус (лише з PENDING). */
