@@ -8,6 +8,8 @@ const ENCRYPTED_FIELDS: Record<string, string[]> = {
   NotificationChannelConfig: ['apiKey'],
   BranchSettings: ['smsApiKey', 'checkboxLicenseKey', 'checkboxPinCode', 'monobankToken'],
   CashShift: ['checkboxAccessToken'],
+  // credentials = JSON-рядок секретів провайдера (ПРРО/еквайринг) — шифрується цілим полем.
+  BranchProviderConfig: ['credentials'],
 };
 
 // Models that carry syncVersion — auto-incremented on every write, set to 1 on create
@@ -56,6 +58,7 @@ const SYNC_VERSION_MODELS = new Set([
   'PricingRule',
   'Payment',
   'SyncJob',
+  'BranchProviderConfig',
 ]);
 
 // Prisma 5 requires $extends for query middleware — $use was removed in v5

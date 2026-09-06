@@ -52,6 +52,7 @@ const PULL_TABLES = [
 //  - notification_channel_configs: містить apiKey провайдера (секрет) — mobile не має бачити.
 //  - notification_logs: append-only журнал + phone (PII); мобільним клієнтам не потрібен.
 //  - branch_settings: smsApiKey (секрет).
+//  - branch_provider_configs: credentials (секрети ПРРО/еквайринг-провайдерів) — mobile не має бачити.
 
 // Tables safe for push — excludes append-only logs and FSM-controlled models
 const PUSH_SAFE_TABLES = new Set([

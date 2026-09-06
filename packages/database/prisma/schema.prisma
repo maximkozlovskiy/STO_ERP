@@ -176,6 +176,12 @@ enum OnlinePaymentStatus {
   EXPIRED // клієнт не оплатив у відведений час
 }
 
+// Тип провайдера у BranchProviderConfig: фіскалізація (ПРРО) або еквайринг (онлайн-оплата).
+enum ProviderKind {
+  FISCAL // ПРРО: Checkbox, Вчасно.Каса
+  PAYMENT // еквайринг/онлайн-оплата: monobank, LiqPay
+}
+
 enum SettlementTransactionType {
   CHARGE
   PAYMENT
@@ -1941,6 +1947,31 @@ model OnlinePaymentIntent {
   @@map("online_payment_intents")
 }
 
+// Конфіг провайдера per-branch per-kind (ПРРО / еквайринг). Дзеркалить NotificationChannelConfig:
+// кілька провайдерів на філію, активний = enabled (рівно 1 per kind — ексклюзивна активація).
+// credentials — JSON-рядок (checkbox: {licenseKey,pinCode,cashRegisterId}; vchasno: {token};
+// monobank: {token}; liqpay: {publicKey,privateKey}) — шифрується at-rest цілим полем
+// (prisma.service ENCRYPTED_FIELDS). ВИКЛЮЧено з PULL_TABLES (містить секрети — mobile не бачить).
+model BranchProviderConfig {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String       @db.Uuid
+  branchId    String       @db.Uuid
+  kind        ProviderKind // FISCAL | PAYMENT
+  provider    String // 'checkbox' | 'vchasno' | 'monobank' | 'liqpay'
+  enabled     Boolean      @default(false) // активний провайдер = enabled (лише 1 per kind per branch)
+  apiUrl      String? // необовʼязковий override базового URL провайдера
+  credentials String? // JSON-рядок секретів, шифрується at-rest (ENCRYPTED_FIELDS)
+  shiftMode   ShiftMode    @default(MANUAL) // лише FISCAL: MANUAL / AUTO_OPEN
+  syncVersion BigInt       @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([branchId, kind, provider]) // 1 рядок на провайдера у межах філії+типу
+  @@index([orgId, branchId, kind])
+  @@map("branch_provider_configs")
+}
+
 model SettlementAccount {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId          String   @db.Uuid
@@ -2488,7 +2519,8 @@ model CashShift {
   orgId               String          @db.Uuid
   branchId            String          @db.Uuid
   cashRegisterId      String          @db.Uuid
-  checkboxShiftId     String? // id зміни у Checkbox
+  provider            String          @default("checkbox") // ПРРО-провайдер, яким відкрито зміну (токен-семантика різна)
+  checkboxShiftId     String? // id зміни у провайдера (Checkbox shift id / Вчасно)
   status              CashShiftStatus @default(OPEN)
   openedById          String?         @db.Uuid // Employee, що відкрив
   openedAt            DateTime        @default(now())
