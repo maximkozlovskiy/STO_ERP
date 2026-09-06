@@ -1,285 +1,67 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Check, X } from 'lucide-react';
-import { apiFetch } from '@/lib/api-client';
-import { toast } from '@/lib/toast';
-import { useUiFeatures } from '@/hooks/useUiFeatures';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { getCached, setCache } from '@/lib/ref-cache';
-import { cn } from '@/lib/utils';
-import { type BranchInfo } from './shared';
+import ProviderRegistryPanel, { type PanelProviderMeta } from './ProviderRegistryPanel';
 
-// Відповідь GET /settings/branch/:id — секрети (ключ/PIN) НЕ повертаються (write-only).
-interface FiscalSettings {
-  fiscalEnabled?: boolean;
-  checkboxApiUrl?: string | null;
-  checkboxCashRegisterId?: string | null;
-  shiftMode?: string;
-  monobankApiUrl?: string | null;
-  hasMonobankToken?: boolean;
-}
+// Схеми полів кредів провайдерів (бекенд list() дає лише code/name; поля — фронт-константа,
+// бо кожен провайдер має свій набір секретів).
+const FISCAL_PROVIDERS: PanelProviderMeta[] = [
+  {
+    code: 'checkbox',
+    name: 'Checkbox',
+    hasShiftMode: true,
+    fields: [
+      { key: 'licenseKey', label: 'Ліцензійний ключ каси', secret: true },
+      { key: 'pinCode', label: 'PIN касира', secret: true },
+      { key: 'cashRegisterId', label: 'ID каси (cash register)', placeholder: 'напр. 0e5b...' },
+    ],
+  },
+  {
+    code: 'vchasno',
+    name: 'Вчасно.Каса',
+    hasShiftMode: true,
+    fields: [{ key: 'token', label: 'API-токен', secret: true }],
+  },
+];
 
-interface VerifyResult {
-  valid: boolean;
-  cashRegisterName?: string;
-  error?: string;
-}
+const PAYMENT_GATEWAYS: PanelProviderMeta[] = [
+  {
+    code: 'monobank',
+    name: 'monobank Еквайринг',
+    fields: [{ key: 'token', label: 'X-Token merchant', secret: true }],
+  },
+  {
+    code: 'liqpay',
+    name: 'LiqPay (ПриватБанк)',
+    fields: [
+      { key: 'publicKey', label: 'Public key', placeholder: 'i00000000000' },
+      { key: 'privateKey', label: 'Private key', secret: true },
+    ],
+  },
+];
 
-const DEFAULT_API_URL = 'https://api.checkbox.ua';
-
+/**
+ * Вкладка фіскалізації + онлайн-оплат. Два registry-панелі: активний ПРРО-провайдер і активний
+ * платіжний шлюз обираються per-branch (ексклюзивно, лише 1 кожного типу). Дзеркалить панель
+ * провайдерів сповіщень.
+ */
 export default function FiscalTab() {
-  const currentFeatures = useUiFeatures();
-  const [branches, setBranches] = useState<BranchInfo[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState('');
-  const [enabled, setEnabled] = useState(false);
-  const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
-  const [cashRegisterId, setCashRegisterId] = useState('');
-  const [shiftMode, setShiftMode] = useState('MANUAL');
-  const [monobankApiUrl, setMonobankApiUrl] = useState('');
-  const [hasMonobankToken, setHasMonobankToken] = useState(false);
-  // Секрети write-only: порожнє = «не змінювати». Не prefill з GET.
-  const [licenseKey, setLicenseKey] = useState('');
-  const [pinCode, setPinCode] = useState('');
-  const [monobankToken, setMonobankToken] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const cached = getCached<BranchInfo[]>('cache:branches');
-    if (cached && cached.length > 0) {
-      setBranches(cached);
-      setSelectedBranch(prev => prev || cached[0].id);
-    }
-    apiFetch<{ items: BranchInfo[] } | BranchInfo[]>('/branches')
-      .then(d => {
-        const arr = Array.isArray(d) ? d : d.items;
-        setBranches(arr);
-        setCache('cache:branches', arr);
-        if (arr.length > 0) setSelectedBranch(prev => prev || arr[0].id);
-      })
-      .catch((e: unknown) =>
-        console.warn('[FiscalTab] /branches failed:', e instanceof Error ? e.message : e),
-      );
-  }, []);
-
-  const loadSettings = useCallback((branchId: string) => {
-    apiFetch<FiscalSettings>(`/settings/branch/${branchId}`)
-      .then(s => {
-        setEnabled(s.fiscalEnabled ?? false);
-        setApiUrl(s.checkboxApiUrl || DEFAULT_API_URL);
-        setCashRegisterId(s.checkboxCashRegisterId ?? '');
-        setShiftMode(s.shiftMode ?? 'MANUAL');
-        setMonobankApiUrl(s.monobankApiUrl ?? '');
-        setHasMonobankToken(s.hasMonobankToken ?? false);
-        setLicenseKey(''); // write-only — не prefill
-        setPinCode('');
-        setMonobankToken('');
-        setVerifyResult(null);
-      })
-      .catch((e: unknown) =>
-        console.warn('[FiscalTab] settings load failed:', e instanceof Error ? e.message : e),
-      );
-  }, []);
-
-  useEffect(() => {
-    if (selectedBranch) loadSettings(selectedBranch);
-  }, [selectedBranch, loadSettings]);
-
-  const save = async () => {
-    if (!selectedBranch) return;
-    setSaving(true);
-    setError('');
-    try {
-      // Секрети додаємо лише коли введені (порожнє → не затирати наявний ключ/PIN).
-      const body: Record<string, unknown> = {
-        fiscalEnabled: enabled,
-        checkboxApiUrl: apiUrl || null,
-        checkboxCashRegisterId: cashRegisterId || null,
-        shiftMode,
-        monobankApiUrl: monobankApiUrl || null,
-      };
-      if (licenseKey) body.checkboxLicenseKey = licenseKey;
-      if (pinCode) body.checkboxPinCode = pinCode;
-      if (monobankToken) body.monobankToken = monobankToken;
-
-      await apiFetch(`/settings/branch/${selectedBranch}`, {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      });
-      setLicenseKey(''); // очистити секрет-поля після збереження
-      setPinCode('');
-      if (monobankToken) setHasMonobankToken(true);
-      setMonobankToken('');
-      if (currentFeatures.toastEnabled) toast.success('Налаштування збережено');
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка збереження';
-      setError(msg);
-      if (currentFeatures.toastEnabled) toast.error(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const verify = async () => {
-    if (!selectedBranch) return;
-    setVerifying(true);
-    setVerifyResult(null);
-    try {
-      const res = await apiFetch<VerifyResult>(`/settings/branch/${selectedBranch}/fiscal/verify`, {
-        method: 'POST',
-        // Передаємо введені креди; якщо ключ порожній — бекенд візьме збережений.
-        body: JSON.stringify({
-          apiUrl: apiUrl || undefined,
-          licenseKey: licenseKey || undefined,
-        }),
-      });
-      setVerifyResult(res);
-    } catch (e: unknown) {
-      setVerifyResult({
-        valid: false,
-        error: e instanceof Error ? e.message : 'Помилка перевірки',
-      });
-    } finally {
-      setVerifying(false);
-    }
-  };
-
   return (
-    <div className="space-y-5 max-w-xl">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-foreground">Фіскалізація (ПРРО · Checkbox)</h3>
-        {branches.length > 1 && (
-          <Select
-            value={selectedBranch}
-            onChange={e => setSelectedBranch(e.target.value)}
-            className="w-48"
-          >
-            {branches.map(b => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </Select>
-        )}
-      </div>
-
-      {error && (
-        <div className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3">
-          {error}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between bg-surface rounded-xl border border-border p-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">Увімкнути фіскалізацію</div>
-          <div className="text-xs text-muted-foreground">
-            Чек пробивається для способів оплати, що потребують фіскалізації.
-          </div>
-        </div>
-        <Switch
-          checked={enabled}
-          onChange={setEnabled}
-          ariaLabel={enabled ? 'Вимкнути фіскалізацію' : 'Увімкнути фіскалізацію'}
+    <div className="space-y-8 max-w-2xl">
+      <ProviderRegistryPanel
+        title="Фіскалізація (ПРРО)"
+        endpoint="fiscal-providers"
+        providers={FISCAL_PROVIDERS}
+      />
+      <div className="border-t border-border pt-6">
+        <ProviderRegistryPanel
+          title="Онлайн-оплата (еквайринг)"
+          endpoint="payment-gateways"
+          providers={PAYMENT_GATEWAYS}
         />
       </div>
-
-      <Input
-        label="API URL"
-        value={apiUrl}
-        onChange={e => setApiUrl(e.target.value)}
-        placeholder={DEFAULT_API_URL}
-      />
-      <Input
-        label="Ліцензійний ключ каси"
-        type="password"
-        value={licenseKey}
-        onChange={e => setLicenseKey(e.target.value)}
-        placeholder="Залиште порожнім, щоб не змінювати"
-        autoComplete="off"
-      />
-      <Input
-        label="PIN касира"
-        type="password"
-        value={pinCode}
-        onChange={e => setPinCode(e.target.value)}
-        placeholder="Залиште порожнім, щоб не змінювати"
-        autoComplete="off"
-      />
-      <Input
-        label="ID каси (cash register)"
-        value={cashRegisterId}
-        onChange={e => setCashRegisterId(e.target.value)}
-        placeholder="напр. 0e5b..."
-      />
-      <label className="block">
-        <span className="text-sm text-foreground">Режим зміни</span>
-        <Select value={shiftMode} onChange={e => setShiftMode(e.target.value)} className="mt-1">
-          <option value="MANUAL">Ручний — касир відкриває/закриває зміну</option>
-          <option value="AUTO_OPEN">Авто-відкриття — зміна відкривається перед першим чеком</option>
-        </Select>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Закриття зміни (Z-звіт) завжди ручне — на сторінці «Каса».
-        </p>
-      </label>
-
-      {/* monobank еквайринг (QR-оплата) */}
-      <div className="border-t border-border pt-4 space-y-3">
-        <h4 className="text-sm font-semibold text-foreground">monobank еквайринг (QR-оплата)</h4>
-        <Input
-          label="X-Token merchant"
-          type="password"
-          value={monobankToken}
-          onChange={e => setMonobankToken(e.target.value)}
-          placeholder={hasMonobankToken ? 'Збережено — введіть, щоб змінити' : 'Введіть X-Token'}
-          autoComplete="off"
-        />
-        <Input
-          label="API URL (необовʼязково)"
-          value={monobankApiUrl}
-          onChange={e => setMonobankApiUrl(e.target.value)}
-          placeholder="https://api.monobank.ua"
-        />
-      </div>
-
-      <div className="flex items-center gap-3">
-        <Button onClick={() => void save()} loading={saving}>
-          Зберегти
-        </Button>
-        <Button variant="outline" onClick={() => void verify()} loading={verifying}>
-          Перевірити
-        </Button>
-        {verifyResult && (
-          <span
-            className={cn(
-              'flex items-center gap-1 text-sm',
-              verifyResult.valid ? 'text-success' : 'text-destructive-text',
-            )}
-          >
-            {verifyResult.valid ? (
-              <>
-                <Check className="h-4 w-4" />
-                Ключ дійсний
-                {verifyResult.cashRegisterName && ` · каса: ${verifyResult.cashRegisterName}`}
-              </>
-            ) : (
-              <>
-                <X className="h-4 w-4" />
-                {verifyResult.error ?? 'Невірний ключ'}
-              </>
-            )}
-          </span>
-        )}
-      </div>
-
       <p className="text-xs text-muted-foreground">
-        Для реального пробиття чеків потрібна відкрита касова зміна — керування зміною зʼявиться у
-        наступному оновленні.
+        Активним може бути лише один провайдер ПРРО і один платіжний шлюз на філію. Керування
+        касовою зміною — на сторінці «Каса».
       </p>
     </div>
   );

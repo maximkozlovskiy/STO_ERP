@@ -10,7 +10,7 @@ export interface OnlineIntent {
   error: string | null;
 }
 
-/** Створити QR-намір оплати (monobank) для рахунку. */
+/** Створити QR-намір оплати для рахунку (активний шлюз філії: monobank/LiqPay). */
 export function useCreateOnlinePayment() {
   return useMutation({
     mutationFn: (data: { invoiceId: string; amount?: number }) =>

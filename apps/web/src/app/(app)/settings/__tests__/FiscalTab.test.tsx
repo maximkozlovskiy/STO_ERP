@@ -1,326 +1,195 @@
-// Bug #667 — component-guard для FiscalTab (Checkbox ПРРО Крок 1).
+// Registry-провайдери ПРРО/еквайрингу: ProviderRegistryPanel + FiscalTab (дві панелі).
 // Покриває поведінку, яку API-тести не бачать:
-//   1. Switch «Увімкнути фіскалізацію» → toggle стану.
-//   2. save → PATCH /settings/branch/:id з fiscalEnabled/apiUrl/cashRegisterId.
-//   3. write-only секрети: порожні license/pin ОМИТ з PATCH; непорожні — включені.
-//   4. verify happy-path → POST /verify, показує «Ключ дійсний · каса: …».
-//   5. verify error-path → показує повідомлення про помилку, не crash.
+//   1. FiscalTab монтує обидві панелі (ПРРО + еквайринг).
+//   2. картки провайдерів рендеряться з бекенд-конфігів (hasCredentials → «Креди збережено»).
+//   3. клік по назві → модалка кредів; поля секретів write-only (не prefill).
+//   4. save → PATCH /:endpoint/branch/:id з provider + непорожні credentials; порожні ОМІТ.
+//   5. verify → POST /:endpoint/:code/verify; happy/error.
+//   6. активація без кредів → блокується (не POST activate).
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 import FiscalTab from '../FiscalTab';
+import ProviderRegistryPanel, { type PanelProviderMeta } from '../ProviderRegistryPanel';
 
-// ─── Module mocks ────────────────────────────────────────────────────────────
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
-
-vi.mock('@/lib/toast', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
-}));
-
-vi.mock('@/hooks/useUiFeatures', () => ({
-  useUiFeatures: () => ({ toastEnabled: false }),
-}));
-
-vi.mock('@/lib/ref-cache', () => ({
-  getCached: () => null,
-  setCache: () => undefined,
-}));
+vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/hooks/useUiFeatures', () => ({ useUiFeatures: () => ({ toastEnabled: false }) }));
+vi.mock('@/lib/ref-cache', () => ({ getCached: () => null, setCache: () => undefined }));
 
 const BRANCHES = [{ id: 'br-1', name: 'Філія 1' }];
 
-// Базовий happy-mock: /branches + GET settings + PATCH/POST успішні.
-function baseMock(
-  settings: Record<string, unknown> = {
-    fiscalEnabled: false,
-    checkboxApiUrl: null,
-    checkboxCashRegisterId: null,
-  },
-  verify: Record<string, unknown> = { valid: true, cashRegisterName: 'Каса №1' },
+const CHECKBOX: PanelProviderMeta = {
+  code: 'checkbox',
+  name: 'Checkbox',
+  hasShiftMode: true,
+  fields: [
+    { key: 'licenseKey', label: 'Ліцензійний ключ каси', secret: true },
+    { key: 'pinCode', label: 'PIN касира', secret: true },
+  ],
+};
+const VCHASNO: PanelProviderMeta = {
+  code: 'vchasno',
+  name: 'Вчасно.Каса',
+  fields: [{ key: 'token', label: 'API-токен', secret: true }],
+};
+
+// configs — масив ProviderConfigView, який GET /:endpoint/branch/:id повертає.
+function mock(
+  configs: Array<Record<string, unknown>> = [],
+  verify: { valid: boolean; cashRegisterName?: string; error?: string } = { valid: true },
 ) {
   apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
+    if (typeof path !== 'string') return Promise.resolve({});
     if (path === '/branches') return Promise.resolve(BRANCHES);
-    if (path === '/settings/br-1/fiscal/verify' || path === '/settings/branch/br-1/fiscal/verify')
-      return Promise.resolve(verify);
-    if (path.startsWith('/settings/branch/br-1')) {
-      if (opts?.method === 'PATCH') return Promise.resolve({});
-      return Promise.resolve(settings);
+    if (path.endsWith('/verify')) return Promise.resolve(verify);
+    if (path.includes('/branch/br-1')) {
+      if (opts?.method === 'PATCH' || opts?.method === 'POST') return Promise.resolve({});
+      return Promise.resolve(configs);
     }
     return Promise.resolve({});
   });
 }
 
-function findPatch() {
-  return apiFetchMock.mock.calls.find(
-    c => c[0] === '/settings/branch/br-1' && c[1]?.method === 'PATCH',
-  );
+function findCall(match: (path: string, opts?: { method?: string }) => boolean) {
+  return apiFetchMock.mock.calls.find(c => match(c[0] as string, c[1]));
 }
 
-describe('FiscalTab', () => {
-  beforeEach(() => {
-    apiFetchMock.mockReset();
-  });
+describe('ProviderRegistryPanel', () => {
+  beforeEach(() => apiFetchMock.mockReset());
 
-  it('завантажує налаштування філії й рендерить форму', async () => {
-    baseMock({
-      fiscalEnabled: true,
-      checkboxApiUrl: 'https://api.checkbox.ua',
-      checkboxCashRegisterId: 'cr-1',
-    });
-    render(<FiscalTab />);
-    // Switch відображає завантажений enabled=true
-    const sw = await screen.findByRole('switch', { name: /Вимкнути фіскалізацію/ });
-    expect(sw).toHaveAttribute('aria-checked', 'true');
-  });
-
-  it('Switch перемикає стан фіскалізації', async () => {
-    baseMock({ fiscalEnabled: false, checkboxApiUrl: null, checkboxCashRegisterId: null });
-    const user = userEvent.setup();
-    render(<FiscalTab />);
-    const sw = await screen.findByRole('switch', { name: /Увімкнути фіскалізацію/ });
-    expect(sw).toHaveAttribute('aria-checked', 'false');
-    await user.click(sw);
-    // Після кліку aria-label міняється на «Вимкнути…» + aria-checked=true
-    await waitFor(() => expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true'));
-  });
-
-  it('save → PATCH з fiscalEnabled/apiUrl/cashRegisterId', async () => {
-    baseMock({ fiscalEnabled: false, checkboxApiUrl: null, checkboxCashRegisterId: null });
-    const user = userEvent.setup();
-    render(<FiscalTab />);
-
-    await screen.findByRole('switch');
-    // Заповнюємо cashRegisterId
-    const crInput = screen.getByLabelText('ID каси (cash register)');
-    await user.type(crInput, 'cr-99');
-
-    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
-
-    await waitFor(() => {
-      const patch = findPatch();
-      expect(patch).toBeTruthy();
-      const body = JSON.parse(patch![1].body as string);
-      expect(body.fiscalEnabled).toBe(false);
-      expect(body.checkboxCashRegisterId).toBe('cr-99');
-      expect(body).toHaveProperty('checkboxApiUrl');
-    });
-  });
-
-  it('write-only: порожні license/pin ОМИТ з PATCH', async () => {
-    baseMock({ fiscalEnabled: true, checkboxApiUrl: null, checkboxCashRegisterId: null });
-    const user = userEvent.setup();
-    render(<FiscalTab />);
-    await screen.findByRole('switch');
-
-    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
-
-    await waitFor(() => {
-      const patch = findPatch();
-      expect(patch).toBeTruthy();
-      const body = JSON.parse(patch![1].body as string);
-      // Секрети не введені → НЕ у payload (не затираємо збережені).
-      expect(body).not.toHaveProperty('checkboxLicenseKey');
-      expect(body).not.toHaveProperty('checkboxPinCode');
-    });
-  });
-
-  it('write-only: непорожні license/pin включені у PATCH', async () => {
-    baseMock({ fiscalEnabled: true, checkboxApiUrl: null, checkboxCashRegisterId: null });
-    const user = userEvent.setup();
-    render(<FiscalTab />);
-    await screen.findByRole('switch');
-
-    await user.type(screen.getByLabelText('Ліцензійний ключ каси'), 'my-license');
-    await user.type(screen.getByLabelText('PIN касира'), '1234');
-    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
-
-    await waitFor(() => {
-      const patch = findPatch();
-      expect(patch).toBeTruthy();
-      const body = JSON.parse(patch![1].body as string);
-      expect(body.checkboxLicenseKey).toBe('my-license');
-      expect(body.checkboxPinCode).toBe('1234');
-    });
-  });
-
-  it('verify happy-path → POST /verify → «Ключ дійсний · каса»', async () => {
-    baseMock(
-      { fiscalEnabled: true, checkboxApiUrl: null, checkboxCashRegisterId: null },
-      { valid: true, cashRegisterName: 'Каса №7' },
+  it('рендерить картки провайдерів; hasCredentials → «Креди збережено»', async () => {
+    mock([{ provider: 'checkbox', enabled: true, apiUrl: null, hasCredentials: true }]);
+    render(
+      <ProviderRegistryPanel
+        title="ПРРО"
+        endpoint="fiscal-providers"
+        providers={[CHECKBOX, VCHASNO]}
+      />,
     );
+    expect(await screen.findByText('Checkbox')).toBeInTheDocument();
+    expect(screen.getByText('Вчасно.Каса')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Креди збережено')).toBeInTheDocument());
+  });
+
+  it('клік по назві → модалка кредів; секрет-поля write-only (порожні)', async () => {
+    mock([{ provider: 'checkbox', enabled: false, apiUrl: null, hasCredentials: true }]);
     const user = userEvent.setup();
-    render(<FiscalTab />);
-    await screen.findByRole('switch');
+    render(
+      <ProviderRegistryPanel title="ПРРО" endpoint="fiscal-providers" providers={[CHECKBOX]} />,
+    );
+    await user.click(await screen.findByRole('button', { name: /Налаштувати креди Checkbox/ }));
+    const license = (await screen.findByLabelText('Ліцензійний ключ каси')) as HTMLInputElement;
+    // write-only: не prefill; placeholder «Збережено» бо hasCredentials.
+    expect(license.value).toBe('');
+    expect(license.placeholder).toMatch(/Збережено/);
+  });
 
-    await user.click(screen.getByRole('button', { name: 'Перевірити' }));
+  it('save → PATCH з provider + непорожні credentials; порожні ОМІТ', async () => {
+    mock([{ provider: 'checkbox', enabled: false, apiUrl: null, hasCredentials: false }]);
+    const user = userEvent.setup();
+    render(
+      <ProviderRegistryPanel title="ПРРО" endpoint="fiscal-providers" providers={[CHECKBOX]} />,
+    );
+    await user.click(await screen.findByRole('button', { name: /Налаштувати креди Checkbox/ }));
 
-    await waitFor(() => expect(screen.getByText(/Ключ дійсний/)).toBeInTheDocument());
+    await user.type(await screen.findByLabelText('Ліцензійний ключ каси'), 'LIC-1');
+    // pinCode лишаємо порожнім → не в payload.
+    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => {
+      const patch = findCall((p, o) => p.includes('/branch/br-1') && o?.method === 'PATCH');
+      expect(patch).toBeTruthy();
+      const body = JSON.parse((patch![1] as { body: string }).body);
+      expect(body.provider).toBe('checkbox');
+      expect(body.credentials).toEqual({ licenseKey: 'LIC-1' });
+      expect(body.credentials).not.toHaveProperty('pinCode');
+      expect(body.shiftMode).toBe('MANUAL'); // hasShiftMode → включено
+    });
+  });
+
+  it('verify happy → POST /:endpoint/:code/verify → «Дійсні креди»', async () => {
+    mock([{ provider: 'checkbox', enabled: false, apiUrl: null, hasCredentials: true }], {
+      valid: true,
+      cashRegisterName: 'Каса №7',
+    });
+    const user = userEvent.setup();
+    render(
+      <ProviderRegistryPanel title="ПРРО" endpoint="fiscal-providers" providers={[CHECKBOX]} />,
+    );
+    await user.click(await screen.findByRole('button', { name: /Налаштувати креди Checkbox/ }));
+    await user.click(await screen.findByRole('button', { name: 'Перевірити' }));
+
+    await waitFor(() => expect(screen.getByText(/Дійсні креди/)).toBeInTheDocument());
     expect(screen.getByText(/Каса №7/)).toBeInTheDocument();
-
-    // POST на verify-endpoint зроблено
-    const verifyCall = apiFetchMock.mock.calls.find(
-      c => typeof c[0] === 'string' && c[0].endsWith('/fiscal/verify'),
-    );
+    const verifyCall = findCall(p => p === '/fiscal-providers/checkbox/verify');
     expect(verifyCall).toBeTruthy();
-    expect(verifyCall![1]?.method).toBe('POST');
   });
 
-  it('verify error-path (valid:false) → показує помилку, не «дійсний»', async () => {
-    baseMock(
-      { fiscalEnabled: true, checkboxApiUrl: null, checkboxCashRegisterId: null },
-      { valid: false, error: 'Невірний ключ' },
+  it('verify error (valid:false) → показує помилку, не «дійсні»', async () => {
+    mock([{ provider: 'checkbox', enabled: false, apiUrl: null, hasCredentials: true }], {
+      valid: false,
+      error: 'Невірний ключ',
+    });
+    const user = userEvent.setup();
+    render(
+      <ProviderRegistryPanel title="ПРРО" endpoint="fiscal-providers" providers={[CHECKBOX]} />,
     );
-    const user = userEvent.setup();
-    render(<FiscalTab />);
-    await screen.findByRole('switch');
-
-    await user.click(screen.getByRole('button', { name: 'Перевірити' }));
-
+    await user.click(await screen.findByRole('button', { name: /Налаштувати креди Checkbox/ }));
+    await user.click(await screen.findByRole('button', { name: 'Перевірити' }));
     await waitFor(() => expect(screen.getByText('Невірний ключ')).toBeInTheDocument());
-    expect(screen.queryByText(/Ключ дійсний/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Дійсні креди/)).not.toBeInTheDocument();
   });
 
-  it('verify reject (мережа) → показує помилку, не crash', async () => {
-    apiFetchMock.mockImplementation((path: string) => {
-      if (path === '/branches') return Promise.resolve(BRANCHES);
-      if (typeof path === 'string' && path.endsWith('/fiscal/verify'))
-        return Promise.reject(new Error('Немає звʼязку'));
-      if (path.startsWith('/settings/branch/br-1'))
-        return Promise.resolve({
-          fiscalEnabled: true,
-          checkboxApiUrl: null,
-          checkboxCashRegisterId: null,
-        });
-      return Promise.resolve({});
-    });
+  it('активація без кредів → блокується (НЕ POST activate)', async () => {
+    mock([{ provider: 'vchasno', enabled: false, apiUrl: null, hasCredentials: false }]);
     const user = userEvent.setup();
-    render(<FiscalTab />);
-    await screen.findByRole('switch');
-
-    await user.click(screen.getByRole('button', { name: 'Перевірити' }));
-
-    await waitFor(() => expect(screen.getByText('Немає звʼязку')).toBeInTheDocument());
+    render(
+      <ProviderRegistryPanel title="ПРРО" endpoint="fiscal-providers" providers={[VCHASNO]} />,
+    );
+    // Switch активації для vchasno (без кредів).
+    const sw = await screen.findByRole('switch', { name: /Активувати провайдера Вчасно/ });
+    await user.click(sw);
+    // activate НЕ викликано (empty-state guard).
+    const activateCall = findCall((p, o) => p.endsWith('/activate') && o?.method === 'POST');
+    expect(activateCall).toBeUndefined();
   });
 
-  it('shiftMode: завантажене значення відображається у Select', async () => {
-    baseMock({
-      fiscalEnabled: true,
-      checkboxApiUrl: null,
-      checkboxCashRegisterId: null,
-      shiftMode: 'AUTO_OPEN',
-    });
-    render(<FiscalTab />);
-    await screen.findByRole('switch');
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    await waitFor(() => expect(select.value).toBe('AUTO_OPEN'));
-  });
-
-  it('shiftMode: round-trip — зміна значення → у PATCH', async () => {
-    baseMock({
-      fiscalEnabled: true,
-      checkboxApiUrl: null,
-      checkboxCashRegisterId: null,
-      shiftMode: 'MANUAL',
-    });
+  it('активація з кредами → POST /:endpoint/branch/:id/activate {provider}', async () => {
+    mock([{ provider: 'vchasno', enabled: false, apiUrl: null, hasCredentials: true }]);
     const user = userEvent.setup();
-    render(<FiscalTab />);
-    await screen.findByRole('switch');
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    await waitFor(() => expect(select.value).toBe('MANUAL'));
-
-    await user.selectOptions(select, 'AUTO_OPEN');
-    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
-
+    render(
+      <ProviderRegistryPanel title="ПРРО" endpoint="fiscal-providers" providers={[VCHASNO]} />,
+    );
+    await user.click(await screen.findByRole('switch', { name: /Активувати провайдера Вчасно/ }));
     await waitFor(() => {
-      const patch = findPatch();
-      expect(patch).toBeTruthy();
-      const body = JSON.parse(patch![1].body as string);
-      expect(body.shiftMode).toBe('AUTO_OPEN');
+      const activateCall = findCall(
+        (p, o) => p === '/fiscal-providers/branch/br-1/activate' && o?.method === 'POST',
+      );
+      expect(activateCall).toBeTruthy();
+      const body = JSON.parse((activateCall![1] as { body: string }).body);
+      expect(body.provider).toBe('vchasno');
     });
   });
+});
 
-  it('shiftMode: дефолт MANUAL коли GET не повернув поле', async () => {
-    baseMock({ fiscalEnabled: true, checkboxApiUrl: null, checkboxCashRegisterId: null });
+describe('FiscalTab (дві панелі)', () => {
+  beforeEach(() => apiFetchMock.mockReset());
+
+  it('монтує панель ПРРО і панель еквайрингу', async () => {
+    mock([]);
     render(<FiscalTab />);
-    await screen.findByRole('switch');
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    expect(select.value).toBe('MANUAL');
-  });
-
-  it('після успішного save секрет-поля очищуються', async () => {
-    baseMock({ fiscalEnabled: true, checkboxApiUrl: null, checkboxCashRegisterId: null });
-    const user = userEvent.setup();
-    render(<FiscalTab />);
-    await screen.findByRole('switch');
-
-    const licenseInput = screen.getByLabelText('Ліцензійний ключ каси') as HTMLInputElement;
-    await user.type(licenseInput, 'sekret');
-    expect(licenseInput.value).toBe('sekret');
-
-    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
-
-    await waitFor(() => expect(licenseInput.value).toBe(''));
-  });
-
-  // ─── monobank еквайринг (QR-оплата) — write-only токен ─────────────────────────
-  it('monobank: hasMonobankToken=true → placeholder «Збережено»; поле НЕ prefill', async () => {
-    baseMock({
-      fiscalEnabled: true,
-      checkboxApiUrl: null,
-      checkboxCashRegisterId: null,
-      monobankApiUrl: 'https://api.monobank.ua',
-      hasMonobankToken: true,
-    });
-    render(<FiscalTab />);
-    await screen.findByRole('switch');
-    const tokenInput = screen.getByLabelText('X-Token merchant') as HTMLInputElement;
-    await waitFor(() => expect(tokenInput.placeholder).toMatch(/Збережено/));
-    // write-only: значення НЕ підтягується з GET (лишається порожнім).
-    expect(tokenInput.value).toBe('');
-  });
-
-  it('monobank: порожній токен ОМІТ з PATCH (не затираємо збережений)', async () => {
-    baseMock({
-      fiscalEnabled: true,
-      checkboxApiUrl: null,
-      checkboxCashRegisterId: null,
-      hasMonobankToken: true,
-    });
-    const user = userEvent.setup();
-    render(<FiscalTab />);
-    await screen.findByRole('switch');
-    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
-    await waitFor(() => {
-      const patch = findPatch();
-      expect(patch).toBeTruthy();
-      const body = JSON.parse(patch![1].body as string);
-      expect(body).not.toHaveProperty('monobankToken');
-    });
-  });
-
-  it('monobank: round-trip — введений токен + apiUrl → у PATCH; поле очищується', async () => {
-    baseMock({ fiscalEnabled: true, checkboxApiUrl: null, checkboxCashRegisterId: null });
-    const user = userEvent.setup();
-    render(<FiscalTab />);
-    await screen.findByRole('switch');
-
-    const tokenInput = screen.getByLabelText('X-Token merchant') as HTMLInputElement;
-    await user.type(tokenInput, 'MERCH-XYZ');
-    await user.type(screen.getByLabelText('API URL (необовʼязково)'), 'https://api.monobank.ua');
-    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
-
-    await waitFor(() => {
-      const patch = findPatch();
-      expect(patch).toBeTruthy();
-      const body = JSON.parse(patch![1].body as string);
-      expect(body.monobankToken).toBe('MERCH-XYZ');
-      expect(body.monobankApiUrl).toBe('https://api.monobank.ua');
-    });
-    // секрет-поле очищене після save.
-    await waitFor(() => expect(tokenInput.value).toBe(''));
+    expect(await screen.findByText('Фіскалізація (ПРРО)')).toBeInTheDocument();
+    expect(screen.getByText('Онлайн-оплата (еквайринг)')).toBeInTheDocument();
+    // Провайдери обох реєстрів присутні.
+    expect(screen.getByText('Checkbox')).toBeInTheDocument();
+    expect(screen.getByText('Вчасно.Каса')).toBeInTheDocument();
+    expect(screen.getByText('monobank Еквайринг')).toBeInTheDocument();
+    expect(screen.getByText('LiqPay (ПриватБанк)')).toBeInTheDocument();
   });
 });

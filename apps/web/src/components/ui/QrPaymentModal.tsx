@@ -21,9 +21,9 @@ interface Props {
 }
 
 /**
- * QR-оплата monobank: створює намір → показує QR (клієнт сканує й платить на сторінці monobank)
- * → polling статусу → «Оплачено ✅». QR на екрані термінала (offline-first: клієнт платить на
- * стороні monobank, ми лише опитуємо статус — без публічного endpoint).
+ * QR-оплата (активний шлюз філії: monobank/LiqPay): створює намір → показує QR (клієнт сканує й
+ * платить на сторінці шлюзу) → polling статусу → «Оплачено ✅». QR на екрані термінала
+ * (offline-first: клієнт платить на стороні шлюзу, ми лише опитуємо статус — без публічного endpoint).
  */
 export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Props) {
   const createIntent = useCreateOnlinePayment();
@@ -69,7 +69,7 @@ export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Pro
   }, [status]);
 
   return (
-    <Modal open={open} onClose={onClose} title="QR-оплата (monobank)" size="sm">
+    <Modal open={open} onClose={onClose} title="QR-оплата" size="sm">
       <div className="flex flex-col items-center gap-4 py-2">
         {error ? (
           <p className="text-sm text-destructive-text text-center">{error}</p>
