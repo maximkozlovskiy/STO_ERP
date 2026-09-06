@@ -46,32 +46,38 @@ export class EmailProvider implements NotificationProvider {
     const cfg = this.parseConfig(creds.apiKey);
     if (!cfg) return { accepted: false, error: 'Email: некоректний SMTP-конфіг' };
 
+    // Ресурс-безпека: transport тримає TCP-сокет/пул → close() ОБОВʼЯЗКОВО у finally.
+    // Без нього кинутий sendMail (таймаут/auth-фейл) лишав би сокет висіти → накопичення
+    // з кожною невдалою відправкою (concurrency=3 × attempts=10 → десятки leaked-сокетів).
+    const transport = this.createTransport(cfg);
     try {
-      const transport = this.createTransport(cfg);
       const info = await transport.sendMail({
         from: creds.senderName ?? cfg.user,
         to: recipient,
         subject: subject ?? '',
         text: message,
       });
-      transport.close();
       return { accepted: true, providerMessageId: info.messageId };
     } catch (e) {
       return { accepted: false, error: e instanceof Error ? e.message : 'Email: помилка SMTP' };
+    } finally {
+      transport.close();
     }
   }
 
   async verifyCredentials(creds: ProviderCredentials): Promise<VerifyResult> {
     const cfg = this.parseConfig(creds.apiKey);
     if (!cfg) return { valid: false, error: 'Некоректний SMTP-конфіг' };
+    // Ресурс-безпека: close() у finally навіть коли verify() кинув (таймаут/auth-фейл).
+    const transport = this.createTransport(cfg);
     try {
-      const transport = this.createTransport(cfg);
       // verify() = SMTP-хендшейк + auth без відправки листа. balance для SMTP не існує.
       await transport.verify();
-      transport.close();
       return { valid: true };
     } catch (e) {
       return { valid: false, error: e instanceof Error ? e.message : 'Помилка SMTP-зʼєднання' };
+    } finally {
+      transport.close();
     }
   }
 

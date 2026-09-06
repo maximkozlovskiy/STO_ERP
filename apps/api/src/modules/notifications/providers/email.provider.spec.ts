@@ -100,7 +100,7 @@ describe('EmailProvider', () => {
     expect(res.accepted).toBe(false);
   });
 
-  it('send: SMTP-помилка → accepted:false (не кидає)', async () => {
+  it('send: SMTP-помилка → accepted:false (не кидає) + transport.close() (leak-guard)', async () => {
     sendMail.mockRejectedValueOnce(new Error('ECONNREFUSED'));
     const res = await provider.send({
       channel: NotificationChannel.EMAIL,
@@ -110,6 +110,8 @@ describe('EmailProvider', () => {
     });
     expect(res.accepted).toBe(false);
     expect(res.error).toContain('ECONNREFUSED');
+    // Ресурс-безпека: сокет закрито навіть коли sendMail кинув (finally).
+    expect(close).toHaveBeenCalled();
   });
 
   it('send: не-EMAIL канал → not accepted', async () => {
@@ -132,11 +134,13 @@ describe('EmailProvider', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it('verifyCredentials: verify кидає → invalid', async () => {
+  it('verifyCredentials: verify кидає → invalid + transport.close() (leak-guard)', async () => {
     verify.mockRejectedValueOnce(new Error('auth failed'));
     const res = await provider.verifyCredentials({ apiKey: smtpJson });
     expect(res.valid).toBe(false);
     expect(res.error).toContain('auth failed');
+    // Ресурс-безпека: сокет закрито навіть коли verify() кинув (finally).
+    expect(close).toHaveBeenCalled();
   });
 
   it('verifyCredentials: невалідний конфіг → invalid без зʼєднання', async () => {
