@@ -18,6 +18,7 @@ model Invoice {
   dueDate         DateTime?
   invoiceType     String        @default("INVOICE")
   notes           String?
+  paidAmount      Decimal       @default(0) @db.Decimal(12, 2)
   totalWithoutVat Decimal       @default(0) @db.Decimal(12, 2)
   totalVat        Decimal       @default(0) @db.Decimal(12, 2)
   totalWithVat    Decimal       @default(0) @db.Decimal(12, 2)
@@ -46,20 +47,26 @@ model Invoice {
 ## FSM
 
 ```
-DRAFT → SENT → PAID
-      ↘ CANCELLED  ↘ CANCELLED
+DRAFT → SENT → PARTIALLY_PAID → PAID
+      ↘ CANCELLED   ↘ PAID       ↘ CANCELLED
 OVERDUE → PAID / CANCELLED
 ```
 
-| Статус      | Значення                      |
-| ----------- | ----------------------------- |
-| `DRAFT`     | Чернетка, редагується         |
-| `SENT`      | Надіслано клієнту             |
-| `PAID`      | Оплачено                      |
-| `OVERDUE`   | Прострочено (dueDate < today) |
-| `CANCELLED` | Скасовано                     |
+| Статус           | Значення                                      |
+| ---------------- | --------------------------------------------- |
+| `DRAFT`          | Чернетка, редагується                         |
+| `SENT`           | Надіслано клієнту                             |
+| `PARTIALLY_PAID` | Частково оплачено (`0 < paidAmount < amount`) |
+| `PAID`           | Оплачено (`paidAmount >= amount`)             |
+| `OVERDUE`        | Прострочено (dueDate < today)                 |
+| `CANCELLED`      | Скасовано                                     |
 
-**FSM файл:** `apps/api/src/modules/invoices/invoices.service.ts`
+**FSM файл:** `apps/api/src/modules/invoices/invoices.service.ts` (`INV_TRANSITIONS`),
+дзеркалить `INVOICE_STATUS_TRANSITIONS` у `@sto/shared`.
+
+**Важливо:** `PARTIALLY_PAID` виставляється **лише** частковим платежем
+(`PaymentsService.create`), а НЕ через FSM-endpoint. FSM-перехід у `PARTIALLY_PAID`
+відсутній у мапі навмисно (`SENT → [PAID, CANCELLED]`).
 
 ---
 
@@ -104,5 +111,38 @@ OVERDUE → PAID / CANCELLED
 - При оплаті → `SettlementsService.createTransaction(PAYMENT)` (не пряма зміна балансу)
 - `InvoiceLine`: кожен рядок має `vatRate`, `priceWithoutVat`, `vatAmount`, `priceWithVat`
 - `calcVatTotals()` з `apps/web/src/lib/utils.ts` — для розрахунку підсумків на фронті
+
+### Часткова оплата (модель грошей, Фаза 1)
+
+- `paidAmount` — **авторитетна колонка** сплаченого. Оновлюється транзакційно при кожному
+  платежі. `toDto` читає її; фолбек на `sum(payments)` лише коли колонки немає у вибірці.
+- **Оплата** (`PaymentsService.create` з `invoiceId`): дозволена лише для `SENT`/`PARTIALLY_PAID`;
+  переплата (`amount > amount − paidAmount`) → 400. Атомарно: **CAS** `updateMany({ where:
+paidAmount = прочитане }, data: paidAmount += amount, status: newPaid>=amount ? PAID :
+PARTIALLY_PAID)`. `count=0` (гонка паралельного платежу) → throw → rollback усього
+  (Payment + PAYMENT-settlement) у тій самій `$transaction`. **FIN-C1 інваріант** — під
+  ReadCommitted захищає оптимістичний CAS по `paidAmount`, не рівень ізоляції.
+- **Ledger:** кожен частковий платіж створює один `PAYMENT`-settlement своєї суми
+  (`BALANCE_SIGN[PAYMENT] = −1`) → борг зменшується рівно на суму кожного платежу; подвійного
+  списання немає.
+- **Ручний PAID** (`transition` → `PAID`): синхронізує `paidAmount = amount` (щоб «залишок» був 0),
+  але **НЕ створює** `Payment`/`PAYMENT`-settlement. Це статус-узгодження, не рух грошей.
+  ⚠️ Наслідок: для **standalone**-рахунку (CHARGE нараховано при `SENT`) ручний PAID лишає
+  CHARGE без offset-PAYMENT у settlement-ledger → баланс контрагента покаже борг попри «PAID»
+  статус рахунку. Правильний шлях повного погашення — реєстрація платежу (кнопка «Оплатити»),
+  не ручний FSM-перехід. Ручний PAID призначений для WO-рахунків (CHARGE вже net при COMPLETED)
+  або як адмін-корекція.
+
+### Рахунок-призначення платежу (`Payment.sourceType`)
+
+- `Payment` знає, **куди фізично лягли гроші**: `sourceType` (`BANK_ACCOUNT`/`CASH_REGISTER`) +
+  `bankAccountId`/`cashRegisterId`. Джерело: DTO явно → інакше дефолт з `PaymentMethodConfig`
+  (`defaultSourceType`/`defaultBankAccountId`/`defaultCashRegisterId`) → інакше `null`.
+- Валідація (`resolveDestinationAccount`): рахунок мусить бути в межах org (не крос-tenant) і живий.
+  **Явний** з DTO невалідний рахунок → 4xx; **дефолт з config** що з тих пір видалено (stale) →
+  тихо `null` (offline-first: не валимо легітимний платіж через застарілий конфіг).
+- Source-link — **опційна метадані**; борг/settlement від нього не залежать (два різні виміри).
+- FK `ON DELETE SET NULL` (рахунки нормально soft-delete-яться; hard-delete лишає Payment з
+  `null`-source, зберігаючи суму й settlement).
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)

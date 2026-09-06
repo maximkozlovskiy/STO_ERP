@@ -422,13 +422,20 @@ function InvoicesPageInner() {
         }),
       });
       const paidInvoiceId = showPayment.id;
+      const newPaidTotal = (showPayment.paidAmount ?? 0) + amt;
+      // Часткова оплата лишає рахунок PARTIALLY_PAID; повне покриття залишку → PAID.
+      // Дзеркалить backend CAS (newPaid>=amount ? PAID : PARTIALLY_PAID) з тим самим epsilon.
+      const optimisticStatus =
+        newPaidTotal >= showPayment.amount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID';
       setShowPayment(null);
       setPayForm({ method: 'cash', amount: '', notes: '' });
-      // PaymentsService transitions invoice → PAID on payment creation.
-      // Reflect that immediately in the open DetailPanel so the user does not
-      // see a stale SENT status with an «Оплатити» button that would 400 on click.
+      // Reflect the new status + paidAmount immediately in the open DetailPanel so the user
+      // does not see a stale status while the invalidateQueries refetch is in flight. For a
+      // partial payment the «Оплатити» button must stay available (PARTIALLY_PAID).
       setSelectedInv(prev =>
-        prev && prev.id === paidInvoiceId ? { ...prev, status: 'PAID' } : prev,
+        prev && prev.id === paidInvoiceId
+          ? { ...prev, status: optimisticStatus, paidAmount: newPaidTotal }
+          : prev,
       );
       queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
     } catch (e: unknown) {

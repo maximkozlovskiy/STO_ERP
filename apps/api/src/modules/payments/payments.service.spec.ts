@@ -24,6 +24,8 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     invoice: { findFirst: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
     payment: { create: ReturnType<typeof vi.fn> };
     paymentMethodConfig: { findFirst: ReturnType<typeof vi.fn> };
+    bankAccount: { findFirst: ReturnType<typeof vi.fn> };
+    cashRegister: { findFirst: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let settlements: { createTransaction: ReturnType<typeof vi.fn> };
@@ -56,6 +58,8 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
       payment: { create: vi.fn() },
       // За замовч. метод потребує фіскалізації → checkbox-enqueue фірес як раніше.
       paymentMethodConfig: { findFirst: vi.fn().mockResolvedValue({ requiresFiscal: true }) },
+      bankAccount: { findFirst: vi.fn() },
+      cashRegister: { findFirst: vi.fn() },
       // Виконує callback з prisma як tx — CAS updateMany/payment.create реально викликаються.
       $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
@@ -219,6 +223,75 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
     expect(prisma.payment.create).not.toHaveBeenCalled();
     expect(settlements.createTransaction).not.toHaveBeenCalled();
+  });
+
+  // ── resolveDestinationAccount: явний ввід (строго) vs config-дефолт (best-effort) ──
+  const BANK_ID = '55555555-5555-4555-8555-555555555555';
+
+  it('явний sourceType=BANK_ACCOUNT з DTO + невалідний/чужий рахунок → NotFound (строга валідація вводу)', async () => {
+    prisma.counterparty.findFirst.mockResolvedValue({
+      id: CP_ID,
+      phone: null,
+      firstName: null,
+      lastName: null,
+      companyName: 'ТОВ',
+    });
+    prisma.bankAccount.findFirst.mockResolvedValue(null); // не існує / крос-tenant / soft-deleted
+
+    await expect(
+      service.create(
+        ORG,
+        { ...baseDto, sourceType: 'BANK_ACCOUNT', bankAccountId: BANK_ID },
+        'user-1',
+      ),
+    ).rejects.toThrow(/Банківський рахунок не знайдено/);
+    // Ввід невалідний → платіж НЕ створюється.
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('config-дефолт BANK_ACCOUNT з видаленим рахунком (stale) → degrade to null, платіж УСПІШНИЙ (offline-first)', async () => {
+    prisma.counterparty.findFirst.mockResolvedValue({
+      id: CP_ID,
+      phone: null,
+      firstName: null,
+      lastName: null,
+      companyName: 'ТОВ',
+    });
+    // methodConfig дає дефолтний банк-рахунок, але його з тих пір soft-delete-нули.
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+      requiresFiscal: false,
+      defaultSourceType: 'BANK_ACCOUNT',
+      defaultBankAccountId: BANK_ID,
+      defaultCashRegisterId: null,
+    });
+    prisma.bankAccount.findFirst.mockResolvedValue(null); // stale default
+    prisma.invoice.findFirst.mockResolvedValue({
+      status: 'SENT',
+      workOrderId: null,
+      amount: 500,
+      paidAmount: 0,
+    });
+    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+    prisma.payment.create.mockResolvedValue(createdPayment);
+
+    // НЕ кидає: застарілий конфіг не має валити легітимний рух грошей.
+    await service.create(ORG, baseDto, 'user-1');
+
+    // Source-link знято (null), але платіж + settlement створені.
+    expect(prisma.payment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sourceType: null,
+          bankAccountId: null,
+          cashRegisterId: null,
+        }),
+      }),
+    );
+    expect(settlements.createTransaction).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ type: 'PAYMENT', amount: 500 }),
+      expect.anything(),
+    );
   });
 });
 

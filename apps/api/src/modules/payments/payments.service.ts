@@ -298,8 +298,15 @@ export class PaymentsService {
 
   /**
    * Резолвить рахунок-призначення платежу: DTO явно → інакше дефолт з methodConfig → інакше null.
-   * Валідує узгодженість sourceType↔id і що рахунок у межах org (не крос-tenant). Не кидає на
-   * відсутності рахунку (null — валідний стан), але кидає на невалідний/чужий рахунок.
+   * Валідує узгодженість sourceType↔id і що рахунок у межах org (не крос-tenant).
+   *
+   * Ключова відмінність за джерелом (offline-first, CLAUDE.md §3 «система не зупиняється»):
+   *  - ЯВНО з DTO → строга валідація: невалідний/чужий/видалений рахунок → кидаємо (4xx). Це
+   *    ввід користувача, він мусить бути коректним.
+   *  - НЕЯВНО з methodConfig-дефолту → best-effort: якщо дефолтний рахунок з тих пір видалено
+   *    (stale config), НЕ валимо легітимний платіж — тихо знімаємо source-link (null). Рахунок-
+   *    призначення — опційна метадані (куди фізично лягли гроші), борг/settlement не залежать від
+   *    нього; блокувати рух грошей через застарілий конфіг було б неправильно.
    */
   private async resolveDestinationAccount(
     orgId: string,
@@ -314,35 +321,49 @@ export class PaymentsService {
     bankAccountId: string | null;
     cashRegisterId: string | null;
   }> {
-    // DTO має пріоритет; якщо жодного поля не задано — беремо дефолт methodConfig.
+    // Джерело значень: DTO задав хоч одне поле → explicit; інакше беремо дефолт methodConfig.
+    const fromDto = !!(dto.sourceType || dto.bankAccountId || dto.cashRegisterId);
     const sourceType = dto.sourceType ?? methodConfig?.defaultSourceType ?? null;
-    const bankAccountId =
-      dto.sourceType || dto.bankAccountId
-        ? (dto.bankAccountId ?? null)
-        : (methodConfig?.defaultBankAccountId ?? null);
-    const cashRegisterId =
-      dto.sourceType || dto.cashRegisterId
-        ? (dto.cashRegisterId ?? null)
-        : (methodConfig?.defaultCashRegisterId ?? null);
+    const bankAccountId = fromDto
+      ? (dto.bankAccountId ?? null)
+      : (methodConfig?.defaultBankAccountId ?? null);
+    const cashRegisterId = fromDto
+      ? (dto.cashRegisterId ?? null)
+      : (methodConfig?.defaultCashRegisterId ?? null);
 
     if (!sourceType) return { sourceType: null, bankAccountId: null, cashRegisterId: null };
 
+    const empty = { sourceType: null, bankAccountId: null, cashRegisterId: null } as const;
+
     if (sourceType === 'BANK_ACCOUNT') {
-      if (!bankAccountId) throw new BadRequestException('Не вказано банківський рахунок');
+      if (!bankAccountId) {
+        // Explicit sourceType без id — помилка вводу. Config-дефолт без id — просто ігноруємо.
+        if (fromDto) throw new BadRequestException('Не вказано банківський рахунок');
+        return empty;
+      }
       const acc = await this.prisma.bankAccount.findFirst({
         where: { id: bankAccountId, orgId, deletedAt: null },
         select: { id: true },
       });
-      if (!acc) throw new NotFoundException('Банківський рахунок не знайдено');
+      if (!acc) {
+        if (fromDto) throw new NotFoundException('Банківський рахунок не знайдено');
+        return empty; // stale config default → degrade, не валимо платіж
+      }
       return { sourceType, bankAccountId, cashRegisterId: null };
     }
     // CASH_REGISTER
-    if (!cashRegisterId) throw new BadRequestException('Не вказано касу');
+    if (!cashRegisterId) {
+      if (fromDto) throw new BadRequestException('Не вказано касу');
+      return empty;
+    }
     const reg = await this.prisma.cashRegister.findFirst({
       where: { id: cashRegisterId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!reg) throw new NotFoundException('Касу не знайдено');
+    if (!reg) {
+      if (fromDto) throw new NotFoundException('Касу не знайдено');
+      return empty; // stale config default → degrade, не валимо платіж
+    }
     return { sourceType, bankAccountId: null, cashRegisterId };
   }
 

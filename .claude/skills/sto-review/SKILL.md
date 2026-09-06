@@ -1361,6 +1361,20 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Фікс:** per-item toggle гейтить інваріант — увімкнути item можна лише якщо він у активній групі (`if (enable && item.group !== activeGroup) { setError(...); return; }`); toggle неактивної групи `disabled`. Вимкнути item активної групи (звузити) — дозволено. Активація іншої групи — лише через exclusivity-action. Empty-state guard на самій exclusivity-action: якщо група не має жодного item → bulk-mutation матчить 0 рядків = no-op + хибний success-toast → перевірити `items.some(i => i.group === chosen)` перед викликом.
 **Severity:** IMPORTANT — тихе порушення інваріанта; downstream бере два «ексклюзивні» → неоднозначна поведінка; UX хибний success на no-op.
 
+### 2026-09-06 — optional-джерело з config-дефолту валить операцію коли дефолт stale → offline-first — §5/§10
+
+**Сигнал:** сервіс резолвить **опційне** поле (рахунок-призначення платежу, дефолтний склад, дефолтний шаблон) за пріоритетом «DTO явно → інакше дефолт з config-моделі → інакше null» і **безумовно** кидає `NotFoundException` коли резолвлений id не знайдено (`findFirst({ deletedAt: null })` → null). Проблема: коли id прийшов НЕ з вводу користувача, а з **config-дефолту** (`PaymentMethodConfig.defaultBankAccountId`), а цей рахунок з тих пір soft-delete-нули → **застарілий конфіг валить легітимну грошову/доменну операцію** (HTTP 404 на валідному платежі). Порушує offline-first (CLAUDE.md §3: «система не зупиняється»). Метадані-лінк (куди фізично лягли гроші) — опційний і не впливає на борг/settlement, тож блокувати рух грошей через нього неправильно.
+**Grep:** `grep -rnE "default[A-Z][a-zA-Z]*Id|methodConfig\?\.|config\?\.default" apps/api/src/modules --include="*.service.ts" -A6 | grep -iE "NotFoundException|throw"` — для кожного резолвера опційного дефолту перевірити, чи розрізняється explicit(DTO) vs config-default джерело перед throw.
+**Фікс:** розрізнити джерело значення прапорцем `const fromDto = !!(dto.X || dto.Y || dto.Z)`. **Explicit (DTO)** невалідний/чужий/видалений → строго `throw` (4xx) — це ввід користувача, мусить бути коректним. **Config-default** stale (з тих пір видалено) → **degrade to null** (best-effort, операція успішна). Крос-tenant перевірка (`orgId` у where) лишається в обох гілках. Sample: `PaymentsService.resolveDestinationAccount` (money-model Phase 1, review 2026-09-06) — +2 spec (explicit invalid→throw; config-default deleted→degrade+payment succeeds).
+**Severity:** IMPORTANT — offline-first порушено; застарілий адмін-конфіг блокує легітимні гроші/операції; degradation не видима у tsc/тестах поки конкретний дефолт не буде soft-deleted на проді.
+
+### 2026-09-06 — оптимістичний status-flip після mutation ігнорує проміжний стан (partial) — §8.2
+
+**Сигнал:** після успішного POST (оплата/крок FSM) фронт оптимістично ставить **фінальний** статус у відкритій панелі (`setSelectedX(prev => ({ ...prev, status: 'PAID' }))`), припускаючи що mutation завжди веде у фінал. Але backend має **проміжний** стан (`PARTIALLY_PAID` коли `paidAmount < amount`) → частковий платіж лишає рахунок частковим, а панель показує PAID → ховає кнопку дії («Оплатити»), яку користувач ще має натиснути. `invalidateQueries` виправить після refetch, але оптимістичне значення хибне у вікні до refetch (і повністю хибне якщо refetch впаде).
+**Grep:** `grep -rnE "set[A-Z][a-zA-Z]*\(prev =>.*status: '[A-Z_]+'" apps/web/src/app --include="*.tsx"` — для кожного оптимістичного status-flip після mutation перевірити, чи враховано проміжні стани.
+**Фікс:** обчислити результуючий статус **тією самою логікою що backend** (з тим самим epsilon для money): `const optimistic = newPaidTotal >= amount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID'`; оновити і похідні поля (`paidAmount`), щоб панель була консистентна до refetch.
+**Severity:** IMPORTANT — хибний UI-стан ховає потрібну дію (partial payment → кнопка «Оплатити» зникає); гроші-критичний UX.
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
