@@ -208,4 +208,65 @@ describe('SmsProcessor (fallback engine)', () => {
     expect(logCreate.mock.calls[0][0].data.recipient).toBe('380671112233');
     logSpy.mockRestore();
   });
+
+  // ─── maskRecipient edge-cases через SENT-лог (email/короткі/порожні) (Bug #659) ───
+  // maskRecipient — module-private; проганяємо через process() (SENT-гілка логує masked recipient).
+  const emailStep = (recipient: string) => ({
+    channel: NotificationChannel.EMAIL,
+    provider: 'smtp',
+    apiKey: 'k',
+    senderName: 'STO',
+    message: 'body',
+    subject: 'subj',
+    recipient,
+  });
+
+  it('PII email: a@b.com → a***@b.com у app-логах (не повний email)', async () => {
+    const logSpy = vi.spyOn(processor['logger'], 'log');
+    send.mockResolvedValueOnce({ accepted: true, providerMessageId: 'e-1' });
+    await processor.process(makeJob(0, [emailStep('client@example.com')]));
+    const line = logSpy.mock.calls.map(c => String(c[0])).join('\n');
+    // перша літера + ***@ домен; локальна частина не витікає
+    expect(line).toContain('c***@example.com');
+    expect(line).not.toContain('client@example.com');
+    // NotificationLog зберігає ПОВНИЙ email (delivery-запис)
+    expect(logCreate.mock.calls[0][0].data.recipient).toBe('client@example.com');
+    logSpy.mockRestore();
+  });
+
+  it('PII short recipient (≤4 символів) → **** без крашу і без розкриття', async () => {
+    const logSpy = vi.spyOn(processor['logger'], 'log');
+    send.mockResolvedValueOnce({ accepted: true, providerMessageId: 's-1' });
+    // короткий телефон 3 цифри: length<=4 → повне маскування ****
+    await processor.process(
+      makeJob(
+        0,
+        [step(NotificationChannel.SMS)].map(s => ({ ...s, recipient: '123' })),
+      ),
+    );
+    const line = logSpy.mock.calls.map(c => String(c[0])).join('\n');
+    expect(line).toContain('****');
+    expect(line).not.toContain('на 123 '); // сирий короткий номер не в логах як locator
+    logSpy.mockRestore();
+  });
+
+  it('PII empty recipient → **** без крашу (edge, не має траплятись, але не валить воркер)', async () => {
+    const logSpy = vi.spyOn(processor['logger'], 'log');
+    send.mockResolvedValueOnce({ accepted: true, providerMessageId: 'x-1' });
+    await expect(
+      processor.process(makeJob(0, [{ ...step(NotificationChannel.SMS), recipient: '' }])),
+    ).resolves.toBeUndefined();
+    const line = logSpy.mock.calls.map(c => String(c[0])).join('\n');
+    expect(line).toContain('****');
+    logSpy.mockRestore();
+  });
+
+  it('NotificationLog.recipient зберігає email для EMAIL-каналу (не поле phone)', async () => {
+    send.mockResolvedValueOnce({ accepted: true, providerMessageId: 'e-2' });
+    await processor.process(makeJob(0, [emailStep('a@b.com')]));
+    const logged = logCreate.mock.calls[0][0].data;
+    expect(logged.recipient).toBe('a@b.com'); // recipient-колонка (не phone)
+    expect(logged.channel).toBe(NotificationChannel.EMAIL);
+    expect(logged).not.toHaveProperty('phone'); // стара колонка не пишеться
+  });
 });

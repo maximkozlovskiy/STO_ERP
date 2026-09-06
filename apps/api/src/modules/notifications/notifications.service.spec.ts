@@ -444,6 +444,170 @@ describe('NotificationsService.sendWithConfig', () => {
     expect(step.message).toBe('Тіло Іван');
     expect(step.subject).toBe('Тема Іван');
   });
+
+  // ─── Змішаний ланцюг [SMS, EMAIL] — per-channel recipient selection (Bug #658) ────
+  // Ключова інваріанта Email-фічі: у кожному кроці recipient — ПРАВИЛЬНОГО типу
+  // (телефон у SMS-крок, email у EMAIL-крок). Витік телефону у EMAIL-крок = 500 SMTP
+  // (нодмейлер `to: '38067...'` → invalid recipient) або тихий відкид.
+  const mixedConfig = {
+    channels: [
+      {
+        channel: NotificationChannel.SMS,
+        provider: 'turbosms',
+        apiKey: 'k-sms',
+        senderName: 'STO',
+        templateBody: 'SMS {{clientName}}',
+      },
+      {
+        channel: NotificationChannel.EMAIL,
+        provider: 'smtp',
+        apiKey: 'k-email',
+        senderName: 'STO',
+        templateBody: 'Email {{clientName}}',
+        templateSubject: 'Тема {{clientName}}',
+      },
+    ],
+  };
+
+  it('MIXED [SMS,EMAIL] + vars={phone} → EMAIL відкинуто, SMS лишається (recipient=phone)', async () => {
+    await service.sendWithConfig(
+      'org-1',
+      mixedConfig,
+      { phone: '380671112233', clientName: 'Іван' },
+      'br-1',
+      'WO_COMPLETED',
+    );
+    const chain = queueAdd.mock.calls[0][1].chain;
+    expect(chain).toHaveLength(1);
+    expect(chain[0].channel).toBe(NotificationChannel.SMS);
+    expect(chain[0].recipient).toBe('380671112233'); // телефон у SMS
+    // EMAIL з телефоном у recipient НЕ потрапив у ланцюг
+    expect(chain.some((s: { channel: string }) => s.channel === NotificationChannel.EMAIL)).toBe(
+      false,
+    );
+  });
+
+  it('MIXED [SMS,EMAIL] + vars={email} → SMS відкинуто, EMAIL лишається (recipient=email)', async () => {
+    await service.sendWithConfig(
+      'org-1',
+      mixedConfig,
+      { email: 'client@example.com', clientName: 'Іван' },
+      'br-1',
+      'WO_COMPLETED',
+    );
+    const chain = queueAdd.mock.calls[0][1].chain;
+    expect(chain).toHaveLength(1);
+    expect(chain[0].channel).toBe(NotificationChannel.EMAIL);
+    expect(chain[0].recipient).toBe('client@example.com'); // email у EMAIL
+    expect(chain.some((s: { channel: string }) => s.channel === NotificationChannel.SMS)).toBe(
+      false,
+    );
+  });
+
+  it('MIXED [SMS,EMAIL] + vars={phone,email} → ОБИДВА, кожен з recipient СВОГО типу', async () => {
+    await service.sendWithConfig(
+      'org-1',
+      mixedConfig,
+      { phone: '380671112233', email: 'client@example.com', clientName: 'Іван' },
+      'br-1',
+      'WO_COMPLETED',
+    );
+    const chain = queueAdd.mock.calls[0][1].chain;
+    expect(chain).toHaveLength(2);
+    const sms = chain.find((s: { channel: string }) => s.channel === NotificationChannel.SMS);
+    const email = chain.find((s: { channel: string }) => s.channel === NotificationChannel.EMAIL);
+    // SMS-крок несе ТІЛЬКИ телефон; EMAIL-крок несе ТІЛЬКИ email (без перехрещення типів).
+    expect(sms.recipient).toBe('380671112233');
+    expect(sms.recipient).not.toContain('@');
+    expect(email.recipient).toBe('client@example.com');
+    expect(email.recipient).toContain('@');
+    // subject відрендерено лише для EMAIL-кроку
+    expect(email.subject).toBe('Тема Іван');
+    expect(sms.subject).toBeUndefined();
+  });
+
+  it('MIXED [SMS,EMAIL] + vars={} (ні phone ні email) → порожній ланцюг, job НЕ ставиться', async () => {
+    await service.sendWithConfig(
+      'org-1',
+      mixedConfig,
+      { clientName: 'Іван' },
+      'br-1',
+      'WO_COMPLETED',
+    );
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * resolveConfig для EMAIL-каналу — локальний inline-шаблон з subject → templateSubject
+ * прокидується у config (потім рендериться у sendWithConfig). Email — inline (не template-based),
+ * тож канал придатний за наявністю локального шаблону.
+ */
+describe('NotificationsService.resolveConfig (EMAIL subject)', () => {
+  const channelConfigFindMany = vi.fn();
+  const templateFindMany = vi.fn();
+  const prisma = {
+    notificationChannelConfig: { findMany: channelConfigFindMany },
+    notificationTemplate: { findMany: templateFindMany, findFirst: vi.fn() },
+    branchSettings: { findFirst: vi.fn() },
+  } as unknown as PrismaService;
+  const queue = { add: vi.fn() } as unknown as Queue;
+  const registry = { get: vi.fn(), list: vi.fn() } as unknown as NotificationProviderRegistry;
+  let service: NotificationsService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    service = new NotificationsService(prisma, registry, queue);
+  });
+
+  it('EMAIL-канал з локальним шаблоном (body+subject) → templateBody+templateSubject у config', async () => {
+    channelConfigFindMany.mockResolvedValue([
+      {
+        channel: NotificationChannel.EMAIL,
+        provider: 'smtp',
+        apiKey: 'smtp-json',
+        senderName: 'СТО <sto@ukr.net>',
+        externalTemplateId: null,
+      },
+    ]);
+    templateFindMany.mockResolvedValue([
+      {
+        channel: NotificationChannel.EMAIL,
+        body: 'Ваш наряд {{orderNumber}} готовий',
+        subject: 'Наряд {{orderNumber}}',
+      },
+    ]);
+
+    const cfg = await service.resolveConfig('org-1', 'br-1', 'WO_COMPLETED');
+    expect(cfg).not.toBeNull();
+    expect(cfg!.channels).toHaveLength(1);
+    expect(cfg!.channels[0]).toMatchObject({
+      channel: NotificationChannel.EMAIL,
+      templateBody: 'Ваш наряд {{orderNumber}} готовий',
+      templateSubject: 'Наряд {{orderNumber}}',
+    });
+    // Запит шаблонів вибирає subject (для EMAIL) — регрес-guard проти видалення select.subject.
+    expect(templateFindMany.mock.calls[0][0].select).toMatchObject({ subject: true });
+  });
+
+  it('EMAIL-канал з шаблоном без subject → templateSubject=undefined (не крашить)', async () => {
+    channelConfigFindMany.mockResolvedValue([
+      {
+        channel: NotificationChannel.EMAIL,
+        provider: 'smtp',
+        apiKey: 'smtp-json',
+        senderName: null,
+        externalTemplateId: null,
+      },
+    ]);
+    templateFindMany.mockResolvedValue([
+      { channel: NotificationChannel.EMAIL, body: 'Тіло', subject: null },
+    ]);
+
+    const cfg = await service.resolveConfig('org-1', 'br-1', 'WO_COMPLETED');
+    expect(cfg!.channels[0].templateSubject).toBeUndefined();
+    expect(cfg!.channels[0].templateBody).toBe('Тіло');
+  });
 });
 
 /**

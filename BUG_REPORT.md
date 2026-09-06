@@ -3274,3 +3274,95 @@ src/components/ui/__tests__` — 391 passed (37 files).
 **Severity HIGH** (розрекламована ексклюзивність + tenant-isolation на масовому updateMany: тихий регрес = cross-org data corruption). **Де ще шукати:** будь-який сервіс з `$transaction([updateMany(...), updateMany(...)])` — перевіряти orgId у КОЖНОМУ where; будь-який фронтовий «ексклюзивний» toggle (активним лише 1) — гейт + empty-state guard + disabled-стан.
 
 **Результат:** 0 функціональних багів; 1 coverage-gap закрито. API notif 96→113 зелено (9 files: +9 service, +7 новий contract, +1 resolveConfig edge-5). Web panel 12→19 зелено. tsc api=0 / web=0. E2E пропущено (Playwright MCP DOWN — не блокер).
+
+---
+
+## Session 2026-09-06 — Email-канал через SMTP + recipient generalization (feat + review-fix 53b62596)
+
+Мета: bug-hunt Email-фічі — SMTP-провайдер (nodemailer, creds JSON у apiKey, close() у finally),
+узагальнення phone→recipient (SendParams, sendWithConfig per-channel locator, sms.processor,
+NotificationLog.recipient), SMTP-форма у NotificationProvidersPanel. Перевірено 8 edge-груп із
+завдання. Функціональних дефектів НЕ знайдено — реалізація і review-fix (transport.close() у finally)
+коректні. Знайдено 3 coverage-gap на ключових інваріантах Email-фічі; усі закриті реальними
+(mutation-verified) тестами. Playwright E2E MCP DOWN — пропущено (не блокер).
+
+### Bug #658 (HIGH — coverage-gap) — `[x] виправлено`
+
+**Симптом:** `sendWithConfig` per-channel recipient selection (`EMAIL_CHANNELS.has(c.channel) ? email : phone`)
+мав покриття лише для phone-only (EMAIL відкинуто) і email-only ОКРЕМО — але НЕ для змішаного
+ланцюга `[SMS,EMAIL]` де асертиться, що КОЖЕН крок несе recipient СВОГО типу (телефон у SMS-крок,
+email у EMAIL-крок, без перехрещення). Найгірший нерозкритий регрес: якщо селектор зламати на
+`phone ?? email` (частий copy-paste), у EMAIL-крок потрапив би телефон → nodemailer `to:'38067...'`
+→ 500 SMTP / тихий відкид. Також не покрито: `vars={}` (ні phone ні email) → порожній ланцюг, job
+не ставиться. І `resolveConfig` для EMAIL-каналу з локальним шаблоном (body+subject) не мав тесту,
+що `subject` рядка шаблону прокидується у `templateSubject` (регрес `select.subject` → втрата теми).
+
+**Фікс:** `notifications.service.spec.ts` +6:
+
+- MIXED `[SMS,EMAIL]` × vars={phone} → EMAIL відкинуто, SMS(recipient=phone);
+- × vars={email} → SMS відкинуто, EMAIL(recipient=email);
+- × vars={phone,email} → ОБИДВА, sms.recipient=phone(без @) + email.recipient=email(з @), subject лише у EMAIL;
+- × vars={} → job НЕ ставиться;
+- новий `describe resolveConfig (EMAIL subject)`: EMAIL-канал з локальним шаблоном → templateBody+templateSubject + assert select.subject:true; шаблон без subject → templateSubject=undefined.
+
+**Mutation-verified:** заміна селектора на `phone ?? email` → 4 тести падають (3 MIXED + EMAIL-без-email).
+
+**Severity HIGH** (тихий регрес селектора → телефон у SMTP `to` → провал усіх email-сповіщень).
+**Де ще:** будь-який per-channel locator-selection (push-token, webhook-URL) — асертити тип recipient у КОЖНОМУ кроці змішаного ланцюга.
+
+### Bug #659 (MEDIUM — coverage-gap) — `[x] виправлено`
+
+**Симптом:** `maskRecipient` (sms.processor, PII-маскування у app-логах) мав покриття лише для
+телефону `****2233`. Email-гілка (`at>0 → a***@domain`), короткий recipient (`≤4 → ****`) і порожній
+recipient — без тестів. Регрес email-гілки → повний email у логах (PII-витік) або краш на порожньому/
+короткому locator. Також `NotificationLog.recipient` для EMAIL-каналу (email, не поле phone) не мав
+явного assert, що пишеться саме `recipient`-колонка (після rename phone→recipient).
+
+**Фікс:** `sms.processor.spec.ts` +4:
+
+- email `client@example.com` → лог `c***@example.com`, повний email НЕ в логах, NotificationLog.recipient=повний email;
+- короткий recipient `123` (≤4) → `****`, сирий короткий не як locator;
+- порожній recipient `''` → `****`, воркер не падає (resolves);
+- NotificationLog.recipient=email для EMAIL-каналу + channel=EMAIL + НЕ пише поле `phone`.
+
+**Severity MEDIUM** (PII-витік email у логах / краш воркера на edge locator).
+**Де ще:** будь-яка mask-функція локатора — покрити email/короткий/порожній/no-@ входи.
+
+### Bug #660 (HIGH — coverage-gap) — `[x] виправлено`
+
+**Симптом:** `NotificationProvidersPanel` для SMTP-провайдера (`code==='smtp'`) рендерить окрему
+форму (host/port/user/pass/TLS) замість єдиного поля API-токена і серіалізує SMTP-поля у JSON перед
+PATCH `apiKey` (`buildApiKey`). Уся SMTP-гілка UI — БЕЗ покриття (фікстури мали лише turbosms/esputnik).
+Не тестувалось: показ SMTP-форми для code='smtp'; `credsReady`=host+user+pass (кнопка Зберегти
+disabled поки не всі три); PATCH.apiKey = JSON-рядок `{host,port,secure,user,pass}`; дефолт порту 587
+на порожній ввід; verify шле JSON-конфіг; не-SMTP провайдер лишає єдине поле токена (регрес не показує
+SMTP-форму помилково). Регрес `buildApiKey`/`isSmtp`/`credsReady` → користувач не зможе зберегти
+Email-креди АБО збереже сирий текст замість JSON → EmailProvider.parseConfig→null→усі email не йдуть.
+
+**Фікс:** `NotificationProvidersPanel.test.tsx` +6 (нова `describe SMTP-провайдер` + фікстура code='smtp'):
+
+- не-SMTP провайдер → єдине поле токена, SMTP-полів нема;
+- SMTP → форма host/port/user/pass/пароль, поля токена нема;
+- credsReady: лише host→disabled, +user→disabled, +pass→enabled;
+- save → PATCH.apiKey = JSON `{host,port:465,secure:true,user,pass}` (channel=EMAIL, provider=smtp);
+- порожній порт → port:587 у JSON;
+- verify → POST /verify з JSON-конфігом у apiKey.
+
+**Mutation-verified:** зміна `buildApiKey` (SMTP повертає сирий apiKey замість JSON) → 4 SMTP-тести падають.
+
+**Severity HIGH** (розрекламована фіча: тихий регрес форми/серіалізації → неможливо налаштувати Email).
+**Де ще:** будь-який провайдер зі структурованими кредами (multi-field → JSON у одне поле) — покрити форму + серіалізацію + credsReady.
+
+### Перевірено ЧИСТИМ (hunt завдання, code-defect не знайдено)
+
+- **EmailProvider (item #2)** — JSON-толерантність (bad JSON/missing host|user|pass → accepted:false, без send), close() у finally на success І error (mutation-verified у наявному spec: sendMail.reject → close викликано), subject→sendMail, from-fallback на user. Повне покриття (10 тестів) — дефектів нема.
+- **maskRecipient no-@ (item #3)** — `at=recipient.indexOf('@')`; `@b.com` дає at=0 → умова `at>0` хибна → падає у phone-гілку `****b.com` (не краш; локальна частина порожня — edge не трапляється у проді, бо email завжди має локальну частину). Без дефекту.
+- **Parity SMS/Viber/Telegram (item #5)** — recipient=phone для inline-каналів; уся notif-suite (136 тестів) зелена. turbosms/esputnik читають `recipient` (перейменовано з phone) — 0 регресу.
+- **followup.processor (item #8, by-design)** — передає ЛИШЕ `phone` у vars → EMAIL-канал у sendWithConfig тихо пропускається (нема vars.email → recipient=undefined → крок відкинуто). Reminders через email не шлються — ЗАДЕКЛАРОВАНА поведінка (не «фіксити»). Не крашить (14 тестів followup зелені). Підтверджено.
+- **Callers (payments/work-orders)** — `payments.service` guard `phone || email`, передає обидва; `work-orders` WO_COMPLETED/WO_ESTIMATE_READY передають phone+email. Коректно.
+- **schema↔migration parity** — `20260906180000_notification_log_recipient/migration.sql` існує: idempotent RENAME phone→recipient (guard проти повтору). Applied на dev.
+
+**Результат:** 0 функціональних багів; 3 coverage-gap закрито (#658-#660), усі mutation-verified.
+Нові тести: API notif +10 (service +6, processor +4), web panel +6 (SMTP-гілка).
+Підсумок: API notif 126→136 зелено (10 files), web panel 19→25 зелено. tsc api=0 / web=0.
+E2E пропущено (Playwright MCP DOWN — не блокер).

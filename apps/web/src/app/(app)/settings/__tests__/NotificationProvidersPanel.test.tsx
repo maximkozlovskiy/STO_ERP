@@ -469,6 +469,169 @@ describe('NotificationProvidersPanel', () => {
       });
     });
 
+    it("SMTP-форма не з'являється для не-SMTP провайдера (єдине поле API-токена)", async () => {
+      twoProviderMock([
+        channelRow({ id: 'ch-sms', channel: 'SMS', provider: 'turbosms', enabled: true }),
+      ]);
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      await user.click(await screen.findByText('TurboSMS'));
+      // Одне поле токена; SMTP-поля відсутні.
+      expect(await screen.findByPlaceholderText('Введіть токен провайдера')).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('smtp.ukr.net')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument();
+    });
+  });
+
+  // ─── SMTP-провайдер (code='smtp') — форма host/port/user/pass замість токена (Bug #660) ─
+  // Панель серіалізує SMTP-поля у JSON перед PATCH apiKey. Раніше без покриття: показ форми,
+  // credsReady=host+user+pass, PATCH.apiKey = JSON-рядок конфігу.
+  describe('SMTP-провайдер (форма кредів)', () => {
+    const SMTP = { code: 'smtp', name: 'Email (SMTP)', channels: ['EMAIL'], templateChannels: [] };
+
+    function smtpMock(channels: unknown[] = []) {
+      apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
+        if (path === '/branches') return Promise.resolve(BRANCHES);
+        if (path === '/notification-providers') return Promise.resolve([SMTP]);
+        if (path === '/notification-providers/smtp/verify') return Promise.resolve({ valid: true });
+        if (path.startsWith('/notification-channels/')) {
+          if (opts?.method === 'PATCH') return Promise.resolve({ id: 'row-smtp' });
+          return Promise.resolve(channels);
+        }
+        return Promise.resolve({});
+      });
+    }
+
+    it('SMTP-провайдер → показує форму host/port/user/pass (НЕ єдине поле токена)', async () => {
+      smtpMock();
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      await user.click(await screen.findByText('Email (SMTP)'));
+      // SMTP-поля присутні
+      expect(await screen.findByPlaceholderText('smtp.ukr.net')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('587')).toBeInTheDocument(); // порт
+      expect(screen.getByPlaceholderText('sto@ukr.net')).toBeInTheDocument(); // логін
+      expect(screen.getByPlaceholderText('••••••••')).toBeInTheDocument(); // пароль
+      // Єдиного поля API-токена НЕМАЄ (SMTP → форма).
+      expect(screen.queryByPlaceholderText('Введіть токен провайдера')).not.toBeInTheDocument();
+    });
+
+    it('credsReady=false доки не заповнені host+user+pass → кнопка Зберегти disabled', async () => {
+      smtpMock();
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      await user.click(await screen.findByText('Email (SMTP)'));
+
+      const save = screen.getByRole('button', { name: 'Зберегти' });
+      expect(save).toBeDisabled(); // усі поля порожні
+
+      // Лише host — усе ще disabled (треба user+pass).
+      await user.type(await screen.findByPlaceholderText('smtp.ukr.net'), 'smtp.ukr.net');
+      expect(save).toBeDisabled();
+      // + user — ще disabled.
+      await user.type(screen.getByPlaceholderText('sto@ukr.net'), 'sto@ukr.net');
+      expect(save).toBeDisabled();
+      // + pass — тепер enabled.
+      await user.type(screen.getByPlaceholderText('••••••••'), 'secret');
+      expect(save).not.toBeDisabled();
+    });
+
+    it('save SMTP → PATCH.apiKey = JSON-рядок {host,port,secure,user,pass}', async () => {
+      smtpMock();
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      await user.click(await screen.findByText('Email (SMTP)'));
+
+      await user.type(await screen.findByPlaceholderText('smtp.ukr.net'), 'smtp.ukr.net');
+      await user.clear(screen.getByPlaceholderText('587'));
+      await user.type(screen.getByPlaceholderText('587'), '465');
+      await user.type(screen.getByPlaceholderText('sto@ukr.net'), 'sto@ukr.net');
+      await user.type(screen.getByPlaceholderText('••••••••'), 'secret');
+      // TLS-чекбокс → secure:true
+      await user.click(screen.getByLabelText(/TLS\/SSL/));
+
+      await user.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+      await waitFor(() => {
+        const patch = apiFetchMock.mock.calls.find(
+          c => c[0] === '/notification-channels/br-1' && c[1]?.method === 'PATCH',
+        );
+        expect(patch).toBeTruthy();
+        const body = JSON.parse(patch![1].body as string);
+        expect(body.channel).toBe('EMAIL'); // channels[0] EMAIL
+        expect(body.provider).toBe('smtp');
+        // apiKey — серіалізований SMTP-конфіг (JSON-рядок), не сирий токен.
+        const smtpCfg = JSON.parse(body.apiKey as string);
+        expect(smtpCfg).toEqual({
+          host: 'smtp.ukr.net',
+          port: 465,
+          secure: true,
+          user: 'sto@ukr.net',
+          pass: 'secret',
+        });
+      });
+    });
+
+    it('save SMTP: порожній порт → дефолт 587 у JSON apiKey', async () => {
+      smtpMock();
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      await user.click(await screen.findByText('Email (SMTP)'));
+
+      await user.type(await screen.findByPlaceholderText('smtp.ukr.net'), 'mail.local');
+      await user.clear(screen.getByPlaceholderText('587')); // порожній порт
+      await user.type(screen.getByPlaceholderText('sto@ukr.net'), 'u@local');
+      await user.type(screen.getByPlaceholderText('••••••••'), 'p');
+      await user.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+      await waitFor(() => {
+        const patch = apiFetchMock.mock.calls.find(
+          c => c[0] === '/notification-channels/br-1' && c[1]?.method === 'PATCH',
+        );
+        expect(patch).toBeTruthy();
+        const smtpCfg = JSON.parse(JSON.parse(patch![1].body as string).apiKey as string);
+        expect(smtpCfg.port).toBe(587); // Number('')||587 → 587
+      });
+    });
+
+    it('verify SMTP → POST /verify з JSON-конфігом у apiKey', async () => {
+      smtpMock();
+      const user = userEvent.setup();
+      render(<NotificationProvidersPanel />);
+      await user.click(await screen.findByText('Email (SMTP)'));
+
+      await user.type(await screen.findByPlaceholderText('smtp.ukr.net'), 'smtp.ukr.net');
+      await user.type(screen.getByPlaceholderText('sto@ukr.net'), 'sto@ukr.net');
+      await user.type(screen.getByPlaceholderText('••••••••'), 'secret');
+      await user.click(screen.getByRole('button', { name: 'Перевірити' }));
+
+      await waitFor(() => {
+        const verifyCall = apiFetchMock.mock.calls.find(
+          c => c[0] === '/notification-providers/smtp/verify',
+        );
+        expect(verifyCall).toBeTruthy();
+        const cfg = JSON.parse(JSON.parse(verifyCall![1].body as string).apiKey as string);
+        expect(cfg.host).toBe('smtp.ukr.net');
+        expect(cfg.user).toBe('sto@ukr.net');
+        expect(cfg.pass).toBe('secret');
+      });
+    });
+  });
+
+  describe('ексклюзивна активація (додатково)', () => {
+    function twoProviderMock(channels: unknown[]) {
+      apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
+        if (path === '/branches') return Promise.resolve(BRANCHES);
+        if (path === '/notification-providers') return Promise.resolve([PROVIDERS[0], ESPUTNIK]);
+        if (path.startsWith('/notification-channels/')) {
+          if (opts?.method === 'POST') return Promise.resolve({ activeProvider: 'turbosms' });
+          if (opts?.method === 'PATCH') return Promise.resolve({ id: 'row-1' });
+          return Promise.resolve(channels);
+        }
+        return Promise.resolve({});
+      });
+    }
+
     it('канал вимкненого провайдера коли АКТИВНИЙ провайдер відсутній (нічого не enabled) → Switch НЕ disabled', async () => {
       // activeProvider === null → жоден provider не активний → усі канали можна вмикати
       // (перший click активує ланцюг цього провайдера). Guard тільки коли є active-provider.
