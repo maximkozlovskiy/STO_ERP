@@ -3,6 +3,7 @@ import { NotificationChannel } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationProviderRegistry } from './providers/provider-registry';
 
 /**
  * resolveConfig — fallback-ланцюг з NotificationChannelConfig (priority ASC) + per-канал
@@ -26,12 +27,13 @@ describe('NotificationsService.resolveConfig', () => {
 
   const queueAdd = vi.fn().mockResolvedValue({});
   const queue = { add: queueAdd } as unknown as Queue;
+  const registry = { get: vi.fn(), list: vi.fn() } as unknown as NotificationProviderRegistry;
 
   let service: NotificationsService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new NotificationsService(prisma, queue);
+    service = new NotificationsService(prisma, registry, queue);
   });
 
   const cfgRow = (over: Partial<Record<string, unknown>> = {}) => ({
@@ -205,12 +207,13 @@ describe('NotificationsService.sendWithConfig', () => {
   const queueAdd = vi.fn().mockResolvedValue({});
   const queue = { add: queueAdd } as unknown as Queue;
   const prisma = {} as unknown as PrismaService;
+  const registry = { get: vi.fn(), list: vi.fn() } as unknown as NotificationProviderRegistry;
 
   let service: NotificationsService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new NotificationsService(prisma, queue);
+    service = new NotificationsService(prisma, registry, queue);
   });
 
   const config = {

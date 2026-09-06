@@ -3131,3 +3131,50 @@ src/components/ui/__tests__` — 391 passed (37 files).
 **Результат:** notifications 27→49 зелено (5 файлів). tsc api 0. Жодного коду сервісів/процесорів не змінено — лише додано тести-guard'и (фіксують поточну коректну поведінку проти регресій).
 
 **Прийнятий розрив (не баг):** data-migration не фільтрує `bs.deletedAt IS NULL` — soft-deleted BranchSettings з apiKey підняв би у config. Консистентно з `resolveConfig` legacy-гілкою (теж без deletedAt-фільтра на branchSettings); BranchSettings-видалення рідке. Не регресія цих комітів.
+
+## Session 2026-09-06 — Multi-channel notifications Phase 3 (verify/config endpoints + UI panel) bug hunt (after ff0c009f)
+
+**Scope:** `apps/api/src/modules/notifications/notifications.controller.ts` (NotificationProvidersController + NotificationChannelsController + VerifyProviderDto/UpsertChannelDto), `notifications.service.ts` (listProviders/verifyProvider/getBranchChannels/upsertBranchChannel — atomic prisma.upsert по @@unique([branchId,channel])), `apps/web/.../settings/NotificationProvidersPanel.tsx` + `components/ui/switch.tsx` + `NotificationsTab.tsx`. E2E MCP DOWN — skipped, не блокував.
+
+**Baseline:** tsc api 0, tsc web 0. Verify/config endpoints мали **0 тестів**.
+
+### Bug #649 (HIGH — broken baseline / release-blocker) — `[x] виправлено`
+
+**Симптом:** `notifications.service.spec.ts` червоний (2 з 14 fail) — `TypeError: Cannot read properties of undefined (reading 'add')` у `sendWithConfig` (`this.smsQueue.add`).
+
+**Причина:** review-fix commit ff0c009f додав у конструктор `NotificationsService` третій параметр `registry` (`constructor(prisma, registry, @InjectQueue('sms') smsQueue)`), але **не оновив спек**, який досі конструював `new NotificationsService(prisma, queue)` (2 арг). Queue потрапляв у слот `registry`, а `smsQueue` лишався `undefined` → `sendWithConfig` крашив. tsc проходив (`as unknown as Queue`), тому review-агент (лише tsc, без запуску API-suite) не помітив. Класичний hidden-red-baseline: червоний тест невидимий без реального прогону suite.
+
+**Фікс:** обидва `describe`-блоки конструюють `new NotificationsService(prisma, registry, queue)` з мок-registry `{ get, list }`; додано import `NotificationProviderRegistry`. → 14/14 зелено.
+
+**Meta:** review-агент має запускати цільову suite зміненого модуля, не лише tsc (constructor-arity зміна = обов'язковий прогін spec цього сервісу).
+
+### Bug #650 (MEDIUM — test-gap = defect за SKILL.md) — `[x] виправлено`
+
+**Симптом:** усі Phase 3 endpoint-методи (`listProviders`, `verifyProvider`, `getBranchChannels`, `upsertBranchChannel`) — **0 unit/contract тестів**. Write-only apiKey, tenant-scope, provider-channel guard, atomic upsert — жодного regression-guard.
+
+**Фікс:** `notifications.providers.spec.ts` (НОВИЙ, 18 тестів):
+
+- `verifyProvider`: unknown code → NotFound; valid → делегує `verifyCredentials` і повертає його shape; apiKey не логується (spy на logger.log/warn).
+- `getBranchChannels`: apiKey НІКОЛИ не в response (`not.toHaveProperty('apiKey')` + `JSON.stringify` не містить секрету); порожній `""` → hasApiKey=false; where orgId+branchId+deletedAt:null; orderBy priority asc.
+- `upsertBranchChannel`: branch-not-in-org → NotFound (провайдер не читається, upsert не викликається); branch findFirst скоуп orgId+deletedAt:null; unknown provider → BadRequest; provider не підтримує канал (EMAIL-only provider для SMS; turbosms для EMAIL) → BadRequest; reactivate (update.deletedAt=null); **apiKey write-only** — PATCH без apiKey / з "" → upsert БЕЗ `apiKey` (наявний не стирається), PATCH з новим → перезапис у update+create; create-дефолти enabled??true/priority??0; atomic — два "create" на той самий (branchId,channel) через `upsert` (жодного окремого create → жодного шансу на P2002).
+- `listProviders` делегує registry.list().
+
+**Дискримінація:** write-only тести падають якщо код почне безумовно спредити `{apiKey: dto.apiKey}` (property present з undefined → `not.toHaveProperty` fail).
+
+### Bug #651 (MEDIUM — test-gap component) — `[x] виправлено`
+
+**Симптом:** `NotificationProvidersPanel.tsx` — перший компонент-тест для файлу; verify happy/error, Switch toggle, priority move — без guard.
+
+**Фікс:** `NotificationProvidersPanel.test.tsx` (НОВИЙ, 6 тестів, testing-library + user-event): verify happy (POST /verify → "Токен дійсний · баланс: 123", apiKey у body); verify error (reject → повідомлення, без "Токен дійсний", no crash); Switch toggle enabled=true→PATCH `"enabled":false`; priority move down → PATCH swap; single-channel → обидві стрілки disabled; apiKey ніколи не у DOM списку каналів (бейдж "без ключа"). Компонент-тестінг для файлу підтверджено (jsdom + TL налаштовані) — покрито реально, не факовано.
+
+### Перевірено ЧИСТИМ (edge-cases завдання, code-defect не знайдено)
+
+- **upsert create-new vs update-existing** — atomic `prisma.upsert` по `@@unique([branchId,channel])`; create-гілка з orgId-param, update-гілка reactivate. Коректно.
+- **apiKey write-only** — `apiKeyPatch = dto.apiKey != null && dto.apiKey !== '' ? {apiKey} : {}`, спред у обидві гілки. PATCH без/з "" не стирає; з новим — перезапис. Коректно.
+- **branch-not-in-org → NotFound / unknown provider → BadRequest / provider-no-channel → BadRequest** — усі три guard на місці, у правильному порядку (branch → provider → channel-support). Коректно.
+- **getBranchChannels apiKey-leak** — destructure `({apiKey, ...r})` видаляє секрет; лише `hasApiKey`. orgId+deletedAt:null+priority-asc. Коректно.
+- **verifyProvider** — unknown → NotFound; apiKey у body, ніколи не логується (verify не має logger-виклику з кредами; provider.verifyCredentials теж не логує apiKey). Коректно.
+- **@@unique upsert vs Postgres CHECK (Bug #621 патерн)** — таблиця `notification_channel_configs` НЕ має non-neg CHECK; `priority` Int default 0, DTO `@Min(0)@Max(99)`; create-payload не містить знакових дельт. Не застосовно.
+- **Ctrl+Enter keyless save** — Modal `onSubmit` → `saveCreds` не має `!apiKey`-guard (кнопка disabled, але Ctrl+Enter обходить). Створило б keyless-канал (валідний рядок, `resolveConfig` фільтрує `apiKey:{not:null}` → не шле). НЕ дефект: keyless-канал легітимний (спершу priority/enabled, потім ключ); toast "Креди збережено" косметично неточний при порожньому полі, але поведінка коректна. Не фіксовано.
+
+**Результат:** 3 баги (1 HIGH baseline-red, 2 MEDIUM test-gap) — усі виправлені. Нові тести: api +18 (`notifications.providers.spec.ts`) + baseline-fix; web +6 (`NotificationProvidersPanel.test.tsx`). Notifications API 49→67 зелено; full API 1421 passed (95 files); full web 616 passed (63 files). tsc api=0, web=0.
