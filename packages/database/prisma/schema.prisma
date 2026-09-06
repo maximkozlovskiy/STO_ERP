@@ -152,6 +152,13 @@ enum NotificationDeliveryStatus {
   FAILED
 }
 
+enum FiscalReceiptStatus {
+  QUEUED // у черзі на фіскалізацію
+  DONE // чек пробито (fiscalReceiptId заповнено)
+  FAILED // вичерпано ретраї (fiscalError містить причину)
+  SKIPPED // фіскалізація вимкнена на філії, хоча метод її потребує
+}
+
 enum SettlementTransactionType {
   CHARGE
   PAYMENT
@@ -1837,6 +1844,12 @@ model Payment {
   method          String
   notes           String?
   fiscalReceiptId String?
+  // Фіскальний статус (ПРРО). null = фіскалізація не застосовна (метод без requiresFiscal).
+  // QUEUED = у черзі; DONE = чек пробито (fiscalReceiptId заповнено); FAILED = вичерпано ретраї
+  // (fiscalError); SKIPPED = фіскалізація вимкнена на філії. Оновлюється processor-ом (delivery-
+  // метадані — сам платіж лишається незмінним).
+  fiscalStatus    FiscalReceiptStatus?
+  fiscalError     String?
   syncVersion     BigInt   @default(0)
   createdAt       DateTime @default(now())
 

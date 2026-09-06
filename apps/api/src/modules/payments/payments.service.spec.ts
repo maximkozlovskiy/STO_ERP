@@ -23,6 +23,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     workOrder: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
     invoice: { findFirst: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
     payment: { create: ReturnType<typeof vi.fn> };
+    paymentMethodConfig: { findFirst: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let settlements: { createTransaction: ReturnType<typeof vi.fn> };
@@ -53,6 +54,8 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
       workOrder: { findFirst: vi.fn(), update: vi.fn() },
       invoice: { findFirst: vi.fn(), updateMany: vi.fn() },
       payment: { create: vi.fn() },
+      // За замовч. метод потребує фіскалізації → checkbox-enqueue фірес як раніше.
+      paymentMethodConfig: { findFirst: vi.fn().mockResolvedValue({ requiresFiscal: true }) },
       // Виконує callback з prisma як tx — CAS updateMany/payment.create реально викликаються.
       $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);

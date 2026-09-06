@@ -4,6 +4,7 @@ import { VatMode, BatchCostMethod, DocumentType, ResetPeriod } from '@prisma/cli
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
+import { validatePublicUrl } from '../../common/utils/url-guard';
 import {
   BranchSettingsResponseDto,
   OrganisationResponseDto,
@@ -659,5 +660,69 @@ export class SettingsService {
       bankAccountId: org.bankAccountId ?? null,
       updatedAt: org.updatedAt instanceof Date ? org.updatedAt.toISOString() : org.updatedAt,
     };
+  }
+
+  /**
+   * Перевірка кредів ПРРО (Checkbox): тест-виклик без пробиття чеку. Валідує ключ/URL.
+   * SSRF-захист (validatePublicUrl + redirect:'manual'), AbortController 10s (offline-інваріант).
+   * Креди з body write-only — не логуються, не зберігаються. Якщо licenseKey не передано,
+   * використати збережений (щоб «Перевірити» працювало без повторного вводу ключа).
+   */
+  async verifyFiscal(
+    orgId: string,
+    branchId: string,
+    dto: { apiUrl?: string; licenseKey?: string },
+  ): Promise<{ valid: boolean; cashRegisterName?: string; error?: string }> {
+    const branch = await this.prisma.garageBranch.findFirst({
+      where: { id: branchId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!branch) throw new NotFoundException('Філію не знайдено');
+
+    // licenseKey: з body (write-only) або збережений (extension дешифрує при читанні).
+    let licenseKey = dto.licenseKey;
+    let apiUrl = dto.apiUrl;
+    if (!licenseKey || !apiUrl) {
+      const bs = await this.prisma.branchSettings.findFirst({
+        where: { branchId, orgId },
+        select: { checkboxLicenseKey: true, checkboxApiUrl: true },
+      });
+      licenseKey = licenseKey || bs?.checkboxLicenseKey || undefined;
+      apiUrl = apiUrl || bs?.checkboxApiUrl || 'https://api.checkbox.ua';
+    }
+    if (!licenseKey) return { valid: false, error: 'Не вказано ліцензійний ключ' };
+
+    const urlError = validatePublicUrl(apiUrl);
+    if (urlError) return { valid: false, error: `Невалідний API URL: ${urlError}` };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    try {
+      // /api/v1/cash-registers — підтверджує валідність ключа й повертає касу(и).
+      const res = await fetch(`${apiUrl}/api/v1/cash-registers`, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: {
+          Authorization: `Bearer ${licenseKey}`,
+          'X-License-Key': licenseKey,
+        },
+        signal: controller.signal,
+      });
+      if (res.status >= 300 && res.status < 400) {
+        return { valid: false, error: 'Підозріле перенаправлення від API' };
+      }
+      if (!res.ok) {
+        return { valid: false, error: `Checkbox: ${res.status}` };
+      }
+      const data = (await res.json()) as
+        | { results?: Array<{ title?: string }> }
+        | Array<{ title?: string }>;
+      const list = Array.isArray(data) ? data : (data.results ?? []);
+      return { valid: true, cashRegisterName: list[0]?.title };
+    } catch (e) {
+      return { valid: false, error: e instanceof Error ? e.message : 'Помилка перевірки' };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

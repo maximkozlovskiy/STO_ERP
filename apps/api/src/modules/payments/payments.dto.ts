@@ -33,6 +33,8 @@ export class PaymentResponseDto {
   @ApiProperty() method!: string;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() fiscalReceiptId?: string | null;
+  @ApiPropertyOptional() fiscalStatus?: string | null;
+  @ApiPropertyOptional() fiscalError?: string | null;
   @ApiProperty() createdAt!: string;
 }
 

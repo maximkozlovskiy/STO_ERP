@@ -69,7 +69,7 @@ export class PaymentsService {
   async create(orgId: string, dto: CreatePaymentDto, userId?: string): Promise<PaymentResponseDto> {
     // Single parallel batch — counterparty + workOrder (with both branchId + status
     // selected in one query, replacing the prior duplicate findFirst calls).
-    const [counterparty, workOrder] = await Promise.all([
+    const [counterparty, workOrder, methodConfig] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: dto.counterpartyId, orgId, deletedAt: null },
         select: {
@@ -87,6 +87,12 @@ export class PaymentsService {
             select: { branchId: true, status: true },
           })
         : Promise.resolve(null),
+      // Спосіб оплати — щоб знати, чи потребує фіскалізації (requiresFiscal). Невідомий метод
+      // → фіскалізацію НЕ ставимо (safe default: не фіскалізуємо сміття).
+      this.prisma.paymentMethodConfig.findFirst({
+        where: { orgId, code: dto.method, deletedAt: null },
+        select: { requiresFiscal: true },
+      }),
     ]);
     if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
 
@@ -95,6 +101,10 @@ export class PaymentsService {
     if (dto.workOrderId && workOrder && workOrder.status !== 'INVOICED') {
       throw new BadRequestException(`Наряд у статусі "${workOrder.status}" — оплата неможлива`);
     }
+
+    // Фіскалізуємо лише якщо спосіб оплати цього потребує (requiresFiscal). Невідомий метод
+    // або requiresFiscal=false → чек не ставимо, fiscalStatus лишається null (не застосовно).
+    const willFiscalize = methodConfig?.requiresFiscal === true;
 
     const payment = await this.prisma.$transaction(
       async tx => {
@@ -134,6 +144,8 @@ export class PaymentsService {
             amount: dto.amount,
             method: dto.method,
             notes: dto.notes ?? null,
+            // QUEUED коли ставимо в чергу; null коли фіскалізація не застосовна до методу.
+            fiscalStatus: willFiscalize ? 'QUEUED' : null,
           },
           include: {
             counterparty: { select: { firstName: true, lastName: true, companyName: true } },
@@ -209,22 +221,26 @@ export class PaymentsService {
         );
     }
 
-    // Enqueue Checkbox fiscal receipt (offline-first: retry 288 times = 24h)
-    await this.checkboxQueue.add(
-      'fiscal-receipt',
-      {
-        paymentId: payment.id,
-        orgId,
-        branchId: workOrder?.branchId ?? null,
-        amount: dto.amount,
-        method: dto.method,
-      },
-      {
-        attempts: 288,
-        backoff: { type: 'exponential', delay: 300_000 }, // 5 min initial
-        removeOnComplete: true,
-      },
-    );
+    // Enqueue Checkbox fiscal receipt ЛИШЕ для методів з requiresFiscal (offline-first: retry
+    // 288× = 24h). Без гейта чек ставився б на КОЖЕН платіж (готівка/безнал/бартер) → зайві
+    // job-и + помилкові чеки. fiscalEnabled лишається downstream-гейтом у processor.
+    if (willFiscalize) {
+      await this.checkboxQueue.add(
+        'fiscal-receipt',
+        {
+          paymentId: payment.id,
+          orgId,
+          branchId: workOrder?.branchId ?? null,
+          amount: dto.amount,
+          method: dto.method,
+        },
+        {
+          attempts: 288,
+          backoff: { type: 'exponential', delay: 300_000 }, // 5 min initial
+          removeOnComplete: true,
+        },
+      );
+    }
 
     // Non-blocking loyalty earn: if queue is down, log warning, payment stands.
     // BullMQ job checks OrganisationSettings.loyaltyEnabled — exits without writing if disabled.
@@ -249,6 +265,8 @@ export class PaymentsService {
     method: string;
     notes: string | null;
     fiscalReceiptId: string | null;
+    fiscalStatus?: string | null;
+    fiscalError?: string | null;
     createdAt: Date;
     counterparty: {
       companyName: string | null;
@@ -269,6 +287,8 @@ export class PaymentsService {
       method: p.method,
       notes: p.notes ?? null,
       fiscalReceiptId: p.fiscalReceiptId ?? null,
+      fiscalStatus: p.fiscalStatus ?? null,
+      fiscalError: p.fiscalError ?? null,
       createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
     };
   }

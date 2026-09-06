@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -46,7 +46,12 @@ export class CheckboxProcessor extends WorkerHost {
     });
 
     if (!branchSettings?.checkboxLicenseKey || !branchSettings?.fiscalEnabled) {
-      this.logger.debug(`Checkbox не налаштовано для org=${orgId}, пропускаємо`);
+      // Метод потребує фіскалізації (job поставлено), але на філії ПРРО вимкнено → SKIPPED
+      // (не лишаємо QUEUED навічно). Не throw — це не помилка, а конфіг-стан.
+      this.logger.debug(`Checkbox не налаштовано для org=${orgId}, пропускаємо (SKIPPED)`);
+      await this.prisma.payment
+        .update({ where: { id: paymentId, orgId }, data: { fiscalStatus: 'SKIPPED' } })
+        .catch(() => undefined);
       return;
     }
 
@@ -116,9 +121,31 @@ export class CheckboxProcessor extends WorkerHost {
 
     await this.prisma.payment.update({
       where: { id: paymentId, orgId },
-      data: { fiscalReceiptId },
+      data: { fiscalReceiptId, fiscalStatus: 'DONE', fiscalError: null },
     });
 
     this.logger.log(`Фіскальний чек ${fiscalReceiptId} для платежу ${paymentId}`);
+  }
+
+  /**
+   * Пише FAILED лише коли вичерпано ВСІ спроби (attemptsMade сягнув opts.attempts). На проміжних
+   * провалах статус лишається QUEUED (BullMQ ще ретраїтиме) — інакше він «мигав» би FAILED між
+   * ретраями. process() кидає на кожному провалі, тож цей хендлер — єдине місце запису FAILED.
+   */
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job<FiscalReceiptJob>, err: Error): Promise<void> {
+    const attempts = job.opts.attempts ?? 1;
+    if (job.attemptsMade < attempts) return; // ще будуть ретраї — не чіпаємо статус
+    const { paymentId, orgId } = job.data;
+    await this.prisma.payment
+      .update({
+        where: { id: paymentId, orgId },
+        data: { fiscalStatus: 'FAILED', fiscalError: err?.message?.slice(0, 500) ?? 'Помилка' },
+      })
+      .catch((e: unknown) =>
+        this.logger.error(
+          `Не вдалось записати FAILED для платежу ${paymentId}: ${e instanceof Error ? e.message : e}`,
+        ),
+      );
   }
 }

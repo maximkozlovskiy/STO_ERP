@@ -159,7 +159,7 @@ describe('CheckboxProcessor.handleFiscalReceipt', () => {
 
       expect(prisma.payment.update).toHaveBeenCalledWith({
         where: { id: 'pay-99', orgId: 'org-1' },
-        data: { fiscalReceiptId: 'fr-99' },
+        data: { fiscalReceiptId: 'fr-99', fiscalStatus: 'DONE', fiscalError: null },
       });
     });
   });
