@@ -87,6 +87,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
       setError('');
       timeoutRef.current = setTimeout(
         () => {
+          timeoutRef.current = null;
           const params = new URLSearchParams({ limit: '50' });
           if (q) params.set('q', q);
           if (catId) {
@@ -195,10 +196,48 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
           onKeyDown={e => {
             // Сканер ШК: Enter → авто-вибір за точним ШК або єдиним результатом.
             if (e.key !== 'Enter') return;
-            const picked = pickScannedGood(items, query);
-            if (!picked) return;
             e.preventDefault();
-            selectGood(picked);
+            // Сканер друкує ШК + Enter швидше за debounce (300ms), тож на момент Enter
+            // `items` ще відображає ДО-скан-результати. Флашимо відкладений fetch і
+            // підбираємо товар за свіжими результатами; якщо debounce вже відпрацював —
+            // підбираємо одразу за поточними items.
+            const pending = timeoutRef.current !== null;
+            if (pending && query) {
+              clearTimeout(timeoutRef.current!);
+              timeoutRef.current = null;
+              const reqId = ++reqRef.current;
+              setLoading(true);
+              setError('');
+              const params = new URLSearchParams({ limit: '50' });
+              params.set('q', query);
+              if (selectedCatId) {
+                collectDescendantIds(categories, selectedCatId).forEach(id =>
+                  params.append('goodCategoryIds', id),
+                );
+              }
+              apiFetch<{
+                items: (Omit<GoodPickerItem, 'unitShortName'> & { unit?: string | null })[];
+              }>(`/goods?${params}`)
+                .then(r => {
+                  if (reqId !== reqRef.current) return;
+                  const goods = (Array.isArray(r.items) ? r.items : []).map(g => ({
+                    ...g,
+                    unitShortName: g.unit ?? null,
+                  }));
+                  setItems(goods);
+                  setLoading(false);
+                  const picked = pickScannedGood(goods, query);
+                  if (picked) selectGood(picked);
+                })
+                .catch((err: unknown) => {
+                  if (reqId !== reqRef.current) return;
+                  setError(err instanceof Error ? err.message : 'Помилка завантаження');
+                  setLoading(false);
+                });
+              return;
+            }
+            const picked = pickScannedGood(items, query);
+            if (picked) selectGood(picked);
           }}
         />
 

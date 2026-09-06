@@ -82,6 +82,7 @@ export function SearchPickerModal<T extends SearchPickerItem>({
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       setError('');
       timeoutRef.current = setTimeout(() => {
+        timeoutRef.current = null;
         setLoading(true);
         fetchItems(q)
           .then(data => {
@@ -128,11 +129,36 @@ export function SearchPickerModal<T extends SearchPickerItem>({
           onKeyDown={e => {
             // Сканер ШК: Enter → авто-вибір за точним ШК або єдиним результатом.
             if (e.key !== 'Enter' || !scanSubmit) return;
-            const picked = scanSubmit(items, query);
-            if (!picked) return;
             e.preventDefault();
-            onSelect(picked);
-            handleClose();
+            const trySelect = (list: T[]) => {
+              const picked = scanSubmit(list, query);
+              if (!picked) return;
+              onSelect(picked);
+              handleClose();
+            };
+            // Сканер друкує ШК + Enter швидше за debounce (300ms), тож `items` на момент
+            // Enter ще відображає ДО-скан-результати. Флашимо відкладений fetch і підбираємо
+            // товар за свіжими результатами; якщо fetch не встиг — робимо його синхронно тут.
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              timeoutRef.current = null;
+              setLoading(true);
+              setError('');
+              fetchItems(query)
+                .then(data => {
+                  if (!mountedRef.current) return;
+                  setItems(data);
+                  setLoading(false);
+                  trySelect(data);
+                })
+                .catch((err: unknown) => {
+                  if (!mountedRef.current) return;
+                  setError(err instanceof Error ? err.message : 'Помилка пошуку');
+                  setLoading(false);
+                });
+              return;
+            }
+            trySelect(items);
           }}
         />
         {error && (

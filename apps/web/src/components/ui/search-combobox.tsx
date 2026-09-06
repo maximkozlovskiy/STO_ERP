@@ -104,6 +104,7 @@ export function SearchCombobox<T extends { id: string }>({
         return;
       }
       debounceRef.current = setTimeout(async () => {
+        debounceRef.current = null;
         setLoading(true);
         try {
           const results = await fetchItems(q.trim());
@@ -145,6 +146,34 @@ export function SearchCombobox<T extends { id: string }>({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // Сканер ШК: Enter може прийти ДО того як debounce fetch відкрив dropdown (сканер
+    // друкує ШК + Enter швидше за 300ms). У цьому разі флашимо відкладений fetch і
+    // підбираємо товар за свіжими результатами, а не мовчки ігноруємо (guard нижче).
+    if (e.key === 'Enter' && scanSubmit && activeIndex < 0 && debounceRef.current) {
+      e.preventDefault();
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+      const q = query.trim();
+      if (!q) return;
+      setLoading(true);
+      fetchItems(q)
+        .then(results => {
+          if (!mountedRef.current) return;
+          setItems(results);
+          setOpen(true);
+          setActiveIndex(-1);
+          setLoading(false);
+          const picked = scanSubmit(results, query);
+          if (picked) handleSelect(picked);
+        })
+        .catch(() => {
+          if (mountedRef.current) {
+            setItems([]);
+            setLoading(false);
+          }
+        });
+      return;
+    }
     if (!open || items.length === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
