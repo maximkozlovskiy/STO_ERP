@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { validatePublicUrl } from '../../../common/utils/url-guard';
 import type {
@@ -29,7 +29,6 @@ const HTTP_TIMEOUT_MS = 10_000;
 export class LiqpayGateway implements PaymentGateway {
   readonly code = 'liqpay';
   readonly name = 'LiqPay (ПриватБанк)';
-  private readonly logger = new Logger(LiqpayGateway.name);
 
   private creds(cfg: GatewayConfig): { publicKey: string; privateKey: string } {
     const publicKey = cfg.credentials?.publicKey;
