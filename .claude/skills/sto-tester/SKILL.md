@@ -1124,6 +1124,27 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-06 — review-fix змінив DI-конструктор сервісу (+параметр), sibling `.spec` лишився на старій арності → hidden-red baseline (tsc зелений, runtime crash) — backend / hidden-red-baseline / HIGH (release-blocker)
+
+**Сигнал:** попередній commit (часто саме `fix(review):` — atomic-upsert, інжект registry/config, розбиття залежності) **додав/переставив параметр конструктора NestJS-сервіса** (`constructor(prisma, registry, @InjectQueue() q)`), але не оновив `*.spec.ts`, який досі робить `new Service(prisma, q)` зі старою кількістю аргументів. **tsc проходить** бо тест кастить моки `as unknown as T` → компілятор не ловить зсув слотів; аргумент їде у сусідній слот, останній параметр стає `undefined` → `TypeError: Cannot read properties of undefined (reading '...')` у першому методі, що торкається зсунутої залежності. Grep-детектор:
+
+```bash
+# для кожного зміненого сервіса у diff — арність конструктора vs арність new у спеку
+git diff HEAD~3 HEAD -- '*.service.ts' | grep -E "constructor\("
+grep -rnE "new \w+Service\(" apps/api/src --include="*.spec.ts"   # порахувати аргументи, звірити
+# найнадійніше: просто ПРОГНАТИ цільову suite зміненого модуля (не лише tsc)
+```
+
+**Причина виникнення:** review-агент (і людина-рев'ювер) верифікує зміну лише через `tsc --noEmit`, бо «типи зелені = ок». Але моки в спеках навмисно кастять через `as unknown as` (щоб не реалізовувати весь інтерфейс) — це **вимикає перевірку арності конструктора** саме там, де вона потрібна. Зсув DI-слотів невидимий до реального прогону. Класичний review→tester handoff-провал: рев'ю не ганяє suite, тестер бачить червоне аж на Кроці 0.
+
+**Підхід до виявлення:** Крок 0 ЗАВЖДИ прогонить **цільову suite зміненого модуля** (`vitest run src/modules/<mod>`), не лише tsc. Будь-яка зміна сигнатури конструктора/DI = обов'язковий прогін `<service>.spec.ts` цього сервіса. Якщо baseline червоний — це Bug #0 (release-blocker), фіксувати ПЕРШИМ.
+
+**Підхід до фіксу:** оновити конструктор у спеку до нової арності + додати мок нової залежності (`{ get: vi.fn(), list: vi.fn() } as unknown as Registry`) + import. Це test-only фікс (код сервіса вірний). Meta-нотатка у BUG_REPORT: рев'юер має ганяти targeted suite при DI-зміні.
+
+**Severity:** HIGH — червоний baseline ховає регресії за шумом і блокує наступні сесії; сам дефект — лише в тесті, але це не видно поки не впаде.
+
+**Де шукати ще:** будь-який `fix(review):`/`refactor:` commit що чіпає `*.service.ts` конструктор; NestJS-сервіси з ≥2 інжектованих залежностей + `@InjectQueue`/`@Inject`; спеки що конструюють сервіс вручну (`new X(...)`) замість `Test.createTestingModule`. Правило: diff чіпає `constructor(` у сервісі → прогнати його `.spec` перед усім іншим.
+
 ### 2026-09-06 — fallback/retry-engine: config-resolver (chain-builder) відвантажується з 0 unit-тестів, поки worker має часткові — backend / critical-test-gap / meta (severity бага = severity ланцюга)
 
 **Сигнал:** нова багатоканальна/багатокрокова async-машина (fallback-ланцюг сповіщень, retry-orchestrator, multi-provider payment fallback, saga-крок) розбита на дві частини: **(A) resolver/builder** — читає конфіг з БД і будує впорядкований ланцюг (`resolveConfig()`, `buildChain()`, `planSteps()`); **(B) worker/processor** — виконує один крок і вирішує accept-STOP / reject-next / retry. Тести є ТІЛЬКИ на (B) (бо він явно «двигун»), а (A) — де живуть УСІ edge-case'и (порожній ланцюг, NULL-креди відфільтровані where-запитом, крок без активного шаблону/провайдера тихо пропускається, ВСІ пропущені → повернути null=batch-abort, legacy-fallback backward-compat, priority-порядок) — має 0 прямих тестів. Grep-детектор:
