@@ -69,9 +69,17 @@ export class CreateGoodDto {
 
 export class UpdateGoodDto extends PartialType(CreateGoodDto) {}
 
+// Сканер ШК часто додає провідні/кінцеві пробіли (або оператор вводить їх вручну).
+// Бек шукає sub-ШК через `equals` (точний матч) — не-обрізаний " 4820…" не збіжиться,
+// хоча код у БД записаний без пробілів → сканування дає порожній список і нічого не
+// вибирається. Обрізаємо на рівні DTO ДО побудови where; порожнє після trim → undefined
+// (щоб `?q= ` не тлумачився як фільтр за пробілом).
+const trimQueryValue = ({ value }: { value: unknown }): unknown =>
+  typeof value === 'string' ? value.trim() || undefined : value;
+
 export class GoodQueryDto {
-  @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() barcode?: string;
+  @ApiPropertyOptional() @IsOptional() @Transform(trimQueryValue) @IsString() q?: string;
+  @ApiPropertyOptional() @IsOptional() @Transform(trimQueryValue) @IsString() barcode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() category?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() goodCategoryId?: string;
 

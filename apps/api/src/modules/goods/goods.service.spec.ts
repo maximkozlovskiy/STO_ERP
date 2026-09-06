@@ -673,5 +673,47 @@ describe('GoodsService', () => {
       expect(prisma.good.findMany.mock.calls[0][0].include.barcodes).toBeDefined();
       expect(res.items[0].barcodes).toEqual([]);
     });
+
+    // Bug #N (cross-org): sub-ШК фільтр `barcodes.some.orgId` мусить бути orgId ЗАПИТУВАЧА,
+    // а не «власного» orgId штрихкоду. Товар org-B зі ШК «999» НЕ повинен потрапити у
+    // видачу org-A. Дискримінуючий: якщо some.orgId колись захардкодять/впустять — тест впаде.
+    it('?q= sub-ШК some.orgId == orgId запитувача (не leak між org)', async () => {
+      prisma.good.findMany.mockResolvedValueOnce([]);
+      prisma.good.count.mockResolvedValueOnce(0);
+      await service.findAll('org-A', q({ q: '999' }));
+      const where = prisma.good.findMany.mock.calls[0][0].where;
+      expect(where.orgId).toBe('org-A'); // parent scope
+      const some = (where.OR as Array<Record<string, any>>).find(c => 'barcodes' in c)!.barcodes
+        .some;
+      expect(some.orgId).toBe('org-A'); // nested filter теж по запитувачу
+      expect(some.orgId).not.toBe('org-B');
+    });
+
+    it('?barcode= sub-ШК some.orgId == orgId запитувача (не leak між org)', async () => {
+      prisma.good.findMany.mockResolvedValueOnce([]);
+      prisma.good.count.mockResolvedValueOnce(0);
+      await service.findAll('org-A', q({ barcode: '999' }));
+      const where = prisma.good.findMany.mock.calls[0][0].where;
+      expect(where.orgId).toBe('org-A');
+      const some = (where.OR as Array<Record<string, any>>).find(c => 'barcodes' in c)!.barcodes
+        .some;
+      expect(some.orgId).toBe('org-A');
+    });
+
+    // Bug #N (contains-not-exact consistency): sub-ШК матчиться EXACT (`equals`), головний ШК —
+    // `contains`. Введене «12» → sub-ШК «123456» НЕ збіжиться (рівність), але головний
+    // barcode «123456» contains-збіжиться. Дискримінуючий: фіксує що гілки різні за семантикою.
+    it('?q= sub-ШК гілка exact (equals), головний barcode гілка contains', async () => {
+      prisma.good.findMany.mockResolvedValueOnce([]);
+      prisma.good.count.mockResolvedValueOnce(0);
+      await service.findAll('org-1', q({ q: '12' }));
+      const branches = prisma.good.findMany.mock.calls[0][0].where.OR as Array<Record<string, any>>;
+      const mainBarcode = branches.find(b => b.barcode && typeof b.barcode === 'object');
+      const subBarcode = branches.find(b => 'barcodes' in b);
+      // головний ШК: contains (часткове співпадіння)
+      expect(mainBarcode!.barcode.contains).toBe('12');
+      // sub-ШК: equals (точний код від сканера)
+      expect(subBarcode!.barcodes.some.barcode).toEqual({ equals: '12' });
+    });
   });
 });

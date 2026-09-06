@@ -2986,3 +2986,84 @@ Passive-ефекти біжать у порядку оголошення → bas
 
 **Результат:** Playwright full suite — **325 passed, 0 failed, 0 flaky**. Unit (5 модальних
 файлів) — 21 зелений. tsc web=0, api=0.
+
+---
+
+## Session 2026-09-06 — Barcode-scanner bug hunt (feat 2b759604, main) — sync+review passed CLEAN
+
+Ціль: знайти те, що sync/review пропустили, у фічі «скан ШК у поле пошуку товару + Enter
+авто-вибір». Backend `/goods?q=`/`?barcode=` матчить `GoodBarcode[]` (exact); фронтенд
+`pickScannedGood()` у 4 точках входу. Playwright MCP DOWN → unit/service/component + reasoning.
+
+### Bug #646 — [MEDIUM] pickScannedGood тихо бере ПЕРШИЙ товар при неоднозначному точному ШК
+
+**Симптом:** два РІЗНІ товари мають однаковий точний ШК (data-entry помилка: той самий код у
+головному `barcode` одного і у sub-`barcodes[]` іншого). `items.find(...)` повертав ПЕРШИЙ збіг.
+У фінансовому документі (Invoice / StockDocument / PurchaseOrder / SupplierReturn) це тихий вибір
+«не того» товару — оператор сканує, отримує рядок, не помічає що це інший товар з тим самим кодом.
+
+**Root cause:** `const exact = items.find(it => it.barcode === code || it.barcodes?.includes(code))`
+— перший-переможець, без перевірки на колізію.
+
+**Fix:** `items.filter(...)` → якщо `length === 1` беремо; `length > 1` → `null` (показати список,
+не вгадувати). Дублікат коду в межах ОДНОГО товару (головний == sub) НЕ рахується колізією
+(фільтр по об'єктах, не по входженнях). `apps/web/src/lib/barcode.ts`.
+
+**Discriminating tests** (`lib/__tests__/barcode.test.ts` +5): 2 колізійні кейси (падали до фіксу:
+`expected {id:'a'} to be null`), 1 «дублікат у межах одного товару → не колізія», 2 contains-only.
+
+- [x] виправлено
+
+### Bug #647 — [LOW→MEDIUM] Backend `?q=`/`?barcode=` не trim'ить → скан з пробілом не матчить sub-ШК
+
+**Симптом:** сканер ШК (або ручний ввід) додає провідні/кінцеві пробіли. Sub-ШК шукається через
+`equals` (точний матч) — `" 4820… "` не збігається з кодом у БД (записаним без пробілів), а
+головний `barcode: { contains }` теж не матчить `contains " 4820"`. Скан дає порожню видачу →
+`pickScannedGood(emptyItems, code)` → null → нічого не вибирається. `pickScannedGood` trim'ить
+`typed`, але це не рятує, бо БЕК уже повернув 0 рядків.
+
+**Root cause:** `GoodQueryDto.q` / `.barcode` — `@IsString` без `@Transform` trim.
+
+**Fix:** `@Transform(trimQueryValue)` — trim + порожнє→undefined (щоб `?q= ` не був фільтром за
+пробілом). `apps/api/src/modules/goods/goods.dto.ts`.
+
+**Discriminating tests** (`goods-query.dto.spec.ts`, новий, 6 кейсів через `plainToInstance`):
+trim провідних/кінцевих, whitespace-only→undefined, нормальний код без змін.
+
+### Перевірені пункти БЕЗ багів (verdict per item)
+
+- **#1 cross-org barcode leak — ЧИСТО.** `barcodes: { some: { barcode, orgId } }` використовує
+  `orgId` запитувача (closure var), і батьківський `Good.orgId=orgId` вже скоупить. Товар org-B
+  зі ШК «999» не потрапляє до org-A. **Додано** 2 дискримінуючі тести (`?q=`+`?barcode=`) що
+  асертять `some.orgId === orgId запитувача` (не «власний» orgId ШК). `goods.service.spec.ts`.
+- **#2 exact-vs-contains — ЧИСТО (консистентно).** Sub-ШК = `equals`, головний = `contains`.
+  `pickScannedGood` для авто-вибору вимагає EXACT; contains-only + кілька результатів → null.
+  Єдиний contains-результат авто-вибирається НАВМИСНО (пошук за назвою теж дає 1 товар без ШК).
+  **Додано** тест що фіксує різну семантику гілок (`contains` vs `{equals}`) + 2 lib-тести.
+- **#3 ambiguity — виправлено як Bug #646** (див. вище).
+- **#6 SearchCombobox `if (!open) return` guard — ЧИСТО, працює.** У нормальному потоці набору
+  `open` стає true після debounce → Enter-скан працює. **Додано** component-тест (native keydown,
+  fake timers): (а) Enter після відкриття + точний ШК → onSelect того товару; (б) guard блокує
+  scanSubmit до повернення fetch; (в) немає точного серед кількох → onSelect не викликається.
+  Дискримінацію guard підтверджено: видалення `if(!open...)` рядка → тест (б) падає.
+  `components/ui/__tests__/search-combobox.scan.test.tsx` (новий, 3 тести).
+
+### Відома межа (документовано, НЕ фіксовано цього сеансу) — race #4
+
+- **#4 «Scanner mid-typing race»** — REAL UX limitation, свідомо не фіксовано. Швидкий сканер +
+  Enter ДО повернення debounced fetch (300ms) → `items` порожні/старі → pickScannedGood→null →
+  нічого (треба сканувати вдруге). Стосується ВСІХ 4 точок входу (кожна кличе `pickScannedGood`
+  на debounced `items`). **Рішення відкладено:** чистий фікс потребує синхронного exact
+  `?barcode=` fetch у shared-хелпері з async-контрактом, що зачіпає всі 4 callsite + сигнатуру
+  `scanSubmit` (нині синхронна `(items, typed) => T|null`). Ризик регресії > користь за 300ms
+  debounce (реальні USB-HID сканери «печатають» ~10-20ms/символ, повний EAN13 ≈ 150-250ms —
+  переважно ВКЛАДАЄТЬСЯ у 300ms до Enter, але не гарантовано). Кандидат на окрему фічу з план-модом.
+- **#5 empty/errored input** — ЧИСТО: `pickScannedGood('' | '   ', ...)` → null (є тест);
+  fetch-error → `items=[]` → null (SearchCombobox catch setItems([]), SearchPickerModal setError).
+  Trailing-space частина #5 виправлена як **Bug #647**.
+
+**Результат сеансу:** 2 баги виправлено (#646 MEDIUM, #647 LOW→MEDIUM), 4 пункти підтверджено
+чистими з новими дискримінуючими тестами. Нові тести: web +8 (5 barcode-lib + 3 combobox),
+api +9 (3 barcode-DTO trim… власне 6 DTO + 3 service cross-org/exact). tsc web=0, api=0.
+Targeted: `@sto/api src/modules/goods` — 77 passed (4 files); `@sto/web src/lib
+src/components/ui/__tests__` — 391 passed (37 files).
