@@ -131,8 +131,21 @@ export default function NotificationProvidersPanel() {
     }
   };
 
-  const toggleEnabled = (c: ChannelConfig, enabled: boolean) =>
+  // Per-channel toggle гейтиться інваріантом ексклюзивності: увімкнути можна лише канал
+  // АКТИВНОГО провайдера. Дозволити увімкнути канал іншого провайдера → у fallback-ланцюг
+  // (resolveConfig фільтрує enabled:true по ВСІХ провайдерах) потрапило б два провайдери →
+  // порушення «активний лише 1». Вимкнення каналів активного провайдера дозволене (звузити
+  // ланцюг, напр. лишити тільки SMS). Активація іншого провайдера — через Switch на картці.
+  const toggleEnabled = (c: ChannelConfig, enabled: boolean) => {
+    if (enabled && activeProvider !== null && c.provider !== activeProvider) {
+      const msg =
+        'Спершу активуйте цього провайдера (перемикач на картці) — активним може бути лише один';
+      setError(msg);
+      if (currentFeatures.toastEnabled) toast.error(msg);
+      return;
+    }
     void patchChannel({ channel: c.channel, provider: c.provider, enabled });
+  };
 
   // Пріоритет: обмін значеннями priority із сусідом (менший priority = вище у списку).
   // Два послідовні PATCH — щоб перший збій не лишив обидва канали з однаковим priority,
@@ -244,6 +257,16 @@ export default function NotificationProvidersPanel() {
 
   const activateProvider = async (providerCode: string) => {
     if (!selectedBranch || activeProvider === providerCode) return;
+    // Empty-state guard: активація провайдера без жодного налаштованого каналу — це no-op
+    // на беку (updateMany матчить 0 рядків, нічого не вмикається), а UI показав би хибний
+    // «активовано» і Switch відскочив би назад. Спершу вимагаємо налаштувати канал (креди).
+    const hasChannel = channels.some(c => c.provider === providerCode);
+    if (!hasChannel) {
+      const msg = 'Спершу налаштуйте канал провайдера (натисніть назву та введіть креди)';
+      setError(msg);
+      if (currentFeatures.toastEnabled) toast.error(msg);
+      return;
+    }
     try {
       await apiFetch(`/notification-channels/${selectedBranch}/activate`, {
         method: 'POST',
@@ -306,7 +329,7 @@ export default function NotificationProvidersPanel() {
                   }
                 }}
                 aria-label={`Налаштувати креди ${p.name}`}
-                className="flex flex-1 items-center gap-2 text-left cursor-pointer rounded focus:outline-none focus:ring-2 focus:ring-primary"
+                className="flex flex-1 items-center gap-2 text-left cursor-pointer rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
               >
                 <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
@@ -382,6 +405,9 @@ export default function NotificationProvidersPanel() {
                 <Switch
                   checked={c.enabled}
                   onChange={v => toggleEnabled(c, v)}
+                  // Канал неактивного провайдера не можна увімкнути окремо (порушило б
+                  // ексклюзивність) — блокуємо Switch поки він вимкнений і провайдер не активний.
+                  disabled={!c.enabled && activeProvider !== null && c.provider !== activeProvider}
                   ariaLabel={`${c.enabled ? 'Вимкнути' : 'Увімкнути'} канал ${CHANNEL_LABELS[c.channel] ?? c.channel}`}
                 />
               </div>
