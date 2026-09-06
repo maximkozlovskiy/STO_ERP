@@ -354,6 +354,7 @@ export class SettingsService {
     fiscalEnabled: boolean;
     checkboxApiUrl: string | null;
     checkboxCashRegisterId: string | null;
+    shiftMode?: string;
     smsEnabled: boolean;
     smsProvider: string | null;
     smsSenderName: string | null;
@@ -369,6 +370,7 @@ export class SettingsService {
       fiscalEnabled: s.fiscalEnabled,
       checkboxApiUrl: s.checkboxApiUrl,
       checkboxCashRegisterId: s.checkboxCashRegisterId,
+      shiftMode: s.shiftMode,
       smsEnabled: s.smsEnabled,
       smsProvider: s.smsProvider,
       smsSenderName: s.smsSenderName,

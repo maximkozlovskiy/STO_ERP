@@ -7,6 +7,7 @@ import { EncryptionService } from '../common/crypto/encryption.service';
 const ENCRYPTED_FIELDS: Record<string, string[]> = {
   NotificationChannelConfig: ['apiKey'],
   BranchSettings: ['smsApiKey', 'checkboxLicenseKey', 'checkboxPinCode'],
+  CashShift: ['checkboxAccessToken'],
 };
 
 // Models that carry syncVersion — auto-incremented on every write, set to 1 on create

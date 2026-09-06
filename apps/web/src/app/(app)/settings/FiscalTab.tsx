@@ -18,6 +18,7 @@ interface FiscalSettings {
   fiscalEnabled?: boolean;
   checkboxApiUrl?: string | null;
   checkboxCashRegisterId?: string | null;
+  shiftMode?: string;
 }
 
 interface VerifyResult {
@@ -35,6 +36,7 @@ export default function FiscalTab() {
   const [enabled, setEnabled] = useState(false);
   const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
   const [cashRegisterId, setCashRegisterId] = useState('');
+  const [shiftMode, setShiftMode] = useState('MANUAL');
   // Секрети write-only: порожнє = «не змінювати». Не prefill з GET.
   const [licenseKey, setLicenseKey] = useState('');
   const [pinCode, setPinCode] = useState('');
@@ -67,6 +69,7 @@ export default function FiscalTab() {
         setEnabled(s.fiscalEnabled ?? false);
         setApiUrl(s.checkboxApiUrl || DEFAULT_API_URL);
         setCashRegisterId(s.checkboxCashRegisterId ?? '');
+        setShiftMode(s.shiftMode ?? 'MANUAL');
         setLicenseKey(''); // write-only — не prefill
         setPinCode('');
         setVerifyResult(null);
@@ -90,6 +93,7 @@ export default function FiscalTab() {
         fiscalEnabled: enabled,
         checkboxApiUrl: apiUrl || null,
         checkboxCashRegisterId: cashRegisterId || null,
+        shiftMode,
       };
       if (licenseKey) body.checkboxLicenseKey = licenseKey;
       if (pinCode) body.checkboxPinCode = pinCode;
@@ -201,6 +205,16 @@ export default function FiscalTab() {
         onChange={e => setCashRegisterId(e.target.value)}
         placeholder="напр. 0e5b..."
       />
+      <label className="block">
+        <span className="text-sm text-foreground">Режим зміни</span>
+        <Select value={shiftMode} onChange={e => setShiftMode(e.target.value)} className="mt-1">
+          <option value="MANUAL">Ручний — касир відкриває/закриває зміну</option>
+          <option value="AUTO_OPEN">Авто-відкриття — зміна відкривається перед першим чеком</option>
+        </Select>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Закриття зміни (Z-звіт) завжди ручне — на сторінці «Каса».
+        </p>
+      </label>
 
       <div className="flex items-center gap-3">
         <Button onClick={() => void save()} loading={saving}>

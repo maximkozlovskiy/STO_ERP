@@ -18,7 +18,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { VatMode, BatchCostMethod } from '@prisma/client';
+import { VatMode, BatchCostMethod, ShiftMode } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { toUpperCurrencyCode } from '../../common/transforms/to-upper-currency-code';
 
@@ -258,6 +258,11 @@ export class UpdateBranchSettingsDto {
   @IsString()
   checkboxCashRegisterId?: string;
 
+  @ApiPropertyOptional({ enum: ShiftMode })
+  @IsOptional()
+  @IsEnum(ShiftMode)
+  shiftMode?: ShiftMode;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
@@ -344,6 +349,7 @@ export class BranchSettingsResponseDto {
   @ApiProperty() fiscalEnabled!: boolean;
   @ApiPropertyOptional() checkboxApiUrl?: string | null;
   @ApiPropertyOptional() checkboxCashRegisterId?: string | null;
+  @ApiPropertyOptional() shiftMode?: string;
   @ApiProperty() smsEnabled!: boolean;
   @ApiPropertyOptional() smsProvider?: string | null;
   @ApiPropertyOptional() smsSenderName?: string | null;

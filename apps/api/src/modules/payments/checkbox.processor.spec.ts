@@ -1,30 +1,20 @@
 import { Test } from '@nestjs/testing';
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { Job } from 'bullmq';
 import { CheckboxProcessor } from './checkbox.processor';
+import { CheckboxClient, CheckboxUnauthorizedError } from './checkbox.client';
+import { CashShiftService } from './cash-shift.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
- * Bug #273 — regression guard for the Checkbox fiscal-receipt processor.
- *
- * Cycle 5 review (649a5db) added validatePublicUrl re-check at delivery time to
- * block OWNER/ADMIN-supplied internal URLs (validatePublicUrl rejects
- * 127.0.0.1 / link-local / RFC1918). Cycle 5 tester (THIS spec) adds the
- * SECOND security layer that was missing:
- *
- *   redirect: 'manual' + reject any 3xx response.
- *
- * Without that guard, an attacker with OWNER role could:
- *   1. Set checkboxApiUrl = "https://attacker.com"
- *      (legit external host — passes validatePublicUrl)
- *   2. Their server returns `302 Location: http://169.254.169.254/...`
- *      (AWS cloud metadata) or `http://10.0.0.1/...` (LAN-reachable Redis)
- *   3. Default node fetch follows redirect → POST with Authorization header
- *      lands inside the privately-routed VPC.
- *
- * Paired pattern: webhooks.processor.spec.ts:106 ("redirect handling").
+ * ПРРО Крок 2 — processor пробиває чек у ВІДКРИТУ зміну через CheckboxClient (Bearer=cashier
+ * access-token), а не license-key. Тести:
+ *  - idempotency (fiscalReceiptId уже є → skip);
+ *  - SKIPPED коли ПРРО вимкнено;
+ *  - MANUAL без зміни → throw (чек чекає, лишається QUEUED); AUTO_OPEN → авто-open→sell;
+ *  - 401 від sell → refreshToken → повтор;
+ *  - success → DONE; onFailed пише FAILED лише на термінальній спробі.
  */
-
 interface CheckboxJobData {
   paymentId: string;
   orgId: string;
@@ -33,7 +23,7 @@ interface CheckboxJobData {
   method: string;
 }
 
-const makeJob = (data: Partial<CheckboxJobData> = {}): Job<CheckboxJobData> =>
+const makeJob = (data: Partial<CheckboxJobData> = {}, attemptsMade = 0): Job<CheckboxJobData> =>
   ({
     data: {
       paymentId: 'pay-1',
@@ -43,256 +33,167 @@ const makeJob = (data: Partial<CheckboxJobData> = {}): Job<CheckboxJobData> =>
       method: 'cash',
       ...data,
     },
-    attemptsMade: 0,
+    attemptsMade,
+    opts: { attempts: 288 },
   }) as unknown as Job<CheckboxJobData>;
 
-const makePrismaMock = () => ({
-  branchSettings: {
-    findFirst: vi.fn(),
-  },
-  payment: {
-    findFirst: vi.fn().mockResolvedValue({ fiscalReceiptId: null }), // default: not yet fiscalized
-    update: vi.fn().mockResolvedValue({}),
-  },
-});
-
-describe('CheckboxProcessor.handleFiscalReceipt', () => {
+describe('CheckboxProcessor (ПРРО Крок 2 — sell у зміну)', () => {
   let processor: CheckboxProcessor;
-  let prisma: ReturnType<typeof makePrismaMock>;
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  const paymentFindFirst = vi.fn();
+  const paymentUpdate = vi.fn().mockResolvedValue({});
+  const branchSettingsFindFirst = vi.fn();
+  const prisma = {
+    payment: { findFirst: paymentFindFirst, update: paymentUpdate },
+    branchSettings: { findFirst: branchSettingsFindFirst },
+  } as unknown as PrismaService;
+
+  const sellReceipt = vi.fn();
+  const checkbox = { sellReceipt } as unknown as CheckboxClient;
+
+  const findOpenShift = vi.fn();
+  const open = vi.fn();
+  const ensureToken = vi.fn();
+  const refreshToken = vi.fn();
+  const shifts = { findOpenShift, open, ensureToken, refreshToken } as unknown as CashShiftService;
 
   beforeEach(async () => {
-    prisma = makePrismaMock();
+    vi.clearAllMocks();
+    paymentFindFirst.mockResolvedValue({ fiscalReceiptId: null }); // ще не фіскалізовано
+    branchSettingsFindFirst.mockResolvedValue({
+      fiscalEnabled: true,
+      checkboxLicenseKey: 'lic',
+      shiftMode: 'MANUAL',
+    });
+    findOpenShift.mockResolvedValue({ id: 'shift-1', checkboxShiftId: 'cbx-1' });
+    ensureToken.mockResolvedValue({ apiUrl: 'https://api.checkbox.ua', token: 'tok' });
+    sellReceipt.mockResolvedValue({ fiscalReceiptId: 'fr-1' });
+
     const module = await Test.createTestingModule({
-      providers: [CheckboxProcessor, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        CheckboxProcessor,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CheckboxClient, useValue: checkbox },
+        { provide: CashShiftService, useValue: shifts },
+      ],
     }).compile();
     processor = module.get(CheckboxProcessor);
-    fetchSpy = vi.spyOn(global, 'fetch');
   });
 
-  afterEach(() => {
-    fetchSpy.mockRestore();
+  it('idempotency: fiscalReceiptId уже є → skip (no sell)', async () => {
+    paymentFindFirst.mockResolvedValueOnce({ fiscalReceiptId: 'fr-existing' });
+    await processor.process(makeJob());
+    expect(sellReceipt).not.toHaveBeenCalled();
+    expect(paymentUpdate).not.toHaveBeenCalled();
   });
 
-  describe('Bug #346: idempotency guard (fiscalReceiptId already set → skip)', () => {
-    it('пропускає зовнішній виклик якщо fiscalReceiptId вже встановлено', async () => {
-      prisma.payment.findFirst.mockResolvedValueOnce({ fiscalReceiptId: 'fr-existing' });
-
-      await expect(processor.process(makeJob())).resolves.toBeUndefined();
-
-      // Must NOT call Checkbox API or update payment
-      expect(fetchSpy).not.toHaveBeenCalled();
-      expect(prisma.payment.update).not.toHaveBeenCalled();
-    });
-
-    it('пропускає якщо платіж не знайдено (deleted / cross-tenant)', async () => {
-      prisma.payment.findFirst.mockResolvedValueOnce(null);
-
-      await expect(processor.process(makeJob())).resolves.toBeUndefined();
-
-      expect(fetchSpy).not.toHaveBeenCalled();
-      expect(prisma.payment.update).not.toHaveBeenCalled();
-    });
-
-    it('продовжує до API якщо fiscalReceiptId = null', async () => {
-      prisma.payment.findFirst.mockResolvedValueOnce({ fiscalReceiptId: null });
-      prisma.branchSettings.findFirst.mockResolvedValue({
-        checkboxLicenseKey: null,
-        fiscalEnabled: false,
-      });
-
-      // branchSettings → skip path (fiscalEnabled:false), но fetch НЕ викликається
-      await expect(processor.process(makeJob())).resolves.toBeUndefined();
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
+  it('платіж не знайдено → skip (deleted/cross-tenant)', async () => {
+    paymentFindFirst.mockResolvedValueOnce(null);
+    await processor.process(makeJob());
+    expect(sellReceipt).not.toHaveBeenCalled();
   });
 
-  describe('Bug #273: redirect handling (SSRF defense-in-depth #2)', () => {
-    beforeEach(() => {
-      prisma.branchSettings.findFirst.mockResolvedValue({
-        checkboxLicenseKey: 'key-1',
-        fiscalEnabled: true,
-        checkboxApiUrl: 'https://api.checkbox.ua',
-      });
+  it('ПРРО вимкнено (fiscalEnabled=false) → SKIPPED, без sell', async () => {
+    branchSettingsFindFirst.mockResolvedValueOnce({
+      fiscalEnabled: false,
+      checkboxLicenseKey: 'lic',
+      shiftMode: 'MANUAL',
     });
+    await processor.process(makeJob());
+    expect(sellReceipt).not.toHaveBeenCalled();
+    expect(paymentUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { fiscalStatus: 'SKIPPED' } }),
+    );
+  });
 
-    it('викликає fetch з redirect: "manual"', async () => {
-      fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'fr-1' }), { status: 200 }));
+  it('MANUAL без відкритої зміни → throw (чек чекає, лишається QUEUED), без sell', async () => {
+    findOpenShift.mockResolvedValueOnce(null);
+    await expect(processor.process(makeJob())).rejects.toThrow(/зміни/);
+    expect(open).not.toHaveBeenCalled();
+    expect(sellReceipt).not.toHaveBeenCalled();
+  });
 
-      await processor.process(makeJob());
-
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-      const [, init] = fetchSpy.mock.calls[0];
-      expect(init).toMatchObject({ redirect: 'manual' });
+  it('AUTO_OPEN без зміни → авто-open → sell → DONE', async () => {
+    branchSettingsFindFirst.mockResolvedValueOnce({
+      fiscalEnabled: true,
+      checkboxLicenseKey: 'lic',
+      shiftMode: 'AUTO_OPEN',
     });
+    findOpenShift.mockResolvedValueOnce(null);
+    open.mockResolvedValueOnce({ id: 'shift-new', checkboxShiftId: 'cbx-new' });
+    await processor.process(makeJob());
+    expect(open).toHaveBeenCalledWith('org-1', 'br-1');
+    expect(sellReceipt).toHaveBeenCalledTimes(1);
+    expect(paymentUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ fiscalReceiptId: 'fr-1', fiscalStatus: 'DONE' }),
+      }),
+    );
+  });
 
-    it('302 → throw "перенаправлення" + НЕ оновлює payment (BullMQ retry на наступну спробу)', async () => {
-      fetchSpy.mockResolvedValueOnce(
-        new Response('', {
-          status: 302,
-          headers: { Location: 'http://169.254.169.254/latest/meta-data/' },
-        }),
-      );
-
-      await expect(processor.process(makeJob())).rejects.toThrow(/перенаправлення/);
-
-      // No payment update — fiscal receipt MUST NOT be set when redirect blocked
-      expect(prisma.payment.update).not.toHaveBeenCalled();
+  it('AUTO_OPEN, open падає → throw (retry)', async () => {
+    branchSettingsFindFirst.mockResolvedValueOnce({
+      fiscalEnabled: true,
+      checkboxLicenseKey: 'lic',
+      shiftMode: 'AUTO_OPEN',
     });
+    findOpenShift.mockResolvedValueOnce(null);
+    open.mockRejectedValueOnce(new Error('ПРРО недоступний'));
+    await expect(processor.process(makeJob())).rejects.toThrow(/Авто-відкриття/);
+    expect(sellReceipt).not.toHaveBeenCalled();
+  });
 
-    it('301 теж блокується (permanent redirect)', async () => {
-      fetchSpy.mockResolvedValueOnce(
-        new Response('', {
-          status: 301,
-          headers: { Location: 'http://internal.local/' },
-        }),
-      );
-      await expect(processor.process(makeJob())).rejects.toThrow(/перенаправлення/);
+  it('success: sell у зміну → DONE + fiscalReceiptId (Bearer=token, не license-key)', async () => {
+    await processor.process(makeJob());
+    expect(ensureToken).toHaveBeenCalledWith('org-1', 'shift-1');
+    expect(sellReceipt).toHaveBeenCalledWith('https://api.checkbox.ua', 'tok', {
+      amount: 100,
+      method: 'cash',
     });
-
-    it('200 OK — payment.update викликається з fiscalReceiptId', async () => {
-      fetchSpy.mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: 'fr-99' }), { status: 200 }),
-      );
-
-      await processor.process(makeJob({ paymentId: 'pay-99' }));
-
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 'pay-99', orgId: 'org-1' },
-        data: { fiscalReceiptId: 'fr-99', fiscalStatus: 'DONE', fiscalError: null },
-      });
+    expect(paymentUpdate).toHaveBeenCalledWith({
+      where: { id: 'pay-1', orgId: 'org-1' },
+      data: { fiscalReceiptId: 'fr-1', fiscalStatus: 'DONE', fiscalError: null },
     });
   });
 
-  describe('Bug #273: SSRF URL guard pre-flight (cycle 5 review 649a5db)', () => {
-    it('відхиляє loopback URL у checkboxApiUrl до fetch', async () => {
-      prisma.branchSettings.findFirst.mockResolvedValue({
-        checkboxLicenseKey: 'key-1',
-        fiscalEnabled: true,
-        checkboxApiUrl: 'http://127.0.0.1:8080',
-      });
-
-      await expect(processor.process(makeJob())).rejects.toThrow(/Невалідний Checkbox API URL/);
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('відхиляє cloud-metadata URL (169.254.169.254) у checkboxApiUrl', async () => {
-      prisma.branchSettings.findFirst.mockResolvedValue({
-        checkboxLicenseKey: 'key-1',
-        fiscalEnabled: true,
-        checkboxApiUrl: 'http://169.254.169.254/latest/meta-data',
-      });
-
-      await expect(processor.process(makeJob())).rejects.toThrow(/Невалідний Checkbox API URL/);
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
+  it('401 від sell → refreshToken → повтор sell → DONE', async () => {
+    sellReceipt
+      .mockRejectedValueOnce(new CheckboxUnauthorizedError('401'))
+      .mockResolvedValueOnce({ fiscalReceiptId: 'fr-2' });
+    refreshToken.mockResolvedValueOnce({ apiUrl: 'https://api.checkbox.ua', token: 'tok2' });
+    await processor.process(makeJob());
+    expect(refreshToken).toHaveBeenCalledWith('org-1', 'shift-1');
+    expect(sellReceipt).toHaveBeenCalledTimes(2);
+    expect(paymentUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ fiscalReceiptId: 'fr-2' }) }),
+    );
   });
 
-  describe('skip-paths (offline-first invariant)', () => {
-    it('checkbox не налаштовано → пропускає, не throw', async () => {
-      prisma.branchSettings.findFirst.mockResolvedValue({
-        checkboxLicenseKey: null,
-        fiscalEnabled: true,
-        checkboxApiUrl: 'https://api.checkbox.ua',
-      });
-      await expect(processor.process(makeJob())).resolves.toBeUndefined();
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('fiscalEnabled=false → пропускає, не throw', async () => {
-      prisma.branchSettings.findFirst.mockResolvedValue({
-        checkboxLicenseKey: 'key-1',
-        fiscalEnabled: false,
-        checkboxApiUrl: 'https://api.checkbox.ua',
-      });
-      await expect(processor.process(makeJob())).resolves.toBeUndefined();
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
+  it('не-401 помилка sell → throw (retry), без DONE', async () => {
+    sellReceipt.mockRejectedValueOnce(new Error('Checkbox 500'));
+    await expect(processor.process(makeJob())).rejects.toThrow('Checkbox 500');
+    expect(refreshToken).not.toHaveBeenCalled();
+    expect(paymentUpdate).not.toHaveBeenCalled();
   });
 
-  // Bug #663 — фіскалізація вимкнена на філії → payment пишеться fiscalStatus:'SKIPPED', а не
-  // лишається QUEUED навічно. process() кидає на кожному провалі; SKIPPED — не помилка, а конфіг-
-  // стан, тому НЕ throw. Раніше skip-path не асертив ЗАПИС статусу (лише «fetch не викликано») →
-  // регресія що прибирає payment.update у skip-гілці пройшла б зеленою, лишаючи платіж у QUEUED.
-  describe('Bug #663: skip-path пише fiscalStatus:SKIPPED (не лишає QUEUED)', () => {
-    it('licenseKey відсутній → payment.update fiscalStatus:SKIPPED', async () => {
-      prisma.branchSettings.findFirst.mockResolvedValue({
-        checkboxLicenseKey: null,
-        fiscalEnabled: true,
-        checkboxApiUrl: 'https://api.checkbox.ua',
-      });
-      await processor.process(makeJob({ paymentId: 'pay-skip-1' }));
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 'pay-skip-1', orgId: 'org-1' },
-        data: { fiscalStatus: 'SKIPPED' },
-      });
+  describe('onFailed: FAILED лише на термінальній спробі', () => {
+    it('проміжна спроба (attemptsMade < attempts) → payment.update НЕ викликано', async () => {
+      await processor.onFailed(makeJob({}, 5), new Error('rej'));
+      expect(paymentUpdate).not.toHaveBeenCalled();
     });
 
-    it('fiscalEnabled=false → payment.update fiscalStatus:SKIPPED', async () => {
-      prisma.branchSettings.findFirst.mockResolvedValue({
-        checkboxLicenseKey: 'key-1',
-        fiscalEnabled: false,
-        checkboxApiUrl: 'https://api.checkbox.ua',
+    it('термінальна (attemptsMade >= attempts) → FAILED + fiscalError', async () => {
+      await processor.onFailed(makeJob({}, 288), new Error('остаточна помилка'));
+      expect(paymentUpdate).toHaveBeenCalledWith({
+        where: { id: 'pay-1', orgId: 'org-1' },
+        data: { fiscalStatus: 'FAILED', fiscalError: 'остаточна помилка' },
       });
-      await processor.process(makeJob({ paymentId: 'pay-skip-2' }));
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 'pay-skip-2', orgId: 'org-1' },
-        data: { fiscalStatus: 'SKIPPED' },
-      });
-    });
-  });
-
-  // Bug #664 — anti-flicker guard у @OnWorkerEvent('failed'). FAILED пишеться ЛИШЕ коли вичерпано
-  // всі спроби (attemptsMade >= opts.attempts). На проміжному провалі статус лишається QUEUED
-  // (BullMQ ще ретраїтиме) — інакше він «мигав» би FAILED між ретраями. ОБИДВІ гілки покриті
-  // (mutation-verify: без `if (attemptsMade < attempts) return` проміжний провал писав би FAILED).
-  describe('Bug #664: onFailed пише FAILED лише на термінальній спробі', () => {
-    const failedJob = (over: { attemptsMade: number; attempts?: number }): Job<CheckboxJobData> =>
-      ({
-        data: { paymentId: 'pay-f', orgId: 'org-1', branchId: 'br-1', amount: 100, method: 'card' },
-        attemptsMade: over.attemptsMade,
-        opts: { attempts: over.attempts ?? 288 },
-      }) as unknown as Job<CheckboxJobData>;
-
-    it('проміжна спроба (attemptsMade < attempts) → payment.update НЕ викликано (лишається QUEUED)', async () => {
-      await processor.onFailed(failedJob({ attemptsMade: 5, attempts: 288 }), new Error('timeout'));
-      expect(prisma.payment.update).not.toHaveBeenCalled();
-    });
-
-    it('термінальна спроба (attemptsMade >= attempts) → payment.update fiscalStatus:FAILED + fiscalError', async () => {
-      await processor.onFailed(
-        failedJob({ attemptsMade: 288, attempts: 288 }),
-        new Error('Checkbox API error 500: збій'),
-      );
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 'pay-f', orgId: 'org-1' },
-        data: { fiscalStatus: 'FAILED', fiscalError: 'Checkbox API error 500: збій' },
-      });
-    });
-
-    it('термінальна спроба з дефолтним opts.attempts=1 (attemptsMade=1) → FAILED', async () => {
-      // opts.attempts undefined → fallback 1; attemptsMade=1 → 1>=1 → термінальна.
-      const job = {
-        data: { paymentId: 'pay-d', orgId: 'org-1', branchId: null, amount: 50, method: 'cash' },
-        attemptsMade: 1,
-        opts: {},
-      } as unknown as Job<CheckboxJobData>;
-      await processor.onFailed(job, new Error('fail'));
-      expect(prisma.payment.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'pay-d', orgId: 'org-1' },
-          data: expect.objectContaining({ fiscalStatus: 'FAILED' }),
-        }),
-      );
     });
 
     it('fiscalError обрізається до 500 символів', async () => {
-      const longMsg = 'x'.repeat(700);
-      await processor.onFailed(failedJob({ attemptsMade: 288, attempts: 288 }), new Error(longMsg));
-      const call = prisma.payment.update.mock.calls[0][0] as {
-        data: { fiscalError: string };
-      };
-      expect(call.data.fiscalError.length).toBe(500);
+      await processor.onFailed(makeJob({}, 288), new Error('x'.repeat(1000)));
+      const data = paymentUpdate.mock.calls[0][0].data;
+      expect(data.fiscalError.length).toBe(500);
     });
   });
 });

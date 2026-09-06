@@ -159,6 +159,16 @@ enum FiscalReceiptStatus {
   SKIPPED // фіскалізація вимкнена на філії, хоча метод її потребує
 }
 
+enum CashShiftStatus {
+  OPEN // зміна відкрита — чеки пробиваються
+  CLOSED // зміна закрита (Z-звіт зроблено)
+}
+
+enum ShiftMode {
+  MANUAL // касир вручну відкриває/закриває зміну
+  AUTO_OPEN // зміна авто-відкривається перед першим чеком (Z-звіт усе одно ручний)
+}
+
 enum SettlementTransactionType {
   CHARGE
   PAYMENT
@@ -1673,6 +1683,7 @@ model BranchSettings {
   checkboxLicenseKey     String?
   checkboxPinCode        String?
   checkboxCashRegisterId String?
+  shiftMode              ShiftMode @default(MANUAL) // ручне vs авто-відкриття зміни
   smsEnabled             Boolean  @default(false)
   smsProvider            String?
   smsApiKey              String?
@@ -2423,10 +2434,39 @@ model CashRegister {
   branch           GarageBranch      @relation(fields: [branchId], references: [id])
   supplierPayments SupplierPayment[]
   payments         Payment[]
+  cashShifts       CashShift[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("cash_registers")
+}
+
+// Касова зміна (ПРРО). Чек пробивається лише у відкриту зміну; закриття = Z-звіт (щодня).
+// checkboxAccessToken — короткоживучий cashier-token від Checkbox (шифрується at-rest).
+model CashShift {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId               String          @db.Uuid
+  branchId            String          @db.Uuid
+  cashRegisterId      String          @db.Uuid
+  checkboxShiftId     String? // id зміни у Checkbox
+  status              CashShiftStatus @default(OPEN)
+  openedById          String?         @db.Uuid // Employee, що відкрив
+  openedAt            DateTime        @default(now())
+  closedAt            DateTime?
+  zReportId           String? // id Z-звіту при закритті
+  checkboxAccessToken String? // cashier access-token (шифрується — див. prisma.service ENCRYPTED_FIELDS)
+  tokenExpiresAt      DateTime?
+  syncVersion         BigInt          @default(0)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  deletedAt           DateTime?
+
+  cashRegister CashRegister @relation(fields: [cashRegisterId], references: [id])
+
+  // Один OPEN на касу гарантуємо сервісом (не unique-індексом — CLOSED багато).
+  @@index([orgId, branchId, status])
+  @@index([orgId, cashRegisterId, status])
+  @@map("cash_shifts")
 }
 
 // ─── USER PREFERENCES ────────────────────────────────────
