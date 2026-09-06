@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-09-06 — fix(review): Phase 3 «мульти-канал сповіщень» — atomic upsert + orgId-scope + UX
+
+### ff0c009f notifications Phase 3 — atomic upsert, orgId-scope, verify guard, UX
+
+Code review Phase 3 (feat ab6bda3e — UI-панель провайдерів + verify-endpoint + creds-modal + Switch + пріоритет каналів). 5 фіксів (0 CRITICAL / 3 IMPORTANT / 2 SUGGESTION):
+
+- **IMPORTANT** `upsertBranchChannel`: findFirst-then-create → atomic `prisma.upsert` по `@@unique([branchId,channel])`. Усуває (а) `update({ where:{ id } })` без orgId у where (defence-in-depth), (б) гонку двох одночасних PATCH на той самий (branchId,channel) → P2002/500 або дубль. apiKey write-only + reactivate soft-deleted збережено.
+- **IMPORTANT** `saveCreds` показував «Креди збережено» + закривав модалку навіть при збої PATCH (patchChannel ковтав помилку). patchChannel тепер повертає boolean; success-гілка гейтиться на ok.
+- **IMPORTANT** priority-swap: другий PATCH лише після успіху першого + блок конкурентних move → уникнення двох каналів з однаковим priority.
+- **SUGGESTION** verify `@Param('code')` guard length<=64 (не проходить ValidationPipe).
+- **SUGGESTION** Switch `focus:ring` → `focus-visible:ring` (a11y).
+
+Верифіковано чистим: verifyProvider без orgId безпечно (Map-lookup + зовнішній HTTP з body-apiKey, 0 DB); getBranchChannels apiKey→hasApiKey; apiKey не логується; throttle 5/60s; take на всіх findMany; Switch role=switch+aria-checked+keyboard OK. tsc api/web ✅ 0.
+
+---
+
 ## 2026-09-06 — fix(review): Phase 2 «мульти-канал сповіщень» — removeOnFail + take + sync-notes
 
 ### d76372fc removeOnFail на SMS-чергах (apiKey у job.data) + take + sync-exclusion notes

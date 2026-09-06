@@ -1309,6 +1309,20 @@ grep -rnE "cursor-pointer" apps/web/src/ --include="*.tsx" -B3 -A3 | grep -B3 -A
 **Фікс:** зібрати унікальні реф-id → `findMany({ where: { id: { in: [...] }, orgId, deletedAt: null }, select: { id: true } })` → `new Set(...)` → `refId && liveSet.has(refId) ? 1 : 0` (дзеркалить invoices). +spec: soft-deleted реф → count=0.
 **Severity:** IMPORTANT — badge/панель розсинхрон; німа degradation (лише коли реф soft-deleted поки документ на нього посилається).
 
+### 2026-09-06 — error-swallowing wrapper резолвиться → caller показує хибний success — §8.2
+
+**Сигнал:** shared-мутатор (`patchChannel`/`saveX`) має внутрішній `try/catch`, що `setError`+`toast.error` і **резолвиться** (не re-throw). Caller (`saveCreds`/submit-handler) робить `await wrapper(...)` у власному `try` → після await беззастережно `toast.success('Збережено')` + `closeModal()`. Оскільки wrapper проковтнув помилку й не кинув, caller завжди думає що успіх → toast «збережено» + модалка закрита навіть коли PATCH впав (і поруч ще один error-toast). Аналогічно ланцюг залежних мутацій (priority-swap: два послідовні PATCH) виконує 2-й крок навіть коли 1-й впав → часткова неконсистентність.
+**Grep:**
+
+```bash
+# wrapper з внутрішнім catch що НЕ кидає + caller з success-toast після await
+grep -rnE "const (patch|save|update|toggle)[A-Za-z]* = (async )?\(" apps/web/src/app --include="*.tsx" -A25 \
+  | grep -E "catch|toast\.success|return true|return false" | head -30
+```
+
+**Фікс:** wrapper повертає `boolean` (`return true`/`return false` у catch); caller гейтить `const ok = await wrapper(...); if (!ok) return;` перед success-toast/close. Ланцюг залежних мутацій — 2-й крок лише `if (ok)`; додати in-flight guard (`movingId`) проти конкурентних запусків.
+**Severity:** IMPORTANT — хибний UX-сигнал (juser думає що збережено) + часткова неконсистентність у dependent-write ланцюгах.
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
