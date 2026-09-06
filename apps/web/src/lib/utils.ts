@@ -9,6 +9,29 @@ export function cn(...inputs: ClassValue[]) {
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * SECURITY: екранування клітинки CSV від formula-injection (CWE-1236).
+ *
+ * Excel/LibreOffice виконують формулу у клітинці, що починається з `= + - @` (або TAB/CR).
+ * Користувацький вільний текст (примітки, назви контрагентів/товарів) може містити
+ * `=HYPERLINK(...)` / `=cmd|...` → при відкритті експорту виконується на ПК співробітника.
+ * Нейтралізуємо: (1) префікс `'` перед небезпечним лідером; (2) стандартне CSV-квотування
+ * (обгортка в "..." з подвоєнням лапок) якщо є роздільник/лапки/перенос рядка.
+ *
+ * Застосовувати до КОЖНОЇ текстової клітинки при побудові CSV/XLSX з даних БД.
+ */
+export function escapeCsvCell(value: unknown, delimiter = ';'): string {
+  if (value === null || value === undefined) return '';
+  let s = String(value);
+  // Formula-injection guard: небезпечні лідери → префікс апострофа (нейтралізує формулу).
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  // CSV-квотування, якщо містить роздільник, лапки або перенос.
+  if (s.includes(delimiter) || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+    s = `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+/**
  * Bug #139: відображення імені контрагента — спільна логіка для combobox primary,
  * displayValue і список item'ів. Прибирає dead `?? ''` після `.join(' ')` і додає
  * fallback на `'(без імені)'` коли companyName і firstName/lastName всі null/empty.

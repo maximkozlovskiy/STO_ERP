@@ -17,7 +17,7 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
+import { cn, escapeCsvCell } from '@/lib/utils';
 import { fmtMoney, kyivToday } from '@/lib/format';
 import dynamic from 'next/dynamic';
 import { SettlementsTabContent } from '../settlements/SettlementsTabContent';
@@ -573,25 +573,25 @@ function buildCsv(tab: Tab, data: ReportData): string {
       ['Дата', 'Виручка', 'Роботи', 'Запчастини', 'Нарядів'],
       ...data.rows.map(r => [r.date, r.revenue, r.labor, r.parts, r.count]),
     ];
-    return rows.map(r => r.join(';')).join('\n');
+    return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
   if (tab === 'work-orders' && data._tab === 'work-orders') {
     const rows = [
       ['Механік', 'Норм-год', 'Позицій', 'Сума'],
       ...data.rows.map(r => [r.employeeName, r.totalNormoHours, r.linesCount, r.totalAmount]),
     ];
-    return rows.map(r => r.join(';')).join('\n');
+    return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
   if (tab === 'stock' && data._tab === 'stock') {
     const rows = [
       ['Товар', 'Склад', 'Кількість', 'Доступно', 'Вартість'],
       ...data.stockItems.map(i => [i.goodName, i.warehouseName, i.quantity, i.available, i.value]),
     ];
-    return rows.map(r => r.join(';')).join('\n');
+    return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
   if (tab === 'settlements' && data._tab === 'settlements') {
     const rows = [['Контрагент', 'Баланс'], ...data.rows.map(r => [r.counterpartyName, r.balance])];
-    return rows.map(r => r.join(';')).join('\n');
+    return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
   if (tab === 'load' && data._tab === 'load') {
     const rows = [
@@ -604,7 +604,7 @@ function buildCsv(tab: Tab, data: ReportData): string {
         r.loadPercent,
       ]),
     ];
-    return rows.map(r => r.join(';')).join('\n');
+    return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
   if (tab === 'profitability' && data._tab === 'profitability') {
     const rows = [
@@ -622,7 +622,7 @@ function buildCsv(tab: Tab, data: ReportData): string {
       ],
       ['Валовий прибуток', data.grossProfit, data.margin.toFixed(1)],
     ];
-    return rows.map(r => r.join(';')).join('\n');
+    return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
   return '';
 }

@@ -32,7 +32,7 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Modal } from '@/components/ui/modal';
 import { fmtMoney, fmtDate, fmtInt } from '@/lib/format';
 import { toast } from '@/lib/toast';
-import { cn } from '@/lib/utils';
+import { cn, escapeCsvCell } from '@/lib/utils';
 import {
   WO_STATUS_LABELS,
   WO_PRIORITY_LABELS,
@@ -1271,9 +1271,8 @@ function exportReport(result: ReportRunResult, format: 'csv' | 'xlsx') {
   }
 
   if (format === 'csv') {
-    const csv = rows
-      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
+    // escapeCsvCell нейтралізує formula-injection (=,+,-,@) + квотує роздільник ',' .
+    const csv = rows.map(r => r.map(c => escapeCsvCell(c, ',')).join(',')).join('\n');
     downloadBlob('﻿' + csv, `report-${result.entity}.csv`, 'text/csv;charset=utf-8;');
   } else {
     // XLSX через SpreadsheetML (простий, без бібліотеки) — відкривається Excel-ом.

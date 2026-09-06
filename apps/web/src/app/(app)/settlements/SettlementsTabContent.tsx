@@ -9,7 +9,7 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
-import { cn, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
+import { cn, escapeCsvCell, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
 interface Counterparty {
@@ -285,7 +285,7 @@ export function SettlementsTabContent() {
                           tx.notes ?? '',
                         ]),
                       ];
-                      const csv = rows.map(r => r.join(';')).join('\n');
+                      const csv = rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
                       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement('a');

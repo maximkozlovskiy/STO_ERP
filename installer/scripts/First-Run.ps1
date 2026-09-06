@@ -21,10 +21,11 @@ Write-Log "Застосування міграцій бази даних..."
 & docker compose exec -T api npx prisma migrate deploy
 if ($LASTEXITCODE -ne 0) { throw "Міграція БД завершилась з помилкою" }
 
-# Run seed (creates default org + admin account)
-Write-Log "Початкове наповнення бази даних..."
-& docker compose exec -T api npx prisma db seed
-if ($LASTEXITCODE -ne 0) { throw "Seed БД завершився з помилкою" }
+# SECURITY (H-1): НЕ запускаємо demo-seed на проді.
+# seed.ts створює загальновідомий admin@sto.local/admin123 — це критична вразливість,
+# якщо потрапляє у production. Реальну організацію + OWNER-акаунт створює оператор
+# через майстер першого запуску (/setup) у веб-інтерфейсі. Тут — лише міграції.
+Write-Log "БД готова. Створення організації та адміністратора — через майстер /setup у браузері."
 
 # Create MinIO default bucket
 Write-Log "Створення MinIO bucket..."

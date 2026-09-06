@@ -6,6 +6,18 @@ import * as fs from 'fs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SHAREABLE_STATUSES } from './work-orders.fsm';
 
+/**
+ * SECURITY: нейтралізація formula-injection у XLSX-клітинці (CWE-1236).
+ * Рядок, що починається з `= + - @` (TAB/CR), Excel може виконати як формулу.
+ * Публічний естімейт-експорт (GET /public/work-orders/:token/export/xlsx) містить
+ * вільний текст із БД (назви org/робіт/запчастин) → префіксуємо `'` для рядків-лідерів.
+ * Числа/не-рядки не чіпаємо.
+ */
+function xlsxSafe<T>(v: T): T | string {
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(v)) return `'${v}`;
+  return v;
+}
+
 interface EstimateForExport {
   number: string;
   orgName: string;
@@ -420,7 +432,7 @@ export class EstimateExportService {
 
     // Header
     if (d.orgName) {
-      ws.getCell(`A${row}`).value = d.orgName;
+      ws.getCell(`A${row}`).value = xlsxSafe(d.orgName);
       ws.getCell(`A${row}`).font = { name: 'Calibri', bold: true, size: 11 };
       row++;
     }
@@ -431,7 +443,7 @@ export class EstimateExportService {
     row++;
 
     if (d.branchName) {
-      ws.getCell(`A${row}`).value = d.branchName;
+      ws.getCell(`A${row}`).value = xlsxSafe(d.branchName);
       ws.getCell(`A${row}`).font = { ...bodyFont, color: { argb: 'FF666666' } };
       row++;
     }
@@ -448,7 +460,7 @@ export class EstimateExportService {
     for (const [label, value] of infoRows) {
       ws.getCell(`A${row}`).value = label;
       ws.getCell(`A${row}`).font = { ...bodyFont, color: { argb: 'FF888888' } };
-      ws.getCell(`B${row}`).value = value;
+      ws.getCell(`B${row}`).value = xlsxSafe(value);
       ws.mergeCells(`B${row}:D${row}`);
       ws.getCell(`B${row}`).font = bodyFont;
       row++;
@@ -477,7 +489,7 @@ export class EstimateExportService {
         const cols = [line.name, line.normoHours, Number(line.price), Number(line.amount)];
         (['A', 'B', 'C', 'D'] as const).forEach((col, i) => {
           const cell = ws.getCell(`${col}${row}`);
-          cell.value = cols[i] as string | number;
+          cell.value = xlsxSafe(cols[i]) as string | number;
           cell.font = bodyFont;
           cell.border = allBorders;
           cell.alignment = { horizontal: i === 0 ? 'left' : 'right' };
@@ -522,7 +534,7 @@ export class EstimateExportService {
         const cols = [part.name, part.quantity, part.unit, Number(part.price), Number(part.amount)];
         (['A', 'B', 'C', 'D', 'E'] as const).forEach((col, i) => {
           const cell = ws.getCell(`${col}${row}`);
-          cell.value = cols[i] as string | number;
+          cell.value = xlsxSafe(cols[i]) as string | number;
           cell.font = bodyFont;
           cell.border = allBorders;
           cell.alignment = { horizontal: i === 0 ? 'left' : 'right' };

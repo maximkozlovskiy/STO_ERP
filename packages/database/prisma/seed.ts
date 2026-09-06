@@ -39,6 +39,19 @@ const GOOD2_ID = 'a1000000-0000-4000-8000-000000000071';
 const BRAND_BOSCH_ID = 'a1000000-0000-4000-8000-000000000080';
 
 async function main() {
+  // SECURITY (H-1): цей seed — ДЕМО/E2E-дані (фіксована org + admin@sto.local/admin123).
+  // На проді його заборонено: інакше кожен СТО отримує однаковий загальновідомий OWNER-логін.
+  // Прод-ініціалізація йде через /setup wizard (створює реальну org + OWNER з паролем оператора).
+  // Дозволяємо лише поза production, або з явним ALLOW_DEV_SEED=1 (dev/E2E).
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEV_SEED !== '1') {
+    console.error(
+      'ВІДМОВА: demo-seed (seed.ts) заборонено у production. ' +
+        'Ініціалізація СТО — через майстер /setup. ' +
+        'Для локального dev/E2E: ALLOW_DEV_SEED=1.',
+    );
+    process.exit(1);
+  }
+
   console.warn('Seed: початок...');
 
   // ─── Organisation ────────────────────────────────────────
