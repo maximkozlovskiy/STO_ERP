@@ -88,7 +88,14 @@ export class DocumentNumberService {
 
         if (cfg.includeDate) {
           const prefix = cfg.prefix ? `${cfg.prefix}${cfg.separator}` : '';
-          return `${prefix}${currentYear}${cfg.separator}${seqStr}`;
+          // MONTHLY-reset рестартує лічильник щомісяця → у номер МУСИТЬ входити місяць, інакше
+          // INV-2026-0001 повторюється у січні/лютому/... (дублі номерів документів). Для YEARLY/NEVER
+          // достатньо року. Місяць — 2 цифри (09), у Kyiv-таймзоні (KYIV_YEAR_MONTH_FMT).
+          const datePart =
+            cfg.resetPeriod === 'MONTHLY'
+              ? `${currentYear}${cfg.separator}${String(currentMonth).padStart(2, '0')}`
+              : `${currentYear}`;
+          return `${prefix}${datePart}${cfg.separator}${seqStr}`;
         }
 
         const prefix = cfg.prefix ? `${cfg.prefix}${cfg.separator}` : '';

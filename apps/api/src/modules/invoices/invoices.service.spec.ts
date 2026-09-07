@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { SettingsService } from '../settings/settings.service';
 
 /**
  * Bug #413: Service-level spec для guards що додані review-фіксами #403, #406, #407, #412.
@@ -31,6 +32,7 @@ describe('InvoicesService — business logic guards', () => {
   let docNumbers: { next: ReturnType<typeof vi.fn> };
   let pdf: { generateInvoicePdf: ReturnType<typeof vi.fn> };
   let settlementsMock: { createTransaction: ReturnType<typeof vi.fn> };
+  let settingsMock: { getDefaultVatRate: ReturnType<typeof vi.fn> };
 
   const ORG = 'org-1';
   const WO_ID = '11111111-1111-4111-8111-111111111111';
@@ -50,6 +52,10 @@ describe('InvoicesService — business logic guards', () => {
     docNumbers = { next: vi.fn().mockResolvedValue('INV-2026-0001') };
     pdf = { generateInvoicePdf: vi.fn() };
     settlementsMock = { createTransaction: vi.fn() };
+    // Дефолт VAT = NONE; тести, що перевіряють ПДВ, перевизначають getDefaultVatRate per-case.
+    settingsMock = {
+      getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -58,6 +64,7 @@ describe('InvoicesService — business logic guards', () => {
         { provide: DocumentNumberService, useValue: docNumbers },
         { provide: PdfService, useValue: pdf },
         { provide: SettlementsService, useValue: settlementsMock },
+        { provide: SettingsService, useValue: settingsMock },
       ],
     }).compile();
     service = module.get(InvoicesService);
@@ -125,8 +132,10 @@ describe('InvoicesService — business logic guards', () => {
 
   // ─── Bug #406: vatRate=20 default ────────────────────────────────────────
 
-  describe('refreshFromWorkOrder — Bug #406 vatRate=20 default', () => {
-    it('створює invoice lines з vatRate=20 для робіт і запчастин', async () => {
+  describe('refreshFromWorkOrder — VAT з налаштувань org (не хардкод)', () => {
+    it('EXCLUSIVE 20% → створює invoice lines з vatRate=20 для робіт і запчастин', async () => {
+      // Раніше vatRate був хардкод 20 незалежно від org; тепер береться з getDefaultVatRate.
+      settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });
       prisma.workOrder.findFirst.mockResolvedValue({
         id: WO_ID,
         orgId: ORG,
@@ -176,12 +185,68 @@ describe('InvoicesService — business logic guards', () => {
       expect(prisma.invoiceLine.createMany).toHaveBeenCalledTimes(1);
       const createCall = prisma.invoiceLine.createMany.mock.calls[0][0];
       expect(createCall.data).toHaveLength(2);
-      // КЛЮЧОВИЙ assert: vatRate=20 для всіх рядків (НЕ 0)
+      // vatRate=20 для всіх рядків (EXCLUSIVE) + priceWithVat > priceWithoutVat.
       for (const line of createCall.data) {
         expect(line.vatRate).toBe(20);
         expect(line.vatAmount).toBeGreaterThan(0);
         expect(line.priceWithVat).toBeGreaterThan(line.priceWithoutVat);
       }
+    });
+
+    it('NONE → vatRate=0, ПДВ не додається (не хардкод 20 для безПДВ-org)', async () => {
+      // Регрес фікса: раніше org без ПДВ отримувала роздутий на 20% рахунок.
+      settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'NONE', vatRate: 0 });
+      prisma.workOrder.findFirst.mockResolvedValue({
+        id: WO_ID,
+        orgId: ORG,
+        status: 'COMPLETED',
+        counterpartyId: 'c-1',
+        totalAmount: 1000,
+        lines: [
+          { id: 'l-1', workId: 'w-1', normoHours: 2, price: 100, work: { name: 'Робота 1' } },
+        ],
+        parts: [{ id: 'p-1', goodId: 'g-1', quantity: 1, price: 500, good: { name: 'Запч.' } }],
+      });
+      // pre-check existing → in-tx invInTx → findOne (три findFirst, як у EXCLUSIVE-тесті).
+      prisma.invoice.findFirst.mockResolvedValueOnce({
+        id: INV_ID,
+        orgId: ORG,
+        status: 'DRAFT',
+        workOrderId: WO_ID,
+      });
+      prisma.invoice.findFirst.mockResolvedValueOnce({ status: 'DRAFT' });
+      prisma.invoice.findFirst.mockResolvedValueOnce({
+        id: INV_ID,
+        orgId: ORG,
+        number: 'INV-2026-0001',
+        status: 'DRAFT',
+        counterpartyId: 'c-1',
+        workOrderId: WO_ID,
+        amount: 700,
+        totalWithoutVat: 700,
+        totalVat: 0,
+        totalWithVat: 700,
+        invoiceType: 'STANDARD',
+        notes: null,
+        dueDate: null,
+        documentDate: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lines: [],
+        payments: [],
+      });
+
+      await service.refreshFromWorkOrder(ORG, WO_ID);
+
+      const createCall = prisma.invoiceLine.createMany.mock.calls[0][0];
+      for (const line of createCall.data) {
+        expect(line.vatRate).toBe(0);
+        expect(line.vatAmount).toBe(0);
+        expect(line.priceWithVat).toBe(line.priceWithoutVat);
+      }
+      // amount = база без ПДВ (200 роботи + 500 запчастина = 700), збігається з CHARGE.
+      const updCall = prisma.invoice.update.mock.calls[0][0];
+      expect(updCall.data.amount).toBe(700);
     });
   });
 
@@ -635,6 +700,12 @@ describe('InvoicesService — toDto paidAmount authority (Bug #676)', () => {
         { provide: DocumentNumberService, useValue: { next: vi.fn() } },
         { provide: PdfService, useValue: {} },
         { provide: SettlementsService, useValue: {} },
+        {
+          provide: SettingsService,
+          useValue: {
+            getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+          },
+        },
       ],
     }).compile();
     service = module.get(InvoicesService);
@@ -715,6 +786,12 @@ describe('InvoicesService — linked-documents edge cases', () => {
         { provide: DocumentNumberService, useValue: { next: vi.fn() } },
         { provide: PdfService, useValue: {} },
         { provide: SettlementsService, useValue: {} },
+        {
+          provide: SettingsService,
+          useValue: {
+            getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+          },
+        },
       ],
     }).compile();
     service = module.get(InvoicesService);

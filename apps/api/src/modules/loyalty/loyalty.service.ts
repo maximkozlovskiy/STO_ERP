@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { roundMoney } from '../../common/utils/math';
 
@@ -148,38 +149,51 @@ export class LoyaltyService {
       update: {},
       create: { orgId, counterpartyId, balance: 0 },
     });
-    await this.prisma.$transaction(
-      async tx => {
-        // Idempotency guard: earn() runs from a BullMQ job with attempts=10. If the tx
-        // commits but the worker dies before ACK (or the same payment is enqueued twice),
-        // BullMQ replays the job → without this check the balance would be incremented
-        // AGAIN and a duplicate LoyaltyTransaction created (подвійне нарахування за один
-        // документ). We anchor idempotency on the source document: one EARN per
-        // (account, document). Documents-less earns (documentId == null) have no anchor
-        // and are treated as always-new (rare manual accrual path).
-        if (documentId) {
-          const existing = await tx.loyaltyTransaction.findFirst({
-            where: { accountId: acc.id, type: 'EARN', documentId },
-            select: { id: true },
+    try {
+      await this.prisma.$transaction(
+        async tx => {
+          // Idempotency guard: earn() runs from a BullMQ job with attempts=10. If the tx
+          // commits but the worker dies before ACK (or the same payment is enqueued twice),
+          // BullMQ replays the job → without this check the balance would be incremented
+          // AGAIN and a duplicate LoyaltyTransaction created (подвійне нарахування за один
+          // документ). We anchor idempotency on the source document: one EARN per
+          // (account, document). Documents-less earns (documentId == null) have no anchor
+          // and are treated as always-new (rare manual accrual path).
+          //
+          // Read-then-write ловить лише ПОСЛІДОВНІ повтори; від ПАРАЛЕЛЬНИХ джобів захищає
+          // partial-unique "loyalty_earn_one_per_document_uq" → другий insert кидає P2002,
+          // який ми ковтаємо нижче (нарахування вже зроблено переможцем).
+          if (documentId) {
+            const existing = await tx.loyaltyTransaction.findFirst({
+              where: { accountId: acc.id, type: 'EARN', documentId },
+              select: { id: true },
+            });
+            if (existing) return; // already accrued for this document — skip
+          }
+          await tx.loyaltyAccount.update({
+            where: { id: acc.id },
+            data: { balance: { increment: points } },
           });
-          if (existing) return; // already accrued for this document — skip
-        }
-        await tx.loyaltyAccount.update({
-          where: { id: acc.id },
-          data: { balance: { increment: points } },
-        });
-        await tx.loyaltyTransaction.create({
-          data: {
-            accountId: acc.id,
-            type: 'EARN',
-            points,
-            documentId: documentId ?? null,
-            documentType: documentId ? 'Payment' : null,
-          },
-        });
-      },
-      { timeout: TRANSACTION_TIMEOUT_MS },
-    );
+          await tx.loyaltyTransaction.create({
+            data: {
+              accountId: acc.id,
+              type: 'EARN',
+              points,
+              documentId: documentId ?? null,
+              documentType: documentId ? 'Payment' : null,
+            },
+          });
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      );
+    } catch (e) {
+      // P2002 на partial-unique (паралельний джоб уже нарахував за цей документ) — не помилка,
+      // ідемпотентно пропускаємо. Транзакція відкотилась цілком → balance-increment теж не застосовано.
+      if (documentId && e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        return;
+      }
+      throw e;
+    }
   }
 
   /** Списати бали (повертає суму знижки у гривнях) */

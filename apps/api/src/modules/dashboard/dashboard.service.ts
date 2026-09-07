@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
+import { normalizeKyivDateRange } from '../../common/utils/kyiv-date';
+
+// Kyiv-локальна дата 'YYYY-MM-DD' поточного моменту (DST-aware через Intl).
+const KYIV_YMD_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
 interface DashboardSummary {
   activeWo: number;
@@ -54,7 +58,10 @@ export class DashboardService {
     const cached = await this.cache.get<DashboardSummary>(cacheKey);
     if (cached) return cached;
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // «Сьогодні» = Kyiv-доба (не server-local). На UTC-контейнері `new Date(y,m,d)` дало б
+    // UTC-північ → виручка зсунута на TZ-offset і не збігалася б зі звітами (усі на Kyiv).
+    const todayKyiv = KYIV_YMD_FMT.format(now);
+    const todayStart = normalizeKyivDateRange(todayKyiv, todayKyiv).fromDate;
 
     // Кожен sub-query обгорнутий у withTimeout: 8s ceiling — slow Postgres або
     // connection-pool starvation не повинен зривати SSE tick. Timeout → null,

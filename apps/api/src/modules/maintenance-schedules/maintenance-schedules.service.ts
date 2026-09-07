@@ -50,8 +50,9 @@ export class MaintenanceSchedulesService {
   }
 
   async findUpcoming(orgId: string, days: number): Promise<MaintenanceScheduleResponseDto[]> {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() + days);
+    // Kyiv-DST-aware межа (консистентно з calcNextDate) — сирий setDate давав би server-local
+    // зсув на межі доби на UTC-контейнері.
+    const cutoff = addDaysKyiv(new Date(), days);
     const items = await this.prisma.maintenanceSchedule.findMany({
       where: {
         orgId,

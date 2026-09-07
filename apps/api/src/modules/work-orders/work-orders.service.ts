@@ -327,6 +327,8 @@ export class WorkOrdersService {
     // When omitted, primaryContract auto-pick — null is OK (no contract assigned).
     if (dto.contractId && !contractResult) throw new NotFoundException('Договір не знайдено');
     const contractId: string | null = contractResult?.id ?? null;
+    // Примітка: outMileage у CreateWorkOrderDto немає (виставляється лише на update/завершенні),
+    // тож guard монотонності пробігу потрібен лише в update() — тут перевіряти нічого.
 
     const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
 
@@ -396,6 +398,14 @@ export class WorkOrdersService {
       throw new BadRequestException('Не можна редагувати закритий наряд');
     }
     if (dto.liftId && !lift) throw new NotFoundException('Підйомник не знайдено');
+
+    // Пробіг монотонний: вихідний ≥ вхідного. Одрук (out<in) інакше зберігся б (обидва @Min(0))
+    // і зіпсував би синхронізацію Vehicle.currentMileage + розрахунок наступного ТО.
+    const effIn = dto.inMileage ?? wo.inMileage;
+    const effOut = dto.outMileage ?? wo.outMileage;
+    if (effIn != null && effOut != null && effOut < effIn) {
+      throw new BadRequestException('Вихідний пробіг не може бути меншим за вхідний');
+    }
 
     // Capture old field-values BEFORE update so AuditEvent.diff is meaningful.
     // Only include fields user actually attempted to change (dto.X !== undefined).

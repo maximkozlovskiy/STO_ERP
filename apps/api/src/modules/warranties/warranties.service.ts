@@ -187,9 +187,10 @@ export class WarrantiesService {
   }
 
   async findExpiring(orgId: string, days: number): Promise<WarrantyListDto> {
-    const until = new Date();
-    until.setDate(until.getDate() + days);
+    // Kyiv-DST-aware межа (addDaysKyiv), консистентно з autoCreate — сирий setDate давав би
+    // server-local зсув на межі доби на UTC-контейнері (гарантія на день раніше/пізніше у вибірці).
     const now = new Date();
+    const until = addDaysKyiv(now, days);
     const [items, total] = await Promise.all([
       this.prisma.warranty.findMany({
         where: { orgId, deletedAt: null, claimedAt: null, expiresAt: { gt: now, lte: until } },

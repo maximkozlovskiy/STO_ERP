@@ -2428,6 +2428,10 @@ model LoyaltyTransaction {
   account LoyaltyAccount @relation(fields: [accountId], references: [id])
 
   @@index([accountId, createdAt])
+  // Idempotency EARN per (account, document): один EARN на документ. Prisma не підтримує
+  // partial unique з WHERE → індекс живе у міграції "loyalty_earn_one_per_document_uq"
+  // (WHERE type='EARN' AND "documentId" IS NOT NULL). Захищає від подвійного нарахування при
+  // паралельних/повторних BullMQ-джобах (read-then-write guard ловить лише послідовні).
   @@map("loyalty_transactions")
 }
 

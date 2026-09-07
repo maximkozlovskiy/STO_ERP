@@ -5,6 +5,7 @@ import { formatPersonName } from '@sto/shared';
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { safeCoeff, roundMoney } from '../../common/utils/math';
 import { sumLineTotals } from '../../common/utils/vat';
+import type { VatMode } from '@prisma/client';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { throwIfSerializationConflict } from '../../common/utils/prisma-errors';
@@ -13,6 +14,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { SettingsService } from '../settings/settings.service';
 import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import {
   CreateInvoiceDto,
@@ -46,6 +48,39 @@ const INV_SORT_FIELDS: Record<string, string> = {
   amount: 'amount',
 };
 
+/**
+ * ПДВ на РІВНІ РЯДКА (сума=qty×price), з урахуванням vatMode org. NONE→без ПДВ;
+ * EXCLUSIVE→ПДВ зверху; INCLUSIVE→ПДВ уже в сумі (виділяємо). Усі суми квантуються до копійки.
+ * Line-total семантика (не per-unit) — консистентно з попередньою логікою refreshFromWorkOrder.
+ */
+function lineVatTotals(
+  lineSum: number,
+  vatRate: number,
+  vatMode: VatMode,
+): { priceWithoutVat: number; vatAmount: number; priceWithVat: number } {
+  if (vatMode === 'NONE' || vatRate === 0) {
+    const s = roundMoney(lineSum);
+    return { priceWithoutVat: s, vatAmount: 0, priceWithVat: s };
+  }
+  if (vatMode === 'INCLUSIVE') {
+    const withoutVat = roundMoney(lineSum / (1 + vatRate / 100));
+    const withVat = roundMoney(lineSum);
+    return {
+      priceWithoutVat: withoutVat,
+      vatAmount: roundMoney(withVat - withoutVat),
+      priceWithVat: withVat,
+    };
+  }
+  // EXCLUSIVE
+  const withoutVat = roundMoney(lineSum);
+  const vatAmount = roundMoney(lineSum * (vatRate / 100));
+  return {
+    priceWithoutVat: withoutVat,
+    vatAmount,
+    priceWithVat: roundMoney(withoutVat + vatAmount),
+  };
+}
+
 @Injectable()
 export class InvoicesService {
   constructor(
@@ -53,6 +88,7 @@ export class InvoicesService {
     private readonly docNumbers: DocumentNumberService,
     private readonly pdf: PdfService,
     private readonly settlements: SettlementsService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   async findAll(
@@ -654,8 +690,10 @@ export class InvoicesService {
         'Оновити можна лише чернетку рахунку. Скасуйте поточний і виставте новий.',
       );
 
-    // vatRate=0 corrupts VAT accounting — default 20 matches addLine (dto.vatRate ?? 20).
-    const DEFAULT_VAT = 20;
+    // VAT-режим і ставка з налаштувань org (НЕ хардкод 20%) — інакше для org із vatMode=NONE
+    // рахунок роздувався на неіснуючий ПДВ, а для нестандартної ставки давав хибну суму.
+    // Консистентно з WorkOrder.recalcTotals і createFromWorkOrder (обидва беруть getDefaultVatRate).
+    const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
 
     // WO lines+parts fetched inside tx to close TOCTOU between pre-check (reads WO contents)
     // and createMany (writes invoice lines). ReadCommitted allows concurrent addLine/refreshFromWorkOrder
@@ -700,9 +738,7 @@ export class InvoicesService {
               // actualHours → invoice.amount розходилась з WO.totalAmount (totalActualLabor).
               const quantity = l.actualHours ?? l.normoHours;
               const unitPrice = Number(l.price);
-              const priceWithoutVat = roundMoney(quantity * unitPrice);
-              const vatAmount = roundMoney(priceWithoutVat * (DEFAULT_VAT / 100));
-              const priceWithVat = roundMoney(priceWithoutVat + vatAmount);
+              const v = lineVatTotals(quantity * unitPrice, vatRate, vatMode);
               return {
                 orgId,
                 invoiceId: existing.id,
@@ -710,17 +746,13 @@ export class InvoicesService {
                 description: l.work?.name ?? 'Робота',
                 quantity,
                 unitPrice,
-                vatRate: DEFAULT_VAT,
-                priceWithoutVat,
-                vatAmount,
-                priceWithVat,
+                vatRate: vatMode === 'NONE' ? 0 : vatRate,
+                ...v,
                 sortOrder: i,
               };
             }),
             ...wo.parts.map((p, i) => {
-              const priceWithoutVat = roundMoney(Number(p.quantity) * Number(p.price));
-              const vatAmount = roundMoney(priceWithoutVat * (DEFAULT_VAT / 100));
-              const priceWithVat = roundMoney(priceWithoutVat + vatAmount);
+              const v = lineVatTotals(Number(p.quantity) * Number(p.price), vatRate, vatMode);
               return {
                 orgId,
                 invoiceId: existing.id,
@@ -728,10 +760,8 @@ export class InvoicesService {
                 description: p.good?.name ?? 'Запчастина',
                 quantity: Number(p.quantity),
                 unitPrice: Number(p.price),
-                vatRate: DEFAULT_VAT,
-                priceWithoutVat,
-                vatAmount,
-                priceWithVat,
+                vatRate: vatMode === 'NONE' ? 0 : vatRate,
+                ...v,
                 sortOrder: wo.lines.length + i,
               };
             }),

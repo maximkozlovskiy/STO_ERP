@@ -7,6 +7,7 @@ import { SyncRecord } from '@sto/shared';
 interface DynamicPrismaModel {
   findMany(args: {
     where: Record<string, unknown>;
+    orderBy?: Record<string, 'asc' | 'desc'>;
     take?: number;
   }): Promise<Record<string, unknown>[]>;
   findFirst(args: {
@@ -140,8 +141,14 @@ export class SyncService {
     const results = await Promise.all(
       PULL_TABLES.map(async table => {
         try {
+          // orderBy syncVersion asc — детермінований порядок для делта-курсора. Без нього при
+          // >500 змінених рядків Postgres віддає ДОВІЛЬНІ 500, клієнт просуває курсор до max
+          // отриманого syncVersion → рядки з меншим syncVersion, що не потрапили у вибірку,
+          // більше ніколи не витягуються (тиха втрата даних). Із ordering клієнт бере наступну
+          // сторінку через since = останній отриманий syncVersion.
           const rows = await this.model(table).findMany({
             where: { orgId, syncVersion: { gt: since } },
+            orderBy: { syncVersion: 'asc' },
             take: 500,
           });
 
