@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-09-07 — feat: інтеграція Нової Пошти — трекінг доставки у документі купівлі (PurchaseOrder)
+
+Служба доставки як delivery-провайдер через існуючий registry (`ProviderKind=DELIVERY`). Щойно у документі купівлі вказано номер накладної (ЕН) → self-re-enqueuing polling Нової Пошти оновлює статус доставки автоматично. Інтервал опитування (хв) — у налаштуваннях.
+
+### 917140dc db + delivery — схема + backend
+
+- **Schema**: `enum DeliveryStatus {PENDING IN_TRANSIT ARRIVED DELIVERED RETURNED NOT_FOUND}`; `PurchaseOrder +trackingNumber/deliveryStatus/deliveryStatusRaw/deliveryStatusUpdatedAt +@@index([orgId,deliveryStatus,deletedAt])`; `ProviderKind +DELIVERY`; `OrganisationSettings +deliveryPollIntervalMinutes(30, clamp[5,1440])`. Міграція `20260907140000` additive/idempotent.
+- **DeliveryProvider** interface + `NovaPoshtaClient` (POST `/v2.0/json/` TrackingDocument.getStatusDocuments; SSRF+redirect:manual+timeout+reject-3xx) + `NovaPoshtaProvider` (mapStatus StatusCode НП→DeliveryStatus; невідомий→IN_TRANSIT) + registry.
+- **NovaPoshtaPollingProcessor**: self-re-enqueue delay з `OrganisationSettings.deliveryPollIntervalMinutes` (НЕ hardcoded); jobId-дедуп `np-poll-<poId>` single-flight; зупинка на термінальному/зникненні ЕН/видаленні PO/`MAX_POLL_ATTEMPTS=480`; оновлює ЛИШЕ delivery-метадані (НЕ FSM закупівлі). `job.data` без ЕН/секретів → zombie-job re-read з БД.
+- **DeliveryTrackingService** (enqueueInitial + pollDelayMs clamp); `PurchaseOrdersService` create/update enqueue при вказанні/зміні ЕН, скидання при очищенні; DRAFT-guard перед trackingUpdate.
+- `DeliveryProvidersController` (list/verify/branch-config/activate) через `ProviderConfigService` (kind=DELIVERY); creds write-only, apiKey шифрується (`BranchProviderConfig.credentials`).
+- DTO +trackingNumber (create @MaxLength; update nullable→очистити); toDto +delivery-поля; settings +deliveryPollIntervalMinutes.
+
+### c7424745 web — ЕН + статус доставки + вкладка «Доставка»
+
+- `PurchaseOrderCreateModal` +поле «Накладна (ЕН)»; create шле undefined, update шле null при очищенні (зупиняє трекінг); dirty-baseline/reset/load оновлено.
+- `panel-schema` +trackingNumber/deliveryStatus (бейдж з кольором + тултип deliveryStatusRaw); `DELIVERY_STATUS_LABELS/BADGE` (укр.); PO page renderOverride null-safe («—»).
+- `DeliveryTab` (NEW): `ProviderRegistryPanel` (delivery-providers, Нова Пошта apiKey) + інтервал опитування (хв) → PATCH /settings/organisation; settings-таб «Доставка».
+
+### 490822b4 review — 2 фікси (0 critical, money/security CLEAN)
+
+- **IMPORTANT** cross-kind leak: `legacyFromBranchSettings` мала `if FISCAL{} else PAYMENT` безумовно — `kind=DELIVERY` повертав monobank-конфіг чужого kind. Fix: `if (kind !== 'PAYMENT') return null`.
+- **SUGGESTION**: polling `update` без `deletedAt:null` → soft-deleted PO міг отримати оновлення delivery. Fix: `updateMany({...,deletedAt:null})`.
+
+### be199e01 tester — 0 логічних дефектів, 3 test-gap (#696-#698)
+
+- Фіче-код КОРЕКТНИЙ (весь edge-набір: normalizeTracking, DRAFT-guard порядок, mapStatus рядок/невідомий, zombie-job re-read, clamp, cross-kind). Закрито coverage-gap: PO create/update+trackingNumber (13), DeliveryTrackingService (11), zombie-job/jobId (+2). API 1808. Mutation-verified.
+
+### deploy — застосувати на проді
+
+`prisma migrate deploy` для `20260907140000_nova_poshta_delivery` (additive: enum DeliveryStatus, ProviderKind+=DELIVERY, 4 PO-поля + index, deliveryPollIntervalMinutes).
+
+---
+
 ## 2026-09-07 — feat: registry провайдерів ПРРО (Checkbox+Вчасно) і еквайрингу (monobank+LiqPay) + вибір активного per-branch
 
 Дзеркалить provider-registry сповіщень для фіскалізації та еквайрингу: кілька провайдерів на філію, активний обирається ексклюзивно (лише 1 per kind). Секрети шифруються at-rest; legacy read-fallback на старі BranchSettings-колонки → вже-налаштовані філії працюють без міграції даних.
