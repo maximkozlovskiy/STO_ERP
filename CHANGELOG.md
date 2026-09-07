@@ -5,6 +5,12 @@
 
 ---
 
+## 2026-09-07 — fix(sync): 5ca1f8a9 повний sync-аудит (Direction 1/2/3)
+
+Прямий (без субагента) повний sync-аудит на HEAD 58f71bb8, фокус на нових модулях (delivery-providers, fiscal-providers, payment-gateways, online-payments, cash-shift). Direction 1 і 3 — 0 розбіжностей. Direction 2 — 1 фікс: `vehicles/new` викликав неіснуючий `GET /customer-garages/:id` (гаражі мають лише list-endpoint без by-id маршруту) → завжди 404, назва гаража не показувалась. Fix: `garageName` передається у query з картки контрагента (об'єкт вже в пам'яті), прибрано мертвий fetch/state/невикористаний імпорт. tsc api+web ✅ 0.
+
+---
+
 ## 2026-09-07 — feat: інтеграція Нової Пошти — трекінг доставки у документі купівлі (PurchaseOrder)
 
 Служба доставки як delivery-провайдер через існуючий registry (`ProviderKind=DELIVERY`). Щойно у документі купівлі вказано номер накладної (ЕН) → self-re-enqueuing polling Нової Пошти оновлює статус доставки автоматично. Інтервал опитування (хв) — у налаштуваннях.
