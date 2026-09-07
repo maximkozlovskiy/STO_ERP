@@ -56,12 +56,9 @@ export class ProviderConfigService {
       },
       select: { provider: true, apiUrl: true, credentials: true, shiftMode: true },
     });
+    // Enabled-конфіг з непорожніми кредами → його й повертаємо.
     if (cfg) {
       const parsed = this.parseCreds(cfg.credentials);
-      // Enabled-конфіг БЕЗ збережених кредів (напр. сід-рядок міграції з credentials=NULL):
-      // секрети ще лежать у старих BranchSettings-колонках. Не повертаємо порожні креди
-      // (провайдер кинув би «не задано ключ»), а падаємо у legacy-fallback ДЛЯ ТОГО Ж провайдера
-      // — так уже-налаштовані філії працюють до першого перезбереження кредів у новій формі.
       if (this.hasCreds(parsed)) {
         return {
           provider: cfg.provider,
@@ -70,17 +67,20 @@ export class ProviderConfigService {
           shiftMode: cfg.shiftMode,
         };
       }
-      const legacy = await this.legacyFromBranchSettings(orgId, branchId, kind);
-      // Legacy валідний лише якщо це той самий провайдер (checkbox/monobank за замовч.);
-      // інакше активовано провайдера, чиї креди ще не введено → не налаштовано.
-      if (legacy && legacy.provider === cfg.provider) {
-        return { ...legacy, apiUrl: cfg.apiUrl ?? legacy.apiUrl, shiftMode: cfg.shiftMode };
-      }
-      return null;
     }
 
-    // 2. Legacy-fallback на BranchSettings (старі хардкод-колонки).
-    return this.legacyFromBranchSettings(orgId, branchId, kind);
+    // Legacy-fallback на старі BranchSettings-колонки. Спрацьовує коли:
+    //  - немає enabled-конфіга взагалі, АБО
+    //  - enabled-конфіг БЕЗ збережених кредів (напр. сід-рядок міграції з credentials=NULL) —
+    //    секрети ще у старих колонках; уже-налаштовані філії працюють до першого перезбереження.
+    // Якщо enabled-конфіг існує, legacy валідний лише для ТОГО Ж провайдера (інакше активовано
+    // провайдера, чиї креди ще не введено → не налаштовано). apiUrl/shiftMode беремо з config.
+    const legacy = await this.legacyFromBranchSettings(orgId, branchId, kind);
+    if (!legacy) return null;
+    if (!cfg) return legacy;
+    return legacy.provider === cfg.provider
+      ? { ...legacy, apiUrl: cfg.apiUrl ?? legacy.apiUrl, shiftMode: cfg.shiftMode }
+      : null;
   }
 
   /** Конкретний конфіг провайдера (для processor, що вже знає gateway/provider наміру/зміни). */
@@ -94,13 +94,16 @@ export class ProviderConfigService {
       where: { orgId, kind, provider, deletedAt: null, ...(branchId ? { branchId } : {}) },
       select: { provider: true, apiUrl: true, credentials: true, shiftMode: true },
     });
-    if (cfg && this.hasCreds(this.parseCreds(cfg.credentials))) {
-      return {
-        provider: cfg.provider,
-        apiUrl: cfg.apiUrl,
-        credentials: this.parseCreds(cfg.credentials),
-        shiftMode: cfg.shiftMode,
-      };
+    if (cfg) {
+      const parsed = this.parseCreds(cfg.credentials);
+      if (this.hasCreds(parsed)) {
+        return {
+          provider: cfg.provider,
+          apiUrl: cfg.apiUrl,
+          credentials: parsed,
+          shiftMode: cfg.shiftMode,
+        };
+      }
     }
     // Legacy: код збігається з дефолтним провайдером старих колонок.
     const legacy = await this.legacyFromBranchSettings(orgId, branchId, kind);
@@ -172,14 +175,16 @@ export class ProviderConfigService {
       where: { branchId_kind_provider: { branchId, kind, provider: input.provider } },
       create: { orgId, branchId, kind, provider: input.provider, ...data },
       update: data,
-      select: { provider: true, enabled: true, apiUrl: true, shiftMode: true, credentials: true },
+      select: { provider: true, enabled: true, apiUrl: true, shiftMode: true },
     });
     return {
       provider: row.provider,
       enabled: row.enabled,
       apiUrl: row.apiUrl,
       shiftMode: row.shiftMode,
-      hasCredentials: this.hasCreds(this.parseCreds(row.credentials)),
+      // `merged` уже містить фінальний стан кредів (row.credentials з нього й побудований) —
+      // не робимо повторний stringify→parse.
+      hasCredentials: this.hasCreds(merged),
     };
   }
 

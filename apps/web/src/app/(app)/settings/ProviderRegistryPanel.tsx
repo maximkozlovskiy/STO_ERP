@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, KeyRound, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -108,10 +108,16 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
     if (selectedBranch) loadConfigs(selectedBranch);
   }, [selectedBranch, loadConfigs]);
 
+  // O(1)-пошук конфіга за кодом провайдера (замість повторного configs.find на кожну картку/рендер).
+  const configByCode = useMemo(() => {
+    const m = new Map<string, ProviderConfigView>();
+    for (const c of configs) m.set(c.provider, c);
+    return m;
+  }, [configs]);
   const activeProvider = configs.find(c => c.enabled)?.provider ?? null;
 
   const openCreds = (provider: PanelProviderMeta) => {
-    const existing = configs.find(c => c.provider === provider.code);
+    const existing = configByCode.get(provider.code);
     setCredsProvider(provider);
     setApiUrl(existing?.apiUrl ?? '');
     setShiftMode(existing?.shiftMode ?? 'MANUAL');
@@ -126,13 +132,11 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
 
   // Чи можна зберегти/перевірити: введено хоча б одне поле (порожні мерджаться як «не змінювати»)
   // АБО конфіг уже має збережені креди (оновлюємо apiUrl/режим без повторного вводу секретів).
-  const existingHasCreds = (code: string) =>
-    configs.find(c => c.provider === code)?.hasCredentials ?? false;
-  const credsReady = (() => {
-    if (!credsProvider) return false;
-    const someFilled = credsProvider.fields.some(f => (creds[f.key] ?? '').trim() !== '');
-    return someFilled || existingHasCreds(credsProvider.code);
-  })();
+  const existingHasCreds = (code: string) => configByCode.get(code)?.hasCredentials ?? false;
+  const credsReady =
+    !!credsProvider &&
+    (credsProvider.fields.some(f => (creds[f.key] ?? '').trim() !== '') ||
+      existingHasCreds(credsProvider.code));
 
   const verify = async () => {
     if (!credsProvider) return;
@@ -236,7 +240,7 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
       <div className="grid gap-2 sm:grid-cols-2">
         {providers.map(p => {
           const isActive = activeProvider === p.code;
-          const cfg = configs.find(c => c.provider === p.code);
+          const cfg = configByCode.get(p.code);
           return (
             <div
               key={p.code}

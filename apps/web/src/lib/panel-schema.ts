@@ -189,25 +189,26 @@ export const PURCHASE_ORDER_PANEL_SCHEMA = [
   { key: 'createdAt', label: 'Створено', type: 'date' },
 ] as const satisfies readonly PanelFieldDef<PurchaseOrder>[];
 
-/** Лейбли статусу доставки (укр.). */
-export const DELIVERY_STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Очікує',
-  IN_TRANSIT: 'У дорозі',
-  ARRIVED: 'На відділенні',
-  DELIVERED: 'Отримано',
-  RETURNED: 'Повернення',
-  NOT_FOUND: 'Не знайдено',
+// Єдине джерело: лейбл (укр.) + Badge-варіант на кожен статус доставки. Один запис на статус —
+// два похідні lookup-и (LABELS/BADGE) не можуть розійтися ключами.
+const DELIVERY_STATUS_META: Record<string, { label: string; badge: string }> = {
+  PENDING: { label: 'Очікує', badge: 'secondary' },
+  IN_TRANSIT: { label: 'У дорозі', badge: 'info' },
+  ARRIVED: { label: 'На відділенні', badge: 'warning' },
+  DELIVERED: { label: 'Отримано', badge: 'success' },
+  RETURNED: { label: 'Повернення', badge: 'destructive' },
+  NOT_FOUND: { label: 'Не знайдено', badge: 'destructive' },
 };
 
+/** Лейбли статусу доставки (укр.). */
+export const DELIVERY_STATUS_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(DELIVERY_STATUS_META).map(([k, v]) => [k, v.label]),
+);
+
 /** Варіант Badge статусу доставки. */
-export const DELIVERY_STATUS_BADGE: Record<string, string> = {
-  PENDING: 'secondary',
-  IN_TRANSIT: 'info',
-  ARRIVED: 'warning',
-  DELIVERED: 'success',
-  RETURNED: 'destructive',
-  NOT_FOUND: 'destructive',
-};
+export const DELIVERY_STATUS_BADGE: Record<string, string> = Object.fromEntries(
+  Object.entries(DELIVERY_STATUS_META).map(([k, v]) => [k, v.badge]),
+);
 
 export const SUPPLIER_PAYMENT_PANEL_SCHEMA = [
   { key: 'status', label: 'Статус', always: true },

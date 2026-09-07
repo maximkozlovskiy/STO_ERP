@@ -84,6 +84,24 @@ export class PurchaseOrdersService {
     return t === '' ? null : t;
   }
 
+  /**
+   * Delivery-поля PurchaseOrder за нормалізованим ЕН. Непорожній ЕН → трекінг стартує (PENDING);
+   * null → трекінг скинуто. Єдине джерело набору полів для create і update (без дублювання).
+   */
+  private trackingFields(ttn: string | null): {
+    trackingNumber: string | null;
+    deliveryStatus: import('@prisma/client').DeliveryStatus | null;
+    deliveryStatusRaw: null;
+    deliveryStatusUpdatedAt: Date | null;
+  } {
+    return {
+      trackingNumber: ttn,
+      deliveryStatus: ttn ? 'PENDING' : null,
+      deliveryStatusRaw: null,
+      deliveryStatusUpdatedAt: ttn ? new Date() : null,
+    };
+  }
+
   async findAll(
     orgId: string,
     page = 1,
@@ -275,9 +293,7 @@ export class PurchaseOrdersService {
             documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
             paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
             // Доставка: якщо ЕН вказано при створенні — статус PENDING, далі опитуємо НП.
-            trackingNumber: createTracking,
-            deliveryStatus: createTracking ? 'PENDING' : null,
-            deliveryStatusUpdatedAt: createTracking ? new Date() : null,
+            ...this.trackingFields(createTracking),
           },
         });
         if (computedLines.length) {
@@ -347,22 +363,8 @@ export class PurchaseOrdersService {
     if (dto.trackingNumber !== undefined) {
       const next = this.normalizeTracking(dto.trackingNumber);
       if (next !== po.trackingNumber) {
-        if (next) {
-          trackingUpdate = {
-            trackingNumber: next,
-            deliveryStatus: 'PENDING',
-            deliveryStatusRaw: null,
-            deliveryStatusUpdatedAt: new Date(),
-          };
-          enqueueTracking = true;
-        } else {
-          trackingUpdate = {
-            trackingNumber: null,
-            deliveryStatus: null,
-            deliveryStatusRaw: null,
-            deliveryStatusUpdatedAt: null,
-          };
-        }
+        trackingUpdate = this.trackingFields(next);
+        enqueueTracking = next !== null; // новий/змінений непорожній ЕН → запускаємо опитування
       }
     }
 
