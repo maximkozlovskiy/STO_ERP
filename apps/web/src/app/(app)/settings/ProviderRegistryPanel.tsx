@@ -119,7 +119,10 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
     setVerifyResult(null);
   };
 
-  const closeCreds = () => setCredsProvider(null);
+  // Стабільна ідентичність — передається у Modal як onClose. Без useCallback кожне натискання
+  // у полях кредів (setCreds) ре-рендерить панель → нова closeCreds → Modal.useEffect
+  // [open, handleKey] перевішує keydown-listener + перезаписує body.style.overflow на КОЖЕН символ.
+  const closeCreds = useCallback(() => setCredsProvider(null), []);
 
   // Чи можна зберегти/перевірити: введено хоча б одне поле (порожні мерджаться як «не змінювати»)
   // АБО конфіг уже має збережені креди (оновлюємо apiUrl/режим без повторного вводу секретів).
