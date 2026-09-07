@@ -159,4 +159,26 @@ describe('NovaPoshtaPollingProcessor', () => {
     });
     expect(providerConfig.resolveActive).toHaveBeenCalledWith(ORG, 'br-1', 'DELIVERY');
   });
+
+  // Bug #698: zombie-job / jobId single-flight — re-enqueue шле стабільний jobId np-poll-<poId>
+  // (same як enqueueInitial) → BullMQ дедуп: старий delayed job не подвоюється новим.
+  it('re-enqueue: jobId стабільний (np-poll-<poId>) — single-flight на документ', async () => {
+    providerImpl.getStatus.mockResolvedValue({ status: 'IN_TRANSIT', raw: 'x' });
+    await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG }));
+    const opts = pollQueue.add.mock.calls[0][2];
+    expect(opts.jobId).toBe(`np-poll-${PO}`);
+    expect(opts.removeOnComplete).toBe(true);
+  });
+
+  // Bug #698: payload НЕ несе trackingNumber → зомбі-job (ЕН змінили між постановкою і виконанням)
+  // re-read з БД бачить СВІЖИЙ ЕН у findFirst → опитує актуальний, не подвоює за старим.
+  it('zombie-job: job.data НЕ містить ЕН — трекінг керується re-read з БД (не payload)', async () => {
+    providerImpl.getStatus.mockResolvedValue({ status: 'IN_TRANSIT', raw: 'x' });
+    await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG }));
+    const reEnqueued = pollQueue.add.mock.calls[0][1];
+    expect(reEnqueued).toEqual({ purchaseOrderId: PO, orgId: ORG, pollAttempts: 1 });
+    expect(reEnqueued).not.toHaveProperty('trackingNumber');
+    // getStatus опитаний за ЕН з findFirst (БД), не з payload.
+    expect(providerImpl.getStatus.mock.calls[0][1]).toBe('204...');
+  });
 });

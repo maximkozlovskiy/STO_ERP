@@ -3,6 +3,38 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-09-07 — Bug hunt: інтеграція Нової Пошти — трекінг доставки у PurchaseOrder (917140dc + c7424745 + 490822b4, main)
+
+Ціль: логічні баги нової фічі delivery-tracking. Baseline: API PO+delivery+provider-config+settings 198 зелено; tsc api=0. Фокус (task): PO create/update enqueue-on-ttn + normalizeTracking + DRAFT-guard-ordering + toDto 4 delivery-поля; mapStatus крайові коди; polling loop-safety (термінал/cap/zombie-job) mutation-verify; pollDelayMs clamp; legacy cross-kind (review-fix #692-споріднене); secrets write-only; frontend dirty-guard/badge null-safe.
+
+**Вердикт по фіче-коду: КОРЕКТНИЙ на всіх запитаних точках — 0 логічних дефектів.** Знайдено **3 test-gap** (load-bearing логіка без прямих тестів → тихий регрес при майбутньому рефакторингу). Всі закриті mutation-verified тестами.
+
+Перевірено коректним (0 дефектів):
+
+- **PO create enqueue-on-ttn** — `createTracking = normalizeTracking(dto.trackingNumber)` (trim, ''→null); коли є ЕН → `deliveryStatus:'PENDING'` + `deliveryStatusUpdatedAt` set + `enqueueInitial` ПІСЛЯ tx-commit (offline-safe .catch усередині сервісу черги); без ЕН → всі delivery-поля null, enqueue НЕ викликано. Crash між commit і enqueue прийнятний (PENDING без job — poll підхопиться на наступному update/manual). toDto повертає всі 4 delivery-поля (findAll/findOne/create/update використовують top-level `include` → всі scalar-и auto-present, без ручного select-drift).
+- **PO update enqueue-on-ttn** — ЕН обробляється ЛИШЕ коли `dto.trackingNumber !== undefined` (undefined→не чіпати); DRAFT-guard (`status!==DRAFT→BadRequest`) стоїть ПЕРЕД обчисленням trackingUpdate; новий ЕН (`next !== po.trackingNumber`, next truthy)→`PENDING`+`deliveryStatusRaw:null`(скид стейл)+enqueue; очищення (''/null)→усі delivery-поля null, enqueue НЕ; той самий ЕН→нічого (no write, no enqueue); ''→null коли вже null→no-op (жодного spurious write). normalizeTracking коректний обабіч.
+- **mapStatus крайові** — StatusCode приходить рядком (`String(doc.StatusCode ?? '')`); порожній ''→default→IN_TRANSIT (не термінальний, polling триває); невідомий код (999)→IN_TRANSIT (важливо: не зупиняє передчасно); порожній data[]→client повертає statusCode '3'→NOT_FOUND (термінал). Усі коди НП (1/2/3/4/5/6/41/7/8/9/10/11/103/105) мапляться коректно.
+- **polling loop-safety** — термінальна-зупинка (TERMINAL set), cap (MAX_POLL_ATTEMPTS=480), zombie-job (jobId `np-poll-<poId>` single-flight у enqueueInitial І reEnqueue → BullMQ ігнорує дубль-add; payload НЕ несе ЕН → старий delayed job re-read з БД бачить свіжий trackingNumber → НЕ подвоюється). updateMany з `deletedAt:null` (race-safe, не резуректить soft-deleted).
+- **pollDelayMs clamp [5,1440]** — 0/негативне/2→5хв; 9999→1440хв; налаштування недоступні (throw)→дефолт 30хв; NaN/Infinity→дефолт.
+- **legacy cross-kind (review-fix)** — `legacyFromBranchSettings(DELIVERY)`→null (kind!=='PAYMENT' guard), не витікає monobank; resolveActive(DELIVERY) без BranchProviderConfig→null.
+- **secrets** — apiKey НП: getBranchConfigs повертає лише `hasCredentials` (не сирі креди); verify-response лише {valid,error}; DTO/job.data не несуть apiKey (job.data=={purchaseOrderId,orgId,pollAttempts}); DeliveryTab поле apiKey write-only.
+- **frontend** — trackingNumber у formSnapshot (dirty-детекція коректна: без зміни ЕН форма не «брудна»); бейдж null-safe (`v ? Badge : '—'`); create шле `trackingNumber || undefined`, update шле `form.trackingNumber ? val : null` (семантика undefined=не чіпати vs null=очистити збережена); інтервал-валідація [5,1440] дзеркалить бекенд clamp.
+
+- [x] **Bug #696 (HIGH · test-gap): PurchaseOrdersService create/update + trackingNumber — 0 прямих тестів на enqueue-on-ttn (найкритичніший gap фічі).** PO service spec мокав `DeliveryTrackingService.enqueueInitial` у 6 місцях, але жоден тест не асертив: (а) create з ЕН→`deliveryStatus:'PENDING'`+`enqueueInitial(orgId,id)` викликано РІВНО раз; (б) create без ЕН→delivery-поля null+enqueue НЕ викликано; (в) create з ' 204 '(пробіли)→trim+enqueue; (г) update новий ЕН→PENDING+deliveryStatusRaw:null+enqueue; (д) update очищення(null/'')→усі delivery null+enqueue НЕ; (е) update той самий ЕН→жодного delivery-write+enqueue НЕ; (є) update undefined trackingNumber→delivery-поля не чіпаються. Рефактор normalizeTracking/enqueue-гілок пройшов би CI зеленим із тихо зламаним трекінгом. Виправлено: створено `purchase-orders.delivery.service.spec.ts` (13 тестів) — усі гілки + mutation-note. tsc api=0.
+- [x] **Bug #697 (MEDIUM · test-gap): DeliveryTrackingService — 0 тестів (весь сервіс).** pollDelayMs clamp [5,1440] (task п.4) і enqueueInitial (jobId single-flight + offline-safe .catch) жили без прямих тестів — processor-спек мокав pollDelayMs константою. Clamp-логіка (0/негативне→5, 9999→1440, throw→30, NaN→30) — load-bearing проти нескінченно-частого або мертвого polling. Виправлено: `delivery-tracking.service.spec.ts` (9) — clamp boundaries + settings-throw→default + enqueueInitial jobId/opts + черга-throw→не кидає. **Mutation-verify:** прибрати `Math.min(...,MAX)` → 9999-тест падає; прибрати `Math.max(...,MIN)` → 0/2-тести падають.
+- [x] **Bug #698 (MEDIUM · test-gap): polling zombie-job / jobId single-flight не доведено явно.** processor-спек асертив `opts.jobId` лише в одному update-тесті, але не було тесту що доводить: enqueueInitial і reEnqueue шлють ОДНАКОВИЙ jobId (`np-poll-<poId>`) → single-flight; і що payload НЕ несе trackingNumber → старий delayed job re-read бачить свіжий ЕН з БД (не подвоює опитування зміненого ЕН). Виправлено: +2 тести у processor-спек (jobId стабільний між enqueueInitial/reEnqueue; job.data не містить ЕН — re-read керується БД).
+
+**Mutation-verify (доведено дискримінацію, не fake-green):**
+
+- прибрати `Math.min(...,MAX_POLL_MINUTES)` у pollDelayMs → тест «9999→1440» падає; ✅ відновлено.
+- підмінити `if (createTracking) enqueueInitial` на безумовний enqueue у create → тести «create БЕЗ ЕН» + «лише пробіли» падають (2); ✅ відновлено.
+- прибрати `jobId: np-poll-<poId>` у reEnqueue → тести zombie-job/single-flight падають (2); ✅ відновлено.
+
+**Результат:** 0 логічних дефектів у фіче-коді (весь запитаний edge-набір коректний); 3 test-gap (#696-#698) закрито mutation-verified тестами.
+Нові тести: API +26 (delivery.service.spec NEW 13 — PO create/update enqueue-on-ttn; delivery-tracking.service.spec NEW 11 — pollDelayMs clamp + enqueueInitial; processor +2 — zombie-job/jobId). Delivery-папка 36→62.
+Повна API-сюїта 1781→1808 зелено (112→114 files). tsc api=0 / web=0. Frontend не чіпався (лише backend-тести) → web-сюїта без змін.
+Build: не запускався (лише додано \*.spec.ts; tsc обох пакетів чистий). E2E пропущено (Playwright MCP DOWN — CONNECT_TIMEOUT, не блокер).
+
 ## Session 2026-09-06 — Bug hunt: scanner-race fix (6e46a21b) + /simplify (34027c5c) — range 17b9f19d..HEAD (main)
 
 Ціль: зламати фікс сканер-race (Enter флашить pending debounce → fetch свіжих → select) у 3 пікерах: `search-picker-modal.tsx` (PurchaseOrder/StockDocument/SupplierReturn), `GoodPickerModal.tsx`, `search-combobox.tsx` (WorkOrderAddPart). Playwright MCP DOWN (CONNECT_TIMEOUT) → unit/component + reasoning.
