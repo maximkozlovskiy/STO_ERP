@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-09-07 — fix(review): 0d0d1656 code review циклу (реєстри провайдерів + QR-оплата)
+
+Прямий (без субагента) повний чекліст по фічах реєстрів ПРРО/еквайрингу/доставки + QR-оплата + sync-фікс garageName. **3 фікси (0 CRITICAL / 2 IMPORTANT / 1 SUGGESTION):**
+
+- **IMPORTANT §2.5** — `online-payment.service`: `pollQueue.add()` після закомічених intent+gateway-рахунку був голим `await` → Redis-down валив би вже-створений намір HTTP-500 (QR/pageUrl уже показано касиру). Fix: `.catch()`+`logger.error` (offline-first, дзеркалить delivery/payment-polling процесори).
+- **IMPORTANT §8.5** — `purchase-orders/page.tsx`: `markDeleted` + supplier-return delete мали 3 негейтнуті `toast.success/error` (решта 7 у файлі гейтнуті `features.toastEnabled`) → toast crash/no-op при вимкненій фічі. Гейтнуто всі 3.
+- **SUGGESTION §1** — `schema.prisma`: коментарі `BranchProviderConfig.kind/provider` лишались `FISCAL|PAYMENT` / `checkbox|vchasno|monobank|liqpay` після додавання DELIVERY/nova-poshta → `+= DELIVERY / nova-poshta` (comment-only, без міграції).
+
+Решта чекліста CLEAN: SSRF-guard у всіх external clients, credentials у ENCRYPTED_FIELDS + write-only + виключено з sync, tenant-isolation скрізь, провайдер-коди end-to-end консистентні, processors concurrency+cap+idempotent, міграції з окремим ADD VALUE для DELIVERY. tsc api+web ✅ 0.
+
+---
+
 ## 2026-09-07 — fix(sync): 5ca1f8a9 повний sync-аудит (Direction 1/2/3)
 
 Прямий (без субагента) повний sync-аудит на HEAD 58f71bb8, фокус на нових модулях (delivery-providers, fiscal-providers, payment-gateways, online-payments, cash-shift). Direction 1 і 3 — 0 розбіжностей. Direction 2 — 1 фікс: `vehicles/new` викликав неіснуючий `GET /customer-garages/:id` (гаражі мають лише list-endpoint без by-id маршруту) → завжди 404, назва гаража не показувалась. Fix: `garageName` передається у query з картки контрагента (об'єкт вже в пам'яті), прибрано мертвий fetch/state/невикористаний імпорт. tsc api+web ✅ 0.
