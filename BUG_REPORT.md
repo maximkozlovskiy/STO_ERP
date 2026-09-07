@@ -3529,3 +3529,28 @@ Build: не запускався окремо (tsc обох пакетів чи�
 **Результат:** 1 CRITICAL регрес (#692 сід-міграції ламає fiscal/money на деплої) знайдено і виправлено (hasCreds-guard + legacy-fallback у resolveActive, дзеркалить resolveByCode); 3 test-gap (#693-#695) закрито. Money-логіка mutation-verified вживу (CAS count-guard) + #692-фікс mutation-verified (4 тести падають без guard).
 Нові тести: API +12 (provider-config 12→23, fiscal-registry 14→15 +vchasno cents/CASH). Payments 216→228. Повна API-сюїта 1733→1745 зелено (110 files). tsc api=0 / web=0. web-сюїта без змін (688).
 Build: не запускався (tsc обох пакетів чистий; фікс — 1 сервіс-метод, additive у тестах). E2E пропущено (Playwright MCP DOWN — не блокер).
+
+---
+
+## Session 2026-09-07 — bug-hunt HEAD 358d2abc (delivery НП + registry ПРРО/еквайринг + QR-оплата) — 0 нових багів
+
+Scope (найвищий ризик, FULL-аудит): delivery-модуль Нової Пошти (nova-poshta-polling.processor, delivery-tracking.service, nova-poshta.provider/client, delivery-provider-registry) + PurchaseOrders create/update+trackingNumber + settings deliveryPollIntervalMinutes; registry провайдерів ПРРО(checkbox/vchasno)/еквайрингу(monobank/liqpay) через ProviderConfigService (resolveActive/resolveByCode config+legacy-fallback); QR online-payment.service (createIntent) + payment-polling.processor (CAS PENDING→PAID, reconcile PAID+paymentId=null, Bug #688 idempotency-лінк, MAX-attempts cap) + cash-shift.service (open/close/ensureToken/refreshToken/getCurrent); checkbox.processor; FE ProviderRegistryPanel/QrPaymentModal/useOnlinePayment.
+
+Baseline: tsc api=0 / web=0; API 1808 зелено (114 files); web 692 зелено (70 files). Feature-модулі окремо: 291 зелено (14 files).
+
+**Знайдено багів: 0.** Уся запитана money/security-critical логіка перевірена коректною і test-covered. Дерево лишилось чистим (жодного code-change).
+
+**Доведено коректним (mutation-covered у наявних специ):**
+
+- **Double-charge protection (money-critical, після registry-рефакторингу):** CAS `updateMany where status:PENDING` → рівно 1 poll виграє (payment-polling.processor.spec «конкурентний 2-й poll → create НЕ викликається»); reconcile-гілка PAID+paymentId=null (early-return на paymentId наявний); Bug #688 pre-create `payment.findFirst({orgId, onlinePaymentIntentId})` + P2002-relink + `@unique onlinePaymentIntentId` у схемі — 2 dedicated specs з mutation-note (прибрати pre-guard → double-charge assert падає). intent.gateway резолвиться через resolveByCode+registry.get (не хардкод monobank) — refactor money-інваріант зберіг.
+- **Money-loss protection:** reconcile-гілка спрацьовує ДО resolveByCode → PAID intent фіналізується у Payment навіть якщо config провайдера видалено (гроші у gateway не губляться); finalize cap MAX_FINALIZE_ATTEMPTS=360 з counter, що переноситься через reconcile-poll (job.data.finalizeAttempts) → без нескінченного циклу і без залишення без Payment у межах вікна.
+- **Tenant isolation:** усі findFirst/findMany/updateMany/count у payments+delivery несуть orgId; upsertConfig/activate scoped branch-in-org (assertBranchInOrg) + унікальний ключ (branchId,kind,provider); Payment без deletedAt (money-record — не soft-delete).
+- **Delivery loop-safety / zombie-job / config-clamp:** pollDelayMs clamp [5,1440] хв + DEFAULT 30 при недоступних налаштуваннях (0/негатив/NaN не створюють tight-loop); MAX_POLL_ATTEMPTS=480 cap; jobId-дедуп `np-poll-<poId>` = single-flight (зміна ЕН → той самий jobId замінює job, не зомбі); poll-guard читає trackingNumber/deliveryStatus свіжо → застарілий job зупиняється; deletedAt:null у update-where (без резуректу delivery-метадані soft-deleted PO). settings DTO @Min(5)@Max(1440) = clamp-межі.
+- **Enum-мапінги:** NovaPoshtaProvider.mapStatus (StatusCode 1/2/3/7-8/9-11/103-105 + default→IN_TRANSIT); FE DELIVERY_STATUS_LABELS/BADGE покривають усі 6 DeliveryStatus; monobank/liqpay mapStatus (success/wait_compensation→paid, hold/processing→pending консервативно — без false-paid).
+- **Provider-config sid-регрес (Bug #692 з попередньої сесії):** підтверджено виправленим у коді — resolveActive має hasCreds-guard з legacy-fallback того-ж-провайдера (дзеркалить resolveByCode), 23 тести provider-config.
+- **DI-wiring:** ProviderConfigService provided у обох модулях (payments + purchase-orders) — stateless (лише prisma-wrapper), дубль-інстанс безпечний.
+- **Auth/roles/throttle:** online-payments/delivery-providers/fiscal-providers контролери — JwtAuthGuard+RolesGuard, OWNER/ADMIN(+ACCOUNTANT/RECEPTIONIST для оплат), verify throttle 5/60s, ParseUUIDPipe, creds write-only (не в GET/verify-response/логах).
+
+**Спостереження (не баги, задокументовано):** cash-shift.open робить зовнішній signIn/openShift до персисту — під гонкою можливий рідкісний orphan-shift у провайдера (DB консистентна через partial-unique + winner-recovery, self-heal при close); ProviderRegistryPanel verify з existingHasCreds без re-entry шле credentials:{} → «не задано ключ» (природа write-only verify).
+
+**Результат:** 0 багів, 0 фіксів, 0 code-changes. Baseline зелений (tsc 0/0, API 1808, web 692). E2E пропущено (Playwright MCP CONNECT_TIMEOUT — не блокер). Попередні review/tester-цикли (до 358d2abc) вже загартували цей код — money/fiscal/delivery інваріанти тримаються після registry-рефакторингу.
