@@ -682,12 +682,13 @@ function PurchaseOrdersPageClient() {
         setSelectedPO(prev => (prev?.id === po.id ? null : prev));
         // Отримане PO при видаленні реверсить склад/баланс → повний side-effects набір.
         invalidatePurchaseSideEffects(queryClient);
-        toast.success('Замовлення позначено на видалення');
+        if (features.toastEnabled) toast.success('Замовлення позначено на видалення');
       } catch (e: unknown) {
-        toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+        if (features.toastEnabled)
+          toast.error(e instanceof Error ? e.message : 'Помилка видалення');
       }
     },
-    [confirm, queryClient],
+    [confirm, queryClient, features.toastEnabled],
   );
 
   const openReceiveWithLines = useCallback((po: PurchaseOrder) => {
@@ -1065,9 +1066,10 @@ function PurchaseOrdersPageClient() {
                                     await deleteSupplierReturn.mutateAsync(sr.id);
                                     if (features.toastEnabled) toast.success('Повернення видалено');
                                   } catch (err: unknown) {
-                                    toast.error(
-                                      err instanceof Error ? err.message : 'Не вдалось видалити',
-                                    );
+                                    if (features.toastEnabled)
+                                      toast.error(
+                                        err instanceof Error ? err.message : 'Не вдалось видалити',
+                                      );
                                   }
                                 }}
                               >

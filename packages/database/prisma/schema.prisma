@@ -1976,8 +1976,8 @@ model BranchProviderConfig {
   id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId       String       @db.Uuid
   branchId    String       @db.Uuid
-  kind        ProviderKind // FISCAL | PAYMENT
-  provider    String // 'checkbox' | 'vchasno' | 'monobank' | 'liqpay'
+  kind        ProviderKind // FISCAL | PAYMENT | DELIVERY
+  provider    String // 'checkbox' | 'vchasno' | 'monobank' | 'liqpay' | 'nova-poshta'
   enabled     Boolean      @default(false) // активний провайдер = enabled (лише 1 per kind per branch)
   apiUrl      String? // необовʼязковий override базового URL провайдера
   credentials String? // JSON-рядок секретів, шифрується at-rest (ENCRYPTED_FIELDS)

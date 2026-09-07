@@ -115,17 +115,28 @@ export class OnlinePaymentService {
           error: true,
         },
       });
-      // Стартуємо polling.
-      await this.pollQueue.add(
-        'poll',
-        { intentId: intent.id, orgId },
-        {
-          delay: POLL_INTERVAL_MS,
-          jobId: `payment-poll-${intent.id}`,
-          removeOnComplete: true,
-          removeOnFail: 200,
-        },
-      );
+      // Стартуємо polling. Enqueue ПІСЛЯ закомічених intent+gateway-рахунку → offline-first:
+      // Redis-down не має валити вже-створений намір HTTP-500 (QR/pageUrl уже є, касир бачить).
+      // .catch() дзеркалить delivery/payment-polling процесори; логуємо ERROR (money-critical:
+      // без poll-джоба намір не дійде до PAID автоматично — потрібен ручний refresh/повторна спроба).
+      await this.pollQueue
+        .add(
+          'poll',
+          { intentId: intent.id, orgId },
+          {
+            delay: POLL_INTERVAL_MS,
+            jobId: `payment-poll-${intent.id}`,
+            removeOnComplete: true,
+            removeOnFail: 200,
+          },
+        )
+        .catch((err: unknown) =>
+          this.logger.error(
+            `Черга payment-polling недоступна — намір ${intent.id} без опитування статусу: ${
+              err instanceof Error ? err.message : err
+            }`,
+          ),
+        );
       return this.toDto(updated);
     } catch (e) {
       // gateway не створив рахунок → намір FAILED, кидаємо (касир бачить помилку).
