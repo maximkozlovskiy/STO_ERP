@@ -12,6 +12,7 @@
 Дата:       2026-09-07
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: api ✅ 0 errors | web ✅ 0 errors | shared ✅ 0 errors  (+ prisma validate ✅)
+Optimize:   2026-09-07 perf-аудит (напряму, HEAD 0b9b1f53→2617936c) — 1 фікс (Modal onClose thrashing у ProviderRegistryPanel, reused 3×), решта focus-областей (delivery-poll/provider-config/payment-polling/PO-frontend) CLEAN. Нова міграція НЕ потрібна.
 Sync-full:  2026-09-07 fix(sync) 5ca1f8a9 — повний sync-аудит (HEAD 58f71bb8 → 5ca1f8a9), виконано напряму (без субагента). **1 фікс, решта CLEAN.** Direction 1 (API→UI) 0 розбіжностей: усі 5 фокус-модулів (delivery-providers, fiscal-providers, payment-gateways, online-payments, cash-shifts) мають UI-споживачів (ProviderRegistryPanel×3 + QrPaymentModal + /cash сторінка), endpoints/ролі збігаються. Direction 2 (URL) — **Bug: vehicles/new викликав неіснуючий `GET /customer-garages/:id`** (гаражі мають лише list-endpoint `GET /counterparties/:id/garages`, without by-id route) → запит завжди 404, назва гаража ніколи не показувалась. Fix: картка контрагента передає `garageName` у query (об'єкт гаража вже в пам'яті на клік) замість round-trip; прибрано мертвий useEffect+garageLoading+невикористаний Spinner-імпорт. Direction 3 (типи/секрети) 0 розбіжностей: CurrentShiftDto/OnlineIntentDto field-for-field = фронтенд-інтерфейси; ProviderConfigView (getBranchConfigs) повертає лише `hasCredentials:boolean`, сирі credentials НІКОЛИ не в GET/list (verify — POST echo валідації, не читання збережених кредів). tsc api+web ✅ 0 (до і після фіксу).
 Sync-full:  2026-09-07 fix(sync) 7a4ba993 — повторний повний sync-аудит (HEAD 58f71bb8 → 7a4ba993), фокус: реєстри ПРРО/еквайрингу/доставки + Нова Пошта (пере��ірка після попереднього прогону 5ca1f8a9). **0 code-фіксів, лише skill-фікс.** Direction 1: delivery-providers ↔ DeliveryTab.tsx, fiscal-providers+payment-gateways ↔ FiscalTab.tsx (обидві панелі через спільний ProviderRegistryPanel), online-payments ↔ useOnlinePayment.ts+QrPaymentModal.tsx, cash-shifts ↔ useCashShift.ts, notifications (templates+providers+channels) ↔ NotificationsTab.tsx+NotificationProvidersPanel.tsx — усі wired, 0 розбіжностей. Виявлено що `notifications/` більше НЕ виняток (мав власний UI ще раніше) — застарілий запис у sto-sync SKILL.md виправлено на явний опис (не "немає UI"). Широкий прогін Direction 1 по всіх 45+ backend-модулях (grep base-path проти apiFetch) — 18 "підозр" від дешевого regex, усі виявились false-positive після точнішої перевірки (payment-gateways/search/audit/xlsx/etc. — усі wired, просто через prop-driven endpoint або query-string одразу після шляху, який ламав перший grep). Direction 3: PurchaseOrder.deliveryStatus/trackingNumber/deliveryStatusRaw/deliveryStatusUpdatedAt (usePurchaseOrders.ts) = toDto() field-for-field; NovaPoshtaProvider credentials.apiKey = DeliveryTab.tsx field 'apiKey'; checkbox/vchasno/monobank/liqpay credential keys (licenseKey/pinCode/cashRegisterId/token/publicKey/privateKey) = FiscalTab.tsx схеми field-for-field. Секрети: ProviderConfigView/getBranchConfigs повертає лише hasCredentials:boolean скрізь (FISCAL/PAYMENT/DELIVERY) — жодного витоку credentials у GET. tsc api+web ✅ 0 (без змін коду — лише 1 файл SKILL.md).
 Latest review: 2026-09-07 (Auto, HEAD 0d0d1656, виконано напряму без субагента) — повний чекліст по фічах реєстрів ПРРО/еквайрингу/доставки (payments/fiscal+gateways, purchase-orders/delivery, provider-config, online-payment, QR-оплата) + sync-фікс garageName. **3 фікси (0 CRITICAL / 2 IMPORTANT / 1 SUGGESTION), решта CLEAN.** IMPORTANT #1 (§2.5 offline-first): online-payment.service pollQueue.add() ПІСЛЯ закомічених intent+gateway-рахунку був голим await → Redis-down валив би вже-створений намір HTTP-500 (QR/pageUrl уже є). Fix: .catch()+logger.error (дзеркалить delivery/payment-polling процесори). IMPORTANT #2 (§8.5): purchase-orders/page.tsx markDeleted + supplier-return delete мали 3 ungated toast.success/error (решта 7 у файлі гейтнуті features.toastEnabled) → toast crash/no-op при вимкненій фічі; гейтнуто всі 3. SUGGESTION (§1 doc-drift): schema.prisma BranchProviderConfig kind/provider коментарі лишались FISCAL|PAYMENT/checkbox|vchasno|monobank|liqpay після додавання DELIVERY/nova-poshta → += DELIVERY / nova-poshta (comment-only, без міграції). Верифіковано ЧИСТИМ: усі 3 нові controller-и @UseGuards+@Roles(OWNER/ADMIN)+@Throttle 5/60s на verify+ParseUUIDPipe; SSRF (validatePublicUrl+redirect:'manual'+AbortController+clearTimeout у finally) у всіх external clients (nova-poshta/vchasno/liqpay); секрети — credentials у ENCRYPTED_FIELDS (шифрується цілим), getBranchConfigs→лише hasCredentials, write-only merge, branch_provider_configs виключено з PULL_TABLES+PUSH_SAFE_TABLES (документовано); tenant-isolation orgId+branchId+deletedAt скрізь; провайдер-коди end-to-end консистентні (novaposhta/checkbox/vchasno/monobank/liqpay backend=frontend); processors concurrency=3+self-re-enqueue cap+jobId single-flight+idempotent finalize (P2002/existing-relink); міграції ProviderKind+DELIVERY окремими файлами (PG16 ADD VALUE), FK-індекси present; DELIVERY_STATUS_LABELS/BADGE покривають усі 6 enum-значень. tsc api ✅ 0 | web ✅ 0.
@@ -111,6 +112,35 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+2617936c  docs(skills): add modal-thrashing consumer-scope + shared-panel approach to sto-optimize
+          Дата: 2026-09-07. Крок 7 самовдосконалення після perf-аудиту: детектор Крок 2.16
+          (нестабільний onClose у Modal) сканував лише components/ui/, а анти-патерн живе у
+          consumer-і (сторінка/панель під app/) → розширено grep на app/+components поза ui/,
+          додано «Накопичені підходи» (shared reused-панель множить impact; plain-const, не лише
+          inline-arrow, — теж сигнал).
+
+0b9b1f53  perf(optimize): стабілізувати onClose у ProviderRegistryPanel (Modal listener thrashing)
+          Дата: 2026-09-07. Perf-аудит циклу (напряму, без субагента), фокус: нові фічі
+          delivery-модуль НП / registry провайдерів / payment-polling / PurchaseOrder frontend.
+          **1 фікс, решта FOCUS-областей CLEAN.** ProviderRegistryPanel (новий файл, reused 3×:
+          ПРРО/еквайринг/доставка): closeCreds передавався у <Modal> як onClose plain-const без
+          useCallback → кожне натискання у полях кредів (setCreds) ре-рендерило панель → нова
+          ідентичність closeCreds → Modal.useEffect [open, handleKey] перевішував keydown-listener
+          + переписував body.style.overflow на КОЖЕН символ. Обгорнуто у useCallback([]) (Крок 2.16).
+          Верифіковано CLEAN (backend focus): nova-poshta-polling.processor — self-re-enqueue не б'є
+          зайвих findFirst (1 select PO + resolveActive), pollDelayMs через SettingsService (Redis-
+          кеш TTL, НЕ query-per-tick), delay≥5хв; provider-config resolveActive/resolveByCode — 1
+          запит на common-path (legacy-fallback лише cold-path при порожніх кредах), warehouse.branchId
+          non-null → @@index([orgId,branchId,kind]) повністю покриває delivery-poll; @@unique(branchId,
+          kind,provider) покриває resolveByCode; payment-polling delay=5s/concurrency=3 оптимальні,
+          idempotency-guard безкоштовний; PurchaseOrders findAll = _count(lines)+scalar delivery-поля+
+          1 groupBy (не N+1); frontend DELIVERY_STATUS_LABELS/BADGE вже module-level, бейдж лише у
+          detail-панелі (не per-row hot-path). Спостереження (НЕ фіксовано): @@index([orgId,
+          deliveryStatus,deletedAt]) на PurchaseOrder — deliveryStatus ніде не WHERE-фільтрується
+          (лише пишеться), тех. unused, але write-cost мізерний (poll ≥5хв) + плаузібельно під
+          майбутній «delivery board» → лишено (drop = ризик без вигоди). tsc api+web ✅ 0 errors.
+          **Нова міграція НЕ потрібна.**
+
 0d0d1656  fix(review): offline-safe enqueue онлайн-оплати + gate toast у PO + актуалізувати schema-коментар DELIVERY
           Дата: 2026-09-07. Code review циклу (напряму, без субагента), фокус: реєстри провайдерів
           ПРРО/еквайрингу/доставки + QR-оплата + sync-фікс garageName. 3 фікси (0 CRITICAL /
