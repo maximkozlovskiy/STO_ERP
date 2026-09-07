@@ -473,9 +473,18 @@ grep -rln "useEffect.*\[\]" apps/web/src/ --include="*.tsx" | xargs -I {} sh -c 
 ```bash
 # Модальні компоненти що приймають onClose і Modal.useEffect для keydown
 grep -rn "onClose:.*=>\|onClose={() => {\|onClose={\\s*saving" apps/web/src/components/ui/ --include="*.tsx" | head -20
+
+# ГОЛОВНЕ: parent-и (сторінки/панелі) що передають НЕСТАБІЛЬНИЙ onClose у <Modal>.
+# Баг живе у consumer-і Modal, а НЕ у ui/ — тому скануємо app/ + components/ поза ui/:
+#   (а) inline arrow: onClose={() => ...}
+#   (б) plain-const handler (const closeX = () => ...; onClose={closeX}) — теж нестабільний
+grep -rn "onClose={() =>\|onClose={close\|onClose={handleClose" apps/web/src/app/ apps/web/src/components/ --include="*.tsx" | grep -v "components/ui/" | head -20
+# Для кожного файлу-кандидата: чи модалка містить input/textarea що typing-ять на КОЖЕН символ
+# (setState у onChange) → thrashing підтверджений. Особливий пріоритет — SHARED панелі
+# (reused N× як ProviderRegistryPanel) — один фікс покриває всі точки використання.
 ```
 
-**Фікс:** у parent компоненті обгорнути обробник у `const handleClose = useCallback(() => {...}, [deps])`. Без цього Modal.useEffect `[open, handleKey]` (де handleKey depends on onClose identity) re-fires на КОЖЕН render батька → addEventListener/removeEventListener + body.style.overflow re-write. Особливо помітно у модалках з частим typing у внутрішніх inputs.
+**Фікс:** у parent компоненті обгорнути обробник у `const handleClose = useCallback(() => {...}, [deps])` (для `() => setX(null)` deps порожні). Без цього Modal.useEffect `[open, handleKey]` (де handleKey depends on onClose identity) re-fires на КОЖЕН render батька → addEventListener/removeEventListener + body.style.overflow re-write. Особливо помітно у модалках з частим typing у внутрішніх inputs (кожне натискання = setState = ре-рендер parent = новий onClose = перевішування listener-а).
 
 ---
 
@@ -602,6 +611,16 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-07 — Modal-thrashing детектор дивився лише в ui/, а анти-патерн живе у consumer-і; shared reused-панель множить impact на всі точки використання
+
+**Сигнал:** SHARED панель/сторінка (напр. `ProviderRegistryPanel`, reused 3× — ПРРО/еквайринг/доставка) рендерить `<Modal onClose={closeX}>`, де `closeX` — plain-const `() => setState(null)` (НЕ useCallback). Модалка містить `<Input onChange={e => setCreds(...)}>` (write-only секрети) → кожне натискання = setState = ре-рендер панелі = нова ідентичність `closeX` → Modal.useEffect `[open, handleKey]` (handleKey залежить від onClose) знімає+вішає keydown-listener І переписує `document.body.style.overflow` на КОЖЕН символ. Крок 2.16 покривав патерн, але його grep сканував ЛИШЕ `apps/web/src/components/ui/` — а баг за визначенням у consumer-і Modal (сторінка/панель під `app/`), не у самому ui-компоненті → детектор його не бачив.
+**Сигнал-grep:** `onClose={() =>` (inline) АБО `onClose={closeX}`/`onClose={handleClose}` де handler — plain-const без useCallback, скануючи `apps/web/src/app/ + components/` ПОЗА `components/ui/`. Cross-check: чи модалка містить typing-input (`onChange`→setState) що б'є на кожен символ. Shared-панель (default-export reused у кількох табах/сторінках) = пріоритет: один фікс покриває N точок.
+**Причина виникнення:** «`() => setX(null)` тривіальний, навіщо useCallback». Автор бачить лише один render-контекст, не помічає що typing у власних inputs модалки ре-рендерить parent на кожен символ. Плюс детектор-грепи природно цілять у «місце де визначено Modal» (ui/), а не «де його викликають».
+**Підхід до виявлення:** будь-який `<Modal>` з `onChange`-input усередині → onClose ОБОВʼЯЗКОВО стабільний. Grep-scope для Modal-thrashing має включати consumer-и (app/pages, feature-панелі), не лише ui/. При аудиті НОВОЇ shared-панелі з модалкою кредів/форми — перша перевірка.
+**Підхід до фіксу:** обгорнути close-handler у `useCallback(() => setX(null), [])` (deps порожні для чистого setter). Zero-risk, поведінка незмінна, лише стабілізує ідентичність.
+**Реальний impact:** typing 20-символьного ключа: 20× (removeEventListener+addEventListener+2× body.style write) → 0. Найпомітніше на повільних пристроях/великих модалках; × кожна точка використання shared-панелі.
+**Де шукати ще:** будь-яка feature-панель/сторінка з модалкою що має форму-inputs: креди-модалки (ProviderRegistryPanel, NotificationProvidersPanel), create/edit-модалки з полями, search-модалки. Родич — onSubmit/onPaid inline-arrow у того ж Modal (менш критично, бо не в useEffect-deps, але для memo-дочірніх — теж стабілізувати).
 
 ### 2026-09-06 — Cached/SSE dashboard-tile aggregate по append-only high-volume таблиці фільтрує по non-FK discriminator+date, а існуючий composite index веде leading-FK якого ця гілка НЕ подає (leftmost-prefix miss)
 
