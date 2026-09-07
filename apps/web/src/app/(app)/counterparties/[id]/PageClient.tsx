@@ -912,7 +912,11 @@ export default function CounterpartyCardPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => router.push(`/vehicles/new?garageId=${garage.id}`)}
+                        onClick={() =>
+                          router.push(
+                            `/vehicles/new?garageId=${garage.id}&garageName=${encodeURIComponent(garage.name)}`,
+                          )
+                        }
                       >
                         <Plus className="h-3.5 w-3.5 mr-1" />
                         Авто

@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
-import { Spinner } from '@/components/ui/spinner';
 
 interface VehicleResponse {
   id: string;
@@ -17,6 +16,9 @@ interface VehicleResponse {
   make: string;
   model: string;
 }
+
+// Гараж не має власного GET-by-id endpoint (лише список /counterparties/:id/garages) —
+// назва передається з картки контрагента через query, без зайвого round-trip до API.
 
 const FUEL_TYPES = ['Бензин', 'Дизель', 'Газ', 'Гібрид', 'Електро', 'LPG'];
 const TRANSMISSION_TYPES = [
@@ -51,6 +53,7 @@ export default function NewVehiclePageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const garageId = searchParams.get('garageId') ?? '';
+  const garageNameParam = searchParams.get('garageName') ?? '';
 
   const [form, setForm] = useState({
     make: '',
@@ -72,8 +75,7 @@ export default function NewVehiclePageClient() {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [garageLoading, setGarageLoading] = useState(true);
-  const [garageName, setGarageName] = useState('');
+  const [garageName, setGarageName] = useState(garageNameParam);
   // Bug (review): `new Date().getFullYear()` у render path → hydration mismatch
   // при build-time SSR + рантайм у наступному році. Тримати у useState через
   // useEffect — placeholder з'явиться після hydration, без SSR/CSR розбіжності.
@@ -81,15 +83,6 @@ export default function NewVehiclePageClient() {
   useEffect(() => {
     setCurrentYear(String(new Date().getFullYear()));
   }, []);
-
-  useEffect(() => {
-    if (!garageId) return;
-    setGarageLoading(true);
-    apiFetch<{ id: string; name: string }>(`/customer-garages/${garageId}`)
-      .then(g => setGarageName(g.name))
-      .catch(() => setGarageName(''))
-      .finally(() => setGarageLoading(false));
-  }, [garageId]);
 
   const set = (field: string, value: string) => setForm(f => ({ ...f, [field]: value }));
 
@@ -159,11 +152,7 @@ export default function NewVehiclePageClient() {
         </Button>
         <div>
           <h1 className="text-xl font-bold text-foreground">Новий автомобіль</h1>
-          {garageLoading ? (
-            <Spinner size="sm" />
-          ) : (
-            garageName && <p className="text-sm text-muted-foreground">Гараж: {garageName}</p>
-          )}
+          {garageName && <p className="text-sm text-muted-foreground">Гараж: {garageName}</p>}
         </div>
       </div>
 
