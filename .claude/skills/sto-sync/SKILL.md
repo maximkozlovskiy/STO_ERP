@@ -70,7 +70,12 @@ ls apps/web/src/app/
 - `sync/` — немає сторінки, мобільний sync endpoint
 - `health/` — немає сторінки, docker healthcheck
 - `files/` — немає сторінки, upload helper
-- `notifications/` — немає окремої сторінки, вбудований у sidebar
+
+> `notifications/` РАНІШЕ вважався винятком ("вбудований у sidebar") — це застаріло.
+> Модуль вже має власний UI: `NotificationsTab.tsx` (шаблони, `/notification-templates`)
+>
+> - `NotificationProvidersPanel.tsx` (провайдери/канали, `/notification-providers`,
+>   `/notification-channels`) у `/settings`. Перевіряй його як звичайний модуль.
 
 ---
 
