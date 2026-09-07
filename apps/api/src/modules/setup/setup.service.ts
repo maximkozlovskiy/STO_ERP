@@ -104,6 +104,10 @@ export class SetupService {
           },
           { code: 'privat24_qr', name: 'PrivatPay QR', sortOrder: 4, requiresFiscal: true },
           { code: 'monobank_qr', name: 'MonoPay QR', sortOrder: 5, requiresFiscal: true },
+          // Онлайн-оплата (еквайринг) через registry-шлюзи. payment-polling.processor створює
+          // Payment із method=`${gateway}_qr` (monobank_qr / liqpay_qr) — код мусить існувати у
+          // PaymentMethodConfig, інакше платіж НЕ фіскалізується й не мапиться на рахунок-призначення.
+          { code: 'liqpay_qr', name: 'LiqPay QR', sortOrder: 6, requiresFiscal: true },
         ];
         await tx.paymentMethodConfig.createMany({
           data: methods.map(m => ({ orgId: org.id, ...m })),
