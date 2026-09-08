@@ -486,6 +486,21 @@ grep -rn "onClose={() =>\|onClose={close\|onClose={handleClose" apps/web/src/app
 
 **Фікс:** у parent компоненті обгорнути обробник у `const handleClose = useCallback(() => {...}, [deps])` (для `() => setX(null)` deps порожні). Без цього Modal.useEffect `[open, handleKey]` (де handleKey depends on onClose identity) re-fires на КОЖЕН render батька → addEventListener/removeEventListener + body.style.overflow re-write. Особливо помітно у модалках з частим typing у внутрішніх inputs (кожне натискання = setState = ре-рендер parent = новий onClose = перевішування listener-а).
 
+**Пріоритет-фільтр (не фіксувати marginal):** модалки лише з `DatePickerInput`/date-picker (кліки, не per-char typing) → амплітуда дуже низька, marginal — фіксувати ЛИШЕ модалки з `<Input>`/`<textarea>` що typing-ять на КОЖЕН символ. 73 inline-onClose по app/ — більшість на confirm/view-only модалках без typing-inputs; не blanket-fix усі, цілитись у typing-форми.
+
+### 2.17 Lazy-chart child без React.memo під SSE/polling parent — recharts full-reconcile на кожен live-tick
+
+```bash
+# Lazy-chart-и у dashboard/reports
+grep -rn "dynamic(() => import" apps/web/src/app/ --include="*.tsx" | grep -iE "Chart|Graph|Plot"
+# Для кожного chart-компонента: memo чи голий export default function?
+grep -rn "export default function\|export default memo" apps/web/src/app/ --include="*.tsx" | grep -iE "Chart|Graph"
+# Parent з high-frequency re-render?
+grep -rln "useDashboardStream\|EventSource\|refetchInterval\|Stream(" apps/web/src/app/ --include="*.tsx"
+```
+
+**Фікс:** `export default memo(Chart)` — ЛИШЕ коли всі пропси стабільні (data з frozen-`EMPTY_*`-fallback/прямого query-ref; 0 inline-обʼєкт/масив/callback пропсів). recharts-callbacks усередині chart-компонента memo НЕ бачить (порівнює лише вхідні). Lazy-loading ріже BUNDLE, НЕ runtime-reconcile — memo додає runtime-барʼєр. Відрізняти від list-item-memo (там ламають inline-callbacks): тут пропси вже стабільні.
+
 ---
 
 ## Крок 3 — DB аудит
@@ -563,14 +578,21 @@ leftmost після orgId, createdAt (range) останнім. Additive `CREATE 
 НЕ дублювати якщо discriminator уже leading-col наявного індексу. Кеш дашборду (25s) НЕ
 знімає потреби — при великому орзі scan болить кожен SSE-інтервал × N users.
 
-### 3.5 Нова append-only LOG/AUDIT-таблиця — list/findAll фільтрує по non-FK descriptor-колонці (provider/operation/status), а єдиний індекс веде createdAt-sort
+### 3.5 Append-only таблиця (LOG/AUDIT **АБО CORE ENTITY**) — list/findAll фільтрує по non-FK descriptor-колонці (provider/operation/status/fiscalStatus), а єдиний індекс веде createdAt-sort
 
 > Пастка: «є `(orgId, createdAt)` під сортування — прикрито». Ні: якщо `findAll` має
 > equality-фільтр по descriptor-колонці (не FK, не aggregate — просто `where.provider=x`),
 > цей індекс не покриває рівність → scan усіх рядків орг у createdAt-порядку + heap-filter.
+>
+> **Scope НЕ обмежений `*_logs`:** той самий miss живе у CORE append-only entity
+> (`payments.fiscalStatus`, `supplier_payments.status`, `stock_movements.type`) — таблиця
+> без «log» у назві, але монотонна (1 рядок/операцію) + list-сторінка зі status-дропдауном.
+> FK-індекси (`orgId, counterpartyId, createdAt`) + `(orgId, createdAt)` виглядають покриттям,
+> але жоден не веде descriptor-рівність між orgId і createdAt (2026-09-09 Цикл 2).
 
 ```bash
-# Нові *_logs/*_audit/*_events таблиці з findAll що приймає багато optional-фільтрів
+# append-only таблиці (не лише *_logs): будь-яка з findAll + status/descriptor optional-фільтрами.
+# payments/supplier-payments/movements/transactions/receipts — теж кандидати, не тільки logs.
 grep -rn "async findAll" apps/api/src/modules/ --include="*.service.ts" -A25 | grep -v spec \
   | grep -E "where\.\w+ = |orderBy: \{ createdAt"
 
@@ -636,6 +658,30 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-09 (Цикл 2) — Descriptor-фільтр-miss живе не лише у _\_logs/_\_audit таблицях, а й у CORE append-only ENTITY (payments.fiscalStatus, \*\_payments.status) — status/descriptor-дропдаун на entity-list-сторінці
+
+**Сигнал:** core-money/append-only entity (`payments`, `supplier_payments`, будь-яка таблиця «1 рядок на операцію» без edit) має list-сторінку з `<select>`-дропдауном по **status-подібній descriptor-колонці** (`fiscalStatus`, `status`, `method`, `type`) — і цей фільтр — центральний use-case сторінки (напр. `/payments` фільтрує `fiscalStatus=FAILED` щоб знайти чеки для повторної фіскалізації — це literally raison d'être сторінки з retry-кнопкою). `findAll` робить `WHERE (orgId, <descriptor>=X) ORDER BY createdAt DESC`, але ВСІ наявні індекси ведуть FK-осі (`workOrderId`, `counterpartyId`, `invoiceId`) + один голий `(orgId, createdAt)` під default-sort. Descriptor-рівність НЕ leftmost у жодному → `(orgId, createdAt)` дає лише сортування, descriptor лишається heap-filter → org-wide scan усіх рядків орг. Розширення 3.5/2026-09-09 (що було scoped на «_\_logs/_\_audit/_\_events» таблиці) на CORE ENTITIES — той самий index-miss, але таблиця не має «log»-у назві, тож детектор 3.5 (grep за `_\_logs`) її пропускає.
+**Сигнал-grep:** НЕ обмежувати пошук назвою `\*\_logs`. Для КОЖНОЇ append-only таблиці (без `deletedAt`АБО монотонно росте: payments, supplier_payments, movements, transactions, receipts) з`findAll(<optional status/descriptor фільтри>)`— відкрити відповідну list-сторінку, знайти`<select>`/`<Select>`-дропдаун що йде у `where.<col>`→ це домінантний descriptor. Звірити зі schema: чи Є`@@index([orgId, <descriptor>, createdAt])`? Пастка: FK-індекси (`orgId, counterpartyId, createdAt`) + `(orgId, createdAt)`виглядають «покриттям», але жоден не веде descriptor-рівність між orgId і createdAt.
+**Причина виникнення:** індекси core-entity проектуються під FK-drill-down (платежі контрагента/наряду) + default-sort. Status/fiscal-дропдаун-фільтр додається на list-сторінці пізніше (фіча «фільтр по фіскальному статусу»), і його equality-природа маскується тим, що «payments і так має купу індексів з orgId+createdAt». 3.5 задокументувала це для log-таблиць, але не переносила scope на core entity — цикл довів що патерн ідентичний.
+**Підхід до виявлення:** append-only ENTITY (не лише log) + list-сторінка з descriptor-дропдауном + жодного`(orgId, <descriptor>, createdAt)`= червоний прапорець. Domінантний фільтр = той, навколо якого побудований workflow сторінки (retry FAILED-чеків → fiscalStatus).
+**Підхід до фіксу:** covering`@@index([orgId, <descriptor>, createdAt])`— descriptor equality leftmost, createdAt sort/range tail. Nullable descriptor OK (IS NULL-гілка теж активує індекс — 'none'→fiscalStatus=null). Additive`CREATE INDEX IF NOT EXISTS`. Zero-risk. Обирати ОДИН домінантний descriptor, не плодити індекс на кожен optional-фільтр (append-only = INSERT-overhead; secondary-фільтри типово комбінуються з domінантним і покриваються leading-col).
+**Реальний impact:** fiscalStatus-фільтрований list: org-wide scan (O всі-платежі-орг) + sort → index-range scan (O платежі-статусу) без sort. Найпомітніше на retry-workflow (постійний фільтр FAILED) під великий орг.
+**Де шукати ще:** payments.fiscalStatus (fixed), payments.method, supplier_payments.status, stock_movements.type, invoices.status (якщо list фільтрує), будь-яка entity-list-сторінка з status/type-дропдауном по монотонній таблиці. Родич 3.4 (dashboard-aggregate discriminator) і 3.5 (log-list descriptor) — усі три = «equality-col не leftmost між orgId і createdAt».
+
+---
+
+### 2026-09-09 (Цикл 2) — Lazy-chart child з єдиним stable-identity data-пропом БЕЗ React.memo під SSE/polling parent → recharts full-reconcile на кожен parent re-render (data стабільна, тож useMemo не «спрацьовує» як детектор — memo-gap маскується)
+
+**Сигнал:** дашборд/reports-сторінка з live-джерелом (`useDashboardStream`/SSE-tick, polling-hook, або кілька дрібних state — `todayStr`/`greeting`/`qaConfigOpen`) рендерить lazy-chart (`<RevenueChart data={rows}/>`, recharts через `next/dynamic`). Data-проп має СТАБІЛЬНУ ідентичність (frozen `EMPTY_*` fallback + пряме query-data посилання — тобто вже правильно, `useMemo` НЕ потрібен). АЛЕ сам chart-компонент — `export default function Chart(...)` БЕЗ `memo`. Parent ре-рендериться на кожен SSE-tick / d"стан → chart ре-рендериться разом з ним → recharts проходить повний reconcile (важкий: SVG-дерево, шкали, тіки) попри незмінний `data`. Memo-gap невидимий бо data-проп стабільний: класичний детектор «rebuilt-inline array/useMemo-miss» тут дає false-negative — проблема не в НЕстабільному пропі, а у ВІДСУТНОСТІ memo на дорогому дочірньому під частим parent-render.
+**Сигнал-grep:** знайти lazy-chart-и: `dynamic(() => import(...Chart` у dashboard/reports-сторінках. Для кожного chart-компонента: чи `export default memo(...)` чи голий `export default function`? Cross-check parent: чи є SSE/polling/stream-hook (`useXStream`, `useQuery` з `refetchInterval`, `EventSource`) АБО 3+ dрібних `useState` що часто змінюються? Якщо chart голий-function + parent часто-render + data-проп стабільний → memo-gap.
+**Причина виникнення:** «chart вже lazy-loaded + data стабільна через frozen-fallback — done». Не помічають що lazy-loading ріже BUNDLE (initial JS), але НЕ ріже RUNTIME reconcile: після монтування chart ре-рендериться з parent-ом. SSE-джерело робить це десятки разів/сесію. memo здається зайвим бо «пропси не змінюються» — але без memo React все одно викликає render-функцію + recharts reconcile.
+**Підхід до виявлення:** lazy-chart (recharts/важкий-SVG) + parent з high-frequency re-render (SSE/polling/live-clock) + єдиний/стабільний data-проп = memo-кандидат. Відрізняти від list-item-memo (там проблема — inline callbacks/масиви ламають memo): тут пропси ВЖЕ стабільні, треба лише додати memo-барʼєр.
+**Підхід до фіксу:** `export default memo(Chart)`. Безпечно ЛИШЕ коли всі пропси стабільної ідентичності (масив/обʼєкт data з frozen-fallback або прямого query-ref; callbacks — useCallback або відсутні). Inline recharts-callbacks (`tickFormatter`, `formatter`) живуть УСЕРЕДИНІ chart-компонента → memo їх не бачить (порівнює лише вхідні пропси). Якщо parent передає inline-обʼєкт/масив/callback — спершу стабілізувати їх, інакше memo no-op.
+**Реальний impact:** SSE-tick кожні 30s × N-tiles: recharts full-reconcile (SVG-rebuild) → 0 поки data незмінна. Найбільше на дашборді з живим стрімом + важкими графіками; звільняє main-thread під час live-update.
+**Де шукати ще:** dashboard RevenueChart (fixed), reports ProfitabilityChart/SettlementsChart/LoadChart (перевірити memo), будь-який `<Chart data={...}/>` під SSE/refetchInterval/live-clock parent. Родич — важкий не-chart дочірній (велика таблиця/grid/map) під тим самим live-parent зі стабільними пропсами.
+
+---
 
 ### 2026-09-09 — Нова append-only LOG/AUDIT-таблиця має covering-index під СОРТУВАННЯ (orgId, createdAt), але не під ДОМІНАНТНИЙ list-фільтр по non-FK descriptor-колонці (provider/operation/status)
 
