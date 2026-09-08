@@ -40,6 +40,13 @@ export class CreateBookingRequestDto {
   @Matches(PHONE_UA_REGEX, { message: 'Телефон має бути у форматі +380XXXXXXXXX' })
   clientPhone!: string;
   @ApiProperty() @IsDateString() requestedDate!: string;
+  // Обраний ліфт слота (getAvailability повертає його у кожному слоті). Заявка блокує САМЕ цей
+  // ліфт; на confirm матеріалізується CalendarSlot. Опційно (legacy без ліфта → блок усіх).
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  liftId?: string;
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @Transform(emptyToUndefined)

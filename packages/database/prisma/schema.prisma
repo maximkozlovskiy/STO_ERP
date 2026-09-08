@@ -2371,6 +2371,7 @@ model BookingRequest {
   clientPhone     String
   serviceIds      String[]
   requestedDate   DateTime
+  liftId          String?   @db.Uuid // обраний ліфт слота (getAvailability присвоює вільний; блокує саме його, не всі)
   confirmedSlotId String?   @db.Uuid
   notes           String?
   createdAt       DateTime  @default(now())

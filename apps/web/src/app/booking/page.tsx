@@ -119,6 +119,8 @@ export default function BookingPage() {
           clientName: form.clientName,
           clientPhone: normalizedPhone,
           requestedDate: selectedSlot.startAt,
+          // Обраний ліфт слота — щоб заявка блокувала саме його, а не всі ліфти на цей час.
+          liftId: selectedSlot.liftId,
         }),
       });
       setDone(true);

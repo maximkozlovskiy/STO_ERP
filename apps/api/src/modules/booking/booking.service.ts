@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, CalendarSlotStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CalendarService } from '../calendar/calendar.service';
 import {
   CreateBookingRequestDto,
   BookingRequestResponseDto,
@@ -51,6 +52,8 @@ export class BookingService {
     // branchSettings provider/apiKey + NotificationTemplate body. Direct smsQueue.add() bypasses
     // template resolve → SmsProcessor.process() sees provider=undefined → silent skip.
     private readonly notifications: NotificationsService,
+    // createSlot при confirm — конфлікт-чек + split + EXCLUDE-backstop уже там (не дублюємо).
+    private readonly calendar: CalendarService,
   ) {}
 
   /**
@@ -132,6 +135,7 @@ export class BookingService {
         },
       }),
       // Also block slots already taken by confirmed booking requests on this day.
+      // +liftId: заявка з обраним ліфтом блокує САМЕ цей ліфт (per-lift), а не всі одразу.
       this.prisma.bookingRequest.findMany({
         where: {
           orgId,
@@ -140,7 +144,7 @@ export class BookingService {
           requestedDate: { gte: dayStart, lte: dayEnd },
           deletedAt: null,
         },
-        select: { requestedDate: true },
+        select: { requestedDate: true, liftId: true },
         take: 200,
       }),
       serviceIds?.length
@@ -180,14 +184,11 @@ export class BookingService {
       totalMinutes = Math.ceil(totalHours * 60);
     }
 
-    // Build set of times already taken by confirmed booking requests (HH:MM strings).
-    // BookingRequest doesn't track liftId — block all lifts for that time.
-    // Key MUST be Kyiv-local (DST-aware): `getUTCHours()` давав зміщений ключ
-    // ('06:00' замість '09:00' у літо) → blocking ніколи не спрацьовував.
-    // Slot generation нижче формує `timeKey` з Kyiv-локальних `startLimitMinutes`
-    // (на основі `BranchSettings.workStartTime`), тому ключі повинні бути в одній TZ.
+    // Legacy CONFIRMED-заявки БЕЗ liftId (до CAL-H3/H4) блокують весь HH:MM на всіх ліфтах
+    // (немає інформації який ліфт). Заявки з liftId — блокують саме той ліфт (нижче, у busyByLift).
+    // Key MUST be Kyiv-local (DST-aware) — узгоджено з timeKey генератора слотів.
     const bookedTimes = new Set(
-      bookedSlots.map(b => KYIV_HM_FMT.format(new Date(b.requestedDate))),
+      bookedSlots.filter(b => !b.liftId).map(b => KYIV_HM_FMT.format(new Date(b.requestedDate))),
     );
 
     // sto-optimize: pre-bucket busy slots by liftId + pre-parse Date once per slot.
@@ -206,6 +207,16 @@ export class BookingService {
         startMs: new Date(b.startAt).getTime(),
         endMs: new Date(b.endAt).getTime(),
       };
+      const arr = busyByLift.get(b.liftId);
+      if (arr) arr.push(parsed);
+      else busyByLift.set(b.liftId, [parsed]);
+    }
+    // CONFIRMED-заявки з обраним ліфтом → блокують саме цей ліфт (вікно = requestedDate +
+    // тривалість запиту). Так одна підтверджена заявка НЕ блокує решту ліфтів на той час.
+    for (const b of bookedSlots) {
+      if (!b.liftId) continue; // legacy без ліфта — вже у bookedTimes (блокує всі)
+      const startMs = new Date(b.requestedDate).getTime();
+      const parsed = { startMs, endMs: startMs + totalMinutes * 60_000 };
       const arr = busyByLift.get(b.liftId);
       if (arr) arr.push(parsed);
       else busyByLift.set(b.liftId, [parsed]);
@@ -264,7 +275,7 @@ export class BookingService {
     // cross-tenant linkage у заявці.
     // BranchSettings fetch for server-side validation of working hours — backend cannot
     // trust that the public widget always called /availability before submit (curl bypass).
-    const [branch, serviceCount, branchSettings] = await Promise.all([
+    const [branch, serviceCount, branchSettings, lift] = await Promise.all([
       // sto-optimize: only branch.name used for SMS template — narrow projection.
       this.prisma.garageBranch.findFirst({
         where: { id: dto.branchId, orgId, deletedAt: null },
@@ -279,11 +290,19 @@ export class BookingService {
         where: { branchId: dto.branchId },
         select: { workStartTime: true, workEndTime: true, workDays: true },
       }),
+      // Cross-tenant guard: ліфт має належати ЦІЙ філії/org (public endpoint — не довіряємо вводу).
+      dto.liftId
+        ? this.prisma.lift.findFirst({
+            where: { id: dto.liftId, orgId, deletedAt: null, zone: { branchId: dto.branchId } },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (!branch) throw new NotFoundException('Філію не знайдено');
     if (dto.serviceIds?.length && serviceCount !== dto.serviceIds.length) {
       throw new BadRequestException('Деякі послуги не знайдено');
     }
+    if (dto.liftId && !lift) throw new BadRequestException('Обраний підйомник не знайдено');
 
     // Server-side guard для working hours. У Kyiv-локальній TZ.
     const requestedAt = new Date(dto.requestedDate);
@@ -320,6 +339,7 @@ export class BookingService {
         clientName: dto.clientName,
         clientPhone: dto.clientPhone,
         requestedDate: new Date(dto.requestedDate),
+        liftId: dto.liftId ?? null,
         serviceIds: dto.serviceIds ?? [],
         notes: dto.notes ?? null,
       },
@@ -376,16 +396,22 @@ export class BookingService {
   }
 
   async confirm(orgId: string, id: string, slotId?: string): Promise<BookingRequestResponseDto> {
-    // CAL-H3/H4 (conservative slice): a confirmed BookingRequest currently blocks the requested
-    // HH:MM across ALL lifts (getAvailability() blocks by time, not by liftId — BookingRequest has
-    // no liftId column). The full fix — materialise a CalendarSlot on a concrete lift at confirm
-    // time and free the other lifts — needs a schema change (BookingRequest→liftId / a link to the
-    // created slot) and is out of scope for a non-breaking patch.
-    // TODO(CAL-H3/H4): on confirm, create a CalendarSlot(status=BOOKED) on the chosen lift+time from
-    //   `slotId` and persist the link, so only that lift is occupied instead of the whole time band.
-    // Conservative part we CAN do safely: if a caller passes `slotId`, validate it is a real,
-    // non-deleted slot in THIS org (rejects cross-tenant / stale slot ids) before confirming —
-    // no behaviour change when `slotId` is omitted (current controller path).
+    // CAL-H3/H4: при confirm матеріалізуємо CalendarSlot на обраному ліфті заявки — тоді
+    // зайнятим стає САМЕ цей ліфт, а не весь HH:MM на всіх ліфтах.
+    const req = await this.prisma.bookingRequest.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: {
+        status: true,
+        liftId: true,
+        requestedDate: true,
+        branchId: true,
+        confirmedSlotId: true,
+        serviceIds: true,
+      },
+    });
+    if (!req) throw new NotFoundException('Заявку не знайдено');
+
+    // Опційна валідація явно переданого slotId (backward-compat: rejects cross-tenant/stale).
     if (slotId) {
       const slot = await this.prisma.calendarSlot.findFirst({
         where: { id: slotId, orgId, deletedAt: null },
@@ -394,21 +420,60 @@ export class BookingService {
       if (!slot) throw new NotFoundException('Слот не знайдено');
     }
 
-    // Defense-in-depth: scope by orgId у where (sto-review pattern 2026-05-30
-    // soft-delete update without orgId). updateMany is atomic on the compound key.
+    // Матеріалізація слота на ліфті — лише якщо ліфт обрано і слот ще не створено (ідемпотентно).
+    // createSlot робить конфлікт-чек + split + EXCLUDE-backstop → якщо ліфт зайнято на цей час,
+    // кине 409 і confirm НЕ відбудеться (заявка лишається PENDING). Робимо ПЕРЕД CONFIRMED.
+    let confirmedSlotId = req.confirmedSlotId ?? null;
+    if (req.liftId && !confirmedSlotId) {
+      const durationMin = await this.resolveDurationMinutes(orgId, req.branchId, req.serviceIds);
+      const startAt = new Date(req.requestedDate);
+      const endAt = new Date(startAt.getTime() + durationMin * 60_000);
+      const created = await this.calendar.createSlot(orgId, {
+        liftId: req.liftId,
+        startAt: startAt.toISOString(),
+        endAt: endAt.toISOString(),
+        status: CalendarSlotStatus.BOOKED,
+        notes: 'Онлайн-запис',
+      });
+      // createSlot повертає {slots:[...]} (2 при split через межу дня) — лінкуємо parent-слот.
+      confirmedSlotId = created.slots[0]?.id ?? null;
+    }
+
+    // Defense-in-depth: scope by orgId у where; CAS через status=PENDING проти подвійного confirm.
     const result = await this.prisma.bookingRequest.updateMany({
-      where: { id, orgId, deletedAt: null },
-      data: { status: 'CONFIRMED' },
+      where: { id, orgId, deletedAt: null, status: req.status },
+      data: { status: 'CONFIRMED', ...(confirmedSlotId ? { confirmedSlotId } : {}) },
     });
     if (result.count === 0) throw new NotFoundException('Заявку не знайдено');
-    // Post-update fetch must include branch relation — without it confirm() returns
-    // BookingRequestResponseDto with branchName=null even when branch exists.
-    // toDto() reads r.branch?.name; findFirstOrThrow without include → r.branch=undefined.
     const updated = await this.prisma.bookingRequest.findFirstOrThrow({
       where: { id, orgId },
       include: { branch: { select: { name: true } } },
     });
     return this.toDto(updated);
+  }
+
+  /** Тривалість запису (хв): Σ normoHours послуг × 60, або slotDurationMinutes філії (дефолт 30). */
+  private async resolveDurationMinutes(
+    orgId: string,
+    branchId: string,
+    serviceIds: string[],
+  ): Promise<number> {
+    if (serviceIds.length) {
+      const works = await this.prisma.work.findMany({
+        where: { id: { in: serviceIds }, orgId, deletedAt: null },
+        select: { normoHours: true },
+        take: 20,
+      });
+      if (works.length) {
+        const hours = works.reduce((s, w) => s + Number(w.normoHours ?? 1), 0);
+        return Math.max(15, Math.ceil(hours * 60));
+      }
+    }
+    const bs = await this.prisma.branchSettings.findUnique({
+      where: { branchId },
+      select: { slotDurationMinutes: true },
+    });
+    return bs?.slotDurationMinutes ?? 30;
   }
 
   async cancel(orgId: string, id: string): Promise<void> {

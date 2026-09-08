@@ -4,6 +4,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { BookingService } from './booking.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CalendarService } from '../calendar/calendar.service';
 
 /**
  * Bug #254: unit-покриття `BookingService.create` + `confirm` + `cancel`.
@@ -32,6 +33,8 @@ describe('BookingService', () => {
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let notifications: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let calendar: any;
   const orgId = 'org-1';
   const branchId = 'branch-1';
   const bookingId = 'booking-1';
@@ -43,20 +46,23 @@ describe('BookingService', () => {
         create: vi.fn(),
         updateMany: vi.fn(),
         update: vi.fn(),
+        findFirst: vi.fn(),
         findFirstOrThrow: vi.fn(),
         findMany: vi.fn(),
       },
       work: { count: vi.fn(), findMany: vi.fn() },
       branchSettings: { findUnique: vi.fn() },
-      lift: { findMany: vi.fn() },
-      calendarSlot: { findMany: vi.fn() },
+      lift: { findMany: vi.fn(), findFirst: vi.fn() },
+      calendarSlot: { findMany: vi.fn(), findFirst: vi.fn() },
     };
     notifications = { send: vi.fn().mockResolvedValue(undefined) };
+    calendar = { createSlot: vi.fn().mockResolvedValue({ slots: [{ id: 'slot-1' }] }) };
     const module = await Test.createTestingModule({
       providers: [
         BookingService,
         { provide: PrismaService, useValue: prisma },
         { provide: NotificationsService, useValue: notifications },
+        { provide: CalendarService, useValue: calendar },
       ],
     }).compile();
     service = module.get(BookingService);
@@ -372,6 +378,14 @@ describe('BookingService', () => {
 
   describe('confirm', () => {
     it('Bug #249 pattern: updateMany з { id, orgId, deletedAt: null }, не голий update', async () => {
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce({
+        status: 'PENDING',
+        liftId: null, // без ліфта → слот не матеріалізується (стара поведінка)
+        requestedDate: new Date(),
+        branchId,
+        confirmedSlotId: null,
+        serviceIds: [],
+      });
       prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 1 });
       prisma.bookingRequest.findFirstOrThrow.mockResolvedValueOnce({
         id: bookingId,
@@ -408,8 +422,16 @@ describe('BookingService', () => {
 
     // CAL-H3/H4 (conservative slice): коли передано slotId — він валідується проти org
     // ДО підтвердження. Без slotId — стара поведінка (жодного запиту calendarSlot).
-    it('CAL-H3/H4: slotId відсутній → calendarSlot НЕ запитується (стара поведінка)', async () => {
+    it('CAL-H3/H4: slotId відсутній + заявка без ліфта → calendarSlot НЕ запитується/не створюється', async () => {
       prisma.calendarSlot = { findFirst: vi.fn() };
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce({
+        status: 'PENDING',
+        liftId: null,
+        requestedDate: new Date(),
+        branchId,
+        confirmedSlotId: null,
+        serviceIds: [],
+      });
       prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 1 });
       prisma.bookingRequest.findFirstOrThrow.mockResolvedValueOnce({
         id: bookingId,
@@ -424,11 +446,20 @@ describe('BookingService', () => {
 
       await service.confirm(orgId, bookingId);
       expect(prisma.calendarSlot.findFirst).not.toHaveBeenCalled();
+      expect(calendar.createSlot).not.toHaveBeenCalled(); // без ліфта — слот не матеріалізується
     });
 
     it('CAL-H3/H4: slotId з чужої org / неіснуючий → NotFoundException; booking НЕ підтверджується', async () => {
       const slotId = '44444444-4444-4444-8444-444444444444';
       prisma.calendarSlot = { findFirst: vi.fn().mockResolvedValueOnce(null) };
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce({
+        status: 'PENDING',
+        liftId: null,
+        requestedDate: new Date(),
+        branchId,
+        confirmedSlotId: null,
+        serviceIds: [],
+      });
       prisma.bookingRequest.updateMany = vi.fn();
 
       await expect(service.confirm(orgId, bookingId, slotId)).rejects.toBeInstanceOf(
@@ -445,6 +476,14 @@ describe('BookingService', () => {
     it('CAL-H3/H4: валідний slotId у org → підтвердження проходить', async () => {
       const slotId = '55555555-5555-4555-8555-555555555555';
       prisma.calendarSlot = { findFirst: vi.fn().mockResolvedValueOnce({ id: slotId }) };
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce({
+        status: 'PENDING',
+        liftId: null,
+        requestedDate: new Date(),
+        branchId,
+        confirmedSlotId: null,
+        serviceIds: [],
+      });
       prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 1 });
       prisma.bookingRequest.findFirstOrThrow.mockResolvedValueOnce({
         id: bookingId,
@@ -460,6 +499,63 @@ describe('BookingService', () => {
       const result = await service.confirm(orgId, bookingId, slotId);
       expect(result.status).toBe('CONFIRMED');
       expect(prisma.bookingRequest.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('CAL-H3/H4: заявка З ліфтом → матеріалізує CalendarSlot + записує confirmedSlotId', async () => {
+      const reqDate = new Date('2026-10-01T10:00:00.000+03:00');
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce({
+        status: 'PENDING',
+        liftId: 'lift-1',
+        requestedDate: reqDate,
+        branchId,
+        confirmedSlotId: null,
+        serviceIds: [],
+      });
+      prisma.branchSettings.findUnique.mockResolvedValueOnce({ slotDurationMinutes: 60 });
+      calendar.createSlot.mockResolvedValueOnce({ slots: [{ id: 'new-slot-1' }] });
+      prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.bookingRequest.findFirstOrThrow.mockResolvedValueOnce({
+        id: bookingId,
+        status: 'CONFIRMED',
+        clientName: 'Тест',
+        clientPhone: '+380501234567',
+        requestedDate: reqDate,
+        branchId,
+        notes: null,
+        createdAt: new Date(),
+      });
+
+      await service.confirm(orgId, bookingId);
+
+      // Слот створено на обраному ліфті з тривалістю з налаштувань (60хв).
+      expect(calendar.createSlot).toHaveBeenCalledTimes(1);
+      const slotArg = calendar.createSlot.mock.calls[0][1];
+      expect(slotArg.liftId).toBe('lift-1');
+      expect(slotArg.status).toBe('BOOKED');
+      expect(new Date(slotArg.endAt).getTime() - new Date(slotArg.startAt).getTime()).toBe(
+        60 * 60_000,
+      );
+      // confirmedSlotId залінковано у updateMany.data.
+      expect(prisma.bookingRequest.updateMany.mock.calls[0][0].data.confirmedSlotId).toBe(
+        'new-slot-1',
+      );
+    });
+
+    it('CAL-H3/H4: ліфт зайнято на confirm (createSlot кидає) → confirm НЕ проходить (заявка PENDING)', async () => {
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce({
+        status: 'PENDING',
+        liftId: 'lift-1',
+        requestedDate: new Date('2026-10-01T10:00:00.000+03:00'),
+        branchId,
+        confirmedSlotId: null,
+        serviceIds: [],
+      });
+      prisma.branchSettings.findUnique.mockResolvedValueOnce({ slotDurationMinutes: 30 });
+      calendar.createSlot.mockRejectedValueOnce(new BadRequestException('Слот перетинається'));
+
+      await expect(service.confirm(orgId, bookingId)).rejects.toThrow(/перетина/);
+      // updateMany НЕ викликано — заявка лишається PENDING (можна переобрати час).
+      expect(prisma.bookingRequest.updateMany).not.toHaveBeenCalled();
     });
   });
 

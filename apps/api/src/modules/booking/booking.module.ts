@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BookingController } from './booking.controller';
 import { BookingService } from './booking.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { CalendarModule } from '../calendar/calendar.module';
 
 @Module({
   // NotificationsModule provides NotificationsService.send() — single source of truth
@@ -10,7 +11,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
   // would see provider=undefined → silent skip ("Невідомий SMS-провайдер").
   // NotificationsModule is @Global() so technically the import is optional, but
   // explicit keeps the dependency graph greppable.
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, CalendarModule],
   controllers: [BookingController],
   providers: [BookingService],
   exports: [BookingService],
