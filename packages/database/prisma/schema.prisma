@@ -1830,6 +1830,11 @@ model IntegrationLog {
 
   @@index([orgId, createdAt])
   @@index([orgId, documentType, documentId])
+  // Covering-індекс під головний UI-фільтр findAll: WHERE (orgId, provider) ORDER BY createdAt desc.
+  // Без нього provider-фільтр не покривався (orgId,createdAt)-індексом → org-wide scan усіх логів
+  // у createdAt-порядку + heap-filter provider. З (orgId, provider, createdAt): index-range scan +
+  // готовий порядок (без сортування). provider — equality leftmost, createdAt (range/sort) tail.
+  @@index([orgId, provider, createdAt])
   @@map("integration_logs")
 }
 
