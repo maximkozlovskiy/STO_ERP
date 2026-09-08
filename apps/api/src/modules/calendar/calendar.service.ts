@@ -23,9 +23,20 @@ const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
 
 const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
-// Working day boundaries (hardcoded for MVP; will come from BranchSettings later).
-const WORK_DAY_START_H = 8;
-const WORK_DAY_END_H = 20;
+// Default working-day boundaries (fallback коли BranchSettings недоступні або слот без
+// підйомника → не можемо резолвнути філію). §13: реальні межі беруться з
+// BranchSettings.workStartTime/workEndTime per-branch (resolveWorkHours).
+const DEFAULT_WORK_DAY_START_H = 8;
+const DEFAULT_WORK_DAY_END_H = 20;
+
+/** Парсить "HH:mm" → ціла година [0..23]; повертає fallback при невалідному вводі. */
+function parseHour(value: string | null | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const m = /^(\d{1,2}):/.exec(value.trim());
+  if (!m) return fallback;
+  const h = Number(m[1]);
+  return Number.isInteger(h) && h >= 0 && h <= 23 ? h : fallback;
+}
 
 // sto-optimize (cycle 3/3): shared include shape для create()/update() — попереджає alloc per-request.
 // Дзеркалить SLOT_INCLUDE що раніше жив у тілі create(). Прив'язан до Prisma Client через inference.
@@ -68,20 +79,20 @@ const CONFLICT_SELECT = {
   },
 } as const;
 
-/** Returns the UTC timestamp for WORK_DAY_END_H (20:00) Kyiv time on the same calendar day as `d`. */
-function kyivEndOfWorkDay(d: Date): Date {
+/** Returns the UTC timestamp for `endHour` (Kyiv) on the same calendar day as `d`. */
+function kyivEndOfWorkDay(d: Date, endHour: number = DEFAULT_WORK_DAY_END_H): Date {
   const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
-  // Build "YYYY-MM-DDT20:00:00" as a local Kyiv wall-clock time, then convert to UTC.
+  // Build "YYYY-MM-DDTHH:00:00" as a local Kyiv wall-clock time, then convert to UTC.
   // We use the same DST-aware approach: find the UTC offset at noon of that day.
   const noonUtc = new Date(`${kyivDate}T12:00:00Z`);
   const offsetMs = kyivOffsetMsStatic(noonUtc);
   return new Date(
-    new Date(`${kyivDate}T${String(WORK_DAY_END_H).padStart(2, '0')}:00:00Z`).getTime() - offsetMs,
+    new Date(`${kyivDate}T${String(endHour).padStart(2, '0')}:00:00Z`).getTime() - offsetMs,
   );
 }
 
-/** Returns the UTC timestamp for WORK_DAY_START_H (08:00) Kyiv time on the calendar day AFTER `d`. */
-function kyivStartOfNextWorkDay(d: Date): Date {
+/** Returns the UTC timestamp for `startHour` (Kyiv) on the calendar day AFTER `d`. */
+function kyivStartOfNextWorkDay(d: Date, startHour: number = DEFAULT_WORK_DAY_START_H): Date {
   const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
   const [y, m, day] = kyivDate.split('-').map(Number);
   const nextDay = new Date(Date.UTC(y!, m! - 1, day! + 1));
@@ -89,8 +100,7 @@ function kyivStartOfNextWorkDay(d: Date): Date {
   const noonUtc = new Date(`${nextDateStr}T12:00:00Z`);
   const offsetMs = kyivOffsetMsStatic(noonUtc);
   return new Date(
-    new Date(`${nextDateStr}T${String(WORK_DAY_START_H).padStart(2, '0')}:00:00Z`).getTime() -
-      offsetMs,
+    new Date(`${nextDateStr}T${String(startHour).padStart(2, '0')}:00:00Z`).getTime() - offsetMs,
   );
 }
 
@@ -103,6 +113,38 @@ function kyivOffsetMsStatic(d: Date): number {
 @Injectable()
 export class CalendarService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * §13 config-over-hardcode: межі робочого дня філії з BranchSettings
+   * (workStartTime/workEndTime "HH:mm"). Fallback на дефолт 8..20 коли:
+   *  - слот без підйомника (branchId=null → не знаємо філію),
+   *  - BranchSettings ще не створені для філії,
+   *  - workEndTime ≤ workStartTime (некоректна конфігурація → безпечний дефолт),
+   *  - будь-яка помилка читання (офлайн-стійкість).
+   */
+  private async resolveWorkHours(
+    orgId: string,
+    branchId: string | null,
+  ): Promise<{ startHour: number; endHour: number }> {
+    const fallback = {
+      startHour: DEFAULT_WORK_DAY_START_H,
+      endHour: DEFAULT_WORK_DAY_END_H,
+    };
+    if (!branchId) return fallback;
+    try {
+      const bs = await this.prisma.branchSettings.findFirst({
+        where: { branchId, orgId },
+        select: { workStartTime: true, workEndTime: true },
+      });
+      if (!bs) return fallback;
+      const startHour = parseHour(bs.workStartTime, DEFAULT_WORK_DAY_START_H);
+      const endHour = parseHour(bs.workEndTime, DEFAULT_WORK_DAY_END_H);
+      if (endHour <= startHour) return fallback;
+      return { startHour, endHour };
+    } catch {
+      return fallback;
+    }
+  }
 
   async findSlots(
     orgId: string,
@@ -207,7 +249,9 @@ export class CalendarService {
       dto.liftId
         ? this.prisma.lift.findFirst({
             where: { id: dto.liftId, orgId, deletedAt: null },
-            select: { id: true },
+            // §13: тягнемо branchId через zone щоб резолвнути робочі години філії
+            // (BranchSettings) для day-split. Дешево — id + один FK-hop.
+            select: { id: true, zone: { select: { branchId: true } } },
           })
         : Promise.resolve(null),
       dto.employeeId
@@ -241,12 +285,16 @@ export class CalendarService {
     if (dto.counterpartyId && !counterparty) throw new NotFoundException('Клієнта не знайдено');
     if (dto.vehicleId && !vehicle) throw new NotFoundException('Автомобіль не знайдено');
 
-    // Determine if slot overflows the working day end (WORK_DAY_END_H = 20:00 Kyiv)
-    const workDayEnd = kyivEndOfWorkDay(startAt);
+    // §13: межі робочого дня per-branch (BranchSettings.workStartTime/workEndTime).
+    // Резолвимо філію через lift.zone.branchId; без підйомника → дефолт 8..20.
+    const { startHour, endHour } = await this.resolveWorkHours(orgId, lift?.zone?.branchId ?? null);
+
+    // Determine if slot overflows the working day end (endHour Kyiv, per-branch)
+    const workDayEnd = kyivEndOfWorkDay(startAt, endHour);
     const isSplit = endAt > workDayEnd;
 
     const slot1End = isSplit ? workDayEnd : endAt;
-    const slot2Start = isSplit ? kyivStartOfNextWorkDay(startAt) : null;
+    const slot2Start = isSplit ? kyivStartOfNextWorkDay(startAt, startHour) : null;
     const slot2End = isSplit
       ? new Date(slot2Start!.getTime() + (endAt.getTime() - workDayEnd.getTime()))
       : null;

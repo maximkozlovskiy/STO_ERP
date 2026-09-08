@@ -298,4 +298,90 @@ describe('CalendarService.syncWorkOrderSlots', () => {
       expect(prisma._txCalendarSlot.updateMany).toHaveBeenCalledTimes(2);
     });
   });
+
+  // §13 config-over-hardcode: createSlot розбиває слот на межі робочого дня філії
+  // (BranchSettings.workEndTime), а не хардкод 20:00.
+  describe('createSlot — межі робочого дня per-branch (§13)', () => {
+    const liftId = '22222222-2222-4222-8222-222222222222';
+    const branchId = '33333333-3333-4333-8333-333333333333';
+
+    // Мінімальний slot-row що toDto() коректно змапить (усі include-relations = null).
+    const slotRow = (over: Record<string, unknown>) => ({
+      id: 'slot-x',
+      orgId,
+      liftId,
+      employeeId: null,
+      workOrderId: null,
+      counterpartyId: null,
+      vehicleId: null,
+      notes: null,
+      status: 'BOOKED',
+      type: 'WORK',
+      parentSlotId: null,
+      counterparty: null,
+      vehicle: null,
+      workOrder: null,
+      ...over,
+    });
+
+    function buildCreateMock(workEndTime: string) {
+      const create = vi
+        .fn()
+        .mockImplementation(async ({ data }: { data: { endAt: Date } }) =>
+          slotRow({ startAt: new Date(), endAt: data.endAt }),
+        );
+      return {
+        lift: {
+          findFirst: vi.fn().mockResolvedValue({ id: liftId, zone: { branchId } }),
+        },
+        employee: { findFirst: vi.fn() },
+        workOrder: { findFirst: vi.fn() },
+        counterparty: { findFirst: vi.fn() },
+        vehicle: { findFirst: vi.fn() },
+        branchSettings: {
+          findFirst: vi.fn().mockResolvedValue({ workStartTime: '09:00', workEndTime }),
+        },
+        $transaction: vi
+          .fn()
+          .mockImplementation(async (cb: (tx: unknown) => unknown) =>
+            cb({ calendarSlot: { findFirst: vi.fn().mockResolvedValue(null), create } }),
+          ),
+        _create: create,
+      };
+    }
+
+    it('workEndTime="18:00" → слот 16:00–19:00 Kyiv РОЗБИВАЄТЬСЯ на межі 18:00 (не 20:00)', async () => {
+      const prisma = buildCreateMock('18:00');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      // Травень → DST +03:00: 16:00 Kyiv = 13:00Z, 19:00 Kyiv = 16:00Z.
+      const result = await service.createSlot(orgId, {
+        liftId,
+        startAt: '2026-05-22T13:00:00.000Z',
+        endAt: '2026-05-22T16:00:00.000Z',
+      } as never);
+      // 2 створення (split), бо 19:00 > 18:00 workEnd.
+      expect(prisma._create).toHaveBeenCalledTimes(2);
+      // slot1.endAt = 18:00 Kyiv = 15:00Z.
+      const firstEnd = prisma._create.mock.calls[0][0].data.endAt as Date;
+      expect(firstEnd.toISOString()).toBe('2026-05-22T15:00:00.000Z');
+      expect(result.slots).toHaveLength(2);
+      expect(prisma.branchSettings.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { branchId, orgId } }),
+      );
+    });
+
+    it('workEndTime="20:00" (дефолт) → той самий слот НЕ розбивається', async () => {
+      const prisma = buildCreateMock('20:00');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      const result = await service.createSlot(orgId, {
+        liftId,
+        startAt: '2026-05-22T13:00:00.000Z',
+        endAt: '2026-05-22T16:00:00.000Z',
+      } as never);
+      expect(prisma._create).toHaveBeenCalledTimes(1);
+      expect(result.slots).toHaveLength(1);
+    });
+  });
 });
