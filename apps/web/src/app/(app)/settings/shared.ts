@@ -25,6 +25,7 @@ export interface OrgSettings {
   followUpActive?: boolean;
   followUpDays?: number;
   nbuFetchHour?: number;
+  integrationLogRetentionDays?: number;
   uiFeatures?: import('@/hooks/useUiFeatures').UiFeatures;
   loyaltyEnabled?: boolean;
   loyaltyEarnPer?: number;
