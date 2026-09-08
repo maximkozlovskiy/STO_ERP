@@ -187,7 +187,10 @@ export class BatchService {
       // AVG_COST — no batch tracking, just return avg cost for reference.
       // batchId: null — агрегат не відповідає одній партії; викликач присвоює null у
       // nullable uuid-колонку без гейта (див. BatchConsumeResult.batchId).
-      const avgCost = await this.getAvgCost(orgId, goodId, warehouseId);
+      // tx-read (db): consumeBatch завжди у $transaction (guard вище) → getAvgCost мусить
+      // бачити uncommitted стан тієї ж tx і серіалізуватись з consume (той самий tx-read
+      // fix, що у inventory.service AVG_COST-гілці).
+      const avgCost = await this.getAvgCost(orgId, goodId, warehouseId, db);
       return [{ batchId: null, quantity: qty, costPrice: avgCost }];
     }
 
