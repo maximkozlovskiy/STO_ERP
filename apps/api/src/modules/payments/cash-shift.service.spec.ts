@@ -215,7 +215,7 @@ describe('CashShiftService (ПРРО registry)', () => {
 
   // ── close ────────────────────────────────────────────────────────────────
   describe('close', () => {
-    it('OPEN → ensureToken → closeShift → CLOSED + zReportId', async () => {
+    it('OPEN → CAS-claim → ensureToken → closeShift → CLOSED + zReportId', async () => {
       cashShiftFindFirst
         .mockResolvedValueOnce(okShiftRow({ status: 'OPEN' })) // close() head
         .mockResolvedValueOnce({
@@ -224,25 +224,66 @@ describe('CashShiftService (ПРРО registry)', () => {
           checkboxAccessToken: 'tok',
           tokenExpiresAt: new Date(Date.now() + 3_600_000),
         }); // ensureToken read
+      cashShiftUpdateMany.mockResolvedValueOnce({ count: 1 }); // Bug #711 CAS-claim wins
       closeShift.mockResolvedValueOnce({ zReportId: 'z-99' });
       cashShiftUpdate.mockResolvedValueOnce(
         okShiftRow({ status: 'CLOSED', closedAt: new Date(), zReportId: 'z-99' }),
       );
 
       const dto = await service.close('org-1', 'shift-1');
-      expect(closeShift).toHaveBeenCalledWith(cfg, 'tok');
-      expect(cashShiftUpdate.mock.calls[0][0].data).toMatchObject({
-        status: 'CLOSED',
-        zReportId: 'z-99',
+      // Bug #711: claim CAS обов'язково несе status:'OPEN' + orgId → атомарне захоплення.
+      expect(cashShiftUpdateMany.mock.calls[0][0].where).toMatchObject({
+        id: 'shift-1',
+        orgId: 'org-1',
+        status: 'OPEN',
       });
+      expect(cashShiftUpdateMany.mock.calls[0][0].data).toMatchObject({ status: 'CLOSED' });
+      // Зовнішній Z-звіт викликається ПІСЛЯ виграного claim.
+      expect(closeShift).toHaveBeenCalledWith(cfg, 'tok');
+      expect(cashShiftUpdate.mock.calls[0][0].data).toMatchObject({ zReportId: 'z-99' });
       expect(dto.status).toBe('CLOSED');
       expect(dto.zReportId).toBe('z-99');
+    });
+
+    // Bug #711 mutation-verified: якщо прибрати CAS-claim (лишити stale-read update),
+    // конкурентний close() пройшов би head-guard і пробив би ДРУГИЙ Z-звіт. Тут claim програний
+    // (count:0) → 400 і closeShift НЕ викликається (жодного другого фіскального Z-звіту).
+    it('CAS-claim програний (concurrent close виграв) → 400, closeShift НЕ викликається', async () => {
+      cashShiftFindFirst.mockResolvedValueOnce(okShiftRow({ status: 'OPEN' })); // head бачить OPEN
+      cashShiftUpdateMany.mockResolvedValueOnce({ count: 0 }); // інший close уже захопив
+      await expect(service.close('org-1', 'shift-1')).rejects.toThrow(/вже закрита/);
+      expect(closeShift).not.toHaveBeenCalled(); // критично: жодного другого Z-звіту
+      expect(cashShiftUpdate).not.toHaveBeenCalled();
+    });
+
+    // Bug #711: зовнішній Z-звіт упав ПІСЛЯ виграного claim → відкат claim у OPEN (щоб касир
+    // повторив), інакше зміна лишилась би CLOSED без реального Z-звіту.
+    it('claim виграний, але closeShift кидає → revert у OPEN + rethrow', async () => {
+      cashShiftFindFirst
+        .mockResolvedValueOnce(okShiftRow({ status: 'OPEN' }))
+        .mockResolvedValueOnce({
+          branchId: 'br-1',
+          provider: 'checkbox',
+          checkboxAccessToken: 'tok',
+          tokenExpiresAt: new Date(Date.now() + 3_600_000),
+        });
+      cashShiftUpdateMany
+        .mockResolvedValueOnce({ count: 1 }) // claim wins
+        .mockResolvedValueOnce({ count: 1 }); // revert
+      closeShift.mockRejectedValueOnce(new Error('Checkbox 503'));
+
+      await expect(service.close('org-1', 'shift-1')).rejects.toThrow(/Checkbox 503/);
+      // Другий updateMany = revert: CLOSED (+zReportId:null) → OPEN.
+      const revertCall = cashShiftUpdateMany.mock.calls[1][0];
+      expect(revertCall.where).toMatchObject({ id: 'shift-1', orgId: 'org-1', status: 'CLOSED' });
+      expect(revertCall.data).toMatchObject({ status: 'OPEN', closedAt: null });
     });
 
     it('already CLOSED → 400 "вже закрита", без зовнішнього виклику', async () => {
       cashShiftFindFirst.mockResolvedValueOnce(okShiftRow({ status: 'CLOSED' }));
       await expect(service.close('org-1', 'shift-1')).rejects.toThrow(/вже закрита/);
       expect(closeShift).not.toHaveBeenCalled();
+      expect(cashShiftUpdateMany).not.toHaveBeenCalled();
     });
 
     it('cross-org / неіснуюча зміна → NotFound', async () => {

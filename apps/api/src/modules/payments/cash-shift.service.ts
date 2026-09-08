@@ -141,22 +141,46 @@ export class CashShiftService {
     if (!shift) throw new NotFoundException('Зміну не знайдено');
     if (shift.status !== 'OPEN') throw new BadRequestException('Зміна вже закрита');
 
-    const { provider, cfg, token } = await this.ensureToken(orgId, shift.id);
-    const { zReportId } = await this.integrationLog.wrap(
-      {
-        orgId,
-        branchId: shift.branchId,
-        provider: provider.code,
-        operation: 'closeShift',
-        documentType: 'CashShift',
-        documentId: shift.id,
-      },
-      () => provider.closeShift(cfg, token),
-    );
+    // Bug #711 — CAS-claim OPEN→CLOSED ПЕРЕД зовнішнім Z-звітом. Статус-перевірка вище — це
+    // STALE read: два concurrent close() (подвійний клік / retry) обидва бачать OPEN і обидва
+    // пробили б Checkbox closeShift → ДВА Z-звіти на одну зміну (фіскальне порушення). updateMany
+    // з `status:'OPEN'` у where — атомарний claim: рівно один переможець (count===1) іде до
+    // зовнішнього виклику; програвший (count===0) → «вже закрита», без другого closeShift.
+    const claim = await this.prisma.cashShift.updateMany({
+      where: { id: shift.id, orgId, status: 'OPEN', deletedAt: null },
+      data: { status: 'CLOSED', closedAt: new Date() },
+    });
+    if (claim.count === 0) throw new BadRequestException('Зміна вже закрита');
+
+    let zReportId: string | null | undefined;
+    try {
+      const { provider, cfg, token } = await this.ensureToken(orgId, shift.id);
+      ({ zReportId } = await this.integrationLog.wrap(
+        {
+          orgId,
+          branchId: shift.branchId,
+          provider: provider.code,
+          operation: 'closeShift',
+          documentType: 'CashShift',
+          documentId: shift.id,
+        },
+        () => provider.closeShift(cfg, token),
+      ));
+    } catch (e) {
+      // Зовнішній Z-звіт не вдався — відкочуємо claim у OPEN, щоб касир міг повторити (інакше
+      // зміна лишилась би CLOSED без реального Z-звіту). Best-effort revert; кидаємо оригінал.
+      await this.prisma.cashShift
+        .updateMany({
+          where: { id: shift.id, orgId, status: 'CLOSED', deletedAt: null, zReportId: null },
+          data: { status: 'OPEN', closedAt: null },
+        })
+        .catch(() => undefined);
+      throw e;
+    }
 
     const updated = await this.prisma.cashShift.update({
       where: { id: shift.id },
-      data: { status: 'CLOSED', closedAt: new Date(), zReportId: zReportId ?? null },
+      data: { zReportId: zReportId ?? null },
       include: { cashRegister: { select: { name: true } } },
     });
     return this.toDto(updated, 0);
