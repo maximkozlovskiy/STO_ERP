@@ -243,6 +243,7 @@ grep -rnE "await this\.[a-zA-Z]+[Qq]ueue\.add\(" apps/api/src/modules --include=
 
 - [ ] Кожен `.add()` → `attempts ≥ 10`, `backoff: { type: 'exponential' }`
 - [ ] **`.add()` де `job.data` містить секрет (apiKey/token/creds/пароль) → `removeOnFail: N`** (bounded). Без нього невдалі jobs осідають у Redis назавжди → секрет живе безстроково + ріст памʼяті. Grep: `grep -rn "\.add(" apps/api/src --include="*.ts" -A8 | grep -iE "apiKey|token|secret|creds|password" ` → перевірити наявність `removeOnFail` у тому ж блоці опцій
+- [ ] **One-off/manual `.add()` (enqueueImmediate/«зробити зараз») у scheduler з repeatable-сіблінгами → мусить мати `jobId` (дедуп спаму) + `removeOnFail: N` (bounded), як його repeatable-сіблінги у ТОМУ Ж файлі.** Навіть без секрета: без `removeOnFail` невдалі manual-jobs ростуть безмежно у Redis; без `jobId` спам кнопки ставить дублі паралельних job-ів. Grep: `grep -rn "\.add(" apps/api/src/modules/**/*.scheduler.ts -A8` → якщо у файлі є `.add()` з `jobId`+`removeOnFail` І інший `.add()` БЕЗ них → прапор. jobId має бути ОКРЕМИЙ від repeatable (`<x>-now-<org>`, не `<x>-<org>`), щоб не конфліктувати з cron-записом. Severity: IMPORTANT (Redis-ріст + duplicate-fan-out)
 - [ ] ПРРО: `attempts: 288`, `backoff: { delay: 300_000 }` (24 год)
 - [ ] SMS: `attempts: 10`, `backoff: { delay: 60_000 }`
 - [ ] Процесори → `try/catch` + `throw err` (щоб BullMQ retry спрацював)
@@ -1413,6 +1414,13 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Grep:** `grep -rnE "if \(kind === '[A-Z]+'\)" apps/api/src/modules --include="*.service.ts" -A30` → перевірити, що для КОЖНОГО enum-значення є явна гілка АБО explicit `return null`; фінальний блок не має бути «catch-all» для одного конкретного kind. Тригер: enum з `ADD VALUE` у diff + резолвер що читає той enum.
 **Фікс:** явний guard перед «дефолт»-блоком: `if (kind !== 'PAYMENT') return null;` (легасі-колонок для нового kind не існує) — або exhaustive `switch (kind)` з `default: return null`.
 **Severity:** IMPORTANT — cross-kind config leak; tsc + happy-path (лише FISCAL/PAYMENT) мовчать, спливає лише при новому enum-значенні.
+
+### 2026-09-09 — one-off `.add()` без jobId/removeOnFail поруч із repeatable-сіблінгами — §2.5
+
+**Сигнал:** scheduler має `enqueueRepeatable`/`reschedule` `.add()` з `jobId`+`removeOnFail: N`, але «manual»/«зробити зараз» `enqueueImmediate` `.add()` у тому ж файлі — БЕЗ обох. job.data без секрета (§2.5 secret-rule не спрацьовує), але: без `removeOnFail` невдалі manual-jobs ростуть безмежно у Redis; без `jobId` спам кнопки ставить дублі паралельних job-ів. (nbu-fetch.scheduler.ts `enqueueImmediate`.)
+**Grep:** `grep -rn "\.add(" apps/api/src/modules/**/*.scheduler.ts -A8` → якщо у файлі співіснують `.add()` з `jobId`+`removeOnFail` і `.add()` без них — прапор.
+**Фікс:** додати `jobId: '<x>-now-<org>'` (ОКРЕМИЙ від repeatable `<x>-<org>` — інакше конфлікт з cron-записом) + `removeOnFail: 200` (дзеркалить сіблінги).
+**Severity:** IMPORTANT — Redis-ріст (unbounded failed-set) + duplicate manual fan-out; tsc зелений, видно лише на проді під навантаженням.
 
 ## Карта секцій (quick reference)
 
