@@ -243,7 +243,13 @@ export class PaymentsService {
             select: { status: true, workOrderId: true, amount: true, paidAmount: true },
           });
           if (inv) {
-            if (inv.status !== 'SENT' && inv.status !== 'PARTIALLY_PAID') {
+            // OVERDUE теж оплачуваний (прострочений рахунок ще належить сплатити); часткова
+            // оплата переведе його у PARTIALLY_PAID, повна — у PAID.
+            if (
+              inv.status !== 'SENT' &&
+              inv.status !== 'PARTIALLY_PAID' &&
+              inv.status !== 'OVERDUE'
+            ) {
               throw new BadRequestException(`Рахунок у статусі "${inv.status}" — оплата неможлива`);
             }
             if (dto.workOrderId && inv.workOrderId && inv.workOrderId !== dto.workOrderId) {

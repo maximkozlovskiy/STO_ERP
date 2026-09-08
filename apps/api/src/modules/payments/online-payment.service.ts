@@ -53,7 +53,11 @@ export class OnlinePaymentService {
       },
     });
     if (!invoice) throw new NotFoundException('Рахунок не знайдено');
-    if (invoice.status !== 'SENT' && invoice.status !== 'PARTIALLY_PAID') {
+    if (
+      invoice.status !== 'SENT' &&
+      invoice.status !== 'PARTIALLY_PAID' &&
+      invoice.status !== 'OVERDUE'
+    ) {
       throw new BadRequestException(`Рахунок у статусі "${invoice.status}" — оплата неможлива`);
     }
 
