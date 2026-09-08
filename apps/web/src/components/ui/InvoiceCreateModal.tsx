@@ -947,8 +947,13 @@ export function InvoiceCreateModal({
                     <td className="px-3 py-2 text-right tabular-nums">
                       <div className="flex items-center justify-end gap-1">
                         <span>
-                          {(
-                            (parseFloat(line.quantity) || 0) * (parseFloat(line.unitPrice) || 0)
+                          {/* WEB-R3-4: рядкова СУМА мусить збігатися з логікою «Разом» — для
+                              завантаженого рядка беремо авторитетний lineTotalWithVat (з ПДВ),
+                              інакше qty×unitPrice. Без цього для EXCLUSIVE-ПДВ рядки не додавались
+                              би до підсумку у футері. */}
+                          {(line.lineTotalWithVat != null
+                            ? line.lineTotalWithVat
+                            : (parseFloat(line.quantity) || 0) * (parseFloat(line.unitPrice) || 0)
                           ).toFixed(2)}
                         </span>
                         {canEdit && (
