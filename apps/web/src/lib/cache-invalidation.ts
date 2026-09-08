@@ -8,6 +8,7 @@ import { purchaseOrdersKeys } from '@/hooks/api/usePurchaseOrders';
 import { invoicesKeys } from '@/hooks/api/useInvoices';
 import { reportsKeys } from '@/hooks/api/useReports';
 import { dashboardKeys } from '@/hooks/api/useDashboardData';
+import { paymentsKeys } from '@/hooks/api/usePayments';
 
 /**
  * Спільні cross-cache інвалідатори (WEB-H1/H2 з аудиту).
@@ -34,6 +35,20 @@ export function invalidateBalanceAffected(qc: QueryClient): void {
   qc.invalidateQueries({ queryKey: counterpartiesKeys.all });
   qc.invalidateQueries({ queryKey: reportsKeys.all });
   qc.invalidateQueries({ queryKey: dashboardKeys.all });
+}
+
+/**
+ * Клієнтський платіж (payments.create): рухає settlement-баланс контрагента, invoice.paidAmount/
+ * status, workOrder.paidAmount, і сам список платежів. Один хелпер — щоб КОЖНА точка створення
+ * платежу (invoices-сторінка, QR-onPaid, useCreatePayment, cash) інвалідувала УВЕСЬ крос-ресурс,
+ * а не лише власний ключ (WEB-R3-1/-2: invoices-сторінка інвалідувала тільки invoicesKeys →
+ * баланс контрагента/WO лишались застарілими до staleTime).
+ */
+export function invalidatePaymentSideEffects(qc: QueryClient): void {
+  qc.invalidateQueries({ queryKey: invoicesKeys.all });
+  qc.invalidateQueries({ queryKey: workOrdersKeys.all });
+  qc.invalidateQueries({ queryKey: paymentsKeys.all });
+  invalidateBalanceAffected(qc);
 }
 
 /**

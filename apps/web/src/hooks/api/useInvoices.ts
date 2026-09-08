@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import { counterpartiesKeys } from './useCounterparties';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
+import { invalidatePaymentSideEffects } from '@/lib/cache-invalidation';
 
 export interface Invoice {
   id: string;
@@ -81,13 +81,8 @@ export function useCreatePayment() {
   return useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       apiFetch('/payments', { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: invoicesKeys.all });
-      qc.invalidateQueries({ queryKey: ['work-orders'] });
-      // payments.service викликає settlements.createTransaction(PAYMENT)
-      // який змінює settlementAccount.balance для counterparty. CRM-лист показує
-      // currentBalance — без цієї invalidation баланс залишається стале до staleTime=30s.
-      qc.invalidateQueries({ queryKey: counterpartiesKeys.all });
-    },
+    // WEB-R3-2: спільний хелпер — інвалідує invoices+work-orders+payments+баланс(counterparties/
+    // reports/dashboard). Раніше пропускав payments-list (список платежів лишався стале).
+    onSuccess: () => invalidatePaymentSideEffects(qc),
   });
 }

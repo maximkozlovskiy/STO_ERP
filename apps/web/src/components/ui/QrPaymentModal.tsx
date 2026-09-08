@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Check, X, Loader2 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
@@ -29,6 +29,10 @@ export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Pro
   const createIntent = useCreateOnlinePayment();
   const [intent, setIntent] = useState<OnlineIntent | null>(null);
   const [error, setError] = useState('');
+  // WEB-R3-6: латч — onPaid() має спрацювати РІВНО раз за життя відкриття модалки. Ефект нижче
+  // залежить від status, але refetch/reopen можуть повторно давати status='PAID' → без латча
+  // onPaid (крос-кеш invalidate) викликався б повторно. Скидається на кожне відкриття.
+  const paidFired = useRef(false);
 
   // Створюємо намір при відкритті модалки.
   useEffect(() => {
@@ -37,6 +41,7 @@ export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Pro
     setIntent(null);
     setLive(null);
     setError('');
+    paidFired.current = false;
     createIntent
       .mutateAsync({ invoiceId, amount })
       .then(i => {
@@ -62,9 +67,12 @@ export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Pro
     if (polled) setLive(polled);
   }, [polled]);
 
-  // На PAID — сповістити батька (invalidate) один раз.
+  // На PAID — сповістити батька (invalidate) РІВНО один раз (латч, WEB-R3-6).
   useEffect(() => {
-    if (status === 'PAID') onPaid();
+    if (status === 'PAID' && !paidFired.current) {
+      paidFired.current = true;
+      onPaid();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 

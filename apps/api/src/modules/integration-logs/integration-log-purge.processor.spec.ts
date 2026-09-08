@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Job } from 'bullmq';
 import { IntegrationLogPurgeProcessor, PurgeJob } from './integration-log-purge.processor';
+import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 
 /**
  * Purge видаляє IntegrationLog старші за retention. Критично: ORGID-SCOPED (інші org не зачеплені),
@@ -54,18 +55,19 @@ describe('IntegrationLogPurgeProcessor', () => {
   it('retention clamp: 0 → 1 день (не видаляє все)', async () => {
     findUnique.mockResolvedValue({ integrationLogRetentionDays: 0 });
     await processor.process(makeJob());
-    // clamp до MIN=1 → cutoff = today−1, не today (не зносить сьогоднішні)
+    // clamp до MIN=1 → cutoff = Kyiv-північ (today−1), не today (не зносить сьогоднішні).
+    // Порівнюємо з тією ж Kyiv-семантикою, що й код (НЕ wall-clock delta — біля добової межі
+    // локальний Date.now() vs Kyiv-midnight давав хибний ~21h і тест flaky, а не через код).
     const cutoff = deleteMany.mock.calls[0][0].where.createdAt.lt as Date;
-    const oneDayMs = 24 * 60 * 60 * 1000;
-    expect(Date.now() - cutoff.getTime()).toBeGreaterThan(oneDayMs - 1000);
+    expect(cutoff.getTime()).toBe(addDaysKyiv(kyivToday(), -1).getTime());
   });
 
   it('retention clamp: 9999 → 365 днів (верхня межа)', async () => {
     findUnique.mockResolvedValue({ integrationLogRetentionDays: 9999 });
     await processor.process(makeJob());
     const cutoff = deleteMany.mock.calls[0][0].where.createdAt.lt as Date;
-    const daysAgo = (Date.now() - cutoff.getTime()) / (24 * 60 * 60 * 1000);
-    expect(daysAgo).toBeLessThanOrEqual(366);
-    expect(daysAgo).toBeGreaterThan(364);
+    // clamp до MAX=365 → cutoff = Kyiv-північ (today−365). Точне порівняння з Kyiv-семантикою коду
+    // (не wall-clock delta, який flaky біля добової межі та на DST-переходах).
+    expect(cutoff.getTime()).toBe(addDaysKyiv(kyivToday(), -365).getTime());
   });
 });

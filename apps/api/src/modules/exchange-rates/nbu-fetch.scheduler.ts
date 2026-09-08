@@ -50,6 +50,8 @@ export class NbuFetchScheduler implements OnModuleInit {
         backoff: { type: 'exponential', delay: 300_000 },
         jobId: `nbu-fetch-${orgId}`,
         removeOnComplete: true,
+        // F1: repeatable — cap failed-set (інакше росте безмежно у Redis).
+        removeOnFail: 200,
       },
     );
   }
@@ -70,6 +72,8 @@ export class NbuFetchScheduler implements OnModuleInit {
         backoff: { type: 'exponential', delay: 300_000 },
         jobId: `nbu-fetch-${orgId}`,
         removeOnComplete: true,
+        // F1: repeatable — cap failed-set.
+        removeOnFail: 200,
       },
     );
     this.logger.log(`NBU fetch CRON перепланований org=${orgId} на ${newHour}:00`);

@@ -32,6 +32,8 @@ export class FollowUpScheduler implements OnModuleInit {
                 backoff: { type: 'exponential', delay: 60_000 },
                 jobId: `followup-${orgId}`,
                 removeOnComplete: true,
+                // F1: repeatable job — без cap failed-set у Redis росте безмежно (offline-БД на ПК СТО).
+                removeOnFail: 200,
               },
             ),
           ),

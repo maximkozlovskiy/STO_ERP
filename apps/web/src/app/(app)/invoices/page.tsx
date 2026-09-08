@@ -79,6 +79,7 @@ import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-s
 import { cn, UUID_RE } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { invoiceRemaining, optimisticInvoiceStatus } from '@/lib/invoice-payment';
+import { invalidatePaymentSideEffects, invalidateBalanceAffected } from '@/lib/cache-invalidation';
 import { StatusPill } from '@/components/ui/status-pill';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
@@ -317,7 +318,9 @@ function InvoicesPageInner() {
       const succeeded = results.filter(r => r.status === 'fulfilled').length;
       const failed = results.length - succeeded;
       bulkSelect.clear();
+      // WEB-R3-3: bulk-cancel може реверсити CHARGE standalone-рахунків → баланс контрагента.
       queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+      invalidateBalanceAffected(queryClient);
       if (features.toastEnabled) {
         if (succeeded > 0 && failed === 0) {
           toast.success(`Скасовано ${succeeded} ${succeeded === 1 ? 'рахунок' : 'рахунків'}`);
@@ -399,7 +402,9 @@ function InvoicesPageInner() {
       // switched to another row between click and response — without this guard
       // the new selectedInv would get the wrong status applied.
       setSelectedInv(prev => (prev && prev.id === inv.id ? { ...prev, status: newStatus } : prev));
+      // WEB-R3-3: перехід SENT (standalone→CHARGE) / CANCELLED (реверс) рухає баланс контрагента.
       queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+      invalidateBalanceAffected(queryClient);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка зміни статусу');
     } finally {
@@ -444,7 +449,9 @@ function InvoicesPageInner() {
           ? { ...prev, status: optimisticStatus, paidAmount: newPaidTotal }
           : prev,
       );
-      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+      // WEB-R3-1: платіж рухає settlement-баланс контрагента + WO.paidAmount, не лише рахунок →
+      // інвалідуємо УВЕСЬ крос-ресурс (не лише invoicesKeys), інакше баланс CRM/WO стає застарілим.
+      invalidatePaymentSideEffects(queryClient);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка оплати');
     } finally {
@@ -1121,7 +1128,8 @@ function InvoicesPageInner() {
         amount={qrPay?.amount}
         onClose={() => setQrPay(null)}
         onPaid={() => {
-          queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+          // WEB-R3-1: QR-оплата = payment → крос-ресурс (баланс контрагента + WO), не лише рахунок.
+          invalidatePaymentSideEffects(queryClient);
         }}
       />
 

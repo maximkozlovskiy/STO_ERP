@@ -14,12 +14,18 @@ interface PollJob {
   // Лічильник спроб реконсиляції (PAID але Payment не створився). Обмежує ретраї, щоб
   // ПОСТІЙНА помилка create (напр. рахунок переплачено паралельно) не крутилась вічно 5с-циклом.
   finalizeAttempts?: number;
+  // F2: лічильник pending-опитувань. Захист для наміру БЕЗ expiresAt (wall-clock guard не спрацює):
+  // шлюз, що ніколи не відповідає paid/failed/expired, інакше опитувався б вічно кожні 5с.
+  pollAttempts?: number;
 }
 
 const POLL_INTERVAL_MS = 5_000;
 // Стеля спроб довести Payment до створення після PAID. ~ MAX × POLL_INTERVAL = ~30 хв опитувань.
 // Далі лишаємо PAID+error для ручного розбору касиром (гроші у gateway є, Payment треба вручну).
 const MAX_FINALIZE_ATTEMPTS = 360;
+// F2: стеля pending-опитувань (~ MAX × POLL_INTERVAL = ~2 год). Стеля-запобіжник ЛИШЕ для наміру
+// без expiresAt (з expiresAt його раніше закриє wall-clock guard). Далі → EXPIRED, стоп.
+const MAX_POLL_ATTEMPTS = 1_440;
 
 /**
  * Опитує статус онлайн-наміру у gateway. Self-re-enqueue: поки pending — ставить себе знову з
@@ -44,7 +50,7 @@ export class PaymentPollingProcessor extends WorkerHost {
   }
 
   async process(job: Job<PollJob>): Promise<void> {
-    const { intentId, orgId, finalizeAttempts = 0 } = job.data;
+    const { intentId, orgId, finalizeAttempts = 0, pollAttempts = 0 } = job.data;
 
     const intent = await this.prisma.onlinePaymentIntent.findFirst({
       where: { id: intentId, orgId, deletedAt: null },
@@ -79,6 +85,17 @@ export class PaymentPollingProcessor extends WorkerHost {
     // Жорсткий wall-clock таймаут → EXPIRED (не опитуємо вічно).
     if (intent.expiresAt && intent.expiresAt.getTime() < Date.now()) {
       await this.transition(intentId, orgId, 'EXPIRED', 'Час на оплату вичерпано');
+      return;
+    }
+    // F2: запобіжник для наміру БЕЗ expiresAt — wall-clock guard вище його б не закрив, тож
+    // шлюз що ніколи не резолвиться крутив би 5с-цикл вічно. Стеля опитувань → EXPIRED.
+    if (pollAttempts >= MAX_POLL_ATTEMPTS) {
+      await this.transition(
+        intentId,
+        orgId,
+        'EXPIRED',
+        'Час на оплату вичерпано (стеля опитувань)',
+      );
       return;
     }
 
@@ -134,10 +151,10 @@ export class PaymentPollingProcessor extends WorkerHost {
       return;
     }
 
-    // pending → опитати знову.
+    // pending → опитати знову (з інкрементом лічильника опитувань для F2-стелі).
     await this.pollQueue.add(
       'poll',
-      { intentId, orgId },
+      { intentId, orgId, pollAttempts: pollAttempts + 1 },
       {
         delay: POLL_INTERVAL_MS,
         jobId: `payment-poll-${intentId}`,

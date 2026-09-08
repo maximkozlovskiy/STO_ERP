@@ -16,11 +16,13 @@ import { PaymentPollingProcessor } from './payment-polling.processor';
  */
 
 const MAX_FINALIZE_ATTEMPTS = 360;
+const MAX_POLL_ATTEMPTS = 1_440;
 
 function makeJob(data: {
   intentId: string;
   orgId: string;
   finalizeAttempts?: number;
+  pollAttempts?: number;
 }): Job<typeof data> {
   return { data } as Job<typeof data>;
 }
@@ -300,13 +302,35 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     });
   });
 
-  it('pending → re-enqueue poll (jobId-дедуп)', async () => {
+  it('pending → re-enqueue poll (jobId-дедуп) + pollAttempts+1', async () => {
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot());
     monobank.getStatus.mockResolvedValue({ status: 'pending', raw: 'processing' });
-    await processor.process(makeJob({ intentId: INTENT_ID, orgId: ORG }));
+    await processor.process(makeJob({ intentId: INTENT_ID, orgId: ORG, pollAttempts: 5 }));
     expect(payments.create).not.toHaveBeenCalled();
     expect(pollQueue.add).toHaveBeenCalledTimes(1);
     expect(pollQueue.add.mock.calls[0][2].jobId).toBe(`payment-poll-${INTENT_ID}`);
+    // F2: лічильник опитувань інкрементиться → стеля колись спрацює навіть без expiresAt.
+    expect(pollQueue.add.mock.calls[0][1].pollAttempts).toBe(6);
+  });
+
+  it('F2: pollAttempts ≥ MAX + без expiresAt → EXPIRED, НЕ re-enqueue (стеля-запобіжник)', async () => {
+    // Намір без expiresAt (wall-clock guard не спрацює), шлюз навічно pending.
+    prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot({ expiresAt: null }));
+    monobank.getStatus.mockResolvedValue({ status: 'pending', raw: 'processing' });
+
+    await processor.process(
+      makeJob({ intentId: INTENT_ID, orgId: ORG, pollAttempts: MAX_POLL_ATTEMPTS }),
+    );
+
+    // Стеля досягнута → EXPIRED, gateway НЕ опитується, poll НЕ переставляється.
+    expect(monobank.getStatus).not.toHaveBeenCalled();
+    expect(pollQueue.add).not.toHaveBeenCalled();
+    expect(prisma.onlinePaymentIntent.updateMany).toHaveBeenCalledWith({
+      where: { id: INTENT_ID, orgId: ORG, status: 'PENDING' },
+      data: { status: 'EXPIRED', error: 'Час на оплату вичерпано (стеля опитувань)' },
+    });
+    // MUTATION-VERIFY: прибрати F2-гілку `pollAttempts >= MAX_POLL_ATTEMPTS` → intent без expiresAt
+    // опитувався б вічно (getStatus викликається, poll re-enqueue) → ці assert-и падають.
   });
 
   it('термінальний FAILED вже у БД → стоп (не опитуємо)', async () => {

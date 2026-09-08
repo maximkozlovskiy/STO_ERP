@@ -82,6 +82,12 @@ interface LocalLine {
   description: string;
   quantity: string;
   unitPrice: string;
+  // WEB-R3-4: авторитетна сума рядка З ПДВ (backend-derived priceWithVat — вже per-line total, не
+  // per-unit: backend рахує з lineSum=qty×price). Дозволяє прев'ю «Разом» збігатися з фактичною
+  // сумою рахунку і для EXCLUSIVE (ПДВ зверху), і для INCLUSIVE (ПДВ у ціні — беремо готове
+  // значення, НЕ перераховуємо, щоб не подвоїти). Нові ручні рядки — undefined (backend
+  // recalcTotals порахує при збереженні), прев'ю тоді qty×unitPrice без ПДВ (чесно).
+  lineTotalWithVat?: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -299,6 +305,7 @@ export function InvoiceCreateModal({
           description: l.description,
           quantity: String(l.quantity),
           unitPrice: String(l.unitPrice),
+          lineTotalWithVat: l.priceWithVat, // WEB-R3-4: авторитетна сума з ПДВ для прев'ю «Разом»
         }));
         setLines(loadedLines);
         initialLineIdsRef.current = new Set(loadedLines.map(l => l.id!).filter(Boolean));
@@ -382,9 +389,13 @@ export function InvoiceCreateModal({
 
   // ── Lines ─────────────────────────────────────────────────────────────────
 
+  // WEB-R3-4: прев'ю «Разом» бере авторитетну суму рядка з ПДВ (lineTotalWithVat) якщо вона відома
+  // (завантажений рахунок) — усуває заниження для EXCLUSIVE та подвоєння для INCLUSIVE. Нові ручні
+  // рядки (ще без backend-розрахунку) → qty×unitPrice без ПДВ; backend додасть ПДВ при збереженні.
   const total = useMemo(
     () =>
       lines.reduce((sum, l) => {
+        if (l.lineTotalWithVat != null) return sum + l.lineTotalWithVat;
         const qty = parseFloat(l.quantity) || 0;
         const price = parseFloat(l.unitPrice) || 0;
         return sum + qty * price;

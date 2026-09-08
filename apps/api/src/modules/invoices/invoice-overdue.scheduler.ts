@@ -35,6 +35,8 @@ export class InvoiceOverdueScheduler implements OnModuleInit {
                 backoff: { type: 'exponential', delay: 60_000 },
                 jobId: `overdue-${orgId}`,
                 removeOnComplete: true,
+                // F1: repeatable — cap failed-set (інакше росте безмежно у Redis).
+                removeOnFail: 200,
               },
             ),
           ),

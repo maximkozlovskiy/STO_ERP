@@ -51,7 +51,7 @@ import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
-import { cn } from '@/lib/utils';
+import { cn, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { fmtMoney } from '@/lib/format';
 
 interface CrmFilters extends Record<string, unknown> {
@@ -297,14 +297,12 @@ function CrmPageInner() {
               </div>
             ),
             balance: v => (
+              // WEB-R3-5: тон ЗАЛЕЖИТЬ ВІД ТИПУ (не лише знака): CLIENT balance>0 = борг нам
+              // (destructive), не «зелений плюс». Тип-aware helper (узгоджений з BALANCE_SIGN).
               <span
                 className={cn(
                   'font-semibold',
-                  Number(v) < 0
-                    ? 'text-destructive-text'
-                    : Number(v) > 0
-                      ? 'text-success-text'
-                      : 'text-muted-foreground',
+                  settlementBalanceToneClass(settlementBalanceTone(Number(v), cp.type)),
                 )}
               >
                 {fmtMoney(Number(v))} ₴
@@ -595,13 +593,12 @@ function CrmPageInner() {
                           return (
                             <TableCell
                               key="balance"
+                              // WEB-R3-5: тип-aware тон (CLIENT balance>0 = борг нам = destructive).
                               className={cn(
                                 'font-semibold tabular-nums text-[13px]',
-                                cp.balance < 0
-                                  ? 'text-destructive-text'
-                                  : cp.balance > 0
-                                    ? 'text-success-text'
-                                    : 'text-muted-foreground',
+                                settlementBalanceToneClass(
+                                  settlementBalanceTone(cp.balance, cp.type),
+                                ),
                               )}
                             >
                               {fmtMoney(cp.balance)} ₴
