@@ -11,8 +11,11 @@
 
 ```
 DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → ON_HOLD → COMPLETED → INVOICED → PAID → ARCHIVED
-                 ↘ CANCELLED    ↘ CANCELLED    ↘ CANCELLED    ↘ CANCELLED
+                 ↘ CANCELLED    ↘ CANCELLED    ↘ CANCELLED    ↘ CANCELLED (C2: реверс складу+боргу)
 ```
+
+**COMPLETED→CANCELLED (C2):** дозволено; повертає списані запчастини й сторнує борг (див.
+side-effects). INVOICED/PAID/ARCHIVED **незворотні** — там уже рахунок/гроші.
 
 | Константа                 | Значення                  |
 | ------------------------- | ------------------------- |
@@ -27,14 +30,19 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → ON_HOLD → COMPLETED → IN
 
 ### Side-effects FSM transitions
 
-| Перехід                     | Side-effects (у `$transaction`)                                                                  |
-| --------------------------- | ------------------------------------------------------------------------------------------------ |
-| → `IN_PROGRESS`             | `createMovement(RESERVATION)` для кожної запчастини                                              |
-| → `COMPLETED`               | `createMovement(RESERVATION_RELEASE)` + `createMovement(WRITEOFF)` + `createTransaction(CHARGE)` |
-| → `CANCELLED` з IN_PROGRESS | `createMovement(RESERVATION_RELEASE)` для кожної запчастини                                      |
-| → `CANCELLED` з ON_HOLD     | `createMovement(RESERVATION_RELEASE)` для кожної запчастини                                      |
+| Перехід                        | Side-effects (у `$transaction`)                                                                                                                                                                 |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| → `IN_PROGRESS`                | `createMovement(RESERVATION)` для кожної запчастини                                                                                                                                             |
+| → `COMPLETED`                  | `createMovement(RESERVATION_RELEASE)` + `createMovement(WRITEOFF)` + `createTransaction(CHARGE)`                                                                                                |
+| → `CANCELLED` з IN_PROGRESS    | `createMovement(RESERVATION_RELEASE)` для кожної запчастини                                                                                                                                     |
+| → `CANCELLED` з ON_HOLD        | `createMovement(RESERVATION_RELEASE)` для кожної запчастини                                                                                                                                     |
+| → `CANCELLED` з COMPLETED (C2) | `returnPartsAndCredit`: per part `createMovement(RETURN, +baseQty)` (StockItem++ + `returnToBatch`) + `createTransaction(CREDIT_NOTE)` = сума CHARGE. Реверс COMPLETED. Резерв НЕ відновлюється |
 
 **Порядок у COMPLETED:** RESERVATION_RELEASE **перед** WRITEOFF (щоб `available >= qty` guard пройшов).
+
+**C2 реверс (COMPLETED→CANCELLED):** RETURN дзеркалить WRITEOFF (StockItem++ + повернення у ті самі
+партії, агрегація по batchId), CREDIT_NOTE (−1) нетить CHARGE (+1) до нуля. Single-shot через in-tx
+status re-read + термінальний CANCELLED (та сама гарантія, що не дає подвійного CHARGE).
 
 ---
 

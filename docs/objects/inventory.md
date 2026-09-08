@@ -5,7 +5,7 @@
 ## Ключові факти
 
 - `StockItem` — агрегат поточного залишку по (orgId, goodId, warehouseId): `quantity`, `reserved`.
-- `StockMovement` — append-only: RECEIPT/WRITEOFF/TRANSFER/RESERVATION/RESERVATION_RELEASE/OPENING_BALANCE.
+- `StockMovement` — append-only: RECEIPT/WRITEOFF/TRANSFER/RESERVATION/RESERVATION_RELEASE/OPENING_BALANCE/RETURN.
 - Мутація залишків ТІЛЬКИ через `InventoryService.createMovement()` (єдина точка правди).
 - `deduplicateBy(plan, u => u.goodId)` перед `Promise.all` bulk-update цін.
 
@@ -40,6 +40,13 @@
   забутого/майбутнього writer (sync-merge). App-throw дає локалізоване повідомлення, CHECK — 23514.
 - **АТОМАРНІСТЬ:** `createMovement` без переданого `tx` самообгортається у `$transaction` (no-tx self-wrap),
   щоб multi-write (movement + consume + upsert + BatchConsumption) відкочувався цілком при throw.
+- **RETURN (реверс WRITEOFF, C2):** повернення на склад при COMPLETED→CANCELLED наряду. Позитивна
+  к-сть → інкремент `StockItem.quantity` + `restoreBatchesForReturn`: знаходить негативні
+  `BatchConsumption` документа, **агрегує по `batchId` у межах усього документа** й кличе
+  `returnToBatch` РАЗ на партію (idempotency-guard `returnToBatch` ігнорує `documentLineId` → по-рядкові
+  виклики на спільну партію тихо недоповернули б → злам Σ-інваріанту). 0 рядків (AVG_COST-агрегат /
+  списання без партій) → лише StockItem++. Guard: RETURN без documentType/documentId або від'ємна к-сть → 400.
+  НЕ створює нову партію (не в `BATCH_CREATING_INFLOW`).
 
 > ⚠️ **Історія:** до 2026-09-02 `consumeBatch` НЕ викликався з розходів («мертвий код») —
 > партії лише створювались (RECEIPT), `remainingQty` монотонно ріс, COGS = ціна продажу,

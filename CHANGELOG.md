@@ -5,6 +5,45 @@
 
 ---
 
+## 2026-09-08 — feat: C2 — повернення запчастин + сторно боргу при скасуванні завершеного наряду
+
+Раніше COMPLETED-наряд не можна було скасувати (FSM), тож `returnToBatch` (готовий, але
+неприв'язаний метод) не мав виклику. Тепер `COMPLETED→CANCELLED` повертає списані запчастини
+на склад і сторнує борг. Backend + shared-константи (без web-компонентів). QA: review (1 CRITICAL
+sync-gap виправлено) → tester (0 runtime-багів, 2 test-gaps закрито). Повна suite 1862→усі зелено.
+
+### 24fc5f94 feat(work-orders): C2 ядро
+
+- schema/міграція 20260908140000: `StockMovementType += RETURN` (окрема additive-міграція).
+- inventory.service: RETURN-гілка у createMovement — StockItem++ + `restoreBatchesForReturn`
+  (агрегація негативних BatchConsumption по batchId → `returnToBatch` раз на партію; guard проти
+  недоповернення через per-line idempotency). Guards: neg-qty / missing doc refs → 400.
+- work-orders.fsm: `COMPLETED: ['INVOICED','CANCELLED']`.
+- work-orders.service: `returnPartsAndCredit` — реверс `writeOffPartsAndCharge` (per part RETURN +
+  один CREDIT_NOTE). Wired у CANCELLED-гілку під guard `wo.status==='COMPLETED'`. Single-shot.
+- Тести +11 (RETURN per-part, CREDIT_NOTE, coeff, shared-batch агрегація, WRITEOFF→RETURN
+  round-trip інваріант, FSM COMPLETED→CANCELLED).
+
+### c50d5bb3 fix(review): sync-gap FSM-мапа (CRITICAL) + take-cap
+
+Frontend `WO_STATUS_TRANSITIONS.COMPLETED` лишався `['INVOICED']` → кнопка «Скасувати» не
+рендерилась для завершеного наряду → C2 був би UI-dead-code. Синхронізовано shared-мапу +
+`take:5000` на restore-запиті.
+
+### 299780ad test(tester): C2 regression guards #705–#706
+
+- #705 (MEDIUM, test-drift): fsm-buttons.test мав сталу локальну FSM-фікстуру (пре-C2) → додано
+  describe що імпортує ФАКТИЧНУ shared-мапу й асертить кнопку «Скасувати» + незворотність INVOICED/PAID.
+- #706 (MEDIUM, coverage-gap): shared-batch агрегація перевірялась лише через мок `toHaveBeenCalledTimes(1)`
+  → новий stateful `return-roundtrip.invariants.spec` з in-memory Prisma-store + РЕАЛЬНІ Inventory+Batch
+  сервіси доводить `Σ remainingQty==StockItem.quantity` (+ демонстрація недоповернення без агрегації).
+
+> **Follow-up (поза C2):** WO скасований з COMPLETED стає soft-delete-able — безпечно (рухи нетяться
+> до нуля). Пре-існуючий design-ризик: мутабельний `GoodUoM.coefficient` між COMPLETED і CANCELLED
+> (той самий розрив у reserve↔release) — не введений C2.
+
+---
+
 ## 2026-09-08 — refactor: закриття технічного боргу (config-over-hardcode §13 + scheduler + multi-branch)
 
 Пакет усунення реального тех-боргу (працювало, але не ідеально). Backend + DB only, без

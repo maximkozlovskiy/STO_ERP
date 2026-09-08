@@ -55,17 +55,21 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → ON_HOLD
                                          IN_PROGRESS ← (ON_HOLD)
                                                ↓
                                           COMPLETED → INVOICED → PAID → ARCHIVED
-                                         ↘ CANCELLED  ↘ CANCELLED
+                                         ↘ CANCELLED
 ```
+
+> COMPLETED→CANCELLED (C2) реверсує склад+борг (див. side-effects). INVOICED/PAID/ARCHIVED
+> **незворотні** (там уже рахунок/гроші) — CANCELLED з них заборонено FSM.
 
 Файл FSM: `apps/api/src/modules/work-orders/work-orders.fsm.ts`
 
-| Перехід                     | Side-effects (у `$transaction`)                                                                   |
-| --------------------------- | ------------------------------------------------------------------------------------------------- |
-| → `IN_PROGRESS`             | `InventoryService.createMovement(RESERVATION)` для кожної запчастини (sequential for-loop)        |
-| → `COMPLETED`               | RESERVATION_RELEASE → WRITEOFF → `SettlementsService.createTransaction(CHARGE)` (у цьому порядку) |
-| → `CANCELLED` з IN_PROGRESS | `InventoryService.createMovement(RESERVATION_RELEASE)` для кожної запчастини                      |
-| → `CANCELLED` з ON_HOLD     | `InventoryService.createMovement(RESERVATION_RELEASE)` для кожної запчастини                      |
+| Перехід                        | Side-effects (у `$transaction`)                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| → `IN_PROGRESS`                | `InventoryService.createMovement(RESERVATION)` для кожної запчастини (sequential for-loop)                                                                                                                                                                                                                                                        |
+| → `COMPLETED`                  | RESERVATION_RELEASE → WRITEOFF → `SettlementsService.createTransaction(CHARGE)` (у цьому порядку)                                                                                                                                                                                                                                                 |
+| → `CANCELLED` з IN_PROGRESS    | `InventoryService.createMovement(RESERVATION_RELEASE)` для кожної запчастини                                                                                                                                                                                                                                                                      |
+| → `CANCELLED` з ON_HOLD        | `InventoryService.createMovement(RESERVATION_RELEASE)` для кожної запчастини                                                                                                                                                                                                                                                                      |
+| → `CANCELLED` з COMPLETED (C2) | `returnPartsAndCredit`: per part `createMovement(RETURN, +baseQty)` (StockItem++ + `returnToBatch` у ті самі партії) → один `SettlementsService.createTransaction(CREDIT_NOTE)` = сума CHARGE. Реверс `writeOffPartsAndCharge`. Резерв НЕ відновлюється (на COMPLETED уже знято). Single-shot через in-tx status re-read + термінальний CANCELLED |
 
 ### Константи (з `@sto/shared`)
 
