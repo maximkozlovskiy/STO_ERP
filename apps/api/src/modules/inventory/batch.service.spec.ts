@@ -16,7 +16,10 @@ describe('BatchService', () => {
       update: ReturnType<typeof vi.fn>;
       updateMany: ReturnType<typeof vi.fn>;
     };
-    batchConsumption: { create: ReturnType<typeof vi.fn> };
+    batchConsumption: {
+      create: ReturnType<typeof vi.fn>;
+      findFirst: ReturnType<typeof vi.fn>;
+    };
     priceHistory: { create: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
     $queryRaw: ReturnType<typeof vi.fn>;
@@ -40,7 +43,10 @@ describe('BatchService', () => {
         // mockResolvedValueOnce({ count: 0 }) для race-scenario.
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
-      batchConsumption: { create: vi.fn().mockResolvedValue({}) },
+      batchConsumption: {
+        create: vi.fn().mockResolvedValue({}),
+        findFirst: vi.fn().mockResolvedValue(null), // за замовч. немає наявного повернення
+      },
       priceHistory: { create: vi.fn().mockResolvedValue({}) },
       // Bug #20: consumeBatch/returnToBatch обертає в $transaction коли tx не передано.
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
@@ -336,16 +342,35 @@ describe('BatchService', () => {
       );
     });
 
-    it('інкрементує remainingQty і робить isActive=true', async () => {
-      prisma.stockBatch.findFirst.mockResolvedValue({ id: 'b1', goodId: 'g1' });
+    it('інкрементує remainingQty (CAS з верхнім cap) + isActive=true + batchConsumption', async () => {
+      prisma.stockBatch.findFirst.mockResolvedValue({ id: 'b1', goodId: 'g1', receivedQty: 10 });
+      prisma.stockBatch.updateMany.mockResolvedValueOnce({ count: 1 });
       await service.returnToBatch('org', 'b1', 5, 'WO', 'wo1');
-      expect(prisma.stockBatch.update).toHaveBeenCalledWith({
-        where: { id: 'b1' },
+      // CAS: remainingQty <= receivedQty - qty (10-5=5), orgId у where, increment.
+      expect(prisma.stockBatch.updateMany).toHaveBeenCalledWith({
+        where: { id: 'b1', orgId: 'org', remainingQty: { lte: 5 } },
         data: { remainingQty: { increment: 5 }, isActive: true },
       });
       expect(prisma.batchConsumption.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ quantity: 5, batchId: 'b1' }),
       });
+    });
+
+    it('cap: повернення перевищує залишок місткості (updateMany.count=0) → BadRequest + rollback', async () => {
+      prisma.stockBatch.findFirst.mockResolvedValue({ id: 'b1', goodId: 'g1', receivedQty: 10 });
+      // remainingQty=8, повертаємо 5 → 8 > 10-5=5 → CAS не матчить → count=0.
+      prisma.stockBatch.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.returnToBatch('org', 'b1', 5, 'WO', 'wo1')).rejects.toThrow(
+        /перевищує отриману/i,
+      );
+    });
+
+    it('ідемпотентність: наявне повернення на той самий документ → skip (без подвоєння)', async () => {
+      prisma.stockBatch.findFirst.mockResolvedValue({ id: 'b1', goodId: 'g1', receivedQty: 10 });
+      prisma.batchConsumption.findFirst.mockResolvedValueOnce({ id: 'existing' });
+      await service.returnToBatch('org', 'b1', 5, 'WO', 'wo1');
+      expect(prisma.stockBatch.updateMany).not.toHaveBeenCalled();
+      expect(prisma.batchConsumption.create).not.toHaveBeenCalled();
     });
   });
 });

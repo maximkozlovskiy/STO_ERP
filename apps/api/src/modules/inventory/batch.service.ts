@@ -371,24 +371,37 @@ export class BatchService {
       return;
     }
     const db = tx;
-    // sto-optimize: tenant guard читає лише goodId — інші колонки не потрібні.
+    // Tenant guard + receivedQty (потрібен для верхньої межі повернення).
     const batch = await db.stockBatch.findFirst({
       where: { id: batchId, orgId },
-      select: { goodId: true },
+      select: { goodId: true, receivedQty: true },
     });
     if (!batch) throw new BadRequestException('Партію не знайдено');
 
-    // sto-optimize: update + create не залежать один від одного — Promise.all
-    // економить 1 RTT (важливо у WO cancellation hot-path де returnToBatch
-    // викликається у циклі по parts[]).
-    await Promise.all([
-      db.stockBatch.update({
-        where: { id: batchId },
+    // Ідемпотентність: повторний виклик на той самий (батч, документ) не подвоює повернення
+    // (BullMQ retry / double-click). Return-consumption має quantity > 0 (споживання — < 0).
+    const existing = await db.batchConsumption.findFirst({
+      where: { orgId, batchId, documentType, documentId, quantity: { gt: 0 } },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    // CAS-guard + верхній cap (дзеркалить consumeBatch): remainingQty НЕ може перевищити
+    // receivedQty (інваріант Σ remaining(active) == StockItem.quantity — повернути більше ніж
+    // отримано неможливо). `remainingQty <= receivedQty - qty` → після +qty буде ≤ receivedQty.
+    // count=0 → або зникла партія (гонка), або повернення перевищує залишок місткості → throw.
+    const [updated] = await Promise.all([
+      db.stockBatch.updateMany({
+        where: { id: batchId, orgId, remainingQty: { lte: batch.receivedQty - qty } },
         data: { remainingQty: { increment: qty }, isActive: true },
       }),
       db.batchConsumption.create({
         data: { orgId, batchId, goodId: batch.goodId, quantity: qty, documentType, documentId },
       }),
     ]);
+    if (updated.count === 0) {
+      // throw → $transaction rollback (скасовує batchConsumption).
+      throw new BadRequestException('Повернення перевищує отриману кількість партії');
+    }
   }
 }
