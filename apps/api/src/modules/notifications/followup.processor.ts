@@ -37,30 +37,20 @@ export class FollowUpProcessor extends WorkerHost {
   async process(job: Job<FollowUpJob>): Promise<void> {
     const { orgId } = job.data;
 
-    // Parallel: settings + branch — independent reads (різні таблиці, обидва orgId-scoped).
+    // Parallel: settings + fallback branch — independent reads (різні таблиці, обидва orgId-scoped).
     // -1 RTT на кожен daily tick. Раніше: послідовно settings → branch.
-    const [settings, branch] = await Promise.all([
+    const [settings, fallbackBranch] = await Promise.all([
       this.prisma.organisationSettings.findFirst({ where: { orgId } }),
-      // Pick the oldest branch for SMS sender config.
-      // Multi-branch gap: single-branch assumption — for multi-branch orgs, should resolve
-      // per-vehicle by lastWorkOrderBranchId or expose Organisation-level SMS config.
+      // Найстаріша філія — fallback SMS-конфіг для отримувачів БЕЗ власного наряду
+      // (напр. maintenance-графік авто, яке ще не обслуговувалось у нас).
       this.prisma.garageBranch.findFirst({
         where: { orgId, deletedAt: null },
         orderBy: { createdAt: 'asc' },
+        select: { id: true },
       }),
     ]);
     if (!settings?.followUpActive) return;
-    if (!branch) return;
-
-    // Pre-fetch SMS config once for the whole batch — branchSettings + template are
-    // shared across ALL recipients in one org (same branchId + same event type).
-    // Previously: notifications.send() fetched both per recipient → N × 2 DB reads.
-    // Now: 2 reads total regardless of recipient count.
-    const smsConfig: NotificationConfig | null = await this.notifications.resolveConfig(
-      orgId,
-      branch.id,
-      'FOLLOWUP_REMINDER',
-    );
+    if (!fallbackBranch) return;
 
     // DST-safe Kyiv "today" anchor. Set UTC 09:00 (= 11:00/12:00 Kyiv depending on DST)
     // so setDate(±N) operates well away from the local-midnight boundary.
@@ -90,6 +80,13 @@ export class FollowUpProcessor extends WorkerHost {
             include: {
               customerGarage: {
                 include: { counterparty: true },
+              },
+              // last WO branchId → per-branch SMS-конфіг (multi-branch orgs).
+              workOrders: {
+                where: { deletedAt: null },
+                orderBy: { completedAt: 'desc' },
+                take: 1,
+                select: { branchId: true },
               },
             },
           },
@@ -162,6 +159,8 @@ export class FollowUpProcessor extends WorkerHost {
       vehicleModel: string;
       licensePlate: string;
       nextMaintenanceDate: string;
+      // Філія останнього наряду авто → per-branch SMS-конфіг; null → fallbackBranch.
+      branchId: string | null;
     };
     const sentTo = new Set<string>();
     const recipients: Recipient[] = [];
@@ -179,6 +178,7 @@ export class FollowUpProcessor extends WorkerHost {
         nextMaintenanceDate: schedule.nextMaintenanceDate
           ? ` ${UA_DATE_FMT.format(schedule.nextMaintenanceDate)}`
           : '',
+        branchId: schedule.vehicle.workOrders[0]?.branchId ?? null,
       });
     }
 
@@ -197,6 +197,7 @@ export class FollowUpProcessor extends WorkerHost {
         vehicleModel: vehicle.model,
         licensePlate: vehicle.licensePlate ?? '',
         nextMaintenanceDate: '',
+        branchId: lastWO.branchId ?? null,
       });
     }
 
@@ -204,8 +205,31 @@ export class FollowUpProcessor extends WorkerHost {
     let sendSuccess = 0;
     let lastError: Error | undefined;
 
-    // If SMS is not configured for this org, skip sending but log summary.
-    if (!smsConfig) {
+    if (recipients.length === 0) {
+      this.logger.log(`FollowUp для org=${orgId}: немає отримувачів`);
+      return;
+    }
+
+    // Per-branch SMS-конфіг (multi-branch): кожен отримувач шле через конфіг СВОЄЇ
+    // філії (останній наряд авто), не через одну «найстарішу» філію. branchId=null
+    // (авто без наряду) → fallbackBranch. resolveConfig викликаємо ОДИН раз на
+    // унікальну філію (branchSettings+template спільні для всіх отримувачів філії) —
+    // memoized map, тож fan-out loop лишається 0 DB reads.
+    const branchIdsInUse = new Set<string>();
+    for (const r of recipients) branchIdsInUse.add(r.branchId ?? fallbackBranch.id);
+
+    const configByBranch = new Map<string, NotificationConfig | null>();
+    await Promise.all(
+      [...branchIdsInUse].map(async bId => {
+        configByBranch.set(
+          bId,
+          await this.notifications.resolveConfig(orgId, bId, 'FOLLOWUP_REMINDER'),
+        );
+      }),
+    );
+
+    // Якщо жодна задіяна філія не має SMS-конфігу — нічого відправляти.
+    if ([...configByBranch.values()].every(c => c === null)) {
       this.logger.log(
         `FollowUp для org=${orgId}: SMS не налаштовано або шаблон відсутній — відправка пропущена`,
       );
@@ -213,13 +237,19 @@ export class FollowUpProcessor extends WorkerHost {
     }
 
     // Use pre-fetched config (sendWithConfig = no DB reads per recipient).
-    // Previously notifications.send() fetched branchSettings + template per call →
-    // N × 2 DB reads for the batch. Now: 0 DB reads in the fan-out loop.
+    // Отримувачі, чия філія без конфігу, пропускаються (skipped), не помилка.
+    let skipped = 0;
     const results = await Promise.allSettled(
-      recipients.map(r =>
-        this.notifications.sendWithConfig(
+      recipients.map(r => {
+        const bId = r.branchId ?? fallbackBranch.id;
+        const cfg = configByBranch.get(bId) ?? null;
+        if (!cfg) {
+          skipped++;
+          return Promise.resolve(undefined);
+        }
+        return this.notifications.sendWithConfig(
           orgId,
-          smsConfig,
+          cfg,
           {
             phone: r.phone, // recipient обирається per-channel у sendWithConfig
             clientName: r.clientName,
@@ -228,10 +258,10 @@ export class FollowUpProcessor extends WorkerHost {
             licensePlate: r.licensePlate,
             nextMaintenanceDate: r.nextMaintenanceDate,
           },
-          branch.id,
+          bId,
           'FOLLOWUP_REMINDER',
-        ),
-      ),
+        );
+      }),
     );
 
     for (let i = 0; i < results.length; i++) {
@@ -245,9 +275,11 @@ export class FollowUpProcessor extends WorkerHost {
         this.logger.warn(`Помилка відправки нагадування для ${recipients[i].phone}: ${e.message}`);
       }
     }
+    // skipped рахуються як fulfilled (Promise.resolve) — коригуємо success-лічильник.
+    sendSuccess -= skipped;
 
     this.logger.log(
-      `FollowUp для org=${orgId}: успішно ${sendSuccess}, помилок ${sendErrors}, унікальних отримувачів ${sentTo.size}`,
+      `FollowUp для org=${orgId}: успішно ${sendSuccess}, помилок ${sendErrors}, пропущено (без SMS-конфігу філії) ${skipped}, унікальних отримувачів ${sentTo.size}`,
     );
 
     // If ALL sends failed (and we tried at least one), surface the error to BullMQ for retry.

@@ -179,6 +179,73 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     expect(notifications.resolveConfig).toHaveBeenCalledTimes(1);
   });
 
+  it('multi-branch: кожен отримувач шле через SMS-конфіг СВОЄЇ філії (C3)', async () => {
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
+    // fallbackBranch = br-1 (найстаріша).
+    prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
+    // Recipient A: авто з останнім нарядом у br-2 → шле через br-2.
+    // Recipient B: авто без наряду → fallback br-1.
+    prisma.maintenanceSchedule.findMany.mockResolvedValue([
+      schedule({
+        id: 'sch-A',
+        vehicle: vehicle({
+          id: 'veh-A',
+          workOrders: [{ branchId: 'br-2' }],
+          customerGarage: {
+            id: 'cg-A',
+            deletedAt: null,
+            counterparty: cp({ id: 'cp-A', phone: '+380670000001' }),
+          },
+        }),
+      }),
+      schedule({
+        id: 'sch-B',
+        vehicle: vehicle({
+          id: 'veh-B',
+          workOrders: [], // без наряду → fallback br-1
+          customerGarage: {
+            id: 'cg-B',
+            deletedAt: null,
+            counterparty: cp({ id: 'cp-B', phone: '+380670000002' }),
+          },
+        }),
+      }),
+    ]);
+    prisma.vehicle.findMany.mockResolvedValue([]);
+    // Різні конфіги per-branch.
+    const CFG_BR1 = { ...DEFAULT_SMS_CONFIG, senderName: 'STO-1' };
+    const CFG_BR2 = { ...DEFAULT_SMS_CONFIG, senderName: 'STO-2' };
+    notifications.resolveConfig.mockImplementation(async (_org: string, branchId: string) =>
+      branchId === 'br-2' ? CFG_BR2 : CFG_BR1,
+    );
+
+    await processor.process(makeJob());
+
+    // resolveConfig — по одному разу на КОЖНУ унікальну філію (br-1, br-2), не per-recipient.
+    expect(notifications.resolveConfig).toHaveBeenCalledTimes(2);
+    expect(notifications.resolveConfig).toHaveBeenCalledWith('org-1', 'br-1', 'FOLLOWUP_REMINDER');
+    expect(notifications.resolveConfig).toHaveBeenCalledWith('org-1', 'br-2', 'FOLLOWUP_REMINDER');
+    // Recipient A шле через br-2 + CFG_BR2.
+    expect(notifications.sendWithConfig).toHaveBeenCalledWith(
+      'org-1',
+      CFG_BR2,
+      expect.objectContaining({ phone: '+380670000001' }),
+      'br-2',
+      'FOLLOWUP_REMINDER',
+    );
+    // Recipient B шле через br-1 + CFG_BR1.
+    expect(notifications.sendWithConfig).toHaveBeenCalledWith(
+      'org-1',
+      CFG_BR1,
+      expect.objectContaining({ phone: '+380670000002' }),
+      'br-1',
+      'FOLLOWUP_REMINDER',
+    );
+  });
+
   it('дедуплікує phone — один клієнт з кількома авто отримує лише 1 SMS', async () => {
     prisma.organisationSettings.findFirst.mockResolvedValue({
       followUpActive: true,
