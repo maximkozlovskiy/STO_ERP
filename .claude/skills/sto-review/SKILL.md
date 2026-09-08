@@ -204,10 +204,21 @@ grep -rn "process\.env\." apps/api/src/ --include="*.ts" | grep -v "main.ts\|spe
 
 ```bash
 grep -rn "passwordHash\|apiKey\b\|secret\b" apps/api/src/modules/ --include="*.dto.ts"
+
+# Body-borne credential → error/log echo-vector: клієнт кладе credential у request BODY
+# (не заголовок), а throw-сайт вбудовує `await response.text()` у Error.message. Якщо провайдер
+# ЕХО-не запит у 4xx-відповіді → секрет тече у Error.message → лог/IntegrationLog.error.
+# Знайти клієнтів, що шлють credential у body (не header): JSON.stringify з apiKey/token/pin/key
+grep -rnE "body:\s*(JSON\.stringify\()?\{[^}]*(apiKey|token|pin_?[Cc]ode|privateKey|secret|password)" \
+  apps/api/src/modules --include="*.ts" | grep -v spec
+# Для кожного знайденого клієнта → перевірити, що throw-сайт з `response.text()` пропускає текст
+# через redactSecrets(text, [<ті самі body-secret значення>]) (apps/api/src/common/utils/redact.ts)
+grep -rnE "throw new Error\(`[^`]*\$\{(await )?(response|res)\.text\(\)" apps/api/src/modules --include="*.ts" | grep -v spec
 ```
 
 - [ ] `passwordHash`, `apiKey`, `secret` відсутні у `*ResponseDto`
 - [ ] `phone`, `edrpou`, `email` у `PULL_FIELD_BLACKLIST` (sync)
+- [ ] **Body-borne credential + `response.text()` у Error.message → `redactSecrets(text, [secret])`.** Секрети у ЗАГОЛОВКАХ (Bearer/X-Token/Authorization) безпечні — ми не серіалізуємо заголовки. Але коли клієнт шле credential у request BODY (Nova Poshta `apiKey` у JSON, Checkbox `pin_code`/`licenseKey` у sign-in body), а throw вбудовує `${await response.text()}` → провайдер, що ЕХО-не запит у 4xx-тілі, зіллє секрет у Error.message → лог/`IntegrationLog.error`. Логер (`IntegrationLogService.wrap`) свідомо секрет-сліпий → redaction МУСИТЬ бути на рівні клієнта, де значення секрету у скоупі. Fix: `redactSecrets(text, [<body-secret значення>])` (`apps/api/src/common/utils/redact.ts` — ігнорує <6-символьні значення). LiqPay-стиль (body=base64(payload)+signature без сирого privateKey) — безпечний. Sample: audit IntegrationLog (1bc106f8)
 
 #### §2.5 BullMQ Queue Safety
 

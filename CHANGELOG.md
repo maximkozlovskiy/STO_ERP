@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-09-08 — review: IntegrationLog (secret-hygiene defense-in-depth + a11y)
+
+### 1bc106f8 fix(review): IntegrationLog — redact body-borne секретів + a11y на фільтрах
+
+Code review фічі IntegrationLog (ba4784c6 backend + d5c656e5 frontend). Secret-hygiene,
+fire-and-forget, orgId-scope purge, control-flow equivalence (10 wrap-сайтів, checkbox 401-retry),
+scheduler (mirror nbu-fetch) — усе підтверджено чистим. 2 захисних фікси:
+
+- `redactSecrets()` util + застосування у Nova Poshta та Checkbox клієнтах. `wrap()` свідомо
+  секрет-сліпий; `error`=response-body провайдера. Але NP шле сирий apiKey у JSON-body,
+  Checkbox — pin_code+licenseKey у body sign-in → якщо провайдер ЕХО-не запит у 4xx, `response.text()`
+  витік би у IntegrationLog.error. Redaction на рівні клієнта (де секрет у скоупі). monobank/LiqPay/
+  Вчасно шлють creds у ЗАГОЛОВКАХ → не зачеплені.
+- a11y: aria-label на select-фільтрах (Провайдер/Статус) IntegrationLogsTab.
+- redact.spec.ts (5 тестів).
+
+tsc api/web 0. nova-poshta+checkbox+integration-log 99 зелено, redact 5 зелено.
+
+---
+
 ## 2026-09-08 — fix: звірка інтеграцій з живою докою (Вчасно v3 + Нова Пошта mapStatus) + INTEGRATIONS.md
 
 Аудит mock-first інтеграцій проти офіційної доки + пошук публічних sandbox-кредів. Усі 5
