@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import { roundMoney } from '../../common/utils/math';
 import { formatPersonName } from '@sto/shared';
 
@@ -34,16 +35,16 @@ const WORK_HOURS_PER_DAY = 9;
 // Hot path: revenue() цикл до 10 000 рядків; уникаємо створення форматера на кожен виклик.
 const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
-/**
- * Labor cost ratio (mechanic salary as fraction of labor revenue).
- * 0.4 = 40% — typical for Ukraine SMB auto-services where salary fund is ~40% of labor income.
- * TODO: move to OrganisationSettings.laborCostRatio for per-org configuration.
- */
-const LABOR_COST_RATIO = 0.4;
+// Fallback частки ФОП механіків, якщо налаштування недоступні (0.4=40% типово для UA SMB).
+// Основне джерело — OrganisationSettings.laborCostRatio (per-org, читається у profitability).
+const DEFAULT_LABOR_COST_RATIO = 0.4;
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
+  ) {}
 
   async revenue(orgId: string, from: string, to: string, branchId?: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
@@ -250,6 +251,16 @@ export class ReportsService {
     type WOAgg = { totalRevenue: number; totalLabor: number; ordersCount: bigint };
     type PartAgg = { costParts: number; unknownCount: bigint };
 
+    // Частка ФОП per-org (§13, не hardcoded); clamp [0,1] + fallback при недоступності налаштувань.
+    let laborCostRatio = DEFAULT_LABOR_COST_RATIO;
+    try {
+      const s = await this.settings.getOrganisationSettings(orgId);
+      const raw = Number((s as { laborCostRatio?: number }).laborCostRatio);
+      if (Number.isFinite(raw)) laborCostRatio = Math.min(Math.max(raw, 0), 1);
+    } catch {
+      // налаштування недоступні → дефолт (звіт не блокуємо)
+    }
+
     // Two aggregation queries instead of loading up to 10 000 orders × 500 parts each.
     const [woAgg, partAgg] = await Promise.all([
       // Aggregate revenue + labor from work orders
@@ -291,7 +302,7 @@ export class ReportsService {
     // (3520.30 × 0.4 = 1408.1200000000001; 999.99 × 0.4 = 399.99600000000004), який раніше
     // просочувався сирим у JSON звіту та CSV-експорт «Рентабельність» (page.tsx рядок 620/623).
     // Квантуємо КОЖНЕ похідне грошове значення до копійки (заявлений інваріант Хвилі 3).
-    const totalCostLabor = roundMoney(Number(woAgg[0]?.totalLabor ?? 0) * LABOR_COST_RATIO);
+    const totalCostLabor = roundMoney(Number(woAgg[0]?.totalLabor ?? 0) * laborCostRatio);
     const totalCost = roundMoney(totalCostParts + totalCostLabor);
     const grossProfit = roundMoney(totalRevenue - totalCost);
     const margin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;

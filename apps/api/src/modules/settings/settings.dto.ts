@@ -160,6 +160,17 @@ export class UpdateOrganisationSettingsDto {
   @Max(1440)
   deliveryPollIntervalMinutes?: number;
 
+  @ApiPropertyOptional({
+    description: 'Частка ФОП механіків у виручці з робіт (звіт рентабельності). clamp [0,1].',
+    minimum: 0,
+    maximum: 1,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  laborCostRatio?: number;
+
   @ApiPropertyOptional({ description: 'UI feature flags (partial update supported)' })
   @IsOptional()
   @IsObject()
@@ -338,6 +349,8 @@ export class OrganisationSettingsResponseDto {
   nbuFetchHour!: number;
   @ApiProperty({ description: 'Інтервал опитування служби доставки (хв)' })
   deliveryPollIntervalMinutes!: number;
+  @ApiProperty({ description: 'Частка ФОП механіків у виручці з робіт (звіт рентабельності)' })
+  laborCostRatio!: number;
   @ApiProperty({ description: 'UI feature flags' }) uiFeatures!: UiFeatures;
   // B4: Loyalty
   @ApiProperty() loyaltyEnabled!: boolean;

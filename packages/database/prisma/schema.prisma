@@ -1687,6 +1687,9 @@ model OrganisationSettings {
   nbuFetchHour                     Int             @default(12)
   // Інтервал опитування служби доставки (хв). Читається polling-процесором (НЕ hardcoded). clamp [5,1440].
   deliveryPollIntervalMinutes      Int             @default(30)
+  // Частка ФОП механіків у виручці з робіт (для звіту рентабельності). 0.4=40% — типово для UA SMB.
+  // Читається reports.profitability per-org (НЕ hardcoded). clamp [0,1].
+  laborCostRatio                   Decimal         @default(0.4) @db.Decimal(4, 3)
   uiFeatures                       Json            @default("{}")
   // B4: Loyalty program settings
   loyaltyEnabled                   Boolean         @default(false)

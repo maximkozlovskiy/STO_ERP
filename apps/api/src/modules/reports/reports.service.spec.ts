@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { ReportsService } from './reports.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 
 /**
  * Bug #629: похідні грошові значення у звітах квантуються до копійки (roundMoney).
@@ -35,8 +36,15 @@ describe('ReportsService — Bug #629 квантування грошей у з�
       settlementAccount: { findMany: vi.fn() },
       $queryRaw: vi.fn(),
     };
+    const settings = {
+      getOrganisationSettings: vi.fn().mockResolvedValue({ laborCostRatio: 0.4 }),
+    };
     const module = await Test.createTestingModule({
-      providers: [ReportsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ReportsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: SettingsService, useValue: settings },
+      ],
     }).compile();
     service = module.get(ReportsService);
   });

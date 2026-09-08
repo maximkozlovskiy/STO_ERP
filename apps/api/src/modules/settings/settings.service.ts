@@ -306,6 +306,7 @@ export class SettingsService {
     followUpDays: number;
     nbuFetchHour: number;
     deliveryPollIntervalMinutes: number;
+    laborCostRatio: { toNumber(): number } | number;
     uiFeatures: unknown;
     loyaltyEnabled: boolean;
     loyaltyEarnPer: { toNumber(): number } | number;
@@ -334,6 +335,7 @@ export class SettingsService {
       followUpDays: s.followUpDays,
       nbuFetchHour: s.nbuFetchHour,
       deliveryPollIntervalMinutes: s.deliveryPollIntervalMinutes,
+      laborCostRatio: toNum(s.laborCostRatio),
       uiFeatures: this.parseUiFeatures(s.uiFeatures),
       loyaltyEnabled: s.loyaltyEnabled,
       loyaltyEarnPer: toNum(s.loyaltyEarnPer),
