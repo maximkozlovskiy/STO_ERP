@@ -2,8 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
-
-const MAX_ORGS_PER_SCHEDULER_RUN = 1000;
+import { forEachActiveOrg } from '../../common/scheduler/for-each-active-org';
 
 @Injectable()
 export class NbuFetchScheduler implements OnModuleInit {
@@ -15,26 +14,20 @@ export class NbuFetchScheduler implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    // Single batch: orgs + their settings (N+1 → 2 queries).
-    // For 1000 cloud orgs this avoids 1000 sequential findUnique reads
-    // during bootstrap that gated the entire scheduler init.
-    const [orgs, allSettings] = await Promise.all([
-      this.prisma.organisation.findMany({
-        where: { deletedAt: null },
-        select: { id: true },
-        take: MAX_ORGS_PER_SCHEDULER_RUN,
-      }),
-      this.prisma.organisationSettings.findMany({
+    // Cursor-пагінація всіх активних орг (Bug #107). Per-batch settings-prefetch
+    // (nbuFetchHour) одним findMany на батч замість N sequential findUnique —
+    // без завантаження всіх settings у пам'ять одночасно.
+    const total = await forEachActiveOrg(this.prisma, async orgIds => {
+      const settings = await this.prisma.organisationSettings.findMany({
+        where: { orgId: { in: orgIds } },
         select: { orgId: true, nbuFetchHour: true },
-        take: MAX_ORGS_PER_SCHEDULER_RUN,
-      }),
-    ]);
-    const hourByOrg = new Map(allSettings.map(s => [s.orgId, s.nbuFetchHour ?? 12]));
-
-    await Promise.all(
-      orgs.map(org => this.enqueueRepeatableForOrg(org.id, hourByOrg.get(org.id) ?? 12)),
-    );
-    this.logger.log(`NBU fetch CRON зареєстровано для ${orgs.length} організацій`);
+      });
+      const hourByOrg = new Map(settings.map(s => [s.orgId, s.nbuFetchHour ?? 12]));
+      await Promise.all(
+        orgIds.map(orgId => this.enqueueRepeatableForOrg(orgId, hourByOrg.get(orgId) ?? 12)),
+      );
+    });
+    this.logger.log(`NBU fetch CRON зареєстровано для ${total} організацій`);
   }
 
   async scheduleForOrg(orgId: string): Promise<void> {

@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
+import { forEachActiveOrg } from '../../common/scheduler/for-each-active-org';
 
 /**
  * Реєструє щоденний repeatable-job позначення прострочених рахунків (OVERDUE).
@@ -18,33 +19,29 @@ export class InvoiceOverdueScheduler implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    const orgs = await this.prisma.organisation.findMany({
-      where: { deletedAt: null },
-      select: { id: true },
-      take: 1000,
-    });
-    if (orgs.length >= 1000) {
-      this.logger.warn(
-        'Overdue scheduler: досягнуто ліміту 1000 організацій — можливо не всі охоплені (потрібна пагінація)',
-      );
-    }
-
-    // BullMQ дедуплікує repeatable за jobId → add() ідемпотентний на рестарті.
-    await Promise.all(
-      orgs.map(org =>
-        this.overdueQueue.add(
-          'mark-overdue',
-          { orgId: org.id },
-          {
-            repeat: { pattern: '0 6 * * *', tz: 'Europe/Kyiv' },
-            attempts: 5,
-            backoff: { type: 'exponential', delay: 60_000 },
-            jobId: `overdue-${org.id}`,
-            removeOnComplete: true,
-          },
-        ),
-      ),
+    // Cursor-пагінація всіх активних орг (Bug #107). BullMQ дедуплікує repeatable
+    // за jobId → add() ідемпотентний на рестарті.
+    const total = await forEachActiveOrg(
+      this.prisma,
+      async orgIds => {
+        await Promise.all(
+          orgIds.map(orgId =>
+            this.overdueQueue.add(
+              'mark-overdue',
+              { orgId },
+              {
+                repeat: { pattern: '0 6 * * *', tz: 'Europe/Kyiv' },
+                attempts: 5,
+                backoff: { type: 'exponential', delay: 60_000 },
+                jobId: `overdue-${orgId}`,
+                removeOnComplete: true,
+              },
+            ),
+          ),
+        );
+      },
+      { logger: this.logger },
     );
-    this.logger.log(`Overdue CRON зареєстровано для ${orgs.length} організацій`);
+    this.logger.log(`Overdue CRON зареєстровано для ${total} організацій`);
   }
 }
