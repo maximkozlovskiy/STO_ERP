@@ -59,9 +59,10 @@ export class CreateBookingRequestDto {
 }
 
 export class ConfirmBookingDto {
-  // CAL-H3/H4: optional so existing confirm calls (no body) keep working. When supplied, the
-  // service validates the slot belongs to the caller's org before confirming. Full occupancy
-  // of the chosen lift is a TODO (needs BookingRequest→lift link — see BookingService.confirm).
+  // CAL-H3/H4 (реалізовано): slotId опційний для backward-compat (confirm без body).
+  // Коли переданий — сервіс валідує, що слот належить org викликача. Матеріалізація
+  // слота на обраному ліфті заявки (BookingRequest.liftId) відбувається у
+  // BookingService.confirm() → зайнятим стає САМЕ цей ліфт, не весь HH:MM на всіх.
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
