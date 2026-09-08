@@ -1974,6 +1974,15 @@ model Payment {
   // org-wide seq/index-only scan по orgId + per-row invoiceId filter. Covering index
   // по (orgId, invoiceId) робить groupBy index-only.
   @@index([orgId, invoiceId])
+  // sto-optimize (2026-09-09, Цикл 2): /payments findAll фільтрує по fiscalStatus
+  // (дропдаун-фільтр — домінантний use-case: пошук FAILED-чеків для повторної фіскалізації).
+  // WHERE (orgId, fiscalStatus=X) ORDER BY createdAt DESC — наявний (orgId, createdAt) веде
+  // лише сортування, fiscalStatus-рівність не покрита (leftmost-prefix miss) → org-wide scan
+  // усіх платежів орг у createdAt-порядку + heap-filter fiscalStatus. Payment append-only
+  // high-volume (1 рядок на грошову операцію). Covering (orgId, fiscalStatus, createdAt):
+  // fiscalStatus equality leftmost, createdAt sort/range у tail → index-range scan + готовий
+  // порядок (без external sort). fiscalStatus nullable ('none'→IS NULL теж покрито).
+  @@index([orgId, fiscalStatus, createdAt])
   @@map("payments")
 }
 
