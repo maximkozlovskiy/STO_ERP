@@ -284,6 +284,12 @@ function InvoicesPageInner() {
   const [saving, setSaving] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
 
+  // Стабільний close-handler для payment-Modal: модалка містить input-и (сума/примітки/метод)
+  // з onChange→setPayForm; без useCallback кожне натискання давало б нову onClose-ідентичність →
+  // Modal.useEffect [open, handleKey] знімав+вішав keydown-listener і переписував body.overflow
+  // на КОЖЕН символ (анти-патерн 2.16). Стабілізуємо → 0 thrashing.
+  const closePayment = useCallback(() => setShowPayment(null), []);
+
   const applyFilter = useCallback(
     (preset: { id: string; filters: InvoiceFilters }) => {
       setSearch(preset.filters.search ?? '');
@@ -1037,7 +1043,7 @@ function InvoicesPageInner() {
       {/* Payment modal */}
       <Modal
         open={!!showPayment}
-        onClose={() => setShowPayment(null)}
+        onClose={closePayment}
         title={showPayment ? `Реєстрація оплати по рахунку ${showPayment.number}` : ''}
         footer={
           payForm.method === 'monobank_qr' ? (
