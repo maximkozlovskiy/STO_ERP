@@ -12,12 +12,14 @@ import { DeliveryProviderRegistry } from './delivery/delivery-provider-registry'
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { NovaPoshtaPollingProcessor } from './delivery/nova-poshta-polling.processor';
 import { DeliveryProvidersController } from './delivery/delivery-providers.controller';
+import { IntegrationLogsModule } from '../integration-logs/integration-logs.module';
 
 @Module({
   imports: [
     InventoryModule,
     SettlementsModule,
     SettingsModule,
+    IntegrationLogsModule,
     BullModule.registerQueue({ name: 'nova-poshta-polling' }),
   ],
   controllers: [PurchaseOrdersController, DeliveryProvidersController],

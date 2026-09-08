@@ -74,6 +74,7 @@ describe('OnlinePaymentService.createIntent (QR registry)', () => {
       gateways as never,
       providerConfig as never,
       pollQueue as never,
+      { wrap: (_c: unknown, fn: () => unknown) => fn() } as never,
     );
   });
 

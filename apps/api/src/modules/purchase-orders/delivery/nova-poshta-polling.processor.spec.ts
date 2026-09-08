@@ -65,6 +65,7 @@ describe('NovaPoshtaPollingProcessor', () => {
       registry as never,
       tracking as never,
       pollQueue as never,
+      { wrap: (_c: unknown, fn: () => unknown) => fn() } as never,
     );
   });
 

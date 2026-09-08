@@ -23,6 +23,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { PaymentGatewayRegistry } from './gateways/payment-gateway-registry';
+import { IntegrationLogService } from '../integration-logs/integration-log.service';
 import { ProviderConfigService } from './provider-config.service';
 
 class UpsertGatewayDto {
@@ -50,6 +51,7 @@ export class PaymentGatewaysController {
   constructor(
     private readonly gateways: PaymentGatewayRegistry,
     private readonly providerConfig: ProviderConfigService,
+    private readonly integrationLog: IntegrationLogService,
   ) {}
 
   @Get()
@@ -64,11 +66,17 @@ export class PaymentGatewaysController {
   @Roles('OWNER', 'ADMIN')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: 'Перевірити креди платіжного шлюзу (без реального рахунку)' })
-  async verify(@Param('code') code: string, @Body() dto: VerifyGatewayDto) {
+  async verify(
+    @OrgContext() orgId: string,
+    @Param('code') code: string,
+    @Body() dto: VerifyGatewayDto,
+  ) {
     if (!code || code.length > 64) throw new BadRequestException('Некоректний код шлюзу');
     const gateway = this.gateways.get(code);
     if (!gateway) throw new BadRequestException(`Невідомий платіжний шлюз: ${code}`);
-    return gateway.verifyCredentials({ apiUrl: dto.apiUrl ?? null, credentials: dto.credentials });
+    return this.integrationLog.wrap({ orgId, provider: code, operation: 'verifyCredentials' }, () =>
+      gateway.verifyCredentials({ apiUrl: dto.apiUrl ?? null, credentials: dto.credentials }),
+    );
   }
 
   @Get('branch/:branchId')

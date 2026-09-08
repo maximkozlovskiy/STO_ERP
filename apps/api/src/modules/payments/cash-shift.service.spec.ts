@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { CashShiftService } from './cash-shift.service';
 import { FiscalProviderRegistry } from './fiscal/fiscal-provider-registry';
 import { ProviderConfigService } from './provider-config.service';
+import { IntegrationLogService } from '../integration-logs/integration-log.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -94,6 +95,11 @@ describe('CashShiftService (ПРРО registry)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: FiscalProviderRegistry, useValue: registry },
         { provide: ProviderConfigService, useValue: providerConfig },
+        // Transparent wrap: логування не змінює control flow (просто виконує fn).
+        {
+          provide: IntegrationLogService,
+          useValue: { wrap: (_ctx: unknown, fn: () => unknown) => fn() },
+        },
       ],
     }).compile();
     service = module.get(CashShiftService);

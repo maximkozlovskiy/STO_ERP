@@ -5,6 +5,7 @@ import { CheckboxProcessor } from './checkbox.processor';
 import { FiscalUnauthorizedError } from './fiscal/fiscal-provider.interface';
 import { ProviderConfigService } from './provider-config.service';
 import { CashShiftService } from './cash-shift.service';
+import { IntegrationLogService } from '../integration-logs/integration-log.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -83,6 +84,10 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: ProviderConfigService, useValue: providerConfig },
         { provide: CashShiftService, useValue: shifts },
+        {
+          provide: IntegrationLogService,
+          useValue: { wrap: (_ctx: unknown, fn: () => unknown) => fn() },
+        },
       ],
     }).compile();
     processor = module.get(CheckboxProcessor);

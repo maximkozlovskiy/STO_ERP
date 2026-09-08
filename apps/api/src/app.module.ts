@@ -63,6 +63,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { BookingModule } from './modules/booking/booking.module';
 import { CurrenciesModule } from './modules/currencies/currencies.module';
 import { ExchangeRatesModule } from './modules/exchange-rates/exchange-rates.module';
+import { IntegrationLogsModule } from './modules/integration-logs/integration-logs.module';
 import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module';
 import { CashRegistersModule } from './modules/cash-registers/cash-registers.module';
 import { UserPreferencesModule } from './modules/user-preferences/user-preferences.module';
@@ -204,6 +205,7 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
     BookingModule,
     CurrenciesModule,
     ExchangeRatesModule,
+    IntegrationLogsModule,
     BankAccountsModule,
     CashRegistersModule,
     UserPreferencesModule,

@@ -160,6 +160,13 @@ export class UpdateOrganisationSettingsDto {
   @Max(1440)
   deliveryPollIntervalMinutes?: number;
 
+  @ApiPropertyOptional({ description: 'Скільки днів зберігати логи інтеграцій (1–365)' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  integrationLogRetentionDays?: number;
+
   @ApiPropertyOptional({
     description: 'Частка ФОП механіків у виручці з робіт (звіт рентабельності). clamp [0,1].',
     minimum: 0,
@@ -349,6 +356,8 @@ export class OrganisationSettingsResponseDto {
   nbuFetchHour!: number;
   @ApiProperty({ description: 'Інтервал опитування служби доставки (хв)' })
   deliveryPollIntervalMinutes!: number;
+  @ApiProperty({ description: 'Скільки днів зберігати логи інтеграцій' })
+  integrationLogRetentionDays!: number;
   @ApiProperty({ description: 'Частка ФОП механіків у виручці з робіт (звіт рентабельності)' })
   laborCostRatio!: number;
   @ApiProperty({ description: 'UI feature flags' }) uiFeatures!: UiFeatures;

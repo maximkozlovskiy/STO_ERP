@@ -24,6 +24,7 @@ import { Roles } from '../../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../../auth/decorators/org-context.decorator';
 import { ProviderConfigService } from '../../payments/provider-config.service';
 import { DeliveryProviderRegistry } from './delivery-provider-registry';
+import { IntegrationLogService } from '../../integration-logs/integration-log.service';
 
 class UpsertDeliveryDto {
   @ApiProperty() @IsString() provider!: string;
@@ -50,6 +51,7 @@ export class DeliveryProvidersController {
   constructor(
     private readonly registry: DeliveryProviderRegistry,
     private readonly providerConfig: ProviderConfigService,
+    private readonly integrationLog: IntegrationLogService,
   ) {}
 
   @Get()
@@ -64,11 +66,17 @@ export class DeliveryProvidersController {
   @Roles('OWNER', 'ADMIN')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: 'Перевірити API-ключ служби доставки (без побічних ефектів)' })
-  async verify(@Param('code') code: string, @Body() dto: VerifyDeliveryDto) {
+  async verify(
+    @OrgContext() orgId: string,
+    @Param('code') code: string,
+    @Body() dto: VerifyDeliveryDto,
+  ) {
     if (!code || code.length > 64) throw new BadRequestException('Некоректний код служби');
     const provider = this.registry.get(code);
     if (!provider) throw new BadRequestException(`Невідома служба доставки: ${code}`);
-    return provider.verifyCredentials({ apiUrl: dto.apiUrl ?? null, credentials: dto.credentials });
+    return this.integrationLog.wrap({ orgId, provider: code, operation: 'verifyCredentials' }, () =>
+      provider.verifyCredentials({ apiUrl: dto.apiUrl ?? null, credentials: dto.credentials }),
+    );
   }
 
   @Get('branch/:branchId')

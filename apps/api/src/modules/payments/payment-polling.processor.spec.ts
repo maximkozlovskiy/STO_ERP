@@ -77,14 +77,12 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     monobank = gatewayImpl; // старі assert-и звертаються до monobank.getStatus
     gateways = { get: vi.fn().mockReturnValue(gatewayImpl) };
     providerConfig = {
-      resolveByCode: vi
-        .fn()
-        .mockResolvedValue({
-          provider: 'monobank',
-          apiUrl: null,
-          credentials: { token: 'T' },
-          shiftMode: 'MANUAL',
-        }),
+      resolveByCode: vi.fn().mockResolvedValue({
+        provider: 'monobank',
+        apiUrl: null,
+        credentials: { token: 'T' },
+        shiftMode: 'MANUAL',
+      }),
     };
     payments = { create: vi.fn().mockResolvedValue({ id: 'pay-1' }) };
     pollQueue = { add: vi.fn().mockResolvedValue(undefined) };
@@ -94,6 +92,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
       providerConfig as never,
       payments as never,
       pollQueue as never,
+      { wrap: (_c: unknown, fn: () => unknown) => fn() } as never,
     );
   });
 

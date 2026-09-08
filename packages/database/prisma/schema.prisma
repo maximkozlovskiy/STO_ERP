@@ -1691,6 +1691,9 @@ model OrganisationSettings {
   // Частка ФОП механіків у виручці з робіт (для звіту рентабельності). 0.4=40% — типово для UA SMB.
   // Читається reports.profitability per-org (НЕ hardcoded). clamp [0,1].
   laborCostRatio                   Decimal         @default(0.4) @db.Decimal(4, 3)
+  // Скільки днів зберігати логи зовнішніх обмінів (IntegrationLog). Читається purge-scheduler
+  // (НЕ hardcoded). Append-only таблиця → щоденне очищення старших за N днів. clamp [1,365].
+  integrationLogRetentionDays      Int             @default(30)
   uiFeatures                       Json            @default("{}")
   // B4: Loyalty program settings
   loyaltyEnabled                   Boolean         @default(false)
@@ -1804,6 +1807,30 @@ model NotificationLog {
   @@index([orgId, createdAt])
   @@index([orgId, eventType, channel])
   @@map("notification_logs")
+}
+
+// Журнал зовнішніх HTTP-обмінів з інтеграціями (LiqPay/Checkbox/Вчасно/Нова Пошта/monobank) —
+// спостережуваність «чому впало / коли останній успіх». МЕТАДАНІ ЛИШЕ (без тіл запиту/відповіді
+// й БЕЗ секретів — див. IntegrationLogService.wrap). Append-only (немає updatedAt/deletedAt/
+// syncVersion, як NotificationLog). Очищення — integration-log-purge scheduler за
+// OrganisationSettings.integrationLogRetentionDays.
+model IntegrationLog {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String   @db.Uuid
+  branchId     String?  @db.Uuid
+  provider     String // код провайдера: liqpay/monobank/checkbox/vchasno/novaposhta
+  operation    String // ім'я методу: getStatus/createInvoice/sellReceipt/openShift/closeShift/signIn/verifyCredentials
+  ok           Boolean // true=успіх, false=помилка/timeout
+  httpStatus   Int? // HTTP-статус (парситься з error-тексту на fail; null на успіху)
+  durationMs   Int? // тривалість обміну, мс
+  documentType String? // WorkOrder/PurchaseOrder/Payment/OnlinePaymentIntent тощо
+  documentId   String?  @db.Uuid
+  error        String? // короткий текст помилки (response body провайдера, truncate 500; без секретів)
+  createdAt    DateTime @default(now())
+
+  @@index([orgId, createdAt])
+  @@index([orgId, documentType, documentId])
+  @@map("integration_logs")
 }
 
 model TaxRate {

@@ -24,6 +24,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { FiscalProviderRegistry } from './fiscal/fiscal-provider-registry';
+import { IntegrationLogService } from '../integration-logs/integration-log.service';
 import { ProviderConfigService } from './provider-config.service';
 
 class UpsertFiscalDto {
@@ -55,6 +56,7 @@ export class FiscalProvidersController {
   constructor(
     private readonly registry: FiscalProviderRegistry,
     private readonly providerConfig: ProviderConfigService,
+    private readonly integrationLog: IntegrationLogService,
   ) {}
 
   @Get()
@@ -69,11 +71,17 @@ export class FiscalProvidersController {
   @Roles('OWNER', 'ADMIN')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: 'Перевірити креди провайдера ПРРО (без пробиття чеку)' })
-  async verify(@Param('code') code: string, @Body() dto: VerifyFiscalDto) {
+  async verify(
+    @OrgContext() orgId: string,
+    @Param('code') code: string,
+    @Body() dto: VerifyFiscalDto,
+  ) {
     if (!code || code.length > 64) throw new BadRequestException('Некоректний код провайдера');
     const provider = this.registry.get(code);
     if (!provider) throw new BadRequestException(`Невідомий провайдер ПРРО: ${code}`);
-    return provider.verifyCredentials({ apiUrl: dto.apiUrl ?? null, credentials: dto.credentials });
+    return this.integrationLog.wrap({ orgId, provider: code, operation: 'verifyCredentials' }, () =>
+      provider.verifyCredentials({ apiUrl: dto.apiUrl ?? null, credentials: dto.credentials }),
+    );
   }
 
   @Get('branch/:branchId')

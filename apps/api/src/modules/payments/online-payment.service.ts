@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaymentGatewayRegistry } from './gateways/payment-gateway-registry';
 import { ProviderConfigService } from './provider-config.service';
+import { IntegrationLogService } from '../integration-logs/integration-log.service';
 
 // Жорсткий wall-clock таймаут наміру (клієнт не оплатив → EXPIRED). 15 хв.
 const INTENT_TTL_MS = 15 * 60 * 1000;
@@ -38,6 +39,7 @@ export class OnlinePaymentService {
     private readonly gateways: PaymentGatewayRegistry,
     private readonly providerConfig: ProviderConfigService,
     @InjectQueue('payment-polling') private readonly pollQueue: Queue,
+    private readonly integrationLog: IntegrationLogService,
   ) {}
 
   /** Створити намір + gateway-рахунок, показати QR. Прив'язка — з рахунка (invoice). */
@@ -102,9 +104,20 @@ export class OnlinePaymentService {
     });
 
     try {
-      const { gatewayInvoiceId, checkoutUrl } = await gateway.createInvoice(
-        { apiUrl: active.apiUrl, credentials: active.credentials },
-        { amountCents: Math.round(amount * 100), reference: intent.id },
+      const { gatewayInvoiceId, checkoutUrl } = await this.integrationLog.wrap(
+        {
+          orgId,
+          branchId,
+          provider: active.provider,
+          operation: 'createInvoice',
+          documentType: 'OnlinePaymentIntent',
+          documentId: intent.id,
+        },
+        () =>
+          gateway.createInvoice(
+            { apiUrl: active.apiUrl, credentials: active.credentials },
+            { amountCents: Math.round(amount * 100), reference: intent.id },
+          ),
       );
       const pageUrl = checkoutUrl;
       const updated = await this.prisma.onlinePaymentIntent.update({

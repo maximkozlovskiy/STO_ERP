@@ -6,6 +6,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ProviderConfigService } from '../../payments/provider-config.service';
 import { DeliveryProviderRegistry } from './delivery-provider-registry';
 import { DeliveryTrackingService } from './delivery-tracking.service';
+import { IntegrationLogService } from '../../integration-logs/integration-log.service';
 
 interface PollJob {
   purchaseOrderId: string;
@@ -40,6 +41,7 @@ export class NovaPoshtaPollingProcessor extends WorkerHost {
     private readonly registry: DeliveryProviderRegistry,
     private readonly tracking: DeliveryTrackingService,
     @InjectQueue('nova-poshta-polling') private readonly pollQueue: Queue,
+    private readonly integrationLog: IntegrationLogService,
   ) {
     super();
   }
@@ -75,9 +77,20 @@ export class NovaPoshtaPollingProcessor extends WorkerHost {
 
     let result;
     try {
-      result = await provider.getStatus(
-        { apiUrl: active.apiUrl, credentials: active.credentials },
-        po.trackingNumber,
+      result = await this.integrationLog.wrap(
+        {
+          orgId,
+          branchId,
+          provider: active.provider,
+          operation: 'getStatus',
+          documentType: 'PurchaseOrder',
+          documentId: purchaseOrderId,
+        },
+        () =>
+          provider.getStatus(
+            { apiUrl: active.apiUrl, credentials: active.credentials },
+            po.trackingNumber!,
+          ),
       );
     } catch (e) {
       // Транзієнтна помилка (НП недоступна/timeout) → re-enqueue (з cap), не зупиняємо трекінг.

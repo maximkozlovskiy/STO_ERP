@@ -23,11 +23,13 @@ import { SettlementsModule } from '../settlements/settlements.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkOrdersModule } from '../work-orders/work-orders.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
+import { IntegrationLogsModule } from '../integration-logs/integration-logs.module';
 
 @Module({
   imports: [
     BullModule.registerQueue({ name: 'checkbox' }),
     BullModule.registerQueue({ name: 'payment-polling' }),
+    IntegrationLogsModule,
     SettlementsModule,
     NotificationsModule,
     WorkOrdersModule,

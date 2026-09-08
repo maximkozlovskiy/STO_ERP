@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PaymentGatewayRegistry } from './gateways/payment-gateway-registry';
 import { ProviderConfigService } from './provider-config.service';
 import { PaymentsService } from './payments.service';
+import { IntegrationLogService } from '../integration-logs/integration-log.service';
 
 interface PollJob {
   intentId: string;
@@ -37,6 +38,7 @@ export class PaymentPollingProcessor extends WorkerHost {
     private readonly providerConfig: ProviderConfigService,
     private readonly payments: PaymentsService,
     @InjectQueue('payment-polling') private readonly pollQueue: Queue,
+    private readonly integrationLog: IntegrationLogService,
   ) {
     super();
   }
@@ -96,9 +98,20 @@ export class PaymentPollingProcessor extends WorkerHost {
       return;
     }
 
-    const { status } = await gateway.getStatus(
-      { apiUrl: cfg.apiUrl, credentials: cfg.credentials },
-      intent.gatewayInvoiceId,
+    const { status } = await this.integrationLog.wrap(
+      {
+        orgId,
+        branchId,
+        provider: intent.gateway,
+        operation: 'getStatus',
+        documentType: 'OnlinePaymentIntent',
+        documentId: intentId,
+      },
+      () =>
+        gateway.getStatus(
+          { apiUrl: cfg.apiUrl, credentials: cfg.credentials },
+          intent.gatewayInvoiceId!,
+        ),
     );
 
     if (status === 'paid') {

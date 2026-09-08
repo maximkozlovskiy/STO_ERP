@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { FiscalUnauthorizedError } from './fiscal/fiscal-provider.interface';
 import { ProviderConfigService } from './provider-config.service';
 import { CashShiftService } from './cash-shift.service';
+import { IntegrationLogService } from '../integration-logs/integration-log.service';
 
 interface FiscalReceiptJob {
   paymentId: string;
@@ -25,6 +26,7 @@ export class CheckboxProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly providerConfig: ProviderConfigService,
     private readonly shifts: CashShiftService,
+    private readonly integrationLog: IntegrationLogService,
   ) {
     super();
   }
@@ -80,14 +82,26 @@ export class CheckboxProcessor extends WorkerHost {
     // Гарантуємо валідний cashier-token (refresh на expiry) + резолвлений провайдер зміни.
     let { provider, cfg, token } = await this.shifts.ensureToken(orgId, shift.id);
 
-    // Пробити чек; 401 → одноразовий re-sign-in → повтор.
+    // Пробити чек; 401 → одноразовий re-sign-in → повтор. Кожен sellReceipt = окремий обмін
+    // (2 рядки логу при 401-retry — навмисно, це 2 реальні мережеві виклики).
+    const sellCtx = {
+      orgId,
+      branchId,
+      operation: 'sellReceipt',
+      documentType: 'Payment',
+      documentId: paymentId,
+    };
     let result;
     try {
-      result = await provider.sellReceipt(cfg, token, { amount, method });
+      result = await this.integrationLog.wrap({ ...sellCtx, provider: provider.code }, () =>
+        provider.sellReceipt(cfg, token, { amount, method }),
+      );
     } catch (e) {
       if (e instanceof FiscalUnauthorizedError) {
         ({ provider, cfg, token } = await this.shifts.refreshToken(orgId, shift.id));
-        result = await provider.sellReceipt(cfg, token, { amount, method });
+        result = await this.integrationLog.wrap({ ...sellCtx, provider: provider.code }, () =>
+          provider.sellReceipt(cfg, token, { amount, method }),
+        );
       } else {
         throw e;
       }

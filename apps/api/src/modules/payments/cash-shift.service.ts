@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { FiscalProviderRegistry } from './fiscal/fiscal-provider-registry';
 import { ProviderConfigService } from './provider-config.service';
 import type { FiscalConfig } from './fiscal/fiscal-provider.interface';
+import { IntegrationLogService } from '../integration-logs/integration-log.service';
 
 // Дефолтний час життя токена якщо провайдер не повернув expires_at (консервативно — 50 хв).
 const DEFAULT_TOKEN_TTL_MS = 50 * 60 * 1000;
@@ -34,6 +35,7 @@ export class CashShiftService {
     private readonly prisma: PrismaService,
     private readonly registry: FiscalProviderRegistry,
     private readonly providerConfig: ProviderConfigService,
+    private readonly integrationLog: IntegrationLogService,
   ) {}
 
   /** Резолвити активний ПРРО-провайдер філії (config + legacy-fallback) або кинути. */
@@ -88,8 +90,14 @@ export class CashShiftService {
     });
     if (existing) throw new BadRequestException('Зміна вже відкрита');
 
-    const token = await provider.signIn(cfg);
-    const { providerShiftId } = await provider.openShift(cfg, token.accessToken);
+    const logCtx = { orgId, branchId, provider: provider.code, documentType: 'CashShift' };
+    const token = await this.integrationLog.wrap({ ...logCtx, operation: 'signIn' }, () =>
+      provider.signIn(cfg),
+    );
+    const { providerShiftId } = await this.integrationLog.wrap(
+      { ...logCtx, operation: 'openShift' },
+      () => provider.openShift(cfg, token.accessToken),
+    );
 
     try {
       const shift = await this.prisma.cashShift.create({
@@ -134,7 +142,17 @@ export class CashShiftService {
     if (shift.status !== 'OPEN') throw new BadRequestException('Зміна вже закрита');
 
     const { provider, cfg, token } = await this.ensureToken(orgId, shift.id);
-    const { zReportId } = await provider.closeShift(cfg, token);
+    const { zReportId } = await this.integrationLog.wrap(
+      {
+        orgId,
+        branchId: shift.branchId,
+        provider: provider.code,
+        operation: 'closeShift',
+        documentType: 'CashShift',
+        documentId: shift.id,
+      },
+      () => provider.closeShift(cfg, token),
+    );
 
     const updated = await this.prisma.cashShift.update({
       where: { id: shift.id },
@@ -183,7 +201,17 @@ export class CashShiftService {
       shift.tokenExpiresAt.getTime() > Date.now() + 30_000; // 30с запас
     if (valid) return { provider, cfg, token: shift.checkboxAccessToken! };
 
-    const token = await provider.signIn(cfg);
+    const token = await this.integrationLog.wrap(
+      {
+        orgId,
+        branchId: shift.branchId,
+        provider: shift.provider,
+        operation: 'signIn',
+        documentType: 'CashShift',
+        documentId: shiftId,
+      },
+      () => provider.signIn(cfg),
+    );
     await this.prisma.cashShift.update({
       where: { id: shiftId },
       data: {
