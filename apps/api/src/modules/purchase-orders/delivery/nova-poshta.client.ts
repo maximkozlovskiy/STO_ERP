@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { validatePublicUrl } from '../../../common/utils/url-guard';
+import { redactSecrets } from '../../../common/utils/redact';
 
 const DEFAULT_BASE = 'https://api.novaposhta.ua';
 const HTTP_TIMEOUT_MS = 10_000;
@@ -25,17 +26,21 @@ export class NovaPoshtaClient {
     apiKey: string,
     trackingNumber: string,
   ): Promise<NovaPoshtaStatus> {
-    const res = await this.call(apiUrl, {
+    const res = await this.call(
+      apiUrl,
+      {
+        apiKey,
+        modelName: 'TrackingDocument',
+        calledMethod: 'getStatusDocuments',
+        methodProperties: { Documents: [{ DocumentNumber: trackingNumber, Phone: '' }] },
+      },
       apiKey,
-      modelName: 'TrackingDocument',
-      calledMethod: 'getStatusDocuments',
-      methodProperties: { Documents: [{ DocumentNumber: trackingNumber, Phone: '' }] },
-    });
+    );
     // success:false → errors[] (напр. невалідний ключ). data[] порожній → накладну не знайдено.
     if (res?.success === false) {
       const err =
         Array.isArray(res?.errors) && res.errors.length
-          ? res.errors.join('; ')
+          ? redactSecrets(res.errors.join('; '), [apiKey])
           : 'Нова Пошта: помилка запиту';
       throw new Error(err);
     }
@@ -52,7 +57,11 @@ export class NovaPoshtaClient {
 
   /** SSRF-guard + redirect:'manual' + timeout + reject-3xx. Єдиний POST /v2.0/json/. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async call(apiUrlRaw: string | null | undefined, body: unknown): Promise<any> {
+  private async call(
+    apiUrlRaw: string | null | undefined,
+    body: unknown,
+    secret?: string,
+  ): Promise<any> {
     const apiUrl = (apiUrlRaw || DEFAULT_BASE).replace(/\/$/, '');
     const urlError = validatePublicUrl(apiUrl);
     if (urlError) throw new Error(`Невалідний Нова Пошта API URL: ${urlError}`);
@@ -77,7 +86,7 @@ export class NovaPoshtaClient {
     }
     if (!response.ok) {
       const err = await response.text();
-      throw new Error(`Нова Пошта ${response.status}: ${err}`);
+      throw new Error(`Нова Пошта ${response.status}: ${redactSecrets(err, [secret])}`);
     }
     const text = await response.text();
     return text ? JSON.parse(text) : {};

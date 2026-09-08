@@ -139,6 +139,7 @@ export default function IntegrationLogsTab() {
           value={provider}
           onChange={e => resetTo(setProvider)(e.target.value)}
           className={inputCls}
+          aria-label="Провайдер"
         >
           {PROVIDERS.map(p => (
             <option key={p.code} value={p.code}>
@@ -146,7 +147,12 @@ export default function IntegrationLogsTab() {
             </option>
           ))}
         </select>
-        <select value={ok} onChange={e => resetTo(setOk)(e.target.value)} className={inputCls}>
+        <select
+          value={ok}
+          onChange={e => resetTo(setOk)(e.target.value)}
+          className={inputCls}
+          aria-label="Статус"
+        >
           <option value="">Усі статуси</option>
           <option value="true">Успіх</option>
           <option value="false">Помилки</option>

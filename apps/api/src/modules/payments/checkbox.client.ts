@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { validatePublicUrl } from '../../common/utils/url-guard';
+import { redactSecrets } from '../../common/utils/redact';
 
 const DEFAULT_BASE = 'https://api.checkbox.ua';
 const SYNC_TIMEOUT_MS = 10_000; // sign-in / shift open/close (інтерактивні)
@@ -34,6 +35,7 @@ export class CheckboxClient {
     const res = await this.call('POST', apiUrl, '/api/v1/cashier/signinPinCode', SYNC_TIMEOUT_MS, {
       headers: { 'X-License-Key': licenseKey },
       body: { pin_code: pinCode },
+      redact: [pinCode, licenseKey],
     });
     const token = res?.access_token ?? res?.token;
     if (!token) throw new Error('Checkbox: не отримано access-token');
@@ -96,7 +98,12 @@ export class CheckboxClient {
     apiUrlRaw: string | null | undefined,
     path: string,
     timeoutMs: number,
-    opts: { accessToken?: string; headers?: Record<string, string>; body?: unknown },
+    opts: {
+      accessToken?: string;
+      headers?: Record<string, string>;
+      body?: unknown;
+      redact?: (string | null | undefined)[];
+    },
   ): Promise<any> {
     const apiUrl = apiUrlRaw || DEFAULT_BASE;
     const urlError = validatePublicUrl(apiUrl);
@@ -130,7 +137,7 @@ export class CheckboxClient {
     }
     if (!response.ok) {
       const err = await response.text();
-      throw new Error(`Checkbox ${response.status}: ${err}`);
+      throw new Error(`Checkbox ${response.status}: ${redactSecrets(err, opts.redact ?? [])}`);
     }
     const text = await response.text();
     return text ? JSON.parse(text) : {};
