@@ -350,6 +350,46 @@ export const SETTLEMENT_TX_TYPE_LABELS: Record<string, string> = {
   SUPPLIER_REFUND: 'Повернення постачальнику',
 };
 
+/**
+ * ЄДИНЕ джерело знаку впливу транзакції на баланс — ДЗЕРКАЛО бекового `BALANCE_SIGN`
+ * (apps/api/src/modules/settlements/settlements.service.ts). +1 = баланс росте, −1 = падає.
+ *
+ * Frontend раніше тримав дубльовані локальні `Set(['CHARGE','SUPPLIER_PAYMENT','SUPPLIER_REFUND'])`
+ * у SettlementsTabContent і counterparties/[id]/PageClient для знаку «+»/«−» у рядку транзакції.
+ * Дублі дрейфували б мовчки при зміні бекового BALANCE_SIGN (жоден тест не ловив). Тепер обидва
+ * екрани споживають `SETTLEMENT_BALANCE_UP_TYPES` звідси; shared invariant-тест звіряє повноту
+ * (усі 8 типів) і кожен ±1 — зміна знаку без синхронного оновлення тесту одразу червона.
+ *
+ * ⚠️ Це знак для БАЛАНСУ (арифметика), НЕ колір: колір рядка йде за бізнес-семантикою
+ * «charge-like = борг створено = destructive» (CHARGE + SUPPLIER_CHARGE), решта = success —
+ * див. SETTLEMENT_TX_CHARGE_LIKE_TYPES нижче. Знак і колір НАВМИСНЕ розходяться для
+ * постачальницьких типів (SUPPLIER_PAYMENT: +1 знак, але success колір).
+ */
+export const SETTLEMENT_BALANCE_SIGN: Record<string, 1 | -1> = {
+  CHARGE: 1, // клієнт винен нам більше
+  PAYMENT: -1,
+  PREPAYMENT: -1,
+  REFUND: -1,
+  CREDIT_NOTE: -1,
+  SUPPLIER_CHARGE: -1, // ми винні постачальнику (баланс постач.-акаунта падає)
+  SUPPLIER_PAYMENT: 1, // наш борг постачальнику меншає
+  SUPPLIER_REFUND: 1,
+};
+
+/** Похідне: типи, що ЗБІЛЬШУЮТЬ баланс (sign=+1) — знак «+» у рядку транзакції. */
+export const SETTLEMENT_BALANCE_UP_TYPES: ReadonlySet<string> = new Set(
+  Object.keys(SETTLEMENT_BALANCE_SIGN).filter(t => SETTLEMENT_BALANCE_SIGN[t] === 1),
+);
+
+/**
+ * Типи «charge-like» (борг створено) → колір destructive; решта → success.
+ * Це БІЗНЕС-семантика кольору, окрема від balance-sign (постачальницькі типи розходяться).
+ */
+export const SETTLEMENT_TX_CHARGE_LIKE_TYPES: ReadonlySet<string> = new Set([
+  'CHARGE',
+  'SUPPLIER_CHARGE',
+]);
+
 export const STOCK_DOC_TYPE_BADGE: Record<string, BadgeVariant> = {
   WRITEOFF: 'destructive',
   TRANSFER: 'default',

@@ -11,6 +11,7 @@ import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { cn, escapeCsvCell, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
+import { SETTLEMENT_BALANCE_UP_TYPES, SETTLEMENT_TX_CHARGE_LIKE_TYPES } from '@sto/shared';
 
 interface Counterparty {
   id: string;
@@ -49,23 +50,16 @@ const TX_LABELS: Record<string, string> = {
   SUPPLIER_PAYMENT: 'Оплата постачальнику',
   SUPPLIER_REFUND: 'Повернення постачальнику',
 };
-// Колір дзеркалить бековий BALANCE_SIGN (settlements.service): sign −1 (гасить борг клієнта) =
-// success/зелений, +1 (збільшує борг) = destructive. REFUND/CREDIT_NOTE обидва −1 (як PAYMENT) —
-// раніше показувались warning/muted → той самий тип фарбувався інакше, ніж на картці контрагента
-// (Cycle-2 sync-фікс: cross-page-неузгодженість кольору знаку балансу).
-const TX_COLORS: Record<string, string> = {
-  CHARGE: 'text-destructive',
-  PAYMENT: 'text-success',
-  PREPAYMENT: 'text-success',
-  REFUND: 'text-success', // −1: повернення клієнту гасить його борг
-  CREDIT_NOTE: 'text-success', // −1: кредит-нота гасить борг клієнта
-  SUPPLIER_CHARGE: 'text-destructive', // збільшує наш борг постачальнику
-  SUPPLIER_PAYMENT: 'text-success', // гасить наш борг
-  SUPPLIER_REFUND: 'text-success',
-};
-// Типи, що ЗБІЛЬШУЮТЬ баланс (BALANCE_SIGN = +1) — для знаку «+»/«−» у рядку транзакції.
-// Дзеркалить бековий BALANCE_SIGN (settlements.service): CHARGE + постачальницькі оплата/повернення.
-const BALANCE_UP_TYPES = new Set(['CHARGE', 'SUPPLIER_PAYMENT', 'SUPPLIER_REFUND']);
+// Колір рядка = БІЗНЕС-семантика: «charge-like» (борг створено) = destructive, решта = success.
+// Централізовано у @sto/shared (SETTLEMENT_TX_CHARGE_LIKE_TYPES) — той самий набір, що на картці
+// контрагента (counterparties/[id]/PageClient), щоб той самий тип не фарбувався по-різному між
+// екранами (Bug #715 клас: cross-page колір-drift). Колір НАВМИСНЕ окремий від balance-sign:
+// постачальницькі типи (SUPPLIER_PAYMENT: sign +1) все одно success, бо гасять наш борг.
+const txColor = (type: string): string =>
+  SETTLEMENT_TX_CHARGE_LIKE_TYPES.has(type) ? 'text-destructive' : 'text-success';
+// Типи, що ЗБІЛЬШУЮТЬ баланс (BALANCE_SIGN = +1) — знак «+»/«−». Джерело знаку — @sto/shared
+// SETTLEMENT_BALANCE_UP_TYPES (дзеркало бекового BALANCE_SIGN, під invariant-тестом).
+const BALANCE_UP_TYPES = SETTLEMENT_BALANCE_UP_TYPES;
 
 function fmt(n: number) {
   return `${fmtMoney(n)} ₴`;
@@ -343,12 +337,7 @@ export function SettlementsTabContent() {
                           {fmtDate(tx.createdAt)}
                         </div>
                       </div>
-                      <div
-                        className={cn(
-                          'text-sm font-semibold',
-                          TX_COLORS[tx.type] ?? 'text-foreground-muted',
-                        )}
-                      >
+                      <div className={cn('text-sm font-semibold', txColor(tx.type))}>
                         {BALANCE_UP_TYPES.has(tx.type) ? '+' : '−'}
                         {fmt(tx.amount)}
                       </div>

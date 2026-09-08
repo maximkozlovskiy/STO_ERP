@@ -25,6 +25,8 @@ import {
   COUNTERPARTY_TYPE_DESCRIPTIONS,
   CONTRACT_TYPE_LABELS,
   WO_STATUS_LABELS,
+  SETTLEMENT_BALANCE_UP_TYPES,
+  SETTLEMENT_TX_CHARGE_LIKE_TYPES,
 } from '@sto/shared';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -204,12 +206,12 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   );
 }
 
-// Транзакційні знаки/кольори у вкладці «Розрахунки». Джерело правди — бекове BALANCE_SIGN
-// (apps/api/.../settlements.service.ts). BALANCE_UP = +1 (баланс росте); CHARGE_LIKE =
-// нарахування (колір destructive). SUPPLIER_CHARGE (=−1, destructive) відсутній у BALANCE_UP —
-// без нього отримання товару від постачальника малювалось би як «+», хоча зменшує баланс.
-const BALANCE_UP_TX_TYPES = new Set(['CHARGE', 'SUPPLIER_PAYMENT', 'SUPPLIER_REFUND']);
-const CHARGE_LIKE_TX_TYPES = new Set(['CHARGE', 'SUPPLIER_CHARGE']);
+// Транзакційні знаки/кольори у вкладці «Розрахунки». Джерело правди — @sto/shared
+// SETTLEMENT_BALANCE_UP_TYPES (дзеркало бекового BALANCE_SIGN, під invariant-тестом) для знаку
+// «+»/«−», і SETTLEMENT_TX_CHARGE_LIKE_TYPES для кольору (той самий набір, що у SettlementsTabContent
+// → жодного cross-page колір/знак drift, Bug #715 клас). Локальні дублі прибрано.
+const BALANCE_UP_TX_TYPES = SETTLEMENT_BALANCE_UP_TYPES;
+const CHARGE_LIKE_TX_TYPES = SETTLEMENT_TX_CHARGE_LIKE_TYPES;
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 

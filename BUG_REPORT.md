@@ -3832,3 +3832,34 @@ Scope: payments (polling/online/cash-shift/provider-config/checkbox), purchase-o
 - **toast-gate (21365cff):** усі toast.\* гейтовані features.toastEnabled + actionError fallback.
 - **invoices CANCELLED-фільтр:** консистентний у межах кожного ресурсу (WO→invoices exclude CANCELLED симетрично; invoice→payments link-counts однакові findMany/groupBy). findAll не виключає CANCELLED — правильно (список показує скасовані з бейджем).
 - **invoices create-vs-refresh amount (LOW-observation, не фіксимо):** `createFromWorkOrder` бере amount=Number(wo.totalAmount), `refreshFromWorkOrder` деривує з per-line roundMoney → можливий 1-копійчаний дрейф на create-then-refresh. Усі значення проходять roundMoney до export (сирий float НЕ тече). Зміна деривації без повного VAT-rounding аудиту ризикована → лишаємо як спостереження.
+
+---
+
+## Session 2026-09-09 — bug-hunt Цикл 2 Фаза 3 (HEAD 9c6e2c73, ІНШИЙ кут: redact/queue-failure/FSM-boundary/color-sign/authz)
+
+Scope (5 нових кутів, ортогональних до Циклу 1): (1) IntegrationLogService.wrap + redactSecrets крайові (короткий PIN, regex-спецсимволи, httpStatus-парсинг, fire-and-forget), (2) offline/queue-failure на КОЖНОМУ money-enqueue сайті (payments.create/retryFiscal, online-payment poll, loyalty earn, payment-polling reconcile), (3) FSM boundary-стани (WO повний transition-map, invoice PARTIALLY_PAID→PAID overpay, cash-shift), (4) settlements колір↔BALANCE_SIGN cross-page консистентність (Bug #715 клас), (5) integration-logs findAll authz/date-400/NaN-guard. Метод: РЕАЛЬНІ дефекти на крайових + mutation-verified. **Знайдено: 0 функціональних дефектів (усі 5 кутів РЕАЛЬНО захищені, багато вже з Bug#-фіксами), 1 test-gap (#715) — закрито cross-layer invariant-тестом + централізацією у @sto/shared.**
+
+### Bug #715 (MEDIUM, test-gap + drift-risk) — знак/колір settlement-транзакцій дублювався локально на 2 екранах без жодного тесту проти бекового BALANCE_SIGN — [x] виправлено
+
+**Файли:** `apps/web/src/app/(app)/settlements/SettlementsTabContent.tsx:68` (`BALANCE_UP_TYPES` local Set), `apps/web/src/app/(app)/counterparties/[id]/PageClient.tsx:211-212` (`BALANCE_UP_TX_TYPES` + `CHARGE_LIKE_TX_TYPES` local Sets)
+**Статус:** [x] виправлено
+
+**Симптом:** обидва settlement-екрани тримали ВЛАСНІ локальні `new Set(['CHARGE','SUPPLIER_PAYMENT','SUPPLIER_REFUND'])` для знаку «+»/«−» і `Set(['CHARGE','SUPPLIER_CHARGE'])` для кольору. Значення КОРЕКТНІ (дзеркалять бековий `BALANCE_SIGN`), але **жоден тест не прив'язував їх до бека** → зміна `BALANCE_SIGN` (напр. інверсія SUPPLIER_PAYMENT, додавання нового SettlementTransactionType) мовчки десинхронізувала б знак на UI: транзакція малювалась би «+» замість «−» (клієнт бачив би зростання боргу замість погашення) без жодного червоного тесту. Дубль на 2 екранах → дрейф міг статись і між екранами (один оновили, інший ні). Це той самий клас, що Bug #606/#608 (втрата enum-значення при refactor знаку), але на frontend-межі, яку backend-специ не покривають.
+
+**Причина:** frontend-константи знаку/кольору не мали single-source-of-truth і не мали cross-layer guard. Розумне припущення «я скопіював правильні значення» вірне на момент коміту, але не захищає від майбутнього дрейфу.
+
+**Фікс:**
+
+1. Додано `SETTLEMENT_BALANCE_SIGN` (дзеркало бекового) + похідні `SETTLEMENT_BALANCE_UP_TYPES` (sign=+1) і `SETTLEMENT_TX_CHARGE_LIKE_TYPES` (колір) у `packages/shared/src/constants/statuses.ts` — ЄДИНЕ джерело.
+2. Обидва екрани тепер `import` з `@sto/shared` замість локальних дублів (SettlementsTabContent: `txColor()` + `BALANCE_UP_TYPES`; counterparty PageClient: обидва Set-и). Компайл-тайм гарантія від реінтродукції літералів.
+3. Знак і колір НАВМИСНЕ розходяться для постач. типів (SUPPLIER_PAYMENT: sign +1 але success-колір; SUPPLIER_CHARGE: sign −1 але destructive-колір) — це задокументовано і зафіксовано тестом, щоб «спрощення» не злило їх.
+
+**Регресія (mutation-verified — інверсія `SETTLEMENT_BALANCE_SIGN.SUPPLIER_PAYMENT: 1→-1` → 2 тести червоні з чітким UA-повідомленням `shared sign for SUPPLIER_PAYMENT розходиться з беком`):** `settlements.invariants.spec.ts` +2 тести (13→15): (а) `SETTLEMENT_BALANCE_SIGN` дзеркалить бековий `BALANCE_SIGN` 1-в-1 (усі 8 enum-типів, кожен знак, без зайвих ключів) + похідний UP-set = типи з sign=+1; (б) `SETTLEMENT_TX_CHARGE_LIKE_TYPES`={CHARGE,SUPPLIER_CHARGE} + фіксація навмисного розходження кольору й знаку для постач. типів.
+
+### Перевірено ЧИСТИМ (5 кутів Циклу 2 — багів не знайдено):
+
+- **redactSecrets крайові (кут 1):** поріг `.length<3` навмисний (4-значний PIN маскується — тест є); `split/join` не RegExp → спецсимволи безпечні (тест є); `parseStatus` `\b[1-5]\d{2}\b` не матчить 999/id/суми (тести є); fire-and-forget `record()` обгортає create у try/catch + `void` → money-path НІКОЛИ не зривається (обидва шляхи тестовані). **monobank.client** кидає сирий body без redactSecrets — але auth=X-Token у ЗАГОЛОВКУ, body без секрету → нема що протікати (defensible). **checkbox.client** redact лише на signInPinCode (де pin_code у body) — sell/open/close auth=Bearer у заголовку → OK. Url-encoded/base64 часткове дзеркало секрету — задокументоване обмеження (exact-substring), заголовки несуть реальні креди.
+- **offline/queue-failure (кут 2):** КОЖЕН money-enqueue після коміту має `.catch()`: payments.create fiscal (attempts=288 збережено, FAILED-fallback), retryFiscal (288, FAILED), loyalty queueEarn (`.catch()` у caller), online-payment poll (`.catch()` ERROR-log), WO-transition-PAID (`.catch()`), notification (`.catch()`). payment-polling reconcile: findFirst-by-@unique + P2002-relink (Bug #688 живий). Жодного голого `await queue.add()` що зірве HTTP-500 після фінансової операції. DEFAULT_JOB_OPTS не змінив attempts критичних черг.
+- **FSM boundary (кут 3):** `WORK_ORDER_TRANSITIONS` повний, термінальні ARCHIVED/CANCELLED=`[]`; `assertFsmTransition` кидає UA-BadRequest на будь-який перехід з термінального (helper `transitions[from] ?? []`); CAS-flip перед side-effects; всі переходи гейтовані. invoice overpay: `dto.amount > remaining+1e-9`→throw, CAS на paidAmount, newStatus=PAID/PARTIALLY_PAID коректно; PARTIALLY_PAID виставляється платежем (обхід INV_TRANSITIONS by-design). cash-shift close має CAS (Bug #711).
+- **колір↔sign cross-page (кут 4):** SettlementsTabContent і counterparty PageClient МАЮТЬ однаковий колір (charge-like={CHARGE,SUPPLIER_CHARGE}→destructive) і однаковий знак (UP={CHARGE,SUPPLIER_PAYMENT,SUPPLIER_REFUND}) — узгоджені між собою і з беком. dashboard/reports/linked-configs НЕ фарбують tx-типи. Єдиний недолік — відсутність guard (закрито #715).
+- **integration-logs findAll authz (кут 5):** `where.orgId` безумовно (рядок 110); `@Roles('OWNER','ADMIN')`+RolesGuard+JwtAuthGuard; garbage-дати→`parseDateOr400`→чистий 400 (тести є); `+page/+limit`=NaN→`calculatePagination` NaN-guard→дефолт (тест є); garbage provider/operation/documentType→просто string-фільтр (безпечно); `ok` garbage→undefined (без фільтра).

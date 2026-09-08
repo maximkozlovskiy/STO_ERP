@@ -2,6 +2,11 @@ import * as fc from 'fast-check';
 import { describe, it, expect } from 'vitest';
 import { SettlementTransactionType } from '@prisma/client';
 import { BALANCE_SIGN } from './settlements.service';
+import {
+  SETTLEMENT_BALANCE_SIGN,
+  SETTLEMENT_BALANCE_UP_TYPES,
+  SETTLEMENT_TX_CHARGE_LIKE_TYPES,
+} from '@sto/shared';
 
 type TxType =
   | 'CHARGE'
@@ -206,6 +211,44 @@ describe('Settlements — balance invariants (property-based)', () => {
     expect(BALANCE_SIGN.SUPPLIER_CHARGE).toBe(-1);
     expect(BALANCE_SIGN.SUPPLIER_PAYMENT).toBe(1);
     expect(BALANCE_SIGN.SUPPLIER_REFUND).toBe(1);
+  });
+
+  // Bug #715 cross-layer guard: фронт (SettlementsTabContent + counterparties/[id]) споживає
+  // SETTLEMENT_BALANCE_UP_TYPES з @sto/shared для знаку «+»/«−». Раніше кожен екран тримав власний
+  // локальний Set → зміна бекового BALANCE_SIGN мовчки десинхронізувала б знак на UI (жоден тест
+  // не ловив). Цей тест прив'язує shared-константу до бекового BALANCE_SIGN: інвертація/додавання
+  // типу без синхронного оновлення shared → CI червоний ДО релізу.
+  it('shared SETTLEMENT_BALANCE_SIGN дзеркалить бековий BALANCE_SIGN 1-в-1 (усі типи, кожен знак)', () => {
+    const enumValues = Object.values(SettlementTransactionType);
+    // Кожен enum-тип присутній у shared і має ТОЙ САМИЙ знак, що й бек.
+    for (const t of enumValues) {
+      expect(
+        SETTLEMENT_BALANCE_SIGN[t],
+        `shared SETTLEMENT_BALANCE_SIGN missing ${t}`,
+      ).toBeDefined();
+      expect(SETTLEMENT_BALANCE_SIGN[t], `shared sign for ${t} розходиться з беком`).toBe(
+        BALANCE_SIGN[t],
+      );
+    }
+    // Shared не має ЗАЙВИХ ключів (drift у зворотній бік — фантомний тип у UI).
+    expect(Object.keys(SETTLEMENT_BALANCE_SIGN).sort()).toEqual([...enumValues].sort());
+    // Похідний UP-set = рівно типи з бековим sign=+1 (те, що фронт малює знаком «+»).
+    const backendUp = enumValues.filter(t => BALANCE_SIGN[t] === 1).sort();
+    expect([...SETTLEMENT_BALANCE_UP_TYPES].sort()).toEqual(backendUp);
+  });
+
+  // Bug #715: колір рядка = «charge-like» бізнес-семантика (борг створено = destructive), НЕ
+  // balance-sign. Обидва settlement-екрани споживають ТОЙ САМИЙ SETTLEMENT_TX_CHARGE_LIKE_TYPES →
+  // жодного cross-page колір-drift. Guard фіксує навмисне розходження зі знаком (постач. типи).
+  it('SETTLEMENT_TX_CHARGE_LIKE_TYPES = {CHARGE, SUPPLIER_CHARGE} — колір окремий від знаку', () => {
+    expect([...SETTLEMENT_TX_CHARGE_LIKE_TYPES].sort()).toEqual(['CHARGE', 'SUPPLIER_CHARGE']);
+    // SUPPLIER_CHARGE: charge-like (червоний) АЛЕ balance-sign −1 (не у UP-set) — навмисне
+    // розходження кольору й знаку. Цей рядок фіксує його, щоб «спрощення» не злило їх назад.
+    expect(SETTLEMENT_TX_CHARGE_LIKE_TYPES.has('SUPPLIER_CHARGE')).toBe(true);
+    expect(SETTLEMENT_BALANCE_UP_TYPES.has('SUPPLIER_CHARGE')).toBe(false);
+    // SUPPLIER_PAYMENT: дзеркальний випадок — sign +1 (у UP-set) АЛЕ НЕ charge-like (зелений).
+    expect(SETTLEMENT_BALANCE_UP_TYPES.has('SUPPLIER_PAYMENT')).toBe(true);
+    expect(SETTLEMENT_TX_CHARGE_LIKE_TYPES.has('SUPPLIER_PAYMENT')).toBe(false);
   });
 
   it('частковий постач. цикл: receive(X) − pay(Y<X) + refund(Z) → −(X−Y−Z)', () => {
