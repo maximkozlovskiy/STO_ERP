@@ -5,6 +5,35 @@
 
 ---
 
+## 2026-09-08 — feat: IntegrationLog — логи зовнішніх обмінів (metadata-only) + UI + retention
+
+Жоден зовнішній обмін (LiqPay/Checkbox/Вчасно/Нова Пошта/monobank) раніше не залишав сліду.
+Тепер кожен HTTP-обмін пишеться у append-only `IntegrationLog` — МЕТАДАНІ ЛИШЕ (без тіл, без
+секретів), з UI-вкладкою й щоденним retention-очищенням. Узгоджено: усі 5 провайдерів, метадані,
+нова таблиця+UI, scheduler-очищення N днів. QA: sync CLEAN → review (2 фікси) → tester (2 баги).
+
+### ba4784c6 feat backend
+
+Seam `IntegrationLogService.wrap<T>(ctx, fn)` — обгортка виклику провайдера у процесорах/сервісах
+(де orgId/branchId/provider/operation/documentId у скоупі; на fetch-рівні їх нема). Таймінг +
+fire-and-forget запис + RE-THROW (control flow незмінний → лог не зриває money/fiscal). 10 wrap-
+сайтів. GET /integration-logs (OWNER/ADMIN, фільтри). Purge scheduler (03:00, forEachActiveOrg) +
+processor (orgId-scoped deleteMany, clamp[1,365]). Міграція 20260908160000 + OrganisationSettings.
+integrationLogRetentionDays. +14 тестів (secret-hygiene, fire-and-forget, purge).
+
+### d5c656e5 feat frontend
+
+useIntegrationLogs hook + вкладка «Логи інтеграцій» (таблиця/фільтри/пагінація/retention-поле).
+
+### c0ea923b fix(tester): #709 PIN-leak + #710 pagination NaN
+
+- **#709 HIGH (security):** redactSecrets поріг `<6` НЕ маскував 4-значний Checkbox pin_code
+  (реальний касирський PIN = 4 цифри) → витік би у IntegrationLog.error при ехо-4xx. Знижено до `<3`.
+- **#710 LOW:** NaN page/limit (`?page=abc`) → Prisma skip/take=NaN → HTTP 500. NaN-guard у
+  спільному calculatePagination (захищає всі 20+ list-endpoints). +regression (redact/checkbox/pagination).
+
+---
+
 ## 2026-09-08 — review: IntegrationLog (secret-hygiene defense-in-depth + a11y)
 
 ### 1bc106f8 fix(review): IntegrationLog — redact body-borne секретів + a11y на фільтрах

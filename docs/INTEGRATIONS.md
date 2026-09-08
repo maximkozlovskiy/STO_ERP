@@ -85,3 +85,24 @@
 - **Примітка:** `hold` (дворівнева оплата) виникає лише при `paymentType:'hold'`; ми шлемо default
   `debit` → `hold` не з'явиться, мапінг у pending безпечний.
 - Джерела: monobank.ua/en/api-docs/acquiring · api.monobank.ua/docs/acquiring.html
+
+---
+
+## Логи обмінів (IntegrationLog)
+
+Кожен зовнішній HTTP-обмін усіх 5 провайдерів логується у append-only `IntegrationLog` —
+**МЕТАДАНІ ЛИШЕ** (без тіл запиту/відповіді, без секретів). Перегляд: Налаштування → «Логи
+інтеграцій» (OWNER/ADMIN), фільтри provider/ok/date. Retention — щоденне очищення за
+`OrganisationSettings.integrationLogRetentionDays` (дефолт 30, clamp [1,365]).
+
+- **Seam:** `IntegrationLogService.wrap<T>(ctx, fn)` — обгортка виклику провайдера у процесорах/
+  сервісах (orgId/branchId/provider/operation/documentId у скоупі). Fire-and-forget запис +
+  RE-THROW → лог НІКОЛИ не зриває money/fiscal-потік.
+- **Поля:** provider, operation (getStatus/createInvoice/sellReceipt/openShift/closeShift/signIn/
+  verifyCredentials), ok, httpStatus (парсинг з error-тексту), durationMs, documentType/documentId,
+  error (response-body провайдера, truncate 500), createdAt.
+- **Secret-hygiene:** `wrap()` пише явний whitelist field-об'єкт (ніколи не спредить credentials).
+  Клієнти, що шлють секрет у BODY (Нова Пошта `apiKey`, Checkbox `pin_code`/`licenseKey`),
+  застосовують `redactSecrets()` на throw-сайтах (поріг ≥3 симв. — маскує 4-значний PIN) на випадок
+  ехо-4xx. monobank/LiqPay/Вчасно шлють creds у ЗАГОЛОВКАХ → не серіалізуються у помилку.
+- **httpStatus** — advisory (парситься з `${provider} ${status}: ...`; на успіху null).
