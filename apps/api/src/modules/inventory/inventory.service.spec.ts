@@ -11,6 +11,7 @@ describe('InventoryService.createMovement guards', () => {
   let prisma: {
     stockItem: { findFirst: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
     stockMovement: { create: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    batchConsumption: { findMany: ReturnType<typeof vi.fn> };
     good: { findFirst: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
@@ -18,6 +19,7 @@ describe('InventoryService.createMovement guards', () => {
     createFromReceipt: ReturnType<typeof vi.fn>;
     consumeBatch: ReturnType<typeof vi.fn>;
     getAvgCost: ReturnType<typeof vi.fn>;
+    returnToBatch: ReturnType<typeof vi.fn>;
   };
   let settingsService: { getOrganisationSettings: ReturnType<typeof vi.fn> };
 
@@ -33,6 +35,7 @@ describe('InventoryService.createMovement guards', () => {
         create: vi.fn().mockResolvedValue({ id: 'mov-1' }),
         update: vi.fn().mockResolvedValue({}),
       },
+      batchConsumption: { findMany: vi.fn().mockResolvedValue([]) },
       good: { findFirst: vi.fn().mockResolvedValue({ purchasePrice: null }) },
       // Bug #613 no-tx self-wrap: createMovement без tx re-enter через $transaction.
       // Passthrough — callback дістає той самий мок (той самий tx-контекст у тесті).
@@ -42,6 +45,7 @@ describe('InventoryService.createMovement guards', () => {
       createFromReceipt: vi.fn().mockResolvedValue({}),
       consumeBatch: vi.fn().mockResolvedValue([]),
       getAvgCost: vi.fn().mockResolvedValue(0),
+      returnToBatch: vi.fn().mockResolvedValue(undefined),
     };
     settingsService = {
       getOrganisationSettings: vi.fn().mockResolvedValue({ costMethod: 'FIFO' }),
@@ -416,6 +420,101 @@ describe('InventoryService.createMovement guards', () => {
       await expect(
         service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -10 })),
       ).resolves.toBeDefined();
+    });
+  });
+
+  // ─── RETURN branch (C2) — реверс WRITEOFF ─────────────────────────────────
+  describe('RETURN — повернення на склад (реверс WRITEOFF)', () => {
+    const retDto = (overrides = {}) => ({
+      goodId: 'good-1',
+      warehouseId: 'wh-1',
+      type: 'RETURN' as const,
+      quantity: 3,
+      documentType: 'WorkOrder',
+      documentId: 'wo-1',
+      ...overrides,
+    });
+
+    it('позитивна к-сть інкрементує StockItem.quantity і НЕ створює нову партію', async () => {
+      await service.createMovement('org-1', retDto());
+      // StockItem upsert з increment: +3 (не batch-creating)
+      const upsertCall = prisma.stockItem.upsert.mock.calls[0][0];
+      expect(upsertCall.update.quantity).toEqual({ increment: 3 });
+      expect(batchService.createFromReceipt).not.toHaveBeenCalled();
+    });
+
+    it('шукає негативні BatchConsumption документа й повертає у КОЖНУ партію', async () => {
+      prisma.batchConsumption.findMany.mockResolvedValue([
+        { batchId: 'b1', quantity: -2 },
+        { batchId: 'b2', quantity: -1 },
+      ]);
+      await service.createMovement('org-1', retDto({ quantity: 3 }));
+      // findMany фільтрує по (documentType, documentId, quantity<0)
+      const where = prisma.batchConsumption.findMany.mock.calls[0][0].where;
+      expect(where).toMatchObject({
+        orgId: 'org-1',
+        documentType: 'WorkOrder',
+        documentId: 'wo-1',
+        quantity: { lt: 0 },
+      });
+      // returnToBatch на кожну партію з abs(quantity)
+      expect(batchService.returnToBatch).toHaveBeenCalledTimes(2);
+      expect(batchService.returnToBatch).toHaveBeenCalledWith(
+        'org-1',
+        'b1',
+        2,
+        'WorkOrder',
+        'wo-1',
+        expect.anything(),
+      );
+      expect(batchService.returnToBatch).toHaveBeenCalledWith(
+        'org-1',
+        'b2',
+        1,
+        'WorkOrder',
+        'wo-1',
+        expect.anything(),
+      );
+    });
+
+    it('shared-batch: дві частини з ОДНІЄЇ партії → ОДИН агрегований returnToBatch (per-line hazard)', async () => {
+      // Дві негативні consumption на b1 (різні documentLineId) → агрегуються у 2+3=5.
+      prisma.batchConsumption.findMany.mockResolvedValue([
+        { batchId: 'b1', quantity: -2 },
+        { batchId: 'b1', quantity: -3 },
+      ]);
+      await service.createMovement('org-1', retDto({ quantity: 5 }));
+      expect(batchService.returnToBatch).toHaveBeenCalledTimes(1);
+      expect(batchService.returnToBatch).toHaveBeenCalledWith(
+        'org-1',
+        'b1',
+        5, // 2+3 агреговано — інакше 2-й виклик тихо пропустив би idempotency-guard
+        'WorkOrder',
+        'wo-1',
+        expect.anything(),
+      );
+    });
+
+    it('0 негативних consumption (AVG_COST / без партій) → StockItem++, returnToBatch НЕ викликається, без throw', async () => {
+      prisma.batchConsumption.findMany.mockResolvedValue([]);
+      await expect(service.createMovement('org-1', retDto())).resolves.toBeDefined();
+      expect(prisma.stockItem.upsert).toHaveBeenCalled(); // залишок відновлено
+      expect(batchService.returnToBatch).not.toHaveBeenCalled();
+    });
+
+    it('RETURN без documentType/documentId → BadRequest (нема як знайти джерело)', async () => {
+      await expect(
+        service.createMovement('org-1', retDto({ documentType: undefined })),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.createMovement('org-1', retDto({ documentId: undefined })),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("RETURN з від'ємною к-стю → BadRequest", async () => {
+      await expect(service.createMovement('org-1', retDto({ quantity: -3 }))).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

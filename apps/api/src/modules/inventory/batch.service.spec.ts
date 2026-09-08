@@ -365,6 +365,9 @@ describe('BatchService', () => {
       );
     });
 
+    // ВАЖЛИВО: guard ігнорує documentLineId — саме тому InventoryService.restoreBatchesForReturn
+    // (C2) агрегує negative consumption ПО batchId у межах документа й викликає returnToBatch РАЗ
+    // на партію: по-рядкові виклики на спільну партію тут би тихо пропустились → недоповернення.
     it('ідемпотентність: наявне повернення на той самий документ → skip (без подвоєння)', async () => {
       prisma.stockBatch.findFirst.mockResolvedValue({ id: 'b1', goodId: 'g1', receivedQty: 10 });
       prisma.batchConsumption.findFirst.mockResolvedValueOnce({ id: 'existing' });

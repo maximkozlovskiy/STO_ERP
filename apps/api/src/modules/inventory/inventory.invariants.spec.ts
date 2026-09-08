@@ -35,6 +35,11 @@ function applyMovements(
         if (quantity - reserved < qty) return null;
         quantity -= qty;
         break;
+      case 'RETURN':
+        // Реверс WRITEOFF (C2): повертає фізичну к-сть на склад. На COMPLETED резерв уже знято,
+        // тож RETURN лише інкрементує quantity (як RECEIPT семантично, але існуючих партій).
+        quantity += qty;
+        break;
       case 'TRANSFER':
         // TRANSFER переміщує між складами — для інваріантів вважаємо нейтральним
         break;
@@ -120,6 +125,29 @@ describe('Inventory — balance invariants (property-based)', () => {
         },
       ),
       { numRuns: 200 },
+    );
+  });
+
+  // C2: WRITEOFF→RETURN round-trip повертає quantity до pre-writeoff (реверс складу при
+  // скасуванні завершеного наряду). Дзеркалить симетрію writeOffPartsAndCharge/returnPartsAndCredit.
+  it('WRITEOFF→RETURN тієї ж к-сті повертає quantity до вихідного значення', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 1000 }), // початковий залишок
+        fc.integer({ min: 1, max: 1000 }), // к-сть списання/повернення
+        (initialQty, moveQty) => {
+          fc.pre(moveQty <= initialQty); // списати можна лише наявне
+          const result = applyMovements([
+            { type: 'RECEIPT', qty: initialQty },
+            { type: 'WRITEOFF', qty: moveQty },
+            { type: 'RETURN', qty: moveQty },
+          ]);
+          if (result === null) return false; // валідна послідовність не має відхилятись
+          // quantity повертається рівно до initialQty; reserved/available незмінні
+          return result.quantity === initialQty && result.reserved === 0;
+        },
+      ),
+      { numRuns: 500 },
     );
   });
 

@@ -6,7 +6,10 @@ export const WORK_ORDER_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> 
   APPROVED: ['IN_PROGRESS', 'ON_HOLD', 'CANCELLED'],
   IN_PROGRESS: ['ON_HOLD', 'COMPLETED'],
   ON_HOLD: ['IN_PROGRESS', 'CANCELLED'],
-  COMPLETED: ['INVOICED'],
+  // COMPLETED→CANCELLED (C2): скасування завершеного наряду повертає списані запчастини
+  // на склад (RETURN-рух + returnToBatch) і сторнує борг (CREDIT_NOTE) —
+  // WorkOrdersService.returnPartsAndCredit. INVOICED/PAID лишаються незворотними.
+  COMPLETED: ['INVOICED', 'CANCELLED'],
   INVOICED: ['PAID'],
   PAID: ['ARCHIVED'],
   ARCHIVED: [],

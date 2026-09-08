@@ -73,6 +73,7 @@ enum StockMovementType {
   RESERVATION
   RESERVATION_RELEASE
   OPENING_BALANCE
+  RETURN               // Повернення на склад (реверс WRITEOFF): скасування завершеного наряду
 }
 
 enum StockDocumentType {

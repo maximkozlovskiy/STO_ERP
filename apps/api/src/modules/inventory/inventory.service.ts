@@ -91,6 +91,16 @@ export class InventoryService {
     if (dto.type === 'RESERVATION_RELEASE' && dto.quantity > 0) {
       throw new BadRequestException("Зняття резерву: кількість повинна бути від'ємною");
     }
+    // RETURN (реверс WRITEOFF) — позитивна к-сть; мусить посилатись на документ-джерело,
+    // бо повертає у ті самі партії, з яких документ списував (пошук BatchConsumption).
+    if (dto.type === 'RETURN') {
+      if (dto.quantity < 0) {
+        throw new BadRequestException('Повернення на склад: кількість повинна бути додатною');
+      }
+      if (!dto.documentType || !dto.documentId) {
+        throw new BadRequestException('Повернення на склад потребує документа-джерела');
+      }
+    }
 
     // Атомарність: createMovement робить кілька залежних записів (StockMovement +
     // StockBatch/consumeBatch + StockItem upsert + BatchConsumption). Якщо викликач не
@@ -308,7 +318,47 @@ export class InventoryService {
       }
     }
 
+    // RETURN — реверс WRITEOFF: StockItem.quantity вже інкрементовано вище (позитивний
+    // quantityDelta). Тут відновлюємо самі партії, з яких документ-джерело списував,
+    // щоб інваріант Σ remainingQty(active) == StockItem.quantity тримався за конструкцією.
+    if (dto.type === 'RETURN') {
+      await this.restoreBatchesForReturn(orgId, dto.documentType!, dto.documentId!, db);
+    }
+
     return { movementId: movement.id, consumed, weightedCostPrice };
+  }
+
+  /**
+   * Повертає списані партії документа назад (реверс WRITEOFF). Знаходить негативні
+   * BatchConsumption документа (documentType+documentId), АГРЕГУЄ по batchId у межах усього
+   * документа й викликає returnToBatch РАЗ на партію. Агрегація критична: idempotency-guard
+   * у returnToBatch ігнорує documentLineId — по-рядкові виклики на спільну партію тихо
+   * пропустились би (2-й бачить return-consumption 1-го) → недоповернення → злам Σ-інваріанту.
+   * 0 рядків (списання без реальних партій) → нічого не робимо (StockItem уже інкрементовано).
+   */
+  private async restoreBatchesForReturn(
+    orgId: string,
+    documentType: string,
+    documentId: string,
+    db: Prisma.TransactionClient,
+  ): Promise<void> {
+    // batchId у BatchConsumption non-nullable → AVG_COST-агрегат рядків НЕ пише (early-return
+    // у consumeBatch), тож 0 рядків = списання без реальних партій → нічого відновлювати.
+    const consumptions = await db.batchConsumption.findMany({
+      where: { orgId, documentType, documentId, quantity: { lt: 0 } },
+      select: { batchId: true, quantity: true },
+    });
+    if (consumptions.length === 0) return;
+
+    // group by batchId → Σ|quantity|
+    const qtyByBatch = new Map<string, number>();
+    for (const c of consumptions) {
+      qtyByBatch.set(c.batchId, (qtyByBatch.get(c.batchId) ?? 0) + Math.abs(c.quantity));
+    }
+
+    for (const [batchId, qty] of qtyByBatch) {
+      await this.batchService.returnToBatch(orgId, batchId, qty, documentType, documentId, db);
+    }
   }
 
   /** costMethod з налаштувань org (Redis-кешовано у SettingsService); fallback FIFO. */

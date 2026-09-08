@@ -725,6 +725,16 @@ export class WorkOrdersService {
           await this.releasePartReservations(orgId, id, userId, tx);
         }
 
+        // C2: скасування ЗАВЕРШЕНОГО наряду — реверс складу+боргу. На COMPLETED резерв уже
+        // знято (writeOffPartsAndCharge зробив RESERVATION_RELEASE+WRITEOFF), тож повертаємо
+        // лише фізичні залишки+партії (RETURN) і сторнуємо CHARGE (CREDIT_NOTE). Guard
+        // wo.status==='COMPLETED' → DRAFT/ESTIMATE/APPROVED/ON_HOLD→CANCELLED поведінка незмінна
+        // (ті не списували запчастин). Single-shot: in-tx status re-read (вище) + термінальний
+        // CANCELLED → емітується рівно 1× (та сама гарантія, що не дає подвійного CHARGE).
+        if (newStatus === 'CANCELLED' && wo.status === 'COMPLETED') {
+          await this.returnPartsAndCredit(orgId, wo, userId, tx);
+        }
+
         return tx.workOrder.update({
           where: { id, orgId },
           data: updates,
@@ -980,6 +990,73 @@ export class WorkOrdersService {
       },
       db,
     );
+  }
+
+  /**
+   * C2 — реверс writeOffPartsAndCharge при COMPLETED→CANCELLED. Дзеркалить його per-part:
+   * замість WRITEOFF(−q) робимо RETURN(+q) (InventoryService інкрементує StockItem + повертає
+   * у ті самі партії через returnToBatch), замість CHARGE — один CREDIT_NOTE на суму боргу
+   * → баланс документа нетиться до нуля. Резерв НЕ відновлюємо (на COMPLETED його вже знято).
+   * Викликається лише з CANCELLED-гілки transition() під wo.status==='COMPLETED' → single-shot
+   * (in-tx status re-read + термінальний CANCELLED, як double-CHARGE guard).
+   */
+  private async returnPartsAndCredit(
+    orgId: string,
+    wo: { id: string; counterpartyId: string; totalAmount: Prisma.Decimal | null },
+    userId?: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db = tx ?? this.prisma;
+    const parts = await db.workOrderPart.findMany({
+      where: { workOrderId: wo.id, orgId, deletedAt: null },
+      take: 1000,
+    });
+    const coeffMap = await this.fetchPartCoefficients(parts, db);
+
+    for (const part of parts) {
+      const coeff = coeffMap[part.id] ?? 1;
+      const baseQty = part.quantity / coeff;
+      // RETURN дзеркалить WRITEOFF: та сама baseQty, той самий (documentType, documentId,
+      // documentLineId). InventoryService інкрементує StockItem і повертає партії (агрегує по
+      // batchId у межах документа). batchCostPrice/batchId у WorkOrderPart НЕ чистимо —
+      // історичний COGS-запис.
+      await this.inventory.createMovement(
+        orgId,
+        {
+          goodId: part.goodId,
+          warehouseId: part.warehouseId,
+          type: 'RETURN',
+          quantity: baseQty,
+          documentType: 'WorkOrder',
+          documentId: wo.id,
+          documentLineId: part.id,
+          createdBy: userId,
+        },
+        db,
+      );
+    }
+
+    // Сторно боргу: сума з IN-TX re-read totalAmount (дзеркалить charge-логіку). COMPLETED поза
+    // EDITABLE_STATUSES → totalAmount не змінюється, але re-read гарантує точну симетрію з CHARGE.
+    const freshWo = await db.workOrder.findFirst({
+      where: { id: wo.id, orgId },
+      select: { totalAmount: true },
+    });
+    const creditAmount = roundMoney(Number(freshWo?.totalAmount ?? wo.totalAmount ?? 0));
+    if (creditAmount > 0) {
+      await this.settlements.createTransaction(
+        orgId,
+        {
+          counterpartyId: wo.counterpartyId,
+          type: 'CREDIT_NOTE',
+          amount: creditAmount,
+          documentType: 'WorkOrder',
+          documentId: wo.id,
+          createdBy: userId,
+        },
+        db,
+      );
+    }
   }
 
   // ─── Lines ───────────────────────────────────────────────

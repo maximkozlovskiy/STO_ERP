@@ -649,3 +649,166 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     expect(wo?.[1].documentLineId).toBe(PART1_ID);
   });
 });
+
+// ─── returnPartsAndCredit — C2: COMPLETED→CANCELLED реверс складу+боргу ──────
+//
+// Дзеркалить writeOffPartsAndCharge: per-part RETURN(+baseQty) замість WRITEOFF(−baseQty),
+// один CREDIT_NOTE замість CHARGE. Guard-тести FSM/single-shot — в інших describe/spec.
+describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)', () => {
+  const WO_ID = '11111111-1111-4111-8111-111111111111';
+  const PART1_ID = '22222222-2222-4222-8222-222222222222';
+  const PART2_ID = '33333333-3333-4333-8333-333333333333';
+  const GOOD_ID = '44444444-4444-4444-8444-444444444444';
+  const WH_ID = '55555555-5555-4555-8555-555555555555';
+
+  function makeSvc(
+    parts: Array<{ id: string; quantity: number; unitOfMeasureId?: string | null }>,
+    createMovement: ReturnType<typeof vi.fn>,
+    createTransaction: ReturnType<typeof vi.fn>,
+    totalAmount: number,
+    goodUoM: Array<{ goodId: string; unitOfMeasureId: string; coefficient: number }> = [],
+  ): WorkOrdersService {
+    const prisma = {
+      workOrderPart: {
+        findMany: vi.fn().mockResolvedValue(
+          parts.map(p => ({
+            id: p.id,
+            goodId: GOOD_ID,
+            warehouseId: WH_ID,
+            quantity: p.quantity,
+            unitOfMeasureId: p.unitOfMeasureId ?? null,
+          })),
+        ),
+      },
+      workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount }) },
+      goodUoM: { findMany: vi.fn().mockResolvedValue(goodUoM) },
+    } as unknown as PrismaService;
+    const inventory = { createMovement } as never;
+    const settlements = { createTransaction } as never;
+    return new WorkOrdersService(
+      prisma,
+      inventory,
+      settlements,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+    );
+  }
+
+  const RETURN_OK = { movementId: 'm-ret', consumed: [], weightedCostPrice: null };
+
+  it('per part → RETURN(+baseQty) з documentLineId; один CREDIT_NOTE = roundMoney(totalAmount)', async () => {
+    const createMovement = vi.fn().mockResolvedValue(RETURN_OK);
+    const createTransaction = vi.fn().mockResolvedValue({});
+    const svc = makeSvc(
+      [
+        { id: PART1_ID, quantity: 2 },
+        { id: PART2_ID, quantity: 3 },
+      ],
+      createMovement,
+      createTransaction,
+      500,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (svc as any).returnPartsAndCredit(
+      'org-1',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
+      'user-1',
+      undefined,
+    );
+
+    // RETURN на кожну частину, позитивна к-сть, documentLineId=part.id
+    expect(createMovement).toHaveBeenCalledTimes(2);
+    const calls = createMovement.mock.calls;
+    expect(calls[0][1]).toEqual(
+      expect.objectContaining({
+        type: 'RETURN',
+        quantity: 2,
+        goodId: GOOD_ID,
+        warehouseId: WH_ID,
+        documentType: 'WorkOrder',
+        documentId: WO_ID,
+        documentLineId: PART1_ID,
+      }),
+    );
+    expect(calls[1][1]).toEqual(
+      expect.objectContaining({ type: 'RETURN', quantity: 3, documentLineId: PART2_ID }),
+    );
+    // усі RETURN — з додатною к-стю
+    for (const c of calls) expect(c[1].quantity).toBeGreaterThan(0);
+
+    // рівно один CREDIT_NOTE на суму боргу
+    expect(createTransaction).toHaveBeenCalledTimes(1);
+    expect(createTransaction.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        counterpartyId: 'cp-1',
+        type: 'CREDIT_NOTE',
+        amount: 500,
+        documentType: 'WorkOrder',
+        documentId: WO_ID,
+      }),
+    );
+  });
+
+  it('coeff-конверсія: baseQty = part.quantity / coefficient', async () => {
+    const createMovement = vi.fn().mockResolvedValue(RETURN_OK);
+    const createTransaction = vi.fn().mockResolvedValue({});
+    // Частина у пакованні × коефіцієнт 6 (напр. 12 шт = 2 упаковки×6).
+    const UOM_ID = '77777777-7777-4777-8777-777777777777';
+    const svc = makeSvc(
+      [{ id: PART1_ID, quantity: 12, unitOfMeasureId: UOM_ID }],
+      createMovement,
+      createTransaction,
+      100,
+      [{ goodId: GOOD_ID, unitOfMeasureId: UOM_ID, coefficient: 6 }],
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (svc as any).returnPartsAndCredit(
+      'org-1',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 100 as any },
+      'user-1',
+      undefined,
+    );
+    // 12 / 6 = 2 базові одиниці повертаються на склад
+    expect(createMovement.mock.calls[0][1].quantity).toBe(2);
+  });
+
+  it('zero-total наряд → RETURN є, але CREDIT_NOTE НЕ створюється (і без throw)', async () => {
+    const createMovement = vi.fn().mockResolvedValue(RETURN_OK);
+    const createTransaction = vi.fn().mockResolvedValue({});
+    const svc = makeSvc([{ id: PART1_ID, quantity: 1 }], createMovement, createTransaction, 0);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (svc as any).returnPartsAndCredit(
+      'org-1',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 0 as any },
+      'user-1',
+      undefined,
+    );
+    expect(createMovement).toHaveBeenCalledTimes(1); // запчастини все одно повертаються
+    expect(createTransaction).not.toHaveBeenCalled(); // нема боргу — нема сторно
+  });
+
+  it('без частин → жодного RETURN, але CREDIT_NOTE на суму боргу (списання не було)', async () => {
+    const createMovement = vi.fn().mockResolvedValue(RETURN_OK);
+    const createTransaction = vi.fn().mockResolvedValue({});
+    const svc = makeSvc([], createMovement, createTransaction, 300);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (svc as any).returnPartsAndCredit(
+      'org-1',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 300 as any },
+      'user-1',
+      undefined,
+    );
+    expect(createMovement).not.toHaveBeenCalled();
+    expect(createTransaction).toHaveBeenCalledTimes(1);
+    expect(createTransaction.mock.calls[0][1].amount).toBe(300);
+  });
+});
