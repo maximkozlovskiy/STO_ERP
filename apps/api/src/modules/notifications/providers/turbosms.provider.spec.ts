@@ -50,6 +50,38 @@ describe('TurboSmsProvider', () => {
     expect(res.error).toBe('INVALID_TOKEN');
   });
 
+  // Pre-prod audit: токен їде у BODY (token:apiKey). Якщо TurboSMS ехо-їть запит у 4xx →
+  // response.text() містить токен → має бути ЗАМАСКОВАНИЙ у res.error (→ NotificationLog.error).
+  it('4xx з ехо-токеном у body → токен замаскований у error (не витікає у лог)', async () => {
+    const TOKEN = 'super-secret-token-123';
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => `{"error":"invalid","token":"${TOKEN}"}`,
+    } as Response);
+    const res = await provider.send({
+      channel: NotificationChannel.SMS,
+      recipient: '380671112233',
+      message: 'X',
+      creds: { apiKey: TOKEN, senderName: 'STO' },
+    });
+    expect(res.accepted).toBe(false);
+    expect(res.error).toContain('401');
+    expect(res.error).not.toContain(TOKEN); // MUTATION-VERIFY: без redactSecrets → впаде
+  });
+
+  it('3xx-перенаправлення відхиляється (SSRF-guard)', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 302, text: async () => '' } as Response);
+    const res = await provider.send({
+      channel: NotificationChannel.SMS,
+      recipient: '380671112233',
+      message: 'X',
+      creds: { apiKey: 'tok' },
+    });
+    expect(res.accepted).toBe(false);
+    expect(res.error).toMatch(/перенаправлення/);
+  });
+
   it('send VIBER: шле viber-payload (не sms), response_code 0 → accepted', async () => {
     fetchMock.mockResolvedValueOnce(
       okResponse({ response_result: [{ response_code: 0, message_id: 'v-1' }] }),

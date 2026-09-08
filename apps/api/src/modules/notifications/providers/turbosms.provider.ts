@@ -7,6 +7,8 @@ import type {
   SendResult,
   VerifyResult,
 } from './notification-provider.interface';
+import { validatePublicUrl } from '../../../common/utils/url-guard';
+import { redactSecrets } from '../../../common/utils/redact';
 
 const TURBOSMS_BASE = 'https://api.turbosms.ua';
 const HTTP_TIMEOUT_MS = 10_000;
@@ -72,15 +74,18 @@ export class TurboSmsProvider implements NotificationProvider {
     }
   }
 
-  /** POST JSON із timeout. Кидає на non-2xx / abort. */
+  /** POST JSON із timeout + SSRF-guard. Кидає на non-2xx/3xx/abort (токен редагується у помилці). */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async fetchJson(path: string, body: Record<string, unknown>): Promise<any> {
+    const urlError = validatePublicUrl(TURBOSMS_BASE);
+    if (urlError) throw new Error(`Невалідний TurboSMS API URL: ${urlError}`);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
     let response: Response;
     try {
       response = await fetch(`${TURBOSMS_BASE}${path}`, {
         method: 'POST',
+        redirect: 'manual',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -88,9 +93,15 @@ export class TurboSmsProvider implements NotificationProvider {
     } finally {
       clearTimeout(timer);
     }
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(`TurboSMS повернув перенаправлення ${response.status} — запит відхилено`);
+    }
     if (!response.ok) {
       const err = await response.text();
-      throw new Error(`TurboSMS ${response.status}: ${err}`);
+      // Токен їде у BODY (token: creds.apiKey) → якщо TurboSMS ехо-їть запит у 4xx, response.text()
+      // містить токен → редагуємо ПЕРЕД тим як помилка потрапить у NotificationLog.error.
+      const secret = typeof body.token === 'string' ? body.token : undefined;
+      throw new Error(`TurboSMS ${response.status}: ${redactSecrets(err, secret ? [secret] : [])}`);
     }
     return response.json();
   }

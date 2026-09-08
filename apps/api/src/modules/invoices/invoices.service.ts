@@ -566,7 +566,13 @@ export class InvoicesService {
     if (dto.unitOfMeasureId && dto.goodId && !goodUoM)
       throw new NotFoundException('Одиницю виміру не знайдено для цього товару');
 
-    const vatRate = dto.vatRate ?? 20;
+    // §13: без явного vatRate — дефолт org (getDefaultVatRate вже дає 0 для vatMode NONE),
+    // НЕ хардкод 20% (інакше NONE-org отримав би 20% ПДВ на ручному рядку). Дзеркалить
+    // createFromWorkOrder/PO/WO.
+    const vatRate =
+      dto.vatRate != null
+        ? dto.vatRate
+        : (await this.settingsService.getDefaultVatRate(orgId)).vatRate;
     const priceWithoutVat = roundMoney(dto.quantity * dto.unitPrice);
     const vatAmount = roundMoney(priceWithoutVat * (vatRate / 100));
     const priceWithVat = roundMoney(priceWithoutVat + vatAmount);

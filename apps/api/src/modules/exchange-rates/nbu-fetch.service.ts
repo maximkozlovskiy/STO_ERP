@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ExchangeRatesService } from './exchange-rates.service';
+import { validatePublicUrl } from '../../common/utils/url-guard';
 
 interface NbuRateEntry {
   cc: string;
@@ -31,13 +32,19 @@ export class NbuFetchService {
     const kyivDate = KYIV_YMD.format(new Date()); // YYYY-MM-DD
     const yyyymmdd = kyivDate.replace(/-/g, '');
 
+    const urlError = validatePublicUrl(NBU_URL);
+    if (urlError) throw new Error(`Невалідний НБУ API URL: ${urlError}`);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15_000);
     let nbuRates: NbuRateEntry[];
     try {
       const resp = await fetch(`${NBU_URL}?start=${yyyymmdd}&end=${yyyymmdd}&json`, {
+        redirect: 'manual',
         signal: controller.signal,
       });
+      if (resp.status >= 300 && resp.status < 400) {
+        throw new Error(`НБУ повернув перенаправлення ${resp.status} — запит відхилено`);
+      }
       if (!resp.ok) throw new Error(`NBU API відповів статусом ${resp.status}`);
       nbuRates = (await resp.json()) as NbuRateEntry[];
     } finally {

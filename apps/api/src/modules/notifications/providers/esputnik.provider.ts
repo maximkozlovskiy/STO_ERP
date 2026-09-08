@@ -7,6 +7,7 @@ import type {
   SendResult,
   VerifyResult,
 } from './notification-provider.interface';
+import { validatePublicUrl } from '../../../common/utils/url-guard';
 
 const ESPUTNIK_BASE = 'https://esputnik.com/api';
 const HTTP_TIMEOUT_MS = 10_000;
@@ -120,6 +121,8 @@ export class EsputnikProvider implements NotificationProvider {
     apiKey: string,
     body?: Record<string, unknown>,
   ): Promise<any> {
+    const urlError = validatePublicUrl(ESPUTNIK_BASE);
+    if (urlError) throw new Error(`Невалідний eSputnik API URL: ${urlError}`);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
     // Basic auth: username будь-що (за докою), password = apiKey.
@@ -128,6 +131,7 @@ export class EsputnikProvider implements NotificationProvider {
     try {
       response = await fetch(`${ESPUTNIK_BASE}${path}`, {
         method,
+        redirect: 'manual',
         headers: {
           'Content-Type': 'application/json',
           Authorization: authHeader,
@@ -138,8 +142,12 @@ export class EsputnikProvider implements NotificationProvider {
     } finally {
       clearTimeout(timer);
     }
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(`eSputnik повернув перенаправлення ${response.status} — запит відхилено`);
+    }
     if (!response.ok) {
       const err = await response.text();
+      // apiKey у Basic-auth заголовку (не у body) → не в response-body; але guard-паритет.
       throw new Error(`eSputnik ${response.status}: ${err}`);
     }
     // account/info та send повертають JSON; порожнє тіло толеруємо.
