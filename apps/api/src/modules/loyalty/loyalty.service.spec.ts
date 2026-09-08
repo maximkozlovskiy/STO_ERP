@@ -80,6 +80,24 @@ describe('LoyaltyService.redeem', () => {
     expect(result.discountAmount).toBe(50);
   });
 
+  // Pre-prod audit R2: дробові бали (10.007) квантуються до 2dp ПЕРЕД gte/decrement — інакше
+  // атомарний guard використав би 10.007, а LoyaltyTransaction.points зберіг би 10.01 → balance
+  // розходиться з Σ(ledger). Обидва мусять використати ІДЕНТИЧНЕ квантоване значення.
+  it('дробові points (10.007) → gte/decrement І ledger усі використовують 10.01 (без дрейфу)', async () => {
+    prisma.counterparty.findFirst.mockResolvedValueOnce({ id: counterpartyId });
+    prisma.organisationSettings.findFirst.mockResolvedValueOnce({ loyaltyRedeemRate: 1 });
+    prisma.loyaltyAccount.findFirst.mockResolvedValueOnce({ id: accountId });
+    prisma.loyaltyAccount.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.loyaltyTransaction.create.mockResolvedValueOnce({ id: 'tx-1' });
+
+    await service.redeem(orgId, counterpartyId, 10.007);
+
+    const updateArgs = prisma.loyaltyAccount.updateMany.mock.calls[0][0];
+    expect(updateArgs.where.balance).toEqual({ gte: 10.01 });
+    expect(updateArgs.data.balance).toEqual({ decrement: 10.01 });
+    expect(prisma.loyaltyTransaction.create.mock.calls[0][0].data.points).toBe(10.01);
+  });
+
   it('недостатньо балів: updateMany.count === 0 → BadRequestException', async () => {
     prisma.counterparty.findFirst.mockResolvedValueOnce({ id: counterpartyId });
     prisma.organisationSettings.findFirst.mockResolvedValueOnce({ loyaltyRedeemRate: 1 });

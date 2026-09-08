@@ -137,6 +137,20 @@ describe('InventoryService.createMovement guards', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  // Pre-prod audit R2: WRITEOFF, що опускає quantity НИЖЧЕ reserved (пряме списання без RELEASE),
+  // раніше не ловилось (reserved>quantity guard був лише на reservedDelta>0). Тепер throw і на
+  // quantityDelta<0 → available не стане від'ємним при обох полях ≥0.
+  it("WRITEOFF опускає quantity нижче reserved → throw (available не від'ємний)", async () => {
+    // pre-check бачить reserved=0 → available=20 ≥ 8, WRITEOFF проходить pre-check.
+    prisma.stockItem.findFirst.mockResolvedValueOnce({ quantity: 20, reserved: 0 });
+    // Race: між pre-check і upsert concurrent RESERVATION підняв reserved=15. Row-locked upsert →
+    // quantity=12 (20−8), reserved=15 → reserved>quantity (available=-3). Post-check ловить.
+    prisma.stockItem.upsert.mockResolvedValue({ quantity: 12, reserved: 15 });
+    await expect(
+      service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -8 })),
+    ).rejects.toThrow(/нижче зарезервованого/);
+  });
+
   // Bug #613 (cycle 2 code-review): виклик без tx має самообгортатись у $transaction,
   // щоб throw (race/нестача) не лишив orphan-записів (StockMovement/StockItem/BatchConsumption).
   it('createMovement без tx re-enter через $transaction (атомарність)', async () => {

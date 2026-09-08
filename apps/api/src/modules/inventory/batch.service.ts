@@ -278,16 +278,25 @@ export class BatchService {
     return results;
   }
 
-  async getAvgCost(orgId: string, goodId: string, warehouseId?: string): Promise<number> {
+  async getAvgCost(
+    orgId: string,
+    goodId: string,
+    warehouseId?: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<number> {
     // warehouseId is optional — omit to aggregate across all warehouses.
     // An empty-string warehouse was previously treated as warehouse "" → 0 batches.
     // Зважена середня = SUM(remainingQty*costPrice)/SUM(remainingQty) по ВСІХ активних партіях.
     // SUM агрегує в БД і повертає один рядок незалежно від кількості партій — тож LIMIT не
     // потрібен для продуктивності, а раніше вносив зміщення: при >500 партій найстаріші
     // (які FIFO/FEFO списує ПЕРШИМИ) випадали з cost-basis → COGS завищений. Без LIMIT — точно.
+    // tx: коли викликано всередині $transaction (AVG_COST COGS у createMovement), читаємо ЧЕРЕЗ
+    // tx, щоб бачити uncommitted RECEIPT тієї ж tx і бути серіалізованим з consume (інакше COGS
+    // рахувався б зі snapshot, що не збігається з фактично списаними партіями).
+    const client = tx ?? this.prisma;
     type AvgCostRow = { total_cost: number | null; total_qty: number | null };
     const rows = warehouseId
-      ? await this.prisma.$queryRaw<AvgCostRow[]>`
+      ? await client.$queryRaw<AvgCostRow[]>`
           SELECT
             COALESCE(SUM("remainingQty" * "costPrice"), 0)::float AS total_cost,
             COALESCE(SUM("remainingQty"),               0)::float AS total_qty
@@ -298,7 +307,7 @@ export class BatchService {
             AND "isActive" = true
             AND "remainingQty" > 0
         `
-      : await this.prisma.$queryRaw<AvgCostRow[]>`
+      : await client.$queryRaw<AvgCostRow[]>`
           SELECT
             COALESCE(SUM("remainingQty" * "costPrice"), 0)::float AS total_cost,
             COALESCE(SUM("remainingQty"),               0)::float AS total_qty

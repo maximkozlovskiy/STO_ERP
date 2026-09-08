@@ -140,7 +140,9 @@ export class LoyaltyService {
     const earnPoints = Number(settings.loyaltyEarnPoints ?? 1);
     if (earnPer <= 0) return;
 
-    const points = Math.floor(paymentAmount / earnPer) * earnPoints;
+    // Квантуємо до 2dp (Decimal(12,2)) — earnPoints може бути дробовим, тож множення дало б
+    // float-dust; balance-increment і LoyaltyTransaction.points мусять збігатись з тим, що збереже БД.
+    const points = roundMoney(Math.floor(paymentAmount / earnPer) * earnPoints);
     if (points <= 0) return;
 
     // tenant вже перевірений у Promise.all вище — лишається лише upsert.
@@ -200,8 +202,15 @@ export class LoyaltyService {
   async redeem(
     orgId: string,
     counterpartyId: string,
-    points: number,
+    pointsInput: number,
   ): Promise<{ discountAmount: number }> {
+    if (!Number.isFinite(pointsInput) || pointsInput <= 0) {
+      throw new BadRequestException('Кількість балів має бути > 0');
+    }
+    // Квантуємо до 2 знаків (LoyaltyAccount.balance/LoyaltyTransaction.points — Decimal(12,2)):
+    // атомарний gte/decrement і рядок леджера мусять використати ІДЕНТИЧНЕ значення, інакше
+    // balance (decrement сирим pointsInput) розходиться з Σ(ledger, збережений 2dp) — audit fail.
+    const points = roundMoney(pointsInput);
     if (points <= 0) throw new BadRequestException('Кількість балів має бути > 0');
 
     // Parallel tenant guard + settings read — обидва незалежні reads на різних таблицях.

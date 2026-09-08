@@ -268,6 +268,15 @@ export class InventoryService {
         'Недостатньо доступного товару для резервування (concurrent RESERVATION)',
       );
     }
+    // Симетрично для decrement quantity (WRITEOFF/TRANSFER-out): якщо фізичний залишок опустився
+    // НИЖЧЕ зарезервованого (напр. пряме списання без попереднього RESERVATION_RELEASE), reserved
+    // перевищив би quantity → available<0 при обох полях ≥0. WO-flow безпечний (RELEASE→WRITEOFF),
+    // але createMovement — публічна поверхня (ручні коригування/майбутні викликачі). Throw→rollback.
+    if (quantityDelta < 0 && upserted.reserved > upserted.quantity) {
+      throw new BadRequestException(
+        'Списання опустило б залишок нижче зарезервованого — спершу зніміть резерв',
+      );
+    }
 
     // Партійне списання (COGS) для фізичного розходу: quantityDelta<0 (WRITEOFF/TRANSFER-out).
     // RESERVATION/RESERVATION_RELEASE не чіпають фізичну кількість → партій не торкаються.
@@ -281,7 +290,12 @@ export class InventoryService {
       if (costMethod === 'AVG_COST') {
         // AVG_COST: собівартість = зважена середня ДО списання; фізичний декремент партій —
         // FIFO (щоб remainingQty спадав і не ламав інваріант; protected AVG-return не чіпаємо).
-        weightedCostPrice = await this.batchService.getAvgCost(orgId, dto.goodId, dto.warehouseId);
+        weightedCostPrice = await this.batchService.getAvgCost(
+          orgId,
+          dto.goodId,
+          dto.warehouseId,
+          db as Prisma.TransactionClient,
+        );
         consumed = await this.batchService.consumeBatch(
           orgId,
           dto.goodId,
