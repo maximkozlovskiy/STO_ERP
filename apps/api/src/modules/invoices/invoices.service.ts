@@ -365,50 +365,53 @@ export class InvoicesService {
     const settlesStandaloneOnPaid =
       newStatus === InvoiceStatus.PAID && inv.workOrderId === null && paymentRemaining > 1e-9;
 
-    await this.prisma.$transaction(async tx => {
-      const moved = await tx.invoice.updateMany({
-        where: { id, orgId, status: inv.status, deletedAt: null },
-        // Ручний перехід у PAID синхронізує paidAmount=amount (щоб «залишок» був 0). CAS
-        // (status:inv.status у where) проти подвійного PAYMENT при concurrent transition.
-        data:
-          newStatus === InvoiceStatus.PAID
-            ? { status: newStatus, paidAmount: inv.amount }
-            : { status: newStatus },
-      });
-      if (moved.count === 0) {
-        throw new BadRequestException('Статус рахунку змінився — повторіть дію');
-      }
-      if (chargesStandaloneOnSend) {
-        await this.settlements.createTransaction(
-          orgId,
-          {
-            counterpartyId: inv.counterpartyId,
-            type: 'CHARGE',
-            amount: Number(inv.amount),
-            documentType: 'Invoice',
-            documentId: id,
-            createdBy: userId,
-          },
-          tx,
-        );
-      }
-      if (settlesStandaloneOnPaid) {
-        // Дзеркальний PAYMENT на непокритий залишок — закриває CHARGE у леджері (Bug #675).
-        // moved.count===1 (CAS вище) гарантує, що це відбувається рівно раз на перехід.
-        await this.settlements.createTransaction(
-          orgId,
-          {
-            counterpartyId: inv.counterpartyId,
-            type: 'PAYMENT',
-            amount: paymentRemaining,
-            documentType: 'Invoice',
-            documentId: id,
-            createdBy: userId,
-          },
-          tx,
-        );
-      }
-    });
+    await this.prisma.$transaction(
+      async tx => {
+        const moved = await tx.invoice.updateMany({
+          where: { id, orgId, status: inv.status, deletedAt: null },
+          // Ручний перехід у PAID синхронізує paidAmount=amount (щоб «залишок» був 0). CAS
+          // (status:inv.status у where) проти подвійного PAYMENT при concurrent transition.
+          data:
+            newStatus === InvoiceStatus.PAID
+              ? { status: newStatus, paidAmount: inv.amount }
+              : { status: newStatus },
+        });
+        if (moved.count === 0) {
+          throw new BadRequestException('Статус рахунку змінився — повторіть дію');
+        }
+        if (chargesStandaloneOnSend) {
+          await this.settlements.createTransaction(
+            orgId,
+            {
+              counterpartyId: inv.counterpartyId,
+              type: 'CHARGE',
+              amount: Number(inv.amount),
+              documentType: 'Invoice',
+              documentId: id,
+              createdBy: userId,
+            },
+            tx,
+          );
+        }
+        if (settlesStandaloneOnPaid) {
+          // Дзеркальний PAYMENT на непокритий залишок — закриває CHARGE у леджері (Bug #675).
+          // moved.count===1 (CAS вище) гарантує, що це відбувається рівно раз на перехід.
+          await this.settlements.createTransaction(
+            orgId,
+            {
+              counterpartyId: inv.counterpartyId,
+              type: 'PAYMENT',
+              amount: paymentRemaining,
+              documentType: 'Invoice',
+              documentId: id,
+              createdBy: userId,
+            },
+            tx,
+          );
+        }
+      },
+      { timeout: 10_000 },
+    ); // updateMany + до 2 settlement-write (CHARGE/PAYMENT) — узгоджено з іншими tx у файлі
     return this.findOne(orgId, id);
   }
 
