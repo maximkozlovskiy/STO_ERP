@@ -3744,3 +3744,77 @@ Baseline на старті: tsc api=0 / shared=0 / web=0; inventory+work-orders 
 - **Control-flow 10 wrap-сайтів (#5):** checkbox 401→retry — перший `wrap` re-throw-ить `FiscalUnauthorizedError`, зовнішній catch `instanceof` спрацьовує; wrap повертає точний destructured shape (`{providerShiftId}`/`{zReportId}`/`{fiscalReceiptId}` незмінні). Wrap-that-swallows зловився б наявними processor-тестами.
 - **Filter endpoint (#6):** `ok 'true'/'false'/absent` → `boolean|undefined`; dateTo inclusive (`+T23:59:59.999Z`); limit cap 200 (`maxLimit:200`); provider/documentType passthrough; roles OWNER/ADMIN (RolesGuard).
 - **Frontend (#7):** retention `Math.max(1,Math.min(365,Number()))` (`Number('')=0`→1); page-reset через `resetTo`; ok/error бейджі; empty-state colSpan=8; error-колонка `log.error ?? ''` + `title={log.error ?? undefined}` — не падає на null.
+
+---
+
+## Session 2026-09-09 — bug-hunt Цикл 1 Фаза 3 (pre-prod R1-R3 + review-фікси 21365cff/2c0c03a6)
+
+Scope: payments (polling/online/cash-shift/provider-config/checkbox), purchase-orders receive, work-orders C2, supplier-payments/returns, invoices/loyalty/inventory/batch, integration-logs, 4 schedulers, frontend (cache-invalidation/InvoiceCreateModal/counterparties/QrPaymentModal). Метод: перевірка money/FSM/inventory інваріантів на крайових випадках. Знайдено 4 РЕАЛЬНІ дефекти (2 HIGH, 1 MEDIUM, 1 LOW); всі виправлено + mutation-verified тести.
+
+### Bug #711 — HIGH (fiscal · подвійний Z-звіт) — cash-shift.close() без CAS на статусі зміни
+
+**Файл:** `apps/api/src/modules/payments/cash-shift.service.ts:136-163`
+**Статус:** [x] виправлено
+
+**Симптом:** `close()` робив `findFirst` (перевірка status OPEN, STALE read) → зовнішній `provider.closeShift()` (пробиття Z-звіту у Checkbox) → `update({where:{id}})` без CAS-предиката на статус. Два concurrent `close()` (подвійний клік / retry / два оператори) обидва проходили head-guard OPEN і обидва викликали `closeShift` → **ДВА фіскальних Z-звіти на одну зміну** (податкове порушення). Контраст із `supplier-payments.confirm()`/`supplier-returns.confirm()`, які CAS-flip-ають статус ПЕРШИМ.
+
+**Причина:** статус-перевірка була stale-read guard, не атомарний claim. Патерн read-check → external side-effect → write без CAS — класичне вікно гонки для exactly-once зовнішнього ефекту.
+
+**Фікс:** CAS-claim `updateMany({where:{id,orgId,status:OPEN,deletedAt:null}, data:{status:CLOSED,closedAt}})` ПЕРЕД зовнішнім викликом. count===0 → «вже закрита» (програвший не пробиває другий Z-звіт). Рівно один переможець іде до `closeShift`. При збої зовнішнього виклику — best-effort revert CLOSED→OPEN (where guard `zReportId:null`), щоб касир повторив, а не лишив зміну CLOSED без реального Z-звіту. `zReportId` дописується окремим update після успіху.
+
+**Регресія (mutation-verified — прибрати `if(claim.count===0)` → 1 тест червоний):** `cash-shift.service.spec.ts`: (1) claim програний count:0 → 400 + `closeShift` НЕ викликано + `update` НЕ викликано; (2) claim виграний, closeShift кидає → revert-updateMany CLOSED→OPEN + rethrow; (3) happy: claim CAS несе status OPEN + orgId, зовнішній виклик після виграного claim.
+
+### Bug #712 — HIGH (inventory/money · over-receipt) — purchase-orders.receive() без верхньої межі receivedQty
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:618-673` (+ DTO `ReceiveLineDto.receivedQty` лише `@Min(0)`)
+**Статус:** [x] виправлено
+
+**Симптом:** per-line CAS (`updateMany where receivedQty=<очікуване>`, `increment`) захищає ЛИШЕ від concurrent-подвоєння, НЕ від надлишкового прийому одним викликом. Прийом 100 на замовлені 10 (quantity=10, receivedQty=0) проходив → RECEIPT-рух +100 у склад + `SUPPLIER_CHARGE ×100·price` (роздутий борг постачальнику), а `allReceived` (receivedQty>=quantity) хибно flip-ав PO у RECEIVED. Порушує **документований інваріант дос'є** `docs/objects/purchase-order.md §100`: «receivedQty не може перевищити line.quantity (guard у DTO)» — guard-а насправді не було ані в DTO (`@Min(0)`), ані в сервісі.
+
+**Причина:** дос'є декларувало guard «у DTO», але `@Max`/кумулятивна перевірка ніколи не була додана. CAS плутали з валідацією межі — він вирішує іншу задачу (гонку, не діапазон).
+
+**Фікс:** fail-fast guard перед `$transaction`: `if (line.receivedQty + recv.receivedQty > line.quantity + RECEIVE_QTY_EPSILON) throw BadRequestException`. `RECEIVE_QTY_EPSILON=1e-6` — толеранс IEEE-754-дрейфу дробових одиниць (літри/кг: 2 прийоми по 3.33 = 9.99…), достатньо малий щоб не пропустити реальний надлишок ≥0.001 (мін. крок). Повідомлення показує замовлено/прийнято/залишок.
+
+**Регресія (mutation-verified — замінити умову на `if(false)` → 2 тести червоні, boundary лишається зелений):** `purchase-orders.service.spec.ts`: (1) прийом 11 на 10 (fresh) → 400 + жодного inventory/settlement/CAS write; (2) кумулятивний 5 на залишок 3 (partial) → 400; (3) boundary рівно 10 на 10 → дозволено (не хибне 400), 1× createMovement + 1× createTransaction.
+
+### Bug #713 — MEDIUM (fiscal · дубль-чек не ловиться на write) — checkbox.processor DONE-write без CAS
+
+**Файл:** `apps/api/src/modules/payments/checkbox.processor.ts:110-113`
+**Статус:** [x] виправлено
+
+**Симптом:** idempotency-guard (pre-read fiscalReceiptId) — STALE. Якби два job на той самий paymentId колись співіснували (concurrency=3), обидва пройшли б guard, обидва пробили б чек, і обидва зробили б plain `update` — БД зберегла б ID ДРУГОГО чека, приховавши дубль у Checkbox. Практичне вікно вузьке (retry-endpoint гейтить fiscalStatus===FAILED + fiscalReceiptId===null, а `onFailed` пише FAILED лише після 288 спроб), але enqueue без jobId-дедупу лишав структурну можливість.
+
+**Причина:** guard був суто pre-read без атомарного write-side backstop. (jobId-дедуп тут не підходить: `removeOnFail:200` утримує failed-job → static jobId зламав би легітимний retry після FAILED.)
+
+**Фікс:** DONE-write через `updateMany({where:{id,orgId,fiscalReceiptId:null}, data:{...}})` — CAS single-writer. count===0 → чек уже записаний паралельно → warn+return без перезапису (БД лишається консистентною до ПЕРШОГО чека). Backstop проти майбутнього рефактора, що послабить retry-гейт. (Залишковий ризик: сам зовнішній side-effect не exactly-once, якщо два job таки співіснують — задокументовано у warn; практично недосяжно за наявних гейтів.)
+
+**Регресія (mutation-verified):** `checkbox.processor.spec.ts`: CAS-write несе fiscalReceiptId:null у where; count:0 → не throw + `update` НЕ викликано (жодного перезапису). 3 наявні DONE-тести переведено з update→updateMany.
+
+### Bug #714 — LOW (robustness · хибний errors++) — nbu-fetch concurrent P2002 не класифікований як idempotent-успіх
+
+**Файл:** `apps/api/src/modules/exchange-rates/nbu-fetch.service.ts:69-91`
+**Статус:** [x] виправлено
+
+**Симптом:** immediate-fetch (`nbu-fetch-now-<org>`) і repeatable cron (`nbu-fetch-<org>`) — окремі jobId → НЕ дедупляться → можуть виконатись одночасно. `exchangeRatesService.create` = `findFirst→create` (не атомарно): обидва читають anyExisting=null → обидва create → переможець ОК, програвший дістає raw **P2002** (`@@unique orgId,currencyId,date`), а НЕ `ConflictException`. Наявна обробка ловила лише ConflictException (sequential-existing) → P2002 падав у warn-гілку → return false → errors++ (хибний лічильник помилок; дані НЕ корумповані — unique-констрейнт блокує дубль-insert).
+
+**Причина:** коментар декларував «idempotent (ConflictException handled)», але race-варіант тієї ж ситуації (P2002) не покривався. `create` не мапить P2002 у ConflictException (bare `prisma.create`).
+
+**Фікс:** додано гілку `e instanceof Prisma.PrismaClientKnownRequestError && e.code==='P2002'` → return true (idempotent-успіх, дзеркалить ConflictException-гілку вище). Імпортовано `Prisma` з `@prisma/client`.
+
+**Регресія (mutation-verified — `if(false)` на P2002-гілці → 1 тест червоний):** новий `nbu-fetch.service.spec.ts` (закрито test-gap: сервіс не мав жодного unit-тесту): create-успіх→errors=0; ConflictException→успіх; **P2002→успіх errors=0**; інша помилка→errors=1.
+
+### Перевірено ЧИСТИМ (probe-list — багів не знайдено):
+
+- **Bug #688 reconcile double-create:** `@unique onlinePaymentIntentId` присутній у schema; `finalizePayment` = pre-check findFirst→create→link + P2002-recovery relink; `payments.create` РЕАЛЬНО персистить onlinePaymentIntentId (рядок 294) → guard живий, не мертвий. WO.paidAmount не інкрементується для QR (finalize не передає workOrderId), АЛЕ це узгоджено з manual-invoice-payment (обидва рухають invoice.paidAmount, не WO) — by-design, не баг.
+- **C2 returnPartsAndCredit:** RETURN(+baseQty) дзеркалить WRITEOFF(−baseQty) тим самим coeff; CREDIT_NOTE = той самий `roundMoney(totalAmount)` in-tx re-read, що й CHARGE → рівно сторнує. `restoreBatchesForReturn` агрегує по batchId усього документа → multi-part-same-batch коректний (StockItem += Σ, batches += Σ, збігаються наприкінці tx). Резерв не відновлюється (на COMPLETED уже знято) — правильно.
+- **inventory reserved-guard:** pre-check + post-check на row-locked upsert-значеннях (Bug #613) + create-branch clamp Math.max(0,·) для CHECK (Bug #621). Атомарний.
+- **batch getAvgCost/consumeBatch/returnToBatch:** tx-read; conditional-decrement CAS (where remainingQty>=take); return idempotency-guard + upper-cap.
+- **provider-config resolveActive/resolveByCode:** legacy-fallback лише для того ж провайдера; DELIVERY-kind не тече monobank; activate() updateMany несе orgId+branchId (Bug #657 ОК).
+- **4 schedulers:** усі removeOnFail:200 + jobId-дедуп + removeOnComplete; nbu enqueueImmediate окремий jobId від repeatable.
+- **QrPaymentModal onPaid-латч:** paidFired ref, скид на кожне відкриття, спрацьовує рівно раз.
+- **cache-invalidation:** WO cancel side-effects (C2 склад+баланс) покриті `invalidateWorkOrderSideEffects`.
+- **counterparties settlementBalanceTone:** CLIENT/SUPPLIER/BOTH/null + zero-guard — коректні знаки.
+- **InvoiceCreateModal ПДВ-прев'ю:** per-row і footer однакова логіка (lineTotalWithVat ?? qty\*unitPrice); display-only toFixed(2), backend recalc авторитетний.
+- **toast-gate (21365cff):** усі toast.\* гейтовані features.toastEnabled + actionError fallback.
+- **invoices CANCELLED-фільтр:** консистентний у межах кожного ресурсу (WO→invoices exclude CANCELLED симетрично; invoice→payments link-counts однакові findMany/groupBy). findAll не виключає CANCELLED — правильно (список показує скасовані з бейджем).
+- **invoices create-vs-refresh amount (LOW-observation, не фіксимо):** `createFromWorkOrder` бере amount=Number(wo.totalAmount), `refreshFromWorkOrder` деривує з per-line roundMoney → можливий 1-копійчаний дрейф на create-then-refresh. Усі значення проходять roundMoney до export (сирий float НЕ тече). Зміна деривації без повного VAT-rounding аудиту ризикована → лишаємо як спостереження.
