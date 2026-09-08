@@ -5,6 +5,35 @@
 
 ---
 
+## 2026-09-09 — audit R3: перед-прод третій раунд (frontend IDOR/derived-fields + ops/lifecycle)
+
+Третій раунд аудиту (кут: authz/IDOR, frontend derived-consistency, ops/queue-lifecycle). 3
+паралельні агенти + власна верифікація. Ядро (money-CAS, tenant, secrets) з R1/R2 підтверджено;
+знайдено frontend-consistency + queue-lifecycle дефекти.
+
+### b5ab13f6 fix(pre-prod-r3): cache-invalidation + ПДВ-прев'ю + тип-aware баланс + queue caps
+
+- **WEB-R3-1/2/3** — крос-ресурс інвалідація платежу. invoices-сторінка (handlePay/QR-onPaid),
+  useCreatePayment, invoice-transition інвалідували лише власний ключ → баланс контрагента/WO/
+  список платежів застарівали до staleTime. Новий спільний `invalidatePaymentSideEffects`.
+- **WEB-R3-4** — InvoiceCreateModal прев'ю «Разом» = Σ(qty×unitPrice) БЕЗ ПДВ → заниження для
+  EXCLUSIVE-орг. Тепер бере авторитетний per-line `priceWithVat` (правильно і для INCLUSIVE — не
+  подвоює). Нові ручні рядки без backend-розрахунку → qty×unitPrice (backend додасть ПДВ).
+- **WEB-R3-5** — колір балансу контрагента фарбувався лише за знаком → борг КЛІЄНТА (balance>0)
+  зеленим замість destructive. Тип-aware `settlementBalanceTone(balance, cp.type)` у панелі І таблиці.
+- **WEB-R3-6** — QrPaymentModal `onPaid` міг спрацювати повторно (refetch/reopen дає PAID знову) →
+  латч `useRef`, скид на відкриття → рівно раз.
+- **F1** — `removeOnFail:200` на 4 repeatable scheduler-и (followup/nbu-fetch/invoice-overdue/
+  integration-log-purge): без cap failed-set у Redis росте безмежно (offline-БД на ПК СТО).
+- **F2** — payment-polling: стеля `pollAttempts` (~2год) для наміру БЕЗ expiresAt (wall-clock guard
+  його б не закрив) → шлюз навічно pending більше не крутить 5с-цикл вічно → EXPIRED. Mutation-verified.
+- **fix** — integration-log-purge processor-тести: wall-clock delta біля добової межі давав flaky
+  ~21h замість ~24h → точне порівняння з Kyiv-семантикою коду (`addDaysKyiv`).
+
+tsc web+api 0. api 1969 + web 696 green.
+
+---
+
 ## 2026-09-08 — audit R2: перед-прод другий раунд (concurrency/idempotency/derived-fields)
 
 Другий раунд аудиту (глибше: concurrency/idempotency, derived-field consistency, regression). 3
