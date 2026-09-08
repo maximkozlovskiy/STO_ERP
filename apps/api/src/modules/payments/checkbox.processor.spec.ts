@@ -44,8 +44,11 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
 
   const paymentFindFirst = vi.fn();
   const paymentUpdate = vi.fn().mockResolvedValue({});
+  // Bug #713: DONE-write тепер через updateMany (CAS where fiscalReceiptId:null). SKIPPED-write
+  // лишається update. Default count:1 = виграв запис.
+  const paymentUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
   const prisma = {
-    payment: { findFirst: paymentFindFirst, update: paymentUpdate },
+    payment: { findFirst: paymentFindFirst, update: paymentUpdate, updateMany: paymentUpdateMany },
   } as unknown as PrismaService;
 
   const resolveActive = vi.fn();
@@ -134,7 +137,7 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
     await processor.process(makeJob());
     expect(open).toHaveBeenCalledWith('org-1', 'br-1');
     expect(sellReceipt).toHaveBeenCalledTimes(1);
-    expect(paymentUpdate).toHaveBeenCalledWith(
+    expect(paymentUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ fiscalReceiptId: 'fr-1', fiscalStatus: 'DONE' }),
       }),
@@ -159,10 +162,21 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
     expect(ensureToken).toHaveBeenCalledWith('org-1', 'shift-1');
     // provider.sellReceipt(cfg, token, {amount, method})
     expect(sellReceipt).toHaveBeenCalledWith(cfg, 'tok', { amount: 100, method: 'cash' });
-    expect(paymentUpdate).toHaveBeenCalledWith({
-      where: { id: 'pay-1', orgId: 'org-1' },
+    // Bug #713: CAS-write несе fiscalReceiptId:null у where → атомарний single-writer.
+    expect(paymentUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'pay-1', orgId: 'org-1', fiscalReceiptId: null },
       data: { fiscalReceiptId: 'fr-1', fiscalStatus: 'DONE', fiscalError: null },
     });
+  });
+
+  // Bug #713 mutation-verified: якщо CAS-write повертає count:0 (інший job уже записав чек
+  // паралельно), processor НЕ кидає і НЕ перезатирає — просто логує й виходить. Без CAS
+  // (plain update) БД зберегла б ID другого чека, приховавши дубль у Checkbox.
+  it('Bug #713: CAS-write count:0 (паралельний чек) → не throw, не перезапис', async () => {
+    paymentUpdateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(processor.process(makeJob())).resolves.toBeUndefined();
+    // update (SKIPPED-шлях) НЕ викликається — жодного перезапису вже-збереженого чека.
+    expect(paymentUpdate).not.toHaveBeenCalled();
   });
 
   it('401 (FiscalUnauthorizedError) від sell → refreshToken → повтор sell → DONE', async () => {
@@ -173,7 +187,7 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
     await processor.process(makeJob());
     expect(refreshToken).toHaveBeenCalledWith('org-1', 'shift-1');
     expect(sellReceipt).toHaveBeenCalledTimes(2);
-    expect(paymentUpdate).toHaveBeenCalledWith(
+    expect(paymentUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ fiscalReceiptId: 'fr-2' }) }),
     );
   });
@@ -183,6 +197,7 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
     await expect(processor.process(makeJob())).rejects.toThrow('Checkbox 500');
     expect(refreshToken).not.toHaveBeenCalled();
     expect(paymentUpdate).not.toHaveBeenCalled();
+    expect(paymentUpdateMany).not.toHaveBeenCalled();
   });
 
   // Bug #707 (re-sign-in loop guard, IMPORTANT для Вчасно): якщо токен ГЕНУЇННО недійсний —

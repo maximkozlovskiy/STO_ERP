@@ -107,10 +107,23 @@ export class CheckboxProcessor extends WorkerHost {
       }
     }
 
-    await this.prisma.payment.update({
-      where: { id: paymentId, orgId },
+    // Bug #713 — атомарний CAS-write (fiscalReceiptId:null у where). Pre-read (рядок 39) — STALE:
+    // якби два job на той самий paymentId колись співіснували (concurrency=3), обидва пройшли б
+    // guard і пробили б чек, і обидва зробили б plain update — БД зберегла б ID другого чека,
+    // приховавши дубль. `updateMany where fiscalReceiptId:null` → рівно перший запис виграє; program
+    // на count===0 не перезатирає вже-збережений чек (принаймні БД лишається консистентною до
+    // ПЕРШОГО чека). Retry-endpoint (fiscalStatus==='FAILED' + fiscalReceiptId===null) робить
+    // подвійний enqueue практично неможливим — це backstop проти майбутнього рефактора.
+    const wrote = await this.prisma.payment.updateMany({
+      where: { id: paymentId, orgId, fiscalReceiptId: null },
       data: { fiscalReceiptId: result.fiscalReceiptId, fiscalStatus: 'DONE', fiscalError: null },
     });
+    if (wrote.count === 0) {
+      this.logger.warn(
+        `Фіскальний чек для платежу ${paymentId} вже записаний паралельно — ${result.fiscalReceiptId} відкинуто (можливий дубль у Checkbox, потрібен розбір)`,
+      );
+      return;
+    }
     this.logger.log(`Фіскальний чек ${result.fiscalReceiptId} для платежу ${paymentId}`);
   }
 
