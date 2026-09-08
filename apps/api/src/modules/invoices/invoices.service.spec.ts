@@ -549,6 +549,105 @@ describe('InvoicesService — business logic guards', () => {
       const arg = prisma.invoice.create.mock.calls[0][0].data;
       expect((arg.dueDate as Date).toISOString().slice(0, 10)).toBe('2026-03-08');
     });
+
+    it('DST boundary: documentDate 2026-10-24 + 7д перетинає осінній перехід → 2026-10-31 (без стрибка)', async () => {
+      // Kyiv осінній fallback = остання неділя жовтня (2026-10-25). addDaysKyiv рахує через
+      // UTC-дні на date-only → зсув рівно 7 календарних днів, DST не з'їдає/не додає доби.
+      setup();
+      settingsMock.getOrganisationSettings.mockResolvedValueOnce({ invoiceDueDays: 7 });
+      await service.create(ORG, {
+        counterpartyId: CP,
+        amount: 100,
+        documentDate: '2026-10-24',
+      } as never);
+      const arg = prisma.invoice.create.mock.calls[0][0].data;
+      expect((arg.dueDate as Date).toISOString().slice(0, 10)).toBe('2026-10-31');
+    });
+
+    it('DST boundary: documentDate 2026-03-28 + 7д перетинає весняний перехід → 2026-04-04', async () => {
+      // Kyiv весняний spring-forward = остання неділя березня (2026-03-29).
+      setup();
+      settingsMock.getOrganisationSettings.mockResolvedValueOnce({ invoiceDueDays: 7 });
+      await service.create(ORG, {
+        counterpartyId: CP,
+        amount: 100,
+        documentDate: '2026-03-28',
+      } as never);
+      const arg = prisma.invoice.create.mock.calls[0][0].data;
+      expect((arg.dueDate as Date).toISOString().slice(0, 10)).toBe('2026-04-04');
+    });
+
+    it('invoiceDueDays=0 → dueDate === documentDate (термін оплати того ж дня)', async () => {
+      setup();
+      settingsMock.getOrganisationSettings.mockResolvedValueOnce({ invoiceDueDays: 0 });
+      await service.create(ORG, {
+        counterpartyId: CP,
+        amount: 100,
+        documentDate: '2026-03-01',
+      } as never);
+      const arg = prisma.invoice.create.mock.calls[0][0].data;
+      expect((arg.dueDate as Date).toISOString().slice(0, 10)).toBe('2026-03-01');
+    });
+
+    it('негативний invoiceDueDays ігнорується (>= 0 guard) → fallback 7 днів', async () => {
+      setup();
+      settingsMock.getOrganisationSettings.mockResolvedValueOnce({ invoiceDueDays: -5 });
+      await service.create(ORG, {
+        counterpartyId: CP,
+        amount: 100,
+        documentDate: '2026-03-01',
+      } as never);
+      const arg = prisma.invoice.create.mock.calls[0][0].data;
+      // raw < 0 → умова (Number.isFinite && raw >= 0) хибна → dueDays лишається 7.
+      expect((arg.dueDate as Date).toISOString().slice(0, 10)).toBe('2026-03-08');
+    });
+  });
+
+  // createFromWorkOrder також резолвить dueDate через invoiceDueDays (обчислюється ПОЗА
+  // Serializable tx). Раніше dueDate був завжди null для WO-рахунків (§13 config gap).
+  describe('createFromWorkOrder — dueDate за invoiceDueDays (§13)', () => {
+    it('дефолтний dueDate = documentDate(kyivToday) + invoiceDueDays проброшено у create', async () => {
+      prisma.workOrder.findFirst.mockResolvedValue({
+        id: WO_ID,
+        orgId: ORG,
+        status: 'COMPLETED',
+        counterpartyId: 'c-1',
+        totalAmount: 500,
+      });
+      // pre-check + inner re-check обидва null (нема існуючого рахунку).
+      prisma.invoice.findFirst.mockResolvedValue(null);
+      prisma.invoice.create.mockImplementation(
+        async ({ data }: { data: Record<string, unknown> }) => ({
+          id: INV_ID,
+          number: 'INV-1',
+          status: 'DRAFT',
+          amount: data.amount,
+          workOrderId: WO_ID,
+          counterpartyId: 'c-1',
+          documentDate: data.documentDate,
+          dueDate: data.dueDate,
+          deletedAt: null,
+          totalWithoutVat: 0,
+          totalVat: 0,
+          totalWithVat: data.amount,
+          createdAt: new Date(),
+          counterparty: { firstName: 'a', lastName: 'b', companyName: null },
+          workOrder: { number: 'WO-1' },
+        }),
+      );
+      settingsMock.getOrganisationSettings.mockResolvedValueOnce({ invoiceDueDays: 10 });
+
+      await service.createFromWorkOrder(ORG, WO_ID);
+
+      const arg = prisma.invoice.create.mock.calls[0][0].data;
+      // dueDate НЕ null — резолвиться з invoiceDueDays (регресія проти §13 config gap).
+      expect(arg.dueDate).toBeInstanceOf(Date);
+      // documentDate === kyivToday → dueDate = kyivToday + 10 днів (перевіряємо дельту).
+      const doc = arg.documentDate as Date;
+      const due = arg.dueDate as Date;
+      const deltaDays = Math.round((due.getTime() - doc.getTime()) / 86_400_000);
+      expect(deltaDays).toBe(10);
+    });
   });
 
   // FIN-C2: standalone-рахунок (workOrderId=null) при DRAFT→SENT створює CHARGE; WO-рахунок — ні

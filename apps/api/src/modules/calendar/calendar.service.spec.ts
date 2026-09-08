@@ -383,5 +383,114 @@ describe('CalendarService.syncWorkOrderSlots', () => {
       expect(prisma._create).toHaveBeenCalledTimes(1);
       expect(result.slots).toHaveLength(1);
     });
+
+    // resolveWorkHours fallback: невалідний "HH:mm" / workEnd≤workStart / нема BranchSettings /
+    // слот без підйомника → безпечний дефолт 8..20. Слот 16:00–19:00 Kyiv (19:00 < 20:00) НЕ
+    // розбивається за дефолтом → рівно 1 create. Це відрізняє fallback (8..20) від
+    // «18:00»-конфігу (який би розбив).
+    it('невалідний workEndTime ("bad") → fallback 8..20 → слот 16:00–19:00 НЕ розбивається', async () => {
+      const prisma = buildCreateMock('bad');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      const result = await service.createSlot(orgId, {
+        liftId,
+        startAt: '2026-05-22T13:00:00.000Z',
+        endAt: '2026-05-22T16:00:00.000Z',
+      } as never);
+      expect(prisma._create).toHaveBeenCalledTimes(1);
+      expect(result.slots).toHaveLength(1);
+    });
+
+    it('workEndTime ≤ workStartTime (некоректна конфігурація) → fallback 8..20', async () => {
+      // workStart 09:00, workEnd 08:00 → endHour(8) ≤ startHour(9) → fallback 8..20.
+      const create = vi.fn().mockImplementation(async ({ data }: { data: { endAt: Date } }) => ({
+        id: 'slot-x',
+        orgId,
+        liftId,
+        employeeId: null,
+        workOrderId: null,
+        counterpartyId: null,
+        vehicleId: null,
+        notes: null,
+        status: 'BOOKED',
+        type: 'WORK',
+        parentSlotId: null,
+        counterparty: null,
+        vehicle: null,
+        workOrder: null,
+        startAt: new Date(),
+        endAt: data.endAt,
+      }));
+      const prisma = {
+        lift: { findFirst: vi.fn().mockResolvedValue({ id: liftId, zone: { branchId } }) },
+        employee: { findFirst: vi.fn() },
+        workOrder: { findFirst: vi.fn() },
+        counterparty: { findFirst: vi.fn() },
+        vehicle: { findFirst: vi.fn() },
+        branchSettings: {
+          findFirst: vi.fn().mockResolvedValue({ workStartTime: '09:00', workEndTime: '08:00' }),
+        },
+        $transaction: vi
+          .fn()
+          .mockImplementation(async (cb: (tx: unknown) => unknown) =>
+            cb({ calendarSlot: { findFirst: vi.fn().mockResolvedValue(null), create } }),
+          ),
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      const result = await service.createSlot(orgId, {
+        liftId,
+        startAt: '2026-05-22T13:00:00.000Z', // 16:00 Kyiv
+        endAt: '2026-05-22T16:00:00.000Z', // 19:00 Kyiv < 20:00 fallback → без split
+      } as never);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(result.slots).toHaveLength(1);
+    });
+
+    it('слот без підйомника (branchId=null) → fallback 8..20, branchSettings не читається', async () => {
+      const create = vi.fn().mockImplementation(async ({ data }: { data: { endAt: Date } }) => ({
+        id: 'slot-x',
+        orgId,
+        liftId: null,
+        employeeId: null,
+        workOrderId: null,
+        counterpartyId: null,
+        vehicleId: null,
+        notes: null,
+        status: 'BOOKED',
+        type: 'WORK',
+        parentSlotId: null,
+        counterparty: null,
+        vehicle: null,
+        workOrder: null,
+        startAt: new Date(),
+        endAt: data.endAt,
+      }));
+      const branchSettingsFindFirst = vi.fn();
+      const prisma = {
+        lift: { findFirst: vi.fn() },
+        employee: { findFirst: vi.fn() },
+        workOrder: { findFirst: vi.fn() },
+        counterparty: { findFirst: vi.fn() },
+        vehicle: { findFirst: vi.fn() },
+        branchSettings: { findFirst: branchSettingsFindFirst },
+        $transaction: vi
+          .fn()
+          .mockImplementation(async (cb: (tx: unknown) => unknown) =>
+            cb({ calendarSlot: { findFirst: vi.fn().mockResolvedValue(null), create } }),
+          ),
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      // Слот без liftId → resolveWorkHours(orgId, null) → fallback без DB read.
+      const result = await service.createSlot(orgId, {
+        startAt: '2026-05-22T13:00:00.000Z', // 16:00 Kyiv
+        endAt: '2026-05-22T16:00:00.000Z', // 19:00 Kyiv < 20:00 → без split
+      } as never);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(result.slots).toHaveLength(1);
+      // Немає branchId → resolveWorkHours коротить на fallback ДО будь-якого branchSettings read.
+      expect(branchSettingsFindFirst).not.toHaveBeenCalled();
+    });
   });
 });

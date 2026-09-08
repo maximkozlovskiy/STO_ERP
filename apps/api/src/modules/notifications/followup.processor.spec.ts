@@ -385,6 +385,97 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     expect(notifications.sendWithConfig).toHaveBeenCalledTimes(2);
   });
 
+  // C3 skipped-counter arithmetic: отримувачі, чия філія без SMS-конфігу, пропускаються
+  // (skipped), а НЕ рахуються як успіх. Promise.allSettled повертає їх як fulfilled
+  // (Promise.resolve) → sendSuccess -= skipped коригує лічильник.
+  describe('C3 — skipped-counter arithmetic (mixed skip/success/fail)', () => {
+    // Двобранчева фікстура: A на br-config (є конфіг), B на br-nocfg (нема конфігу → skip).
+    const setupTwoBranch = (resolveImpl: (org: string, branchId: string) => Promise<unknown>) => {
+      prisma.organisationSettings.findFirst.mockResolvedValue({
+        followUpActive: true,
+        followUpDays: 90,
+      });
+      // fallbackBranch = br-config (для авто без наряду).
+      prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-config' });
+      prisma.maintenanceSchedule.findMany.mockResolvedValue([
+        schedule({
+          id: 'sch-A',
+          vehicle: vehicle({
+            id: 'veh-A',
+            workOrders: [{ branchId: 'br-config' }],
+            customerGarage: {
+              id: 'cg-A',
+              deletedAt: null,
+              counterparty: cp({ id: 'cp-A', phone: '+380670000001' }),
+            },
+          }),
+        }),
+        schedule({
+          id: 'sch-B',
+          vehicle: vehicle({
+            id: 'veh-B',
+            workOrders: [{ branchId: 'br-nocfg' }],
+            customerGarage: {
+              id: 'cg-B',
+              deletedAt: null,
+              counterparty: cp({ id: 'cp-B', phone: '+380670000002' }),
+            },
+          }),
+        }),
+      ]);
+      prisma.vehicle.findMany.mockResolvedValue([]);
+      notifications.resolveConfig.mockImplementation(resolveImpl as never);
+    };
+
+    it('B без конфігу філії пропускається (skip), НЕ помилка; A шле нормально', async () => {
+      setupTwoBranch(async (_org, branchId) =>
+        branchId === 'br-config' ? DEFAULT_SMS_CONFIG : null,
+      );
+
+      // Success для A; не throw попри skip B (skip != error).
+      await expect(processor.process(makeJob())).resolves.toBeUndefined();
+      // Лише A реально надсилається; B skipped (cfg=null → Promise.resolve, без sendWithConfig).
+      expect(notifications.sendWithConfig).toHaveBeenCalledTimes(1);
+      expect(notifications.sendWithConfig).toHaveBeenCalledWith(
+        'org-1',
+        DEFAULT_SMS_CONFIG,
+        expect.objectContaining({ phone: '+380670000001' }),
+        'br-config',
+        'FOLLOWUP_REMINDER',
+      );
+    });
+
+    it('skip + реальний send fail → throw (усі НЕ-skip провалились = батч на retry)', async () => {
+      setupTwoBranch(async (_org, branchId) =>
+        branchId === 'br-config' ? DEFAULT_SMS_CONFIG : null,
+      );
+      // Єдиний реальний send (A) провалюється. B — skip. sendSuccess має стати 0 → throw.
+      notifications.sendWithConfig.mockRejectedValue(new Error('SMS gateway down'));
+
+      await expect(processor.process(makeJob())).rejects.toThrow('SMS gateway down');
+      // Раніше: якби skip рахувався як success (без -= skipped), sendSuccess=1 → НЕ throw →
+      // BullMQ не ретраїв би реальну помилку. Guard проти цієї арифметичної регресії.
+    });
+
+    it('skip + реальний send success → НЕ throw (skip не роздуває success понад реальні)', async () => {
+      setupTwoBranch(async (_org, branchId) =>
+        branchId === 'br-config' ? DEFAULT_SMS_CONFIG : null,
+      );
+      notifications.sendWithConfig.mockResolvedValue(undefined); // A success
+
+      await expect(processor.process(makeJob())).resolves.toBeUndefined();
+      expect(notifications.sendWithConfig).toHaveBeenCalledTimes(1);
+    });
+
+    it('ВСІ задіяні філії без конфігу → early return (жодного sendWithConfig, без skip-циклу)', async () => {
+      // Обидва отримувачі на філіях без конфігу → configByBranch.every(null) → early return.
+      setupTwoBranch(async () => null);
+
+      await expect(processor.process(makeJob())).resolves.toBeUndefined();
+      expect(notifications.sendWithConfig).not.toHaveBeenCalled();
+    });
+  });
+
   it('formatName fallback "клієнте" для контрагента без імен → SMS не "Вітаємо, !"', async () => {
     prisma.organisationSettings.findFirst.mockResolvedValue({
       followUpActive: true,

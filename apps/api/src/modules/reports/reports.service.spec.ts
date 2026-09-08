@@ -80,6 +80,116 @@ describe('ReportsService — Bug #629 квантування грошей у з�
     expect(has2Decimals(r.grossProfit)).toBe(true);
   });
 
+  // §13 config-over-hardcode: laborCostRatio per-org (не hardcoded 0.4). Множник масштабує
+  // totalCostLabor. Clamp [0,1] + fallback 0.4 при недоступності налаштувань.
+  describe('profitability — laborCostRatio per-org (§13)', () => {
+    it('non-default 0.6 → totalCostLabor масштабується (totalLabor × 0.6)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (service as any).settings.getOrganisationSettings.mockResolvedValueOnce({
+        laborCostRatio: 0.6,
+      });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ totalRevenue: 10000, totalLabor: 1000, ordersCount: 5n }])
+        .mockResolvedValueOnce([{ costParts: 0, unknownCount: 0n }]);
+
+      const r = await service.profitability(orgId, from, to);
+
+      expect(r.totalCostLabor).toBe(600.0); // 1000 × 0.6 (не 400 як за дефолтом 0.4)
+      expect(r.totalCost).toBe(600.0);
+      expect(r.grossProfit).toBe(9400.0);
+      expect(has2Decimals(r.totalCostLabor)).toBe(true);
+    });
+
+    it('default 0.4 → totalCostLabor як раніше (регресія-guard стабільності множника)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (service as any).settings.getOrganisationSettings.mockResolvedValueOnce({
+        laborCostRatio: 0.4,
+      });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ totalRevenue: 10000, totalLabor: 1000, ordersCount: 5n }])
+        .mockResolvedValueOnce([{ costParts: 0, unknownCount: 0n }]);
+
+      const r = await service.profitability(orgId, from, to);
+      expect(r.totalCostLabor).toBe(400.0);
+    });
+
+    it('boundary 0 → жодних labor-витрат (totalCostLabor=0)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (service as any).settings.getOrganisationSettings.mockResolvedValueOnce({
+        laborCostRatio: 0,
+      });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ totalRevenue: 5000, totalLabor: 4000, ordersCount: 3n }])
+        .mockResolvedValueOnce([{ costParts: 0, unknownCount: 0n }]);
+
+      const r = await service.profitability(orgId, from, to);
+      expect(r.totalCostLabor).toBe(0);
+    });
+
+    it('boundary 1 → totalCostLabor === totalLabor (100% ФОП)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (service as any).settings.getOrganisationSettings.mockResolvedValueOnce({
+        laborCostRatio: 1,
+      });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ totalRevenue: 5000, totalLabor: 4000, ordersCount: 3n }])
+        .mockResolvedValueOnce([{ costParts: 0, unknownCount: 0n }]);
+
+      const r = await service.profitability(orgId, from, to);
+      expect(r.totalCostLabor).toBe(4000.0);
+    });
+
+    it('clamp: значення поза [0,1] (1.5 і -0.5) обрізаються до меж', async () => {
+      // >1 → clamp до 1
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (service as any).settings.getOrganisationSettings.mockResolvedValueOnce({
+        laborCostRatio: 1.5,
+      });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ totalRevenue: 5000, totalLabor: 1000, ordersCount: 3n }])
+        .mockResolvedValueOnce([{ costParts: 0, unknownCount: 0n }]);
+      let r = await service.profitability(orgId, from, to);
+      expect(r.totalCostLabor).toBe(1000.0); // 1000 × 1 (не 1500)
+
+      // <0 → clamp до 0
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (service as any).settings.getOrganisationSettings.mockResolvedValueOnce({
+        laborCostRatio: -0.5,
+      });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ totalRevenue: 5000, totalLabor: 1000, ordersCount: 3n }])
+        .mockResolvedValueOnce([{ costParts: 0, unknownCount: 0n }]);
+      r = await service.profitability(orgId, from, to);
+      expect(r.totalCostLabor).toBe(0); // 1000 × 0 (не -500)
+    });
+
+    it('settings failure → fallback default 0.4 (звіт не блокується)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (service as any).settings.getOrganisationSettings.mockRejectedValueOnce(
+        new Error('settings db down'),
+      );
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ totalRevenue: 10000, totalLabor: 1000, ordersCount: 5n }])
+        .mockResolvedValueOnce([{ costParts: 0, unknownCount: 0n }]);
+
+      const r = await service.profitability(orgId, from, to);
+      expect(r.totalCostLabor).toBe(400.0); // 1000 × 0.4 (дефолт)
+    });
+
+    it('non-finite laborCostRatio (NaN) → fallback default 0.4', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (service as any).settings.getOrganisationSettings.mockResolvedValueOnce({
+        laborCostRatio: 'not-a-number',
+      });
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ totalRevenue: 10000, totalLabor: 1000, ordersCount: 5n }])
+        .mockResolvedValueOnce([{ costParts: 0, unknownCount: 0n }]);
+
+      const r = await service.profitability(orgId, from, to);
+      expect(r.totalCostLabor).toBe(400.0);
+    });
+  });
+
   it('revenue: totalRevenue = Σ рядків квантовано (JS-float Σ не дрейфує)', async () => {
     // 3 дні з дробовими копійками, сума яких у JS дрейфує без roundMoney.
     prisma.garageBranch.findFirst.mockResolvedValue(null);

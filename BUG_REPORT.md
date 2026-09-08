@@ -3,6 +3,49 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-09-08 — Bug hunt: tech-debt closure batch (2d7c672e..4f811ec3, backend+DB) — laborCostRatio / dueDate / calendar work-hours / forEachActiveOrg / followup C3
+
+Ціль: реальні баги у 6 напрямах tech-debt (A1 invoices dueDate, A2 calendar per-branch work-hours, A3 reports laborCostRatio, B1 forEachActiveOrg cursor-пагінація, C3 followup per-branch SMS). Code review вже CLEAN (0). Фокус (task): money-коректність (dueDate, laborCostRatio), Kyiv DST edge-дати, tenant orgId, C3 counter-арифметика. Baseline: API 1851 зелено (116 файлів), tsc api=0.
+
+**Вердикт по фіче-коду: КОРЕКТНИЙ на всіх запитаних точках — 0 логічних дефектів.** Провів adversarial-трейс кожного напряму (нижче) + node-скрипти на DST-межах (addDaysKyiv осінь/весна/рік, kyivEndOfWorkDay/kyivStartOfNextWorkDay на 24/25/26-жовт fallback-день). Знайдено **6 test-gap** у money-/DST-/counter-критичних шляхах (load-bearing логіка без прямих тестів → тихий регрес при рефакторингу). Всі закриті regression-тестами (+19 тестів: 76→95 у scope-специ).
+
+### Test-gap #701 (MEDIUM → закрито) — profitability: laborCostRatio non-default / clamp / boundary / settings-failure без тестів — [x] виправлено
+
+**Файл:** `apps/api/src/modules/reports/reports.service.ts` `profitability()`
+**Природа:** був лише тест з `laborCostRatio=0.4` (дефолт). Non-default множник (0.6), clamp [0,1] (1.5→1, -0.5→0), boundary 0/1, settings-reject→0.4, NaN→0.4 — усі БЕЗ guard. Рефактор що зламав би clamp чи fallback пройшов би CI зеленим → неправильний `totalCostLabor` у звіті/CSV «Рентабельність» (грошове поле).
+**Трейс-доказ коректності:** `raw=Number(dto.laborCostRatio)`; `Number.isFinite(raw)` відсікає NaN/рядок→лишається 0.4; `Math.min(Math.max(raw,0),1)` clamp; `catch`→0.4. `totalCostLabor=roundMoney(totalLabor×ratio)` квантовано.
+**Fix:** +7 тестів (0.6-масштаб, 0.4-стабільність, boundary 0, boundary 1, clamp 1.5/-0.5, settings-reject, NaN-рядок).
+
+### Test-gap #702 (MEDIUM → закрито) — invoices dueDate: DST-межі та createFromWorkOrder-шлях без тестів — [x] виправлено
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts` `resolveDueDate()` + `createFromWorkOrder()`
+**Природа:** `create()`-шлях мав тести (7д/explicit/settings-fail), але (1) DST-межові дати (осінь 2026-10-24+7, весна 2026-03-28+7), (2) `invoiceDueDays=0`→той самий день, (3) негативний→fallback-7 (>= 0 guard), (4) `createFromWorkOrder`-шлях (dueDate резолвиться ПОЗА Serializable tx) — усі без guard. `createFromWorkOrder` раніше завжди давав dueDate=null (§13 config gap) — регресія-guard відсутній.
+**Трейс-доказ:** `addDaysKyiv` рахує через UTC-дні на date-only KYIV_YMD → DST не з'їдає/не додає доби (node-верифіковано: +7 через обидва переходи = рівно 7 календарних днів). `Math.trunc(raw)` при `raw>=0`; explicit truthy→поважається.
+**Fix:** +5 тестів у `create` (DST осінь/весна, =0, негативний) + новий describe `createFromWorkOrder — dueDate за invoiceDueDays` (dueDate instanceof Date, delta=invoiceDueDays).
+
+### Test-gap #703 (MEDIUM → закрито) — calendar resolveWorkHours fallback-гілки без тестів — [x] виправлено
+
+**Файл:** `apps/api/src/modules/calendar/calendar.service.ts` `resolveWorkHours()` + `createSlot()` day-split
+**Природа:** був тест split@18:00 vs no-split@20:00, але fallback 8..20 при (1) невалідному "HH:mm", (2) `workEnd≤workStart`, (3) слоті без підйомника (branchId=null) — без guard. Рефактор що зламав би fallback→день би розбивався на неправильній межі.
+**Трейс-доказ:** `parseHour` regex `^(\d{1,2}):`+range[0..23]→інакше fallback; `endHour<=startHour`→fallback; `!branchId`→fallback ДО DB read. node-верифіковано DST-коректність kyivEndOfWorkDay/kyivStartOfNextWorkDay на fallback-день 2026-10-25.
+**Fix:** +3 тести (невалідний workEndTime="bad"→8..20 no-split; workEnd≤workStart→fallback; без-lift→fallback + branchSettings.findFirst НЕ викликано).
+
+### Test-gap #704 (MEDIUM → закрито) — followup C3 skipped-counter арифметика (mixed skip/success/fail) без тестів — [x] виправлено
+
+**Файл:** `apps/api/src/modules/notifications/followup.processor.ts` `process()` counter-логіка
+**Природа:** multi-branch і dedup покриті, але skipped-лічильник × (fail/success) — ні. skipped-отримувачі (філія без конфігу) повертають `Promise.resolve`→fulfilled→рахуються у `sendSuccess`, потім `sendSuccess -= skipped`. Якщо `-= skipped` прибрати при рефакторингу → skip рахувався б як успіх → `sendSuccess>0` при всіх-реальних-fail → BullMQ НЕ ретраїв би реальну помилку (тихо втрачені SMS).
+**Трейс-доказ:** raw `sendSuccess = реальні_успіхи + skipped` (skip завжди fulfilled) ≥ skipped → `-= skipped` ніколи не негативний; throw-умова `sendErrors>0 && sendSuccess===0` спрацьовує лише коли всі НЕ-skip провалились. **Арифметика коректна.**
+**Fix:** +4 тести (skip B не-помилка + A шле; skip + реальний fail → throw «SMS gateway down»; skip + реальний success → НЕ throw; усі-філії-без-конфігу → early return без sendWithConfig).
+
+### Доведено коректним (adversarial-трейс, багів немає)
+
+- **B1 forEachActiveOrg:** keyset `orderBy id asc` + `skip:1 cursor` + stop-on-short-batch → без пропусків/дублів; exact-batchSize (2-й порожній батч зупиняє); empty→0; `deletedAt:null`. Наявний спец покриває всі 5 випадків — гепів немає.
+- **A1 addDaysKyiv DST:** node-верифіковано осінь(10-24+7→10-31)/весна(03-28+7→04-04)/рік(12-31+1→01-01)/Feb(02-28+1→03-01)/zero(+0)→усі точні.
+- **A3 laborCostRatio type-flow:** DTO `mapOrgSettings.toNum()` конвертує Decimal→number ДО reports; Redis-cache шлях JSON.parse теж number → `Number(number)` без втрат.
+- **C3 branch-resolution:** maintenance workOrders `select branchId`; inactive workOrders повний include→`lastWO.branchId`; `branchId=null`→fallbackBranch; resolveConfig memoized per-унікальну-філію (0 DB reads у fan-out).
+
+**Результат:** знайдено 6 test-gap (money/DST/counter-критичні), закрито 6, залишилось 0. **0 логічних багів у коді** (review CLEAN підтверджено adversarial-аналізом). tsc api=0. API-suite 1851→1870 (116 файлів, +19 тестів). Integrations (vchasno/liqpay/checkbox/nova-poshta/monobank) не чіпались per task-scope. E2E пропущено (Playwright MCP CONNECT_TIMEOUT — не блокер, backend-only scope).
+
 ## Session 2026-09-07 — Bug hunt: інтеграція Нової Пошти — трекінг доставки у PurchaseOrder (917140dc + c7424745 + 490822b4, main)
 
 Ціль: логічні баги нової фічі delivery-tracking. Baseline: API PO+delivery+provider-config+settings 198 зелено; tsc api=0. Фокус (task): PO create/update enqueue-on-ttn + normalizeTracking + DRAFT-guard-ordering + toDto 4 delivery-поля; mapStatus крайові коди; polling loop-safety (термінал/cap/zombie-job) mutation-verify; pollDelayMs clamp; legacy cross-kind (review-fix #692-споріднене); secrets write-only; frontend dirty-guard/badge null-safe.
