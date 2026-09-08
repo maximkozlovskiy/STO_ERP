@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-09-08 — audit: перед-прод перевірка тех-боргу + логічних помилок (3 HIGH + money/security)
+
+Широкий read-only аудит по всьому проєкту (3 паралельні агенти: money/inventory/FSM · offline/
+черги/scheduler/sync · security/tenant/config) + власна верифікація кожної знахідки. Ядро визнано
+дуже добре захищеним (settlement-знаки, Σ-інваріант, C2-реверс, double-charge, FSM-симетрія, cloud-
+sync — CLEAN). Виправлено реальні дефекти:
+
+### 41be8e14 fix(audit): PO receive CAS + cross-tenant goodId guard (HIGH×2)
+
+- **H1 (money+stock):** PO receive() мав stale-read guard, НЕ CAS → 2 concurrent/дубльовані receive()
+  подвоювали залишок + борг постачальнику. Fix: per-line CAS на received-delta.
+- **cross-tenant (HIGH):** PO+stock-doc create/update писали lines[].goodId сирим (не валідований з
+  orgId) → org A підсунула б goodId org B → крос-tenant рух складу. Fix: validateLineGoodIds (обидва).
+
+### f2a35705 fix(audit): VAT config + TurboSMS token-redact + SSRF parity (MEDIUM/LOW)
+
+- **M5 (money):** invoices.addLine хардкод `?? 20` → NONE-org отримував 20% ПДВ. Fix: getDefaultVatRate.
+- **secret leak:** turbosms error без redactSecrets (токен у body) → ехо-4xx витік би у NotificationLog.
+  Fix: redactSecrets + повний SSRF-guard-набір на turbosms/esputnik/nbu.
+
+### 21d517c6 fix(audit): booking duration + Kyiv weekday + confirm CAS/orphan (HIGH)
+
+- **H2:** availability блокувала confirmed-заявку вікном тривалості поточного запиту → double-booking.
+  Fix: skip матеріалізованих (вже у busyCalendarSlots). **H3:** confirm CAS на stale-статусі + orphan-
+  слот → CAS на 'PENDING' + cleanup. **M3:** weekday .getDay()→Kyiv.
+
+Кожен фікс — mutation-verified regression. tsc api 0, повна API-suite 1962 зелено. Відкладено (non-
+blocking, задокументовано): M2 Kyiv date-range list-фільтри, M1 supplier-overpay guard, M4 bankAccount
+role-gate, migration IF NOT EXISTS (вже застосована).
+
+---
+
 ## 2026-09-08 — feat: IntegrationLog — логи зовнішніх обмінів (metadata-only) + UI + retention
 
 Жоден зовнішній обмін (LiqPay/Checkbox/Вчасно/Нова Пошта/monobank) раніше не залишав сліду.

@@ -90,6 +90,8 @@ DRAFT → CONFIRMED
 ## Бізнес-правила
 
 - Номер авто-генерується: `DocumentNumberService.next(orgId, documentType)`
+- **create/update: `validateLineGoodIds(orgId, lines)`** — усі goodId рядків мусять належати org
+  (Good.id глобально унікальний → інакше cross-tenant FK-injection на confirm→createMovement). 404 ДО запису.
 - Деdup рядків перед transition: `Set(lineIds)` — duplicate lineId → `BadRequestException`
 - Рухи у `Promise.all` (disjoint по `(goodId, warehouseId)` для WRITEOFF ↔ RECEIPT — safe)
 - `STOCK_DOC_TYPE_LABELS` у `@sto/shared` — додавати нові типи туди, не хардкодити на фронті

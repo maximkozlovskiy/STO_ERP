@@ -96,12 +96,16 @@ Bug #598), **Днів до оплати** (`ExpiryBadge` «N дн.»/«Прос�
 ## Бізнес-правила: receive() інваріанти
 
 1. `activeLines` = лише рядки де `line.quantity - line.receivedQty > 0`
-2. `deduplicateBy(receivedLines, l => l.lineId)` ПЕРЕД `$transaction` — запобігає дублям
+2. `deduplicateBy(receivedLines, l => l.lineId)` ПЕРЕД `$transaction` — запобігає дублям у payload
 3. `receivedQty` не може перевищити `line.quantity` (guard у DTO)
-4. Після receive у `$transaction`:
-   - `InventoryService.createMovement(RECEIPT)` для кожного рядка
-   - `purchaseOrderLine.update({ receivedQty: += received })` у `Promise.all` (disjoint rows — safe)
-   - `SettlementsService.createTransaction(CHARGE)` — борг перед постачальником
+4. **create/update: `validateLineGoodIds(orgId, lines)`** — усі goodId рядків мусять належати org
+   (Good.id глобально унікальний → інакше cross-tenant FK-injection). Кидає 404 ДО запису.
+5. receive() у `$transaction` (2 кроки, порядок критичний):
+   - **КРОК 1 — CAS per-line (НЕ просто stale-read!):** `purchaseOrderLine.updateMany({where:{id,orgId,
+receivedQty:<очікуване>}, data:{increment}})` ПОСЛІДОВНО; `count===0`→throw. Concurrent/дубльований
+     receive() уже змінив receivedQty → CAS не матчить → rollback ДО руху/боргу (без подвоєння).
+   - **КРОК 2** (після CAS усіх рядків): `InventoryService.createMovement(RECEIPT)` (Promise.all) +
+     один `SettlementsService.createTransaction(SUPPLIER_CHARGE)` — борг перед постачальником.
 
 > Борг, створений `receive()`, закривається документом [SupplierPayment](supplier-payment.md)
 > (`SettlementTransaction(PAYMENT)`). PO можна опціонально прив'язати до оплати для аналітики.
