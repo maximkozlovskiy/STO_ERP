@@ -144,7 +144,7 @@ export class BookingService {
           requestedDate: { gte: dayStart, lte: dayEnd },
           deletedAt: null,
         },
-        select: { requestedDate: true, liftId: true },
+        select: { requestedDate: true, liftId: true, confirmedSlotId: true },
         take: 200,
       }),
       serviceIds?.length
@@ -172,10 +172,11 @@ export class BookingService {
     const workDays: number[] = Array.isArray(workDaysRaw)
       ? (workDaysRaw as number[])
       : [1, 2, 3, 4, 5];
-    const requestedDayOfWeek = new Date(`${date}T12:00:00.000${offset}`).getDay();
-    // JS getDay(): 0=Sun,1=Mon,...,6=Sat → convert to ISO weekday (1=Mon,7=Sun)
-    const isoDay = requestedDayOfWeek === 0 ? 7 : requestedDayOfWeek;
-    if (!workDays.includes(isoDay)) return [];
+    // Kyiv-aware ISO-weekday (НЕ .getDay() на offset-рядку — той дає server-local день і на
+    // non-UTC хості класифікує робочий/вихідний день неправильно). Дзеркалить create() (KYIV_WEEKDAY_FMT).
+    const isoDay =
+      WEEKDAY_TO_ISO[KYIV_WEEKDAY_FMT.format(new Date(`${date}T12:00:00.000${offset}`))];
+    if (!isoDay || !workDays.includes(isoDay)) return [];
 
     // Calculate duration from requested services (falls back to stepMinutes).
     let totalMinutes = stepMinutes;
@@ -211,10 +212,14 @@ export class BookingService {
       if (arr) arr.push(parsed);
       else busyByLift.set(b.liftId, [parsed]);
     }
-    // CONFIRMED-заявки з обраним ліфтом → блокують саме цей ліфт (вікно = requestedDate +
-    // тривалість запиту). Так одна підтверджена заявка НЕ блокує решту ліфтів на той час.
+    // CONFIRMED-заявки з обраним ліфтом, які МАТЕРІАЛІЗУВАЛИ CalendarSlot (confirm C2), уже
+    // покриті через busyCalendarSlots з ВЛАСНОЮ тривалістю → пропускаємо (інакше блокували б
+    // вікном тривалості ПОТОЧНОГО запиту, а не своєї заявки → недоблокування/подвійне бронювання).
+    // Тут лишається лише legacy-fallback: confirmed+lift БЕЗ слота — блокуємо консервативно
+    // вікном поточного запиту (рідкісний до-C2 стан).
     for (const b of bookedSlots) {
       if (!b.liftId) continue; // legacy без ліфта — вже у bookedTimes (блокує всі)
+      if (b.confirmedSlotId) continue; // матеріалізований слот — уже у busyCalendarSlots
       const startMs = new Date(b.requestedDate).getTime();
       const parsed = { startMs, endMs: startMs + totalMinutes * 60_000 };
       const arr = busyByLift.get(b.liftId);
@@ -410,6 +415,19 @@ export class BookingService {
       },
     });
     if (!req) throw new NotFoundException('Заявку не знайдено');
+    // Скасовану заявку підтвердити НЕ можна. Уже CONFIRMED — ідемпотентний no-op (Bug #700:
+    // повторний confirm/double-click повертає поточний стан, БЕЗ пересоздання слота/повторного CAS).
+    if (req.status === 'CANCELLED') {
+      throw new BadRequestException('Скасовану заявку не можна підтвердити');
+    }
+    if (req.status === 'CONFIRMED') {
+      const current = await this.prisma.bookingRequest.findFirstOrThrow({
+        where: { id, orgId },
+        include: { branch: { select: { name: true } } },
+      });
+      return this.toDto(current);
+    }
+    // Далі — лише PENDING. CAS нижче на ЛІТЕРАЛ 'PENDING' → рівно один concurrent confirm виграє.
 
     // Опційна валідація явно переданого slotId (backward-compat: rejects cross-tenant/stale).
     if (slotId) {
@@ -424,6 +442,7 @@ export class BookingService {
     // createSlot робить конфлікт-чек + split + EXCLUDE-backstop → якщо ліфт зайнято на цей час,
     // кине 409 і confirm НЕ відбудеться (заявка лишається PENDING). Робимо ПЕРЕД CONFIRMED.
     let confirmedSlotId = req.confirmedSlotId ?? null;
+    let createdSlotThisCall = false;
     if (req.liftId && !confirmedSlotId) {
       const durationMin = await this.resolveDurationMinutes(orgId, req.branchId, req.serviceIds);
       const startAt = new Date(req.requestedDate);
@@ -437,14 +456,27 @@ export class BookingService {
       });
       // createSlot повертає {slots:[...]} (2 при split через межу дня) — лінкуємо parent-слот.
       confirmedSlotId = created.slots[0]?.id ?? null;
+      createdSlotThisCall = true;
     }
 
-    // Defense-in-depth: scope by orgId у where; CAS через status=PENDING проти подвійного confirm.
+    // CAS на ЛІТЕРАЛ 'PENDING' (не req.status): рівно один concurrent confirm виграє.
     const result = await this.prisma.bookingRequest.updateMany({
-      where: { id, orgId, deletedAt: null, status: req.status },
+      where: { id, orgId, deletedAt: null, status: 'PENDING' },
       data: { status: 'CONFIRMED', ...(confirmedSlotId ? { confirmedSlotId } : {}) },
     });
-    if (result.count === 0) throw new NotFoundException('Заявку не знайдено');
+    if (result.count === 0) {
+      // Програли гонку (інший confirm уже забрав заявку). Прибираємо orphan-слот, створений
+      // цим викликом, щоб він не тримав ліфт зайнятим без прив'язаної CONFIRMED-заявки.
+      if (createdSlotThisCall && confirmedSlotId) {
+        await this.prisma.calendarSlot
+          .updateMany({
+            where: { OR: [{ id: confirmedSlotId }, { parentSlotId: confirmedSlotId }], orgId },
+            data: { deletedAt: new Date() },
+          })
+          .catch(() => undefined);
+      }
+      throw new NotFoundException('Заявку не знайдено');
+    }
     const updated = await this.prisma.bookingRequest.findFirstOrThrow({
       where: { id, orgId },
       include: { branch: { select: { name: true } } },
