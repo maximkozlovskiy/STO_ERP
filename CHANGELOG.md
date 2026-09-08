@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-09-08 — audit R2: перед-прод другий раунд (concurrency/idempotency/derived-fields)
+
+Другий раунд аудиту (глибше: concurrency/idempotency, derived-field consistency, regression). 3
+паралельні агенти + власна верифікація. Знайшов **3 HIGH СІБЛІНГИ** раунд-1 PO-receive бага +
+MEDIUM-и. Ядро підтверджено: Σ-інваріант, batch-consume, LWW-sync, encrypted-secrets, gold-standard
+CAS-сайти (stock-documents/completion-acts/invoices) — CLEAN.
+
+### 09391226 fix(review): getAvgCost tx-read у consumeBatch AVG_COST-гілці (audit-r2 sibling)
+
+Верифікація fa65a312+51c8cc5b (sto-review-agent): усі 7 фіксів CORRECT & COMPLETE, дзеркалять
+gold-standard CAS точно, no regression. Знайдено 1 латентний сіблінг getAvgCost tx-read фіксу —
+`batch.service.consumeBatch:190` AVG_COST-гілка досі кликала `getAvgCost` без tx (недосяжно з
+прод-викликачів: inventory.service завжди передає 'FIFO' у consumeBatch, але consumeBatch —
+внутрішня поверхня). `db = tx` вже у скоупі → передано; zero-cost, закриває пастку для майбутніх
+викликачів. tsc api 0, повна suite 1968 зелено.
+
+### fa65a312 fix: stale-read→CAS у 3 FSM-переходах + date-400
+
+- **HIGH×3** — work-orders.transition(COMPLETED) / supplier-payments.confirm / supplier-returns.confirm
+  усі мали stale-read guard (re-read+throw, НЕ CAS) → concurrent → подвійний CHARGE / SUPPLIER_PAYMENT /
+  WRITEOFF+REFUND. Коментарі посилались на «supplier-payments.confirm CAS» як еталон, але той його не
+  мав (phantom). Fix: CAS `updateMany where status=expected` ПЕРШИМ, count=0→throw.
+- **MEDIUM (self-regression)** — integration-logs findAll date @Query invalid→Prisma 500 → parseDateOr400.
+
+### 51c8cc5b fix: loyalty quantize + reserved-guard + getAvgCost tx (MEDIUM)
+
+- loyalty redeem/earn квантують points до 2dp → balance не розходиться з Σ(ledger).
+- inventory reserved≤quantity guard і на quantityDelta<0 (пряме WRITEOFF нижче reserved).
+- getAvgCost читає через tx (AVG_COST COGS бачить uncommitted RECEIPT тієї ж tx).
+
+Усі mutation-verified. tsc api 0, повна API-suite 1962→1968 зелено. Лишок round-2 — LOW (cash-shift
+close CAS, checkbox non-atomic, JSON.parse guard, PO transition CAS): задокументовано, non-blocking.
+
+---
+
 ## 2026-09-08 — audit: перед-прод перевірка тех-боргу + логічних помилок (3 HIGH + money/security)
 
 Широкий read-only аудит по всьому проєкту (3 паралельні агенти: money/inventory/FSM · offline/
