@@ -334,7 +334,13 @@ export class InvoicesService {
   ): Promise<InvoiceResponseDto> {
     const inv = await this.prisma.invoice.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { status: true, workOrderId: true, counterpartyId: true, amount: true },
+      select: {
+        status: true,
+        workOrderId: true,
+        counterpartyId: true,
+        amount: true,
+        paidAmount: true,
+      },
     });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
 
@@ -349,11 +355,21 @@ export class InvoicesService {
       newStatus === InvoiceStatus.SENT &&
       inv.workOrderId === null;
 
+    // Bug #675: ручний →PAID для STANDALONE-рахунку мусить закрити CHARGE дзеркальним PAYMENT,
+    // інакше у леджері висить борг попри PAID. Тільки standalone (workOrderId=null) отримав CHARGE
+    // на SEND; PAID досяжний лише з SENT/PARTIALLY_PAID/OVERDUE — усі пройшли SEND → CHARGE існує.
+    // WO-рахунок НЕ чіпаємо (його CHARGE через COMPLETED, оплата йде окремо через payments-модуль).
+    // Сума PAYMENT = непокритий залишок (amount − вже сплачене paidAmount), щоб не подвоїти
+    // часткові оплати, зроблені раніше через payments-модуль.
+    const paymentRemaining = Number(inv.amount) - Number(inv.paidAmount);
+    const settlesStandaloneOnPaid =
+      newStatus === InvoiceStatus.PAID && inv.workOrderId === null && paymentRemaining > 1e-9;
+
     await this.prisma.$transaction(async tx => {
       const moved = await tx.invoice.updateMany({
         where: { id, orgId, status: inv.status, deletedAt: null },
-        // Ручний перехід у PAID синхронізує paidAmount=amount (щоб «залишок» був 0). Це
-        // статус-узгодження, а НЕ платіж — Payment/PAYMENT-settlement тут не створюються.
+        // Ручний перехід у PAID синхронізує paidAmount=amount (щоб «залишок» був 0). CAS
+        // (status:inv.status у where) проти подвійного PAYMENT при concurrent transition.
         data:
           newStatus === InvoiceStatus.PAID
             ? { status: newStatus, paidAmount: inv.amount }
@@ -369,6 +385,22 @@ export class InvoicesService {
             counterpartyId: inv.counterpartyId,
             type: 'CHARGE',
             amount: Number(inv.amount),
+            documentType: 'Invoice',
+            documentId: id,
+            createdBy: userId,
+          },
+          tx,
+        );
+      }
+      if (settlesStandaloneOnPaid) {
+        // Дзеркальний PAYMENT на непокритий залишок — закриває CHARGE у леджері (Bug #675).
+        // moved.count===1 (CAS вище) гарантує, що це відбувається рівно раз на перехід.
+        await this.settlements.createTransaction(
+          orgId,
+          {
+            counterpartyId: inv.counterpartyId,
+            type: 'PAYMENT',
+            amount: paymentRemaining,
             documentType: 'Invoice',
             documentId: id,
             createdBy: userId,

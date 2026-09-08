@@ -565,11 +565,12 @@ describe('InvoicesService — business logic guards', () => {
 
   // ─── Session 2026-09-06: manual transition→PAID (money-model Phase 1) ─────
   //
-  // Ручний перехід SENT/PARTIALLY_PAID → PAID синхронізує paidAmount=amount (щоб «залишок»
-  // = 0), АЛЕ не створює Payment/PAYMENT-settlement (це статус-узгодження, не платіж —
-  // задокументована поведінка). Без цих тестів рефактор що додав би createTransaction у
-  // PAID-гілку (подвійний облік грошей) пройшов би CI зеленим.
-  describe('transition — manual PAID sets paidAmount=amount, NO settlement (Bug #675)', () => {
+  // Bug #675 fix: ручний →PAID для STANDALONE-рахунку (workOrderId=null) створює дзеркальний
+  // PAYMENT-settlement на непокритий залишок — закриває CHARGE у леджері (інакше борг висів би
+  // попри PAID). WO-рахунок НЕ отримує PAYMENT (його CHARGE через COMPLETED, оплата окремо).
+  // paidAmount=amount синхронізується завжди. Ці тести стережуть від (а) втрати PAYMENT для
+  // standalone, (б) подвоєння обліку для WO-рахунку.
+  describe('transition — manual PAID + дзеркальний PAYMENT для standalone (Bug #675)', () => {
     const CP_ID = '33333333-3333-4333-8333-333333333333';
     const findOneRow = {
       id: INV_ID,
@@ -594,13 +595,14 @@ describe('InvoicesService — business logic guards', () => {
       lines: [],
     };
 
-    it('SENT→PAID: updateMany data містить paidAmount=amount + status=PAID, БЕЗ settlement', async () => {
+    it('standalone SENT→PAID: paidAmount=amount + дзеркальний PAYMENT на весь залишок (Bug #675 fix)', async () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({
           status: 'SENT',
           workOrderId: null,
           counterpartyId: CP_ID,
           amount: 500,
+          paidAmount: 0,
         })
         .mockResolvedValue(findOneRow);
       prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
@@ -613,38 +615,69 @@ describe('InvoicesService — business logic guards', () => {
           data: expect.objectContaining({ status: 'PAID', paidAmount: 500 }),
         }),
       );
-      // Ручний PAID — НЕ платіж: жодного PAYMENT-settlement.
-      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
+      // Дзеркальний PAYMENT закриває CHARGE у леджері (Bug #675): standalone-рахунок, залишок 500.
+      expect(settlementsMock.createTransaction).toHaveBeenCalledTimes(1);
+      expect(settlementsMock.createTransaction).toHaveBeenCalledWith(
+        ORG,
+        expect.objectContaining({
+          counterpartyId: CP_ID,
+          type: 'PAYMENT',
+          amount: 500,
+          documentType: 'Invoice',
+          documentId: INV_ID,
+        }),
+        expect.anything(),
+      );
     });
 
-    it('PARTIALLY_PAID→PAID: paidAmount=amount (дозакриття залишку), БЕЗ settlement', async () => {
+    it('standalone PARTIALLY_PAID→PAID: PAYMENT лише на НЕПОКРИТИЙ залишок (не подвоює часткові)', async () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({
           status: 'PARTIALLY_PAID',
           workOrderId: null,
           counterpartyId: CP_ID,
           amount: 500,
+          paidAmount: 200, // 200 уже сплачено через payments-модуль
         })
         .mockResolvedValue(findOneRow);
       prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
 
       await service.transition(ORG, INV_ID, 'PAID' as never, 'user-1');
 
-      expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: 'PAID', paidAmount: 500 }),
-        }),
+      // PAYMENT = 500 − 200 = 300 (лише залишок), не 500.
+      expect(settlementsMock.createTransaction).toHaveBeenCalledWith(
+        ORG,
+        expect.objectContaining({ type: 'PAYMENT', amount: 300 }),
+        expect.anything(),
       );
+    });
+
+    it('WO-рахунок →PAID: БЕЗ PAYMENT (CHARGE був через COMPLETED, уникаємо подвійного обліку)', async () => {
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'SENT',
+          workOrderId: 'wo-1', // рахунок за нарядом
+          counterpartyId: CP_ID,
+          amount: 500,
+          paidAmount: 0,
+        })
+        .mockResolvedValue({ ...findOneRow, workOrderId: 'wo-1' });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.transition(ORG, INV_ID, 'PAID' as never, 'user-1');
+      // MUTATION-VERIFY: якби умова була лише `newStatus===PAID` без `workOrderId===null` —
+      // WO-рахунок отримав би подвійний PAYMENT (CHARGE через COMPLETED + цей).
       expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
     });
 
-    it('non-PAID перехід (SENT→CANCELLED) НЕ пише paidAmount у data', async () => {
+    it('non-PAID перехід (SENT→CANCELLED) НЕ пише paidAmount + без PAYMENT', async () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({
           status: 'SENT',
           workOrderId: null,
           counterpartyId: CP_ID,
           amount: 500,
+          paidAmount: 0,
         })
         .mockResolvedValue({ ...findOneRow, status: 'CANCELLED' });
       prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
@@ -654,6 +687,7 @@ describe('InvoicesService — business logic guards', () => {
       const call = prisma.invoice.updateMany.mock.calls[0][0];
       expect(call.data).toEqual({ status: 'CANCELLED' });
       expect(call.data).not.toHaveProperty('paidAmount');
+      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
     });
   });
 });
