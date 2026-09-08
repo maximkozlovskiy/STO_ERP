@@ -5,6 +5,51 @@
 
 ---
 
+## 2026-09-08 — refactor: закриття технічного боргу (config-over-hardcode §13 + scheduler + multi-branch)
+
+Пакет усунення реального тех-боргу (працювало, але не ідеально). Backend + DB only, без
+фронтенду й без інтеграцій (vchasno/liqpay/checkbox/nova-poshta не чіпались). Full API suite
+1809→1832 (+23 regression). tsc api 0.
+
+### 2d7c672e reports — laborCostRatio config-over-hardcode (§13)
+
+Хардкод `LABOR_COST_RATIO=0.4` у reports.service → `OrganisationSettings.laborCostRatio`
+Decimal(4,3) default 0.4 per-org (звіт рентабельності). Міграція 20260908120000 (ADD COLUMN
+IF NOT EXISTS, zero-config). DEFAULT_LABOR_COST_RATIO fallback + clamp [0,1] + try/catch→дефолт.
+
+### 60996a07 invoices — дефолтний dueDate за invoiceDueDays (§13)
+
+`OrganisationSettings.invoiceDueDays` (7) раніше не застосовувався. Тепер за відсутності
+явного dueDate → `documentDate + invoiceDueDays` (Kyiv DST-aware addDaysKyiv), у create() і
+createFromWorkOrder() (обчислення поза Serializable tx). autoArchiveDays — TODO-нотатка (без
+споживача, auto-archive scheduler ще нема).
+
+### 9dccf8c4 calendar — межі робочого дня day-split з BranchSettings per-branch (§13)
+
+Хардкод 8..20 day-split → `BranchSettings.workStartTime/workEndTime` per-branch (резолв через
+lift.zone.branchId). parseHour("HH:mm") + resolveWorkHours() з fallback (без ліфта / без
+settings / workEnd≤workStart / помилка). +2 дискримінуючі тести.
+
+### 3e45c69a scheduler — спільний forEachActiveOrg cursor-пагінація (Bug #107)
+
+FollowUp/Overdue/NBU дублювали `findMany({take:1000})` + warning → cloud >1000 орг тихо не
+охоплювались. Винесено keyset-обхід активних орг батчами по 500 (skip:1+cursor). NBU
+prefetch-ить nbuFetchHour per-batch. +5 тестів пагінації.
+
+### c0ab3059 notifications — followup SMS per-branch конфіг (multi-branch C3)
+
+Followup слав усі SMS через «найстарішу» філію → клієнт з філії B отримував SMS через
+провайдер філії A. Тепер кожен отримувач шле через конфіг СВОЄЇ філії (lastWO.branchId),
+fallback для авто без наряду; resolveConfig memoized per унікальну філію (0 DB reads у
+fan-out); отримувачі без конфігу філії — skipped. +1 multi-branch тест.
+
+### 9ba2e594 booking — усунено stale doc-drift (CAL-H3/H4 реалізовано)
+
+ConfirmBookingDto коментар стверджував TODO про BookingRequest→lift link — насправді link
+існує й confirm() матеріалізує слот на ліфті. Тільки коментар.
+
+---
+
 ## 2026-09-08 — feat: 4 відкладені пункти (returnToBatch / OVERDUE / Bug #675 / booking per-lift)
 
 Реалізація пунктів, що аудит логічних помилок свідомо не чіпав (dead code / незроблені фічі /
