@@ -116,3 +116,55 @@ describe('IntegrationLogService.wrap', () => {
     expect(data.documentId).toBeNull();
   });
 });
+
+// Pre-prod audit R2: date-фільтри беруться сирими рядками (@Query) → invalid дата має давати
+// чистий 400, НЕ Prisma-500 (Bug #595 class).
+describe('IntegrationLogService.findAll — date validation', () => {
+  let service: IntegrationLogService;
+  let findMany: ReturnType<typeof vi.fn>;
+  let count: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    findMany = vi.fn().mockResolvedValue([]);
+    count = vi.fn().mockResolvedValue(0);
+    const prisma = { integrationLog: { findMany, count } } as never;
+    service = new IntegrationLogService(prisma);
+  });
+
+  it('invalid dateFrom → BadRequest (не 500), findMany НЕ викликано', async () => {
+    const { BadRequestException } = await import('@nestjs/common');
+    await expect(
+      service.findAll('org-1', 1, 50, undefined, undefined, undefined, undefined, 'abc'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('invalid dateTo → BadRequest', async () => {
+    const { BadRequestException } = await import('@nestjs/common');
+    await expect(
+      service.findAll('org-1', 1, 50, undefined, undefined, undefined, undefined, undefined, 'xyz'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('валідні дати → фільтр застосовано (gte/lte у where.createdAt)', async () => {
+    await service.findAll(
+      'org-1',
+      1,
+      50,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      '2026-09-01',
+      '2026-09-08',
+    );
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.createdAt.gte).toBeInstanceOf(Date);
+    expect(where.createdAt.lte).toBeInstanceOf(Date);
+  });
+
+  it('без дат → без createdAt-фільтра', async () => {
+    await service.findAll('org-1');
+    expect(findMany.mock.calls[0][0].where.createdAt).toBeUndefined();
+  });
+});

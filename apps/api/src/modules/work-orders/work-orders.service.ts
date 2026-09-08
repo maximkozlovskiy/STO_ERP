@@ -696,18 +696,17 @@ export class WorkOrdersService {
     // 50+ parts can exceed the 5s Prisma default.
     const updated = await this.prisma.$transaction(
       async tx => {
-        // Re-read статусу В транзакції: без цього два concurrent transition(COMPLETED)
-        // проходять stale FSM-check і дають ПОДВІЙНИЙ CHARGE (баланс клієнта ×2) + подвійний
-        // WRITEOFF. Дзеркалить guard у supplier-payments.confirm / supplier-returns.confirm.
-        const fresh = await tx.workOrder.findFirst({
-          where: { id, orgId, deletedAt: null },
-          select: { status: true },
+        // CAS-перехід ПЕРШИМ (не stale-read!): flip wo.status→newStatus атомарно у where. Без
+        // цього два concurrent transition(COMPLETED) обидва проходять re-read → ПОДВІЙНИЙ CHARGE
+        // (для labor-only наряду нема stockItem-lock, що інакше випадково серіалізує) + подвійний
+        // WRITEOFF. count===0 → інший перехід уже стався. Дзеркалить stock-documents.transition.
+        // (Заміна на CAS підсилює й single-shot-гарантію C2 returnPartsAndCredit нижче.)
+        const cas = await tx.workOrder.updateMany({
+          where: { id, orgId, deletedAt: null, status: wo.status },
+          data: updates,
         });
-        if (!fresh) throw new NotFoundException('Наряд не знайдено');
-        if (fresh.status !== wo.status) {
-          throw new BadRequestException(
-            `Статус наряду змінився на "${fresh.status}" — повторіть дію`,
-          );
+        if (cas.count === 0) {
+          throw new BadRequestException('Статус наряду змінився — повторіть дію');
         }
 
         // Резервувати ЛИШЕ при першому вході у IN_PROGRESS (з APPROVED). ON_HOLD зберігає
@@ -729,15 +728,15 @@ export class WorkOrdersService {
         // знято (writeOffPartsAndCharge зробив RESERVATION_RELEASE+WRITEOFF), тож повертаємо
         // лише фізичні залишки+партії (RETURN) і сторнуємо CHARGE (CREDIT_NOTE). Guard
         // wo.status==='COMPLETED' → DRAFT/ESTIMATE/APPROVED/ON_HOLD→CANCELLED поведінка незмінна
-        // (ті не списували запчастин). Single-shot: in-tx status re-read (вище) + термінальний
-        // CANCELLED → емітується рівно 1× (та сама гарантія, що не дає подвійного CHARGE).
+        // (ті не списували запчастин). Single-shot: CAS-flip (вище) + термінальний CANCELLED →
+        // емітується рівно 1× (та сама гарантія, що не дає подвійного CHARGE).
         if (newStatus === 'CANCELLED' && wo.status === 'COMPLETED') {
           await this.returnPartsAndCredit(orgId, wo, userId, tx);
         }
 
-        return tx.workOrder.update({
+        // Статус/completedAt уже застосовані CAS-updateMany вище — тут лише fetch з include.
+        return tx.workOrder.findFirstOrThrow({
           where: { id, orgId },
-          data: updates,
           include: {
             vehicle: { select: { make: true, model: true, licensePlate: true } },
             counterparty: {

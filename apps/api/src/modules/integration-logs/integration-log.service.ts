@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { calculatePagination } from '../../common/utils/pagination';
@@ -55,6 +55,16 @@ export class IntegrationLogService {
     }
   }
 
+  /** Парсить дату або кидає 400 (invalid → чистий BadRequest, не Prisma-500). undefined→undefined. */
+  private parseDateOr400(value: string | undefined, field: string): Date | undefined {
+    if (!value) return undefined;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) {
+      throw new BadRequestException(`Невірний формат дати у полі "${field}"`);
+    }
+    return d;
+  }
+
   /** HTTP-статус з тексту помилки провайдера (`... 502: ...`); null якщо не знайдено. */
   private parseStatus(message: string): number | null {
     const m = /\b([1-5]\d{2})\b/.exec(message);
@@ -102,11 +112,13 @@ export class IntegrationLogService {
     if (operation) where.operation = operation;
     if (ok !== undefined) where.ok = ok;
     if (documentType) where.documentType = documentType;
-    if (dateFrom || dateTo) {
-      where.createdAt = {
-        ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-        ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59.999Z') } : {}),
-      };
+    // Семантична валідація дат (Bug #595 class): контролер бере dateFrom/dateTo сирими рядками
+    // (@Query, не DTO) → garbage `?dateFrom=abc` дав би new Date('abc')=Invalid → Prisma 500.
+    // Чистий 400 замість 500.
+    const gte = this.parseDateOr400(dateFrom, 'dateFrom');
+    const lte = dateTo ? this.parseDateOr400(dateTo + 'T23:59:59.999Z', 'dateTo') : undefined;
+    if (gte || lte) {
+      where.createdAt = { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) };
     }
 
     const { skip, take } = calculatePagination({ page, limit, maxLimit: 200 });

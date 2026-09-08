@@ -28,7 +28,9 @@ describe('SupplierReturnsService — regression guards', () => {
   let prisma: {
     supplierReturn: {
       findFirst: ReturnType<typeof vi.fn>;
+      findFirstOrThrow: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
       count: ReturnType<typeof vi.fn>;
@@ -61,7 +63,9 @@ describe('SupplierReturnsService — regression guards', () => {
     prisma = {
       supplierReturn: {
         findFirst: vi.fn(),
+        findFirstOrThrow: vi.fn(),
         update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }), // CAS confirm: default success
         create: vi.fn(),
         findMany: vi.fn().mockResolvedValue([]),
         count: vi.fn().mockResolvedValue(0),
@@ -107,9 +111,8 @@ describe('SupplierReturnsService — regression guards', () => {
       status: SupplierReturnStatus.DRAFT,
       _count: { lines: 1 },
     });
-    // re-read у $tx
-    prisma.supplierReturn.findFirst.mockResolvedValueOnce({
-      status: SupplierReturnStatus.DRAFT,
+    // CAS updateMany DRAFT→CONFIRMED → count:1 (default). Далі findFirstOrThrow тягне lines.
+    prisma.supplierReturn.findFirstOrThrow.mockResolvedValueOnce({
       supplierId: SUPPLIER_ID,
       warehouseId: WAREHOUSE_ID,
       totalAmount: 250,
@@ -163,13 +166,6 @@ describe('SupplierReturnsService — regression guards', () => {
     prisma.supplierReturn.findFirst
       .mockResolvedValueOnce({ status: SupplierReturnStatus.DRAFT, _count: { lines: 1 } })
       .mockResolvedValueOnce({
-        status: SupplierReturnStatus.DRAFT,
-        supplierId: SUPPLIER_ID,
-        warehouseId: WAREHOUSE_ID,
-        totalAmount: 1000,
-        lines: [{ goodId: GOOD_ID, quantity: 10, price: 100, unitOfMeasureId: null }],
-      })
-      .mockResolvedValueOnce({
         id: SR_ID,
         orgId: ORG,
         number: 'ПВП-20260615-000001',
@@ -185,6 +181,12 @@ describe('SupplierReturnsService — regression guards', () => {
         warehouse: { name: 'Склад 1' },
         lines: [],
       });
+    prisma.supplierReturn.findFirstOrThrow.mockResolvedValueOnce({
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [{ goodId: GOOD_ID, quantity: 10, price: 100, unitOfMeasureId: null }],
+    });
 
     await service.confirm(ORG, SR_ID, USER_ID);
 
@@ -251,13 +253,6 @@ describe('SupplierReturnsService — regression guards', () => {
     prisma.supplierReturn.findFirst
       .mockResolvedValueOnce({ status: SupplierReturnStatus.DRAFT, _count: { lines: 1 } })
       .mockResolvedValueOnce({
-        status: SupplierReturnStatus.DRAFT,
-        supplierId: SUPPLIER_ID,
-        warehouseId: WAREHOUSE_ID,
-        totalAmount: 0,
-        lines: [{ goodId: GOOD_ID, quantity: 1, price: 0, unitOfMeasureId: null }],
-      })
-      .mockResolvedValueOnce({
         id: SR_ID,
         orgId: ORG,
         number: 'ПВП-20260615-000001',
@@ -273,6 +268,12 @@ describe('SupplierReturnsService — regression guards', () => {
         warehouse: { name: 'Склад 1' },
         lines: [],
       });
+    prisma.supplierReturn.findFirstOrThrow.mockResolvedValueOnce({
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 0,
+      lines: [{ goodId: GOOD_ID, quantity: 1, price: 0, unitOfMeasureId: null }],
+    });
 
     await service.confirm(ORG, SR_ID, USER_ID);
 
@@ -281,23 +282,17 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(settlements.createTransaction).not.toHaveBeenCalled();
   });
 
-  it('confirm() з concurrent-double-call: re-read у $tx ловить зміну статусу → BadRequestException', async () => {
-    // Симулюємо race: pre-check бачить DRAFT, але між pre-check і відкриттям $tx
-    // паралельний confirm() уже переключив на CONFIRMED.
-    prisma.supplierReturn.findFirst
-      .mockResolvedValueOnce({ status: SupplierReturnStatus.DRAFT, _count: { lines: 1 } })
-      // Re-read у $tx бачить уже CONFIRMED.
-      .mockResolvedValueOnce({
-        status: SupplierReturnStatus.CONFIRMED,
-        supplierId: SUPPLIER_ID,
-        warehouseId: WAREHOUSE_ID,
-        totalAmount: 100,
-        lines: [{ goodId: GOOD_ID, quantity: 1, price: 100, unitOfMeasureId: null }],
-      });
+  it('confirm() concurrent: CAS updateMany count=0 → BadRequest, БЕЗ WRITEOFF/REFUND', async () => {
+    // Race: pre-check бачить DRAFT, але CAS updateMany where status=DRAFT матчить 0 рядків
+    // (паралельний confirm() уже переключив на CONFIRMED).
+    prisma.supplierReturn.findFirst.mockResolvedValueOnce({
+      status: SupplierReturnStatus.DRAFT,
+      _count: { lines: 1 },
+    });
+    prisma.supplierReturn.updateMany.mockResolvedValueOnce({ count: 0 });
 
-    // Очікуємо BadRequestException з re-check у $tx (рядок 306-310 service).
-    // Без цього re-check два concurrent confirm() дали б подвійний WRITEOFF + REFUND.
     await expect(service.confirm(ORG, SR_ID, USER_ID)).rejects.toThrow(BadRequestException);
+    // MUTATION-VERIFY: без CAS два concurrent confirm() дали б подвійний WRITEOFF + REFUND.
     expect(inventory.createMovement).not.toHaveBeenCalled();
     expect(settlements.createTransaction).not.toHaveBeenCalled();
   });

@@ -22,6 +22,7 @@ describe('SupplierPaymentsService — regression guards', () => {
     supplierPayment: {
       findFirst: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
       count: ReturnType<typeof vi.fn>;
@@ -71,6 +72,7 @@ describe('SupplierPaymentsService — regression guards', () => {
       supplierPayment: {
         findFirst: vi.fn(),
         update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }), // CAS confirm: default success
         create: vi.fn(),
         findMany: vi.fn().mockResolvedValue([]),
         count: vi.fn().mockResolvedValue(0),
@@ -184,16 +186,24 @@ describe('SupplierPaymentsService — regression guards', () => {
 
   it('confirm(): settlement SUPPLIER_PAYMENT (+1, наш борг ↓) + documentType=SupplierPayment', async () => {
     prisma.supplierPayment.findFirst
-      .mockResolvedValueOnce({ status: SupplierPaymentStatus.DRAFT }) // pre-check
+      // pre-tx read: status+supplierId+amount (для settlement).
       .mockResolvedValueOnce({
         status: SupplierPaymentStatus.DRAFT,
         supplierId: SUPPLIER_ID,
         amount: 500,
-      }) // re-read у tx
+      })
       .mockResolvedValueOnce(confirmedRow); // findOne у кінці
+    prisma.supplierPayment.updateMany.mockResolvedValueOnce({ count: 1 }); // CAS DRAFT→CONFIRMED
 
     await service.confirm(ORG, SP_ID, USER_ID);
 
+    // CAS updateMany where status=DRAFT.
+    expect(prisma.supplierPayment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: SupplierPaymentStatus.DRAFT }),
+        data: { status: SupplierPaymentStatus.CONFIRMED },
+      }),
+    );
     expect(settlements.createTransaction).toHaveBeenCalledTimes(1);
     const [orgArg, dtoArg] = settlements.createTransaction.mock.calls[0]!;
     expect(orgArg).toBe(ORG);
@@ -207,16 +217,16 @@ describe('SupplierPaymentsService — regression guards', () => {
     });
   });
 
-  it('confirm(): non-DRAFT статус (re-read у tx) → BadRequestException, settlement НЕ пишеться', async () => {
-    prisma.supplierPayment.findFirst
-      .mockResolvedValueOnce({ status: SupplierPaymentStatus.DRAFT }) // pre-check проходить
-      .mockResolvedValueOnce({
-        status: SupplierPaymentStatus.CONFIRMED,
-        supplierId: SUPPLIER_ID,
-        amount: 500,
-      }); // race: вже CONFIRMED
+  it('confirm(): CAS програв (updateMany count=0, concurrent) → BadRequest, settlement НЕ пишеться', async () => {
+    prisma.supplierPayment.findFirst.mockResolvedValueOnce({
+      status: SupplierPaymentStatus.DRAFT, // pre-check проходить
+      supplierId: SUPPLIER_ID,
+      amount: 500,
+    });
+    prisma.supplierPayment.updateMany.mockResolvedValueOnce({ count: 0 }); // race: інший уже провів
 
     await expect(service.confirm(ORG, SP_ID, USER_ID)).rejects.toBeInstanceOf(BadRequestException);
+    // MUTATION-VERIFY: settlement НЕ пишеться коли CAS програв (без цього — подвійний SUPPLIER_PAYMENT).
     expect(settlements.createTransaction).not.toHaveBeenCalled();
   });
 

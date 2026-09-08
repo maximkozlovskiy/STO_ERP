@@ -314,13 +314,22 @@ export class SupplierReturnsService {
 
     await this.prisma.$transaction(
       async tx => {
-        // §4 sto-review: FSM auto-transition у tx → re-read entity всередині tx +
-        // перевірка `status === expected`. Без цього два concurrent confirm()
-        // дадуть подвійний WRITEOFF + REFUND.
-        const sr = await tx.supplierReturn.findFirst({
-          where: { id, orgId, deletedAt: null },
+        // CAS DRAFT→CONFIRMED ПЕРШИМ (не stale-read!): два concurrent confirm() інакше обидва
+        // проходять re-read і дають ПОДВІЙНИЙ WRITEOFF + SUPPLIER_REFUND. Дзеркалить
+        // stock-documents.transition. count===0 → інший confirm уже провів. Лінії читаємо ПІСЛЯ
+        // виграшу CAS (тільки переможець списує).
+        const cas = await tx.supplierReturn.updateMany({
+          where: { id, orgId, deletedAt: null, status: SupplierReturnStatus.DRAFT },
+          data: { status: SupplierReturnStatus.CONFIRMED },
+        });
+        if (cas.count === 0) {
+          throw new BadRequestException(
+            'Повернення вже підтверджено або статус змінився — оновіть сторінку',
+          );
+        }
+        const sr = await tx.supplierReturn.findFirstOrThrow({
+          where: { id, orgId },
           select: {
-            status: true,
             supplierId: true,
             warehouseId: true,
             totalAmount: true,
@@ -336,12 +345,6 @@ export class SupplierReturnsService {
             },
           },
         });
-        if (!sr) throw new NotFoundException('Повернення не знайдено');
-        if (sr.status !== SupplierReturnStatus.DRAFT) {
-          throw new BadRequestException(
-            `Неможливо підтвердити повернення зі статусу "${sr.status}"`,
-          );
-        }
 
         await Promise.all(
           sr.lines.map(line =>
@@ -384,11 +387,7 @@ export class SupplierReturnsService {
             tx,
           );
         }
-
-        await tx.supplierReturn.update({
-          where: { id, orgId },
-          data: { status: SupplierReturnStatus.CONFIRMED },
-        });
+        // Статус уже CONFIRMED через CAS вище — окремий update не потрібен.
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );

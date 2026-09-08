@@ -128,26 +128,26 @@ describe('WorkOrdersService.findAll — query shape', () => {
 describe('WorkOrdersService.transition — in-tx status re-read guard (double-CHARGE)', () => {
   const WO_ID = '44444444-4444-4444-8444-444444444444';
 
-  it('статус змінився між pre-tx read і tx → throw, side-effects НЕ виконуються повторно', async () => {
-    const findFirst = vi
-      .fn()
-      // 1) pre-tx read — наряд ще IN_PROGRESS (проходить FSM-check IN_PROGRESS→COMPLETED)
-      .mockResolvedValueOnce({
-        id: WO_ID,
-        orgId: ORG,
-        status: 'IN_PROGRESS',
-        number: 'WO-9',
-        outMileage: null,
-        vehicleId: 'v',
-        repairCategory: null,
-        counterpartyId: 'c',
-        totalAmount: 1000,
-      })
-      // 2) in-tx guard read — інший конкурентний виклик уже перевів у COMPLETED
-      .mockResolvedValueOnce({ status: 'COMPLETED' });
-    const update = vi.fn();
+  it('CAS програв (updateMany count=0) → throw, side-effects НЕ виконуються повторно', async () => {
+    // pre-tx read — наряд IN_PROGRESS (проходить FSM-check IN_PROGRESS→COMPLETED).
+    const findFirst = vi.fn().mockResolvedValueOnce({
+      id: WO_ID,
+      orgId: ORG,
+      status: 'IN_PROGRESS',
+      number: 'WO-9',
+      outMileage: null,
+      vehicleId: 'v',
+      repairCategory: null,
+      counterpartyId: 'c',
+      totalAmount: 1000,
+    });
+    // CAS updateMany where status='IN_PROGRESS' → 0 (інший concurrent transition уже забрав).
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const findFirstOrThrow = vi.fn();
+    const workOrderPart = { findMany: vi.fn() };
     const prisma = {
-      workOrder: { findFirst, update },
+      workOrder: { findFirst, updateMany, findFirstOrThrow },
+      workOrderPart,
       $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
     } as unknown as PrismaService;
     const service = makeService(prisma);
@@ -155,8 +155,10 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
     await expect(service.transition(ORG, WO_ID, 'COMPLETED' as never)).rejects.toThrow(
       /Статус наряду змінився/,
     );
-    // update НЕ викликано — guard спрацював до фінального write і до writeOffPartsAndCharge.
-    expect(update).not.toHaveBeenCalled();
+    // MUTATION-VERIFY: writeOffPartsAndCharge (workOrderPart.findMany) НЕ викликано — CAS-throw
+    // до side-effects; фінальний fetch теж ні.
+    expect(workOrderPart.findMany).not.toHaveBeenCalled();
+    expect(findFirstOrThrow).not.toHaveBeenCalled();
   });
 
   // WO-C1: ON_HOLD→IN_PROGRESS НЕ має резервувати повторно (резерв уже активний з першого
@@ -173,15 +175,16 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
       counterpartyId: 'c',
       totalAmount: 0,
     };
-    const findFirst = vi
-      .fn()
-      .mockResolvedValueOnce({ ...base, status: preStatus }) // pre-tx
-      .mockResolvedValueOnce({ status: preStatus }) // in-tx guard
-      .mockResolvedValue({ ...base, status: 'IN_PROGRESS', vehicle: null, counterparty: null });
+    const findFirst = vi.fn().mockResolvedValueOnce({ ...base, status: preStatus }); // pre-tx
     const prisma = {
       workOrder: {
         findFirst,
-        update: vi.fn().mockResolvedValue({ ...base, status: 'IN_PROGRESS' }),
+        // CAS flip preStatus→IN_PROGRESS успішний.
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        // фінальний fetch з include після side-effects.
+        findFirstOrThrow: vi
+          .fn()
+          .mockResolvedValue({ ...base, status: 'IN_PROGRESS', vehicle: null, counterparty: null }),
       },
       workOrderPart: { findMany: partsFindMany },
       $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),

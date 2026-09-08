@@ -722,7 +722,7 @@ export class SupplierPaymentsService {
   async confirm(orgId: string, id: string, userId: string): Promise<SupplierPaymentResponseDto> {
     const pre = await this.prisma.supplierPayment.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { status: true },
+      select: { status: true, supplierId: true, amount: true },
     });
     if (!pre) throw new NotFoundException('Оплату не знайдено');
 
@@ -733,38 +733,35 @@ export class SupplierPaymentsService {
 
     await this.prisma.$transaction(
       async tx => {
-        // FSM auto-transition у tx → re-read entity + перевірка status === expected.
-        // Без цього два concurrent confirm() дадуть подвійний settlement PAYMENT.
-        const sp = await tx.supplierPayment.findFirst({
-          where: { id, orgId, deletedAt: null },
-          select: { status: true, supplierId: true, amount: true },
+        // CAS DRAFT→CONFIRMED ПЕРШИМ (не stale-read!): два concurrent confirm() інакше обидва
+        // проходять re-read і дають ПОДВІЙНИЙ SUPPLIER_PAYMENT (борг постачальнику ×2). Дзеркалить
+        // stock-documents.transition / completion-acts.confirm. count===0 → інший уже провів.
+        const cas = await tx.supplierPayment.updateMany({
+          where: { id, orgId, deletedAt: null, status: SupplierPaymentStatus.DRAFT },
+          data: { status: SupplierPaymentStatus.CONFIRMED },
         });
-        if (!sp) throw new NotFoundException('Оплату не знайдено');
-        if (sp.status !== SupplierPaymentStatus.DRAFT) {
-          throw new BadRequestException(`Неможливо провести оплату зі статусу "${sp.status}"`);
+        if (cas.count === 0) {
+          throw new BadRequestException(
+            'Оплату вже проведено або статус змінився — оновіть сторінку',
+          );
         }
 
+        // Дані для settlement — з pre-tx знімка (amount/supplierId незмінні у DRAFT).
         // Оплата постачальнику: ми надсилаємо йому кошти → наш борг зменшується.
         // Семантика — SUPPLIER_PAYMENT (BALANCE_SIGN = +1, підіймає від'ємний борг до 0).
-        // НЕ PAYMENT (−1) — той для клієнтської оплати (клієнт платить НАМ). Без Checkbox
-        // і лояльності — фіскалізація й бонуси стосуються лише клієнтських оплат.
+        // НЕ PAYMENT (−1) — той для клієнтської оплати (клієнт платить НАМ).
         await this.settlements.createTransaction(
           orgId,
           {
-            counterpartyId: sp.supplierId,
+            counterpartyId: pre.supplierId,
             type: 'SUPPLIER_PAYMENT',
-            amount: Number(sp.amount),
+            amount: Number(pre.amount),
             documentType: 'SupplierPayment',
             documentId: id,
             createdBy: userId,
           },
           tx,
         );
-
-        await tx.supplierPayment.update({
-          where: { id, orgId },
-          data: { status: SupplierPaymentStatus.CONFIRMED },
-        });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
