@@ -24,11 +24,12 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkOrdersModule } from '../work-orders/work-orders.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { IntegrationLogsModule } from '../integration-logs/integration-logs.module';
+import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: 'checkbox' }),
-    BullModule.registerQueue({ name: 'payment-polling' }),
+    BullModule.registerQueue({ name: 'checkbox', defaultJobOptions: DEFAULT_JOB_OPTS }),
+    BullModule.registerQueue({ name: 'payment-polling', defaultJobOptions: DEFAULT_JOB_OPTS }),
     IntegrationLogsModule,
     SettlementsModule,
     NotificationsModule,

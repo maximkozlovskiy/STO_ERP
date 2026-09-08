@@ -13,6 +13,7 @@ import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { NovaPoshtaPollingProcessor } from './delivery/nova-poshta-polling.processor';
 import { DeliveryProvidersController } from './delivery/delivery-providers.controller';
 import { IntegrationLogsModule } from '../integration-logs/integration-logs.module';
+import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { IntegrationLogsModule } from '../integration-logs/integration-logs.modu
     SettlementsModule,
     SettingsModule,
     IntegrationLogsModule,
-    BullModule.registerQueue({ name: 'nova-poshta-polling' }),
+    BullModule.registerQueue({ name: 'nova-poshta-polling', defaultJobOptions: DEFAULT_JOB_OPTS }),
   ],
   controllers: [PurchaseOrdersController, DeliveryProvidersController],
   providers: [

@@ -8,6 +8,7 @@ import { PdfModule } from '../pdf/pdf.module';
 import { DocumentNumberModule } from '../document-number/document-number.module';
 import { SettlementsModule } from '../settlements/settlements.module';
 import { SettingsModule } from '../settings/settings.module';
+import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { SettingsModule } from '../settings/settings.module';
     DocumentNumberModule,
     SettlementsModule,
     SettingsModule,
-    BullModule.registerQueue({ name: 'invoice-overdue' }),
+    BullModule.registerQueue({ name: 'invoice-overdue', defaultJobOptions: DEFAULT_JOB_OPTS }),
   ],
   controllers: [InvoicesController],
   providers: [InvoicesService, InvoiceOverdueScheduler, InvoiceOverdueProcessor],
