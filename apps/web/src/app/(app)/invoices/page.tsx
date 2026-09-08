@@ -522,9 +522,11 @@ function InvoicesPageInner() {
       await apiFetch(`/invoices/${inv.id}`, { method: 'DELETE' });
       if (selectedInv?.id === inv.id) setSelectedInv(null);
       queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
-      toast.success('Рахунок позначено на видалення');
+      if (features.toastEnabled) toast.success('Рахунок позначено на видалення');
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+      const msg = e instanceof Error ? e.message : 'Помилка видалення';
+      if (features.toastEnabled) toast.error(msg);
+      else setError(msg);
     }
   };
 

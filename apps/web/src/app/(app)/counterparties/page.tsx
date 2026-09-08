@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'rea
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
+import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil, X } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { useCounterparties, counterpartiesKeys, Counterparty } from '@/hooks/api/useCounterparties';
@@ -124,6 +124,10 @@ function CrmPageInner() {
     limit,
   } = useListPage<CrmFilters>('crm', CRM_COLUMNS, { defaultLimit: 20 });
 
+  // Помилка дії (delete/bulk/save-filter) для випадку коли toast вимкнено (features.toastEnabled=false):
+  // без цього fallback помилки мутацій тихо зникали б (queryError покриває лише завантаження списку).
+  const [actionError, setActionError] = useState('');
+
   // Local filter state (specific to counterparties)
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
@@ -183,9 +187,9 @@ function CrmPageInner() {
     (name: string) => {
       const preset = saveFilter(name, { search, typeFilter, showDeleted });
       setActiveSavedFilterId(preset.id);
-      toast.success(`Фільтр "${name}" збережено`);
+      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
     },
-    [saveFilter, search, typeFilter, showDeleted, setActiveSavedFilterId],
+    [saveFilter, search, typeFilter, showDeleted, setActiveSavedFilterId, features.toastEnabled],
   );
 
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(counterparties);
@@ -204,17 +208,25 @@ function CrmPageInner() {
           const failed = results.length - succeeded;
           bulkSelect.clear();
           queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
-          if (succeeded > 0 && failed === 0) {
-            toast.success(`Видалено ${succeeded} контрагент${succeeded === 1 ? 'а' : 'ів'}`);
-          } else if (succeeded > 0) {
-            toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
-          } else {
-            toast.error('Не вдалося видалити контрагентів');
+          if (features.toastEnabled) {
+            if (succeeded > 0 && failed === 0) {
+              toast.success(`Видалено ${succeeded} контрагент${succeeded === 1 ? 'а' : 'ів'}`);
+            } else if (succeeded > 0) {
+              toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+            } else {
+              toast.error('Не вдалося видалити контрагентів');
+            }
+          } else if (failed > 0) {
+            setActionError(
+              succeeded > 0
+                ? `Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`
+                : 'Не вдалося видалити контрагентів',
+            );
           }
         },
       },
     ],
-    [bulkSelect, queryClient],
+    [bulkSelect, queryClient, features.toastEnabled],
   ); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -259,11 +271,13 @@ function CrmPageInner() {
       return;
     try {
       await apiFetch(`/counterparties/${id}`, { method: 'DELETE' });
-      toast.success('Контрагента позначено на видалення');
+      if (features.toastEnabled) toast.success('Контрагента позначено на видалення');
       if (selectedCp?.id === id) setSelectedCp(null);
       queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+      const msg = e instanceof Error ? e.message : 'Помилка видалення';
+      if (features.toastEnabled) toast.error(msg);
+      else setActionError(msg);
     }
   };
 
@@ -361,6 +375,23 @@ function CrmPageInner() {
       {!modal && queryError && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {queryError instanceof Error ? queryError.message : ''}
+        </div>
+      )}
+
+      {!modal && actionError && (
+        <div
+          role="alert"
+          className="mb-4 flex items-start justify-between gap-3 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5"
+        >
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError('')}
+            className="shrink-0 text-destructive/70 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
+            aria-label="Закрити повідомлення"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 

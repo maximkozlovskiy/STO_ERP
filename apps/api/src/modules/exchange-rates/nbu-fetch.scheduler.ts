@@ -86,7 +86,12 @@ export class NbuFetchScheduler implements OnModuleInit {
       {
         attempts: 3,
         backoff: { type: 'fixed', delay: 5_000 },
+        // jobId-дедуп: спам кнопки «оновити зараз» не ставить дублі паралельних fetch-ів.
+        // Окремий від repeatable (`nbu-fetch-<org>`), щоб не конфліктувати з cron-записом.
+        jobId: `nbu-fetch-now-${orgId}`,
         removeOnComplete: true,
+        // F1: cap failed-set (інакше невдалі manual-jobs ростуть безмежно у Redis — як сіблінги).
+        removeOnFail: 200,
       },
     );
     this.logger.log(`NBU fetch поставлено в чергу (негайно) org=${orgId}`);
