@@ -563,6 +563,31 @@ leftmost після orgId, createdAt (range) останнім. Additive `CREATE 
 НЕ дублювати якщо discriminator уже leading-col наявного індексу. Кеш дашборду (25s) НЕ
 знімає потреби — при великому орзі scan болить кожен SSE-інтервал × N users.
 
+### 3.5 Нова append-only LOG/AUDIT-таблиця — list/findAll фільтрує по non-FK descriptor-колонці (provider/operation/status), а єдиний індекс веде createdAt-sort
+
+> Пастка: «є `(orgId, createdAt)` під сортування — прикрито». Ні: якщо `findAll` має
+> equality-фільтр по descriptor-колонці (не FK, не aggregate — просто `where.provider=x`),
+> цей індекс не покриває рівність → scan усіх рядків орг у createdAt-порядку + heap-filter.
+
+```bash
+# Нові *_logs/*_audit/*_events таблиці з findAll що приймає багато optional-фільтрів
+grep -rn "async findAll" apps/api/src/modules/ --include="*.service.ts" -A25 | grep -v spec \
+  | grep -E "where\.\w+ = |orderBy: \{ createdAt"
+
+# Для кожної: який фільтр ДОМІНАНТНИЙ у UI (дропдаун/таб-фільтр)? → звірити зі schema:
+# чи Є @@index що починається (orgId, <той descriptor>, createdAt)? Наявний (orgId,createdAt)
+# сам по собі НЕ покриває equality-фільтр по descriptor — лише сортування.
+grep -n "model \|@@index\|@@map" packages/database/prisma/schema.prisma
+```
+
+**Як визначити ДОМІНАНТНИЙ фільтр:** відкрити відповідний UI-таб/сторінку — колонка з
+`<select>`/дропдауном (provider/operation/status/type) = найчастіший equality-фільтр.
+
+**Фікс:** covering `@@index([orgId, <descriptor>, createdAt])` — descriptor (equality)
+leftmost після orgId, createdAt (sort/range) tail → index-range scan + готовий порядок (без
+external sort). Additive `CREATE INDEX IF NOT EXISTS`. Zero-risk. Родич 3.4, але тут це
+list-endpoint (не aggregate) і колонка — просто descriptor (не owningFk).
+
 ---
 
 ## Крок 4 — Виправлення
@@ -611,6 +636,17 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ---
 
 ## Накопичені підходи (оновлюється автоматично)
+
+### 2026-09-09 — Нова append-only LOG/AUDIT-таблиця має covering-index під СОРТУВАННЯ (orgId, createdAt), але не під ДОМІНАНТНИЙ list-фільтр по non-FK descriptor-колонці (provider/operation/status)
+
+**Сигнал:** нова `*_logs`/`*_audit`/`*_events` таблиця (append-only, без deletedAt) із `findAll(orgId, page, limit, <багато optional-фільтрів>)` що `orderBy: { createdAt: 'desc' }`. Таблиця має `@@index([orgId, createdAt])` (під сортування/пагінацію) + інколи `@@index([orgId, documentType, documentId])` (під drill-down). АЛЕ головний UI-фільтр — descriptor-колонка (`provider` у integration*logs, `operation`, `action`, `status`) — рендериться як `<select>`-дропдаун у відповідному адмін-табі → домінантний equality-фільтр. Жодного `@@index([orgId, <descriptor>, createdAt])` немає → `where.provider=x ORDER BY createdAt desc` не покривається (orgId,createdAt)-індексом (той веде createdAt-sort, не provider-рівність) → Postgres сканує УСІ рядки орг у createdAt-порядку + heap-filter provider на кожен показ табу.
+**Сигнал-grep:** для кожної нової log/audit-таблиці з `findAll` — виписати які descriptor-колонки лягають у `where.X` з optional-фільтрів, відкрити UI-таб → колонка-дропдаун = домінантний фільтр → звірити зі schema чи Є `@@index` що ПОЧИНАЄТЬСЯ `(orgId, <той descriptor>, createdAt)`. Пастка: наявний `(orgId, createdAt)` виглядає «релевантним» (є orgId і createdAt), але між ними немає descriptor → equality-фільтр не активує index-range, лишається heap-filter.
+**Причина виникнення:** індекси нової таблиці проектуються під «сортований список за часом» (createdAt desc) + drill-down по documentId — це очевидні патерни. Descriptor-фільтр (provider-дропдаун) додається у UI пізніше/паралельно, і його equality-природа маскується тим, що таблиця «і так має orgId+createdAt індекс». На dev-БД (майже порожня) EXPLAIN не болить → пропускається.
+**Підхід до виявлення:** НОВА append-only log/audit таблиця + list-endpoint з descriptor-фільтром + єдиний індекс веде createdAt = червоний прапорець. Не довіряти `(orgId, createdAt)` — питати «який фільтр UI подає найчастіше і чи він leftmost у ЯКОМУСЬ індексі після orgId».
+**Підхід до фіксу:** covering `@@index([orgId, <descriptor>, createdAt])` — descriptor (equality) leftmost після orgId, createdAt (sort/range) tail → single index-range scan + готовий порядок, без external sort, без heap re-filter. Additive `CREATE INDEX IF NOT EXISTS "<map>\_orgId*<descriptor>\_createdAt_idx"`. Zero-risk. Purge/deleteMany гілку (orgId, createdAt<cutoff) наявний (orgId,createdAt) вже покриває — окремий індекс їй не потрібен.
+**Реальний impact:** provider-фільтрований list: org-wide scan (O всі-логи-орг) + sort → index-range scan (O логи-провайдера) без sort. Sustained на кожен показ адмін-табу логів; найбільший win під великий орг / cold cache. **Де шукати ще:** integration_logs.provider (fixed), будь-яка нова audit_events.action, notification_logs.channel|status, sync_logs.entity, webhook_logs.event — усі log/audit таблиці з дропдаун-фільтром у своєму адмін-табі. Родич 3.4 (dashboard-aggregate по discriminator), але тут list-endpoint (не aggregate) і колонка — descriptor (не owningFk).
+
+---
 
 ### 2026-09-07 — Modal-thrashing детектор дивився лише в ui/, а анти-патерн живе у consumer-і; shared reused-панель множить impact на всі точки використання
 
