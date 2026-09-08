@@ -29,6 +29,36 @@ tsc api ✅ 0 + web ✅ 0. Тести: exchange-rates 12 + payment-polling 19 + 
 
 ---
 
+## 2026-09-09 — QA Цикл 2: повний 8-фазний прогін (0 HIGH / 0 функц. дефектів — спадна крива)
+
+Другий послідовний QA-цикл на HEAD Цикла 1. Кожна фаза — свіжий/ширший кут, ніж Ц1. Результат
+підтверджує зрілість коду: серйозні баги вичерпані (R1-R3 + Ц1), Ц2 ловить лише консистентність+perf.
+
+- **Ф1 sync** (e6293596) — ширший scope (усі контролери). **Bug #715 (MED)**: SettlementsTabContent
+  TX_COLORS не збігався з бековим BALANCE_SIGN (REFUND=warning, CREDIT_NOTE=muted замість success −1)
+  → cross-page колір-drift vs картка контрагента → text-success. +2 backlog (warranties/loyalty-config
+  UI — pre-existing net-new фічі, винесено власнику). Direction 2 (URL) + secret-leak — CLEAN.
+- **Ф2 review** (9c6e2c73) — 0 фіксів. Верифіковано усі 5 фіксів Ц1 CORRECT (CAS-claim вікна #711,
+  EPSILON-напрям #712, P2002-scope #714, DEFAULT_JOB_OPTS merge — 0 completed-job reads).
+- **Ф3 tester** (13fe809c, 7fc875f4) — 0 функц. дефектів (5 нових кутів: redact edge / offline-queue /
+  FSM boundary / settlements-color / integration-logs authz — усі захищені). Підняв settlements-канон у
+  @sto/shared (SETTLEMENT_BALANCE_SIGN + похідні) з cross-layer invariant-guard проти майбутнього drift.
+- **Ф4 optimize** (59eb57f2, b77e4af8, b7f72849, 48167e96) — 2: Payment covering-index
+  (orgId,fiscalStatus,createdAt)+migration під /payments FAILED-фільтр; React.memo на RevenueChart
+  (SSE-tick reconcile). Широкий sweep reports/dashboard/settlements/work-orders — CLEAN.
+- **Ф5 e2e** — 52/52 Playwright (settlements/dashboard/reports-filters/counterparty/console-errors).
+- **Ф6 simplify** — CLEAN (код Ц2 уже на правильній глибині; backend/shared BALANCE_SIGN дубль +
+  invariant-тест — навмисне defense-in-depth, не колапсувати: інакше слабша типізація/інверсія залежності).
+- **Ф7 code-review --fix** (41337174) — 2 косметика: residual cross-page drift #715 недоловив —
+  color-token (text-destructive→text-destructive-text) + minus-glyph (ASCII '-'→U+2212 '−').
+- **Ф8 security-review** — 0 vulns (settlements/counterparty рендерять поля як React-escaped JSX,
+  індекс non-unique orgId-leading, shared-константи без секретів).
+
+Підсумок: tsc api+web+shared 0, api 1981 + web 696 green. **QA зупинено після Ц2** — 0 HIGH/0 функц.
+дефектів + 4 фази верифікації поспіль чисто; Ц3 зайвий (рішення власника).
+
+---
+
 ## 2026-09-09 — QA Цикл 1: повний 8-фазний прогін (sync→review→tester→optimize→e2e→simplify→code-review→security)
 
 Повний послідовний QA-цикл на pre-prod-хардненому коді (R1-R3). Фікси одразу, коміт per-фаза.
