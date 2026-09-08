@@ -1,14 +1,17 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { vi, it, expect, describe } from 'vitest';
+import { WO_STATUS_TRANSITIONS } from '@sto/shared';
 import { FSMButtons } from '../fsm-buttons';
 
+// Локальний фікстур ДЗЕРКАЛИТЬ shared WO_STATUS_TRANSITIONS (single source of truth).
+// C2: COMPLETED += CANCELLED (реверс запчастин+боргу). Розбіжність із shared → drift-тест нижче падає.
 const TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['ESTIMATE', 'CANCELLED'],
   ESTIMATE: ['APPROVED', 'DRAFT', 'CANCELLED'],
   APPROVED: ['IN_PROGRESS', 'ON_HOLD', 'CANCELLED'],
   IN_PROGRESS: ['ON_HOLD', 'COMPLETED'],
   ON_HOLD: ['IN_PROGRESS', 'CANCELLED'],
-  COMPLETED: ['INVOICED'],
+  COMPLETED: ['INVOICED', 'CANCELLED'],
   INVOICED: ['PAID'],
   PAID: ['ARCHIVED'],
   ARCHIVED: [],
@@ -141,5 +144,53 @@ describe('FSMButtons', () => {
       />,
     );
     expect(screen.getByText('UNKNOWN_TARGET')).toBeInTheDocument();
+  });
+});
+
+// C2 (Bug #705) — sync-gap guard проти РЕАЛЬНОЇ shared-мапи. Оригінальний CRITICAL: backend
+// FSM отримав COMPLETED→CANCELLED, а frontend WO_STATUS_TRANSITIONS лишилась ['INVOICED'] →
+// кнопка «Скасувати» для завершеного наряду не рендерилась → уся фіча недосяжна з UI. Ці
+// тести читають ФАКТИЧНУ shared-мапу (не локальну копію) → падають, якщо мапа регресує.
+describe('FSMButtons × реальна WO_STATUS_TRANSITIONS (C2 sync-gap guard)', () => {
+  const LABELS_REAL: Record<string, string> = { ...LABELS, INVOICED: 'Виставити рахунок' };
+
+  it('COMPLETED → у shared-мапі присутні і INVOICED, і CANCELLED', () => {
+    // Прямий інваріант на джерело-правди: якщо хтось відкотить мапу до ['INVOICED'] — падає тут.
+    expect(WO_STATUS_TRANSITIONS.COMPLETED).toContain('CANCELLED');
+    expect(WO_STATUS_TRANSITIONS.COMPLETED).toContain('INVOICED');
+  });
+
+  it('COMPLETED наряд → рендериться кнопка «Скасувати» (C2 реверс досяжний з UI)', () => {
+    render(
+      <FSMButtons
+        status="COMPLETED"
+        transitions={WO_STATUS_TRANSITIONS}
+        labels={LABELS_REAL}
+        variants={{ CANCELLED: 'destructive' }}
+        onTransition={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Скасувати')).toBeInTheDocument();
+    expect(screen.getByText('Виставити рахунок')).toBeInTheDocument();
+  });
+
+  it('клік «Скасувати» на COMPLETED → onTransition(CANCELLED)', () => {
+    const onTransition = vi.fn();
+    render(
+      <FSMButtons
+        status="COMPLETED"
+        transitions={WO_STATUS_TRANSITIONS}
+        labels={LABELS_REAL}
+        onTransition={onTransition}
+      />,
+    );
+    fireEvent.click(screen.getByText('Скасувати'));
+    expect(onTransition).toHaveBeenCalledWith('CANCELLED');
+  });
+
+  it('INVOICED/PAID/ARCHIVED → CANCELLED недосяжний (незворотні у shared-мапі)', () => {
+    expect(WO_STATUS_TRANSITIONS.INVOICED).not.toContain('CANCELLED');
+    expect(WO_STATUS_TRANSITIONS.PAID).not.toContain('CANCELLED');
+    expect(WO_STATUS_TRANSITIONS.ARCHIVED).toEqual([]);
   });
 });
