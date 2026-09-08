@@ -211,6 +211,27 @@ await this.prisma.$transaction(async (tx) => {
 throw new NotFoundException('Наряд не знайдено');
 throw new BadRequestException('Недостатньо запчастин на складі');
 throw new ConflictException('Підйомник вже зайнятий');
+
+// 8. Exactly-once ЗОВНІШНІЙ ефект (Z-звіт, чек, SMS) — CAS-claim ПЕРЕД викликом (Bug #711)
+// ❌ stale head-check → external → update: 2 concurrent = 2 Z-звіти/чеки/SMS
+const s = await prisma.cashShift.findFirst({ where: { id, orgId } });
+if (s.status !== 'OPEN') throw new BadRequestException('Зміна вже закрита');
+await provider.closeShift(cfg, token);              // ← обидва потоки сюди
+await prisma.cashShift.update({ where: { id }, data: { status: 'CLOSED' } });
+// ✅ CAS-claim статусу ПЕРШИМ; count===0 → програвший не робить другий ефект
+const claim = await prisma.cashShift.updateMany({
+  where: { id, orgId, status: 'OPEN', deletedAt: null },
+  data: { status: 'CLOSED', closedAt: new Date() },
+});
+if (claim.count === 0) throw new BadRequestException('Зміна вже закрита');
+try { await provider.closeShift(cfg, token); }      // рівно 1 переможець
+catch (e) { await prisma.cashShift.updateMany({ where: { id, orgId, status: 'CLOSED', zReportId: null }, data: { status: 'OPEN', closedAt: null } }); throw e; }
+
+// 9. CAS проти гонки ≠ перевірка бізнес-max (Bug #712) — потрібні ОБИДВА
+// ❌ CAS захищає від подвоєння, але прийом 100 на замовлені 10 проходить чисто
+await tx.purchaseOrderLine.updateMany({ where: { id, receivedQty: line.receivedQty }, data: { receivedQty: { increment: recv.qty } } });
+// ✅ fail-fast стеля ПЕРЕД tx (Float → EPSILON проти IEEE-754-дрейфу), потім CAS
+if (line.receivedQty + recv.qty > line.quantity + 1e-6) throw new BadRequestException('Кількість прийому перевищує залишок');
 ```
 
 ### DTO — обов'язкові декоратори
