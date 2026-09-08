@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-09-09 — review Цикл 1 Фаза 2: повний pre-prod code review (R1-R3 scope)
+
+Повний чекліст sto-review по scope R1-R3 (payments/purchase-orders/work-orders/suppliers/
+invoices/loyalty/inventory/integration-logs/4 scheduler + frontend). Backend money-flow —
+зразковий: усі задокументовані патерни (CAS-first, Bug #688 idempotency, secret-redact,
+cross-tenant FK-guard, cross-kind config-guard) уже застосовані у R1-R3. 3 фікси.
+
+### 21365cff fix(review): toast-guard fallback + nbu manual enqueue removeOnFail/jobId
+
+- **§8.5 (Important)** — `counterparties/page.tsx`: усі 6 `toast.*` тепер під
+  `features.toastEnabled` + новий `actionError`-банер як fallback. Раніше 0 з 6 захищені →
+  коли toast вимкнено, помилки delete/bulk-delete/save-filter зникали безслідно (`queryError`
+  покриває лише завантаження списку, не мутації).
+- **§8.5 (Important)** — `invoices/page.tsx`: 2 останні незахищені `toast.*` у delete-handler
+  (з 6) під guard + `setError` fallback — консистентно з bulk-cancel у тому ж файлі.
+- **§2.5 (Suggestion→Important)** — `nbu-fetch.scheduler.ts` `enqueueImmediate`: +`jobId`
+  (`nbu-fetch-now-<org>`, дедуп спаму кнопки «оновити зараз») +`removeOnFail: 200` (bounded
+  Redis-retention — раніше єдиний з трьох `.add()` у файлі без обох, невдалі manual-jobs росли
+  безмежно).
+
+tsc api ✅ 0 + web ✅ 0. Тести: exchange-rates 12 + payment-polling 19 + provider-config 24 зелено.
+
+---
+
 ## 2026-09-09 — audit R3: перед-прод третій раунд (frontend IDOR/derived-fields + ops/lifecycle)
 
 Третій раунд аудиту (кут: authz/IDOR, frontend derived-consistency, ops/queue-lifecycle). 3
