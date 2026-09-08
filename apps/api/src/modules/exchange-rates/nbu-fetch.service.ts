@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ExchangeRatesService } from './exchange-rates.service';
 import { validatePublicUrl } from '../../common/utils/url-guard';
@@ -77,6 +78,17 @@ export class NbuFetchService {
         } catch (e) {
           if (e instanceof ConflictException) {
             this.logger.debug(`NBU: курс ${currency.code} на ${kyivDate} вже існує — пропускаємо`);
+            return true;
+          }
+          // Bug #714 — concurrent-race: immediate-fetch (`nbu-fetch-now-<org>`) і repeatable
+          // cron (`nbu-fetch-<org>`) можуть виконатись одночасно (окремі jobId → не дедупляться).
+          // `create` = findFirst→create (не атомарно): обидва читають anyExisting=null → обидва
+          // create → один P2002 (@@unique orgId,currencyId,date) замість ConflictException. Це теж
+          // idempotent-успіх (рядок уже записаний переможцем), НЕ помилка — не роздуваємо errors.
+          if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+            this.logger.debug(
+              `NBU: курс ${currency.code} на ${kyivDate} записано паралельно (P2002) — пропускаємо`,
+            );
             return true;
           }
           this.logger.warn(
