@@ -180,6 +180,39 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
     expect(paymentUpdate).not.toHaveBeenCalled();
   });
 
+  // Bug #707 (re-sign-in loop guard, IMPORTANT для Вчасно): якщо токен ГЕНУЇННО недійсний —
+  // а Вчасно.signIn лише повертає той самий статичний токен з кредів (не обмінює) — то
+  // refreshToken re-sign-in дає ТОЙ САМИЙ поганий токен → 2-й sell знову 401. Processor
+  // робить РІВНО один re-sign-in+повтор (не цикл): 2-й FiscalUnauthorizedError НЕ ловиться
+  // (лише перший try/catch), тож ПРОКИДАЄТЬСЯ з process() → BullMQ обмежує загальну кількість
+  // спроб (opts.attempts=288). Тобто «нескінченного re-sign» немає — падає чисто й обмежено.
+  it('Bug #707: 401 і ПІСЛЯ refresh знову 401 (незмінний bad-токен Вчасно) → throw, БЕЗ циклу/DONE', async () => {
+    // Обидві спроби sell — 401 (статичний токен не «полагодився» re-sign-in-ом).
+    sellReceipt
+      .mockRejectedValueOnce(new FiscalUnauthorizedError('401'))
+      .mockRejectedValueOnce(new FiscalUnauthorizedError('401 знову — токен той самий'));
+    refreshToken.mockResolvedValueOnce({ provider: providerMock, cfg, token: 'same-bad-tok' });
+
+    await expect(processor.process(makeJob())).rejects.toBeInstanceOf(FiscalUnauthorizedError);
+
+    // РІВНО один re-sign-in і РІВНО дві спроби sell — не цикл (інакше було б >2).
+    expect(refreshToken).toHaveBeenCalledTimes(1);
+    expect(sellReceipt).toHaveBeenCalledTimes(2);
+    // Чек НЕ позначено DONE (жодного payment.update у process — FAILED пише лише onFailed на
+    // термінальній спробі, коли BullMQ вичерпає opts.attempts).
+    expect(paymentUpdate).not.toHaveBeenCalled();
+  });
+
+  it('Bug #707: onFailed після вичерпання спроб на постійному 401 → FAILED (обмежено, не вічно)', async () => {
+    // Симулюємо термінальну спробу BullMQ (attemptsMade сягнув opts.attempts=288) на 401-error:
+    // статус стає FAILED РІВНО раз — доказ, що незмінний-токен-loop має обмежений хвіст.
+    await processor.onFailed(makeJob({}, 288), new FiscalUnauthorizedError('токен недійсний'));
+    expect(paymentUpdate).toHaveBeenCalledWith({
+      where: { id: 'pay-1', orgId: 'org-1' },
+      data: { fiscalStatus: 'FAILED', fiscalError: 'токен недійсний' },
+    });
+  });
+
   it('cashier access-token НІКОЛИ не потрапляє у лог (жоден рівень)', async () => {
     ensureToken.mockResolvedValueOnce({
       provider: providerMock,
