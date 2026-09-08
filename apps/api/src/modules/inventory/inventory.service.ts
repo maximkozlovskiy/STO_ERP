@@ -347,6 +347,9 @@ export class InventoryService {
     const consumptions = await db.batchConsumption.findMany({
       where: { orgId, documentType, documentId, quantity: { lt: 0 } },
       select: { batchId: true, quantity: true },
+      // Defensive cap: consumptions per документ обмежені (≤1000 parts × невеликий FEFO-span),
+      // але явний take дзеркалить решту findMany у сервісі й унеможливлює OOM на аномалії.
+      take: 5000,
     });
     if (consumptions.length === 0) return;
 
