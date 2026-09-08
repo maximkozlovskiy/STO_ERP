@@ -16,9 +16,16 @@ export function calculatePagination(params: {
   limit: number | undefined;
   maxLimit?: number;
 }): { skip: number; take: number } {
-  const page = Math.max(1, Math.floor(params.page ?? 1));
+  // NaN-guard: контролери, що беруть сирий @Query і роблять `+page`, передають NaN на
+  // garbage-вводі (`?page=abc`). `??` не ловить NaN (NaN != null) → Math.floor(NaN)=NaN
+  // просочувався б у Prisma skip/take → 500. Нормалізуємо NaN до дефолту (чистий fallback).
+  const rawPage = params.page;
+  const rawLimit = params.limit;
+  const pageNum = rawPage == null || Number.isNaN(rawPage) ? 1 : rawPage;
+  const limitNum = rawLimit == null || Number.isNaN(rawLimit) ? 20 : rawLimit;
+  const page = Math.max(1, Math.floor(pageNum));
   const cap = params.maxLimit ?? MAX_PAGE_SIZE;
-  const take = Math.min(Math.max(1, Math.floor(params.limit ?? 20)), cap);
+  const take = Math.min(Math.max(1, Math.floor(limitNum)), cap);
   return { skip: (page - 1) * take, take };
 }
 

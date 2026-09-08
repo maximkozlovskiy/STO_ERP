@@ -11,8 +11,11 @@
 export function redactSecrets(text: string, secrets: (string | null | undefined)[]): string {
   let out = text;
   for (const s of secrets) {
-    // Ігноруємо порожні/короткі значення — підстроки на кшталт "1"/"" зіпсували б увесь текст.
-    if (!s || s.length < 6) continue;
+    // Пропускаємо лише вироджені значення (порожнє / 1-2 символи) — підстрока на кшталт "1"/"ab"
+    // зіпсувала б увесь текст, і реальним секретом бути не може. Але НЕ пропускаємо 4-значний
+    // Checkbox pin_code: реальний касирський PIN = рівно 4 цифри, і якщо провайдер віддзеркалить
+    // його у тілі 4xx-помилки — при поро̆зі >=6 він витік би у IntegrationLog.error (Bug: PIN leak).
+    if (!s || s.length < 3) continue;
     out = out.split(s).join('***');
   }
   return out;

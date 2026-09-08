@@ -186,6 +186,20 @@ describe('CheckboxClient (ПРРО Крок 2 — HTTP-клієнт)', () => {
       await expect(client.openShift(URL, 'tok')).rejects.toThrow(/Checkbox 500: internal boom/);
     });
 
+    it('4-значний pin_code, віддзеркалений у 400 body → редактується (не витікає у лог)', async () => {
+      // Реальний касирський PIN = 4 цифри. Якщо провайдер ехо-їть тіло запиту у 400,
+      // помилка потрапляє у IntegrationLog.error через wrap() → PIN мусить бути замаскований.
+      fetchMock.mockResolvedValueOnce(
+        OK('{"message":"invalid pin_code=1234 for X-License-Key: LIC-KEY-LONG"}', 400),
+      );
+      const thrown = await client.signInPinCode(URL, 'LIC-KEY-LONG', '1234').catch(e => e as Error);
+      expect(thrown.message).toMatch(/Checkbox 400:/);
+      // Ні PIN, ні license key не повинні лишитись у тексті помилки.
+      expect(thrown.message).not.toContain('1234');
+      expect(thrown.message).not.toContain('LIC-KEY-LONG');
+      expect(thrown.message).toContain('***');
+    });
+
     it('порожнє тіло на 200 → {} (не JSON.parse crash)', async () => {
       fetchMock.mockResolvedValueOnce(OK('', 200));
       // openShift кине бо нема id — але не з SyntaxError JSON.parse, а з «id зміни».

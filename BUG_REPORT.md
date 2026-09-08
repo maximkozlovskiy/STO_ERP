@@ -3702,3 +3702,45 @@ Baseline на старті: tsc api=0 / shared=0 / web=0; inventory+work-orders 
 - **Транспортний контракт НЕ змінено:** єдиний dispatcher POST /api/v3/fiscal/execute, task-коди 0/1/11/18, raw-token без Bearer, `{fiscal:{...}}` — усе лишилось як у підтвердженому фіксі. Старий v1/Bearer shape не повернуто.
 
 **Результат:** знайдено 2 (HIGH×1, MEDIUM×1 — обидва coverage-gap на IMPORTANT-сценаріях), виправлено 2, залишилось 0. Функціональних багів у продакшн-коді обох правок НЕ знайдено — код коректний. tsc api 0. Тести: api full 1929 зелено (payments+delivery 353, +13 нових регрес-тестів), обидва mutation-verified. E2E пропущено (Playwright MCP CONNECT_TIMEOUT — не блокер). Транспортний контракт integrations не чіпав.
+
+## Session 2026-09-08 — IntegrationLog bug-hunt (ba4784c6 + d5c656e5 + 1bc106f8)
+
+Ціль: money/fiscal/security фічі IntegrationLog. Probe: redact PIN-leak, fire-and-forget, purge orgId-scope, httpStatus parse, control-flow 10 wrap-сайтів, filter endpoint, frontend.
+
+### Bug #709 — CRITICAL/HIGH (security · secret leak) — 4-значний Checkbox pin_code витікає у IntegrationLog.error
+
+**Файл:** `apps/api/src/common/utils/redact.ts:15` (поріг `s.length < 6`)
+**Статус:** [x] виправлено
+
+**Симптом (підтверджено емпірично):** `redactSecrets('...pin_code=1234', ['1234', licenseKey])` повертає текст БЕЗ маскування PIN — `1234` лишається у чистому вигляді. Реальний касирський Checkbox pin_code = **рівно 4 цифри** (підтверджено тест-даними `cash-shift.service.spec.ts:60` `pinCode:'1234'`, DTO `checkboxPinCode` без обмеження довжини). PIN передається у тілі sign-in (`checkbox.client.ts:37-38 body:{pin_code}, redact:[pinCode,licenseKey]`). Якщо провайдер віддзеркалить надіслане тіло у 4xx-помилці → `response.text()` → `Error.message` → `IntegrationLog.error` (через `wrap()`), видимий будь-якому OWNER/ADMIN через `GET /integration-logs`.
+
+**Причина:** поріг `< 6` вибрано щоб уникнути катастрофічної заміни коротких підрядків (`"1"` → маскує кожну `1`). Але 4-значний PIN — легітимний секрет, який ОБОВ'ЯЗКОВО маскувати. Поріг конфліктував з вимогою secret-hygiene саме на найкоротшому реальному секреті системи.
+
+**Фікс:** знижено поріг до `< 3` — маскує 4-значний PIN (і будь-який ≥3-символьний секрет), пропускає лише вироджені 0-2 символьні значення, які реальним секретом бути не можуть, зберігаючи захист від катастрофічної single-char заміни. `split/join` (не RegExp) → спецсимволи безпечні, без over-match. Не послаблено ані secret-hygiene, ані fire-and-forget.
+
+**Регресія (mutation-verified — revert порогу до `<6` → тест червоний):**
+
+- `redact.spec.ts`: маскування 4-значного PIN у 400-body; 3-символьна нижня межа; 2-символьний пропуск; спецсимволи regex не над-маскують/не падають.
+- `checkbox.client.spec.ts`: 4-значний pin_code + licenseKey віддзеркалені у 400 body → обидва замасковані у `Error.message` (не витікають у лог).
+
+### Bug #710 — LOW (robustness · 500 на garbage-вводі) — NaN page/limit просочується у Prisma skip/take
+
+**Файл:** `apps/api/src/common/utils/pagination.ts:19-22` (`calculatePagination`); тригер — `integration-logs.controller.ts:40 +page/+limit` на сирому `@Query`.
+**Статус:** [x] виправлено
+
+**Симптом (підтверджено емпірично):** `GET /integration-logs?page=abc` → контролер `+'abc'` = `NaN` → `calculatePagination` `Math.max(1, Math.floor(NaN))` = `NaN` (бо `NaN ?? 1` = `NaN`, `??` не ловить NaN) → `findMany({ skip: NaN, take: NaN })` → Prisma кидає → **HTTP 500 замість чистого fallback**. Контролер не використовує `ListIntegrationLogsQueryDto` (він визначений, але не підключений), тому валідація типів обійдена.
+
+**Причина:** shared-утиліта `calculatePagination` обіцяє «safe skip/take» + «clamps page to minimum 1», але `??`-дефолт не покриває NaN. Стосується будь-якого контролера, що бере сирий `@Query` і робить `+`.
+
+**Фікс:** NaN-guard у `calculatePagination` — `Number.isNaN` нормалізує page→1, limit→20 перед clamp. Найвища важільність: захищає всі 20+ list-endpoints, а не лише integration-logs. Функціонально нейтральний для валідного вводу (усі 24 наявні pagination-тести зелені).
+
+**Регресія (mutation-verified — revert guard → тест червоний):** `pagination.spec.ts`: NaN page → default 1; NaN limit → default 20; обидва NaN → жоден NaN не просочується у skip/take.
+
+### Перевірено ЧИСТИМ (probe-list — багів не знайдено):
+
+- **Fire-and-forget (#2):** `record()` має внутрішній try/catch → `create` reject проковтнутий, `wrap` re-throw-ить оригінал; success-шлях `void this.record()` перед `return result` не блокує. Money/fiscal завершується попри збій логу. Покрито 2 наявними тестами (обидва шляхи).
+- **Purge orgId-scope (#3):** `deleteMany({where:{orgId, createdAt:{lt:cutoff}}})` завжди orgId-scoped; clamp [1,365] + fallback 30; cutoff = Kyiv-північ (today−N). Покрито 5 наявними тестами (scope/cutoff/clamp-0→1/clamp-9999→365/fallback).
+- **httpStatus parse (#4):** `\b([1-5]\d{2})\b` — `200000` НЕ матчить (немає word-boundary всередині токена); `999` → null (не [1-5]). Хибний match можливий лише на «Payment 200 000 UAH» (spaced) → advisory-поле, документований upgrade-шлях (типізований IntegrationHttpError). Прийнятно, не фіксимо (provider-prefix anchor зламав би реальний парсинг).
+- **Control-flow 10 wrap-сайтів (#5):** checkbox 401→retry — перший `wrap` re-throw-ить `FiscalUnauthorizedError`, зовнішній catch `instanceof` спрацьовує; wrap повертає точний destructured shape (`{providerShiftId}`/`{zReportId}`/`{fiscalReceiptId}` незмінні). Wrap-that-swallows зловився б наявними processor-тестами.
+- **Filter endpoint (#6):** `ok 'true'/'false'/absent` → `boolean|undefined`; dateTo inclusive (`+T23:59:59.999Z`); limit cap 200 (`maxLimit:200`); provider/documentType passthrough; roles OWNER/ADMIN (RolesGuard).
+- **Frontend (#7):** retention `Math.max(1,Math.min(365,Number()))` (`Number('')=0`→1); page-reset через `resetTo`; ok/error бейджі; empty-state colSpan=8; error-колонка `log.error ?? ''` + `title={log.error ?? undefined}` — не падає на null.

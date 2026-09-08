@@ -51,6 +51,23 @@ describe('calculatePagination', () => {
   it('дробові значення floor-уються', () => {
     expect(calculatePagination({ page: 1.9, limit: 20.7 })).toEqual({ skip: 0, take: 20 });
   });
+
+  // Регресія: контролер бере сирий @Query і робить `+page`; garbage-ввід (`?page=abc`) → NaN.
+  // `??` не ловить NaN → skip/take були NaN → Prisma 500. Тепер → чистий дефолт.
+  it('NaN page (garbage +"abc") → дефолт page=1, без NaN у skip', () => {
+    expect(calculatePagination({ page: NaN, limit: 20 })).toEqual({ skip: 0, take: 20 });
+  });
+
+  it('NaN limit (garbage +"xyz") → дефолт take=20, без NaN', () => {
+    expect(calculatePagination({ page: 1, limit: NaN })).toEqual({ skip: 0, take: 20 });
+  });
+
+  it('обидва NaN → skip=0, take=20 (жодного NaN не просочується у Prisma)', () => {
+    const { skip, take } = calculatePagination({ page: NaN, limit: NaN, maxLimit: 200 });
+    expect(Number.isNaN(skip)).toBe(false);
+    expect(Number.isNaN(take)).toBe(false);
+    expect({ skip, take }).toEqual({ skip: 0, take: 20 });
+  });
 });
 
 describe('buildSortOrderBy', () => {
