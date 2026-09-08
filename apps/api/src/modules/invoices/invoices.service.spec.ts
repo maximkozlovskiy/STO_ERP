@@ -55,6 +55,8 @@ describe('InvoicesService — business logic guards', () => {
     // Дефолт VAT = NONE; тести, що перевіряють ПДВ, перевизначають getDefaultVatRate per-case.
     settingsMock = {
       getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+      // §13: invoiceDueDays керує дефолтним терміном оплати (resolveDueDate).
+      getOrganisationSettings: vi.fn().mockResolvedValue({ invoiceDueDays: 7 }),
     };
 
     const module = await Test.createTestingModule({
@@ -482,6 +484,70 @@ describe('InvoicesService — business logic guards', () => {
           }),
         }),
       );
+    });
+  });
+
+  // §13 config-over-hardcode: дефолтний термін оплати = documentDate + invoiceDueDays.
+  describe('create — dueDate за invoiceDueDays (§13)', () => {
+    const CP = '44444444-4444-4444-8444-444444444444';
+    const setup = () => {
+      prisma.counterparty.findFirst.mockResolvedValue({ id: CP });
+      prisma.invoice.create.mockImplementation(
+        async ({ data }: { data: Record<string, unknown> }) => ({
+          id: INV_ID,
+          number: 'INV-1',
+          status: 'DRAFT',
+          amount: data.amount,
+          workOrderId: null,
+          counterpartyId: CP,
+          documentDate: data.documentDate,
+          dueDate: data.dueDate,
+          deletedAt: null,
+          totalWithoutVat: 0,
+          totalVat: 0,
+          totalWithVat: data.amount,
+          createdAt: new Date(),
+          counterparty: { firstName: 'a', lastName: 'b', companyName: null },
+          workOrder: null,
+        }),
+      );
+    };
+
+    it('коли dueDate не задано → documentDate + invoiceDueDays(7)', async () => {
+      setup();
+      await service.create(ORG, {
+        counterpartyId: CP,
+        amount: 100,
+        documentDate: '2026-03-01',
+      } as never);
+      const arg = prisma.invoice.create.mock.calls[0][0].data;
+      // 2026-03-01 + 7 днів = 2026-03-08 (Kyiv, DST-aware addDaysKyiv)
+      expect((arg.dueDate as Date).toISOString().slice(0, 10)).toBe('2026-03-08');
+      expect(settingsMock.getOrganisationSettings).toHaveBeenCalledWith(ORG);
+    });
+
+    it('явно заданий dueDate поважається (invoiceDueDays ігнорується)', async () => {
+      setup();
+      await service.create(ORG, {
+        counterpartyId: CP,
+        amount: 100,
+        documentDate: '2026-03-01',
+        dueDate: '2026-03-20',
+      } as never);
+      const arg = prisma.invoice.create.mock.calls[0][0].data;
+      expect((arg.dueDate as Date).toISOString().slice(0, 10)).toBe('2026-03-20');
+    });
+
+    it('налаштування недоступні → fallback 7 днів (без падіння)', async () => {
+      setup();
+      settingsMock.getOrganisationSettings.mockRejectedValueOnce(new Error('db down'));
+      await service.create(ORG, {
+        counterpartyId: CP,
+        amount: 100,
+        documentDate: '2026-03-01',
+      } as never);
+      const arg = prisma.invoice.create.mock.calls[0][0].data;
+      expect((arg.dueDate as Date).toISOString().slice(0, 10)).toBe('2026-03-08');
     });
   });
 

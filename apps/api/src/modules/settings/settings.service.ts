@@ -296,6 +296,9 @@ export class SettingsService {
     vatMode: VatMode;
     defaultVatRateId: string | null;
     invoiceDueDays: number;
+    // TODO(autoArchiveDays): наразі без споживача — авто-архівація документів ще не
+    // реалізована (немає scheduler-джобу). Поле зберігається/віддається, щоб не втратити
+    // конфіг; підключити при впровадженні auto-archive cron (аналог invoice-overdue.scheduler).
     autoArchiveDays: number;
     defaultWarrantyDays: number;
     requireClientApproval: boolean;

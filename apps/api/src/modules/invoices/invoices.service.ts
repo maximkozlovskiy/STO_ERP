@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InvoiceStatus, Prisma } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
 
-import { kyivToday } from '../../common/utils/kyiv-date';
+import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 import { safeCoeff, roundMoney } from '../../common/utils/math';
 import { sumLineTotals } from '../../common/utils/vat';
 import type { VatMode } from '@prisma/client';
@@ -206,6 +206,11 @@ export class InvoicesService {
     // status reservation already creates similar gaps).
     const number = await this.docNumbers.next(orgId, 'INVOICE');
 
+    // §13: термін оплати від дати документа за invoiceDueDays (обчислюємо ПОЗА Serializable
+    // tx — settings-query не має триматись всередині короткої критичної секції).
+    const documentDate = kyivToday();
+    const dueDate = await this.resolveDueDate(orgId, undefined, documentDate);
+
     // Serializable isolation + re-check `existing` within the tx prevents two concurrent
     // createFromWorkOrder calls from BOTH passing the pre-check and creating duplicate invoices.
     // On Serializable conflict, Prisma throws P2034 → map to BadRequestException.
@@ -231,8 +236,8 @@ export class InvoicesService {
               workOrderId: wo.id,
               number,
               amount: Number(wo.totalAmount),
-              dueDate: null,
-              documentDate: kyivToday(),
+              dueDate,
+              documentDate,
               notes: null,
               status: InvoiceStatus.DRAFT,
             },
@@ -252,6 +257,28 @@ export class InvoicesService {
         'Інший користувач щойно виставив рахунок для цього наряду. Оновіть сторінку.',
       );
     }
+  }
+
+  /**
+   * §13 config-over-hardcode: якщо термін оплати явно не заданий, обчислюємо його від
+   * дати документа за OrganisationSettings.invoiceDueDays (дефолт 7). Kyiv DST-aware.
+   * explicit === null/undefined → застосувати дефолт; explicit заданий → поважати його.
+   */
+  private async resolveDueDate(
+    orgId: string,
+    explicit: string | undefined,
+    documentDate: Date,
+  ): Promise<Date | null> {
+    if (explicit) return new Date(explicit);
+    let dueDays = 7;
+    try {
+      const s = await this.settingsService.getOrganisationSettings(orgId);
+      const raw = Number((s as { invoiceDueDays?: number }).invoiceDueDays);
+      if (Number.isFinite(raw) && raw >= 0) dueDays = Math.trunc(raw);
+    } catch {
+      /* налаштування недоступні → дефолт 7 днів */
+    }
+    return addDaysKyiv(documentDate, dueDays);
   }
 
   async create(orgId: string, dto: CreateInvoiceDto, userId?: string): Promise<InvoiceResponseDto> {
@@ -274,6 +301,9 @@ export class InvoicesService {
 
     const number = await this.docNumbers.next(orgId, 'INVOICE');
 
+    const documentDate = dto.documentDate ? new Date(dto.documentDate) : kyivToday();
+    const dueDate = await this.resolveDueDate(orgId, dto.dueDate, documentDate);
+
     const inv = await this.prisma.invoice.create({
       data: {
         orgId,
@@ -282,8 +312,8 @@ export class InvoicesService {
         number,
         amount: dto.amount,
         invoiceType: dto.invoiceType ?? 'INVOICE',
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-        documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
+        dueDate,
+        documentDate,
         notes: dto.notes ?? null,
         status: InvoiceStatus.DRAFT,
       },
