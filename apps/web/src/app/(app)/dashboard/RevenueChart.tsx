@@ -1,4 +1,5 @@
 'use client';
+import { memo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
@@ -22,7 +23,11 @@ function yFmt(v: number): string {
   return String(v);
 }
 
-export default function RevenueChart({ data }: { data: RevenuePoint[] }) {
+// memo: єдиний проп `data` має стабільну ідентичність (frozen EMPTY_REVENUE fallback +
+// пряме посилання на query-data у dashboard/page). Дашборд ре-рендериться на кожен SSE-тік
+// (useDashboardStream) + локальний стан (todayStr/greeting/enabledQA/qaConfigOpen) — без memo
+// recharts проходить повний reconcile на кожен такий ре-рендер попри незмінні дані.
+function RevenueChart({ data }: { data: RevenuePoint[] }) {
   return (
     <ResponsiveContainer width="100%" height={200}>
       <BarChart data={data} margin={{ left: -10 }}>
@@ -62,3 +67,5 @@ export default function RevenueChart({ data }: { data: RevenuePoint[] }) {
     </ResponsiveContainer>
   );
 }
+
+export default memo(RevenueChart);
