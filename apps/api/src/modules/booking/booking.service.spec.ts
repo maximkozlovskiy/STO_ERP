@@ -53,7 +53,9 @@ describe('BookingService', () => {
       work: { count: vi.fn(), findMany: vi.fn() },
       branchSettings: { findUnique: vi.fn() },
       lift: { findMany: vi.fn(), findFirst: vi.fn() },
-      calendarSlot: { findMany: vi.fn(), findFirst: vi.fn() },
+      calendarSlot: { findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
+      // $transaction(cb) → викликає cb з тим самим prisma-моком як tx (in-memory).
+      $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
     };
     notifications = { send: vi.fn().mockResolvedValue(undefined) };
     calendar = { createSlot: vi.fn().mockResolvedValue({ slots: [{ id: 'slot-1' }] }) };
@@ -557,10 +559,46 @@ describe('BookingService', () => {
       // updateMany НЕ викликано — заявка лишається PENDING (можна переобрати час).
       expect(prisma.bookingRequest.updateMany).not.toHaveBeenCalled();
     });
+
+    // Bug #700 (regression guard): ідемпотентність — повторний confirm заявки, у якої слот вже
+    // матеріалізовано (confirmedSlotId set), НЕ пересоздає CalendarSlot (інакше дубль-слот/409 на
+    // ретраї чи double-click). Guard `!confirmedSlotId` у confirm() — mutation-verify: без нього
+    // createSlot викликався б удруге.
+    it('Bug #700: повторний confirm (confirmedSlotId вже є) → createSlot НЕ викликається (ідемпотентно)', async () => {
+      const reqDate = new Date('2026-10-01T10:00:00.000+03:00');
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce({
+        status: 'CONFIRMED',
+        liftId: 'lift-1',
+        requestedDate: reqDate,
+        branchId,
+        confirmedSlotId: 'existing-slot', // слот уже матеріалізовано попереднім confirm
+        serviceIds: [],
+      });
+      prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.bookingRequest.findFirstOrThrow.mockResolvedValueOnce({
+        id: bookingId,
+        status: 'CONFIRMED',
+        clientName: 'Тест',
+        clientPhone: '+380501234567',
+        requestedDate: reqDate,
+        branchId,
+        notes: null,
+        createdAt: new Date(),
+      });
+
+      await service.confirm(orgId, bookingId);
+
+      expect(calendar.createSlot).not.toHaveBeenCalled();
+      // Перевикористовує наявний confirmedSlotId, а не null.
+      expect(prisma.bookingRequest.updateMany.mock.calls[0][0].data.confirmedSlotId).toBe(
+        'existing-slot',
+      );
+    });
   });
 
   describe('cancel', () => {
-    it('soft-delete + status=CANCELLED у одному updateMany', async () => {
+    it('soft-delete + status=CANCELLED у одному updateMany (без ліфта — слот не чіпаємо)', async () => {
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce({ confirmedSlotId: null });
       prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 1 });
 
       await service.cancel(orgId, bookingId);
@@ -571,12 +609,45 @@ describe('BookingService', () => {
       expect(args.where.deletedAt).toBe(null);
       expect(args.data.status).toBe('CANCELLED');
       expect(args.data.deletedAt).toBeInstanceOf(Date);
+      // Немає confirmedSlotId → CalendarSlot не звільняємо.
+      expect(prisma.calendarSlot.updateMany).not.toHaveBeenCalled();
     });
 
     it('повторний cancel (вже soft-deleted) → NotFoundException', async () => {
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce(null);
       prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 0 });
 
       await expect(service.cancel(orgId, bookingId)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    // Bug #699: cancel підтвердженої заявки з матеріалізованим слотом МУСИТЬ звільнити
+    // CalendarSlot — інакше ліфт лишається зайнятим назавжди (втрата пропускної здатності).
+    it('Bug #699: cancel підтвердженої заявки → звільняє матеріалізований CalendarSlot (по id + parentSlotId)', async () => {
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce({ confirmedSlotId: 'slot-9' });
+      prisma.calendarSlot.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.cancel(orgId, bookingId);
+
+      // MUTATION-VERIFY: якби cancel не звільняв слот, calendarSlot.updateMany не викликався б.
+      expect(prisma.calendarSlot.updateMany).toHaveBeenCalledTimes(1);
+      const slotArgs = prisma.calendarSlot.updateMany.mock.calls[0][0];
+      expect(slotArgs.where.orgId).toBe(orgId);
+      expect(slotArgs.where.deletedAt).toBe(null);
+      // Покриває split-слот: id самого слота АБО parentSlotId=slotId (child розбиття через межу дня).
+      expect(slotArgs.where.OR).toEqual([{ id: 'slot-9' }, { parentSlotId: 'slot-9' }]);
+      expect(slotArgs.data.deletedAt).toBeInstanceOf(Date);
+    });
+
+    it('Bug #699: слот і заявка звільняються атомарно ($transaction)', async () => {
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce({ confirmedSlotId: 'slot-9' });
+      prisma.calendarSlot.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.cancel(orgId, bookingId);
+
+      // Обидва write у межах однієї $transaction (не лишити слот-сироту при частковому збою).
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
   });
 });

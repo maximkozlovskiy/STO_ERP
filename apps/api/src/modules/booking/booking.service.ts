@@ -477,12 +477,37 @@ export class BookingService {
   }
 
   async cancel(orgId: string, id: string): Promise<void> {
+    // Читаємо confirmedSlotId ДО скасування: якщо заявку було підтверджено з ліфтом,
+    // на confirm() матеріалізувався CalendarSlot(BOOKED). Скасування заявки МУСИТЬ звільнити
+    // цей слот, інакше ліфт лишається зайнятим назавжди (getAvailability бачить active-слот
+    // з deletedAt:null → назавжди блокує цей час) — втрата пропускної здатності календаря,
+    // проти якої і робили CAL-H3/H4.
+    const req = await this.prisma.bookingRequest.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { confirmedSlotId: true },
+    });
+
     // Defense-in-depth: scope by orgId у where (sto-review pattern 2026-05-30
     // soft-delete update without orgId). Cancel is idempotent — повторний DELETE
     // на вже-скасованому записі поверне 404 (count === 0 бо deletedAt != null).
-    const result = await this.prisma.bookingRequest.updateMany({
-      where: { id, orgId, deletedAt: null },
-      data: { status: 'CANCELLED', deletedAt: new Date() },
+    // Слот і заявку звільняємо в одній $transaction — атомарно (не лишити слот-сироту
+    // якщо cancel заявки впаде, і навпаки). deletedSlot по id АБО parentSlotId — покриває
+    // split-слот (createSlot розбиває запис через межу робочого дня на parent+child).
+    const result = await this.prisma.$transaction(async tx => {
+      if (req?.confirmedSlotId) {
+        await tx.calendarSlot.updateMany({
+          where: {
+            orgId,
+            deletedAt: null,
+            OR: [{ id: req.confirmedSlotId }, { parentSlotId: req.confirmedSlotId }],
+          },
+          data: { deletedAt: new Date() },
+        });
+      }
+      return tx.bookingRequest.updateMany({
+        where: { id, orgId, deletedAt: null },
+        data: { status: 'CANCELLED', deletedAt: new Date() },
+      });
     });
     if (result.count === 0) throw new NotFoundException('Заявку не знайдено');
   }
