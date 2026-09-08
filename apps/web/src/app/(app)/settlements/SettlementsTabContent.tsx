@@ -55,8 +55,10 @@ const TX_LABELS: Record<string, string> = {
 // контрагента (counterparties/[id]/PageClient), щоб той самий тип не фарбувався по-різному між
 // екранами (Bug #715 клас: cross-page колір-drift). Колір НАВМИСНЕ окремий від balance-sign:
 // постачальницькі типи (SUPPLIER_PAYMENT: sign +1) все одно success, бо гасять наш борг.
+// Токен text-destructive-text (не text-destructive) — той самий, що на картці контрагента
+// (counterparties/[id]/PageClient), інакше червоний рендериться різним відтінком між екранами.
 const txColor = (type: string): string =>
-  SETTLEMENT_TX_CHARGE_LIKE_TYPES.has(type) ? 'text-destructive' : 'text-success';
+  SETTLEMENT_TX_CHARGE_LIKE_TYPES.has(type) ? 'text-destructive-text' : 'text-success';
 // Типи, що ЗБІЛЬШУЮТЬ баланс (BALANCE_SIGN = +1) — знак «+»/«−». Джерело знаку — @sto/shared
 // SETTLEMENT_BALANCE_UP_TYPES (дзеркало бекового BALANCE_SIGN, під invariant-тестом).
 const BALANCE_UP_TYPES = SETTLEMENT_BALANCE_UP_TYPES;

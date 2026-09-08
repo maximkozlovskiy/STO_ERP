@@ -1355,7 +1355,7 @@ export default function CounterpartyCardPage() {
                   >
                     {/* Знак = дзеркало бекового BALANCE_SIGN. +1: CHARGE, SUPPLIER_PAYMENT, SUPPLIER_REFUND;
                         −1: PAYMENT, PREPAYMENT, REFUND, CREDIT_NOTE, SUPPLIER_CHARGE. */}
-                    {BALANCE_UP_TX_TYPES.has(t.type) ? '+' : '-'}
+                    {BALANCE_UP_TX_TYPES.has(t.type) ? '+' : '−'}
                     {fmtMoney(Math.abs(t.amount))} ₴
                   </span>
                 </div>
