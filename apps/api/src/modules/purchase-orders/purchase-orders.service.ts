@@ -40,6 +40,11 @@ const PO_LINE_GOOD_INCLUDE = {
   },
 } as const satisfies Prisma.GoodDefaultArgs;
 
+// Толеранс для over-receipt guard (Bug #712): quantity/receivedQty — Float у схемі (дробові
+// одиниці: літри/кг), тож пряме `>` дало б хибне 400 на IEEE-754-дрейфі (10 отримано за 2 прийоми
+// по 3.33 = 9.99…). 1e-6 достатньо, щоб не пропустити реальний надлишок ≥0.001 (мін. крок кількості).
+const RECEIVE_QTY_EPSILON = 1e-6;
+
 const PO_TRANSITIONS: Record<POStatus, POStatus[]> = {
   DRAFT: [PurchaseOrderStatus.ORDERED, PurchaseOrderStatus.CANCELLED],
   ORDERED: [
@@ -621,6 +626,23 @@ export class PurchaseOrdersService {
         (x): x is { recv: (typeof dto.lines)[0]; line: NonNullable<typeof x.line> } =>
           !!x.line && x.recv.receivedQty > 0,
       );
+
+    // Bug #712 — over-receipt guard (документований інваріант дос'є purchase-order.md §100:
+    // «receivedQty не може перевищити line.quantity»). DTO має лише @Min(0), а CAS нижче
+    // (updateMany where receivedQty=<очікуване>) захищає ЛИШЕ від concurrent-подвоєння, НЕ від
+    // надлишкового прийому одним викликом. Без цього прийом 100 на замовлені 10 проходить →
+    // RECEIPT-рух +100 у склад + SUPPLIER_CHARGE ×100·price (роздутий борг постачальнику), а
+    // allReceived (receivedQty>=quantity) хибно flip-ає у RECEIVED. Fail-fast 400 до $transaction.
+    // QTY_EPSILON — толеранс дробових одиниць (літри/кг) від IEEE-754-дрейфу.
+    for (const { recv, line } of activeLines) {
+      if (line.receivedQty + recv.receivedQty > line.quantity + RECEIVE_QTY_EPSILON) {
+        const remaining = roundMoney(Math.max(0, line.quantity - line.receivedQty));
+        throw new BadRequestException(
+          `Кількість прийому перевищує залишок за рядком (замовлено ${line.quantity}, ` +
+            `вже прийнято ${line.receivedQty}, до прийому ${remaining})`,
+        );
+      }
+    }
 
     // roundMoney: receivedAmount живить SUPPLIER_CHARGE (борг постачальнику) — грошовий
     // результат перед createTransaction має бути квантований до копійки (не float-дрейф).

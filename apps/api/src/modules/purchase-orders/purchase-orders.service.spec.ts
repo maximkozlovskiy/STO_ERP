@@ -973,6 +973,102 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
       'paymentDate',
     );
   });
+
+  // ── Bug #712: over-receipt guard (receivedQty не може перевищити orderedQty) ──────────────
+  // Mutation-verified: якщо прибрати guard `line.receivedQty + recv.receivedQty > line.quantity`,
+  // прийом 100 на замовлені 10 пройшов би → RECEIPT +100 у склад + SUPPLIER_CHARGE ×100·price.
+  it('Bug #712: прийом > orderedQty (fresh line) → 400, ЖОДНОГО inventory/settlement write', async () => {
+    // Дефолтна фікстура beforeEach: line quantity=10, receivedQty=0. Приймаємо 11 (>10).
+    await expect(
+      service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 11 }] }, USER_ID),
+    ).rejects.toThrow(/перевищує залишок/);
+    // Fail-fast ДО $transaction: жодного руху складу / боргу постачальнику / CAS-update рядка.
+    expect(inventory.createMovement).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrderLine.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('Bug #712: кумулятивний прийом перевищує orderedQty (partial line) → 400', async () => {
+    // Лінія вже частково прийнята: quantity=10, receivedQty=7 → залишок 3. Приймаємо 5 (>3).
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.PARTIAL,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 7,
+          good: { unitId: GOOD_UNIT_ID },
+        },
+      ],
+    });
+    await expect(
+      service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 5 }] }, USER_ID),
+    ).rejects.toThrow(/перевищує залишок/);
+    expect(inventory.createMovement).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
+  });
+
+  it('Bug #712: прийом РІВНО до orderedQty (граничний) → дозволено (не хибне 400)', async () => {
+    // Boundary: quantity=10, receivedQty=0, приймаємо рівно 10 → guard НЕ спрацьовує (== не >).
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst
+      .mockResolvedValueOnce({
+        id: PO_ID,
+        orgId: ORG,
+        number: 'PO-RX',
+        status: PurchaseOrderStatus.ORDERED,
+        supplierId: SUPPLIER_ID,
+        warehouseId: WAREHOUSE_ID,
+        lines: [
+          {
+            id: LINE_ID,
+            goodId: GOOD_ID,
+            quantity: 10,
+            price: 100,
+            receivedQty: 0,
+            good: { unitId: GOOD_UNIT_ID },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED }) // in-tx guard re-read
+      .mockResolvedValue({
+        id: PO_ID,
+        orgId: ORG,
+        number: 'PO-RX',
+        status: PurchaseOrderStatus.RECEIVED,
+        supplierId: SUPPLIER_ID,
+        warehouseId: WAREHOUSE_ID,
+        totalAmount: 1000,
+        lines: [
+          {
+            id: LINE_ID,
+            goodId: GOOD_ID,
+            quantity: 10,
+            price: 100,
+            receivedQty: 10,
+            good: { name: 'X', sku: null, unit: 'шт', unitOfMeasure: null },
+            unitOfMeasureId: GOOD_UNIT_ID,
+          },
+        ],
+        supplier: { firstName: 'S', lastName: '', companyName: null },
+        warehouse: { name: 'W' },
+      });
+    prisma.purchaseOrderLine.findMany.mockResolvedValue([
+      { id: LINE_ID, quantity: 10, receivedQty: 10 },
+    ]);
+
+    await service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 10 }] }, USER_ID);
+    expect(inventory.createMovement).toHaveBeenCalledTimes(1);
+    expect(settlements.createTransaction).toHaveBeenCalledTimes(1);
+  });
 });
 
 // Bug #473-#476: regression guards для update() — contract resolution + tenant guards
