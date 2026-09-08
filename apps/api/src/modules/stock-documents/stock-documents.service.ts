@@ -127,6 +127,27 @@ export class StockDocumentsService {
     return this.toDto(doc);
   }
 
+  /**
+   * Tenant-guard: усі goodId рядків мусять належати org (Good.id глобально унікальний → інакше
+   * cross-tenant FK-injection на confirm→createMovement). Кидає 404 ДО будь-якого запису.
+   */
+  private async validateLineGoodIds(
+    orgId: string,
+    lines: Array<{ goodId: string }>,
+  ): Promise<void> {
+    if (!lines.length) return;
+    const goodIds = Array.from(new Set(lines.map(l => l.goodId)));
+    const goods = await this.prisma.good.findMany({
+      where: { id: { in: goodIds }, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (goods.length !== goodIds.length) {
+      const found = new Set(goods.map(g => g.id));
+      const missing = goodIds.find(gid => !found.has(gid));
+      throw new NotFoundException(`Товар не знайдено: ${missing}`);
+    }
+  }
+
   async create(orgId: string, dto: CreateStockDocumentDto): Promise<StockDocumentResponseDto> {
     // Усі 3 FK перевірки можуть йти конкурентно — кожна незалежна.
     // Conditional target warehouse: tернарка зберігає типи й уникає зайвого RTT для TRANSFER.
@@ -181,6 +202,9 @@ export class StockDocumentsService {
     const number = await this.docNumbers.next(orgId, docTypeMap[dto.type] ?? 'STOCK_WRITEOFF');
 
     const lines = dto.lines ?? [];
+    // Tenant-guard goodId рядків (pre-prod audit): Good.id глобально унікальний → без цього
+    // org A підсунув би goodId org B → на confirm createMovement пише рух проти чужого товару.
+    await this.validateLineGoodIds(orgId, lines);
 
     const doc = await this.prisma.$transaction(
       async tx => {
@@ -251,6 +275,8 @@ export class StockDocumentsService {
     });
     if (!doc) throw new NotFoundException('Документ не знайдено');
     if (doc.status !== 'DRAFT') throw new BadRequestException('Редагувати можна лише чернетку');
+    // Tenant-guard goodId рядків (pre-prod audit) — див. коментар у create().
+    if (dto.lines) await this.validateLineGoodIds(orgId, dto.lines);
 
     const updated = await this.prisma.$transaction(
       async tx => {

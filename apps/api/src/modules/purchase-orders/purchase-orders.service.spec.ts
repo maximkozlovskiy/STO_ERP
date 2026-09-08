@@ -365,7 +365,11 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
   let service: PurchaseOrdersService;
   let prisma: {
     purchaseOrder: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
-    purchaseOrderLine: { update: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
+    purchaseOrderLine: {
+      update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+      findMany: ReturnType<typeof vi.fn>;
+    };
     unitOfMeasure: { findMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
@@ -391,6 +395,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
       },
       purchaseOrderLine: {
         update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }), // CAS receive: default success
         findMany: vi.fn(),
       },
       unitOfMeasure: { findMany: vi.fn() },
@@ -723,9 +728,9 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
 
     await service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 7 }] }, USER_ID);
 
-    // line.update called — БЕЗ unitOfMeasureId в data (тільки receivedQty increment)
-    expect(prisma.purchaseOrderLine.update).toHaveBeenCalledWith({
-      where: { id: LINE_ID, orgId: ORG },
+    // CAS updateMany — where містить очікуваний receivedQty (3), data БЕЗ unitOfMeasureId
+    expect(prisma.purchaseOrderLine.updateMany).toHaveBeenCalledWith({
+      where: { id: LINE_ID, orgId: ORG, receivedQty: 3 },
       data: { receivedQty: { increment: 7 } },
     });
   });
@@ -776,9 +781,9 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
       USER_ID,
     );
 
-    // explicit override → unitOfMeasureId присутній у data
-    expect(prisma.purchaseOrderLine.update).toHaveBeenCalledWith({
-      where: { id: LINE_ID, orgId: ORG },
+    // explicit override → unitOfMeasureId присутній у data; CAS where з очікуваним receivedQty(3)
+    expect(prisma.purchaseOrderLine.updateMany).toHaveBeenCalledWith({
+      where: { id: LINE_ID, orgId: ORG, receivedQty: 3 },
       data: { receivedQty: { increment: 7 }, unitOfMeasureId: OWN_UOM_ID },
     });
   });
@@ -803,6 +808,44 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.purchaseOrderLine.update).not.toHaveBeenCalled();
     expect(inventory.createMovement).not.toHaveBeenCalled();
+  });
+
+  // CAS receive (pre-prod audit H1): concurrent/дубльований receive() з однаковим payload не має
+  // подвоювати оприбуткування + SUPPLIER_CHARGE. updateMany where receivedQty=<очікуване> —
+  // якщо інша транзакція вже змінила рядок → count=0 → throw ДО createMovement/createTransaction.
+  it('CAS-guard: рядок уже змінено (updateMany count=0) → throw, БЕЗ RECEIPT-руху і БЕЗ SUPPLIER_CHARGE', async () => {
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.ORDERED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 10,
+          price: 100,
+          receivedQty: 0,
+          good: { unitId: GOOD_UNIT_ID },
+        },
+      ],
+    });
+    // In-tx status re-read проходить (ORDERED незмінний) — CAS має спрацювати на рядку, не на статусі.
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED });
+    // Конкурентний дубль уже інкрементнув рядок → receivedQty≠0 → updateMany матчить 0 рядків.
+    prisma.purchaseOrderLine.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 10 }] }, USER_ID),
+    ).rejects.toThrow(/уже опрацьовано|змінено іншою/i);
+
+    // MUTATION-VERIFY: якщо прибрати `if (casResult.count === 0) throw` — ці assert-и впадуть
+    // (подвійне оприбуткування + подвійний борг постачальнику).
+    expect(inventory.createMovement).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
   });
 
   it('receive повне → авто paymentDate = сьогодні + contract.paymentDeferDays (RECEIVED)', async () => {

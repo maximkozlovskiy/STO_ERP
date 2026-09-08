@@ -85,6 +85,28 @@ export class PurchaseOrdersService {
   }
 
   /**
+   * Tenant-guard: усі goodId рядків мусять належати org (Good.id глобально унікальний → інакше
+   * cross-tenant FK-injection). Дзеркалить supplier-returns.validateLineRefs. Кидає 404 на чужий/
+   * неіснуючий goodId ДО будь-якого запису.
+   */
+  private async validateLineGoodIds(
+    orgId: string,
+    lines: Array<{ goodId: string }>,
+  ): Promise<void> {
+    if (!lines.length) return;
+    const goodIds = Array.from(new Set(lines.map(l => l.goodId)));
+    const goods = await this.prisma.good.findMany({
+      where: { id: { in: goodIds }, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (goods.length !== goodIds.length) {
+      const found = new Set(goods.map(g => g.id));
+      const missing = goodIds.find(gid => !found.has(gid));
+      throw new NotFoundException(`Товар не знайдено: ${missing}`);
+    }
+  }
+
+  /**
    * Delivery-поля PurchaseOrder за нормалізованим ЕН. Непорожній ЕН → трекінг стартує (PENDING);
    * null → трекінг скинуто. Єдине джерело набору полів для create і update (без дублювання).
    */
@@ -266,10 +288,15 @@ export class PurchaseOrdersService {
       ? (contract as { id: string }).id
       : (contract?.id ?? null);
 
+    const lines = dto.lines ?? [];
+    // Tenant-guard goodId рядків (pre-prod audit): Good.id глобально унікальний → без цієї
+    // перевірки org A може підсунути goodId org B → на receive createMovement пише рух проти
+    // чужого товару (cross-tenant stock-ledger). Дзеркалить supplier-returns.validateLineRefs.
+    await this.validateLineGoodIds(orgId, lines);
+
     const number = await this.docNumbers.next(orgId, 'PURCHASE_ORDER');
     const createTracking = this.normalizeTracking(dto.trackingNumber);
 
-    const lines = dto.lines ?? [];
     const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
     const computedLines = lines.map(l => {
       const { vatAmount } = calcLineVat(l.price, l.quantity, vatRate, vatMode);
@@ -422,6 +449,8 @@ export class PurchaseOrdersService {
           : undefined;
 
     const lines = dto.lines;
+    // Tenant-guard goodId рядків (pre-prod audit) — див. коментар у create().
+    if (lines) await this.validateLineGoodIds(orgId, lines);
     const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
     const computedLines = lines?.map(l => {
       const { vatAmount } = calcLineVat(l.price, l.quantity, vatRate, vatMode);
@@ -601,9 +630,11 @@ export class PurchaseOrdersService {
 
     await this.prisma.$transaction(
       async tx => {
-        // Re-read статусу В транзакції: без цього два concurrent receive() з однаковим payload
-        // проходять stale-check і дають ПОДВІЙНИЙ SUPPLIER_CHARGE (борг постачальнику ×2) +
-        // подвійне оприбуткування. Дзеркалить guard у supplier-payments.confirm.
+        // CAS per-line (не просто stale-read!): без цього два concurrent receive() з однаковим
+        // payload обидва проходять і дають ПОДВІЙНИЙ SUPPLIER_CHARGE (борг постачальнику ×2) +
+        // подвійне оприбуткування (Σ-інваріант зростає). Re-read статусу — лише fast-fail на 4xx;
+        // атомарність дає updateMany з очікуваним receivedQty у where (PO підтримує ЧАСТКОВІ
+        // прийоми, тож CAS на статусі як у stock-doc не підходить — CAS на дельту рядка).
         const fresh = await tx.purchaseOrder.findFirst({
           where: { id, orgId, deletedAt: null },
           select: { status: true },
@@ -615,44 +646,57 @@ export class PurchaseOrdersService {
           );
         }
 
+        // КРОК 1 — CAS-оновлення рядків ПЕРШИМ (до руху залишків/боргу). updateMany where
+        // receivedQty=<очікуване> — конкурентний дубль уже змінив receivedQty → count=0 → throw
+        // → rollback ДО createMovement/SUPPLIER_CHARGE (жодного подвоєння). Послідовно, щоб при
+        // count=0 не лишити orphan RECEIPT-руху.
+        for (const { recv, line } of activeLines) {
+          const resolvedUomId =
+            (recv.unitOfMeasureId && allowedUomIds.has(recv.unitOfMeasureId)
+              ? recv.unitOfMeasureId
+              : null) ??
+            line.good?.unitId ??
+            null;
+          const shouldUpdateLineUom = line.receivedQty === 0 || !!recv.unitOfMeasureId;
+          const casResult = await tx.purchaseOrderLine.updateMany({
+            where: { id: recv.lineId, orgId, receivedQty: line.receivedQty },
+            data: {
+              receivedQty: { increment: recv.receivedQty },
+              ...(shouldUpdateLineUom ? { unitOfMeasureId: resolvedUomId } : {}),
+            },
+          });
+          if (casResult.count === 0) {
+            throw new BadRequestException(
+              'Прийом уже опрацьовано або рядок змінено іншою операцією — повторіть',
+            );
+          }
+        }
+
+        // КРОК 2 — рух залишків (RECEIPT) після успішного CAS усіх рядків. Різні (goodId,
+        // warehouse) rows → незалежні, паралелимо (Prisma серіалізує у tx, але економія JS).
         await Promise.all(
           activeLines.map(({ recv, line }) => {
-            // Prefer caller-provided UoM override (already validated against orgId above);
-            // fall back to Good.unitId, then null (backward compat with nullable column).
             const resolvedUomId =
               (recv.unitOfMeasureId && allowedUomIds.has(recv.unitOfMeasureId)
                 ? recv.unitOfMeasureId
                 : null) ??
               line.good?.unitId ??
               null;
-            // avoid overwriting an existing PO line UoM on subsequent partial
-            // receives. Only persist UoM when (a) this is the first receive (no prior qty),
-            // or (b) the caller passed an explicit override — otherwise keep the original.
-            const shouldUpdateLineUom = line.receivedQty === 0 || !!recv.unitOfMeasureId;
-            return Promise.all([
-              this.inventory.createMovement(
-                orgId,
-                {
-                  goodId: line.goodId,
-                  warehouseId: po.warehouseId,
-                  type: 'RECEIPT',
-                  quantity: recv.receivedQty,
-                  price: Number(line.price),
-                  documentType: 'PurchaseOrder',
-                  documentId: id,
-                  createdBy: userId,
-                  unitOfMeasureId: resolvedUomId,
-                },
-                tx,
-              ),
-              tx.purchaseOrderLine.update({
-                where: { id: recv.lineId, orgId },
-                data: {
-                  receivedQty: { increment: recv.receivedQty },
-                  ...(shouldUpdateLineUom ? { unitOfMeasureId: resolvedUomId } : {}),
-                },
-              }),
-            ]);
+            return this.inventory.createMovement(
+              orgId,
+              {
+                goodId: line.goodId,
+                warehouseId: po.warehouseId,
+                type: 'RECEIPT',
+                quantity: recv.receivedQty,
+                price: Number(line.price),
+                documentType: 'PurchaseOrder',
+                documentId: id,
+                createdBy: userId,
+                unitOfMeasureId: resolvedUomId,
+              },
+              tx,
+            );
           }),
         );
 

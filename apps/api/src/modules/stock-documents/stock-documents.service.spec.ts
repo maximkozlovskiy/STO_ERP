@@ -36,6 +36,7 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
     };
     garageBranch: { findFirst: ReturnType<typeof vi.fn> };
     warehouse: { findFirst: ReturnType<typeof vi.fn> };
+    good: { findMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let inventory: { createMovement: ReturnType<typeof vi.fn> };
@@ -67,6 +68,14 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
       },
       garageBranch: { findFirst: vi.fn() },
       warehouse: { findFirst: vi.fn() },
+      // validateLineGoodIds: за замовч. echo-їмо запитані goodId як «знайдені» (own-org).
+      good: {
+        findMany: vi
+          .fn()
+          .mockImplementation((args: { where: { id: { in: string[] } } }) =>
+            Promise.resolve(args.where.id.in.map(id => ({ id }))),
+          ),
+      },
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
@@ -128,6 +137,27 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
     expect(res.type).toBe(StockDocumentType.RECEIPT);
     // targetWarehouseId не запитувався — RECEIPT не вимагає (на відміну від TRANSFER).
     expect(prisma.warehouse.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  // Pre-prod audit (cross-tenant FK-injection): goodId рядка з іншої org → 404, БЕЗ запису.
+  // Good.id глобально унікальний → без tenant-guard org A підсунула б goodId org B → на confirm
+  // createMovement писав би рух проти чужого товару.
+  it('create(): foreign goodId (не в цій org) → 404, жодного stockDocument.create/createMany', async () => {
+    prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: BRANCH_ID });
+    prisma.warehouse.findFirst.mockResolvedValueOnce({ id: WAREHOUSE_ID });
+    // good.findMany повертає порожньо → goodId не належить org.
+    prisma.good.findMany.mockResolvedValueOnce([]);
+
+    const dto = {
+      type: 'RECEIPT',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      lines: [{ goodId: 'foreign-good-id', quantity: 5, price: 100 }],
+    };
+    await expect(service.create(ORG, dto as never)).rejects.toThrow(/Товар не знайдено/);
+    // MUTATION-VERIFY: прибрати validateLineGoodIds → ці assert-и впадуть (крос-tenant запис).
+    expect(prisma.stockDocument.create).not.toHaveBeenCalled();
+    expect(prisma.stockDocumentLine.createMany).not.toHaveBeenCalled();
   });
 
   // ──────────────────────────────────────────────────────────────────────
