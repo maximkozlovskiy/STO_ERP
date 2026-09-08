@@ -1145,778 +1145,523 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ## Накопичені підходи (оновлюється автоматично)
 
-### 2026-09-08 — стала ЛОКАЛЬНА копія shared-константи у тесті дрейфує тихо + мок-рівнева асерція видає себе за перевірку реального інваріанту (C2, Bug #705-#706) — test-drift / coverage-gap / MEDIUM
+> Формат нижче: **Сигнал** (як знайти, з grep) / **Фікс** / **Severity** / **Де ще**. Старіші розлогі записи стиснуто до цього ж вигляду; усі bug-номери, grep-детектори та ❌/✅ приклади збережено.
 
-**Сигнал:** дві споріднені пастки у тестах money/inventory-фіч, обидві лишають suite ЗЕЛЕНОЮ поки критичний шлях незахищений:
-(1) **Stale fixture-copy:** component/unit-тест визначає ЛОКАЛЬНУ копію shared-мапи/константи (`const TRANSITIONS = {...}`, `const FIELDS = [...]`) замість імпорту з `@sto/shared`. Коли sprint змінює shared-джерело (напр. FSM `COMPLETED: ['INVOICED']`→`['INVOICED','CANCELLED']`), локальна копія лишається старою → тест зелений на застарілих даних → нова гілка НЕ покрита. Гірше: та сама stale-copy маскує первинний sync-gap (frontend-мапа теж лишилась старою — тест на копії ніколи б це не спіймав).
-(2) **Mock-level invariant claim:** spec стверджує критичний money/inventory-інваріант ЛИШЕ через `expect(collaborator.method).toHaveBeenCalledTimes(1)` / `toHaveBeenCalledWith(...)` на ЗАМОКАНОМУ колабораторі (`batchService.returnToBatch = vi.fn()`). Реальна арифметика (Σ remainingQty == StockItem.quantity, баланс net-to-zero, агрегація по ключу) НІКОЛИ не виконується — мок ковтає її. Коментар/commit каже «падав би, якби X прибрали», але мок-тест цього НЕ довів би.
+### 2026-09-08 — стала ЛОКАЛЬНА копія shared-константи у тесті + мок-рівнева асерція замість real-invariant (Bug #705-#706) — test-drift / coverage-gap / MEDIUM
 
-**Причина виникнення:** (1) розробник копіює мапу у фікстуру «щоб тест був самодостатній / не тягнув залежність», забуваючи що копія тепер живе окремим життям від джерела-правди. (2) розробник вважає `toHaveBeenCalledTimes(1)` достатнім доказом агрегації — але це доводить лише що ФУНКЦІЮ покликали раз, НЕ що результат арифметично коректний; реальний idempotency/CAS-guard колаборатора (який і ламає інваріант при регресії) під моком мертвий.
+**Сигнал:** дві test-drift пастки лишають suite ЗЕЛЕНОЮ поки money/inventory/FSM-шлях незахищений. (1) **Stale fixture-copy:** тест визначає ЛОКАЛЬНУ копію shared-мапи (`const TRANSITIONS = {...}` дублює `@sto/shared` `WO_STATUS_TRANSITIONS`/`*_STATUSES`/badge-map) → sprint змінює shared, копія лишається старою → нова гілка не покрита + маскує первинний sync-gap. Grep: `grep -rnE "const [A-Z_]+\s*(:\s*Record|=\s*{)" apps/web/src/**/__tests__ apps/api/**/*.spec.ts` → звірити ключі проти shared-export (обов'язково після sprint що чіпав `packages/shared/src/constants/*`). (2) **Mock-level invariant claim:** spec стверджує money/inventory-інваріант ЛИШЕ через `toHaveBeenCalledTimes/toHaveBeenCalledWith` на ЗАМОКАНОМУ колабораторі (`batchService.returnToBatch = vi.fn()`) → реальна арифметика (Σ remainingQty==StockItem.quantity, balance net-to-zero, агрегація-по-ключу) НІКОЛИ не біжить. Детектор: усі асерції на моці + жодна не читає підсумковий стан (remainingQty/quantity/balance).
+**Фікс:** (1) синхронізувати фікстуру + dedicated guard що ІМПОРТУЄ shared-export і асертить нову поведінку. (2) стейтфул integration-спек з in-memory Prisma-store (CAS `updateMany` з where-предикатом, increment/decrement, findMany-фільтр) + РЕАЛЬНІ сервіси через Nest DI → round-trip + асерт підсумкового інваріанту. Mutation-verify: відкат shared-мапи → guard падає; заміна агрегації на per-row → stateful падає а мок-тести лишаються зелені.
+**Severity:** MEDIUM (HIGH якщо шлях рухає гроші/склад і нема іншого real-invariant тесту).
+**Де ще:** `__tests__/*.test.tsx` з копією `*_TRANSITIONS`/`*_STATUS_*`; money-специ де Batch/Settlements/Inventory замоканий а асерції лише `toHaveBeenCalled*` (invoice from-WO, PO receive, stock-document, supplier-returns). Парне з Bug #398/#434 (contract/interface drift).
 
-**Підхід до виявлення:** (1) для КОЖНОГО тесту що визначає локальний obj/array який дублює `@sto/shared` export — grep `grep -rn "const [A-Z_]* \(: Record\|=\s*{" apps/web/src/**/__tests__` + звірити ключі проти реального shared-об'єкта; будь-яка розбіжність = drift. Особливо після sprint що чіпав `packages/shared/src/constants/*`. (2) для money/inventory/FSM-специв — чи інстанціюється РЕАЛЬНИЙ критичний колаборатор (`new BatchService(...)`, `new SettlementsService(...)`), чи він замоканий? Якщо всі асерції на моці (`toHaveBeenCalled*`) і жодна не читає підсумковий стан (remainingQty/quantity/balance) — інваріант НЕ покритий.
+### 2026-09-08 / 2026-09-07 — materialize-on-forward без release-on-cancel/reverse → тиха втрата бізнес-потужності (Bug #699) — backend / lifecycle-asymmetry / HIGH
 
-**Підхід до фіксу:** (1) синхронізувати фікстуру З shared + додати dedicated guard-тест що ІМПОРТУЄ фактичний shared-export і асертить нову поведінку (`WO_STATUS_TRANSITIONS.COMPLETED` toContain 'CANCELLED' + рендер кнопки + клік→onTransition). (2) окремий стейтфул integration-спек: in-memory Prisma-store що імітує CAS-семантику (`updateMany` з where-предикатом, increment/decrement, findMany за фільтром) + РЕАЛЬНІ сервіси через Nest DI → виконати повний round-trip і асертити ПІДСУМКОВИЙ інваріант (Σ remainingQty(active)==StockItem.quantity), не виклики.
+**Сигнал:** sprint додає у forward-метод (`confirm()`/`approve()`/`issue()`/`activate()`) СТВОРЕННЯ дочірнього ресурсу з link-колонкою на parent (`BookingRequest.confirmedSlotId`→`CalendarSlot`; `reservationId`; `fiscalReceiptId`). Пастка: ДО спринту forward нічого не матеріалізував → cancel/reject/void/remove не мав що прибирати; спринт додає create на forward, зворотний метод лишається незмінним → материалізований child лишається `deletedAt:null` без live-parent (блокує ліфт/склад/номер назавжди). Grep: `grep -rn "confirmedSlotId\|materializ\|\.createSlot(\|reservationId\|<link>Id" apps/api/src/modules/<mod>/*.service.ts` → для forward-методу що ПИШЕ link, перевірити чи cancel/remove ЧИТАЄ link + soft-delete child. Асиметрія: forward має `X.create`+`data:{linkId}`, cancel не згадує ні linkId ні child-table = баг. Live: `confirm`+`cancel` → повторний `getAvailability` все ще показує зайнято.
+**Фікс:** cancel читає link ДО скасування → в одній `$transaction` soft-delete child (`where: OR[{id:linkId},{parentSlotId:linkId}]` — покриває split-child) + скасування parent атомарно. Mutation-verified guard: (а) cancel БЕЗ link → child-updateMany НЕ викликано; (б) cancel З link → child-updateMany 1× з orgId+deletedAt:null+правильний OR-where; (в) обидва write у одній $transaction; нейтралізувати release → (б) падає.
+**Severity:** HIGH (тиха незворотна втрата потужності; погіршується з кожним cancel). MEDIUM якщо child легко перестворюється.
+**Де ще:** booking↔CalendarSlot; WO↔reservation; invoice↔fiscal-receipt; будь-яка нова `<parent>.confirm/approve/issue/activate` що materializes і має парний cancel/reject/void/remove. Родина Bug #351.
 
-**Підхід до mutation-verify:** (1) відкотити shared-мапу до пре-sprint значення → guard-тести падають (кнопка не рендериться / toContain fail). (2) замінити агрегацію-по-ключу на per-row виклик у сервісі → stateful-тести на shared-key падають (недоповернення); зворотно — мок-тести лишаються зеленими (доводить що вони НЕ ловили б регресію). Обидва довели цінність нового покриття.
+### 2026-09-07 — self-re-enqueue polling: domain-service enqueue-гілки + clamp + zombie-job без прямих тестів (Bug #696-#698) — backend / coverage-gap / HIGH
 
-**Severity:** MEDIUM — не runtime-баг на момент знахідки, але прибирає весь регрес-захист критичного money/inventory/FSM-шляху; той самий клас stale-drift дав пройти первинному CRITICAL sync-gap. Escalate до HIGH якщо незахищений шлях рухає гроші/склад і немає ЖОДНОГО іншого real-invariant тесту.
+**Сигнал:** нова polling-інтеграція зовнішнього API (не webhook): (1) domain-service `create/update` enqueue-ить при появі/зміні поля; (2) `@Processor` self-re-enqueue з delay+термінал+cap; (3) `pollDelayMs` clamp з налаштувань. Специ покривають лише (2). Grep: `grep -rln "enqueueInitial\|reEnqueue\|pollDelayMs\|self-re-enqueue\|removeOnComplete" apps/api/src --include="*.ts" | grep -v spec` → перевірити прямі тести на: **(а) domain-service** (окремий `*.delivery.service.spec.ts`) — create з полем→`status:PENDING`+enqueue РІВНО раз (mutation: прибрати `if(field)` guard→падає); create без поля→null+НЕ enqueue; trim/whitespace normalize; update новий→PENDING+`raw:null`+enqueue; update скид(null/'')→усі scalar null+НЕ enqueue; update той самий→жоден scalar-write+НЕ enqueue (`data not.toHaveProperty('field')`); update undefined→не чіпати; поза-DRAFT-guard ПЕРЕД field-обробкою. **(б) clamp напряму** (реальний instance, мок settings) — `MIN-1→MIN`,`MAX+1→MAX`,`NaN/Infinity→default`,`throw→default` (mutation: прибрати кожен `Math.min/max`-край→падає). **(в) zombie-job** — enqueueInitial+reEnqueue шлють ОДНАКОВИЙ `jobId`; `job.data not.toHaveProperty('<field>')`; getStatus викликано полем з `findFirst`(БД), не payload.
+**Фікс:** переважно tests-only (код коректний). Реальний баг: payload несе snapshot поля→прибрати з `job.data`; clamp відсутній→`Math.min(Math.max(v,MIN),MAX)`+`Number.isFinite`+try/catch→default.
+**Severity:** HIGH (тихий регрес трекінгу при рефакторингу).
+**Де ще:** nova-poshta-polling, monobank/checkbox polling, nbu-rate-fetch, будь-який `getOrganisationSettings`-derived clamp (`nbuFetchHour`, `invoiceDueDays`, `autoArchiveDays`, `slotDurationMinutes`).
 
-**Де шукати ще:** будь-який `__tests__/*.test.tsx` з локальною копією `WO_STATUS_TRANSITIONS`/`*_STATUS_*`/`*_TRANSITIONS`/badge-map; money/inventory-специ де критичний сервіс (Batch/Settlements/Inventory) замоканий а асерції лише `toHaveBeenCalled*` (invoice from-WO, purchase-order receive, stock-document, supplier-returns — усі мають Σ/balance-інваріанти, варті одного stateful round-trip кожен). Парне з Bug #398/#434 (contract/interface drift) — той самий корінь «копія розійшлась із джерелом-правди».
+### 2026-09-07 — data-міграція сідить «увімкнений але порожній» рядок у registry-таблиці → тінить legacy read-fallback → тихий outage після deploy — backend / db-міграція / CRITICAL
 
-### 2026-09-08 — forward-перехід МАТЕРІАЛІЗУЄ дочірній ресурс, а reverse/cancel його НЕ звільняє → тиха втрата бізнес-потужності назавжди — backend / lifecycle-asymmetry / HIGH
-
-**Сигнал:** sprint додає у forward-метод (`confirm()`/`approve()`/`issue()`/`activate()`) СТВОРЕННЯ дочірнього ресурсу з link-колонкою на parent (`BookingRequest.confirmedSlotId`→`CalendarSlot`; `reservationId`; `fiscalReceiptId`). Ключова ознака-пастка: **ДО спринту forward-метод не матеріалізував нічого** (лише статус-перехід), тож зворотний метод (`cancel()`/`reject()`/`void()`/`remove()`) не мав що прибирати і робив тільки soft-delete самого parent. Спринт додає create на forward, АЛЕ zворотний метод лишається незмінним → материалізований child лишається `deletedAt:null` (активний) без жодного live-parent. Grep: `grep -rn "confirmedSlotId\|\.createSlot(\|reservationId\|materializ" apps/api/src/modules/<mod>/*.service.ts` → для КОЖНОГО forward-методу що ПИШЕ link-колонку, знайти cancel/remove і перевірити чи він ЧИТАЄ link + soft-delete-ить child. Асиметрія-детектор: forward пише `X.create` + `data:{linkId}`, cancel НЕ згадує ні `linkId` ні child-table → майже напевно баг.
-
-**Причина виникнення:** розробник зосереджений на «happy path» нової фічі (confirm→слот з'явився у календарі — видно, тестується) і сприймає cancel як «уже існуючий, працює». Але семантика cancel мовчки змінилась: тепер він мусить прибрати новий побічний ефект. Symmetric-write легко забути бо forward і reverse — різні методи, іноді різні PR/дні. Тест happy-path зелений, tsc зелений — регрес видно лише в довгостроковій експлуатації (календар «повільно заповнюється сміттям»).
-
-**Підхід до виявлення:** трейс життєвого циклу link-колонки: хто ПИШЕ (`data.linkId = created.id`) і хто ОБНУЛЯЄ/звільняє. Якщо є writer але нема паралельного releaser у cancel/reject/void/remove — bug. Live-симптом: після `confirm`+`cancel` тієї ж заявки повторний `getAvailability` на той час/ліфт все ще показує зайнято (child-слот `deletedAt:null` витікає у busy-набір). Родина Bug #351 (soft-delete primary без promote) — той самий клас «reverse-операція забула про новий інваріант forward-операції».
-
-**Підхід до фіксу:** cancel/remove читає link-колонку ДО скасування → в одній `$transaction` soft-delete залінкований child (`where: OR[{id:linkId},{parentSlotId:linkId}]` — покриває split-child через межу дня чи будь-які похідні рядки) + soft-delete parent атомарно (щоб не лишити child-сироту при частковому збої і навпаки). Regression-guard mutation-verified: (а) cancel без link → child-updateMany НЕ викликано; (б) cancel з link → child-updateMany 1× з orgId+deletedAt:null+правильний OR-where; (в) обидва write у одній $transaction; нейтралізувати release → тест (б) падає.
-
-**Severity:** HIGH (тиха незворотна втрата бізнес-потужності — ліфт/склад/номерна ємність; погіршується монотонно з кожним cancel). MEDIUM якщо child легко перестворюється або не блокує потужність.
-
-**Де шукати ще:** booking↔CalendarSlot (цей баг); WorkOrder↔reservation/CalendarSlot; invoice↔fiscal-receipt; будь-яка нова `<parent>.confirm/approve/issue/activate` що materializes child і має парний cancel/reject/void/remove. Плюс — при будь-якому сприн��і що додає `create` у forward-FSM-метод, ОБОВ'ЯЗКОВО перевіряти ВСІ reverse-переходи того ж parent.
-
-### 2026-09-07 — self-re-enqueuing polling-процесор зовнішнього API + enqueue-on-field-change сервіс відвантажені без прямих тестів на loop-safety / clamp / enqueue-гілки — backend / coverage-gap / HIGH
-
-**Сигнал:** нова фіча-інтеграція зовнішнього API за offline-first моделлю **polling** (не webhook): (1) сервіс-тригер (`XxxTrackingService.enqueueInitial`) ставить перший job коли на документі з'явилось/змінилось поле (номер накладної, intent-id, ...); (2) `@Processor` що САМ себе re-enqueue-ить з delay (`self-re-enqueue`) поки не досягне термінального стану; (3) інтервал береться з налаштувань (`OrganisationSettings.xxxIntervalMinutes`) і clamp-иться `[MIN,MAX]`; (4) jobId-дедуп (`jobId: xxx-<docId>`) для single-flight. Типово специ покривають processor (термінал/cap/no-provider) але лишають БЕЗ прямих тестів: (а) сервіс-тригер у самому domain-service (`create/update` з полем → enqueue викликано/НЕ; поле скинуте → delivery-метадані обнулено, enqueue НЕ), (б) `pollDelayMs` clamp-функцію (мокається константою у processor-спеку), (в) zombie-job інваріант (payload НЕ несе поле → re-read з БД керує). Grep-сигнал: `grep -rln "self-re-enqueue\|reEnqueue\|enqueueInitial\|pollDelayMs\|removeOnComplete" apps/api/src/**/*.ts | grep -v spec` — для кожного знайти парний `*.spec` і звірити чи є прямі асерти на enqueue-гілки domain-service + clamp-boundaries.
-
-**Причина виникнення:** розробник ретельно тестує processor (він «складний, з чергою») і вважає domain-service create/update «тривіальним CRUD» — але саме там живе рішення КОЛИ ставити polling (`if (normalizeField(dto.x)) enqueue`, `next !== stored → enqueue`). normalize+enqueue-гілки — це умовна бізнес-логіка, не CRUD. Clamp-функція виглядає «очевидною», тож її мокають константою; але без прямого тесту `9999→MAX`/`0→MIN`/`throw→default` рефактор `Math.min/max` тихо ламає інтервал (нескінченно-часте або мертве опитування). Payload що несе snapshot поля (замість re-read з БД) — спокуса «оптимізації», яка вводить zombie-job (старий delayed job опитує застарілий номер).
-
-**Підхід до виявлення:** три окремі test-набори. (1) **Domain-service enqueue-on-field-change** (окремий `*.delivery.service.spec.ts` щоб не роздувати основний): create з полем→scalar-и `status:PENDING`+`updatedAt` set + enqueue РІВНО раз; create без поля→scalar-и null + enqueue НЕ (**mutation: прибрати `if(field)` guard→падає**); trim/whitespace→normalize; update новий→PENDING+`raw:null`(скид стейл)+enqueue; update скид(null/'')→усі scalar-и null+enqueue НЕ; update той самий→жодного scalar-write+enqueue НЕ; update undefined→не чіпати; поза-DRAFT-guard ПЕРЕД field-обробкою. Асертити через `prisma.X.create/update.mock.calls[0][0].data` — `not.toHaveProperty('field')` для no-op гілок. (2) **Clamp-функція напряму** (окремий service-спек, реальний instance, мок settings): boundaries `MIN-1→MIN`, `MAX+1→MAX`, `NaN/Infinity→default`, `throw→default` (**mutation: прибрати кожен clamp-край окремо**). (3) **Zombie-job у processor**: `enqueueInitial` і `reEnqueue` шлють ОДНАКОВИЙ `jobId` (single-flight); `job.data` НЕ містить snapshot поля (`not.toHaveProperty`); `getStatus` викликано з полем що прийшло з `findFirst` (БД), не з payload.
-
-**Підхід до фіксу:** переважно це coverage-gap (код коректний) → додати mutation-verified тести, НЕ чіпати код. Якщо реальний баг: payload несе snapshot поля → прибрати з `job.data`, керувати re-read; clamp відсутній → `Math.min(Math.max(v,MIN),MAX)` + `Number.isFinite` guard + try/catch→default; enqueue поза `if(normalizeField)` → загорнути.
-
-**Severity:** HIGH (тихий регрес трекінгу/опитування при майбутньому рефакторингу; загалом не money, але user-visible «статус не оновлюється»).
-
-**Де шукати ще:** будь-який `*.processor.ts` з `InjectQueue` що self-re-enqueue-ить (nova-poshta-polling, online-payment/monobank polling, checkbox.processor, cash-shift, nbu-rate-fetch); будь-який `SettingsService.getOrganisationSettings`-derived clamp (`nbuFetchHour`, `invoiceDueDays`, `autoArchiveDays`, `slotDurationMinutes`); будь-який domain-service `create/update` що enqueue-ить при появі поля.
-
-### 2026-09-07 — data-міграція сідить «увімкнений але порожній» рядок у новій registry-таблиці → тінить legacy read-fallback → тихий outage вже-налаштованих сутностей після deploy — backend / db-міграція / CRITICAL
-
-**Сигнал:** registry-рефакторинг (хардкод-провайдер → таблиця конфігів + вибір активного) з політикою «нова таблиця = джерело правди, БЕЗ неї — legacy read-fallback на старі колонки». Резолвер має 2-крокову форму: `crок 1 = findFirst(new-table, enabled:true)` → якщо є, ПОВЕРНУТИ; `крок 2 = legacy-fallback` (досягається лише коли крок 1 порожній). Additive-міграція СІДИТЬ рядки у нову таблицю з наявних записів — але залишає секрет-поле (`credentials`) **NULL** (бо старі секрети лежать зашифровані в окремих колонках і їх ризиковано/незручно копіювати at-rest у нову схему). **Пастка:** сід ставить `enabled=true`, тож крок 1 ТЕПЕР знаходить рядок для кожної сутності → повертає його з **порожніми кредами** (`parseCreds(null)={}`) і НІКОЛИ не доходить до legacy-fallback, у якому лежать реальні секрети. Downstream провайдер кидає «не задано ключ/токен» → **тихий повний outage** саме тих сутностей, що працювали до деплою — з'являється лише при `migrate deploy`, не на dev (де сіду не було). Grep-сигнал: сід `INSERT ... enabled = true|<flag>` з `credentials`/секрет-колонкою поза списком INSERT (=NULL) + резолвер що повертає крок-1-рядок БЕЗ перевірки повноти кредів. **Асиметрія-детектор:** якщо у ТОМУ Ж сервісі є parallel-метод (`resolveByCode`), який МАЄ `hasCreds`-guard перед поверненням, а `resolveActive` — ні → майже напевно баг (один написали з захистом, інший забули).
+**Сигнал:** registry-рефакторинг (хардкод-провайдер → таблиця конфігів, «нова таблиця = джерело правди, БЕЗ неї — legacy-fallback»). Резолвер 2-крок: `findFirst(new-table, enabled:true)`→повернути; інакше legacy-fallback. Additive-міграція сідить рядки з наявних записів, лишаючи секрет-поле (`credentials`) **NULL** + `enabled=true` → крок 1 знаходить рядок з порожніми кредами (`parseCreds(null)={}`) і НІКОЛИ не доходить до legacy (де реальні секрети) → downstream «не задано ключ» → тихий повний outage раніше-робочих сутностей, лише на `migrate deploy`.
 
 ```bash
-# 1. Міграції що сідять enabled-рядок у нову registry-таблицю, лишаючи секрет NULL:
 grep -rn "INSERT INTO.*_config\|enabled.*true\|::\"ProviderKind\"" packages/database/prisma/migrations/ | grep -iv "credentials\|token\|secret\|licenseKey"
-# 2. Резолвер: крок-1 повертає рядок БЕЗ hasCreds-guard, поки sibling-метод його має:
 grep -n "hasCreds\|parseCreds\|return.*credentials" apps/api/src/modules/**/provider-config.service.ts
 # Асиметрія: один метод має if(hasCreds(...)) перед return, інший — return напряму → баг.
 ```
 
-**Причина виникнення:** розробник (і review) міркує про два стани нової таблиці — «рядок є» (використати) / «рядка нема» (legacy-fallback) — і пропускає третій, який САМ і створив у міграції: «рядок є + enabled, але НЕПОВНИЙ (секрет ще у legacy-колонках)». Сід-коментар навіть декларує «сервіс має legacy-fallback коли credentials порожні» — але код падає у fallback лише за ВІДСУТНОСТІ рядка, не за порожнечею кредів у ньому. Unit-специ подають config-рядок з непорожнім `credentials` JSON (щасливий стан UI-збереження), тож сід-стан `credentials=NULL+enabled=true` не тестується → tsc+unit зелені, ламається лише на реальному деплої.
+**Фікс:** резолвер крок-1 після знаходження enabled-рядка перевіряє повноту кредів (`hasCreds(parseCreds(row.credentials))`); порожні → legacy-fallback ДЛЯ ТОГО Ж провайдера (`legacy && legacy.provider===row.provider ? {...legacy, apiUrl/mode з нового} : null`). Дзеркалити захист sibling-методу (`resolveByCode`). Тест: «enabled-рядок + credentials=NULL (сід-стан)» → повертає РЕАЛЬНІ креди з legacy, mutation-verify прибрати hasCreds-guard→падає.
+**Severity:** CRITICAL — тихий повний outage, тригер `migrate deploy`, невидимий на dev і unit.
+**Де ще:** будь-який registry «хардкод → таблиця активного + legacy-fallback»: `NotificationChannelConfig`, `BranchProviderConfig`, прайс-провайдери, SMS-шлюзи, будь-яка `*_config` з additive-сідом що лишає секрет NULL.
 
-**Підхід до виявлення:** для КОЖНОГО резолвера-з-fallback — тест «enabled-рядок є, але credentials=NULL (сід-стан)» → assert повертаються РЕАЛЬНІ креди з legacy (не `{}`), і лише для ТОГО Ж провайдера (`legacy.provider===row.provider`, інакше `null` — не плутати чужі креди). Плюс «enabled-рядок без кредів + legacy іншого провайдера → null». **Mutation-verify:** прибрати hasCreds-guard (повернути безумовний `return row`) → сід-fallback-тести МУСЯТЬ впасти (доводить що зелений тест ловить саме порожні-креди-після-сіду). Загальний прийом: тестувати резолвер у стані, який залишає САМЕ МІГРАЦІЯ, не лише у стані, який залишає щасливий UI-write.
+### 2026-09-07 — idempotency-лінк НЕ атомарний з money-write який захищає → sequential re-entry double-create (Bug #688) — backend / money / CRITICAL
 
-**Підхід до фіксу:** резолвер крок-1 — після знаходження enabled-рядка перевірити повноту кредів (`hasCreds(parseCreds(row.credentials))`); якщо порожні → впасти у legacy-fallback ДЛЯ ТОГО Ж провайдера (`legacy && legacy.provider===row.provider ? {...legacy, apiUrl/mode з нового рядка} : null`). Дзеркалити вже-наявний захист sibling-методу (`resolveByCode`). Альтернатива «сідити реальні креди у нову таблицю» гірша — копіювання зашифрованих секретів між схемами at-rest ризиковане; runtime-fallback безпечніший і збігається з декларованим наміром сіду. Реальні креди резолвляться до першого перезбереження у новій формі.
-
-**Severity:** CRITICAL — тихий повний outage (money/fiscal/будь-яка зовнішня інтеграція) на всіх раніше-робочих сутностях, тригериться звичайним `migrate deploy`, невидимий на dev і в unit.
-
-**Де шукати ще:** будь-який registry-рефакторинг «хардкод → таблиця активного + legacy-fallback»: провайдери сповіщень (`NotificationChannelConfig`), ПРРО/еквайринг (`BranchProviderConfig` — цей), майбутні прайс-провайдери, SMS-шлюзи, будь-яка `*_config`-таблиця з additive-сідом що лишає секрет NULL. Спорідн.: цей рефакторинг дзеркалить provider-registry сповіщень — перевір чи там резолвер має той самий hasCreds-guard.
-
-### 2026-09-07 — idempotency-лінк, що НЕ атомарний з money-write який він захищає → sequential re-entry double-create (reconcile/crash-recovery) — backend / money / CRITICAL
-
-**Сигнал:** external-gateway money-flow (QR-оплата, будь-який async confirm) із «наміром» (intent/order), що переходить у термінальний-оплачено-статус через CAS (`updateMany where status:PENDING → PAID, count===1`), а ПОТІМ окремим write створює доменний money-запис (`payments.create` → Payment+settlement+running-total) і **третім** write лінкує його назад у намір (`intent.update({paymentId})`). Часто є reconcile/crash-recovery гілка (review-fix): «якщо намір PAID але `paymentId==null` → створити money-запис знову» (щоб не втратити гроші після падіння між CAS і create). **Пастка:** три write НЕ атомарні. Якщо `create` закомітився, а `update({paymentId})` упав (транзієнт DB/Redis), намір лишається `PAID+paymentId=null` → наступний reconcile-poll бачить те саме → `create` ВДРУГЕ → **дубль Payment/settlement/running-total = тихий double-charge**. jobId single-flight НЕ рятує (вікно послідовне, не конкурентне). Сам reconcile-фікс, доданий щоб не ВТРАТИТИ гроші, вводить дзеркальний баг — ПОДВОЇТИ гроші. Grep-сигнал: money-запис у reconcile/finalize-гілці БЕЗ pre-create existence-guard і БЕЗ `@unique`-лінку на джерело.
+**Сигнал:** external-gateway money-flow (QR-оплата, async confirm) з «наміром» що CAS→PAID, потім окремий `payments.create`, потім третій write `intent.update({paymentId})`. Три write НЕ атомарні: create закомітився, link-write упав → намір `PAID+paymentId=null` → наступний reconcile-poll → `create` ВДРУГЕ = тихий double-charge. jobId single-flight НЕ рятує (вікно послідовне). Reconcile-фікс проти ВТРАТИ грошей вводить дзеркальний баг ПОДВОЄННЯ.
 
 ```bash
-# intent/order-driven money-create у processor/reconcile без унікального лінку:
 grep -rn "paymentId.*null\|reconcile\|finalize" apps/api/src/modules/**/*.processor.ts | grep -v spec
-# для КОЖНОГО money-create у такій гілці — чи є @unique колонка-лінок на source-намір?
 grep -rn "onlinePaymentIntentId\|@unique" packages/database/prisma/schema.prisma | grep -i "payment\|intent\|order"
 ```
 
-**Причина виникнення:** розробник (і review-фікс) розмірковує лише про два стани збою — «впав ДО create» (треба reconcile, щоб довести гроші) — і пропускає третій: «create вдався, лінк-write упав». CAS + jobId-дедуп створюють хибне відчуття «рівно один раз»: вони справді боронять КОНКУРЕНТНИЙ подвій, але не ПОСЛІДОВНИЙ повтор коли стан-прапорець (`paymentId`) не відображає реально-створений запис. `payments.create` не має природного dedup-ключа на намір → ніщо не боронить другий INSERT.
+**Фікс:** `@unique` колонка-лінок на джерело (`Payment.onlinePaymentIntentId String? @unique`, additive nullable). У finalize: (1) pre-create `findFirst({orgId,<link>})` — якщо є, лише до-лінковуй; (2) `P2002` з create (гонка) → дістань winner і залінкуй (успіх, не помилка). Тест «create-succeeds-then-link-fails» → assert no second create; mutation-verify вимкнути pre-guard→падає.
+**Severity:** CRITICAL — тихий double-charge без cap, виявляється лише звіркою gateway↔Payment.
+**Де ще:** monobank QR, card/apple-pay, ПРРО-чек↔Payment, loyalty-earn↔Payment, будь-який BullMQ processor з `X.create` у reconcile/retry-гілці за станом-прапорцем. Контраст: CAS-ідемпотентність безпечна коли create+CAS у ОДНІЙ транзакції.
 
-**Підхід до виявлення:** для КОЖНОЇ reconcile/finalize-гілки що створює money-запис — тест «create-succeeds-then-link-fails»: намір `PAID+paymentId=null`, а money-таблиця ВЖЕ містить запис для цього наміру → assert `create` НЕ викликано вдруге + наявний запис лише до-лінковано. Плюс «P2002 на create (гонка)» → дістає winner і лінкує, не термінальна помилка. **Mutation-verify:** вимкнути pre-create existence-guard (`existing = null && ...`) → double-create-тест МУСИТЬ впасти (це доводить що зелений тест ловить саме подвій). Також покрити: CAS `count===0` → no second create (конкурент); crash-recovery PAID+paymentId=null → create коли запису ще НЕМА (mutation: вимкнути reconcile-гілку → «гроші втрачено»-тест падає); idempotent PAID+paymentId set → no-op.
+### 2026-09-06 — list-endpoint query-фільтри (date-range + enum) + retry-action з 0 unit, поки create() покритий (Bug #678-#682) — backend / coverage-gap / HIGH
 
-**Підхід до фіксу:** додати `@unique` колонку-лінок на джерело у money-таблицю (`Payment.onlinePaymentIntentId String? @unique` — additive nullable, backward-compat міграція) → БД фізично боронить другий INSERT (P2002). У finalize: (1) pre-create `findFirst({orgId, <link>})` — якщо запис уже є (лінк-write минулого разу впав), лише до-лінковуй, create НЕ повторюй; (2) на `P2002` з create (гонка) — дістань winner і залінкуй (успіх, не помилка, не re-enqueue). Це закриває і послідовне вікно (pre-check), і конкурентне (unique-констрейнт). Money-таблиця з новим полем: перевір чи не секрет (ENCRYPTED_FIELDS) і що syncVersion-політика незмінна.
+**Сигнал:** фіча додає `findAll(opts)` з query-фільтрами (date-range, enum-eq, FK org-scoped) + action-метод (`retryX`), а `.spec` покриває лише `create()`. Два підпатерни: **(A) date-only `lte` inclusive-of-day** — `new Date('2026-09-06')`=midnight UTC → голий `createdAt.lte=new Date(dateTo)` виключає записи того ж дня. Правильно `new Date(dateTo+'T23:59:59.999Z')` (+`dateFrom+'T00:00:00.000Z'`). Grep: `grep -rn "lte.*new Date([a-zA-Z].*dateTo\|lte.*new Date(opts" apps/api/src/modules/ | grep -v "T23:59:59"`. **(B) enum-cast без guard → 500** — `where.x=opts.x as EnumType` без валідації → `?x=garbage`→Prisma→HTTP 500. Правильно `new Set(Object.values(Enum))`+`if(VALUES.has(opts.x))`. Grep: `grep -rn "where\.\w* = opts\.\w* as \|as Prisma\.\w*WhereInput" apps/api/src/modules/ | grep -v "\.has("`.
+**Фікс:** дістати `findMany.mock.calls[0][0].where`, асертити межі/фільтри: `createdAt.lte.toISOString()==='...T23:59:59.999Z'`, garbage→`'x' in where===false`+`resolves`(no 500), FK cross-org→NotFound+findMany НЕ викликано, where завжди містить orgId. retry-метод: guards (`receiptId set`→400 БЕЗ enqueue; `!=FAILED`→400; queue reject→`.catch` FAILED+resolves; cross-org→NotFound) + порядок (idempotency ПЕРЕД status). Mutation-verify обидва: відкат midnight→inclusivity падає; прибрати `VALUES.has()`→garbage падає.
+**Severity:** HIGH (A: пропущені фіндокументи; B: 500 на публічному list-endpoint).
+**Де ще:** будь-який `findAll` з `@Query` date-range/enum: payments, supplier-payments, invoices, work-orders, stock-documents, purchase-orders, reports/builder. Спорідн. Bug #595/#616.
 
-**Severity:** CRITICAL — тихий double-charge клієнта, без cap-захисту (reconcile-шлях часто скидає лічильник спроб), виявляється лише звіркою gateway↔Payment.
+### 2026-09-06 — авторитетна denormalized-колонка з derived-Σ фолбеком у toDto + partial-payment CAS money-flow (Bug #668-#677) — backend / coverage-gap / HIGH-MEDIUM
 
-**Де шукати ще:** будь-який async-confirm money-flow із intent/order + окремим лінк-write: online-payments (monobank QR), майбутні card/apple-pay, ПРРО-чек↔Payment лінк, loyalty-earn↔Payment, будь-який BullMQ processor що робить `X.create` у reconcile/retry-гілці за станом-прапорцем. Спорідн.: review-fix 025bf77f (reconcile-гілка яка й породила вікно), Bug #688 (цей), FIN-C1 (CAS ідемпотентність але у ОДНІЙ транзакції — контраст: там безпечно бо create+CAS атомарні).
+**Сигнал:** нова running-total колонка (`Invoice.paidAmount`, `PurchaseOrder.receivedAmount`, `WorkOrder.paidAmount`) транзакційно оновлюється у money-flow + паралельна derived-сума з дітей (`Σpayments.amount`); `toDto` пише фолбек `col!=null?Number(col):(children?children.reduce(...):undefined)`. CAS-flow (updateMany where col=read-value→count=0 throw) має 1-2 щасливі тести, але БЕЗ: partial→full з ненульової бази; оплата РІВНО залишку (межа `>=amount-epsilon`); overpay поверх часткової; concurrency `count=1→count=0`; status-gate ВСІХ заборонених станів; manual-статус що синхронізує col=amount БЕЗ settlement; toDto-авторитетності (col vs розбіжний Σ / col=null / col=0≠undefined).
+**Фікс:** tx-callback mock ($transaction виконує callback з prisma-як-tx). Money-набір: partial→full, exact-remaining→PAID, overpay-from-partial→throw-ПЕРЕД-CAS, concurrency count=1→count=0 (create/settlement РІВНО 1×), кожен заборонений статус→throw, manual-terminal→col=amount+`settlements.createTransaction not.toHaveBeenCalled`, toDto(col vs Σ / null / 0). **Mutation-verify КОЖЕН money-guard** (`false &&` overpay-if, прибрати `col:read-value` з CAS-where, `false &&` count=0-throw, прибрати `col:amount` terminal). Зазвичай tests-only. FE-паралель: optimistic-статус/remaining винести у чистий helper (`lib/invoice-payment.ts`) з тим самим epsilon. Backfill-міграцію нової колонки — idempotency (ADD COLUMN IF NOT EXISTS, backfill з самонейтралізуючим WHERE).
+**Severity:** HIGH (CAS/overpay/concurrency/manual-sync — double-charge/застряглий залишок/подвійний облік); MEDIUM (toDto-авторитетність).
+**Де ще:** `Invoice.paidAmount`↔payments, `PurchaseOrder.receivedAmount/paidAmount`↔lines, `WorkOrder.paidAmount`↔payments, `SettlementAccount.balance`↔transactions, `StockItem.quantity`↔movements. Спорідн. Bug #508/#613/#629.
 
-### 2026-09-06 — list-endpoint query-фільтри (date-range + enum) та retry-action відвантажені з 0 unit, поки create() добре покритий — backend / coverage-gap / HIGH
+### 2026-09-06 — узагальнення поля до типізованого locator (phone→recipient) + per-channel selection + структуровані креди (Bug #658-#660) — backend+frontend / coverage-gap / HIGH
 
-**Сигнал:** фіча Фази-2 додає `findAll(opts)` з набором query-фільтрів (date-range, enum-eq, FK org-scoped) + `findOne` + action-метод (`retryFiscal`/`retryX`), а `.spec` покриває ЛИШЕ `create()` (грошовий happy/CAS). Класичний drift: складна create-логіка «заслуговує» тестів, а «простий» findAll/filter «очевидний» → 0 покриття саме на review-фіксах, які туди й лягли. Два підпатерни ловляться grep-детекторами:
+**Сигнал:** фіча узагальнює адресат з одного типу до багатотипного (`phone`→`recipient` де тип залежить від каналу): (A) per-channel селектор `TYPE_SET.has(x.channel)?a:b` що пропускає крок без адресата; (B) mask/format-helper локатора у логах; (C) provider зі структурованими кредами серіалізованими JSON в одне поле (`apiKey=JSON.stringify({host,port,user,pass})`)+multi-field UI+`credsReady=!!(f1&&f2&&f3)`. Тести покривають лише type-A/type-B ОКРЕМО, не змішаний набір з асертом типу у КОЖНОМУ кроці. Grep: `grep -rnE "\.has\([a-z]+\.channel\)\s*\?|JSON\.stringify\(\{[^}]*host" apps/api/src apps/web/src --include="*.ts" --include="*.tsx"`.
+**Фікс:** (A) тест ЗМІШАНОГО `[typeA,typeB]` × `{a}`(B відкинуто)/`{b}`(A відкинуто)/`{a,b}`(обидва, recipient КОЖНОГО кроку СВОГО типу — SMS без `@`, EMAIL з `@`)/`{}`(job не ставиться). Mutation: `a??b`→змішані падають. (B) mask-helper email/короткий/порожній/no-@. (C) multi-field форма (не single-token), `credsReady`=усі обов'язкові, save-payload=очікуваний JSON (парсити+`toEqual`), дефолти (порожній порт→587), negative: інший provider лишає single-token; mutation зламати `buildApiKey`→падає. Persist: assert пишеться НОВА колонка (`recipient`) не стара (`phone`). Зазвичай tests-only.
+**Severity:** HIGH (селектор/креди); MEDIUM (mask). By-design виняток: caller що передає підмножину (followup лише phone→EMAIL тихо skip) — підтвердити no-crash, задокументувати, НЕ «фіксити».
+**Де ще:** push-token/webhook-URL/deviceId залежно від каналу; OAuth `{clientId,secret}`, DB-DSN, S3 `{key,secret,bucket}`. Спорідн. Bug #488, #401/#432.
 
-- **(A) date-only `lte` inclusive-of-day.** Фронт шле `YYYY-MM-DD`; `new Date('2026-09-06')` = **midnight UTC** → голий `createdAt.lte = new Date(dateTo)` виключає всі записи того ж дня (платіж о 15:00 не потрапляє у діапазон `dateTo=сьогодні`). Правильно: `new Date(dateTo + 'T23:59:59.999Z')` (і `dateFrom + 'T00:00:00.000Z'` для симетрії). Grep: `grep -rn "lte.*new Date([a-zA-Z].*dateTo\|lte.*new Date(opts" apps/api/src/modules/ | grep -v "T23:59:59"`.
-- **(B) query-string enum-cast без guard → 500.** `where.enumField = opts.x as EnumType` без валідації → `?x=garbage` каститься і доходить до Prisma → **HTTP 500 (не-i18n, шум у Sentry)**, а не тихе ігнорування як для будь-якого нерозпізнаного query-параметра. Правильно: `const VALUES = new Set(Object.values(EnumFromPrisma))` (enum-driven, без хардкоду) + `if (VALUES.has(opts.x)) where.x = opts.x`. Grep: `grep -rn "where\.\w* = opts\.\w* as \|as Prisma\.\w*WhereInput" apps/api/src/modules/ | grep -v "\.has("`.
+### 2026-09-06 — «exclusive mutation» через multi-`updateMany` у `$transaction` + frontend «only-one-active» тріада (Bug #657) — backend+frontend / tenant-isolation + coverage-gap / HIGH
 
-**Причина виникнення:** розробник вважає CRUD-list «тривіальним» і що ParseUUIDPipe/class-validator ловлять усе — але вони НЕ валідують `@Query('x') x?: string` вільні рядки (date, enum-як-string) що йдуть у сервіс сирими. `new Date('YYYY-MM-DD')` мовчазно дає midnight (виглядає «як дата»), а enum-cast компілюється (`as`), тож обидва проходять tsc+create-тести й падають лише на живому запиті з крайовим вводом.
+**Сигнал:** «активним лише 1» через `activateX(orgId,branchId,code)` з prep-`findFirst({id,orgId})` + `$transaction([updateMany(where:{...,key:{not:code}},{enabled:false}), updateMany(where:{...,key:code},{enabled:true})])`. Prep валідує branch/parent; самі updateMany матчаться по бізнес-полю (`provider`/`type`/`isDefault`) — `orgId` у КОЖНОМУ where окрема відповідальність. Забути в одному (особливо `{not:code}`) → mass-update чужої org. `@@unique([branchId,key])` не рятує (updateMany не через unique). Grep: `grep -rnE "\\\$transaction\(\[" apps/api/src/modules --include="*.service.ts" -A6 | grep -A6 "updateMany"`.
+**Фікс:** `orgId`(+`branchId`) у кожен where-клоз. Cross-org spec (in-memory-store): рядок org-2 з тим самим branchId+key; активація org-1 → рядок org-2 НЕДОТОРКАНИЙ + обидва where несуть orgId + exclusivity (рівно 1 набір enabled). Mutation: видалити orgId з одного updateMany→падає. **Frontend «only-one-active» тріада:** (1) **gate** — увімкнути можна лише сумісний item, інакше setError+return; (2) **empty-state guard** перед POST activate — item без конфігу → «спершу налаштуйте», НЕ POST (бек idemp no-op → хибний «активовано»); (3) **disabled** активного/чужого sub-toggle. Всі три mutation-verified. Grep: `grep -rn "activeProvider\|active[A-Z]\|isActive.*===\|only one\|лише один\|ексклюзивн" apps/web/src --include="*.tsx" -l`.
+**Severity:** HIGH (backend cross-org corruption; frontend 2 активні → resolver змішує).
+**Де ще:** `setDefaultX` (updateMany isDefault:false на решті), status-exclusive switches, priority-reorder через bulk updateMany, будь-який `$transaction([...])` з ≥2 масовими write на org-scoped таблиці. Спорідн. Bug #191, #628.
 
-**Підхід до виявлення:** для КОЖНОГО нового list/filter-методу — дістати `where`, з яким викликано `findMany` (`prisma.X.findMany.mock.calls[0][0].where`), і асертити межі/фільтри напряму: `createdAt.lte.toISOString() === '...T23:59:59.999Z'`, `createdAt.gte === '...T00:00:00.000Z'`, enum valid→eq, `'none'`→`null` (IS NULL, ключ присутній), **garbage→`'x' in where === false` + `resolves` (no 500)**, FK org-scoped (валідний→where + findFirst orgId; чужа org→NotFound + findMany НЕ викликано), where завжди містить orgId, pagination clamp. Для retry/action-методу: усі guards (`receiptId set`→400 БЕЗ enqueue; `!=FAILED`→400; happy→update+queue.add; queue reject→`.catch` FAILED + resolves; cross-org→NotFound) + **порядок guards** (idempotency-guard ПЕРЕД status-guard). **Mutation-verify обидва review-фікси:** відкат `new Date(dateTo)` (midnight)→inclusivity-тест падає; прибрати `VALUES.has()`→garbage-тест падає.
+### 2026-09-06 — review-fix замінив хардкод-набір на metadata-driven gate, regression-guard покрив не КОЖНУ гілку — backend+frontend / coverage-gap / MEDIUM-HIGH
 
-**Підхід до фіксу:** tests-only коли логіка вірна (0 функціональних дефектів, як #678-#682). Якщо grep-детектор (A)/(B) знайшов сирий cast/midnight lte у СЕРВІСІ без review-фіксу — це реальний баг (HIGH: пропущені записи / 500), фікс = дзеркалити sibling-сервіс (`supplier-payments.service` для date-range) + enum-Set guard.
-
-**Severity:** HIGH (A: тихо пропущені фіндокументи у звіті за день; B: 500 на публічному list-endpoint від тривіального query-параметра).
-
-**Де шукати ще:** будь-який `findAll` з `@Query` date-range або enum-status-фільтром: payments, supplier-payments, invoices, work-orders, stock-documents, purchase-orders, reports/builder. Спорідн.: sto-review f33edc2c (ті самі 2 детектори у review-чеклісті), Bug #595/#616 (date-only DTO semantic).
-
-### 2026-09-06 — авторитетна denormalized-колонка з derived-Σ фолбеком у toDto + partial-payment CAS money-flow — backend / coverage-gap / HIGH-MEDIUM
-
-**Сигнал:** фіча вводить нову авторитетну колонку-накопичувач (`Invoice.paidAmount`, `PurchaseOrder.receivedAmount`, `WorkOrder.paidAmount`), що транзакційно оновлюється у грошовому/кількісному flow, ПЛЮС паралельно існує похідна сума з дочірніх рядків (`Σpayments.amount`, `Σlines.receivedQty`). `toDto` пише фолбек `col != null ? Number(col) : (children ? children.reduce(...) : undefined)`. Часто відвантажується так: CAS-flow (updateMany where col=read-value → count=0 throw) має 1-2 щасливих тести, але БЕЗ: (A) послідовності часткова→повна з ненульової бази (paid=200 → доплата → PAID); (B) оплати РІВНО залишку (межа `>=amount-epsilon`); (C) overpay поверх часткової (не лише з нульової бази); (D) concurrency-моделі двох write через `count=1 → count=0`; (E) status-gate ВСІХ заборонених станів (не лише DRAFT); (F) manual-статус-переходу що синхронізує col=amount БЕЗ створення settlement (статус-узгодження ≠ платіж); (G) toDto-авторитетності (col vs розбіжний Σ, col=null фолбек, col=0 ≠ undefined).
-
-**Причина виникнення:** розробник вважає CAS-happy-path достатнім і що «межа = очевидна». Але саме межі й перехрестя ховають гроші-баги: `>` замість `>=` лишає повністю оплачений рахунок у PARTIALLY_PAID; manual-PAID що ЗАБУВ синхронізувати col лишає «залишок» ненульовим назавжди; refactor що ДОДАВ settlement у manual-PAID-гілку → подвійний облік; toDto що впав на Σ замість col → показ суми-payments яка розходиться з авторитетним станом (refund/adjustment). Concurrency: два платежі читають col=0 на stale-snapshot; лише один CAS-updateMany виграє (count=1), другий count=0 → throw — без цього тесту зняття `if(count===0) throw` = тихий double-charge.
-
-**Підхід до виявлення:** ганяти tx-callback mock ($transaction виконує callback з prisma-як-tx, щоб CAS updateMany/create РЕАЛЬНО викликались). Мінімальний money-набір: partial→full sequence, exact-remaining→PAID, overpay-from-partial→throw-ПЕРЕД-CAS, concurrency count=1→count=0 (assert create/settlement РІВНО 1×), кожен заборонений статус→throw, manual-terminal-status→col=amount+`settlements.createTransaction not.toHaveBeenCalled`, toDto(col vs розбіжний-Σ / col=null / col=0). **Обов'язково mutation-verify КОЖЕН money-guard:** нейтралізувати overpay-if (`false &&`), прибрати `col: read-value` з CAS-where, `false &&` на count=0-throw, прибрати `col: amount` з terminal-status-data, прибрати доданок у optimistic-статус — відповідний тест МУСИТЬ впасти. Fake-green на грошах гірший за відкритий баг.
-
-**Підхід до фіксу:** зазвичай tests-only (логіка вірна — 0 функціональних дефектів, як #668-#677). FE-паралель: якщо optimistic-статус/remaining живуть inline у компоненті — винести у чистий helper (`lib/invoice-payment.ts`) і покрити unit-тестами (дзеркало backend CAS з ТИМ САМИМ epsilon), а не тягнути важкий component-render. Backfill-міграцію нової колонки перевірити на idempotency (ADD COLUMN IF NOT EXISTS, enum/FK guarded, backfill-UPDATE з WHERE що самонейтралізується при re-run).
-
-**Severity:** HIGH для CAS/overpay/concurrency/manual-sync (гроші: double-charge, застряглий залишок, подвійний облік); MEDIUM для toDto-авторитетності (user-visible розбіжність суми).
-
-**Де шукати ще:** будь-яка «running total» колонка + дочірні рядки: `Invoice.paidAmount`↔payments, `PurchaseOrder.receivedAmount/paidAmount`↔lines, `WorkOrder.paidAmount`↔payments, `SettlementAccount.balance`↔transactions, `StockItem.quantity`↔movements. Спорідн.: Bug #508/#1955 (denormalized-formula semantics у consumer), Bug #613 (concurrent pre-check→write row-lock), Bug #629 (roundMoney на похідних).
-
-### 2026-09-06 — узагальнення поля до типізованого locator (phone→recipient) + per-channel selection + структуровані креди у одне поле — backend + frontend / coverage-gap / HIGH
-
-**Сигнал:** фіча що узагальнює адресат/ідентифікатор з одного конкретного типу до багатотипного (`phone: string` → `recipient: string` де тип залежить від каналу; `token` → creds-об'єкт). З'являються: (A) per-channel/per-item селектор `TYPE_SET.has(x.channel) ? valueA : valueB` (`EMAIL_CHANNELS.has(c.channel) ? email : phone`), що будує ланцюг і **пропускає** крок без відповідного адресата; (B) mask/format-helper локатора у логах (`maskRecipient`); (C) новий provider зі **структурованими кредами** серіалізованими JSON-ом в одне поле (`apiKey = JSON.stringify({host,port,user,pass})`) + UI-форма з кількома інпутами замість одного токена + `credsReady = !!(f1 && f2 && f3)`. Тести часто покривають лише «type-A only» і «type-B only» ОКРЕМО, але НЕ змішаний набір з асертом типу в КОЖНОМУ кроці; mask-helper — лише «щасливий» вхід; структуровану-креди форму — взагалі 0 (фікстури лишились legacy single-token).
-
-**Причина виникнення:** розробник тестує кожен канал ізольовано («SMS працює», «EMAIL працює»), вважаючи що змішаний випадок — механічна сума. Але саме на перехресті ховається найгірший регрес: селектор зламаний на `phone ?? email` (частий copy-paste/спрощення) → у EMAIL-крок тече телефон → nodemailer `to:'38067...'` = 500/тихий відкид, а обидва ізольовані тести лишаються зеленими. Mask-helper: email-гілка (`indexOf('@')>0`) і edge (порожній/короткий/no-@) виглядають «очевидно правильними» → не тестуються → регрес витікає повний email у логи (PII) або валить воркер. Структуровані креди: нова UI-гілка `code==='smtp'` невидима для legacy-фікстур → сериалізація в JSON (де EmailProvider.parseConfig очікує саме JSON) без покриття → регрес → сирий текст → parseConfig→null→усі email мовчки не йдуть.
-
-**Підхід до виявлення:** (A) для кожного per-channel/per-item селектора — тест ЗМІШАНОГО набору `[typeA, typeB]` × усі комбінації наявності адресатів (`{a}`→B-крок відкинуто; `{b}`→A відкинуто; `{a,b}`→ОБИДВА, і **assert recipient КОЖНОГО кроку СВОГО типу** — `smsStep.recipient` без `@`, `emailStep.recipient` з `@`; `{}`→порожній ланцюг, job не ставиться). Mutation-check: замінити селектор на `a ?? b` → змішані тести падають. (B) mask/format-helper (навіть module-private — ганяти через публічний метод що логує): email-вхід (перша літера+`***@`домен, повний НЕ у лог), короткий (`≤N`→повне маскування), порожній (no-crash), no-@. (C) структуровані креди: тест нової provider-гілки UI — показ multi-field форми (не single token), `credsReady` вимагає ВСІ обов'язкові поля (по одному → disabled, усі → enabled), save-payload = очікуваний JSON-рядок (парсити назад і `toEqual`), дефолти (порожній порт→587), verify шле той самий JSON; плюс негатив: інший provider лишає single-token форму. Mutation-check: зламати `buildApiKey` (SMTP повертає сирий) → save/verify-тести падають. Backend-парний: NotificationLog/persist пише НОВУ колонку (`recipient`), не стару (`phone`) — assert `data.recipient` + `not.toHaveProperty('phone')`.
-
-**Підхід до фіксу:** зазвичай tests-only (логіка вірна — 0 функціональних дефектів, як тут #658-#660). Якщо селектор реально зламаний — відновити типізований вибір per-channel (`SET.has(channel) ? typed : other`), НЕ `??`-fallback. Кожен доданий тест mutation-verified.
-
-**Severity:** HIGH для селектора (тихий регрес → весь клас каналу не доставляється) і структурованих кредів (розрекламована фіча непридатна); MEDIUM для mask-helper (PII-витік/краш воркера на edge).
-
-**Де шукати ще:** будь-яке узагальнення поля до багатотипного (push-token/webhook-URL/deviceId залежно від каналу); будь-який provider/integration зі структурованими кредами в одне serialize-поле (OAuth `{clientId,secret}`, DB-DSN, S3 `{key,secret,bucket}`); by-design обмеження де один caller передає лише підмножину адресатів (followup лише phone → EMAIL тихо skip) — підтвердити що НЕ крашить і задокументувати як intended, не «фіксити». Спорідн.: Bug #488 (`Partial<Record<Enum>>` fallthrough), Bug #401/#432 (FE↔BE symmetry).
-
-### 2026-09-06 — «exclusive mutation» через multi-`updateMany` у `$transaction` + frontend «only-one-active» тріада — backend + frontend / tenant-isolation + coverage-gap / HIGH
-
-**Сигнал:** нова фіча «активним може бути лише 1» (провайдер/метод/стратегія/default-flag) реалізована сервіс-методом виду `activateX(orgId, branchId, code)`, що робить prep-`findFirst({ id, orgId })` (валідує branch/parent), а потім `$transaction([updateMany(where: {..., key: {not: code}}, {enabled:false}), updateMany(where: {..., key: code}, {enabled:true})])`. Часто відвантажується з 0 тестів на сам `activateX` + 0 контрактних на endpoint. Дзеркальний frontend — per-item Switch що активує ексклюзивно + per-sub-item toggle що не має вмикати 2-й набір.
-
-**Причина виникнення:** розробник вважає, що prep-`findFirst({id, orgId})` вже «зачинив» tenant-isolation для всього методу. Але prep перевіряє лише branch/parent-існування; самі масові `updateMany` матчаться по **бізнес-полю** (`provider`/`type`/`isDefault`), і `orgId` у їх where — окрема відповідальність кожного клозу. Легко забути `orgId` в одному з двох (особливо у `{ not: code }`-гілці) — локально «працює», бо dev-дані одноорганізаційні. `@@unique([branchId, key])` не рятує: updateMany не йде через unique-арбітраж. Frontend-бік: «Switch → POST activate» здається достатнім, але без empty-state guard активація без під-рядків = бек-no-op (updateMany 0 rows) → UI бреше «активовано»; без per-sub-toggle gate можна увімкнути канал 2-го провайдера → 2 активні → resolver змішує.
-
-**Підхід до виявлення:** (backend) для кожного `$transaction([... updateMany ...])` перерахувати where-клози й підтвердити `orgId` (+ `branchId`) у КОЖНОМУ — не лише у prep. Найгостріший тест — cross-org: in-memory-store spec що моделює семантику updateMany (мутує рядки за where, повертає {count}); засіяти рядок org-2 з тим самим branchId+business-key; активувати для org-1; assert рядок org-2 НЕДОТОРКАНИЙ (обидва прапорці) + обидва where несуть orgId + soft-deleted не реактивується + exclusivity (рівно 1 набір enabled, навіть із «брудного» 2-enabled стану) + empty-state (0 rows → повертає {activeX}, no throw — idempotent by design). (contract) endpoint: ParseUUIDPipe(branchId)→400, DTO @IsString→400, whitelist відкидає orgId-з-body, доменні BadRequest→400/NotFound→404, orgId прокинутий з JWT. (frontend) тріада gate+empty-state+disabled, кожна mutation-verified.
-
-**Підхід до фіксу:** якщо логіка вірна (двічі рев'юнута) — tests-only, як тут (0 функціональних багів). Якщо where втратив orgId — додати у кожен клоз. Обов'язково mutation-check: видалити orgId з одного updateMany → cross-org spec падає; нейтралізувати frontend-guard → відповідний тест падає. Fake-green (тест зелений і на зламаному коді) — гірше за відсутність тесту.
-
-**Severity:** HIGH — backend-гілка = cross-org data corruption на масовому write (мовчазна, без error); frontend-гілка порушеної ексклюзивності = 2 активні набори → неконтрольована поведінка resolver-а (напр. сповіщення шле через обидва провайдери).
-
-**Де шукати ще:** default-flag toggles (`setDefaultX` що `updateMany({isDefault:false})` на решті + `update({isDefault:true})`); status-exclusive switches; priority/reorder через bulk updateMany; будь-який `$transaction([...])` з ≥2 масовими write на org-scoped таблиці; frontend будь-де «активним лише один» / радіо-подібний Switch-набір. Спорідн.: Bug #191 (single-update orgId), Bug #628 (constraint-mapping across write-paths).
-
-### 2026-09-06 — review-fix замінив хардкод-набір на metadata-driven gate (напр. `provider.templateChannels`), але regression-guard покрив не КОЖНУ гілку нового гейта — backend+frontend / coverage-gap / metadata-driven-gate / MEDIUM-HIGH
-
-**Сигнал:** commit виду `fix(review):` вводить нове поле-метадані на абстракції (`NotificationProvider.templateChannels`, `PaymentProvider.supportsRefund`, `DocType.requiresApproval`) як ЄДИНЕ джерело правди, ЗАМІНЮЮЧИ раніше захардкоджені set-и і на бекенді (`resolveConfig`/валідація), і на фронті (`needsExternalTemplate`/умовний рендер поля). Поле читається у 3+ місцях: (A) resolver-gate (`filter(c => registry.get(c.provider)?.templateChannels?.includes(c.channel))`), (B) upsert/write-guard (force-null/reject коли канал не в наборі), (C) UI-видимість поля + submit-payload, (D) registry `list()`-мапінг що віддає поле фронту (`?? []`). Тести часто покривають 1-2 «очевидні» гілки (positive-VIBER included, negative-turbosms excluded), а решту матриці — ні. Grep-детектор:
+**Сигнал:** `fix(review):` вводить нове поле-метадані як ЄДИНЕ джерело (`NotificationProvider.templateChannels`, `PaymentProvider.supportsRefund`), замінюючи захардкоджені set-и і на бекенді (resolver/валідація) і на фронті (умовний рендер). Читається у 3+ місцях: resolver-gate, upsert-guard, UI-видимість+submit, registry `list()`-мапінг. Тести покривають 1-2 «очевидні» гілки, решту матриці — ні.
 
 ```bash
-# нове metadata-поле-гейт у diff review-fix — скільки гілок і чи всі покриті?
 git log --oneline -8 | grep -iE "fix\(review\)|review-fix"
 grep -rnE "readonly \w+Channels\??:|readonly supports[A-Z]|\.\w+Channels\?\.includes\(|templateChannels" apps/api/src --include="*.ts" | grep -v spec
-# для КОЖНОГО місця читання поля — чи є парний тест на INCLUDED і на EXCLUDED гілку?
-# registry/list()-мапінг (`?? []`) — чи має власний spec проти РЕАЛЬНИХ impl? (моки list() не ловлять регрес мапінгу)
 ls apps/api/src/modules/<mod>/providers/*registry*.spec.ts   # часто відсутній
-# threading поля крізь processor у provider.send — чи є assert `send.mock.calls[0][0].<field>`?
-grep -n "<field>:" apps/api/src/modules/<mod>/*.processor.ts   # рядок є → потрібен guard
-# frontend: чи фікстура тесту має провайдера З metadata-полем? (часто лише legacy без нього)
-grep -n "templateChannels\|<field>" apps/web/src/**/*.test.tsx
+grep -n "<field>:" apps/api/src/modules/<mod>/*.processor.ts   # threading у send
+grep -n "templateChannels\|<field>" apps/web/src/**/*.test.tsx   # фікстура має provider з полем?
 ```
 
-**Причина виникнення:** розробник/рев'ювер вважає «замінив хардкод на метадані + додав тест на головний кейс → досить». Але суть гейта — саме матриця (channel × provider → in-set / out-of-set), і кожна комбінація — окрема тиха гілка: out-of-set inline-канал з випадковим template-id має бути ВИКЛЮЧЕНИЙ (інакше порожній send), in-set без template-id теж ВИКЛЮЧЕНИЙ (нема джерела тексту). Registry `list()`-мапінг (`?? []`) невидимий бо інші specs мокають `list()`, а не будують реальний registry. Threading поля у processor→send — один рядок, який refactor легко викидає. Frontend-фікстура лишається на старому провайдері без нового поля → уся metadata-гілка UI без покриття (типово sync-agent це і сигналить: «файл фікстурить лише legacy-провайдера»).
+**Фікс:** ПОВНА матриця (channel × provider): (1) in-set+джерело→INCLUDED; (2) in-set БЕЗ джерела→EXCLUDED; (3) out-of-set з випадковим метаданим→EXCLUDED; (4) write-guard force-null/reject; (5) `list()`/registry проти РЕАЛЬНИХ impl (не мок) — поле є, out-of-set відсутнє; (6) threading `expect(send.mock.calls[0][0].<field>)`; (7) frontend фікстура З metadata → показ/схов+submit+prefill. Новий `*registry*.spec.ts` проти реальних impl. Тести-only якщо логіка вірна.
+**Severity:** MEDIUM-HIGH за blast-radius (сповіщення=MEDIUM, платіж/refund/approval=HIGH).
+**Де ще:** будь-який `readonly <x>Channels?`/`supports<X>`/`requires<X>` на provider/strategy; registry `list()` з `?? []`; metadata-поле що гейтить BE-resolver І FE-видимість (спорідн. Bug #401/#432).
 
-**Підхід до виявлення:** для нового metadata-gate побудувати ПОВНУ матрицю і закрити guard на кожну клітинку: (1) in-set канал + метадані-джерело → INCLUDED; (2) in-set канал БЕЗ джерела → EXCLUDED; (3) out-of-set канал з випадково-присутнім метаданим → EXCLUDED (anti-empty/anti-wrong-op — це і є суть fix); (4) write-guard force-null/reject для out-of-set; (5) `list()`/registry-мапінг проти РЕАЛЬНИХ impl (не мок) — поле є, тип масив, out-of-set значення відсутнє; (6) threading крізь processor → `expect(send.mock.calls[0][0].<field>).toBe(...)`; (7) frontend: фікстура З metadata-полем → поле показ/схов за клітинкою матриці + submit-payload включає/виключає поле + prefill. Плюс empty-payload шлях (renderTemplate('')='' для template-каналу → send без крашу, без порожнього повідомлення).
+### 2026-09-06 — Prisma `$extends` field-encryption відвантажено з 0 інтеграційних тестів наскрізного циклу (Bug #652) — backend / security / at-rest-crypto / HIGH
 
-**Підхід до фіксу:** тести-only якщо логіка вірна (як тут — код двічі рев'юнуто, 0 функціональних багів). Новий `*registry*.spec.ts` проти реальних impl (не моків). Frontend: додати фікстуру з metadata-полем + `describe`-блок на всю матрицю (керувати `combobox`-select-ом каналу, асертити PATCH-body/DOM-видимість — тест падає якщо гейтинг зламано, не fake-green).
-
-**Severity:** MEDIUM-HIGH за blast-radius: сповіщення=MEDIUM (тихий порожній лист/пропущений канал), платіж/refund/approval-gate=HIGH. Frontend-гілка розрекламованої фічі (задати Viber/Telegram-шаблон) без покриття = HIGH (тихий регрес блокує налаштування).
-
-**Де шукати ще:** будь-який `readonly <x>Channels?`/`supports<X>`/`requires<X>` на provider/strategy/policy-абстракції; registry/factory `list()`-мапінг з `?? []`/`?? default`; будь-яке metadata-поле що ОДНОЧАСНО гейтить backend-resolver І frontend-видимість поля (симетрія BE↔FE, спорідн. Bug #401/#432); processor що пробрасує опційне поле у зовнішній `send`/`call`. Правило: review-fix «замінив хардкод-set на метадані» → матриця (варіант × канал) з guard на кожну клітинку, не лише diagonal.
-
-### 2026-09-06 — Prisma `$extends` field-encryption (encrypt-on-write/decrypt-on-read) відвантажено з 0 інтеграційних тестів наскрізного циклу — backend / security / db / at-rest-crypto / HIGH (regression-guard для критичного класу)
-
-**Сигнал:** нове наскрізне at-rest шифрування секретів реалізоване як Prisma-розширення `$extends({ query: { $allModels: { $allOperations } } })` — мутує write-payload (`args.data/create/update`) на write і результат на read. Юніт-тести є ТІЛЬКИ на сам crypto-хелпер (`EncryptionService.encrypt/decrypt` round-trip у пам'яті), а на РОЗШИРЕННЯ (те, що дійсно біжить у продакшні) — 0. Unit-мок Prisma НЕ виконує `$allOperations`-hook і не б'є Postgres → CI зелений, хоч розширення може: не зашифрувати (encrypt no-op → plaintext-leak at-rest), не дешифрувати (provider отримає ciphertext → зламаний ланцюг), подвійно зашифрувати при lazy re-encrypt+upsert, або зламатись на композиції з іншим розширенням (`withFieldEncryption(withSyncVersion(client))` — порядок обгортання визначає хто мутує args першим). Grep-детектор:
+**Сигнал:** at-rest шифрування секретів як Prisma-розширення `$extends({query:{$allModels:{$allOperations}}})` — мутує write/read payload. Юніт-тести є лише на crypto-хелпер (encrypt/decrypt round-trip), на РОЗШИРЕННЯ (що біжить у проді) — 0. Unit-мок Prisma не виконує `$allOperations` і не б'є Postgres → розширення може: не зашифрувати (plaintext-leak), не дешифрувати, подвійно зашифрувати, зламатись на композиції (`withFieldEncryption(withSyncVersion(client))` — порядок).
 
 ```bash
-# Prisma-розширення що мутує write/read payload — чи має ІНТЕГРАЦІЙНИЙ (live-DB) тест?
 grep -rnE "\\\$extends\(|\\\$allOperations|encryptWriteData|decryptReadResult" apps/api/src/prisma --include="*.ts"
-grep -rln "integration.spec\|\\\$queryRawUnsafe.*enc:v1" apps/api/src/prisma   # чи є парний live-тест?
-# consumer-пати секрету — чи читають через РОЗШИРЕНИЙ client (this.prisma), не raw?
+grep -rln "integration.spec\|\\\$queryRawUnsafe.*enc:v1" apps/api/src/prisma
 grep -rn "new PrismaClient" apps/api/src --include="*.ts" | grep -v "spec\|prisma.service"   # має бути 0
-grep -rniE "queryRaw.*(apiKey|smsApiKey|licenseKey|pinCode|secret|token)" apps/api/src --include="*.ts" | grep -v spec  # raw-read секрету = bypass дешифрування
+grep -rniE "queryRaw.*(apiKey|smsApiKey|licenseKey|pinCode|secret|token)" apps/api/src --include="*.ts" | grep -v spec  # raw-read = bypass
 ```
 
-**Причина виникнення:** розробник (і рев'ювер) вважає «crypto round-trip покрито юнітом → досить». Але баг живе не в crypto-хелпері, а на СТИКУ розширення×Prisma×Postgres: чи спрацював hook для КОЖНОЇ операції (create/update/upsert/updateMany/createMany), чи `select`-проєкція не обрізала поле, чи композиція розширень зберегла порядок, чи толерантний decrypt читає legacy-plaintext рядки (записані до фічі / raw SQL). Це невидиме юнітам за визначенням.
+**Фікс:** live-DB інтеграційний spec (skip якщо БД down, АЛЕ реально біжить коли є — не fake-green); будувати клієнт ТОЧНО як `PrismaService.onModuleInit`. Довести: raw колонка = `enc:v1:`+не plaintext; read через розширення = plaintext; legacy-plaintext (raw INSERT) читається; update без секрету не подвоює шифрування. uuid-bind у raw кастити `$1::uuid`. Статично: 0 `new PrismaClient` поза service, 0 raw-read секретів, response/cache/sync НЕ включають секрет (лише `hasX`). `where`-фільтр на зашифрованій колонці — лише null-checks валідні (equals/contains на ciphertext = завжди-промах).
+**Severity:** HIGH — тихий регрес = plaintext-leak або зламаний provider-ланцюг.
+**Де ще:** будь-який `$extends` що мутує payload (soft-delete-фільтр, tenant-scoping, syncVersion, audit-stamp); consumer-паті секрету (provider-виклики) — через розширений client.
 
-**Підхід до виявлення:** для БУДЬ-ЯКОГО Prisma-розширення що трансформує дані — обов'язковий інтеграційний spec проти живої dev-БД (guard: skip якщо БД недоступна, АЛЕ реально біжить коли є — не fake-green). Будувати клієнт ТОЧНО як `PrismaService.onModuleInit` (та сама композиція розширень). Довести at-rest: read сирої колонки через `$queryRawUnsafe` = ciphertext (`enc:v1:` + не містить plaintext); read через розширення = plaintext; legacy-plaintext рядок (raw INSERT) читається без змін (толерантність); update без секрету зберігає наявний (не подвійне шифрування). Плюс статично: 0 `new PrismaClient()` поза service, 0 raw-read секретних колонок, response/cache-мапери НЕ включають секрет (лише `hasX`-прапорець).
+### 2026-09-06 — review-fix змінив DI-конструктор, sibling `.spec` лишився на старій арності → hidden-red baseline — backend / hidden-red-baseline / HIGH (release-blocker)
 
-**Підхід до фіксу:** написати live-DB інтеграційний spec (test-only, код вірний). Ізоляція фікстур через unique-ключ (обійти `@@unique`), hard-delete у `afterAll`+`beforeAll`-cleanup. uuid-параметри у `$queryRawUnsafe` кастити явно (`$1::uuid`) — Postgres не інферить тип bind-параметра проти uuid-колонки (`42883 operator does not exist: uuid = text`).
-
-**Severity:** HIGH — розширення шифрує ВСІ секрети провайдерів at-rest; тихий регрес = plaintext-leak у БД АБО зламаний provider-ланцюг у продакшні. Regression-guard закриває весь клас одразу.
-
-**Де шукати ще:** будь-який `$extends` що мутує payload (soft-delete-фільтр, multi-tenant-scoping, syncVersion, audit-stamp, field-transform); будь-який at-rest crypto / masking / redaction на рівні ORM; consumer-паті секрету (provider-виклики, external-API headers) — чи читають через розширений client; response/cache/sync-експорт — чи не витікає розшифроване поле.
-
-### 2026-09-06 — review-fix змінив DI-конструктор сервісу (+параметр), sibling `.spec` лишився на старій арності → hidden-red baseline (tsc зелений, runtime crash) — backend / hidden-red-baseline / HIGH (release-blocker)
-
-**Сигнал:** попередній commit (часто саме `fix(review):` — atomic-upsert, інжект registry/config, розбиття залежності) **додав/переставив параметр конструктора NestJS-сервіса** (`constructor(prisma, registry, @InjectQueue() q)`), але не оновив `*.spec.ts`, який досі робить `new Service(prisma, q)` зі старою кількістю аргументів. **tsc проходить** бо тест кастить моки `as unknown as T` → компілятор не ловить зсув слотів; аргумент їде у сусідній слот, останній параметр стає `undefined` → `TypeError: Cannot read properties of undefined (reading '...')` у першому методі, що торкається зсунутої залежності. Grep-детектор:
+**Сигнал:** commit (часто `fix(review):`) додав/переставив параметр конструктора NestJS-сервіса, не оновивши `*.spec.ts` (`new Service(prisma, q)` стара арність). **tsc проходить** бо моки `as unknown as T` вимикають перевірку арності → аргумент їде у сусідній слот → останній параметр `undefined` → `TypeError` у першому методі зсунутої залежності.
 
 ```bash
-# для кожного зміненого сервіса у diff — арність конструктора vs арність new у спеку
 git diff HEAD~3 HEAD -- '*.service.ts' | grep -E "constructor\("
-grep -rnE "new \w+Service\(" apps/api/src --include="*.spec.ts"   # порахувати аргументи, звірити
-# найнадійніше: просто ПРОГНАТИ цільову suite зміненого модуля (не лише tsc)
+grep -rnE "new \w+Service\(" apps/api/src --include="*.spec.ts"   # порахувати аргументи
+# найнадійніше: ПРОГНАТИ цільову suite зміненого модуля (не лише tsc)
 ```
 
-**Причина виникнення:** review-агент (і людина-рев'ювер) верифікує зміну лише через `tsc --noEmit`, бо «типи зелені = ок». Але моки в спеках навмисно кастять через `as unknown as` (щоб не реалізовувати весь інтерфейс) — це **вимикає перевірку арності конструктора** саме там, де вона потрібна. Зсув DI-слотів невидимий до реального прогону. Класичний review→tester handoff-провал: рев'ю не ганяє suite, тестер бачить червоне аж на Кроці 0.
+**Фікс:** оновити конструктор у спеку + мок нової залежності (`{get:vi.fn(),list:vi.fn()} as unknown as Registry`)+import. Крок 0 ЗАВЖДИ прогонить цільову suite (`vitest run src/modules/<mod>`), не лише tsc. Baseline червоний = Bug #0, фіксувати ПЕРШИМ.
+**Severity:** HIGH — червоний baseline ховає регресії й блокує сесії.
+**Де ще:** будь-який `fix(review):`/`refactor:` що чіпає `constructor(` у сервісі; NestJS-сервіси з ≥2 залежностей + `@InjectQueue`; спеки з `new X(...)` замість `Test.createTestingModule`.
 
-**Підхід до виявлення:** Крок 0 ЗАВЖДИ прогонить **цільову suite зміненого модуля** (`vitest run src/modules/<mod>`), не лише tsc. Будь-яка зміна сигнатури конструктора/DI = обов'язковий прогін `<service>.spec.ts` цього сервіса. Якщо baseline червоний — це Bug #0 (release-blocker), фіксувати ПЕРШИМ.
+### 2026-09-06 — fallback/retry-engine: config-resolver (chain-builder) з 0 unit, поки worker має часткові — backend / critical-test-gap / meta
 
-**Підхід до фіксу:** оновити конструктор у спеку до нової арності + додати мок нової залежності (`{ get: vi.fn(), list: vi.fn() } as unknown as Registry`) + import. Це test-only фікс (код сервіса вірний). Meta-нотатка у BUG_REPORT: рев'юер має ганяти targeted suite при DI-зміні.
-
-**Severity:** HIGH — червоний baseline ховає регресії за шумом і блокує наступні сесії; сам дефект — лише в тесті, але це не видно поки не впаде.
-
-**Де шукати ще:** будь-який `fix(review):`/`refactor:` commit що чіпає `*.service.ts` конструктор; NestJS-сервіси з ≥2 інжектованих залежностей + `@InjectQueue`/`@Inject`; спеки що конструюють сервіс вручну (`new X(...)`) замість `Test.createTestingModule`. Правило: diff чіпає `constructor(` у сервісі → прогнати його `.spec` перед усім іншим.
-
-### 2026-09-06 — fallback/retry-engine: config-resolver (chain-builder) відвантажується з 0 unit-тестів, поки worker має часткові — backend / critical-test-gap / meta (severity бага = severity ланцюга)
-
-**Сигнал:** нова багатоканальна/багатокрокова async-машина (fallback-ланцюг сповіщень, retry-orchestrator, multi-provider payment fallback, saga-крок) розбита на дві частини: **(A) resolver/builder** — читає конфіг з БД і будує впорядкований ланцюг (`resolveConfig()`, `buildChain()`, `planSteps()`); **(B) worker/processor** — виконує один крок і вирішує accept-STOP / reject-next / retry. Тести є ТІЛЬКИ на (B) (бо він явно «двигун»), а (A) — де живуть УСІ edge-case'и (порожній ланцюг, NULL-креди відфільтровані where-запитом, крок без активного шаблону/провайдера тихо пропускається, ВСІ пропущені → повернути null=batch-abort, legacy-fallback backward-compat, priority-порядок) — має 0 прямих тестів. Grep-детектор:
+**Сигнал:** багатоканальна async-машина розбита на **(A) resolver/builder** (`resolveConfig()`, `buildChain()`, `planSteps()` — читає конфіг, будує впорядкований ланцюг) + **(B) worker/processor** (виконує крок, accept-STOP/reject-next/retry). Тести лише на (B); (A) з усіма edge-case (порожній ланцюг, NULL-креди відфільтровані where, крок без шаблону тихо skip, ВСІ пропущені→null=abort, legacy-fallback, priority-порядок) — 0.
 
 ```bash
-# resolver-методи що будують ланцюг/план для async-двигуна — чи мають парний .spec?
 grep -rnE "async (resolve|build|plan)[A-Z]\w*\(" apps/api/src/modules --include="*.ts" | grep -v spec
-# для кожного: чи існує <module>.service.spec.ts що ВИКЛИКАЄ саме цей метод?
-# worker має spec (sms.processor.spec), а .service.spec (resolveConfig) відсутній → gap
-ls apps/api/src/modules/<mod>/*.spec.ts   # порахувати покриття resolver vs worker
+ls apps/api/src/modules/<mod>/*.spec.ts   # worker має spec, .service.spec (resolveConfig) відсутній → gap
 ```
 
-**Причина виникнення:** «двигун» у голові розробника = processor (там видно accept/reject/retry-гілки), тож тести йдуть туди. Resolver сприймається як «просто SELECT + map» і здається тривіальним — але саме він містить мовчазні гілки-фільтри (`where apiKey:{not:null}`, `.filter(has-template)`, `length===0→null`, legacy-if) кожна з яких — окрема бізнес-вимога, що ламається тихо (0 sent, без throw, без логу-помилки). CI зелений бо worker-тести зелені.
+**Фікс:** guard на кожну мовчазну гілку: NULL-креди→legacy/null; крок без шаблону→skip; ВСІ→null (abort, НЕ throw); legacy-гілка (enabled/disabled/no-key/no-template/no-row); priority-порядок. Плюс property-based на processor: max 1 SENT, stop-on-first-accept, throw⟺останній крок транзієнт-reject, Σ(term-логів)=visited (200 runs). Тести-only якщо логіка вірна.
+**Severity:** meta (gap=CRITICAL бо ховає регресію у гроше-/сповіщення-шляху; знайдені дефекти можуть=0). Оцінювати за blast-radius: сповіщення=MEDIUM, платіж/склад=HIGH-CRITICAL.
+**Де ще:** notifications resolveConfig, будь-який `*.processor.ts`+BullMQ з fallback/retry, multi-provider (payment/ПРРО/SMS), saga/outbox. Правило: є `<x>.processor.spec.ts` але нема `<x>.service.spec.ts` а сервіс має resolve/build → gap.
 
-**Підхід до виявлення:** прогнати КОЖЕН edge-case ланцюга проти РЕАЛЬНОГО коду resolver'а (не припускати), потім закрити gap тестом-guard на кожну мовчазну гілку: (1) NULL-креди → відфільтровано where → або legacy, або null (без крашу); (2) крок без шаблону → тихо skip; (3) ВСІ кроки без шаблону → null (batch-abort, НЕ throw); (4) legacy-гілка коли конфіг-рядків 0 (backward-compat) — усі під-варіанти (enabled/disabled/no-key/no-template/no-row); (5) priority-порядок збережено. Плюс **property-based (fast-check) на processor-інваріанти**: для будь-якої послідовності accept/reject/unknown — max 1 SENT, stop-on-first-accept, throw ⟺ останній крок = транзієнт-reject, Σ(term-логів)=visited. 200 runs/property ловить композиційні діри, які приклад-тести пропускають.
+### 2026-09-06 — «перший-переможець» `.find()` для scan/lookup тихо бере не той запис при неоднозначному ТОЧНОМУ матчі — frontend / silent-wrong-pick / MEDIUM (HIGH якщо фін.документ)
 
-**Підхід до фіксу:** тести-only — фіксують поточну КОРЕКТНУ поведінку як регресію-guard (код не чіпати якщо логіка вірна). Якщо ж edge-case дає краш/подвійну-відправку/тихий-0 — то це вже реальний баг, фіксувати код + той самий тест стає дискримінуючим.
-
-**Severity:** meta. Сам gap = CRITICAL (ховає майбутню регресію у гроше-/сповіщення-критичному шляху), але знайдені дефекти можуть бути 0 (як тут). Оцінювати за blast-radius ланцюга: сповіщення=MEDIUM, платіж/склад=HIGH-CRITICAL.
-
-**Де шукати ще:** `notifications` (цей сеанс — resolveConfig), будь-який `*.processor.ts`+BullMQ з fallback/retry, multi-provider (payment/ПРРО/SMS) fallback, saga/outbox-кроки, `resolveConfig`/`buildPlan`/`nextStep`-патерн. Правило: якщо є `<x>.processor.spec.ts` але нема `<x>.service.spec.ts` а сервіс має resolve/build-метод — gap.
-
-### 2026-09-06 — «перший-переможець» `.find()` для scan/lookup-збігу тихо бере не той запис при неоднозначному ТОЧНОМУ матчі — frontend / silent-wrong-pick / MEDIUM (HIGH якщо фін.документ)
-
-**Сигнал:** чиста resolver-функція (сканер ШК, code-lookup, «знайти за унікальним ключем») робить `items.find(it => it.key === typed)` і повертає перший збіг. Але ключ, який ПРИПУСКАЄТЬСЯ унікальним, у реальних даних може дублюватися (data-entry помилка: той самий ШК у головному `barcode` одного товару і в `barcodes[]` іншого; той самий SKU у двох рядках). `.find()` → тихо перший → у фінансовому документі (Invoice/StockDoc/PO/SR) оператор отримує «не той» товар, не помічаючи. Grep-детектор:
+**Сигнал:** resolver робить `items.find(it => it.key === typed)` і повертає перший збіг; ключ ПРИПУСКАЄТЬСЯ унікальним, але у реальних даних дублюється (той самий ШК у `barcode` одного товару і `barcodes[]` іншого) → у фін.документі оператор отримує «не той» товар.
 
 ```bash
-# resolver що бере ПЕРШИЙ exact-збіг без перевірки на колізію
 grep -rnE "\.find\(.*===\s*(code|typed|barcode|sku|key)\b" apps/web/src/lib apps/web/src/components --include="*.ts" --include="*.tsx"
-# перетнути: чи ключ ГАРАНТОВАНО унікальний у межах items? (як правило — ні: sub-таблиці, ручний ввід)
 ```
 
-**Причина виникнення:** розробник вважає код/ШК/SKU унікальним (доменне припущення), тож «перший = єдиний». Але унікальність тримається лише логікою сервісу або взагалі не тримається (sub-таблиця `GoodBarcode[]` не має cross-good unique), а UI-пошук зводить кілька товарів в один список. `.find()` виглядає ідіоматично — review/sync не сигналять.
+**Фікс:** `.find()`→`.filter()`; `length===1`→беремо; `length>1`→`null` (показати список). Дубль у межах ОДНОГО запису (головний==sub) не колізія (фільтр по об'єктах). Тест на колізію: 2 РІЗНІ записи однаковий ключ→`null`.
+**Severity:** MEDIUM, HIGH коли живить фінансовий/складський документ.
+**Де ще:** `pickScannedGood`, `resolveByCode`/`findBySku`/`matchBarcode`; backend `findFirst({where:{uniqueLike}})` без DB-констрейнта.
 
-**Підхід до виявлення:** unit-тест на КОЛІЗІЮ: два РІЗНІ записи з однаковим точним ключем → очікувати `null` (показати список), а не мовчазний перший. Окремий тест «дубль ключа в межах ОДНОГО запису (головний == sub) НЕ колізія» доводить, що фікс рахує РІЗНІ об'єкти, а не входження. Дискримінація: до фіксу тест червоний (`expected {id:'a'} to be null`).
+### 2026-09-06 — query-DTO не trim'ить рядок → exact-матч (`equals`) промахує при пробілах — backend / whitespace-miss / MEDIUM
 
-**Підхід до фіксу:** `.find()` → `.filter()`; `length === 1` → беремо; `length > 1` → `null` (не вгадуємо на фін.даних). Дублікат у межах одного запису не подвоює (фільтр по об'єктах). Single-result fallback («єдиний результат без точного ключа → беремо») лишається навмисним — це інший кейс (пошук за назвою).
-
-**Severity:** MEDIUM, HIGH коли резолвер живить фінансовий/складський документ (тихий вибір не того товару → неправильна ціна/залишок/акт).
-
-**Де шукати ще:** `pickScannedGood` (цей фікс), будь-який `resolveByCode`/`findBySku`/`matchBarcode`, а також backend-аналоги де `findFirst({ where: { uniqueLike } })` припускає унікальність без DB-констрейнта (restore-guard-и вже це роблять для SKU/internalCode).
-
-### 2026-09-06 — query-DTO не trim'ить рядок → exact-матч (`equals`) промахує при провідних/кінцевих пробілах (сканер/ручний ввід) — backend / whitespace-miss / MEDIUM
-
-**Сигнал:** `@Get` query-параметр (`q`/`barcode`/`code`) з `@IsString()` без `@Transform` trim, а сервіс будує `where` з `equals: query.x` (точний матч) для sub-сутності. Сканер ШК (частина моделей) або оператор додає провідний/кінцевий пробіл → `" 4820… "` не збігається з кодом у БД (записаним без пробілів). Головна гілка `contains` теж не рятує (`contains " 4820"` хибний). Видача порожня → фронтовий resolver отримує 0 рядків → нічого не вибирається. Фронт міг trim'ити СВІЙ ввід (`typed.trim()`), але це не допомагає — бек уже повернув 0. Grep-детектор:
+**Сигнал:** `@Get` query-param (`q`/`barcode`/`code`) з `@IsString()` без trim-`@Transform`, сервіс будує `where` з `equals: query.x`. Сканер/оператор додає пробіл → `" 4820… "` не збігається → порожня видача → resolver 0 рядків.
 
 ```bash
-# query-DTO рядкові поля без trim, які підуть у equals/exact-where
 grep -rnE "@IsString\(\)\s+\w+\?:" apps/api/src/modules/**/*.dto.ts | grep -iE "\b(q|barcode|code|sku|search)\b"
-# перетнути з сервісом: чи це поле йде у { equals: } / { barcode: value } (exact)?
 grep -rnE "equals:\s*(query|dto)\.(q|barcode|code)" apps/api/src/modules
 ```
 
-**Причина виникнення:** trim роблять на фронті («там де ввід»), припускаючи що бек отримає чисте. Але джерел вводу кілька (сканер, deep-link URL, інший клієнт, curl), а exact-`equals` нещадний до пробілів. `contains` для головного поля маскує проблему для звичайного пошуку, тож помічається лише на sub-exact гілці.
+**Фікс:** `@Transform(({value}) => typeof value==='string' ? value.trim() || undefined : value)` на кожному exact-lookup полі. DTO-spec: `plainToInstance(QueryDto,{q:' 999 '})`→`dto.q==='999'`; whitespace-only→`undefined`.
+**Severity:** MEDIUM — тиха порожня видача на легітимному скані.
+**Де ще:** усі query-DTO з `q`/`barcode`/`code`/`sku` у exact-where; deep-link `?param=` парсери.
 
-**Підхід до виявлення:** DTO-spec через `plainToInstance(QueryDto, { q: ' 999 ' })` → `expect(dto.q).toBe('999')`; whitespace-only → `undefined` (щоб `?q= ` не був фільтром за пробілом). Тестувати на рівні DTO, не сервісу (трансформ живе у ValidationPipe, сервіс отримує вже-розпарсене). Дискримінація: без `@Transform` тест червоний.
+### 2026-09-06 — bind-once `useEffect([])` document-listener кличе проп напряму → stale closure (frontend / stale-closure / MEDIUM)
 
-**Підхід до фіксу:** `@Transform(({value}) => typeof value==='string' ? value.trim() || undefined : value)` на кожному exact-lookup query-полі. Порожнє-після-trim → `undefined` (не фільтр за пустим рядком).
-
-**Severity:** MEDIUM — тиха порожня видача на легітимному скані; не падає, не логується, користувач думає «товар не знайдено».
-
-**Де шукати ще:** усі query-DTO з `q`/`barcode`/`code`/`sku` що йдуть у exact-where; deep-link `?param=` парсери; будь-який `equals: userInput` без попереднього trim.
-
-### 2026-09-06 — bind-once `useEffect([])` document-listener кличе проп напряму → stale closure після ре-рендера батька (Escape/hotkey викликає СТАРИЙ колбек) — frontend / stale-closure / MEDIUM
-
-**Сигнал:** shared-компонент (попап/модалка/overlay) реєструє `document.addEventListener('keydown', h)` у `useEffect(() => {...}, [])` (bind-once, щоб listener не пере-біндився на кожен ре-рендер), а всередині `h` кличе проп-колбек НАПРЯМУ (`if (e.key==='Escape') onClose()`). Батько передає інлайн-стрілку (`onClose={() => setPopupId(null)}`) — нова identity на кожен ре-рендер. Bind-once ефект замикає ПЕРШУ версію `onClose`; після будь-якого ре-рендера батька (зміна фільтра, tick, інший state) Escape викликає СТАРИЙ колбек → може закрити не той попап / no-op / діяти на застарілому id. Тихо: у простих сценаріях (батько не ре-рендериться до Escape) баг не проявляється. Grep-детектор:
+**Сигнал:** shared overlay/popup/modal реєструє `document.addEventListener('keydown',h)` у `useEffect(()=>{...},[])` і всередині `h` кличе проп напряму (`onClose()`). `[]` замикає mount-версію → після ре-рендера батька Escape кличе СТАРИЙ колбек.
 
 ```bash
-# bind-once ефект з deps [] що всередині кличе проп-функцію напряму (не через ref)
-grep -rnE "addEventListener\('(keydown|keyup|click|mousedown)'" apps/web/src/components --include="*.tsx" -A 8 \
-  | grep -B4 -E "onClose\(\)|onConfirm\(\)|on[A-Z][a-zA-Z]*\(\)" | grep -v "\.current\("
-# перетнути: чи deps масив ефекту === [] (bind-once) І колбек — проп (не локальна ф-я)?
+grep -rnE "addEventListener\('(keydown|keyup|click|mousedown)'" apps/web/src/components --include="*.tsx" -A 8 | grep -B4 -E "onClose\(\)|onConfirm\(\)|on[A-Z][a-zA-Z]*\(\)" | grep -v "\.current\("
 ```
 
-**Причина виникнення:** дві правильні цілі конфліктують: (1) «listener має біндитись раз» → deps `[]`; (2) «колбек приходить пропом, свіжий щоразу». Розробник виконує (1), забуваючи що `[]` заморожує замикання на mount-версії пропа. Класична React stale-closure пастка; ESLint `exhaustive-deps` пропонує додати `onClose` у deps — але це вертає пере-біндинг listener-а на кожен ре-рендер (те, від чого тікали). Правильне — ref-latest патерн, який ESLint не підказує.
+**Фікс:** `const cbRef=useRef(cb); cbRef.current=cb;` (поза ефектом), handler кличе `cbRef.current()`, deps лишаються `[]`. JSX-обробники (onClick) НЕ треба на ref — свіжі на кожен render. Тест: `render(onClose=first)→rerender(onClose=second)→keyDown Escape→second 1×, first 0×`; mutation revert `ref.current()`→`cb()`→червоніє.
+**Severity:** MEDIUM (HIGH якщо колбек — submit/delete зі stale id).
+**Де ще:** `ConfirmDialog`, `CommandPalette`, `Modal`, `useHotkey`; будь-який bind-once listener/subscription/interval що читає проп/змінний state.
 
-**Підхід до виявлення:** component-тест на ДИСКРИМІНАЦІЮ свіжості: `render(<C onClose={first}/>)` → `rerender(<C onClose={second}/>)` (нова identity) → `fireEvent.keyDown(document,{key:'Escape'})` → асертити `second` викликано 1×, `first` — 0×. Дискримінація доведена ЕМПІРИЧНО: revert `onCloseRef.current()` → `onClose()` у handler → тест червоніє (`first` спрацьовує). Обов'язково — окремий тест cleanup на unmount (Escape після unmount → 0 викликів) і тест «backdrop/inner-click» (event-handler у JSX прив'язується свіжим на кожен render → може кликати проп НАПРЯМУ, ref потрібен ЛИШЕ у document-listener всередині ефекту).
+### 2026-09-06 — deep-link виставляє лише `editId`, модалка керується ОКРЕМИМ `open`-прапорцем → deep-link мертвий (frontend / dead-feature / HIGH)
 
-**Підхід до фіксу:** ref-latest: `const cbRef = useRef(onClose); cbRef.current = onClose;` (оновлюється на кожен render, поза ефектом), а bind-once handler кличе `cbRef.current()`. Deps ефекту лишаються `[]`. JSX-обробники (onClick backdrop, close-X) НЕ треба переводити на ref — вони перестворюються на кожен render і бачать свіжий проп; ref потрібен виключно там, де замикання заморожене bind-once ефектом.
-
-**Severity:** MEDIUM — потенційно спрацьовує на застарілому колбеку; шкода залежить від того, що робить колбек (закрити попап — легко; submit/delete зі stale id — HIGH). Тихо проходить review (виглядає як стандартний ref-guard), sync не бачить (чисто клієнтський).
-
-**Де шукати ще:** усі shared overlay/popup/modal з global keydown-listener: `LinkedDocumentsPopup` (цей рефактор — коректний, ref є), `ConfirmDialog`, `CommandPalette`, `Modal`, будь-який `useHotkey`/`useKeyboardShortcut` хук. Загальний клас: будь-який bind-once (`[]`) ефект-listener/subscription/interval що кличе проп чи змінний state — має читати його через ref-latest, не через замикання.
-
-### 2026-09-06 — deep-link виставляє лише `editId`, але модалка керується ОКРЕМИМ `open`-прапорцем того самого інстансу → deep-link мертвий (модалка не відкривається) — frontend / dead-feature / HIGH
-
-**Сигнал:** сторінка-список має ОДИН інстанс модалки з `open={xCreateOpen}` + `editId={xEditId}` (два незалежні state). Усі «нормальні» точки відкриття (row-click, кнопки) виставляють ОБИДВА (`setXEditId(id); setXCreateOpen(true)`), а mount-once deep-link ефект (`?open=`/`?openReturn=`) — ЛИШЕ `setXEditId(id)`. Наслідок: `editId` виставлено, `open` лишається `false` → модалка ніколи не відкривається (тихо: URL змінюється, нічого не рендериться). Grep-детектор:
+**Сигнал:** сторінка-список має ОДИН інстанс модалки з `open={xCreateOpen}`+`editId={xEditId}` (два незалежні state). row-click виставляє ОБИДВА, а deep-link ефект (`?open=`) — лише `setXEditId(id)` → `open` лишається false → модалка ніколи не відкривається.
 
 ```bash
-# знайти модалки з роздільними open+editId на одному інстансі
 grep -rnE "open=\{[a-zA-Z]+CreateOpen\}" apps/web/src/app/**/page.tsx
-# для кожної — перевірити чи deep-link ефект виставляє ОБИДВА setter-и
 grep -rnE "searchParams.get\('open|openReturn'\)" apps/web/src/app/**/page.tsx
 # у тілі ефекту має бути і setXEditId, і setXCreateOpen(true) — інакше баг
 ```
 
-**Причина виникнення:** аналогія з іншою модалкою, що ПРАЦЮЄ через deep-link, вводить в оману. Напр. StockDoc `?open=` працює, бо має ДВА окремі інстанси модалки (`open={showCreate}` для create + `open={!!editingDocId}` для edit — editId сам є open-джерелом). Розробник копіює «виставляю editId — і все» на модалку з ЄДИНИМ інстансом, де `open` — окремий boolean, не похідний від editId. Sync/review це не ловлять: endpoint-контракт цілий, типи збігаються, а intra-page state-coupling поза їхньою зоною; тестів на deep-link page-ефекти зазвичай нема.
+**Фікс:** deep-link ефект виставляє обидва setter-и (дзеркало row-click). Helper `resolveXDeepLink(get)→{openId,modalShouldOpen}` (тест: `?openReturn=<uuid>`→`modalShouldOpen===true`; mutation `false`→падає). Правило-інваріант: якщо модалка керується `open`+`editId` роздільно, КОЖНА точка відкриття виставляє обидва.
+**Severity:** HIGH — мертва фіча, тихо (клік нічого не робить).
+**Де ще:** усі сторінки-списки з `open={xCreateOpen}`-модалкою + deep-link (purchase-orders `?openReturn=`); будь-який роздільний `visible`+`selectedId` де один код-шлях забуває `visible=true`.
 
-**Підхід до виявлення:** винести чистий розбір deep-link у helper `resolveXDeepLink(get) → { openId, ..., modalShouldOpen }` де `modalShouldOpen` явно = «open теж треба true, не лише editId». Тест: `?openReturn=<uuid>` → `modalShouldOpen===true`. Дискримінатор: ментальний відкат (`modalShouldOpen:false`) → тест падає. Це обходить неможливість легко відрендерити гігантську page.tsx у RTL — тестуємо рішення про стан, а не весь компонент. Правило-інваріант: **якщо модалка керується `open` + `editId` роздільно, КОЖНА точка відкриття (row-click І deep-link) зобов'язана виставити обидва.**
+### 2026-09-05 — count/detail розходяться: badge рахує FK, detail фільтрує deletedAt:null → «1» над порожньою секцією (Bug #641) — backend / consistency / MEDIUM
 
-**Підхід до фіксу:** у deep-link ефекті виставити обидва setter-и (`setXEditId(id); setXCreateOpen(true)`), дзеркалячи row-click. Дублювання UUID-валідації прибрати у helper. Альтернатива (якщо архітектурно чистіше) — зробити `open={xCreateOpen || !!xEditId}`, але це змінює семантику close (обидва треба скидати) → менш безпечно за explicit-обидва.
-
-**Severity:** HIGH — цілий шлях навігації неробочий (мертва фіча), тихо: жодної помилки, лише «клік нічого не робить». Легко пропустити на demo, якщо тестили лише row-click-відкриття.
-
-**Де шукати ще:** усі сторінки-списки з `open={xCreateOpen}`-модалкою що приймає deep-link: purchase-orders (`?openReturn=` SR — цей баг), invoices/stock-documents (`?open=` — там ok, окремі інстанси, але перевіряти при рефакторі об'єднання інстансів). Загальний клас: будь-який роздільний `visible` + `selectedId` state, де кілька кодо-шляхів відкривають, а один забуває `visible=true`.
-
-### 2026-09-05 — count/detail розходяться: badge-лічильник рахує зв'язок за наявністю FK, а detail-endpoint фільтрує `deletedAt: null` → «1» над порожньою секцією (Bug #641) — backend / consistency / MEDIUM
-
-**Сигнал:** пара методів «summary-count» + «detail-list» для одних і тих самих зв'язків, де count зроблено дешевше за detail. Count: `bucket.counterparty = row.counterpartyId ? 1 : 0` (лічить наявність **FK-скаляра**, взятого з `findMany` самої сутності). Detail: `this.prisma.counterparty.findFirst({ where: { id, orgId, deletedAt: null } })` (тягне **сам referenced-запис** з soft-delete фільтром) → `counterparty ? [row] : []`. Розходження проявляється щойно referenced-запис (контрагент / банк-рахунок / каса / пов'язаний документ) soft-deleted, а FK у батьку лишився: badge показує «1», панель — порожньо. Grep-детектор:
+**Сигнал:** count `row.counterpartyId ? 1 : 0` (наявність FK-скаляра), detail `counterparty.findFirst({where:{id,orgId,deletedAt:null}})` → referenced soft-deleted а FK лишився → badge «1», панель порожня. Досяжно коли delete-guard блокує лише за відкритими документами (CP можна видалити під PAID-рахунком).
 
 ```bash
-# методи-лічильники, що зараховують «1» за наявністю FK-скаляра (без live-перевірки referenced-запису)
-grep -rnE "= [a-zA-Z]+\.[a-zA-Z]*Id \? 1 : 0|Id \|\| [a-zA-Z]+\.[a-zA-Z]*Id \? 1 : 0" apps/api/src/modules/**/*.service.ts | grep -iE "count|Count"
-# перетнути з detail-методом того ж модуля: чи фільтрує він referenced-запис по deletedAt:null?
+grep -rnE "= [a-zA-Z]+\.[a-zA-Z]*Id \? 1 : 0|Id \|\| [a-zA-Z]+\.[a-zA-Z]*Id \? 1 : 0" apps/api/src/modules/**/*.service.ts | grep -iE "count"
 grep -rn "getLinked\|LinkedCounts\|LinkedDocuments" apps/api/src/modules/**/*.service.ts
 ```
 
-**Причина виникнення:** оптимізація N+1 — щоб не тягнути кожен referenced-запис заради лічильника, розробник бере FK-скаляр із вже-завантаженого батька (`select: { counterpartyId: true }`) і зараховує «є зв'язок = FK не null». Припущення «FK не null ⇒ referenced-запис живий» хибне за soft-delete-моделі: FK лишається, а запис може бути `deletedAt != null`. Особливо досяжно, якщо delete-guard referenced-сутності блокує видалення лише за **відкритими** документами (напр. counterparty можна видалити під PAID-рахунком / RECEIVED-PO) — тоді жива посилка на мертвий запис штатна.
+**Фікс:** count МУСИТЬ мати ідентичний WHERE до detail. Зібрати унікальні FK, одним `findMany({id:{in},orgId,deletedAt:null})` дістати живий набір, «1» лише якщо `liveSet.has(fkId)` (батч, без N+1). Тести: soft-deleted ref→count=0, duplicate ids (keyed by id), cross-org (нулі), zero-count id (present у мапі). Revert→`1` падає.
+**Severity:** MEDIUM — UX-неконсистентність, ховає осиротілий документ.
+**Де ще:** `getLinkedCounts`/`getLinkedDocuments`, `_count` у list-DTO vs include у detail, dashboard-плитки з іншим WHERE ніж сторінка.
 
-**Підхід до виявлення:** будь-де, де існують ДВА endpoint-и на ті самі зв'язки (badge-count + detail-panel), написати service-тест: FK присутній (`findMany` батька повертає `counterpartyId`), але `referenced.findMany({deletedAt:null})` повертає `[]` (soft-deleted) → асертити `count === 0` (щоб дорівнювало порожній detail-секції). Дискримінатор: revert фіксу (`FK ? 1 : 0`) → тест дає `1`, падає. Правило: **count МУСИТЬ дзеркалити ті самі WHERE-фільтри, що й detail** (orgId + deletedAt:null + status-фільтри). Плюс edge-тести: duplicate ids (map keyed by id — не подвоюється), cross-org ids (findMany scoped by orgId → нулі, витоку нема), zero-count id (пре-fill `for (const id of ids) result[id]={...0}` → присутній, не absent → frontend badge не крешить на undefined).
+### 2026-09-05 — Unsaved-guard baseline через `setTimeout(0)` + АСИНХРОННИЙ авто-populate → false-positive «незбережені зміни» (Bug #639) — frontend / trust-erosion / HIGH
 
-**Підхід до фіксу:** у лічильнику зібрати унікальні FK (`[...new Set(rows.map(r=>r.fkId).filter(Boolean))]`), одним `findMany({ where:{ id:{in}, orgId, deletedAt:null }, select:{id:true} })` на КОЖЕН тип referenced-запису дістати живий набір, зарахувати «1» лише якщо `liveSet.has(fkId)`. Батч через `Promise.all` — без N+1 (K запитів на K типів секцій, не на N рядків). Ключ у тому, щоб summary й detail мали **єдину definition «зв'язок існує»**.
+**Сигнал:** модалка озброює baseline `setTimeout(()=>{baselineReadyRef.current=true},0)`, dirty-детектор у deps має поле що async авто-populate-иться (`if(warehouses.length===1)setForm(...)` після `apiFetch`). Reference-дані резолвяться ПІЗНІШЕ за 0ms → програмна установка дефолту невідрізнима від правки → відкрити create-модалку з 1 складом, Escape → «Є незбережені зміни». Grep: `grep -rlE "baselineReadyRef|setTimeout\(\s*\(\)\s*=>\s*\{\s*baselineReadyRef" apps/web/src/components/ui/*Modal*.tsx` перетнути з `length === 1` (авто-вибір) + чи авто-вибірне поле у deps dirty-детектора.
+**Фікс:** ref-прапорець (`autoWarehouseRef`) виставляється в авто-вибірному ефекті ЛИШЕ коли `baselineReadyRef.current===true`; dirty-детектор пропускає рівно цю зміну (`if(auto!==null && field===auto){auto=null;return;}`), скидати у reset-ефекті. НЕ переозброювати baseline новим `setTimeout` у cleanup (скасує pending-таймер). Тест: 1 елемент, render, wait ~60ms, Escape→onClose 1×+нема діалогу; mutation revert skip→падає; парний «змінив поле→діалог Є».
+**Severity:** HIGH — руйнує довіру (guard кричить «вовки» → сліпо «Покинути» → реальні зміни втрачаються).
+**Де ще:** усі модалки з async авто-populate ПІСЛЯ baseline-таймера (єдиний ПДВ/валюта/каса/авто). Критерій імунітету: async-populate поля у deps dirty-детектора.
 
-**Severity:** MEDIUM — не корупція даних, але UX-неконсистентність, що підриває довіру до лічильників (badge бреше). За гіршого сценарію ховає, що документ осиротів на мертвий довідник.
+### 2026-09-05 — Component-тест sync-ref-guard через `userEvent.click`×2 (fireEvent×2) — ХИБНО-ЗЕЛЕНИЙ — frontend / test-integrity / MEDIUM
 
-**Де шукати ще:** будь-яка пара summary-badge + detail-list на один агрегат: `getLinkedCounts`/`getLinkedDocuments` (invoices/PO/supplier-payments/work-orders); `_count` у list-DTO проти реального include у detail; лічильники «активних договорів/гаражів/авто» контрагента; dashboard-плитки що рахують `X.count({where})` з іншим набором фільтрів ніж сторінка-деталізація. Загальний інваріант: **лічильник і список, які мають узгоджуватись, зобов'язані мати ідентичний WHERE.**
+**Сигнал:** double-submit тест через `userEvent.click(btn)`×2 або `fireEvent.click`×2 ПРОХОДИТЬ навіть коли `savingRef`-guard видалено — бо ці API обгортають кожен клік у власний act()/pointer-чергу → React re-renderить `disabled={saving||loading}` МІЖ кліками → фактичний гейт = async `disabled`, не тестований sync-ref.
+**Фікс:** реальний same-tick race `(btn as HTMLButtonElement).click(); btn.click();` — native `HTMLElement.click()` двічі СИНХРОННО в одному блоці (без await/act між). Ввід — `fireEvent.change` (синхронний). Розрулити in-flight у фінальному `await act(async()=>resolve())`. **ОБОВ'ЯЗКОВО дискримінація:** revert guard→FAIL «expected 2 to be 1» / fix→PASS. Grep: `grep -rnE "user\.click|fireEvent\.click" apps/web/src/**/__tests__/*double*` + будь-який тест «POST рівно 1×» після ≥2 кліків.
+**Severity:** MEDIUM (test-integrity) — майбутній рефактор мовчки знімає guard.
+**Де ще:** усі `*Modal.test.tsx` з double-submit; той самий принцип для debounce-ref, request-token ref, idempotency createdRef.
 
-### 2026-09-05 — Unsaved-guard baseline через `setTimeout(0)` + АСИНХРОННИЙ авто-populate дефолту → false-positive «незбережені зміни» на незайманій формі — frontend / trust-erosion / HIGH
+### 2026-09-05 / 2026-09-04 — Concurrent double-submit у create/save-модалці обходить idempotency-ref (Bug #630, #632-#634, #637) — frontend / concurrency / financial-integrity / HIGH
 
-**Сигнал:** модалка з dirty-guard озброює baseline через `const t = setTimeout(() => { baselineReadyRef.current = true; }, 0)`, а dirty-детектор — `useEffect(() => { if (!open || !baselineReadyRef.current) return; dirty.markDirty(); }, [form, lines, ...])`. Одночасно існує async авто-вибір дефолту: `useEffect(() => { if (warehouses.length === 1) setForm(f => f.warehouseId ? f : {...f, warehouseId: warehouses[0].id}); }, [warehouses])` де `warehouses`/`branches` приходять з `apiFetch('/warehouses')`. Симптом: відкрити create-модалку з РІВНО одним складом/філією, нічого не чіпати, Escape → спливає діалог «Є незбережені зміни» (Bug #639). Grep: `grep -rlE "baselineReadyRef|setTimeout\(\s*\(\)\s*=>\s*\{\s*baselineReadyRef" apps/web/src/components/ui/*Modal*.tsx` перетнути з `grep -lE "length === 1|length !== 1" ` (модалки з авто-вибором) + перевірити чи авто-вибірне поле є у deps dirty-детектора.
+**Сигнал:** async submit-handler (`handleCreate`/`handleSave`/`create`/`save`/`update`) що пише документ АБО master-data, захищений ЛИШЕ `disabled={saving}` (або кнопка `<Button onClick={save} loading={saving} disabled={!field}>` де `disabled` БЕЗ saving). `disabled`/`loading` спирається на re-render МІЖ кліками → два click-и в одному tick (fast double-click, синтетичні a11y-події, Enter-repeat) обидва входять до застосування → 2 POST → 2 документи. Idempotency-ref (`createdIdRef`) рятує лише retry-після-обриву (виставляється ПІСЛЯ await), НЕ concurrent — потрібні ОБИДВА. **Коверідж:** не лише «великі» документні модалки, а Й edit-модалки довідників (Counterparty #632, Employee+auth-акаунт #633, Good #634) + **row-actions у списках** (clone #637: `disabled={cloningId===row.id}` = лише `useState`→2 POST /clone).
 
-**Причина виникнення:** розробник припускає, що весь початковий стан осідає в межах першого setState-батчу (тому `setTimeout(0)` вистачає). Але reference-дані (склади/філії/ПДВ) вантажаться окремим async-запитом, який резолвиться ПІЗНІШЕ за 0ms-таймер. Програмна установка дефолту тоді неможливо відрізнити від правки користувача — детектор бачить лише «поле у deps змінилось».
+```bash
+grep -rln "const handleCreate\|const handleSave\|const create =\|const save = async\|const update = async" apps/web/src/components/ui --include="*Modal.tsx" | while read f; do grep -qE "setSaving(Both)?\(true\)" "$f" && ! grep -qE "if \(saving(Ref|_?ref)?\.current" "$f" && echo "RISK (no ref): $f"; done
+grep -rln "loading={saving}" apps/web/src/components/ui --include="*Modal.tsx" | while read f; do grep -qE "disabled=\{![^}]*\}" "$f" && ! grep -qE "if \(saving(Ref)?\.current" "$f" && echo "RISK (loading-only gate): $f"; done
+grep -rnE "disabled=\{[a-zA-Z]+Id === " apps/web/src/app/**/page.tsx   # row-actions #637
+```
 
-**Підхід до виявлення:** для КОЖНОЇ create/edit-модалки з `useDirtyForm` + baseline-ефектом написати component-тест: замокати reference-fetch на РІВНО 1 елемент (щоб спрацював авто-вибір), `render(open)`, зачекати осідання (`await new Promise(r=>setTimeout(r,60))` — довше за ланцюг load→auto-select→re-render), `fireEvent.keyDown(document,{key:'Escape'})`, асертити `onClose` викликано 1× І `queryByText('Є незбережені зміни')` відсутній. Дискримінація: revert skip-фіксу → тест падає (діалог спливає). Парний тест «змінив поле → діалог Є» ловить протилежний false-negative.
+**Фікс:** синхронний `if (savingRef.current [|| transitioningRef.current]) return;` ПЕРШИМ рядком, ПЕРЕД будь-яким await; `setSavingBoth(v){savingRef.current=v;setSaving(v)}`, reset у finally. Idempotency-ref лишається (ортогональні механізми). Row-actions — через `apps/web/src/hooks/useSubmitGuard.ts` (`guard.run(async fn)` з sync `inFlightRef`). **Пастка:** модалка часто ВЖЕ має savingRef у edit/transition, але забуває create — split-coverage. Regression-guard: native `btn.click();btn.click();` (НЕ userEvent/fireEvent — маскують), верифікований revert→2 POST/fix→1.
+**Severity:** HIGH для фінансово-облікових (SupplierPayment/Invoice/PurchaseOrder/StockDocument/WorkOrder); MEDIUM інших.
+**Де ще:** усі create-модалки + `SettlementsTabContent.handleCreateAct` (raw apiFetch без savingRef); quick-add форми, bulk-action кнопки. Backend-двійник: Bug #412 (Serializable $tx).
 
-**Підхід до фіксу:** зафіксувати САМЕ програмну зміну ref-прапорцем (`autoWarehouseRef`/`autoBranchRef`/`autoDefaultsRef`), який встановлюється в авто-вибірному ефекті ЛИШЕ коли `baselineReadyRef.current === true` (тобто дефосів пізно). Dirty-детектор пропускає рівно цю зміну (`if (auto !== null && field === auto) { auto = null; return; }`) — один раз, споживаючи ref. Скидати ref у reset-ефекті (`baselineReadyRef.current = false; autoXRef.current = null;`). НЕ переозброювати baseline через новий `setTimeout` у cleanup-ефекті: cleanup при re-run ефекту (напр. `warehouseId` у deps) скасує pending-таймер і вимкне guard узагалі.
+### 2026-09-05 — Backend-агрегат змішує `Σ(round(x))` і `round(Σ(x))` для тієї самої величини → розходження на копійку — backend / money-precision / LOW
 
-**Severity:** HIGH — не ламає дані, але руйнує довіру: guard кричить «вовки» на кожному відкритті модалки з єдиним складом → користувачі привчаються сліпо тиснути «Покинути», і РЕАЛЬНІ незбережені зміни втрачаються.
+**Сигнал:** сервіс рахує ≥2 denorm money-поля різними стратегіями: `totalLabor=roundMoney(Σ roundMoney(nh×price))` (per-line rounded sum) vs `totalAmount=roundMoney(Σ raw(nh×price))` (raw sum then round) → per-line дрейф 3×2.525→7.59 vs 7.58. FE-preview що дзеркалить одне не збігається з іншим.
 
-**Де шукати ще:** усі модалки з async авто-populate дефолтів ПІСЛЯ baseline-таймера — не лише склад/філія, а й авто-вибір єдиного ПДВ, валюти, каси, автомобіля клієнта; будь-який `useEffect([refData], () => setForm(...))` де refData з fetch. InvoiceCreateModal безпечна (лише синхронні дефолти) — критерій імунітету: чи є async-populate поля, що входить у deps dirty-детектора.
+```bash
+grep -rnE "roundMoney\(.*reduce|\+= Number\(.*price\)" apps/api/src/modules
+grep -rn "totalActualLabor\|<newField>" apps/web/src --include="*.ts*"   # denorm-поле має бути у ВСІХ типах aggregate
+```
 
-### 2026-09-05 — Component-тест sync-ref-guard через `userEvent.click`×2 (або `fireEvent`×2) — ХИБНО-ЗЕЛЕНИЙ: гейтом стає `disabled={loading}`, не тестований ref — frontend / test-integrity / MEDIUM
+**Фікс:** одна канонічна стратегія (STO-конвенція: per-line `amount` округлюється при записі → агрегат=`Σ(round)`; напр. `totalActualLabor` теж має сумувати округлені per-line). Regression-guard: unit `totalLabor===totalAmount` коли `actualHours===null`. Числова симуляція ×.525.
+**Severity:** LOW — ≤1 коп, не stored-corruption, user-visible preview≠charge.
+**Де ще:** будь-який `recalc*`/`*Totals` (Invoice, PO, StockDocument, CompletionAct).
 
-**Сигнал:** component-тест «подвійний клік → 1 POST» що імітує double-submit через `userEvent.click(btn)` двічі (або `void user.click(); void user.click()` у `act`), АБО через `fireEvent.click(btn)` двічі. Тест ПРОХОДИТЬ навіть коли синхронний `savingRef`-guard видалено з handler-а. Причина: `userEvent`/`fireEvent` обгортають КОЖЕН клік у власний `act()`/pointer-чергу з мікротасками → React встигає re-renderнути й виставити `disabled={saving||loading}` на `<Button>` МІЖ кліками → другий клік не доходить до handler-а незалежно від ref. Тобто фактичним гейтом у тесті є async `disabled={loading}`, а не тестований sync-ref. Тест нічого не гарантує: рефактор, що прибере ref-guard, пройде CI зеленим.
+### 2026-09-05 — Read-фільтр діапазону дати CONTAINMENT замість OVERLAP → рядки що перетинають межу зникають (CAL-C2) — backend / data-visibility / HIGH
 
-**Причина виникнення:** інтуїтивно «клікнув двічі → перевірив кількість POST». Але `disabled={loading}` і `savingRef` захищають ДВА РІЗНІ вікна: `disabled` — коли між кліками БУВ re-render (async, повільний double-click); `savingRef` — коли обидва кліки в ОДНОМУ tick ДО re-render (native fast double-click, синтетичні/програмні події). `userEvent`/`fireEvent`-choreography потрапляє лише у перше вікно, тож тестує НЕ те, що фіксили.
+**Сигнал:** `findX(date)` будує UTC-вікно `[dayStart,dayEnd]` і фільтрує `where:{startAt:{gte:dayStart},endAt:{lte:dayEnd}}` (CONTAINMENT) → запис що ПОЧИНАЄТЬСЯ до dayStart але закінчується в дні (split-day, слот через опівніч) випадає → UI показує вільним → double-booking.
 
-**Підхід до виявлення:** для кожного double-submit component-тесту перевірити ДИСКРИМІНАЦІЮ: тимчасово видалити ref-guard з handler-а → тест МУСИТЬ впасти («expected 2 to be 1»). Якщо лишається зеленим — хибний. Grep: `grep -rnE "user\.click|fireEvent\.click" apps/web/src/**/__tests__/*double*|*submit*` + будь-який тест що асертить «POST рівно 1×» після ≥2 кліків. Правило baseline (Крок 0): shipped double-submit тест без доказу дискримінації = недовірений.
+```bash
+grep -rnE "startAt: \{ (gte|gt):" apps/api/src/modules --include="*.service.ts"
+```
 
-**Підхід до фіксу:** відтворити реальний same-tick race через `(btn as HTMLButtonElement).click(); btn.click();` — native `HTMLElement.click()` двічі СИНХРОННО в одному блоці (без `await`/`act`-обгортки між ними). React batch-ить state-updates → re-render лише ПІСЛЯ обох кліків → гейтом стає саме синхронний ref. Розрулити in-flight promise у фінальному `await act(async () => resolve())` (прибирає act()-warning). Ввід у поля — `fireEvent.change` (синхронний), не `user.type`. Завжди довести дискримінацію (fail без guard) перед комітом.
+Для інтервальної моделі перевірити чи фільтр=half-open OVERLAP `startAt<end AND endAt>start`, не containment. Порівняти з conflict-probe того ж сервісу — мають бути ідентичні.
+**Фікс:** `where:{startAt:{lt:end},endAt:{gt:start}}` (`[start,end)`). Regression: `where.startAt.lt`+`where.endAt.gt`; live слот що перетинає межу.
+**Severity:** HIGH — прихована зайнятість → double-booking; TS/unit зелені (where синтаксично валідна).
+**Де ще:** `BookingRequest`(getAvailability), майбутні `Rental`/`Reservation`/`Shift`; принцип «інтервал⇒overlap, точка⇒containment».
 
-**Severity:** MEDIUM (test-integrity) — код-фікс може бути коректним, але його регресія-захист відсутній; майбутній рефактор мовчки знімає guard.
+### 2026-09-05 — Cascade-remove-guard для master-data з FK-дітьми (MD-H1 class) — backend / orphan / MEDIUM–HIGH
 
-**Де шукати ще:** усі `*Modal.test.tsx` з double-submit/double-click; той самий принцип для будь-якого sync-vs-async guard (debounce-ref, request-token ref, idempotency createdRef) — тест мусить бити САМЕ синхронне вікно.
+**Сигнал:** `remove()` master-data (Warehouse/Zone/Employee/Lift) робить `updateMany({deletedAt})` БЕЗ prep-check на активних FK-дітей → parent зникає, діти (StockItem із залишком, Lift у зоні, WorkOrderLine employeeId) вказують на мертвий id. Live: create parent→активну дитину→DELETE parent→204 (мало 400).
 
-### 2026-09-05 — Split-coverage double-submit guard: аудит покрив «великі» модалки, edit-модалки довідників пропущені → дубль master-data (WEB-H3 / Bug #630 class) — frontend / data-integrity / HIGH
+```bash
+grep -rnE "<entity>Id\b" packages/database/prisma/schema.prisma   # моделі з FK на цю сутність
+```
 
-**Сигнал:** submit-кнопка модалки `<Button onClick={save} loading={saving} disabled={!field}>` де `disabled` НЕ містить `saving`/`||loading`-еквіваленту як синхронного гейта, а `save()`/`create()`/`update()` мають `setSaving(true)` БЕЗ `if (savingRef.current) return` першим рядком. Два same-tick кліки → 2× POST → дубль сутності (контрагент/співробітник/товар; для Employee ще й дубль auth-акаунта). `<Button>` внутрішньо ставить `disabled={disabled||loading}`, але це async-гейт (після re-render) — не рятує same-tick.
+**Фікс:** prep-guard `findFirst({where:{<fk>:id,orgId,deletedAt:null,<active-predicate>}})`→`throw BadRequestException(<укр>)` ПЕРЕД soft-delete (не всередині — 400 до мутації). Баланс: `OR:[{quantity:{not:0}},{reserved:{not:0}}]`. Термінальні (ARCHIVED/CANCELLED WO) не блокують (паритет Bug #631). Spec: дитина-`findFirst.mockResolvedValueOnce({id})`→BadRequest+parent.updateMany.not.toHaveBeenCalled; happy null→updateMany; count=0→NotFound.
+**Severity:** MEDIUM (Zone/Lift/Employee) до HIGH (Warehouse із залишком).
+**Де ще:** Warehouse/Zone/Employee ✅; Lift.remove (майбутні CalendarSlot), GarageBranch.remove, UnitOfMeasure.remove (GoodUoM), WorkCategory.remove (Work).
 
-**Причина виникнення:** попередній double-submit аудит охопив «великі» документні модалки (WorkOrder/PO/Stock/Invoice/SupplierReturn), а edit-модалки довідників (Counterparty/Employee/Good) вважались «простими» і випали зі scope. Класичний split-coverage: фіксять N зі списку, лишають M «схожих але менш помітних».
+### 2026-09-05 — TOCTOU: existence/uniqueness check через count() ПОЗА транзакцією → concurrent обидва проходять — backend / concurrency / HIGH
 
-**Підхід до виявлення:** grep-pair по ВСІХ модалках: `for f in apps/web/src/components/ui/*Modal.tsx; do echo "$f: guards=$(grep -cE 'savingRef|createdRef|transitioningRef|submittingRef' $f) posts=$(grep -cE "method: '(POST|PATCH)'" $f); done` → будь-яка модалка з POST/PATCH і 0 guard-refs = кандидат. Перехресно: чи `disabled=` кнопки містить `saving`? Якщо гейт лише `loading={saving}` (async) — vulnerable.
+**Сигнал:** `if(await isAlreadyInitialized())throw` / будь-який `count()`/`findFirst()` prep-guard ПОЗА `$transaction` перед create агрегату. Два concurrent обидва читають count=0. Особливо небезпечно коли `@@unique` НЕ ловить (setup: кожна tx має власний `org.id`, `@@unique([orgId,email])` не спрацьовує). Throttle не рятує.
 
-**Підхід до фіксу:** `savingRef = useRef(false)` + `setSavingBoth(v){savingRef.current=v; setSaving(v)}`; `if (savingRef.current) return` ПЕРШИМ рядком кожного save-handler-а; `finally { setSavingBoth(false) }`. Симетрія з уже-виправленими модалками. Regression-guard: native-click×2 дискримінуючий тест (див. підхід вище).
+```bash
+grep -rnE "await (this\.)?(isAlready|exists|count|findFirst)" apps/api/src/modules --include="*.service.ts"
+```
 
-**Severity:** HIGH — silent duplicate master-data (контрагент/товар/співробітник), для Employee дубль login-акаунта (безпека). User-visible, псує CRM/номенклатуру/settlement-звіти.
+**Фікс (offline-safe):** `tx.$executeRaw\`SELECT pg_advisory_xact_lock(hashtext('<ключ>'))\``ПЕРШОЮ у`$transaction`, ПОТІМ re-check `count()`ВСЕРЕДИНІ→400. Для не-bootstrap — DB`@@unique`+ловити P2002→409 (якщо ключ покриває інваріант). Unit: `makePrisma(outer=0,inner=1)`→400+advisory-lock 1×+create not called.
+**Severity:** HIGH — порушення single-instance/uniqueness; невідтворюване без concurrency-mock.
+**Де ще:** setup/init ✅; будь-який «create-if-not-exists» без DB-unique — first-org, singleton-settings, reserve-номера поза `SELECT FOR UPDATE`.
 
-**Де шукати ще:** усі `*Modal.tsx` / inline-форми з submit-POST; той самий клас — будь-який `onClick`-handler що робить mutation і покладається лише на `disabled={loading}` (не sync-ref). Кандидати поза модалками: quick-add форми, bulk-action кнопки, share/print-token генерація, **row-action-хендлери у списках** (`clone`/`duplicate`/`archive`/`markDeleted` у `page.tsx` з `disabled={xxxId === row.id}` де `xxxId`=`useState`). Bug #637: clone-дія у списку нарядів гейтилась лише `useState cloningId` → 2 POST /clone на native-click×2. Grep: `grep -rnE "disabled=\{[a-zA-Z]+Id === " apps/web/src/app/**/page.tsx` + звірити чи handler має sync-ref-guard. **Тепер є переюзабельний хук `apps/web/src/hooks/useSubmitGuard.ts`** (`guard.run(async fn)` з sync `inFlightRef`) — фіксити row-actions через нього замість inline-ref.
+### 2026-09-05 — Public endpoint приймає дату в минулому (booking) → сміття в черзі + SMS на минуле — backend / validation-completeness / MEDIUM
 
-### 2026-09-05 — Backend-агрегат змішує `Σ(round(x))` і `round(Σ(x))` для тієї самої величини → розходження на копійку між denorm-полями — backend / money-precision / LOW
+**Сигнал:** public mutation (booking) валідує формат/години/день, але НЕ дату ≥ тепер → curl-bypass створює заявку на вчора.
 
-**Сигнал:** сервіс що рахує кілька denormalized money-полів з одних per-line значень різними стратегіями квантування: одне поле = `roundMoney(Σ l.amount)` де `l.amount` вже `roundMoney(qty×price)` (per-line rounded sum), інше = `roundMoney(Σ (qty×price raw))` (raw sum then round). Приклад: WO `recalcTotals` — `totalLabor = roundMoney(Σ roundMoney(nh×price))`, але `totalAmount = roundMoney(Σ raw(nh×price))` через `totalActualLabor`. При per-line-дрейфі 3×2.525 → totalLabor=7.59, totalAmount=7.58 (копійка). FE-preview що дзеркалить одне поле не збігається з іншим. Frontend `calcVatTotals` mirror-ить `totalLabor` (per-line), але CHARGE-база при COMPLETED бере `totalAmount` (raw-sum).
+```bash
+grep -rnE "requestedDate|scheduledAt|appointmentDate|plannedAt" apps/api/src/modules --include="*.service.ts"
+```
 
-**Причина виникнення:** дві формули пишуться у різний час / різними фічами (`totalLabor` — з базового WO, `totalActualLabor`/`totalAmount` — додано VAT-фічею), кожна «логічна» окремо, але для однакового кейсу (actualHours=null) мали б дати рівний результат. Ніхто не звірив per-line-round vs aggregate-round на дробових копійках.
+**Фікс:** `if(new Date(dto.date).getTime()<Date.now())throw new BadRequestException('Дата запису не може бути в минулому')` (абсолютні інстанти). Live: past→400, майбутня→201.
+**Severity:** MEDIUM — operational-noise + SMS-витрати.
+**Де ще:** booking.create ✅; будь-який public scheduler, `POST /appointments`, `/reservations`.
 
-**Підхід до виявлення:** у сервісі з ≥2 money-полями з тих самих компонентів — перевірити чи ВСІ використовують ОДНУ стратегію (або всі `Σ(round)`, або всі `round(Σ)`). Числова симуляція: 3 рядки з ціною що дає дробову половину-копійки (×.525) → порівняти поля попарно. Frontend-preview, що претендує «== backend по копійку», звіряти проти КОЖНОГО поля, яке він нібито дзеркалить, І проти поля, що реально йде у фін-операцію (CHARGE/Invoice).
+### 2026-09-04 — Remove-guard повнота relations + balance-як-proxy маскує DRAFT (Bug #631) — backend / orphan / MEDIUM
 
-**Підхід до фіксу:** обрати ОДНУ канонічну стратегію для величини (STO ERP-конвенція: per-line `amount` округлюється при записі рядка → агрегат = `Σ(round)`, тобто `totalActualLabor` мав би теж сумувати округлені per-line, а не raw). Або задокументувати навмисну різницю (planned per-line vs actual raw). Regression-guard: unit що асертить `totalLabor === totalAmount` коли `actualHours === null` для всіх рядків.
+**Сигнал:** `remove()` перевіряє 2 з N однотипних document-relations; balance-guard (`Number(balance)!==0`) здається універсальним, але DRAFT-документ ще без транзакції → `balance=0` → провалюється крізь усі guard-и → активний документ на soft-deleted parent. Live: create parent→DRAFT-документ→DELETE parent→204 (мало 400).
 
-**Severity:** LOW — розбіжність ≤1 коп, проявляється лише коли actualHours=null І per-line-rounding дрейфує; не stored-corruption (обидва округлені), але user-visible preview≠charge. НЕ блокер, кандидат на окремий бек-фікс.
+```bash
+sed -n '/^model Counterparty /,/^}/p' schema.prisma | grep -E "\[\]"   # усі back-relations
+```
 
-**Де шукати ще:** будь-який `recalc*`/`*Totals`/aggregate-сервіс (Invoice recalc, PO totals, StockDocument, CompletionAct) — grep `grep -rnE "roundMoney\(.*reduce|\+= Number\(.*price\)" apps/api/src/modules` → перевірити консистентність round-стратегії між полями.
+**Фікс:** кожен document-relation (WorkOrder/Invoice/PurchaseOrder/StockDocument/SupplierReturn) має ВЛАСНИЙ count-guard з `status:{notIn:[<фінальні>]}`, НЕ balance. Append-only (Payment/StockMovement) не блокують. Spec: `<rel>.count.mockResolvedValueOnce(1)→BadRequest+updateMany not called`+happy=0+`where.status=notIn`; додати relation.count у prisma-mock.
+**Severity:** MEDIUM — data-integrity + orphan-UX.
+**Де ще:** `Counterparty.remove`(WO+PO+Invoice), `Vehicle.remove`(WO), `Good`/`Warehouse.remove`(StockItem≠0). Принцип: guard-completeness=ПОВНИЙ набір relations; balance≠proxy для «є відкриті документи».
 
-### 2026-09-05 — Read-фільтр діапазону дати використовує CONTAINMENT замість OVERLAP → рядки що перетинають межу вікна мовчки зникають (CAL-C2) — backend / data-visibility / HIGH
+### 2026-09-04 — Stale `dist/main`: запущений процес старший за rebuild → guard мовчки не спрацьовує на live (verification-hygiene, рецидив) — process / deployment / CRITICAL-для-верифікації
 
-**Сигнал:** `findX(date)`/`listByDay`/будь-який read що будує UTC-вікно `[dayStart, dayEnd]` з календарної дати і фільтрує `where: { startAt: { gte: dayStart }, endAt: { lte: dayEnd } }` (CONTAINMENT — рядок повністю всередині вікна). Наслідок: запис що ПОЧИНАЄТЬСЯ до `dayStart` але закінчується всередині дня (split-day continuation, слот через опівніч, оренда/бронювання що триває кілька днів) — випадає з вибірки. UI показує ресурс вільним, хоча він зайнятий → double-booking. Live-сигнал: створити слот `startAt=D-1 21:00, endAt=D 06:00` → `GET ?date=D` НЕ повертає його (мало б).
+**Сигнал:** live-проба нового guard дає СТАРУ поведінку хоча unit зелені, tsc чистий, `grep <guard-msg> dist/.../*.js` знаходить код. Парадокс «код є, а не працює» = stale-процес. `node dist/main` завантажує JS раз на старті і НЕ hot-reload; dist перезібрано ПІСЛЯ старту → файл новий, процес старий. (FIN-C2 та MD-C1 — обидва рецидиви цього.)
+**Фікс:** ПЕРЕД будь-якою live-верифікацією звірити StartTime процесу порту 3000 з часом білду dist (`Get-CimInstance Win32_Process`/`netstat -ano | grep :3000` vs `ls -la dist/main.js`). Рестарт: `pnpm --filter @sto/api build` → kill PID (`Get-NetTCPConnection -LocalPort 3000 | Stop-Process -Force`) → `node dist/main` у фоні → wait `/api/health`=200 → перелогінитись → повторити пробу. Правило: **unit-зелений + свіжий dist ≠ deployed.**
+**Severity:** verification-process (не баг продукту) — критична: без рестарту тестер хибно рапортує баг/пропускає баг, отруює MemoryManual.
+**Де ще:** кожна live/E2E-проба проти локального `node dist/main`. Web `next dev` hot-reload-ить (менш вразливий), АЛЕ `.next` cache після route-group rename — окрема пастка (§0 Bug #291).
 
-**Причина виникнення:** «слоти дня» інтуїтивно = «слоти що починаються й закінчуються в цей день», тож пишуть `gte dayStart AND lte dayEnd`. Це правильно для point-in-time подій (createdAt), але НЕ для інтервалів [startAt,endAt] що можуть тривати через межу. Той самий overlap-предикат що вже стоїть у conflict-probe (`checkConflicts`/`createSlot`) забувають продублювати у read-фільтрі.
+### 2026-09-04 — Похідне money × дріб-коефіцієнт / reduce / різниця БЕЗ roundMoney що покидає систему сирим (Bug #629) — backend / money-precision / report-and-export / LOW-MEDIUM
 
-**Підхід до виявлення:** grep `grep -rnE "startAt: \{ (gte|gt):" apps/api/src/modules --include="*.service.ts"` — для кожного read по інтервальній моделі (CalendarSlot/BookingRequest/Reservation/Rental/будь-що з парою start/end) перевірити чи фільтр = half-open OVERLAP `startAt < end AND endAt > start`, а НЕ containment `startAt >= start AND endAt <= end`. Порівняти з conflict-probe того ж сервісу — вони мають бути ідентичні. Unit-сигнал: асертити форму `where.startAt` має ключ `lt` (не `gte`) і `where.endAt` має `gt` (не `lte`).
+**Сигнал:** `Number(x)*RATIO` (дробовий RATIO, `LABOR_COST_RATIO=0.4`→`3520.30*0.4=1408.1200000000001`), Σ у `reduce`, або різниця сум (`invoiced-purchases=66.77000000000001`) — IEEE-754 дрейф. Маскується `fmt()` на екрані, але емітиться СИРИМ у CSV/XLSX/PDF-експорт (без fmtMoney для number-детекту) і у JSON API (mobile/sync). Аудит округлення фокусується на DB-write/balance і пропускає «display-only» звіти.
 
-**Підхід до фіксу:** замінити на half-open overlap: `where: { startAt: { lt: end }, endAt: { gt: start } }` (дотик межі не рахується конфліктом/входженням, `[start,end)`). Дзеркалити наявний conflict-probe. Regression-guard: unit що будує вибірку дня і асертить `where.startAt.lt` + `where.endAt.gt`; live-проба зі слотом що перетинає межу.
+```bash
+grep -rnE "Number\([^)]*\)\s*[*/]" apps/api/src/modules/{reports,completion-acts,xlsx}
+grep -rnE "reduce\(\(s.*\+.*(amount|balance|revenue|total|cost|vat)"
+```
 
-**Severity:** HIGH — прихована зайнятість ресурсу → double-booking, порушення capacity-інваріанта; TS/unit зелені бо форма where синтаксично валідна.
+Для кожного — чи результат покидає систему (export/JSON)?
+**Фікс:** `roundMoney()` на КОЖНЕ похідне money-поле (НЕ на %/count/hours). Live-guard: report endpoint з фракційними даними → `round(v*100)/100===v` кожне money-поле. Regression: фракційні входи (`totalLabor:3520.3`→`.toBe(1408.12)`, `net.toBe(66.77)`)+`has2Decimals()`. report-сервіси часто 0 unit → закрити test-gap разом.
+**Severity:** LOW-MEDIUM — не stored/balance, але user-visible float у фіндокументі. Родич completion-acts PDF float (f7a935db), Bug #621/#613.
+**Де ще:** усі report-сервіси; будь-який `*RATIO`/`*rate`/`/divisor` на грошах (markup, знижки, комісії, COGS); frontend-експортери (`exportReport`, `buildCsv`, xlsx) що емітять числові поля БЕЗ fmtMoney.
 
-**Де шукати ще:** будь-яка інтервальна модель з date-window read — `BookingRequest` (getAvailability), майбутні `Rental`/`Reservation`/`Shift`/`MaintenanceWindow`; загальний принцип «інтервал ⇒ overlap, точка ⇒ containment».
+### 2026-09-04 — DB-constraint error-mapping guard у canonical write, відсутній у alternate-mutation → 500 замість 409 (Bug #628) — backend / error-mapping-symmetry / MEDIUM
 
-### 2026-09-05 — Cascade-remove-guard для master-data з FK-дітьми: soft-delete parent без перевірки активних дітей → осиротілі рядки (MD-H1 class) — backend / data-integrity / orphan / MEDIUM–HIGH
+**Сигнал:** новий Postgres constraint (EXCLUDE/CHECK/unique partial) + `throwIfExclusionConflict`/`throwIfSerializationConflict` конверсія SQLSTATE→4xx додана у 1-2 write-методи, але resource має alternate-mutation (`syncFromX`/`refreshFromY`/`bulk*`/`by-work-order`) що пише ті самі поля через `return $transaction` без try → concurrent race→raw SQLSTATE→generic 500. ПАСТКА: EXCLUDE/CHECK перевіряються і на **UPDATE** (`update({data:<overlap>})`→23P01).
 
-**Сигнал:** `service.remove()` reference/master-data сутності (Warehouse/Zone/Employee/Lift/Brand/Category) робить atomic `updateMany({deletedAt})` БЕЗ prep-check на активних FK-дітей. Наслідок: parent зникає з активних списків, але діти (StockItem із залишком, Lift у зоні, WorkOrderLine з employeeId) далі посилаються на мертвий id → залишки «зникають», підйомник некерований через UI зони, робота вказує на видаленого механіка. Live-сигнал: create parent → create активну дитину → DELETE parent → 204 (мало 400), дитина лишається з мертвим `parentId`.
+```bash
+grep -rn "throwIfExclusionConflict\|throwIfSerializationConflict" apps/api/src/modules/<mod>/*.service.ts
+```
 
-**Причина виникнення:** master-data сприймається «просто довідник, видаляється вільно»; FK-зв'язки з операційними даними (StockItem.warehouseId, Lift.zoneId, WorkOrderLine.employeeId) не спадають на думку при написанні `remove()`. Симетрично Bug #631 (document-children counterparty), але тут діти — не документи, а операційні агрегати/залишки.
+Для кожного alternate-write (`return this.prisma.$transaction` БЕЗ try) — gap.
+**Фікс:** `let result:T; try{result=await $transaction(...)}catch(err){throwIfX(err,...)} return result` (throwIfX:never → tsc definite-assign). Regression: (1) `$transaction` mock кидає SQLSTATE-shaped→`rejects ConflictException/BadRequestException`; (2) не-constraint→пробрасується.
+**Severity:** MEDIUM — цілісність тримається (constraint блокує), лише 500→4xx UX/observability. Підклас Bug #403.
+**Де ще:** CalendarSlot (createSlot/updateSlot/**syncWorkOrderSlots** × EXCLUDE), StockItem (× `stock_*_nonneg`), balance-writers, `@@unique` partial з кількома write-шляхами. Родич Bug #621, #403, #444.
 
-**Підхід до виявлення:** для кожного `remove()`/`delete()` master-data сервісу знайти всі моделі з FK на цю сутність (`grep -rnE "<entity>Id\b" schema.prisma`) → кожна операційно-значуща дитина (з ненульовим станом: StockItem.quantity/reserved, активний Lift, WorkOrderLine у не-термінальному WO) потребує prep-guard `findFirst({where:{<fk>:id, orgId, deletedAt:null, <active-predicate>}})` → `throw BadRequestException(<укр>)` ПЕРЕД soft-delete. Термінальні стани (ARCHIVED/CANCELLED WO) не блокують — паритет із Bug #631.
+### 2026-09-04 — Fastify content-type-parser помилка (FST*ERR_CTP*\*) не мапиться → 500 замість 4xx (Bug #627) — backend / framework-error-mapping / LOW
 
-**Підхід до фіксу:** додати `findFirst` guard ПЕРЕД `$transaction`/`updateMany` (не всередині — щоб 400 віддавався до будь-якої мутації); повідомлення українською «Неможливо видалити: <причина>. Спочатку …». Для балансу — `OR: [{ quantity: { not: 0 } }, { reserved: { not: 0 } }]`. Regression-guard: spec з дитина-`findFirst.mockResolvedValueOnce({id}) → BadRequest + parent.updateMany.not.toHaveBeenCalled`; happy `null → updateMany`; count=0 → NotFound.
+**Сигнал:** bodyless POST (`/transition`,`/restore`,`/clone`,`/confirm`,`/cancel`,`/refresh`,`/set-default` — без `@Body`) з `Content-Type: application/json`+порожнім тілом → 500. Fastify content-type-parser кидає `FastifyError`(`FST_ERR_CTP_EMPTY_JSON_BODY`) ДО хендлера — не `HttpException`/не Prisma → `else`-гілка `HttpExceptionFilter`→500+Sentry. Так само `FST_ERR_CTP_INVALID_JSON_BODY`, `FST_ERR_CTP_INVALID_MEDIA_TYPE`(415).
 
-**Severity:** MEDIUM (Zone/Lift/Employee — керованість/UX) до HIGH (Warehouse із залишком — фінансово-облікова цілісність).
+```bash
+grep -rn "FST_ERR\|isFastify" apps/api/src/common/filters   # 0 = gap
+# live: curl -X POST <bodyless-url> -H "Content-Type: application/json" (порожнє) → має бути 4xx
+```
 
-**Де шукати ще:** `Warehouse.remove` (StockItem≠0 — зроблено), `Zone.remove` (активний Lift — зроблено), `Employee.remove` (WorkOrderLine у активному WO — зроблено); ще перевірити `Lift.remove` (CalendarSlot майбутні), `GarageBranch.remove` (Warehouse/Zone/Employee), `UnitOfMeasure.remove` (GoodUoM), `WorkCategory.remove` (Work).
+**Фікс:** guard `code.startsWith('FST_ERR_CTP_') && statusCode у 4xx`→чистий 4xx UA+`logger.warn`; 5xx-FastifyError і Node errno (`ECONNREFUSED`) лишаються 500. Regression: fake `{code:'FST_ERR_CTP_EMPTY_JSON_BODY',statusCode:400}`→400+warn; 415→statusCode; 5xx→500; ECONNREFUSED→500.
+**Severity:** LOW — веб захищений api-client-ом; Sentry-шум + маскує баги для не-браузерних клієнтів. **ПАСТКА тест-харнеса:** власний probe-клієнт має додавати `Content-Type: application/json` ТІЛЬКИ за наявності тіла — інакше bodyless-виклики дають хибний 500 (імітує неіснуючий баг, як хибний MD-C1 «500»).
+**Де ще:** усі catch-all `ExceptionFilter`; будь-який bodyless POST/PATCH; interceptor-и що читають `request.body`. Родич Bug #291 (`.next` cache).
 
-### 2026-09-05 — TOCTOU: existence/uniqueness check через count() ПОЗА транзакцією → concurrent-запити обидва проходять (setup first-run) — backend / concurrency / HIGH
+### 2026-09-04 — Слабкий page-scope `button[aria-expanded]` асерт матчить decoy-тоггл (Bug #625) — frontend / e2e-integrity / MEDIUM
 
-**Сигнал:** `if (await isAlreadyInitialized()) throw` / будь-який `count()`/`findFirst()` prep-guard ПОЗА `$transaction`, після якого йде create повного агрегату. Класичний check-then-act: два одночасні запити обидва читають count=0, обидва створюють. Особливо небезпечно коли `@@unique` НЕ ловить дубль (у setup кожна tx має власний `org.id`, тож `@@unique([orgId,email])` на AuthAccount не спрацьовує — orgId різні). Наслідок: два повні tenant-и / два OWNER / зламаний single-instance інваріант. Throttle (3/хв) НЕ рятує — обидва в межах ліміту.
+**Сигнал:** E2E доказ «з'явився результат» через широкий page-level `page.locator('button[aria-expanded]').first()` / `getByRole('button').first()` / `locator('table').first()` — на сторінці є ІНШИЙ елемент того ж роду (хедер-тоггл, службова кнопка) що матчиться першим → тест пройшов би при плоскому/порожньому результаті.
 
-**Причина виникнення:** guard і create написані окремо; «навряд чи хтось натисне двічі одночасно» — але curl-flood/подвійний сабміт/retry це відтворюють. Розробник покладається на `@@unique` як backstop, не помічаючи що ключ не покриває саме цей інваріант.
+```bash
+grep -rnE "page\.locator\('button\[aria-expanded\]'\)\.first|page\.getByRole\('(button|table|tab|listitem)'\)\.first|page\.locator\('table'\)\.first" apps/web/e2e
+```
 
-**Підхід до виявлення:** grep `grep -rnE "await (this\.)?(isAlready|exists|count|findFirst)" apps/api/src/modules --include="*.service.ts"` — для кожного prep-guard перед create-агрегату перевірити: (а) чи він ПОЗА tx? (б) чи `@@unique` РЕАЛЬНО ловить дубль у concurrent-кейсі (не «схоже що ловить»)? Якщо унікальність не гарантована схемою — це TOCTOU. Unit-сигнал: mock де outer-count=0 але in-tx-count=1 → має бути 400 + create.not.toHaveBeenCalled.
+**Фікс:** scope до контейнера результату (`table.locator(...)`, `resultPanel.getByRole(...)`) + позитивні якорі (`thead th=='Група'`, count>1, очікувані лейбли) + негативний якір анти-стану. Sanity: тимчасово «зламати» очікуваний стан — тест МАЄ почервоніти; якщо зелений→асерт слабкий. Виставити передумову рендеру (drill-down groups потребують `node.rows`→колонку).
+**Severity:** MEDIUM — код може працювати, регресія-guard фіктивний.
+**Де ще:** будь-який E2E «з'явився X» через широкий селектор при службових контролах: disclosure (`aria-expanded`), tab (`role=tab`), `.first()`/`.last()` на неунікальному локаторі. Родич §5.4.
 
-**Підхід до фіксу (offline-safe, локальний Postgres):** серіалізувати bootstrap через `tx.$executeRaw\`SELECT pg_advisory_xact_lock(hashtext('<унікальний-ключ>'))\``ПЕРШОЮ операцією у`$transaction`, ПОТІМ re-check `count()`ВСЕРЕДИНІ tx → 400. Другий запит блокується до COMMIT першого, після чого бачить count>0. Lock авто-звільняється в кінці tx. Для не-bootstrap кейсів — покладатись на DB`@@unique`+ ловити P2002 → 409 (якщо ключ дійсно покриває інваріант). Regression-guard: unit з`makePrisma(outer=0, inner=1)` → 400 + advisory-lock узятий×1 + create not called.
+### 2026-09-04 — Prisma `upsert` create-гілка × Postgres CHECK-констрейнт = 500 на кожній від'ємній дельті (Bug #621) — backend / prisma-postgres-semantics / CRITICAL
 
-**Severity:** HIGH — порушення критичних single-instance/uniqueness інваріантів; невідтворюване у звичайному тесті (потрібен concurrency-mock), тому unit з in-tx-count=1 обов'язковий.
+**Сигнал:** `X.upsert({where, update:{field:{increment:delta}}, create:{field:delta}})` де `delta` може бути від'ємним (WRITEOFF) І таблиця має `CHECK (field>=0)`. Postgres перевіряє CHECK на INSERT-tuple ПЕРЕД арбітражем ON CONFLICT → валить `23514` **навіть коли рядок існує і DO UPDATE дав би валідне** (100−40=60). Unit-мок не б'є Postgres. **ПАСТКА: баг створюється фіксом Bug #613** (додавання non-neg CHECK як backstop) — ретроактивно ламає кожен upsert-writer з від'ємною create-дельтою.
 
-**Де шукати ще:** setup/init (зроблено); будь-який «create-if-not-exists» без DB-unique що покриває саме цей інваріант — first-org, singleton-settings, «перший X стає default», reserve-унікального-номера поза `SELECT FOR UPDATE`. Споріднено з §1.1 CAS-гейт для FSM (Хвиля 1) — той самий клас «read stale поза атомарним контекстом».
+```bash
+grep -rn "\.upsert(" apps/api/src/modules --include="*.service.ts"
+grep -rn "CHECK.*>= 0\|_nonneg" packages/database/prisma/migrations/
+```
 
-### 2026-09-05 — Public endpoint приймає дату в минулому (booking) → сміття в черзі + SMS на минулу дату — backend / validation-completeness / MEDIUM
+**Фікс:** клампити create-гілку `Math.max(0, delta)` (update лишається `{increment:delta}` — create спрацьовує лише коли рядка нема, тоді від'ємний стан неможливий). Regression: `upsert.mock.calls[0][0].create.<field>`≥0 при від'ємному dto. **Live-probe (не unit)**: після міграції що додає `CHECK(col>=0)` — КОЖЕН upsert-writer з від'ємною дельтою через curl проти живої БД (existing row+від'ємна→2xx не 500). raw-SQL `INSERT...ON CONFLICT` відтворює 23514 (доказ Postgres-семантики).
+**Severity:** CRITICAL — блокує весь клас (WRITEOFF/TRANSFER-out/WO-COMPLETED); невидимий unit-CI.
+**Де ще:** будь-яка таблиця з non-neg CHECK + upsert-writer зі знаковою дельтою: `stock_items.quantity/reserved` ✅, balance-таблиці (якщо додадуть CHECK), loyaltyAccount.points. Мета: **міграція що додає CHECK на існуючу таблицю = обов'язковий live-probe кожного upsert/insert-writer.**
 
-**Сигнал:** public mutation-endpoint (booking/request, reservation, appointment) валідує формат дати (`@IsDateString`), робочі години, робочий день — але НЕ перевіряє що дата ≥ тепер. curl-bypass (або баг у віджеті) створює заявку на вчора → захаращує reception-чергу + тригерить SMS/notification на минулу дату.
+### 2026-09-04 — Guard-order у inline «add-to-collection» helper: unique-check коротшить перед limit/permission (Bug #606) — frontend / UX / guard-ordering
 
-**Причина виникнення:** валідатори перевіряють «синтаксис + бізнес-вікно» (години/дні тижня), «не в минулому» здається обов'язком фронта — але public endpoint не може довіряти клієнту. Пропущений семантичний guard серед синтаксичних.
+**Сигнал:** `addToZone(zone,key)`/`addToList(key)` виконує `permission→limit→includes(key)` → повторний add вже-активного → misleading toast «Максимум 5/немає прав».
+**Grep:** `grep -rEn "\.includes\(key\)|\.has\(key\)|\.some\(.*===\s*key" apps/web/src --include="*.tsx" -B3 -A3 | grep -B4 -A2 "toast\.warning\|toast\.error"`. Правильно: `if (list.includes(key)) return;` ПЕРШИМ, ЛИШЕ ПОТІМ `if (list.length>=LIMIT) return toast(...)`. Static test: список до ліміту→повторний з наявним ключем→НЕ toast. E2E `waitForTimeout(300)`+`toHaveCount(0)`.
+**Severity:** LOW-MEDIUM — критичний UX-signal (user думає що зламано).
+**Де ще:** Zone/Palette/Picker з click-shortcut, tag input, multi-select chip, «Add to favorites», filter/sort field pickers з MAX-N.
 
-**Підхід до виявлення:** для кожного public/no-auth endpoint що приймає майбутню дату (`requestedDate`/`scheduledAt`/`appointmentDate`) — перевірити наявність `if (new Date(dto.date).getTime() < Date.now()) throw`. Grep `grep -rnE "requestedDate|scheduledAt|appointmentDate|plannedAt" apps/api/src/modules --include="*.service.ts"` → зіставити з наявністю past-check. Порівнювати як абсолютні інстанти (Date вже несе client-offset), НЕ як локальні рядки.
+### 2026-09-04 — Cross-midnight probe protocol: timezone-aware date-bucketing live-верифікація — backend / time-zone / aggregation / verification
 
-**Підхід до фіксу:** `if (requestedAt.getTime() < Date.now()) throw new BadRequestException('Дата запису не може бути в минулому')` серед інших guard-ів. Live-проба: past-дата→400, майбутня робоча→201.
-
-**Severity:** MEDIUM — operational-noise + витрати SMS-gateway, не corruption.
-
-**Де шукати ще:** booking.create (зроблено); будь-який public scheduler-endpoint, `POST /appointments`, `POST /reservations`, publiс WO-estimate-accept із датою.
-
-### 2026-09-04 — Remove-guard «блокувати якщо є пов'язані активні документи» покриває не всі однотипні relations; balance-як-proxy маскує DRAFT-документи (Bug #631) — backend / data-integrity / orphan / MEDIUM
-
-**Сигнал:** `service.remove()` додає guard «не видаляти якщо є активні наряди/PO/борг» і перевіряє 2 з N однотипних document-relations. Balance-guard (`Number(balance)!==0`) присутній і здається універсальним «є борг → не можна», тому DRAFT/чернетка ще-без-транзакції документа (Invoice DRAFT, PO DRAFT) провалюється: `balance=0`, немає count-guard для цього типу → parent soft-видаляється → активний документ вказує на soft-deleted parent (осиротів у списку, зник з CRM). Live-сигнал: create parent → create DRAFT-документ (без send/transition) → DELETE parent → 204 (мало бути 400), а `GET /document/:id` → 200 з мертвим `parentId`.
-
-**Причина виникнення:** guard пишуть інкрементально «які документи спадають на думку» (наряди, замовлення), Invoice — клієнтський еквівалент PO — випадає. SENT/OVERDUE-рахунки непрямо ловляться balance-guard-ом (створили CHARGE), тому розробник вважає рахунки «покритими через баланс». Але DRAFT ще не має settlement-транзакції → `balance=0` → крізь усі guard-и. Плутанина: balance ловить committed-фінанси, НЕ open-но-ще-без-транзакції документи.
-
-**Підхід до виявлення:** для КОЖНОГО `count()` у `remove()`/`delete()` витягти повний перелік back-relations parent-моделі зі schema (`sed -n '/^model <Parent> /,/^}/p' schema.prisma | grep -E "\[\]"`) → кожен document-подібний relation (WorkOrder/Invoice/PurchaseOrder/StockDocument/SupplierReturn) має ВЛАСНИЙ count-guard з `status: { notIn: [<фінальні>] }`. Балансу НЕ достатньо (він ловить лише транзакційні документи). Append-only (Payment/StockMovement) не блокують. Live-проба з DRAFT-версією кожного document-типу.
-
-**Підхід до фіксу:** додати відсутній `count()` у той самий `Promise.all` симетрично наявним (`prisma.invoice.count({ where:{orgId, <fk>:id, deletedAt:null, status:{notIn:['PAID','CANCELLED']}} })`) + `if (n>0) throw BadRequestException(<укр>)`. Використати наявний index `(orgId, status, deletedAt)`. Regression-guard: spec з `<rel>.count.mockResolvedValueOnce(1) → BadRequest + updateMany не викликаний` + happy `=0 → delete` + перевірка `where.status = notIn [фінальні]`. Додати relation.count у prisma-mock (інакше happy-тест впаде на `undefined.count`).
-
-**Severity:** MEDIUM — data-integrity + orphan-UX, той самий клас що вже покриті relations; DRAFT менш критичні за committed, SENT/OVERDUE вже ловились balance-ом.
-
-**Де шукати ще:** `Counterparty.remove` (WO+PO+Invoice — тепер повний), `Vehicle.remove` (пов'язані активні WO), `Good.remove`/`Warehouse.remove` (StockItem залишки≠0), будь-який parent з кількома document-children + guard. Загальний принцип: guard-completeness = ПОВНИЙ набір relations, не підмножина; balance ≠ proxy для «є відкриті документи».
-
-### 2026-09-04 — Stale `dist/main` рецидив: запущений процес старший за rebuild → guard мовчки не спрацьовує на live попри зелений unit + свіжий dist-файл (verification-hygiene) — process / deployment / CRITICAL-для-верифікації
-
-**Сигнал:** live-проба нового guard/фіксу дає СТАРУ поведінку (VIN dup → 201 замість 400), хоча: (1) unit зелені, (2) tsc чистий, (3) `grep <guard-msg> dist/.../*.js` знаходить код у файлі dist на диску. Парадокс «код є, а не працює» = майже завжди stale-процес.
-
-**Причина виникнення:** `node dist/main` (не `nest start --watch`) завантажує JS у пам'ять один раз на старті і НЕ hot-reload-ить. Якщо dist перезібрано ПІСЛЯ старту процесу — файл на диску новий, процес у пам'яті старий. Друга сесія / попередній агент часто лишає працюючий `node dist/main`, а поточна сесія перезбирає, але не рестартить. Урок Хвиль 2-3, що повторюється.
-
-**Підхід до виявлення:** ПЕРЕД будь-якою live-верифікацією звірити StartTime процесу порту 3000 із часом останнього білду dist: `Get-CimInstance Win32_Process -Filter "ProcessId=<pid>"` (CommandLine + StartTime) vs `ls -la dist/main.js`. Якщо процес старший за dist → stale. Швидкий сигнал: guard-код у `dist/*.js` є (`grep -c`), але live дає стару поведінку.
-
-**Підхід до фіксу:** `pnpm --filter @sto/api build` → kill процесу порту 3000 (`Get-NetTCPConnection -LocalPort 3000 | Stop-Process -Force`) → `node dist/main` у фоні → чекати `/api/health`=200 → перелогінитись (токен міг протухнути) → повторити live-пробу. Після рестарту всі guard-и спрацьовують.
-
-**Severity:** не баг продукту — операційна пастка ВЕРИФІКАЦІЇ. Але критична: без рестарту тестер або (а) хибно рапортує «баг існує» на неіснуючий баг, або (б) хибно пропускає реальний баг (стара поведінка = «стара» ловить/не ловить не те). Unit-зелений + свіжий dist-файл ≠ deployed.
-
-**Де шукати ще:** будь-яка live/E2E-верифікація проти локального `node dist/main` (API) — завжди звіряти StartTime. Web dev-сервер (`next dev`) hot-reload-ить, тому менш вразливий, АЛЕ `.next` cache після route-group rename — окрема пастка (§0 Bug #291). Загальне правило: перед live-пробою — «чи запущений процес містить мій код?».
-
-### 2026-09-04 — Concurrent double-submit у create-модалці обходить idempotency-ref: захист лише через `disabled={saving}`, без синхронного savingRef-guard (Bug #630) — frontend / concurrency / financial-integrity / HIGH
-
-**Сигнал:** create/save async-handler у `*Modal.tsx`, що робить `setSaving(true)` → `await POST`, а кнопка захищена ЛИШЕ `disabled={saving}`. Idempotency-ref (`createdIdRef`/`createdInvoiceRef`) присутній «для WEB-H3», але виставляється ПІСЛЯ await першого POST. `fireEvent.click` × 2 у тесті дає 1 POST (хибно-зелений) — а нативний `dispatchEvent(new MouseEvent('click'))` × 2 в одному `act()` дає 2 POST. Модалка часто ВЖЕ має `savingRef` (у `setSavingBoth`) і гейтить edit/transition-handler, але create-шлях цей guard пропускає.
-
-**Причина виникнення:** `disabled={saving}` покладається на re-render React МІЖ подіями кліку — вірно для двох ОКРЕМИХ фізичних кліків (окремі tasks, flush між ними), але НЕ для двох подій в одному event-loop tick (швидкий double-click, синтетичні події a11y-інструментів, Enter-repeat на сфокусованій кнопці, автоматизація). Розробник вважає, що idempotency-ref закриває «подвійний клік», але той ref захищає лише RETRY-після-обриву (клік користувача ПІСЛЯ помилки), не concurrent-вхід. Два механізми плутаються: retry-safety ≠ re-entrancy-safety.
-
-**Підхід до виявлення:** для КОЖНОГО create/save async-handler у `apps/web/src/components/ui/*Modal.tsx` перевірити, що ПЕРШИЙ рядок (ПЕРЕД будь-яким await) = `if (savingRef.current [|| transitioningRef.current]) return;`. Grep-детектор: модалки з `setSaving(Both)?(true)` без жодного `if (savingRef.current` = точно вразливі; модалки з savingRef, але без guard у create-шляху — split-coverage (перевірити вручну кожен handler). Component-проба: рендер модалки у submittable-стан → `await act(async () => { btn.dispatchEvent(click); btn.dispatchEvent(click); })` → assert рівно 1 POST. `fireEvent` НЕ підходить (маскує).
-
-**Підхід до фіксу:** синхронний re-entrancy guard першим рядком handler-а. Якщо `savingRef` вже є (через `setSavingBoth` що фліпає ref синхронно) — додати `if (savingRef.current || transitioningRef.current) return;`. Якщо немає — завести `const savingRef = useRef(false)`, фліпати `savingRef.current = true` ПЕРЕД `setSaving(true)`, reset у `finally` + `resetForm`. Ref фліпається СИНХРОННО → другий вхід одразу повертається, ще до await. Idempotency-ref лишається (retry-safety) — це два ортогональні механізми. Regression-guard: нативний подвійний dispatch, верифікований revert→2 POST / fix→1 POST.
-
-**Severity:** HIGH для фінансово-облікових документів (SupplierPayment=подвійний борг постачальнику, Invoice=подвійний рахунок, PurchaseOrder=подвійне замовлення, StockDocument=подвійний рух складу, WorkOrder=подвійний наряд); MEDIUM для нефінансових. Ймовірність нижча за retry-кейс (потрібні два click-и в одному tick), але не нульова, а наслідок — дубльований фінансовий документ.
-
-**Де шукати ще:** усі create-модалки (`*CreateModal.tsx`), особливо ті, що мають `setSavingBoth` — перевірити, що ВСІ handler-и (create + edit + transition), а не лише частина, гейтять на savingRef. `SettlementsTabContent.handleCreateAct` — raw apiFetch без savingRef взагалі (кандидат). Backend-двійник: Bug #412 (Serializable $tx для «1 active per parent») — frontend-guard і backend-unique-index/Serializable доповнюють один одного (defense-in-depth: клієнт відсікає домінантний кейс, БД — істинно-паралельний з двох вкладок/адмінів).
-
-### 2026-09-04 — Похідне грошове значення × дріб-коефіцієнт (або reduce/різниця) БЕЗ roundMoney, що покидає систему сирим через export/JSON (Bug #629) — backend / money-precision / report-and-export / LOW-MEDIUM
-
-**Сигнал:** money-обчислення `Number(x) * RATIO` (де RATIO дробовий, напр. `LABOR_COST_RATIO=0.4`), або `reduce((s,r)=>s+r.money, 0)`, або різниця двох сум (`a - b`), результат якого повертається зі звіту/сервісу і потім **емітиться СИРИМ у CSV/XLSX/PDF-експорт або JSON API** — без roundMoney. На екрані маскується `fmt()`/`fmtMoney`, тому візуально «все ок», але у експортованому фінансовому документі (чи у відповіді API стороннім клієнтам) з'являється `1408.1200000000001` / `399.99600000000004` / `66.77000000000001`. Множення на дріб — ГАРАНТОВАНИЙ IEEE-754 дрейф (`3520.30 × 0.4`, `100.10 − 33.33`); Σ у JS-`reduce` дрейфує на певних комбінаціях (`0.1+0.2`); SQL `SUM(...)::float` теж повертає float. ПАСТКА: аудит хвилі округлення фокусується на DB-write і balance-feeding шляхах (стор/баланс) і легко пропускає «лише для перегляду» звіти — але звіти теж покидають систему через export, тож дрейф стає user-visible.
-
-**Причина виникнення:** розробник вважає звітні агрегати «display-only» («fmt на фронті округлить») → не квантує. Хвиля roundMoney квантує stored/balance шляхи, звіти лишаються поза скоупом. Насправді значення виходять сирими двома каналами: (1) CSV/XLSX-експорт емітить числове поле напряму (`rows.push([label, data.grossProfit, ...])`, без fmtMoney — бо для number-детекту XLSX потрібен raw), (2) JSON API-відповідь звіту споживається mobile/sync/зовнішніми клієнтами без гарантії форматування. fmt() на екрані — єдина точка округлення, і її недостатньо.
-
-**Підхід до виявлення:** grep множень/різниць/reduce грошей без roundMoney у сервісах, чий результат покидає систему: `grep -rnE "Number\([^)]*\)\s*[*/]" apps/api/src/modules/{reports,completion-acts,xlsx}` + `grep -rnE "reduce\(\(s.*\+.*(amount|balance|revenue|total|cost|price|vat)" ` + ручний огляд `a - b` де a,b гроші. Для КОЖНОГО кандидата: чи результат іде у `$queryRaw ::float`-суму, чи у `* ratio`, чи у JS-`reduce`? Потім трасувати споживача: чи frontend-експортер (`buildCsv`/`exportReport`/`page.tsx` rows) емітить це поле СИРИМ (без fmtMoney)? Live-проба: викликати report endpoint з даними, що дають фракційний labor/суму → перевірити `round(v*100)/100===v` для КОЖНОГО money-поля відповіді (реплікувати дрейф node-скриптом: `3520.30*0.4`).
-
-**Підхід до фіксу:** roundMoney на КОЖНЕ похідне грошове значення перед поверненням зі звіту/сервісу — множення×дріб, Σ-reduce, різницю сум. НЕ чіпати: `%`-показники (margin), лічильники (count), години (hours) — не гроші. Дзеркалить `sumLineTotals`/invoice `recalcTotals` патерн (`roundMoney(Σ)`). Regression-guard: unit-спец із фракційними входами що дають гарантований дрейф (`totalLabor:3520.3`→`totalCostLabor` `.toBe(1408.12)` не `1408.12000…001`; `net` `.toBe(66.77)`) + `has2Decimals()` helper на кожне money-поле. Якщо у сервісі 0 unit-тестів (частий випадок для reports) — це ще й test-gap, закрити разом.
-
-**Severity:** LOW-MEDIUM — не stored-value, не balance-мутація (тому не CRITICAL/HIGH), але user-visible: спотворене число у експортованому фінансовому документі + сирий float у JSON API. Класична «float-у-документі» (родич completion-acts PDF, який хвиля вже фіксила — але цей шлях пропустила).
-
-**Де шукати ще:** усі report-сервіси (revenue/vat/settlements/profitability/load/stock/work-orders); будь-який `* RATIO`/`* rate`/`/ divisor` на грошах (markup, знижки %, комісії, амортизація, COGS-оцінки); reduce-суми у звітах/дашбордах; різниці балансів/сум; frontend-експортери (`exportReport`, `buildCsv`, xlsx-генератори) що емітять числові поля БЕЗ fmtMoney — саме там backend-дрейф стає видимим. Родич Bug #621/#613 (money-precision клас), completion-acts PDF float (f7a935db).
-
-### 2026-09-04 — DB-constraint error-mapping guard присутній у canonical write, відсутній у alternate-mutation endpoint → 500 замість 409 (Bug #628) — backend / error-mapping-symmetry / robustness / MEDIUM
-
-**Сигнал:** новий Postgres constraint-as-backstop (EXCLUDE, CHECK, unique partial index) додано разом з try/catch-конверсією його SQLSTATE у охайний HTTP (напр. `throwIfExclusionConflict(err, 'calendar_slots_no_overlap', ...)` → 409, `throwIfSerializationConflict` → 400). Конверсію додали у 1-2 очевидні write-методи (`createX`/`updateX`), АЛЕ той самий resource має ТРЕТІЙ мутуючий метод — alternate-mutation endpoint (`syncFromX`/`refreshFromY`/`bulkUpdateZ`/`by-work-order`) — який теж пише поля що тригерять constraint, але повертає `$transaction` напряму без try/catch. Concurrent race, що обійшов app-level probe, → raw SQLSTATE → неперехоплена помилка → **generic 500 + Sentry-шум** замість friendly-4xx. ПАСТКА: EXCLUDE/CHECK перевіряються і на **UPDATE**, не лише INSERT (доводиться live: `UPDATE ... SET startAt=<overlap>` → 23P01) — тож «це ж лише update, не create» хибне.
-
-**Причина виникнення:** розробник фіксить race у методі де його вперше помітив (createSlot), додає try/catch там (і, за симетрією, у updateSlot), але забуває що resource має alternate-mutation endpoint з окремою сигнатурою і власним `return this.prisma.$transaction(...)` без обгортки. Це error-mapping-варіант Bug #403 (alternate-mutation обходить canonical guards): там пропускається business-guard (FSM status), тут — error-conversion guard. App-level conflict-probe у sync може вже бути (Bug #444), що створює хибне відчуття «sync захищений» — але probe ловить лише детермінований конфлікт, race все одно проскакує до DB.
-
-**Підхід до виявлення:** для КОЖНОГО `throwIfExclusionConflict`/`throwIfSerializationConflict`/`mapPrismaErrorToHttp`-виклику у сервісі — знайти ВСІ методи що мутують той самий resource і перевірити чи кожен має обгортку. Grep: `grep -rn "throwIfExclusionConflict\|throwIfSerializationConflict" apps/api/src/modules/<mod>/*.service.ts` → порахувати сайти; окремо `grep -rnE "async (sync|refresh|import|bulk|recalculate|regenerate)[A-Z].*\{" ` + `return this\.prisma\.\$transaction` у тому ж файлі БЕЗ try — gap. Live: після додавання будь-якого EXCLUDE/CHECK — проби КОЖНОГО write-path (включно з alternate) на constraint-порушення через UPDATE (не лише INSERT): Prisma-direct `update({where,data:<overlap>})` → очікувати SQLSTATE; API-рівень concurrent 2×запит → рівно 1 успіх + 1×4xx (не 5xx).
-
-**Підхід до фіксу:** обгорнути `$transaction` alternate-методу у try/catch → той самий `throwIfExclusionConflict(err, <constraintName>, <UA-msg>)` що у canonical. Патерн для `return this.prisma.$transaction(...)`: оголосити `let result: <T>;` перед try, присвоїти всередині, `return result` після (TS бачить `throwIfX: never` → catch non-returning → result definite-assigned, tsc 0). Regression-guards: (1) `$transaction` mock кидає SQLSTATE-shaped Error → `rejects <ConflictException|BadRequestException>`; (2) не-constraint помилка (`'connection reset'`) → пробрасується as-is (не маскується під 4xx).
-
-**Severity:** MEDIUM — цілісність тримається (constraint фізично блокує дубль у ВСІХ шляхах); лише UX/observability (500 замість 4xx + зайвий Sentry-alert + гірша діагностика). НЕ CRITICAL бо не втрата даних; НЕ LOW бо гейтить фінансово/планувально значущий resource і псує alerting-сигнал.
-
-**Де шукати ще:** будь-який resource з DB-backstop constraint + ≥3 write-методами: CalendarSlot (createSlot/updateSlot/**syncWorkOrderSlots** — цей баг), StockItem (createMovement + будь-який alternate quantity-writer × `stock_*_nonneg` CHECK), settlementAccount/cashRegister/bankAccount balance-writers, будь-який `@@unique` partial index з кількома create-шляхами (Invoice.workOrderId, FiscalReceipt.paymentId). Родич Bug #621 (upsert × CHECK) і Bug #403 (alternate обходить canonical guards).
-
-### 2026-09-04 — Deployed `dist/main` застарілий → фікс мовчки не працює на live, попри зелені unit-тести (verification-hygiene) — backend / deployment / verification / process
-
-**Сигнал:** live-верифікація фіксу показує СТАРУ поведінку (напр. FIN-C2: standalone SEND НЕ створює CHARGE — баланс delta=0, у `/transactions` нема `CHARGE ... Invoice`), хоча код у джерелі коректний, `tsc 0`, юніт-тести зелені, і `dist/*.js` містить новий код (grep підтверджує). Причина: запущений `node dist/main` процес стартував ДО останнього білду і тримає стару скомпільовану версію в пам'яті — навіть свіжий `dist` на диску не підхоплюється без рестарту процесу. `nest start --watch` підхопив би, але прод-подібний `node dist/main` — ні.
-
-**Причина виникнення:** dev-стек піднято давно; хтось перезібрав `dist` (або попередня сесія), але процес не перезапущено. `grep dist` вводить в оману — файл на диску новий, процес у пам'яті старий. Легко списати «фікс не працює» на код-баг і почати гонитву за неіснуючою проблемою.
-
-**Підхід до виявлення:** ПЕРЕД live-верифікацією будь-якого backend-фіксу — ЗАВЖДИ `pnpm --filter @sto/api build` + рестарт процесу на порту (kill PID → `node dist/main` заново → wait 200 на `/api/docs`). Правило: **unit-зелений ≠ deployed**. Якщо live показує стару поведінку а `dist`-grep показує новий код → 100% застарілий процес, не код-баг: перезапустити і перепровірити ПЕРШ ніж діагностувати код.
-
-**Підхід до фіксу:** процесний, не код. У tester-runbook: (1) `netstat -ano | grep :3000` → PID; (2) `Stop-Process -Id <PID> -Force`; (3) rebuild; (4) `node dist/main &`; (5) Monitor until `/api/docs`==200; (6) тоді live-probe. Для web — аналогічно + `.next` cache при route-group рефакторингу (Bug #291).
-
-**Severity:** process (не баг коду) — але критичний для достовірності tester-звіту: без рестарту можна (а) хибно оголосити робочий фікс зламаним, (б) хибно оголосити зламаний фікс робочим (якщо стара збірка випадково «проходить»). Обидва напрямки отруюють MemoryManual.
-
-**Де шукати ще:** кожна live-верифікація backend через API; кожен раз коли поведінка суперечить джерелу+тестам+`dist`-grep. Родич Bug #291 (Next.js `.next` cache після route-group rename).
-
-### 2026-09-04 — Fastify content-type-parser помилка (FST*ERR_CTP*\*) не мапиться у filter → 500 замість 4xx (Bug #627) — backend / framework-error-mapping / robustness / LOW
-
-**Сигнал:** bodyless POST-ендпоінт (`/transition`, `/restore`, `/clone`, будь-який без `@Body`) при виклику з заголовком `Content-Type: application/json` + порожнім тілом повертає **500 «Внутрішня помилка сервера»** (не 400/415). У серверному логу — `FastifyError: Body cannot be empty when content-type is set to 'application/json'` (code `FST_ERR_CTP_EMPTY_JSON_BODY`), яка проходить через `else`-гілку `HttpExceptionFilter` (`logger.error` + Sentry). Так само для malformed JSON (`FST_ERR_CTP_INVALID_JSON_BODY`) чи непідтримуваного media type (`FST_ERR_CTP_INVALID_MEDIA_TYPE`, 415). ПАСТКА верифікації: якщо власний тест-клієнт завжди додає `Content-Type: application/json` навіть без тіла — bodyless-ендпоінт даватиме хибний 500, що маскується під «баг ендпоінта» (у моєму випадку 30 хв гонитви за неіснуючим MD-C1 restore-багом, поки лог не показав FastifyError).
-
-**Причина виникнення:** Fastify content-type-parser кидає `FastifyError` зі своїм `statusCode` (4xx) **ДО** входу в NestJS-хендлер. Ця помилка НЕ є `HttpException` (Nest) і НЕ `PrismaClientKnownRequestError` → жодна гілка `mapPrismaErrorToHttp`/`instanceof HttpException` її не ловить → падає у generic 500. Розробник фільтра резонно мапить лише Nest + Prisma помилки, не думаючи про фреймворк-рівневі помилки парсингу запиту що виникають ще до хендлера. Веб-клієнт зазвичай уже захищений (STO `api-client.ts` не додає Content-Type без тіла — з коментарем саме про цю пастку), тож у браузері не проявляється — але mobile/sync/зовнішні інтеграції/тести можуть слати «голий» заголовок.
-
-**Підхід до виявлення:** (1) статично — перевірити `HttpExceptionFilter` (`grep -rn "FST_ERR\|FastifyError\|isFastify" apps/api/src/common/filters`); якщо нема гілки для Fastify-помилок парсингу → gap. (2) live-probe — для будь-якого bodyless POST: `curl -X POST <url> -H "Content-Type: application/json"` (порожнє тіло) → має бути 4xx, НЕ 500. (3) правило самоперевірки тест-харнеса: додавати `Content-Type: application/json` ТІЛЬКИ коли є тіло (інакше власний клієнт генерує хибні 500, що приховують/імітують справжні баги).
-
-**Підхід до фіксу:** у catch-all `ExceptionFilter` додати guard що ловить Fastify request-parse помилки за `code.startsWith('FST_ERR_CTP_')` **І** `statusCode` у 4xx → мапити у той самий `statusCode` з UA-повідомленням + `logger.warn` (без Sentry, як Prisma-коди). НАВМИСНО НЕ чіпати: 5xx-FastifyError (справжні серверні збої лишаються 500) і Node errno з `code` типу `ECONNREFUSED` (guard вимагає префікс `FST_ERR_CTP_`, не будь-який `code`). Regression-guard: unit-спец фільтра з fake-об'єктом `{code:'FST_ERR_CTP_EMPTY_JSON_BODY', statusCode:400}` → 400+warn-not-error; 415 → зберігає statusCode; 5xx → лишається 500; ECONNREFUSED → 500.
-
-**Severity:** LOW — 500 замість 400 (керована помилка, не data-corruption); веб уже захищений; але Sentry-шум + плутанина для не-браузерних клієнтів + робить діагностику інших багів довшою (хибний 500 імітує баг ендпоінта).
-
-**Де шукати ще:** усі catch-all `ExceptionFilter` у проєкті; будь-який bodyless POST/PATCH-ендпоінт (FSM `/transition`, `/restore`, `/clone`, `/refresh`, `/confirm`, `/cancel`, `/set-default`); interceptor-и що читають `request.body`. Родич — власний тест/probe-клієнт: **завжди умовно додавати Content-Type за наявністю тіла**, інакше bodyless-виклики дадуть хибний 500 і зіпсують верифікацію (мій `live_test.py` спершу мав саме цю ваду → хибний MD-C1 «500»).
-
-### 2026-09-04 — Слабкий page-scope `button[aria-expanded]` асерт матчить decoy-тоггл, а не цільовий рядок (Bug #625) — frontend / e2e-integrity / verification / MEDIUM
-
-**Сигнал:** E2E-регресія «фіча X працює» асертить широкий page-level селектор (`page.locator('button[aria-expanded]').first()`, `page.getByRole('button').first()`, `page.locator('table').first()`) для доказу що з'явився ОЧІКУВАНИЙ елемент результату. Тест зелений — АЛЕ на сторінці є ІНШИЙ елемент того ж роду (тоггл «Згорнути» з `aria-expanded={!collapsed}`, будь-яка службова кнопка/таблиця), який матчиться першим. Тест пройшов би навіть при плоскому/порожньому/помилковому результаті — тобто **не охороняє те, що декларує**. Особливо небезпечно для класу багів «функція недосяжна через UX» (§5.4) — саме там де регресія має ловитись (напр. «не групується × 3 повернення»).
-
-**Причина виникнення:** розробник тесту асертить «є хоч один expandable-елемент» як проксі для «результат згруповано», не усвідомлюючи що той самий ARIA-атрибут/роль несе службовий контрол поза таблицею результату. `.first()` бере найвищий у DOM — а службові контроли (хедер-тоггли) зазвичай вище за таблицю. Додатковий підступ: очікуваний стан може взагалі не досягатись у тест-конфігу (напр. groupBy БЕЗ columns → backend не шле `node.rows` → групи `disabled` без `aria-expanded`), тож table-level матчів немає нуль — а page-level decoy ховає це.
-
-**Підхід до виявлення:** (1) для КОЖНОГО «доказового» асерту в UI-регресії спитати «чи цей селектор унікальний для цільового піддерева?» — якщо ні, scope до контейнера результату (`table.locator(...)`, `resultPanel.getByRole(...)`). (2) grep слабких патернів: `grep -rn "page.locator('button\[aria-expanded\]')\|page.getByRole('button').first()\|page.locator('table').first()" apps/web/e2e` → перевірити чи є decoy того ж роду на сторінці (хедер-тоггли з `aria-expanded`, службові кнопки/таблиці). (3) sanity: асерт має падати якщо фіча зламана — тимчасово «зламати» очікуваний стан (порожній groupBy / прибрати columns) і переконатись що тест ЧЕРВОНИЙ; якщо лишився зелений — асерт слабкий. (4) підкріпити позитивними якорями цільового піддерева: `thead th first == 'Група'`, наявність очікуваних лейблів/лічильників, `count > 1`, ВІДСУТНІСТЬ анти-стану-банера («Групування не задано»).
-
-**Підхід до фіксу:** (a) scope селектор до контейнера результату, не сторінки; (b) додати позитивні якорі саме цільового стану (заголовок колонки, кількість груп >1, очікувані лейбли) + негативний якір анти-стану; (c) якщо очікуваний стан вимагає передумови для рендеру (drill-down groups потребують `node.rows` → потрібна колонка) — виставити цю передумову у тесті, інакше guard тестує не той режим. Це тест-фікс, не код-фікс: продакшн-код може бути коректним — але верифікувати це треба ОКРЕМО (жива перевірка §5.4 зі скріном/інспекцією DOM), бо слабкий асерт сам по собі не доказ.
-
-**Severity:** MEDIUM — код може працювати, але регресія-guard фіктивний → майбутня регресія головного сценарію пройде мовчки (саме той сценарій що вже повертався 3 рази).
-
-**Де шукати ще:** будь-який E2E що доказує «з'явився результат X» через широкий селектор при наявності службових контролів того ж роду: disclosure-тоггли (`aria-expanded`), tab-панелі (`role=tab`/`aria-selected`), будь-які `.first()`/`.last()` на неунікальному локаторі, `getByRole('table'/'button'/'listitem').first()`. Родич §5.4: API-верифікація (200/`Σ==grandTotal`) НЕ доводить UI-досяжність; слабкий E2E-асерт — та сама пастка на E2E-рівні.
-
-### 2026-09-04 — Prisma `upsert` create-гілка × Postgres CHECK-констрейнт = 500 на кожній від'ємній дельті (Bug #621) — backend / db / prisma-postgres-semantics / CRITICAL
-
-**Сигнал:** сервіс робить `X.upsert({ where, update: { field: { increment: delta } }, create: { field: delta } })`, де `delta` може бути від'ємним (WRITEOFF/decrement/знакова кількість), А таблиця має `CHECK (field >= 0)`. Живий виклик валить `PrismaClientUnknownRequestError` → Postgres `23514 violates check constraint` з failing-row що містить від'ємне create-значення — **навіть коли рядок ІСНУЄ і `DO UPDATE` дав би валідний результат** (100−40=60). Unit-тести зелені (мок Prisma ніколи не б'є Postgres). Симптом у продакшені: 500 (не 400) на цілому класі операцій.
-
-**Причина виникнення:** Prisma `upsert` компілюється у `INSERT ... VALUES(create) ON CONFLICT(constraint) DO UPDATE SET ...`. У PostgreSQL table-level CHECK-констрейнти оцінюються на **INSERT-tuple ПЕРЕД арбітражем конфлікту** — тобто до того як `ON CONFLICT DO UPDATE` встигне «врятувати» рядок. Розробник резонно вважає що при існуючому рядку виконається UPDATE-гілка і create-payload «не матиме значення» — але Postgres спершу конструює й перевіряє insert-tuple. Особливо підступно: **сам баг створюється попереднім фіксом** — QA-цикл додає non-neg CHECK як backstop (Bug #613 Layer-3), і цей CHECK ретроактивно ламає кожен upsert-writer таблиці з від'ємною create-дельтою.
-
-**Підхід до виявлення:** (1) статично — `grep -rn "\.upsert(" apps/api/src/modules --include="*.service.ts"`; для кожного match зіставити `create`-payload поля з non-neg CHECK-констрейнтами (`grep -rn "CHECK.*>= 0\|_nonneg\|_nonneg" packages/database/prisma/migrations/`); ризик там де create-поле = знакова дельта. (2) **обов'язково live-probe, не unit** — після будь-якої міграції що додає `CHECK (col >= 0)`, прогнати КОЖЕН upsert-writer цієї таблиці з від'ємною дельтою через API/curl проти живої dev-БД (existing row + від'ємна дельта → має бути 2xx, не 500). Ізоляція: прямий Prisma-probe `upsert` фейлить, а plain `update` по тому самому compound-key — ок; raw-SQL `INSERT ... ON CONFLICT` відтворює 23514 на SQL-рівні (доказ що це Postgres-семантика, не Prisma-баг).
-
-**Підхід до фіксу:** клампити create-гілку до валідного діапазону (`quantity: Math.max(0, delta)`), лишаючи update-гілку з реальною дельтою (`{ increment: delta }`). Create-гілка виконується ЛИШЕ коли рядка ще нема — а тоді від'ємний стан і так неможливий (pre-check «недостатньо» відсік би раніше). Regression-guard: unit-асерт саме на `upsert.mock.calls[0][0].create.<field>` ≥ 0 при від'ємному вхідному dto (мок не б'є Postgres, тож guard-асерт на payload, а не на runtime-поведінку).
-
-**Severity:** CRITICAL — блокує весь клас операцій (усі WRITEOFF/TRANSFER-out/WO-COMPLETED); 500 замість керованого 400; невидимий для unit-CI.
-
-**Де шукати ще:** будь-яка таблиця з non-neg (чи range) CHECK + upsert-writer зі знаковою create-дельтою: `stock_items.quantity/reserved` (виправлено), `stock_batches.remainingQty` (safe — createFromReceipt лише додатні, consume через updateMany), settlementAccount/cashRegister/bankAccount balance (наразі БЕЗ non-neg CHECK — але якщо додадуть, кожен upsert-writer балансу впаде), loyaltyAccount.points (якщо додати CHECK≥0). Мета-правило: **міграція що додає CHECK на існуючу таблицю = обов'язковий live-probe кожного upsert/insert-writer з граничними значеннями.**
-
-### 2026-09-04 — Guard-order у inline «add-to-collection» helper: unique-check коротшить перед limit/permission-check (Bug #606) — frontend / UX / guard-ordering
-
-**Сигнал:** новий helper типу `addToZone(zone, key)` / `addToList(key)` / `addToSelection(id)` виконує guards `permission → limit → includes(key)` у такому порядку. Новий click-shortcut (кнопка на вже-доданому елементі) відкриває сценарій «повторний add» → limit/permission guard спрацьовує на nothing-to-do → misleading toast «Максимум 5/немає прав». Гарди були скопійовані з drop-варіанту де унікальність гарантована.
-**Grep:** `addTo\w+|toggleIn\w+|selectField|pushTo` — для кожного helper'а перевірити що `includes(key)`/`has(id)` **ПЕРШИМ** перед toast-throwing guard. Static test: список до ліміту → повторний виклик з наявним ключем → НЕ кидає toast «ліміт». E2E: `waitForTimeout(300-500ms)` + `toHaveCount(0)` (toast async).
-**Фікс:** `unique-check first` — `if (collection.includes/has(key)) return;` на найпершу позицію після null-check; коментар з конкретним сценарієм («5/5 + повторний клік»); дзеркально виправити всі паралельні гілки (groupBy + filters).
-**Severity:** LOW-MEDIUM — не втрата даних, але критичний UX-signal (user думає що система зламана); легко пропускається при static/unit-only тестуванні.
-**Де шукати ще:** Zone/Palette/Picker з click-shortcut (tag input, multi-select chip, permission grid), «Add to favorites/bookmarks/pinned», batch «вибрати всі до ліміту», filter/sort field pickers з MAX-N.
-
----
-
-### 2026-09-04 — Cross-midnight probe protocol: timezone-aware date-bucketing регресійна live-верифікація — backend / time-zone / aggregation / verification
-
-**Сигнал:** свіжий fix «UTC→Local-day» у date-групуванні (`toISOString().slice(0,10)` → `Intl.DateTimeFormat('sv-SE',{timeZone:...})`) або зміна helper `KYIV_YMD`/`localYMD`/`kyivDate`. Ризик: fix проходить unit-тести (mock Date), але seed-дані можуть не містити cross-midnight записів → live-response ідентичний UTC → регресія прихована до реальної cross-midnight транзакції.
+**Сигнал:** свіжий fix «UTC→Local-day» (`toISOString().slice(0,10)`→`Intl.DateTimeFormat('sv-SE',{timeZone})`) або зміна `KYIV_YMD`/`localYMD`. Fix проходить unit (mock Date), але seed без cross-midnight записів → live-response ідентичний UTC → регресія прихована.
 **Probe (live):**
 
 ```
 1. curl POST /reports/... columns=[dateField,valueField] groupBy=[] includeRows=true → raw timestamps
-2. для кожного ts: utc_day = ts[:10] vs local_day = astimezone(TARGET_TZ).strftime('%Y-%m-%d') → count cross-midnight
-3. якщо 0 → створити транзакцію у cross-midnight window (POST createdAt=<tomorrow-01:30-local>)
+2. для кожного ts: utc_day=ts[:10] vs local_day=astimezone(TARGET_TZ).strftime('%Y-%m-%d') → count cross-midnight
+3. якщо 0 → створити транзакцію cross-midnight (POST createdAt=<tomorrow-01:30-local>)
 4. curl POST /reports/... groupBy=[dateField] aggregations=[SUM(valueField)] → server-agg
-5. client-side: by_local_day[astimezone(TZ).ymd] += value
-6. АСЕРТ server.tree[day].SUM == client.by_local_day[day] для КОЖНОГО дня + sum(all)==grandTotal
+5. client: by_local_day[astimezone(TZ).ymd] += value
+6. АСЕРТ server.tree[day].SUM == client.by_local_day[day] ∀ день + sum(all)==grandTotal
 ```
 
-**Grep фіксу:** `toISOString().slice\(0,10\)|toISOString\(\).*substring\(0` → locale-aware `Intl.DateTimeFormat('sv-SE',{timeZone})`; `getUTCHours|getUTCDate|getUTCMonth` разом з `Date`. Усі public export'и `common/utils/kyiv-date.ts` — один formatter.
-**Фікс:** regression tests: (a) DST-boundary літо+зима `T22:30:00Z`; (b) DST-transition day; (c) UTC-day boundary 00:00Z±1s. Anti-pattern: «unit-тест з mock Date проходить → OK» — потрібен живий probe.
-**Severity:** CRITICAL коли групування впливає на фінансово-звітну logic (daily sales/balance/inventory delta); MEDIUM для UI-only сортування.
-**Де шукати ще:** aggregator з `DateTime` bucketing (normalizeKey/groupKey/dateGroup/toDateStr), report endpoints `{date,value}[]`, cache keys з «сьогодні», cron triggers у Docker без TZ, frontend chart labels.
+**Grep фіксу:** `toISOString().slice\(0,10\)|toISOString\(\).*substring\(0`; `getUTCHours|getUTCDate|getUTCMonth` разом з `Date`. Усі public export `common/utils/kyiv-date.ts` — один formatter.
+**Фікс:** regression tests: DST-boundary літо+зима `T22:30:00Z`; DST-transition day; UTC-day boundary 00:00Z±1s. Anti-pattern: «unit з mock Date проходить→OK».
+**Severity:** CRITICAL коли групування впливає на фінансово-звітну logic; MEDIUM UI-sort.
+**Де ще:** aggregator з DateTime bucketing (normalizeKey/groupKey/dateGroup), report `{date,value}[]`, cache keys «сьогодні», cron у Docker без TZ, frontend chart labels.
 
----
+### 2026-09-03 — Semantic aggregation drift: SUM over signed field включає значення що не впливає на ресурс (Bug #619) — backend / aggregation / business-invariant
 
-### 2026-09-03 — Semantic aggregation drift: SUM over a signed field включає значення яке не впливає на ресурс (Bug #619) — backend / aggregation / business-invariant
+**Сигнал:** реєстр декларує `signedByType`, aggregator рахує `SUM(field)` без ВИКЛЮЧЕННЯ типів що НЕ змінюють ресурс. StockMovement: RESERVATION/RESERVATION_RELEASE рухають `reserved`, не `quantity`; SettlementTransaction: PREPAYMENT_APPLICATION не змінює `balance` → числа-«привиди».
+**Grep:** `signedByType`/`MovementType`/`TransactionType` разом з `SUM|reduce` — чи виключаються NON_PHYSICAL. `grep -n "quantityDelta|balanceDelta" *.service.ts`→delta=0 кандидати. Live: `curl POST /reports/... groupBy=[type]`→`Σ(бакети)==grandTotal` + non-mutation бакети SUM=0.
+**Фікс:** whitelist `NON_PHYSICAL_MOVEMENT_TYPES=new Set([...])`; `numericValue` повертає `null` для non-mutation (SUM/AVG/MIN/MAX пропускають). Property-based `sumThroughAggregator(rows)==sumThroughService(rows)`.
+**Severity:** HIGH коли поле фінансово-числове у management-звітах.
+**Де ще:** SettlementTransaction.amount (PREPAYMENT/CREDIT_NOTE), Payment.amount (cash vs bonus/loyalty), Invoice.paidAmount (refunds), Bookkeeping Debit/Credit sign.
 
-**Сигнал:** реєстр декларує field як `signedByType`, а aggregator обчислює `SUM(field)` без ВИКЛЮЧЕННЯ типів які **не змінюють** ресурс. StockMovement: RESERVATION/RESERVATION_RELEASE рухають `reserved`, не `quantity`; SettlementTransaction: PREPAYMENT_APPLICATION не змінює `balance`. Aggregator який їх включає дає числа-«привиди». Розробник думає «знак правильний → SUM правильний».
-**Grep:** `signedByType` / `MovementType` / `TransactionType` разом з `SUM|reduce` — чи виключаються NON_PHYSICAL типи. Live-probe: `curl POST /reports/... groupBy=[type]` → `Σ(бакети)==grandTotal` І grandTotal == бізнес-нетто. Cross-check `grep -n "quantityDelta|balanceDelta" *.service.ts` → type-значення з `delta=0` = кандидати на виключення. Property-based: `expect(sumThroughAggregator(rows)).toBe(sumThroughService(rows))`.
-**Фікс:** whitelist `NON_PHYSICAL_MOVEMENT_TYPES = new Set([...])`; `numericValue` повертає `null` для non-mutation-типів (SUM/AVG/MIN/MAX пропускають). Regression: (a) grandTotal mixed-type; (b) WRITEOFF backstop; (c) non-mutation бакети SUM=0.
-**Severity:** HIGH коли поле фінансово-числове (quantity/amount/balance) у management-звітах; різниця >20% при інтенсивному резервуванні.
-**Де шукати ще:** SettlementTransaction.amount (PREPAYMENT/CREDIT_NOTE), Payment.amount (cash vs bonus/loyalty), Invoice.paidAmount (refunds), Bookkeeping Debit/Credit sign.
+### 2026-09-03 — Formatter-metadata drift: рендер тип-специфічного значення шукає тип у списку який його НЕ містить (Bug #620) — frontend / contract-drift / display
 
----
+**Сигнал:** формайтер (`fmtValue(alias,cols)`) резолвить тип через lookup у `columns`, але контекст містить поля ПОЗА columns (aggregation-only, footer grand-total). Backend віддає `aggregations:[{field,agg}]` без `type` → fallback (money-format/plain string).
+**Grep:** `\.type|colType|fieldType` разом з `\.find\(c\s*=>\s*c\.key`; `grep -rn "cols\.find\|columns\.find" apps/web/src`. Live: `curl POST` з агрегацією що НЕ дублює колонку → чи є type/label у response.aggregations?
+**Фікс (backend-first):** backend enrichment `{type,label}` до кожного array item «поля що буде показане». Формайтер приймає ОБИДВА джерела (aggregations, columns), fallback. Regression: backend `response.aggregations[0].type==entity.fields[key]`; frontend formatter з cols_without_field+aggregations_with_field.
+**Severity:** HIGH коли розбіжність візуальна (дата як млрд грн, boolean як «0»).
+**Де ще:** sortable headers з ONLY-sort полем, chart/dashboard computed metrics, Excel/PDF export з aggregation-only column.
 
-### 2026-09-03 — Formatter-metadata drift: рендер тип-специфічного значення шукає тип поля у списку який його НЕ містить (Bug #620) — frontend / contract-drift / display
+### 2026-09-02 — Concurrent pre-check → write без row-lock → від'ємні лічильники силентно (Bug #613) — backend / concurrency / financial-integrity
 
-**Сигнал:** frontend-формайтер (`fmtValue(alias, cols)`, `renderCell(key, columns)`) резолвить тип поля через lookup у `columns` (обране користувачем), але контекст містить значення полів **поза** `columns` (aggregation-only, footer grand-total, row-hover). Backend віддає `aggregations:[{field,agg}]` без `type` → фронт не знаходить тип → падає у fallback (money-format або plain string).
-**Grep:** `\.type|colType|fieldType` разом з `\.find\(c\s*=>\s*c\.key`; `grep -rn "cols\.find\|columns\.find" apps/web/src`. Live-probe: `curl POST` з агрегацією що НЕ дублює колонку → чи є type/label у response.aggregations? Manual: drag агрегат у header → NaN/грошовий формат замість дати/enum.
-**Фікс (backend-first):** backend enrichment — додати `{type,label}` до кожного array item «поля що буде показане» (додаткові поля, не breaking). Формайтер приймає ОБИДВА джерела (aggregations, columns) → шукає тип послідовно → fallback. НЕ покладатись на окремий metadata hook (робить формайтер coupled). Regression: (a) backend spec response.aggregations[0].type/label==entity.fields[key]; (b) frontend spec formatter з cols_without_field + aggregations_with_field.
-**Severity:** HIGH коли розбіжність візуальна (дата як млрд грн, boolean як «0», UUID як plain-string); MEDIUM якщо тільки label відсутній.
-**Де шукати ще:** sortable headers з ONLY-sort полем, chart/dashboard з computed metrics, Excel/PDF export з aggregation-only column, notification templates з полем-агрегатом.
+**Сигнал:** `findFirst({select:{counter}})→GUARD→upsert/update({counter:{increment:-X}})` в одному `$transaction` без `Serializable`. Read Committed → 2 concurrent проходять guard на stale snapshot → другий декрементує до −N без сигналу (немає CHECK).
 
----
-
-### 2026-09-02 — Concurrent pre-check → write без row-lock контракту → від'ємні лічильники силентно (Bug #613) — backend / concurrency / financial-integrity
-
-**Сигнал:** service робить `findFirst({select:{counter}}) → BUSINESS-GUARD → upsert/update({counter:{increment:-X}})` в одному `$transaction` без `isolationLevel:'Serializable'`. Prisma default = Read Committed → 2 concurrent tx обидва проходять guard на stale snapshot → другий декрементує `counter` до **−N без сигналу** (немає CHECK у міграціях). Read Committed не серіалізує read+write.
-**Grep:** `grep -rn "isolationLevel|Serializable" apps/api/src/modules/<hot-path>` = 0 для inventory/settlements/cash-registers/bank-accounts/deliveryOrder-receivedQty; `grep -rn "CHECK.*<counter>|<counter>.*CHECK" packages/database/prisma/migrations/` = 0. Асиметрія з захищеним модулем (Bug #412) сигналізує ризик.
-**Фікс (2 layers):**
-
-- **Layer 1 post-upsert re-check:** `.select({counter})` у upsert → `if (upserted.counter < 0) throw BadRequestException('...concurrent...')` — throw всередині $tx = rollback. Захищає ГЛОБАЛЬНИЙ інваріант рядка.
-- **Layer 2 conditional updateMany:** `X.update({data:{field:{decrement:n}}})` → `X.updateMany({where:{id, field:{gte:n}}, data})`. Атомарний CHECK+DECREMENT; race `count=0` → throw. Захищає ЛОКАЛЬНИЙ інваріант row.
-
-Regression: service.spec (happy `mockResolvedValueOnce({quantity:-10})→throw`; updateMany `mockResolvedValueOnce({count:0})→throw + expect(next).not.toHaveBeenCalled()`); invariants.spec property-based `totalConsumed <= initial`; коментар ЧОМУ не Serializable + яка race-послідовність.
-**Severity:** HIGH коли інваріант фінансовий (quantity/balance/reserved) чи bookkeeping; MEDIUM для non-critical counters.
-**Де шукати ще:** `findFirst → upsert/update({increment/decrement})` у Read Committed: settlementAccount.balance (payment/refund flows), cashRegister/bankAccount.balance, deliveryOrder.receivedQty, purchaseOrder.paidAmount, будь-який decrement без CHECK≥0.
-
----
-
-### 2026-09-02 — 0 нових багів у активному фінансовому scope → property-based cross-invariant regression-guard (Bug #612) — backend / financial-integrity / test-coverage / property-based
-
-**Сигнал:** явний `/sto-tester` bug hunt на фінансово-чутливій гілці (FIFO/AVG_COST, BALANCE_SIGN, cost-carry); всі фокус-області перевірені → **0 нових активних багів** (попередні цикли додали example-based guards). Прицільні unit-тести ловлять конкретну регресію, але не доводять що інваріант тримається для БУДЬ-ЯКОЇ послідовності — refactor `??→||` у cost-carry (0 як falsy) чи зміна знаку SUPPLIER_REFUND пройде example-based CI зеленим.
-**Grep:** у sibling `*.invariants.spec.ts` наявність `fc.property` для КОЖНОГО інваріанту (FIFO span, cost-method порядок, all-or-nothing, AVG_COST sentinel, batchId fixation, BALANCE_SIGN cycle, `??` vs `||`). Тільки `it()` без property-based = coverage-gap.
-**Фікс:** новий `<module>.invariants.spec.ts`, 4-6 describe (10-25 property tests, 200-500 numRuns):
-
-- **Consume/mutation** — Σ output==input; масовий баланс; нема ресурсу у мінус; guard-стан; порядок обходу FIFO/LIFO; all-or-nothing (throw + no mutation).
-- **Aggregation** — Σ bucket==загальне; overflow→excess; порядок наповнення.
-- **Sign/enum** — exhaustive `Object.values(enum).forEach(t=>expect(SIGN[t]).toBeDefined())`; повний+частковий цикл; RELATED types той самий знак.
-- **`??` vs `||`** — `it("weightedCostPrice=0 через ?? НЕ падає у fallback", ()=>{ expect(0??100).toBe(0); expect(0||100).toBe(100); })` — guard проти `??→||`.
-
-Дзеркалити реалізацію у моделі-функції (`consumeBatchModel`, `fillSchedule`) — тестувати ІНВАРІАНТ, не Prisma-мок.
-**Severity:** MEDIUM (regression-guard, не активний баг). Критично не пропустити turn без внеску — «0 знайдено» без нових тестів залишає регресії відкритими.
-**Де шукати ще:** модуль з 3+ finger-print Bug'ів (financial cycle, FSM, sync outbox) → після 3-го fix переходити на property-based; multi-branch switch/if-else 3+ гілок; nullable-safe `??`/`??=`.
-
----
-
-### 2026-09-02 — Live-DB probe для DB CHECK/rollback/invariant верифікації (цикл 3 фінальний) — backend / operational-verification / live-evidence
-
-**Сигнал:** цикли N−1, N−2 додали defensive layers (CHECK constraints, post-upsert re-check, updateMany conditional, self-wrap $transaction) покриті **unit-тестами з моками**. Жоден unit-тест не доводить що Postgres реально ловить CHECK на UPDATE (не тільки INSERT), що `$transaction` відкочує mixed ORM+raw, що live-БД масштабно тримає інваріант. Unit = «письмо про механізм», probe = «фотографія роботи».
-**Probe (ad-hoc, фінальний цикл):**
-
-1. **DB constraint** — `$executeRaw INSERT/UPDATE` з value що порушує CHECK → код помилки (23514 check, 23503 FK, 23505 unique). Перевірити ОБИДВІ операції (INSERT+UPDATE) — міграція може відключити одну.
-2. **Rollback** — `$transaction(async tx => { tx.model.create(...); tx.$executeRaw INSERT з CHECK-violation })` → count до/після однаковий (mixed ORM+raw справді відкочується).
-3. **Invariant sweep** — SQL `SELECT si.quantity, (SELECT SUM(sb.remainingQty) ...) as batchSum FROM stock_items si WHERE ABS(quantity-batchSum) > epsilon`. Живі дані, не fixture.
-4. **Semantic map READ, not HARDCODED** — sign-мапу (BALANCE_SIGN, FSM) читати з коду, не переписувати у probe. Хардкод → **false positive** (гірше за пропущений баг).
-   **Фікс:** CHECK не спрацював → міграція з `DO $$ ... IF NOT EXISTS`; rollback не спрацював → перевірити nested `$transaction` (savepoint) / bare `prisma.` поза tx; invariant розійшовся → **не патчити probe**, розслідувати (legacy data) → clamp+backfill. Regression: unit-мок Prisma throw `code:'23514'` → локалізоване повідомлення; integration з реальною $transaction; property-based invariant (Bug #612).
-   **Severity:** MEDIUM (verification-only). Критичний як фінальна валідація перед merge — піраміда unit→integration→live когерентна.
-   **Де шукати ще:** міграція з CHECK/UNIQUE/FK (probe що constraint реально живе), `createMovement`/`createTransaction`/`createDocument` з self-wrap $transaction, recompute-функції (recomputeBalance, Reconciliation) з map як єдиним джерелом правди.
-
----
-
-### 2026-09-02 — inventory cost-method switch + COGS writeback: 3-layer regression protocol (Bugs #609, #610, #611) — backend / financial-integrity / test-coverage
-
-**Сигнал:** commit `feat(inventory): підключення партійного FIFO-списання` — service стає multi-return (`{movementId, consumed, weightedCostPrice}` замість void), switch за `costMethod:'FIFO'|'LIFO'|'FEFO'|'AVG_COST'` з різним orderBy, caller (WO writeoff / TRANSFER / SupplierReturn) **записує cost назад** у row-модель. 3 concern зливаються у один $transaction: (1) cost-method switch (не-default гілка LIFO/FEFO без тесту → refactor asc↔desc чи видалення `nulls:'last'` проходить CI); (2) writeback `if (result.weightedCostPrice != null) db.workOrderPart.update({...})` (легко зняти, spec не мокає write-side); (3) cost carry TRANSFER — SEQUENTIAL `const src = await writeoff(...); await receipt({price: src.weightedCostPrice ?? baseArgs.price})`, повернення до Promise.all → target batch отримує lines.price замість FIFO cost.
-**Grep/probe:**
-
-```
-- Cost-method matrix: PATCH /settings/organisation {costMethod} → seed 2-3 партії → WRITEOFF /stock-documents → правильна партія (LIFO новіша, FIFO старіша, FEFO createdAt asc null-expiry, AVG weighted)
-- Global invariant: Σ StockBatch.remainingQty(active) == StockItem.quantity (raw GROUP BY, HAVING <>, 0 mismatches)
-- WO trace: single-batch batchCostPrice=X,batchId=<uuid>; span batchCostPrice=weighted,batchId=null,2+ BatchConsumption
-- TRANSFER carry: RECEIPT 5×@40+5×@60 → TRANSFER 8 → target (5×40+3×60)/8=47.5, НЕ salePrice
-- spec grep: expect(prisma.workOrderPart.update).toHaveBeenCalledWith для writeback (0=gap); orderBy per switch-branch
-- await Promise.all([.*writeoff.*, .*receipt.*]) = regression (не carry-cost)
+```bash
+grep -rn "isolationLevel|Serializable" apps/api/src/modules/<hot-path>   # =0
+grep -rn "CHECK.*<counter>" packages/database/prisma/migrations/   # =0
 ```
 
-**Фікс:** 3 regression tests — writeback (5 сценаріїв: single-batch, span, null-skip, multi-parts, no-price-arg); cost carry (2: src.weightedCostPrice у target.price; fallback при null); orderBy switch (1 assert per cost-method `expect(prisma.stockBatch.findMany).toHaveBeenCalledWith(objectContaining({orderBy:[...]}))`).
-**Severity:** HIGH (#609,#610) — фінансова точність рентабельності; MEDIUM (#611) — silent drift для LIFO/FEFO.
-**Де шукати ще:** `service.method()` `void→{...compound}` (grep sibling spec за новими result-компонентами), `createMovement(WRITEOFF)` з writeback, `switch(costMethod/paymentMethod/docType)` (unit на кожну гілку), Promise.all→sequential (`expect(callOrder).toEqual(['WRITEOFF','RECEIPT'])`).
+**Фікс (2 layers):** (Layer 1) `.select({counter})` у upsert + `if(upserted.counter<0)throw` (rollback у $tx); (Layer 2) `X.update({data:{field:{decrement:n}}})`→`X.updateMany({where:{id,field:{gte:n}},data})` (атомарний CHECK+DECREMENT, count=0→throw). Regression: `mockResolvedValueOnce({quantity:-10})→throw`; `mockResolvedValueOnce({count:0})→throw+next not called`; property `totalConsumed<=initial`.
+**Severity:** HIGH (quantity/balance/reserved); MEDIUM non-critical counters.
+**Де ще:** settlementAccount/cashRegister/bankAccount.balance, deliveryOrder.receivedQty, purchaseOrder.paidAmount — будь-який `findFirst→upsert/update({increment/decrement})` у Read Committed.
 
----
+### 2026-09-02 — 0 нових багів → property-based cross-invariant regression-guard (Bug #612) — backend / financial-integrity / property-based
 
-### 2026-09-02 — після фінансової migration з backfill: audit invariant через live API (Bug #606, #607, #608) — api / backend / frontend / financial-integrity / migration-verification
+**Сигнал:** явний bug hunt на фінансовій гілці (FIFO/AVG_COST, BALANCE_SIGN) → 0 нових активних багів. Example-based guards є, але не доводять інваріант для БУДЬ-ЯКОЇ послідовності — refactor `??→||` у cost-carry чи зміна знаку пройде example-based CI зеленим.
+**Grep:** у sibling `*.invariants.spec.ts` наявність `fc.property` для КОЖНОГО інваріанту (FIFO span, cost-method порядок, all-or-nothing, AVG_COST sentinel, BALANCE_SIGN cycle, `??` vs `||`). Тільки `it()` = gap.
+**Фікс:** новий `<module>.invariants.spec.ts` (10-25 property tests, 200-500 numRuns): **Consume** Σ output==input, нема ресурсу у мінус, all-or-nothing (throw+no mutation), порядок FIFO/LIFO; **Aggregation** Σ bucket==загальне, overflow→excess; **Sign/enum** exhaustive `Object.values(enum).forEach(t=>expect(SIGN[t]).toBeDefined())`; **`??` vs `||`** `expect(0??100).toBe(0); expect(0||100).toBe(100)`. Дзеркалити реалізацію у моделі-функції (`consumeBatchModel`), тестувати ІНВАРІАНТ не Prisma-мок.
+**Severity:** MEDIUM (regression-guard). Критично не пропустити turn без внеску — «0 знайдено» без нових тестів лишає регресії відкритими.
+**Де ще:** модуль з 3+ Bug'ів (financial cycle, FSM, sync outbox)→після 3-го fix property-based; multi-branch switch 3+; nullable-safe `??`.
 
-**Сигнал:** commit `fix(settlements): виправлення знаку` / `add enum value + backfill` / `migrations/*_backfill_*`. Знак балансу = функція типу транзакції, але семантика **різна для клієнта і постачальника** (CHARGE:+1 для клієнта = «нам винен» правильно; той самий для постачальника означав би «постачальник нам винен» — а фактично **ми винні йому**). Old-code `receive()→CHARGE` писав неправильний знак → баланси постачальників додатні → `getSchedule` (balance<0) порожній → feature «мертва» на реальних даних, тести проходять. Fix: 3 нові enum (SUPPLIER_CHARGE/PAYMENT/REFUND) + backfill re-type по `documentType` + recompute balance=Σ signed(tx). Міграція 2-стадійна: (1) ADD ENUM VALUE окремо; (2) DML backfill. Frontend знак-код паралельно розходиться (Bug #606).
-**Grep/probe:**
+### 2026-09-02 — Live-DB probe для DB CHECK/rollback/invariant верифікації — backend / operational-verification / live-evidence
+
+**Сигнал:** попередні цикли додали defensive layers (CHECK, post-upsert re-check, updateMany conditional, self-wrap $transaction) покриті МОКАМИ. Жоден unit не доводить що Postgres ловить CHECK на UPDATE (не тільки INSERT), що `$transaction`відкочує mixed ORM+raw.
+**Probe (фінальний цикл):** (1) **DB constraint** —`$executeRaw INSERT/UPDATE` з value що порушує → код (23514 check, 23503 FK, 23505 unique); ОБИДВІ операції. (2) **Rollback** — `$transaction(async tx=>{tx.model.create;tx.$executeRaw INSERT з CHECK-violation})`→count до/після однаковий. (3) **Invariant sweep** — `SELECT si.quantity, (SELECT SUM(sb.remainingQty)...) WHERE ABS(quantity-batchSum)>epsilon` (живі дані). (4) **Semantic map READ, not HARDCODED** — sign-мапу читати з коду (хардкод→false positive гірше за пропущений баг).
+**Фікс:** CHECK не спрацював→`DO $$ ... IF NOT EXISTS`; rollback→nested `$transaction`/bare `prisma.`поза tx; invariant розійшовся→не патчити probe, розслідувати→clamp+backfill.
+**Severity:** MEDIUM (verification-only) — фінальна валідація перед merge.
+**Де ще:** міграція з CHECK/UNIQUE/FK,`createMovement`/`createTransaction` з self-wrap $transaction, recompute-функції з map як джерелом правди.
+
+### 2026-09-02 — inventory cost-method switch + COGS writeback: 3-layer regression protocol (Bugs #609, #610, #611) — backend / financial-integrity
+
+**Сигнал:** `feat: партійне FIFO-списання` — service multi-return (`{movementId,consumed,weightedCostPrice}` замість void), switch `costMethod:'FIFO'|'LIFO'|'FEFO'|'AVG_COST'` різний orderBy, caller записує cost назад. 3 concern у один $transaction: (1) cost-method switch (не-default гілка без тесту→asc↔desc refactor проходить); (2) writeback `if(result.weightedCostPrice!=null)db.workOrderPart.update` (spec не мокає write-side); (3) cost carry TRANSFER SEQUENTIAL `src=await writeoff();await receipt({price:src.weightedCostPrice??base.price})` (Promise.all→target бере lines.price).
+**Probe/grep:**
 
 ```
-1. Live invariant: balance == Σ BALANCE_SIGN(tx.type)×tx.amount для КОЖНОГО акаунта (Python через /counterparties/:id/balance + /transactions?limit=500, дзеркальний BALANCE_SIGN); ідемпотентність backfill
-2. Cross-source: /reports/settlements totalCredit vs /supplier-payments/schedule totals.total — має збігатися для активних SUPPLIER/BOTH; різниця → soft-delete filter drift (Bug #607)
-3. FE sibling-drift: grep копій `balance>0 ? 'destructive' : 'success'` — ≥2 файли (list + CP card + панелі + PDF); CLIENT vs SUPPLIER мають РІЗНУ шкалу
-4. Exhaustive: Object.values(SettlementTransactionType).forEach(t=>expect(BALANCE_SIGN[t]).toBeDefined()) + expect(BALANCE_SIGN.CHARGE).toBe(1) (Record<enum> не ловить зміну середнього ключа 1→−1 — Bug #606 root)
-5. E2E: receive(X)→partial SP(Y<X)→balance=−(X−Y); SUPPLIER_REFUND(+1) → tx-log містить `SUPPLIER_REFUND` не `REFUND`
-6. Client-regression: 5-10 CLIENT-акаунтів — Counter(tx.type) без жодного SUPPLIER_*
+- Cost-method matrix: PATCH /settings/organisation {costMethod} → seed 2-3 партії → WRITEOFF → правильна партія (LIFO новіша, FIFO старіша, FEFO createdAt asc null-expiry, AVG weighted)
+- Global invariant: Σ StockBatch.remainingQty(active)==StockItem.quantity (raw GROUP BY HAVING <>)
+- TRANSFER carry: RECEIPT 5×@40+5×@60→TRANSFER 8→target (5×40+3×60)/8=47.5 НЕ salePrice
+- spec: expect(prisma.workOrderPart.update).toHaveBeenCalledWith (0=gap); orderBy per switch-branch
+- await Promise.all([writeoff, receipt]) = regression (не carry-cost)
 ```
 
-**Фікс:** тип-aware UI helper `settlementBalanceTone(balance, type)` в `lib/utils.ts` (CLIENT>0=red/<0=warning; SUPPLIER<0=red/>0=warning; BOTH nonzero→red) — ВСІ balance-header з ONE МІСЦЯ; nested soft-delete filter `where.counterparty={deletedAt:null}` у звітах; regression: exhaustive by-enum assert, property `receive(X)−pay(Y)+refund(Z) → −(X−Y−Z)`, BOTH-mix знаки не інтерферують.
-**Severity:** HIGH (гроші, UI/reports узгодженість). Не CRITICAL — backfill спрацював 139/139, але наступна зміна знаку → silent drift.
-**Де шукати ще:** Reconciliation act (новий aggregate/export/pdf endpoint дублює `type=='CHARGE'`), dashboard KPI «заборгованість» картки, PDF pdfmake docDefinition, sync-outbox pending зі старими типами, mobile settlements, share-token публічний акт-звірки PDF.
+**Фікс:** 3 regression tests — writeback (single-batch/span/null-skip/multi-parts/no-price-arg); cost carry (src.weightedCostPrice у target; fallback null); orderBy switch (assert per cost-method `toHaveBeenCalledWith(objectContaining({orderBy:[...]}))`).
+**Severity:** HIGH (#609,#610); MEDIUM (#611 silent drift LIFO/FEFO).
+**Де ще:** `void→{compound}` service (grep sibling spec за новими компонентами), `createMovement(WRITEOFF)` з writeback, `switch(costMethod/paymentMethod/docType)`, Promise.all→sequential (`expect(callOrder).toEqual(['WRITEOFF','RECEIPT'])`).
 
----
+### 2026-09-02 — після фінансової migration з backfill: audit invariant через live API (Bug #606, #607, #608) — backend+frontend / financial-integrity / migration-verification
 
-### 2026-09-01 — restore() без парент-chain guard → silent orphan (Bugs #601, #602, #603) — api / backend / data-integrity / soft-delete
+**Сигнал:** `fix(settlements): виправлення знаку` / `add enum + backfill`. Знак балансу=функція типу, але семантика РІЗНА клієнт/постачальник (CHARGE:+1 клієнт «нам винен» ok; постачальник — «ми винні йому»). Old-code `receive()→CHARGE` неправильний знак → баланси постачальників додатні → `getSchedule(balance<0)` порожній. Fix: 3 нові enum (SUPPLIER_CHARGE/PAYMENT/REFUND)+backfill re-type+recompute balance=Σ signed. Міграція 2-стадійна (ADD ENUM окремо; DML backfill). FE знак-код паралельно розходиться (#606).
+**Probe:**
 
-**Сигнал:** новий `POST /:id/restore` над child-агрегатом (Vehicle→Garage→Counterparty; Contract→Counterparty; Invoice→WO). `service.restore()` робить atomic `updateMany({where:{id,orgId,NOT:{deletedAt:null}},data:{deletedAt:null}})` **без** prep-check на активність parent-ів, хоча sibling `create/findX/updateX/removeX` мають parent-guard `findFirst({id:parentId,orgId,deletedAt:null})→404`. Асиметрія. Live: `DELETE child → DELETE parent → POST child/restore → 201` = silent orphan (child активний, parent видалений; `GET parent/children`→404, `GET /children/{id}`→200).
-**Grep:**
+```
+1. Live invariant: balance==Σ BALANCE_SIGN(tx.type)×tx.amount ∀ акаунт (дзеркальний BALANCE_SIGN); ідемпотентність backfill
+2. Cross-source: /reports/settlements totalCredit vs /supplier-payments/schedule totals — має збігатися для активних SUPPLIER/BOTH; різниця→soft-delete filter drift (#607)
+3. FE sibling-drift: grep копій balance>0?'destructive':'success' — ≥2 файли; CLIENT vs SUPPLIER РІЗНА шкала
+4. Exhaustive: Object.values(SettlementTransactionType).forEach(t=>expect(BALANCE_SIGN[t]).toBeDefined()) + expect(BALANCE_SIGN.CHARGE).toBe(1) (Record<enum> не ловить зміну середнього ключа — #606 root)
+5. E2E: receive(X)→partial SP(Y<X)→balance=−(X−Y); SUPPLIER_REFUND(+1)→tx-log `SUPPLIER_REFUND` не `REFUND`
+6. Client-regression: 5-10 CLIENT-акаунтів без жодного SUPPLIER_*
+```
+
+**Фікс:** тип-aware UI helper `settlementBalanceTone(balance,type)` у `lib/utils.ts` (CLIENT>0=red/<0=warning; SUPPLIER<0=red/>0=warning; BOTH nonzero→red) — ВСІ balance-header з ONE місця; nested soft-delete filter `where.counterparty={deletedAt:null}` у звітах; property `receive(X)−pay(Y)+refund(Z)→−(X−Y−Z)`.
+**Severity:** HIGH (гроші, UI/reports узгодженість); backfill 139/139 але наступна зміна знаку→drift.
+**Де ще:** Reconciliation act (новий aggregate/export/pdf дублює `type=='CHARGE'`), dashboard KPI «заборгованість», PDF pdfmake, sync-outbox зі старими типами, mobile settlements, share-token публічний акт-звірки PDF.
+
+### 2026-09-01 — restore() без парент-chain guard → silent orphan (Bugs #601, #602, #603) — backend / data-integrity / soft-delete
+
+**Сигнал:** новий `POST /:id/restore` над child (Vehicle→Garage→Counterparty; Contract→CP; Invoice→WO). `restore()` робить `updateMany({where:{id,orgId,NOT:{deletedAt:null}},data:{deletedAt:null}})` БЕЗ prep-check на активність parent-ів, хоча sibling `create/updateX/removeX` мають parent-guard. Live: `DELETE child→DELETE parent→POST child/restore→201`=orphan.
 
 ```bash
 grep -rn "async restore" apps/api/src/modules --include="*.service.ts" -A5
-# для кожного: чи є findFirst({id:parentId,orgId,deletedAt:null}) ПЕРЕД updateMany? тільки updateMany = gap
-# schema.prisma: model X, relation fields з ? — чи parent-model має deletedAt (soft-delete-able)
-# Live curl: create parent→child; DELETE child; DELETE parent; POST child/restore → 201 = bug
+# чи є findFirst({id:parentId,orgId,deletedAt:null}) ПЕРЕД updateMany? тільки updateMany = gap
 ```
 
-**Фікс:** ОДИН `findFirst` перед atomic-restore: (а) знаходить child з `deletedAt:not-null`; (б) SELECT parent-chain з `deletedAt` через nested select; (в) distinguisher: child не знайдено/чужа org → `NotFoundException`; double-restore (child активний) → `NotFoundException`; parent chain has `deletedAt!==null` → `BadRequestException` («Контрагента авто видалено. Спочатку відновіть контрагента.») з ПРІОРИТЕТОМ найдальшого предка (CP>garage). Vehicle (2 рівні): `findFirst({where:{id,orgId}, select:{deletedAt:true, customerGarage:{select:{deletedAt:true, counterparty:{select:{deletedAt:true}}}}}})` → 4 guards CP>garage>double-restore>tenant.
-**Severity:** HIGH (data corruption через public API, silent orphan). Не CRITICAL (lower-tier data) але підриває UX-довіру + ламає downstream (WO з orphan vehicleId).
-**Де шукати ще:** WorkOrder/Invoice/PurchaseOrder/WorkOrderLine/StockDocument `.restore()` — parent soft-delete-able. Bullseye: `grep -rn "@Post.*restore" apps/api/src/modules --include="*.controller.ts"`. Регресія-guard для КОЖНОГО restore: 5 кейсів — happy→201; double-restore→404; parent-CP deleted→400; parent-garage deleted→400; cross-tenant→404. Всі з `expect(prisma.X.updateMany).not.toHaveBeenCalled()` (fail-closed).
+**Фікс:** ОДИН `findFirst` перед restore: SELECT parent-chain через nested select; distinguisher — child не знайдено/чужа org→`NotFoundException`; double-restore (child активний)→`NotFoundException`; parent chain `deletedAt!==null`→`BadRequestException`(«Контрагента авто видалено. Спочатку відновіть.») з ПРІОРИТЕТОМ найдальшого предка. Vehicle (2 рівні): nested select 4 guards CP>garage>double-restore>tenant.
+**Severity:** HIGH (data corruption через public API).
+**Де ще:** WorkOrder/Invoice/PurchaseOrder/WorkOrderLine/StockDocument `.restore()`. `grep -rn "@Post.*restore"`. Regression 5 кейсів ∀ restore: happy→201; double→404; parent-CP deleted→400; parent-garage deleted→400; cross-tenant→404 (всі `expect(updateMany).not.toHaveBeenCalled()`).
 
----
+### 2026-08-30 — Cross-field guard + новий single-pass aggregator без regression-test (Bug #597) — backend / test-coverage / regression-guard
 
-### 2026-08-30 — Cross-field guard + новий single-pass aggregator без regression-test (Bug #597) — api / backend / test-coverage / regression-guard
-
-**Сигнал:** service-метод має `throw new BadRequestException('...')` для крос-полю validation (`from>to`, `windowDays>100`, `qty>available`) АБО новий single-pass aggregator (після optimize: multi-reduce → for-of + `totals.byX`). Парний `*.spec.ts` НЕ містить `it(...)` для цих guards/aggregators. Класична split-fix: impl-fix у review/optimize-циклі, парний test-fix забутий.
-**Grep:**
+**Сигнал:** service має `throw new BadRequestException` для крос-полю (`from>to`, `windowDays>100`) АБО новий single-pass aggregator (`for-of`+`totals.byX`). Парний spec без `it(...)` для guards/aggregators (split-fix).
 
 ```bash
-# cross-field guards:
-grep -rn "throw new BadRequestException" apps/api/src/modules --include="*.service.ts" -B1 | grep -B1 "if (.*>.*\|if (.*<.*\|if (.*!==.*"
-grep -rn "'Вікно графіка не може перевищувати'" apps/api/src --include="*.spec.ts"   # 0 = gap
-# single-pass aggregator:
-grep -rn "for (const .* of .* )\|for (const .* in " apps/api/src --include="*.service.ts" -A2 | grep -B1 "totals\[.*\] = (totals\[.*\] ?? 0) +"
+grep -rn "throw new BadRequestException" apps/api/src/modules --include="*.service.ts" -B1 | grep -B1 "if (.*>.*\|if (.*<.*"
+grep -rn "'Вікно графіка не може перевищувати'" apps/api/src --include="*.spec.ts"   # 0 = gap (грепни конкретний guard-меседж у специ)
 grep -rn "totals\.byX\|totals\.byDate\|totals\.by" apps/api/src --include="*.spec.ts"   # тільки totals.total → gap
 ```
 
-**Фікс:** cross-field guard — 3 кейси: (а) invalid→`rejects.toThrow(BadRequestException)`; (б) `expect(prisma.X.find).not.toHaveBeenCalled()`; (в) boundary→resolves (`>` vs `>=`). Aggregator — 1-2: 2+ contributors у bucket→sum; empty bucket не в output; Σ buckets==grand total.
-**Severity:** MEDIUM (regression risk, impl зараз працює). aggregator output user-visible (footer/totals).
-**Де шукати ще:** сервіс з recent `simplify:`/`perf(optimize):`/`fix(review):` що змінив service.ts — чи парний `.spec.ts` теж у diff: `git show <commit> --stat | grep -E "service.ts|spec.ts"`. Pre-commit hook: review/optimize commit з `.service.ts` вимагає діф у `.spec.ts`.
+**Фікс:** cross-field 3 кейси (invalid→`rejects`; `expect(prisma.X.find).not.toHaveBeenCalled()`; boundary→resolves `>` vs `>=`). Aggregator 1-2 (2+ contributors→sum; empty bucket не в output; Σ buckets==grand total).
+**Severity:** MEDIUM. Pre-commit: review/optimize commit з `.service.ts` вимагає діф у `.spec.ts`.
+**Де ще:** сервіс з recent `simplify:`/`perf(optimize):`/`fix(review):` — `git show <commit> --stat | grep -E "service.ts|spec.ts"`.
 
----
+### 2026-08-30 / 2026-09-06 — URL deep-link writer без парного reader (Bug #596) — frontend / navigation / broken-feature
 
-### 2026-08-30 — URL deep-link writer без парного reader (Bug #596) — web / frontend / navigation / broken-feature
-
-**Сигнал:** кнопка «покажи X у Y» виглядає як deep-link (`ExternalLink`, `text-primary`), клік перекидає у Y — АЛЕ Y відкривається у голому стані без відмітки/модалки/скролу. Grep `?<param>=` повертає РІВНО 1 match — писач без читача. Next.js ігнорує unknown query params, TS зелений, E2E рідко перевіряє post-navigation state.
-**Grep:**
+**Сигнал:** кнопка «покажи X у Y» (`ExternalLink`, `text-primary`), клік перекидає у Y — але Y відкривається у голому стані. Grep `?<param>=` = РІВНО 1 match (писач без читача). Next.js ігнорує unknown query params.
 
 ```bash
 grep -rnE "router\.(push|replace)\(\`?[/'\"][a-z-/]+[^)]*\?[a-z]+=" apps/web/src --include="*.tsx"
-# для кожного writer витягти <target-page>+<param>, перевірити reader:
 grep -c "searchParams.get('$param')" apps/web/src/app/\(app\)/$target/page.tsx || echo "MISSING READER"
 ```
 
-**Фікс:** (A) реалізувати reader (preferable) — на mount читати param, виконати дію, одразу очистити `router.replace`, ідемпотентно:
+**Фікс:** (A) reader на mount читає param, виконує дію, одразу очищає (ідемпотентно, mount-only без deps):
 
 ```typescript
 useEffect(() => {
@@ -1931,464 +1676,244 @@ useEffect(() => {
 }, []); // mount-only — refresh не reopens
 ```
 
-(B) прибрати param у writer якщо feature не готова. Регресія-guard: Playwright `page.goto('/target?param=<uuid>')` → `expect(modal-or-highlighted-row).toBeVisible()`.
-**Severity:** LOW (broken UX, не crash); MEDIUM якщо tooltip/label обіцяє конкретну дію.
-**Де шукати ще:** cross-linking pairs: counterparties↔work-orders, vehicles↔work-orders, invoices↔counterparties, purchase-orders↔supplier-payments, warehouses↔stock-documents.
+(B) прибрати param у writer якщо feature не готова. Regression: Playwright `page.goto('/target?param=<uuid>')`→`expect(modal-or-row).toBeVisible()`.
+**Severity:** LOW (broken UX); MEDIUM якщо tooltip/label обіцяє дію.
+**Де ще:** cross-linking pairs: counterparties↔work-orders, vehicles↔work-orders, invoices↔counterparties, purchase-orders↔supplier-payments, warehouses↔stock-documents.
 
----
+### 2026-06-20 — Prisma `$queryRaw` + pg_trgm `%` без `::text` cast (Bug #572) — backend / sql / type-resolution
 
-### 2026-06-20 — Prisma `$queryRaw` + pg_trgm `%` operator без `::text` cast (Bug #572) — api / backend / sql / type-resolution
-
-**Сигнал:** `$queryRaw` з `pg_trgm` similarity (`%` оператор) повертає 500. Postgres `42804`: `argument of OR must be type boolean, not type text`. Працює для `column % $1`, падає при concatenation на LHS: `COALESCE(a,'') || ' ' || COALESCE(b,'') % $N`. Prisma шле `$N` без explicit type → planner при ambiguous context (text||text expr, `%` має overloads pg_trgm/модуло) резолвить `$N` як text → `text % text` без trgm resolution повертає text → 42804.
-**Grep:**
+**Сигнал:** `$queryRaw` з `%`/similarity → 500 `42804 argument of OR must be type boolean, not text`. Падає при concatenation LHS (`COALESCE(a,'')||' '||COALESCE(b,'') % $N`): Prisma шле `$N` без типу → planner резолвить як text → `text % text` без trgm.
 
 ```bash
-grep -rn "\$queryRaw" apps/api/src --include="*.ts" -A 30 | grep -B 1 "%\s*\${" | grep -v "::text"
-# контракт-тест: search/similarity endpoint з 5+ варіантами q (English, Cyrillic, empty, numeric) → 200
-curl -s -w "%{http_code}" "http://localhost:3000/api/<endpoint>?q=Toyota" -H "$AUTH"
+grep -rn "\$queryRaw" apps/api/src --include="*.ts" -A30 | grep -B1 "%\s*\${" | grep -v "::text"
 ```
 
-**Фікс:** для всіх `$queryRaw` params у `%`/`ILIKE`/`similarity()` — explicit cast:
-
-```typescript
-const qText = `${q}`;
-const qLike = `%${q}%`;
-await prisma.$queryRaw`WHERE col % ${qText}::text OR col ILIKE ${qLike}::text AND similarity(col, ${qText}::text) > 0.3`;
-```
-
-Те саме `${uuid}::uuid`, `${num}::int`, `${date}::timestamptz`.
-**Severity:** HIGH (endpoint падає на специфічних запитах, 500 у production).
-**Де шукати ще:** search/list endpoints з pg_trgm GIN indexes (counterparties, work_orders, goods, brands), reports/analytics similarity-grouping, `$queryRaw` у складному expression (concatenation, COALESCE, CASE WHEN).
-
----
+**Фікс:** explicit cast для params у `%`/`ILIKE`/`similarity()`: `col % ${qText}::text`, `col ILIKE ${qLike}::text`, `similarity(col,${qText}::text)`. Так само `${uuid}::uuid`, `${num}::int`, `${date}::timestamptz`.
+**Severity:** HIGH (500 у production на специфічних запитах).
+**Де ще:** search/list з pg_trgm GIN (counterparties, work_orders, goods, brands), similarity-grouping, `$queryRaw` у concatenation/COALESCE/CASE.
 
 ### 2026-06-20 — pnpm-workspace.yaml overrides peer incompatibility (Bug #573) — infra / dependencies / startup
 
-**Сигнал:** API не стартує після `pnpm install`. `FastifyError: fastify-plugin: @fastify/<plugin> - expected '5.x' fastify version, '4.28.1' is installed` (FST_ERR_PLUGIN_VERSION_MISMATCH) або `@nestjs/*` вимагає Nest 11.x на 10.x. Security override з `>=` constraint (для CVE) у `pnpm-workspace.yaml`: після переїзду overrides package.json→pnpm-workspace (pnpm 11+, раніше silently ігнорувалися) pnpm install витяг найновішу версію що вимагає newer peer.
-**Grep:**
+**Сигнал:** API/Web не стартує після `pnpm install`: `FST_ERR_PLUGIN_VERSION_MISMATCH` (`@fastify/X expected '5.x', '4.28.1' installed`) або `@nestjs/*` вимагає Nest 11 на 10. Security override з `>=` у `pnpm-workspace.yaml` (pnpm 11+ читає overrides звідти) → витяг найновішу з newer peer.
 
 ```bash
-grep -A 5 "^overrides:" pnpm-workspace.yaml
-# для кожного: RESOLVED=$(grep -A 2 "@fastify/middie" pnpm-lock.yaml | grep resolution | head -1); resolved major > runtime → ризик
-# pnpm --filter @sto/api dev → FST_ERR_PLUGIN_VERSION_MISMATCH → знайти max compatible major
+grep -A5 "^overrides:" pnpm-workspace.yaml   # для кожного звірити resolved major у pnpm-lock проти runtime peer
 ```
 
-**Фікс:** pin override до останньої runtime-peer-сумісної major-лінії:
-
-```yaml
-overrides:
-  '@fastify/middie': '^8.0.0' # 9.x вимагає fastify 5.x; ми на 4.28 → остання fastify-4 лінія
-```
-
-Коментар: причина (CVE) + чому цей major.
-**Severity:** CRITICAL — API/Web не стартує. Не виявляється у CI бо cache; тільки fresh install + restart.
-**Де шукати ще:** всі `>=` у pnpm-workspace overrides → конкретний major; щотижня fresh `pnpm install` + dev sanity; CI `node dist/main` smoke test.
-
----
+**Фікс:** pin до останньої runtime-сумісної major: `'@fastify/middie': '^8.0.0' # 9.x вимагає fastify 5.x; ми на 4.28`. Коментар CVE+чому major.
+**Severity:** CRITICAL — не стартує; не у CI (cache), лише fresh install.
+**Де ще:** всі `>=` у overrides; щотижня fresh `pnpm install`+dev sanity; CI `node dist/main` smoke.
 
 ### 2026-06-20 — Silent `test.skip(true)` як fake-green replacement (мета-патерн) — e2e / test-debt
 
-**Сигнал:** E2E spec містить `if (!data) return test.skip(true, '...')` де `data` — результат API до endpoint що seed надійно заповнює. Skipped виглядає як «pass» у CI — фактично нічого не перевіряє. Boilerplate defensive skip для «empty DB» ніколи не спрацьовує (seed повний) і прикриває bug коли seed/API ламається.
-**Grep:**
+**Сигнал:** `if (!data) return test.skip(true, '...')` де data — результат endpoint що seed надійно заповнює → skipped=«pass», нічого не перевіряє, прикриває bug коли seed/API ламається.
 
 ```bash
 grep -rn "test.skip(true" apps/web/e2e --include="*.spec.ts"
-npx playwright test --reporter=line 2>&1 | grep -E "skipped"
 ```
 
-**Фікс:** `if (!data) test.skip(...)` → `expect(data, 'Seed має ...').toBeTruthy(); if (!data) return; // TS narrow`. Виняток — conditional UI feature (XLSX import): `if (hasFeature) {...} else {expect modal still works}`.
-**Severity:** MEDIUM (не prod bug, приховує regressions).
-**Де шукати ще:** будь-який spec при нових тестах; CI grep skipped>5 → failure; pre-commit `grep test.skip\(true apps/web/e2e/*.spec.ts && exit 1`.
-
----
+**Фікс:** `expect(data,'Seed має ...').toBeTruthy(); if(!data) return;`. Виняток — conditional UI feature. Pre-commit `grep test.skip\(true && exit 1`. CI grep skipped>5→failure.
+**Severity:** MEDIUM (приховує regressions).
 
 ### 2026-06-20 — E2E pagination-blind test з stale DB records (Bug #568) — e2e / test-debt / pagination
 
-**Сигнал:** E2E створює запис `E2E-Foo-{uid}`, перевіряє `table tbody tr:has-text("E2E-Foo-...")` БЕЗ попереднього search/filter. Проходить на чистій CI БД, fails з timeout 20s у dev де накопичились E2E records (sort=name ASC + pagination(30) ховає новий рядок на page 2/3). Assume «новий запис → сторінка 1» справедливе тільки коли total ≤ pageSize.
-**Grep:**
+**Сигнал:** `table tbody tr:has-text("E2E-Foo-...")` БЕЗ search — passes на чистій CI, timeout у dev (sort ASC+pagination ховає новий рядок на page 2/3). Assume «новий→сторінка 1» лише коли total≤pageSize.
 
 ```bash
-grep -rn "table tbody tr:has-text" apps/web/e2e --include="*.spec.ts" | while read line; do
-  file=$(echo "$line" | cut -d: -f1)
-  if ! grep -B 50 "table tbody tr:has-text" "$file" | grep -q "Пошук\|search\|filter.*fill"; then
-    echo "PAGINATION-BLIND: $line"
-  fi
-done
+grep -rn "table tbody tr:has-text" apps/web/e2e --include="*.spec.ts"   # +перевірити чи є Пошук/filter вище
 ```
 
-**Фікс:** перед `toBeVisible` — `await page.getByPlaceholder('Пошук...').fill(uniqueName)`. Детермінізує видимість незалежно від stale data.
-**Severity:** HIGH (інтермітентне падіння у dev, блокер suite).
-**Де шукати ще:** crud-counterparties/vehicles, invoices, work-orders, stock-documents — кожен create+verify-row; модуль з pagination 30+ + alphabetic sort default.
-
----
+**Фікс:** перед `toBeVisible` — `page.getByPlaceholder('Пошук...').fill(uniqueName)`.
+**Severity:** HIGH (інтермітентне у dev).
+**Де ще:** crud-counterparties/vehicles/invoices/work-orders/stock-documents; модуль з pagination 30+ + alphabetic sort.
 
 ### 2026-06-20 — Reflector-based contract test для new @Decorator (Bug #569) — api / contract / regression-guard
 
-**Сигнал:** review commit додає security/behavioral decorator на існуючий controller method (`@Throttle`, `@UseGuards(JwtAuthGuard)`, `@Roles`, `@HttpCode`, `@ApiBearerAuth`). Тести (`*.service.spec.ts`) перевіряють бізнес-логіку, не reflection metadata. Декоратор через `Reflect.defineMetadata` невидимий у unit-моках; жоден guard не падає при відсутності decorator (Throttler пропускає route без metadata) → false security, тихе видалення при refactor.
-**Grep:**
+**Сигнал:** review додає security/behavioral decorator (`@Throttle`,`@UseGuards(JwtAuthGuard)`,`@Roles`,`@HttpCode`) на існуючий method. Тести бізнес-логіки не бачать reflection metadata → жоден guard не падає при відсутності decorator → false security.
 
 ```bash
-grep -rn "@Controller\|@Get(\|@Post(\|@Patch(\|@Delete(" apps/api/src/modules --include="*.controller.ts" | grep -v "spec"
-ls apps/api/src/modules/*/ | grep -E "throttle.*contract\.spec"   # для @Throttle endpoint
+ls apps/api/src/modules/*/ | grep -E "throttle.*contract\.spec"
 ```
 
-**Фікс:** `<module>.<decorator>.contract.spec.ts` з `new Reflector()`:
-
-```ts
-const limit = reflector.get<number>(
-  `${THROTTLER_LIMIT}default`,
-  BookingController.prototype.createPublic,
-);
-expect(limit).toBe(5);
-```
-
-Keys для `@nestjs/throttler`: `THROTTLER_LIMIT+'default'`, `THROTTLER_TTL+'default'` (named — ім'я замість `default`).
-**Severity:** LOW (немає прямого багу), HIGH preventive (захист від тихого регресу security декоратора).
-**Де шукати ще:** модуль з `@Throttle/@Roles/@UseGuards/@HttpCode` доданим після initial impl — особливо публічні endpoints у booking, share, webhooks.
-
----
+**Фікс:** `<module>.<decorator>.contract.spec.ts` з `new Reflector()`: `reflector.get(THROTTLER_LIMIT+'default', Ctrl.prototype.method)` `.toBe(5)`. Keys `@nestjs/throttler`: `THROTTLER_LIMIT+'default'`, `THROTTLER_TTL+'default'`.
+**Severity:** LOW прямий, HIGH preventive.
+**Де ще:** модуль з `@Throttle/@Roles/@UseGuards/@HttpCode` доданим після initial impl — публічні booking/share/webhooks.
 
 ### 2026-06-20 — Cross-package LABELS/BADGE контракт-тест для shared constants (Bug #570) — web / shared / drift-detection
 
-**Сигнал:** FE `LABELS[entity.status] ?? entity.status` (з `@sto/shared` чи inline-копія). Backend додає новий enum value → FE LABELS не оновлюється → fallback повертає raw `NEW_STATUS_X` замість українського. TS не падає (обидва `Record<string,string>`), drift непомічений до production.
-**Grep:**
+**Сигнал:** FE `LABELS[status] ?? status` — backend додає enum value → LABELS не оновлено → fallback повертає raw `NEW_STATUS_X`. TS не падає (обидва `Record<string,string>`).
 
 ```bash
 grep -rn "_LABELS\[.*\] ?? " apps/web/src --include="*.tsx" --include="*.ts"
-grep "enum.*Status\|enum GoodType\|enum CounterpartyType" packages/database/prisma/schema.prisma
-find apps/web/src -name "*labels.test.*" -o -name "*-status.test.*"
 ```
 
-**Фікс:** `apps/web/src/lib/<entity>-status-labels.test.ts` зі списком `EXPECTED_STATUSES` (дзеркало prisma enum) + it.each: кожен має label/badge/description, кирилиця `/[Ѐ-ӿ]/`, all 3 maps однакові ключі. Тест паде першим якщо backend додасть статус без оновлення shared.
-**Severity:** LOW (regression guard, no current bug).
-**Де шукати ще:** INVOICE_STATUS_LABELS, PO_STATUS_LABELS, STOCK_DOC_STATUS/TYPE_LABELS, COUNTERPARTY_TYPE_LABELS, GOOD_TYPE_LABELS, EMPLOYEE_ROLE_LABELS.
+**Фікс:** `<entity>-status-labels.test.ts` з `EXPECTED_STATUSES` (дзеркало prisma enum)+it.each: кожен має label/badge/description, кирилиця `/[Ѐ-ӿ]/`, all 3 maps однакові ключі.
+**Severity:** LOW (regression guard).
+**Де ще:** INVOICE_STATUS_LABELS, PO_STATUS_LABELS, STOCK_DOC_STATUS/TYPE_LABELS, COUNTERPARTY_TYPE_LABELS, GOOD_TYPE_LABELS, EMPLOYEE_ROLE_LABELS.
 
----
+### 2026-06-17 — Local interface дрейфує від hook/DTO при новому полі (Bug #506 / #510) — frontend / type-duplication
 
-### 2026-06-17 — Local interface дрейфує від hook/DTO коли додається нове поле (Bug #506 / #510) — frontend / type-duplication
-
-**Сигнал:** ім'я типу `WorkOrder`/`Invoice`/`Counterparty` дублюється: `hooks/api/use<Entity>.ts` (авторитетний) + `<entity>/page.tsx`/`[id]/PageClient.tsx` (inline-дублікат). Backend додає поле у `<Entity>ResponseDto` → hook оновлюється, локальний interface забутий → TS компілюється, нове поле невидиме, розрахунки розходяться. Найгірше — feature міняє формулу `totalAmount`, UI продовжує сумувати `totalLabor+totalParts` → математично некоректна сума.
-**Grep:**
+**Сигнал:** тип `WorkOrder`/`Invoice`/`Counterparty` дублюється: `hooks/api/use<Entity>.ts` (авторитет) + `<entity>/page.tsx`/`[id]/PageClient.tsx` (inline). Backend додає поле → hook оновлено, локальний interface забутий → TS green, нове поле невидиме. Найгірше — формула `totalAmount` змінена, UI сумує `totalLabor+totalParts`.
 
 ```bash
-grep -rn "^interface WorkOrder " apps/web/src --include="*.ts*"   # >1 match → один застарілий
-diff <(grep -A 50 "^export interface WorkOrder " apps/web/src/hooks/api/useWorkOrders.ts) \
-     <(grep -A 50 "^interface WorkOrderDetail " apps/web/src/app/\(app\)/work-orders/\[id\]/PageClient.tsx)
-grep -rn "totalActualLabor\|<newField>" apps/web/src --include="*.ts*"   # має бути у ВСІХ типах aggregate
+grep -rn "^interface WorkOrder " apps/web/src --include="*.ts*"   # >1 = застарілий
 ```
 
-**Фікс:** `import { WorkOrder } from '@/hooks/api/useWorkOrders'`, `interface WorkOrderDetail extends WorkOrder { lines; parts; }`. Регресія-guard `satisfies`: `const _check: WorkOrderDetail = {} as Awaited<ReturnType<typeof fetchWorkOrder>>;` (tsc error при drift).
-**Severity:** MEDIUM (не data loss, UI довіра — некоректні суми); HIGH з gross-сумами (помилка у рахунку).
-**Де шукати ще:** тріада `[id]/PageClient.tsx` + `Create<Entity>Modal.tsx` + `use<Entity>.ts`; ризик у aggregate-полях (totalAmount, paidAmount, balanceAmount).
-
----
+**Фікс:** `import { WorkOrder } from '@/hooks/api/useWorkOrders'`; `interface WorkOrderDetail extends WorkOrder {...}`. Regression-guard `satisfies`: `const _check: WorkOrderDetail = {} as Awaited<ReturnType<typeof fetchWorkOrder>>;`.
+**Severity:** MEDIUM (UI довіра); HIGH з gross-сумами.
+**Де ще:** тріада `[id]/PageClient.tsx`+`Create<Entity>Modal.tsx`+`use<Entity>.ts`; aggregate-поля (totalAmount, paidAmount, balanceAmount).
 
 ### 2026-06-17 — Семантична зміна загального поля без оновлення downstream consumers (Bug #508) — backend / consistency
 
-**Сигнал:** feature змінює формулу вже існуючого denormalized поля (`totalAmount`, `paidAmount`, `balance`, `cost`) що читається всюди (service flows, public/share endpoints, PDF, FE views, reports, sync). Автор оновив головний flow, пропустив semantic mismatch у consumer. Класика: estimate-share показує `wo.totalAmount` що тепер «actual amount» (з actualHours), хоча контекст естімейту = PLAN. Зміна у `recalcTotals` поширюється туди де семантично не повинна.
-**Grep:**
+**Сигнал:** feature змінює формулу denormalized поля (`totalAmount`/`paidAmount`/`balance`/`cost`) що читається всюди (service, public/share, PDF, reports, sync). Автор оновив головний flow, пропустив semantic mismatch: estimate-share показує `wo.totalAmount`=«actual» (з actualHours) хоча контекст=PLAN.
 
 ```bash
 grep -rn "\.totalAmount\|totalAmount:" apps/api/src --include="*.ts" | grep -v "spec\|test"
-# категоризувати: "actual" (completion/invoice/settlement) → нова формула OK; "planned" (estimate/share/draft) → WRONG
-# кожен share/public endpoint має інший semantic contract — не наслідує internal change
+# "actual" (completion/invoice) → нова формула OK; "planned" (estimate/share/draft) → WRONG
 ```
 
-**Фікс:** у share/public consumer — обчислити ЛОКАЛЬНО з planning-компонентів:
-
-```ts
-totalAmount: Number(wo.totalLabor) + Number(wo.totalParts),   // замість Number(wo.totalAmount)
-```
-
-Регресія-guard: property/snapshot «estimate-share = totalLabor+totalParts (no actualHours leak)» для WO з ненульовими actualHours.
-**Severity:** LOW-MEDIUM — баг у крайових випадках, але некоректна публічна сторінка заплутує клієнта.
-**Де шукати ще:** пари (denormalized field, share/public): wo.totalAmount↔estimate, invoice.amount↔receipt, counterparty.balance↔self-service, vehicle.currentMileage↔public history.
-
----
+**Фікс:** у share/public — обчислити ЛОКАЛЬНО з planning-компонентів: `totalAmount: Number(wo.totalLabor)+Number(wo.totalParts)`. Regression: estimate-share=totalLabor+totalParts (no actualHours leak) для WO з ненульовими actualHours.
+**Severity:** LOW-MEDIUM (некоректна публічна сторінка заплутує клієнта).
+**Де ще:** пари (denorm field, share/public): wo.totalAmount↔estimate, invoice.amount↔receipt, counterparty.balance↔self-service, vehicle.currentMileage↔public history.
 
 ### 2026-06-19 — Shared include-shape const (3 read paths) без regression-guard на DTO field propagation (Bug #541) — backend / test-coverage / refactor safety
 
-**Сигнал:** review-fix витягує дублюваний Prisma `include`-shape у shared const (`PART_GOOD_INCLUDE`/`<X>_INCLUDE`) у 3+ read paths (`findOne`/`createX`/`updateX`/FSM). Drift між callsites попереджено, АЛЕ жоден test не асертить що поля const реально потрапляють у DTO. `toDto` мапить `?? null` → видалення `internalCode:true` з const-shape: TS green (DTO `internalCode?:string|null`), `toDto` повертає null (silent), FE не показує, тести passing. `as const satisfies Prisma.<X>DefaultArgs` дає safety лише до видалення поля з const.
-**Grep:**
+**Сигнал:** review-fix витягує дублюваний Prisma `include` у shared const (`PART_GOOD_INCLUDE`) у 3+ read paths. Drift між callsites попереджено, але жоден test не асертить що поля const потрапляють у DTO. Видалення `internalCode:true` з const: TS green, `toDto`→null (silent), FE не показує.
 
 ```bash
 grep -rnE "^const [A-Z_]+_INCLUDE\s*=" apps/api/src/modules --include="*.service.ts"
-# для кожного: paired spec (*.service.spec.ts / *.role-gate.spec.ts) mock-fixture <relation> має містити ВСІ scalar поля
-#   (не лише name — internalCode/sku/brand.name/unit); grep -E "internalCode|sku|brand\.name" $spec
-# mock-fixture good = {name, unit} тільки → bug
+# paired spec mock-fixture <relation> має ВСІ scalar (internalCode/sku/brand.name/unit) — не лише name
 ```
 
-**Фікс:** для КОЖНОГО shared include-const один з: (1) розширити mock-fixture до повного shape; (2) regression-guard `it()`:
-
-```typescript
-it('DTO містить goodInternalCode / goodSku / goodBrandName', async () => {
-  const wo = await service.findOne(ORG, WO_ID);
-  expect(wo.parts[0]).toMatchObject({
-    goodInternalCode: 'INT-001',
-    goodSku: 'SKU-1',
-    goodBrandName: 'Toyota',
-  });
-});
-```
-
-(3) дзеркальний guard у кожному callsite (findOne/addPart/updatePart) — refactor може забути includes у 1 з 3.
-**Severity:** LOW (silent regression-guard gap; broken тільки коли drift станеться); MEDIUM коли const-shape дає denormalized PII для share-link (counterpartyName, vehicleLabel).
-**Де шукати ще:** `const <X>_INCLUDE`/`<X>_SELECT`/`<X>_DEFAULT_ARGS` у service.ts ≥2 callsites: PART_GOOD_INCLUDE, PO_LINE_GOOD_INCLUDE, GOOD_UOM_SELECT, shared Counterparty/Vehicle projection у FSM.
-
----
+**Фікс:** розширити mock-fixture до повного shape АБО regression-guard `it('DTO містить goodInternalCode/goodSku/goodBrandName')` з `toMatchObject`; дзеркальний guard у КОЖНОМУ callsite (findOne/addPart/updatePart).
+**Severity:** LOW (silent gap); MEDIUM коли const-shape дає denormalized PII для share-link.
+**Де ще:** `const <X>_INCLUDE`/`<X>_SELECT`/`<X>_DEFAULT_ARGS` ≥2 callsites: PART_GOOD_INCLUDE, PO_LINE_GOOD_INCLUDE, GOOD_UOM_SELECT.
 
 ### 2026-06-17 — Role-gated sensitive field у DTO без regression-guard у service spec (Bug #527, #529) — backend / security / test-coverage
 
-**Сигнал:** commit `fix/feat: role-gate <Field> for <ContextDto>` додає whitelist-ролі (`<X>_VISIBLE_ROLES = new Set<string>([...])`), helper `canSeeX(role)`, optional `userRole?:string` у service. Поле чутливе (`costPrice`, `purchasePrice`, `margin`, `internalNotes`, `bankAccount`). Ризики без тесту: refactor видаляє `userRole`; default `'OWNER'` → leak; typo у Set → leak для механіка; нова роль забута у whitelist.
-**Grep:**
+**Сигнал:** `fix/feat: role-gate <Field>` додає `<X>_VISIBLE_ROLES=new Set([...])`, `canSeeX(role)`, `userRole?:string`. Поле чутливе (`costPrice`/`purchasePrice`/`margin`/`internalNotes`/`bankAccount`). Без тесту: refactor видаляє `userRole`; default 'OWNER'→leak; typo у Set→leak; нова роль забута.
 
 ```bash
-grep -rn "<Field>\|canSee<Field>\|<X>_VISIBLE_ROLES" apps/api/src --include="*.spec.ts"   # 0 = bug
-git log --all --oneline --grep="role-gate\|VISIBLE_ROLES\|canSee" -- apps/api/src
+grep -rnE "(VISIBLE_ROLES|canSee[A-Z])" apps/api/src --include="*.ts" | grep -v "spec\|test"
+# для кожного: grep -rn "<sameName>" apps/api/src --include="*.spec.ts" → 0 = HIGH
 grep -rn "to<DtoName>\(" apps/api/src --include="*.service.ts" | grep -v spec   # кожен callsite передає userRole?
 grep -rn "Set<string>" apps/api/src --include="*.service.ts" | grep -i "role"   # case-sensitive vs JWT claim
 ```
 
-Endpoint що повертають DTO і потребують userRole: GET /:id, POST create/add*, PATCH update*, bulk list details=true.
-**Фікс:** dedicated `<module>.role-gate.spec.ts` матриця: привілейовані ролі `it.each([['OWNER'],['ADMIN']])` бачать; непривілейовані `it.each([['MECHANIC']])` не бачать (undefined); edge fail-closed для `userRole===undefined/''/'GUEST'/'owner'` (lowercase); semantic `<Field>===null` для привілейованої (доступ є, value not set) ≠ undefined; симетрія для кожного mutation. Defense-in-depth: всі DTO-endpoint приймають userRole. Spec = guard проти видалення param / rename const / нова роль / default 'OWNER'.
-**Severity:** HIGH (release-blocker Auth) коли поле фінансове/PII; MEDIUM для informational/audit. Gap у тесті = security gap.
-**Де шукати ще:** DTO поля prefix `cost*`, `purchase*`, `internal*`, `audit*`, `private*`, `secret*`, `bankAccount`, `taxId`, `phone`/`email` (public counterparty), `salary`/`wage`, `margin`.
+**Фікс:** dedicated `<module>.role-gate.spec.ts` матриця: (1) кожна привілейована роль→візібл; (2) кожна непривілейована (MECHANIC/RECEPTIONIST/CLIENT)→undefined; (3) `userRole===undefined`→fail-closed; (4) `''`→fail-closed; (5) невідома (`'GUEST'`)→fail-closed; (6) lowercase (`'owner'`)→fail-closed; (7) `<Field>===null` для привілейованої→`null` (не undefined — «доступ є, value not set»). ВСІ mutation endpoint (addX/updateX не тільки findOne) приймають userRole.
+**Severity:** HIGH (release-blocker Auth) фінансове/PII; MEDIUM informational.
+**Де ще:** DTO prefix `cost*`/`purchase*`/`internal*`/`audit*`/`private*`/`secret*`/`bankAccount`/`taxId`/`salary`/`margin`.
 
----
+### 2026-06-17 — React inline-edit merge втрачає DB-only fields (id, createdAt) → save() filter пропускає рядок (Bug #526) — frontend / state-merge
 
-### 2026-06-17 — React inline-edit merge втрачає DB-only fields (`id`, `createdAt`) → save() filter мовчки пропускає рядок (Bug #526) — frontend / state-merge
-
-**Сигнал:** inline-row-edit (CreateWorkOrderModal, BudgetTab, будь-який list-with-edit) — на commit ✓ merge губить `id`:
-
-```ts
-const [editing, setEditing] = useState<Omit<Item, 'id'>>(EMPTY); // editable subset без id
-setItems(prev => prev.map(it => (it._key === target._key ? { ...editing, _key: it._key } : it))); // ← id загублено
-```
-
-Далі `save()` робить `items.filter(i => !!i.id)` → row пропадає → PATCH не надсилається → після reload старе value. WO-level (sum/total) виглядає збереженим → маскує bug. `Omit<LocalLine, '_key'>` робить `id` опціональним → spread valid, нема compile error.
-**Grep:**
+**Сигнал:** inline-row-edit commit ✓ merge губить `id`: `setItems(prev=>prev.map(it=>it._key===target._key?{...editing,_key:it._key}:it))` де `editing:Omit<Item,'id'>`. Далі `save()` робить `items.filter(i=>!!i.id)` → row пропадає → PATCH не надсилається → після reload старе value. WO-level sum виглядає збереженим (маскує).
 
 ```bash
-grep -rn "\.\.\.editing.*_key" apps/web/src --include="*.tsx" --include="*.ts"   # editing/base містять id?
-grep -rn "filter.*!!.*\.id\|filter.*l\.id" apps/web/src --include="*.tsx" --include="*.ts"   # перетин у файлі = high-risk
+grep -rn "\.\.\.editing.*_key" apps/web/src --include="*.tsx" --include="*.ts"
+grep -rn "filter.*!!.*\.id\|filter.*l\.id" apps/web/src --include="*.tsx" --include="*.ts"
 grep -rn "Omit<.*'_key'>" apps/web/src --include="*.ts*"
 ```
 
-**Фікс:** spread base FIRST:
-
-```ts
-{ ...l, ...editing, _key: l._key }   // l first preserves id/createdAt
-```
-
-Регресія-guard (RTL): після click ✓ assert `lines[0].id === <original-id>` або spy на apiFetch PATCH `/lines/<originalId>`.
-**Severity:** CRITICAL — silent data-loss маскований UI feedback («збережено» → значення зникло після reload).
-**Де шукати ще:** CreateInvoiceModal, CreatePurchaseOrderModal, CreateStockDocumentModal, BudgetTab, будь-яка двофазна editing UI (server list + local edit buffer).
-
----
+**Фікс:** spread base FIRST: `{ ...l, ...editing, _key: l._key }`. Regression (RTL): після ✓ assert `lines[0].id===<original-id>` або spy PATCH `/lines/<originalId>`.
+**Severity:** CRITICAL — silent data-loss маскований UI feedback.
+**Де ще:** CreateInvoiceModal, CreatePurchaseOrderModal, CreateStockDocumentModal, BudgetTab, будь-яка двофазна editing UI (server list+local edit buffer).
 
 ### 2026-06-16 — Time-of-day string DTO field без regex + cross-field guard (Bug #515) — backend / validation
 
-**Сигнал:** `@IsString()` для поля `*Time` або `*Hour` у DTO БЕЗ `@Matches(/^\d{2}:\d{2}$/)`. Сервіс не валідує `workEnd > workStart` → `dynHours=[]` → division by zero → NaN у CSS. Де ще шукати: `BranchSettings`, `OperatingHours`, `EmployeeShift`, `EventSchedule`.
-
-**Підхід:** Додати `@Matches(HH_MM_RE)` до DTO + cross-field guard у сервісі (`if (startH >= endH) throw BadRequest`). Defense-in-depth fallback у `getWorkHours()` щоб ніколи не повернути `start >= end` навіть якщо стара БД містить невалідні дані.
-
-**Grep:**
+**Сигнал:** `@IsString()` для `*Time`/`*Hour` без `@Matches(/^\d{2}:\d{2}$/)`. Сервіс не валідує `workEnd>workStart` → `dynHours=[]` → division by zero → NaN у CSS.
 
 ```bash
 grep -rn "@IsString()" apps/api/src --include="*.dto.ts" | grep -i "time\|hour\|start\|end" | grep -v "@Matches"
 ```
 
----
+**Фікс:** `@Matches(HH_MM_RE)` + cross-field `if(startH>=endH)throw` + defense fallback у `getWorkHours()`.
+**Severity:** MEDIUM.
+**Де ще:** BranchSettings, OperatingHours, EmployeeShift, EventSchedule.
 
 ### 2026-06-16 — jsdom missing URL.createObjectURL/revokeObjectURL stub (Bug #518) — frontend / test-infrastructure
 
-**Сигнал:** `vitest exit 1` при всіх green tests + `Uncaught Exception: TypeError: URL.createObjectURL is not a function`. Shadow error — видно тільки по exit code, не по test report.
-
-**Fix:** У `apps/web/src/__tests__/setup.ts` додати:
-
-```typescript
-if (typeof URL.createObjectURL === 'undefined') {
-  URL.createObjectURL = () => '';
-  URL.revokeObjectURL = () => {};
-}
-```
-
-**Grep:**
+**Сигнал:** `vitest exit 1` при всіх green tests + `Uncaught: TypeError: URL.createObjectURL is not a function` (видно лише по exit code).
 
 ```bash
-grep -n "createObjectURL\|revokeObjectURL" apps/web/src --include="*.tsx" --include="*.ts" -r
-# якщо є → перевірити apps/web/src/__tests__/setup.ts на наявність stub
+grep -n "createObjectURL\|revokeObjectURL" apps/web/src -r   # → перевірити setup.ts на stub
 ```
 
----
+**Фікс:** у `apps/web/src/__tests__/setup.ts`: `if(typeof URL.createObjectURL==='undefined'){URL.createObjectURL=()=>'';URL.revokeObjectURL=()=>{}}`.
 
 ### 2026-06-16 — Dead exports у \*.utils.ts після refactor на dynamic config (Bug #517) — frontend / dead-code
 
-**Сигнал:** `const` exported у `calendar.utils.ts` або подібному файлі має 0 usages після того як компонент перейшов на `useState(fetched)`. TypeScript не видає error на unused exports.
-
-**Підхід:** Після будь-якого refactor що переводить module-level constants → dynamic fetch: перевірити всі exports модуля на 0 references.
+**Сигнал:** exported `const` у `calendar.utils.ts` має 0 usages після переходу на `useState(fetched)`. TS не видає error на unused exports.
 
 ```bash
-grep -rn "HOURS\|TOTAL_HOURS\|WINDOW_START\|WINDOW_END\|pxToHours" apps/web/src --include="*.ts" --include="*.tsx" | grep -v "\.utils\.ts"
-# якщо 0 matches → dead export → видалити
+grep -rn "HOURS\|TOTAL_HOURS\|WINDOW_START\|pxToHours" apps/web/src --include="*.ts" --include="*.tsx" | grep -v "\.utils\.ts"   # 0 = dead
 ```
 
----
+**Фікс:** видалити. Після refactor module-const→dynamic fetch перевіряти всі exports на 0 references.
 
-### 2026-06-16 — Set key з `getUTCHours()` для порівняння з Kyiv-локальними слотами (Bug #511) — backend / time-zone semantics
+### 2026-06-16 — Set key з getUTCHours() для порівняння з Kyiv-локальними слотами (Bug #511) — backend / time-zone semantics
 
-**Сигнал:** ключ Map/Set формується через `getUTCHours()`/`getUTCMinutes()` з `DateTime` поля як `HH:MM`, а в тому ж файлі інший масив ключів — з Kyiv-локальних `BranchSettings.workStartTime/workEndTime` (або UI пікера). Ключі НЕ перетинаються весь рік (Europe/Kyiv +02/+03 ≠ UTC) → `Set.has(...)` always false → guard silently не спрацьовує. Розробник думав «UTC у БД → всі похідні з UTC», але робочі години «09:00–18:00» — Kyiv-local.
-**Grep:**
+**Сигнал:** ключ Map/Set через `getUTCHours()` як `HH:MM`, а інший масив ключів — з Kyiv-локальних `BranchSettings.workStartTime`. Ключі НЕ перетинаються (Kyiv +02/+03 ≠ UTC) → `Set.has()` always false → guard silently не спрацьовує.
 
 ```bash
 grep -rn "getUTCHours\|getUTCMinutes" apps/api/src/modules --include="*.ts" | grep -v spec
-grep -B2 -A2 "getUTCHours" <file> | grep -E "workStart|workEnd|BranchSettings|slot.*minutes|kyiv"   # parallel HH:MM з НЕ-UTC = bug
-grep -l "BranchSettings\|workStartTime" apps/api/src/modules --include="*.ts" -r | while read f; do grep -l "getUTCHours\|getUTCMinutes" "$f"; done
 grep -rn "toISOString().slice(11" apps/web/src --include="*.ts*" | grep -v test   # frontend mirror UTC HH:MM
 ```
 
-**Фікс:** module-level `Intl.DateTimeFormat` singleton `{timeZone:'Europe/Kyiv', hour12:false, hour/minute:'2-digit'}` (locale `'en-GB'` дає padded HH:MM); `.format(date)` замість `getUTC*`+padStart (авто-DST). Регресія-guard: unit з date що переходить UTC midnight у Kyiv (`2026-06-01T22:30:00Z` → 01:30 Kyiv NEXT day).
-**Severity:** CRITICAL коли guard блокує бронювання/payment/inventory; HIGH для UI display; MEDIUM для log/analytics.
-**Де шукати ще:** модуль що порівнює BookingRequest.requestedDate/CalendarSlot.startAt/WorkOrder.scheduledAt/Payment.paidAt/Invoice.documentDate/StockMovement.movedAt з user-введеними часами; frontend useCalendarState, CreateWorkOrderModal datetime, `<TimeInput>` persist UTC vs Kyiv window.
+**Фікс:** module-level `Intl.DateTimeFormat` singleton `{timeZone:'Europe/Kyiv',hour12:false,hour/minute:'2-digit'}` (locale `'en-GB'` padded)+`.format(date)` (авто-DST). Regression: date що переходить UTC midnight у Kyiv (`2026-06-01T22:30:00Z`→01:30 Kyiv NEXT day).
+**Severity:** CRITICAL коли guard блокує бронювання/payment/inventory; HIGH UI; MEDIUM log.
+**Де ще:** модуль що порівнює BookingRequest.requestedDate/CalendarSlot.startAt/WorkOrder.scheduledAt/Payment.paidAt з user-часами; frontend useCalendarState, `<TimeInput>` persist UTC vs Kyiv.
 
----
+### 2026-06-16 — useRef для уникнення ре-рендерів стає stale коли ініціалізація async (Bug #512) — frontend / race condition
 
-### 2026-06-16 — `useRef` для уникнення ре-рендерів стає stale коли його ініціалізація async (Bug #512) — frontend / race condition
-
-**Сигнал:** дві паралельні `useEffect` на mount: один fetch A (`/lifts`) пише у `useRef`, інший `useCallback` **читає ref** у `.then()` з deps `[date]` (НЕ `[lifts]` щоб уникнути подвійної fetch). Якщо B резолвиться ДО A → ref читає `[]` → derived state (`bookingSlots`) порожній назавжди (до зміни date). Тест проходить (моки одразу), cache hit ховає у dev. Перший виклик load() теж читає порожній ref.
-**Grep:**
+**Сигнал:** два паралельні `useEffect` mount: один fetch A пише у `useRef`, інший `useCallback` читає ref у `.then()` з deps `[date]` (НЕ `[lifts]`). Якщо B резолвиться ДО A → ref читає `[]` → derived state порожній назавжди. Тест passes (моки одразу).
 
 ```bash
-grep -rnE "useRef\(\[?\]?\)" apps/web/src --include="*.ts*" | grep -v test   # де Ref.current=X у .then()
-grep -B3 -A10 "useRef" apps/web/src/<file>.ts | grep -E "useCallback|useEffect"   # deps [date] без lifts.length АЛЕ читає liftsRef.current = bug
-# race test: mock /lifts резолвиться останнім (delay) → expect bookingSlots.length > 0
+grep -rnE "useRef\(\[?\]?\)" apps/web/src --include="*.ts*" | grep -v test
 ```
 
-**Фікс:** додати proxy `.length` у deps callback (`lifts.length` 0→N перевикликає з готовим ref). Альтернатива — Promise.all([lifts, bookings]) у єдиному effect (+1 round-trip). Регресія-guard: vitest `mockResolvedValueOnce(new Promise(r => setTimeout(() => r(<data>), 100)))` повільний /lifts vs швидке /booking.
-**Severity:** HIGH коли feature видимо ламається; MEDIUM приховані індикатори; LOW cosmetic.
-**Де шукати ще:** hook з `useRef([])` async-init + `useCallback` без проксі-сигналу (useChatState, useDashboardState, useTimelineState); будь-яка `useCallback([dateOnly])` що читає state через closure → stale.
+**Фікс:** додати proxy `.length` у deps callback (`lifts.length` 0→N перевикликає з готовим ref). Або Promise.all у єдиному effect. Regression: `mockResolvedValueOnce(new Promise(r=>setTimeout(()=>r(data),100)))` повільний /lifts.
+**Severity:** HIGH коли feature видимо ламається; MEDIUM приховані індикатори.
+**Де ще:** hook з `useRef([])` async-init + `useCallback` без проксі (useChatState, useDashboardState, useTimelineState).
 
----
+### 2026-06-16 — Unclamped UI math для нових feature-блоків копіюється але втрачає back-end guard (Bug #513, #514) — frontend / UI overflow
 
-### 2026-06-16 — Unclamped UI math для нових feature-блоків копіюється з existing блоку але втрачає back-end guard (Bug #513) — frontend / UI overflow
-
-**Сигнал:** новий component (`BookingSlotBlock`) копіює positioning math (`left = ((startH - HOURS[0]) / TOTAL_HOURS) * 100`) з existing (`DraggableSlot`). Existing працює бо дані clamp-ляться через service (`createSlot() → kyivEndOfWorkDay`), новий бере дані з іншого джерела (`BookingRequest.requestedDate`) БЕЗ clamp → `left<0` / `width>100%` → блок невидимий за parent box. `overflow:hidden` ховає, JS не падає.
-**Grep:**
+**Сигнал:** новий component копіює positioning math (`left=((startH-HOURS[0])/TOTAL_HOURS)*100`) з existing. Existing працює бо дані clamp через service (`createSlot()→kyivEndOfWorkDay`), новий бере з іншого джерела (`BookingRequest.requestedDate`) БЕЗ clamp → `left<0`/`width>100%` → блок невидимий. `overflow:hidden` ховає.
 
 ```bash
 grep -rn "((startH - HOURS\[0\])\|left = .* % \|kyivHours(slot" apps/web/src --include="*.tsx"
-# для кожного: чи source має server-side clamp? CalendarSlot createSlot()→kyivEndOfWorkDay ✓; BookingRequest ✗ (Bug #513+#514)
-# defensive: if (endH <= MIN || startH >= MAX) return null; + Math.max(MIN,startH), Math.min(MAX,endH)
 ```
 
-**Фікс:** (1) defensive clamp у component; (2) парний back-end guard для джерела (Bug #514 family). Регресія-guard: vitest out-of-bounds startH (`'2026-06-01T04:00:00.000Z'`=07:00 Kyiv літо, HOURS[0]=8) → `container.firstChild` має `left:'0%'` або null.
-**Severity:** MEDIUM коли invisible block ховає data; HIGH коли block — CTA.
-**Де шукати ще:** Gantt timelines, schedule grids, sparklines, progress bars з `width %` з user input, chart axis labels, drag-and-drop position calc.
+**Фікс:** (1) defensive clamp у component `if(endH<=MIN||startH>=MAX)return null;`+`Math.max(MIN,startH)`,`Math.min(MAX,endH)`; (2) парний back-end guard джерела (#514). Regression: out-of-bounds startH → `left:'0%'` або null.
+**Severity:** MEDIUM (invisible block ховає data); HIGH коли block=CTA.
+**Де ще:** Gantt timelines, schedule grids, sparklines, progress bars з `width %` з user input.
 
----
+### 2026-06-15 — Queue.add(name,data) shape не співпадає з processor process(job) (Bug #506, #507) — backend / queue / contract drift
 
-### 2026-06-15 — Queue.add(name, data) shape не співпадає з processor `process(job)` interface (Bug #506) — backend / queue / contract drift
-
-**Сигнал:** `someQueue.add('job-name', { fieldA, fieldB })` у service-A, але `@Processor('queue') WorkerHost.process(job)` робить `const { fieldX, fieldY } = job.data` — **жодне поле не співпадає**. tsc green (payload `any`/JSON), unit-spec обох сторін проходять окремо. Runtime: processor читає undefined → `if (provider==='X')` false → **silent skip** замість throw → BullMQ НЕ retry → SMS не приходить, user бачить успіх. Причина: service-A написано до NotificationsService.send() consolidation, АБО `bull→bullmq` refactor (старий `@Process({name})` фільтрував job.name, новий `WorkerHost.process()` не фільтрує → всі jobs у один process()).
-**Grep:**
+**Сигнал:** `someQueue.add('job-name',{fieldA,fieldB})` у service-A, `@Processor WorkerHost.process(job)` робить `const {fieldX,fieldY}=job.data` — жодне поле не співпадає. tsc green (payload any), specs обох сторін passing окремо. Runtime: processor читає undefined → silent skip → BullMQ НЕ retry. Причина: `bull→bullmq` refactor (`@Process({name})` фільтрував job.name, `WorkerHost.process()` не фільтрує → всі jobs в один).
 
 ```bash
-grep -rnE "Queue.*add\(\s*['\"]([^'\"]+)['\"]" apps/api/src --include="*.ts" | grep -v spec   # name + data shape
+grep -rnE "Queue.*add\(\s*['\"]([^'\"]+)['\"]" apps/api/src --include="*.ts" | grep -v spec
 grep -rnE "@Processor\(['\"]([^'\"]+)['\"]" apps/api/src --include="*.processor.ts"
-# interface XxxJob { у processor → порівняти ключі з data-об'єктом у Queue.add(); unique callsite key (templateCode, params) відсутній у Job = bug
-# декілька callsite з РІЗНИМИ shape на одну чергу → потрібна switch(job.name) диспетчеризація АБО окремі черги
+# interface XxxJob у processor → порівняти ключі; unique callsite key відсутній у Job = bug
 ```
 
-**Фікс:** знайти canonical service черги (NotificationsService.send() для SMS, SettlementsService.createTransaction() для balance, InventoryService.createMovement() для stock) що агрегує resolve + ставить правильний shape; переписати порушуючий callsite на нього, прибрати `@InjectQueue`/`BullModule.registerQueue`. Новий event-type → enum + `ALTER TYPE ADD VALUE IF NOT EXISTS` + seed NotificationTemplate (Bug #220, #478-#480). Spec: видалити `expect(opts.attempts).toBe(10)` (Bug #507 лише options); `expect(canonicalService.send).toHaveBeenCalledWith(orgId, expect.any(String), objectContaining({branchId, phone, ...placeholders}))`.
-**Severity:** HIGH (фіча розрекламована «надішлемо SMS» але silent gap); MEDIUM для non-critical (loyalty); CRITICAL для фінансової операції (ПРРО чек, settlement).
-**Де шукати ще:** `@InjectQueue(name)` поза canonical service — особливо public/widget endpoints (booking, form, lead) до consolidation; після кожного queue-library migration — audit shape vs interface. Парне з Bug #267/#268.
-
----
+**Фікс:** canonical service черги (NotificationsService.send для SMS, SettlementsService.createTransaction, InventoryService.createMovement) що агрегує resolve+ставить правильний shape; переписати callsite на нього, прибрати `@InjectQueue`. Новий event-type→enum+`ALTER TYPE ADD VALUE`+seed NotificationTemplate (#220,#478-#480). Spec (#507 — лише options): видалити `expect(opts.attempts).toBe(10)`; `expect(canonicalService.send).toHaveBeenCalledWith(orgId, String, objectContaining({branchId,phone,...}))`.
+**Severity:** HIGH (silent gap); CRITICAL для фінансової (ПРРО чек, settlement); MEDIUM non-critical (loyalty).
+**Де ще:** `@InjectQueue(name)` поза canonical service — public/widget (booking, form, lead); після queue-library migration — audit shape vs interface. Парне #267/#268.
 
 ### 2026-06-16 — Widened service return-type + stale paired spec (Bugs #508-#509) — backend / contract / tests symmetry
 
-**Сигнал:** service-method розширюється з `Promise<{id,number}>` до `Promise<{id,number,status,amount,documentDate}>` (розширений `select` + mapping `Number(inv.amount)`, `inv.documentDate?.toISOString() ?? null`). Backend+FE tsc green, але baseline unit-spec падає: `expected {…5} to equal {…2}` — mock повертав `{id,number}`, mapping робить `Number(undefined)→NaN`, `inv.status→undefined`. Release-blocker. Contract-spec тихіше: `toMatchObject({id, number})` пропускає нові undefined поля → silent regression-guard gap (refactor що видалить поле з select пройде CI, FE отримає undefined/NaN/Invalid Date). Sprint-lag: impl+FE оновлені, regression tests відстають 1-2 commits.
-**Grep:**
+**Сигнал:** service розширюється `Promise<{id,number}>`→`Promise<{id,number,status,amount,documentDate}>` (розширений select+mapping). Baseline unit падає `expected {…5} to equal {…2}` (mock повертав 2 поля, mapping `Number(undefined)→NaN`). Contract тихіше: `toMatchObject({id,number})` пропускає нові undefined → silent regression-guard gap.
 
 ```bash
-git diff HEAD~3 HEAD -- "apps/api/src/modules/*/*.service.ts" | grep -E "^\+\s+(status|amount|documentDate|totalAmount|fiscalCode|[a-z]+At|[a-z]+Count):\s*(true|inv\.|Number|\.toISOString|\?\?\s*null)"
-grep -rn "mockResolvedValue\|mockResolvedValueOnce" apps/api/src/modules/<scope>/ --include="*.spec.ts" -A 5   # чи покриває НОВІ поля
+git diff HEAD~3 HEAD -- "*/*.service.ts" | grep -E "^\+\s+(status|amount|documentDate|[a-z]+At|[a-z]+Count):\s*(true|inv\.|Number|\.toISOString|\?\?\s*null)"
 grep -rn "toMatchObject({" apps/api/src --include="*.contract.spec.ts"   # підмножина-assert без negation = gap
 ```
 
-**Фікс:** unit-spec mock — всі нові поля з реалістичним Prisma-shape (Decimal/Date, null для nullable); unit assert `expect(result).toEqual({..все 5..})` конкретні значення (не `expect.any`); contract mock той самий shape; contract assert `expect(res.json()).toEqual({..все 5..})` (НЕ toMatchObject — видалення поля з select → undefined → JSON без ключа → підмножина проходить, silenced); окремий null-branch case; component-test для FE consumer (Bug #510 family).
-**Severity:** HIGH якщо unit-spec падає (release-blocker); MEDIUM лише contract-spec gap; LOW косметичне поле з fallback.
-**Де шукати ще:** service.ts чіпнутий review-commit після feature; lightweight-read endpoint для «це існує?» що пізніше отримує fields (findActive, findLast, findPrimary). Парне з Bug #390, #478-#480, #432-#433.
-
----
-
-### 2026-06-15 — `setX(value)` викликається у async-операції, але `x` не читається у JSX (Bug #497) — frontend / dead-state / UX feedback
-
-**Сигнал:** `const [loading, setLoading] = useState(false)` (або `loadingId`, `saving`) → setter викликається у async-handler (`setLoading(true)` перед await, false у finally), але `loading` НІКОЛИ не читається у JSX (немає `{loading && <Spinner/>}`, `disabled={loading}`, `loading={loading}` prop). Extra renders + memory churn, але user не бачить реакції UI (клік Pencil → 1-3s нічого → Modal). Refactor видалив JSX що читав state, забув видалити setLoading.
-**Grep:**
-
-```bash
-grep -rnE "useState[<(]boolean|useState\(false\)|useState<string \| null>\(null\)|useState<number \| null>\(null\)" apps/web/src/app --include="*.tsx" -A 1 | grep "const \[" | head -30
-# для кожного state-name (loading/saving/processing/loadingId/transitioning/submitting):
-#   has_decl=$(grep -c "const \[$name," "$f"); has_read=$(grep -cE "\{$name|$name &&|disabled=\{$name|loading=\{$name" "$f")
-#   decl>0 && read==0 → MUTE STATE
-```
-
-**Фікс:** (1) видалити state якщо feedback не потрібна (<100ms); (2) render-time: single-row `disabled={saving}`+`loading={saving}` або `{saving && <Spinner/>}`; per-row `loading={detailLoadingId === row.id}` (уникає disabled для ВСІХ рядків).
-**Severity:** MEDIUM (silent UX gap); LOW якщо <100ms. Парне з Bug #303 (in-flight guard).
-**Де шукати ще:** `loadDetail`/`fetchFull`/`fetchOne`/`loadOptions` async → per-row loading-state; search input з debounced fetch; inline-edit save button + savingIds.
-
----
-
-### 2026-06-15 — `mutateAsync()` у inline click-handler без try/catch — silent failure при mutation error (Bug #499) — frontend / error-handling / silent UX failure
-
-**Сигнал:** inline `onClick={async () => { await mut.mutateAsync(arg); toast.success('...') }}` без try/catch, без `useMutation({onError})`, без глобального `MutationCache.onError`. `mutateAsync` rejects → throw перериває handler → ні success, ні error toast → user клікнув «Видалити» → нічого → рядок на місці → плутанина. TanStack Query НЕ показує помилки автоматично.
-**Grep:**
-
-```bash
-grep -rn "MutationCache\|mutationCache:" apps/web/src   # пусто → ВСІ inline mutateAsync без try/catch = bug
-grep -rnE "await\s+\w+\.mutateAsync\(" apps/web/src/app --include="*.tsx" -B 2 -A 3   # чи є try/catch
-```
-
-**Фікс:** (1) per-hook `onError` (preferable): `useMutation({ mutationFn, onError: e => toast.error(e.message), onSuccess: () => qc.invalidate(...) })` — SSOT для всіх callers; (2) inline try/catch коли message contextual; (highest leverage) глобальний `MutationCache.onError` у QueryClientProvider.
-**Severity:** MEDIUM (silent failure); HIGH якщо mutation видаляє важливий ресурс (Invoice/Payment/WO transition) → duplicate-click → data inconsistency.
-**Де шукати ще:** inline `onClick={async () =>` single-step mutation (icon-button Trash2/Pencil/Zap, inline-confirm, bulk-actions); `useEffect(() => { mutation.mutateAsync() }, [])` (unhandled rejection).
-
----
-
-### 2026-06-15 — `Partial<Record<Enum, V>>` lookup з runtime fallthrough ховає TS-exhaustiveness (Bug #488) — backend / business logic / type-safety
-
-**Сигнал:** map `Partial<Record<EnumX, ValueY>>` для look-up знаку/типу по enum, з runtime `if (sign === undefined) throw new Error('Unknown...')`. Зараз всі enum присутні (throw неможливий), АЛЕ через `Partial<>` новий enum value (`ALTER TYPE ADD VALUE`) **пройде compile зеленим** → runtime exception у проді. Автор почав з `{}` literal (TS вимагав Partial) і забув видалити.
-**Grep:**
-
-```bash
-grep -rnE "Partial<Record<[A-Z][a-zA-Z]+(Type|Status|Role|Kind),\s" apps/api/src/modules --include="*.ts" | grep -v spec
-# всі enum values присутні → Partial<> непотрібно; tell: `if (X === undefined) throw` нижче = compensation
-```
-
-**Фікс:** `Partial<Record<Enum,V>>` → плоский `Record<Enum,V>` (TS вимагатиме всі values → новий enum зловить compile-error); видалити runtime guard. Якщо Partial потрібна — коментар «intentional partial: <причина>» + regression-guard для default-branch.
-**Severity:** MEDIUM (рідкісний runtime exception); HIGH якщо map гейтить фінансову операцію (BALANCE_SIGN, TAX_RATE, VAT_FACTOR) — throw blocks commit.
-**Де шукати ще:** MOVEMENT_TYPES, docTypeMap, TRANSITIONS (FSM), LABELS/BADGE/COLOR (для UI Partial з fallback «—» OK), `Record<EnumX, fn>` switch-replacement у sales/payments/inventory.
-
----
-
-### 2026-06-15 — Dedup invariant додано після simplify-to-Promise.all БЕЗ regression-guard у spec (Bug #489) — test-coverage / silent data corruption
-
-**Сигнал:** simplify замінив sequential `for-loop { await tx.X.update() }` (last-write-wins) на `await Promise.all(plan.map(u => tx.X.update()))` (race-deterministic winner на той самий PK) + додав `dedupedPlan = deduplicateBy(plan, u => u.pk)` ПЕРЕД Promise.all для збереження last-wins. Парний spec НЕ перевіряє invariant — refactor що дропне `deduplicateBy` (бачить «dead code») пройде CI зеленим (fixtures унікальні PK). Production має дублікати (PO multi-lot на той самий goodId, xlsx з повторюваним SKU).
-**Grep:**
-
-```bash
-grep -rn "deduplicateBy\|new Map(.*\.map.*=> \[" apps/api/src/modules --include="*.service.ts" -l
-for svc in $(grep -rl "deduplicateBy" apps/api/src/modules --include="*.service.ts"); do
-  spec="${svc%.ts}.spec.ts"; grep -cE "deduplicate|duplicate.*(goodId|lineId|id)" "$spec" 2>/dev/null   # 0 = bug
-done
-```
-
-**Фікс:** regression-guard test — `plan` з 2+ entries з ОДНИМ PK (різні price/quantity); mock downstream різні значення; run метод; `expect(prisma.X.updateMany).toHaveBeenCalledTimes(1)` (НЕ 2!); `data: { <field>: <last-value> }` (last-wins). Опційно `result.updated === 2` (informational).
-**Sub-pattern: stale `$transaction` mock у callback-form:**
+**Фікс:** unit mock — всі нові поля (Decimal/Date, null); unit assert `toEqual({..5..})` (НЕ `expect.any`); contract mock той самий shape; contract assert `toEqual` (НЕ `toMatchObject` — видалення поля→undefined→JSON без ключа→підмножина проходить); окремий null-branch. **Stale `$transaction` callback mock** (sub-pattern #489):
 
 ```ts
-// ❌ повертає callback БЕЗ виклику:  $transaction: vi.fn(async (ops) => ops),
+// ❌ $transaction: vi.fn(async (ops) => ops),   ← callback НЕ викликається
 // ✅ розпізнає обидві форми:
 $transaction: vi.fn().mockImplementation((arg) => {
   if (Array.isArray(arg)) return Promise.all(arg);
@@ -2397,40 +1922,83 @@ $transaction: vi.fn().mockImplementation((arg) => {
 }),
 ```
 
-Якщо service спрощено array→callback-form АЛЕ spec мок не оновлено → INNER логіка НЕ виконується → всі внутрішні asserts мовчки проходять. Для кожного `$transaction(async...)` → мок ОБОВ'ЯЗКОВО розпізнає callback.
-**Severity:** MEDIUM (silent data corruption на duplicate-PK; race-determinism = випадковий winner).
-**Де шукати ще:** `applyX`/`bulkUpdateX`/`recalculateX`/`syncFromY` з масивом можливих duplicate-PK: pricing (PO/xlsx/rule apply), reservation release on FSM, batch FEFO writeoff, settlement reconciliation, period-end close.
+Якщо service спрощено array→callback АЛЕ мок не оновлено → INNER логіка $transaction body МОВЧКИ пропускається (всі inner asserts зелені без виклику).
+**Severity:** HIGH якщо unit падає (release-blocker); MEDIUM лише contract gap.
+**Де ще:** service.ts чіпнутий review після feature; lightweight-read «це існує?» що пізніше отримує fields. Парне #390,#478-#480,#432-#433.
 
----
+### 2026-06-15 — setX(value) викликається у async, але x не читається у JSX (Bug #497) — frontend / dead-state / UX feedback
 
-### 2026-06-15 — Новий documentType literal не зареєстрований у DOC_TYPE_LABELS map (Bug #491) — backend / i18n / UI consistency
+**Сигнал:** `loading`/`loadingId`/`saving` setter викликається (перед await, false у finally), але НІКОЛИ не читається у JSX (`{loading&&<Spinner/>}`/`disabled={loading}`) → extra renders + user не бачить реакції. Гірше за класичний dead-state (там обидві сторони мертві).
 
-**Сигнал:** новий ресурс (`SupplierReturn`, `ReconciliationAct`) пише StockMovement/SettlementTransaction з `documentType: '<NewName>'`, АЛЕ `inventory.service.ts:DOC_TYPE_LABELS` не має парного запису → `docLabel` fallback `DOC_TYPE_LABELS[documentType] ?? documentType` → UI показує англомовний `'SupplierReturn'` замість `'Повернення постачальнику'` (CLAUDE.md #15-#17). Map у ЧУЖОМУ модулі (inventory), TS не падає (Record<string,string>).
-**Grep:**
+```bash
+grep -rnE "useState[<(](bool|number|null|string)" apps/web/src/app --include="*.tsx" -A5
+# decl>0 && read==0 (немає {name}/name &&/disabled={name}/loading={name}) → MUTE STATE
+```
+
+**Фікс:** (1) видалити state якщо <100ms; (2) render-time `disabled={saving}`/`loading={saving}`; per-row `loading={detailLoadingId===row.id}`.
+**Severity:** MEDIUM. Парне #303.
+**Де ще:** `loadDetail`/`fetchOne`/`loadOptions` async→per-row loading; search debounced fetch; inline-edit savingIds.
+
+### 2026-06-15 — mutateAsync() у inline click-handler без try/catch — silent failure (Bug #499) — frontend / silent UX failure
+
+**Сигнал:** `onClick={async()=>{await mut.mutateAsync(arg);toast.success('...')}}` без try/catch, без `useMutation({onError})`, без глобального `MutationCache.onError` → rejects перериває handler → ні success ні error toast.
+
+```bash
+grep -rn "MutationCache\|mutationCache:" apps/web/src   # пусто → ВСІ inline mutateAsync без try/catch = bug
+grep -rnE "await\s+\w+\.mutateAsync\(" apps/web/src/app --include="*.tsx" -B2 -A3
+```
+
+**Фікс:** (1) per-hook `onError:e=>toast.error(e.message)` (SSOT); (2) inline try/catch; (highest) глобальний `MutationCache.onError`. Regression: `mockRejectedValue`→click→assert `toast.error`.
+**Severity:** MEDIUM; HIGH якщо видаляє Invoice/Payment/WO transition (duplicate-click→data inconsistency).
+**Де ще:** inline `onClick={async()=>` single-step mutation (Trash2/Pencil/Zap); `useEffect(()=>{mutation.mutateAsync()},[])`.
+
+### 2026-06-15 — Partial<Record<Enum,V>> lookup з runtime fallthrough ховає TS-exhaustiveness (Bug #488) — backend / type-safety
+
+**Сигнал:** `Partial<Record<EnumX,V>>` для look-up знаку/типу + `if(sign===undefined)throw`. Зараз всі enum присутні, АЛЕ `Partial<>` пропускає новий `ALTER TYPE ADD VALUE` без compile-error → runtime exception.
+
+```bash
+grep -rnE "Partial<Record<[A-Z][a-zA-Z]+(Type|Status|Role|Kind),\s" apps/api/src/modules --include="*.ts" | grep -v spec
+```
+
+**Фікс:** `Partial<Record<Enum,V>>`→плоский `Record<Enum,V>` (TS вимагає всі values → новий enum→compile-error); видалити runtime guard. Якщо Partial потрібна — коментар + regression-guard default-branch.
+**Severity:** MEDIUM; HIGH якщо map гейтить фінансову (BALANCE_SIGN, TAX_RATE, VAT_FACTOR).
+**Де ще:** MOVEMENT_TYPES, docTypeMap, TRANSITIONS (FSM); LABELS/BADGE/COLOR (Partial з fallback «—» OK).
+
+### 2026-06-15 — Dedup invariant додано після simplify-to-Promise.all БЕЗ regression-guard (Bug #489) — test-coverage / silent data corruption
+
+**Сигнал:** simplify замінив sequential `for{await tx.X.update()}` (last-wins) на `Promise.all(plan.map(u=>tx.X.update()))` + `dedupedPlan=deduplicateBy(plan,u=>u.pk)`. Парний spec не перевіряє invariant → refactor що дропне `deduplicateBy` пройде CI (fixtures унікальні PK). Production має дублікати (PO multi-lot на той самий goodId, xlsx з повтором SKU).
+
+```bash
+grep -rn "deduplicateBy\|new Map(.*\.map.*=> \[" apps/api/src/modules --include="*.service.ts" -l
+# для кожного: grep -cE "deduplicate|duplicate.*(goodId|lineId|id)" $spec → 0 = bug
+```
+
+**Фікс:** regression — `plan` з 2+ entries одним PK (різні values); `expect(prisma.X.updateMany).toHaveBeenCalledTimes(1)` (НЕ 2!); `data:{<field>:<last-value>}`. Плюс sub-pattern stale `$transaction` callback mock (див. #508-509).
+**Severity:** MEDIUM (silent data corruption на duplicate-PK).
+**Де ще:** `applyX`/`bulkUpdateX`/`recalculateX`/`syncFromY` з масивом можливих duplicate-PK: pricing, reservation release, batch FEFO writeoff, settlement reconciliation.
+
+### 2026-06-15 — Новий documentType literal не зареєстрований у DOC_TYPE_LABELS map (Bug #491) — backend / i18n
+
+**Сигнал:** новий ресурс пише StockMovement/SettlementTransaction з `documentType:'<NewName>'`, `inventory.service.ts:DOC_TYPE_LABELS` без парного запису → UI показує англомовний `'SupplierReturn'`. Map у ЧУЖОМУ модулі, TS не падає.
 
 ```bash
 grep -rnE "documentType:\s*'[A-Z][a-zA-Z]+'" apps/api/src/modules --include="*.service.ts" | grep -oE "'[A-Z][a-zA-Z]+'" | sort -u
-grep -oE "^\s+[A-Z][a-zA-Z]+:\s*'" apps/api/src/modules/inventory/inventory.service.ts | grep -oE "[A-Z][a-zA-Z]+" | sort -u
-# diff двох списків → unmapped = bug
+# diff проти ключів DOC_TYPE_LABELS → unmapped = bug
 ```
 
-**Фікс:** додати `<NewModel>: 'Український label'` у DOC_TYPE_LABELS. Better: винести у `packages/shared/.../document-labels.ts` як `Record<DocumentType, string>` (НЕ Partial) — TS-exhaustiveness заверне commit без label.
-**Severity:** MEDIUM (UI inconsistency); LOW якщо internal/admin-only.
-**Де шукати ще:** новий ресурс що пише documentType у history: StockMovement.documentType, SettlementTransaction.documentType, AuditEvent.entityType, NotificationEvent.relatedDocumentType.
+**Фікс:** `<NewModel>:'Український label'`. Better: `packages/shared/.../document-labels.ts` як `Record<DocumentType,string>` (не Partial) — TS-exhaustiveness.
+**Severity:** MEDIUM; LOW admin-only.
+**Де ще:** StockMovement.documentType, SettlementTransaction.documentType, AuditEvent.entityType, NotificationEvent.relatedDocumentType.
 
----
+### 2026-06-15 — DTO line-level FK через createMany без cross-tenant guard (Bug #495) — backend / tenant isolation / Bug #161 family
 
-### 2026-06-15 — DTO line-level FK поля (`goodId`, `unitOfMeasureId`) пишуться через `createMany` без cross-tenant guard (Bug #495) — backend / tenant isolation / Bug #161 family
-
-**Сигнал:** `create()`/`update()` приймає `dto.lines: Array<{goodId, unitOfMeasureId?, ...}>` і пише `tx.<resource>Line.createMany({data})` БЕЗ preceding `findFirst({orgId, id: l.goodId})` для КОЖНОГО FK. Bug #161 розширене на nested arrays (batch масштабує impact). Автор валідує parent FK (supplierId) але child line FK пропускає (Prisma FK валідує лише глобальне існування `id`, НЕ `orgId`) → ADMIN з валідним JWT створює документ з goodId з чужої org.
-**Grep:**
+**Сигнал:** `create()/update()` приймає `dto.lines:Array<{goodId,unitOfMeasureId?}>` і пише `tx.<resource>Line.createMany({data})` БЕЗ preceding `findFirst({orgId,id:l.goodId})` для КОЖНОГО FK (Prisma FK валідує лише глобальне існування).
 
 ```bash
 grep -rnE "tx\.\w+Line\.createMany\s*\(\s*\{" apps/api/src/modules --include="*.service.ts" -l
-grep -B5 "Line\.createMany" <service.ts> | grep -E "good\.findMany.*orgId|good\.findFirst.*orgId"   # 0 = bug
 ```
 
-**Фікс:** `validateLineRefs(orgId, lines)` batch через Promise.all ПЕРЕД `$transaction` (read-only):
+**Фікс:** `validateLineRefs(orgId,lines)` batch ПЕРЕД `$transaction`:
 
 ```ts
 const goodIds = Array.from(new Set(lines.map(l => l.goodId)));
@@ -2442,1020 +2010,1110 @@ if (goods.length !== goodIds.length)
   throw new NotFoundException(`Товар не знайдено: ${missing[0]}`);
 ```
 
-1-2 RTT замість N. Регресія-guard: cross-tenant fixture (`good.findMany` повертає N-1) → `rejects.toThrow(NotFoundException)` + `expect(prisma.X.create).not.toHaveBeenCalled()`.
-**Severity:** HIGH (tenant isolation gap, defense-in-depth); CRITICAL якщо UI drop-down показує лише власні org-дані але API direct дозволяє cross-tenant FK.
-**Де шукати ще:** `<resource>Line[]` DTO create/update: SupplierReturn, PurchaseOrder, Invoice, StockDocument, WorkOrder (parts), ReconciliationAct; nested recipients[]/permissions[]/vehicleIds[] — masked-as-string FK у array DTO.
+Regression: cross-tenant fixture (N-1)→`rejects NotFoundException`+`expect(prisma.X.create).not.toHaveBeenCalled()`.
+**Severity:** HIGH; CRITICAL якщо UI drop-down лише own-org але API дозволяє.
+**Де ще:** `<resource>Line[]` create/update: SupplierReturn, PurchaseOrder, Invoice, StockDocument, WorkOrder parts, ReconciliationAct; nested recipients[]/permissions[]/vehicleIds[].
 
----
+### 2026-06-14 — Multi-mode page викликає всі data hooks одночасно замість gate по mode (Bug #457) — frontend / perf
 
-### 2026-06-14 — Multi-mode page викликає всі data hooks одночасно замість gate-у по mode (Bug #457) — frontend / perf / wasted-fetches
-
-**Сигнал:** сторінка з `viewMode` switcher показує одну з N data-source, але hooks (`useStockByDocument`, `useStockByBatch`) викликані безумовно на top-level → ВСІ N запитів стартують на mount (лише 1 visible). Cost: звіт 5000 рядків × 3 hooks = ~1.5MB зайвого трафіку. Автор думає «TanStack кешує» + `enabled: !!employee` виглядає достатнім.
-**Grep:** `useState<.*ViewMode\|viewMode\s*===\s*['"]` у `.tsx` → порахувати `useQuery` на top-level; `count(useQuery)>1` АЛЕ `count(enabled.*viewMode)`=0 → bug. Runtime: DevTools Network у default mode → N>1 запитів де 1 потрібен.
-**Фікс:** opt-in `enabled?: boolean` у кожен mode-specific hook (default true), внутрішньо `enabled: !!employee && enabled`; споживач передає `viewMode === 'documents'`. Регресія-guard: `renderHook(useX({}, false))` → НЕ викликає apiFetch.
-**Severity:** MEDIUM (perf-only); HIGH якщо endpoint важкий (агрегації >1000, JOIN) або mode рідкий.
-**Де шукати ще:** `*/page.tsx` зі switcher: inventory, reports, dashboard, analytics, calendar (week/month/list), dispatch board, settings sub-tabs.
-
----
-
-### 2026-06-14 — useEffect deps на array-of-object refetches network на кожну mutation НЕ-key поля (Bug #454) — frontend / perf / network-overuse
-
-**Сигнал:** useEffect фетчить за «key» полями (`goodId` set з масиву), але має deps сам масив (`[parts, ...]`) → typing у НЕ-key поле (quantity/price) створює нову reference → effect re-fires → network дублюється на кожен keystroke. ESLint exhaustive-deps вимагає `parts`, але семантично потрібен ТІЛЬКИ derived set.
-**Grep:** `useEffect.*apiFetch` з array prop/state у deps + `.map()`/`.filter()` для derived ключа; runtime DevTools Network, type у quantity → множинні calls; `[arrayOfObjects, ...]` де body `.map(x => x.specificField)`.
-**Фікс:** memoize fingerprint `useMemo(() => sortedSetOfKeys.join(','), [array, ...])` → deps `[fingerprint]` (sort обов'язковий проти false-positive при reorder).
-**Severity:** MEDIUM (perf-only); HIGH якщо race-conditions або endpoint дорогий (100+ елементів).
-**Де шукати ще:** BulkActionsBar, list pages з batch-select (ids→metadata), filter sidebar з debounce, settings з `Promise.all(...).then(setMap)`.
-
----
-
-### 2026-06-15 — Нове enum value додано через DTO+service+frontend БЕЗ regression-guard для самого value (Bugs #478-#480) — test-coverage / regression-guard gap
-
-**Сигнал:** commit `feat(<scope>): add <NEW_VALUE> to <Enum>` змінює: (1) prisma enum + migration `ALTER TYPE ADD VALUE`; (2) `@sto/shared` LABELS/BADGE; (3) backend DTO `@IsEnum` whitelist (Create+Query); (4) service maps (`MOVEMENT_TYPES[NEW]`, `docTypeMap[NEW]`); (5) FE hardcoded array. АЛЕ парний spec залишається зі старими values → grep `<NEW_VALUE>` у spec = 0. Автор перевіряє happy path лайв-сервером, тести вже зелені, нові не пише («логіка як WRITEOFF» — хибно: RECEIPT vs TRANSFER різна гілка, RECEIPT vs WRITEOFF sign quantity). TS green.
-**Grep:**
+**Сигнал:** сторінка з `viewMode` switcher, hooks (`useStockByDocument`, `useStockByBatch`) викликані безумовно top-level → ВСІ N запитів на mount (1 visible).
 
 ```bash
-git show <commit> -- packages/database/prisma/schema.prisma | grep -A1 "^enum"
+# useState<.*ViewMode> у .tsx → count(useQuery)>1 АЛЕ count(enabled.*viewMode)=0 → bug
+```
+
+**Фікс:** opt-in `enabled?:boolean` у кожен mode-hook, `enabled:!!employee&&enabled`; споживач передає `viewMode==='documents'`. Regression: `renderHook(useX({},false))`→НЕ apiFetch.
+**Severity:** MEDIUM; HIGH якщо endpoint важкий.
+**Де ще:** `*/page.tsx` зі switcher: inventory, reports, dashboard, analytics, calendar, dispatch board.
+
+### 2026-06-14 — useEffect deps на array-of-object refetches на кожну mutation НЕ-key поля (Bug #454) — frontend / perf
+
+**Сигнал:** useEffect фетчить за «key» полями (`goodId` set), але deps сам масив (`[parts]`) → typing у quantity/price створює нову reference → network на кожен keystroke.
+**Фікс:** memoize fingerprint `useMemo(()=>sortedSetOfKeys.join(','),[array])`→deps `[fingerprint]` (sort обов'язковий).
+**Severity:** MEDIUM; HIGH якщо race-conditions/дорогий endpoint.
+**Де ще:** BulkActionsBar, list pages з batch-select, filter sidebar debounce, settings `Promise.all().then(setMap)`.
+
+### 2026-06-15 — Нове enum value додано БЕЗ regression-guard для самого value (Bugs #478-#480) — test-coverage / regression-guard gap
+
+**Сигнал:** `feat: add <NEW_VALUE> to <Enum>` змінює: prisma enum+migration; `@sto/shared` LABELS; DTO `@IsEnum` (Create+Query); service maps; FE array. Парний spec без `<NEW_VALUE>` → grep у spec=0. «Логіка як WRITEOFF» хибно (RECEIPT vs TRANSFER різна гілка, RECEIPT vs WRITEOFF sign).
+
+```bash
 grep -rn "<NEW_VALUE>" apps/api/src/modules/<scope>/ --include="*.spec.ts"   # 0 = bug
 ```
 
-**Фікс:** 3 regression-guards у contract+service spec:
+**Фікс:** 3 regression-guards contract+service: (1) POST `type:NEW`→201; (2) GET `?type=NEW`→200; (3) `transition(NEW-doc,CONFIRMED)`→`inventory.createMovement toHaveBeenCalledTimes(1)` (NEW у TRANSFER=двічі), `dtoArg.type===StockMovementType.NEW`, `dtoArg.quantity>0` (sign), `docNumbers.next(orgId,'PARENT_DOC_TYPE')` (docTypeMap), `dtoArg.warehouseId` (НЕ targetWarehouseId). Якщо service spec нема (#480) — створити (`stock-documents.service.spec.ts`).
+**Severity:** HIGH (3 рівні мовчки ламаються; live 400/«Непідтримуваний тип»).
+**Де ще:** WorkOrderStatus/InvoiceStatus/PurchaseOrderStatus (FSM side-effects), StockMovementType/StockDocumentType, DocumentType (numbering e2e), PaymentMethod/CounterpartyType/EmployeeRole, `switch(type)`/`Record<EnumType,X>`.
 
-1. Contract POST `type:NEW_VALUE` → 201 (@IsEnum Create DTO).
-2. Contract GET `?type=NEW_VALUE` → 200 (Query DTO + argv-position findAll).
-3. Service `transition(NEW_VALUE-doc, CONFIRMED)` → map-резолв + side-effect:
-   - `expect(inventory.createMovement).toHaveBeenCalledTimes(1)` ← NEW у TRANSFER-branch кличе двічі
-   - `expect(dtoArg.type).toBe(StockMovementType.NEW_VALUE)` ← MOVEMENT_TYPES[NEW] resolved
-   - `expect(dtoArg.quantity).toBeGreaterThan(0)` (або `<0` WRITEOFF) ← sign-логіка
-   - `expect(docNumbers.next).toHaveBeenCalledWith(orgId, 'PARENT_DOC_TYPE')` ← docTypeMap[NEW]
-   - `expect(dtoArg.warehouseId).toBe(WAREHOUSE_ID)` ← НЕ targetWarehouseId
+### 2026-06-14 — Новий endpoint без service spec + contract spec (Bugs #452, #453) — test-coverage / regression-guard gap
 
-Якщо service spec нема (Bug #480) — створити з `Test.createTestingModule` + mock deps. Приклад: `stock-documents.service.spec.ts`.
-**Severity:** HIGH — 3 рівні (DTO whitelist, map resolve, branch) можуть мовчки зламатись; live 400/400/«Непідтримуваний тип».
-**Де шукати ще:** enum-керовані гілки кожен sprint: WorkOrderStatus/InvoiceStatus/PurchaseOrderStatus (FSM transition side-effects), StockMovementType/StockDocumentType (Bug #480), DocumentType (numbering prefix e2e), PaymentMethod/CounterpartyType/EmployeeRole (if-else guards), `switch(type)`/`Record<EnumType,X>`.
+**Сигнал:** новий `@Get('endpoint')`+method → grep spec=0. Автор browser-test через Network tab.
 
----
+```bash
+git diff HEAD~N HEAD --name-only -- "*/*.controller.ts" "*.service.ts"   # для method grep парний .spec.ts
+```
 
-### 2026-06-14 — Новий endpoint без service spec + contract spec при доданні фічі (Bugs #452, #453) — test-coverage / regression-guard gap
-
-**Сигнал:** commit з новим `@Get('endpoint')` + method у service → grep spec для method → 0 матчів. Особливо коли endpoint у hot-path UI. Автор browser-test через Network tab, spec не пише; review fix-ить guard-и (UUID validation) але без spec регресія пройде CI green.
-**Grep:** `git diff HEAD~N HEAD --name-only -- "apps/api/src/modules/**/*.controller.ts" "*.service.ts"` → для кожного method grep парний `.spec.ts`; `find ... -name "*.controller.ts"` → чи є `*.contract.spec.ts` поруч.
-**Фікс:** `describe('newMethod')` у service spec 5-7 кейсів (empty, tenant isolation, soft-delete, edge null/0, cross-tenant); окремий `*-<feature>.contract.spec.ts` 10-12 HTTP-кейсів (validation 400, RBAC 403, boundary, dups, malformed).
-**Severity:** MEDIUM (release-blocker якщо guard CRITICAL — UUID validation, ліміти; LOW якщо happy path). Auto-rule: commit що додає метод у service МАЄ мати diff у `<service>.spec.ts`.
-
----
+**Фікс:** `describe('newMethod')` service spec 5-7 (empty, tenant, soft-delete, null/0, cross-tenant); `*-<feature>.contract.spec.ts` 10-12 HTTP (400/403/boundary/dups/malformed).
+**Severity:** MEDIUM (release-blocker якщо guard CRITICAL — UUID/ліміти). Auto-rule: commit що додає method у service МАЄ мати діф у `<service>.spec.ts`.
 
 ### 2026-06-11 — Shared FE-BE константа: backend inline literals замість спільної const (Bug #432) — backend / FE-BE drift
 
-**Сигнал:** shared const у `packages/shared/src/constants/*.ts` оновлена для FE, але backend service має inline `['STATUS_A', 'STATUS_B']`.
-**Grep:** `grep -rn "'COMPLETED', 'INVOICED'" apps/api/src --include="*.ts" | grep -v spec`.
-**Фікс:** додати backend const у `<entity>.fsm.ts`, замінити inline у service. FSM-spec: `expect(BE_STATUSES.sort()).toEqual([...FE_STATUSES].sort())`.
-**Severity:** HIGH (silent drift → при додаванні статусу FE gate проходить, backend 400).
+**Сигнал:** shared const оновлена для FE, backend service має inline `['STATUS_A','STATUS_B']` → FE=single source (порушує принцип «BE — джерело, FE — mirror» #401).
 
----
+```bash
+grep -rn "'COMPLETED', 'INVOICED'" apps/api/src --include="*.ts" | grep -v spec
+```
 
-### 2026-06-11 — Audit-track list неповний для нових полів у update().data (Bug #433) — backend / audit / compliance
+**Фікс:** backend const у `<entity>.fsm.ts`, замінити inline. FSM-spec `expect(BE_STATUSES.sort()).toEqual([...FE_STATUSES].sort())`.
+**Severity:** HIGH (silent drift → додавання статусу: FE gate ok, backend 400). Особливо CRITICAL коли whitelist гейтить фінансово/legal (invoice, completion-act).
+**Де ще:** будь-який FSM/gate-whitelist модуль (PO, Invoice, StockDocument, CompletionAct, Calendar).
 
-**Сигнал:** `prisma.X.update({ data: { documentDate, liftId, ... } })` має більше keys ніж `trackField([...] as const)` array. Split-fix: один `fix(tester): audit gap` часто пропускає суміжні поля.
-**Grep:** вручну порівняти data-keys vs audit-keys у кожному `update()` з `auditService.record`.
-**Фікс:** додати поле у trackField array. Регресія-guard: `it('update з { X } включає X у audit.diff')`.
-**Severity:** HIGH (compliance/audit-trail gap для фінансових полів).
+### 2026-06-11 — Audit-track list неповний для нових полів у update().data (Bug #433, family #421) — backend / audit / compliance
 
----
+**Сигнал:** `update({data:{documentDate,liftId,...}})` має більше keys ніж `trackField([...] as const)`. Split-fix: один `fix(tester): audit gap` пропускає суміжні. AuditEvent.diff силентно порожній для незатрекованого поля.
+**Фікс:** додати поле у trackField array. Regression: `it('update з {X} включає X у audit.diff')`. Особливо ризиково FK (liftId/branchId/contractId), дати, суми.
+**Severity:** HIGH (audit-trail).
+**Де ще:** усі `*.service.ts` з update+auditService — недавно додані поля.
 
 ### 2026-06-11 — Local FE interface ↔ backend DTO field-list drift (Bug #434) — sync / type-drift
 
-**Сигнал:** компонент має локальний `interface <ResourceDetail>` без імпорту з shared. Backend DTO додав поле — FE interface пропустив → load-mapper хардкодить дефолт.
-**Grep:** `git diff HEAD~N HEAD -- "apps/api/src/modules/**/*.dto.ts" | grep "^+.*?: "` → нові optional fields → перевірити у FE-interface.
-**Фікс:** додати поле у local interface, оновити load-mapper і inline-edit handler.
-**Severity:** MEDIUM (display ОК, inline-edit губить FK); HIGH якщо submit writes hardcoded default.
+**Сигнал:** компонент має локальний `interface <ResourceDetail>` без імпорту з shared. Backend DTO додав `<field>?:<type>` — FE interface пропустив → load-mapper хардкодить дефолт. tsc green. Симптом: display працює, inline-edit/clone хардкодить (FK dropdown показує «шт» замість «kg»).
 
----
+```bash
+git diff HEAD~N HEAD -- "*/*.dto.ts" | grep "^+.*?: " | grep -E "@ApiPropertyOptional"
+```
 
-### 2026-06-11 — Dead JSX `<></>` Fragment після refactor IIFE→inline (Bug #431) — frontend / code-cleanliness
+**Фікс:** додати поле у local interface (або експортувати у `packages/shared/types.ts`). Regression: `it('edit existing X зберігає <new field>')`.
+**Severity:** MEDIUM; HIGH якщо submit-path пише hardcoded default.
+**Де ще:** `CreateXModal`/`EditXModal`/`[id]/PageClient.tsx` з локальним interface; FK з default-value.
 
-**Сигнал:** refactor/simplify commit у `.tsx` → залишаються `<>...</>` де батьківський element вже має siblings.
-**Grep:** `grep -nE '^\s+<>\s*$|^\s+</>\s*$' apps/web/src/**/*.tsx` → cross-read 5 рядків вище для контексту.
+### 2026-06-11 — Dead JSX <></> Fragment після refactor IIFE→inline (Bug #431) — frontend / code-cleanliness
+
+**Сигнал:** refactor/simplify у `.tsx` → `<>...</>` де батько вже має siblings.
+
+```bash
+grep -nE '^\s+<>\s*$|^\s+</>\s*$' apps/web/src/**/*.tsx
+```
+
 **Виключення:** `return <>...</>`, `condition && <></>` — не dead.
-**Severity:** LOW (cosmetic), але накопичується по кодовій базі.
+**Severity:** LOW (cosmetic, накопичується).
 
----
+### 2026-09-06 — Behavior-change fix + stale regression-guard який асертить СТАРУ поведінку (Bug #648) — frontend / test-integrity
 
-### 2026-09-06 — Behavior-change fix + stale regression-guard (Bug #648) — frontend / test-integrity
+**Сигнал:** race/async-фікс змінює що робить handler на подію (Enter тепер ФЛАШИТЬ debounce замість тихо ігнорувати), існуючий `*.test.tsx` досі асертить `expect(scanSubmit).not.toHaveBeenCalled()`/«НЕ викликається» — ДО-фіксну поведінку. Зелений ЛИШЕ за таймінгом (flush `.then()` резолвиться ПІСЛЯ синхронної асерції). **Тіль-тейл:** `Warning: An update to <Component> inside a test was not wrapped in act(...)` у тесті що перевіряє _відсутність_ дії.
 
-**Сигнал:** race/async-фікс змінює що робить handler на подію (Enter тепер флашить debounce замість тихо ігнорувати), але існуючий `*.test.tsx` досі асертить `expect(scanSubmit).not.toHaveBeenCalled()` / «НЕ викликається» — ДО-фіксну поведінку. Тест зелений ЛИШЕ за таймінгом: flush `.then()` резолвиться після синхронної асерції. Тіль-тейл: `Warning: An update to <Component> inside a test was not wrapped in act(...)` у тесті що перевіряє _відсутність_ дії.
-**Причина виникнення:** тест писався ПІД стару поведінку і закріплював guard `if(!open||items.length===0)return` як «правильний»; фікс перемістив guard нижче нової flush-гілки, але тест ніхто не перечитав — «зелений = ок».
-**Підхід до виявлення:** після fix що чіпає `setTimeout/clearTimeout/debounceRef/timeoutRef/AbortController` у обробнику події → grep парні тести на `.not.toHaveBeenCalled()`/`НЕ викликається` для тієї ж події; будь-який act()-warning у «negative» тесті = підозра. Запустити тест ізольовано і перевірити чи асерція синхронна, а дія — async.
-**Підхід до фіксу:** видалити stale тест (хибно-зелений guard шкідливіший за відсутній); замінити дискримінуючими тестами НОВОЇ поведінки з `flushMicrotasks()` (`await act(async()=>{await Promise.resolve();await Promise.resolve();})`) під fake timers. Довести дискримінацію: revert flush-гілки → нові тести падають.
-**Severity:** MEDIUM (test-integrity; приховує майбутню регресію самого фіксу).
-**Де шукати ще:** усі picker/combobox/autocomplete з debounce+Enter (`search-picker-modal`, `search-combobox`, `GoodPickerModal`); будь-який `fix(review)`/`refactor(simplify)` що змінив async-контроль у event handler.
+```bash
+git diff <range> -- 'apps/web/src/components/**/*.tsx' | grep -E "^\+.*(clearTimeout|debounceRef|timeoutRef).*null"
+# → grep парні тести на .not.toHaveBeenCalled()/НЕ викликається для тієї ж події
+```
 
----
+**Фікс:** видалити stale тест (хибно-зелений guard шкідливіший за відсутній); замінити дискримінуючими тестами НОВОЇ поведінки з `flushMicrotasks()` (`await act(async()=>{await Promise.resolve();await Promise.resolve();})`) під fake timers. Довести дискримінацію: revert flush-гілки→нові падають.
+**Severity:** MEDIUM (test-integrity — приховує майбутню регресію фіксу).
+**Де ще:** picker/combobox/autocomplete з debounce+Enter (`search-picker-modal`, `search-combobox`, `GoodPickerModal`); будь-який `fix(review)`/`refactor(simplify)` що чіпає `setTimeout`/`clearTimeout`/AbortController у обробнику.
 
 ### 2026-06-11 — Stale vi.mock після refactor-extract нового export (Bug #429) — frontend / test-staleness
 
-**Сигнал:** `vi.mock('@/lib/X', () => ({ ... }))` без нового export що компонент імпортує. Тест fail-ить за не-пов'язаним assert (catch+finally нормалізують стан).
-**Grep:** `git diff HEAD~N HEAD -- "apps/web/src/lib/*.ts" | grep "^+export"` → `grep -rln "vi.mock.*@/lib/<libName>" apps/web/src --include="*.test.tsx"`.
-**Фікс:** `vi.mock('@/lib/X', async () => { const actual = await vi.importActual('@/lib/X'); return { ...actual, override: stub }; })`.
-**Severity:** HIGH (release-blocker, ховає реальні регресії).
+**Сигнал:** `vi.mock('@/lib/X')` без нового export що компонент імпортує. Тест fail-ить за не-пов'язаним assert (catch+finally нормалізують стан).
 
----
+```bash
+git diff HEAD~N HEAD -- "apps/web/src/lib/*.ts" | grep "^+export"   # → grep -rln "vi.mock.*@/lib/<libName>" apps/web/src --include="*.test.tsx"
+```
+
+**Фікс:** `vi.mock('@/lib/X', async () => { const actual = await vi.importActual('@/lib/X'); return { ...actual, override: stub }; })`.
+**Severity:** HIGH (release-blocker, ховає реальні регресії). Парне #430.
 
 ### 2026-06-11 — React state guard у async handler race-window (Bug #430) — frontend / race-condition / data-integrity
 
-**Сигнал:** `handleClose` читає `if (saving) return` через state closure; handler робить `setSaving(true)` → `await apiFetch()` → React не flush-ить до завершення handler → Escape між кроками закриває modal на pending POST → orphan data.
-**Grep:** `grep -rn "if (saving\|if (loading\|if (transitioning" apps/web/src/components --include="*.tsx" | grep -v "Ref\.current"`.
-**Фікс:** двошарова state: `useState` для render + `useRef` для guard reads. Wrapper-setter оновлює обидва. Регресія-guard: pending Promise mock → submit → Escape → `expect(onClose).not.toHaveBeenCalled()`.
-**Severity:** HIGH (orphan data у БД, silent failed POST).
+**Сигнал:** `handleClose` читає `if(saving)return` через state closure; async handler `setSaving(true)→await apiFetch()` → React не flush до завершення handler → Escape між кроками закриває modal на pending POST → orphan.
 
----
+```bash
+grep -rn "if (saving\|if (loading\|if (transitioning" apps/web/src/components --include="*.tsx" | grep -v "Ref\.current"
+```
+
+**Фікс:** двошарова state: `useState` для render + `useRef` для guard reads; wrapper-setter оновлює обидва. Regression: pending Promise mock→submit→Escape→`expect(onClose).not.toHaveBeenCalled()`.
+**Severity:** HIGH (orphan rows, silent failed POST).
 
 ### 2026-06-10 — Asymmetric-write nullable col у clone()/copy mutation (Bug #426) — backend / data integrity
 
-**Сигнал:** sprint додає `nullable colX` у line-model. `transition()/clone()` обчислює `resolvedValue` і передає у side-effect, але НЕ робить `tx.<row>.update({ data: { colX: resolvedValue } })`.
-**Grep:** `grep -rnE "[a-z]*Id:\s*l\.[a-z]*Id\s*\?\?\s*null" apps/api/src/modules --include="*.service.ts"` → парний `tx.<row>.update` у тому ж `$transaction`.
-**Severity:** HIGH (silent: movement має X, line має NULL → audit/sync ламається).
+**Сигнал:** sprint додає `nullable colX` у line-model. `transition()/clone()` обчислює `resolvedValue` і передає у side-effect, але НЕ `tx.<row>.update({data:{colX:resolvedValue}})`.
 
----
+```bash
+grep -rnE "[a-z]*Id:\s*l\.[a-z]*Id\s*\?\?\s*null" apps/api/src/modules --include="*.service.ts"
+```
+
+**Severity:** HIGH (silent: movement має X, line NULL → audit/sync ламається).
 
 ### 2026-06-10 — E2E тест застарів після UI refactor: dropdown→pills (Bug #428) — E2E / test staleness
 
-**Правило:** тест падає = щось зламано → знайти ЩО (UI зламаний або тест застарів). Якщо intentional UI refactor → оновити тест, НЕ обходити. `data-testid` стабільніше за text/role.
-**Severity:** MEDIUM (false negative приховує реальні регресії).
-
----
+**Правило:** тест падає=щось зламано → знайти ЩО (UI зламаний або тест застарів). Intentional refactor→оновити тест, НЕ обходити. `data-testid` стабільніше за text/role.
+**Severity:** MEDIUM.
 
 ### 2026-06-10 — Token-guard debouncer: early-return не інкрементує reqId (Bug #396) — frontend / async race
 
-**Сигнал:** хук з `reqIdRef` — early-return гілка (`!startAt || endAt<=startAt`) робить `setX(null)` БЕЗ `reqIdRef.current++` → in-flight fetch resolve перезаписує очищений стан.
-**Grep:** `grep -rn "reqIdRef\|requestIdRef" apps/web/src --include="*.ts" --include="*.tsx" -l` → у кожному `check`/`run`: early-return з `setX(null)` без increment.
-**Severity:** MEDIUM (state corruption при швидкому очищенні параметрів).
+**Сигнал:** хук з `reqIdRef` — early-return (`!startAt||endAt<=startAt`) робить `setX(null)` БЕЗ `reqIdRef.current++` → in-flight fetch resolve перезаписує очищений стан.
 
----
+```bash
+grep -rn "reqIdRef\|requestIdRef" apps/web/src --include="*.ts" --include="*.tsx" -l
+```
+
+**Фікс:** усі гілки що змінюють стан (включно early-return) бамптять `reqIdRef.current++` ПЕРЕД `setX(null)`. Regression: in-flight never-resolving Promise + early-return + delayed resolve → state still null.
+**Severity:** MEDIUM.
 
 ### 2026-06-10 — Conflict-check без excludeParentId у контексті edit parent (Bug #397) — backend+frontend
 
-**Сигнал:** `POST /X/check-conflicts` з `excludeSelfId` АЛЕ виклик з modal батьківської entity без `excludeParentId` → false-positive при кожному відкритті.
-**Grep:** `grep -rn "check-conflicts\|checkConflict" apps/web/src --include="*.tsx" -l` → перевірити чи context = parent-entity.
-**Severity:** MEDIUM (UX false-positive banner).
+**Сигнал:** `POST /X/check-conflicts` з `excludeSelfId` АЛЕ виклик з modal батьківської entity (1:N до self) без `excludeParentId` → backend знаходить власні slots → false-positive при кожному відкритті.
 
----
+```bash
+grep -rn "check-conflicts\|checkConflict" apps/web/src --include="*.tsx" -l   # чи context = parent-entity
+```
 
-### 2026-06-10 — DTO degraded-form у read-only endpoint → contract drift (Bug #398) — backend / contract drift
+**Фікс:** симетричний `excludeParentId` field у DTO + фільтр у сервісі (обидва прапори незалежні). Тест: прокидання + 400 на не-UUID + deps у useEffect модалки.
+**Severity:** MEDIUM (UX false-positive).
 
-**Сигнал:** локальний `toDtoSimple()` повертає той самий тип без enrichment. Optional поля undefined → TS green → майбутній рендер деталей broken.
-**Grep:** `grep -rn "const toDto[A-Z]\w* = " apps/api/src/modules --include="*.service.ts" -A2`.
-**Фікс:** використати `this.toDto(s)`. Публічний endpoint → окремий `PublicXDto`.
+### 2026-06-09 — Read-only DTO degraded-form → contract drift (Bug #398) — backend / contract drift
+
+**Сигнал:** локальний `toDtoSimple()`/`mapBriefly()` повертає той самий тип без enrichment → optional поля undefined → TS green → майбутній рендер деталей broken.
+
+```bash
+grep -rn "const toDto[A-Z]\w* = " apps/api/src/modules --include="*.service.ts" -A2
+```
+
+**Фікс:** `this.toDto(s)`; публічний endpoint → окремий `PublicXDto`; розширити CONFLICT_SELECT/SEARCH_SELECT.
 **Severity:** MEDIUM (latent regression).
-
----
 
 ### 2026-06-09 — Swallowed-fetch mapped to empty-state у read-only panel (Bug #414) — frontend / error handling
 
-**Сигнал:** `<LinkedDocumentsPanel>` робить `.catch((e) => setData(emptyShape))` → 500/network mapped як "немає документів" → UX false reassurance.
-**Grep:** `grep -rn "\.catch.*=>" apps/web/src/components/ui apps/web/src/app --include="*.tsx" -A2 | grep -B1 "setData\|setItems"`.
-**Фікс:** окремий `error` state + `if (error) return <ErrorBanner/>` + Retry.
-**Severity:** MEDIUM (user makes decision based on false empty state).
+**Сигнал:** `<LinkedDocumentsPanel>` `.catch((e)=>setData(emptyShape))` → 500/network=«немає документів» → UX false reassurance (user приймає рішення «створимо рахунок бо немає активного»).
 
----
+```bash
+grep -rn "\.catch.*=>" apps/web/src/components/ui apps/web/src/app --include="*.tsx" -A2 | grep -B1 "setData\|setItems"
+```
+
+**Фікс:** окремий `error` state + `if(error)return <ErrorBanner/>` + Retry (bumps retryKey у deps).
+**Severity:** MEDIUM.
 
 ### 2026-06-09 — Cross-endpoint status-filter inconsistency (Bug #415) — backend / API contract
 
-**Сигнал:** `findByWorkOrder` фільтрує `status: { not: CANCELLED }`, але `getCounts/getLinked` БЕЗ фільтра → badge count показує N+1.
-**Grep:** знайти всі `prisma.<model>.find*/count/groupBy` у тому ж модулі → перевірити уніфікацію `where.status`.
-**Severity:** LOW (UX inconsistency); MEDIUM якщо призводить до помилкового рішення.
+**Сигнал:** `findByWorkOrder` має `status:{not:CANCELLED}`, `getLinked/getCounts` — БЕЗ → badge count N+1 над мертвим записом.
+**Фікс:** уніфікувати `where.status` через усі service-методи модуля; import enum з `@prisma/client` (TS ловить typo). Regression: contract «WO 1 CANCELLED+1 DRAFT→counts.X===1».
+**Severity:** LOW (UX); MEDIUM якщо призводить до помилкового рішення. Парне #401.
 
----
+### 2026-06-09 — Inner $tx re-check spec для Serializable race fix (Bug #416, paired #412) — backend / test coverage
 
-### 2026-06-09 — Inner $tx re-check spec для Serializable race fix (Bug #416) — backend / test coverage
-
-**Сигнал:** `$transaction({ Serializable })` з inner `tx.X.findFirst` re-check — spec має один `mockResolvedValue` (constant), не двічі `mockResolvedValueOnce`.
-**Фікс:** `mockResolvedValueOnce(null).mockResolvedValueOnce({id})` + `expect(prisma.X.create).not.toHaveBeenCalled()`.
+**Сигнал:** `$transaction({Serializable})` з inner `tx.X.findFirst` re-check — spec має один constant `mockResolvedValue`, не двічі → видалення re-check блоку пройде CI.
+**Фікс:** `mockResolvedValueOnce(null).mockResolvedValueOnce({id})` + `expect(prisma.X.create).not.toHaveBeenCalled()` (ключовий assert).
 **Severity:** MEDIUM (regression risk для CRITICAL race fix).
 
----
+### 2026-06-09 — Concurrent-create race «1 active per parent» без unique index (Bug #412) — backend / concurrency
 
-### 2026-06-09 — Concurrent-create race for "1 active per parent" без unique index (Bug #412) — backend / concurrency
+**Сигнал:** `find existing→if(existing)throw→create` (FK `Invoice.workOrderId`, `FiscalReceipt.paymentId`) БЕЗ `$transaction({Serializable})` АБО `@@unique` partial → 2 паралельних POST обидва бачать null → 2 invoice.
 
-**Сигнал:** `find existing → if (existing) throw → create` без `$transaction({ Serializable })` або `@@unique` partial-index → race window для дублікатів.
-**Grep:** `grep -rnE "async (create|createFrom|issueFor)[A-Z]" apps/api/src/modules --include="*.service.ts"` → перевірити `@@unique` або Serializable tx.
-**Severity:** HIGH (2 invoice з тим самим workOrderId).
+```bash
+grep -rnE "async (create|createFrom|issueFor|generateFor)[A-Z]" apps/api/src/modules --include="*.service.ts"
+```
 
----
+**Фікс:** pre-fetch `docNumbers.next()`, обгорнути read+create у Serializable з inner re-check; map P2034→friendly BadRequest. `DocumentNumberService.next()` серіалізує по docType, НЕ по parent FK. Spec 2-3 кейси (existing→400, status guard→400, non-existent→404).
+**Severity:** HIGH (фінансовий).
 
 ### 2026-06-09 — Sibling-panel stale state після parent action (Bug #409) — frontend / state staleness
 
-**Сигнал:** "Документи" tab відкритий → footer-button "Виставити рахунок" → toast.success → tab показує старий список.
-**Grep:** `useEffect.*\[parentId\]` у viewer-компоненті + parent `handle*` POST на endpoint що змінює viewer-дані.
-**Фікс:** prop `refreshKey?: number` → useEffect deps `[parentId, refreshKey]` + parent increment після успіху.
-**Severity:** MEDIUM; HIGH для critical financial panels.
+**Сигнал:** «Документи» tab відкритий → footer «Виставити рахунок»→toast.success→tab показує старий список.
 
----
+```bash
+grep -rnE "useEffect\(.*\[[a-zA-Z]+Id\]" apps/web/src/components/ui --include="*.tsx" -B5 -A10 | grep -B12 "apiFetch"
+```
+
+**Фікс:** prop `refreshKey?:number`→useEffect deps `[parentId,refreshKey]`+parent increment після успіху; ОБОВ'ЯЗКОВО `setPreview(null)` у тому ж useEffect. Regression: render→fetch1→rerender bumped refreshKey→fetch2 (2 apiFetch).
+**Severity:** MEDIUM; HIGH для critical financial panels.
 
 ### 2026-06-09 — Alternate-mutation endpoint обходить canonical guards (Bug #403, #444) — backend / FSM enforcement / capacity invariants
 
-**Сигнал:** `refreshFromWorkOrder/syncFromX/recalculateZ/syncWorkOrderSlots` мутує той самий resource без guards канонічного `update()`. Типові guards що пропускаються: (а) FSM `if (X.status !== DRAFT) throw`; (б) **capacity/conflict probe** (Bug #444: `calendarSlot.startAt/endAt` write має перевіряти overlap з іншими bookings на тому ж lift/employee — інакше silent double-booking); (в) `isLocked/isSystem` guards.
-**Grep:** `grep -rnE "async (refresh|sync|import|recalculate|regenerate|rebuild)[A-Z]" apps/api/src/modules --include="*.service.ts"` → для кожного метода знайти canonical `update()`/`updateLine()` у тому ж файлі, скопіювати ВСІ `if (...) throw` + conflict-check блоки.
-**Severity:** CRITICAL (FSM перезаписує SENT/PAID record без error); HIGH (capacity invariant overlap → double-booking, broken capacity).
-**Регресія-guard:** spec mock-ить conflict-row → метод має throw + `expect(updateMany).not.toHaveBeenCalled()`.
+**Сигнал:** `refreshFromWorkOrder`/`syncFromX`/`recalculateZ`/`syncWorkOrderSlots` мутує той самий resource без guards `update()`: (а) FSM `if(X.status!==DRAFT)throw`; (б) **capacity/conflict probe** (#444: slot write має перевіряти overlap на тому ж lift/employee — інакше double-booking); (в) `isLocked/isSystem`. Або `deleteMany+createMany` full-overwrite без parent status-check.
 
----
+```bash
+grep -rnE "async (refresh|sync|import|recalculate|regenerate|rebuild)[A-Z]" apps/api/src/modules --include="*.service.ts"
+```
+
+**Фікс:** скопіювати ВСІ `if(...)throw`+conflict-check з canonical `update()`. Regression: mock conflict-row→throw+`expect(updateMany).not.toHaveBeenCalled()`.
+**Severity:** CRITICAL (FSM перезаписує SENT/PAID); HIGH (capacity overlap→double-booking).
 
 ### 2026-06-09 — FE status-whitelist асиметрія з backend (Bug #401) — frontend / UX
 
-**Сигнал:** `const canShare = [...].includes(status)` — масив не збігається з backend `SHAREABLE_STATUSES`. FE ⊃ BE → 400 на кліку (HIGH); FE ⊂ BE → silent UX обмеження (MEDIUM).
-**Grep:** `grep -rnE "const can(Share|Edit|Delete)" apps/web/src --include="*.tsx"` → знайти парний backend const → звірити.
-**Severity:** HIGH якщо FE обіцяє кнопку що повертає 400.
+**Сигнал:** `const canShare=[...].includes(status)` — масив ≠ backend `SHAREABLE_STATUSES`. FE⊃BE→400 (HIGH); FE⊂BE→silent обмеження (MEDIUM). Backend=джерело правди.
 
----
+```bash
+grep -rnE "const can(Share|Edit|Delete|Reserve|Transition)\s*=" apps/web/src --include="*.tsx" --include="*.ts"
+grep -rnE "(SHAREABLE|EDITABLE|DELETABLE|RESERVATION_ACTIVE)_STATUSES\s*[:=]" apps/api/src/modules --include="*.ts"
+```
+
+**Фікс:** дзеркалити BE. Regression: contract кожен статус з BE→200; поза масивом→400.
+**Severity:** HIGH якщо FE обіцяє кнопку→400.
 
 ### 2026-06-09 — ID-namespace contract mismatch FE↔BE "silently ignore" (Bugs #396, #399) — full-stack / data loss
 
-**Сигнал:** FE надсилає `itemId` але backend очікує `lineId` — whitelist:true мовчки ігнорує unknown field, операція "успішна" але без ефекту.
-**Grep:** порівняти body у apiFetch POST з DTO fields у відповідному controller.
+**Сигнал:** FE надсилає `itemId`, backend очікує `lineId` — whitelist:true мовчки ігнорує → «успішна» операція без ефекту.
+**Фікс:** порівняти body apiFetch POST з DTO fields контролера.
 **Severity:** HIGH (silent data loss).
-
----
 
 ### 2026-06-09 — Soft-delete primary без auto-promote next sibling (Bugs #351, #398) — backend / business invariant
 
-**Сигнал:** `service.remove()` для `isPrimary/isDefault` entity не promote-ить наступного sibling.
-**Grep:** `grep -rnE "isPrimary\s+Boolean|isDefault\s+Boolean" packages/database/prisma/schema.prisma | awk '{print $1}'` → перевірити `remove()` кожної моделі.
-**Severity:** HIGH (downstream auto-selection повертає неправильні значення).
+**Сигнал:** `remove()` для `isPrimary/isDefault` не promote-ить наступного sibling → downstream auto-selection повертає неправильні.
 
----
+```bash
+grep -rnE "isPrimary\s+Boolean|isDefault\s+Boolean|isMain\s+Boolean" packages/database/prisma/schema.prisma | awk '{print $1}'
+```
+
+**Фікс:** `$transaction`: soft-delete X; `if(existing.isPrimary)findFirst({<scope>,deletedAt:null,id:{not:id}},orderBy:{createdAt:'asc'})→update({isPrimary:true})`.
+**Severity:** HIGH. Парне #226-#227 (frontend refetch).
 
 ### 2026-06-09 — Stale URL-serialization test після backend-compat fix (Bug #390) — frontend / test drift
 
-**Сигнал:** `fix: remove [] suffix` змінює URL params, але `*.test.tsx` ще асертить `categoryIds%5B%5D=`.
-**Grep:** `git diff HEAD~3 HEAD -- 'apps/web/src/**/*.tsx' | grep -E "^\+.*params\.(append|set)"` → pair-check `__tests__/*.test.tsx`.
-**Фікс:** оновити assertion + додати negation guard `expect(url).not.toContain('<old-form>')`.
-**Severity:** CRITICAL (весь web suite червоний → release-blocker).
+**Сигнал:** `fix: remove [] suffix` змінює URL params, `*.test.tsx` ще асертить `categoryIds%5B%5D=`. `.toContain` фейлиться, повідомлення виглядає як component-bug.
 
----
+```bash
+git diff HEAD~3 HEAD -- 'apps/web/src/**/*.tsx' | grep -E "^\+.*params\.(append|set)\b" | grep -v test
+```
 
-### 2026-06-08 — Imperative `.focus()` на conditionally-rendered ref (Bug #386) — frontend / UX
+**Фікс:** оновити assertion + `expect(url).not.toContain('<old-form>')` negation guard.
+**Severity:** CRITICAL коли весь web suite червоний (release-blocker). Парне §1.5 #163.
 
-**Сигнал:** `xxxRef.current?.focus()` у click handler де ref належить `{cond && <input ref={xxxRef}/>}` — handler змінює state-умову → ref ще null → focus loss.
-**Grep:** `grep -rnE "[a-zA-Z]Ref\.current\?\.(focus|select|scrollIntoView)" apps/web/src/components --include="*.tsx" -B3` → перевірити чи ref умовний.
-**Фікс:** `requestAnimationFrame(() => xxxRef.current?.focus())` або `useEffect([cond])`.
-**Severity:** LOW-HIGH залежно від context.
+### 2026-06-08 — Imperative .focus()/.scrollIntoView() на conditionally-rendered ref (Bug #386) — frontend / UX
 
----
+**Сигнал:** `xxxRef.current?.focus()` у click handler де ref = `{cond&&<input ref={xxxRef}/>}` — handler змінює state-умову → focus ДО React commit → ref null → focus loss.
+
+```bash
+grep -rnE "[a-zA-Z]Ref\.current\?\.(focus|select|scrollIntoView|click)" apps/web/src/components/ui --include="*.tsx" -B3
+```
+
+**Фікс:** `requestAnimationFrame(()=>xxxRef.current?.focus())` або declarative `useEffect([cond])`. Regression: `await user.click(clearBtn); expect(input).toHaveFocus()`.
+**Severity:** LOW (UX) до HIGH (`.scrollIntoView` у list-modal).
 
 ### 2026-06-08 — Soft-delete remove() не каскадить на 1:1 @unique related table (Bug #373) — backend / soft-delete
 
-**Сигнал:** `parent.remove()` soft-delete parent, але пов'язана `@unique(FK)` таблиця не soft-deleted → `create()` нового батька кидає P2002.
-**Grep:** `grep -rn "@@unique" packages/database/prisma/schema.prisma | grep -v "orgId,"` → для кожного `@@unique([FK])` перевірити `remove()` у service на каскадний deletedAt.
-**Severity:** HIGH (re-create permanently blocked).
+**Сигнал:** `parent.remove()` soft-delete parent, `@unique(FK)` таблиця не soft-deleted → `create()` нового батька→P2002.
 
----
+```bash
+grep -rn "@@unique" packages/database/prisma/schema.prisma | grep -v "orgId,"
+```
+
+**Severity:** HIGH.
 
 ### 2026-06-08 — seed.ts залежить від іншого seed-скрипту (Bug #377) — db / seed orchestration
 
-**Сигнал:** `seed.ts` (`prisma db seed`) використовує дані з таблиці що заповнюється `seed-catalog.ts` (не запускається автоматично) → RuntimeError у CI.
-**Фікс:** об'єднати у один `seed.ts` або `seedCatalog() → seedMain()` orchestration.
-**Severity:** MEDIUM (CI seed fails, dev onboarding broken).
+**Сигнал:** `seed.ts` використовує дані з таблиці що заповнюється `seed-catalog.ts` (не авто) → RuntimeError у CI.
+**Фікс:** об'єднати або `seedCatalog()→seedMain()` orchestration.
+**Severity:** MEDIUM.
 
----
+### 2026-06-08 — Controlled <select value> default ігнорує dynamic option filter (Bug #378) — frontend
 
-### 2026-06-08 — Controlled `<select value>` default ігнорує dynamic option filter (Bug #378) — frontend / controlled-select
+**Сигнал:** `value={form.X}` де options фільтруються по parent → зміна parent → `form.X` не існує у нових options → порожній вибір без reset.
+**Фікс:** `useEffect([parent],()=>{if(!options.find(o=>o.id===form.X))setForm(f=>({...f,X:''}))})`.
+**Severity:** MEDIUM.
 
-**Сигнал:** `value={form.X}` де options фільтруються по parent → при зміні parent `form.X` може не існувати в нових options → порожній вибір без reset.
-**Фікс:** `useEffect([parent], () => { if (!options.find(o=>o.id===form.X)) setForm(f=>({...f, X: ''})) })`.
-**Severity:** MEDIUM (UX state mismatch).
+### 2026-06-06 — Sibling-handler pattern miss (Bug #370) — frontend
 
----
+**Сигнал:** `fix(review)` виправив один з 2-3 парних handlers (handleCreate/handleUpdate/handleDelete). Решта той самий патерн.
 
-### 2026-06-06 — Sibling-handler pattern miss: review виправив один handler, дзеркальний залишився (Bug #370) — frontend
+```bash
+grep -n "handle(Create|Update|Delete|Restore)" <file>   # після review-fix перевірити кожен
+```
 
-**Сигнал:** `fix(review)` виправив один з 2-3 парних handlers у тому ж файлі (handleCreate/handleUpdate/handleDelete). Решта мають той самий патерн.
-**Grep:** після review-fix commit → `grep -n "handle(Create|Update|Delete|Restore)" <file>` → перевірити кожен.
-**Severity:** успадковує severity оригінального бага.
-
----
+**Severity:** успадковує severity original.
 
 ### 2026-06-06 — Mask wrapper re-extracts digits із форматованого prefix (Bug #369) — frontend / controlled-input
 
-**Сигнал:** PhoneInput: iterative typing дає `+38 (380)...` замість `+38 (038)...` — `replace(/\D/g,'')` витягує digits з prefix `+38 (` разом з user input.
-**Grep:** `grep -rn "e\.target\.value\s*=\s*" apps/web/src/components/ui --include="*.tsx"`.
-**Фікс:** `applyMask(v)` strip prefix перед digit-extraction. Регресія-guard: `it('iterative typing matches one-shot paste')`.
-**Severity:** HIGH (silent data corruption — невалідний номер у БД).
+**Сигнал:** PhoneInput iterative typing → `+38 (380)...` замість `+38 (038)...` — `replace(/\D/g,'')` витягує prefix `+38 (` разом з input. One-shot paste ok, iterative fails silently → невалідний номер у БД.
 
----
+```bash
+grep -rn "e\.target\.value\s*=\s*" apps/web/src/components/ui --include="*.tsx"
+```
+
+**Фікс:** `applyMask(v)` strip фіксований prefix перед digit-extraction. Regression: `it('iterative typing matches one-shot paste')`+`it('idempotency applyMask(applyMask(x))===applyMask(x)')`.
+**Severity:** HIGH (silent data corruption, backend приймає 10 цифр).
+**Де ще:** майбутні CardNumberInput/IBANInput/VinInput/EDRPOUInput.
 
 ### 2026-06-06 — Cascade-clear stale linked FK при зміні parent picker (Bugs #365, #367) — frontend / form-state
 
-**Сигнал:** user обрав counterparty → обрав vehicle → змінив counterparty → `vehicleId` лишається від попереднього.
-**Grep:** `<EntityPickerField.*onChange` → перевірити чи `setForm(f => ({ ...f, parentFk, childFk: '' }))`.
-**Severity:** HIGH (FK з іншої org → cross-tenant або 404).
-
----
-
-### 2026-06-15 — Orphan affordance UI: toggle/button без consumer-а після dead-code cleanup (Bugs #504, #505) — frontend / UX / Bug #341 sub-pattern
-
-**Сигнал:** review-fix/tester видалив dead state + render-залежний компонент, але залишилась **affordance**: `<Toggle enabled={x.enabled} onToggle={x.toggle}/>`, `<Button onClick={openX}>`, hotkey, command palette entry — керує hook/state що **нічого не контролює**. tsc/тести green, кнопка лишається, натиск → нічого (або localStorage без ефекту). Affordance у іншому регіоні JSX; destructure не unused (TS без `noUnusedLocals` мовчить).
-**Grep:**
+**Сигнал:** обрав counterparty→vehicle→змінив counterparty→`vehicleId` лишається від попереднього.
 
 ```bash
-grep -rln "DetailPanel\b\|DetailPanelToggle\|<XPanel" apps/web/src/app/\(app\)   # paired list-pages
+# <EntityPickerField.*onChange → чи setForm(f=>({...f,parentFk,childFk:''}))
+```
+
+**Severity:** HIGH (FK з іншої org→cross-tenant/404).
+
+### 2026-06-15 — Orphan affordance UI: toggle/button без consumer-а після dead-code cleanup (Bugs #504, #505, #341 sub) — frontend / UX
+
+**Сигнал:** review-fix видалив dead state + render-компонент, але лишилась **affordance**: `<Toggle enabled={x.enabled} onToggle={x.toggle}/>`, hotkey, command palette — керує hook/state що НІЧОГО не контролює. tsc/тести green, натиск→нічого (або localStorage без ефекту).
+
+```bash
+grep -rln "DetailPanel\b\|DetailPanelToggle\|<XPanel" apps/web/src/app/\(app\)
 grep -rnE "<DetailPanelToggle |hotkey:|cmdK:|<MinimizeButton" apps/web/src --include="*.tsx"
-# для кожного: hook-стан що toggle мутує → єдиний consumer → якщо немає / consumer-prop завжди false → bug
-# review-fix commit з delete >50% insert = підозра
 ```
 
-**Фікс:** видалити affordance разом з destructure. Якщо affordance у багатьох файлах, мертвий лише у деяких → видалити тільки у dead files. НЕ залишати «TODO: відновити» (dead code + TODO = подвоєний debt). Регресія-guard: vitest snapshot JSX layout.
-**Severity:** MEDIUM (UX confusion + dead localStorage); LOW якщо hotkey без UI hint; HIGH якщо affordance = key feature (toolbar з підказкою).
-**Де шукати ще:** shared hook з toggle-state (useDetailPanel, useColumnsConfig, useSavedFilters, useBulkSelect) — destructure без render consumer; command-palette entries до неіснуючої сторінки (Bug #354); hotkey handlers що змінюють state не зчитуваний у JSX.
+**Фікс:** видалити affordance разом з destructure; якщо мертвий лише у деяких файлах — тільки у dead. НЕ «TODO: відновити». Regression: vitest snapshot JSX.
+**Severity:** MEDIUM; LOW hotkey без hint; HIGH якщо affordance=key feature.
+**Де ще:** shared hook з toggle-state (useDetailPanel, useColumnsConfig, useSavedFilters, useBulkSelect); command-palette до неіснуючої сторінки (#354); hotkey що змінює state не у JSX.
 
----
+### 2026-06-15 — Backend stale-FK cleanup у service.update() (Bug #473, #477, paired #365/#367 frontend) — backend / data-integrity
 
-### 2026-06-15 — Backend stale-FK cleanup у service.update() (Bug #473, paired Bugs #365, #367 frontend) — backend / business-logic / data-integrity
-
-**Сигнал:** service.update() приймає `dto.parentFkId` (supplierId/counterpartyId/vehicleId) АЛЕ FE забуває dependent child FK (contractId/...) у PATCH body. Backend silent-keep-ає старий child FK → cross-parent orphan (`po.contract.counterpartyId !== po.supplierId`). P2003 не спрацює (target row у self-org); UI показує «договір N» що належить ІНШОМУ постачальнику.
-**Grep:** для `service.update()` з ≥2 FK (parentFkId + childFkId):
+**Сигнал:** `update()` приймає `dto.parentFkId` (supplierId/counterpartyId) АЛЕ FE забуває dependent child FK (contractId) у PATCH → backend silent-keep старий child → cross-parent orphan (`po.contract.counterpartyId !== po.supplierId`). P2003 не спрацює (self-org).
 
 ```bash
-grep -nE "findFirst.*select:.*{(\s|$)" apps/api/src/modules/<resource>/<resource>.service.ts -A5 | grep -E "Id:\s*true"   # SELECT має включати BOTH
-grep -n "parentChanged\|supplierChanged" apps/api/src/modules/<resource>/<resource>.service.ts   # branch auto-clear?
+grep -nE "findFirst.*select:.*{(\s|$)" apps/api/src/modules/<resource>/<resource>.service.ts -A5 | grep -E "Id:\s*true"   # SELECT має BOTH
 ```
 
-**Фікс:** SELECT включає parent FK + ВСІ dependent FK; `<parent>Changed = dto.<parent>Id !== undefined && dto.<parent>Id !== po.<parent>Id`; child FK у 4 гілки: (a) string → validate проти `effectiveParentId = dto.parentId ?? po.parentId`; (b) null → explicit clear; (c) `parentChanged && po.childFkId` → auto-clear stale; (d) otherwise keep (undefined). DTO `child?: string | null` з `@ValidateIf((_,v)=>v!==null) @IsUUID()` + `@Transform(emptyToUndefined)`. Регресія-guard: ОКРЕМІ кейси (b)(c)(d); тест (c) mocks `findFirst` `po.childFkId!==null` + dto WITHOUT childFkId → `update.data.childFkId === null`; Bug #477: contract `PATCH {childFkId:null} → 200`.
-**Severity:** HIGH (silent cross-parent corruption; ризик коли FE/BE паралельно, фронт reset робить ОДИН з 3 шляхів — picker modal/inline/manual unset).
-**Де шукати ще:** WorkOrderService.update (counterpartyId+vehicleId), InvoiceService.update (counterpartyId+workOrderId+paymentMethodId), StockDocumentService.update, SettlementService.transferTransaction (from+toAccountId), PurchaseOrderService.update ✅ (#473), SupplierPaymentService.update ✅ (#588), CounterpartyContractService, AppointmentService.
-
----
+**Фікс:** SELECT parent+ВСІ dependent FK; `parentChanged=dto.parentId!==undefined && dto.parentId!==po.parentId`; child FK 4 гілки: (a) string→validate проти `effectiveParentId=dto.parentId??po.parentId`; (b) null→clear; (c) `parentChanged&&po.childFkId`→auto-clear stale; (d) keep. DTO `child?:string|null` з `@ValidateIf @IsUUID`+`@Transform(emptyToUndefined)`. Regression: (b)(c)(d) окремо; (#477) contract `PATCH {childFkId:null}→200`.
+**Severity:** HIGH (silent cross-parent corruption).
+**Де ще:** WorkOrder.update (counterpartyId+vehicleId), Invoice.update (counterpartyId+workOrderId+paymentMethodId), StockDocument, SettlementService.transferTransaction, PurchaseOrder ✅(#473), SupplierPayment ✅(#588), CounterpartyContract, Appointment.
 
 ### 2026-06-06 — Toggle callback виконує full open-logic при CLOSING (Bug #364) — frontend / callback design
 
-**Сигнал:** `onToggle(open: boolean)` при `open=false` виконує повну open-логіку (reset форми, fetch даних) замість cleanup.
+**Сигнал:** `onToggle(open)` при `open=false` виконує open-логіку (reset/fetch) замість cleanup.
 **Grep:** `grep -rn "onToggle\|onOpenChange\|onClose" apps/web/src --include="*.tsx" -A5 | grep "fetch\|reset\|load"`.
-**Фікс:** `if (!open) return; // only run open-logic when opening`.
-**Severity:** MEDIUM (зайве fetch при закритті).
-
----
+**Фікс:** `if(!open)return;`.
+**Severity:** MEDIUM.
 
 ### 2026-06-06 — Soft string FK без validation (Bugs #359, #361) — backend / data-integrity
 
-**Сигнал:** DTO `currencyCode: string` без `findFirst({ orgId, code: dto.currencyCode })` → `'XYZ'` проходить → DB corrupted.
-**Grep:** `grep -rnE "String\s*$|String\s+@db\.VarChar" packages/database/prisma/schema.prisma | grep -iE "code|type"` → перевірити validation у service.
-**Severity:** HIGH.
+**Сигнал:** DTO `currencyCode:string` (Prisma plain `String`) без `findFirst({orgId,code:dto.currencyCode})` → `'XYZ'` проходить → DB corrupted (`1 000.00 XYZ`). Guard у БОТКИ create+update (PATCH attack).
 
----
+```bash
+grep -rnE "String\s*$|String\s+@db\.VarChar" packages/database/prisma/schema.prisma | grep -iE "code|type|status"
+```
+
+**Severity:** HIGH. Regression: `POST {code:'INVALID'}→400`.
 
 ### 2026-06-06 — Auto-create child ignores parent settings inheritance (Bug #360) — backend / business-logic
 
-**Сигнал:** `tx.Contract.create({ data: { currencyCode: 'UAH' } })` hardcoded замість `OrganisationSettings.currency`.
-**Grep:** `grep -rnE "tx\.[a-z]+\.create.*currencyCode|paymentDeferDays|warrantyDays" apps/api/src/modules --include="*.service.ts"`.
-**Фікс:** fetch `organisationSettings` ПЕРЕД `$transaction`, передати у create.data.
-**Severity:** HIGH (порушує UX-інваріант "default відповідає налаштуванням").
+**Сигнал:** `tx.Contract.create({data:{currencyCode:'UAH'}})` hardcoded замість `OrganisationSettings.currency`.
 
----
+```bash
+grep -rnE "tx\.[a-z]+\.create\(\s*\{\s*data:\s*\{[^}]*\b(currencyCode|currency|paymentDeferDays|warrantyDays|slotDurationMinutes):" apps/api/src/modules --include="*.service.ts"
+```
+
+**Фікс:** fetch `organisationSettings.findUnique({where:{orgId}})` ПЕРЕД `$transaction` (Promise.all з documentNumberService.next), передати у create.data.
+**Severity:** HIGH (порушує UX-tooltip інваріант).
 
 ### 2026-06-06 — Case-sensitive lookup vs canonical-form (Bug #359) — backend / DTO normalization
 
-**Сигнал:** `findFirst({ code: dto.currencyCode })` — user вводить `'uah'`, БД має `'UAH'` → 400 з валідним кодом.
-**Grep:** `grep -rnE "findFirst.*code:\s*dto\." apps/api/src/modules --include="*.service.ts"` → перевірити `@Transform(toUpperCase)` у DTO.
-**Severity:** HIGH (valid user input → 400 → perceived as broken).
+**Сигнал:** `findFirst({code:dto.currencyCode})` — user `'uah'`, БД `'UAH'` → 400 з валідним кодом (Postgres case-sensitive).
 
----
+```bash
+grep -rnE "findFirst\(\s*\{\s*where:\s*\{[^}]*\b(code|type|status):\s*dto\." apps/api/src/modules --include="*.service.ts"
+```
 
-### 2026-06-05 — Dead `/X/new` маршрут у keyboard shortcut (Bug #354) — frontend / routing
+**Фікс:** `@Transform(toUpperCurrencyCode)`/`@Transform(toLowerCase)` у DTO + `<Input onChange={e=>set(e.target.value.toUpperCase())}>`.
+**Severity:** HIGH (valid input→400→perceived broken).
 
-**Сигнал:** `router.push('/resources/new')` але `new/` dir не існує → `[id]` route ловить `'new'` як id → broken detail page.
-**Grep:** `grep -rn "router\.push('/[^']*/new')" apps/web/src --include="*.ts" --include="*.tsx"` → `test -d apps/web/src/app/.../<resource>/new`.
-**Фікс:** `?action=new` query param + `useSearchParams` у page + `<Suspense>`.
-**Severity:** HIGH (keyboard shortcut → broken page).
+### 2026-06-05 — Dead /X/new маршрут у keyboard shortcut / Command Palette (Bug #354) — frontend / routing
 
----
+**Сигнал:** `router.push('/<resource>/new')` але `new/` dir не існує → `[id]` ловить `'new'` як id → broken detail.
+
+```bash
+grep -rn "router\.push('/[^']*/new')\|href:\s*'/[^']*/new'" apps/web/src --include="*.ts" --include="*.tsx"
+# test -d apps/web/src/app/(*)/<resource>/new
+```
+
+**Фікс:** `?action=new` query + `useSearchParams` + `<Suspense fallback={null}>` (Next.js static-export).
+**Severity:** HIGH (feature broken).
 
 ### 2026-06-05 — TanStack Query queryKey shape mismatch: helper vs factory vs prefetch (Bugs #355-#356) — frontend / react-query
 
-**Сигнал:** `usePaginatedList({ queryKey: 'X' })` будує `[key, filters]` але factory `xKeys.list(f) = [...xKeys.all, 'list', filters]` (3-element) → різні cache slots → prefetch не hit.
-**Grep:** `grep -rn "queryKey:\s*\[.*filters\]" apps/web/src/hooks/api --include="*.ts"` → match без `'list'` = bug.
-**Severity:** MEDIUM (prefetch silent miss → double-fetch).
+**Сигнал:** `usePaginatedList({queryKey:'X'})` будує `[key,filters]` але factory `xKeys.list(f)=[...xKeys.all,'list',filters]` (3-element) → різні cache slots → prefetch не hit. Або TopShell prefetch пропускає sortBy/dateFrom/специфічні фільтри.
 
----
+```bash
+grep -rn "queryKey:\s*\[.*filters\]" apps/web/src/hooks/api/ --include="*.ts"   # без 'list' = bug
+```
+
+**Фікс:** hook `queryKey:[key,'list',filters]`; TopShell PREFETCH_MAP оновлюється з кожним новим фільтром сторінки. Preferable: `defaultXFilters()` з hook-файлу, обидві сторони з неї. Regression: `qc.getQueryCache().getAll()`→`cache.length===1`.
+**Severity:** MEDIUM (prefetch silent miss).
 
 ### 2026-06-04 — Hardcoded document-number обходить DocumentNumberService (Bug #348) — backend / bizlogic
 
-**Сигнал:** `tx.Contract.create({ data: { number: 'DRAFT' } })` замість `documentNumberService.next()`.
-**Grep:** `grep -rnE "tx\.[a-z]+\.create.*\bnumber:\s*['\"]" apps/api/src/modules --include="*.service.ts"`.
-**Фікс:** `documentNumberService.next()` ПЕРЕД `$transaction`.
-**Severity:** HIGH (monotonic numbering порушена).
+**Сигнал:** `tx.Contract.create({data:{number:'<literal>'}})` замість `documentNumberService.next()` (модель у DocumentNumberConfig seed).
 
----
+```bash
+grep -rnE "tx\.[a-z]+\.create\(\s*\{\s*data:\s*\{[^}]*\bnumber:\s*['\"]" apps/api/src/modules --include="*.service.ts"
+```
+
+**Фікс:** `documentNumberService.next()` ПЕРЕД `$transaction` (next() сам відкриває $tx з SELECT FOR UPDATE — nesting deadlock).
+**Severity:** HIGH (monotonic numbering порушена).
 
 ### 2026-06-03 — Stale contract-spec: arg-count drift після нового query-param (Bug #340) — backend / contract tests
 
-**Сигнал:** controller forwarding `service.findAll(orgId, ..., query.NEW)` — `toHaveBeenCalledWith(orgId, ...8 args)` ламається при 9 args.
-**Grep:** `git diff HEAD~N HEAD -- "*.controller.ts" | grep -E "^\+.*query\.[a-zA-Z]+"` → нові args → оновити `toHaveBeenCalledWith`.
-**Severity:** MEDIUM (red baseline приховує реальні баги).
+**Сигнал:** controller `service.findAll(orgId,...,query.NEW)` — `toHaveBeenCalledWith(orgId,...8 args)` ламається при 9. tsc green (варіадичне передавання).
 
----
+```bash
+git diff HEAD~N HEAD -- "*.controller.ts" | grep -E "^\+.*service\.findAll\(.*\bquery\.[a-zA-Z]+\b"
+```
+
+**Фікс:** додати `undefined` для нових. Preferable: передавати **об'єкт** `{page,...,sortBy}` замість positional (нові поля не ламають `expect.objectContaining`).
+**Severity:** MEDIUM (red baseline).
 
 ### 2026-06-03 — Stale mock після додавання cascade-helper у service (Bug #340b) — backend / test-coverage
 
-**Сигнал:** review-fix додав `getDescendantIds()` → spec ловить `TypeError: X is not iterable` бо `findMany` у helper не замокано.
-**Grep:** `git diff HEAD~N HEAD -- "*.service.ts" | grep -E "^\+.*await this\.(getDescendant|cascade)"` → додати `prisma.<model>.findMany.mockResolvedValueOnce([])`.
-**Severity:** MEDIUM.
+**Сигнал:** review-fix додав `getDescendantIds()` у service-метод → spec ловить `TypeError: X is not iterable` (findMany у helper не замокано).
 
----
+```bash
+git diff HEAD~N HEAD -- "*.service.ts" | grep -E "^\+.*await this\.(getDescendantIds|getAncestorIds|getLinkedX|cascade)"
+```
+
+**Фікс:** `prisma.<model>.findMany.mockResolvedValueOnce([])` ПЕРЕД викликом.
+**Severity:** MEDIUM. Парне #200.
 
 ### 2026-06-03 — Review-fix completeness: крос-файловий патерн частково виправлений (Bug #341) — frontend
 
-**Сигнал:** `fix(review): replace X with Y` чіпає N файлів — але є ще M файлів з тим самим патерном поза scope review.
-**Grep:** після review-fix — той самий grep-pattern по ВСЬОМУ codebase без file-filter.
-**Severity:** успадковує severity original bug.
+**Сигнал:** `fix(review): replace X with Y` чіпає N файлів — є ще M з тим самим патерном поза scope.
 
----
+```bash
+git show --stat <last-review-commit> -- '*.tsx' '*.ts'   # той самий grep-pattern по ВСЬОМУ codebase без file-filter
+```
+
+Типові пропуски: `[id]/PageClient.tsx`, `*Tab.tsx`, sub-components, shared hooks/lib. Виняток (легітимні): toast-double-protection, optional PWA SW, fire-and-forget telemetry — з парним user-feedback каналом.
+**Severity:** успадковує original.
 
 ### 2026-06-03 — Нові query-param фільтри без contract-spec coverage (Bugs #338, #339) — backend / contract tests
 
-**Сигнал:** `QueryDto` отримав нові поля (`dateFrom`, `branchId`), але contract spec не перевіряє forwarding.
-**Grep:** `git diff HEAD~5 HEAD --name-only | grep "\.dto\.ts$"` → для кожного QueryDto → перевірити spec coverage нових полів.
-**Severity:** MEDIUM.
+**Сигнал:** `QueryDto` отримав нові поля (dateFrom/branchId), contract spec не перевіряє forwarding.
 
----
+```bash
+git diff HEAD~5 HEAD --name-only | grep "\.dto\.ts$"   # для кожного QueryDto → spec coverage нових
+```
+
+**Severity:** MEDIUM.
 
 ### 2026-06-03 — Bool prop early-return у useEffect: обидві гілки потребують test (Bug #336) — frontend / hooks
 
-**Сигнал:** `useEffect(() => { if (!enabled) { cleanup(); return; } init(); }, [enabled])` — тест тільки для `enabled=true`.
-**Фікс:** додати тест `enabled=false` гілки (`expect(cleanup).toHaveBeenCalled()`).
-**Severity:** MEDIUM (інверсія `!enabled` ↔ `enabled` проходить зеленою).
-
----
+**Сигнал:** `useEffect(()=>{if(!enabled){cleanup();return;}init();},[enabled])` — тест лише `enabled=true`.
+**Фікс:** тест `enabled=false` (`expect(cleanup).toHaveBeenCalled()`).
+**Severity:** MEDIUM (інверсія `!enabled`↔`enabled` проходить зеленою).
 
 ### 2026-06-03 — Animation hook без tests + CSS marker contract (Bugs #332-#335) — frontend / animation
 
-**Сигнал:** `useAnimatedPresence` без `*.test.ts`; CSS `[data-animate][data-state="open"]` без assertion що атрибут на правильному елементі.
-**Grep:** `grep -nE "\[data-[a-z]+\]" apps/web/src/app/globals.css` → кожен `data-*` selector має assertion в `*.test.tsx`.
-**Severity:** LOW (visual jank).
+**Сигнал:** `useAnimatedPresence` без `*.test.ts`; CSS `[data-animate][data-state="open"]` без assertion що атрибут на правильному елементі. Плюс rAF-dance `setVisible(true);requestAnimationFrame(()=>setState('open'))` → 1-frame paint at previous state (flicker).
 
----
+```bash
+grep -nE "\[data-[a-z]+\](\[data-[a-z]+\=)?" apps/web/src/app/globals.css   # кожен data-* selector → assertion у *.test.tsx
+grep "requestAnimationFrame.*setState\(" apps/web/src/hooks/use*.ts
+```
+
+**Фікс:** integration-test `expect(dialog).toHaveAttribute('data-animate')`+`data-state=open`+`querySelector(':scope > [data-backdrop]')`. rAF: `useLayoutEffect`+`setState('open')` без rAF (CSS `fill-mode:both`) або `data-just-mounted`.
+**Severity:** LOW (visual jank).
 
 ### 2026-06-02 — Coefficient-zero у нових UoM endpoints (Bug #312) — backend+frontend
 
-**Сигнал:** `coefficient?: number` без `@Min(0.0001)` → coefficient=0 → division by zero у price calc.
-**Grep:** `grep -rn "coefficient" apps/api/src/modules --include="*.dto.ts" | grep -v "@Min\|@IsPositive"`.
-**Severity:** HIGH (data corruption).
+**Сигнал:** `coefficient?:number` без `@Min(0.0001)` → 0 → division by zero.
 
----
+```bash
+grep -rn "coefficient" apps/api/src/modules --include="*.dto.ts" | grep -v "@Min\|@IsPositive"
+```
 
-### 2026-06-02 — `window.confirm` замість `useConfirm` (Bug #313) — frontend / UX
+**Severity:** HIGH.
 
-**Grep:** `grep -rn "window\.confirm" apps/web/src --include="*.tsx"`. Фікс: `const confirm = useConfirm(); await confirm({ ... })`.
-**Severity:** LOW (UX consistency).
+### 2026-06-02 — window.confirm замість useConfirm (Bug #313) — frontend / UX
 
----
+```bash
+grep -rn "window\.confirm" apps/web/src --include="*.tsx"
+```
 
-### 2026-06-02 — Reusable UI компонент без `type="button"` (Bug #314) — frontend / a11y
+**Фікс:** `const confirm=useConfirm(); await confirm({...})`. **Severity:** LOW.
 
-**Grep:** `grep -rn "<button" apps/web/src/components/ui --include="*.tsx" | grep -v "type="`.
-**Severity:** MEDIUM (defensive: при вбудові в форму → form submission).
+### 2026-06-02 — Reusable UI компонент без type="button" (Bug #314) — frontend / a11y
 
----
+```bash
+grep -rn "<button" apps/web/src/components/ui --include="*.tsx" | grep -v "type="
+```
+
+**Severity:** MEDIUM (при вбудові у форму→submission).
 
 ### 2026-06-02 — Promise.all для reference data без AbortController (Bug #315) — frontend / memory
 
-**Сигнал:** `useEffect(() => { Promise.all([apiFetch(A), apiFetch(B)]).then(set) }, [])` без cleanup → memory leak.
-**Фікс:** `const ac = new AbortController(); ... return () => ac.abort()`.
+**Сигнал:** `useEffect(()=>{Promise.all([apiFetch(A),apiFetch(B)]).then(set)},[])` без cleanup → memory leak.
+**Фікс:** `const ac=new AbortController();...return ()=>ac.abort()`.
 **Severity:** MEDIUM.
 
----
+### 2026-06-02 / 2026-09-04 — Toggle-state UI desync: highlight/cursor/selection без enabled-gate (Bugs #310-#311, #624 sub) — frontend / UI
 
-### 2026-06-02 — Toggle-state UI desync: highlight/cursor без enabled-gate (Bugs #310-#311) — frontend / UI
-
-**Сигнал:** `selectedX?.id === item.id && 'bg-secondary'` рендерується після `detailPanel.toggle()` → `enabled=false` але selectedX non-null.
-**Grep:** `grep -rnE "selected[A-Z][a-zA-Z]*\?.id\s*===\s*[a-z]+\.id\s*&&\s*'bg-" apps/web/src/app --include="*.tsx" | grep -v "enabled &&"`.
-**Фікс:** `&& detailPanel.enabled` до affordance classes, або `useEffect(() => { if (!enabled) setSelected(null) }, [enabled])`.
-**Severity:** MEDIUM.
-
----
-
-### 2026-09-04 — Toggle-close selection не скидається при disable → панель недосяжна після re-enable (Bug #624) — frontend / UI / Bug #310-#311 sub-pattern
-
-**Сигнал:** список з DetailPanelToggle І з toggle-close логікою вибору (клік по вже-вибраному рядку → закрити панель) через `selectedXIdRef`. При вимиканні тогла код скидає лише ВИДИМІСТЬ (`open={... && enabled}`), але `selectedX`/ref лишаються. Після re-enable клік по ТОМУ Ж рядку → `selectX` бачить `ref.current === row.id` → toggle-close → `setSelectedX(null)` замість відкриття → мовчазний no-op (панель не з'являється при активному тоглі). tsc/unit green — це runtime UX desync, ловиться ЛИШЕ E2E off→on-цикл-кліком або скріншотом.
-**Grep:**
+**Сигнал:** `selectedX?.id===item.id&&'bg-secondary'` рендериться після `detailPanel.toggle()`→`enabled=false` але selectedX non-null. Варіант #624: список з ref-based toggle-close (`selectedXIdRef`) — при disable скидається лише ВИДИМІСТЬ (`open={...&&enabled}`), ref/state лишаються → після re-enable клік по ТОМУ Ж рядку→`selectX` бачить `ref.current===row.id`→toggle-close→no-op (панель не з'являється). tsc/unit green — ловиться ЛИШЕ E2E off→on-цикл-кліком.
 
 ```bash
-# списки з ref-based toggle-close selection
-grep -rnE "selected[A-Z]\w*IdRef" apps/web/src/app --include="*.tsx"
-grep -rnE "if \(selected\w*Ref\.current === .*\.id\)" apps/web/src/app --include="*.tsx"
-# для кожного: чи є useEffect що скидає selection коли !enabled? якщо ні → bug
-grep -rn "if (!.*\.enabled)" apps/web/src/app/**/page.tsx   # має існувати парний reset
+grep -rnE "selected[A-Z][a-zA-Z]*\?.id\s*===\s*[a-z]+\.id\s*&&\s*'bg-" apps/web/src/app --include="*.tsx" | grep -v "detailPanel\.enabled\|enabled &&"
+grep -rnE "selected[A-Z]\w*IdRef" apps/web/src/app --include="*.tsx"   # #624
 ```
 
-**Причина виникнення:** selection-toggle-close і visibility-gate (`enabled`) — ДВА незалежні джерела правди про «чи показувати панель». Розробник гейтить видимість, але забуває що ref-based toggle-close тепер бачить стейл-вибір. Асиметрія: `open` реагує на `enabled`, а `selectX` — ні.
-**Підхід до виявлення:** E2E-цикл для КОЖНОГО списку з toggle-close: клік рядка (панель) → тогл off → тогл on → клік ТОГО Ж рядка → панель має відкритись. Не покривається `toHaveCount` (DetailPanel width-collapse лишає контент у DOM; overflow-hidden не робить дочірні «hidden» для Playwright — assert через aria-label стану тогла + реальну поведінку кліку, або скрін).
-**Підхід до фіксу:** `useEffect(() => { if (!enabled) { selectedXIdRef.current = null; setSelectedX(null); } }, [enabled])` — при disable синхронно скидаємо ОБА (ref + state), щоб re-enable починав із чистого аркуша.
-**Severity:** MEDIUM (feature недосяжна для last-selected row після disable→enable; обхід неочевидний).
-**Де шукати ще:** будь-який список де selection persist окремо від enabled-toggle І має клік-по-вибраному=закрити (purchase-orders — єдиний зараз; при копіюванні patтерну на invoices/stock-documents перевірити reset). Родич: Playwright `toBeVisible` дає false-positive на `w-0 overflow-hidden` контенті (width-collapse панелі) — асертити стан, не count.
-
----
+**Фікс:** `&& detailPanel.enabled` до КОЖНОЇ affordance class (cursor+highlight+hover); АБО `useEffect(()=>{if(!enabled){selectedXIdRef.current=null;setSelectedX(null);}},[enabled])` (синхронно скинути ОБА). Симетрія: одне gated→друге теж. E2E-цикл: клік рядка→тогл off→on→клік ТОГО Ж рядка→панель має відкритись (не `toHaveCount` — width-collapse лишає DOM; assert стан тогла/скрін).
+**Severity:** MEDIUM (stale highlight); LOW cursor-only.
+**Де ще:** будь-який список з selection persist окремо від enabled-toggle + клік-по-вибраному=закрити (purchase-orders). Playwright `toBeVisible` false-positive на `w-0 overflow-hidden`.
 
 ### 2026-06-02 — Multi-module sprint: pattern dilution між модулями (Bug #306) — backend
 
-**Сигнал:** sprint додає soft-delete до N модулів — деякі пропускають `@@unique` partial filter або resurrection pattern.
-**Правило:** після кожного multi-module sprint — grep ВСІХ нових модулів на повний pattern checklist.
+**Сигнал:** sprint додає soft-delete до N модулів — деякі пропускають `@@unique` partial filter/resurrection.
+**Правило:** після multi-module sprint — grep ВСІХ нових модулів на повний pattern checklist.
 **Severity:** HIGH (P2002 при re-create).
-
----
 
 ### 2026-06-02 — Soft-delete filter pill chicken-and-egg (Bug #295) — frontend / UX
 
-**Сигнал:** `{deletedCount > 0 || showDeleted ? <Toggle/> : null}` — count=0 поки `showDeleted=false` → Toggle не рендерується → архів недосяжний.
-**Grep:** `grep -rnE "(deleted|archived)Count\s*>\s*0\s*\|\|" apps/web/src/app --include="*.tsx"`.
-**Фікс:** Toggle завжди видимий; count тільки коли `showDeleted=true`.
-**Severity:** CRITICAL (feature недосяжна без power-user URL hack).
+**Сигнал:** `{deletedCount>0||showDeleted?<Toggle/>:null}` — count=0 поки `showDeleted=false`→Toggle не рендериться→архів недосяжний.
 
----
+```bash
+grep -rnE "(deleted|archived|hidden|removed)Count\s*>\s*0\s*\|\|" apps/web/src/app --include="*.tsx"
+```
+
+**Фікс:** Toggle завжди видимий; count лише коли `showDeleted=true`.
+**Severity:** CRITICAL (feature недосяжна без URL hack).
 
 ### 2026-06-02 — Postgres NULLS LAST ламає sort по nullable soft-delete (Bug #296) — backend / Prisma
 
-**Сигнал:** `orderBy: { deletedAt: 'asc' }` → NULL (активні) в кінець → видалені перед активними.
-**Grep:** `grep -rn "orderBy.*deletedAt.*['\"]asc['\"]" apps/api/src/modules --include="*.service.ts" | grep -v "nulls"`.
-**Фікс:** `{ deletedAt: { sort: 'asc', nulls: 'first' } }` (активні зверху).
-**Severity:** HIGH (UX broken, активні рядки в кінці).
+**Сигнал:** `orderBy:{deletedAt:'asc'}`→NULL (активні) в кінець→видалені перед активними.
 
----
+```bash
+grep -rn "orderBy.*deletedAt.*['\"]asc['\"]" apps/api/src/modules --include="*.service.ts" | grep -v "nulls"
+```
 
-### 2026-06-02 — Soft-delete + @@unique без partial filter = P2002 (Bugs #297, #298) — backend
+**Фікс:** `{deletedAt:{sort:'asc',nulls:'first'}}` (активні зверху). Для FEFO expiryDate: `nulls:'last'`.
+**Severity:** HIGH.
 
-**Сигнал:** `update()` unique-field re-check `findFirst({ orgId, field, NOT: { id } })` без `deletedAt:null` → soft-deleted дубль проходить → P2002.
-**Grep:** `grep -n "@@unique" packages/database/prisma/schema.prisma` + `grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations | grep -v WHERE`.
-**Фікс update re-check:** НЕ фільтрувати `deletedAt:null`; якщо `duplicate.deletedAt != null` → `ConflictException('...існує у архіві.')`.
-**Severity:** HIGH (P2002 500 на update).
+### 2026-06-02 — Soft-delete + @@unique без partial filter = P2002 (Bugs #297, #298, #305, #152, #151) — backend
 
----
+**Сигнал:** `@@unique([orgId,X])` без `deletedAt` partial → `create()` повторний→P2002. `update()` re-check `findFirst({orgId,field,NOT:{id}})` без `deletedAt:null` (для дублю); `restore()` без prep-check active duplicate.
+
+```bash
+grep -n "@@unique" packages/database/prisma/schema.prisma
+grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "WHERE"
+```
+
+**Фікс:** create resurrection `findFirst({NOT:{deletedAt:null}})→update({...dto,deletedAt:null})`. update re-check (#297): НЕ фільтрувати `deletedAt:null`; якщо `duplicate.deletedAt!=null`→`ConflictException('...існує у архіві. Спочатку відновіть.')`. restore (#298,#305): prep-check active duplicate→ConflictException; `if(existing.isSystem)throw` (системні не мають бути soft-deleted). update unique-поле (#151): `findFirst({orgId,field,NOT:{id}})→ConflictException`.
+**Severity:** HIGH (P2002 500).
 
 ### 2026-05-31 — Prefetch queryKey ↔ page queryKey shape mismatch (Bug #281) — frontend / react-query
 
-**Сигнал:** TopShell `prefetchQuery({ queryKey: xKeys.list({}) })` але сторінка `useX({ page:1, limit:20, status:'', q:'', showDeleted:false })` → різні hash → double-fetch.
-**Grep:** для кожного `prefetchQuery` → знайти споживача → порівняти shape (всі keys + значення).
-**Severity:** MEDIUM (prefetch не hit, silent performance regression).
+**Сигнал:** TopShell `prefetchQuery({queryKey:xKeys.list({})})` але сторінка `useX({page:1,limit:20,status:'',q:'',showDeleted:false})` → різні hash → double-fetch. Default first-mount state=повний об'єкт, НЕ `{}`.
 
----
+```bash
+# для кожного prefetchQuery → знайти споживача → порівняти shape (всі keys+значення)
+```
+
+**Severity:** MEDIUM (silent performance).
 
 ### 2026-05-31 — SSRF: validatePublicUrl + redirect:'manual' обов'язково разом (Bug #273) — backend / security
 
-**Сигнал:** `fetch(userUrl)` з `validatePublicUrl` але без `redirect:'manual'` → attacker.com 302→internal → metadata bypass.
-**Grep:** для кожного `fetch(` де URL = user-supplied → перевірити `redirect: 'manual'` + 3xx-rejection.
-**Severity:** CRITICAL (SSRF → cloud metadata).
+**Сигнал:** `fetch(userUrl)` з `validatePublicUrl` але без `redirect:'manual'` → attacker.com 302→`169.254.169.254`→default fetch слідує з Authorization header→metadata bypass. ОБИДВА шари обов'язкові.
 
----
+```bash
+for f in $(grep -l "validatePublicUrl\|branchSettings\.\|dto\.url\|dto\.webhookUrl\|endpoint\.url" apps/api/src/modules --include="*.ts" -r | grep -v spec); do grep -q "fetch(" "$f" && ! grep -q "redirect:\s*'manual'" "$f" && echo "BUG #273 MISSING: $f"; done
+```
+
+**Фікс:** обидва шари + перевірка response.status у [300,400)→throw. Contract-тест (checkbox.processor pattern: `301/302→throw+НЕ оновлює DB`).
+**Severity:** CRITICAL (admin→cloud metadata).
+**Де ще:** будь-який новий outbound fetch (Checkbox, ПРРО, SMS, OAuth callback, postal). Родич #652 (secret at-rest), #683-#687 (client tests).
 
 ### 2026-05-31 — Dead-feature: service реалізований але ніколи не викликається (Bugs #267, #268) — backend
 
-**Сигнал:** `@Injectable` з `@InjectQueue` є але 0 callsites поза self-module та spec → бали/cost не нараховуються.
-**Grep:** `grep -rl "InjectQueue" apps/api/src/modules --include="*.ts"` → для кожного method: `grep -rln ".<method>(" apps/api/src | grep -v spec | wc -l` = 0.
-**Severity:** HIGH (feature розрекламована але мертва).
+**Сигнал:** `@Injectable` з `@InjectQueue`/`@Processor` але 0 callsites поза self-module+spec → бали/cost не нараховуються. Парний сигнал: UI tab/sidebar для фічі АЛЕ нема trigger.
 
----
+```bash
+grep -rl "InjectQueue\|@Processor" apps/api/src/modules --include="*.ts"
+# для кожного method: grep -rln "\.<method>(" apps/api/src --include="*.ts" | grep -v "spec\|<own-module>" → 0 = bug
+```
+
+**Фікс:** виклик у trigger service (`.catch(warn)` non-blocking)+import Module+DI.
+**Severity:** HIGH якщо розрекламована (`loyalty.queueEarn` ніколи з payments); MEDIUM admin/internal.
 
 ### 2026-05-31 — Frontend hint обіцяє backend behavior що не реалізований (Bug #266) — frontend / UX
 
 **Сигнал:** `"буде автоматично застосовано"` але POST body не містить поля що реалізує обіцяне.
-**Grep:** `grep -rnE "буде (додано|застосовано|автоматично)" apps/web/src --include="*.tsx"` → перевірити submit body.
+
+```bash
+grep -rnE "буде (додано|застосовано|скопійовано|створено|нараховано|використано|враховано|оновлено)|автоматично" apps/web/src --include="*.tsx"
+```
+
+**Фікс:** реалізувати backend АБО переписати hint чесно.
 **Severity:** HIGH.
 
----
+### 2026-05-31 — Mass DTO migration variant audit (Bugs #257-#265, #215) — backend / dto-validation
 
-### 2026-05-31 — Mass DTO migration variant audit (Bugs #257-#265) — backend / dto-validation
+**Сигнал:** sprint `@Transform(emptyToUndefined)` для `@IsDateString` пропускає `@IsISO8601`, `@IsDate`, `@IsEnum([lit])`, `@IsUUID('4',{each:true})`, `@Matches(regex)` та inline 1-рядкові форми + `extends PartialType(X)` chains. КОЖЕН validator що відхиляє `''` потребує `@Transform(emptyToUndefined)` якщо optional. Плюс variant-форми (`@IsUUID('4',{message})`).
 
-**Сигнал:** sprint `@Transform(emptyToUndefined)` для `@IsDateString` пропускає `@IsISO8601`, `@IsEnum([lit])`, `@IsUUID('4', {each:true})` та inline 1-рядкові форми.
-**Grep:** для кожного validator-type — перевірити обидва варіанти `@X()` та `@X(arg, {each|message})`.
-**Severity:** HIGH (фіча мертва коли фронт шле `''`).
+```bash
+grep -rn "@IsUUID(" apps/api/src/modules/ --include="*.dto.ts"   # обидва @X() і @X(arg,{each|message})
+```
 
----
+**Фікс:** пройти ВСІ варіанти validator-сімейства. Regression: 1 contract-spec `POST/PATCH з '' у X→201+service отримує undefined` (#244).
+**Severity:** HIGH (фіча мертва коли фронт шле `''`; блокує dev/seed з не-v4 UUID).
 
 ### 2026-05-31 — Public endpoint: array-cap + tenant-FK audit (Bugs #251, #252) — backend / security
 
 **Сигнал:** controller без `@UseGuards(JwtAuthGuard)` — DTO array без `@ArrayMaxSize`, UUID array без tenant-FK count guard.
-**Grep:** `find apps/api/src/modules -name "*.controller.ts" | while read c; do ! grep -q "@UseGuards(JwtAuthGuard" "$c" && grep -q "@Get\|@Post" "$c" && echo "PUBLIC: $c"; done`.
-**Severity:** HIGH (DoS + cross-tenant linkage).
 
----
+```bash
+for c in $(find apps/api/src/modules -name "*.controller.ts" -not -name "*.spec.*"); do ! grep -q "@UseGuards(JwtAuthGuard" "$c" && grep -q "@Get\|@Post\|@Patch\|@Delete\|@Sse" "$c" && echo "PUBLIC CTRL: $c"; done
+```
+
+Для кожного public: `@IsArray` має `@ArrayMaxSize`; `string[]/UUID[]` у service-create через `data:{...dto,fkList}` → `prisma.X.count({where:{id:{in:dto.field},orgId,deletedAt:null}})===dto.field.length`; `@IsString` має `@MaxLength`; external service→queue attempts≥10+backoff.
+**Severity:** HIGH (DoS + cross-tenant linkage).
 
 ### 2026-05-31 — Inner DTO без class-validator декораторів (Bug #247) — backend / security
 
-**Сигнал:** `@ValidateNested @Type(() => InnerDto)` але InnerDto-поля мають лише `@ApiProperty()` без `@IsUUID/@IsNumber`.
-**Grep:** `grep -rn "@ApiProperty()" apps/api/src/modules --include="*.dto.ts" -A1 | grep -B1 "[a-z]!: string" | grep -v "@Is"`.
-**Severity:** HIGH (bypass validation для вкладеної структури).
+**Сигнал:** `@ValidateNested @Type(()=>InnerDto)` але InnerDto-поля `@ApiProperty() workId!:string` БЕЗ `@IsUUID/@IsNumber`. `@ValidateNested` вимагає що inner DTO САМ описує валідатори; без них pipe пропускає ВСІ значення.
 
----
+```bash
+grep -rn "@ApiProperty()" apps/api/src/modules --include="*.dto.ts" -A1 | grep -B1 "[a-z]!: string\|[a-z]!: number" | grep -v "@Is\|@Min\|@Max\|@Matches\|@Length"
+```
+
+**Severity:** HIGH (bypass validation + anti-DoS gap).
 
 ### 2026-05-31 — Shared helper без unit-тесту (Bug #243) — backend / test-coverage
 
-**Сигнал:** `calculateXxx()` використовується в 10+ endpoints але нема `*.spec.ts` → будь-яка зміна = 10+ регресій.
+**Сигнал:** `calculateXxx()` у 10+ endpoints без `*.spec.ts` → будь-яка зміна=10+ регресій.
 **Severity:** HIGH.
-
----
 
 ### 2026-05-31 — DTO write-side asymmetry: nullable col без FSM persist (Bug #236) — backend / data-integrity
 
-**Сигнал:** `InvoiceLine.unitShortName` у DTO та toDto, але `transition(APPROVED)` не робить `tx.invoiceLine.update({ data: { unitId } })`.
-**Grep:** `grep -rnE "[a-z]*Id:\s*l\.[a-z]*Id\s*\?\?\s*null" apps/api/src/modules --include="*.service.ts"` → парний `tx.<row>.update` у `$transaction`.
-**Severity:** HIGH (history має X, current state NULL → audit ламається).
+**Сигнал:** sprint додає `nullable colX?` у row-модель + `colX:l.colX??null` у toDto → у `transition()`/`receive()`/`applyPricing()` де обчислюється resolved value і пропагується у side-effect, ОБОВ'ЯЗКОВО парний `tx.<rowTable>.update({where:{id:line.id},data:{colX:resolvedValue}})` у $transaction. Інакше `findOne(id).lines[i].colX===null` назавжди → history має X, current NULL. Symmetric-write для #232 (read-side missing include).
 
----
+```bash
+grep -rnE "[a-z]*Id:\s*l\.[a-z]*Id\s*\?\?\s*null" apps/api/src/modules --include="*.service.ts"
+```
+
+**Severity:** HIGH (silent data integrity).
 
 ### 2026-05-31 — UoM conversion відсутня на submit (Bug #231) — frontend / data-corruption
 
-**Сигнал:** UI дозволяє перемикати UoM → display qty змінюється (×coefficient), але submit шле `parseFloat(l.quantity)` без `* l.coefficient`.
-**Grep:** `grep -rnE "quantity:\s*parseFloat\(l\.quantity\)[^*]" apps/web/src/app --include="*.tsx" -B5 | grep -B5 "coefficient"`.
-**Severity:** CRITICAL (stock movement у неправильних одиницях).
+**Сигнал:** UI перемикає UoM→display qty ×coefficient, submit шле `parseFloat(l.quantity)` без `*coefficient` → backend (base units) отримує display → silent corruption у stock movement.
 
----
+```bash
+grep -rnE "quantity:\s*parseFloat\(l\.quantity\)[^*]" apps/web/src/app --include="*.tsx" -B5 | grep -B5 "coefficient"
+```
+
+**Фікс:** `quantity:parseFloat(l.quantity)*(l.coefficient||1)`, `price:parseFloat(l.price)/(l.coefficient||1)`. Видно лише coeff!=1.
+**Severity:** CRITICAL (release-blocker).
 
 ### 2026-05-31 — Prisma schema без парного migration (Bug #220) — database / release-blocker
 
-**Сигнал:** `schema.prisma` modified але нема нового SQL у `migrations/` → runtime P2021. tsc+unit green.
-**Grep:** `schema_changes=$(git diff HEAD~5 HEAD --name-only -- "*/schema.prisma"); new_migrations=$(git diff HEAD~5 HEAD --name-only --diff-filter=A -- "*/migrations/"); [ -n "$schema_changes" ] && [ -z "$new_migrations" ] && echo "BUG"`.
-**Severity:** CRITICAL (runtime crash in production).
+**Сигнал:** `schema.prisma` modified без нового SQL у `migrations/` → runtime P2021. tsc+unit green (client з декларативної schema, mocks не б'ють DB).
 
----
+```bash
+schema_changes=$(git diff HEAD~5 HEAD --name-only -- "*/schema.prisma"); new_migrations=$(git diff HEAD~5 HEAD --name-only --diff-filter=A -- "*/migrations/"); [ -n "$schema_changes" ] && [ -z "$new_migrations" ] && echo "BUG #220"
+```
+
+Перевіряти: нова model→CREATE TABLE; field→ALTER TABLE ADD COLUMN; `@@index`→CREATE INDEX; `@@unique`→CREATE UNIQUE INDEX. Не покладатись на `prisma migrate dev` (потребує live DB); писати SQL вручну.
+**Severity:** CRITICAL (runtime crash у production).
 
 ### 2026-05-31 — Sub-resource default-switch staleness у parent list (Bugs #226-#227) — frontend / state-sync
 
-**Сигнал:** UoM modal `setDefault()` → parent `Good.unitId` змінено у backend → FE parent-table не рефетчена.
-**Grep:** `grep -rn "apiFetch.*method:.*'(POST|PATCH|DELETE)" apps/web/src/app --include="*.tsx" | grep -E "/uoms|/barcodes|/categories"` → чи є `load()` для parent після mutation.
-**Severity:** MEDIUM-HIGH.
+**Сигнал:** UoM modal `setDefault()`→backend `Good.unitId` змінено→FE parent-table не рефетчена. Auto-promote next-default: `removeUoM` пише `findFirst(orderBy:createdAt asc)+update({isDefault:true})`, оптимістичний filter невірний.
 
----
+```bash
+grep -rn "apiFetch.*method:.*'POST\|PATCH\|DELETE'" apps/web/src/app --include="*.tsx" | grep -E "/uoms|/barcodes|/categories|/tax-rates"
+```
+
+**Фікс:** success-handler викликає `load()` parent АБО invalidate `<parentKeys>.all`; replace optimistic filter на `refreshXs(parentId)`.
+**Severity:** MEDIUM-HIGH.
 
 ### 2026-05-31 — Paired logger+middleware без спільного req-id source (Bug #216) — backend / observability
 
-**Сигнал:** `CorrelationIdMiddleware` сетить `x-request-id`, pino-http `genReqId` → sequential int → cross-correlation мертва.
-**Grep:** `grep -n "genReqId\|reqId" apps/api/src` → якщо є Middleware але нема `genReqId` → bug.
-**Фікс:** `genReqId: req => req.headers['x-request-id'] ?? randomUUID()`.
-**Severity:** HIGH (production monitoring мертвий).
+**Сигнал:** `CorrelationIdMiddleware` сетить `x-request-id`, pino-http `genReqId`→sequential int→cross-correlation мертва.
 
----
+```bash
+grep -n "genReqId\|reqId" apps/api/src   # Middleware є, genReqId нема → bug
+```
 
-### 2026-05-30 — React Query cross-resource invalidation gap (Bugs #210-#212) — frontend / react-query
+**Фікс:** `genReqId: req => req.headers['x-request-id'] ?? randomUUID()`. Contract-тест: `X-Request-Id: <UUID>`→`JSON.parse(stdout).reqId===<UUID>`. Також #217: pino `redact` має покрити КОЖНЕ secret-поле DTO (`password`/`*Password`/`*Token`/`*Secret`/`apiKey`/`webhookSecret`, включно `ownerPassword`/`prroApiKey`), grep `grep -rnE "(password|Token|Secret|apiKey|webhookSecret)!?\??:.*string" apps/api/src/modules/**/*.dto.ts`.
+**Severity:** HIGH (#216 production monitoring); MEDIUM #217 (HIGH коли з'явиться log-stmt зі spread body).
 
-**Сигнал:** `POST /invoices/:id/lines` side-effect оновлює `StockMovement` — але `invalidateQueries(inventoryKeys.all)` відсутній.
-**Grep:** для кожного мутуючого endpoint pair-check проти backend service side-effects.
-**Severity:** MEDIUM (stale cross-resource data).
+### 2026-05-30 — React Query cross-resource invalidation gap (Bugs #210-#212, #245, повторено #590) — frontend / react-query
 
----
+**Сигнал:** `POST /invoices/:id/lines` side-effect оновлює StockMovement/settlements — але `invalidateQueries(inventoryKeys.all)`/`counterpartiesKeys.all` відсутній. Особливо FSM confirm-like (`use<X>Confirm`/`Complete`) що триггерять `settlements.createTransaction` → CRM balance застаріває.
 
-### 2026-05-30 — React Query custom hook без тесту (Bug #214) — frontend / test-coverage
+```bash
+grep -rln "createTransaction" apps/api/src/modules/*/*.service.ts   # для кожного знайти FE-хуки → onSuccess перевірити counterpartiesKeys.all
+```
 
-**Сигнал:** `apps/web/src/hooks/api/use*.ts` без парного `*.test.tsx`.
-**Обов'язково тестувати:** queryKey factory isolation, enabled-gate, URLSearchParams build, signal abort.
+Reference-fix: `useCreatePayment`(#245), `useConfirmSupplierPayment`(#590).
+**Severity:** MEDIUM (бізнес-метрика); HIGH коли впливає на balance-рішення; LOW UX.
+
+### 2026-05-30 — React Query custom hook без тесту (Bug #214, #185, #213) — frontend / test-coverage
+
+**Сигнал:** `apps/web/src/hooks/api/use*.ts` без `*.test.tsx`. Обов'язково: queryKey factory isolation, enabled-gate, URLSearchParams build, signal abort. Шаблон `useWorkOrders.test.tsx` (12 кейсів). Свіжий `QueryClient` per-test з `retry:false` (не реальний Provider). #213: migrated read-path але write-path raw apiFetch (mutation hook експортований, count usage=0) — bundle bloat, LOW.
 **Severity:** MEDIUM.
 
----
+### 2026-05-30 — error.tsx без & { digest?: string } (Bug #206, #207, #208) — frontend / typescript
 
-### 2026-05-30 — error.tsx без `& { digest?: string }` (Bug #206) — frontend / typescript
+```bash
+grep -rn "error.*:\s*Error[^&]" apps/web/src/app --include="error.tsx" | grep -v "digest"
+```
 
-**Grep:** `grep -rn "error.*:\s*Error[^&]" apps/web/src/app --include="error.tsx" | grep -v digest`.
-**Фікс:** `{ error: Error & { digest?: string }; reset: () => void }`.
-**Severity:** LOW (блокує моніторинг).
-
----
+**Фікс:** `{error:Error&{digest?:string};reset:()=>void}`. Аналогічно layout.tsx/page.tsx/loading.tsx сигнатури. #207: decorative SVG що дублює semantic-текст→`aria-hidden="true"`. #208: `error.tsx`/`not-found.tsx` з інтерактивом→парний `*.test.tsx` (heading, message, reset, navigate, aria-hidden, digest-type-regression).
+**Severity:** LOW (блокує моніторинг Sentry/Datadog `error.digest`).
 
 ### 2026-05-30 — Global APP_GUARD без skip-list для /health/SSE/webhooks (Bug #203) — backend / deploy
 
-**Сигнал:** `{ provide: APP_GUARD, useClass: ThrottlerGuard }` → `/health` отримує 429 → docker healthcheck fails → cascade restart.
-**Grep:** `grep -n "APP_GUARD" apps/api/src/app.module.ts` → `@SkipThrottle()` на health/metrics/SSE controllers.
-**Severity:** CRITICAL (production cascade restart).
+**Сигнал:** `{provide:APP_GUARD,useClass:ThrottlerGuard}`→`/health` 429→docker healthcheck→cascade restart.
 
----
+```bash
+grep -n "APP_GUARD\|useClass: ThrottlerGuard\|useClass: IpFilterGuard" apps/api/src/app.module.ts
+```
+
+**Фікс:** `@SkipThrottle()`/`@Public()` на health/metrics/SSE(`@Sse`)/webhooks(PRRO/payment)/batch-cron controllers.
+**Severity:** CRITICAL (production cascade restart).
 
 ### 2026-05-30 — Defense-in-depth guard + stale fixtures (Bug #200) — backend / test-coverage
 
-**Сигнал:** review-фікс додав `if (entity.status !== ALLOWED) throw` → spec мокає без поля `status` → guard кидає → ВСІ тести fail.
-**Grep:** після review-commit → `findFirst.mockResolvedValueOnce` у spec → перевірити наявність `status: <ALLOWED>`.
-**Severity:** MEDIUM (red baseline blocks all CI).
+**Сигнал:** review-фікс додав `if(entity.status!==ALLOWED)throw`→spec мокає `findFirst` БЕЗ `status`→undefined≠ALLOWED→guard кидає→ВСІ тести fail. Або рефактор `X()→Y()` а spec ще мокає СТАРИЙ виклик (тест проходить випадково).
 
----
+```bash
+grep -n "findFirst.mockResolvedValueOnce({" *.spec.ts   # додати status:<ALLOWED>
+```
+
+**Severity:** MEDIUM (red baseline blocks CI). Принцип: spec мокає ТЕ ЩО справді викликається.
 
 ### 2026-05-30 — FormData через apiFetch замість apiMultipartFetch (Bug #197) — frontend / api-contract
 
-**Grep:** `grep -rn "apiFetch\b.*body:\s*(fd\|formData\|new FormData)" apps/web/src --include="*.tsx"`.
-**Фікс:** замінити на `apiMultipartFetch(path, formData)`.
-**Severity:** CRITICAL (upload feature повністю мертва).
+**Сигнал:** `apiFetch` жорстко ставить `Content-Type: application/json` → FormData → browser не виставить boundary → `the request is not multipart`→upload завжди валиться. Фіча повністю мертва.
 
----
+```bash
+grep -rn "apiFetch\b.*body:\s*\(fd\|formData\|new FormData\)" apps/web/src --include="*.tsx"
+```
+
+**Фікс:** `apiMultipartFetch(path, formData)` (БЕЗ ручного method).
+**Severity:** CRITICAL.
 
 ### 2026-05-30 — Nullable cost-input → calculateSalePrice → salePrice=0 (Bug #198) — backend / data-corruption
 
-**Сигнал:** `pricingService.calculateSalePrice(0, rule)` → `0 * (1+pct/100) = 0` → `Good.salePrice` затирається.
-**Grep:** `grep -rn "calculateSalePrice\|purchasePrice ?? 0" apps/api/src/modules --include="*.ts"`.
-**Фікс:** guard `if (good.purchasePrice == null || Number(good.purchasePrice) <= 0) skip`.
-**Severity:** CRITICAL (data corruption у БД без помилки).
+**Сигнал:** `0*(1+pct/100)=0`→`Good.salePrice` затирається у 0 для товарів без собівартості. `Good.purchasePrice` nullable.
 
----
+```bash
+grep -rn "calculateSalePrice\|purchasePrice ?? 0\|purchasePrice ?? null" apps/api/src/modules --include="*.ts"
+```
+
+**Фікс:** `if(good.purchasePrice==null||Number(good.purchasePrice)<=0)` skip (push у notFound, НЕ оновлювати salePrice). Виняток `FIXED_PRICE`.
+**Severity:** CRITICAL (silent data corruption).
 
 ### 2026-05-30 — Boolean prop без inverse-condition test (Bug #194) — frontend / test-coverage
 
-**Сигнал:** новий `propX?: boolean` — тест лише для default (false), але не для `propX=true`.
-**Grep:** `grep -nE "^\s+\w+\?: boolean" apps/web/src/components/ui/*.tsx` після diff.
-**Severity:** MEDIUM.
+**Сигнал:** новий `propX?:boolean` — тест лише default (false). Інверсія guard (`!hideX`→`!!hideX`) проходить зеленою.
 
----
+```bash
+grep -nE "^\s+\w+\?: boolean" apps/web/src/components/ui/*.tsx   # після diff
+```
+
+**Фікс:** 2 кейси: inverse-стан активує/блокує; inverse не зачіпає інших елементів.
+**Severity:** MEDIUM (критично для prop що вмикає UX-режим у N сторінках).
 
 ### 2026-05-30 — fastify-multipart FastifyError → 406 замість 400 (Bug #192) — backend / api-contract
 
-**Grep:** `grep -rn "await req.file()" apps/api/src/modules --include="*.controller.ts" | grep -v "try\|catch"`.
-**Фікс:** try/catch `FastifyError → throw new BadRequestException('Неправильний формат запиту')`.
+```bash
+grep -rn "await req.file()" apps/api/src/modules --include="*.controller.ts"   # має бути у try/catch
+```
+
+**Фікс:** try/catch `FastifyError→throw new BadRequestException('Неправильний формат запиту')`. Contract: `POST без multipart→400+укр`.
 **Severity:** HIGH.
 
----
+### 2026-05-30 — prisma.X.update({where:{id}}) без orgId (Bug #191) — backend / tenant-isolation
 
-### 2026-05-30 — `prisma.X.update({ where: { id } })` без `orgId` (Bug #191) — backend / tenant-isolation
+```bash
+grep -rn "\.update({ where: { id:" apps/api/src/modules --include="*.service.ts" | grep -v "orgId"
+```
 
-**Grep:** `grep -rn "\.update({ where: { id:" apps/api/src/modules --include="*.service.ts" | grep -v "orgId"`.
-**Фікс:** `updateMany({ where: { id, orgId, deletedAt: null } })`.
-**Severity:** LOW-HIGH залежно від context.
-
----
+**Фікс:** `updateMany({where:{id,orgId,deletedAt:null}})` + опц. `if(count===0)throw NotFound`.
+**Severity:** LOW (profilatic) до HIGH (з prep-неперевіреним id).
 
 ### 2026-05-30 — Boundary-кейси для COST_TIER (Bug #184) — backend / test-coverage
 
-**Сигнал:** `min <= cost < max` — нема тестів на межах (`cost===min`, `cost===max`, `cost===0`, out-of-range).
-**Severity:** MEDIUM (інверсія `<=`/`<` ловиться лише boundary тестом).
-
----
+**Сигнал:** `min<=cost<max` — нема тестів на межах (`cost===min`,`cost===max`,`cost===0`,out-of-range). Boundary документує contract і ловить інверсію `<=`/`<`.
+**Severity:** MEDIUM.
 
 ### 2026-05-30 — Cross-tenant FK не покритий у contract-spec (Bug #186) — backend / security
 
-**Сигнал:** optional FK у DTO валідується у service, але contract spec нема кейс `POST з FK чужої org → 404`.
-**Severity:** HIGH (регресія = cross-tenant linkage у проді без error).
+**Сигнал:** optional FK валідується у service, contract spec нема кейс `POST з FK чужої org→404`.
+**Фікс:** (а) FK з ЦІЄЇ org→201+findFirst `{id,orgId,deletedAt:null}`; (б) FK чужої org→404+create НЕ викликаний; (в) PATCH чужа org→404+update НЕ викликаний.
+**Severity:** HIGH.
 
----
+### 2026-05-30 — apiFetch generic type mismatch: T[] але endpoint повертає {items,total} (Bug #181) — frontend
 
-### 2026-05-30 — apiFetch generic type mismatch: `T[]` але endpoint повертає `{items,total}` (Bug #181) — frontend
+**Сигнал:** `apiFetch<X[]>` де endpoint повертає `{items,total}` (стандарт STO list). Виняток: `/branches`=bare array.
 
-**Grep:** `grep -rn "apiFetch<[A-Za-z]*\[\]>" apps/web/src/app --include="*.tsx" | grep -v "//"` → перевірити controller.
+```bash
+grep -rn "apiFetch<[A-Za-z]*\[\]>" apps/web/src/app --include="*.tsx" | grep -v "//\|spec"
+```
+
+Known bare: /branches. Known {items,total}: /brands, /goods, /pricing-rules, /work-orders, /invoices, /counterparties.
 **Severity:** HIGH (runtime TypeError).
 
----
+### 2026-05-30 — Bulk-apply scope-inconsistency після нового scope-поля (Bug #178, #179) — backend / business-logic
 
-### 2026-05-30 — Bulk-apply scope-inconsistency після нового scope-поля (Bug #178) — backend / business-logic
+**Сигнал:** `PricingRule` нове scope-поле (goodId/goodCategory/goodType/brandId), `applyRuleToGoods where` не включає→правило до зайвих товарів. #179: brandId priority over goodType.
 
-**Сигнал:** `PricingRule` отримав нове scope-поле, але `applyRuleToGoods where` не включає його → правило застосовується до зайвих товарів.
+```bash
+grep -n "brandId\|goodCategory\|goodType\|goodId" apps/api/src/modules/inventory/pricing.service.ts | grep "where\|rule\."
+```
+
 **Severity:** HIGH (неправильна salePrice у БД).
-
----
 
 ### 2026-05-29 — Browser-API без jsdom-стабу → cascade test failure (Bug #177) — frontend / test-coverage
 
-**Grep:** `grep -rnE "new (ResizeObserver|IntersectionObserver|MutationObserver)" apps/web/src/components --include="*.tsx" -l | while read f; do grep -q "ResizeObserver" apps/web/src/__tests__/setup.ts || echo "STUB MISSING: $f"; done`.
-**Severity:** HIGH (cascade всіх component тестів).
+**Сигнал:** новий `new (ResizeObserver|IntersectionObserver|MutationObserver|PerformanceObserver)`, `matchMedia`, `navigator.(clipboard|share|geolocation|mediaDevices)`, `crypto.subtle`, `Notification` без jsdom-стабу→cascade всіх тестів що монтують shared-компонент. tsc мовчить, prod працює.
 
----
+```bash
+grep -rnE "new (ResizeObserver|IntersectionObserver|MutationObserver)" apps/web/src/components --include="*.tsx" -l | while read f; do grep -q "ResizeObserver" apps/web/src/__tests__/setup.ts || echo "STUB MISSING: $f"; done
+```
 
-### 2026-05-29 — `[x] виправлено` без парного code-diff → хибно-зелений — process
+**Фікс:** noop-стаб під guard `typeof globalThis.X==='undefined'` у setup.ts.
+**Severity:** HIGH.
 
-**Сигнал:** `git log -5 --stat | grep "fix(tester)"` чіпає тільки `*.md` → фікси у коді відсутні.
-**Severity:** CRITICAL (hides real blockers).
+### 2026-05-29 — [x] виправлено без парного code-diff → хибно-зелений — process
 
----
+**Сигнал:** `git log -5 --stat | grep "fix(tester)"` чіпає тільки `*.md`→фікси у коді відсутні.
+**Severity:** CRITICAL (hides blockers).
 
-### 2026-05-29 — Container healthcheck несумісний з базовим образом (Bugs #164, #170) — backend / deploy
+### 2026-05-29 — Container healthcheck несумісний з базовим образом (Bugs #164, #165, #166, #167, #168, #170) — backend / deploy
 
-**Сигнал:** `curl` у healthcheck alpine-образу без curl; `wget` у minio/minio (лише `mc`).
-**Grep:** `grep -nE "curl|wget" docker-compose*.yml | grep -i healthcheck`.
-**Фікс:** `["CMD","mc","ready","local"]` для minio; `node -e "require('http').get(...)"` для node.
-**Severity:** CRITICAL (service ніколи не healthy → cascade restart).
+**Сигнал:** `curl` у alpine без curl; `wget` у minio/minio (лише `mc`).
 
----
+```bash
+grep -nE "curl|wget" docker-compose*.yml | grep -i "healthcheck\|test:"
+docker run --rm --entrypoint sh <image> -c "command -v curl; command -v wget; command -v mc"
+```
 
-### 2026-05-29 — Query-shape фікс (relation-ім'я) без service-spec (Bug #163) — backend / test-coverage
+**Фікс:** minio→`["CMD","mc","ready","local"]`+пін RELEASE-тег (#170); node→`node -e http.get`; шлях узгоджений з `setGlobalPrefix` (`/api/health`). Root `.dockerignore` якщо `COPY . .` (#166). build-скрипт не у мертвий шлях (#167 `apps/api/public` без `@fastify/static`); `$PSScriptRoot` fallback. nginx `_next/static` immutable+gzip_types svg/js (#168). blast-radius `depends_on: service_healthy`.
+**Severity:** CRITICAL (service ніколи healthy→cascade restart).
 
-**Сигнал:** `fix: customerGarage → customerGarages` — contract spec мокає service → не ловить PrismaClientValidationError.
-**Фікс:** service-spec з `PrismaService useValue: { model: { findMany: vi.fn() } }` → assert `findMany.mock.calls[0][0].where`.
-**Severity:** HIGH (runtime P2028 у production).
+### 2026-05-29 — Query-shape фікс (relation-ім'я) без service-spec (Bug #163, #171) — backend / test-coverage
 
----
+**Сигнал:** `fix: customerGarage→customerGarages` — contract spec мокає service→не ловить `PrismaClientValidationError`.
+**Фікс:** service-spec з `PrismaService useValue:{model:{findMany:vi.fn()},$transaction:ops=>Promise.all(ops)}`→assert `findMany.mock.calls[0][0].where` (правильні relation-імена + nested `deletedAt:null` + `orgId`). ОБИДВА напрями: нове ім'я присутнє AND старе відсутнє.
+**Severity:** HIGH (runtime P2028).
 
 ### 2026-05-28 — Optional FK у spread без org-scoped validation (Bugs #90, #161) — backend / tenant-isolation
 
-**Сигнал:** `data: { ...dto }` де `dto.brandId?: string` — service не робить `findFirst({ id: dto.brandId, orgId, deletedAt:null })` ПЕРЕД create.
-**Grep:** `grep -rn "Id?: string" apps/api/src/modules --include="*.dto.ts" | grep -iE "brand|unit|supplier|counterparty|vehicle"` → `grep -rn "data: { \.\.\.dto" apps/api/src/modules --include="*.service.ts"`.
-**Severity:** HIGH (cross-tenant FK у БД без error).
+**Сигнал:** `data:{...dto}` де `dto.brandId?:string` — service не робить `findFirst({id:dto.brandId,orgId,deletedAt:null})` ПЕРЕД create. Prisma FK перевіряє глобальне існування, НЕ orgId; P2003 ловить лише неіснуючий, не cross-tenant.
 
----
+```bash
+grep -rn "Id?: string" apps/api/src/modules --include="*.dto.ts" | grep -iE "brand|unit|supplier|counterparty|vehicle|branch|warehouse|category|account"
+grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules --include="*.service.ts" | grep -v spec
+```
 
-### 2026-05-28 — Swallowed fetch годує обов'язковий Select → заблокований workflow — frontend
+**Severity:** HIGH.
 
-**Grep:** `grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx" -B3` → чи `setX()` рендерується у `<Select required>`.
-**Severity:** MEDIUM (workflow permanently blocked).
+### 2026-05-28 — Swallowed fetch годує обов'язковий Select → заблокований workflow (Bug #159) — frontend
 
----
+```bash
+grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx" -B3
+```
 
-### 2026-05-28 — Мертвий стан/handler після inline→shared-component рефактору — frontend
+**Сигнал:** `.catch(()=>{})` ховає помилку списку у `<Select required>`/`disabled={!state}` → порожній список=заблокований workflow без feedback (MEDIUM не LOW).
+**Фікс:** `errorState`+inline `<p>` під контролом.
 
-**Сигнал:** setter викликається ТІЛЬКИ у reset-ефекті, value ніде не читається у JSX. tsc без `noUnusedLocals` мовчить.
-**Grep:** `grep -rn "const \[(wo|cp|search)[A-Za-z]*," apps/web/src/app --include="*.tsx"` → перевірити usage.
+### 2026-05-28 — Мертвий стан/handler після inline→shared-component рефактору (Bug #160) — frontend
+
+**Сигнал:** setter викликається ТІЛЬКИ у reset-ефекті (`if(!open)setX('')`), value ніде не читається у JSX; handler визначено не викликано. tsc без `noUnusedLocals` мовчить.
+
+```bash
+grep -rn "const \[\(wo\|cp\|search\|inline\)[A-Za-z]*," apps/web/src/app --include="*.tsx"
+```
+
+**Фікс:** видалити повністю (включно cleanup orphaned timeoutRef).
 **Severity:** LOW.
-
----
 
 ### 2026-05-28 — Timeline drag/resize px→time без clamp → Invalid Date (Bug #157) — frontend
 
-**Grep:** `grep -rn "pxToHours\|pxToDecimal\|clientX.*-.*rect" apps/web/src/app --include="*.tsx" -l`.
-**Фікс:** clamp у `[WINDOW_START, WINDOW_END]` ПЕРЕД `new Date(...)`. Resize-гілка ОКРЕМО від draw-гілки.
-**Severity:** HIGH (RangeError → handler мовчки падає).
+```bash
+grep -rn "decimalHoursTo\|pxToHours\|pxToDecimal\|clientX.*-.*rect\|getBoundingClientRect" apps/web/src/app --include="*.tsx" -l
+```
 
----
+**Фікс:** clamp у `[WINDOW_START,WINDOW_END]` ПЕРЕД `new Date(...).toISOString()` (інакше `"24:30"`/`"-1:00"`→RangeError→handler мовчки падає). Resize-гілка ОКРЕМО від draw (draw через `pxToDecimalHours`, resize рахує delta clamp проти протилежного краю).
+**Severity:** HIGH.
 
 ### 2026-05-28 — Стала spec після рефактору сервісу (Bugs #153-#155) — backend / test-coverage
 
-**Сигнал:** нова `private readonly X: Type` у конструкторі → `{ provide: Type, useValue: mock }` відсутній у spec → NestJS DI fail на ВСІХ тестах.
+**Сигнал:** нова `private readonly X:Type` у конструкторі→`{provide:Type,useValue:mock}` відсутній у spec→NestJS DI fail на ВСІХ тестах. Cache-мок: `CacheService.get→mockResolvedValue(null)`; `set/del/delPattern`→no-op. Якщо `create/update` спрощено N→1 findFirst→spec мокає РІВНО стільки.
 **Severity:** MEDIUM (baseline red).
-
----
 
 ### 2026-05-28 — Soft-delete resurrection / P2002 — backend / unique constraints
 
-**Сигнал:** `create()` без resurrection check → P2002 при повторному створенні.
-**Фікс:** `findFirst({ NOT: { deletedAt: null } })` → якщо знайшов → `update({ ...dto, deletedAt: null })`.
+**Сигнал:** `create()` без resurrection→P2002.
+**Фікс:** `findFirst({NOT:{deletedAt:null}})`→`update({...dto,deletedAt:null})`.
 **Severity:** HIGH.
-
----
 
 ### 2026-05-28 — @db.Date timezone mismatch — backend / date handling
 
-**Сигнал:** `@db.Date` зберігає UTC-midnight → при читанні в Kyiv (UTC+3) → неправильна дата (вчора).
-**Фікс:** `DateTime` + normalize у kyivMidnight(); або `@db.Date` тільки для calendar-independent dates.
+**Сигнал:** `@db.Date` зберігає UTC-midnight→при читанні Kyiv (+3)→вчора.
+**Фікс:** `DateTime`+normalize kyivMidnight(); або `@db.Date` лише для calendar-independent.
 **Severity:** HIGH.
 
----
+### 2026-05-28 — $transaction(array,{timeout}) не підтримується Prisma 5 — backend
 
-### 2026-05-28 — $transaction(array, { timeout }) не підтримується Prisma 5 — backend
+**Сигнал:** `$transaction([op1,op2],{timeout})`→`TypeError: Option not supported`.
+**Фікс:** callback-form `$transaction(async(tx)=>{...},{timeout})`.
+**Severity:** HIGH.
 
-**Сигнал:** `prisma.$transaction([op1, op2], { timeout })` → `TypeError: Option not supported`.
-**Фікс:** тільки callback-form: `$transaction(async (tx) => { ... }, { timeout })`.
-**Severity:** HIGH (runtime error).
+### 2026-05-28 — BigInt у payload spread → JSON.stringify 500 (#195) — backend / sync
 
----
+```bash
+grep -rn "syncVersion\b" apps/api/src/modules --include="*.service.ts" | grep -v "Number(\|toNumber()"
+```
 
-### 2026-05-28 — BigInt у payload spread → JSON.stringify 500 — backend / sync
+**Фікс:** `syncVersion:Number(row.syncVersion)` у toDto.
+**Severity:** HIGH.
 
-**Grep:** `grep -rn "syncVersion\b" apps/api/src/modules --include="*.service.ts" | grep -v "Number(\|toNumber()"`.
-**Фікс:** `syncVersion: Number(row.syncVersion)` у toDto.
-**Severity:** HIGH (500 при синхронізації).
+### 2026-05-28 — CRON findMany без deletedAt:null на Organisation — backend
 
----
+```bash
+grep -rn "findMany.*Organisation\|findFirst.*Organisation" apps/api/src --include="*.ts" | grep -v "deletedAt"
+```
 
-### 2026-05-28 — CRON findMany без deletedAt: null на Organisation — backend
-
-**Grep:** `grep -rn "findMany.*Organisation\|findFirst.*Organisation" apps/api/src --include="*.ts" | grep -v "deletedAt"`.
-**Severity:** MEDIUM (cron обробляє deleted orgs).
-
----
+**Severity:** MEDIUM.
 
 ### 2026-05-28 — Playwright fullyParallel + Next.js dev → SyntaxError race — E2E
 
-**Сигнал:** `fullyParallel: true` → кілька workers mount Next.js dev server паралельно → `SyntaxError: Unexpected token`.
-**Фікс:** `fullyParallel: false` або `workers: 1` для dev mode.
-**Severity:** HIGH (E2E suite unstable в CI).
-
----
+**Сигнал:** `fullyParallel:true`→workers mount Next.js dev паралельно→`SyntaxError`.
+**Фікс:** `fullyParallel:false` або `workers:1` для dev.
+**Severity:** HIGH.
 
 ### 2026-05-28 — .catch(() => {}) ховає loading/error стан — frontend
 
-**Grep:** `grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx"`.
-**Фікс:** `.catch((e) => { if (!cancelled) setError(e.message) })`.
-**Severity:** MEDIUM.
+```bash
+grep -rn "\.catch(() => {})" apps/web/src/app --include="*.tsx"
+```
 
----
+**Фікс:** `.catch((e)=>{if(!cancelled)setError(e.message)})`.
+**Severity:** MEDIUM.
 
 ### 2026-06-01 — Optional numeric DTO field з тільки @IsOptional() (Bug #283) — backend / validation
 
-**Grep:** `grep -rn "?: number\b" apps/api/src/modules --include="*.dto.ts"` → перевірити наявність `@IsInt/@IsNumber/@Min/@Max/@Type(() => Number)`.
+```bash
+grep -rn "?: number\b" apps/api/src/modules --include="*.dto.ts"   # перевірити @IsInt/@IsNumber/@Min/@Max/@Type(()=>Number)
+```
+
+**Сигнал:** class-validator без type-decorator пропускає string/Infinity/негативні/floats у Int. Особливо weight/quantity/limit/page/percent/days/year. Regression: POST `"abc"`/`-1`/`99999999`/`2.5`→400.
 **Severity:** HIGH (runtime crash / data corruption).
 
----
+### 2026-06-01 — Stale .next/ cache після route group рефакторингу (Bug #291) — infra
 
-### 2026-06-01 — Stale `.next/` cache після route group рефакторингу (Bug #291) — infra
+**Сигнал:** переміщення `app/X/page.tsx`→`app/(group)/X/page.tsx`→webpack chunk-id mismatch→CRITICAL 500→React не гідрується→auth guards не виконуються.
 
-**Сигнал:** переміщення `app/X/page.tsx` → `app/(group)/X/page.tsx` → webpack chunk-id mismatch → CRITICAL 500 → React не гідрується → auth guards не виконуються.
-**Grep:** `git diff HEAD~5 HEAD --name-status | grep -E "^R.*app/.*page\.tsx"` → при match: `rm -rf apps/web/.next apps/web/tsconfig.tsbuildinfo`.
+```bash
+git diff HEAD~5 HEAD --name-status | grep -E "^R.*app/.*page\.tsx"   # → rm -rf apps/web/.next apps/web/tsconfig.tsbuildinfo
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/_next/static/chunks/main-app.js
+```
+
 **Severity:** CRITICAL.
 
----
+### 2026-06-02 — ?? 1 не ловить 0 від БД-дільника (Bug #316) — backend / defense-in-depth
 
-### 2026-06-02 — `?? 1` не ловить 0 від БД-дільника (Bug #316) — backend / defense-in-depth
+**Сигнал:** `coefficient ?? 1` — `coefficient=0` у БД→division by zero (`??` ловить лише null/undefined).
 
-**Сигнал:** `coefficient ?? 1` — якщо `coefficient=0` у БД → division by zero. `??` ловить лише null/undefined, не 0.
-**Grep:** `grep -rn "coefficient ?? 1\|denominator ?? 1" apps/api/src --include="*.ts"`.
-**Фікс:** `coefficient || 1` або `coefficient > 0 ? coefficient : 1`. Парне: `CHECK (coefficient > 0)` у migration.
+```bash
+grep -rn "coefficient ?? 1\|denominator ?? 1" apps/api/src --include="*.ts"
+```
+
+**Фікс:** `coefficient || 1` або `coefficient>0?coefficient:1`. Парне: `CHECK (coefficient>0)`.
 **Severity:** HIGH.
-
----
 
 ### 2026-06-02 — isSystem-guard у update()/remove() (Bugs #319-#320) — backend / business-rule
 
-**Grep:** `grep -rn "isSystem\s*Boolean" packages/database/prisma/schema.prisma` → для кожної моделі → `service.update`: `if (existing.isSystem && dto.name !== undefined) throw`.
+**Сигнал:** сутність з `isSystem Boolean` (seed: WorkCategory/GoodCategory/UnitOfMeasure/NotificationTemplate/PaymentMethodConfig/Currency) — `update()` має `if(existing.isSystem && (dto.name!==undefined||dto.parentId!==undefined||dto.code!==undefined))throw`; `remove()`→`if(existing.isSystem)throw`. Косметичні (sortOrder/icon/isActive) дозволені. UI ховає кнопки — backend авторитет (ADMIN curl PATCH/DELETE системну).
+
+```bash
+grep -rn "isSystem\s*Boolean" packages/database/prisma/schema.prisma
+grep -rn "isSystem: true" packages/database/prisma/seed.ts   # звірити з grep -rln "existing.isSystem" apps/api/src/modules → різниця=незахищені
+```
+
+**Coverage-gap:** split-coverage — guard був у UnitOfMeasure/WorkCategory/GoodCategory, відсутній у Currency+PaymentMethodConfig. **Frontend-coupling:** «reject-if-present» guard (`if(dto.name!==undefined)throw`) реджектить НАЯВНІСТЬ поля → FE що PATCH-ить незмінений immutable-field системного→спурінний 400; фікс — **ОМІТити immutable-поля з PATCH-body** (`body={...(isSystem?{}:{name,code}),...editable}`), не лише `disabled`. **Міграція:** нова `isSystem`-колонка потребує backfill (`UPDATE ... SET isSystem=true WHERE code IN (...)`). Contract 4 кейси: PATCH system {name}→400; {parentId}→400; {sortOrder}→200; DELETE→400.
 **Severity:** HIGH (system seed corrupted via API).
-**Coverage-gap (2026-09-05 — split-coverage):** guard був у UnitOfMeasure/WorkCategory/GoodCategory, АЛЕ відсутній у Currency + PaymentMethodConfig — той самий клас seed-master-data без захисту. Сигнал: у `schema.prisma` є `isSystem` НЕ на всіх seed-таблицях, або seed промарковано `isSystem:true` але `service.remove/update` не читає це поле. **Grep-пара:** `grep -rn "isSystem: true" packages/database/prisma/seed.ts` (які моделі мають системні seed-рядки) звірити проти `grep -rln "existing.isSystem" apps/api/src/modules` (які service мають guard) — різниця = незахищені. **Міграція-нюанс:** нова `isSystem`-колонка потребує backfill наявних seed-рядків (`UPDATE ... SET isSystem=true WHERE code IN (...)`), інакше вже-розгорнуті БД лишаються без захисту (DEFAULT false). Live-verify: GET повертає isSystem у кожному item; DELETE/PATCH-name системного→400.
-
-**Frontend-coupling (2026-09-05 — «reject-if-present» guard тригерить false-400):** guard `if (dto.name !== undefined) throw` реджектить НАЯВНІСТЬ поля, не зміну. Frontend що PATCH-ить назад **незмінений** immutable-field системного запису (типовий edit-form який серіалізує весь стан) отримає спурінний 400. **Фікс на фронті — ОМІТити immutable-поля з PATCH-body для системного запису, не лише `disabled` input:** `body = { ...(isSystem ? {} : { name, code }), ...editableFields }`. Просто `disabled` на input недостатньо — стан форми все одно містить старе значення і потрапляє у body. Сигнал у component-тесті/live: PATCH системного з UI лише-косметичної зміни→400 попри disabled-поля. Дзеркалити omit і у dead/sibling-файлах (settings vs ndi drift).
-**Де шукати ще:** будь-яка модель з seed + `isSystem` (TaxRate, DocumentNumberConfig, NotificationTemplate, PaymentMethodConfig, Currency, UnitOfMeasure, Work/GoodCategory) → guard у service + frontend-omit у її Tab-компоненті.
-
----
+**Де ще:** TaxRate, DocumentNumberConfig, NotificationTemplate, PaymentMethodConfig, Currency, UnitOfMeasure, Work/GoodCategory → guard + frontend-omit у Tab.
 
 ### 2026-06-02 — refetch-callback (onChanged) без race-guard (Bug #323) — frontend / race-condition
 
-**Сигнал:** `<CategoryManagerModal onChanged={() => loadCategories()}/>` без cancelled-flag → unmount перед resolve → setState on unmounted.
-**Grep:** `grep -rn "onChanged\|onUpdated\|onCreated" apps/web/src/app --include="*.tsx" -A2 | grep "load\|fetch"`.
+**Сигнал:** `<CategoryManagerModal onChanged={()=>loadCategories()}/>` без cancelled-flag→setState on unmounted.
+
+```bash
+grep -rn "onChanged\|onUpdated\|onCreated" apps/web/src/app --include="*.tsx" -A2 | grep "load\|fetch"
+```
+
 **Severity:** MEDIUM.
 
----
+### 2026-06-03 — Literal []/{} як аргумент до custom hook (Bug #328) — frontend / React anti-pattern
 
-### 2026-06-03 — Literal `[]`/`{}` як аргумент до custom hook (Bug #328) — frontend / React anti-pattern
+**Сигнал:** `useX(filters,[])`→нова reference кожен render→`useEffect([deps,[]])` infinitely.
 
-**Сигнал:** `useX(filters, [])` → нова reference кожен render → `useEffect([deps, []])` запускається infinitely.
-**Grep:** `grep -rnE "use[A-Z]\w*\(.*\[\]|\{\}\s*\)" apps/web/src/app --include="*.tsx"`.
-**Фікс:** `const EMPTY = useMemo(() => [], [])` або `useCallback`/`useMemo` для object args.
-**Severity:** HIGH (infinite re-render / network storm).
+```bash
+grep -rnE "use[A-Z]\w*\(.*\[\]|\{\}\s*\)" apps/web/src/app --include="*.tsx"
+```
 
----
+**Фікс:** `const EMPTY=useMemo(()=>[],[])`.
+**Severity:** HIGH (infinite re-render).
 
-### 2026-06-03 — Stale closure у useApiMutation/useCallback з eslint-disable exhaustive-deps (Bug #330) — frontend / hooks
+### 2026-06-03 — Stale closure у useCallback з eslint-disable exhaustive-deps (Bug #330) — frontend / hooks
 
-**Сигнал:** `useCallback(() => apiFetch(url, { body: data }), [])` з `// eslint-disable-next-line` → stale closure для змінних що оновлюються.
-**Grep:** `grep -rn "eslint-disable.*exhaustive-deps" apps/web/src --include="*.tsx" --include="*.ts"`.
+**Сигнал:** `useCallback(()=>apiFetch(url,{body:data}),[])` з `eslint-disable`→stale closure.
+
+```bash
+grep -rn "eslint-disable.*exhaustive-deps" apps/web/src --include="*.tsx" --include="*.ts"
+```
+
 **Severity:** HIGH (stale data у mutation).
-
----
 
 ### 2026-06-04 — BullMQ processor без idempotency guard (Bug #346) — backend / BullMQ
 
-**Сигнал:** `@Process` з `fetch(externalApi)` + `attempts > 1` але БЕЗ перевірки `existingResult` → retry дублює side-effect (2 SMS, 2 фіскальних чеки).
-**Grep:** `grep -rn "async handle" apps/api/src/modules --include="*.processor.ts" -l | while read f; do grep -q "fetch(\|axios\." "$f" && ! grep -q "findFirst\|findUnique" "$f" && echo "MISSING idempotency: $f"; done`.
-**Severity:** MEDIUM (ПРРО fiscal compliance risk).
+**Сигнал:** `@Process` з `fetch(externalApi)`+`attempts>1` БЕЗ перевірки `existingResult`→retry дублює (2 SMS, 2 чеки).
 
----
+```bash
+grep -rn "async handle" apps/api/src/modules --include="*.processor.ts" -l | while read f; do grep -q "fetch(\|axios\." "$f" && ! grep -q "findFirst\|findUnique" "$f" && echo "MISSING idempotency: $f"; done
+```
+
+**Фікс:** читати DB-запис ПЕРЕД external call, перевірити результат вже записаний (`fiscalReceiptId`/`sentAt`). Regression: `it('пропускає якщо result-field вже встановлено')`+`it('пропускає якщо запис не знайдено')`.
+**Severity:** MEDIUM (ПРРО fiscal compliance); LOW webhook retry.
 
 ### 2026-06-05 — Stable callback identity invariant у composable hooks — frontend / hooks
 
-**Сигнал:** `useCallback(() => ..., [])` у composable hook — без regression-guard test на identity stability.
-**Grep:** `grep -rn "useCallback(.*, \[\])" apps/web/src/hooks --include="*.ts" | grep -v test`.
-**Фікс-тест:** `const first = result.current.cb; rerender(); expect(result.current.cb).toBe(first)`.
+**Сигнал:** `useCallback(()=>...,[])` у composable hook без regression-guard identity. eslint --fix що додасть `[setPage]` каскадно перестворює consumers' useCallback.
+
+```bash
+grep -rn "useCallback(.*, \[\])" apps/web/src/hooks --include="*.ts" | grep -v test
+```
+
+**Фікс-тест:** `const first=result.current.cb; rerender(); expect(result.current.cb).toBe(first); act(()=>setter(N)); expect(cb).toBe(first)`.
 **Severity:** MEDIUM (perf cascade).
 
----
+### 2026-06-05 — new Date(`${date}T${time}:00`) без TZ суфіксу (Bugs #354, #358) — frontend / timezone
 
-### 2026-06-05 — `new Date(\`${date}T${time}:00\`)` без TZ суфіксу (Bugs #354, #358) — frontend / timezone
+**Сигнал:** FE парсить як local замість UTC→3-year drift.
 
-**Сигнал:** FE парсить як local-time замість UTC → 3-year drift у timestamp.
-**Grep:** `grep -rnE "new Date\(\`\$\{._\}T\$\{._\}:00\`\)" apps/web/src/app --include="\*.tsx"`.
-**Фікс:** використати `localDateTimeToISO(date, time)`з`apps/web/src/lib/format.ts`.
-**Severity:** HIGH (wrong datetime у БД).
+```bash
+grep -rnE "new Date\(\`\$\{[^}]*\}T\$\{[^}]*\}:00\`\)" apps/web/src/app --include="*.tsx"
+```
 
----
+**Фікс:** `localDateTimeToISO(date,time)` з `apps/web/src/lib/format.ts`.
+**Severity:** HIGH.
 
-### 2026-06-05 — Boolean-flag (isPrimary/isDefault) без unset previous при create/update (Bug #357) — backend
+### 2026-06-05 — Boolean-flag (isPrimary/isDefault) без unset previous (Bug #357) — backend
 
-**Сигнал:** `create({ isPrimary: true })` без `updateMany({ where: { isPrimary: true }, data: { isPrimary: false } })` → кілька primary у scope.
-**Grep:** `grep -rn "isPrimary.*true\|isDefault.*true" apps/api/src/modules --include="*.service.ts" | grep -v "updateMany"`.
-**Фікс:** у `$transaction`: спочатку `updateMany` unset, потім `create/update`.
-**Severity:** HIGH (business invariant порушений).
+**Сигнал:** `create({isPrimary:true})` без `updateMany({where:{isPrimary:true},data:{isPrimary:false}})`→кілька primary.
 
----
+```bash
+grep -rn "isPrimary.*true\|isDefault.*true" apps/api/src/modules --include="*.service.ts" | grep -v "updateMany"
+```
 
-### 2026-06-08 — Дублікат рядка у multi-row form без перевірки (Bug #382) — frontend / UX / validation
+**Фікс:** у `$transaction`: спочатку `updateMany` unset, потім create/update.
+**Severity:** HIGH.
 
-**Сигнал:** `addRow()` дозволяє додати той самий `goodId` двічі → duplicate inventory movements.
-**Фікс:** `if (rows.some(r => r.goodId === newRow.goodId)) return` перед push.
-**Severity:** MEDIUM.
+### 2026-06-08 — Multi-row form: дублікат/pre-validate/half-typed row (Bugs #382, #383, #384) — frontend / UX / data-loss
 
----
-
-### 2026-06-08 — Pre-validate numeric fields у local rows ДО batch POST (Bug #383) — frontend / validation
-
-**Сигнал:** submit batch POST без front-validation → partial-create або rollback але UX не знає яка row failed.
-**Фікс:** `rows.forEach((r, i) => { if (!r.quantity || r.quantity <= 0) throw \`Рядок ${i+1}: кількість обов'язкова\` })`ПЕРЕД першим`apiFetch`.
-**Severity:** MEDIUM.
-
----
-
-### 2026-06-08 — Half-typed row silently dropped при submit (Bug #384) — frontend / UX / data-loss
-
-**Сигнал:** `rows.filter(r => r.goodId && r.quantity > 0)` → half-typed row мовчки пропускається без warning.
-**Фікс:** `if (rows.some(r => r.goodId && !r.quantity)) confirm("Незаповнені рядки будуть пропущені. Продовжити?")`.
-**Severity:** MEDIUM (data-loss без feedback).
-
----
+**Сигнал:** #382 `addRow()` дозволяє той самий goodId двічі→duplicate movements (`if(rows.some(r=>r.goodId===newRow.goodId))return`). #383 submit batch POST без front-validation→partial-create без указання failed row (`rows.forEach((r,i)=>{if(!r.quantity||r.quantity<=0)throw \`Рядок ${i+1}: кількість обов'язкова\`})`). #384 `rows.filter(r=>r.goodId&&r.quantity>0)`→half-typed row мовчки пропускається (`if(rows.some(r=>r.goodId&&!r.quantity))confirm("Незаповнені рядки будуть пропущені")`).
+**Severity:** MEDIUM (#384 data-loss без feedback).
 
 ### 2026-06-17 — Public DTO leak whitelist test (Bug #530) — backend / security / regression-guard
 
-**Сигнал:** public endpoint (share-token/magic-link) повертає DTO через manual `parts.map(p => ({...whitelist}))`. Захист від витоку (`costPrice`, `batchCostPrice`, `paidAmount`, `orgId`, `syncVersion`) тримається на тому що автор НЕ написав `{...p}` spread. TS не ловить (Prisma row ширший за DTO; `parts!: EstimatePublicPartDto[]` не валідує runtime — зайвий ключ проходить JSON.stringify). Ризик: `{...p, computed}` шортчат або `include: {warehouse:true}` замість narrow select → sensitive поля витікають.
-**Grep:**
+**Сигнал:** public endpoint (share-token) повертає DTO через manual `parts.map(p=>({...whitelist}))`. Захист тримається на тому що автор НЕ написав `{...p}` spread. TS не ловить (`parts!:Dto[]` не валідує runtime). Ризик: `{...p,computed}` шортчат або `include:{warehouse:true}`→leak (`costPrice`,`batchCostPrice`,`paidAmount`,`orgId`,`syncVersion`).
 
 ```bash
 grep -rn "@Public\|@Get.*share\|@Get.*public" apps/api/src/modules --include="*.controller.ts"
-# handler НЕ має: parts.map(p => ({...p})) spread; include: true / wide-include
-ls apps/api/src/modules/*/work-orders.share-public.spec.ts 2>/dev/null
+# handler НЕ має: parts.map(p=>({...p})) spread; include:true
 ```
 
-**Фікс:** `<resource>.share-public.spec.ts` з 3 assertions (hasOwnProperty ловить ключ навіть зі значенням undefined — сильніше за `=== undefined`):
+**Фікс:** `<resource>.share-public.spec.ts` (hasOwnProperty ловить ключ навіть з undefined):
 
 ```ts
 expect(Object.prototype.hasOwnProperty.call(part, 'costPrice')).toBe(false);
@@ -3465,22 +3123,18 @@ expect(Object.keys(part).sort()).toEqual(
 expect(Object.prototype.hasOwnProperty.call(dto, 'orgId')).toBe(false); // + paidAmount, syncVersion
 ```
 
-**Severity:** HIGH для public (без auth — витік = реальна leak); MEDIUM для authenticated (RBAC обмежує).
-**Де шукати ще:** кожен `@Public()` endpoint з aggregate+вкладеними рядками: WorkOrder estimate share ✅ (#530), Invoice public viewer, Counterparty public profile.
-
----
+**Severity:** HIGH public; MEDIUM authenticated (RBAC).
+**Де ще:** кожен `@Public()` з aggregate+вкладеними: WorkOrder estimate share ✅, Invoice public viewer, Counterparty public profile.
 
 ### 2026-06-17 — Defensive take/limit cap regression-guard (Bug #531) — backend / perf / regression-guard
 
-**Сигнал:** service робить `findMany`/`findFirst` з `take: N` cap як defense-in-depth проти unbounded зростання (legacy import, missing ArrayMaxSize, scripted ops). Без regression-guard refactor може: видалити `take` → OOM; знизити → silent truncation → дезінформація у totals; `select` narrow → `include: true` → perf drop. «Defensive — ніколи не спрацює» → spec не пишеться → хтось видаляє «зайвий» take → sentry alert після WO з 5000 рядків.
-**Grep:**
+**Сигнал:** `findMany` з `take:N` cap (defense проти unbounded). Без regression-guard refactor видалить `take`→OOM або знизить→silent truncation.
 
 ```bash
 grep -rnE "take: (100|500|1000)\b" apps/api/src/modules --include="*.service.ts" | grep -v "spec\|page"
-grep -rn "callArgs.take\|take: 1000" apps/api/src/modules --include="*.spec.ts"   # потрібно expect(callArgs.take).toBe(1000), не toHaveBeenCalled()
 ```
 
-**Фікс:** dedicated `*-cap.spec.ts` (не мікс з business-logic), 3-4 тести:
+**Фікс:** dedicated `*-cap.spec.ts`:
 
 ```ts
 expect(callArgs.take).toBe(1000); // exact, НЕ >=
@@ -3488,180 +3142,106 @@ expect(callArgs.where.deletedAt).toBeNull();
 expect(callArgs.select).toEqual({
   /* narrow */
 });
-// boundary: findMany повертає рівно N → aggregated суми коректні
 ```
 
-**Severity:** MEDIUM (defense-in-depth, runtime ОК зараз); HIGH якщо cap захищає hot path (recalcTotals у transaction).
-**Де шукати ще:** work-orders.service.ts (recalcTotals ✅), inventory.service.ts (reserveParts take:1000), purchase-orders.service.ts (receive bulk), invoices.service.ts (createFromWorkOrder).
-
----
+**Severity:** MEDIUM; HIGH якщо cap захищає hot path (recalcTotals у transaction).
+**Де ще:** work-orders (recalcTotals ✅), inventory (reserveParts take:1000), purchase-orders (receive bulk), invoices (createFromWorkOrder).
 
 ### 2026-06-19 — Constructor DI drift breaks ALL specs of service (Bug #534, #536) — backend / test-infra
 
-**Сигнал:** feature commit додає **новий dependency у constructor** `@Injectable()` сервісу (`private readonly newDep: NewService`) без оновлення `*.service.spec.ts` — 100% тестів модуля падають `Nest can't resolve dependencies of XService (..., ?). ... NewService at index [N]`. CRITICAL release-blocker (ховає реальну регресію шумом). Окремий drift у positional-arg specs (`new WorkOrdersService(prisma, null as never, ...)`): новий arg зсуває порядок, `null as never` однакові → TS не ловить, runtime падає коли метод читає поле з зсунутим індексом.
-**Grep:**
+**Сигнал:** новий `private readonly newDep:NewService` у constructor без оновлення `*.service.spec.ts`→100% тестів падають `Nest can't resolve dependencies ... NewService at index [N]`. positional-arg specs (`new WorkOrdersService(prisma,null as never,...)`): новий arg зсуває, `null as never` однакові→TS не ловить.
 
 ```bash
-for f in $(git diff HEAD~5 HEAD --name-only -- 'apps/api/src/modules/**/*.service.ts' | grep -v spec); do
-  added=$(git diff HEAD~5 HEAD -- "$f" | grep "^+.*private readonly.*Service$" | wc -l)
-  [ "$added" -gt 0 ] && spec="${f%.ts}.spec.ts" && [ -f "$spec" ] && grep -q "$(git diff HEAD~5 HEAD -- "$f" | grep "^+.*private readonly" | head -1 | grep -oE '[A-Z][a-zA-Z]+Service')" "$spec" || echo "DRIFT $spec MISSING mock"
-done
-pnpm --filter @sto/api test --run 2>&1 | tail -5   # baseline; new fails після scope commits = feature ввела
-grep -rn "new [A-Z][a-zA-Z]*Service(" apps/api/src --include="*.spec.ts"   # positional-arg крихкі
+for f in $(git diff HEAD~5 HEAD --name-only -- 'apps/api/src/modules/**/*.service.ts' | grep -v spec); do git diff HEAD~5 HEAD -- "$f" | grep "^+.*private readonly.*Service$" && echo "$f — verify spec"; done
+grep -rn "new [A-Z][a-zA-Z]*Service(" apps/api/src --include="*.spec.ts"   # positional крихкі
+pnpm --filter @sto/api test --run 2>&1 | tail -5
 ```
 
-**Фікс:** (1) Test.createTestingModule: `{ provide: NewService, useValue: stubObj }` (не `{}` — дає null.method; `vi.fn().mockResolvedValue(safeDefault)`); (2) positional-arg: замінити відповідний `null as never` на mock, named comment `null as never, // inventory`; (3) MANDATORY повний test-suite ПЕРЕД commit. Регресія-guard: pre-commit hook — constructor changed → spec providers changed; tester Krok 0 `pnpm test --run` для @sto/api І @sto/web.
-**Severity:** CRITICAL feature-introduced (новий dep + 30+ failed = фіча мертва у CI); MEDIUM pre-existing test rot.
-**Де шукати ще:** новий dep у будь-якому `@Injectable()`; cross-module dep (SettingsService у PurchaseOrdersService, DocumentNumberService у GoodsService); `grep -rn "new.*Service(.*null as never" apps/api/src --include="*.spec.ts"`.
-
----
+**Фікс:** (1) `{provide:NewService,useValue:vi.fn().mockResolvedValue(safeDefault)}` (не `{}`→null.method); (2) positional — замінити `null as never` на mock, named comment `null as never, // inventory`; (3) MANDATORY full-suite (@sto/api І @sto/web) у Krok 0 ПЕРЕД commit.
+**Severity:** CRITICAL feature-introduced; MEDIUM pre-existing test rot.
+**Де ще:** cross-module dep (SettingsService у PurchaseOrders, DocumentNumberService у Goods).
 
 ### 2026-06-19 — Migration ADD VALUE без парного INSERT backfill для DocumentNumberConfig (Bug #533) — database / migration
 
-**Сигнал:** commit додає enum `DocumentType` value (`'GOOD_INTERNAL_CODE'`) + service `documentNumberService.next(orgId, '<NEW_VALUE>')`; у `seed.ts` є `docConfigs[]` запис, АЛЕ міграція містить ЛИШЕ `ALTER TYPE ADD VALUE` БЕЗ парного `INSERT INTO document_number_configs` для існуючих org. У production (existing org не запускають seed повторно) → `next()` кидає `NotFoundException('Конфігурацію нумерації...не знайдено')` → mutation-flow blocked. Не ловиться tsc/unit/contract (prisma моки) — лише integration/runtime. seed.ts запускається ТІЛЬКИ при initial setup, не при `prisma migrate deploy`.
-**Grep:**
+**Сигнал:** commit додає enum `DocumentType` value (`'GOOD_INTERNAL_CODE'`)+`documentNumberService.next(orgId,'<NEW>')`; `seed.ts:docConfigs[]` є, АЛЕ міграція лише `ALTER TYPE ADD VALUE` БЕЗ `INSERT INTO document_number_configs` для існуючих org → prod `next()`→`NotFoundException('Конфігурацію нумерації...не знайдено')`. seed.ts лише при initial setup, не `migrate deploy`.
 
 ```bash
 grep -l "ADD VALUE.*'GOOD_INTERNAL_CODE'" packages/database/prisma/migrations/*/migration.sql
-grep -l "INSERT INTO document_number_configs" packages/database/prisma/migrations/*/migration.sql   # нема INSERT з timestamp ПІСЛЯ ALTER TYPE = bug
-grep -rn "docNumbers.next.*'GOOD_INTERNAL_CODE'" apps/api/src/modules --include="*.ts"
-ls packages/database/prisma/migrations/ | grep -i "_seed.*doc_numbers"
+grep -l "INSERT INTO document_number_configs" packages/database/prisma/migrations/*/migration.sql   # нема INSERT ПІСЛЯ ALTER = bug
 ```
 
-**Фікс:** окрема migration з timestamp +1s (Postgres забороняє INSERT з новим enum у тій же tx що ALTER TYPE):
+**Фікс:** окрема migration timestamp +1s (Postgres забороняє INSERT з новим enum у тій же tx що ALTER TYPE):
 
 ```sql
-INSERT INTO document_number_configs ("id","orgId","documentType","prefix","includeDate","dateFormat","separator","padding","currentSeq","resetPeriod","updatedAt")
-SELECT gen_random_uuid(), o.id, '<NEW_VALUE>'::"DocumentType", '<prefix>', <includeDate>, 'YYYYMMDD', '-', <padding>, 0, '<resetPeriod>'::"ResetPeriod", NOW()
-FROM organisations o
-WHERE NOT EXISTS (SELECT 1 FROM document_number_configs c WHERE c."orgId"=o.id AND c."documentType"='<NEW_VALUE>'::"DocumentType");
+INSERT INTO document_number_configs (...) SELECT gen_random_uuid(), o.id, '<NEW>'::"DocumentType", '<prefix>', ..., NOW()
+FROM organisations o WHERE NOT EXISTS (SELECT 1 FROM document_number_configs c WHERE c."orgId"=o.id AND c."documentType"='<NEW>'::"DocumentType");
 ```
 
-Config 1:1 з `seed.ts:docConfigs[]` (prefix, padding, includeDate, resetPeriod). Регресія-guard: pre-commit hook блокує `ADD VALUE` у DocumentType без парного INSERT; integration test після `migrate deploy` runtime `next()` з новим enum.
-**Severity:** CRITICAL (release-blocker — фіча мертва у проді для існуючих orgs).
-**Де шукати ще:** всі commits з `enum DocumentType {... NEW}`; seed-керовані enum з config-таблицями: PaymentMethodConfig.code, NotificationTemplate.eventType, TaxRate.rate, CurrencyCode.code — кожен потребує backfill INSERT.
+Config 1:1 з `seed.ts:docConfigs[]`. Прецеденти: `20260615120100_seed_supplier_return_doc_numbers`, `20260619140001_seed_good_internal_code_doc_numbers`.
+**Severity:** CRITICAL (фіча мертва у проді для існуючих orgs).
+**Де ще:** seed-керовані enum з config-таблицями: PaymentMethodConfig.code, NotificationTemplate.eventType, TaxRate.rate, CurrencyCode.code.
 
-### 2026-06-20 — Validation message Cyrillic encoding in Zod/class-validator (Bug #537) — frontend / validation / i18n
+### 2026-06-20 — Validation message Cyrillic encoding в Zod/class-validator (Bug #537) — frontend / validation / i18n
 
-**Сигнал:** `@Matches` validator з `message`-кирилицею обробленою інструментом що змінює encoding (BOM removal, PowerShell `Set-Content` без `-Encoding utf8`, UTF-16). Результат `'Р¤РѕСЂРјР°С‚...'` замість `'Формат "ГГ:ХХ"'` → 400 з garbled текстом.
-**Grep:**
+**Сигнал:** `@Matches` з message-кирилицею обробленою BOM-removal/PowerShell `Set-Content` без `-Encoding utf8`→`'Р¤РѕСЂРјР°С‚...'`→400 з garbled.
 
 ```bash
-grep -rn "@Matches.*message:\|@MinLength.*message:\|@MaxLength.*message:" apps/api/src/modules --include="*.dto.ts"
-for f in $(git diff HEAD~2 HEAD --name-only -- "*.dto.ts"); do grep -q "@Matches.*message:" "$f" && grep -n "message:" "$f"; done
-# contract.spec: expect(res.json().message).toMatch(/^[А-Яа-яІіЇїЄє0-9\s"():.–—-]*$/)
+grep -rn "@Matches.*message:\|@MinLength.*message:" apps/api/src/modules --include="*.dto.ts"
+# contract: expect(res.json().message).toMatch(/^[А-Яа-яІіЇїЄє0-9\s"():.–—-]*$/)
 ```
 
-**Фікс:** переписати кирилицю вручну, зберегти UTF-8 БЕЗ BOM (`"files.encoding": "utf8"`), перевірити у contract.spec.
-**Severity:** LOW (UX confusion validation message); MEDIUM якщо message ключовий для workflow (HH:MM format).
-**Де шукати ще:** усі `@Matches`/`@IsString`/`@MinLength` з кирилицею message у DTO що пройшли sed/BOM-removal commit (`git log --oneline -20 -- "*.dto.ts"`).
+**Фікс:** переписати вручну, UTF-8 БЕЗ BOM.
+**Severity:** LOW; MEDIUM якщо ключовий (HH:MM).
 
----
+### 2026-06-20 — E2E test seed race condition за 30s timeout (Bug #538) — E2E / flaky
 
-### 2026-06-20 — E2E test seed race condition за 30s timeout (Bug #538) — E2E / test-infrastructure / flaky
-
-**Сигнал:** Playwright spec (retries=3) всі 3 спроби `expect(...).toBeVisible({timeout:30_000})` → `element(s) not found`; окремий запуск може пройти (flaky). Seed у `beforeAll()` через API залежить від DRAFT donor у БД; якщо DB пустий/seed не спрацював → clone=null → тест мовчки пропускається (нема `expect(seededId).toBeTruthy()`). Або transition DRAFT→ESTIMATE дає 500 → clone у DRAFT → FE фільтрує ESTIMATE → рядок не видно.
-**Grep:**
+**Сигнал:** Playwright всі 3 спроби `toBeVisible({timeout:30_000})`→not found; окремий запуск проходить. Seed у `beforeAll()` через API залежить від DRAFT donor; якщо порожній→clone=null→тест мовчки пропускається (нема `expect(seededId).toBeTruthy()`).
 
 ```bash
 grep -rn "beforeAll.*async\|seedEstimateWorkOrder\|seedXWorkOrder" apps/web/e2e --include="*.spec.ts"
-grep -A 5 "beforeAll" "$spec" | grep -E "expect.*toBeTruthy|expect.*not.toBeNull" || echo "MISSING GUARD"
+grep -A5 "beforeAll" "$spec" | grep -E "expect.*toBeTruthy|not.toBeNull" || echo "MISSING GUARD"
 ```
 
-**Фікс:** explicit гард `expect(seededId, 'beforeAll must seed ...').toBeTruthy()` у першому тесті; seed-функція логує error detail (не `return null`); retry-loop max 3 з backoff для транзиторних 500; skip з дружнім `test.skip()` якщо нема donor.
-**Severity:** LOW (flaky, наступна спроба може пройти); MEDIUM якщо seed гарантує детермінізм.
-**Де шукати ще:** .spec.ts з `beforeAll()` API seeding (POST, не DB insert): estimate-share, public pages, auth flows, complex-state (multi-org, cross-org).
-
----
-
-## Що вже перевірено (не дублювати)
-
-**Backend:**
-
-- ✅ FSM transition map pattern (work-orders.fsm.ts)
-- ✅ InventoryService guards (quantity=0, available < qty, RESERVATION_RELEASE)
-- ✅ SettlementsService guards (CHARGE ↑, PAYMENT ↓)
-- ✅ Soft-delete: всі основні сервіси
-- ✅ Resurrection pattern: currencies, exchange-rates, brands, units, payment-methods
-- ✅ Org-scoped FK validation перед write: goods (brandId/unitId/preferredSupplierId — Bug #161), invoices/work-orders clone (Bug #90)
-- ✅ $transaction explicit timeout: всі interactive callbacks
-- ✅ ParseUUIDPipe: всі :id параметри
-- ✅ Security headers (X-Content-Type-Options, X-Frame-Options, HSTS via @fastify/helmet@11)
-- ✅ SSRF guard: webhooks.processor (validatePublicUrl + redirect: 'manual')
-- ✅ ArrayMaxSize: inspection.dto, webhook payload
-- ✅ Deploy/infra (phase18): docker-compose api healthcheck node-http /api/health (Bug #164/#165); minio healthcheck `mc ready local` замість curl-less образу + пін RELEASE-тегу (Bug #170); root .dockerignore (Bug #166); build-prod.ps1 export→apps/web/out + $PSScriptRoot fallback (Bug #167); nginx \_next/static immutable + gzip_types svg/js (Bug #168). /api/health публічний (HealthController без @UseGuards, auth per-controller) → healthcheck 200. minio/minio = лише mc, НЕ curl/wget (перевірено емпірично)
-
-**Frontend:**
-
-- ✅ cancelled flag: AuthProvider, всі mount-fetches (settings, crm, work-orders)
-- ✅ SSR-safe today: useState(null) + useEffect → setToday(new Date())
-- ✅ apiFetch error array join: `Array.isArray(msg) ? msg.join('; ') : msg`
-- ✅ UUID validation client-side перед submit
-- ✅ aria-label на іконкових кнопках (після bulk-fix)
-- ✅ React named imports (не React.ReactNode)
-- ✅ React Query Sprint B: QueryClient singleton (staleTime 30s, retry 1, refetchOnWindowFocus false); 5 query hooks (workOrders/invoices/counterparties/inventory/purchaseOrders) з queryKey factory; cross-resource invalidation покриває PO receive→inventory, PO apply-pricing→inventory, work-orders create→workOrders (Bug #210-#212); useWorkOrders.test.tsx як зразок query-hook tests (12 кейсів — queryKey factory, enabled gate, URLSearchParams build, signal abort)
-
-**Tests:**
-
-- ✅ Contract specs: auth, work-orders, warehouses, counterparties, sync, settings, audit, pricing-rules, batches, currencies, bank-accounts, exchange-rates, cash-registers, calendar (GET/POST/PATCH/DELETE — resize/drag PATCH endpoint)
-- ✅ Service specs (query-shape): goods (FK validation), counterparties (?q= plural relation customerGarages→vehicles — Bug #163), work-orders (findAll calendarSlots include: plural relation + take:1 + deletedAt + orderBy asc; ?q= counterparty nested; employeeId some soft-delete — Bug #171)
-- ✅ Pricing service specs: COST_TIER tier matching (first/mid/last/none), brandId priority over goodType (Bug #179)
-- ✅ Calendar timeline px→time clamp: усі гілки (draw/pending-resize/saved-resize/drag) clamp у [WINDOW_START,WINDOW_END]; isEditingPast minHour-boundary (slot==minHour → НЕ past)
-- ✅ Property-based invariants: inventory, settlements, FSM (26 invariants)
-- ✅ Component tests: 148/148 passed (14 файлів)
-- ✅ E2E: 42/42 passed (smoke, console-errors serial mode, inventory, api-errors)
-
----
-
----
+**Фікс:** `expect(seededId,'beforeAll must seed').toBeTruthy()`; seed логує error (не `return null`); retry-loop max 3 backoff.
+**Severity:** LOW-MEDIUM.
 
 ### 2026-06-20 — E2E sessionStorage НЕ restored через storageState (Bug #567) — e2e / playwright / sessionStorage-limitation
 
-**Сигнал:** E2E failure screenshot показує login форму замість сторінки; `getByRole(...)` timeout одразу після `page.goto('/work-orders')`. Playwright `storageState` зберігає sessionStorage у admin.json, АЛЕ `test.use({storageState})` restore-ить ТІЛЬКИ cookies+localStorage — sessionStorage завжди порожній (відома обмеження, tab-scoped). AuthProvider читає token з sessionStorage → `stored=null` → reducer `{isLoading:true}` → `refreshToken()` → 401 (no refresh cookie) → silent LOGOUT → redirect /login.
-**Grep/probe:**
+**Сигнал:** E2E screenshot=login замість сторінки; `getByRole` timeout після `page.goto`. Playwright `storageState` restore-ить лише cookies+localStorage, sessionStorage завжди порожній (tab-scoped). AuthProvider читає token з sessionStorage→null→`refreshToken()`→401→silent LOGOUT.
 
 ```bash
-ls apps/web/test-results/*/test-failed-1.png   # screenshot «Вхід до системи» = auth issue
-cat apps/web/e2e/.auth/admin.json | jq '.cookies | length'   # 0 → refresh fails завжди
-# runtime: page.evaluate(() => ({ hasToken: !!sessionStorage.getItem('sto_access_token') }))  → false попри admin.json
+cat apps/web/e2e/.auth/admin.json | jq '.cookies | length'   # 0 → refresh fails
 ```
 
-**Фікс (3-prong):** (1) `setup-auth.ts`: дзеркалити token у `localStorage.sto_e2e_access_token` + `sto_e2e_skip_refresh='1'` + `sto_employee_cache`; (2) AuthProvider reducer init: якщо sessionStorage порожній + `sto_e2e_skip_refresh==='1'` + є `sto_e2e_access_token` → скопіювати у sessionStorage ПЕРЕД читанням; (3) useEffect: flag+cached → пропустити refresh-on-mount. Production не встановлює E2E ключі — zero impact. Регресія-guard: spec «skips refresh when sto_e2e_skip_refresh=1 + cached».
-**Severity:** CRITICAL — блокує всі захищені E2E тести.
-**Де шукати ще:** frontend з httpOnly refresh cookie + cross-port API + Playwright. Альтернатива — `webServer` proxy `/api/*` → same-origin → cookies survive.
+**Фікс (3-prong):** (1) `setup-auth.ts`: token у `localStorage.sto_e2e_access_token`+`sto_e2e_skip_refresh='1'`+`sto_employee_cache`; (2) AuthProvider reducer init: sessionStorage порожній+`sto_e2e_skip_refresh==='1'`+є `sto_e2e_access_token`→скопіювати ПЕРЕД читанням; (3) useEffect flag+cached→пропустити refresh. Prod не ставить E2E ключі. Обидві сторони escape-hatch мають 2+ matches (§1.3 grep).
+**Severity:** CRITICAL — блокує всі захищені E2E.
+**Де ще:** frontend з httpOnly refresh cookie + cross-port API + Playwright.
 
----
+### 2026-06-20 — Node IPv6 default на Windows ламає server-side fetch (Bug #566) — e2e / dns-resolution
 
-### 2026-06-20 — Node IPv6 default на Windows ламає server-side fetch (Bug #566) — e2e / infrastructure / dns-resolution
-
-**Сигнал:** інтермітентний `ECONNREFUSED ::1:3000` у Playwright `request.newContext()` / Node `fetch()`; браузерні запити з Chromium працюють (dual-stack). Node 18+ на Windows повертає IPv6 `::1` перед `127.0.0.1` при resolution `localhost`; NestJS `app.listen(port, '0.0.0.0')` слухає тільки IPv4 → ECONNREFUSED.
-**Grep:**
+**Сигнал:** інтермітентний `ECONNREFUSED ::1:3000` у Playwright `request.newContext()`/Node `fetch()`; браузерні (Chromium dual-stack) працюють. Node 18+ Windows повертає `::1` перед `127.0.0.1`; NestJS `listen(port,'0.0.0.0')` слухає IPv4.
 
 ```bash
 grep -rn "fetch.*localhost:3000\|request.newContext\|http://localhost:3000" apps/web/e2e/ | grep -v "page.evaluate"
 ```
 
-**Фікс:** (1) швидкий: `http://localhost:3000` → `http://127.0.0.1:3000` у server-side fetch (estimate-share.spec.ts, setup-auth.ts); браузерні `page.evaluate(fetch)` ОК; (2) architectural: `app.listen(port, '::')` dual-stack (за згодою owner); (3) env: `playwright.config.ts` webServer.env `NEXT_PUBLIC_API_URL=http://127.0.0.1:3000`. Регресія-guard: test 3 рази підряд.
-**Severity:** HIGH (intermittent, ризик у flaky investigations).
-**Де шукати ще:** Node-side fetch до localhost де сервер біндить IPv4-only: WatermelonDB sync, BullMQ workers, cross-service HTTP у monorepo dev.
-
----
+**Фікс:** `http://localhost:3000`→`http://127.0.0.1:3000` у server-side fetch; браузерні ОК; або `listen(port,'::')` dual-stack; або webServer.env `NEXT_PUBLIC_API_URL=http://127.0.0.1:3000`.
+**Severity:** HIGH (intermittent).
+**Де ще:** WatermelonDB sync, BullMQ workers, cross-service HTTP у monorepo dev.
 
 ### 2026-06-20 — Sidebar-preview pattern: row click НЕ навігує (Bug #574) — e2e / ux-pattern / list-pages
 
-**Сигнал:** E2E ламається на `expect(page).toHaveURL(/\/<entity>\/[a-z0-9-]+/)` після `firstRow.click()`; сторінка залишилась на /<entity>. List-pages мігрували на pattern: row click → `setSelected` → DetailPanel side-preview; навігація тепер через окрему кнопку/action-button (модалка, не URL). Тест писався коли row click робив `router.push`.
-**Grep:**
+**Сигнал:** E2E ламається на `toHaveURL(/\/<entity>\/[a-z0-9-]+/)` після `firstRow.click()`. List-pages мігрували: row click→`setSelected`→DetailPanel; навігація через окрему кнопку.
 
 ```bash
-grep -rn "firstRow\|tbody tr.*click\(\)" apps/web/e2e --include="*.spec.ts" -A 3 | grep -B 1 "toHaveURL.*\[a-z0-9-\]"
-grep -nE "onClick.*setSelected|router\.push" $page/page.tsx   # тільки setSelected → UI не навігує
+grep -rn "firstRow\|tbody tr.*click\(\)" apps/web/e2e --include="*.spec.ts" -A3 | grep -B1 "toHaveURL.*\[a-z0-9-\]"
 ```
 
-**Фікс:** для detail-page тестів — НЕ row click, а API + page.goto:
+**Фікс:** detail-page тести — НЕ row click, а API+page.goto:
 
 ```typescript
 await page.goto('/work-orders');
-await expect(page.locator('table tbody tr').first()).toBeVisible(); // wait for auth
+await expect(page.locator('table tbody tr').first()).toBeVisible();
 const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
 const wo = await page.evaluate(async t => {
   const r = await fetch('http://localhost:3000/api/work-orders?limit=1', {
@@ -3673,16 +3253,18 @@ const wo = await page.evaluate(async t => {
 await page.goto(`/work-orders/${wo.id}`);
 ```
 
-**Severity:** MEDIUM — тести failed після migration на side-preview; потребує правки в усіх list-page specs.
-**Де шукати ще:** invoices, purchase-orders, stock-documents, counterparties, employees — усі list-pages з `useListPage`; перевіряти `firstRow.click()` + `toHaveURL`.
-
----
+**Severity:** MEDIUM.
+**Де ще:** invoices, purchase-orders, stock-documents, counterparties, employees — усі з `useListPage`.
 
 ### 2026-06-20 — Skeleton/loading row матчиться як data row (Bug #575) — e2e / async-state / table-loading
 
-**Сигнал:** тест `expect(page.locator('table tbody tr').first()).toBeVisible()` думає що таблиця завантажилась, потім `.count()` на checkbox = 0 попри свіжо створені рядки. Скріншот показує «Завантаження». List-page рендерить skeleton `<TableRow>` при `isLoading=true`; локатор `table tbody tr` матчить і skeleton, і data row; `first()` дає skeleton.
-**Grep:** `grep -rn "table tbody tr.*first\(\)" apps/web/e2e --include="*.spec.ts"`.
-**Фікс:** чекати на елемент який є ТІЛЬКИ у data row (не skeleton):
+**Сигнал:** `table tbody tr').first()` матчить skeleton `<TableRow>` при isLoading; `.count()` checkbox=0 попри створені рядки.
+
+```bash
+grep -rn "table tbody tr.*first\(\)" apps/web/e2e --include="*.spec.ts"
+```
+
+**Фікс:** чекати елемент ТІЛЬКИ у data row:
 
 ```typescript
 await expect
@@ -3690,20 +3272,21 @@ await expect
     timeout: 20_000,
   })
   .toBeGreaterThanOrEqual(2);
-// АБО content-селектор:
-await expect(page.locator(`table tbody tr:has-text("${invoiceNumber}")`)).toBeVisible();
+// АБО: await expect(page.locator(`table tbody tr:has-text("${invoiceNumber}")`)).toBeVisible();
 ```
 
-**Severity:** MEDIUM — flaky/false-fail, важко дебажити (locator знаходить tr, assertions після — fail).
-**Де шукати ще:** list-page де loading rendering включає `<TableRow>` (invoices, work-orders, purchase-orders, stock-documents); всі `table tbody tr').first()` що передують `count()`/`nth(N)`.
+**Severity:** MEDIUM (flaky).
+**Де ще:** invoices, work-orders, purchase-orders, stock-documents.
 
----
+### 2026-06-20 — Hardcoded seed values vs E2E-generated fixtures (Bug #576) — e2e / fixture-drift
 
-### 2026-06-20 — Hardcoded seed values vs E2E-generated fixtures (Bug #576) — e2e / fixture-drift / first-row-pollution
+**Сигнал:** тест очікує hardcoded seed (`AA1234BB`, `Toyota`) на першому ресурсі, але там `E2E-Make...` (артефакт з CRUD specs без cleanup).
 
-**Сигнал:** тест очікує hardcoded seed values (`AA1234BB`, `Toyota`) на першому ресурсі з API, але там `E2E-Make E2E-Model-560110` — артефакт з раніших прогонів (CRUD specs без afterAll cleanup → `GET /vehicles?limit=1` повертає E2E-артефакт). `getByText(/AA1234BB/).first() not found`.
-**Grep:** `grep -rn "AA1234BB\|Toyota Camry\|Honda Civic\|Іван Петренко" apps/web/e2e --include="*.spec.ts"`.
-**Фікс:** динамічний regex з API замість hardcoded:
+```bash
+grep -rn "AA1234BB\|Toyota Camry\|Honda Civic\|Іван Петренко" apps/web/e2e --include="*.spec.ts"
+```
+
+**Фікс:** динамічний regex з API:
 
 ```typescript
 const vehicle = await page.evaluate(
@@ -3716,73 +3299,51 @@ const vehicle = await page.evaluate(
   { tok: token, id: vehicleId },
 );
 await expect(page.getByText(new RegExp(escapeRegex(vehicle.make), 'i')).first()).toBeVisible();
-const optional = [vehicle.licensePlate, vehicle.year, vehicle.vin].filter(Boolean);
-if (optional.length)
-  await expect(
-    page.getByText(new RegExp(optional.map(escapeRegex).join('|'), 'i')).first(),
-  ).toBeVisible();
 ```
 
-**Severity:** MEDIUM — fail якщо row-order залежить від E2E artifacts; після seed reset працює. False positives у CI.
-**Де шукати ще:** тести що очікують seed values (vehicles, counterparties, work-orders, goods) на першому елементі list; всі hardcoded brand/model/name/phone strings.
+**Severity:** MEDIUM (false positives у CI).
 
----
+### 2026-07-03 — Sprint-wide DTO drift detection: canonical-pattern context grep (Bug #587) — api / dto / anti-dos / drift
 
-### 2026-07-03 — Sprint-wide DTO drift detection: `@IsArray` без `@ArrayMaxSize` через 5-line context grep (Bug #587) — api / dto / anti-dos / drift
-
-**Сигнал:** проєкт має 30+ файлів `@IsArray()` + `@ArrayMaxSize(N)` (canonical DoS-guard), АЛЕ ~5 пропустили cap. TS/unit green, review не ловить (checklist існує, але grep-scan не використаний). Ловиться тільки systematic-audit grep+context (не manual-review): розробник копіює validate/type-guards без `@ArrayMaxSize`.
-**Grep (template canonical-pattern audit):**
+**Сигнал:** 30+ файлів `@IsArray()`+`@ArrayMaxSize(N)`, ~5 пропустили cap. TS/unit green, review не ловить (grep-scan не використаний).
 
 ```bash
 for line in $(grep -rn "<PRIMARY_MARKER>" <SCOPE> --include="*.<EXT>" | cut -d: -f1-2); do
   file=$(echo "$line" | cut -d: -f1); ln=$(echo "$line" | cut -d: -f2)
-  ctx=$(sed -n "$((ln-5)),$((ln+5))p" "$file")   # декоратори згруповані вгорі поля
+  ctx=$(sed -n "$((ln-5)),$((ln+5))p" "$file")
   echo "$ctx" | grep -qE "<PAIRED_MARKER_REGEX>" || echo "MISSING: $file:$ln"
 done
 # фільтр false-positive: awk 'NR<=LN && /^export class.*Dto/{c=$0} END{print c}' | grep -qE "Response|Paginated|Public|List" && continue
 ```
 
-Приклади: `@IsArray()` без `@ArrayMaxSize|@ArrayMinSize`; `@IsString()` без `@MaxLength|@IsIn|@IsEmail|@IsUrl|@Matches|@IsUUID`; `@IsUUID()` без `Transform` (nil-UUID injection); `?: number` без `@IsInt|@IsNumber|@Min|@Max|@Type` (Bug #283); `$transaction(async` без `timeout:` (§1.1).
-**Фікс:** batch — realistic максимум (small→20, medium→100, list→200); `@ArrayMaxSize(N, {message})` між `@IsArray()` та inner validator; inner `@IsString()` → `@MaxLength(N, {each:true})`; import ArrayMaxSize.
-**Severity:** MEDIUM (auth-protected — insider), але systematic-consistency → release-blocker.
-**Де шукати ще:** кожен новий `@IsArray()` у review; QueryDto array filter params; PartialType Create нове поле; sprint-audit інших canonical: `@IsString+@MaxLength`, `?:number+@Type`, `$transaction+timeout`, `@Controller+@UseGuards`.
-
----
+Приклади: `@IsArray()` без `@ArrayMaxSize|@ArrayMinSize`; `@IsString()` без `@MaxLength|@IsIn|@IsEmail|@IsUrl|@Matches|@IsUUID`; `@IsUUID()` без `Transform`; `?:number` без `@IsInt|@IsNumber|@Min|@Max|@Type` (#283); `$transaction(async` без `timeout:`.
+**Фікс:** batch — small→20, medium→100, list→200; inner `@IsString()`→`@MaxLength(N,{each:true})`.
+**Severity:** MEDIUM (auth-protected insider), systematic-consistency→release-blocker.
 
 ### 2026-08-30 — Spec-vs-impl timezone-arithmetic parity (Bug #592) — api / test / dst-aware
 
-**Сигнал:** baseline API vitest падає `expected 'YYYY-MM-DD_A' to be 'YYYY-MM-DD_B'` (різниця 1 день). Spec обчислює `expected` через `new Date() + setUTCDate()` (UTC), impl використовує `kyivToday()/addDaysKyiv()` (Kyiv). Падає у ~3h вікні UTC-північ ↔ Kyiv-північ; днем passes. Виглядає flaky, але deterministic bug у spec (impl правильний).
-**Grep:**
+**Сигнал:** baseline API vitest падає `expected 'YMD_A' to be 'YMD_B'` (1 день). Spec `new Date()+setUTCDate()` (UTC), impl `kyivToday()/addDaysKyiv()`. Падає у ~3h UTC-північ↔Kyiv-північ; днем passes (deterministic bug у spec).
 
 ```bash
 grep -rn "setUTCDate\|toISOString().slice(0, 10)" apps/api/src --include="*.spec.ts"
-# для кожного: паралельний impl imports kyivToday/addDaysKyiv → spec теж має їх
 ```
 
-**Фікс:** `new Date() + setUTCDate(+N)` → `addDaysKyiv(kyivToday(), N)` у spec (import з `../../common/utils/kyiv-date`) + inline-коментар.
-**Severity:** HIGH — release-blocker у 3h/day вікні (tester-сесії неможливі). Не CRITICAL (impl правильний, 1-line fix, flaky).
-**Де шукати ще:** `*.spec.ts` з paymentDate/dueDate/expiryDate/documentDate/warrantyExpiresAt/@db.Date; auto-fill дати receive() PO, create() Invoice (dueDate=today+N), addDaysISO() FE; reports/calendar/schedule date-window тести.
+**Фікс:** `new Date()+setUTCDate(+N)`→`addDaysKyiv(kyivToday(),N)` (import `../../common/utils/kyiv-date`).
+**Severity:** HIGH (release-blocker у 3h/day вікні).
+**Де ще:** spec з paymentDate/dueDate/expiryDate/documentDate/@db.Date; auto-fill дати receive() PO, create() Invoice.
 
----
+### 2026-08-30 — QueryClientProvider absent після React Query hook migration (Bug #593, #460) — web / test / rq-migration
 
-### 2026-08-30 — QueryClientProvider absent після React Query hook migration (Bug #593) — web / test / rq-migration
-
-**Сигнал:** baseline web vitest падає `Error: No QueryClient set, use QueryClientProvider`. Stack trace вказує на новий hook (`useUpdateSupplierPayment`, `use*Mutation`) у компоненті що раніше юзав raw `apiFetch`. Тест був зелений до commit-міграції (`feat(rq): migrate X`). Тести `render(<Component/>)` без обгортки — apiFetch mock працює (raw), але `useQueryClient()` throws. Підступний варіант: transitive — parent modal падає бо рендерить newly-migrated child з RQ hooks.
-**Grep:**
+**Сигнал:** baseline web vitest `Error: No QueryClient set`. Stack на новий hook (`use*Mutation`) у компоненті що раніше юзав raw apiFetch. Transitive: parent modal падає бо рендерить migrated child.
 
 ```bash
 for hook in $(grep -rlE "^export function use(Create|Update|Delete|Confirm|Cancel)" apps/web/src/hooks/api --include="*.ts"); do
   grep -rln "$(basename $hook .ts)" apps/web/src/components --include="*.tsx" | grep -v test
 done
-for comp in $(git diff HEAD~5 HEAD --name-only apps/web/src/components/ui/*.tsx); do
-  test="apps/web/src/components/ui/__tests__/$(basename $comp .tsx).test.tsx"
-  [ -f "$test" ] && grep -q "QueryClientProvider\|renderWithQueryClient" "$test" || echo "MISSING QCP: $test"
-done
-# transitive: grep parent-component на child-modal-name → parent test теж потребує QCP
-# alt: vitest 4+ failures з ідентичним useQueryClient → знайти commit що додав hook
+for comp in $(git diff HEAD~5 HEAD --name-only apps/web/src/components/ui/*.tsx); do test="apps/web/src/components/ui/__tests__/$(basename $comp .tsx).test.tsx"; [ -f "$test" ] && grep -q "QueryClientProvider\|renderWithQueryClient" "$test" || echo "MISSING QCP: $test"; done
 ```
 
-**Фікс:** helper у test:
+**Фікс:**
 
 ```typescript
 function renderWithQueryClient(ui) {
@@ -3791,16 +3352,13 @@ function renderWithQueryClient(ui) {
 }
 ```
 
-Замінити всі `render(<Component>)`. Довгостроково: shared `test-utils.tsx renderWithProviders` (QueryClient+Router+AuthProvider).
-**Severity:** HIGH — release-blocker baseline (тест мовчить, регресії ховаються; особливо критично для regression-guard тестів, Bug #460 pattern).
-**Де шукати ще:** кожен `*.test.tsx` для `components/ui/*.tsx` з useMutation/useQuery/useQueryClient; transitive parent modals; аналогічно Router/AuthProvider міграції.
+Довгостроково: shared `test-utils.tsx renderWithProviders` (QueryClient+Router+AuthProvider).
+**Severity:** HIGH (release-blocker baseline; критично для regression-guard тестів #460).
+**Де ще:** кожен `*.test.tsx` для `components/ui/*.tsx` з useMutation/useQuery; transitive parent modals.
 
----
+### 2026-08-30 — Partial hook migration: один branch мігрований, інший raw apiFetch (Bug #594) — web / cache / rq-migration-completeness
 
-### 2026-08-30 — Partial hook migration: один branch мігрований, інший — raw apiFetch (Bug #594) — web / cache / rq-migration-completeness
-
-**Сигнал:** компонент має 2+ branches у handleSave: A `if (isEdit) updateMut.mutateAsync(payload)` (RQ hook, auto-invalidate onSuccess), B `else await apiFetch('/resource', {method:'POST'})` (raw, БЕЗ invalidate). Одна гілка оновлює cache, інша — ні (stale до staleTime=30s). User бачить асиметрію: «оновлення одразу, створення з затримкою». Легко сплутати з «backend повільний». Refactor `feat(rq): migrate X` мігрує один path; hook для іншого branch існує у `use<X>.ts` але не імпортований.
-**Grep:**
+**Сигнал:** компонент 2+ branches: A `if(isEdit)updateMut.mutateAsync` (auto-invalidate), B `else await apiFetch(POST)` (raw, БЕЗ invalidate) → одна гілка stale (до staleTime=30s). User: «оновлення одразу, створення з затримкою».
 
 ```bash
 grep -rn "^export function use\(Create\|Update\|Delete\|Confirm\|Cancel\)" apps/web/src/hooks/api --include="*.ts" -l | while read hookfile; do
@@ -3811,24 +3369,19 @@ grep -rn "^export function use\(Create\|Update\|Delete\|Confirm\|Cancel\)" apps/
     grep -q "apiFetch($endpoint" "$c" && echo "PARTIAL MIGRATION: $c BOTH hook AND raw apiFetch"
   done
 done
-# manual: modal з handleSave → обидві гілки if(isEdit)/else мають бути mutation-hook
 ```
 
-**Фікс:** імпортувати парний hook, `const createMut = useCreateSupplierPayment()`, замінити raw apiFetch на `await createMut.mutateAsync(payload)`, додати `createMut` у useCallback deps. Регресія-guard: component-test mock apiFetch + click «Створити» → assert URL + `invalidateQueries`.
-**Severity:** HIGH — silent UX gap (stale cache); не CRITICAL (самовиправляється через 30s).
-**Де шукати ще:** modal з `if(isEdit) updateMut else apiFetch(POST)`; `if(bulk) apiFetch else deleteMut`; modal-и нещодавно refactor-нуті (feat(rq): migrate).
+**Фікс:** імпортувати парний hook, `const createMut=useCreateSupplierPayment()`, замінити raw на `await createMut.mutateAsync(payload)`, deps. Regression: mock apiFetch + click «Створити»→assert URL+`invalidateQueries`.
+**Severity:** HIGH (silent UX gap, самовиправляється 30s).
+**Де ще:** modal з `if(isEdit)updateMut else apiFetch(POST)`; нещодавно refactor-нуті `feat(rq): migrate`.
 
----
+### 2026-08-30 — Regex-shape validation без semantic parseability (Bug #595, #616) — api / dto / validator
 
-### 2026-08-30 — Regex-shape validation без semantic parseability (Bug #595) — api / dto / validator
-
-**Сигнал:** DTO приймає `@Matches(/^\d{4}-\d{2}-\d{2}$/)` (YMD regex) як ЄДИНУ валідацію дати. `?from=2026-99-99` → 200 з empty/silent-wrong (замість 400). Regex перевіряє SHAPE, не SEMANTIC (місяць 1-12, leap year). Downstream `new Date('2026-99-99')` → Invalid Date → NaN. Розробник не знає що `@IsDateString` = alias `@IsISO8601` (accepts full ISO); комбо `@IsDateString + @Matches(YMD_RE)` не intuitive.
-**Grep:**
+**Сигнал:** DTO приймає `@Matches(/^\d{4}-\d{2}-\d{2}$/)` як ЄДИНУ валідацію дати. `?from=2026-99-99`→200 з empty/silent-wrong (regex перевіряє SHAPE не SEMANTIC). Downstream `new Date('2026-99-99')`→Invalid Date→NaN.
 
 ```bash
 grep -rnE "@Matches\(.*\\\\d\{4\}.*\\\\d\{2\}.*\\\\d\{2\}" apps/api/src/modules --include="*.dto.ts"
-grep -rnE "@Matches\(.*\\\\d\{4\}" apps/api/src/modules --include="*.dto.ts" -A 3 | grep -B 3 "!:\s*string" | grep -v "@IsDateString" | grep "@Matches"
-# curl "/api/<endpoint>?from=2026-99-99" → 200 з empty замість 400 = bug
+# curl "?from=2026-99-99" → 200 з empty = bug
 ```
 
 **Фікс:** `@IsDateString({strict:true})` РАЗОМ з `@Matches(YMD_RE)`:
@@ -3839,33 +3392,41 @@ grep -rnE "@Matches\(.*\\\\d\{4\}" apps/api/src/modules --include="*.dto.ts" -A 
 from!: string;
 ```
 
-`strict:true` відхиляє `2009-02-29`, `2026-99-99`; `@Matches` обмежує YMD-only. Регресія-guard: contract-test invalid date → 400 + Ukrainian message.
-**Severity:** MEDIUM — silent empty/wrong data (UI date-picker коректний, DoS обмежений).
-**Де шукати ще:** DTO з YMD-date param (reports/calendar/schedule/dashboard `dateFrom/dateTo`); phone `@Matches(/^\+?\d{10,15}$/)` без range-check, IBAN без checksum, EDRPOU без mod-11.
+**sibling-drift #616 (регресія #595):** sprint додає sibling DTO — копіює `@Matches(YMD_RE)` БЕЗ парного `@IsDateString({strict:true})` (читає декоратори наявного поля, не doc). Guard:
 
-- **sibling-drift у ТОМУ Ж файлі (Bug #616 — регресія #595):** sprint додає новий DTO (drill-down/child) поруч з fix-ed — копіює `@Matches(YMD_RE)` для sibling-поля БЕЗ парного `@IsDateString({strict:true})` (читає декоратори наявного поля, не doc-comment вище). Grep-guard — файли з fix перевірити чи КОЖНЕ `@Matches(YMD_RE)` має парний `@IsDateString`, не тільки перше:
-  ```bash
-  for f in $(grep -rl "IsDateString.*strict.*true" apps/api/src/modules --include="*.dto.ts"); do
-    awk '/@Matches\(YMD_RE/{ if (!has_ds) print FILENAME ":" NR ": lone @Matches"; has_ds=0 } /@IsDateString.*strict/{ has_ds=1 } /^[[:space:]]*[a-z].*:/{ has_ds=0 }' "$f"
-  done
-  ```
+```bash
+for f in $(grep -rl "IsDateString.*strict.*true" apps/api/src/modules --include="*.dto.ts"); do
+  awk '/@Matches\(YMD_RE/{ if (!has_ds) print FILENAME ":" NR ": lone @Matches"; has_ds=0 } /@IsDateString.*strict/{ has_ds=1 } /^[[:space:]]*[a-z].*:/{ has_ds=0 }' "$f"
+done
+```
+
+**Severity:** MEDIUM (silent empty/wrong).
+**Де ще:** DTO з YMD-date param (reports/calendar/schedule/dashboard); phone/IBAN/EDRPOU без checksum.
 
 ### 2026-08-30 — E2E: seeded entity invisible через дефолтний date-фільтр списку (Bug #572) — e2e / seed-brittle / list-filters
 
-**Сигнал:** тест сідить сутність через API (`beforeAll`), навігує на список, не знаходить row; screenshot «Нарядів не знайдено» з date-input на «today». API GET підтверджує існування. Prisma `documentDate @default(now()) @db.Date` = UTC (Docker), UI дефолт `dateFrom=kyivToday()`. У 00:00-03:00 Kyiv (+3) UTC-дата на добу менша → seed на UTC-добу, фільтр показує Kyiv-добу → row невидимий.
-**Grep:** `grep -rn "@default(now()).*@db.Date\|dateFrom.*kyivToday" apps/ --include="*.tsx" --include="*.ts"` (cross-match Prisma vs UI defaults); коментар «фільтр по даті приховує seed ≠ today» (Bug #401) = задокументована grabля.
-**Фікс (у ТЕСТІ, не продукті):** seed-helper повертає `number`; перед пошуком очистити date-input (`fill('') → press('Escape')`); `getByRole('textbox', {name:/Пошук/i}).fill(number)` замість `filter({hasText})`. Anti-pattern: обійти через API (фіксує один тест, не root-cause).
-**Severity:** HIGH — стабільно червоний 3h/добу + завжди у CI (UTC TZ).
-**Де шукати ще:** e2e з beforeAll API-seed + UI перевірка (`grep -rn "beforeAll.*await\|await.*seed" apps/web/e2e`); списки з `dateFrom=kyivToday()` (work-orders, purchase-orders, stock-documents, invoices, supplier-payments); дефолтні filter (branchId, warehouseId, status).
+**Сигнал:** seed через API (`beforeAll`), список не знаходить row; screenshot «Нарядів не знайдено» з date-input «today». `documentDate @default(now()) @db.Date`=UTC (Docker), UI дефолт `dateFrom=kyivToday()`. У 00:00-03:00 Kyiv UTC-дата на добу менша.
+
+```bash
+grep -rn "@default(now()).*@db.Date\|dateFrom.*kyivToday" apps/ --include="*.tsx" --include="*.ts"
+```
+
+**Фікс (у ТЕСТІ):** перед пошуком очистити date-input (`fill('')→press('Escape')`); `getByRole('textbox',{name:/Пошук/i}).fill(number)`.
+**Severity:** HIGH (стабільно червоний 3h/добу + завжди CI UTC).
+**Де ще:** e2e з beforeAll API-seed + UI (`grep -rn "beforeAll.*await\|await.*seed" apps/web/e2e`); списки з `dateFrom=kyivToday()`; дефолтні filter (branchId, warehouseId, status).
 
 ### 2026-08-30 — E2E: DST-aware Kyiv timezone у test time-arithmetic (Bug #573) — e2e / dst / timezone
 
-**Сигнал:** тест створює time-based ресурс (calendar slot, plannedAt) через API + перевіряє на UI; у 00:00-03:00 Kyiv (+3 літо) / 00:00-02:00 (+2 зима) падає «element not found». Тест бере «today» через `new Date().toISOString().split('T')[0]` = UTC (`.toISOString()` завжди UTC попри Playwright `timezoneId`), frontend через `Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Kyiv'})` = Kyiv. У 21:00-24:00 UTC Kyiv на добу вперед → mismatch. Hardcoded `${today}T07:00:00Z` теж ламається з DST.
-**Grep:** `grep -rn "toISOString.*split.*T.*\[0\]\|new Date().*toISOString" apps/web/e2e --include="*.spec.ts"`; pattern «green dev, red CI (UTC TZ)» = timezone-issue.
-**Фікс (у ТЕСТІ):** Kyiv-дата як у продукті `Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Kyiv'}).format(new Date())`; Kyiv wall-clock → UTC через DST-safe round-trip:
+**Сигнал:** тест створює time-ресурс через API+перевіряє UI; у 00:00-03:00 Kyiv падає. Тест `new Date().toISOString().split('T')[0]`=UTC (завжди попри `timezoneId`), frontend `Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Kyiv'})`.
+
+```bash
+grep -rn "toISOString.*split.*T.*\[0\]\|new Date().*toISOString" apps/web/e2e --include="*.spec.ts"
+```
+
+**Фікс (у ТЕСТІ):** Kyiv-дата `Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Kyiv'})`; Kyiv wall-clock→UTC DST-safe:
 
 ```ts
-function kyivWallToUtcIso(kyivDate: string, kyivHour: number, kyivMinute = 0): string {
+function kyivWallToUtcIso(kyivDate, kyivHour, kyivMinute = 0) {
   const guess = new Date(
     `${kyivDate}T${String(kyivHour).padStart(2, '0')}:${String(kyivMinute).padStart(2, '0')}:00Z`,
   );
@@ -3881,100 +3442,94 @@ function kyivWallToUtcIso(kyivDate: string, kyivHour: number, kyivMinute = 0): s
 }
 ```
 
-Iterate по Kyiv-годинах робочого дня (10-16). Anti-pattern: hardcoded `+3`/`+2` offset; `date.getTimezoneOffset()` (залежить від хост-OS, не Playwright timezoneId).
-**Severity:** HIGH — червоний у DST-boundary вікні + завжди у CI (UTC TZ); CI-only failure не reproducible локально без `TZ=UTC`.
-**Де шукати ще:** e2e date/time arithmetic; backend spec (Bug #592); frontend unit — Intl не респектує `vi.setSystemTime()` TZ, юзати `vi.stubEnv('TZ', 'Europe/Kyiv')`. Правило: НІКОЛИ не змішувати UTC-arithmetic з Kyiv-UI/DB без round-trip через Intl.DateTimeFormat.
+Anti-pattern: hardcoded `+3`/`+2`; `getTimezoneOffset()`. Frontend unit — Intl не респектує `vi.setSystemTime()` TZ, юзати `vi.stubEnv('TZ','Europe/Kyiv')`.
+**Severity:** HIGH (CI-only, не reproducible без `TZ=UTC`).
 
----
+### 2026-09-03 — Dynamic Prisma include-builder: parent-leaf + parent.child.leaf → PrismaClientValidationError (Bug #617) — backend / dynamic-query
 
-### 2026-09-03 — Dynamic Prisma include-builder: parent-leaf + parent.child.leaf → PrismaClientValidationError (Bug #617) — backend / dynamic-query / metadata-driven
-
-**Сигнал:** білдер будує Prisma `include`-дерево з метадата-конфігу (report-builder, dynamic search, saved views) з dot-path полями. Комбо коли ОДИН родич (`good`) юзається І як leaf (`good.name` → select), І як шлях до вкладеного (`good.brand.name` → include) → `{ good: { select:{name:true}, include:{brand:{select:{name:true}}} } }` — **Prisma не приймає include+select на одному рівні** → `PrismaClientValidationError` → 400 без деталей (Bug #618). Автор писав хопи ізольовано, unit на ОДИН шлях проходив; комбо у registry норма (groupBy=good.name + good.brand.name).
-**Grep/probe:**
+**Сигнал:** білдер (report-builder, dynamic search, saved views) з dot-path. Комбо коли ОДИН родич (`good`) юзається як leaf (`good.name`→select) І як шлях (`good.brand.name`→include)→`{good:{select:{name:true},include:{brand:...}}}` — Prisma не приймає include+select на одному рівні→`PrismaClientValidationError`→400. Unit на ОДИН шлях проходить; комбо норма (groupBy=good.name+good.brand.name).
 
 ```bash
 grep -rn "select:.*true\s*}" apps/api/src --include="*.builder.ts"
 ```
 
-Комбінаторний контракт-тест: пара `[parentA.leafA, parentA.subrel.leafB]` (не по одному; shape-тест «green by shape, red by Prisma runtime»). Registry-driven fuzz: всі пари/трійки полів з груп (leaf-root/parent/grandchild) → `POST /run`. Симптом: 400 «Некоректні дані запиту» на POST /dynamic-endpoint = завжди баг серверного білдера (disguised 500, клієнт не обходить DTO whitelist).
-**Фікс:** НЕ змішувати include+select на одному рівні — relation-branch з leaf-ами І subrel описувати ТІЛЬКИ через `select` (nested select — Prisma-canonical); кореневий рівень лишається `include` (щоб не тягнути всі скаляри). Regression: unit з РЕАЛЬНОЮ Prisma-формою + live-контрактний тест.
-**Severity:** CRITICAL — динамічні запити ламаються тихо, user бачить «Некоректні дані запиту».
-**Де шукати ще:** `**/*.builder.ts`, `**/search.service.ts` (relation-поля), `**/saved-view*.ts`, `prisma.X.findMany({include:{...,select:...}})` з динамічними ключами.
+Комбінаторний контракт-тест: пара `[parentA.leafA, parentA.subrel.leafB]`; registry-driven fuzz всіх пар/трійок→`POST /run`. Симптом: 400 «Некоректні дані запиту» на POST /dynamic = завжди баг серверного білдера.
+**Фікс:** НЕ змішувати include+select на одному рівні — relation-branch з leaf+subrel ТІЛЬКИ через `select` (nested); корінь лишається `include`.
+**Severity:** CRITICAL.
+**Де ще:** `**/*.builder.ts`, `**/search.service.ts`, `**/saved-view*.ts`, `findMany({include:{...,select}})` з динамічними ключами.
 
----
+### 2026-09-03 — PrismaClientValidationError мовчки ковтається у 400 без message-логу (Bug #618) — backend / observability
 
-### 2026-09-03 — PrismaClientValidationError мовчки ковтається у 400 без message-логу (Bug #618) — backend / observability / dev-DX
-
-**Сигнал:** exception-filter має `else if (exception instanceof Prisma.PrismaClientValidationError) { return 400 "generic message" }` **без** `logger.warn/error`. Prisma-повідомлення (реальна причина «Please either use include or select, but not both») відкидається → розробник бачить лише «Некоректні дані запиту». У 100% випадків це помилка серверного білдера (клієнт передає DTO-whitelisted config), тобто прихована 500 — disguised 500, логи критичні.
-**Grep:**
+**Сигнал:** filter має `else if(exception instanceof Prisma.PrismaClientValidationError){return 400 "generic"}` БЕЗ `logger.warn/error` → реальна причина («Please either use include or select, but not both») відкидається. 100% — помилка серверного білдера (disguised 500).
 
 ```bash
-grep -rn "PrismaClientValidationError" apps/api/src   # чи є logger.warn/error з exception.message? тільки throw BadRequestException('generic') = bug
+grep -rn "PrismaClientValidationError" apps/api/src   # чи є logger.warn з exception.message?
 ```
 
-**Фікс:** у catch-branch `logger.warn(\`${method} ${url}: ${lastNonEmptyLineOf(exception.message)}\`)`— ОСТАННІЙ непорожній рядок (Prisma кладе причину у кінець; перед ним header+spacer). Regression: unit з багато-строковим Prisma-текстом + spy на`logger.warn`.
-**Severity:** LOW user-facing, HIGH як тестерська DX/observability пастка (15 хв діагностики #617 замість 1).
-**Де шукати ще:** усі `else if (exception instanceof Prisma.\*)`у filter'ах — логувати`exception.message`навіть при 4xx;`mapPrismaErrorToHttp`(Bug #451-подібні мапінги — чи не втрачається`meta.target`). Правило: будь-який exception з серверної логіки (не user-input class-validator) має лишити слід у логах.
+**Фікс:** `logger.warn(\`${method} ${url}: ${lastNonEmptyLineOf(exception.message)}\`)`— ОСТАННІЙ непорожній рядок (Prisma кладе причину у кінець).
+**Severity:** LOW user-facing, HIGH DX/observability. Правило: будь-який exception з серверної логіки має лишити слід у логах. Де ще: усі`else if(exception instanceof Prisma.\*)`— логувати`exception.message`навіть при 4xx;`mapPrismaErrorToHttp`(Bug #451-подібні мапінги — чи не втрачається`meta.target`).
 
----
+### 2026-09-04 — Хардкоджений label службової колонки колізує з користувацьким полем даних (Bug #626) — frontend / dynamic-table / UX-clarity
 
-### 2026-09-04 — Хардкоджений label службової колонки колізує з користувацьким полем даних тієї ж назви (Bug #626) — frontend / dynamic-table / UX-clarity
+**Сигнал:** динамічна таблиця-конструктор (Report Builder/pivot, `cols.map(c=><th>{c.label}</th>)`) додає ПОРУЧ службову колонку з хардкодженим label (`<th>Кількість</th>`, count/subtotal), а user вибирає поле даних з таким самим label→дві сусідні «Кількість» (сума vs merge-count). Aggregate-колонки не страждають (Σ/сер./мін./макс. префікс). Дані+вирівнювання коректні (review дає 0, colspan ідеальний).
 
-**Сигнал:** динамічна таблиця-конструктор (Report Builder / pivot / будь-який `cols.map(c => <th>{c.label}</th>)`), де движок домішує ПОРУЧ службову/обчислену колонку з **хардкодженим label-літералом** (`<th>Кількість</th>`, count/subtotal/rank), а користувач має право вибрати у ту ж таблицю поле даних із таким самим `label`. Головний сценарій фічі (Товар + Кількість) → дві сусідні колонки «Кількість»: перша = сума `quantity`, друга = merge-count `__mergedCount`. Дані і вирівнювання коректні — лише назви колізують.
-**Причина виникнення:** нова обчислена колонка (merge-count) отримала label дослівно скопійований з grouped-режиму («Кількість» = node.count, розмір групи — там доречно). У плоскому merge-режимі поруч стоїть поле даних `quantity` з тим самим label «Кількість» у 6+ сутностях реєстру. Автор мислив службову колонку ізольовано, не врахувавши що юзер поставить поруч однойменне поле. Code review перевіряє colspan-вирівнювання (thead==body==tfoot==colSpan) — воно ідеальне, тож review дає 0 findings; семантична колізія header-назв поза його чеклістом.
-**Підхід до виявлення:** ЛИШЕ жива eyes-on перевірка (§5.4) головного сценарію фічі — прогнати саме той user-path, заради якого зроблено коміт (тут: Товар+Кількість→Сформувати), і подивитися на скрін ОЧИМА. Статичний grep-бекап: `grep -rnE "<th[^>]*>\s*(Кількість|Всього|Разом|Сума|Ціна)\s*<" apps/web/src/app --include="*.tsx"` → для кожного хардкод-літерала перевірити чи є registry-поле з тим же label (`grep -n "label: '<текст>'" apps/api/src/modules/*/registry*.ts`). Aggregate-колонки не колізують (мають Σ/сер./мін./макс. префікс).
-**Підхід до фіксу:** дати службовій колонці назву, що НЕ збігається з жодним полем даних (merge-count → «Склеєно»); коли одна й та сама колонка має різний сенс у двох режимах — зробити label умовним за режимом (`{hasGroups ? 'Кількість' : 'Склеєно'}`, grouped=node.count лишає історичну назву, flat-merge=однозначна «Склеєно»). Не чіпати export якщо він емітить окрему summary-схему.
-**Severity:** MEDIUM — дані коректні, але дублювання назв вводить в оману саме у головному сценарії фічі, заради якого зроблено коміт.
-**Де шукати ще:** будь-яка pivot/matrix-таблиця де юзер вибирає колонки, а движок домішує обчислені (count/subtotal/rank/percent) з фіксованими назвами; фінансові/складські звіти з «Всього»/«Разом» службовими рядками поряд із однойменними полями. Мета-урок: жива перевірка МАЄ ганяти саме той user-path з фідбеку (з тими самими полями), а не абстрактний «якийсь звіт» — колізія проявляється лише на конкретній комбінації полів.
+```bash
+grep -rnE "<th[^>]*>\s*(Кількість|Всього|Разом|Сума|Ціна)\s*<" apps/web/src/app --include="*.tsx"
+grep -n "label: '<той-же-текст>'" apps/api/src/modules/*/registry*.ts
+```
+
+**Фікс:** унікальна назва службовій колонці (merge-count→«Склеєно»); АБО умовний label за режимом (`{hasGroups?'Кількість':'Склеєно'}`).
+**Severity:** MEDIUM — вводить в оману у головному сценарії фічі. Виявляється ЛИШЕ живою eyes-on §5.4 — ганяти саме той user-path з фідбеку (з тими самими полями).
+**Де ще:** будь-яка pivot/matrix де юзер вибирає колонки + движок домішує обчислені (count/subtotal/rank) з фіксованими назвами.
 
 ### 2026-09-06 — BullMQ delivery-status FSM на DB-записі: enqueue-gate + QUEUED→DONE/SKIPPED/FAILED anti-flicker (Bugs #661-#664) — backend / queue / status-machine / test-gap
 
-**Сигнал:** фіча що додає nullable status-enum на DB-запис (`Payment.fiscalStatus`, `Notification.deliveryStatus`, `Receipt.status`) який пише 2 сторони: (а) `service.create()` ставить QUEUED **під гейтом** (`willX = config?.requiresX === true` → QUEUED-or-null) і потім `queue.add(...).catch(...)`; (б) `@Processor`/`@OnWorkerEvent('failed')` рухає QUEUED→DONE/SKIPPED/FAILED. Комітиться з 0-1 тестом на CAS/idempotency, але **самі status-переходи не покриті**. Чотири load-bearing точки регулярно лишаються без regression-guard.
-**Причина виникнення:** автор фокусується на happy-path (чек пробито → DONE) і на вже відомому патерні (idempotency guard Bug #346), а status-FSM сприймає як «очевидний». Але кожна гілка — окремий інваріант: (1) **enqueue-гейт** (фіскалізувати ЛИШЕ requiresFiscal-методи, інакше чек на кожну готівку); (2) **enqueue-failure fallback** (Redis лежить → `.catch()` → QUEUED→FAILED, інакше платіж завис навічно у QUEUED без job-а — offline-first вимагає щоб фінансова операція вже повернулась); (3) **skip-конфіг → SKIPPED** (ПРРО вимкнено на філії → пишемо SKIPPED, не throw, не QUEUED-навічно); (4) **anti-flicker** — FAILED ЛИШЕ на термінальній спробі (`job.attemptsMade >= job.opts.attempts`), інакше статус «мигає» FAILED↔QUEUED між 288 ретраями. Unit-мок Prisma/Queue → CI зелений навіть коли будь-яку гілку прибрали.
-**Підхід до виявлення:** grep `grep -rnE "fiscalStatus|deliveryStatus|\.add\(.*\).catch" apps/api/src/modules --include="*.service.ts"` + `grep -rn "@OnWorkerEvent\('failed'\)" apps/api/src/modules --include="*.processor.ts"`. Для КОЖНОГО status-writer перевірити наявність тесту на: (а) gate true/false/unknown-config (3 гілки, кожна асертить `queue.add` called/not + `create.data.status`); (б) `queue.add.mockRejectedValue` → `service.create` **resolves** (не throw) + `payment.update({status:'FAILED'})`; (в) skip-конфіг → `payment.update({status:'SKIPPED'})` (не лише «fetch не викликано»!); (г) `onFailed` ДВІ гілки — `attemptsMade < attempts` → `update` NOT called; `attemptsMade >= attempts` → FAILED. 0 таких тестів на будь-яку точку = gap.
-**Підхід до фіксу:** дописати regression-guard на кожну непокриту гілку, **mutation-verify** дві найкритичніші: занейтралізувати gate (`willX = true`) → false/null-тести падають; прибрати `if (attemptsMade < attempts) return` → проміжний тест падає. Для enqueue-failure тесту переконатись що мок `$transaction` викликає callback (щоб `create` реально спрацював) і що `payment.update` теж мокнутий (щоб `.catch(()=>undefined)` не ковтав реальну помилку тесту). verify/external-call сервіс що повертає `{valid, ...}` — окремо асертити що **креди не в поверненому об'єкті** (`JSON.stringify(res)` не містить ключа) на success І error.
-**Severity:** HIGH для gate + enqueue-failure (фінансовий інваріант: помилкові чеки / завислий QUEUED); MEDIUM для skip-SKIPPED + anti-flicker (UX/observability, дані цілі).
-**Де шукати ще:** будь-який `@InjectQueue` з парним DB-status полем — `checkbox`/`fiscal`, `sms`/`notifications`, `webhooks`, `prro` (attempts=288), `loyalty.queueEarn`, `followup`. Особливо після коміту `feat(...): add <status>Status enum` + міграція `ALTER TYPE`. Парне з Bug #346 (idempotency — інша грань того ж processor).
+**Сигнал:** nullable status-enum на DB-запис (`Payment.fiscalStatus`, `Notification.deliveryStatus`) який пише 2 сторони: (а) `create()` ставить QUEUED під гейтом (`willX=config?.requiresX===true`)+`queue.add(...).catch(...)`; (б) `@Processor`/`@OnWorkerEvent('failed')` рухає QUEUED→DONE/SKIPPED/FAILED. Комітиться з 0-1 тестом; 4 load-bearing точки без guard.
 
-### 2026-09-06 — Тонкий external-API HTTP-клієнт (fetch-wrapper) відвантажується з 0 тестів; recipe mock-global-fetch + token-never-logged (Bugs #683-#687) — backend / external-api / security / test-gap (HIGH)
+```bash
+grep -rnE "fiscalStatus|deliveryStatus|\.add\(.*\).catch" apps/api/src/modules --include="*.service.ts"
+grep -rn "@OnWorkerEvent\('failed'\)" apps/api/src/modules --include="*.processor.ts"
+```
 
-**Сигнал:** новий `*.client.ts` / `*.gateway.ts` що інкапсулює всі виклики зовнішнього API (Checkbox/ПРРО/SMS/OAuth/postal) через `fetch()` — типово має SSRF-guard + `redirect:'manual'` + `AbortController` timeout + reject-3xx + auth-header (Bearer на одних методах, alternate header типу `X-License-Key` на sign-in). Комітиться з **0 тестів на цей файл** (unit-мок Prisma/Queue у parent-processor spec НЕ виконує цей код — fetch реальний). Парний lifecycle-сервіс (`*-shift.service`, token/session-менеджер) теж часто 0 тестів. Класична пастка: «клієнт — тонка обгортка, нема що тестувати» — але саме тут живуть security-інваріанти (SSRF-before-fetch, 3xx→reject, 401-mapping, timeout-abort) і auth-контракт (правильний header на правильному методі).
+**Фікс:** guard на кожну гілку: (а) **enqueue-gate** true/false/unknown-config (`queue.add` called/not+`create.data.status`); (б) **enqueue-failure** `queue.add.mockRejectedValue`→`service.create` **resolves** (не throw)+`payment.update({status:'FAILED'})` (offline-first: фінансова операція вже повернулась); (в) **skip-конфіг**→`payment.update({status:'SKIPPED'})` (не лише «fetch не викликано»); (г) **anti-flicker** — FAILED ЛИШЕ на термінальній спробі (`attemptsMade>=opts.attempts`), інакше мигає між 288 ретраями. Mutation-verify: gate (`willX=true`)→false/null падають; прибрати `if(attemptsMade<attempts)return`→проміжний падає. verify-сервіс що повертає `{valid,...}` — асертити креди НЕ у поверненому (`JSON.stringify(res)` не містить ключа) на success І error.
+**Severity:** HIGH (gate+enqueue-failure); MEDIUM (skip+anti-flicker).
+**Де ще:** будь-який `@InjectQueue` з парним DB-status: checkbox/fiscal, sms, webhooks, prro (attempts=288), loyalty, followup. Після `feat: add <status>Status enum`+`ALTER TYPE`. Парне #346.
 
-**Причина виникнення:** розробник вважає HTTP-клієнт «тонким» (лише URL+headers+JSON), а processor-spec «покриває флоу». Але processor мокає весь клієнт (`{ sellReceipt: vi.fn() }`) → жоден рядок клієнта не біжить у CI. SSRF/timeout/error-mapping невидимі. Плюс токен, прочитаний клієнтом, легко протікає у лог parent-processor-а.
+### 2026-09-06 — Тонкий external-API HTTP-клієнт (fetch-wrapper) з 0 тестів; recipe mock-global-fetch + token-never-logged (Bugs #683-#687) — backend / external-api / security / HIGH
 
-**Підхід до виявлення:** `git diff` дає новий `*.client.ts`/`*.gateway.ts` з `fetch(` І нема `*.client.spec.ts` → gap. Grep `for f in $(git diff HEAD~N --name-only | grep -E 'client\.ts$|gateway\.ts$'); do [ -f "${f%.ts}.spec.ts" ] || echo "NO SPEC: $f"; done`. Так само для token/session-lifecycle сервіса (`ensureToken`/`refreshToken`/`signIn`).
+**Сигнал:** новий `*.client.ts`/`*.gateway.ts` що інкапсулює зовнішній API (Checkbox/ПРРО/SMS/OAuth/postal) через `fetch()` — SSRF-guard+`redirect:'manual'`+`AbortController` timeout+reject-3xx+auth-header. Комітиться з **0 тестів** (processor-spec мокає клієнт цілком→жоден рядок не біжить у CI→SSRF/timeout/error-mapping невидимі).
 
-**Підхід до фіксу (recipe):**
+```bash
+for f in $(git diff HEAD~N --name-only | grep -E 'client\.ts$|gateway\.ts$'); do [ -f "${f%.ts}.spec.ts" ] || echo "NO SPEC: $f"; done
+```
 
-- **mock global fetch:** `vi.stubGlobal('fetch', fetchMock)` + helper `OK(body, status)` що повертає `{status, ok, text: () => Promise.resolve(JSON.stringify(body))}` (не повний Response). `afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); })`.
-- **auth-контракт per method:** асертити `fetchMock.mock.calls[0][1].headers` — Bearer=token на authed-викликах, alternate header (X-License-Key) на sign-in, І **`Authorization` undefined на sign-in** (щоб не переплутали). Правильний endpoint-URL кожного методу.
-- **SSRF-before-fetch:** для localhost/169.254-metadata/RFC1918/non-http URL → `expect(client.call(...)).rejects` + `expect(fetchMock).not.toHaveBeenCalled()` (доводить що guard ПЕРЕД fetch, не після).
-- **3xx→reject:** цикл по [300,301,307,308,399] → кожен reject (SSRF-tampering); + `redirect:'manual'` завжди у опціях; 401→спец-error-клас (для re-sign-in у processor).
-- **timeout:** happy-тест — `signal instanceof AbortSignal` у опціях; abort-тест — `fetchMock.mockImplementationOnce((_u,opts)=>new Promise((_,rej)=>opts.signal.addEventListener('abort',()=>rej(new DOMException('aborted','AbortError')))))` + `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync(TIMEOUT+1)`.
-- **cents/money конверсія:** `Math.round(amount*100)` з fraction-input (35.2→3520, не 3519) — anti-IEEE-754.
-- **token-never-logged:** у parent-processor spec замокати ВСІ рівні logger (`for lvl of ['log','debug','warn','error'] proc.logger[lvl]=(...a)=>logged.push(...a)`) → `expect(JSON.stringify(logged)).not.toContain(secretToken)` для success І для 401→refresh (обидва токени); sanity `logged.length>0`.
-- **секрет не у DTO:** `expect(JSON.stringify(dto)).not.toContain(secret)` + `expect(dto).not.toHaveProperty('<secretField>')` на КОЖНОМУ DTO-виводі (open/close/getCurrent).
+**Фікс (recipe):**
 
-**Підхід до mutation-verify (token-lifecycle boundaries):** skew-межа кешу токена (`expiry > now+SKEW`) — тест «expiry рівно на межі → re-sign-in» + «expiry на +1ms за межею → кеш»; мутація `>`→`>=` валить перший (протухлий токен прийнявся б за валідний → 401-цикл). tenant-scope refresh (`updateMany where{id,orgId}`) — cross-org id→no-op→NotFound; мутація дропу orgId валить (безумовна інвалідація чужого токена). P2002-recovery — winner→OK + winner-null→rethrow (доводить що catch не ковтає безумовно).
+- **mock global fetch:** `vi.stubGlobal('fetch',fetchMock)`+helper `OK(body,status)` `{status,ok,text:()=>Promise.resolve(JSON.stringify(body))}`; `afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers()})`.
+- **auth per method:** `fetchMock.mock.calls[0][1].headers` — Bearer=token на authed, alternate (X-License-Key) на sign-in, `Authorization` undefined на sign-in.
+- **SSRF-before-fetch:** localhost/169.254/RFC1918/non-http→`rejects`+`expect(fetchMock).not.toHaveBeenCalled()`.
+- **3xx→reject:** [300,301,307,308,399]→reject; `redirect:'manual'` завжди; 401→спец-error-клас.
+- **timeout:** happy `signal instanceof AbortSignal`; abort `fetchMock.mockImplementationOnce((_u,opts)=>new Promise((_,rej)=>opts.signal.addEventListener('abort',()=>rej(new DOMException('aborted','AbortError')))))`+`vi.useFakeTimers()`+`vi.advanceTimersByTimeAsync(TIMEOUT+1)`.
+- **cents:** `Math.round(amount*100)` (35.2→3520 не 3519).
+- **token-never-logged:** у processor spec замокати ВСІ рівні logger (`for lvl of ['log','debug','warn','error']`)→`expect(JSON.stringify(logged)).not.toContain(secretToken)` для success І 401→refresh; sanity `logged.length>0`.
+- **секрет не у DTO:** `expect(JSON.stringify(dto)).not.toContain(secret)`+`not.toHaveProperty('<secretField>')` на КОЖНОМУ DTO-виводі.
+- **mutation-verify token-lifecycle:** skew-межа кешу (`expiry>now+SKEW`) — тест на межі→re-sign-in + +1ms→кеш; `>`→`>=` валить. tenant-scope refresh (`updateMany where{id,orgId}`) — cross-org→no-op→NotFound. P2002-recovery winner→OK + null→rethrow.
+  **Severity:** HIGH (SSRF+auth+money+secret; token-log-leak HIGH).
+  **Де ще:** будь-який `*.client.ts`/`*.gateway.ts`/`*.provider.ts` з fetch/axios; token/session-lifecycle (`ensureX`/`refreshX`/`signIn`/`getValidToken`); processor-спеки що мокають клієнт. Парне #273, #652, #661-#664.
 
-**Severity:** HIGH — external-API клієнт несе SSRF + auth + money + secret одночасно; 0 тестів = увесь клас невидимий CI. Token-log-leak — HIGH (секрет у production-логах).
+### 2026-09-08 — re-sign-in/retry-гілка зі СТАТИЧНИМ токеном + fiscal-мапінг лише 2 методів (Bug #707-#708) — backend / integration-provider / HIGH+MEDIUM
 
-**Де шукати ще:** будь-який `*.client.ts`/`*.gateway.ts`/`*.provider.ts` з `fetch`/`axios` до зовнішнього хоста; token/session-lifecycle сервіси (`ensureX`/`refreshX`/`signIn`/`getValidToken`) з skew/expiry-логікою; парні processor-спеки що мокають клієнт цілком — перевірити чи клієнт має ВЛАСНИЙ spec. Парне з Bug #273 (SSRF paired defense), #652 (secret at-rest), #661-#664 (BullMQ status-FSM).
+**Сигнал:** provider-abstraction `signIn→openShift→sell→close`, processor на auth-error `refreshToken`→повтор. (1) **Doomed-token re-sign loop:** один провайдер реалізує `signIn` як «повернути той самий статичний токен» (Вчасно — токен у кабінеті) — на відміну від exchange-провайдера (Checkbox: PIN→новий). Якщо статичний токен генуїнно недійсний → `refreshToken`→`signIn` дає ТОЙ САМИЙ поганий → знову 401. Тест покриває лише 401→refresh→2-й-sell-OK, НЕ «падає обмежено (BullMQ attempts-cap) а не вічно». (2) **Fiscal method-мапінг лише 2:** `sell` мапить `method==='cash'?CASH:CASHLESS`+`cents=Math.round(amount*100)`, тест лише cash+card → решта (card_terminal/bank_transfer/privat24_qr/monobank_qr/liqpay_qr) без прицільного регресу; інваріант `goods.price==payment.value` не асертиться.
+**Фікс:** (1) processor-spec «doomed-token» — `sellReceipt.mockRejectedValueOnce(AuthErr).mockRejectedValueOnce(AuthErr)`,`refreshToken.mockResolvedValueOnce(sameBadToken)`→`rejects AuthErr`+`refreshToken` 1×+`sellReceipt` 2× (не >2)+`paymentUpdate` НЕ викликано; + «onFailed на attemptsMade=opts.attempts→FAILED рівно раз». (2) provider-spec параметричний money на 8 амаунтів (0.1+0.2→30, 8.61→861, 1.005→100 float, великі) з `goods.price==payment.value` + параметричний мапінг усіх методів seed→CASH/CASHLESS + порожня/wrapped відповідь ({}/text=""/{other:1}→кидає; {fiscal:{id}}→читає). Mutation: обгорнути 2-й sell у власний try/catch+retry→doomed-token падає (refreshToken 2×,sellReceipt 3×); зламати мапінг `method!=='card_terminal'?CASH:CASHLESS`→5 падають.
+**Severity:** HIGH doomed-token (нескінченний re-sign вичерпав би rate-limit, завис би job без FAILED); MEDIUM money-мапінг (консистентний з Checkbox, 0 прицільного захисту).
+**Де ще:** будь-який `*.provider.ts`/`*.gateway.ts` з `signIn`/`getToken` — розрізнити exchange-token vs static-token; processor з `catch(AuthError){refresh;retry}` — чи retry НЕ у власному loop; fiscal/payment sell-мапінги проти повного `seed.ts` методів + online `_qr`. Додає до #683-#687: «класифікація token-lifecycle провайдера» + «повнота method-enum».
 
-### 2026-09-08 — re-sign-in/retry-гілка зі СТАТИЧНИМ токеном (signIn повертає незмінні креди) + fiscal-мапінг лише 2 методів — coverage-gap на «doomed-token» циклі та money-мапінгу (Bug #707-#708) — backend / integration-provider / HIGH+MEDIUM
+---
 
-**Сигнал:** provider-abstraction з life-cycle `signIn→openShift→sell→close` де processor на auth-error робить `refreshToken`→повтор. Дві споріднені пастки, обидві лишають suite зеленою поки найризиковіший шлях не покритий:
-(1) **Doomed-token re-sign loop:** один провайдер реалізує `signIn` як «повернути той самий статичний токен з кредів» (Вчасно: токен керується у кабінеті, обміну немає) — на відміну від іншого, що обмінює креди на свіжий токен (Checkbox: PIN→новий access-token). Якщо статичний токен ГЕНУЇННО недійсний, `refreshToken`→`signIn` дає ТОЙ САМИЙ поганий токен → повтор знову 401. Наявний processor-тест покриває лише щасливий 401→refresh→2-й-sell-OK. НЕ покрито: чи ця гілка **падає обмежено** (BullMQ attempts-cap), а не крутиться вічно re-sign-ом.
-(2) **Fiscal method-мапінг лише 2 значення:** `sell` мапить `method==='cash'?CASH:CASHLESS` + `cents=Math.round(amount*100)`, а тест перевіряє лише cash+card → решта реальних методів системи (card_terminal/bank_transfer/privat24_qr/monobank_qr/liqpay_qr) та підступні IEEE-754 амаунти без прицільного регресу; інваріант `goods.price==payment.value` (баланс чека) не асертиться.
+## Що вже перевірено (не дублювати)
 
-**Причина виникнення:** (1) розробник читає код і бачить «2-й sell не в try/catch → прокинеться → BullMQ обмежить» — це ПРАВИЛЬНО, але «очевидна коректність» не має тесту; при рефакторі хтось легко обгорне 2-й sell у власний retry (щоб «надійніше») і введе саме той цикл, який статичний токен робить нескінченним. (2) розробник вважає «cash vs не-cash — бінарно, 2 тестів досить», забуваючи що seed має 6 методів оплати + online `*_qr`, і що money-мапінг мусить бути звірений з уже-задеплоєним провайдером (той самий `Math.round(amount*100)`).
+**Backend:** ✅ FSM transition map (work-orders.fsm.ts) · InventoryService guards (quantity=0, available<qty, RESERVATION_RELEASE) · SettlementsService guards (CHARGE↑, PAYMENT↓) · Soft-delete всі основні сервіси · Resurrection pattern (currencies, exchange-rates, brands, units, payment-methods) · Org-scoped FK validation перед write (goods brandId/unitId/preferredSupplierId #161, invoices/work-orders clone #90) · $transaction explicit timeout (всі interactive callbacks) · ParseUUIDPipe (всі :id) · Security headers (@fastify/helmet@11) · SSRF guard webhooks.processor (validatePublicUrl+redirect:'manual') · ArrayMaxSize (inspection.dto, webhook payload) · Deploy phase18: docker api healthcheck node-http /api/health (#164/#165), minio `mc ready local`+пін RELEASE (#170), root .dockerignore (#166), build-prod.ps1 export→apps/web/out+$PSScriptRoot fallback (#167), nginx \_next/static immutable+gzip_types svg/js (#168), /api/health публічний. minio/minio=лише mc (перевірено емпірично).
 
-**Підхід до виявлення:** (1) для КОЖНОГО provider з `signIn` — класифікувати: обмінює креди на свіжий токен, чи повертає статичний (`return { accessToken: this.token(cfg) }`)? Для статичного — чи є тест «auth-error і ПІСЛЯ refresh знову auth-error → throw + `refreshToken` рівно 1× + `sell` рівно 2× (не >2) + без DONE»? Немає → gap. (2) grep реальних значень з `seed.ts` (`paymentMethods`/`entityType:'payment_method'`) + online `${gateway}_qr` → чи кожне має рядок у параметричному мапінг-тесті провайдера?
+**Frontend:** ✅ cancelled flag (AuthProvider, всі mount-fetches) · SSR-safe today (useState(null)+useEffect) · apiFetch error array join · UUID validation client-side · aria-label на іконкових кнопках · React named imports · React Query Sprint B: QueryClient singleton (staleTime 30s, retry 1, refetchOnWindowFocus false), 5 query hooks (workOrders/invoices/counterparties/inventory/purchaseOrders) з queryKey factory, cross-resource invalidation (PO receive→inventory, PO apply-pricing→inventory, work-orders create→workOrders #210-#212), useWorkOrders.test.tsx як зразок (12 кейсів).
 
-**Підхід до фіксу:** (1) processor-spec: тест «doomed-token» — `sellReceipt.mockRejectedValueOnce(AuthErr).mockRejectedValueOnce(AuthErr)`, `refreshToken.mockResolvedValueOnce(sameBadToken)` → `expect(process()).rejects.toBeInstanceOf(AuthErr)` + `refreshToken` 1× + `sellReceipt` 2× + `paymentUpdate` НЕ викликано; + окремий тест «onFailed на attemptsMade=opts.attempts → FAILED рівно раз» (доводить обмежений хвіст). (2) provider-spec: параметричний money-тест на 8 амаунтів (0.1+0.2→30, 8.61→861, 1.005→100 float-артефакт, великі суми) з `goods.price==payment.value` балансом + параметричний мапінг усіх методів seed→CASH/CASHLESS + порожня/wrapped відповідь ({}/text=""/{other:1}→кидає; {fiscal:{id}}→читає) щоб undefined-id не протік у receipt.
-
-**Підхід до mutation-verify:** (1) обгорнути 2-й sell у власний try/catch+retry → doomed-token тест падає (`refreshToken` 2×, `sellReceipt` 3×) — доводить що ловить введений цикл. (2) зламати мапінг на `method!=='card_terminal'?CASH:CASHLESS` → 5 тестів падають (bank_transfer + усі QR стають CASH). Обидва довели цінність.
-
-**Severity:** HIGH для doomed-token (нескінченний re-sign вичерпав би rate-limit ліцензії + завис би job без FAILED; статичний токен робить цикл реальним, не гіпотетичним); MEDIUM для money-мапінгу (консистентний з Checkbox, не регрес на момент — але 0 прицільного захисту на грошовому шляху фіскалізації + всіх методах).
-
-**Де шукати ще:** будь-який `*.provider.ts`/`*.gateway.ts` з `signIn`/`getToken` — розрізнити exchange-token vs static-token провайдери; парний processor з `catch(AuthError){ refresh; retry }` — перевірити що retry НЕ обгорнутий у власний loop; fiscal/payment sell-мапінги проти повного списку `seed.ts` методів + online `_qr`. Парне з попереднім підходом (external-API client tests + cents-конверсія + token-log-leak) — цей додає «класифікація token-lifecycle провайдера» + «повнота method-enum у money-мапінгу».
+**Tests:** ✅ Contract specs: auth, work-orders, warehouses, counterparties, sync, settings, audit, pricing-rules, batches, currencies, bank-accounts, exchange-rates, cash-registers, calendar (GET/POST/PATCH/DELETE resize/drag) · Service specs (query-shape): goods (FK), counterparties (?q= plural customerGarages→vehicles #163), work-orders (findAll calendarSlots plural+take:1+deletedAt+orderBy asc; ?q= counterparty nested; employeeId some soft-delete #171) · Pricing: COST_TIER tier matching, brandId priority over goodType (#179) · Calendar timeline px→time clamp усі гілки; isEditingPast minHour-boundary · Property-based invariants: inventory, settlements, FSM (26 invariants) · Component tests: 148/148 (14 файлів) · E2E: 42/42 (smoke, console-errors serial, inventory, api-errors).
