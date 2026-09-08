@@ -5,6 +5,45 @@
 
 ---
 
+## 2026-09-08 — feat: 4 відкладені пункти (returnToBatch / OVERDUE / Bug #675 / booking per-lift)
+
+Реалізація пунктів, що аудит логічних помилок свідомо не чіпав (dead code / незроблені фічі /
+задокументовані tradeoff). Кожен пройшов QA (sync 0 / review / tester).
+
+### 009e7a7a inventory — returnToBatch: CAS + верхній cap + ідемпотентність
+
+Готовий, але незахищений метод зворотного руху партій отримав захист (дзеркалить consumeBatch):
+CAS `updateMany where remainingQty ≤ receivedQty − qty` (не даємо remaining>received) + orgId +
+ідемпотентність findFirst return-consumption по (batch,document). Без міграції.
+
+### ad7c9b72 invoices — OVERDUE-статус (BullMQ scheduler)
+
+OVERDUE був недосяжний (нема writer'а), хоча dashboard/reports уже фільтрували. Новий per-org
+repeatable job 06:00 Kyiv → updateMany SENT/PARTIALLY_PAID з dueDate<сьогодні→OVERDUE (системний
+перехід, оминає FSM). payments/online-payment гейт +OVERDUE (прострочений рахунок оплачуваний).
+
+### 35c9c634 + 7836d1ff invoices — Bug #675: ручний PAID → дзеркальний PAYMENT (money-critical)
+
+Standalone-рахунок отримує CHARGE на SEND, але ручний →PAID писав лише paidAmount без PAYMENT →
+у леджері висів борг попри PAID. Fix: PAID-гілка transition() створює PAYMENT на непокритий залишок
+ЛИШЕ для standalone (workOrderId=null); WO-рахунок не чіпаємо (CHARGE через COMPLETED). CAS перед
+settlement; PAID термінальний → рівно один раз. review-fix: +tx timeout 10s (2 settlement-write).
+
+### 907f8a44 + 635b2b37 booking — per-lift слоти (CAL-H3/H4)
+
+Раніше CONFIRMED-заявка блокувала весь HH:MM на ВСІХ ліфтах; confirm() не матеріалізував слот.
+Fix: BookingRequest +liftId (міграція 20260908100000); getAvailability блокує саме обраний ліфт;
+confirm() матеріалізує CalendarSlot(BOOKED) через calendar.createSlot (конфлікт-чек+split+EXCLUDE);
+create() cross-tenant lift-guard; фронт-віджет шле liftId. **tester Bug #699**: cancel() тепер
+звільняє матеріалізований слот (інакше скасування назавжди блокувало ліфт — lifecycle-асиметрія).
+
+### deploy
+
+`prisma migrate deploy`: 20260907160000 (liqpay_qr), 20260907180000 (loyalty idempotency),
+20260908100000 (booking lift). Усі additive/idempotent, застосовані на dev-БД.
+
+---
+
 ## 2026-09-07 — fix(review): 0d0d1656 code review циклу (реєстри провайдерів + QR-оплата)
 
 Прямий (без субагента) повний чекліст по фічах реєстрів ПРРО/еквайрингу/доставки + QR-оплата + sync-фікс garageName. **3 фікси (0 CRITICAL / 2 IMPORTANT / 1 SUGGESTION):**
