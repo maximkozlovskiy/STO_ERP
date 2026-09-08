@@ -3,6 +3,20 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-09-09 — QA Цикл 2 Фаза 1 (sync, HEAD 543d82ff)
+
+### Bug #715 (MEDIUM → виправлено) — SettlementsTabContent TX_COLORS не збігається з BALANCE_SIGN — [x]
+
+**Файл:** `apps/web/src/app/(app)/settlements/SettlementsTabContent.tsx:52-61`
+**Природа:** `TX_COLORS` фарбував `REFUND: text-warning` (амбер) і `CREDIT_NOTE: text-muted-foreground` (сірий), але бековий `BALANCE_SIGN` дає обом −1 (гасять борг клієнта, як PAYMENT). Той самий тип транзакції показувався ЗЕЛЕНИМ на картці контрагента (PageClient CHARGE_LIKE→destructive/решта→success) і амбер/сірим у вкладці «Взаєморозрахунки» — cross-page неузгодженість кольору знаку балансу (клас WEB-R3-5). Знак «−»/«+» (`BALANCE_UP_TYPES`) уже був коректний → колір суперечив знаку.
+**Фікс:** REFUND/CREDIT_NOTE → `text-success` (дзеркалить BALANCE_SIGN −1). tsc web 0.
+
+### Backlog (НЕ баги — feature-completeness gaps, поза QA-scope, потребують plan-mode + узгодження)
+
+- **Warranties UI неповний:** endpoints `POST /warranties` (create), `GET /warranties/expiring`, `GET /warranties/by-work-order/:id`, `POST /warranties/:id/claim` НЕ мають frontend-споживача (лише `by-counterparty` read wired). Немає warranty-tab у наряді, немає «протерміновані гарантії» widget. Backend готовий — це net-new UI.
+- **Loyalty config UI відсутній:** `loyaltyEnabled/loyaltyEarnPer/loyaltyEarnPoints/loyaltyRedeemRate` типізовані у settings DTO (backend) + frontend shared.ts, але жоден settings-tab не рендерить інпути для них. Програму лояльності не налаштувати через UI (лише перегляд балансу/транзакцій на картці). Net-new UI.
+  > Обидва — pre-existing (warranties/loyalty-config UI ніколи не було), НЕ регреси цієї сесії. Винесено власнику як окрему фічу.
+
 ## Session 2026-09-08 — Bug hunt: tech-debt closure batch (2d7c672e..4f811ec3, backend+DB) — laborCostRatio / dueDate / calendar work-hours / forEachActiveOrg / followup C3
 
 Ціль: реальні баги у 6 напрямах tech-debt (A1 invoices dueDate, A2 calendar per-branch work-hours, A3 reports laborCostRatio, B1 forEachActiveOrg cursor-пагінація, C3 followup per-branch SMS). Code review вже CLEAN (0). Фокус (task): money-коректність (dueDate, laborCostRatio), Kyiv DST edge-дати, tenant orgId, C3 counter-арифметика. Baseline: API 1851 зелено (116 файлів), tsc api=0.

@@ -49,12 +49,16 @@ const TX_LABELS: Record<string, string> = {
   SUPPLIER_PAYMENT: 'Оплата постачальнику',
   SUPPLIER_REFUND: 'Повернення постачальнику',
 };
+// Колір дзеркалить бековий BALANCE_SIGN (settlements.service): sign −1 (гасить борг клієнта) =
+// success/зелений, +1 (збільшує борг) = destructive. REFUND/CREDIT_NOTE обидва −1 (як PAYMENT) —
+// раніше показувались warning/muted → той самий тип фарбувався інакше, ніж на картці контрагента
+// (Cycle-2 sync-фікс: cross-page-неузгодженість кольору знаку балансу).
 const TX_COLORS: Record<string, string> = {
   CHARGE: 'text-destructive',
   PAYMENT: 'text-success',
   PREPAYMENT: 'text-success',
-  REFUND: 'text-warning',
-  CREDIT_NOTE: 'text-muted-foreground',
+  REFUND: 'text-success', // −1: повернення клієнту гасить його борг
+  CREDIT_NOTE: 'text-success', // −1: кредит-нота гасить борг клієнта
   SUPPLIER_CHARGE: 'text-destructive', // збільшує наш борг постачальнику
   SUPPLIER_PAYMENT: 'text-success', // гасить наш борг
   SUPPLIER_REFUND: 'text-success',
