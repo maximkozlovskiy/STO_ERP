@@ -29,6 +29,32 @@ tsc api ✅ 0 + web ✅ 0. Тести: exchange-rates 12 + payment-polling 19 + 
 
 ---
 
+## 2026-09-09 — QA Цикл 1: повний 8-фазний прогін (sync→review→tester→optimize→e2e→simplify→code-review→security)
+
+Повний послідовний QA-цикл на pre-prod-хардненому коді (R1-R3). Фікси одразу, коміт per-фаза.
+
+- **Ф1 sync** — CLEAN (0 розбіжностей API↔UI у 3 напрямах).
+- **Ф2 review** (21365cff, 3419fd76, 2c0c03a6) — 2 Important: ungated toast у counterparties (6/6)
+  - invoices (2/6) → guard + actionError-банер; nbu enqueueImmediate без jobId/removeOnFail → додано.
+- **Ф3 tester** (833f8b8e…55aa8667) — **2 HIGH**: Bug #711 cash-shift.close() подвійний Z-звіт
+  (stale-read→CAS-claim перед зовнішнім Z + revert); Bug #712 PO over-receipt (прийом 100 на
+  замовлені 10 — CAS ≠ бізнес-max, fail-fast стеля з EPSILON). +MED #713 checkbox DONE-write CAS,
+  +LOW #714 nbu P2002-idempotent. +10 тестів, усі mutation-verified.
+- **Ф4 optimize** (fee0e361, a25c0115) — covering-index integration_logs (orgId,provider,createdAt)
+  - additive міграція; useCallback на invoices payment-Modal onClose (listener-thrashing).
+- **Ф5 e2e** — 93/93 Playwright passed (прямий npx, без MCP): smoke + cross-cache-invalidation +
+  counterparty-detail + invoices FSM/оплата/фільтри/soft-delete/bulk + payments + console-errors.
+- **Ф6 simplify** (8a99679c) — DEFAULT_JOB_OPTS спільний для 11 BullMQ черг (removeOnFail cap на
+  registerQueue-шарі замість ~11 .add()-сайтів). Backend/frontend решта — CLEAN.
+- **Ф7 code-review --fix** — 0 багів (1 false positive: cashShift update tenant-where відхилено).
+- **Ф8 security-review** — 0 vulns (tenant-isolation усіх нових updateMany/findFirst з orgId; 0 raw
+  SQL/SSRF/secret-leak; redact/integration-log service незмінні у range).
+
+Підсумок: tsc api+web 0, api 1979 + web 696 green. HIGH-баги лише у щойно-доданих CAS/receive
+шляхах (тепер закриті); 4 фази верифікації поспіль — чисто.
+
+---
+
 ## 2026-09-09 — audit R3: перед-прод третій раунд (frontend IDOR/derived-fields + ops/lifecycle)
 
 Третій раунд аудиту (кут: authz/IDOR, frontend derived-consistency, ops/queue-lifecycle). 3
