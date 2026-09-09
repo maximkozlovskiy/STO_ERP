@@ -10,14 +10,17 @@ import {
   ParseUUIDPipe,
   UseGuards,
   HttpCode,
+  Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { PricingService } from './pricing.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreatePricingRuleDto, UpdatePricingRuleDto } from './pricing-rules.dto';
 import { NotFoundException } from '@nestjs/common';
 import { UserRole, PricingRule, PricingRuleTier, Prisma } from '@prisma/client';
@@ -49,10 +52,32 @@ const PRICING_RULE_INCLUDE = {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class PricingRulesController {
+  private readonly logger = new Logger(PricingRulesController.name);
+
   constructor(
     private readonly pricingService: PricingService,
     private readonly prisma: PrismaService,
+    // C1b: аудит прямо в контролері — CRUD-логіка inline (не в PricingService), money-critical
+    // (правила націнки впливають на ціни). userId з @CurrentUser.
+    private readonly audit: AuditService,
   ) {}
+
+  /** C1b: best-effort аудит правила ціноутворення. */
+  private auditRule(
+    orgId: string,
+    id: string,
+    action: 'CREATE' | 'UPDATE' | 'DELETE',
+    userId: string | undefined,
+    oldData?: Record<string, unknown>,
+    newData?: Record<string, unknown>,
+  ): void {
+    if (!userId) return;
+    this.audit
+      .record(orgId, 'PricingRule', id, action, userId, oldData, newData)
+      .catch((e: unknown) =>
+        this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
+      );
+  }
 
   @Get()
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.STOREKEEPER)
@@ -91,7 +116,11 @@ export class PricingRulesController {
   @Post()
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Створити правило ціноутворення' })
-  async create(@OrgContext() orgId: string, @Body() dto: CreatePricingRuleDto) {
+  async create(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Body() dto: CreatePricingRuleDto,
+  ) {
     // Parallel FK validation: goodId + brandId + supplierId — всі незалежні.
     const [good, brand, supplier] = await Promise.all([
       dto.goodId
@@ -141,6 +170,10 @@ export class PricingRulesController {
       },
       include: PRICING_RULE_INCLUDE,
     });
+    this.auditRule(orgId, rule.id, 'CREATE', user?.id, undefined, {
+      name: ruleData.name,
+      priority: ruleData.priority ?? 10,
+    });
     return this.toDto(rule);
   }
 
@@ -149,6 +182,7 @@ export class PricingRulesController {
   @ApiOperation({ summary: 'Оновити правило ціноутворення' })
   async update(
     @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePricingRuleDto,
   ) {
@@ -278,6 +312,7 @@ export class PricingRulesController {
         include: PRICING_RULE_INCLUDE,
       });
     }
+    this.auditRule(orgId, id, 'UPDATE', user?.id, undefined, { ...dto });
     return this.toDto(rule);
   }
 
@@ -285,13 +320,18 @@ export class PricingRulesController {
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @HttpCode(204)
   @ApiOperation({ summary: 'Видалити правило ціноутворення' })
-  async remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+  async remove(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     // updateMany з orgId — defense-in-depth tenant guard для soft-delete.
     const res = await this.prisma.pricingRule.updateMany({
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
     if (res.count === 0) throw new NotFoundException('Правило не знайдено');
+    this.auditRule(orgId, id, 'DELETE', user?.id, { id }, undefined);
   }
 
   @Post(':id/apply-all')

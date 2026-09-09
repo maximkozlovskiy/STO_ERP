@@ -6,11 +6,13 @@ import { StockItemsController } from './stock-items.controller';
 import { BatchesController } from './batches.controller';
 import { PricingRulesController } from './pricing-rules.controller';
 import { SettingsModule } from '../settings/settings.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   // SettingsModule — для costMethod (Метод списання партій) у createMovement.
   // Settings не залежить від Inventory → без circular DI.
-  imports: [SettingsModule],
+  // AuditModule — C1b: аудит pricing-rules CRUD (прямо в контролері).
+  imports: [SettingsModule, AuditModule],
   controllers: [StockItemsController, BatchesController, PricingRulesController],
   providers: [InventoryService, BatchService, PricingService],
   exports: [InventoryService, BatchService, PricingService],

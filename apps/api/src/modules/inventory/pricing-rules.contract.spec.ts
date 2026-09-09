@@ -5,6 +5,7 @@ import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vites
 import { PricingRulesController } from './pricing-rules.controller';
 import { PricingService } from './pricing.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
@@ -64,6 +65,7 @@ describe('PricingRules — HTTP Contract', () => {
       providers: [
         { provide: PricingService, useValue: pricingServiceMock },
         { provide: PrismaService, useValue: prismaMock },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
       ],
     })
       .overrideGuard(JwtAuthGuard)
