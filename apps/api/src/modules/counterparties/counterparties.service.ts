@@ -200,11 +200,30 @@ export class CounterpartiesService {
     dto: UpdateCounterpartyDto,
     userId?: string,
   ): Promise<CounterpartyResponseDto> {
-    // sto-optimize: narrow tenant guard — тягнемо лише existence + name-поля (не всі
-    // 15+ колонок) для cross-field name-guard. Update нижче все одно повертає DTO.
+    // Tenant guard + before-snapshot для аудиту. Bug #719: раніше select тягнув лише
+    // {id,companyName,firstName,lastName} → аудит-diff порівнював цей звужений знімок з dto,
+    // де решта полів = undefined → фейкові «companyName→undefined»/«id→undefined» записи.
+    // Тягнемо повний набір auditable-полів (усі редаговані UpdateCounterpartyDto), щоб diff
+    // рахувався коректно (справжнє from→to) і був знімком САМЕ ДО зміни.
     const existing = await this.prisma.counterparty.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true, companyName: true, firstName: true, lastName: true },
+      select: {
+        companyName: true,
+        firstName: true,
+        lastName: true,
+        edrpou: true,
+        vatPayer: true,
+        phone: true,
+        email: true,
+        notes: true,
+        legalForm: true,
+        legalAddress: true,
+        actualAddress: true,
+        bankAccount: true,
+        bankName: true,
+        contactPerson: true,
+        taxNumber: true,
+      },
     });
     if (!existing) throw new NotFoundException('Контрагента не знайдено');
     // Merged-стан: PATCH частковий → перевіряємо результат після застосування dto
@@ -222,8 +241,15 @@ export class CounterpartiesService {
       data: dto,
       include: { settlementAccount: { select: { balance: true } } },
     });
-    // C1b: аудит редагування — diff обчислює AuditService (old=existing name-поля, new=dto).
+    // C1b: аудит редагування — diff обчислює AuditService (old=знімок ДО зміни, new=dto).
+    // Bug #719: old-snapshot обмежуємо РІВНО ключами, що присутні у dto — інакше buildDiff
+    // зарахував би поля, яких PATCH не чіпав (existing має значення, dto — undefined), як
+    // «очищені до undefined». Тепер old містить справжні попередні значення саме змінених полів.
     if (userId) {
+      const oldSnapshot: Record<string, unknown> = {};
+      for (const k of Object.keys(dto)) {
+        if (k in existing) oldSnapshot[k] = (existing as Record<string, unknown>)[k];
+      }
       this.audit
         .record(
           orgId,
@@ -231,7 +257,7 @@ export class CounterpartiesService {
           id,
           'UPDATE',
           userId,
-          existing,
+          oldSnapshot,
           dto as Record<string, unknown>,
         )
         .catch((e: unknown) =>

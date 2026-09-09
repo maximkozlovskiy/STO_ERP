@@ -3942,3 +3942,48 @@ Scope: РЕАЛЬНІ дефекти на крайових кутах 2 нови
 - **Кут 4 dashboard-віджет (CLEAN):** `daysLeft`/`soon` НЕ dead-code (`soon` керує кольором бейджа рядок 463). `counterpartyName ?? 'Клієнт'` fallback ✓. Порожній `items` → `expiringWarranties.length > 0` гейт → віджет не рендериться. Бек-filter `expiresAt: {gt: now}` → від'ємний daysLeft у віджет не потрапляє.
 - **Кут 5 useWarranties (CLEAN):** `enabled: enabled && !!workOrderId` → 0 запитів без workOrderId/невидима секція (гейт `WO_INVOICE_VISIBLE_STATUSES`). QueryKey-factory без колізій (byWorkOrder/byCounterparty/expiring різні сегменти — verified тестом). `invalidateQueries({queryKey: warrantiesKeys.all})` покриває всі 3 списки (спільний префікс `['warranties']`).
 - **Кут 6 B6 dedup (CLEAN):** counterparties warranties-таб після заміни локального `interface Warranty` на shared-import працює — усі спожиті поля (`workOrderNumber`, `workOrderId`, `description`, `expiresAt`, `isActive`, `claimedAt`) присутні у shared-типі. `loadWarranties` (imperative, cancelled-guard) не зламано; render 3-стан бейджа ідентичний `WarrantySection.StateBadge`. Тест LoyaltyTab (3) + WarrantySection (4) зелені.
+
+## Session 2026-09-09 — bug-hunt 3 backlog-пункти (C1b audit + D3 bull-board + Docker) HEAD 75710255
+
+Scope: 3 закритих backlog-пункти (HEAD~4..HEAD). ФОКУС за ризиком: (1) **C1b audit money-adjacent** — settings VAT/pricing (auditSettings best-effort .catch, old/new-data createTaxRate/updateTaxRate/deleteTaxRate), counterparties update (existing як old-snapshot), pricing-rules controller (auditRule ПІСЛЯ inline-write, userId gate), + test-gap у audit-шляхах; (2) **D3 bull-board auth** — edge-cases guard (no/empty/no-prefix/garbage/wrong-secret/expired/stale-version/ghost-emp/CLIENT-role) через **живі curl з форджені токени** (JWT_ACCESS_SECRET); (3) **Docker** — PowerShell parse-check Setup-Stack.ps1/Update.ps1 + -Version прокидання. Метод: static + live-verify curl проти dev API :3000 + додано regression-тести у audit-шляхи.
+
+**Знайдено: 1 РЕАЛЬНИЙ дефект — #719 (MEDIUM, audit-integrity) — counterparties update() писав фейкові diff-записи «id→undefined»/«companyName→undefined» у AuditEvent. Виправлено + 4 regression-тести. Плюс закрито 3 test-gap-и (audit arg-correctness) — pricing-rules (3 тести) + settings TaxRate (5 тестів). D3 bull-board + Docker — CLEAN (0 дефектів, повна edge-матриця verified).**
+
+### Bug #719 (MEDIUM, audit-integrity · false-diff у money-adjacent аудит-сліді) — counterparties `update()` пише фейкові «поле→undefined» записи у AuditEvent — [x] виправлено
+
+**Файл:** `apps/api/src/modules/counterparties/counterparties.service.ts:203-242` (метод `update`, C1b audit-виклик)
+**Статус:** [x] виправлено
+
+**Симптом:** `update()` читав `existing` через звужений `select: {id, companyName, firstName, lastName}` (для cross-field name-guard, sto-optimize) і передавав ВЕСЬ цей знімок (разом з `id`) як old-data у `audit.record(..., existing, dto)`. `AuditService.buildDiff(old, next)` ітерує ОБ'ЄДНАННЯ ключів old∪next і порівнює `JSON.stringify`. Для часткового PATCH (напр. `{ phone: '999' }`) поля, яких немає у dto, мають `existing.value` vs `dto.undefined` → потрапляють у diff як фейкові зміни:
+
+- `id`: `{from: '<uuid>', to: undefined}` — id ніколи не змінюється, спурйозний запис;
+- `companyName`/`firstName`/`lastName`: `{from: '<значення>', to: undefined}` — **АКТИВНО ХИБНО: аудит стверджує, що назву/ім'я очищено, хоча PATCH їх не чіпав**.
+
+Наслідок: журнал змін контрагента (money-adjacent compliance-слід — хто/коли редагував платника ПДВ/реквізити) показує неправдиві «очищення» полів при кожному частковому редагуванні. Аудитор бачить, що при зміні телефону нібито стерли назву компанії.
+
+**Live-context:** counterparty update — HTTP PATCH, частковий за дизайном (усі поля `@IsOptional`). Будь-яке редагування одного поля (найтиповіший потік) тригерить хибний diff.
+
+**Причина:** знімок для аудиту повторно використав perf-звужений `existing` (призначений лише для name-guard), а не окремий before-snapshot обмежений ключами, що реально змінюються. Розумне припущення «existing = стан ДО зміни, передам його як old» хибне через (а) наявність `id` у select і (б) те, що `existing` НЕ обмежений PATCH-ключами → buildDiff зараховує незмінені поля.
+
+**Фікс:** (1) розширив `existing` select до ПОВНОГО набору auditable-полів `UpdateCounterpartyDto` (15 колонок — companyName/firstName/lastName/edrpou/vatPayer/phone/email/notes/legalForm/legalAddress/actualAddress/bankAccount/bankName/contactPerson/taxNumber), прибрав `id`; (2) old-snapshot тепер будується як перетин `existing` з ключами `dto` (`for (k of Object.keys(dto)) if (k in existing) old[k]=existing[k]`) → diff містить РІВНО змінені поля зі справжніми before-значеннями. Знімок лишається ДО `prisma.update` (порядок незмінний).
+
+**Регресія:** `counterparties.service.spec.ts` — новий describe (4 тести): record() позиційні аргументи (orgId/Counterparty/id/UPDATE/userId), old-snapshot НЕ містить id/полів поза PATCH, old-snapshot має справжнє before-значення, userId=undefined → record не викликано. Стара (бажна) поведінка `Object.keys(old).toEqual(['phone'])` падає на pre-fix коді (де було id+3 name-поля).
+
+### Test-gap #720 (audit arg-correctness — pricing-rules + settings TaxRate) — load-bearing audit-виклики без жодної assert на аргументи record() — [x] закрито
+
+**Файли:** `apps/api/src/modules/inventory/pricing-rules.contract.spec.ts` (+3 тести), `apps/api/src/modules/settings/settings.service.spec.ts` (+5 тестів)
+**Статус:** [x] закрито (тести додано; коду-бага не знайдено — поведінка коректна, лише не була зафіксована)
+
+**Симптом:** усі C1b audit-шляхи (pricing-rules CRUD inline-controller + settings TaxRate CRUD) мали AuditService замоканим `{ record: vi.fn() }`, але **жодна assert не перевіряла, що record() отримує правильні `(orgId, entityType, entityId, action, userId)`**. Money-critical (правила ціни + ставки ПДВ) логіка без regression → тихий refactor міг зламати аудит (напр. переплутати entityType, забути userId, викликати audit ПЕРЕД write коли id ще недоступний) без падіння тестів.
+
+**Закрито:**
+
+- pricing-rules (3): CREATE → record(org, 'PricingRule', <id з create-результату>, CREATE, userId) ПІСЛЯ inline-write; DELETE (успіх) → record(..., DELETE, userId); DELETE (404, count=0) → record НЕ викликано (аудит лише за реального write). Побічно виявлено й виправлено невідповідність мока: `mockJwtGuard` ставив `req.user.sub`, а `AuthenticatedUser` (jwt.strategy) має `id` (мапиться з sub) — контролер читає `@CurrentUser().id`; мок оновлено до реального shape (`{id, sub, orgId, role}`).
+- settings TaxRate (5): create/update/delete → record з коректним entityType/id/action/userId; deleteTaxRate передає old-data `{name}`; userId=undefined → record не викликано; **best-effort verified — record() reject НЕ ламає основну мутацію** (createTaxRate повертає результат попри `audit db down`).
+
+### Перевірено ЧИСТИМ (0 дефектів):
+
+- **D3 bull-board auth (CLEAN — повна edge-матриця live-verified):** `bull-board.guard.ts` `onRequest`-хук. Форджені токени (JWT_ACCESS_SECRET) проти dev API :3000 — 13 кейсів: no-header/empty-Authorization/token-без-Bearer/garbage/wrong-secret/expired/stale-tokenVersion(999)/legacy-no-version(≠DB v1)/ghost-employee-id → **усі 401**; valid OWNER (root + sub-path) → **200**; MECHANIC (валідний токен, роль поза OWNER/ADMIN, version match) → **403** «Недостатньо прав для перегляду черг». Non-bull-board роути НЕ зачеплені: `/api/health` без токена → 200; **prefix-lookalike `/api/admin/queues-evil` → 404** (не матчить guard — `path !== PREFIX && !path.startsWith(PREFIX+'/')` коректно виключає bypass-adjacent false-match). JWT-паритет з JwtStrategy (secret + tokenVersion-revocation + DB-роль, не роль з токена) підтверджено.
+- **C1b settings audit (CLEAN):** `auditSettings` best-effort `.catch` (reject лише warn-логується, мутація завершується) + `if (!userId) return` gate — verified тестом (record reject не ламає createTaxRate). createTaxRate/updateTaxRate/deleteTaxRate передають коректні old/new (deleteTaxRate old=`{name}`; update new=`{...dto}` — свідомо без before-snapshot, але diff не хибний бо old=undefined → `{new: dto}`, не фейкове «→undefined» як у #719). updateOrganisationSettings/updateBranchSettings аудитять з коректним entityType/id.
+- **pricing-rules controller (CLEAN):** `auditRule` викликається ПІСЛЯ inline-write у create/update/remove (id з write-результату у create; `if(res.count===0) throw` перед audit у remove — verified тестом що 404 не аудитить). userId завжди gated (`if(!userId) return` у auditRule + `user?.id` у виклику). best-effort `.catch`.
+- **Docker (CLEAN):** `Setup-Stack.ps1` + `Update.ps1` — PowerShell AST parse-check (`[Parser]::ParseFile`) 0 помилок. `-Version` прокидання коректне: обидва ставлять `$env:VERSION = $Version` перед `docker compose up` + пишуть/оновлюють `.env` (`VERSION=$Version`, regex-replace якщо є, Add-Content якщо нема). Update.ps1 rollback-логіка: `$previousVersion` з `.env` ДО оновлення, при провалі health-check → `$env:VERSION = $previousVersion` + up (offline-first: локальний образ, pull лише як fallback). Guard проти self-rollback (previous==target).

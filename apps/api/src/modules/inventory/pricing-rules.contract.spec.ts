@@ -45,12 +45,17 @@ const pricingServiceMock = {
   applyRuleToGoods: vi.fn().mockResolvedValue(42),
 };
 
+// C1b: тримаємо посилання на audit-mock, щоб асертити аргументи record() (money-critical).
+const auditMock = { record: vi.fn().mockResolvedValue(undefined) };
+
 let jwtAllow = true;
 const mockJwtGuard = {
   canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
-    req.user = { sub: 'emp-1', orgId: 'org-1', role: 'OWNER' };
+    // AuthenticatedUser (jwt.strategy.validate) має `id` (мапиться з payload.sub), НЕ `sub`.
+    // Контролер читає @CurrentUser().id для аудиту — мок мусить дзеркалити реальний shape.
+    req.user = { id: 'emp-1', sub: 'emp-1', orgId: 'org-1', role: 'OWNER' };
     return true;
   }),
 };
@@ -65,7 +70,7 @@ describe('PricingRules — HTTP Contract', () => {
       providers: [
         { provide: PricingService, useValue: pricingServiceMock },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        { provide: AuditService, useValue: auditMock },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -472,6 +477,79 @@ describe('PricingRules — HTTP Contract', () => {
         url: '/pricing-rules/00000000-0000-0000-0000-000000000002',
       });
       expect(res.statusCode).toBe(404);
+    });
+  });
+
+  // ── C1b audit: money-critical правила ціни пишуть AuditEvent з коректними аргументами ──
+  // Регресія-gap: раніше жоден тест не асертив, що auditRule → audit.record викликається
+  // з (orgId, 'PricingRule', id, action, userId). Load-bearing (аудит цінових змін —
+  // фінансовий compliance-слід), тому фіксуємо контракт.
+  describe('C1b audit: record() аргументи', () => {
+    it('CREATE → record(orgId, PricingRule, id, CREATE, userId) ПІСЛЯ inline-write', async () => {
+      prismaMock.pricingRule.create.mockResolvedValueOnce({
+        id: 'rule-created',
+        orgId: 'org-1',
+        name: 'Ауд-правило',
+        type: 'PERCENT',
+        priority: 10,
+        goodId: null,
+        goodCategory: null,
+        goodType: 'SPARE_PART',
+        brandId: null,
+        percentValue: 15,
+        fixedAmount: null,
+        fixedPrice: null,
+        roundTo: null,
+        isActive: true,
+        createdAt: new Date(),
+        good: null,
+        brand: null,
+        supplier: null,
+        tiers: [],
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules',
+        payload: { name: 'Ауд-правило', type: 'PERCENT', goodType: 'SPARE_PART', percentValue: 15 },
+      });
+      expect(res.statusCode).toBe(201);
+      await Promise.resolve(); // best-effort .catch мікротаск
+      // audit ПІСЛЯ write — id береться з create-результату (не було б доступне до write)
+      expect(prismaMock.pricingRule.create).toHaveBeenCalled();
+      expect(auditMock.record).toHaveBeenCalledTimes(1);
+      const args = auditMock.record.mock.calls[0];
+      expect(args[0]).toBe('org-1'); // orgId
+      expect(args[1]).toBe('PricingRule'); // entityType
+      expect(args[2]).toBe('rule-created'); // entityId — з create-результату
+      expect(args[3]).toBe('CREATE'); // action
+      expect(args[4]).toBe('emp-1'); // userId (з mockJwtGuard req.user.sub)
+    });
+
+    it('DELETE (успіх) → record(orgId, PricingRule, id, DELETE, userId)', async () => {
+      prismaMock.pricingRule.updateMany.mockResolvedValueOnce({ count: 1 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'DELETE',
+        url: '/pricing-rules/00000000-0000-0000-0000-000000000009',
+      });
+      expect(res.statusCode).toBe(204);
+      await Promise.resolve();
+      expect(auditMock.record).toHaveBeenCalledTimes(1);
+      const args = auditMock.record.mock.calls[0];
+      expect(args[1]).toBe('PricingRule');
+      expect(args[2]).toBe('00000000-0000-0000-0000-000000000009');
+      expect(args[3]).toBe('DELETE');
+      expect(args[4]).toBe('emp-1');
+    });
+
+    it('DELETE (404, count=0) → record() НЕ викликається (аудит лише за реального write)', async () => {
+      prismaMock.pricingRule.updateMany.mockResolvedValueOnce({ count: 0 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'DELETE',
+        url: '/pricing-rules/00000000-0000-0000-0000-00000000000a',
+      });
+      expect(res.statusCode).toBe(404);
+      await Promise.resolve();
+      expect(auditMock.record).not.toHaveBeenCalled();
     });
   });
 });

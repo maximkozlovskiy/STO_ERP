@@ -201,3 +201,118 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
     expect(res.error).toBe('ECONNREFUSED');
   });
 });
+
+/**
+ * C1b audit: TaxRate CRUD (ставки ПДВ — money-critical) пишуть AuditEvent з коректними
+ * аргументами. Регресія-gap: раніше жоден тест не асертив, що createTaxRate/updateTaxRate/
+ * deleteTaxRate → audit.record(orgId, 'TaxRate', id, action, userId). Load-bearing: аудит
+ * зміни ставок ПДВ — фінансовий compliance-слід. Best-effort .catch не має ламати мутацію.
+ */
+describe('SettingsService — C1b audit TaxRate', () => {
+  let service: SettingsService;
+  let auditRecord: ReturnType<typeof vi.fn>;
+  let prisma: {
+    taxRate: {
+      create: ReturnType<typeof vi.fn>;
+      findFirst: ReturnType<typeof vi.fn>;
+      findFirstOrThrow: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
+    $transaction: ReturnType<typeof vi.fn>;
+  };
+
+  const ORG = 'org-1';
+  const USER = 'user-7';
+
+  beforeEach(async () => {
+    auditRecord = vi.fn().mockResolvedValue(undefined);
+    prisma = {
+      taxRate: {
+        create: vi
+          .fn()
+          .mockResolvedValue({
+            id: 'tax-new',
+            name: 'ПДВ 20%',
+            rate: 20,
+            isDefault: false,
+            isActive: true,
+          }),
+        findFirst: vi.fn(),
+        findFirstOrThrow: vi
+          .fn()
+          .mockResolvedValue({
+            id: 'tax-1',
+            name: 'ПДВ 20%',
+            rate: 20,
+            isDefault: false,
+            isActive: true,
+          }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      $transaction: vi.fn(),
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        SettingsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { record: auditRecord } },
+        { provide: REDIS_CLIENT, useValue: { get: vi.fn(), set: vi.fn(), del: vi.fn() } },
+        { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+      ],
+    }).compile();
+    service = module.get(SettingsService);
+  });
+
+  it('createTaxRate (non-default) → record(orgId, TaxRate, id, CREATE, userId)', async () => {
+    await service.createTaxRate(ORG, { name: 'ПДВ 20%', rate: 20 }, USER);
+    await Promise.resolve();
+    expect(auditRecord).toHaveBeenCalledTimes(1);
+    const args = auditRecord.mock.calls[0];
+    expect(args[0]).toBe(ORG);
+    expect(args[1]).toBe('TaxRate');
+    expect(args[2]).toBe('tax-new'); // id з create-результату
+    expect(args[3]).toBe('CREATE');
+    expect(args[4]).toBe(USER);
+  });
+
+  it('updateTaxRate (non-default) → record(orgId, TaxRate, id, UPDATE, userId)', async () => {
+    await service.updateTaxRate(ORG, 'tax-1', { rate: 7 }, USER);
+    await Promise.resolve();
+    expect(auditRecord).toHaveBeenCalledTimes(1);
+    const args = auditRecord.mock.calls[0];
+    expect(args[1]).toBe('TaxRate');
+    expect(args[2]).toBe('tax-1');
+    expect(args[3]).toBe('UPDATE');
+    expect(args[4]).toBe(USER);
+  });
+
+  it('deleteTaxRate → record(orgId, TaxRate, id, DELETE, userId) з old-data назвою', async () => {
+    prisma.taxRate.findFirst.mockResolvedValueOnce({
+      id: 'tax-1',
+      name: 'ПДВ 20%',
+      isDefault: false,
+    });
+    await service.deleteTaxRate(ORG, 'tax-1', USER);
+    await Promise.resolve();
+    expect(auditRecord).toHaveBeenCalledTimes(1);
+    const args = auditRecord.mock.calls[0];
+    expect(args[1]).toBe('TaxRate');
+    expect(args[2]).toBe('tax-1');
+    expect(args[3]).toBe('DELETE');
+    expect(args[4]).toBe(USER);
+    expect(args[5]).toMatchObject({ name: 'ПДВ 20%' }); // old-data
+  });
+
+  it('userId відсутній → record() НЕ викликається (best-effort gate)', async () => {
+    await service.createTaxRate(ORG, { name: 'ПДВ 0%', rate: 0 }, undefined);
+    await Promise.resolve();
+    expect(auditRecord).not.toHaveBeenCalled();
+  });
+
+  it('best-effort: record() reject НЕ ламає основну мутацію (createTaxRate повертає результат)', async () => {
+    auditRecord.mockRejectedValueOnce(new Error('audit db down'));
+    const res = await service.createTaxRate(ORG, { name: 'ПДВ 20%', rate: 20 }, USER);
+    // мутація успішна попри падіння аудиту
+    expect(res).toMatchObject({ id: 'tax-new', rate: 20 });
+  });
+});
