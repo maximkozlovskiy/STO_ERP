@@ -22,11 +22,23 @@ async function bootstrap() {
 
   // Register Fastify plugins
   // Security headers must be set first so they apply to ALL responses (including error paths).
-  // - contentSecurityPolicy disabled: Swagger UI uses inline scripts and would otherwise refuse to load.
   // - crossOriginEmbedderPolicy disabled: avoids breaking PDF/file downloads that come from MinIO with COEP-free headers.
   // - crossOriginResourcePolicy 'cross-origin' so web app on port 3001 can fetch resources from API on 3000 in dev.
+  // E1: CSP УВІМКНЕНО у production (Swagger, що вимагав inline-scripts, монтується лише у non-prod —
+  //   див. нижче). API віддає JSON + file-redirect, тож жорстка default-src 'none' безпечна:
+  //   немає власного HTML/скриптів для рендеру. Це defense-in-depth (головна CSP для SPA — у Caddy/web).
+  //   У dev лишаємо false, щоб Swagger UI (inline scripts) завантажувався.
+  const isProd = process.env.NODE_ENV === 'production';
   await app.register(fastifyHelmet, {
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: isProd
+      ? {
+          directives: {
+            defaultSrc: ["'none'"],
+            frameAncestors: ["'none'"],
+            baseUri: ["'none'"],
+          },
+        }
+      : false,
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   });

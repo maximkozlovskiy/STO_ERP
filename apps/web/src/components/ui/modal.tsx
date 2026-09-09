@@ -15,6 +15,7 @@ import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAnimatedPresence } from '@/hooks/useAnimatedPresence';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'content';
 
@@ -220,6 +221,10 @@ export function Modal({
       document.body.style.overflow = '';
     };
   }, [open, handleKey]);
+
+  // E2: focus-trap — фокус тримається у панелі поки модалка видима; повертається на закритті.
+  // `visible` (не `open`) — щоб трап жив під час exit-анімації теж; panelRef прикріплений на рендері.
+  useFocusTrap(panelRef, visible);
 
   if (!visible || !mounted) return null;
 

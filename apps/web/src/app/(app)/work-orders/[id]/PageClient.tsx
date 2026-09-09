@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/badge';
 import { WorkOrderLinesSection } from './WorkOrderLinesSection';
 import { WorkOrderPartsSection } from './WorkOrderPartsSection';
 import { WorkOrderMediaSection } from './WorkOrderMediaSection';
+import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
 import { WorkOrderAuditSection } from './WorkOrderAuditSection';
 import { InvoiceSection, type InvoiceRef } from './InvoiceSection';
 
@@ -998,12 +999,15 @@ export default function WorkOrderCardPage() {
       )}
 
       {/* Invoice slot. Bug #510: винесено у InvoiceSection для component-test. */}
-      <InvoiceSection
-        workOrderId={id}
-        workOrderStatus={wo.status}
-        invoiceRef={invoiceRef}
-        onChange={setInvoiceRef}
-      />
+      {/* E3: money-секція під error-boundary — краш рахунку не валить усю картку наряду. */}
+      <SectionErrorBoundary label="Рахунок">
+        <InvoiceSection
+          workOrderId={id}
+          workOrderStatus={wo.status}
+          invoiceRef={invoiceRef}
+          onChange={setInvoiceRef}
+        />
+      </SectionErrorBoundary>
 
       <WorkOrderLinesSection
         woId={id}
@@ -1189,7 +1193,10 @@ export default function WorkOrderCardPage() {
         )}
       </div>
 
-      <WorkOrderMediaSection woId={id} media={media} onChanged={loadMedia} onError={setError} />
+      {/* E3: медіа-секція під error-boundary — краш рендеру медіа не валить картку наряду. */}
+      <SectionErrorBoundary label="Медіа наряду">
+        <WorkOrderMediaSection woId={id} media={media} onChanged={loadMedia} onError={setError} />
+      </SectionErrorBoundary>
 
       <WorkOrderAuditSection auditEvents={auditEvents} />
 

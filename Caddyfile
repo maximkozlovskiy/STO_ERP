@@ -9,6 +9,18 @@
         reverse_proxy web:80
     }
 
+    # E1: security headers для SPA (головна CSP — тут, не в API: XSS-поверхня це браузерний web-app).
+    # Все same-origin через Caddy (web+api за одним хостом), тож 'self' покриває і fetch до /api.
+    # img data:/blob: — превʼю/QR/canvas; style 'unsafe-inline' — Tailwind inline-стилі рантайму.
+    header {
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # прибираємо серверний identity-leak
+        -Server
+    }
+
     # Compression
     encode gzip
 
