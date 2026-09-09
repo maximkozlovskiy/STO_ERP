@@ -679,6 +679,13 @@ git diff HEAD~5 --unified=0 apps/web/src/components --include="*.tsx" 2>/dev/nul
 # Дубльована date badge математика
 grep -rn "86_400_000\|diffDays" apps/web/src/app/ --include="*.tsx" | grep -v "lib/utils\|expiry-badge"
 
+# Date-picker YYYY-MM-DD → ISO конверсія через LOCAL-parse + toISOString() (off-by-one на межі дня)
+# `new Date(`${d}T00:00:00`)` парсить у TZ БРАУЗЕРА, .toISOString() конвертує в UTC →
+# у браузерах з додатнім offset (Kyiv UTC+3) дата зсувається на -1. Замість min-date/setDate-арифметики
+# → канонічний addDaysISO(); для payload → `${d}T23:59:59Z` (кінець дня в UTC).
+grep -rnE "new Date\(\`?\\\$?\{[a-zA-Z]+\}?T00:00:00\`?\)" apps/web/src --include="*.tsx" --include="*.ts"
+grep -rnE "\.setDate\(.*getDate\(\) ?\+|\.setDate\(.*getDate\(\) ?-" apps/web/src/app apps/web/src/components --include="*.tsx"
+
 # Власний picker не через picker-modal.tsx
 grep -rn "<Modal" apps/web/src/app/ --include="*.tsx" -l
 
@@ -695,6 +702,7 @@ done
 - [ ] Великий датасет + сервер-пошук → `<SearchCombobox<T>>`
 - [ ] Inline IIFE `{(() => {...})()}` → іменована функція; pointless wrapper навколо `.map()` → прибрати IIFE
 - [ ] "Прострочено/скоро" badge → `<ExpiryBadge>` + `daysUntil()`, не inline `Math.ceil(.../86_400_000)`
+- [ ] **Date-picker `YYYY-MM-DD` → ISO конверсія без LOCAL-parse.** `new Date(`${d}T00:00:00`).toISOString()` парсить рядок у TZ **браузера**, потім конвертує в UTC → у браузерах з додатнім UTC-offset (Kyiv UTC+3) дата зсувається на **-1 день** (`2026-09-10T00:00:00` local → `2026-09-09T21:00:00Z`), зберігається/відправляється дата на день раніше вибраної. Для day-based min/max арифметики → канонічний `addDaysISO(kyivToday(), N)` (UTC-математика, вже у `lib/format.ts`), НЕ ручний `new Date + setDate + toISOString().slice`. Для payload «до кінця дня» → `${d}T23:59:59Z`(UTC end-of-day, покриває весь вибраний день незалежно від TZ). Grep: детектор вище. Sample bug (audit Warranties UI, abe63125):`WarrantyCreateModal`— і`tomorrow`(min-date), і submit`expiresAt` мали цей зсув
 - [ ] Однаковий helper 2+ рази → `lib/utils.ts`
 - [ ] **Export/render parity (екран↔файл):** окремий `exportCell`/`toCsvCell` helper поруч із екранним `fmtCell`/`renderCell` → мусить давати ТІ САМІ лейбли для КОЖНОГО `type` (enum, boolean, date). Grep обидва, порівняй гілки по-типах: пропущена гілка = мовчазна розбіжність. Sample bug (audit e4f2ed2e): `exportCell` не мав `boolean`-гілки → boolean-колонка (`isActive`/«Активна») експортувалась `String(true)`→"true"/"false" (англ.), екран через `fmtCell` давав «Так/Ні». Fix: додати відсутні type-гілки, дзеркалячи екранний форматер. Виняток — числове форматування: у файлі число лишається сирим (raw) для XLSX `ss:Type=Number`, це прийнятна різниця (значення те саме, лише без grouping/decimals), НЕ розбіжність лейблів. Grep: `grep -nE "function (export|toCsv|toXlsx)[A-Za-z]*Cell" apps/web/src` → для кожного знайти парний `fmtCell/renderCell` і звірити switch по type
 
@@ -1422,6 +1430,13 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Grep:** `grep -rn "\.add(" apps/api/src/modules/**/*.scheduler.ts -A8` → якщо у файлі співіснують `.add()` з `jobId`+`removeOnFail` і `.add()` без них — прапор.
 **Фікс:** додати `jobId: '<x>-now-<org>'` (ОКРЕМИЙ від repeatable `<x>-<org>` — інакше конфлікт з cron-записом) + `removeOnFail: 200` (дзеркалить сіблінги).
 **Severity:** IMPORTANT — Redis-ріст (unbounded failed-set) + duplicate manual fan-out; tsc зелений, видно лише на проді під навантаженням.
+
+### 2026-09-09 — date-picker YYYY-MM-DD → ISO через local-parse → off-by-one на межі дня — §8.6
+
+**Сигнал:** `new Date(`${d}T00:00:00`).toISOString()` де `d` — рядок з date-picker. Парсинг `T00:00:00` (без `Z`) відбувається у TZ **браузера**, `.toISOString()` конвертує в UTC. У браузерах з додатнім offset (Kyiv UTC+3) `2026-09-10T00:00:00` local → `2026-09-09T21:00:00Z` → збережена/відправлена дата на **-1 день**. Той самий баг у ручній min/max-date арифметиці (`new Date(...); setDate(getDate()+1); toISOString().slice(0,10)`).
+**Grep:** `grep -rnE "new Date\(\`?\\\$?\{[a-zA-Z]+\}?T00:00:00\`?\)" apps/web/src` + `grep -rnE "\.setDate\(.*getDate\(\) ?[+-]" apps/web/src/app apps/web/src/components`.
+**Фікс:** day-арифметика → канонічний `addDaysISO(kyivToday(), N)` (UTC-математика, `lib/format.ts`); payload «кінець дня» → `${d}T23:59:59Z` (UTC end-of-day, покриває весь вибраний день незалежно від TZ браузера).
+**Severity:** IMPORTANT — німа data-corruption (дата на день раніше), tsc зелений; проявляється лише у певних TZ. Sample: WarrantyCreateModal (abe63125).
 
 ## Карта секцій (quick reference)
 
