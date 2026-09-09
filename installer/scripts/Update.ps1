@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 param(
     [string]$DataDir = 'C:\ProgramData\STO-ERP',
     [string]$Version = 'latest'
@@ -25,13 +25,28 @@ Write-Log "Поточна версія (для відкату): $previousVersion
 
 # Rollback: повертає попередні образи й піднімає їх; лишає БД як є (міграції additive-only —
 # гарантія A4 CI-guard, тож старий код проти новішої схеми сумісний). exit 1 — сигнал невдачі.
+#
+# ВАЖЛИВО (Bug #716): якщо попередня версія == цільова (типовий кейс — обидві плаваючий тег
+# 'latest', бо .env за замовч. має VERSION=latest, а task кличе Update.ps1 без -Version), то
+# re-pull того самого тега лише ПЕРЕТЯГНЕ той самий (щойно зламаний) образ — це НЕ відкат.
+# Тоді відкату НЕМАЄ: чесно попереджаємо оператора замість фальшивого «відкат виконано».
 function Invoke-Rollback {
     param([string]$reason)
     Write-Log "!!! ВІДКАТ: $reason"
+    if ($previousVersion -eq $Version) {
+        Write-Log "НЕМОЖЛИВО ВІДКОТИТИ: попередня і цільова версії однакові ('$Version')."
+        Write-Log "  Плаваючий тег ('latest') не дає відкату — образ під тим самим тегом уже перезаписано."
+        Write-Log "  Старі контейнери зупинено новою невдалою версією. Потрібне РУЧНЕ втручання:"
+        Write-Log "  відновіть попередній образ з бекапу/бандлу і 'docker compose up -d api web',"
+        Write-Log "  або закріпіть незмінні теги версій (VERSION=<конкретна> у .env) для авто-відкату."
+        exit 1
+    }
     try {
         $env:VERSION = $previousVersion
         & docker compose pull api web
+        if ($LASTEXITCODE -ne 0) { throw "docker compose pull попередньої версії ($previousVersion) впав" }
         & docker compose up -d api web
+        if ($LASTEXITCODE -ne 0) { throw "docker compose up попередньої версії ($previousVersion) впав" }
         Write-Log "Відкат до $previousVersion виконано. Перевірте стан сервісу вручну."
     } catch {
         Write-Log "ВІДКАТ ТЕЖ ВПАВ: $($_.Exception.Message). Потрібне ручне втручання."

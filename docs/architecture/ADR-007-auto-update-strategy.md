@@ -1,7 +1,15 @@
 # ADR-007: Стратегія автоматичного оновлення
 
 **Дата:** 2026-05-22
-**Статус:** Прийнято
+**Статус:** Прийнято · **Реалізовано 2026-09-09** (Update.ps1 rollback + exit-code, Register-ScheduledTasks.ps1)
+
+> **Реалізація (F1/F2, хардненинг-бэклог):** `installer/scripts/Update.ps1` — фіксує поточну VERSION
+> перед pull, застосовує міграції через one-off `run --rm` (старі контейнери працюють), health-check
+> на `/api/health/live`; при таймауті/збої — автоматичний rollback (re-pull попередньої версії) +
+> `exit 1` (усі fail-гілки exit 1, не exit 0). Rollback образів безпечний бо міграції additive-only
+> (enforced `.github/workflows/ci.yml` migration-safety guard). `Register-ScheduledTasks.ps1` —
+> нічний бекап УВІМКНЕНО (02:30), авто-update ЗАРЕЄСТРОВАНО+ВИМКНЕНО (opt-in, бо unattended-update на
+> єдиному ПК ризикований).
 
 ## Контекст
 
